@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -42,3 +43,11 @@ next-env.d.ts
 
 # Base de datos local de pruebas
 /db/test/tmp/
+
+# Generados por Next.js para asistentes de IA
+/AGENTS.md
+/CLAUDE.md
+
+# Archivos temporales de la CLI de Supabase
+/supabase/.temp/
+/supabase/.branches/

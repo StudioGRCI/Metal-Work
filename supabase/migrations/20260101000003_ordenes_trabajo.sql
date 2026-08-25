@@ -115,7 +115,11 @@ create index idx_etapas_catalogo_secuencia on public.etapas_catalogo(orden_secue
 create table public.ordenes_trabajo (
   id                       uuid primary key default gen_random_uuid(),
   -- Lo asigna el trigger con siguiente_correlativo('ORDEN_TRABAJO', ...).
-  numero                   text not null unique,
+  -- El default vacío existe para que el trigger BEFORE INSERT pueda asignar el
+  -- correlativo sin que la aplicación tenga que inventar un número: Postgres
+  -- aplica los defaults antes de los triggers, así que el trigger siempre
+  -- reemplaza esta cadena vacía por el número real.
+  numero                   text not null default '' unique,
   cliente_id               uuid not null references public.clientes(id) on delete restrict,
   unidad_id                uuid references public.unidades(id) on delete set null,
   cotizacion_id            uuid references public.cotizaciones(id) on delete set null,
@@ -162,10 +166,7 @@ create table public.ordenes_trabajo (
     or fecha_fin_real >= fecha_inicio_real),
   -- Pausar y anular exigen justificación: sin motivo no hay trazabilidad.
   constraint ck_ot_motivo_pausa check (estado <> 'PAUSADA' or nullif(btrim(motivo_pausa), '') is not null),
-  constraint ck_ot_motivo_anulacion check (estado <> 'ANULADA' or nullif(btrim(motivo_anulacion), '') is not null),
-  -- Necesario para que ot_etapas, parte_detalle e inspecciones puedan amarrar
-  -- (etapa_id, orden_id) con una FK compuesta.
-  constraint uq_ot_id_sede unique (id, sede_id)
+  constraint ck_ot_motivo_anulacion check (estado <> 'ANULADA' or nullif(btrim(motivo_anulacion), '') is not null)
 );
 
 comment on table public.ordenes_trabajo is
@@ -188,7 +189,6 @@ create index idx_ot_responsable    on public.ordenes_trabajo(responsable_id);
 create index idx_ot_supervisor     on public.ordenes_trabajo(supervisor_id);
 create index idx_ot_creado_por     on public.ordenes_trabajo(creado_por);
 create index idx_ot_estado         on public.ordenes_trabajo(estado);
-create index idx_ot_prioridad      on public.ordenes_trabajo(prioridad);
 create index idx_ot_fecha_registro on public.ordenes_trabajo(fecha_registro desc);
 create index idx_ot_sede_estado    on public.ordenes_trabajo(sede_id, estado);
 -- El tablero del taller siempre pide "lo que está abierto", ordenado por compromiso.
@@ -309,7 +309,8 @@ comment on column public.ot_personal.etapa_id is
   'Etapa a la que se asigna. La FK compuesta con orden_id impide asignar a una etapa de otra OT.';
 
 create index idx_ot_personal_orden   on public.ot_personal(orden_id);
-create index idx_ot_personal_etapa   on public.ot_personal(etapa_id);
+-- Encabeza con etapa_id para servir también a la FK compuesta (etapa_id, orden_id).
+create index idx_ot_personal_etapa   on public.ot_personal(etapa_id, orden_id);
 create index idx_ot_personal_usuario on public.ot_personal(usuario_id);
 create index idx_ot_personal_creado_por on public.ot_personal(creado_por);
 -- Un operario no puede estar asignado dos veces con el mismo oficio a la misma
@@ -325,7 +326,11 @@ create unique index uq_ot_personal_vigente
 
 create table public.partes_diarios (
   id                uuid primary key default gen_random_uuid(),
-  numero            text not null unique,
+  -- El default vacío existe para que el trigger BEFORE INSERT pueda asignar el
+  -- correlativo sin que la aplicación tenga que inventar un número: Postgres
+  -- aplica los defaults antes de los triggers, así que el trigger siempre
+  -- reemplaza esta cadena vacía por el número real.
+  numero            text not null default '' unique,
   fecha             date not null default current_date,
   sede_id           uuid not null references public.sedes(id) on delete restrict,
   estado            public.estado_parte_diario not null default 'BORRADOR',
@@ -388,10 +393,11 @@ comment on column public.parte_detalle.horas_totales is
   'Columna calculada: horas + horas_extra. Es la base del costeo de mano de obra directa.';
 
 create index idx_parte_detalle_parte   on public.parte_detalle(parte_id);
-create index idx_parte_detalle_orden   on public.parte_detalle(orden_id);
-create index idx_parte_detalle_etapa   on public.parte_detalle(etapa_id);
 create index idx_parte_detalle_usuario on public.parte_detalle(usuario_id);
-create index idx_parte_detalle_orden_etapa on public.parte_detalle(orden_id, etapa_id);
+-- Horas de una OT abiertas por etapa (costeo) y, de paso, la FK a ordenes_trabajo.
+create index idx_parte_detalle_orden   on public.parte_detalle(orden_id, etapa_id);
+-- Encabeza con etapa_id para servir a la FK compuesta (etapa_id, orden_id).
+create index idx_parte_detalle_etapa   on public.parte_detalle(etapa_id, orden_id);
 
 -- =============================================================================
 -- CONTROL DE CALIDAD
@@ -399,7 +405,11 @@ create index idx_parte_detalle_orden_etapa on public.parte_detalle(orden_id, eta
 
 create table public.ot_inspecciones (
   id                  uuid primary key default gen_random_uuid(),
-  numero              text not null unique,
+  -- El default vacío existe para que el trigger BEFORE INSERT pueda asignar el
+  -- correlativo sin que la aplicación tenga que inventar un número: Postgres
+  -- aplica los defaults antes de los triggers, así que el trigger siempre
+  -- reemplaza esta cadena vacía por el número real.
+  numero              text not null default '' unique,
   orden_id            uuid not null references public.ordenes_trabajo(id) on delete cascade,
   -- Nula cuando es una inspección final de toda la carrocería.
   etapa_id            uuid,
@@ -430,7 +440,8 @@ comment on column public.ot_inspecciones.fecha_levantamiento is
   'Momento en que se verificó que las observaciones fueron subsanadas. Solo aplica a inspecciones OBSERVADO o RECHAZADO.';
 
 create index idx_inspecciones_orden     on public.ot_inspecciones(orden_id);
-create index idx_inspecciones_etapa     on public.ot_inspecciones(etapa_id);
+-- Encabeza con etapa_id para servir también a la FK compuesta (etapa_id, orden_id).
+create index idx_inspecciones_etapa     on public.ot_inspecciones(etapa_id, orden_id);
 create index idx_inspecciones_inspector on public.ot_inspecciones(inspector_id);
 create index idx_inspecciones_levantado on public.ot_inspecciones(levantado_por);
 create index idx_inspecciones_creado_por on public.ot_inspecciones(creado_por);
@@ -466,7 +477,11 @@ create index idx_inspeccion_items_inspeccion on public.ot_inspeccion_items(inspe
 
 create table public.ot_entregas (
   id                uuid primary key default gen_random_uuid(),
-  numero            text not null unique,
+  -- El default vacío existe para que el trigger BEFORE INSERT pueda asignar el
+  -- correlativo sin que la aplicación tenga que inventar un número: Postgres
+  -- aplica los defaults antes de los triggers, así que el trigger siempre
+  -- reemplaza esta cadena vacía por el número real.
+  numero            text not null default '' unique,
   orden_id          uuid not null references public.ordenes_trabajo(id) on delete cascade,
   fecha_entrega     date not null default current_date,
   recibe_nombre     text not null,
@@ -570,6 +585,10 @@ create or replace function public.ot_registrar_evento(
 returns uuid
 language plpgsql
 volatile
+-- La bitácora debe escribirse pase lo que pase: quien aprueba una OT no
+-- necesariamente tiene permiso de escritura sobre la tabla de eventos.
+security definer
+set search_path = public
 as $$
 declare v_id uuid;
 begin
@@ -629,6 +648,10 @@ create or replace function public.crear_etapas_ot(p_orden_id uuid)
 returns integer
 language plpgsql
 volatile
+-- Las etapas se generan al aprobar la OT, y quien aprueba (gerencia) no tiene
+-- por qué tener permiso para registrar producción.
+security definer
+set search_path = public
 as $$
 declare
   v_creadas integer;
@@ -754,6 +777,14 @@ begin
         using errcode = 'check_violation';
     end if;
 
+    -- Sin acta de conformidad no hay entrega: el acta es el respaldo documental.
+    if new.estado = 'ENTREGADA'
+       and not exists (select 1 from public.ot_entregas t where t.orden_id = new.id) then
+      raise exception 'La OT % no se puede entregar sin acta de conformidad', old.numero
+        using errcode = 'check_violation',
+              hint = 'Registre el acta en ot_entregas: ella misma pasa la OT a ENTREGADA.';
+    end if;
+
     -- No se cierra una OT con etapas de taller todavía abiertas.
     if new.estado = 'TERMINADA'
        and exists (select 1 from public.ot_etapas e
@@ -825,9 +856,6 @@ begin
   elsif old.estado = 'PAUSADA' then
     v_tipo  := 'REANUDACION';
     v_texto := format('OT reanudada en estado %s', new.estado);
-  elsif new.estado = 'ENTREGADA' then
-    v_tipo  := 'ENTREGA';
-    v_texto := 'OT entregada al cliente';
   else
     v_tipo  := 'CAMBIO_ESTADO';
     v_texto := format('Estado de la OT: %s → %s', old.estado, new.estado);

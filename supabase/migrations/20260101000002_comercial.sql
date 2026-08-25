@@ -246,7 +246,11 @@ create index idx_unidades_placa_trgm
 
 create table public.cotizaciones (
   id                  uuid primary key default gen_random_uuid(),
-  numero              text not null unique,
+  -- El default vacío existe para que el trigger BEFORE INSERT pueda asignar el
+  -- correlativo sin que la aplicación tenga que inventar un número: Postgres
+  -- aplica los defaults antes de los triggers, así que el trigger siempre
+  -- reemplaza esta cadena vacía por el número real.
+  numero              text not null default '' unique,
   cliente_id          uuid not null references public.clientes(id) on delete restrict,
   unidad_id           uuid references public.unidades(id) on delete restrict,
   tipo_carroceria_id  uuid references public.tipos_carroceria(id) on delete restrict,
@@ -258,7 +262,7 @@ create table public.cotizaciones (
   fecha_vencimiento   date generated always as (fecha_emision + validez_dias) stored,
   moneda              public.moneda not null default 'PEN',
   -- Tipo de cambio congelado al emitir. Si no se indica se toma el vigente.
-  tipo_cambio         numeric(10, 4) not null check (tipo_cambio > 0),
+  tipo_cambio         numeric(10, 4),
   estado              public.estado_cotizacion not null default 'BORRADOR',
 
   -- Totales calculados por trigger a partir de las partidas. No se confía en
@@ -268,7 +272,7 @@ create table public.cotizaciones (
   -- Porcentaje de IGV congelado al emitir, tomado de public.empresa. Se guarda
   -- en el documento para que una cotización antigua siga cuadrando si la tasa
   -- legal cambia.
-  igv_porcentaje      public.porcentaje not null,
+  igv_porcentaje      public.porcentaje,
   igv                 public.monto not null default 0 check (igv >= 0),
   total               public.monto not null default 0 check (total >= 0),
 
@@ -296,7 +300,11 @@ create table public.cotizaciones (
   constraint chk_cotizaciones_motivo_rechazo check (
     estado <> 'RECHAZADA' or nullif(btrim(coalesce(motivo_rechazo, '')), '') is not null
   ),
-  constraint chk_cotizaciones_descuento check (descuento <= subtotal)
+  constraint chk_cotizaciones_descuento check (descuento <= subtotal),
+  -- Los rellena fn_cotizacion_calcular en el BEFORE INSERT; el CHECK se evalúa
+  -- después de los triggers, así que garantiza que quedaron con valor.
+  constraint ck_cotizacion_tipo_cambio check (tipo_cambio is not null and tipo_cambio > 0),
+  constraint ck_cotizacion_igv check (igv_porcentaje is not null)
 );
 
 comment on table public.cotizaciones is
@@ -378,7 +386,7 @@ declare
   v_base numeric;
 begin
   if tg_op = 'INSERT' then
-    if new.numero is null then
+    if nullif(btrim(new.numero), '') is null then
       -- La serie puede estar registrada por sede o ser global; se intenta
       -- primero la de la sede del documento y se cae a la global.
       begin

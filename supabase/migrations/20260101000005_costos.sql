@@ -1,0 +1,1106 @@
+-- =============================================================================
+-- 0005 · COSTOS
+-- Metal-Work · Gestión de órdenes de trabajo para fabricación de carrocerías
+-- -----------------------------------------------------------------------------
+-- Este módulo responde, en cualquier momento y para cualquier orden de trabajo,
+-- las tres preguntas del negocio:
+--     ¿cuánto llevo gastado?  ¿contra qué presupuesté?  ¿cuánto estoy ganando?
+--
+-- El costo real de una carrocería tiene cinco orígenes y ninguno se digita a
+-- mano en este módulo salvo el último:
+--     MATERIAL   ← kardex (0004): salidas a la OT menos devoluciones
+--     MANO_OBRA  ← partes diarios aprobados (0003) valorizados con tarifa
+--     SERVICIO   ← servicios_terceros (aquí): arenado, torno, corte láser...
+--     INDIRECTO  ← prorrateo_indirectos (aquí): gasto de planta repartido
+--     OTRO       ← ot_costos_adicionales (aquí): fletes, viáticos, compras directas
+--
+-- Todos los importes de este módulo se guardan además en MONEDA BASE
+-- (empresa.moneda_base, PEN) en la columna monto_base, para que las vistas
+-- puedan sumar sin volver a convertir.
+-- =============================================================================
+
+-- Necesaria para la restricción de exclusión que impide tarifas solapadas:
+-- permite combinar el operador = sobre la especialidad con && sobre el rango
+-- de vigencia dentro de un mismo índice GiST.
+create extension if not exists "btree_gist";
+
+-- -----------------------------------------------------------------------------
+-- Enums del dominio de costos
+-- -----------------------------------------------------------------------------
+
+-- Naturaleza del costo. Es la columna vertebral del módulo: presupuesto, costo
+-- real y desviación se comparan siempre dentro del mismo tipo.
+-- Amplía a public.tipo_costo_partida (0002) con INDIRECTO, que la cotización no
+-- conoce porque el gasto de planta no se cotiza al cliente por separado.
+create type public.tipo_costo as enum (
+  'MATERIAL',
+  'MANO_OBRA',
+  'SERVICIO',
+  'INDIRECTO',
+  'OTRO'
+);
+
+create type public.tipo_centro_costo as enum (
+  'PRODUCCION',      -- taller: su gasto se reparte entre las OT
+  'ADMINISTRATIVO',  -- gasto del periodo, no entra al costo de la carrocería
+  'VENTAS'           -- gasto del periodo, no entra al costo de la carrocería
+);
+
+-- Trabajos que el taller no hace en casa y compra a un tercero.
+create type public.tipo_servicio_tercero as enum (
+  'ARENADO',
+  'CORTE_LASER',
+  'CORTE_PLASMA',
+  'DOBLADO',
+  'TORNO',
+  'GALVANIZADO',
+  'TRATAMIENTO_TERMICO',
+  'TAPICERIA',
+  'PINTURA',
+  'ELECTRICIDAD',
+  'HIDRAULICA',
+  'TRANSPORTE',
+  'CERTIFICACION',
+  'OTRO'
+);
+
+-- SOLICITADO es compromiso, todavía no costo. EJECUTADO ya es costo real
+-- aunque el proveedor no haya cobrado. ANULADO no cuenta para nada.
+create type public.estado_servicio_tercero as enum (
+  'SOLICITADO',
+  'EJECUTADO',
+  'PAGADO',
+  'ANULADO'
+);
+
+create type public.categoria_gasto_indirecto as enum (
+  'ENERGIA',
+  'AGUA',
+  'ALQUILER',
+  'DEPRECIACION',
+  'SUELDOS_INDIRECTOS',
+  'MANTENIMIENTO_PLANTA',
+  'SEGUROS',
+  'EPP',
+  'COMUNICACIONES',
+  'LIMPIEZA',
+  'OTRO'
+);
+
+-- De dónde salió una línea de presupuesto: arrastrada de la cotización
+-- aprobada o cargada a mano por el área de costos.
+create type public.origen_presupuesto as enum ('COTIZACION', 'MANUAL');
+
+-- =============================================================================
+-- CENTROS DE COSTO
+-- =============================================================================
+
+create table public.centros_costo (
+  id             uuid primary key default gen_random_uuid(),
+  codigo         text not null unique,
+  nombre         text not null,
+  tipo           public.tipo_centro_costo not null default 'PRODUCCION',
+  descripcion    text,
+  responsable_id uuid references public.usuarios(id) on delete set null,
+  -- Nulo = centro transversal a toda la empresa.
+  sede_id        uuid references public.sedes(id) on delete set null,
+  activo         boolean not null default true,
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
+);
+
+comment on table public.centros_costo is
+  'Centros de costo de la empresa. Solo el gasto de los centros de tipo PRODUCCION se reparte entre las órdenes de trabajo; el administrativo y el de ventas son gasto del periodo.';
+comment on column public.centros_costo.tipo is
+  'PRODUCCION (taller, se prorratea a las OT), ADMINISTRATIVO y VENTAS (gasto del periodo).';
+
+create index idx_centros_costo_responsable on public.centros_costo(responsable_id);
+create index idx_centros_costo_sede on public.centros_costo(sede_id);
+create index idx_centros_costo_tipo on public.centros_costo(tipo) where activo;
+
+-- =============================================================================
+-- TARIFAS DE MANO DE OBRA
+-- =============================================================================
+
+create table public.tarifas_mano_obra (
+  id               uuid primary key default gen_random_uuid(),
+  codigo           text not null unique,
+  -- Se reutiliza el enum de oficios de producción (0003) a propósito: la tarifa
+  -- se resuelve por el mismo oficio con el que el operario está asignado a la OT.
+  especialidad     public.rol_operario not null,
+  nombre           text not null,
+  costo_hora       public.monto not null check (costo_hora >= 0),
+  costo_hora_extra public.monto not null check (costo_hora_extra >= 0),
+  -- Vigencia cerrada por la derecha con NULL = sigue vigente hoy.
+  vigencia_desde   date not null default current_date,
+  vigencia_hasta   date,
+  centro_costo_id  uuid references public.centros_costo(id) on delete set null,
+  observaciones    text,
+  creado_en        timestamptz not null default now(),
+  actualizado_en   timestamptz not null default now(),
+
+  constraint ck_tarifa_vigencia check (
+    vigencia_hasta is null or vigencia_hasta >= vigencia_desde),
+
+  -- La hora extra jamás cuesta menos que la normal: la ley peruana obliga a un
+  -- recargo mínimo de 25 % sobre las dos primeras horas y de 35 % en adelante.
+  constraint ck_tarifa_extra check (costo_hora_extra >= costo_hora),
+
+  -- Dos tarifas de la misma especialidad no pueden traslaparse en el tiempo:
+  -- si lo hicieran, "la tarifa vigente" dejaría de estar definida y el costeo
+  -- de mano de obra sería ambiguo. Para cambiar un precio se cierra la tarifa
+  -- anterior con vigencia_hasta y se crea la nueva.
+  constraint ex_tarifa_sin_solape exclude using gist (
+    especialidad with =,
+    daterange(vigencia_desde, coalesce(vigencia_hasta, 'infinity'::date), '[]') with &&
+  )
+);
+
+comment on table public.tarifas_mano_obra is
+  'Costo por hora de cada especialidad de taller, con vigencia. Es el precio de referencia con el que se valorizan las horas de los partes diarios cuando el operario no tiene un costo_hora propio.';
+comment on column public.tarifas_mano_obra.costo_hora is
+  'Costo empresa por hora normal en moneda base: incluye sueldo, cargas sociales y beneficios, no es el sueldo neto del operario.';
+comment on column public.tarifas_mano_obra.vigencia_hasta is
+  'Nulo mientras la tarifa siga vigente. Se llena al crear la tarifa que la reemplaza.';
+
+create index idx_tarifas_especialidad on public.tarifas_mano_obra(especialidad, vigencia_desde desc);
+create index idx_tarifas_centro_costo on public.tarifas_mano_obra(centro_costo_id);
+
+-- Devuelve la fila de tarifa vigente para una especialidad en una fecha dada.
+-- La restricción de exclusión garantiza que hay como mucho una; el order by
+-- solo fija un resultado determinista si alguna vez se relajara esa regla.
+create or replace function public.tarifa_vigente(
+  p_especialidad public.rol_operario,
+  p_fecha        date default current_date
+)
+returns public.tarifas_mano_obra
+language sql
+stable
+as $$
+  select t.*
+    from public.tarifas_mano_obra t
+   where t.especialidad = p_especialidad
+     and t.vigencia_desde <= p_fecha
+     and (t.vigencia_hasta is null or t.vigencia_hasta >= p_fecha)
+   order by t.vigencia_desde desc
+   limit 1;
+$$;
+
+comment on function public.tarifa_vigente is
+  'Tarifa de mano de obra aplicable a una especialidad en una fecha. Devuelve la fila completa para que quien la llame use costo_hora o costo_hora_extra según corresponda; devuelve null si no hay tarifa configurada.';
+
+-- =============================================================================
+-- PRESUPUESTO DE LA ORDEN DE TRABAJO
+-- =============================================================================
+
+create table public.ot_presupuesto (
+  id                    uuid primary key default gen_random_uuid(),
+  orden_id              uuid not null references public.ordenes_trabajo(id) on delete cascade,
+  tipo_costo            public.tipo_costo not null,
+  descripcion           text not null,
+  detalle               text,
+  unidad_medida         text not null default 'UND',
+  cantidad              public.cantidad not null default 1 check (cantidad > 0),
+  -- Costo unitario y monto se mantienen coherentes por trigger: se digita uno
+  -- de los dos y la base de datos deduce el otro.
+  costo_unitario        public.monto not null default 0 check (costo_unitario >= 0),
+  monto_presupuestado   public.monto not null default 0 check (monto_presupuestado >= 0),
+
+  origen                public.origen_presupuesto not null default 'MANUAL',
+  -- Partida de la cotización de la que proviene esta línea. Es lo que permite
+  -- explicarle al cliente por qué se presupuestó lo que se presupuestó.
+  cotizacion_partida_id uuid references public.cotizacion_partidas(id) on delete set null,
+
+  -- Referencias opcionales que afinan el seguimiento sin ser obligatorias.
+  material_id           uuid references public.materiales(id) on delete set null,
+  especialidad          public.rol_operario,
+  horas_presupuestadas  public.cantidad not null default 0 check (horas_presupuestadas >= 0),
+  centro_costo_id       uuid references public.centros_costo(id) on delete set null,
+  observaciones         text,
+  creado_por            uuid default public.usuario_actual() references public.usuarios(id) on delete set null,
+  creado_en             timestamptz not null default now(),
+  actualizado_en        timestamptz not null default now(),
+
+  -- Una partida de cotización se arrastra una sola vez a la misma OT. Las
+  -- líneas manuales llevan cotizacion_partida_id nulo y no chocan entre sí
+  -- porque UNIQUE trata los nulos como distintos.
+  constraint uq_ot_presupuesto_partida unique (orden_id, cotizacion_partida_id),
+  constraint ck_ot_presupuesto_origen check (
+    origen <> 'COTIZACION' or cotizacion_partida_id is not null),
+  -- Las horas presupuestadas solo tienen sentido en las líneas de mano de obra.
+  constraint ck_ot_presupuesto_horas check (
+    tipo_costo = 'MANO_OBRA' or horas_presupuestadas = 0)
+);
+
+comment on table public.ot_presupuesto is
+  'Presupuesto de costo de la orden de trabajo, desglosado por naturaleza del costo. Es el "contra qué" de todo el módulo: la desviación se mide siempre contra la suma de estas líneas.';
+comment on column public.ot_presupuesto.monto_presupuestado is
+  'Costo esperado en moneda base, no precio de venta. Cuando se arrastra desde la cotización se aplica el factor de costo indicado en generar_presupuesto_desde_cotizacion.';
+comment on column public.ot_presupuesto.origen is
+  'COTIZACION = línea arrastrada de la cotización aprobada; MANUAL = cargada por el área de costos.';
+
+create index idx_ot_presupuesto_orden on public.ot_presupuesto(orden_id, tipo_costo);
+create index idx_ot_presupuesto_partida on public.ot_presupuesto(cotizacion_partida_id);
+create index idx_ot_presupuesto_material on public.ot_presupuesto(material_id);
+create index idx_ot_presupuesto_centro on public.ot_presupuesto(centro_costo_id);
+create index idx_ot_presupuesto_creado_por on public.ot_presupuesto(creado_por);
+
+-- =============================================================================
+-- SERVICIOS DE TERCEROS
+-- =============================================================================
+
+create table public.servicios_terceros (
+  id              uuid primary key default gen_random_uuid(),
+  orden_id        uuid not null references public.ordenes_trabajo(id) on delete restrict,
+  -- Etapa a la que se imputa el servicio, opcional. La FK compuesta impide
+  -- apuntar a la etapa de otra OT.
+  etapa_id        uuid,
+  proveedor_id    uuid not null references public.proveedores(id) on delete restrict,
+  tipo_servicio   public.tipo_servicio_tercero not null default 'OTRO',
+  descripcion     text not null,
+  especificacion  text,
+  fecha           date not null default current_date,
+  fecha_entrega   date,
+  moneda          public.moneda not null default 'PEN',
+  monto           public.monto not null check (monto > 0),
+  tipo_cambio     numeric(10, 4) not null check (tipo_cambio > 0),
+  -- Importe en moneda base. Se calcula solo: es lo que suman las vistas de
+  -- costo, que no pueden andar convirtiendo dólares fila por fila.
+  monto_base      public.monto generated always as (round(monto * tipo_cambio, 2)) stored,
+  numero_factura  text,
+  fecha_factura   date,
+  estado          public.estado_servicio_tercero not null default 'SOLICITADO',
+  centro_costo_id uuid references public.centros_costo(id) on delete set null,
+  responsable_id  uuid references public.usuarios(id) on delete set null,
+  observaciones   text,
+  creado_por      uuid default public.usuario_actual() references public.usuarios(id) on delete set null,
+  creado_en       timestamptz not null default now(),
+  actualizado_en  timestamptz not null default now(),
+
+  constraint fk_servicio_etapa foreign key (etapa_id, orden_id)
+    references public.ot_etapas(id, orden_id) on delete restrict,
+  -- En soles el tipo de cambio es 1 por definición; cualquier otro valor
+  -- deformaría monto_base sin que nadie lo note.
+  constraint ck_servicio_tc_pen check (moneda <> 'PEN' or tipo_cambio = 1),
+  constraint ck_servicio_fechas check (fecha_entrega is null or fecha_entrega >= fecha),
+  -- No se paga un servicio sin comprobante: es el sustento del gasto ante SUNAT.
+  constraint ck_servicio_factura check (
+    estado <> 'PAGADO' or nullif(btrim(coalesce(numero_factura, '')), '') is not null)
+);
+
+comment on table public.servicios_terceros is
+  'Trabajos tercerizados que se cargan a una OT: arenado, corte láser, torno, tapicería, transporte. Mientras están SOLICITADO son compromiso; desde EJECUTADO son costo real de la carrocería.';
+comment on column public.servicios_terceros.monto is
+  'Importe del servicio SIN IGV y en la moneda del comprobante. El IGV no es costo de la OT: es crédito fiscal de la empresa.';
+comment on column public.servicios_terceros.tipo_cambio is
+  'Tipo de cambio congelado al registrar. Si no se indica lo completa el trigger con el tipo de cambio venta vigente a la fecha del servicio.';
+
+create index idx_servicios_orden on public.servicios_terceros(orden_id, estado);
+create index idx_servicios_etapa on public.servicios_terceros(etapa_id, orden_id);
+create index idx_servicios_proveedor on public.servicios_terceros(proveedor_id);
+create index idx_servicios_centro on public.servicios_terceros(centro_costo_id);
+create index idx_servicios_responsable on public.servicios_terceros(responsable_id);
+create index idx_servicios_creado_por on public.servicios_terceros(creado_por);
+create index idx_servicios_fecha on public.servicios_terceros(fecha desc);
+-- Servicios encargados que todavía no vuelven del proveedor: es la lista que
+-- el jefe de taller persigue todos los días.
+create index idx_servicios_pendientes on public.servicios_terceros(orden_id)
+  where estado = 'SOLICITADO';
+
+-- =============================================================================
+-- GASTOS INDIRECTOS DE PLANTA
+-- =============================================================================
+
+create table public.gastos_indirectos (
+  id               uuid primary key default gen_random_uuid(),
+  -- Siempre el primer día del mes: el prorrateo trabaja por periodo mensual.
+  periodo          date not null,
+  categoria        public.categoria_gasto_indirecto not null default 'OTRO',
+  descripcion      text not null,
+  centro_costo_id  uuid not null references public.centros_costo(id) on delete restrict,
+  sede_id          uuid references public.sedes(id) on delete restrict,
+  moneda           public.moneda not null default 'PEN',
+  monto            public.monto not null check (monto > 0),
+  tipo_cambio      numeric(10, 4) not null check (tipo_cambio > 0),
+  monto_base       public.monto generated always as (round(monto * tipo_cambio, 2)) stored,
+  numero_documento text,
+  fecha_documento  date,
+  -- Solo lo que se marca aquí entra al reparto entre las OT. Se valida por
+  -- trigger que el centro de costo sea de PRODUCCION: el gasto de ventas o de
+  -- administración es gasto del periodo y no encarece la carrocería.
+  prorratear       boolean not null default true,
+  observaciones    text,
+  creado_por       uuid default public.usuario_actual() references public.usuarios(id) on delete set null,
+  creado_en        timestamptz not null default now(),
+  actualizado_en   timestamptz not null default now(),
+
+  constraint ck_gasto_periodo_mes check (periodo = date_trunc('month', periodo::timestamp)::date),
+  constraint ck_gasto_tc_pen check (moneda <> 'PEN' or tipo_cambio = 1)
+);
+
+comment on table public.gastos_indirectos is
+  'Gastos de planta del mes que no se pueden imputar directamente a una OT: energía, alquiler, depreciación de equipos, sueldos indirectos. prorratear_indirectos() los reparte entre las órdenes.';
+comment on column public.gastos_indirectos.periodo is
+  'Primer día del mes al que pertenece el gasto. Es la llave del prorrateo.';
+
+create index idx_gastos_periodo on public.gastos_indirectos(periodo desc);
+create index idx_gastos_centro on public.gastos_indirectos(centro_costo_id);
+create index idx_gastos_sede on public.gastos_indirectos(sede_id);
+create index idx_gastos_creado_por on public.gastos_indirectos(creado_por);
+-- Índice que sirve exactamente a la suma que hace el prorrateo.
+create index idx_gastos_prorrateables on public.gastos_indirectos(periodo) where prorratear;
+
+-- =============================================================================
+-- PRORRATEO DE INDIRECTOS
+-- =============================================================================
+
+create table public.prorrateo_indirectos (
+  id                    uuid primary key default gen_random_uuid(),
+  periodo               date not null,
+  orden_id              uuid not null references public.ordenes_trabajo(id) on delete cascade,
+  -- Horas-hombre aprobadas que la OT consumió en el mes (normales + extras).
+  horas_hombre          public.cantidad not null check (horas_hombre > 0),
+  -- Denominador y numerador del reparto, guardados para poder auditar el
+  -- cálculo meses después sin tener que rehacerlo.
+  horas_totales_periodo public.cantidad not null check (horas_totales_periodo > 0),
+  gasto_total_periodo   public.monto not null check (gasto_total_periodo >= 0),
+  -- Tasa de absorción del mes. No usa el dominio public.monto porque no es un
+  -- importe sino un factor de cálculo y con dos decimales se perdería precisión.
+  tasa_hora             numeric(14, 6) not null check (tasa_hora >= 0),
+  monto_asignado        public.monto not null check (monto_asignado >= 0),
+  calculado_en          timestamptz not null default now(),
+  calculado_por         uuid references public.usuarios(id) on delete set null,
+  creado_en             timestamptz not null default now(),
+  actualizado_en        timestamptz not null default now(),
+
+  -- Una sola asignación por OT y mes: volver a correr el prorrateo reemplaza
+  -- la anterior, nunca la duplica.
+  constraint uq_prorrateo_periodo_orden unique (periodo, orden_id),
+  constraint ck_prorrateo_periodo_mes check (periodo = date_trunc('month', periodo::timestamp)::date),
+  constraint ck_prorrateo_horas check (horas_hombre <= horas_totales_periodo)
+);
+
+comment on table public.prorrateo_indirectos is
+  'Resultado del reparto del gasto indirecto de un mes entre las OT que trabajaron ese mes. Lo escribe prorratear_indirectos(); no se digita a mano.';
+comment on column public.prorrateo_indirectos.tasa_hora is
+  'Gasto indirecto prorrateable del mes dividido entre las horas-hombre aprobadas de todas las OT activas en ese mes.';
+
+create index idx_prorrateo_orden on public.prorrateo_indirectos(orden_id);
+create index idx_prorrateo_periodo on public.prorrateo_indirectos(periodo desc);
+create index idx_prorrateo_calculado_por on public.prorrateo_indirectos(calculado_por);
+
+-- =============================================================================
+-- OTROS COSTOS IMPUTADOS A LA OT
+-- =============================================================================
+
+create table public.ot_costos_adicionales (
+  id               uuid primary key default gen_random_uuid(),
+  orden_id         uuid not null references public.ordenes_trabajo(id) on delete restrict,
+  etapa_id         uuid,
+  fecha            date not null default current_date,
+  -- Se admite cualquier naturaleza porque hay compras directas de material que
+  -- nunca pasan por almacén (la ferretería de la esquina un sábado) y horas de
+  -- personal externo que no llegan por parte diario.
+  tipo_costo       public.tipo_costo not null default 'OTRO',
+  descripcion      text not null,
+  moneda           public.moneda not null default 'PEN',
+  monto            public.monto not null check (monto > 0),
+  tipo_cambio      numeric(10, 4) not null check (tipo_cambio > 0),
+  monto_base       public.monto generated always as (round(monto * tipo_cambio, 2)) stored,
+  centro_costo_id  uuid references public.centros_costo(id) on delete set null,
+  numero_documento text,
+  observaciones    text,
+  creado_por       uuid default public.usuario_actual() references public.usuarios(id) on delete set null,
+  creado_en        timestamptz not null default now(),
+  actualizado_en   timestamptz not null default now(),
+
+  constraint fk_costo_adicional_etapa foreign key (etapa_id, orden_id)
+    references public.ot_etapas(id, orden_id) on delete restrict,
+  constraint ck_costo_adicional_tc_pen check (moneda <> 'PEN' or tipo_cambio = 1)
+);
+
+comment on table public.ot_costos_adicionales is
+  'Costos cargados a mano a una OT que no vienen del almacén, ni de los partes diarios, ni de un servicio de tercero: fletes, viáticos, compras directas, penalidades, alquiler de equipo.';
+comment on column public.ot_costos_adicionales.monto is
+  'Importe sin IGV en la moneda del comprobante.';
+
+create index idx_costos_adicionales_orden on public.ot_costos_adicionales(orden_id, tipo_costo);
+create index idx_costos_adicionales_etapa on public.ot_costos_adicionales(etapa_id, orden_id);
+create index idx_costos_adicionales_centro on public.ot_costos_adicionales(centro_costo_id);
+create index idx_costos_adicionales_creado_por on public.ot_costos_adicionales(creado_por);
+create index idx_costos_adicionales_fecha on public.ot_costos_adicionales(fecha desc);
+
+-- =============================================================================
+-- REGLAS DE NEGOCIO EN TRIGGERS
+-- =============================================================================
+
+-- Tipo de cambio con el que se convierte un costo a moneda base. Si el usuario
+-- lo indicó se respeta (el comprobante manda); si no, en soles es 1 y en
+-- dólares se toma el tipo de cambio venta del día del documento.
+create or replace function public.tipo_cambio_costo(
+  p_moneda      public.moneda,
+  p_fecha       date,
+  p_tipo_cambio numeric default null
+)
+returns numeric
+language sql
+stable
+as $$
+  select case
+    when p_tipo_cambio is not null then p_tipo_cambio
+    when p_moneda = 'PEN'          then 1
+    else public.tipo_cambio_vigente(coalesce(p_fecha, current_date))
+  end;
+$$;
+
+-- Ninguna OT anulada puede seguir recibiendo costos: su costo quedó congelado
+-- el día que se anuló y admitir cargas nuevas rompería el margen histórico.
+create or replace function public.costos_validar_orden(p_orden_id uuid)
+returns void
+language plpgsql
+stable
+as $$
+declare v_estado public.estado_ot;
+begin
+  select estado into v_estado from public.ordenes_trabajo where id = p_orden_id;
+
+  if v_estado is null then
+    raise exception 'La orden de trabajo % no existe', p_orden_id
+      using errcode = 'foreign_key_violation';
+  end if;
+
+  if v_estado = 'ANULADA' then
+    raise exception 'No se pueden imputar costos a una orden de trabajo anulada'
+      using errcode = 'check_violation';
+  end if;
+end;
+$$;
+
+-- ot_presupuesto: mantiene coherentes cantidad, costo unitario y monto.
+create or replace function public.fn_presupuesto_antes()
+returns trigger
+language plpgsql
+as $$
+begin
+  perform public.costos_validar_orden(new.orden_id);
+
+  -- Se digita el costo unitario y se deduce el monto, o al revés. Nunca se
+  -- guardan los tres valores contradiciéndose entre sí.
+  if new.costo_unitario > 0 then
+    new.monto_presupuestado := round(new.cantidad * new.costo_unitario, 2);
+  elsif new.monto_presupuestado > 0 then
+    new.costo_unitario := round(new.monto_presupuestado / new.cantidad, 2);
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger trg_presupuesto_antes
+  before insert or update on public.ot_presupuesto
+  for each row execute function public.fn_presupuesto_antes();
+
+create or replace function public.fn_servicio_tercero_antes()
+returns trigger
+language plpgsql
+as $$
+begin
+  perform public.costos_validar_orden(new.orden_id);
+  new.tipo_cambio := public.tipo_cambio_costo(new.moneda, new.fecha, new.tipo_cambio);
+  return new;
+end;
+$$;
+
+create trigger trg_servicio_tercero_antes
+  before insert or update on public.servicios_terceros
+  for each row execute function public.fn_servicio_tercero_antes();
+
+create or replace function public.fn_costo_adicional_antes()
+returns trigger
+language plpgsql
+as $$
+begin
+  perform public.costos_validar_orden(new.orden_id);
+  new.tipo_cambio := public.tipo_cambio_costo(new.moneda, new.fecha, new.tipo_cambio);
+  return new;
+end;
+$$;
+
+create trigger trg_costo_adicional_antes
+  before insert or update on public.ot_costos_adicionales
+  for each row execute function public.fn_costo_adicional_antes();
+
+create or replace function public.fn_gasto_indirecto_antes()
+returns trigger
+language plpgsql
+as $$
+declare v_tipo public.tipo_centro_costo;
+begin
+  -- El tipo de cambio se toma de la fecha del comprobante y, si no hay
+  -- comprobante, del último día del mes del periodo.
+  new.tipo_cambio := public.tipo_cambio_costo(
+    new.moneda,
+    coalesce(new.fecha_documento, (new.periodo + interval '1 month' - interval '1 day')::date),
+    new.tipo_cambio);
+
+  if new.prorratear then
+    select tipo into v_tipo from public.centros_costo where id = new.centro_costo_id;
+
+    -- Regla de costeo: al costo de la carrocería solo absorbe gasto de planta.
+    -- Lo administrativo y lo comercial es gasto del periodo de la empresa.
+    if v_tipo is distinct from 'PRODUCCION' then
+      raise exception 'Solo el gasto de un centro de costo de PRODUCCION se puede prorratear a las órdenes de trabajo (centro % es %)',
+        new.centro_costo_id, coalesce(v_tipo::text, 'inexistente')
+        using errcode = 'check_violation';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger trg_gasto_indirecto_antes
+  before insert or update on public.gastos_indirectos
+  for each row execute function public.fn_gasto_indirecto_antes();
+
+-- =============================================================================
+-- PRESUPUESTO A PARTIR DE LA COTIZACIÓN
+-- =============================================================================
+
+create or replace function public.generar_presupuesto_desde_cotizacion(
+  p_orden_id     uuid,
+  p_factor_costo numeric default 1,
+  p_reemplazar   boolean default false
+)
+returns integer
+language plpgsql
+volatile
+set search_path = public
+as $$
+declare
+  v_cotizacion uuid;
+  v_estado     public.estado_cotizacion;
+  v_moneda     public.moneda;
+  v_tc         numeric;
+  v_filas      integer;
+begin
+  if p_factor_costo <= 0 then
+    raise exception 'El factor de costo debe ser mayor que cero' using errcode = 'check_violation';
+  end if;
+
+  perform public.costos_validar_orden(p_orden_id);
+
+  select o.cotizacion_id into v_cotizacion
+    from public.ordenes_trabajo o
+   where o.id = p_orden_id;
+
+  if v_cotizacion is null then
+    raise exception 'La orden de trabajo % no nace de una cotización: su presupuesto se carga a mano', p_orden_id
+      using errcode = 'no_data_found';
+  end if;
+
+  select c.estado, c.moneda, c.tipo_cambio
+    into v_estado, v_moneda, v_tc
+    from public.cotizaciones c
+   where c.id = v_cotizacion;
+
+  -- Solo se arrastra lo que el cliente aceptó: una cotización en borrador o
+  -- rechazada no es un compromiso y presupuestar sobre ella es inventar.
+  if v_estado <> 'APROBADA' then
+    raise exception 'La cotización de la orden % está en estado % y solo se puede presupuestar desde una cotización APROBADA', p_orden_id, v_estado
+      using errcode = 'check_violation';
+  end if;
+
+  if p_reemplazar then
+    delete from public.ot_presupuesto
+     where orden_id = p_orden_id
+       and origen = 'COTIZACION';
+  end if;
+
+  insert into public.ot_presupuesto (
+    orden_id, tipo_costo, descripcion, detalle, unidad_medida, cantidad,
+    monto_presupuestado, origen, cotizacion_partida_id
+  )
+  select
+    p_orden_id,
+    -- El enum de la cotización no conoce INDIRECTO; el resto mapea uno a uno.
+    case cp.tipo_costo
+      when 'MATERIAL'  then 'MATERIAL'::public.tipo_costo
+      when 'MANO_OBRA' then 'MANO_OBRA'::public.tipo_costo
+      when 'SERVICIO'  then 'SERVICIO'::public.tipo_costo
+      else 'OTRO'::public.tipo_costo
+    end,
+    cp.descripcion,
+    cp.detalle,
+    cp.unidad_medida,
+    cp.cantidad,
+    -- El subtotal de la cotización es PRECIO DE VENTA. p_factor_costo lo
+    -- convierte en costo esperado: con un margen objetivo de 25 % se llama a
+    -- la función con 0.75. Con el valor por omisión (1) el presupuesto queda
+    -- igual al precio y la desviación mide contra la venta, no contra el costo.
+    round(cp.subtotal * v_tc * p_factor_costo, 2),
+    'COTIZACION',
+    cp.id
+  from public.cotizacion_partidas cp
+  where cp.cotizacion_id = v_cotizacion
+    -- Idempotente: repetir la llamada no duplica lo ya arrastrado.
+    and not exists (
+      select 1 from public.ot_presupuesto op
+       where op.orden_id = p_orden_id
+         and op.cotizacion_partida_id = cp.id
+    );
+
+  get diagnostics v_filas = row_count;
+  return v_filas;
+end;
+$$;
+
+comment on function public.generar_presupuesto_desde_cotizacion is
+  'Arrastra las partidas de la cotización aprobada de una OT a su presupuesto de costo. p_factor_costo convierte precio de venta en costo esperado (0.75 = margen objetivo de 25 %). Es idempotente; con p_reemplazar borra primero lo arrastrado antes. Devuelve cuántas líneas creó.';
+
+-- =============================================================================
+-- PRORRATEO DE GASTOS INDIRECTOS
+-- =============================================================================
+
+-- Criterio de reparto (documentado porque condiciona todo el costeo):
+--   · Base de reparto: horas-hombre aprobadas. Es la única medida homogénea
+--     que el taller registra a diario y la que mejor se correlaciona con el
+--     consumo de energía, alquiler y supervisión de una carrocería.
+--   · Se cuentan horas normales MÁS horas extra: la planta consume luz y
+--     alquiler también en la jornada extra.
+--   · Universo: las OT con horas aprobadas en el mes ("OT activas"), excluidas
+--     las anuladas. Una OT parada todo el mes no absorbe gasto de ese mes.
+--   · Numerador: gastos_indirectos del mes marcados como prorratear, que el
+--     trigger obliga a que sean de un centro de costo de PRODUCCION.
+--   · El residuo de redondeo se carga a la OT de mayor carga horaria, para que
+--     la suma de lo asignado cuadre al céntimo con el gasto del mes.
+create or replace function public.prorratear_indirectos(p_periodo date)
+returns setof public.prorrateo_indirectos
+language plpgsql
+volatile
+set search_path = public
+as $$
+declare
+  v_periodo date := date_trunc('month', p_periodo::timestamp)::date;
+  v_inicio  date := v_periodo;
+  v_fin     date := (v_periodo + interval '1 month' - interval '1 day')::date;
+  v_gasto   numeric;
+begin
+  select coalesce(sum(g.monto_base), 0)
+    into v_gasto
+    from public.gastos_indirectos g
+   where g.periodo = v_periodo
+     and g.prorratear;
+
+  -- Recalcular siempre parte de cero: el prorrateo de un mes es una foto, y si
+  -- llegan facturas tarde o se aprueban partes atrasados debe rehacerse entera.
+  delete from public.prorrateo_indirectos where periodo = v_periodo;
+
+  if v_gasto <= 0 then
+    return;
+  end if;
+
+  return query
+  with horas_ot as (
+    select d.orden_id as ot, sum(d.horas_totales) as horas
+      from public.parte_detalle d
+      join public.partes_diarios pa on pa.id = d.parte_id
+      join public.ordenes_trabajo o on o.id = d.orden_id
+     where pa.estado = 'APROBADO'
+       and pa.fecha between v_inicio and v_fin
+       and o.estado <> 'ANULADA'
+     group by d.orden_id
+    having sum(d.horas_totales) > 0
+  ),
+  total as (
+    select sum(h.horas) as horas from horas_ot h
+  ),
+  reparto as (
+    select h.ot,
+           h.horas,
+           t.horas as horas_periodo,
+           round(v_gasto * h.horas / t.horas, 2) as monto,
+           row_number() over (order by h.horas desc, h.ot) as rn
+      from horas_ot h
+      cross join total t
+  ),
+  residuo as (
+    select v_gasto - sum(r.monto) as ajuste from reparto r
+  ),
+  asignacion as (
+    insert into public.prorrateo_indirectos (
+      periodo, orden_id, horas_hombre, horas_totales_periodo,
+      gasto_total_periodo, tasa_hora, monto_asignado, calculado_por
+    )
+    select
+      v_periodo,
+      r.ot,
+      r.horas,
+      r.horas_periodo,
+      v_gasto,
+      round(v_gasto / r.horas_periodo, 6),
+      -- greatest(...) solo protege el caso absurdo de un gasto mensual de
+      -- pocos céntimos repartido entre muchas OT.
+      greatest(r.monto + case when r.rn = 1 then res.ajuste else 0 end, 0),
+      public.usuario_actual()
+    from reparto r
+    cross join residuo res
+    returning *
+  )
+  select * from asignacion;
+end;
+$$;
+
+comment on function public.prorratear_indirectos is
+  'Reparte el gasto indirecto prorrateable de un mes entre las OT con horas aprobadas en ese mes, en proporción a sus horas-hombre. Borra y rehace el prorrateo del periodo; devuelve las asignaciones creadas.';
+
+-- =============================================================================
+-- VISTAS DE COSTO REAL
+-- Todas parten de la OT con left join y coalesce: una orden sin movimientos
+-- aparece en cero, nunca desaparece del reporte.
+-- =============================================================================
+
+-- Material consumido por la OT, valorizado al costo con el que salió de almacén.
+-- El costo real es la salida menos lo que el taller devolvió sin usar; la merma
+-- no entra aquí porque no lleva orden_id: es gasto indirecto de planta.
+create view public.v_ot_costo_materiales as
+select
+  k.orden_id,
+  coalesce(sum(k.costo_total) filter (where k.tipo_movimiento = 'SALIDA_OT'), 0)::public.monto
+    as consumo_material,
+  coalesce(sum(k.costo_total) filter (where k.tipo_movimiento = 'INGRESO_DEVOLUCION'), 0)::public.monto
+    as devoluciones_material,
+  (coalesce(sum(k.costo_total) filter (where k.tipo_movimiento = 'SALIDA_OT'), 0)
+   - coalesce(sum(k.costo_total) filter (where k.tipo_movimiento = 'INGRESO_DEVOLUCION'), 0))::public.monto
+    as costo_materiales,
+  count(*) filter (where k.tipo_movimiento = 'SALIDA_OT') as vales_consumo,
+  max(k.fecha) as ultimo_movimiento
+from public.kardex k
+where k.orden_id is not null
+  and k.tipo_movimiento in ('SALIDA_OT', 'INGRESO_DEVOLUCION')
+group by k.orden_id;
+
+comment on view public.v_ot_costo_materiales is
+  'Costo de material de cada OT: salidas de almacén imputadas a la orden menos las devoluciones de esa misma orden, al costo promedio con que se descargó el kardex.';
+
+-- Línea por línea de hora-hombre aprobada, ya valorizada. Es la vista que se
+-- muestra cuando alguien pregunta "¿y por qué esta OT tiene tanta mano de obra?".
+create view public.v_ot_mano_obra_detalle as
+select
+  h.detalle_id,
+  h.orden_id,
+  h.etapa_id,
+  h.usuario_id,
+  h.parte_id,
+  h.parte_numero,
+  h.fecha,
+  asg.rol as especialidad,
+  t.id    as tarifa_id,
+  h.horas,
+  h.horas_extra,
+  h.horas_totales,
+  cst.costo_hora,
+  cst.costo_hora_extra,
+  round(h.horas * cst.costo_hora, 2)::public.monto        as costo_normal,
+  round(h.horas_extra * cst.costo_hora_extra, 2)::public.monto as costo_extra,
+  (round(h.horas * cst.costo_hora, 2)
+   + round(h.horas_extra * cst.costo_hora_extra, 2))::public.monto as costo_hora_hombre
+from public.ot_horas_aprobadas h
+-- Especialidad con la que el operario está asignado a esa OT. Se prefiere la
+-- asignación de la etapa concreta sobre la asignación general de la orden,
+-- porque el mismo operario puede armar en una etapa y soldar en otra.
+left join lateral (
+  select op.rol
+    from public.ot_personal op
+   where op.orden_id = h.orden_id
+     and op.usuario_id = h.usuario_id
+     and (op.etapa_id = h.etapa_id or op.etapa_id is null)
+     and op.fecha_asignacion <= h.fecha
+     and (op.fecha_desasignacion is null or op.fecha_desasignacion >= h.fecha)
+   order by (op.etapa_id is not null) desc, op.fecha_asignacion desc
+   limit 1
+) asg on true
+left join public.tarifas_mano_obra t
+       on t.especialidad = asg.rol
+      and t.vigencia_desde <= h.fecha
+      and (t.vigencia_hasta is null or t.vigencia_hasta >= h.fecha)
+cross join lateral (
+  select
+    -- Prelación: manda el costo hora propio del operario (es la planilla real
+    -- que paga la empresa) y solo si no está definido se usa la tarifa de su
+    -- especialidad. Si no hay ninguno de los dos la hora vale cero y queda
+    -- contada en horas_sin_costo para que salte a la vista.
+    coalesce(nullif(h.costo_hora, 0), t.costo_hora, 0)::public.monto as costo_hora,
+    -- El recargo de la hora extra se toma de la tarifa; sin tarifa se aplica el
+    -- 25 % mínimo de ley sobre las primeras horas extra.
+    round(
+      coalesce(nullif(h.costo_hora, 0), t.costo_hora, 0)
+      * case when t.costo_hora > 0 then t.costo_hora_extra / t.costo_hora else 1.25 end
+    , 2)::public.monto as costo_hora_extra
+) cst;
+
+comment on view public.v_ot_mano_obra_detalle is
+  'Cada hora-hombre de parte diario aprobado, con la especialidad con la que el operario estaba asignado a la OT y el costo hora aplicado. Base de todo el costeo de mano de obra.';
+
+create view public.v_ot_mano_obra_especialidad as
+select
+  d.orden_id,
+  d.especialidad,
+  sum(d.horas)::public.cantidad         as horas_normales,
+  sum(d.horas_extra)::public.cantidad   as horas_extra,
+  sum(d.horas_totales)::public.cantidad as horas_totales,
+  sum(d.costo_hora_hombre)::public.monto as costo_mano_obra,
+  count(distinct d.usuario_id)          as operarios
+from public.v_ot_mano_obra_detalle d
+group by d.orden_id, d.especialidad;
+
+comment on view public.v_ot_mano_obra_especialidad is
+  'Horas y costo de mano de obra por OT y especialidad. Responde en qué oficio se está yendo el tiempo de una carrocería.';
+
+create view public.v_ot_costo_mano_obra as
+select
+  d.orden_id,
+  sum(d.horas)::public.cantidad          as horas_normales,
+  sum(d.horas_extra)::public.cantidad    as horas_extra,
+  sum(d.horas_totales)::public.cantidad  as horas_totales,
+  sum(d.costo_normal)::public.monto      as costo_normal,
+  sum(d.costo_extra)::public.monto       as costo_extra,
+  sum(d.costo_hora_hombre)::public.monto as costo_mano_obra,
+  -- Horas que hoy no se pueden valorizar: ni el operario tiene costo_hora ni su
+  -- especialidad tiene tarifa vigente. Si esto no es cero, el costo está corto.
+  coalesce(sum(d.horas_totales) filter (where d.costo_hora = 0), 0)::public.cantidad as horas_sin_costo,
+  count(distinct d.usuario_id)           as operarios
+from public.v_ot_mano_obra_detalle d
+group by d.orden_id;
+
+comment on view public.v_ot_costo_mano_obra is
+  'Costo de mano de obra directa por OT, separando horas normales de extras. Solo entra lo que viene de partes diarios APROBADOS.';
+
+create view public.v_ot_costo_servicios as
+select
+  s.orden_id,
+  -- Ejecutado y pagado ya son costo incurrido; lo solicitado todavía es
+  -- compromiso con el proveedor y se informa aparte.
+  coalesce(sum(s.monto_base) filter (where s.estado in ('EJECUTADO', 'PAGADO')), 0)::public.monto
+    as costo_servicios,
+  coalesce(sum(s.monto_base) filter (where s.estado = 'SOLICITADO'), 0)::public.monto
+    as servicios_comprometidos,
+  coalesce(sum(s.monto_base) filter (where s.estado = 'PAGADO'), 0)::public.monto
+    as servicios_pagados,
+  count(*)                                             as servicios,
+  count(*) filter (where s.estado = 'SOLICITADO')      as servicios_pendientes
+from public.servicios_terceros s
+where s.estado <> 'ANULADO'
+group by s.orden_id;
+
+comment on view public.v_ot_costo_servicios is
+  'Servicios de terceros por OT en moneda base. costo_servicios cuenta solo lo ejecutado y pagado; lo solicitado se informa como compromiso.';
+
+create view public.v_ot_costo_indirecto as
+select
+  pi.orden_id,
+  sum(pi.monto_asignado)::public.monto as costo_indirecto,
+  sum(pi.horas_hombre)::public.cantidad as horas_prorrateadas,
+  count(*)                              as periodos_prorrateados,
+  max(pi.periodo)                       as ultimo_periodo
+from public.prorrateo_indirectos pi
+group by pi.orden_id;
+
+comment on view public.v_ot_costo_indirecto is
+  'Gasto de planta absorbido por cada OT, acumulando todos los meses en los que la orden tuvo horas trabajadas.';
+
+create view public.v_ot_costo_adicional as
+select
+  a.orden_id,
+  sum(a.monto_base)::public.monto as costo_adicional,
+  count(*)                        as documentos
+from public.ot_costos_adicionales a
+group by a.orden_id;
+
+comment on view public.v_ot_costo_adicional is
+  'Costos cargados a mano a la OT (fletes, viáticos, compras directas), en moneda base.';
+
+-- =============================================================================
+-- COSTO TOTAL, DESVIACIÓN Y MARGEN
+-- =============================================================================
+
+create view public.v_ot_costo_total as
+with base as (
+  select
+    o.id                as orden_id,
+    o.numero,
+    o.cliente_id,
+    cli.razon_social    as cliente,
+    o.unidad_id,
+    o.cotizacion_id,
+    o.sede_id,
+    o.tipo_trabajo,
+    o.estado,
+    o.moneda,
+    o.fecha_registro,
+    o.fecha_fin_real,
+    o.avance_porcentaje,
+    coalesce(m.costo_materiales, 0)::public.monto  as costo_materiales,
+    coalesce(mo.costo_mano_obra, 0)::public.monto  as costo_mano_obra,
+    coalesce(s.costo_servicios, 0)::public.monto   as costo_servicios,
+    coalesce(i.costo_indirecto, 0)::public.monto   as costo_indirecto,
+    coalesce(a.costo_adicional, 0)::public.monto   as costo_adicional,
+    coalesce(s.servicios_comprometidos, 0)::public.monto as servicios_comprometidos,
+    coalesce(mo.horas_totales, 0)::public.cantidad as horas_reales,
+    coalesce(mo.horas_sin_costo, 0)::public.cantidad as horas_sin_costo,
+    o.horas_estimadas,
+    -- El presupuesto detallado manda; si la OT todavía no tiene líneas de
+    -- presupuesto se cae al monto de la cabecera de la orden.
+    coalesce(pre.presupuesto, o.monto_presupuestado, 0)::public.monto as presupuesto,
+    case when pre.presupuesto is not null then 'DETALLE' else 'CABECERA' end as fuente_presupuesto
+  from public.ordenes_trabajo o
+  join public.clientes cli                  on cli.id = o.cliente_id
+  left join public.v_ot_costo_materiales m  on m.orden_id  = o.id
+  left join public.v_ot_costo_mano_obra mo  on mo.orden_id = o.id
+  left join public.v_ot_costo_servicios s   on s.orden_id  = o.id
+  left join public.v_ot_costo_indirecto i   on i.orden_id  = o.id
+  left join public.v_ot_costo_adicional a   on a.orden_id  = o.id
+  left join (
+    select p.orden_id, sum(p.monto_presupuestado) as presupuesto
+      from public.ot_presupuesto p
+     group by p.orden_id
+  ) pre on pre.orden_id = o.id
+),
+suma as (
+  select
+    b.*,
+    (b.costo_materiales + b.costo_mano_obra + b.costo_servicios
+     + b.costo_indirecto + b.costo_adicional)::public.monto as costo_total
+  from base b
+)
+select
+  s.*,
+  -- Desviación en signo de control de costos: positiva = sobrecosto.
+  (s.costo_total - s.presupuesto)::public.monto as desviacion,
+  case
+    when s.presupuesto > 0
+      then round((s.costo_total - s.presupuesto) / s.presupuesto * 100, 2)
+  end as desviacion_porcentaje,
+  case
+    when s.presupuesto > 0
+      then round(s.costo_total / s.presupuesto * 100, 2)
+  end as consumo_presupuesto_porcentaje,
+  case
+    when s.horas_reales > 0
+      then round(s.costo_total / s.horas_reales, 2)
+  end as costo_por_hora
+from suma s;
+
+comment on view public.v_ot_costo_total is
+  'Una fila por orden de trabajo con el costo real acumulado abierto en sus cinco componentes, el presupuesto y la desviación. Es la respuesta a "cuánto llevo gastado en esta OT contra lo que presupuesté".';
+
+create view public.v_ot_margen as
+with cotizado as (
+  select
+    t.*,
+    c.numero as cotizacion_numero,
+    -- Valor de venta SIN IGV: el impuesto se recauda para SUNAT, no es ingreso
+    -- de la empresa y no puede inflar el margen.
+    round((c.subtotal - c.descuento) * c.tipo_cambio, 2)::public.monto as valor_venta_cotizado,
+    round(c.total * c.tipo_cambio, 2)::public.monto as valor_venta_con_igv
+  from public.v_ot_costo_total t
+  -- Solo la cotización aprobada fija el precio: una en borrador o rechazada no
+  -- es un compromiso de venta.
+  left join public.cotizaciones c
+         on c.id = t.cotizacion_id
+        and c.estado = 'APROBADA'
+),
+venta as (
+  select
+    v.*,
+    -- Sin cotización aprobada se cae al monto presupuestado de la OT, que es lo
+    -- único pactado que existe (típico de las reparaciones que entran directo
+    -- a taller sin pasar por el área comercial).
+    coalesce(v.valor_venta_cotizado, v.presupuesto, 0)::public.monto as valor_venta
+  from cotizado v
+)
+select
+  v.*,
+  (v.valor_venta - v.costo_total)::public.monto as utilidad,
+  case
+    when v.valor_venta > 0
+      then round((v.valor_venta - v.costo_total) / v.valor_venta * 100, 2)
+  end as margen_porcentaje
+from venta v;
+
+comment on view public.v_ot_margen is
+  'Costo real, valor de venta sin IGV, utilidad y margen porcentual por orden de trabajo. valor_venta_cotizado es null cuando la OT no nace de una cotización aprobada y valor_venta cae entonces al presupuesto; margen_porcentaje es null cuando no hay con qué comparar.';
+
+-- Drill-down del presupuesto contra el real por naturaleza del costo: es la
+-- vista que explica de dónde salió la desviación total.
+create view public.v_ot_costo_por_tipo as
+with reales as (
+  select v.orden_id, 'MATERIAL'::public.tipo_costo as tipo_costo, v.costo_materiales as monto
+    from public.v_ot_costo_materiales v
+  union all
+  select v.orden_id, 'MANO_OBRA', v.costo_mano_obra from public.v_ot_costo_mano_obra v
+  union all
+  select v.orden_id, 'SERVICIO',  v.costo_servicios from public.v_ot_costo_servicios v
+  union all
+  select v.orden_id, 'INDIRECTO', v.costo_indirecto from public.v_ot_costo_indirecto v
+  union all
+  -- Los costos adicionales se clasifican con su propia naturaleza, de modo que
+  -- una compra directa de plancha compita contra el presupuesto de MATERIAL.
+  select a.orden_id, a.tipo_costo, a.monto_base from public.ot_costos_adicionales a
+),
+real_agrupado as (
+  select r.orden_id, r.tipo_costo, sum(r.monto)::public.monto as costo_real
+    from reales r
+   group by r.orden_id, r.tipo_costo
+),
+presupuestado as (
+  select p.orden_id, p.tipo_costo, sum(p.monto_presupuestado)::public.monto as presupuesto
+    from public.ot_presupuesto p
+   group by p.orden_id, p.tipo_costo
+)
+select
+  coalesce(r.orden_id, p.orden_id)   as orden_id,
+  coalesce(r.tipo_costo, p.tipo_costo) as tipo_costo,
+  coalesce(p.presupuesto, 0)::public.monto as presupuesto,
+  coalesce(r.costo_real, 0)::public.monto  as costo_real,
+  (coalesce(r.costo_real, 0) - coalesce(p.presupuesto, 0))::public.monto as desviacion,
+  case
+    when coalesce(p.presupuesto, 0) > 0
+      then round((coalesce(r.costo_real, 0) - p.presupuesto) / p.presupuesto * 100, 2)
+  end as desviacion_porcentaje
+from real_agrupado r
+full join presupuestado p
+       on p.orden_id = r.orden_id
+      and p.tipo_costo = r.tipo_costo;
+
+comment on view public.v_ot_costo_por_tipo is
+  'Presupuesto contra costo real por OT y naturaleza del costo. Usa full join para que aparezcan tanto lo presupuestado y no gastado como lo gastado sin presupuestar.';
+
+-- =============================================================================
+-- TIMESTAMPS Y AUDITORÍA
+-- =============================================================================
+
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'centros_costo', 'tarifas_mano_obra', 'ot_presupuesto', 'servicios_terceros',
+    'gastos_indirectos', 'prorrateo_indirectos', 'ot_costos_adicionales'
+  ] loop
+    perform public.activar_timestamps(t);
+  end loop;
+
+  -- Todo lo que mueve el costo o el margen de una OT se audita. Las tarifas y
+  -- los centros de costo entran porque cambiarlos revaloriza el costeo de todas
+  -- las órdenes siguientes y alguien tiene que responder por ese cambio.
+  -- prorrateo_indirectos queda fuera a propósito: es una tabla derivada que se
+  -- borra y se rehace cada vez que se recalcula el mes, y auditarla llenaría el
+  -- historial de ruido sin aportar trazabilidad real.
+  foreach t in array array[
+    'centros_costo', 'tarifas_mano_obra', 'ot_presupuesto', 'servicios_terceros',
+    'gastos_indirectos', 'ot_costos_adicionales'
+  ] loop
+    perform public.activar_auditoria(t);
+  end loop;
+end;
+$$;

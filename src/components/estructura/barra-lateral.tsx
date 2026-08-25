@@ -30,6 +30,23 @@ export function BarraLateral({ permisos, esAdmin }: { permisos: string[]; esAdmi
               const activo = item.ruta === '/' ? ruta === '/' : ruta.startsWith(item.ruta)
               const Icono = item.icono
 
+              // Los módulos todavía no construidos se muestran para que se vea
+              // el alcance del sistema, pero sin enlace que lleve a un error.
+              if (!item.disponible) {
+                return (
+                  <li key={item.ruta}>
+                    <span
+                      title="Módulo en construcción"
+                      className="flex cursor-default items-center gap-2.5 rounded-[var(--radius-base)] px-3 py-2 text-sm text-texto-tenue"
+                    >
+                      <Icono aria-hidden className="size-4 shrink-0" />
+                      <span className="truncate">{item.titulo}</span>
+                      <span className="ml-auto text-[10px] tracking-wide uppercase">pronto</span>
+                    </span>
+                  </li>
+                )
+              }
+
               return (
                 <li key={item.ruta}>
                   <Link

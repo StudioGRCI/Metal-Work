@@ -187,5 +187,155 @@ insert into public.series_documentarias (tipo, serie, prefijo, longitud) values
   ('AJUSTE_INVENTARIO', '001', 'AJU',  5),
   ('PARTE_DIARIO',      '001', 'PD',   5),
   ('ACTA_CONFORMIDAD',  '001', 'ACT',  5),
-  ('INSPECCION_CALIDAD','001', 'INS',  5)
+  ('INSPECCION_CALIDAD','001', 'INS',  5),
+  -- Sin estas dos, la primera transferencia entre almacenes y la primera
+  -- recepción de compra fallarían al pedir su correlativo.
+  ('TRANSFERENCIA_ALMACEN','001', 'TRA', 5),
+  ('RECEPCION_COMPRA',  '001', 'REC',  5)
 on conflict (tipo, serie, sede_id) do nothing;
+
+-- -----------------------------------------------------------------------------
+-- Tipos de carrocería que fabrica el taller
+-- Los valores de referencia (horas, peso, precio) son puntos de partida para
+-- presupuestar; la empresa los ajusta desde Configuración.
+-- -----------------------------------------------------------------------------
+
+insert into public.tipos_carroceria
+  (codigo, nombre, descripcion, horas_hombre_estandar, peso_estimado_kg, precio_referencial, orden_secuencia) values
+  ('TOLVA_VOLQUETE',  'Tolva para volquete',      'Tolva de acero para volquete, con compuerta trasera y sistema de levante', 320, 3800,  42000, 1),
+  ('PLATAFORMA',      'Plataforma',               'Plataforma plana para tracto-remolque o camión',                           220, 2600,  28000, 2),
+  ('BARANDA',         'Carrocería con barandas',  'Plataforma con barandas laterales abatibles',                              240, 2900,  31000, 3),
+  ('FURGON',          'Furgón',                   'Furgón cerrado con estructura metálica y forro',                           280, 3200,  38000, 4),
+  ('FURGON_FRIGORIFICO','Furgón frigorífico',     'Furgón aislado con panel térmico para carga refrigerada',                  360, 3600,  62000, 5),
+  ('CISTERNA',        'Cisterna',                 'Tanque cisterna para combustible o agua',                                  420, 4500,  75000, 6),
+  ('TANQUE',          'Tanque',                   'Tanque estacionario o de transporte',                                      300, 3400,  48000, 7),
+  ('CAMA_BAJA',       'Cama baja',                'Semirremolque cama baja para maquinaria pesada',                           520, 6200, 110000, 8),
+  ('PORTACONTENEDOR', 'Portacontenedor',          'Chasis portacontenedor con twist locks',                                   380, 4100,  58000, 9),
+  ('REPOTENCIACION',  'Repotenciación',           'Reconstrucción y refuerzo de una carrocería existente',                    160, 1200,  18000, 10)
+on conflict (codigo) do update
+  set nombre = excluded.nombre,
+      descripcion = excluded.descripcion;
+
+-- -----------------------------------------------------------------------------
+-- Etapas estándar de fabricación
+-- El orden refleja el flujo real del taller. horas_estandar pondera el avance
+-- de la OT: las etapas largas pesan más en el porcentaje total.
+-- -----------------------------------------------------------------------------
+
+insert into public.etapas_catalogo
+  (codigo, nombre, descripcion, orden_secuencia, horas_estandar, requiere_inspeccion, permite_paralelo, color) values
+  ('HABILITADO',   'Habilitado',            'Corte, plegado y habilitado de planchas y perfiles',            1, 40, false, false, '#64748B'),
+  ('ARMADO',       'Armado de estructura',  'Armado del chasis y la estructura de la carrocería',            2, 60, false, false, '#0EA5E9'),
+  ('SOLDADURA',    'Soldadura',             'Soldadura estructural y de refuerzos',                          3, 70, true,  false, '#F97316'),
+  ('ESMERILADO',   'Esmerilado',            'Esmerilado y limpieza de cordones de soldadura',                 4, 25, false, false, '#A3A3A3'),
+  ('MASILLADO',    'Masillado',             'Masillado y preparación de superficie',                         5, 30, false, false, '#EAB308'),
+  ('ARENADO',      'Arenado',               'Arenado o granallado previo a la pintura',                      6, 20, false, true,  '#78716C'),
+  ('PINTURA_BASE', 'Pintura base',          'Aplicación de base anticorrosiva',                              7, 18, false, false, '#3B82F6'),
+  ('PINTURA',      'Pintura de acabado',    'Acabado final y logotipos del cliente',                         8, 24, false, false, '#8B5CF6'),
+  ('HIDRAULICO',   'Sistema hidráulico',    'Montaje de pistón, bomba, mangueras y tomafuerza',              9, 32, true,  true,  '#EF4444'),
+  ('ELECTRICO',    'Sistema eléctrico',     'Instalación de arnés, luces y señalización',                   10, 16, false, true,  '#F59E0B'),
+  ('ACCESORIOS',   'Accesorios',            'Montaje de guardafangos, escaleras, tapas y accesorios',       11, 14, false, true,  '#14B8A6'),
+  ('CALIDAD',      'Control de calidad',    'Inspección final y pruebas de funcionamiento',                 12, 10, true,  false, '#22C55E'),
+  ('ENTREGA',      'Entrega',               'Limpieza, acta de conformidad y entrega al cliente',           13,  6, false, false, '#16A34A')
+on conflict (codigo) do update
+  set nombre = excluded.nombre,
+      descripcion = excluded.descripcion,
+      horas_estandar = excluded.horas_estandar,
+      requiere_inspeccion = excluded.requiere_inspeccion,
+      permite_paralelo = excluded.permite_paralelo,
+      color = excluded.color;
+
+-- -----------------------------------------------------------------------------
+-- Unidades de medida
+-- -----------------------------------------------------------------------------
+
+insert into public.unidades_medida (codigo, nombre, magnitud, decimales) values
+  ('UND',   'Unidad',          'UNIDAD',    0),
+  ('PZA',   'Pieza',           'UNIDAD',    0),
+  ('JGO',   'Juego',           'UNIDAD',    0),
+  ('PLN',   'Plancha',         'UNIDAD',    0),
+  ('ROLLO', 'Rollo',           'UNIDAD',    0),
+  ('CAJA',  'Caja',            'UNIDAD',    0),
+  ('KG',    'Kilogramo',       'MASA',      3),
+  ('TON',   'Tonelada',        'MASA',      4),
+  ('M',     'Metro',           'LONGITUD',  2),
+  ('M2',    'Metro cuadrado',  'AREA',      2),
+  ('M3',    'Metro cúbico',    'VOLUMEN',   3),
+  ('L',     'Litro',           'VOLUMEN',   2),
+  ('GAL',   'Galón',           'VOLUMEN',   2)
+on conflict (codigo) do update set nombre = excluded.nombre;
+
+-- La tonelada y el galón se derivan de su unidad base para poder convertir.
+update public.unidades_medida u
+   set unidad_base_id = b.id, factor_conversion = 1000
+  from public.unidades_medida b
+ where u.codigo = 'TON' and b.codigo = 'KG' and u.unidad_base_id is null;
+
+update public.unidades_medida u
+   set unidad_base_id = b.id, factor_conversion = 3.785412
+  from public.unidades_medida b
+ where u.codigo = 'GAL' and b.codigo = 'L' and u.unidad_base_id is null;
+
+-- -----------------------------------------------------------------------------
+-- Categorías de material propias del rubro
+-- -----------------------------------------------------------------------------
+
+insert into public.categorias_material (codigo, nombre, descripcion, orden_visual) values
+  ('ACERO',       'Acero',                  'Planchas, perfiles, tubos y barras',                 1),
+  ('SOLDADURA',   'Soldadura',              'Electrodos, alambre MIG, gases y fundentes',         2),
+  ('PINTURA',     'Pintura y acabados',     'Bases, esmaltes, thinner, masilla y abrasivos',      3),
+  ('HIDRAULICO',  'Sistema hidráulico',     'Pistones, bombas, mangueras, válvulas y aceites',    4),
+  ('ELECTRICO',   'Sistema eléctrico',      'Arneses, luces, faros y señalización',               5),
+  ('FERRETERIA',  'Ferretería',             'Pernos, tuercas, remaches y anclajes',               6),
+  ('SUSPENSION',  'Suspensión y ejes',      'Ejes, muelles, bolsas de aire y suspensiones',       7),
+  ('ACCESORIOS',  'Accesorios',             'Guardafangos, escaleras, tapas y complementos',      8),
+  ('CONSUMIBLES', 'Consumibles',            'Discos de corte y desbaste, lijas y herramientas',   9),
+  ('EPP',         'Equipos de protección',  'Cascos, caretas, guantes y arneses de seguridad',   10)
+on conflict (codigo) do update
+  set nombre = excluded.nombre,
+      descripcion = excluded.descripcion;
+
+-- Subcategorías de acero: es la familia con más rotación en el taller.
+insert into public.categorias_material (codigo, nombre, categoria_padre_id, orden_visual)
+select v.codigo, v.nombre, p.id, v.orden
+  from (values
+    ('ACERO_LAC',      'Plancha LAC',            1),
+    ('ACERO_LAF',      'Plancha LAF',            2),
+    ('ACERO_ANTIDESG', 'Plancha antidesgaste',   3),
+    ('ACERO_PERFIL',   'Perfiles y ángulos',     4),
+    ('ACERO_TUBO',     'Tubos estructurales',    5)
+  ) as v(codigo, nombre, orden)
+  cross join (select id from public.categorias_material where codigo = 'ACERO') p
+on conflict (codigo) do nothing;
+
+-- -----------------------------------------------------------------------------
+-- Tipos de documento
+-- Los marcados como obligatorios impiden cerrar una OT si faltan; los que
+-- requieren aprobación pasan por el flujo de firmas antes de darse por válidos.
+-- -----------------------------------------------------------------------------
+
+insert into public.tipos_documento
+  (codigo, nombre, descripcion, categoria, entidad_tabla, requiere_aprobacion,
+   obligatorio_para_cierre, extensiones_permitidas, bucket, orden_visualizacion) values
+  ('PLANO',        'Plano de fabricación',      'Plano con medidas y detalles de la carrocería',        'TECNICO',        'ordenes_trabajo', true,  true,  array['pdf','dwg','dxf','jpg','png'], 'documentos', 1),
+  ('FICHA_TEC',    'Ficha técnica',             'Especificaciones técnicas acordadas con el cliente',   'TECNICO',        'ordenes_trabajo', false, false, array['pdf','docx','xlsx'],           'documentos', 2),
+  ('COT_FIRMADA',  'Cotización firmada',        'Cotización aceptada y firmada por el cliente',         'COMERCIAL',      'cotizaciones',    false, false, array['pdf','jpg','png'],             'documentos', 3),
+  ('OC_CLIENTE',   'Orden de compra del cliente','Orden de compra que respalda el trabajo',             'COMERCIAL',      'ordenes_trabajo', false, false, array['pdf','jpg','png'],             'documentos', 4),
+  ('CERT_CALIDAD', 'Certificado de calidad',    'Certificado de colada del acero empleado',             'CALIDAD',        'materiales',      false, false, array['pdf','jpg','png'],             'documentos', 5),
+  ('PROT_SOLD',    'Protocolo de soldadura',    'Procedimiento y registro de soldadura aplicado',       'CALIDAD',        'ordenes_trabajo', true,  false, array['pdf','docx'],                  'documentos', 6),
+  ('INF_INSPEC',   'Informe de inspección',     'Informe del control de calidad',                       'CALIDAD',        'ot_inspecciones', false, false, array['pdf','docx','jpg'],            'documentos', 7),
+  ('FOTO_AVANCE',  'Fotografía de avance',      'Registro fotográfico del avance del trabajo',          'FOTOGRAFICO',    'ordenes_trabajo', false, false, array['jpg','jpeg','png','webp'],     'fotos-avance', 8),
+  ('GUIA_REMIS',   'Guía de remisión',          'Guía de remisión de ingreso o salida de material',     'LOGISTICO',      null,              false, false, array['pdf','jpg','png'],             'documentos', 9),
+  ('FACT_PROV',    'Factura de proveedor',      'Comprobante de compra de material o servicio',         'ADMINISTRATIVO', 'ordenes_compra',  false, false, array['pdf','xml','jpg'],             'documentos', 10),
+  ('ACTA_CONF',    'Acta de conformidad',       'Acta firmada por el cliente al recibir la unidad',     'LEGAL',          'ordenes_trabajo', false, true,  array['pdf','jpg','png'],             'documentos', 11),
+  ('MANUAL',       'Manual de uso',             'Manual de operación y mantenimiento entregado',        'TECNICO',        'ordenes_trabajo', false, false, array['pdf'],                         'documentos', 12),
+  ('GARANTIA',     'Certificado de garantía',   'Certificado de garantía emitido al cliente',           'LEGAL',          'ordenes_trabajo', false, false, array['pdf'],                         'documentos', 13)
+on conflict (codigo) do update
+  set nombre = excluded.nombre,
+      descripcion = excluded.descripcion,
+      categoria = excluded.categoria,
+      requiere_aprobacion = excluded.requiere_aprobacion,
+      obligatorio_para_cierre = excluded.obligatorio_para_cierre,
+      extensiones_permitidas = excluded.extensiones_permitidas,
+      bucket = excluded.bucket,
+      entidad_tabla = excluded.entidad_tabla;

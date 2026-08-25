@@ -107,3 +107,30 @@ begin
   perform set_config('request.jwt.claim.role', 'authenticated', true);
 end;
 $$;
+
+-- Crea un usuario completo (auth + perfil), como haría el alta real desde la
+-- aplicación, y devuelve su id.
+create or replace function test.crear_usuario(
+  p_nombres    text,
+  p_apellidos  text,
+  p_correo     text,
+  p_rol        text,
+  p_sede       uuid default null,
+  p_operario   boolean default false,
+  p_costo_hora numeric default 0
+) returns uuid language plpgsql as $$
+declare v_id uuid := gen_random_uuid();
+begin
+  insert into auth.users (id, email) values (v_id, p_correo);
+  insert into public.usuarios
+    (id, nombres, apellidos, correo, rol_id, sede_id, es_operario, costo_hora)
+  select v_id, p_nombres, p_apellidos, p_correo, r.id, p_sede, p_operario, p_costo_hora
+    from public.roles r where r.codigo = p_rol;
+  return v_id;
+end;
+$$;
+
+-- Las pruebas de RLS se ejecutan con "set role authenticated", así que ese rol
+-- necesita poder llamar a los ayudantes de prueba.
+grant usage on schema test to authenticated;
+grant execute on all functions in schema test to authenticated;
