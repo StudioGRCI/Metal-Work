@@ -20,7 +20,7 @@ do $$
 declare v public.cotizaciones;
 begin
   select * into v from public.cotizaciones limit 1;
-  perform test.afirmar(v.numero like 'COT-001-%', 'la cotización recibe correlativo automático');
+  perform test.afirmar(v.numero ~ '^[0-9]{4,}-[0-9]{4}$', 'la cotización recibe correlativo con el formato de la empresa (3568-2026): ' || v.numero);
   perform test.afirmar(v.estado = 'BORRADOR', 'nace en borrador');
   perform test.afirmar(v.total = 0, 'sin partidas el total es cero');
 end $$;
