@@ -8,6 +8,8 @@ import { cantidad, moneda, numero } from '@/lib/format'
 import { listarStock, resumenAlmacen } from '@/lib/datos/almacen'
 import { exigirPermiso } from '@/lib/sesion'
 
+import { SubNavegacionAlmacen } from './sub-navegacion'
+
 import { BuscadorStock } from './buscador-stock'
 
 export const metadata = { title: 'Almacén' }
@@ -64,6 +66,8 @@ export default async function PaginaAlmacen({ searchParams }: PageProps<'/almace
           </TarjetaCuerpo>
         </Tarjeta>
       </div>
+
+      <SubNavegacionAlmacen activa="/almacen" />
 
       <BuscadorStock />
 
