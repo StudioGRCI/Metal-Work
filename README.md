@@ -152,6 +152,7 @@ Las migraciones están en `supabase/migrations/` y se aplican en orden:
 | `0006_documentos` | Repositorio documental versionado y línea de tiempo |
 | `0007_rls` | Políticas de seguridad a nivel de fila |
 | `0008_seed_base` | Roles, permisos, series, catálogos del rubro |
+| `0009_storage` | Políticas de Supabase Storage para los archivos |
 
 ### Pruebas del esquema
 
@@ -198,6 +199,19 @@ Docker, a diferencia de `supabase gen types`.
 
 Los permisos se editan por rol en `roles_permisos`, sin tocar código.
 
+## Módulos
+
+| Módulo | Qué permite hacer |
+| --- | --- |
+| **Tablero** | Estado del taller: órdenes abiertas, en proceso, pausadas, atrasadas y urgentes |
+| **Órdenes de trabajo** | Alta, avance por etapa, control de calidad, costos, documentos y trazabilidad |
+| **Producción** | Partes diarios de horas por operario, orden y etapa; al aprobarlos se cargan a la orden |
+| **Clientes y unidades** | Ficha del cliente con su flota, contactos e historial de órdenes |
+| **Cotizaciones** | Partidas, aprobación y apertura de la orden con arrastre del presupuesto |
+| **Almacén** | Existencias valorizadas, movimientos con kardex, requerimientos, compras y proveedores |
+| **Costos** | Costo real contra presupuesto y margen, por orden y del conjunto |
+| **Documentos** | Repositorio versionado con carga de archivos y descarga con enlace temporal |
+
 ## Estructura del proyecto
 
 ```
@@ -205,19 +219,28 @@ src/
 ├── app/
 │   ├── (app)/              Pantallas con sesión iniciada
 │   │   ├── page.tsx        Tablero del taller
-│   │   └── ordenes/        Módulo de órdenes de trabajo
+│   │   ├── ordenes/        Órdenes de trabajo
+│   │   ├── produccion/     Partes diarios
+│   │   ├── clientes/       Clientes y sus unidades
+│   │   ├── cotizaciones/   Cotizaciones y conversión a orden
+│   │   ├── almacen/        Existencias, movimientos, requerimientos, compras
+│   │   ├── costos/         Costeo y margen
+│   │   └── documentos/     Repositorio documental
 │   ├── ingresar/           Inicio de sesión
 │   └── auth/               Cierre de sesión
 ├── components/
+│   ├── documentos/         Subida y descarga de archivos
 │   ├── estructura/         Navegación y encabezados
 │   └── ui/                 Componentes base
 ├── lib/
+│   ├── acciones.ts         Traducción de errores de Postgres
 │   ├── datos/              Consultas a la base
 │   ├── dominio/            Estados y etiquetas del negocio
 │   └── supabase/           Clientes de navegador y servidor
 └── types/database.ts       Generado desde el esquema
 
 supabase/migrations/        Esquema de la base de datos
+db/demo/                    Datos de demostración
 db/test/                    Shim de Supabase y pruebas del esquema
 scripts/                    Utilidades de desarrollo
 ```
@@ -231,4 +254,12 @@ scripts/                    Utilidades de desarrollo
   fracción.
 - Los documentos no se borran: se anulan, dejando constancia del motivo.
 - Toda tabla nueva debe declarar sus políticas RLS; la migración `0007` falla si
-  alguna queda sin protección.
+  alguna queda sin protección, y también si alguna queda con RLS activo pero sin
+  políticas, que la volvería inaccesible sin avisar.
+- Los campos que rellena un trigger (correlativos, tipo de cambio, número de
+  versión) se declaran anulables con un `CHECK` que los exige. Postgres evalúa
+  los `CHECK` después de los triggers `BEFORE`, así que la garantía se mantiene
+  y la aplicación no tiene que inventar valores.
+- Los archivos se suben directo del navegador a Storage. Un documento colgado de
+  una orden se guarda bajo `ot/{orden_id}/…`, y las políticas de Storage se
+  apoyan en esa ruta para heredar la visibilidad de la orden.
