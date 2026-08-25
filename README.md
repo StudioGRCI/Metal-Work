@@ -104,6 +104,21 @@ values ('20xxxxxxxxx', 'RAZÓN SOCIAL S.A.C.', 18);
 insert into public.sedes (codigo, nombre) values ('PRIN', 'Planta principal');
 ```
 
+### Datos de demostración
+
+Para recorrer el sistema antes de cargar la información real:
+
+```bash
+psql "$DATABASE_URL" -f db/demo/datos-demo.sql
+```
+
+Carga un taller de ejemplo: cinco clientes con sus unidades, dieciocho
+materiales con existencia valorizada y cinco órdenes de trabajo en distintos
+estados —una en proceso con material consumido y horas registradas, otra pausada
+por falta de material, una urgente programada, una ya entregada con su acta de
+conformidad y una en borrador—. El script es idempotente y no toca nada de lo
+que ya exista.
+
 ### Desarrollo
 
 ```bash
