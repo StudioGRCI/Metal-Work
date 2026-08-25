@@ -14,11 +14,13 @@ import {
   listarInspecciones,
   obtenerOrden,
 } from '@/lib/datos/ordenes'
+import { costoDeOrden, materialesDeOrden } from '@/lib/datos/costos'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import type { CodigoMoneda } from '@/lib/format'
 
 import { AccionesEstado } from './acciones-estado'
 import { Bitacora } from './bitacora'
+import { Costos } from './costos'
 import { Etapas } from './etapas'
 import { Pestanas } from './pestanas'
 
@@ -28,7 +30,7 @@ export async function generateMetadata({ params }: PageProps<'/ordenes/[id]'>): 
   return { title: orden ? `Orden ${orden.numero}` : 'Orden no encontrada' }
 }
 
-const VISTAS = ['resumen', 'etapas', 'horas', 'calidad', 'bitacora'] as const
+const VISTAS = ['resumen', 'etapas', 'horas', 'costos', 'calidad', 'bitacora'] as const
 type Vista = (typeof VISTAS)[number]
 
 export default async function PaginaOrden({ params, searchParams }: PageProps<'/ordenes/[id]'>) {
@@ -43,11 +45,15 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
   // Cada pestaña carga solo lo suyo: la bitácora de una OT larga puede tener
   // cientos de eventos y no tiene sentido traerlos para ver el resumen.
-  const [etapas, bitacora, inspecciones, horas] = await Promise.all([
+  const verCostos = vista === 'costos' && puede(perfil, 'costos.ver')
+
+  const [etapas, bitacora, inspecciones, horas, costo, materiales] = await Promise.all([
     vista === 'etapas' || vista === 'resumen' ? listarEtapas(id) : Promise.resolve([]),
     vista === 'bitacora' ? listarBitacora(id) : Promise.resolve([]),
     vista === 'calidad' ? listarInspecciones(id) : Promise.resolve([]),
     vista === 'horas' ? listarHorasOrden(id) : Promise.resolve([]),
+    verCostos ? costoDeOrden(id) : Promise.resolve(null),
+    verCostos ? materialesDeOrden(id) : Promise.resolve([]),
   ])
 
   const estado = definir(ESTADO_OT, orden.estado)
@@ -113,7 +119,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         </Indicador>
       </div>
 
-      <Pestanas ordenId={orden.id} activa={vista} />
+      <Pestanas ordenId={orden.id} activa={vista} verCostos={puede(perfil, 'costos.ver')} />
 
       {vista === 'resumen' && (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -193,6 +199,18 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       )}
 
       {vista === 'horas' && <TablaHoras horas={horas} />}
+      {vista === 'costos' &&
+        (verCostos ? (
+          <Costos costo={costo} materiales={materiales} />
+        ) : (
+          <Tarjeta>
+            <TarjetaCuerpo>
+              <p className="py-10 text-center text-sm text-texto-suave">
+                Tu perfil no tiene acceso a la información de costos.
+              </p>
+            </TarjetaCuerpo>
+          </Tarjeta>
+        ))}
       {vista === 'calidad' && <TablaInspecciones inspecciones={inspecciones} />}
       {vista === 'bitacora' && (
         <Bitacora ordenId={orden.id} eventos={bitacora} puedeComentar={puede(perfil, 'ordenes.ver')} />

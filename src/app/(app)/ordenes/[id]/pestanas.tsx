@@ -6,14 +6,25 @@ const PESTANAS = [
   { clave: 'resumen', titulo: 'Resumen' },
   { clave: 'etapas', titulo: 'Etapas' },
   { clave: 'horas', titulo: 'Horas' },
+  { clave: 'costos', titulo: 'Costos', permiso: 'costos.ver' },
   { clave: 'calidad', titulo: 'Calidad' },
   { clave: 'bitacora', titulo: 'Trazabilidad' },
 ] as const
 
-export function Pestanas({ ordenId, activa }: { ordenId: string; activa: string }) {
+export function Pestanas({
+  ordenId,
+  activa,
+  verCostos,
+}: {
+  ordenId: string
+  activa: string
+  verCostos: boolean
+}) {
+  const visibles = PESTANAS.filter((p) => !('permiso' in p) || verCostos)
+
   return (
     <nav className="my-5 flex gap-1 overflow-x-auto border-b border-borde" aria-label="Secciones de la orden">
-      {PESTANAS.map((p) => {
+      {visibles.map((p) => {
         const esActiva = p.clave === activa
         return (
           <Link
