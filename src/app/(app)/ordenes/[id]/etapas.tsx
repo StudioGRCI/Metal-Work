@@ -9,15 +9,15 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { ESTADO_ETAPA, definir, opciones } from '@/lib/dominio/estados'
+import { ESTADO_ETAPA, ORDEN_ESTADO_ETAPA, definir, opciones } from '@/lib/dominio/estados'
 import { cantidad, fecha } from '@/lib/format'
 import type { Vistas } from '@/types/database'
 
 import { actualizarEtapa } from '../acciones'
 
-type Etapa = Vistas<'ot_tablero_etapas'>
+type Etapa = Vistas<'ot_tablero_etapas'> & { observaciones: string | null }
 
-const ESTADOS = opciones(ESTADO_ETAPA)
+const ESTADOS = opciones(ESTADO_ETAPA, ORDEN_ESTADO_ETAPA)
 
 export function Etapas({
   ordenId,
@@ -199,7 +199,7 @@ function FormularioEtapa({
           id={`obs-${etapa.etapa_id}`}
           name="observaciones"
           rows={2}
-          defaultValue={''}
+          defaultValue={etapa.observaciones ?? ''}
           placeholder="Novedades del trabajo en esta etapa"
         />
       </Campo>

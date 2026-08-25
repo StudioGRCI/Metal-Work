@@ -4803,7 +4803,21 @@ export type Database = {
         }
         Returns: string
       }
+      anular_movimiento_almacen_interna: {
+        Args: {
+          p_movimiento: string
+          p_motivo: string
+        }
+        Returns: string
+      }
       aprobar_requerimiento: {
+        Args: {
+          p_requerimiento: string
+          p_aprobador: string
+        }
+        Returns: string
+      }
+      aprobar_requerimiento_interna: {
         Args: {
           p_requerimiento: string
           p_aprobador?: string
@@ -4816,7 +4830,19 @@ export type Database = {
         }
         Returns: string
       }
+      confirmar_movimiento_almacen_interna: {
+        Args: {
+          p_movimiento: string
+        }
+        Returns: string
+      }
       confirmar_recepcion: {
+        Args: {
+          p_recepcion: string
+        }
+        Returns: string
+      }
+      confirmar_recepcion_interna: {
         Args: {
           p_recepcion: string
         }
@@ -4847,6 +4873,12 @@ export type Database = {
       es_usuario_activo: {
         Args: Record<PropertyKey, never>
         Returns: boolean
+      }
+      exigir_permiso: {
+        Args: {
+          p_permiso: string
+        }
+        Returns: string
       }
       generar_presupuesto_desde_cotizacion: {
         Args: {
@@ -4909,6 +4941,17 @@ export type Database = {
         Args: {
           p_orden_id: string
           p_tipo: Database["public"]["Enums"]["tipo_evento_ot"]
+          p_descripcion?: string
+          p_datos?: Json
+          p_etapa_id?: string
+          p_usuario_id?: string
+        }
+        Returns: string
+      }
+      ot_registrar_evento_interna: {
+        Args: {
+          p_orden_id: string
+          p_tipo: Database["public"]["Enums"]["tipo_evento_ot"]
           p_descripcion: string
           p_datos?: Json
           p_etapa_id?: string
@@ -4955,6 +4998,16 @@ export type Database = {
         Returns: string
       }
       registrar_acceso_documento: {
+        Args: {
+          p_documento_id: string
+          p_tipo_acceso: Database["public"]["Enums"]["tipo_acceso_documento"]
+          p_version_id?: string
+          p_ip?: string
+          p_user_agent?: string
+        }
+        Returns: string
+      }
+      registrar_acceso_documento_interna: {
         Args: {
           p_documento_id: string
           p_tipo_acceso?: Database["public"]["Enums"]["tipo_acceso_documento"]

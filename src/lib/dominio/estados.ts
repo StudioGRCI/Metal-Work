@@ -1,3 +1,7 @@
+import type { Enums } from '@/types/database'
+
+type EstadoEtapa = Enums<'estado_etapa_ot'>
+
 import type { Tono } from '@/components/ui/etiqueta-estado'
 
 /**
@@ -58,13 +62,24 @@ export const TIPO_TRABAJO: Record<string, Def> = {
   GARANTIA: { etiqueta: 'Garantía', tono: 'aviso' },
 }
 
-export const ESTADO_ETAPA: Record<string, Def> = {
+// El tipo se ata al enum de la base a propósito. Cuando una migración agregue
+// un estado, esto deja de compilar y obliga a decidir cómo se muestra, en vez de
+// que aparezca en pantalla como texto crudo. Así se descubrió que faltaba
+// REQUIERE_REVISION: el mapa era Record<string, Def> y nadie se enteró.
+export const ESTADO_ETAPA: Record<EstadoEtapa, Def> = {
   PENDIENTE: { etiqueta: 'Pendiente', tono: 'neutro' },
   EN_PROCESO: { etiqueta: 'En proceso', tono: 'acento' },
   PAUSADA: { etiqueta: 'Pausada', tono: 'aviso' },
+  REQUIERE_REVISION: { etiqueta: 'Necesita revisión', tono: 'peligro' },
   TERMINADA: { etiqueta: 'Terminada', tono: 'exito' },
   OMITIDA: { etiqueta: 'Omitida', tono: 'neutro' },
 }
+
+// El orden en que se ofrecen en pantalla, que no es el del enum: primero lo que
+// se usa a diario, y omitir al final porque es la salida excepcional.
+export const ORDEN_ESTADO_ETAPA = [
+  'PENDIENTE', 'EN_PROCESO', 'PAUSADA', 'REQUIERE_REVISION', 'TERMINADA', 'OMITIDA',
+] as const satisfies readonly EstadoEtapa[]
 
 export const ESTADO_COTIZACION: Record<string, Def> = {
   BORRADOR: { etiqueta: 'Borrador', tono: 'neutro' },

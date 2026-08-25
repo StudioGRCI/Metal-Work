@@ -134,3 +134,4 @@ $$;
 -- necesita poder llamar a los ayudantes de prueba.
 grant usage on schema test to authenticated;
 grant execute on all functions in schema test to authenticated;
+

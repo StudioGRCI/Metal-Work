@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
+import { documentosFaltantes } from '@/lib/datos/documentos'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 
@@ -125,7 +126,7 @@ const esquemaAvanceEtapa = z.object({
   etapa_id: z.string().uuid(),
   orden_id: z.string().uuid(),
   avance_porcentaje: z.coerce.number().min(0).max(100),
-  estado: z.enum(['PENDIENTE', 'EN_PROCESO', 'PAUSADA', 'TERMINADA', 'OMITIDA']),
+  estado: z.enum(['PENDIENTE', 'EN_PROCESO', 'PAUSADA', 'REQUIERE_REVISION', 'TERMINADA', 'OMITIDA']),
   observaciones: z.string().trim().optional(),
 })
 
@@ -148,7 +149,10 @@ export async function actualizarEtapa(_previo: unknown, datos: FormData): Promis
     .update({
       avance_porcentaje: v.avance_porcentaje,
       estado: v.estado,
-      observaciones: v.observaciones || null,
+      // Solo se toca cuando el formulario mandó algo. Antes se escribía
+      // `|| null`, así que cualquiera que moviera el porcentaje borraba en
+      // silencio lo que había anotado el turno anterior.
+      ...(v.observaciones !== undefined ? { observaciones: v.observaciones || null } : {}),
     })
     .eq('id', v.etapa_id)
 
@@ -156,6 +160,67 @@ export async function actualizarEtapa(_previo: unknown, datos: FormData): Promis
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   return { ok: true, mensaje: 'Avance registrado.' }
+}
+
+const esquemaEntrega = z.object({
+  orden_id: z.string().uuid(),
+  recibe_nombre: z.string().trim().min(3, 'Escribe quién recibe la unidad'),
+  recibe_documento: z.string().trim().optional(),
+  recibe_cargo: z.string().trim().optional(),
+  garantia_meses: z.coerce.number().int().min(0).max(120).default(12),
+  conforme: z.coerce.boolean().default(true),
+  observaciones: z.string().trim().optional(),
+})
+
+/**
+ * Registra el acta de conformidad, que es lo que entrega la orden.
+ *
+ * La orden no pasa a ENTREGADA cambiándole el estado: el disparador de la base
+ * rechaza ese UPDATE con «no se puede entregar sin acta de conformidad». Se
+ * entrega insertando el acta, y la base mueve el estado sola. Por eso esta
+ * acción nunca toca ordenes_trabajo.
+ */
+export async function registrarEntrega(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ordenes.entregar')) {
+    return { ok: false, error: 'No tienes permiso para entregar órdenes.' }
+  }
+
+  const analisis = esquemaEntrega.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los datos del acta.' }
+  }
+
+  const v = analisis.data
+  const supabase = await createClient()
+
+  // Se avisa qué falta con nombres legibles antes de intentar el insert. Si no,
+  // el usuario recibiría el mensaje del disparador, que nombra códigos internos
+  // y no dice cuántos documentos faltan.
+  const faltantes = await documentosFaltantes(v.orden_id)
+  if (faltantes.length > 0) {
+    const lista = faltantes.map((d) => d.nombre).join(', ')
+    return {
+      ok: false,
+      error: `Falta documentación para entregar: ${lista}. Cárgala y consigue sus firmas antes de registrar el acta.`,
+    }
+  }
+
+  const { error } = await supabase.from('ot_entregas').insert({
+    orden_id: v.orden_id,
+    recibe_nombre: v.recibe_nombre,
+    recibe_documento: v.recibe_documento || null,
+    recibe_cargo: v.recibe_cargo || null,
+    garantia_meses: v.garantia_meses,
+    conforme: v.conforme,
+    observaciones: v.observaciones || null,
+  })
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+
+  revalidatePath(`/ordenes/${v.orden_id}`)
+  revalidatePath('/ordenes')
+  return { ok: true, mensaje: 'Acta registrada. La orden quedó entregada.' }
 }
 
 const esquemaComentario = z.object({
