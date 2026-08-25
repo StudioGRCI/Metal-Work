@@ -1,0 +1,36 @@
+# Configuración de la CLI de Supabase.
+# El project_id se sobrescribe al enlazar con `supabase link --project-ref <ref>`.
+project_id = "metal-work"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 16
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["https://localhost:3000"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+enable_signup = false          # Las cuentas las crea el administrador, no hay registro público.
+enable_anonymous_sign_ins = false
+
+[auth.email]
+enable_signup = false
+enable_confirmations = false
+double_confirm_changes = true
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"

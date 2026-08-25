@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Metal-Work · sistema visual
+   Paleta acero con acento ámbar (el color del metal al soldar). Densidad alta:
+   la aplicación se usa en oficina y en tablet dentro del taller, donde importa
+   ver muchas órdenes de un vistazo.
+--------------------------------------------------------------------------- */
+
+:root {
+  --fondo: #f6f7f9;
+  --superficie: #ffffff;
+  --superficie-2: #f1f3f6;
+  --borde: #e2e5ea;
+  --borde-fuerte: #cbd1da;
+  --texto: #14181f;
+  --texto-suave: #5b6472;
+  --texto-tenue: #8a93a1;
+
+  --acento: #b45309;
+  --acento-fuerte: #92400e;
+  --acento-suave: #fef3c7;
+  --acento-texto: #ffffff;
+
+  --exito: #15803d;
+  --exito-suave: #dcfce7;
+  --aviso: #a16207;
+  --aviso-suave: #fef9c3;
+  --peligro: #b91c1c;
+  --peligro-suave: #fee2e2;
+  --info: #1d4ed8;
+  --info-suave: #dbeafe;
+  --neutro-suave: #eef1f5;
+
+  --radio: 0.5rem;
+  --sombra: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 3px rgb(16 24 40 / 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #0d1117;
+    --superficie: #151b23;
+    --superficie-2: #1c232d;
+    --borde: #262d38;
+    --borde-fuerte: #39424f;
+    --texto: #e6eaf0;
+    --texto-suave: #9aa4b2;
+    --texto-tenue: #6b7583;
+
+    --acento: #f59e0b;
+    --acento-fuerte: #fbbf24;
+    --acento-suave: #422006;
+    --acento-texto: #1a1206;
+
+    --exito: #4ade80;
+    --exito-suave: #052e16;
+    --aviso: #fbbf24;
+    --aviso-suave: #3b2f05;
+    --peligro: #f87171;
+    --peligro-suave: #450a0a;
+    --info: #60a5fa;
+    --info-suave: #0c2249;
+    --neutro-suave: #222a35;
+
+    --sombra: 0 1px 2px rgb(0 0 0 / 0.4);
+  }
+}
+
+@theme inline {
+  --color-fondo: var(--fondo);
+  --color-superficie: var(--superficie);
+  --color-superficie-2: var(--superficie-2);
+  --color-borde: var(--borde);
+  --color-borde-fuerte: var(--borde-fuerte);
+  --color-texto: var(--texto);
+  --color-texto-suave: var(--texto-suave);
+  --color-texto-tenue: var(--texto-tenue);
+  --color-acento: var(--acento);
+  --color-acento-fuerte: var(--acento-fuerte);
+  --color-acento-suave: var(--acento-suave);
+  --color-acento-texto: var(--acento-texto);
+  --color-exito: var(--exito);
+  --color-exito-suave: var(--exito-suave);
+  --color-aviso: var(--aviso);
+  --color-aviso-suave: var(--aviso-suave);
+  --color-peligro: var(--peligro);
+  --color-peligro-suave: var(--peligro-suave);
+  --color-info: var(--info);
+  --color-info-suave: var(--info-suave);
+  --color-neutro-suave: var(--neutro-suave);
+  --radius-base: var(--radio);
+}
+
+body {
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Números alineados en columnas de cantidades e importes. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Foco visible y consistente; el taller usa teclado y lectores de pantalla. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+::selection {
+  background: var(--acento-suave);
+  color: var(--texto);
+}
