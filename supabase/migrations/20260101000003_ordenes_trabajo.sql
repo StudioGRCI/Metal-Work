@@ -115,7 +115,11 @@ create index idx_etapas_catalogo_secuencia on public.etapas_catalogo(orden_secue
 create table public.ordenes_trabajo (
   id                       uuid primary key default gen_random_uuid(),
   -- Lo asigna el trigger con siguiente_correlativo('ORDEN_TRABAJO', ...).
-  numero                   text not null unique,
+  -- El default vacío existe para que el trigger BEFORE INSERT pueda asignar el
+  -- correlativo sin que la aplicación tenga que inventar un número: Postgres
+  -- aplica los defaults antes de los triggers, así que el trigger siempre
+  -- reemplaza esta cadena vacía por el número real.
+  numero                   text not null default '' unique,
   cliente_id               uuid not null references public.clientes(id) on delete restrict,
   unidad_id                uuid references public.unidades(id) on delete set null,
   cotizacion_id            uuid references public.cotizaciones(id) on delete set null,
@@ -322,7 +326,11 @@ create unique index uq_ot_personal_vigente
 
 create table public.partes_diarios (
   id                uuid primary key default gen_random_uuid(),
-  numero            text not null unique,
+  -- El default vacío existe para que el trigger BEFORE INSERT pueda asignar el
+  -- correlativo sin que la aplicación tenga que inventar un número: Postgres
+  -- aplica los defaults antes de los triggers, así que el trigger siempre
+  -- reemplaza esta cadena vacía por el número real.
+  numero            text not null default '' unique,
   fecha             date not null default current_date,
   sede_id           uuid not null references public.sedes(id) on delete restrict,
   estado            public.estado_parte_diario not null default 'BORRADOR',
@@ -397,7 +405,11 @@ create index idx_parte_detalle_etapa   on public.parte_detalle(etapa_id, orden_i
 
 create table public.ot_inspecciones (
   id                  uuid primary key default gen_random_uuid(),
-  numero              text not null unique,
+  -- El default vacío existe para que el trigger BEFORE INSERT pueda asignar el
+  -- correlativo sin que la aplicación tenga que inventar un número: Postgres
+  -- aplica los defaults antes de los triggers, así que el trigger siempre
+  -- reemplaza esta cadena vacía por el número real.
+  numero              text not null default '' unique,
   orden_id            uuid not null references public.ordenes_trabajo(id) on delete cascade,
   -- Nula cuando es una inspección final de toda la carrocería.
   etapa_id            uuid,
@@ -465,7 +477,11 @@ create index idx_inspeccion_items_inspeccion on public.ot_inspeccion_items(inspe
 
 create table public.ot_entregas (
   id                uuid primary key default gen_random_uuid(),
-  numero            text not null unique,
+  -- El default vacío existe para que el trigger BEFORE INSERT pueda asignar el
+  -- correlativo sin que la aplicación tenga que inventar un número: Postgres
+  -- aplica los defaults antes de los triggers, así que el trigger siempre
+  -- reemplaza esta cadena vacía por el número real.
+  numero            text not null default '' unique,
   orden_id          uuid not null references public.ordenes_trabajo(id) on delete cascade,
   fecha_entrega     date not null default current_date,
   recibe_nombre     text not null,

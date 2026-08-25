@@ -1,12 +1,126 @@
 // Archivo generado automáticamente. No editar a mano.
 // Regenerar con: ./scripts/generar-tipos.sh
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
 export type Database = {
   public: {
     Tables: {
+      almacen_stock: {
+        Row: {
+          id: string
+          almacen_id: string
+          material_id: string
+          cantidad: number
+          cantidad_reservada: number
+          cantidad_disponible: number | null
+          costo_promedio: number
+          saldo_valor: number
+          ubicacion: string | null
+          fecha_ultimo_movimiento: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          almacen_id: string
+          material_id: string
+          cantidad?: number
+          cantidad_reservada?: number
+          costo_promedio?: number
+          saldo_valor?: number
+          ubicacion?: string | null
+          fecha_ultimo_movimiento?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          almacen_id?: string
+          material_id?: string
+          cantidad?: number
+          cantidad_reservada?: number
+          costo_promedio?: number
+          saldo_valor?: number
+          ubicacion?: string | null
+          fecha_ultimo_movimiento?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "almacen_stock_almacen_id_fkey"
+            columns: ["almacen_id"]
+            isOneToOne: false
+            referencedRelation: "almacenes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "almacen_stock_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      almacenes: {
+        Row: {
+          id: string
+          codigo: string
+          nombre: string
+          sede_id: string
+          tipo: Database["public"]["Enums"]["tipo_almacen"]
+          responsable_id: string | null
+          direccion: string | null
+          permite_movimientos: boolean
+          activo: boolean
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo: string
+          nombre: string
+          sede_id: string
+          tipo?: Database["public"]["Enums"]["tipo_almacen"]
+          responsable_id?: string | null
+          direccion?: string | null
+          permite_movimientos?: boolean
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo?: string
+          nombre?: string
+          sede_id?: string
+          tipo?: Database["public"]["Enums"]["tipo_almacen"]
+          responsable_id?: string | null
+          direccion?: string | null
+          permite_movimientos?: boolean
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "almacenes_responsable_id_fkey"
+            columns: ["responsable_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "almacenes_sede_id_fkey"
+            columns: ["sede_id"]
+            isOneToOne: true
+            referencedRelation: "sedes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       audit_log: {
         Row: {
           id: number
@@ -42,6 +156,53 @@ export type Database = {
           creado_en?: string
         }
         Relationships: []
+      }
+      categorias_material: {
+        Row: {
+          id: string
+          codigo: string
+          nombre: string
+          descripcion: string | null
+          categoria_padre_id: string | null
+          cuenta_contable: string | null
+          orden_visual: number
+          activo: boolean
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo: string
+          nombre: string
+          descripcion?: string | null
+          categoria_padre_id?: string | null
+          cuenta_contable?: string | null
+          orden_visual?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo?: string
+          nombre?: string
+          descripcion?: string | null
+          categoria_padre_id?: string | null
+          cuenta_contable?: string | null
+          orden_visual?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "categorias_material_categoria_padre_id_fkey"
+            columns: ["categoria_padre_id"]
+            isOneToOne: false
+            referencedRelation: "categorias_material"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       clientes: {
         Row: {
@@ -276,7 +437,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          numero: string
+          numero?: string
           cliente_id: string
           unidad_id?: string | null
           tipo_carroceria_id?: string | null
@@ -505,6 +666,798 @@ export type Database = {
         }
         Relationships: []
       }
+      kardex: {
+        Row: {
+          id: string
+          secuencia: number
+          material_id: string
+          almacen_id: string
+          lote_id: string | null
+          fecha: string
+          tipo_movimiento: Database["public"]["Enums"]["tipo_movimiento_kardex"]
+          cantidad: number
+          costo_unitario: number
+          costo_total: number
+          saldo_cantidad: number
+          saldo_valor: number
+          costo_promedio: number
+          orden_id: string | null
+          etapa_id: string | null
+          movimiento_id: string | null
+          referencia_tabla: string | null
+          referencia_id: string | null
+          observaciones: string | null
+          usuario_id: string | null
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          secuencia?: number
+          material_id: string
+          almacen_id: string
+          lote_id?: string | null
+          fecha?: string
+          tipo_movimiento: Database["public"]["Enums"]["tipo_movimiento_kardex"]
+          cantidad: number
+          costo_unitario: number
+          costo_total: number
+          saldo_cantidad: number
+          saldo_valor: number
+          costo_promedio?: number
+          orden_id?: string | null
+          etapa_id?: string | null
+          movimiento_id?: string | null
+          referencia_tabla?: string | null
+          referencia_id?: string | null
+          observaciones?: string | null
+          usuario_id?: string | null
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          secuencia?: number
+          material_id?: string
+          almacen_id?: string
+          lote_id?: string | null
+          fecha?: string
+          tipo_movimiento?: Database["public"]["Enums"]["tipo_movimiento_kardex"]
+          cantidad?: number
+          costo_unitario?: number
+          costo_total?: number
+          saldo_cantidad?: number
+          saldo_valor?: number
+          costo_promedio?: number
+          orden_id?: string | null
+          etapa_id?: string | null
+          movimiento_id?: string | null
+          referencia_tabla?: string | null
+          referencia_id?: string | null
+          observaciones?: string | null
+          usuario_id?: string | null
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_kardex_movimiento"
+            columns: ["movimiento_id"]
+            isOneToOne: false
+            referencedRelation: "movimientos_almacen"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kardex_almacen_id_fkey"
+            columns: ["almacen_id"]
+            isOneToOne: false
+            referencedRelation: "almacenes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kardex_lote_id_fkey"
+            columns: ["lote_id"]
+            isOneToOne: false
+            referencedRelation: "lotes_material"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kardex_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kardex_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kardex_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      lotes_material: {
+        Row: {
+          id: string
+          material_id: string
+          numero_lote: string
+          numero_colada: string | null
+          certificado_calidad: string | null
+          certificado_url: string | null
+          proveedor_id: string | null
+          orden_compra_id: string | null
+          recepcion_id: string | null
+          almacen_id: string | null
+          fecha_ingreso: string
+          fecha_vencimiento: string | null
+          cantidad_ingresada: number
+          cantidad_disponible: number
+          costo_unitario: number
+          observaciones: string | null
+          activo: boolean
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          material_id: string
+          numero_lote: string
+          numero_colada?: string | null
+          certificado_calidad?: string | null
+          certificado_url?: string | null
+          proveedor_id?: string | null
+          orden_compra_id?: string | null
+          recepcion_id?: string | null
+          almacen_id?: string | null
+          fecha_ingreso?: string
+          fecha_vencimiento?: string | null
+          cantidad_ingresada?: number
+          cantidad_disponible?: number
+          costo_unitario?: number
+          observaciones?: string | null
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          material_id?: string
+          numero_lote?: string
+          numero_colada?: string | null
+          certificado_calidad?: string | null
+          certificado_url?: string | null
+          proveedor_id?: string | null
+          orden_compra_id?: string | null
+          recepcion_id?: string | null
+          almacen_id?: string | null
+          fecha_ingreso?: string
+          fecha_vencimiento?: string | null
+          cantidad_ingresada?: number
+          cantidad_disponible?: number
+          costo_unitario?: number
+          observaciones?: string | null
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_lote_orden_compra"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_lote_proveedor"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_lote_recepcion"
+            columns: ["recepcion_id"]
+            isOneToOne: false
+            referencedRelation: "recepciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lotes_material_almacen_id_fkey"
+            columns: ["almacen_id"]
+            isOneToOne: false
+            referencedRelation: "almacenes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lotes_material_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lotes_material_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      materiales: {
+        Row: {
+          id: string
+          codigo: string
+          descripcion: string
+          categoria_id: string
+          unidad_medida_id: string
+          especificacion_tecnica: string | null
+          espesor_mm: number | null
+          ancho_mm: number | null
+          largo_mm: number | null
+          calidad_acero: string | null
+          marca: string | null
+          modelo: string | null
+          peso_unitario_kg: number | null
+          costo_promedio: number
+          ultimo_costo: number
+          fecha_ultimo_costo: string | null
+          stock_minimo: number
+          stock_maximo: number
+          punto_reposicion: number
+          es_critico: boolean
+          controla_lote: boolean
+          es_inventariable: boolean
+          codigo_barras: string | null
+          imagen_url: string | null
+          observaciones: string | null
+          activo: boolean
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo: string
+          descripcion: string
+          categoria_id: string
+          unidad_medida_id: string
+          especificacion_tecnica?: string | null
+          espesor_mm?: number | null
+          ancho_mm?: number | null
+          largo_mm?: number | null
+          calidad_acero?: string | null
+          marca?: string | null
+          modelo?: string | null
+          peso_unitario_kg?: number | null
+          costo_promedio?: number
+          ultimo_costo?: number
+          fecha_ultimo_costo?: string | null
+          stock_minimo?: number
+          stock_maximo?: number
+          punto_reposicion?: number
+          es_critico?: boolean
+          controla_lote?: boolean
+          es_inventariable?: boolean
+          codigo_barras?: string | null
+          imagen_url?: string | null
+          observaciones?: string | null
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo?: string
+          descripcion?: string
+          categoria_id?: string
+          unidad_medida_id?: string
+          especificacion_tecnica?: string | null
+          espesor_mm?: number | null
+          ancho_mm?: number | null
+          largo_mm?: number | null
+          calidad_acero?: string | null
+          marca?: string | null
+          modelo?: string | null
+          peso_unitario_kg?: number | null
+          costo_promedio?: number
+          ultimo_costo?: number
+          fecha_ultimo_costo?: string | null
+          stock_minimo?: number
+          stock_maximo?: number
+          punto_reposicion?: number
+          es_critico?: boolean
+          controla_lote?: boolean
+          es_inventariable?: boolean
+          codigo_barras?: string | null
+          imagen_url?: string | null
+          observaciones?: string | null
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "materiales_categoria_id_fkey"
+            columns: ["categoria_id"]
+            isOneToOne: false
+            referencedRelation: "categorias_material"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "materiales_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "materiales_unidad_medida_id_fkey"
+            columns: ["unidad_medida_id"]
+            isOneToOne: false
+            referencedRelation: "unidades_medida"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      movimiento_detalle: {
+        Row: {
+          id: string
+          movimiento_id: string
+          material_id: string
+          lote_id: string | null
+          requerimiento_detalle_id: string | null
+          cantidad: number
+          costo_unitario: number
+          costo_total: number
+          cantidad_sistema: number | null
+          cantidad_fisica: number | null
+          observaciones: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          movimiento_id: string
+          material_id: string
+          lote_id?: string | null
+          requerimiento_detalle_id?: string | null
+          cantidad: number
+          costo_unitario?: number
+          costo_total?: number
+          cantidad_sistema?: number | null
+          cantidad_fisica?: number | null
+          observaciones?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          movimiento_id?: string
+          material_id?: string
+          lote_id?: string | null
+          requerimiento_detalle_id?: string | null
+          cantidad?: number
+          costo_unitario?: number
+          costo_total?: number
+          cantidad_sistema?: number | null
+          cantidad_fisica?: number | null
+          observaciones?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_mov_detalle_requerimiento"
+            columns: ["requerimiento_detalle_id"]
+            isOneToOne: false
+            referencedRelation: "requerimiento_detalle"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimiento_detalle_lote_id_fkey"
+            columns: ["lote_id"]
+            isOneToOne: false
+            referencedRelation: "lotes_material"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimiento_detalle_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimiento_detalle_movimiento_id_fkey"
+            columns: ["movimiento_id"]
+            isOneToOne: false
+            referencedRelation: "movimientos_almacen"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      movimientos_almacen: {
+        Row: {
+          id: string
+          numero: string
+          tipo: Database["public"]["Enums"]["tipo_movimiento_almacen"]
+          estado: Database["public"]["Enums"]["estado_movimiento_almacen"]
+          fecha: string
+          almacen_id: string
+          almacen_destino_id: string | null
+          orden_id: string | null
+          etapa_id: string | null
+          requerimiento_id: string | null
+          proveedor_id: string | null
+          documento_referencia: string | null
+          referencia_tabla: string | null
+          referencia_id: string | null
+          motivo: string | null
+          observaciones: string | null
+          total_valorizado: number
+          responsable_id: string | null
+          confirmado_por: string | null
+          fecha_confirmacion: string | null
+          anulado_por: string | null
+          fecha_anulacion: string | null
+          motivo_anulacion: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          tipo: Database["public"]["Enums"]["tipo_movimiento_almacen"]
+          estado?: Database["public"]["Enums"]["estado_movimiento_almacen"]
+          fecha?: string
+          almacen_id: string
+          almacen_destino_id?: string | null
+          orden_id?: string | null
+          etapa_id?: string | null
+          requerimiento_id?: string | null
+          proveedor_id?: string | null
+          documento_referencia?: string | null
+          referencia_tabla?: string | null
+          referencia_id?: string | null
+          motivo?: string | null
+          observaciones?: string | null
+          total_valorizado?: number
+          responsable_id?: string | null
+          confirmado_por?: string | null
+          fecha_confirmacion?: string | null
+          anulado_por?: string | null
+          fecha_anulacion?: string | null
+          motivo_anulacion?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          tipo?: Database["public"]["Enums"]["tipo_movimiento_almacen"]
+          estado?: Database["public"]["Enums"]["estado_movimiento_almacen"]
+          fecha?: string
+          almacen_id?: string
+          almacen_destino_id?: string | null
+          orden_id?: string | null
+          etapa_id?: string | null
+          requerimiento_id?: string | null
+          proveedor_id?: string | null
+          documento_referencia?: string | null
+          referencia_tabla?: string | null
+          referencia_id?: string | null
+          motivo?: string | null
+          observaciones?: string | null
+          total_valorizado?: number
+          responsable_id?: string | null
+          confirmado_por?: string | null
+          fecha_confirmacion?: string | null
+          anulado_por?: string | null
+          fecha_anulacion?: string | null
+          motivo_anulacion?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_mov_etapa"
+            columns: ["etapa_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id", "orden_id"]
+          },
+          {
+            foreignKeyName: "fk_mov_proveedor"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_mov_requerimiento"
+            columns: ["requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "requerimientos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_almacen_almacen_destino_id_fkey"
+            columns: ["almacen_destino_id"]
+            isOneToOne: false
+            referencedRelation: "almacenes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_almacen_almacen_id_fkey"
+            columns: ["almacen_id"]
+            isOneToOne: false
+            referencedRelation: "almacenes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_almacen_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_almacen_confirmado_por_fkey"
+            columns: ["confirmado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_almacen_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_almacen_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_almacen_responsable_id_fkey"
+            columns: ["responsable_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      orden_compra_detalle: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          material_id: string
+          requerimiento_detalle_id: string | null
+          descripcion: string | null
+          cantidad: number
+          precio_unitario: number
+          descuento_porcentaje: number
+          subtotal: number | null
+          cantidad_recibida: number
+          cantidad_pendiente: number | null
+          fecha_entrega_esperada: string | null
+          observaciones: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id: string
+          material_id: string
+          requerimiento_detalle_id?: string | null
+          descripcion?: string | null
+          cantidad: number
+          precio_unitario: number
+          descuento_porcentaje?: number
+          cantidad_recibida?: number
+          fecha_entrega_esperada?: string | null
+          observaciones?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          material_id?: string
+          requerimiento_detalle_id?: string | null
+          descripcion?: string | null
+          cantidad?: number
+          precio_unitario?: number
+          descuento_porcentaje?: number
+          cantidad_recibida?: number
+          fecha_entrega_esperada?: string | null
+          observaciones?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orden_compra_detalle_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orden_compra_detalle_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orden_compra_detalle_requerimiento_detalle_id_fkey"
+            columns: ["requerimiento_detalle_id"]
+            isOneToOne: false
+            referencedRelation: "requerimiento_detalle"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ordenes_compra: {
+        Row: {
+          id: string
+          numero: string
+          proveedor_id: string
+          requerimiento_id: string | null
+          orden_id: string | null
+          sede_id: string
+          almacen_destino_id: string | null
+          estado: Database["public"]["Enums"]["estado_orden_compra"]
+          fecha: string
+          fecha_entrega_esperada: string | null
+          moneda: Database["public"]["Enums"]["moneda"]
+          tipo_cambio: number
+          condicion_pago: Database["public"]["Enums"]["condicion_pago"]
+          lugar_entrega: string | null
+          subtotal: number
+          descuento: number
+          igv_porcentaje: number
+          igv: number
+          total: number
+          observaciones: string | null
+          aprobada_por: string | null
+          fecha_aprobacion: string | null
+          fecha_envio: string | null
+          motivo_anulacion: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          proveedor_id: string
+          requerimiento_id?: string | null
+          orden_id?: string | null
+          sede_id: string
+          almacen_destino_id?: string | null
+          estado?: Database["public"]["Enums"]["estado_orden_compra"]
+          fecha?: string
+          fecha_entrega_esperada?: string | null
+          moneda?: Database["public"]["Enums"]["moneda"]
+          tipo_cambio?: number
+          condicion_pago?: Database["public"]["Enums"]["condicion_pago"]
+          lugar_entrega?: string | null
+          subtotal?: number
+          descuento?: number
+          igv_porcentaje?: number
+          igv?: number
+          total?: number
+          observaciones?: string | null
+          aprobada_por?: string | null
+          fecha_aprobacion?: string | null
+          fecha_envio?: string | null
+          motivo_anulacion?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          proveedor_id?: string
+          requerimiento_id?: string | null
+          orden_id?: string | null
+          sede_id?: string
+          almacen_destino_id?: string | null
+          estado?: Database["public"]["Enums"]["estado_orden_compra"]
+          fecha?: string
+          fecha_entrega_esperada?: string | null
+          moneda?: Database["public"]["Enums"]["moneda"]
+          tipo_cambio?: number
+          condicion_pago?: Database["public"]["Enums"]["condicion_pago"]
+          lugar_entrega?: string | null
+          subtotal?: number
+          descuento?: number
+          igv_porcentaje?: number
+          igv?: number
+          total?: number
+          observaciones?: string | null
+          aprobada_por?: string | null
+          fecha_aprobacion?: string | null
+          fecha_envio?: string | null
+          motivo_anulacion?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ordenes_compra_almacen_destino_id_fkey"
+            columns: ["almacen_destino_id"]
+            isOneToOne: false
+            referencedRelation: "almacenes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_aprobada_por_fkey"
+            columns: ["aprobada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_requerimiento_id_fkey"
+            columns: ["requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "requerimientos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_sede_id_fkey"
+            columns: ["sede_id"]
+            isOneToOne: false
+            referencedRelation: "sedes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ordenes_trabajo: {
         Row: {
           id: string
@@ -542,7 +1495,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          numero: string
+          numero?: string
           cliente_id: string
           unidad_id?: string | null
           cotizacion_id?: string | null
@@ -742,7 +1695,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          numero: string
+          numero?: string
           orden_id: string
           fecha_entrega?: string
           recibe_nombre: string
@@ -938,7 +1891,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          numero: string
+          numero?: string
           orden_id: string
           etapa_id?: string | null
           fecha?: string
@@ -1242,7 +2195,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          numero: string
+          numero?: string
           fecha?: string
           sede_id: string
           estado?: Database["public"]["Enums"]["estado_parte_diario"]
@@ -1322,6 +2275,534 @@ export type Database = {
           descripcion?: string
         }
         Relationships: []
+      }
+      proveedor_materiales: {
+        Row: {
+          id: string
+          proveedor_id: string
+          material_id: string
+          codigo_proveedor: string | null
+          precio_referencial: number
+          moneda: Database["public"]["Enums"]["moneda"]
+          fecha_precio: string | null
+          tiempo_entrega_dias: number
+          cantidad_minima: number
+          es_preferente: boolean
+          observaciones: string | null
+          activo: boolean
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          proveedor_id: string
+          material_id: string
+          codigo_proveedor?: string | null
+          precio_referencial?: number
+          moneda?: Database["public"]["Enums"]["moneda"]
+          fecha_precio?: string | null
+          tiempo_entrega_dias?: number
+          cantidad_minima?: number
+          es_preferente?: boolean
+          observaciones?: string | null
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          proveedor_id?: string
+          material_id?: string
+          codigo_proveedor?: string | null
+          precio_referencial?: number
+          moneda?: Database["public"]["Enums"]["moneda"]
+          fecha_precio?: string | null
+          tiempo_entrega_dias?: number
+          cantidad_minima?: number
+          es_preferente?: boolean
+          observaciones?: string | null
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proveedor_materiales_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: true
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proveedor_materiales_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      proveedores: {
+        Row: {
+          id: string
+          codigo: string | null
+          numero_documento: string
+          razon_social: string
+          nombre_comercial: string | null
+          direccion: string | null
+          distrito: string | null
+          provincia: string | null
+          departamento: string | null
+          telefono: string | null
+          correo: string | null
+          web: string | null
+          contacto_nombre: string | null
+          contacto_telefono: string | null
+          contacto_correo: string | null
+          condicion_pago: Database["public"]["Enums"]["condicion_pago"]
+          dias_credito: number
+          moneda: Database["public"]["Enums"]["moneda"]
+          banco: string | null
+          cuenta_bancaria: string | null
+          cuenta_cci: string | null
+          calificacion: number | null
+          es_homologado: boolean
+          observaciones: string | null
+          activo: boolean
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo?: string | null
+          numero_documento: string
+          razon_social: string
+          nombre_comercial?: string | null
+          direccion?: string | null
+          distrito?: string | null
+          provincia?: string | null
+          departamento?: string | null
+          telefono?: string | null
+          correo?: string | null
+          web?: string | null
+          contacto_nombre?: string | null
+          contacto_telefono?: string | null
+          contacto_correo?: string | null
+          condicion_pago?: Database["public"]["Enums"]["condicion_pago"]
+          dias_credito?: number
+          moneda?: Database["public"]["Enums"]["moneda"]
+          banco?: string | null
+          cuenta_bancaria?: string | null
+          cuenta_cci?: string | null
+          calificacion?: number | null
+          es_homologado?: boolean
+          observaciones?: string | null
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo?: string | null
+          numero_documento?: string
+          razon_social?: string
+          nombre_comercial?: string | null
+          direccion?: string | null
+          distrito?: string | null
+          provincia?: string | null
+          departamento?: string | null
+          telefono?: string | null
+          correo?: string | null
+          web?: string | null
+          contacto_nombre?: string | null
+          contacto_telefono?: string | null
+          contacto_correo?: string | null
+          condicion_pago?: Database["public"]["Enums"]["condicion_pago"]
+          dias_credito?: number
+          moneda?: Database["public"]["Enums"]["moneda"]
+          banco?: string | null
+          cuenta_bancaria?: string | null
+          cuenta_cci?: string | null
+          calificacion?: number | null
+          es_homologado?: boolean
+          observaciones?: string | null
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proveedores_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      recepcion_detalle: {
+        Row: {
+          id: string
+          recepcion_id: string
+          orden_compra_detalle_id: string
+          material_id: string
+          cantidad_recibida: number
+          cantidad_rechazada: number
+          motivo_rechazo: string | null
+          costo_unitario: number
+          numero_lote: string | null
+          numero_colada: string | null
+          certificado_calidad: string | null
+          fecha_vencimiento: string | null
+          observaciones: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          recepcion_id: string
+          orden_compra_detalle_id: string
+          material_id: string
+          cantidad_recibida: number
+          cantidad_rechazada?: number
+          motivo_rechazo?: string | null
+          costo_unitario?: number
+          numero_lote?: string | null
+          numero_colada?: string | null
+          certificado_calidad?: string | null
+          fecha_vencimiento?: string | null
+          observaciones?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          recepcion_id?: string
+          orden_compra_detalle_id?: string
+          material_id?: string
+          cantidad_recibida?: number
+          cantidad_rechazada?: number
+          motivo_rechazo?: string | null
+          costo_unitario?: number
+          numero_lote?: string | null
+          numero_colada?: string | null
+          certificado_calidad?: string | null
+          fecha_vencimiento?: string | null
+          observaciones?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recepcion_detalle_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recepcion_detalle_orden_compra_detalle_id_fkey"
+            columns: ["orden_compra_detalle_id"]
+            isOneToOne: false
+            referencedRelation: "orden_compra_detalle"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recepcion_detalle_recepcion_id_fkey"
+            columns: ["recepcion_id"]
+            isOneToOne: false
+            referencedRelation: "recepciones"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      recepciones: {
+        Row: {
+          id: string
+          numero: string
+          orden_compra_id: string
+          almacen_id: string
+          estado: Database["public"]["Enums"]["estado_movimiento_almacen"]
+          fecha: string
+          numero_guia: string | null
+          fecha_guia: string | null
+          numero_factura: string | null
+          fecha_factura: string | null
+          transportista: string | null
+          placa_vehiculo: string | null
+          movimiento_id: string | null
+          observaciones: string | null
+          recibido_por: string | null
+          confirmado_por: string | null
+          fecha_confirmacion: string | null
+          motivo_anulacion: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          orden_compra_id: string
+          almacen_id: string
+          estado?: Database["public"]["Enums"]["estado_movimiento_almacen"]
+          fecha?: string
+          numero_guia?: string | null
+          fecha_guia?: string | null
+          numero_factura?: string | null
+          fecha_factura?: string | null
+          transportista?: string | null
+          placa_vehiculo?: string | null
+          movimiento_id?: string | null
+          observaciones?: string | null
+          recibido_por?: string | null
+          confirmado_por?: string | null
+          fecha_confirmacion?: string | null
+          motivo_anulacion?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          orden_compra_id?: string
+          almacen_id?: string
+          estado?: Database["public"]["Enums"]["estado_movimiento_almacen"]
+          fecha?: string
+          numero_guia?: string | null
+          fecha_guia?: string | null
+          numero_factura?: string | null
+          fecha_factura?: string | null
+          transportista?: string | null
+          placa_vehiculo?: string | null
+          movimiento_id?: string | null
+          observaciones?: string | null
+          recibido_por?: string | null
+          confirmado_por?: string | null
+          fecha_confirmacion?: string | null
+          motivo_anulacion?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_recepcion_movimiento"
+            columns: ["movimiento_id"]
+            isOneToOne: false
+            referencedRelation: "movimientos_almacen"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recepciones_almacen_id_fkey"
+            columns: ["almacen_id"]
+            isOneToOne: false
+            referencedRelation: "almacenes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recepciones_confirmado_por_fkey"
+            columns: ["confirmado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recepciones_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recepciones_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recepciones_recibido_por_fkey"
+            columns: ["recibido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      requerimiento_detalle: {
+        Row: {
+          id: string
+          requerimiento_id: string
+          material_id: string
+          cantidad_solicitada: number
+          cantidad_aprobada: number
+          cantidad_atendida: number
+          cantidad_reservada: number
+          especificacion: string | null
+          observaciones: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          requerimiento_id: string
+          material_id: string
+          cantidad_solicitada: number
+          cantidad_aprobada?: number
+          cantidad_atendida?: number
+          cantidad_reservada?: number
+          especificacion?: string | null
+          observaciones?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          requerimiento_id?: string
+          material_id?: string
+          cantidad_solicitada?: number
+          cantidad_aprobada?: number
+          cantidad_atendida?: number
+          cantidad_reservada?: number
+          especificacion?: string | null
+          observaciones?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requerimiento_detalle_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_detalle_requerimiento_id_fkey"
+            columns: ["requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "requerimientos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      requerimientos: {
+        Row: {
+          id: string
+          numero: string
+          orden_id: string | null
+          etapa_id: string | null
+          sede_id: string
+          almacen_id: string | null
+          estado: Database["public"]["Enums"]["estado_requerimiento"]
+          prioridad: Database["public"]["Enums"]["prioridad_ot"]
+          fecha: string
+          fecha_requerida: string | null
+          solicitante_id: string | null
+          aprobador_id: string | null
+          fecha_aprobacion: string | null
+          motivo_rechazo: string | null
+          observaciones: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          orden_id?: string | null
+          etapa_id?: string | null
+          sede_id: string
+          almacen_id?: string | null
+          estado?: Database["public"]["Enums"]["estado_requerimiento"]
+          prioridad?: Database["public"]["Enums"]["prioridad_ot"]
+          fecha?: string
+          fecha_requerida?: string | null
+          solicitante_id?: string | null
+          aprobador_id?: string | null
+          fecha_aprobacion?: string | null
+          motivo_rechazo?: string | null
+          observaciones?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          orden_id?: string | null
+          etapa_id?: string | null
+          sede_id?: string
+          almacen_id?: string | null
+          estado?: Database["public"]["Enums"]["estado_requerimiento"]
+          prioridad?: Database["public"]["Enums"]["prioridad_ot"]
+          fecha?: string
+          fecha_requerida?: string | null
+          solicitante_id?: string | null
+          aprobador_id?: string | null
+          fecha_aprobacion?: string | null
+          motivo_rechazo?: string | null
+          observaciones?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_req_etapa"
+            columns: ["etapa_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id", "orden_id"]
+          },
+          {
+            foreignKeyName: "requerimientos_almacen_id_fkey"
+            columns: ["almacen_id"]
+            isOneToOne: false
+            referencedRelation: "almacenes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimientos_aprobador_id_fkey"
+            columns: ["aprobador_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimientos_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimientos_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimientos_sede_id_fkey"
+            columns: ["sede_id"]
+            isOneToOne: false
+            referencedRelation: "sedes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimientos_solicitante_id_fkey"
+            columns: ["solicitante_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       roles: {
         Row: {
@@ -1619,6 +3100,53 @@ export type Database = {
             columns: ["tipo_carroceria_id"]
             isOneToOne: false
             referencedRelation: "tipos_carroceria"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      unidades_medida: {
+        Row: {
+          id: string
+          codigo: string
+          nombre: string
+          magnitud: Database["public"]["Enums"]["magnitud_medida"]
+          unidad_base_id: string | null
+          factor_conversion: number
+          decimales: number
+          activo: boolean
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo: string
+          nombre: string
+          magnitud?: Database["public"]["Enums"]["magnitud_medida"]
+          unidad_base_id?: string | null
+          factor_conversion?: number
+          decimales?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo?: string
+          nombre?: string
+          magnitud?: Database["public"]["Enums"]["magnitud_medida"]
+          unidad_base_id?: string | null
+          factor_conversion?: number
+          decimales?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "unidades_medida_unidad_base_id_fkey"
+            columns: ["unidad_base_id"]
+            isOneToOne: false
+            referencedRelation: "unidades_medida"
             referencedColumns: ["id"]
           }
         ]
@@ -1937,19 +3465,27 @@ export type Database = {
     }
     Enums: {
       accion_auditoria: "INSERT" | "UPDATE" | "DELETE"
+      condicion_pago: "CONTADO" | "CREDITO_7" | "CREDITO_15" | "CREDITO_30" | "CREDITO_45" | "CREDITO_60" | "LETRAS"
       estado_cotizacion: "BORRADOR" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "VENCIDA" | "ANULADA"
       estado_etapa_ot: "PENDIENTE" | "EN_PROCESO" | "PAUSADA" | "TERMINADA" | "OMITIDA"
+      estado_movimiento_almacen: "BORRADOR" | "CONFIRMADO" | "ANULADO"
+      estado_orden_compra: "BORRADOR" | "APROBADA" | "ENVIADA" | "RECIBIDA_PARCIAL" | "RECIBIDA" | "ANULADA"
       estado_ot: "BORRADOR" | "APROBADA" | "PROGRAMADA" | "EN_PROCESO" | "PAUSADA" | "CONTROL_CALIDAD" | "TERMINADA" | "ENTREGADA" | "FACTURADA" | "ANULADA"
       estado_parte_diario: "BORRADOR" | "CERRADO" | "APROBADO"
+      estado_requerimiento: "SOLICITADO" | "APROBADO" | "ATENDIDO_PARCIAL" | "ATENDIDO" | "RECHAZADO" | "ANULADO"
       estado_tarea_ot: "PENDIENTE" | "EN_PROCESO" | "TERMINADA" | "CANCELADA"
+      magnitud_medida: "UNIDAD" | "MASA" | "LONGITUD" | "AREA" | "VOLUMEN"
       moneda: "PEN" | "USD"
       prioridad_ot: "BAJA" | "NORMAL" | "ALTA" | "URGENTE"
       resultado_inspeccion: "CONFORME" | "OBSERVADO" | "RECHAZADO"
       rol_operario: "SOLDADOR" | "ARMADOR" | "PINTOR" | "ELECTRICISTA" | "AYUDANTE" | "MECANICO"
-      tipo_correlativo: "COTIZACION" | "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD"
+      tipo_almacen: "PRINCIPAL" | "OBRA" | "HERRAMIENTAS" | "MERMA"
+      tipo_correlativo: "COTIZACION" | "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA"
       tipo_costo_partida: "MATERIAL" | "MANO_OBRA" | "SERVICIO" | "OTRO"
       tipo_documento_cliente: "RUC" | "DNI" | "CE" | "PASAPORTE"
       tipo_evento_ot: "CREACION" | "CAMBIO_ESTADO" | "AVANCE" | "MATERIAL" | "DOCUMENTO" | "INSPECCION" | "PAUSA" | "REANUDACION" | "COMENTARIO" | "ENTREGA"
+      tipo_movimiento_almacen: "INGRESO" | "SALIDA_OT" | "DEVOLUCION_OT" | "TRANSFERENCIA" | "AJUSTE" | "SALIDA_MERMA"
+      tipo_movimiento_kardex: "INGRESO_COMPRA" | "INGRESO_DEVOLUCION" | "INGRESO_AJUSTE" | "INGRESO_TRANSFERENCIA" | "SALIDA_OT" | "SALIDA_AJUSTE" | "SALIDA_TRANSFERENCIA" | "SALIDA_MERMA"
       tipo_trabajo_ot: "FABRICACION" | "REPARACION" | "REPOTENCIACION" | "MANTENIMIENTO" | "GARANTIA"
       tipo_vehiculo: "VOLQUETE" | "TRACTO" | "SEMIRREMOLQUE" | "CAMION" | "REMOLQUE" | "FURGON" | "OTRO"
     }

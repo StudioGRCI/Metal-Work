@@ -246,7 +246,11 @@ create index idx_unidades_placa_trgm
 
 create table public.cotizaciones (
   id                  uuid primary key default gen_random_uuid(),
-  numero              text not null unique,
+  -- El default vacío existe para que el trigger BEFORE INSERT pueda asignar el
+  -- correlativo sin que la aplicación tenga que inventar un número: Postgres
+  -- aplica los defaults antes de los triggers, así que el trigger siempre
+  -- reemplaza esta cadena vacía por el número real.
+  numero              text not null default '' unique,
   cliente_id          uuid not null references public.clientes(id) on delete restrict,
   unidad_id           uuid references public.unidades(id) on delete restrict,
   tipo_carroceria_id  uuid references public.tipos_carroceria(id) on delete restrict,
@@ -378,7 +382,7 @@ declare
   v_base numeric;
 begin
   if tg_op = 'INSERT' then
-    if new.numero is null then
+    if nullif(btrim(new.numero), '') is null then
       -- La serie puede estar registrada por sede o ser global; se intenta
       -- primero la de la sede del documento y se cae a la global.
       begin

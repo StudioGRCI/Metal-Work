@@ -118,7 +118,6 @@ const bloqueEnums = esquema.enums.length
 
 const salida = `// Archivo generado automáticamente. No editar a mano.
 // Regenerar con: ./scripts/generar-tipos.sh
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
