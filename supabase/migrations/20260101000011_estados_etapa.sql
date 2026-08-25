@@ -1,0 +1,25 @@
+-- =============================================================================
+-- 011 · Estado de etapa "necesita revisión"
+-- =============================================================================
+-- El formato real de la empresa (MW-FOR-ADM-7 "Implementación de control de
+-- unidades") usa seis estados por área en su lista desplegable:
+--
+--   Sin iniciar · En curso · Completado · En espera · Atrasada · Necesita revisión
+--
+-- Cinco ya existían en public.estado_etapa_ot:
+--
+--   Sin iniciar → PENDIENTE      En curso   → EN_PROCESO
+--   En espera   → PAUSADA        Completado → TERMINADA
+--
+-- "Atrasada" NO se agrega como estado: es una condición derivada (la etapa
+-- tiene fecha de fin planificada vencida y no está terminada), y guardarla
+-- obligaría a alguien a recordar cambiarla a mano cada día.
+--
+-- "Necesita revisión" sí es una decisión de una persona -calidad devuelve el
+-- trabajo al área- y por eso se registra.
+--
+-- Va en su propia migración porque Postgres no permite usar un valor de enum
+-- en la misma transacción en la que se agrega.
+-- =============================================================================
+
+alter type public.estado_etapa_ot add value if not exists 'REQUIERE_REVISION';

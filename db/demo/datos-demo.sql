@@ -152,11 +152,11 @@ begin
     update public.ot_etapas e set avance_porcentaje = 100, estado = 'TERMINADA'
       from public.etapas_catalogo c
      where e.etapa_catalogo_id = c.id and e.orden_id = v_orden
-       and c.codigo in ('HABILITADO', 'ARMADO');
+       and c.codigo in ('HABILITADO_MP', 'DISENO');
 
     update public.ot_etapas e set avance_porcentaje = 60, estado = 'EN_PROCESO'
       from public.etapas_catalogo c
-     where e.etapa_catalogo_id = c.id and e.orden_id = v_orden and c.codigo = 'SOLDADURA';
+     where e.etapa_catalogo_id = c.id and e.orden_id = v_orden and c.codigo = 'PRODUCCION';
 
     -- Consumo de material contra la orden.
     insert into public.movimientos_almacen (tipo, almacen_id, orden_id, responsable_id)
@@ -187,7 +187,7 @@ begin
                  'Soldadura de refuerzos y cordones estructurales'
             from public.ot_etapas e
             join public.etapas_catalogo c on c.id = e.etapa_catalogo_id
-           where e.orden_id = v_orden and c.codigo = 'SOLDADURA';
+           where e.orden_id = v_orden and c.codigo = 'PRODUCCION';
 
           update public.partes_diarios set estado = 'CERRADO'  where id = v_parte;
           update public.partes_diarios set estado = 'APROBADO' where id = v_parte;

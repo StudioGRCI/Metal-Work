@@ -26,7 +26,7 @@ do $$
 declare v public.ordenes_trabajo;
 begin
   select * into v from public.ordenes_trabajo limit 1;
-  perform test.afirmar(v.numero like 'OT-001-%', 'la OT recibe correlativo automático: ' || v.numero);
+  perform test.afirmar(v.numero ~ '^[0-9]{4,}-[0-9]{4}$', 'la OT recibe correlativo con el formato de la empresa (2921-2026): ' || v.numero);
   perform test.afirmar(v.estado = 'BORRADOR', 'la OT nace en borrador');
   perform test.afirmar(v.avance_porcentaje = 0, 'nace sin avance');
   perform test.afirmar(
@@ -53,11 +53,16 @@ begin
 
   update public.ordenes_trabajo set estado = 'APROBADA' where id = v_id;
 
+  -- Los valores esperados se derivan del catálogo en lugar de escribirse a
+  -- mano: la empresa ajusta sus etapas y sus días desde Configuración, y la
+  -- prueba debe seguir siendo válida cuando lo haga.
   perform test.afirmar(
-    (select count(*) from public.ot_etapas where orden_id = v_id) = 13,
-    'al aprobar se instancian las 13 etapas del catálogo');
+    (select count(*) from public.ot_etapas where orden_id = v_id)
+      = (select count(*) from public.etapas_catalogo where activo),
+    'al aprobar se instancian todas las etapas activas del catálogo');
   perform test.afirmar(
-    (select horas_estimadas from public.ordenes_trabajo where id = v_id) = 365,
+    (select horas_estimadas from public.ordenes_trabajo where id = v_id)
+      = (select sum(horas_estandar) from public.etapas_catalogo where activo),
     'las horas estimadas de la OT suman las de sus etapas');
 end $$;
 
@@ -89,21 +94,32 @@ end $$;
 -- --- avance ponderado por horas ---------------------------------------------
 do $$
 declare
-  v_id     uuid;
-  v_avance numeric;
+  v_id             uuid;
+  v_avance         numeric;
+  v_horas_etapa    numeric;
+  v_horas_total    numeric;
+  v_horas_omitida  numeric;
 begin
   select id into v_id from public.ordenes_trabajo limit 1;
 
-  -- HABILITADO son 40 de 365 horas: al terminarla el avance debe ser 40/365.
+  -- Al terminar el habilitado de materia prima, el avance debe ser exactamente
+  -- el peso de esa etapa sobre el total: no una etapa de catorce, sino sus
+  -- horas sobre las horas de todas.
+  select horas_estandar into v_horas_etapa
+    from public.etapas_catalogo where codigo = 'HABILITADO_MP';
+  select sum(horas_estandar) into v_horas_total
+    from public.etapas_catalogo where activo;
+
   update public.ot_etapas e
      set avance_porcentaje = 100, estado = 'TERMINADA'
     from public.etapas_catalogo c
-   where e.etapa_catalogo_id = c.id and c.codigo = 'HABILITADO' and e.orden_id = v_id;
+   where e.etapa_catalogo_id = c.id and c.codigo = 'HABILITADO_MP' and e.orden_id = v_id;
 
   select avance_porcentaje into v_avance from public.ordenes_trabajo where id = v_id;
   perform test.afirmar(
-    round(v_avance, 1) = round(100 * 40.0 / 365.0, 1),
-    format('el avance pondera por horas de etapa: %s%% ≈ %s%%', round(v_avance, 2), round(100 * 40.0 / 365.0, 2)));
+    round(v_avance, 1) = round(100 * v_horas_etapa / v_horas_total, 1),
+    format('el avance pondera por horas de etapa: %s%% ≈ %s%%',
+           round(v_avance, 2), round(100 * v_horas_etapa / v_horas_total, 2)));
 
   -- Una etapa omitida no debe contar ni en el numerador ni en el peso.
   update public.ot_etapas e
@@ -111,9 +127,12 @@ begin
     from public.etapas_catalogo c
    where e.etapa_catalogo_id = c.id and c.codigo = 'ARENADO' and e.orden_id = v_id;
 
+  select horas_estandar into v_horas_omitida
+    from public.etapas_catalogo where codigo = 'ARENADO';
+
   select avance_porcentaje into v_avance from public.ordenes_trabajo where id = v_id;
   perform test.afirmar(
-    round(v_avance, 1) = round(100 * 40.0 / 345.0, 1),
+    round(v_avance, 1) = round(100 * v_horas_etapa / (v_horas_total - v_horas_omitida), 1),
     format('las etapas omitidas salen del cálculo: %s%%', round(v_avance, 2)));
 end $$;
 
@@ -128,7 +147,7 @@ begin
   select id into v_ot from public.ordenes_trabajo limit 1;
   select e.id into v_etapa
     from public.ot_etapas e join public.etapas_catalogo c on c.id = e.etapa_catalogo_id
-   where e.orden_id = v_ot and c.codigo = 'ARMADO';
+   where e.orden_id = v_ot and c.codigo = 'PRODUCCION';
   select id into v_operario from public.usuarios where es_operario limit 1;
 
   insert into public.partes_diarios (fecha, sede_id)

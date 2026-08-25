@@ -79,7 +79,7 @@ begin
   select id into v_ot from public.ordenes_trabajo limit 1;
   select e.id into v_etapa
     from public.ot_etapas e join public.etapas_catalogo c on c.id = e.etapa_catalogo_id
-   where e.orden_id = v_ot and c.codigo = 'SOLDADURA';
+   where e.orden_id = v_ot and c.codigo = 'PRODUCCION';
 
   insert into public.partes_diarios (fecha, sede_id)
     select current_date, id from public.sedes limit 1 returning id into v_parte;

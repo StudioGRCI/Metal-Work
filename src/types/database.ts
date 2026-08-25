@@ -188,6 +188,39 @@ export type Database = {
           }
         ]
       }
+      areas: {
+        Row: {
+          id: string
+          codigo: string
+          nombre: string
+          encargado: string | null
+          orden_secuencia: number
+          activo: boolean
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo: string
+          nombre: string
+          encargado?: string | null
+          orden_secuencia: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo?: string
+          nombre?: string
+          encargado?: string | null
+          orden_secuencia?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: []
+      }
       audit_log: {
         Row: {
           id: number
@@ -981,6 +1014,7 @@ export type Database = {
           activo: boolean
           creado_en: string
           actualizado_en: string
+          dias_estandar: number
         }
         Insert: {
           id?: string
@@ -995,6 +1029,7 @@ export type Database = {
           activo?: boolean
           creado_en?: string
           actualizado_en?: string
+          dias_estandar?: number
         }
         Update: {
           id?: string
@@ -1009,6 +1044,7 @@ export type Database = {
           activo?: boolean
           creado_en?: string
           actualizado_en?: string
+          dias_estandar?: number
         }
         Relationships: []
       }
@@ -3667,6 +3703,7 @@ export type Database = {
           activo: boolean
           creado_en: string
           actualizado_en: string
+          formato: string
         }
         Insert: {
           id?: string
@@ -3679,6 +3716,7 @@ export type Database = {
           activo?: boolean
           creado_en?: string
           actualizado_en?: string
+          formato?: string
         }
         Update: {
           id?: string
@@ -3691,6 +3729,7 @@ export type Database = {
           activo?: boolean
           creado_en?: string
           actualizado_en?: string
+          formato?: string
         }
         Relationships: [
           {
@@ -3956,6 +3995,10 @@ export type Database = {
           activo: boolean
           creado_en: string
           actualizado_en: string
+          tipo_sig: string | null
+          area_codigo: string | null
+          correlativo_sig: number | null
+          codigo_sig: string | null
         }
         Insert: {
           id?: string
@@ -3975,6 +4018,9 @@ export type Database = {
           activo?: boolean
           creado_en?: string
           actualizado_en?: string
+          tipo_sig?: string | null
+          area_codigo?: string | null
+          correlativo_sig?: number | null
         }
         Update: {
           id?: string
@@ -3991,6 +4037,54 @@ export type Database = {
           bucket?: string
           retencion_meses?: number | null
           orden_visualizacion?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+          tipo_sig?: string | null
+          area_codigo?: string | null
+          correlativo_sig?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tipos_documento_area_codigo_fkey"
+            columns: ["area_codigo"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["codigo"]
+          },
+          {
+            foreignKeyName: "tipos_documento_tipo_sig_fkey"
+            columns: ["tipo_sig"]
+            isOneToOne: false
+            referencedRelation: "tipos_documento_sig"
+            referencedColumns: ["codigo"]
+          }
+        ]
+      }
+      tipos_documento_sig: {
+        Row: {
+          codigo: string
+          nombre: string
+          uso_tipico: string | null
+          orden_secuencia: number
+          activo: boolean
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          codigo: string
+          nombre: string
+          uso_tipico?: string | null
+          orden_secuencia: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          codigo?: string
+          nombre?: string
+          uso_tipico?: string | null
+          orden_secuencia?: number
           activo?: boolean
           creado_en?: string
           actualizado_en?: string
@@ -4017,6 +4111,7 @@ export type Database = {
           creado_en: string
           actualizado_en: string
           creado_por: string | null
+          codigo_interno: string | null
         }
         Insert: {
           id?: string
@@ -4037,6 +4132,7 @@ export type Database = {
           creado_en?: string
           actualizado_en?: string
           creado_por?: string | null
+          codigo_interno?: string | null
         }
         Update: {
           id?: string
@@ -4057,6 +4153,7 @@ export type Database = {
           creado_en?: string
           actualizado_en?: string
           creado_por?: string | null
+          codigo_interno?: string | null
         }
         Relationships: [
           {
@@ -4148,6 +4245,7 @@ export type Database = {
           activo: boolean
           creado_en: string
           actualizado_en: string
+          area_id: string | null
         }
         Insert: {
           id: string
@@ -4167,6 +4265,7 @@ export type Database = {
           activo?: boolean
           creado_en?: string
           actualizado_en?: string
+          area_id?: string | null
         }
         Update: {
           id?: string
@@ -4186,6 +4285,7 @@ export type Database = {
           activo?: boolean
           creado_en?: string
           actualizado_en?: string
+          area_id?: string | null
         }
         Relationships: [
           {
@@ -4193,6 +4293,13 @@ export type Database = {
             columns: ["id"]
             isOneToOne: true
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "usuarios_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
             referencedColumns: ["id"]
           },
           {
@@ -4914,7 +5021,7 @@ export type Database = {
       estado_aprobacion: "PENDIENTE" | "APROBADO" | "OBSERVADO" | "RECHAZADO"
       estado_cotizacion: "BORRADOR" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "VENCIDA" | "ANULADA"
       estado_documento: "VIGENTE" | "REEMPLAZADO" | "ANULADO"
-      estado_etapa_ot: "PENDIENTE" | "EN_PROCESO" | "PAUSADA" | "TERMINADA" | "OMITIDA"
+      estado_etapa_ot: "PENDIENTE" | "EN_PROCESO" | "PAUSADA" | "TERMINADA" | "OMITIDA" | "REQUIERE_REVISION"
       estado_movimiento_almacen: "BORRADOR" | "CONFIRMADO" | "ANULADO"
       estado_orden_compra: "BORRADOR" | "APROBADA" | "ENVIADA" | "RECIBIDA_PARCIAL" | "RECIBIDA" | "ANULADA"
       estado_ot: "BORRADOR" | "APROBADA" | "PROGRAMADA" | "EN_PROCESO" | "PAUSADA" | "CONTROL_CALIDAD" | "TERMINADA" | "ENTREGADA" | "FACTURADA" | "ANULADA"
