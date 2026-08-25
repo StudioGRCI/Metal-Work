@@ -32,14 +32,8 @@
 -- enum public.tipo_correlativo. La semilla debe crear sus series o la numeración
 -- de transferencias y recepciones fallará al primer uso:
 --   ('TRANSFERENCIA_ALMACEN', '001', 'TRA', 5) y ('RECEPCION_COMPRA', '001', 'REC', 5).
+-- Ambos valores se declaran ya en el enum public.tipo_correlativo del núcleo.
 -- =============================================================================
-
--- Sentencias sueltas y al inicio del archivo: ALTER TYPE ... ADD VALUE no puede
--- convivir con el uso del valor nuevo dentro de la misma transacción. Aquí solo
--- se declaran; se usan en cuerpos plpgsql que se evalúan en tiempo de ejecución.
-alter type public.tipo_correlativo add value 'TRANSFERENCIA_ALMACEN';
-
-alter type public.tipo_correlativo add value 'RECEPCION_COMPRA';
 
 -- -----------------------------------------------------------------------------
 -- Enums del dominio de almacén y compras

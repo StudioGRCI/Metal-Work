@@ -47,7 +47,14 @@ begin
     $cuerpo$;
   $fn$;
 
-  execute 'alter table storage.objects enable row level security';
+  -- En Supabase, storage.objects pertenece a supabase_storage_admin y ya viene
+  -- con RLS activo. El intento se hace igual por si el proyecto es autoalojado,
+  -- pero no debe abortar la migración si no hay permiso para alterarla.
+  begin
+    execute 'alter table storage.objects enable row level security';
+  exception when insufficient_privilege or wrong_object_type then
+    raise notice 'storage.objects ya tiene RLS gestionado por Supabase; se omite';
+  end;
 
   -- --- lectura ---------------------------------------------------------------
   execute 'drop policy if exists mw_leer_documentos on storage.objects';

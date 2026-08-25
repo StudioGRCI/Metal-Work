@@ -62,7 +62,9 @@ create type public.tipo_correlativo as enum (
   'AJUSTE_INVENTARIO',
   'PARTE_DIARIO',
   'ACTA_CONFORMIDAD',
-  'INSPECCION_CALIDAD'
+  'INSPECCION_CALIDAD',
+  'TRANSFERENCIA_ALMACEN',
+  'RECEPCION_COMPRA'
 );
 
 -- =============================================================================

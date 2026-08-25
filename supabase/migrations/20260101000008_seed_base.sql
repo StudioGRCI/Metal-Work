@@ -187,7 +187,11 @@ insert into public.series_documentarias (tipo, serie, prefijo, longitud) values
   ('AJUSTE_INVENTARIO', '001', 'AJU',  5),
   ('PARTE_DIARIO',      '001', 'PD',   5),
   ('ACTA_CONFORMIDAD',  '001', 'ACT',  5),
-  ('INSPECCION_CALIDAD','001', 'INS',  5)
+  ('INSPECCION_CALIDAD','001', 'INS',  5),
+  -- Sin estas dos, la primera transferencia entre almacenes y la primera
+  -- recepción de compra fallarían al pedir su correlativo.
+  ('TRANSFERENCIA_ALMACEN','001', 'TRA', 5),
+  ('RECEPCION_COMPRA',  '001', 'REC',  5)
 on conflict (tipo, serie, sede_id) do nothing;
 
 -- -----------------------------------------------------------------------------
