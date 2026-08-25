@@ -207,7 +207,10 @@ create table public.documento_versiones (
   documento_id   uuid not null references public.documentos(id) on delete cascade,
   -- Lo asigna el trigger tomando y bloqueando la cabecera: dos cargas
   -- simultáneas del mismo documento se serializan y nunca comparten número.
-  version        int not null check (version > 0),
+  -- La asigna fn_version_antes_insert a partir de la última versión del
+  -- documento; se declara sin NOT NULL para que la aplicación pueda omitirla, y
+  -- el CHECK —evaluado después de los triggers BEFORE— garantiza que quedó puesta.
+  version        int,
   bucket         text not null default 'documentos',
   -- Ruta dentro del bucket, por ejemplo ot/OT-001-00042/planos/uuid.pdf
   ruta_storage   text not null check (nullif(btrim(ruta_storage), '') is not null),
@@ -226,6 +229,7 @@ create table public.documento_versiones (
   creado_en      timestamptz not null default now(),
   actualizado_en timestamptz not null default now(),
 
+  constraint ck_version_asignada check (version is not null and version > 0),
   constraint uq_version_por_documento unique (documento_id, version),
   -- Un archivo por ruta: dos versiones no pueden apuntar al mismo objeto de
   -- Storage, o borrar una dejaría a la otra sin archivo.

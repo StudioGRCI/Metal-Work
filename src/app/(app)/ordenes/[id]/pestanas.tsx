@@ -8,6 +8,7 @@ const PESTANAS = [
   { clave: 'horas', titulo: 'Horas' },
   { clave: 'costos', titulo: 'Costos', permiso: 'costos.ver' },
   { clave: 'calidad', titulo: 'Calidad' },
+  { clave: 'documentos', titulo: 'Documentos' },
   { clave: 'bitacora', titulo: 'Trazabilidad' },
 ] as const
 

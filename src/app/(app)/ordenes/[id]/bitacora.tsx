@@ -6,17 +6,31 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { TIPO_EVENTO_BITACORA, definir } from '@/lib/dominio/estados'
 import { fechaHora, tiempoRelativo } from '@/lib/format'
+import type { EventoTimeline } from '@/lib/datos/documentos'
+import type { Tono } from '@/components/ui/etiqueta-estado'
 
 import { comentarOrden } from '../acciones'
 
-type Evento = {
-  id: string
-  tipo_evento: string
-  descripcion: string
-  creado_en: string
-  usuario: unknown
+/** Color de cada categoría de la línea de tiempo. */
+const CATEGORIAS: Record<string, { etiqueta: string; tono: Tono }> = {
+  BITACORA: { etiqueta: 'Bitácora', tono: 'acento' },
+  DOCUMENTO: { etiqueta: 'Documento', tono: 'info' },
+  MATERIAL: { etiqueta: 'Material', tono: 'neutro' },
+  ALMACEN: { etiqueta: 'Almacén', tono: 'neutro' },
+  INSPECCION: { etiqueta: 'Inspección', tono: 'aviso' },
+  CALIDAD: { etiqueta: 'Calidad', tono: 'aviso' },
+  AUDITORIA: { etiqueta: 'Cambio', tono: 'neutro' },
+  ENTREGA: { etiqueta: 'Entrega', tono: 'exito' },
+}
+
+function definirCategoria(valor: string) {
+  return (
+    CATEGORIAS[valor] ?? {
+      etiqueta: valor.replaceAll('_', ' ').toLowerCase(),
+      tono: 'neutro' as Tono,
+    }
+  )
 }
 
 export function Bitacora({
@@ -25,7 +39,7 @@ export function Bitacora({
   puedeComentar,
 }: {
   ordenId: string
-  eventos: Evento[]
+  eventos: EventoTimeline[]
   puedeComentar: boolean
 }) {
   const [resultado, ejecutar, pendiente] = useActionState(comentarOrden, null)
@@ -40,7 +54,7 @@ export function Bitacora({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Trazabilidad"
-        descripcion="Todo lo que ha ocurrido con esta orden, en orden cronológico inverso. Es un registro inmutable."
+        descripcion="Todo lo ocurrido con esta orden: cambios de estado, documentos, material, inspecciones y comentarios. Es un registro inmutable."
       />
 
       {puedeComentar && (
@@ -74,12 +88,11 @@ export function Bitacora({
         ) : (
           <ol className="space-y-0">
             {eventos.map((evento, i) => {
-              const tipo = definir(TIPO_EVENTO_BITACORA, evento.tipo_evento)
-              const usuario = evento.usuario as { nombres: string; apellidos: string } | null
+              const tipo = definirCategoria(evento.categoria)
               const ultimo = i === eventos.length - 1
 
               return (
-                <li key={evento.id} className="relative flex gap-3 pb-4 last:pb-0">
+                <li key={evento.clave} className="relative flex gap-3 pb-4 last:pb-0">
                   {!ultimo && (
                     <span aria-hidden className="absolute top-5 bottom-0 left-[5px] w-px bg-borde" />
                   )}
@@ -91,19 +104,20 @@ export function Bitacora({
                     <div className="flex flex-wrap items-center gap-2">
                       <Insignia tono={tipo.tono}>{tipo.etiqueta}</Insignia>
                       <time
-                        dateTime={evento.creado_en}
-                        title={fechaHora(evento.creado_en)}
+                        dateTime={evento.ocurrido_en}
+                        title={fechaHora(evento.ocurrido_en)}
                         className="text-[11px] text-texto-tenue"
                       >
-                        {tiempoRelativo(evento.creado_en)}
+                        {tiempoRelativo(evento.ocurrido_en)}
                       </time>
-                      {usuario && (
-                        <span className="text-[11px] text-texto-tenue">
-                          · {usuario.nombres} {usuario.apellidos}
-                        </span>
+                      {evento.usuario && (
+                        <span className="text-[11px] text-texto-tenue">· {evento.usuario}</span>
                       )}
                     </div>
-                    <p className="mt-1 text-sm text-texto">{evento.descripcion}</p>
+                    <p className="mt-1 text-sm text-texto">{evento.titulo}</p>
+                    {evento.detalle && evento.detalle !== evento.titulo && (
+                      <p className="mt-0.5 text-xs text-texto-suave">{evento.detalle}</p>
+                    )}
                   </div>
                 </li>
               )

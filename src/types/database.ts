@@ -741,7 +741,7 @@ export type Database = {
         Row: {
           id: string
           documento_id: string
-          version: number
+          version: number | null
           bucket: string
           ruta_storage: string
           nombre_archivo: string
@@ -758,7 +758,7 @@ export type Database = {
         Insert: {
           id?: string
           documento_id: string
-          version: number
+          version?: number | null
           bucket?: string
           ruta_storage: string
           nombre_archivo: string
@@ -775,7 +775,7 @@ export type Database = {
         Update: {
           id?: string
           documento_id?: string
-          version?: number
+          version?: number | null
           bucket?: string
           ruta_storage?: string
           nombre_archivo?: string
@@ -4784,6 +4784,12 @@ export type Database = {
       }
       mi_usuario: {
         Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      orden_de_ruta: {
+        Args: {
+          p_ruta: string
+        }
         Returns: string
       }
       ot_recalcular_avance: {

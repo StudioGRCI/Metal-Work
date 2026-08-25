@@ -116,20 +116,6 @@ export async function listarEtapas(ordenId: string) {
   return data ?? []
 }
 
-export async function listarBitacora(ordenId: string, limite = 100) {
-  const supabase = await createClient()
-
-  const { data, error } = await supabase
-    .from('ot_bitacora')
-    .select('id, tipo_evento, descripcion, datos, creado_en, usuario:usuarios(nombres, apellidos)')
-    .eq('orden_id', ordenId)
-    .order('creado_en', { ascending: false })
-    .limit(limite)
-
-  if (error) throw new Error(`No se pudo cargar la bitácora: ${error.message}`)
-  return data ?? []
-}
-
 export async function listarInspecciones(ordenId: string) {
   const supabase = await createClient()
 

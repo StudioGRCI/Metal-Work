@@ -76,7 +76,13 @@ export const NAVEGACION: GrupoNavegacion[] = [
   {
     titulo: 'Gestión',
     items: [
-      { titulo: 'Documentos', ruta: '/documentos', icono: FileText, permiso: 'documentos.ver' },
+      {
+        titulo: 'Documentos',
+        ruta: '/documentos',
+        icono: FileText,
+        permiso: 'documentos.ver',
+        disponible: true,
+      },
       { titulo: 'Configuración', ruta: '/configuracion', icono: Settings, permiso: 'configuracion.ver' },
     ],
   },
