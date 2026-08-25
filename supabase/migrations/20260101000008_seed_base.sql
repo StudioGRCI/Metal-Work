@@ -189,3 +189,54 @@ insert into public.series_documentarias (tipo, serie, prefijo, longitud) values
   ('ACTA_CONFORMIDAD',  '001', 'ACT',  5),
   ('INSPECCION_CALIDAD','001', 'INS',  5)
 on conflict (tipo, serie, sede_id) do nothing;
+
+-- -----------------------------------------------------------------------------
+-- Tipos de carrocería que fabrica el taller
+-- Los valores de referencia (horas, peso, precio) son puntos de partida para
+-- presupuestar; la empresa los ajusta desde Configuración.
+-- -----------------------------------------------------------------------------
+
+insert into public.tipos_carroceria
+  (codigo, nombre, descripcion, horas_hombre_estandar, peso_estimado_kg, precio_referencial, orden_secuencia) values
+  ('TOLVA_VOLQUETE',  'Tolva para volquete',      'Tolva de acero para volquete, con compuerta trasera y sistema de levante', 320, 3800,  42000, 1),
+  ('PLATAFORMA',      'Plataforma',               'Plataforma plana para tracto-remolque o camión',                           220, 2600,  28000, 2),
+  ('BARANDA',         'Carrocería con barandas',  'Plataforma con barandas laterales abatibles',                              240, 2900,  31000, 3),
+  ('FURGON',          'Furgón',                   'Furgón cerrado con estructura metálica y forro',                           280, 3200,  38000, 4),
+  ('FURGON_FRIGORIFICO','Furgón frigorífico',     'Furgón aislado con panel térmico para carga refrigerada',                  360, 3600,  62000, 5),
+  ('CISTERNA',        'Cisterna',                 'Tanque cisterna para combustible o agua',                                  420, 4500,  75000, 6),
+  ('TANQUE',          'Tanque',                   'Tanque estacionario o de transporte',                                      300, 3400,  48000, 7),
+  ('CAMA_BAJA',       'Cama baja',                'Semirremolque cama baja para maquinaria pesada',                           520, 6200, 110000, 8),
+  ('PORTACONTENEDOR', 'Portacontenedor',          'Chasis portacontenedor con twist locks',                                   380, 4100,  58000, 9),
+  ('REPOTENCIACION',  'Repotenciación',           'Reconstrucción y refuerzo de una carrocería existente',                    160, 1200,  18000, 10)
+on conflict (codigo) do update
+  set nombre = excluded.nombre,
+      descripcion = excluded.descripcion;
+
+-- -----------------------------------------------------------------------------
+-- Etapas estándar de fabricación
+-- El orden refleja el flujo real del taller. horas_estandar pondera el avance
+-- de la OT: las etapas largas pesan más en el porcentaje total.
+-- -----------------------------------------------------------------------------
+
+insert into public.etapas_catalogo
+  (codigo, nombre, descripcion, orden_secuencia, horas_estandar, requiere_inspeccion, permite_paralelo, color) values
+  ('HABILITADO',   'Habilitado',            'Corte, plegado y habilitado de planchas y perfiles',            1, 40, false, false, '#64748B'),
+  ('ARMADO',       'Armado de estructura',  'Armado del chasis y la estructura de la carrocería',            2, 60, false, false, '#0EA5E9'),
+  ('SOLDADURA',    'Soldadura',             'Soldadura estructural y de refuerzos',                          3, 70, true,  false, '#F97316'),
+  ('ESMERILADO',   'Esmerilado',            'Esmerilado y limpieza de cordones de soldadura',                 4, 25, false, false, '#A3A3A3'),
+  ('MASILLADO',    'Masillado',             'Masillado y preparación de superficie',                         5, 30, false, false, '#EAB308'),
+  ('ARENADO',      'Arenado',               'Arenado o granallado previo a la pintura',                      6, 20, false, true,  '#78716C'),
+  ('PINTURA_BASE', 'Pintura base',          'Aplicación de base anticorrosiva',                              7, 18, false, false, '#3B82F6'),
+  ('PINTURA',      'Pintura de acabado',    'Acabado final y logotipos del cliente',                         8, 24, false, false, '#8B5CF6'),
+  ('HIDRAULICO',   'Sistema hidráulico',    'Montaje de pistón, bomba, mangueras y tomafuerza',              9, 32, true,  true,  '#EF4444'),
+  ('ELECTRICO',    'Sistema eléctrico',     'Instalación de arnés, luces y señalización',                   10, 16, false, true,  '#F59E0B'),
+  ('ACCESORIOS',   'Accesorios',            'Montaje de guardafangos, escaleras, tapas y accesorios',       11, 14, false, true,  '#14B8A6'),
+  ('CALIDAD',      'Control de calidad',    'Inspección final y pruebas de funcionamiento',                 12, 10, true,  false, '#22C55E'),
+  ('ENTREGA',      'Entrega',               'Limpieza, acta de conformidad y entrega al cliente',           13,  6, false, false, '#16A34A')
+on conflict (codigo) do update
+  set nombre = excluded.nombre,
+      descripcion = excluded.descripcion,
+      horas_estandar = excluded.horas_estandar,
+      requiere_inspeccion = excluded.requiere_inspeccion,
+      permite_paralelo = excluded.permite_paralelo,
+      color = excluded.color;

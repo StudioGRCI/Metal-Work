@@ -667,6 +667,135 @@ export type Database = {
           }
         ]
       }
+      ot_bitacora: {
+        Row: {
+          id: string
+          orden_id: string
+          etapa_id: string | null
+          tipo_evento: Database["public"]["Enums"]["tipo_evento_ot"]
+          descripcion: string
+          datos: Json
+          usuario_id: string | null
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          etapa_id?: string | null
+          tipo_evento: Database["public"]["Enums"]["tipo_evento_ot"]
+          descripcion: string
+          datos?: Json
+          usuario_id?: string | null
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          etapa_id?: string | null
+          tipo_evento?: Database["public"]["Enums"]["tipo_evento_ot"]
+          descripcion?: string
+          datos?: Json
+          usuario_id?: string | null
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_bitacora_etapa_id_fkey"
+            columns: ["etapa_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_bitacora_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_bitacora_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_entregas: {
+        Row: {
+          id: string
+          numero: string
+          orden_id: string
+          fecha_entrega: string
+          recibe_nombre: string
+          recibe_documento: string | null
+          recibe_cargo: string | null
+          conforme: boolean
+          observaciones: string | null
+          garantia_meses: number
+          garantia_vence: string | null
+          entregado_por: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          orden_id: string
+          fecha_entrega?: string
+          recibe_nombre: string
+          recibe_documento?: string | null
+          recibe_cargo?: string | null
+          conforme?: boolean
+          observaciones?: string | null
+          garantia_meses?: number
+          entregado_por?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          orden_id?: string
+          fecha_entrega?: string
+          recibe_nombre?: string
+          recibe_documento?: string | null
+          recibe_cargo?: string | null
+          conforme?: boolean
+          observaciones?: string | null
+          garantia_meses?: number
+          entregado_por?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_entregas_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_entregas_entregado_por_fkey"
+            columns: ["entregado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_entregas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_etapas: {
         Row: {
           id: string
@@ -745,6 +874,134 @@ export type Database = {
             columns: ["responsable_id"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_inspeccion_items: {
+        Row: {
+          id: string
+          inspeccion_id: string
+          orden_secuencia: number
+          item: string
+          cumple: boolean | null
+          observacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          inspeccion_id: string
+          orden_secuencia?: number
+          item: string
+          cumple?: boolean | null
+          observacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          inspeccion_id?: string
+          orden_secuencia?: number
+          item?: string
+          cumple?: boolean | null
+          observacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_inspeccion_items_inspeccion_id_fkey"
+            columns: ["inspeccion_id"]
+            isOneToOne: false
+            referencedRelation: "ot_inspecciones"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_inspecciones: {
+        Row: {
+          id: string
+          numero: string
+          orden_id: string
+          etapa_id: string | null
+          fecha: string
+          inspector_id: string | null
+          resultado: Database["public"]["Enums"]["resultado_inspeccion"]
+          observaciones: string | null
+          acciones_correctivas: string | null
+          fecha_levantamiento: string | null
+          levantado_por: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          orden_id: string
+          etapa_id?: string | null
+          fecha?: string
+          inspector_id?: string | null
+          resultado: Database["public"]["Enums"]["resultado_inspeccion"]
+          observaciones?: string | null
+          acciones_correctivas?: string | null
+          fecha_levantamiento?: string | null
+          levantado_por?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          orden_id?: string
+          etapa_id?: string | null
+          fecha?: string
+          inspector_id?: string | null
+          resultado?: Database["public"]["Enums"]["resultado_inspeccion"]
+          observaciones?: string | null
+          acciones_correctivas?: string | null
+          fecha_levantamiento?: string | null
+          levantado_por?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_ot_inspecciones_etapa"
+            columns: ["etapa_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id", "orden_id"]
+          },
+          {
+            foreignKeyName: "ot_inspecciones_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_inspecciones_inspector_id_fkey"
+            columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_inspecciones_levantado_por_fkey"
+            columns: ["levantado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_inspecciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
             referencedColumns: ["id"]
           }
         ]
@@ -892,6 +1149,158 @@ export type Database = {
             columns: ["responsable_id"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      parte_detalle: {
+        Row: {
+          id: string
+          parte_id: string
+          orden_id: string
+          etapa_id: string
+          usuario_id: string
+          horas: number
+          horas_extra: number
+          horas_totales: number | null
+          descripcion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          parte_id: string
+          orden_id: string
+          etapa_id: string
+          usuario_id: string
+          horas: number
+          horas_extra?: number
+          descripcion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          parte_id?: string
+          orden_id?: string
+          etapa_id?: string
+          usuario_id?: string
+          horas?: number
+          horas_extra?: number
+          descripcion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_parte_detalle_etapa"
+            columns: ["etapa_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id", "orden_id"]
+          },
+          {
+            foreignKeyName: "parte_detalle_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parte_detalle_parte_id_fkey"
+            columns: ["parte_id"]
+            isOneToOne: false
+            referencedRelation: "partes_diarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parte_detalle_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      partes_diarios: {
+        Row: {
+          id: string
+          numero: string
+          fecha: string
+          sede_id: string
+          estado: Database["public"]["Enums"]["estado_parte_diario"]
+          responsable_id: string | null
+          total_horas: number
+          total_horas_extra: number
+          observaciones: string | null
+          fecha_cierre: string | null
+          aprobado_por: string | null
+          fecha_aprobacion: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          fecha?: string
+          sede_id: string
+          estado?: Database["public"]["Enums"]["estado_parte_diario"]
+          responsable_id?: string | null
+          total_horas?: number
+          total_horas_extra?: number
+          observaciones?: string | null
+          fecha_cierre?: string | null
+          aprobado_por?: string | null
+          fecha_aprobacion?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          fecha?: string
+          sede_id?: string
+          estado?: Database["public"]["Enums"]["estado_parte_diario"]
+          responsable_id?: string | null
+          total_horas?: number
+          total_horas_extra?: number
+          observaciones?: string | null
+          fecha_cierre?: string | null
+          aprobado_por?: string | null
+          fecha_aprobacion?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partes_diarios_aprobado_por_fkey"
+            columns: ["aprobado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partes_diarios_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partes_diarios_responsable_id_fkey"
+            columns: ["responsable_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partes_diarios_sede_id_fkey"
+            columns: ["sede_id"]
+            isOneToOne: false
+            referencedRelation: "sedes"
             referencedColumns: ["id"]
           }
         ]
@@ -1320,6 +1729,91 @@ export type Database = {
         }
         Relationships: []
       }
+      ot_horas_aprobadas: {
+        Row: {
+          detalle_id: string | null
+          orden_id: string | null
+          etapa_id: string | null
+          usuario_id: string | null
+          parte_id: string | null
+          parte_numero: string | null
+          fecha: string | null
+          sede_id: string | null
+          horas: number | null
+          horas_extra: number | null
+          horas_totales: number | null
+          costo_hora: number | null
+          descripcion: string | null
+        }
+        Relationships: []
+      }
+      ot_resumen: {
+        Row: {
+          id: string | null
+          numero: string | null
+          estado: Database["public"]["Enums"]["estado_ot"] | null
+          prioridad: Database["public"]["Enums"]["prioridad_ot"] | null
+          tipo_trabajo: Database["public"]["Enums"]["tipo_trabajo_ot"] | null
+          sede_id: string | null
+          sede: string | null
+          cliente_id: string | null
+          cliente: string | null
+          cliente_documento: string | null
+          unidad_id: string | null
+          placa: string | null
+          tipo_carroceria: string | null
+          descripcion: string | null
+          fecha_registro: string | null
+          fecha_inicio_programada: string | null
+          fecha_fin_programada: string | null
+          fecha_entrega_comprometida: string | null
+          fecha_inicio_real: string | null
+          fecha_fin_real: string | null
+          avance_porcentaje: number | null
+          horas_estimadas: number | null
+          horas_reales: number | null
+          desviacion_horas: number | null
+          moneda: Database["public"]["Enums"]["moneda"] | null
+          monto_presupuestado: number | null
+          responsable_id: string | null
+          responsable: string | null
+          etapas_total: number | null
+          etapas_terminadas: number | null
+          etapas_en_proceso: number | null
+          dias_atraso: number | null
+        }
+        Relationships: []
+      }
+      ot_tablero_etapas: {
+        Row: {
+          etapa_id: string | null
+          orden_id: string | null
+          ot_numero: string | null
+          ot_estado: Database["public"]["Enums"]["estado_ot"] | null
+          prioridad: Database["public"]["Enums"]["prioridad_ot"] | null
+          sede_id: string | null
+          cliente: string | null
+          placa: string | null
+          etapa_codigo: string | null
+          etapa: string | null
+          permite_paralelo: boolean | null
+          orden_secuencia: number | null
+          estado: Database["public"]["Enums"]["estado_etapa_ot"] | null
+          avance_porcentaje: number | null
+          horas_estimadas: number | null
+          horas_reales: number | null
+          desviacion_horas: number | null
+          fecha_inicio_programada: string | null
+          fecha_fin_programada: string | null
+          fecha_inicio_real: string | null
+          fecha_fin_real: string | null
+          responsable_id: string | null
+          requiere_inspeccion: boolean | null
+          inspeccion_conforme: boolean | null
+          operarios_asignados: number | null
+        }
+        Relationships: []
+      }
       usuarios_nombre_completo: {
         Row: {
           id: string | null
@@ -1340,6 +1834,12 @@ export type Database = {
           p_tabla: string
         }
         Returns: string
+      }
+      crear_etapas_ot: {
+        Args: {
+          p_orden_id: string
+        }
+        Returns: number
       }
       es_admin: {
         Args: Record<PropertyKey, never>
@@ -1365,6 +1865,43 @@ export type Database = {
       }
       mi_usuario: {
         Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      ot_recalcular_avance: {
+        Args: {
+          p_orden_id: string
+        }
+        Returns: string
+      }
+      ot_registrar_evento: {
+        Args: {
+          p_orden_id: string
+          p_tipo: Database["public"]["Enums"]["tipo_evento_ot"]
+          p_descripcion: string
+          p_datos?: Json
+          p_etapa_id?: string
+          p_usuario_id?: string
+        }
+        Returns: string
+      }
+      ot_transicion_valida: {
+        Args: {
+          p_origen: Database["public"]["Enums"]["estado_ot"]
+          p_destino: Database["public"]["Enums"]["estado_ot"]
+        }
+        Returns: boolean
+      }
+      parte_recalcular_totales: {
+        Args: {
+          p_parte_id: string
+        }
+        Returns: string
+      }
+      produccion_siguiente_numero: {
+        Args: {
+          p_tipo: Database["public"]["Enums"]["tipo_correlativo"]
+          p_sede: string
+        }
         Returns: string
       }
       recalcular_totales_cotizacion: {
