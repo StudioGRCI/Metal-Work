@@ -584,6 +584,12 @@ begin
       join pg_type t on t.oid = p.prorettype
      where n.nspname = 'public'
        and p.prokind = 'f'
+       -- Las funciones que trae una extensión no son nuestras: Postgres las
+       -- gestiona con la extensión y revocarlas rompería el complemento.
+       and not exists (
+         select 1 from pg_depend d
+          where d.objid = p.oid and d.classid = 'pg_proc'::regclass and d.deptype = 'e'
+       )
   loop
     execute format('revoke all on function %s from public, anon', f.firma);
 
@@ -624,7 +630,11 @@ begin
      and t.typname <> 'trigger'
      and has_function_privilege('authenticated', p.oid, 'execute')
      and pg_get_functiondef(p.oid) ~* '(insert into|update |delete from)'
-     and pg_get_functiondef(p.oid) !~* '(tiene_permiso|es_admin|exigir_permiso|puede_ver_orden)';
+     and pg_get_functiondef(p.oid) !~* '(tiene_permiso|es_admin|exigir_permiso|puede_ver_orden)'
+     and not exists (
+       select 1 from pg_depend d
+        where d.objid = p.oid and d.classid = 'pg_proc'::regclass and d.deptype = 'e'
+     );
   if v_abiertas > 0 then
     raise exception 'Quedaron % funciones privilegiadas que mutan estado sin comprobar permisos', v_abiertas;
   end if;
@@ -632,7 +642,14 @@ begin
   -- Y el rol anónimo no ejecuta nada del esquema.
   select count(*) into v_anon
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-   where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute');
+   where n.nspname = 'public'
+     and has_function_privilege('anon', p.oid, 'execute')
+     -- Las de extensiones quedan fuera: son del complemento, no del esquema, y
+     -- Supabase instala varias en public que no nos toca gestionar.
+     and not exists (
+       select 1 from pg_depend d
+        where d.objid = p.oid and d.classid = 'pg_proc'::regclass and d.deptype = 'e'
+     );
   if v_anon > 0 then
     raise exception 'El rol anon todavía puede ejecutar % funciones', v_anon;
   end if;
