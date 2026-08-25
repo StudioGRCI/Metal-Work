@@ -7,22 +7,57 @@ conocimientos de programación salvo donde se indica.
 
 ## 1. Crear el proyecto de Supabase
 
-Supabase cobra el cómputo de cada proyecto en las organizaciones de plan **Pro**.
-En una organización de plan **Free** los proyectos no tienen costo.
+Supabase factura por **organización**, no por proyecto. Cada organización tiene su
+propio plan, y no se pueden mezclar proyectos de pago y gratuitos en la misma.
 
-**Si quieres que Metal-Work no cueste nada:**
+En una organización de plan **Pro** cada proyecto suma cómputo a la factura
+(~10 USD/mes). En una de plan **Free** los proyectos no tienen costo: se tiene
+derecho a **dos proyectos gratuitos**, y ese límite se cuenta aparte de los
+proyectos que ya haya en organizaciones de pago.
+
+### Crear la organización gratuita
 
 1. Entra a [supabase.com/dashboard](https://supabase.com/dashboard).
-2. Arriba a la izquierda, abre el selector de organización → **New organization**.
-3. Ponle un nombre (por ejemplo `Metal-Work`) y elige el plan **Free**.
-4. Dentro de esa organización nueva → **New project**.
+2. Arriba a la izquierda, abre el **selector de organización** y elige
+   **New organization**. También se llega directo a
+   [supabase.com/dashboard/new](https://supabase.com/dashboard/new).
+3. Ponle un nombre (por ejemplo `Metal-Work`) y **deja el plan Free**, que viene
+   seleccionado por defecto. No pide tarjeta.
+
+### Crear el proyecto dentro de esa organización
+
+4. Comprueba que arriba a la izquierda esté seleccionada la organización nueva.
+5. **New project**:
    - Nombre: `Metal-Work`
-   - Región: `South America (São Paulo)` o `East US`, la que responda mejor
-   - Contraseña de base de datos: **guárdala**, se necesita más abajo
-5. Espera a que el proyecto termine de aprovisionarse (unos minutos).
+   - Región: `South America (São Paulo)` es la más cercana desde Perú
+   - Contraseña de base de datos: **guárdala**, se necesita en el paso 2
+6. Espera a que termine de aprovisionarse (unos minutos).
 
 El **project ref** es la cadena que aparece en la URL del panel:
 `https://supabase.com/dashboard/project/`**`xxxxxxxxxxxxxxxxxxxx`**
+
+### Qué tener en cuenta del plan Free
+
+| Límite | Free | Pro |
+| --- | --- | --- |
+| Base de datos | 500 MB por proyecto | 8 GB incluidos |
+| Archivos (Storage) | 1 GB | 100 GB incluidos |
+| Transferencia mensual | 5 GB | 250 GB incluidos |
+| Pausa por inactividad | **Sí** | No |
+| Copias de seguridad automáticas | No | Sí |
+
+Dos advertencias que importan para este sistema:
+
+- **El límite de 1 GB de archivos es el que se llena primero.** Las fotos de
+  avance del taller pesan varios MB cada una. Para probar el sistema sobra; para
+  usarlo a diario con registro fotográfico, se queda corto en pocos meses.
+- **En el plan Free los proyectos se pausan por inactividad.** Si el taller deja
+  de usar el sistema unos días, hay que reactivarlo a mano desde el panel.
+
+Nada de esto obliga a decidir hoy: **un proyecto se puede transferir de una
+organización a otra** sin rehacer nada. Lo sensato es arrancar en Free, y mover
+el proyecto a la organización Pro cuando el sistema ya esté en uso real.
+Se hace desde *Project Settings → General → Transfer project*.
 
 ---
 
