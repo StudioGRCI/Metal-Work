@@ -48,6 +48,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
         icono: Factory,
         permiso: 'produccion.ver',
         descripcion: 'Partes diarios y horas de taller',
+        disponible: true,
       },
     ],
   },
