@@ -449,7 +449,11 @@ create index idx_kardex_referencia on public.kardex(referencia_tabla, referencia
 create table public.movimientos_almacen (
   id                  uuid primary key default gen_random_uuid(),
   -- Lo asigna el trigger con siguiente_correlativo() según el tipo.
-  numero              text not null unique,
+  -- El default vacío existe para que el trigger BEFORE INSERT pueda asignar el
+  -- correlativo sin que la aplicación tenga que inventar un número: Postgres
+  -- aplica los defaults antes de los triggers, así que el trigger siempre
+  -- reemplaza esta cadena vacía por el número real.
+  numero              text not null default '' unique,
   tipo                public.tipo_movimiento_almacen not null,
   estado              public.estado_movimiento_almacen not null default 'BORRADOR',
   fecha               date not null default current_date,
@@ -565,7 +569,11 @@ create index idx_mov_detalle_requerimiento on public.movimiento_detalle(requerim
 
 create table public.requerimientos (
   id               uuid primary key default gen_random_uuid(),
-  numero           text not null unique,
+  -- El default vacío existe para que el trigger BEFORE INSERT pueda asignar el
+  -- correlativo sin que la aplicación tenga que inventar un número: Postgres
+  -- aplica los defaults antes de los triggers, así que el trigger siempre
+  -- reemplaza esta cadena vacía por el número real.
+  numero           text not null default '' unique,
   -- Nulo en un requerimiento de reposición de almacén que no nace de una OT.
   orden_id         uuid references public.ordenes_trabajo(id) on delete restrict,
   etapa_id         uuid,
@@ -736,7 +744,11 @@ create unique index uq_prov_mat_preferente on public.proveedor_materiales(materi
 
 create table public.ordenes_compra (
   id                    uuid primary key default gen_random_uuid(),
-  numero                text not null unique,
+  -- El default vacío existe para que el trigger BEFORE INSERT pueda asignar el
+  -- correlativo sin que la aplicación tenga que inventar un número: Postgres
+  -- aplica los defaults antes de los triggers, así que el trigger siempre
+  -- reemplaza esta cadena vacía por el número real.
+  numero                text not null default '' unique,
   proveedor_id          uuid not null references public.proveedores(id) on delete restrict,
   -- Requerimiento que originó la compra; permite cerrar el círculo taller-compra.
   requerimiento_id      uuid references public.requerimientos(id) on delete set null,
@@ -837,7 +849,11 @@ create index idx_oc_detalle_pendiente on public.orden_compra_detalle(material_id
 
 create table public.recepciones (
   id                uuid primary key default gen_random_uuid(),
-  numero            text not null unique,
+  -- El default vacío existe para que el trigger BEFORE INSERT pueda asignar el
+  -- correlativo sin que la aplicación tenga que inventar un número: Postgres
+  -- aplica los defaults antes de los triggers, así que el trigger siempre
+  -- reemplaza esta cadena vacía por el número real.
+  numero            text not null default '' unique,
   orden_compra_id   uuid not null references public.ordenes_compra(id) on delete restrict,
   almacen_id        uuid not null references public.almacenes(id) on delete restrict,
   estado            public.estado_movimiento_almacen not null default 'BORRADOR',
@@ -1311,6 +1327,7 @@ declare
   v_material        public.materiales;
   v_almacen         public.almacenes;
   v_stock           public.almacen_stock;
+  v_lote            public.lotes_material;
   v_costo           public.monto;
   v_costo_total     public.monto;
   v_cantidad_nueva  public.cantidad;
@@ -1361,6 +1378,31 @@ begin
       trim(to_char(p_cantidad, 'FM9999999990.0999')), trim(to_char(v_stock.cantidad, 'FM9999999990.0999'))
       using errcode = 'check_violation',
             hint = 'Registre el ingreso del material o corrija la cantidad del documento.';
+  end if;
+
+  -- El lote también tiene que alcanzar: una colada agotada obliga a despachar
+  -- de otra, y decirlo con claridad evita que el almacenero fuerce el vale.
+  if p_lote is not null then
+    select * into v_lote from public.lotes_material where id = p_lote for update;
+
+    if not found then
+      raise exception 'El lote % no existe', p_lote using errcode = 'no_data_found';
+    end if;
+
+    if v_lote.material_id <> p_material then
+      raise exception 'El lote % pertenece a otro material distinto de % (%)',
+        v_lote.numero_lote, v_material.codigo, v_material.descripcion
+        using errcode = 'check_violation';
+    end if;
+
+    if v_signo < 0 and v_lote.cantidad_disponible < p_cantidad then
+      raise exception 'Saldo insuficiente del lote % (colada %) de %: se piden % y quedan %',
+        v_lote.numero_lote, coalesce(v_lote.numero_colada, 's/colada'), v_material.codigo,
+        trim(to_char(p_cantidad, 'FM9999999990.0999')),
+        trim(to_char(v_lote.cantidad_disponible, 'FM9999999990.0999'))
+        using errcode = 'check_violation',
+              hint = 'Divida la salida entre los lotes disponibles del material.';
+    end if;
   end if;
 
   if v_signo > 0 then
@@ -1896,9 +1938,11 @@ begin
   end if;
 
   -- Después de aprobada lo único que cambia en la línea es lo que va llegando.
-  if (to_jsonb(new) - 'cantidad_recibida' - 'cantidad_pendiente' - 'actualizado_en')
+  -- Se descartan también las columnas calculadas (subtotal y cantidad_pendiente):
+  -- Postgres todavía no las ha resuelto en NEW cuando corre un trigger BEFORE.
+  if (to_jsonb(new) - 'cantidad_recibida' - 'cantidad_pendiente' - 'subtotal' - 'actualizado_en')
      is distinct from
-     (to_jsonb(old) - 'cantidad_recibida' - 'cantidad_pendiente' - 'actualizado_en') then
+     (to_jsonb(old) - 'cantidad_recibida' - 'cantidad_pendiente' - 'subtotal' - 'actualizado_en') then
     raise exception 'La orden de compra % está % : solo las recepciones pueden modificar sus líneas', v_numero, v_estado
       using errcode = 'object_not_in_prerequisite_state';
   end if;
@@ -2123,14 +2167,15 @@ begin
   -- Aquí se escribe el kardex valorizado y se actualiza el stock.
   perform public.confirmar_movimiento_almacen(v_mov_id);
 
+  -- Mientras quede algo por llegar la orden sigue parcialmente recibida.
   update public.ordenes_compra
-     set estado = case
-                    when exists (select 1 from public.orden_compra_detalle d
-                                  where d.orden_compra_id = v_oc.id
-                                    and d.cantidad_recibida < d.cantidad)
-                    then 'RECIBIDA_PARCIAL'
-                    else 'RECIBIDA'
-                  end
+     set estado = (case
+                     when exists (select 1 from public.orden_compra_detalle d
+                                   where d.orden_compra_id = v_oc.id
+                                     and d.cantidad_recibida < d.cantidad)
+                     then 'RECIBIDA_PARCIAL'
+                     else 'RECIBIDA'
+                   end)::public.estado_orden_compra
    where id = v_oc.id;
 
   perform set_config('metalwork.rec_confirmando', p_recepcion::text, true);

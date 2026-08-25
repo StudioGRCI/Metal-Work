@@ -429,3 +429,327 @@ create index idx_costos_adicionales_etapa on public.ot_costos_adicionales(etapa_
 create index idx_costos_adicionales_centro on public.ot_costos_adicionales(centro_costo_id);
 create index idx_costos_adicionales_creado_por on public.ot_costos_adicionales(creado_por);
 create index idx_costos_adicionales_fecha on public.ot_costos_adicionales(fecha desc);
+
+-- =============================================================================
+-- REGLAS DE NEGOCIO EN TRIGGERS
+-- =============================================================================
+
+-- Tipo de cambio con el que se convierte un costo a moneda base. Si el usuario
+-- lo indicó se respeta (el comprobante manda); si no, en soles es 1 y en
+-- dólares se toma el tipo de cambio venta del día del documento.
+create or replace function public.tipo_cambio_costo(
+  p_moneda      public.moneda,
+  p_fecha       date,
+  p_tipo_cambio numeric default null
+)
+returns numeric
+language sql
+stable
+as $$
+  select case
+    when p_tipo_cambio is not null then p_tipo_cambio
+    when p_moneda = 'PEN'          then 1
+    else public.tipo_cambio_vigente(coalesce(p_fecha, current_date))
+  end;
+$$;
+
+-- Ninguna OT anulada puede seguir recibiendo costos: su costo quedó congelado
+-- el día que se anuló y admitir cargas nuevas rompería el margen histórico.
+create or replace function public.costos_validar_orden(p_orden_id uuid)
+returns void
+language plpgsql
+stable
+as $$
+declare v_estado public.estado_ot;
+begin
+  select estado into v_estado from public.ordenes_trabajo where id = p_orden_id;
+
+  if v_estado is null then
+    raise exception 'La orden de trabajo % no existe', p_orden_id
+      using errcode = 'foreign_key_violation';
+  end if;
+
+  if v_estado = 'ANULADA' then
+    raise exception 'No se pueden imputar costos a una orden de trabajo anulada'
+      using errcode = 'check_violation';
+  end if;
+end;
+$$;
+
+-- ot_presupuesto: mantiene coherentes cantidad, costo unitario y monto.
+create or replace function public.fn_presupuesto_antes()
+returns trigger
+language plpgsql
+as $$
+begin
+  perform public.costos_validar_orden(new.orden_id);
+
+  -- Se digita el costo unitario y se deduce el monto, o al revés. Nunca se
+  -- guardan los tres valores contradiciéndose entre sí.
+  if new.costo_unitario > 0 then
+    new.monto_presupuestado := round(new.cantidad * new.costo_unitario, 2);
+  elsif new.monto_presupuestado > 0 then
+    new.costo_unitario := round(new.monto_presupuestado / new.cantidad, 2);
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger trg_presupuesto_antes
+  before insert or update on public.ot_presupuesto
+  for each row execute function public.fn_presupuesto_antes();
+
+create or replace function public.fn_servicio_tercero_antes()
+returns trigger
+language plpgsql
+as $$
+begin
+  perform public.costos_validar_orden(new.orden_id);
+  new.tipo_cambio := public.tipo_cambio_costo(new.moneda, new.fecha, new.tipo_cambio);
+  return new;
+end;
+$$;
+
+create trigger trg_servicio_tercero_antes
+  before insert or update on public.servicios_terceros
+  for each row execute function public.fn_servicio_tercero_antes();
+
+create or replace function public.fn_costo_adicional_antes()
+returns trigger
+language plpgsql
+as $$
+begin
+  perform public.costos_validar_orden(new.orden_id);
+  new.tipo_cambio := public.tipo_cambio_costo(new.moneda, new.fecha, new.tipo_cambio);
+  return new;
+end;
+$$;
+
+create trigger trg_costo_adicional_antes
+  before insert or update on public.ot_costos_adicionales
+  for each row execute function public.fn_costo_adicional_antes();
+
+create or replace function public.fn_gasto_indirecto_antes()
+returns trigger
+language plpgsql
+as $$
+declare v_tipo public.tipo_centro_costo;
+begin
+  -- El tipo de cambio se toma de la fecha del comprobante y, si no hay
+  -- comprobante, del último día del mes del periodo.
+  new.tipo_cambio := public.tipo_cambio_costo(
+    new.moneda,
+    coalesce(new.fecha_documento, (new.periodo + interval '1 month' - interval '1 day')::date),
+    new.tipo_cambio);
+
+  if new.prorratear then
+    select tipo into v_tipo from public.centros_costo where id = new.centro_costo_id;
+
+    -- Regla de costeo: al costo de la carrocería solo absorbe gasto de planta.
+    -- Lo administrativo y lo comercial es gasto del periodo de la empresa.
+    if v_tipo is distinct from 'PRODUCCION' then
+      raise exception 'Solo el gasto de un centro de costo de PRODUCCION se puede prorratear a las órdenes de trabajo (centro % es %)',
+        new.centro_costo_id, coalesce(v_tipo::text, 'inexistente')
+        using errcode = 'check_violation';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger trg_gasto_indirecto_antes
+  before insert or update on public.gastos_indirectos
+  for each row execute function public.fn_gasto_indirecto_antes();
+
+-- =============================================================================
+-- PRESUPUESTO A PARTIR DE LA COTIZACIÓN
+-- =============================================================================
+
+create or replace function public.generar_presupuesto_desde_cotizacion(
+  p_orden_id     uuid,
+  p_factor_costo numeric default 1,
+  p_reemplazar   boolean default false
+)
+returns integer
+language plpgsql
+volatile
+set search_path = public
+as $$
+declare
+  v_cotizacion uuid;
+  v_estado     public.estado_cotizacion;
+  v_moneda     public.moneda;
+  v_tc         numeric;
+  v_filas      integer;
+begin
+  if p_factor_costo <= 0 then
+    raise exception 'El factor de costo debe ser mayor que cero' using errcode = 'check_violation';
+  end if;
+
+  perform public.costos_validar_orden(p_orden_id);
+
+  select o.cotizacion_id into v_cotizacion
+    from public.ordenes_trabajo o
+   where o.id = p_orden_id;
+
+  if v_cotizacion is null then
+    raise exception 'La orden de trabajo % no nace de una cotización: su presupuesto se carga a mano', p_orden_id
+      using errcode = 'no_data_found';
+  end if;
+
+  select c.estado, c.moneda, c.tipo_cambio
+    into v_estado, v_moneda, v_tc
+    from public.cotizaciones c
+   where c.id = v_cotizacion;
+
+  -- Solo se arrastra lo que el cliente aceptó: una cotización en borrador o
+  -- rechazada no es un compromiso y presupuestar sobre ella es inventar.
+  if v_estado <> 'APROBADA' then
+    raise exception 'La cotización de la orden % está en estado % y solo se puede presupuestar desde una cotización APROBADA', p_orden_id, v_estado
+      using errcode = 'check_violation';
+  end if;
+
+  if p_reemplazar then
+    delete from public.ot_presupuesto
+     where orden_id = p_orden_id
+       and origen = 'COTIZACION';
+  end if;
+
+  insert into public.ot_presupuesto (
+    orden_id, tipo_costo, descripcion, detalle, unidad_medida, cantidad,
+    monto_presupuestado, origen, cotizacion_partida_id
+  )
+  select
+    p_orden_id,
+    -- El enum de la cotización no conoce INDIRECTO; el resto mapea uno a uno.
+    case cp.tipo_costo
+      when 'MATERIAL'  then 'MATERIAL'::public.tipo_costo
+      when 'MANO_OBRA' then 'MANO_OBRA'::public.tipo_costo
+      when 'SERVICIO'  then 'SERVICIO'::public.tipo_costo
+      else 'OTRO'::public.tipo_costo
+    end,
+    cp.descripcion,
+    cp.detalle,
+    cp.unidad_medida,
+    cp.cantidad,
+    -- El subtotal de la cotización es PRECIO DE VENTA. p_factor_costo lo
+    -- convierte en costo esperado: con un margen objetivo de 25 % se llama a
+    -- la función con 0.75. Con el valor por omisión (1) el presupuesto queda
+    -- igual al precio y la desviación mide contra la venta, no contra el costo.
+    round(cp.subtotal * v_tc * p_factor_costo, 2),
+    'COTIZACION',
+    cp.id
+  from public.cotizacion_partidas cp
+  where cp.cotizacion_id = v_cotizacion
+    -- Idempotente: repetir la llamada no duplica lo ya arrastrado.
+    and not exists (
+      select 1 from public.ot_presupuesto op
+       where op.orden_id = p_orden_id
+         and op.cotizacion_partida_id = cp.id
+    );
+
+  get diagnostics v_filas = row_count;
+  return v_filas;
+end;
+$$;
+
+comment on function public.generar_presupuesto_desde_cotizacion is
+  'Arrastra las partidas de la cotización aprobada de una OT a su presupuesto de costo. p_factor_costo convierte precio de venta en costo esperado (0.75 = margen objetivo de 25 %). Es idempotente; con p_reemplazar borra primero lo arrastrado antes. Devuelve cuántas líneas creó.';
+
+-- =============================================================================
+-- PRORRATEO DE GASTOS INDIRECTOS
+-- =============================================================================
+
+-- Criterio de reparto (documentado porque condiciona todo el costeo):
+--   · Base de reparto: horas-hombre aprobadas. Es la única medida homogénea
+--     que el taller registra a diario y la que mejor se correlaciona con el
+--     consumo de energía, alquiler y supervisión de una carrocería.
+--   · Se cuentan horas normales MÁS horas extra: la planta consume luz y
+--     alquiler también en la jornada extra.
+--   · Universo: las OT con horas aprobadas en el mes ("OT activas"), excluidas
+--     las anuladas. Una OT parada todo el mes no absorbe gasto de ese mes.
+--   · Numerador: gastos_indirectos del mes marcados como prorratear, que el
+--     trigger obliga a que sean de un centro de costo de PRODUCCION.
+--   · El residuo de redondeo se carga a la OT de mayor carga horaria, para que
+--     la suma de lo asignado cuadre al céntimo con el gasto del mes.
+create or replace function public.prorratear_indirectos(p_periodo date)
+returns setof public.prorrateo_indirectos
+language plpgsql
+volatile
+set search_path = public
+as $$
+declare
+  v_periodo date := date_trunc('month', p_periodo::timestamp)::date;
+  v_inicio  date := v_periodo;
+  v_fin     date := (v_periodo + interval '1 month' - interval '1 day')::date;
+  v_gasto   numeric;
+begin
+  select coalesce(sum(g.monto_base), 0)
+    into v_gasto
+    from public.gastos_indirectos g
+   where g.periodo = v_periodo
+     and g.prorratear;
+
+  -- Recalcular siempre parte de cero: el prorrateo de un mes es una foto, y si
+  -- llegan facturas tarde o se aprueban partes atrasados debe rehacerse entera.
+  delete from public.prorrateo_indirectos where periodo = v_periodo;
+
+  if v_gasto <= 0 then
+    return;
+  end if;
+
+  return query
+  with horas_ot as (
+    select d.orden_id as ot, sum(d.horas_totales) as horas
+      from public.parte_detalle d
+      join public.partes_diarios pa on pa.id = d.parte_id
+      join public.ordenes_trabajo o on o.id = d.orden_id
+     where pa.estado = 'APROBADO'
+       and pa.fecha between v_inicio and v_fin
+       and o.estado <> 'ANULADA'
+     group by d.orden_id
+    having sum(d.horas_totales) > 0
+  ),
+  total as (
+    select sum(h.horas) as horas from horas_ot h
+  ),
+  reparto as (
+    select h.ot,
+           h.horas,
+           t.horas as horas_periodo,
+           round(v_gasto * h.horas / t.horas, 2) as monto,
+           row_number() over (order by h.horas desc, h.ot) as rn
+      from horas_ot h
+      cross join total t
+  ),
+  residuo as (
+    select v_gasto - sum(r.monto) as ajuste from reparto r
+  ),
+  asignacion as (
+    insert into public.prorrateo_indirectos (
+      periodo, orden_id, horas_hombre, horas_totales_periodo,
+      gasto_total_periodo, tasa_hora, monto_asignado, calculado_por
+    )
+    select
+      v_periodo,
+      r.ot,
+      r.horas,
+      r.horas_periodo,
+      v_gasto,
+      round(v_gasto / r.horas_periodo, 6),
+      -- greatest(...) solo protege el caso absurdo de un gasto mensual de
+      -- pocos céntimos repartido entre muchas OT.
+      greatest(r.monto + case when r.rn = 1 then res.ajuste else 0 end, 0),
+      public.usuario_actual()
+    from reparto r
+    cross join residuo res
+    returning *
+  )
+  select * from asignacion;
+end;
+$$;
+
+comment on function public.prorratear_indirectos is
+  'Reparte el gasto indirecto prorrateable de un mes entre las OT con horas aprobadas en ese mes, en proporción a sus horas-hombre. Borra y rehace el prorrateo del periodo; devuelve las asignaciones creadas.';

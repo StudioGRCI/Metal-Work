@@ -240,3 +240,66 @@ on conflict (codigo) do update
       requiere_inspeccion = excluded.requiere_inspeccion,
       permite_paralelo = excluded.permite_paralelo,
       color = excluded.color;
+
+-- -----------------------------------------------------------------------------
+-- Unidades de medida
+-- -----------------------------------------------------------------------------
+
+insert into public.unidades_medida (codigo, nombre, magnitud, decimales) values
+  ('UND',   'Unidad',          'UNIDAD',    0),
+  ('PZA',   'Pieza',           'UNIDAD',    0),
+  ('JGO',   'Juego',           'UNIDAD',    0),
+  ('PLN',   'Plancha',         'UNIDAD',    0),
+  ('ROLLO', 'Rollo',           'UNIDAD',    0),
+  ('CAJA',  'Caja',            'UNIDAD',    0),
+  ('KG',    'Kilogramo',       'MASA',      3),
+  ('TON',   'Tonelada',        'MASA',      4),
+  ('M',     'Metro',           'LONGITUD',  2),
+  ('M2',    'Metro cuadrado',  'AREA',      2),
+  ('M3',    'Metro cúbico',    'VOLUMEN',   3),
+  ('L',     'Litro',           'VOLUMEN',   2),
+  ('GAL',   'Galón',           'VOLUMEN',   2)
+on conflict (codigo) do update set nombre = excluded.nombre;
+
+-- La tonelada y el galón se derivan de su unidad base para poder convertir.
+update public.unidades_medida u
+   set unidad_base_id = b.id, factor_conversion = 1000
+  from public.unidades_medida b
+ where u.codigo = 'TON' and b.codigo = 'KG' and u.unidad_base_id is null;
+
+update public.unidades_medida u
+   set unidad_base_id = b.id, factor_conversion = 3.785412
+  from public.unidades_medida b
+ where u.codigo = 'GAL' and b.codigo = 'L' and u.unidad_base_id is null;
+
+-- -----------------------------------------------------------------------------
+-- Categorías de material propias del rubro
+-- -----------------------------------------------------------------------------
+
+insert into public.categorias_material (codigo, nombre, descripcion, orden_visual) values
+  ('ACERO',       'Acero',                  'Planchas, perfiles, tubos y barras',                 1),
+  ('SOLDADURA',   'Soldadura',              'Electrodos, alambre MIG, gases y fundentes',         2),
+  ('PINTURA',     'Pintura y acabados',     'Bases, esmaltes, thinner, masilla y abrasivos',      3),
+  ('HIDRAULICO',  'Sistema hidráulico',     'Pistones, bombas, mangueras, válvulas y aceites',    4),
+  ('ELECTRICO',   'Sistema eléctrico',      'Arneses, luces, faros y señalización',               5),
+  ('FERRETERIA',  'Ferretería',             'Pernos, tuercas, remaches y anclajes',               6),
+  ('SUSPENSION',  'Suspensión y ejes',      'Ejes, muelles, bolsas de aire y suspensiones',       7),
+  ('ACCESORIOS',  'Accesorios',             'Guardafangos, escaleras, tapas y complementos',      8),
+  ('CONSUMIBLES', 'Consumibles',            'Discos de corte y desbaste, lijas y herramientas',   9),
+  ('EPP',         'Equipos de protección',  'Cascos, caretas, guantes y arneses de seguridad',   10)
+on conflict (codigo) do update
+  set nombre = excluded.nombre,
+      descripcion = excluded.descripcion;
+
+-- Subcategorías de acero: es la familia con más rotación en el taller.
+insert into public.categorias_material (codigo, nombre, categoria_padre_id, orden_visual)
+select v.codigo, v.nombre, p.id, v.orden
+  from (values
+    ('ACERO_LAC',      'Plancha LAC',            1),
+    ('ACERO_LAF',      'Plancha LAF',            2),
+    ('ACERO_ANTIDESG', 'Plancha antidesgaste',   3),
+    ('ACERO_PERFIL',   'Perfiles y ángulos',     4),
+    ('ACERO_TUBO',     'Tubos estructurales',    5)
+  ) as v(codigo, nombre, orden)
+  cross join (select id from public.categorias_material where codigo = 'ACERO') p
+on conflict (codigo) do nothing;
