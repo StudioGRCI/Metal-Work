@@ -43,3 +43,7 @@ next-env.d.ts
 
 # Base de datos local de pruebas
 /db/test/tmp/
+
+# Generados por Next.js para asistentes de IA
+/AGENTS.md
+/CLAUDE.md

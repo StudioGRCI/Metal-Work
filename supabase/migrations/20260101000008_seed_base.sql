@@ -303,3 +303,35 @@ select v.codigo, v.nombre, p.id, v.orden
   ) as v(codigo, nombre, orden)
   cross join (select id from public.categorias_material where codigo = 'ACERO') p
 on conflict (codigo) do nothing;
+
+-- -----------------------------------------------------------------------------
+-- Tipos de documento
+-- Los marcados como obligatorios impiden cerrar una OT si faltan; los que
+-- requieren aprobación pasan por el flujo de firmas antes de darse por válidos.
+-- -----------------------------------------------------------------------------
+
+insert into public.tipos_documento
+  (codigo, nombre, descripcion, categoria, entidad_tabla, requiere_aprobacion,
+   obligatorio_para_cierre, extensiones_permitidas, bucket, orden_visualizacion) values
+  ('PLANO',        'Plano de fabricación',      'Plano con medidas y detalles de la carrocería',        'TECNICO',        'ordenes_trabajo', true,  true,  array['pdf','dwg','dxf','jpg','png'], 'documentos', 1),
+  ('FICHA_TEC',    'Ficha técnica',             'Especificaciones técnicas acordadas con el cliente',   'TECNICO',        'ordenes_trabajo', false, false, array['pdf','docx','xlsx'],           'documentos', 2),
+  ('COT_FIRMADA',  'Cotización firmada',        'Cotización aceptada y firmada por el cliente',         'COMERCIAL',      'cotizaciones',    false, false, array['pdf','jpg','png'],             'documentos', 3),
+  ('OC_CLIENTE',   'Orden de compra del cliente','Orden de compra que respalda el trabajo',             'COMERCIAL',      'ordenes_trabajo', false, false, array['pdf','jpg','png'],             'documentos', 4),
+  ('CERT_CALIDAD', 'Certificado de calidad',    'Certificado de colada del acero empleado',             'CALIDAD',        'materiales',      false, false, array['pdf','jpg','png'],             'documentos', 5),
+  ('PROT_SOLD',    'Protocolo de soldadura',    'Procedimiento y registro de soldadura aplicado',       'CALIDAD',        'ordenes_trabajo', true,  false, array['pdf','docx'],                  'documentos', 6),
+  ('INF_INSPEC',   'Informe de inspección',     'Informe del control de calidad',                       'CALIDAD',        'ot_inspecciones', false, false, array['pdf','docx','jpg'],            'documentos', 7),
+  ('FOTO_AVANCE',  'Fotografía de avance',      'Registro fotográfico del avance del trabajo',          'FOTOGRAFICO',    'ordenes_trabajo', false, false, array['jpg','jpeg','png','webp'],     'fotos-avance', 8),
+  ('GUIA_REMIS',   'Guía de remisión',          'Guía de remisión de ingreso o salida de material',     'LOGISTICO',      null,              false, false, array['pdf','jpg','png'],             'documentos', 9),
+  ('FACT_PROV',    'Factura de proveedor',      'Comprobante de compra de material o servicio',         'ADMINISTRATIVO', 'ordenes_compra',  false, false, array['pdf','xml','jpg'],             'documentos', 10),
+  ('ACTA_CONF',    'Acta de conformidad',       'Acta firmada por el cliente al recibir la unidad',     'LEGAL',          'ordenes_trabajo', false, true,  array['pdf','jpg','png'],             'documentos', 11),
+  ('MANUAL',       'Manual de uso',             'Manual de operación y mantenimiento entregado',        'TECNICO',        'ordenes_trabajo', false, false, array['pdf'],                         'documentos', 12),
+  ('GARANTIA',     'Certificado de garantía',   'Certificado de garantía emitido al cliente',           'LEGAL',          'ordenes_trabajo', false, false, array['pdf'],                         'documentos', 13)
+on conflict (codigo) do update
+  set nombre = excluded.nombre,
+      descripcion = excluded.descripcion,
+      categoria = excluded.categoria,
+      requiere_aprobacion = excluded.requiere_aprobacion,
+      obligatorio_para_cierre = excluded.obligatorio_para_cierre,
+      extensiones_permitidas = excluded.extensiones_permitidas,
+      bucket = excluded.bucket,
+      entidad_tabla = excluded.entidad_tabla;

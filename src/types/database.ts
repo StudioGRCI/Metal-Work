@@ -121,6 +121,73 @@ export type Database = {
           }
         ]
       }
+      aprobaciones: {
+        Row: {
+          id: string
+          documento_id: string
+          aprobador_id: string
+          orden_firma: number
+          estado: Database["public"]["Enums"]["estado_aprobacion"]
+          comentario: string | null
+          fecha: string | null
+          version_aprobada: number | null
+          solicitado_por: string | null
+          solicitado_en: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          documento_id: string
+          aprobador_id: string
+          orden_firma?: number
+          estado?: Database["public"]["Enums"]["estado_aprobacion"]
+          comentario?: string | null
+          fecha?: string | null
+          version_aprobada?: number | null
+          solicitado_por?: string | null
+          solicitado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          documento_id?: string
+          aprobador_id?: string
+          orden_firma?: number
+          estado?: Database["public"]["Enums"]["estado_aprobacion"]
+          comentario?: string | null
+          fecha?: string | null
+          version_aprobada?: number | null
+          solicitado_por?: string | null
+          solicitado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "aprobaciones_aprobador_id_fkey"
+            columns: ["aprobador_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "aprobaciones_documento_id_fkey"
+            columns: ["documento_id"]
+            isOneToOne: false
+            referencedRelation: "documentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "aprobaciones_solicitado_por_fkey"
+            columns: ["solicitado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       audit_log: {
         Row: {
           id: number
@@ -612,6 +679,231 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "unidades"
             referencedColumns: ["id", "cliente_id"]
+          }
+        ]
+      }
+      documento_accesos: {
+        Row: {
+          id: string
+          documento_id: string
+          version_id: string | null
+          usuario_id: string | null
+          tipo_acceso: Database["public"]["Enums"]["tipo_acceso_documento"]
+          ip: string | null
+          user_agent: string | null
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          documento_id: string
+          version_id?: string | null
+          usuario_id?: string | null
+          tipo_acceso?: Database["public"]["Enums"]["tipo_acceso_documento"]
+          ip?: string | null
+          user_agent?: string | null
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          documento_id?: string
+          version_id?: string | null
+          usuario_id?: string | null
+          tipo_acceso?: Database["public"]["Enums"]["tipo_acceso_documento"]
+          ip?: string | null
+          user_agent?: string | null
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documento_accesos_documento_id_fkey"
+            columns: ["documento_id"]
+            isOneToOne: false
+            referencedRelation: "documentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documento_accesos_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documento_accesos_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "documento_versiones"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      documento_versiones: {
+        Row: {
+          id: string
+          documento_id: string
+          version: number
+          bucket: string
+          ruta_storage: string
+          nombre_archivo: string
+          extension: string
+          tamano_bytes: number
+          mime_type: string | null
+          hash_sha256: string | null
+          comentario: string | null
+          subido_por: string | null
+          subido_en: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          documento_id: string
+          version: number
+          bucket?: string
+          ruta_storage: string
+          nombre_archivo: string
+          extension: string
+          tamano_bytes: number
+          mime_type?: string | null
+          hash_sha256?: string | null
+          comentario?: string | null
+          subido_por?: string | null
+          subido_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          documento_id?: string
+          version?: number
+          bucket?: string
+          ruta_storage?: string
+          nombre_archivo?: string
+          extension?: string
+          tamano_bytes?: number
+          mime_type?: string | null
+          hash_sha256?: string | null
+          comentario?: string | null
+          subido_por?: string | null
+          subido_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documento_versiones_documento_id_fkey"
+            columns: ["documento_id"]
+            isOneToOne: false
+            referencedRelation: "documentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documento_versiones_subido_por_fkey"
+            columns: ["subido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      documentos: {
+        Row: {
+          id: string
+          tipo_documento_id: string
+          titulo: string
+          descripcion: string | null
+          numero_externo: string | null
+          fecha_documento: string | null
+          entidad_tabla: string
+          entidad_id: string
+          orden_id: string | null
+          estado: Database["public"]["Enums"]["estado_documento"]
+          es_confidencial: boolean
+          etiquetas: string[]
+          version_actual: number
+          reemplaza_a: string | null
+          estado_aprobacion: Database["public"]["Enums"]["estado_aprobacion"] | null
+          aprobado_en: string | null
+          vence_en: string | null
+          motivo_anulacion: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          tipo_documento_id: string
+          titulo: string
+          descripcion?: string | null
+          numero_externo?: string | null
+          fecha_documento?: string | null
+          entidad_tabla: string
+          entidad_id: string
+          orden_id?: string | null
+          estado?: Database["public"]["Enums"]["estado_documento"]
+          es_confidencial?: boolean
+          etiquetas?: string[]
+          version_actual?: number
+          reemplaza_a?: string | null
+          estado_aprobacion?: Database["public"]["Enums"]["estado_aprobacion"] | null
+          aprobado_en?: string | null
+          vence_en?: string | null
+          motivo_anulacion?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          tipo_documento_id?: string
+          titulo?: string
+          descripcion?: string | null
+          numero_externo?: string | null
+          fecha_documento?: string | null
+          entidad_tabla?: string
+          entidad_id?: string
+          orden_id?: string | null
+          estado?: Database["public"]["Enums"]["estado_documento"]
+          es_confidencial?: boolean
+          etiquetas?: string[]
+          version_actual?: number
+          reemplaza_a?: string | null
+          estado_aprobacion?: Database["public"]["Enums"]["estado_aprobacion"] | null
+          aprobado_en?: string | null
+          vence_en?: string | null
+          motivo_anulacion?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documentos_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documentos_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documentos_reemplaza_a_fkey"
+            columns: ["reemplaza_a"]
+            isOneToOne: false
+            referencedRelation: "documentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documentos_tipo_documento_id_fkey"
+            columns: ["tipo_documento_id"]
+            isOneToOne: false
+            referencedRelation: "tipos_documento"
+            referencedColumns: ["id"]
           }
         ]
       }
@@ -1383,6 +1675,76 @@ export type Database = {
             columns: ["responsable_id"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      notas: {
+        Row: {
+          id: string
+          entidad_tabla: string
+          entidad_id: string
+          orden_id: string | null
+          texto: string
+          autor_id: string | null
+          menciones: string[]
+          nota_padre_id: string | null
+          es_interna: boolean
+          fijada: boolean
+          editada_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          entidad_tabla: string
+          entidad_id: string
+          orden_id?: string | null
+          texto: string
+          autor_id?: string | null
+          menciones?: string[]
+          nota_padre_id?: string | null
+          es_interna?: boolean
+          fijada?: boolean
+          editada_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          entidad_tabla?: string
+          entidad_id?: string
+          orden_id?: string | null
+          texto?: string
+          autor_id?: string | null
+          menciones?: string[]
+          nota_padre_id?: string | null
+          es_interna?: boolean
+          fijada?: boolean
+          editada_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notas_autor_id_fkey"
+            columns: ["autor_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notas_nota_padre_id_fkey"
+            columns: ["nota_padre_id"]
+            isOneToOne: false
+            referencedRelation: "notas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
             referencedColumns: ["id"]
           }
         ]
@@ -3575,6 +3937,66 @@ export type Database = {
         }
         Relationships: []
       }
+      tipos_documento: {
+        Row: {
+          id: string
+          codigo: string
+          nombre: string
+          descripcion: string | null
+          categoria: Database["public"]["Enums"]["categoria_documento"]
+          entidad_tabla: string | null
+          requiere_aprobacion: boolean
+          obligatorio_para_cierre: boolean
+          extensiones_permitidas: string[]
+          tamano_maximo_mb: number
+          confidencial_por_defecto: boolean
+          bucket: string
+          retencion_meses: number | null
+          orden_visualizacion: number
+          activo: boolean
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo: string
+          nombre: string
+          descripcion?: string | null
+          categoria?: Database["public"]["Enums"]["categoria_documento"]
+          entidad_tabla?: string | null
+          requiere_aprobacion?: boolean
+          obligatorio_para_cierre?: boolean
+          extensiones_permitidas?: string[]
+          tamano_maximo_mb?: number
+          confidencial_por_defecto?: boolean
+          bucket?: string
+          retencion_meses?: number | null
+          orden_visualizacion?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo?: string
+          nombre?: string
+          descripcion?: string | null
+          categoria?: Database["public"]["Enums"]["categoria_documento"]
+          entidad_tabla?: string | null
+          requiere_aprobacion?: boolean
+          obligatorio_para_cierre?: boolean
+          extensiones_permitidas?: string[]
+          tamano_maximo_mb?: number
+          confidencial_por_defecto?: boolean
+          bucket?: string
+          retencion_meses?: number | null
+          orden_visualizacion?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: []
+      }
       unidades: {
         Row: {
           id: string
@@ -3912,6 +4334,60 @@ export type Database = {
         }
         Relationships: []
       }
+      v_documentos_por_aprobar: {
+        Row: {
+          aprobacion_id: string | null
+          documento_id: string | null
+          aprobador_id: string | null
+          orden_firma: number | null
+          solicitado_en: string | null
+          titulo: string | null
+          orden_id: string | null
+          version_actual: number | null
+          tipo_codigo: string | null
+          tipo_nombre: string | null
+          le_toca: boolean | null
+        }
+        Relationships: []
+      }
+      v_documentos_vigentes: {
+        Row: {
+          id: string | null
+          tipo_documento_id: string | null
+          tipo_codigo: string | null
+          tipo_nombre: string | null
+          categoria: Database["public"]["Enums"]["categoria_documento"] | null
+          titulo: string | null
+          descripcion: string | null
+          numero_externo: string | null
+          fecha_documento: string | null
+          entidad_tabla: string | null
+          entidad_id: string | null
+          orden_id: string | null
+          orden_numero: string | null
+          estado: Database["public"]["Enums"]["estado_documento"] | null
+          es_confidencial: boolean | null
+          etiquetas: string[] | null
+          version_actual: number | null
+          estado_aprobacion: Database["public"]["Enums"]["estado_aprobacion"] | null
+          aprobado_en: string | null
+          vence_en: string | null
+          vencido: boolean | null
+          version_id: string | null
+          bucket: string | null
+          ruta_storage: string | null
+          nombre_archivo: string | null
+          extension: string | null
+          tamano_bytes: number | null
+          mime_type: string | null
+          hash_sha256: string | null
+          subido_por: string | null
+          subido_en: string | null
+          creado_por: string | null
+          creado_en: string | null
+        }
+        Relationships: []
+      }
       v_materiales_por_ot: {
         Row: {
           orden_id: string | null
@@ -4040,6 +4516,18 @@ export type Database = {
         }
         Relationships: []
       }
+      v_ot_documentos_faltantes: {
+        Row: {
+          orden_id: string | null
+          orden_numero: string | null
+          cliente_id: string | null
+          estado: Database["public"]["Enums"]["estado_ot"] | null
+          tipo_documento_id: string | null
+          tipo_codigo: string | null
+          tipo_nombre: string | null
+        }
+        Relationships: []
+      }
       v_ot_mano_obra_detalle: {
         Row: {
           detalle_id: string | null
@@ -4111,6 +4599,21 @@ export type Database = {
           valor_venta: number | null
           utilidad: number | null
           margen_porcentaje: number | null
+        }
+        Relationships: []
+      }
+      v_ot_timeline: {
+        Row: {
+          orden_id: string | null
+          ocurrido_en: string | null
+          categoria: string | null
+          titulo: string | null
+          detalle: string | null
+          usuario_id: string | null
+          referencia_tabla: string | null
+          referencia_id: string | null
+          referencia_clave: string | null
+          datos: Json | null
         }
         Relationships: []
       }
@@ -4224,6 +4727,12 @@ export type Database = {
         }
         Returns: number
       }
+      documentos_obligatorios_faltantes: {
+        Args: {
+          p_orden_id: string
+        }
+        Returns: string[]
+      }
       es_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -4332,6 +4841,25 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_acceso_documento: {
+        Args: {
+          p_documento_id: string
+          p_tipo_acceso?: Database["public"]["Enums"]["tipo_acceso_documento"]
+          p_version_id?: string
+          p_ip?: string
+          p_user_agent?: string
+        }
+        Returns: string
+      }
+      registrar_evento_ot: {
+        Args: {
+          p_orden_id: string
+          p_tipo_evento: Database["public"]["Enums"]["tipo_evento_ot"]
+          p_descripcion: string
+          p_datos?: Json
+        }
+        Returns: string
+      }
       siguiente_correlativo: {
         Args: {
           p_tipo: Database["public"]["Enums"]["tipo_correlativo"]
@@ -4374,9 +4902,12 @@ export type Database = {
     }
     Enums: {
       accion_auditoria: "INSERT" | "UPDATE" | "DELETE"
+      categoria_documento: "TECNICO" | "COMERCIAL" | "CALIDAD" | "LOGISTICO" | "ADMINISTRATIVO" | "LEGAL" | "FOTOGRAFICO"
       categoria_gasto_indirecto: "ENERGIA" | "AGUA" | "ALQUILER" | "DEPRECIACION" | "SUELDOS_INDIRECTOS" | "MANTENIMIENTO_PLANTA" | "SEGUROS" | "EPP" | "COMUNICACIONES" | "LIMPIEZA" | "OTRO"
       condicion_pago: "CONTADO" | "CREDITO_7" | "CREDITO_15" | "CREDITO_30" | "CREDITO_45" | "CREDITO_60" | "LETRAS"
+      estado_aprobacion: "PENDIENTE" | "APROBADO" | "OBSERVADO" | "RECHAZADO"
       estado_cotizacion: "BORRADOR" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "VENCIDA" | "ANULADA"
+      estado_documento: "VIGENTE" | "REEMPLAZADO" | "ANULADO"
       estado_etapa_ot: "PENDIENTE" | "EN_PROCESO" | "PAUSADA" | "TERMINADA" | "OMITIDA"
       estado_movimiento_almacen: "BORRADOR" | "CONFIRMADO" | "ANULADO"
       estado_orden_compra: "BORRADOR" | "APROBADA" | "ENVIADA" | "RECIBIDA_PARCIAL" | "RECIBIDA" | "ANULADA"
@@ -4391,6 +4922,7 @@ export type Database = {
       prioridad_ot: "BAJA" | "NORMAL" | "ALTA" | "URGENTE"
       resultado_inspeccion: "CONFORME" | "OBSERVADO" | "RECHAZADO"
       rol_operario: "SOLDADOR" | "ARMADOR" | "PINTOR" | "ELECTRICISTA" | "AYUDANTE" | "MECANICO"
+      tipo_acceso_documento: "VISTA" | "DESCARGA" | "IMPRESION" | "COMPARTIDO"
       tipo_almacen: "PRINCIPAL" | "OBRA" | "HERRAMIENTAS" | "MERMA"
       tipo_centro_costo: "PRODUCCION" | "ADMINISTRATIVO" | "VENTAS"
       tipo_correlativo: "COTIZACION" | "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA"

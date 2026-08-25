@@ -253,6 +253,25 @@ begin
     format('update public.ordenes_trabajo set estado = ''ENTREGADA'' where id = %L', v_id),
     'no se entrega una OT sin acta de conformidad');
 
+  -- Tampoco se entrega sin la documentación que la empresa declara obligatoria.
+  perform test.debe_fallar(
+    format('insert into public.ot_entregas (orden_id, recibe_nombre) values (%L, ''X'')', v_id),
+    'no se entrega sin los documentos obligatorios adjuntos');
+
+  -- Se adjuntan los documentos obligatorios, con su primera versión.
+  insert into public.documentos (tipo_documento_id, titulo, entidad_tabla, entidad_id, orden_id)
+  select td.id, td.nombre, 'ordenes_trabajo', v_id, v_id
+    from public.tipos_documento td where td.obligatorio_para_cierre;
+
+  insert into public.documento_versiones
+    (documento_id, ruta_storage, nombre_archivo, extension, tamano_bytes)
+  select d.id, 'ot/' || v_id || '/' || d.id || '.pdf', 'documento.pdf', 'pdf', 120000
+    from public.documentos d where d.orden_id = v_id;
+
+  perform test.afirmar(
+    (select version_actual from public.documentos where orden_id = v_id limit 1) = 1,
+    'la primera versión del documento se numera sola');
+
   -- El acta de conformidad es la que pasa la OT a ENTREGADA.
   insert into public.ot_entregas (orden_id, recibe_nombre, recibe_documento, garantia_meses)
     values (v_id, 'Carlos Huamán', '45678912', 12);

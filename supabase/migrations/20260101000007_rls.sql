@@ -125,7 +125,11 @@ begin
       ('servicios_terceros',       'costos.ver',           'costos.editar'),
       ('gastos_indirectos',        'costos.ver',           'costos.editar'),
       ('prorrateo_indirectos',     'costos.ver',           'costos.editar'),
-      ('ot_costos_adicionales',    'costos.ver',           'costos.editar')
+      ('ot_costos_adicionales',    'costos.ver',           'costos.editar'),
+
+      -- El catálogo de tipos de documento lo lee cualquiera que suba archivos.
+      ('tipos_documento',          'documentos.ver',       'configuracion.editar'),
+      ('aprobaciones',             'documentos.ver',       'documentos.aprobar')
     ) as t(tabla, permiso_ver, permiso_escribir)
   loop
     -- Puede que una tabla aún no exista si se ejecuta una migración parcial.
@@ -342,6 +346,106 @@ create policy gestionar_permisos on public.permisos
 create policy gestionar_roles_permisos on public.roles_permisos
   for all to authenticated
   using (public.es_admin()) with check (public.es_admin());
+
+-- --- Documentos: se ven con su orden, y quien no ve la orden no ve sus papeles --
+
+alter table public.documentos enable row level security;
+
+-- Un documento colgado de una OT hereda su visibilidad; los que cuelgan de otra
+-- entidad (cliente, orden de compra) se rigen solo por el permiso documental.
+create policy ver_documentos on public.documentos
+  for select to authenticated
+  using (
+    (public.es_admin() or public.tiene_permiso('documentos.ver'))
+    and (orden_id is null or public.puede_ver_orden(orden_id))
+  );
+
+create policy crear_documentos on public.documentos
+  for insert to authenticated
+  with check (public.es_admin() or public.tiene_permiso('documentos.subir'));
+
+create policy editar_documentos on public.documentos
+  for update to authenticated
+  using (public.es_admin() or public.tiene_permiso('documentos.subir'))
+  with check (public.es_admin() or public.tiene_permiso('documentos.subir'));
+
+-- Anular es la vía normal; borrar de verdad exige el permiso explícito.
+create policy borrar_documentos on public.documentos
+  for delete to authenticated
+  using (public.es_admin() or public.tiene_permiso('documentos.eliminar'));
+
+alter table public.documento_versiones enable row level security;
+
+create policy ver_documento_versiones on public.documento_versiones
+  for select to authenticated
+  using (
+    exists (select 1 from public.documentos d where d.id = documento_id)
+  );
+
+create policy crear_documento_versiones on public.documento_versiones
+  for insert to authenticated
+  with check (public.es_admin() or public.tiene_permiso('documentos.subir'));
+
+comment on table public.documento_versiones is
+  'Cada archivo subido es una versión inmutable. La política de SELECT se apoya en la de documentos: si no se ve el documento, tampoco sus versiones.';
+
+-- --- Registro de accesos: se consulta como auditoría, lo escribe la función ---
+
+alter table public.documento_accesos enable row level security;
+
+create policy ver_documento_accesos on public.documento_accesos
+  for select to authenticated
+  using (public.es_admin() or public.tiene_permiso('auditoria.ver'));
+
+-- --- Notas: las escribe cualquiera con sesión, las edita solo su autor -------
+
+alter table public.notas enable row level security;
+
+create policy ver_notas on public.notas
+  for select to authenticated
+  using (
+    public.es_usuario_activo()
+    and (orden_id is null or public.puede_ver_orden(orden_id))
+  );
+
+create policy crear_notas on public.notas
+  for insert to authenticated
+  with check (public.es_usuario_activo());
+
+create policy editar_notas on public.notas
+  for update to authenticated
+  using (public.es_admin() or autor_id = public.usuario_actual())
+  with check (public.es_admin() or autor_id = public.usuario_actual());
+
+create policy borrar_notas on public.notas
+  for delete to authenticated
+  using (public.es_admin() or autor_id = public.usuario_actual());
+
+-- =============================================================================
+-- COMPROBACIÓN: ninguna tabla debe quedar con RLS activo pero sin políticas.
+-- Una tabla así es inaccesible para todos y el fallo solo se descubre en
+-- producción, cuando alguien no ve sus datos.
+-- =============================================================================
+
+do $$
+declare v_sin_politicas text[];
+begin
+  select coalesce(array_agg(c.relname order by c.relname), '{}')
+    into v_sin_politicas
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public'
+     and c.relkind = 'r'
+     and c.relrowsecurity
+     and not exists (select 1 from pg_policy p where p.polrelid = c.oid);
+
+  if array_length(v_sin_politicas, 1) is not null then
+    raise exception 'Estas tablas tienen RLS activo pero ninguna política, lo que las vuelve inaccesibles: %',
+      array_to_string(v_sin_politicas, ', ')
+      using errcode = 'raise_exception';
+  end if;
+end;
+$$;
 
 -- =============================================================================
 -- PERMISOS DE ROL
