@@ -54,9 +54,15 @@ export const NAVEGACION: GrupoNavegacion[] = [
   {
     titulo: 'Comercial',
     items: [
-      { titulo: 'Clientes', ruta: '/clientes', icono: Users, permiso: 'clientes.ver' },
-      { titulo: 'Unidades', ruta: '/unidades', icono: Truck, permiso: 'clientes.ver' },
-      { titulo: 'Cotizaciones', ruta: '/cotizaciones', icono: Receipt, permiso: 'cotizaciones.ver' },
+      { titulo: 'Clientes', ruta: '/clientes', icono: Users, permiso: 'clientes.ver', disponible: true },
+      { titulo: 'Unidades', ruta: '/unidades', icono: Truck, permiso: 'clientes.ver', disponible: true },
+      {
+        titulo: 'Cotizaciones',
+        ruta: '/cotizaciones',
+        icono: Receipt,
+        permiso: 'cotizaciones.ver',
+        disponible: true,
+      },
     ],
   },
   {

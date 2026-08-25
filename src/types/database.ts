@@ -537,11 +537,11 @@ export type Database = {
           validez_dias: number
           fecha_vencimiento: string | null
           moneda: Database["public"]["Enums"]["moneda"]
-          tipo_cambio: number
+          tipo_cambio: number | null
           estado: Database["public"]["Enums"]["estado_cotizacion"]
           subtotal: number
           descuento: number
-          igv_porcentaje: number
+          igv_porcentaje: number | null
           igv: number
           total: number
           plazo_entrega_dias: number | null
@@ -567,11 +567,11 @@ export type Database = {
           fecha_emision?: string
           validez_dias?: number
           moneda?: Database["public"]["Enums"]["moneda"]
-          tipo_cambio: number
+          tipo_cambio?: number | null
           estado?: Database["public"]["Enums"]["estado_cotizacion"]
           subtotal?: number
           descuento?: number
-          igv_porcentaje: number
+          igv_porcentaje?: number | null
           igv?: number
           total?: number
           plazo_entrega_dias?: number | null
@@ -597,11 +597,11 @@ export type Database = {
           fecha_emision?: string
           validez_dias?: number
           moneda?: Database["public"]["Enums"]["moneda"]
-          tipo_cambio?: number
+          tipo_cambio?: number | null
           estado?: Database["public"]["Enums"]["estado_cotizacion"]
           subtotal?: number
           descuento?: number
-          igv_porcentaje?: number
+          igv_porcentaje?: number | null
           igv?: number
           total?: number
           plazo_entrega_dias?: number | null

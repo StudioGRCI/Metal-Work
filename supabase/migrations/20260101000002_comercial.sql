@@ -262,7 +262,7 @@ create table public.cotizaciones (
   fecha_vencimiento   date generated always as (fecha_emision + validez_dias) stored,
   moneda              public.moneda not null default 'PEN',
   -- Tipo de cambio congelado al emitir. Si no se indica se toma el vigente.
-  tipo_cambio         numeric(10, 4) not null check (tipo_cambio > 0),
+  tipo_cambio         numeric(10, 4),
   estado              public.estado_cotizacion not null default 'BORRADOR',
 
   -- Totales calculados por trigger a partir de las partidas. No se confía en
@@ -272,7 +272,7 @@ create table public.cotizaciones (
   -- Porcentaje de IGV congelado al emitir, tomado de public.empresa. Se guarda
   -- en el documento para que una cotización antigua siga cuadrando si la tasa
   -- legal cambia.
-  igv_porcentaje      public.porcentaje not null,
+  igv_porcentaje      public.porcentaje,
   igv                 public.monto not null default 0 check (igv >= 0),
   total               public.monto not null default 0 check (total >= 0),
 
@@ -300,7 +300,11 @@ create table public.cotizaciones (
   constraint chk_cotizaciones_motivo_rechazo check (
     estado <> 'RECHAZADA' or nullif(btrim(coalesce(motivo_rechazo, '')), '') is not null
   ),
-  constraint chk_cotizaciones_descuento check (descuento <= subtotal)
+  constraint chk_cotizaciones_descuento check (descuento <= subtotal),
+  -- Los rellena fn_cotizacion_calcular en el BEFORE INSERT; el CHECK se evalúa
+  -- después de los triggers, así que garantiza que quedaron con valor.
+  constraint ck_cotizacion_tipo_cambio check (tipo_cambio is not null and tipo_cambio > 0),
+  constraint ck_cotizacion_igv check (igv_porcentaje is not null)
 );
 
 comment on table public.cotizaciones is

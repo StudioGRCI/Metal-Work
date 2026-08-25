@@ -1,6 +1,7 @@
 'use client'
 
-import { useActionState, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useState, useTransition } from 'react'
 import { CheckCircle2, ShieldAlert } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
@@ -126,16 +127,27 @@ function FormularioEtapa({
   bloqueada: boolean
   alTerminar: () => void
 }) {
-  const [resultado, ejecutar, pendiente] = useActionState(actualizarEtapa, null)
+  const router = useRouter()
+  const [pendiente, iniciarTransicion] = useTransition()
   const [avance, setAvance] = useState(Number(etapa.avance_porcentaje ?? 0))
+  const [error, setError] = useState<string | null>(null)
 
-  // El servidor ya revalidó la ruta; al confirmarse el guardado se cierra el formulario.
-  useEffect(() => {
-    if (resultado?.ok) alTerminar()
-  }, [resultado, alTerminar])
+  // Manejador propio en lugar de useActionState: así el formulario se cierra
+  // únicamente cuando el guardado fue correcto.
+  async function enviar(datos: FormData) {
+    setError(null)
+    const resultado = await actualizarEtapa(null, datos)
+
+    if (resultado.ok) {
+      alTerminar()
+      iniciarTransicion(() => router.refresh())
+      return
+    }
+    setError(resultado.error)
+  }
 
   return (
-    <form action={ejecutar} className="mt-3 grid gap-3 border-t border-borde pt-3 sm:grid-cols-3">
+    <form action={enviar} className="mt-3 grid gap-3 border-t border-borde pt-3 sm:grid-cols-3">
       <input type="hidden" name="etapa_id" value={etapa.etapa_id ?? ''} />
       <input type="hidden" name="orden_id" value={ordenId} />
 
@@ -192,9 +204,9 @@ function FormularioEtapa({
         />
       </Campo>
 
-      {resultado && !resultado.ok && (
+      {error && (
         <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro sm:col-span-3">
-          {resultado.error}
+          {error}
         </p>
       )}
 

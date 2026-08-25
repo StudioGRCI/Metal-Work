@@ -6,29 +6,7 @@ import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
 import { exigirSesion, puede } from '@/lib/sesion'
-
-export type ResultadoAccion = { ok: true; mensaje?: string } | { ok: false; error: string }
-
-/**
- * Traduce los errores de Postgres a algo que el usuario del taller entienda.
- * Los triggers del esquema ya lanzan mensajes en español; se aprovechan tal cual
- * y solo se traduce lo que viene del propio motor.
- */
-function mensajeDeError(error: { message: string; code?: string }): string {
-  const m = error.message
-
-  if (error.code === '23505') return 'Ya existe un registro con esos datos.'
-  if (error.code === '23503') return 'El registro está referenciado por otro documento y no se puede modificar.'
-  if (error.code === '42501' || error.code === 'PGRST301')
-    return 'No tienes permisos para realizar esta operación.'
-
-  // Los mensajes de los triggers propios ya vienen redactados en español para el
-  // usuario; solo se reescribe el texto crudo de una restricción CHECK del motor.
-  const check = /violates check constraint "([^"]+)"/.exec(m)
-  if (check) return `El dato no cumple la regla ${check[1]}.`
-
-  return m
-}
+import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 
 const esquemaNuevaOrden = z.object({
   cliente_id: z.string().uuid('Selecciona un cliente'),
