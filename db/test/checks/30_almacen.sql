@@ -57,7 +57,7 @@ begin
     format('100 kg a 4.00 más 100 kg a 6.00 dan promedio 5.00: %s',
            (select costo_promedio from public.materiales limit 1)));
   perform test.afirmar(
-    (select saldo_valor from public.kardex order by id desc limit 1) = 1000.00,
+    (select saldo_valor from public.kardex order by secuencia desc limit 1) = 1000.00,
     'el saldo valorizado del kardex es 1000.00');
 end $$;
 
@@ -86,10 +86,10 @@ begin
   perform public.confirmar_movimiento_almacen(v_mov);
 
   perform test.afirmar(
-    (select costo_unitario from public.kardex where tipo_movimiento = 'SALIDA_OT' limit 1) = 5.00,
+    (select costo_unitario from public.kardex where tipo_movimiento = 'SALIDA_OT' order by secuencia desc limit 1) = 5.00,
     'la salida se valoriza al promedio ponderado, no al costo propuesto');
   perform test.afirmar(
-    (select costo_total from public.kardex where tipo_movimiento = 'SALIDA_OT' limit 1) = 250.00,
+    (select costo_total from public.kardex where tipo_movimiento = 'SALIDA_OT' order by secuencia desc limit 1) = 250.00,
     '50 kg a 5.00 son 250.00 cargados a la OT');
   perform test.afirmar(
     (select cantidad from public.almacen_stock

@@ -204,6 +204,60 @@ export type Database = {
           }
         ]
       }
+      centros_costo: {
+        Row: {
+          id: string
+          codigo: string
+          nombre: string
+          tipo: Database["public"]["Enums"]["tipo_centro_costo"]
+          descripcion: string | null
+          responsable_id: string | null
+          sede_id: string | null
+          activo: boolean
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo: string
+          nombre: string
+          tipo?: Database["public"]["Enums"]["tipo_centro_costo"]
+          descripcion?: string | null
+          responsable_id?: string | null
+          sede_id?: string | null
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo?: string
+          nombre?: string
+          tipo?: Database["public"]["Enums"]["tipo_centro_costo"]
+          descripcion?: string | null
+          responsable_id?: string | null
+          sede_id?: string | null
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "centros_costo_responsable_id_fkey"
+            columns: ["responsable_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "centros_costo_sede_id_fkey"
+            columns: ["sede_id"]
+            isOneToOne: false
+            referencedRelation: "sedes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       clientes: {
         Row: {
           id: string
@@ -666,6 +720,86 @@ export type Database = {
         }
         Relationships: []
       }
+      gastos_indirectos: {
+        Row: {
+          id: string
+          periodo: string
+          categoria: Database["public"]["Enums"]["categoria_gasto_indirecto"]
+          descripcion: string
+          centro_costo_id: string
+          sede_id: string | null
+          moneda: Database["public"]["Enums"]["moneda"]
+          monto: number
+          tipo_cambio: number
+          monto_base: number | null
+          numero_documento: string | null
+          fecha_documento: string | null
+          prorratear: boolean
+          observaciones: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          periodo: string
+          categoria?: Database["public"]["Enums"]["categoria_gasto_indirecto"]
+          descripcion: string
+          centro_costo_id: string
+          sede_id?: string | null
+          moneda?: Database["public"]["Enums"]["moneda"]
+          monto: number
+          tipo_cambio: number
+          numero_documento?: string | null
+          fecha_documento?: string | null
+          prorratear?: boolean
+          observaciones?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          periodo?: string
+          categoria?: Database["public"]["Enums"]["categoria_gasto_indirecto"]
+          descripcion?: string
+          centro_costo_id?: string
+          sede_id?: string | null
+          moneda?: Database["public"]["Enums"]["moneda"]
+          monto?: number
+          tipo_cambio?: number
+          numero_documento?: string | null
+          fecha_documento?: string | null
+          prorratear?: boolean
+          observaciones?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gastos_indirectos_centro_costo_id_fkey"
+            columns: ["centro_costo_id"]
+            isOneToOne: false
+            referencedRelation: "centros_costo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gastos_indirectos_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gastos_indirectos_sede_id_fkey"
+            columns: ["sede_id"]
+            isOneToOne: false
+            referencedRelation: "sedes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       kardex: {
         Row: {
           id: string
@@ -737,6 +871,13 @@ export type Database = {
           creado_en?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_kardex_etapa"
+            columns: ["etapa_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id", "orden_id"]
+          },
           {
             foreignKeyName: "fk_kardex_movimiento"
             columns: ["movimiento_id"]
@@ -1119,7 +1260,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          numero: string
+          numero?: string
           tipo: Database["public"]["Enums"]["tipo_movimiento_almacen"]
           estado?: Database["public"]["Enums"]["estado_movimiento_almacen"]
           fecha?: string
@@ -1350,7 +1491,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          numero: string
+          numero?: string
           proveedor_id: string
           requerimiento_id?: string | null
           orden_id?: string | null
@@ -1671,6 +1812,90 @@ export type Database = {
             columns: ["usuario_id"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_costos_adicionales: {
+        Row: {
+          id: string
+          orden_id: string
+          etapa_id: string | null
+          fecha: string
+          tipo_costo: Database["public"]["Enums"]["tipo_costo"]
+          descripcion: string
+          moneda: Database["public"]["Enums"]["moneda"]
+          monto: number
+          tipo_cambio: number
+          monto_base: number | null
+          centro_costo_id: string | null
+          numero_documento: string | null
+          observaciones: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          etapa_id?: string | null
+          fecha?: string
+          tipo_costo?: Database["public"]["Enums"]["tipo_costo"]
+          descripcion: string
+          moneda?: Database["public"]["Enums"]["moneda"]
+          monto: number
+          tipo_cambio: number
+          centro_costo_id?: string | null
+          numero_documento?: string | null
+          observaciones?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          etapa_id?: string | null
+          fecha?: string
+          tipo_costo?: Database["public"]["Enums"]["tipo_costo"]
+          descripcion?: string
+          moneda?: Database["public"]["Enums"]["moneda"]
+          monto?: number
+          tipo_cambio?: number
+          centro_costo_id?: string | null
+          numero_documento?: string | null
+          observaciones?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_costo_adicional_etapa"
+            columns: ["etapa_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id", "orden_id"]
+          },
+          {
+            foreignKeyName: "ot_costos_adicionales_centro_costo_id_fkey"
+            columns: ["centro_costo_id"]
+            isOneToOne: false
+            referencedRelation: "centros_costo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_costos_adicionales_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_costos_adicionales_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
             referencedColumns: ["id"]
           }
         ]
@@ -2030,6 +2255,108 @@ export type Database = {
           }
         ]
       }
+      ot_presupuesto: {
+        Row: {
+          id: string
+          orden_id: string
+          tipo_costo: Database["public"]["Enums"]["tipo_costo"]
+          descripcion: string
+          detalle: string | null
+          unidad_medida: string
+          cantidad: number
+          costo_unitario: number
+          monto_presupuestado: number
+          origen: Database["public"]["Enums"]["origen_presupuesto"]
+          cotizacion_partida_id: string | null
+          material_id: string | null
+          especialidad: Database["public"]["Enums"]["rol_operario"] | null
+          horas_presupuestadas: number
+          centro_costo_id: string | null
+          observaciones: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          tipo_costo: Database["public"]["Enums"]["tipo_costo"]
+          descripcion: string
+          detalle?: string | null
+          unidad_medida?: string
+          cantidad?: number
+          costo_unitario?: number
+          monto_presupuestado?: number
+          origen?: Database["public"]["Enums"]["origen_presupuesto"]
+          cotizacion_partida_id?: string | null
+          material_id?: string | null
+          especialidad?: Database["public"]["Enums"]["rol_operario"] | null
+          horas_presupuestadas?: number
+          centro_costo_id?: string | null
+          observaciones?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          tipo_costo?: Database["public"]["Enums"]["tipo_costo"]
+          descripcion?: string
+          detalle?: string | null
+          unidad_medida?: string
+          cantidad?: number
+          costo_unitario?: number
+          monto_presupuestado?: number
+          origen?: Database["public"]["Enums"]["origen_presupuesto"]
+          cotizacion_partida_id?: string | null
+          material_id?: string | null
+          especialidad?: Database["public"]["Enums"]["rol_operario"] | null
+          horas_presupuestadas?: number
+          centro_costo_id?: string | null
+          observaciones?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_presupuesto_centro_costo_id_fkey"
+            columns: ["centro_costo_id"]
+            isOneToOne: false
+            referencedRelation: "centros_costo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_presupuesto_cotizacion_partida_id_fkey"
+            columns: ["cotizacion_partida_id"]
+            isOneToOne: false
+            referencedRelation: "cotizacion_partidas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_presupuesto_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_presupuesto_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_presupuesto_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_tareas: {
         Row: {
           id: string
@@ -2275,6 +2602,66 @@ export type Database = {
           descripcion?: string
         }
         Relationships: []
+      }
+      prorrateo_indirectos: {
+        Row: {
+          id: string
+          periodo: string
+          orden_id: string
+          horas_hombre: number
+          horas_totales_periodo: number
+          gasto_total_periodo: number
+          tasa_hora: number
+          monto_asignado: number
+          calculado_en: string
+          calculado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          periodo: string
+          orden_id: string
+          horas_hombre: number
+          horas_totales_periodo: number
+          gasto_total_periodo: number
+          tasa_hora: number
+          monto_asignado: number
+          calculado_en?: string
+          calculado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          periodo?: string
+          orden_id?: string
+          horas_hombre?: number
+          horas_totales_periodo?: number
+          gasto_total_periodo?: number
+          tasa_hora?: number
+          monto_asignado?: number
+          calculado_en?: string
+          calculado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prorrateo_indirectos_calculado_por_fkey"
+            columns: ["calculado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prorrateo_indirectos_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       proveedor_materiales: {
         Row: {
@@ -2545,7 +2932,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          numero: string
+          numero?: string
           orden_compra_id: string
           almacen_id: string
           estado?: Database["public"]["Enums"]["estado_movimiento_almacen"]
@@ -2714,7 +3101,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          numero: string
+          numero?: string
           orden_id?: string | null
           etapa_id?: string | null
           sede_id: string
@@ -2949,6 +3336,175 @@ export type Database = {
             columns: ["sede_id"]
             isOneToOne: false
             referencedRelation: "sedes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      servicios_terceros: {
+        Row: {
+          id: string
+          orden_id: string
+          etapa_id: string | null
+          proveedor_id: string
+          tipo_servicio: Database["public"]["Enums"]["tipo_servicio_tercero"]
+          descripcion: string
+          especificacion: string | null
+          fecha: string
+          fecha_entrega: string | null
+          moneda: Database["public"]["Enums"]["moneda"]
+          monto: number
+          tipo_cambio: number
+          monto_base: number | null
+          numero_factura: string | null
+          fecha_factura: string | null
+          estado: Database["public"]["Enums"]["estado_servicio_tercero"]
+          centro_costo_id: string | null
+          responsable_id: string | null
+          observaciones: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          etapa_id?: string | null
+          proveedor_id: string
+          tipo_servicio?: Database["public"]["Enums"]["tipo_servicio_tercero"]
+          descripcion: string
+          especificacion?: string | null
+          fecha?: string
+          fecha_entrega?: string | null
+          moneda?: Database["public"]["Enums"]["moneda"]
+          monto: number
+          tipo_cambio: number
+          numero_factura?: string | null
+          fecha_factura?: string | null
+          estado?: Database["public"]["Enums"]["estado_servicio_tercero"]
+          centro_costo_id?: string | null
+          responsable_id?: string | null
+          observaciones?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          etapa_id?: string | null
+          proveedor_id?: string
+          tipo_servicio?: Database["public"]["Enums"]["tipo_servicio_tercero"]
+          descripcion?: string
+          especificacion?: string | null
+          fecha?: string
+          fecha_entrega?: string | null
+          moneda?: Database["public"]["Enums"]["moneda"]
+          monto?: number
+          tipo_cambio?: number
+          numero_factura?: string | null
+          fecha_factura?: string | null
+          estado?: Database["public"]["Enums"]["estado_servicio_tercero"]
+          centro_costo_id?: string | null
+          responsable_id?: string | null
+          observaciones?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_servicio_etapa"
+            columns: ["etapa_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id", "orden_id"]
+          },
+          {
+            foreignKeyName: "servicios_terceros_centro_costo_id_fkey"
+            columns: ["centro_costo_id"]
+            isOneToOne: false
+            referencedRelation: "centros_costo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "servicios_terceros_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "servicios_terceros_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "servicios_terceros_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "servicios_terceros_responsable_id_fkey"
+            columns: ["responsable_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      tarifas_mano_obra: {
+        Row: {
+          id: string
+          codigo: string
+          especialidad: Database["public"]["Enums"]["rol_operario"]
+          nombre: string
+          costo_hora: number
+          costo_hora_extra: number
+          vigencia_desde: string
+          vigencia_hasta: string | null
+          centro_costo_id: string | null
+          observaciones: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo: string
+          especialidad: Database["public"]["Enums"]["rol_operario"]
+          nombre: string
+          costo_hora: number
+          costo_hora_extra: number
+          vigencia_desde?: string
+          vigencia_hasta?: string | null
+          centro_costo_id?: string | null
+          observaciones?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo?: string
+          especialidad?: Database["public"]["Enums"]["rol_operario"]
+          nombre?: string
+          costo_hora?: number
+          costo_hora_extra?: number
+          vigencia_desde?: string
+          vigencia_hasta?: string | null
+          centro_costo_id?: string | null
+          observaciones?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tarifas_mano_obra_centro_costo_id_fkey"
+            columns: ["centro_costo_id"]
+            isOneToOne: false
+            referencedRelation: "centros_costo"
             referencedColumns: ["id"]
           }
         ]
@@ -3211,6 +3767,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "fk_usuarios_auth"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "usuarios_rol_id_fkey"
             columns: ["rol_id"]
             isOneToOne: false
@@ -3349,6 +3912,260 @@ export type Database = {
         }
         Relationships: []
       }
+      v_materiales_por_ot: {
+        Row: {
+          orden_id: string | null
+          orden_numero: string | null
+          materiales_distintos: number | null
+          movimientos: number | null
+          costo_material: number | null
+          primer_consumo: string | null
+          ultimo_consumo: string | null
+        }
+        Relationships: []
+      }
+      v_ordenes_compra_pendientes: {
+        Row: {
+          orden_compra_id: string | null
+          numero: string | null
+          estado: Database["public"]["Enums"]["estado_orden_compra"] | null
+          fecha: string | null
+          fecha_entrega_esperada: string | null
+          proveedor: string | null
+          moneda: Database["public"]["Enums"]["moneda"] | null
+          total: number | null
+          cantidad_pedida: number | null
+          cantidad_recibida: number | null
+          cantidad_pendiente: number | null
+          dias_atraso: number | null
+        }
+        Relationships: []
+      }
+      v_ot_costo_adicional: {
+        Row: {
+          orden_id: string | null
+          costo_adicional: number | null
+          documentos: number | null
+        }
+        Relationships: []
+      }
+      v_ot_costo_indirecto: {
+        Row: {
+          orden_id: string | null
+          costo_indirecto: number | null
+          horas_prorrateadas: number | null
+          periodos_prorrateados: number | null
+          ultimo_periodo: string | null
+        }
+        Relationships: []
+      }
+      v_ot_costo_mano_obra: {
+        Row: {
+          orden_id: string | null
+          horas_normales: number | null
+          horas_extra: number | null
+          horas_totales: number | null
+          costo_normal: number | null
+          costo_extra: number | null
+          costo_mano_obra: number | null
+          horas_sin_costo: number | null
+          operarios: number | null
+        }
+        Relationships: []
+      }
+      v_ot_costo_materiales: {
+        Row: {
+          orden_id: string | null
+          consumo_material: number | null
+          devoluciones_material: number | null
+          costo_materiales: number | null
+          vales_consumo: number | null
+          ultimo_movimiento: string | null
+        }
+        Relationships: []
+      }
+      v_ot_costo_por_tipo: {
+        Row: {
+          orden_id: string | null
+          tipo_costo: Database["public"]["Enums"]["tipo_costo"] | null
+          presupuesto: number | null
+          costo_real: number | null
+          desviacion: number | null
+          desviacion_porcentaje: number | null
+        }
+        Relationships: []
+      }
+      v_ot_costo_servicios: {
+        Row: {
+          orden_id: string | null
+          costo_servicios: number | null
+          servicios_comprometidos: number | null
+          servicios_pagados: number | null
+          servicios: number | null
+          servicios_pendientes: number | null
+        }
+        Relationships: []
+      }
+      v_ot_costo_total: {
+        Row: {
+          orden_id: string | null
+          numero: string | null
+          cliente_id: string | null
+          cliente: string | null
+          unidad_id: string | null
+          cotizacion_id: string | null
+          sede_id: string | null
+          tipo_trabajo: Database["public"]["Enums"]["tipo_trabajo_ot"] | null
+          estado: Database["public"]["Enums"]["estado_ot"] | null
+          moneda: Database["public"]["Enums"]["moneda"] | null
+          fecha_registro: string | null
+          fecha_fin_real: string | null
+          avance_porcentaje: number | null
+          costo_materiales: number | null
+          costo_mano_obra: number | null
+          costo_servicios: number | null
+          costo_indirecto: number | null
+          costo_adicional: number | null
+          servicios_comprometidos: number | null
+          horas_reales: number | null
+          horas_sin_costo: number | null
+          horas_estimadas: number | null
+          presupuesto: number | null
+          fuente_presupuesto: string | null
+          costo_total: number | null
+          desviacion: number | null
+          desviacion_porcentaje: number | null
+          consumo_presupuesto_porcentaje: number | null
+          costo_por_hora: number | null
+        }
+        Relationships: []
+      }
+      v_ot_mano_obra_detalle: {
+        Row: {
+          detalle_id: string | null
+          orden_id: string | null
+          etapa_id: string | null
+          usuario_id: string | null
+          parte_id: string | null
+          parte_numero: string | null
+          fecha: string | null
+          especialidad: Database["public"]["Enums"]["rol_operario"] | null
+          tarifa_id: string | null
+          horas: number | null
+          horas_extra: number | null
+          horas_totales: number | null
+          costo_hora: number | null
+          costo_hora_extra: number | null
+          costo_normal: number | null
+          costo_extra: number | null
+          costo_hora_hombre: number | null
+        }
+        Relationships: []
+      }
+      v_ot_mano_obra_especialidad: {
+        Row: {
+          orden_id: string | null
+          especialidad: Database["public"]["Enums"]["rol_operario"] | null
+          horas_normales: number | null
+          horas_extra: number | null
+          horas_totales: number | null
+          costo_mano_obra: number | null
+          operarios: number | null
+        }
+        Relationships: []
+      }
+      v_ot_margen: {
+        Row: {
+          orden_id: string | null
+          numero: string | null
+          cliente_id: string | null
+          cliente: string | null
+          unidad_id: string | null
+          cotizacion_id: string | null
+          sede_id: string | null
+          tipo_trabajo: Database["public"]["Enums"]["tipo_trabajo_ot"] | null
+          estado: Database["public"]["Enums"]["estado_ot"] | null
+          moneda: Database["public"]["Enums"]["moneda"] | null
+          fecha_registro: string | null
+          fecha_fin_real: string | null
+          avance_porcentaje: number | null
+          costo_materiales: number | null
+          costo_mano_obra: number | null
+          costo_servicios: number | null
+          costo_indirecto: number | null
+          costo_adicional: number | null
+          servicios_comprometidos: number | null
+          horas_reales: number | null
+          horas_sin_costo: number | null
+          horas_estimadas: number | null
+          presupuesto: number | null
+          fuente_presupuesto: string | null
+          costo_total: number | null
+          desviacion: number | null
+          desviacion_porcentaje: number | null
+          consumo_presupuesto_porcentaje: number | null
+          costo_por_hora: number | null
+          cotizacion_numero: string | null
+          valor_venta_cotizado: number | null
+          valor_venta_con_igv: number | null
+          valor_venta: number | null
+          utilidad: number | null
+          margen_porcentaje: number | null
+        }
+        Relationships: []
+      }
+      v_stock_actual: {
+        Row: {
+          stock_id: string | null
+          material_id: string | null
+          material_codigo: string | null
+          material_descripcion: string | null
+          especificacion_tecnica: string | null
+          categoria: string | null
+          unidad_medida: string | null
+          almacen_id: string | null
+          almacen_codigo: string | null
+          almacen_nombre: string | null
+          almacen_tipo: Database["public"]["Enums"]["tipo_almacen"] | null
+          sede_id: string | null
+          ubicacion: string | null
+          cantidad: number | null
+          cantidad_reservada: number | null
+          cantidad_disponible: number | null
+          costo_promedio: number | null
+          valorizado: number | null
+          stock_minimo: number | null
+          stock_maximo: number | null
+          punto_reposicion: number | null
+          es_critico: boolean | null
+          controla_lote: boolean | null
+          fecha_ultimo_movimiento: string | null
+          bajo_minimo: boolean | null
+          requiere_reposicion: boolean | null
+        }
+        Relationships: []
+      }
+      v_trazabilidad_lotes: {
+        Row: {
+          lote_id: string | null
+          numero_lote: string | null
+          numero_colada: string | null
+          certificado_calidad: string | null
+          material_codigo: string | null
+          material_descripcion: string | null
+          proveedor: string | null
+          fecha_ingreso: string | null
+          orden_id: string | null
+          orden_numero: string | null
+          orden_descripcion: string | null
+          cliente: string | null
+          placa: string | null
+          fecha_consumo: string | null
+          cantidad_consumida: number | null
+          costo_total: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       activar_auditoria: {
@@ -3360,6 +4177,44 @@ export type Database = {
       activar_timestamps: {
         Args: {
           p_tabla: string
+        }
+        Returns: string
+      }
+      actualizar_estado_requerimiento: {
+        Args: {
+          p_requerimiento: string
+        }
+        Returns: string
+      }
+      anular_movimiento_almacen: {
+        Args: {
+          p_movimiento: string
+          p_motivo: string
+        }
+        Returns: string
+      }
+      aprobar_requerimiento: {
+        Args: {
+          p_requerimiento: string
+          p_aprobador?: string
+        }
+        Returns: string
+      }
+      confirmar_movimiento_almacen: {
+        Args: {
+          p_movimiento: string
+        }
+        Returns: string
+      }
+      confirmar_recepcion: {
+        Args: {
+          p_recepcion: string
+        }
+        Returns: string
+      }
+      costos_validar_orden: {
+        Args: {
+          p_orden_id: string
         }
         Returns: string
       }
@@ -3376,6 +4231,33 @@ export type Database = {
       es_usuario_activo: {
         Args: Record<PropertyKey, never>
         Returns: boolean
+      }
+      generar_presupuesto_desde_cotizacion: {
+        Args: {
+          p_orden_id: string
+          p_factor_costo?: number
+          p_reemplazar?: boolean
+        }
+        Returns: number
+      }
+      kardex_registrar: {
+        Args: {
+          p_material: string
+          p_almacen: string
+          p_tipo: Database["public"]["Enums"]["tipo_movimiento_kardex"]
+          p_cantidad: number
+          p_costo_unitario?: number
+          p_fecha?: string
+          p_orden?: string
+          p_etapa?: string
+          p_lote?: string
+          p_movimiento?: string
+          p_referencia_tabla?: string
+          p_referencia_id?: string
+          p_usuario?: string
+          p_observaciones?: string
+        }
+        Returns: string
       }
       marcar_cotizaciones_vencidas: {
         Args: {
@@ -3432,6 +4314,18 @@ export type Database = {
         }
         Returns: string
       }
+      prorratear_indirectos: {
+        Args: {
+          p_periodo: string
+        }
+        Returns: string[]
+      }
+      puede_ver_orden: {
+        Args: {
+          p_orden_id: string
+        }
+        Returns: boolean
+      }
       recalcular_totales_cotizacion: {
         Args: {
           p_cotizacion: string
@@ -3446,11 +4340,26 @@ export type Database = {
         }
         Returns: string
       }
+      tarifa_vigente: {
+        Args: {
+          p_especialidad: Database["public"]["Enums"]["rol_operario"]
+          p_fecha?: string
+        }
+        Returns: string
+      }
       tiene_permiso: {
         Args: {
           p_codigo: string
         }
         Returns: boolean
+      }
+      tipo_cambio_costo: {
+        Args: {
+          p_moneda: Database["public"]["Enums"]["moneda"]
+          p_fecha: string
+          p_tipo_cambio?: number
+        }
+        Returns: number
       }
       tipo_cambio_vigente: {
         Args: {
@@ -3465,6 +4374,7 @@ export type Database = {
     }
     Enums: {
       accion_auditoria: "INSERT" | "UPDATE" | "DELETE"
+      categoria_gasto_indirecto: "ENERGIA" | "AGUA" | "ALQUILER" | "DEPRECIACION" | "SUELDOS_INDIRECTOS" | "MANTENIMIENTO_PLANTA" | "SEGUROS" | "EPP" | "COMUNICACIONES" | "LIMPIEZA" | "OTRO"
       condicion_pago: "CONTADO" | "CREDITO_7" | "CREDITO_15" | "CREDITO_30" | "CREDITO_45" | "CREDITO_60" | "LETRAS"
       estado_cotizacion: "BORRADOR" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "VENCIDA" | "ANULADA"
       estado_etapa_ot: "PENDIENTE" | "EN_PROCESO" | "PAUSADA" | "TERMINADA" | "OMITIDA"
@@ -3473,19 +4383,24 @@ export type Database = {
       estado_ot: "BORRADOR" | "APROBADA" | "PROGRAMADA" | "EN_PROCESO" | "PAUSADA" | "CONTROL_CALIDAD" | "TERMINADA" | "ENTREGADA" | "FACTURADA" | "ANULADA"
       estado_parte_diario: "BORRADOR" | "CERRADO" | "APROBADO"
       estado_requerimiento: "SOLICITADO" | "APROBADO" | "ATENDIDO_PARCIAL" | "ATENDIDO" | "RECHAZADO" | "ANULADO"
+      estado_servicio_tercero: "SOLICITADO" | "EJECUTADO" | "PAGADO" | "ANULADO"
       estado_tarea_ot: "PENDIENTE" | "EN_PROCESO" | "TERMINADA" | "CANCELADA"
       magnitud_medida: "UNIDAD" | "MASA" | "LONGITUD" | "AREA" | "VOLUMEN"
       moneda: "PEN" | "USD"
+      origen_presupuesto: "COTIZACION" | "MANUAL"
       prioridad_ot: "BAJA" | "NORMAL" | "ALTA" | "URGENTE"
       resultado_inspeccion: "CONFORME" | "OBSERVADO" | "RECHAZADO"
       rol_operario: "SOLDADOR" | "ARMADOR" | "PINTOR" | "ELECTRICISTA" | "AYUDANTE" | "MECANICO"
       tipo_almacen: "PRINCIPAL" | "OBRA" | "HERRAMIENTAS" | "MERMA"
+      tipo_centro_costo: "PRODUCCION" | "ADMINISTRATIVO" | "VENTAS"
       tipo_correlativo: "COTIZACION" | "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA"
+      tipo_costo: "MATERIAL" | "MANO_OBRA" | "SERVICIO" | "INDIRECTO" | "OTRO"
       tipo_costo_partida: "MATERIAL" | "MANO_OBRA" | "SERVICIO" | "OTRO"
       tipo_documento_cliente: "RUC" | "DNI" | "CE" | "PASAPORTE"
       tipo_evento_ot: "CREACION" | "CAMBIO_ESTADO" | "AVANCE" | "MATERIAL" | "DOCUMENTO" | "INSPECCION" | "PAUSA" | "REANUDACION" | "COMENTARIO" | "ENTREGA"
       tipo_movimiento_almacen: "INGRESO" | "SALIDA_OT" | "DEVOLUCION_OT" | "TRANSFERENCIA" | "AJUSTE" | "SALIDA_MERMA"
       tipo_movimiento_kardex: "INGRESO_COMPRA" | "INGRESO_DEVOLUCION" | "INGRESO_AJUSTE" | "INGRESO_TRANSFERENCIA" | "SALIDA_OT" | "SALIDA_AJUSTE" | "SALIDA_TRANSFERENCIA" | "SALIDA_MERMA"
+      tipo_servicio_tercero: "ARENADO" | "CORTE_LASER" | "CORTE_PLASMA" | "DOBLADO" | "TORNO" | "GALVANIZADO" | "TRATAMIENTO_TERMICO" | "TAPICERIA" | "PINTURA" | "ELECTRICIDAD" | "HIDRAULICA" | "TRANSPORTE" | "CERTIFICACION" | "OTRO"
       tipo_trabajo_ot: "FABRICACION" | "REPARACION" | "REPOTENCIACION" | "MANTENIMIENTO" | "GARANTIA"
       tipo_vehiculo: "VOLQUETE" | "TRACTO" | "SEMIRREMOLQUE" | "CAMION" | "REMOLQUE" | "FURGON" | "OTRO"
     }

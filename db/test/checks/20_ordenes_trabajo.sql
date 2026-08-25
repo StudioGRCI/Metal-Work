@@ -4,12 +4,10 @@ begin;
 
 insert into public.empresa (ruc, razon_social) values ('20100000002', 'PRUEBAS OT S.A.C.');
 insert into public.sedes (codigo, nombre) values ('T1', 'Taller principal');
-insert into public.usuarios (id, nombres, apellidos, correo, rol_id, sede_id, es_operario, costo_hora)
-  select gen_random_uuid(), 'Luis', 'Mamani', 'luis@demo.pe', r.id, s.id, true, 12.50
-    from public.roles r, public.sedes s where r.codigo = 'OPERARIO' limit 1;
-insert into public.usuarios (id, nombres, apellidos, correo, rol_id, sede_id)
-  select gen_random_uuid(), 'Rosa', 'Yupanqui', 'rosa@demo.pe', r.id, s.id
-    from public.roles r, public.sedes s where r.codigo = 'JEFE_TALLER' limit 1;
+select test.crear_usuario('Luis', 'Mamani', 'luis@demo.pe', 'OPERARIO',
+         (select id from public.sedes limit 1), true, 12.50) \gset operario_
+select test.crear_usuario('Rosa', 'Yupanqui', 'rosa@demo.pe', 'JEFE_TALLER',
+         (select id from public.sedes limit 1)) \gset jefe_
 insert into public.clientes (tipo_documento, numero_documento, razon_social)
   values ('RUC', '20888888888', 'MINERA LOS ANDES S.A.');
 insert into public.unidades (cliente_id, placa, tipo_vehiculo, marca, modelo)

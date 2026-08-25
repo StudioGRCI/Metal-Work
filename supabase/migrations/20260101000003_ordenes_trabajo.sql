@@ -585,6 +585,10 @@ create or replace function public.ot_registrar_evento(
 returns uuid
 language plpgsql
 volatile
+-- La bitácora debe escribirse pase lo que pase: quien aprueba una OT no
+-- necesariamente tiene permiso de escritura sobre la tabla de eventos.
+security definer
+set search_path = public
 as $$
 declare v_id uuid;
 begin
@@ -644,6 +648,10 @@ create or replace function public.crear_etapas_ot(p_orden_id uuid)
 returns integer
 language plpgsql
 volatile
+-- Las etapas se generan al aprobar la OT, y quien aprueba (gerencia) no tiene
+-- por qué tener permiso para registrar producción.
+security definer
+set search_path = public
 as $$
 declare
   v_creadas integer;

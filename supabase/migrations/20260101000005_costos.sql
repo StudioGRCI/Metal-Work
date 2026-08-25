@@ -753,3 +753,354 @@ $$;
 
 comment on function public.prorratear_indirectos is
   'Reparte el gasto indirecto prorrateable de un mes entre las OT con horas aprobadas en ese mes, en proporción a sus horas-hombre. Borra y rehace el prorrateo del periodo; devuelve las asignaciones creadas.';
+
+-- =============================================================================
+-- VISTAS DE COSTO REAL
+-- Todas parten de la OT con left join y coalesce: una orden sin movimientos
+-- aparece en cero, nunca desaparece del reporte.
+-- =============================================================================
+
+-- Material consumido por la OT, valorizado al costo con el que salió de almacén.
+-- El costo real es la salida menos lo que el taller devolvió sin usar; la merma
+-- no entra aquí porque no lleva orden_id: es gasto indirecto de planta.
+create view public.v_ot_costo_materiales as
+select
+  k.orden_id,
+  coalesce(sum(k.costo_total) filter (where k.tipo_movimiento = 'SALIDA_OT'), 0)::public.monto
+    as consumo_material,
+  coalesce(sum(k.costo_total) filter (where k.tipo_movimiento = 'INGRESO_DEVOLUCION'), 0)::public.monto
+    as devoluciones_material,
+  (coalesce(sum(k.costo_total) filter (where k.tipo_movimiento = 'SALIDA_OT'), 0)
+   - coalesce(sum(k.costo_total) filter (where k.tipo_movimiento = 'INGRESO_DEVOLUCION'), 0))::public.monto
+    as costo_materiales,
+  count(*) filter (where k.tipo_movimiento = 'SALIDA_OT') as vales_consumo,
+  max(k.fecha) as ultimo_movimiento
+from public.kardex k
+where k.orden_id is not null
+  and k.tipo_movimiento in ('SALIDA_OT', 'INGRESO_DEVOLUCION')
+group by k.orden_id;
+
+comment on view public.v_ot_costo_materiales is
+  'Costo de material de cada OT: salidas de almacén imputadas a la orden menos las devoluciones de esa misma orden, al costo promedio con que se descargó el kardex.';
+
+-- Línea por línea de hora-hombre aprobada, ya valorizada. Es la vista que se
+-- muestra cuando alguien pregunta "¿y por qué esta OT tiene tanta mano de obra?".
+create view public.v_ot_mano_obra_detalle as
+select
+  h.detalle_id,
+  h.orden_id,
+  h.etapa_id,
+  h.usuario_id,
+  h.parte_id,
+  h.parte_numero,
+  h.fecha,
+  asg.rol as especialidad,
+  t.id    as tarifa_id,
+  h.horas,
+  h.horas_extra,
+  h.horas_totales,
+  cst.costo_hora,
+  cst.costo_hora_extra,
+  round(h.horas * cst.costo_hora, 2)::public.monto        as costo_normal,
+  round(h.horas_extra * cst.costo_hora_extra, 2)::public.monto as costo_extra,
+  (round(h.horas * cst.costo_hora, 2)
+   + round(h.horas_extra * cst.costo_hora_extra, 2))::public.monto as costo_hora_hombre
+from public.ot_horas_aprobadas h
+-- Especialidad con la que el operario está asignado a esa OT. Se prefiere la
+-- asignación de la etapa concreta sobre la asignación general de la orden,
+-- porque el mismo operario puede armar en una etapa y soldar en otra.
+left join lateral (
+  select op.rol
+    from public.ot_personal op
+   where op.orden_id = h.orden_id
+     and op.usuario_id = h.usuario_id
+     and (op.etapa_id = h.etapa_id or op.etapa_id is null)
+     and op.fecha_asignacion <= h.fecha
+     and (op.fecha_desasignacion is null or op.fecha_desasignacion >= h.fecha)
+   order by (op.etapa_id is not null) desc, op.fecha_asignacion desc
+   limit 1
+) asg on true
+left join public.tarifas_mano_obra t
+       on t.especialidad = asg.rol
+      and t.vigencia_desde <= h.fecha
+      and (t.vigencia_hasta is null or t.vigencia_hasta >= h.fecha)
+cross join lateral (
+  select
+    -- Prelación: manda el costo hora propio del operario (es la planilla real
+    -- que paga la empresa) y solo si no está definido se usa la tarifa de su
+    -- especialidad. Si no hay ninguno de los dos la hora vale cero y queda
+    -- contada en horas_sin_costo para que salte a la vista.
+    coalesce(nullif(h.costo_hora, 0), t.costo_hora, 0)::public.monto as costo_hora,
+    -- El recargo de la hora extra se toma de la tarifa; sin tarifa se aplica el
+    -- 25 % mínimo de ley sobre las primeras horas extra.
+    round(
+      coalesce(nullif(h.costo_hora, 0), t.costo_hora, 0)
+      * case when t.costo_hora > 0 then t.costo_hora_extra / t.costo_hora else 1.25 end
+    , 2)::public.monto as costo_hora_extra
+) cst;
+
+comment on view public.v_ot_mano_obra_detalle is
+  'Cada hora-hombre de parte diario aprobado, con la especialidad con la que el operario estaba asignado a la OT y el costo hora aplicado. Base de todo el costeo de mano de obra.';
+
+create view public.v_ot_mano_obra_especialidad as
+select
+  d.orden_id,
+  d.especialidad,
+  sum(d.horas)::public.cantidad         as horas_normales,
+  sum(d.horas_extra)::public.cantidad   as horas_extra,
+  sum(d.horas_totales)::public.cantidad as horas_totales,
+  sum(d.costo_hora_hombre)::public.monto as costo_mano_obra,
+  count(distinct d.usuario_id)          as operarios
+from public.v_ot_mano_obra_detalle d
+group by d.orden_id, d.especialidad;
+
+comment on view public.v_ot_mano_obra_especialidad is
+  'Horas y costo de mano de obra por OT y especialidad. Responde en qué oficio se está yendo el tiempo de una carrocería.';
+
+create view public.v_ot_costo_mano_obra as
+select
+  d.orden_id,
+  sum(d.horas)::public.cantidad          as horas_normales,
+  sum(d.horas_extra)::public.cantidad    as horas_extra,
+  sum(d.horas_totales)::public.cantidad  as horas_totales,
+  sum(d.costo_normal)::public.monto      as costo_normal,
+  sum(d.costo_extra)::public.monto       as costo_extra,
+  sum(d.costo_hora_hombre)::public.monto as costo_mano_obra,
+  -- Horas que hoy no se pueden valorizar: ni el operario tiene costo_hora ni su
+  -- especialidad tiene tarifa vigente. Si esto no es cero, el costo está corto.
+  coalesce(sum(d.horas_totales) filter (where d.costo_hora = 0), 0)::public.cantidad as horas_sin_costo,
+  count(distinct d.usuario_id)           as operarios
+from public.v_ot_mano_obra_detalle d
+group by d.orden_id;
+
+comment on view public.v_ot_costo_mano_obra is
+  'Costo de mano de obra directa por OT, separando horas normales de extras. Solo entra lo que viene de partes diarios APROBADOS.';
+
+create view public.v_ot_costo_servicios as
+select
+  s.orden_id,
+  -- Ejecutado y pagado ya son costo incurrido; lo solicitado todavía es
+  -- compromiso con el proveedor y se informa aparte.
+  coalesce(sum(s.monto_base) filter (where s.estado in ('EJECUTADO', 'PAGADO')), 0)::public.monto
+    as costo_servicios,
+  coalesce(sum(s.monto_base) filter (where s.estado = 'SOLICITADO'), 0)::public.monto
+    as servicios_comprometidos,
+  coalesce(sum(s.monto_base) filter (where s.estado = 'PAGADO'), 0)::public.monto
+    as servicios_pagados,
+  count(*)                                             as servicios,
+  count(*) filter (where s.estado = 'SOLICITADO')      as servicios_pendientes
+from public.servicios_terceros s
+where s.estado <> 'ANULADO'
+group by s.orden_id;
+
+comment on view public.v_ot_costo_servicios is
+  'Servicios de terceros por OT en moneda base. costo_servicios cuenta solo lo ejecutado y pagado; lo solicitado se informa como compromiso.';
+
+create view public.v_ot_costo_indirecto as
+select
+  pi.orden_id,
+  sum(pi.monto_asignado)::public.monto as costo_indirecto,
+  sum(pi.horas_hombre)::public.cantidad as horas_prorrateadas,
+  count(*)                              as periodos_prorrateados,
+  max(pi.periodo)                       as ultimo_periodo
+from public.prorrateo_indirectos pi
+group by pi.orden_id;
+
+comment on view public.v_ot_costo_indirecto is
+  'Gasto de planta absorbido por cada OT, acumulando todos los meses en los que la orden tuvo horas trabajadas.';
+
+create view public.v_ot_costo_adicional as
+select
+  a.orden_id,
+  sum(a.monto_base)::public.monto as costo_adicional,
+  count(*)                        as documentos
+from public.ot_costos_adicionales a
+group by a.orden_id;
+
+comment on view public.v_ot_costo_adicional is
+  'Costos cargados a mano a la OT (fletes, viáticos, compras directas), en moneda base.';
+
+-- =============================================================================
+-- COSTO TOTAL, DESVIACIÓN Y MARGEN
+-- =============================================================================
+
+create view public.v_ot_costo_total as
+with base as (
+  select
+    o.id                as orden_id,
+    o.numero,
+    o.cliente_id,
+    cli.razon_social    as cliente,
+    o.unidad_id,
+    o.cotizacion_id,
+    o.sede_id,
+    o.tipo_trabajo,
+    o.estado,
+    o.moneda,
+    o.fecha_registro,
+    o.fecha_fin_real,
+    o.avance_porcentaje,
+    coalesce(m.costo_materiales, 0)::public.monto  as costo_materiales,
+    coalesce(mo.costo_mano_obra, 0)::public.monto  as costo_mano_obra,
+    coalesce(s.costo_servicios, 0)::public.monto   as costo_servicios,
+    coalesce(i.costo_indirecto, 0)::public.monto   as costo_indirecto,
+    coalesce(a.costo_adicional, 0)::public.monto   as costo_adicional,
+    coalesce(s.servicios_comprometidos, 0)::public.monto as servicios_comprometidos,
+    coalesce(mo.horas_totales, 0)::public.cantidad as horas_reales,
+    coalesce(mo.horas_sin_costo, 0)::public.cantidad as horas_sin_costo,
+    o.horas_estimadas,
+    -- El presupuesto detallado manda; si la OT todavía no tiene líneas de
+    -- presupuesto se cae al monto de la cabecera de la orden.
+    coalesce(pre.presupuesto, o.monto_presupuestado, 0)::public.monto as presupuesto,
+    case when pre.presupuesto is not null then 'DETALLE' else 'CABECERA' end as fuente_presupuesto
+  from public.ordenes_trabajo o
+  join public.clientes cli                  on cli.id = o.cliente_id
+  left join public.v_ot_costo_materiales m  on m.orden_id  = o.id
+  left join public.v_ot_costo_mano_obra mo  on mo.orden_id = o.id
+  left join public.v_ot_costo_servicios s   on s.orden_id  = o.id
+  left join public.v_ot_costo_indirecto i   on i.orden_id  = o.id
+  left join public.v_ot_costo_adicional a   on a.orden_id  = o.id
+  left join (
+    select p.orden_id, sum(p.monto_presupuestado) as presupuesto
+      from public.ot_presupuesto p
+     group by p.orden_id
+  ) pre on pre.orden_id = o.id
+),
+suma as (
+  select
+    b.*,
+    (b.costo_materiales + b.costo_mano_obra + b.costo_servicios
+     + b.costo_indirecto + b.costo_adicional)::public.monto as costo_total
+  from base b
+)
+select
+  s.*,
+  -- Desviación en signo de control de costos: positiva = sobrecosto.
+  (s.costo_total - s.presupuesto)::public.monto as desviacion,
+  case
+    when s.presupuesto > 0
+      then round((s.costo_total - s.presupuesto) / s.presupuesto * 100, 2)
+  end as desviacion_porcentaje,
+  case
+    when s.presupuesto > 0
+      then round(s.costo_total / s.presupuesto * 100, 2)
+  end as consumo_presupuesto_porcentaje,
+  case
+    when s.horas_reales > 0
+      then round(s.costo_total / s.horas_reales, 2)
+  end as costo_por_hora
+from suma s;
+
+comment on view public.v_ot_costo_total is
+  'Una fila por orden de trabajo con el costo real acumulado abierto en sus cinco componentes, el presupuesto y la desviación. Es la respuesta a "cuánto llevo gastado en esta OT contra lo que presupuesté".';
+
+create view public.v_ot_margen as
+with cotizado as (
+  select
+    t.*,
+    c.numero as cotizacion_numero,
+    -- Valor de venta SIN IGV: el impuesto se recauda para SUNAT, no es ingreso
+    -- de la empresa y no puede inflar el margen.
+    round((c.subtotal - c.descuento) * c.tipo_cambio, 2)::public.monto as valor_venta_cotizado,
+    round(c.total * c.tipo_cambio, 2)::public.monto as valor_venta_con_igv
+  from public.v_ot_costo_total t
+  -- Solo la cotización aprobada fija el precio: una en borrador o rechazada no
+  -- es un compromiso de venta.
+  left join public.cotizaciones c
+         on c.id = t.cotizacion_id
+        and c.estado = 'APROBADA'
+),
+venta as (
+  select
+    v.*,
+    -- Sin cotización aprobada se cae al monto presupuestado de la OT, que es lo
+    -- único pactado que existe (típico de las reparaciones que entran directo
+    -- a taller sin pasar por el área comercial).
+    coalesce(v.valor_venta_cotizado, v.presupuesto, 0)::public.monto as valor_venta
+  from cotizado v
+)
+select
+  v.*,
+  (v.valor_venta - v.costo_total)::public.monto as utilidad,
+  case
+    when v.valor_venta > 0
+      then round((v.valor_venta - v.costo_total) / v.valor_venta * 100, 2)
+  end as margen_porcentaje
+from venta v;
+
+comment on view public.v_ot_margen is
+  'Costo real, valor de venta sin IGV, utilidad y margen porcentual por orden de trabajo. valor_venta_cotizado es null cuando la OT no nace de una cotización aprobada y valor_venta cae entonces al presupuesto; margen_porcentaje es null cuando no hay con qué comparar.';
+
+-- Drill-down del presupuesto contra el real por naturaleza del costo: es la
+-- vista que explica de dónde salió la desviación total.
+create view public.v_ot_costo_por_tipo as
+with reales as (
+  select v.orden_id, 'MATERIAL'::public.tipo_costo as tipo_costo, v.costo_materiales as monto
+    from public.v_ot_costo_materiales v
+  union all
+  select v.orden_id, 'MANO_OBRA', v.costo_mano_obra from public.v_ot_costo_mano_obra v
+  union all
+  select v.orden_id, 'SERVICIO',  v.costo_servicios from public.v_ot_costo_servicios v
+  union all
+  select v.orden_id, 'INDIRECTO', v.costo_indirecto from public.v_ot_costo_indirecto v
+  union all
+  -- Los costos adicionales se clasifican con su propia naturaleza, de modo que
+  -- una compra directa de plancha compita contra el presupuesto de MATERIAL.
+  select a.orden_id, a.tipo_costo, a.monto_base from public.ot_costos_adicionales a
+),
+real_agrupado as (
+  select r.orden_id, r.tipo_costo, sum(r.monto)::public.monto as costo_real
+    from reales r
+   group by r.orden_id, r.tipo_costo
+),
+presupuestado as (
+  select p.orden_id, p.tipo_costo, sum(p.monto_presupuestado)::public.monto as presupuesto
+    from public.ot_presupuesto p
+   group by p.orden_id, p.tipo_costo
+)
+select
+  coalesce(r.orden_id, p.orden_id)   as orden_id,
+  coalesce(r.tipo_costo, p.tipo_costo) as tipo_costo,
+  coalesce(p.presupuesto, 0)::public.monto as presupuesto,
+  coalesce(r.costo_real, 0)::public.monto  as costo_real,
+  (coalesce(r.costo_real, 0) - coalesce(p.presupuesto, 0))::public.monto as desviacion,
+  case
+    when coalesce(p.presupuesto, 0) > 0
+      then round((coalesce(r.costo_real, 0) - p.presupuesto) / p.presupuesto * 100, 2)
+  end as desviacion_porcentaje
+from real_agrupado r
+full join presupuestado p
+       on p.orden_id = r.orden_id
+      and p.tipo_costo = r.tipo_costo;
+
+comment on view public.v_ot_costo_por_tipo is
+  'Presupuesto contra costo real por OT y naturaleza del costo. Usa full join para que aparezcan tanto lo presupuestado y no gastado como lo gastado sin presupuestar.';
+
+-- =============================================================================
+-- TIMESTAMPS Y AUDITORÍA
+-- =============================================================================
+
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'centros_costo', 'tarifas_mano_obra', 'ot_presupuesto', 'servicios_terceros',
+    'gastos_indirectos', 'prorrateo_indirectos', 'ot_costos_adicionales'
+  ] loop
+    perform public.activar_timestamps(t);
+  end loop;
+
+  -- Todo lo que mueve el costo o el margen de una OT se audita. Las tarifas y
+  -- los centros de costo entran porque cambiarlos revaloriza el costeo de todas
+  -- las órdenes siguientes y alguien tiene que responder por ese cambio.
+  -- prorrateo_indirectos queda fuera a propósito: es una tabla derivada que se
+  -- borra y se rehace cada vez que se recalcula el mes, y auditarla llenaría el
+  -- historial de ruido sin aportar trazabilidad real.
+  foreach t in array array[
+    'centros_costo', 'tarifas_mano_obra', 'ot_presupuesto', 'servicios_terceros',
+    'gastos_indirectos', 'ot_costos_adicionales'
+  ] loop
+    perform public.activar_auditoria(t);
+  end loop;
+end;
+$$;

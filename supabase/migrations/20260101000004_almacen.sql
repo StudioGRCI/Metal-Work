@@ -413,7 +413,12 @@ create table public.kardex (
        and cantidad < 0)
   ),
   -- Toda salida a producción se imputa a una OT: es el requisito del costeo real.
-  constraint ck_kardex_salida_ot check (tipo_movimiento <> 'SALIDA_OT' or orden_id is not null)
+  constraint ck_kardex_salida_ot check (tipo_movimiento <> 'SALIDA_OT' or orden_id is not null),
+  -- La etapa siempre viaja con su OT; sin ella no se sabría a qué fase cargarle
+  -- el material.
+  constraint ck_kardex_etapa check (etapa_id is null or orden_id is not null),
+  constraint fk_kardex_etapa foreign key (etapa_id, orden_id)
+    references public.ot_etapas(id, orden_id) on delete restrict
 );
 
 comment on table public.kardex is
@@ -496,6 +501,7 @@ create table public.movimientos_almacen (
     tipo <> 'AJUSTE' or nullif(btrim(motivo), '') is not null),
   constraint ck_mov_motivo_anulacion check (
     estado <> 'ANULADO' or nullif(btrim(motivo_anulacion), '') is not null),
+  constraint ck_mov_etapa check (etapa_id is null or orden_id is not null),
   constraint fk_mov_etapa foreign key (etapa_id, orden_id)
     references public.ot_etapas(id, orden_id) on delete restrict
 );
@@ -597,6 +603,7 @@ create table public.requerimientos (
   constraint ck_req_fecha_requerida check (fecha_requerida is null or fecha_requerida >= fecha),
   constraint ck_req_motivo_rechazo check (
     estado <> 'RECHAZADO' or nullif(btrim(motivo_rechazo), '') is not null),
+  constraint ck_req_etapa check (etapa_id is null or orden_id is not null),
   constraint fk_req_etapa foreign key (etapa_id, orden_id)
     references public.ot_etapas(id, orden_id) on delete restrict
 );
@@ -1158,7 +1165,7 @@ begin
   -- marca la transacción con una variable de sesión local antes de actualizar.
   if new.estado = 'CONFIRMADO'
      and coalesce(current_setting('metalwork.mov_confirmando', true), '') <> new.id::text then
-    raise exception 'Un movimiento de almacén solo se confirma con public.confirmar_movimiento_almacen(%L)', new.id
+    raise exception 'El movimiento % solo se confirma con public.confirmar_movimiento_almacen(''%'')', new.numero, new.id
       using errcode = 'insufficient_privilege';
   end if;
 
@@ -1256,6 +1263,37 @@ begin
      set cantidad_reservada = 0
    where requerimiento_id = new.id
      and cantidad_reservada > 0;
+
+  return new;
+end;
+$$;
+
+-- La unidad base tiene que ser de la misma magnitud y ser ella misma una base:
+-- convertir toneladas a metros no significa nada, y una cadena de conversiones
+-- encadenadas haría imposible saber en qué se está midiendo el stock.
+create or replace function public.fn_unidad_medida_valida_base()
+returns trigger
+language plpgsql
+as $$
+declare v_base public.unidades_medida;
+begin
+  if new.unidad_base_id is null then
+    return new;
+  end if;
+
+  select * into v_base from public.unidades_medida where id = new.unidad_base_id;
+
+  if v_base.magnitud <> new.magnitud then
+    raise exception 'La unidad % es de magnitud % y no puede convertirse a % (magnitud %)',
+      new.codigo, new.magnitud, v_base.codigo, v_base.magnitud
+      using errcode = 'check_violation';
+  end if;
+
+  if v_base.unidad_base_id is not null then
+    raise exception 'La unidad % no puede ser base de % porque a su vez se deriva de otra',
+      v_base.codigo, new.codigo
+      using errcode = 'check_violation';
+  end if;
 
   return new;
 end;
@@ -2037,8 +2075,30 @@ begin
 
   if new.estado = 'CONFIRMADO'
      and coalesce(current_setting('metalwork.rec_confirmando', true), '') <> new.id::text then
-    raise exception 'Una recepción solo se confirma con public.confirmar_recepcion(%L)', new.id
+    raise exception 'La recepción % solo se confirma con public.confirmar_recepcion(''%'')', new.numero, new.id
       using errcode = 'insufficient_privilege';
+  end if;
+
+  return new;
+end;
+$$;
+
+-- Una recepción solo se abre contra una orden de compra viva: si la OC está en
+-- BORRADOR todavía no se pidió nada, y si está RECIBIDA o ANULADA ya se cerró.
+create or replace function public.fn_recepcion_valida_oc()
+returns trigger
+language plpgsql
+as $$
+declare
+  v_estado public.estado_orden_compra;
+  v_numero text;
+begin
+  select estado, numero into v_estado, v_numero
+    from public.ordenes_compra where id = new.orden_compra_id;
+
+  if v_estado not in ('APROBADA', 'ENVIADA', 'RECIBIDA_PARCIAL') then
+    raise exception 'La orden de compra % está % : no admite nuevas recepciones', v_numero, v_estado
+      using errcode = 'object_not_in_prerequisite_state';
   end if;
 
   return new;
@@ -2250,9 +2310,9 @@ select
   k.orden_id,
   ot.numero                                as orden_numero,
   count(distinct k.material_id)            as materiales_distintos,
-  -- Las salidas llevan cantidad negativa y las devoluciones positiva: invertir
-  -- el signo deja el consumo neto en positivo.
-  sum(case when k.cantidad < 0 then -k.cantidad else -k.cantidad end) as cantidad_neta,
+  count(*)                                 as movimientos,
+  -- Las salidas llevan costo positivo y las devoluciones lo restan: el neto es
+  -- el material que realmente se quedó en la carrocería.
   sum(case when k.cantidad < 0 then k.costo_total else -k.costo_total end) as costo_material,
   min(k.fecha)                             as primer_consumo,
   max(k.fecha)                             as ultimo_consumo
@@ -2389,6 +2449,10 @@ create trigger trg_oc_detalle_recalcular
   after insert or update or delete on public.orden_compra_detalle
   for each row execute function public.fn_oc_recalcular();
 
+create trigger trg_recepcion_valida_oc
+  before insert on public.recepciones
+  for each row execute function public.fn_recepcion_valida_oc();
+
 create trigger trg_recepcion_transicion
   before update on public.recepciones
   for each row execute function public.fn_recepcion_transicion();
@@ -2396,6 +2460,10 @@ create trigger trg_recepcion_transicion
 create trigger trg_recepcion_detalle_editable
   before insert or update or delete on public.recepcion_detalle
   for each row execute function public.fn_recepcion_detalle_editable();
+
+create trigger trg_unidad_medida_base
+  before insert or update of unidad_base_id, magnitud on public.unidades_medida
+  for each row execute function public.fn_unidad_medida_valida_base();
 
 create trigger trg_categoria_material_ciclos
   before insert or update of categoria_padre_id on public.categorias_material
