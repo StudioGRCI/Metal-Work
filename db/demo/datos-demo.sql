@@ -258,6 +258,25 @@ begin
     update public.ot_etapas set avance_porcentaje = 100, estado = 'TERMINADA'
      where orden_id = v_orden;
 
+    -- Documentación obligatoria de la orden: sin ella la base no deja entregar.
+    insert into public.documentos (tipo_documento_id, titulo, entidad_tabla, entidad_id, orden_id, fecha_documento)
+    select td.id, td.nombre || ' — plataforma con barandas', 'ordenes_trabajo', v_orden, v_orden, current_date - 6
+      from public.tipos_documento td
+     where td.obligatorio_para_cierre and td.activo;
+
+    insert into public.documento_versiones
+      (documento_id, ruta_storage, nombre_archivo, extension, tamano_bytes, subido_por)
+    select d.id,
+           'ot/' || v_orden || '/' || d.id || '.pdf',
+           lower(replace(d.titulo, ' ', '-')) || '.pdf',
+           'pdf', 186000, v_usuario
+      from public.documentos d where d.orden_id = v_orden;
+
+    -- Y un par de fotos del avance, que es lo que el taller sube a diario.
+    insert into public.documentos (tipo_documento_id, titulo, entidad_tabla, entidad_id, orden_id, fecha_documento)
+    select td.id, 'Avance de estructura', 'ordenes_trabajo', v_orden, v_orden, current_date - 10
+      from public.tipos_documento td where td.codigo = 'FOTO_AVANCE';
+
     update public.ordenes_trabajo set estado = 'CONTROL_CALIDAD' where id = v_orden;
     update public.ordenes_trabajo set estado = 'TERMINADA'       where id = v_orden;
 
