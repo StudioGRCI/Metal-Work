@@ -28,6 +28,7 @@ declare
   v_requerimiento uuid;
   v_servicio      uuid;
   v_calidad       uuid;
+  v_jefe          uuid;
 begin
   select id into v_sede from public.sedes where activo order by creado_en limit 1;
   select id into v_usuario from public.usuarios where activo order by creado_en limit 1;
@@ -576,6 +577,63 @@ begin
              fecha_factura  = current_date - 24
        where id = v_servicio;
     end if;
+  end if;
+
+  -- ------------------------------------------------------------ avance diario
+  -- Lo que se hizo cada día en la unidad. Sin fotos, porque el archivo vive en
+  -- Storage y la demostración solo carga base de datos; el texto igual arma el
+  -- tablero del taller y la línea de tiempo de la orden.
+  if not exists (select 1 from public.ot_avances) then
+    select id into v_jefe from public.usuarios
+     where correo like '%jefe%' or cargo ilike '%jefe%' limit 1;
+    v_jefe := coalesce(v_jefe, v_usuario);
+
+    -- Quien registra el avance tiene que estar identificado: la bitácora de la
+    -- OT no acepta anotaciones anónimas.
+    perform set_config('request.jwt.claim.sub', v_jefe::text, true);
+
+    select o.id into v_orden
+      from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
+     where u.placa = 'V2G-841';
+
+    insert into public.ot_avances (orden_id, etapa_id, fecha, descripcion, avance_porcentaje, registrado_por)
+    select v_orden, e.id, current_date - 6,
+      'Se trazó y cortó la plancha del piso en Hardox 450 y se armó el bastidor sobre la mesa.',
+      100, v_jefe
+      from public.ot_etapas e
+      join public.etapas_catalogo ec on ec.id = e.etapa_catalogo_id
+     where e.orden_id = v_orden and ec.codigo in ('HABILITADO_MP', 'HABILITADO')
+     order by e.orden_secuencia limit 1;
+
+    insert into public.ot_avances (orden_id, etapa_id, fecha, descripcion, avance_porcentaje, registrado_por)
+    select v_orden, e.id, current_date - 3,
+      'Se soldaron los travesaños del piso y se levantaron los laterales. Falta el frontal.',
+      55, v_jefe
+      from public.ot_etapas e
+      join public.etapas_catalogo ec on ec.id = e.etapa_catalogo_id
+     where e.orden_id = v_orden and ec.codigo in ('PRODUCCION', 'ARMADO')
+     order by e.orden_secuencia limit 1;
+
+    insert into public.ot_avances (orden_id, fecha, descripcion, impedimento, registrado_por)
+    values (v_orden, current_date - 1,
+      'La tolva salió al arenado. Se aprovechó para adelantar los seguros de la compuerta.',
+      'Falta la plancha Hardox de 8 mm del refuerzo trasero; el proveedor la entrega el jueves.',
+      v_jefe);
+
+    -- Una unidad que hace días que nadie toca: es lo que el tablero resalta.
+    select o.id into v_orden
+      from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
+     where u.placa = 'C4L-118';
+
+    if v_orden is not null then
+      insert into public.ot_avances (orden_id, fecha, descripcion, impedimento, registrado_por)
+      values (v_orden, current_date - 9,
+        'Se desmontó la tolva vieja y se revisó el estado del chasis.',
+        'El cliente todavía no aprueba el cambio de compuerta; sin eso no se puede seguir.',
+        v_jefe);
+    end if;
+
+    perform set_config('request.jwt.claim.sub', '', true);
   end if;
 
   raise notice 'Datos de demostración cargados: % clientes, % unidades, % órdenes, % materiales',

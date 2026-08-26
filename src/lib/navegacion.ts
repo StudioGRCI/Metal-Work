@@ -1,4 +1,5 @@
 import {
+  Camera,
   ClipboardList,
   Factory,
   FileText,
@@ -43,6 +44,14 @@ export const NAVEGACION: GrupoNavegacion[] = [
         icono: ClipboardList,
         permiso: 'ordenes.ver',
         descripcion: 'Todas las OT y su avance',
+        disponible: true,
+      },
+      {
+        titulo: 'Avance en taller',
+        ruta: '/avance',
+        icono: Camera,
+        permiso: 'produccion.ver',
+        descripcion: 'Dónde está cada unidad y qué la traba',
         disponible: true,
       },
       {

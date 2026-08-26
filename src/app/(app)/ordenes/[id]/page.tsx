@@ -19,6 +19,8 @@ import { exigirPermiso, puede } from '@/lib/sesion'
 import type { CodigoMoneda } from '@/lib/format'
 
 import { AccionesEstado } from './acciones-estado'
+import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
+
 import { Bitacora } from './bitacora'
 import { Costos } from './costos'
 import { DocumentosOrden } from './documentos'
@@ -31,7 +33,7 @@ export async function generateMetadata({ params }: PageProps<'/ordenes/[id]'>): 
   return { title: orden ? `Orden ${orden.numero}` : 'Orden no encontrada' }
 }
 
-const VISTAS = ['resumen', 'etapas', 'horas', 'costos', 'calidad', 'documentos', 'bitacora'] as const
+const VISTAS = ['resumen', 'etapas', 'avance', 'horas', 'costos', 'calidad', 'documentos', 'bitacora'] as const
 type Vista = (typeof VISTAS)[number]
 
 export default async function PaginaOrden({ params, searchParams }: PageProps<'/ordenes/[id]'>) {
@@ -197,6 +199,14 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           ordenId={orden.id}
           etapas={etapas}
           puedeRegistrar={puede(perfil, 'produccion.registrar')}
+        />
+      )}
+
+      {vista === 'avance' && (
+        <AvanceDeOrden
+          ordenId={orden.id}
+          puedeRegistrar={puede(perfil, 'produccion.registrar')}
+          conCabecera
         />
       )}
 

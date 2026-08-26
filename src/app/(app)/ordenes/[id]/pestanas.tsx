@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 const PESTANAS = [
   { clave: 'resumen', titulo: 'Resumen' },
   { clave: 'etapas', titulo: 'Etapas' },
+  { clave: 'avance', titulo: 'Avance' },
   { clave: 'horas', titulo: 'Horas' },
   { clave: 'costos', titulo: 'Costos', permiso: 'costos.ver' },
   { clave: 'calidad', titulo: 'Calidad' },

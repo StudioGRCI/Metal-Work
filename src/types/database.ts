@@ -2189,6 +2189,121 @@ export type Database = {
           }
         ]
       }
+      ot_avance_fotos: {
+        Row: {
+          id: string
+          avance_id: string
+          bucket: string
+          ruta_storage: string
+          nombre_archivo: string
+          mime_type: string | null
+          tamano_bytes: number | null
+          pie: string | null
+          orden_visual: number
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          avance_id: string
+          bucket?: string
+          ruta_storage: string
+          nombre_archivo: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          pie?: string | null
+          orden_visual?: number
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          avance_id?: string
+          bucket?: string
+          ruta_storage?: string
+          nombre_archivo?: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          pie?: string | null
+          orden_visual?: number
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_avance_fotos_avance_id_fkey"
+            columns: ["avance_id"]
+            isOneToOne: false
+            referencedRelation: "ot_avances"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_avances: {
+        Row: {
+          id: string
+          orden_id: string
+          etapa_id: string | null
+          fecha: string
+          descripcion: string
+          avance_porcentaje: number | null
+          impedimento: string | null
+          registrado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          etapa_id?: string | null
+          fecha?: string
+          descripcion: string
+          avance_porcentaje?: number | null
+          impedimento?: string | null
+          registrado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          etapa_id?: string | null
+          fecha?: string
+          descripcion?: string
+          avance_porcentaje?: number | null
+          impedimento?: string | null
+          registrado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_avance_etapa_de_la_orden"
+            columns: ["etapa_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id", "orden_id"]
+          },
+          {
+            foreignKeyName: "ot_avances_etapa_id_fkey"
+            columns: ["etapa_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_avances_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_avances_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_bitacora: {
         Row: {
           id: string
@@ -4443,6 +4558,27 @@ export type Database = {
         }
         Relationships: []
       }
+      ot_avance_resumen: {
+        Row: {
+          id: string | null
+          orden_id: string | null
+          orden_numero: string | null
+          orden_estado: Database["public"]["Enums"]["estado_ot"] | null
+          cliente: string | null
+          placa: string | null
+          etapa_id: string | null
+          etapa: string | null
+          fecha: string | null
+          descripcion: string | null
+          avance_porcentaje: number | null
+          impedimento: string | null
+          registrado_por: string | null
+          registrado_por_nombre: string | null
+          creado_en: string | null
+          fotos: number | null
+        }
+        Relationships: []
+      }
       ot_horas_aprobadas: {
         Row: {
           detalle_id: string | null
@@ -4526,6 +4662,37 @@ export type Database = {
           requiere_inspeccion: boolean | null
           inspeccion_conforme: boolean | null
           operarios_asignados: number | null
+        }
+        Relationships: []
+      }
+      unidad_tablero: {
+        Row: {
+          orden_id: string | null
+          orden_numero: string | null
+          orden_estado: Database["public"]["Enums"]["estado_ot"] | null
+          prioridad: Database["public"]["Enums"]["prioridad_ot"] | null
+          sede_id: string | null
+          unidad_id: string | null
+          placa: string | null
+          tipo_vehiculo: Database["public"]["Enums"]["tipo_vehiculo"] | null
+          marca: string | null
+          modelo: string | null
+          cliente_id: string | null
+          cliente: string | null
+          tipo_carroceria: string | null
+          descripcion: string | null
+          avance_porcentaje: number | null
+          fecha_entrega_comprometida: string | null
+          dias_habiles_restantes: number | null
+          responsable: string | null
+          etapa_actual: string | null
+          estado_etapa: Database["public"]["Enums"]["estado_etapa_ot"] | null
+          avance_etapa: number | null
+          ultimo_avance_fecha: string | null
+          ultimo_avance: string | null
+          dias_sin_avance: number | null
+          impedimento: string | null
+          fotos: number | null
         }
         Relationships: []
       }
