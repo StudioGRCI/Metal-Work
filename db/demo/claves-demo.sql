@@ -25,6 +25,8 @@ do $$
 declare
   v_esquema  text;
   v_columnas text := '';
+  v_columna  text;
+  v_valor    text;
 begin
   -- pgcrypto vive en `public` en las bases locales y en `extensions` en
   -- Supabase; se resuelve dónde está en vez de suponerlo.
@@ -36,12 +38,26 @@ begin
     raise exception 'No está instalada la extensión pgcrypto: sin ella no se puede cifrar la contraseña';
   end if;
 
-  -- La tabla de cuentas de Supabase tiene columnas que la copia local no.
-  if exists (select 1 from information_schema.columns
-              where table_schema = 'auth' and table_name = 'users'
-                and column_name = 'email_confirmed_at') then
-    v_columnas := ', email_confirmed_at = coalesce(u.email_confirmed_at, now())';
-  end if;
+  -- La tabla de cuentas de Supabase tiene columnas que la copia local no, y
+  -- no basta con poner la contraseña: Supabase busca al usuario por su
+  -- instancia y por los metadatos del proveedor. Sin ellos no lo encuentra y
+  -- responde «credenciales inválidas» aunque la contraseña sea la correcta.
+  for v_columna, v_valor in
+    select * from (values
+      ('email_confirmed_at', 'coalesce(u.email_confirmed_at, now())'),
+      ('instance_id',        '''00000000-0000-0000-0000-000000000000''::uuid'),
+      ('raw_app_meta_data',  'jsonb_build_object(''provider'', ''email'', ''providers'', jsonb_build_array(''email''))'),
+      ('aud',                'coalesce(u.aud, ''authenticated'')'),
+      ('role',               'coalesce(u.role, ''authenticated'')'),
+      ('updated_at',         'now()')
+    ) as c(columna, valor)
+  loop
+    if exists (select 1 from information_schema.columns
+                where table_schema = 'auth' and table_name = 'users'
+                  and column_name = v_columna) then
+      v_columnas := v_columnas || format(', %I = %s', v_columna, v_valor);
+    end if;
+  end loop;
 
   execute format(
     'update auth.users u
@@ -49,6 +65,24 @@ begin
        from public.usuarios p
       where p.id = u.id and u.email like %L',
     v_esquema, v_esquema, v_columnas, '%@metalworkperusac.com');
+
+  -- Y cada cuenta necesita su identidad de correo; sin ella tampoco entra.
+  if to_regclass('auth.identities') is not null
+     and exists (select 1 from information_schema.columns
+                  where table_schema = 'auth' and table_name = 'identities'
+                    and column_name = 'provider_id') then
+    execute $consulta$
+      insert into auth.identities (id, user_id, identity_data, provider, provider_id, created_at, updated_at)
+      select gen_random_uuid(), u.id,
+             jsonb_build_object('sub', u.id::text, 'email', u.email, 'email_verified', true),
+             'email', u.id::text, now(), now()
+        from auth.users u
+        join public.usuarios p on p.id = u.id
+       where u.email like '%@metalworkperusac.com'
+         and not exists (select 1 from auth.identities i
+                          where i.user_id = u.id and i.provider = 'email')
+    $consulta$;
+  end if;
 end $$;
 
 select p.correo,
