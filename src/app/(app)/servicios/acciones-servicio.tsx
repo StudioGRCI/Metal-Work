@@ -3,6 +3,7 @@
 import { BadgeCheck, Ban, PackageCheck, Plus, Receipt, Truck } from 'lucide-react'
 import { useActionState, useEffect, useState } from 'react'
 
+import { NuevoProveedor } from '@/components/proveedores/nuevo-proveedor'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -73,6 +74,12 @@ export function NuevaOrdenDeServicio({ catalogos }: { catalogos: Catalogos }) {
   const [moneda, setMoneda] = useState('PEN')
   const [resultado, accion, enviando] = useActionState(crearOrdenDeServicio, null)
 
+  // Los proveedores dados de alta sin salir de esta ventana se suman a la lista
+  // y quedan elegidos, para no perder lo que ya se escribió.
+  const [agregados, setAgregados] = useState<Catalogos['proveedores']>([])
+  const [proveedorId, setProveedorId] = useState('')
+  const proveedores = [...agregados, ...catalogos.proveedores]
+
   // Emitida la orden, la ventana no se cierra sola: queda a la vista el número
   // que le tocó, que es lo que hay que dictarle al proveedor.
   const hoy = new Date().toISOString().slice(0, 10)
@@ -103,14 +110,35 @@ export function NuevaOrdenDeServicio({ catalogos }: { catalogos: Catalogos }) {
                 </Seleccion>
               </Campo>
               <Campo etiqueta="Proveedor" htmlFor="proveedor_id" requerido>
-                <Seleccion id="proveedor_id" name="proveedor_id" required>
-                  <option value="">Elegir…</option>
-                  {catalogos.proveedores.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.razon_social}
-                    </option>
-                  ))}
-                </Seleccion>
+                <div className="flex items-center gap-2">
+                  <Seleccion
+                    id="proveedor_id"
+                    name="proveedor_id"
+                    required
+                    value={proveedorId}
+                    onChange={(e) => setProveedorId(e.target.value)}
+                    className="flex-1"
+                  >
+                    <option value="">Elegir…</option>
+                    {proveedores.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.razon_social}
+                      </option>
+                    ))}
+                  </Seleccion>
+                  <NuevoProveedor
+                    compacto
+                    etiqueta="Nuevo"
+                    onCreado={(prov) => {
+                      setAgregados((lista) =>
+                        lista.some((p) => p.id === prov.id)
+                          ? lista
+                          : [{ ...prov, numero_documento: '' }, ...lista],
+                      )
+                      setProveedorId(prov.id)
+                    }}
+                  />
+                </div>
               </Campo>
             </div>
 
