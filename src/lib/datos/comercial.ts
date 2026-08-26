@@ -42,7 +42,7 @@ export async function obtenerCliente(id: string) {
 
   const { data, error } = await supabase
     .from('clientes')
-    .select('*, vendedor:usuarios(id, nombres, apellidos)')
+    .select('*, vendedor:usuarios!clientes_vendedor_id_fkey(id, nombres, apellidos)')
     .eq('id', id)
     .maybeSingle()
 
@@ -105,7 +105,7 @@ export async function listarCotizaciones(filtros: { estado?: string; busqueda?: 
 
   let consulta = supabase
     .from('cotizaciones')
-    .select('id, numero, fecha_emision, fecha_vencimiento, estado, moneda, total, cliente:clientes!inner(razon_social), unidad:unidades(placa), tipo_carroceria:tipos_carroceria(nombre)')
+    .select('id, numero, fecha_emision, fecha_vencimiento, estado, moneda, total, cliente:clientes!inner(razon_social), unidad:unidades!cotizaciones_unidad_id_fkey(placa), tipo_carroceria:tipos_carroceria(nombre)')
 
   if (filtros.estado) consulta = consulta.eq('estado', filtros.estado as EstadoCotizacion)
 
@@ -128,7 +128,7 @@ export async function obtenerCotizacion(id: string) {
 
   const { data, error } = await supabase
     .from('cotizaciones')
-    .select('*, cliente:clientes!inner(id, razon_social, numero_documento), unidad:unidades(id, placa, marca, modelo), tipo_carroceria:tipos_carroceria(id, nombre), vendedor:usuarios!cotizaciones_vendedor_id_fkey(nombres, apellidos)')
+    .select('*, cliente:clientes!inner(id, razon_social, numero_documento), unidad:unidades!cotizaciones_unidad_id_fkey(id, placa, marca, modelo), tipo_carroceria:tipos_carroceria(id, nombre), vendedor:usuarios!cotizaciones_vendedor_id_fkey(nombres, apellidos)')
     .eq('id', id)
     .maybeSingle()
 
