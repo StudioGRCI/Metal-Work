@@ -7,6 +7,7 @@ import {
   Receipt,
   Settings,
   Truck,
+  UserCog,
   Users,
   Wallet,
 } from 'lucide-react'
@@ -81,6 +82,14 @@ export const NAVEGACION: GrupoNavegacion[] = [
         ruta: '/documentos',
         icono: FileText,
         permiso: 'documentos.ver',
+        disponible: true,
+      },
+      {
+        titulo: 'Personal',
+        ruta: '/personal',
+        icono: UserCog,
+        permiso: 'usuarios.ver',
+        descripcion: 'Altas, puestos y accesos',
         disponible: true,
       },
       { titulo: 'Configuración', ruta: '/configuracion', icono: Settings, permiso: 'configuracion.ver' },

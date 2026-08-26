@@ -4824,6 +4824,32 @@ export type Database = {
         }
         Returns: string
       }
+      cambiar_clave_personal: {
+        Args: {
+          p_usuario: string
+          p_clave: string
+        }
+        Returns: string
+      }
+      cambiar_estado_personal: {
+        Args: {
+          p_usuario: string
+          p_activo: boolean
+        }
+        Returns: string
+      }
+      cifrar_clave: {
+        Args: {
+          p_clave: string
+        }
+        Returns: string
+      }
+      completar_cuenta_acceso: {
+        Args: {
+          p_cuenta: string
+        }
+        Returns: string
+      }
       confirmar_movimiento_almacen: {
         Args: {
           p_movimiento: string
@@ -4859,6 +4885,23 @@ export type Database = {
           p_orden_id: string
         }
         Returns: number
+      }
+      crear_personal: {
+        Args: {
+          p_nombres: string
+          p_apellidos: string
+          p_correo: string
+          p_clave: string
+          p_rol_id: string
+          p_sede_id: string
+          p_area_id?: string
+          p_cargo?: string
+          p_documento?: string
+          p_telefono?: string
+          p_es_operario?: boolean
+          p_costo_hora?: number
+        }
+        Returns: string
       }
       documentos_obligatorios_faltantes: {
         Args: {

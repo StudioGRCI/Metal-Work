@@ -70,6 +70,7 @@ const RUTAS = [
   ['almacen-proveedores', '/almacen/proveedores'],
   ['costos', '/costos'],
   ['documentos', '/documentos'],
+  ['personal', '/personal'],
   ['sin-permiso', '/sin-permiso'],
 ].filter(Boolean)
 
