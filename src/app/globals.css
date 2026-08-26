@@ -145,3 +145,22 @@ body {
   background: var(--acento-suave);
   color: var(--texto);
 }
+
+/* -----------------------------------------------------------------------------
+   LA MARCA SEGÚN EL FONDO
+   El logotipo es azul institucional: sobre blanco se lee y sobre la pantalla
+   oscura no. Se emiten las dos versiones y acá se decide cuál se ve, con las
+   mismas tres reglas que gobiernan el tema, para que no haga falta JavaScript.
+   -------------------------------------------------------------------------- */
+.marca-en-fondo-oscuro { display: none; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema='claro']) .marca-en-fondo-claro  { display: none; }
+  :root:not([data-tema='claro']) .marca-en-fondo-oscuro { display: block; }
+}
+
+:root[data-tema='oscuro'] .marca-en-fondo-claro  { display: none; }
+:root[data-tema='oscuro'] .marca-en-fondo-oscuro { display: block; }
+
+:root[data-tema='claro'] .marca-en-fondo-claro  { display: block; }
+:root[data-tema='claro'] .marca-en-fondo-oscuro { display: none; }
