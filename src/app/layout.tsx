@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 
+import { GuionEnLinea } from '@/components/estructura/guion-en-linea'
+
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -20,9 +22,22 @@ export const viewport: Viewport = {
   ],
 }
 
+/**
+ * Se aplica el tema elegido antes de que el navegador pinte la primera pantalla.
+ * Si esto corriera después, se vería el destello de la pantalla clara antes de
+ * pasar a oscura, que es justo lo que molesta de noche en el taller.
+ */
+const APLICAR_TEMA = `try{var t=localStorage.getItem('metalwork:tema');if(t==='claro'||t==='oscuro'){document.documentElement.setAttribute('data-tema',t)}}catch(e){}`
+
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="es-PE" className="h-full">
+    // El guion de arriba escribe `data-tema` en esta misma etiqueta antes de que
+    // React hidrate, así que el atributo no coincide con lo que vino del
+    // servidor. Es a propósito: se avisa para que React no lo reporte.
+    <html lang="es-PE" className="h-full" suppressHydrationWarning>
+      <head>
+        <GuionEnLinea html={APLICAR_TEMA} />
+      </head>
       <body className="min-h-full">{children}</body>
     </html>
   )

@@ -4,12 +4,13 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { ListaDocumentos } from '@/components/documentos/lista-documentos'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { listarDocumentos, tiposDocumento, versionesDeDocumento } from '@/lib/datos/documentos'
-import { exigirPermiso } from '@/lib/sesion'
+import { firmasDeDocumentos, posiblesFirmantes } from '@/lib/datos/firmas'
+import { exigirPermiso, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Documentos' }
 
 export default async function PaginaDocumentos({ searchParams }: PageProps<'/documentos'>) {
-  await exigirPermiso('documentos.ver')
+  const perfil = await exigirPermiso('documentos.ver')
   const params = await searchParams
   const tipoFiltro = typeof params.tipo === 'string' ? params.tipo : undefined
 
@@ -18,9 +19,15 @@ export default async function PaginaDocumentos({ searchParams }: PageProps<'/doc
     tiposDocumento(),
   ])
 
-  const versiones = await Promise.all(
-    documentos.map(async (d) => ({ id: d.id, versiones: await versionesDeDocumento(d.id) })),
-  )
+  const pideFirmas = puede(perfil, ['documentos.subir', 'documentos.aprobar'])
+
+  const [versiones, firmas, firmantes] = await Promise.all([
+    Promise.all(
+      documentos.map(async (d) => ({ id: d.id, versiones: await versionesDeDocumento(d.id) })),
+    ),
+    firmasDeDocumentos(documentos.map((d) => d.id)),
+    pideFirmas ? posiblesFirmantes() : Promise.resolve([]),
+  ])
 
   const versionesPorDocumento: Record<
     string,
@@ -77,6 +84,10 @@ export default async function PaginaDocumentos({ searchParams }: PageProps<'/doc
             documentos={documentos}
             versionesPorDocumento={versionesPorDocumento}
             vacio="Todavía no se ha adjuntado ningún documento. Se suben desde la orden de trabajo correspondiente."
+            firmas={firmas}
+            firmantes={firmantes}
+            usuarioId={perfil.id}
+            puedePedirFirmas={pideFirmas}
           />
         </TarjetaCuerpo>
       </Tarjeta>

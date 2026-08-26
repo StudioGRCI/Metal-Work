@@ -1,12 +1,17 @@
 import {
+  BarChart3,
+  Camera,
   ClipboardList,
   Factory,
   FileText,
+  Handshake,
   LayoutDashboard,
   Package,
+  PenLine,
   Receipt,
   Settings,
   Truck,
+  UserCog,
   Users,
   Wallet,
 } from 'lucide-react'
@@ -15,7 +20,8 @@ export type ItemNavegacion = {
   titulo: string
   ruta: string
   icono: typeof LayoutDashboard
-  permiso?: string
+  /** Con varios permisos basta con tener uno para que el módulo se vea. */
+  permiso?: string | string[]
   descripcion?: string
   /** Los módulos aún no construidos se muestran atenuados y sin enlace. */
   disponible?: boolean
@@ -40,6 +46,14 @@ export const NAVEGACION: GrupoNavegacion[] = [
         icono: ClipboardList,
         permiso: 'ordenes.ver',
         descripcion: 'Todas las OT y su avance',
+        disponible: true,
+      },
+      {
+        titulo: 'Avance en taller',
+        ruta: '/avance',
+        icono: Camera,
+        permiso: 'produccion.ver',
+        descripcion: 'Dónde está cada unidad y qué la traba',
         disponible: true,
       },
       {
@@ -70,6 +84,14 @@ export const NAVEGACION: GrupoNavegacion[] = [
     titulo: 'Logística',
     items: [
       { titulo: 'Almacén', ruta: '/almacen', icono: Package, permiso: 'almacen.ver', disponible: true },
+      {
+        titulo: 'Servicios',
+        ruta: '/servicios',
+        icono: Handshake,
+        permiso: ['compras.ver', 'costos.ver', 'calidad.ver'],
+        descripcion: 'Trabajos que se mandan a hacer afuera',
+        disponible: true,
+      },
       { titulo: 'Costos', ruta: '/costos', icono: Wallet, permiso: 'costos.ver', disponible: true },
     ],
   },
@@ -81,6 +103,29 @@ export const NAVEGACION: GrupoNavegacion[] = [
         ruta: '/documentos',
         icono: FileText,
         permiso: 'documentos.ver',
+        disponible: true,
+      },
+      {
+        titulo: 'Informes',
+        ruta: '/informes',
+        icono: BarChart3,
+        permiso: 'reportes.ver',
+        descripcion: 'Producción, entregas, márgenes y consumo',
+        disponible: true,
+      },
+      {
+        titulo: 'Firmas',
+        ruta: '/firmas',
+        icono: PenLine,
+        descripcion: 'Documentos que esperan tu firma',
+        disponible: true,
+      },
+      {
+        titulo: 'Personal',
+        ruta: '/personal',
+        icono: UserCog,
+        permiso: 'usuarios.ver',
+        descripcion: 'Altas, puestos y accesos',
         disponible: true,
       },
       { titulo: 'Configuración', ruta: '/configuracion', icono: Settings, permiso: 'configuracion.ver' },

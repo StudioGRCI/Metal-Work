@@ -209,8 +209,13 @@ Los permisos se editan por rol en `roles_permisos`, sin tocar código.
 | **Clientes y unidades** | Ficha del cliente con su flota, contactos e historial de órdenes |
 | **Cotizaciones** | Partidas, aprobación y apertura de la orden con arrastre del presupuesto |
 | **Almacén** | Existencias valorizadas, movimientos con kardex, requerimientos, compras y proveedores |
+| **Avance en taller** | Una tarjeta por unidad: dónde está, hace cuánto no se toca, qué la traba y las fotos del día |
+| **Servicios de terceros** | Órdenes de servicio al subcontratista, con plazo, conformidad y pago |
 | **Costos** | Costo real contra presupuesto y margen, por orden y del conjunto |
 | **Documentos** | Repositorio versionado con carga de archivos y descarga con enlace temporal |
+| **Firmas** | Bandeja de lo que espera tu firma; la cadena de firmas de cada documento |
+| **Informes** | Producción, cumplimiento de entregas, rentabilidad, cotizaciones, consumo y subcontratos |
+| **Personal** | Altas con su acceso, puestos, áreas y costo hora |
 
 ## Estructura del proyecto
 
@@ -223,13 +228,19 @@ src/
 │   │   ├── produccion/     Partes diarios
 │   │   ├── clientes/       Clientes y sus unidades
 │   │   ├── cotizaciones/   Cotizaciones y conversión a orden
+│   │   ├── avance/         Tablero por unidad y avance diario con fotos
 │   │   ├── almacen/        Existencias, movimientos, requerimientos, compras
+│   │   ├── servicios/      Órdenes de servicio a subcontratistas
 │   │   ├── costos/         Costeo y margen
-│   │   └── documentos/     Repositorio documental
+│   │   ├── documentos/     Repositorio documental
+│   │   ├── firmas/         Bandeja de firmas pendientes
+│   │   ├── informes/       Informes de gestión con descarga a Excel
+│   │   └── personal/       Altas de personal y sus accesos
 │   ├── ingresar/           Inicio de sesión
 │   └── auth/               Cierre de sesión
 ├── components/
-│   ├── documentos/         Subida y descarga de archivos
+│   ├── avance/             Línea de avance de una unidad
+│   ├── documentos/         Subida y descarga de archivos, cadena de firmas
 │   ├── estructura/         Navegación y encabezados
 │   └── ui/                 Componentes base
 ├── lib/
@@ -263,3 +274,14 @@ scripts/                    Utilidades de desarrollo
 - Los archivos se suben directo del navegador a Storage. Un documento colgado de
   una orden se guarda bajo `ot/{orden_id}/…`, y las políticas de Storage se
   apoyan en esa ruta para heredar la visibilidad de la orden.
+- Los plazos se cuentan en días de taller, no en días de calendario: la empresa
+  declara qué días de la semana trabaja y la tabla `feriados` guarda el resto.
+  El Jueves y el Viernes Santo se calculan, porque se mueven cada año.
+- Las fechas se muestran en hora de Lima, corra donde corra el servidor. Una
+  fecha sin hora —la de una factura— se muestra tal cual, sin convertirla: es un
+  día del calendario, no un instante.
+- Una función nueva nace abierta a todo el mundo, y en Supabase eso significa
+  abierta a internet. Hay que cerrarla; `db/test/checks/98_puertas_cerradas.sql`
+  falla si alguna queda suelta.
+- La firma de un documento es de quien firma: entra por `firmar_documento()` y
+  la política de `aprobaciones` mira el nombre, no el permiso.

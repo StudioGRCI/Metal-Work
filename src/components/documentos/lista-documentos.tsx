@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { AlertTriangle, Download, FileText } from 'lucide-react'
 
+import { FirmasDocumento, type FirmaVista, type Firmante } from '@/components/documentos/firmas-documento'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { fecha, fechaHora } from '@/lib/format'
 
@@ -35,10 +36,19 @@ export function ListaDocumentos({
   documentos,
   versionesPorDocumento,
   vacio = 'Todavía no hay documentos adjuntos.',
+  firmas = {},
+  firmantes = [],
+  usuarioId = '',
+  puedePedirFirmas = false,
 }: {
   documentos: Documento[]
   versionesPorDocumento: Record<string, { bucket: string; ruta_storage: string; nombre_archivo: string }>
   vacio?: string
+  /** La cadena de firmas de cada documento, por identificador. */
+  firmas?: Record<string, FirmaVista[]>
+  firmantes?: Firmante[]
+  usuarioId?: string
+  puedePedirFirmas?: boolean
 }) {
   const [error, setError] = useState<string | null>(null)
   const [descargando, setDescargando] = useState<string | null>(null)
@@ -120,6 +130,15 @@ export function ListaDocumentos({
                   sin archivo
                 </span>
               )}
+
+              <FirmasDocumento
+                documentoId={d.id}
+                firmas={firmas[d.id] ?? []}
+                usuarioId={usuarioId}
+                firmantes={firmantes}
+                puedePedir={puedePedirFirmas}
+                tieneArchivo={Boolean(version)}
+              />
             </li>
           )
         })}

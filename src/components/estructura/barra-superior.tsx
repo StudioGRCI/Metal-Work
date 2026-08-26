@@ -1,20 +1,21 @@
 import Link from 'next/link'
 import { LogOut } from 'lucide-react'
 
+import { CambiarTema } from '@/components/estructura/cambiar-tema'
+import { LogoMetalWork } from '@/components/marca/logo-metal-work'
 import { iniciales } from '@/lib/format'
 import type { PerfilSesion } from '@/lib/sesion'
 
 export function BarraSuperior({ perfil }: { perfil: PerfilSesion }) {
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-4 border-b border-borde bg-superficie px-4">
-      <Link href="/" className="flex items-center gap-2.5">
-        <span className="flex size-8 items-center justify-center rounded-[var(--radius-base)] bg-acento text-xs font-bold text-acento-texto">
-          MW
-        </span>
-        <span className="hidden text-sm font-semibold text-texto sm:block">Metal-Work</span>
+      <Link href="/" aria-label="Ir al tablero" className="flex shrink-0 items-center">
+        <LogoMetalWork className="h-7 w-auto lg:h-8" />
       </Link>
 
       <div className="flex items-center gap-3">
+        <CambiarTema />
+
         <div className="hidden text-right sm:block">
           <p className="text-xs font-medium text-texto">
             {perfil.nombres} {perfil.apellidos}

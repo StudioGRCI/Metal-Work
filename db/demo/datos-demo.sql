@@ -26,6 +26,11 @@ declare
   v_persona   record;
   v_cotizacion    uuid;
   v_requerimiento uuid;
+  v_servicio      uuid;
+  v_calidad       uuid;
+  v_jefe          uuid;
+  v_documento     uuid;
+  v_gerente       uuid;
 begin
   select id into v_sede from public.sedes where activo order by creado_en limit 1;
   select id into v_usuario from public.usuarios where activo order by creado_en limit 1;
@@ -464,6 +469,206 @@ begin
                    ('PIN-ESM',  10.0, 'Acabado poliuretano, color del cliente'),
                    ('THI-ACR',  16.0, null)) as v(codigo, cantidad, especificacion)
       join public.materiales m on m.codigo = v.codigo;
+  end if;
+
+  -- ------------------------------------------------------------ proveedores
+  -- El taller no arena ni tornea: eso se manda a hacer afuera. Sin proveedores
+  -- la pantalla de servicios de terceros no tiene con quién trabajar.
+  insert into public.proveedores
+    (codigo, numero_documento, razon_social, nombre_comercial, distrito, provincia, departamento,
+     telefono, contacto_nombre, condicion_pago, dias_credito, calificacion)
+  values
+    ('PRV-001', '20601234561', 'ARENADOS Y RECUBRIMIENTOS DEL NORTE E.I.R.L.', 'Arenados del Norte',
+     'La Esperanza', 'Trujillo', 'LA LIBERTAD', '044-283910', 'Marco Ruiz', 'CREDITO_30', 30, 4),
+    ('PRV-002', '20601234562', 'CORTES LÁSER INDUSTRIALES S.A.C.', 'Corte Láser Perú',
+     'El Porvenir', 'Trujillo', 'LA LIBERTAD', '044-291744', 'Elena Paredes', 'CREDITO_15', 15, 5),
+    ('PRV-003', '20601234563', 'GALVANIZADORA LIBERTAD S.A.', 'Galvanizadora Libertad',
+     'Moche', 'Trujillo', 'LA LIBERTAD', '044-460211', 'Jorge Ancajima', 'CREDITO_30', 30, 4),
+    ('PRV-004', '41235678', 'CHÁVEZ VÁSQUEZ, PEDRO ANTONIO', 'Torno Chávez',
+     'Trujillo', 'Trujillo', 'LA LIBERTAD', '949-118-220', 'Pedro Chávez', 'CONTADO', 0, 3)
+  on conflict do nothing;
+
+  -- -------------------------------------------------- servicios de terceros
+  -- La fecha de entrega no se carga: la calcula la base con el calendario del
+  -- taller. Cada etapa del recorrido, para que la pantalla muestre el circuito:
+  -- lo que está afuera, lo que volvió y espera conformidad, lo aceptado y lo
+  -- ya pagado. La conformidad se registra a nombre de calidad, como en la vida
+  -- real, y por eso arrastra el monto al costo de la unidad.
+  if not exists (select 1 from public.servicios_terceros) then
+    select id into v_calidad from public.usuarios
+     where correo like '%calidad%' or cargo ilike '%calidad%' limit 1;
+    v_calidad := coalesce(v_calidad, v_usuario);
+
+    select o.id into v_orden
+      from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
+     where u.placa = 'V2G-841';
+
+    -- Afuera, con el plazo todavía corriendo.
+    insert into public.servicios_terceros
+      (orden_id, proveedor_id, tipo_servicio, descripcion, especificacion, fecha, plazo_dias,
+       moneda, monto, tipo_cambio, estado)
+    select v_orden, p.id, 'ARENADO',
+      'Arenado de la tolva antes de la base epóxica',
+      'Grado comercial SA 2.5, perfil de anclaje 40-60 micras. Se entrega imprimada el mismo día.',
+      current_date - 2, 4, 'PEN', 2400, 1, 'EN_EJECUCION'
+      from public.proveedores p where p.codigo = 'PRV-001';
+
+    -- Volvió y espera que calidad la acepte: es lo que la pantalla resalta.
+    insert into public.servicios_terceros
+      (orden_id, proveedor_id, tipo_servicio, descripcion, especificacion, fecha, plazo_dias,
+       moneda, monto, tipo_cambio, estado)
+    select v_orden, p.id, 'CORTE_LASER',
+      'Corte láser de refuerzos y cartelas de la compuerta',
+      'Plancha A36 de 6 mm, 42 piezas según plano PL-2481 rev. B.',
+      current_date - 9, 5, 'PEN', 1850, 1, 'EJECUTADO'
+      from public.proveedores p where p.codigo = 'PRV-002';
+
+    -- Atrasada: pasó su fecha de entrega y sigue afuera.
+    insert into public.servicios_terceros
+      (orden_id, proveedor_id, tipo_servicio, descripcion, especificacion, fecha, plazo_dias,
+       moneda, monto, tipo_cambio, estado)
+    select v_orden, p.id, 'TORNO',
+      'Torneado de bocinas y pines de la compuerta trasera',
+      'Acero SAE 1045, 8 bocinas de 60 mm y 8 pines rectificados.',
+      current_date - 12, 5, 'PEN', 780, 1, 'SOLICITADO'
+      from public.proveedores p where p.codigo = 'PRV-004';
+
+    -- Aceptada por calidad: ya cuenta como costo de la unidad.
+    insert into public.servicios_terceros
+      (orden_id, proveedor_id, tipo_servicio, descripcion, especificacion, fecha, plazo_dias,
+       moneda, monto, tipo_cambio, estado)
+    select v_orden, p.id, 'GALVANIZADO',
+      'Galvanizado en caliente de escaleras y pasarelas',
+      'Recubrimiento mínimo 85 micras según NTP 350.085.',
+      current_date - 18, 7, 'PEN', 1260, 1, 'EJECUTADO'
+      from public.proveedores p where p.codigo = 'PRV-003'
+    returning id into v_servicio;
+
+    update public.servicios_terceros
+       set estado                    = 'CONFORME',
+           fecha_conformidad         = current_date - 10,
+           conformidad_por           = v_calidad,
+           observaciones_conformidad = 'Espesor verificado con medidor, 92 micras promedio. Conforme.'
+     where id = v_servicio;
+
+    -- Y una ya pagada, con su factura, en la orden de la otra unidad.
+    select o.id into v_orden
+      from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
+     where u.placa = 'C4L-118';
+
+    if v_orden is not null then
+      insert into public.servicios_terceros
+        (orden_id, proveedor_id, tipo_servicio, descripcion, especificacion, fecha, plazo_dias,
+         moneda, monto, tipo_cambio, estado)
+      select v_orden, p.id, 'ARENADO',
+        'Arenado y base epóxica del chasis de la tolva',
+        'Grado comercial SA 2.5, base epóxica de 75 micras.',
+        current_date - 30, 4, 'PEN', 1980, 1, 'EJECUTADO'
+        from public.proveedores p where p.codigo = 'PRV-001'
+      returning id into v_servicio;
+
+      update public.servicios_terceros
+         set estado            = 'CONFORME',
+             fecha_conformidad = current_date - 25,
+             conformidad_por   = v_calidad
+       where id = v_servicio;
+
+      update public.servicios_terceros
+         set estado         = 'PAGADO',
+             numero_factura = 'F001-00004417',
+             fecha_factura  = current_date - 24
+       where id = v_servicio;
+    end if;
+  end if;
+
+  -- ------------------------------------------------------------ avance diario
+  -- Lo que se hizo cada día en la unidad. Sin fotos, porque el archivo vive en
+  -- Storage y la demostración solo carga base de datos; el texto igual arma el
+  -- tablero del taller y la línea de tiempo de la orden.
+  if not exists (select 1 from public.ot_avances) then
+    select id into v_jefe from public.usuarios
+     where correo like '%jefe%' or cargo ilike '%jefe%' limit 1;
+    v_jefe := coalesce(v_jefe, v_usuario);
+
+    -- Quien registra el avance tiene que estar identificado: la bitácora de la
+    -- OT no acepta anotaciones anónimas.
+    perform set_config('request.jwt.claim.sub', v_jefe::text, true);
+
+    select o.id into v_orden
+      from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
+     where u.placa = 'V2G-841';
+
+    insert into public.ot_avances (orden_id, etapa_id, fecha, descripcion, avance_porcentaje, registrado_por)
+    select v_orden, e.id, current_date - 6,
+      'Se trazó y cortó la plancha del piso en Hardox 450 y se armó el bastidor sobre la mesa.',
+      100, v_jefe
+      from public.ot_etapas e
+      join public.etapas_catalogo ec on ec.id = e.etapa_catalogo_id
+     where e.orden_id = v_orden and ec.codigo in ('HABILITADO_MP', 'HABILITADO')
+     order by e.orden_secuencia limit 1;
+
+    insert into public.ot_avances (orden_id, etapa_id, fecha, descripcion, avance_porcentaje, registrado_por)
+    select v_orden, e.id, current_date - 3,
+      'Se soldaron los travesaños del piso y se levantaron los laterales. Falta el frontal.',
+      55, v_jefe
+      from public.ot_etapas e
+      join public.etapas_catalogo ec on ec.id = e.etapa_catalogo_id
+     where e.orden_id = v_orden and ec.codigo in ('PRODUCCION', 'ARMADO')
+     order by e.orden_secuencia limit 1;
+
+    insert into public.ot_avances (orden_id, fecha, descripcion, impedimento, registrado_por)
+    values (v_orden, current_date - 1,
+      'La tolva salió al arenado. Se aprovechó para adelantar los seguros de la compuerta.',
+      'Falta la plancha Hardox de 8 mm del refuerzo trasero; el proveedor la entrega el jueves.',
+      v_jefe);
+
+    -- Una unidad que hace días que nadie toca: es lo que el tablero resalta.
+    select o.id into v_orden
+      from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
+     where u.placa = 'C4L-118';
+
+    if v_orden is not null then
+      insert into public.ot_avances (orden_id, fecha, descripcion, impedimento, registrado_por)
+      values (v_orden, current_date - 9,
+        'Se desmontó la tolva vieja y se revisó el estado del chasis.',
+        'El cliente todavía no aprueba el cambio de compuerta; sin eso no se puede seguir.',
+        v_jefe);
+    end if;
+
+    perform set_config('request.jwt.claim.sub', '', true);
+  end if;
+
+  -- ------------------------------------------------------- circuito de firma
+  -- Un plano subido y esperando la cadena de firmas: primero calidad, después
+  -- gerencia. Es lo que llena la bandeja de firmas de cada quien.
+  if not exists (
+    select 1 from public.documentos where titulo like 'Plano de fabricación tolva 18 m3%'
+  ) then
+    select id into v_gerente from public.usuarios
+     where cargo ilike '%gerente%' or cargo ilike '%gerencia%' limit 1;
+    v_gerente := coalesce(v_gerente, v_usuario);
+
+    select o.id into v_orden
+      from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
+     where u.placa = 'V2G-841';
+
+    insert into public.documentos (tipo_documento_id, titulo, descripcion, entidad_tabla, entidad_id, orden_id, creado_por)
+    select t.id, 'Plano de fabricación tolva 18 m3 — rev. B',
+           'Largo 5.60 m, piso en Hardox 450 de 8 mm, compuerta con seguros hidráulicos.',
+           'ordenes_trabajo', v_orden, v_orden, v_usuario
+      from public.tipos_documento t where t.codigo = 'PLANO'
+    returning id into v_documento;
+
+    if v_documento is not null then
+      insert into public.documento_versiones
+        (documento_id, ruta_storage, nombre_archivo, extension, tamano_bytes, mime_type, subido_por)
+      values (v_documento, 'ot/plano-tolva-18m3-revB.pdf', 'plano-tolva-18m3-revB.pdf',
+              'pdf', 486400, 'application/pdf', v_usuario);
+
+      insert into public.aprobaciones (documento_id, aprobador_id, orden_firma, solicitado_por)
+      values (v_documento, coalesce(v_calidad, v_usuario), 1, v_usuario),
+             (v_documento, v_gerente, 2, v_usuario);
+    end if;
   end if;
 
   raise notice 'Datos de demostración cargados: % clientes, % unidades, % órdenes, % materiales',

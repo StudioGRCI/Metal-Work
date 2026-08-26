@@ -14,7 +14,12 @@ export function BarraLateral({ permisos, esAdmin }: { permisos: string[]; esAdmi
 
   const grupos = NAVEGACION.map((g) => ({
     ...g,
-    items: g.items.filter((i) => !i.permiso || esAdmin || permisos.includes(i.permiso)),
+    items: g.items.filter(
+      (i) =>
+        !i.permiso ||
+        esAdmin ||
+        (Array.isArray(i.permiso) ? i.permiso : [i.permiso]).some((p) => permisos.includes(p)),
+    ),
   })).filter((g) => g.items.length > 0)
 
   const contenido = (

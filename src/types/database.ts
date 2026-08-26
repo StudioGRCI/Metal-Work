@@ -959,6 +959,7 @@ export type Database = {
           costo_indirecto_hora: number
           creado_en: string
           actualizado_en: string
+          dias_laborables: number[]
         }
         Insert: {
           id?: string
@@ -978,6 +979,7 @@ export type Database = {
           costo_indirecto_hora?: number
           creado_en?: string
           actualizado_en?: string
+          dias_laborables?: number[]
         }
         Update: {
           id?: string
@@ -997,6 +999,7 @@ export type Database = {
           costo_indirecto_hora?: number
           creado_en?: string
           actualizado_en?: string
+          dias_laborables?: number[]
         }
         Relationships: []
       }
@@ -1045,6 +1048,33 @@ export type Database = {
           creado_en?: string
           actualizado_en?: string
           dias_estandar?: number
+        }
+        Relationships: []
+      }
+      feriados: {
+        Row: {
+          fecha: string
+          nombre: string
+          ambito: string
+          laborable: boolean
+          observacion: string | null
+          creado_en: string
+        }
+        Insert: {
+          fecha: string
+          nombre: string
+          ambito?: string
+          laborable?: boolean
+          observacion?: string | null
+          creado_en?: string
+        }
+        Update: {
+          fecha?: string
+          nombre?: string
+          ambito?: string
+          laborable?: boolean
+          observacion?: string | null
+          creado_en?: string
         }
         Relationships: []
       }
@@ -2155,6 +2185,121 @@ export type Database = {
             columns: ["unidad_id"]
             isOneToOne: false
             referencedRelation: "unidades"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_avance_fotos: {
+        Row: {
+          id: string
+          avance_id: string
+          bucket: string
+          ruta_storage: string
+          nombre_archivo: string
+          mime_type: string | null
+          tamano_bytes: number | null
+          pie: string | null
+          orden_visual: number
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          avance_id: string
+          bucket?: string
+          ruta_storage: string
+          nombre_archivo: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          pie?: string | null
+          orden_visual?: number
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          avance_id?: string
+          bucket?: string
+          ruta_storage?: string
+          nombre_archivo?: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          pie?: string | null
+          orden_visual?: number
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_avance_fotos_avance_id_fkey"
+            columns: ["avance_id"]
+            isOneToOne: false
+            referencedRelation: "ot_avances"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_avances: {
+        Row: {
+          id: string
+          orden_id: string
+          etapa_id: string | null
+          fecha: string
+          descripcion: string
+          avance_porcentaje: number | null
+          impedimento: string | null
+          registrado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          etapa_id?: string | null
+          fecha?: string
+          descripcion: string
+          avance_porcentaje?: number | null
+          impedimento?: string | null
+          registrado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          etapa_id?: string | null
+          fecha?: string
+          descripcion?: string
+          avance_porcentaje?: number | null
+          impedimento?: string | null
+          registrado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_avance_etapa_de_la_orden"
+            columns: ["etapa_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id", "orden_id"]
+          },
+          {
+            foreignKeyName: "ot_avances_etapa_id_fkey"
+            columns: ["etapa_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_avances_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_avances_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -3765,6 +3910,13 @@ export type Database = {
           creado_por: string | null
           creado_en: string
           actualizado_en: string
+          numero: string
+          plazo_dias: number | null
+          aprobado_por: string | null
+          fecha_aprobacion: string | null
+          fecha_conformidad: string | null
+          conformidad_por: string | null
+          observaciones_conformidad: string | null
         }
         Insert: {
           id?: string
@@ -3788,6 +3940,13 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          numero?: string
+          plazo_dias?: number | null
+          aprobado_por?: string | null
+          fecha_aprobacion?: string | null
+          fecha_conformidad?: string | null
+          conformidad_por?: string | null
+          observaciones_conformidad?: string | null
         }
         Update: {
           id?: string
@@ -3811,6 +3970,13 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          numero?: string
+          plazo_dias?: number | null
+          aprobado_por?: string | null
+          fecha_aprobacion?: string | null
+          fecha_conformidad?: string | null
+          conformidad_por?: string | null
+          observaciones_conformidad?: string | null
         }
         Relationships: [
           {
@@ -3821,10 +3987,24 @@ export type Database = {
             referencedColumns: ["id", "orden_id"]
           },
           {
+            foreignKeyName: "servicios_terceros_aprobado_por_fkey"
+            columns: ["aprobado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "servicios_terceros_centro_costo_id_fkey"
             columns: ["centro_costo_id"]
             isOneToOne: false
             referencedRelation: "centros_costo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "servicios_terceros_conformidad_por_fkey"
+            columns: ["conformidad_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           },
           {
@@ -4349,6 +4529,98 @@ export type Database = {
         }
         Relationships: []
       }
+      documento_firmas: {
+        Row: {
+          aprobacion_id: string | null
+          documento_id: string | null
+          orden_firma: number | null
+          estado: Database["public"]["Enums"]["estado_aprobacion"] | null
+          comentario: string | null
+          fecha: string | null
+          version_aprobada: number | null
+          solicitado_en: string | null
+          aprobador_id: string | null
+          aprobador: string | null
+          aprobador_cargo: string | null
+          solicitado_por_nombre: string | null
+          le_toca: boolean | null
+        }
+        Relationships: []
+      }
+      mis_firmas_pendientes: {
+        Row: {
+          aprobacion_id: string | null
+          documento_id: string | null
+          orden_firma: number | null
+          solicitado_en: string | null
+          titulo: string | null
+          descripcion: string | null
+          numero_externo: string | null
+          fecha_documento: string | null
+          version_actual: number | null
+          orden_id: string | null
+          orden_numero: string | null
+          cliente: string | null
+          placa: string | null
+          tipo_codigo: string | null
+          tipo_nombre: string | null
+          tipo_categoria: Database["public"]["Enums"]["categoria_documento"] | null
+          solicitado_por_nombre: string | null
+          le_toca: boolean | null
+          firmas_total: number | null
+        }
+        Relationships: []
+      }
+      os_resumen: {
+        Row: {
+          id: string | null
+          numero: string | null
+          orden_id: string | null
+          orden_numero: string | null
+          cliente: string | null
+          placa: string | null
+          proveedor_id: string | null
+          proveedor: string | null
+          tipo_servicio: Database["public"]["Enums"]["tipo_servicio_tercero"] | null
+          descripcion: string | null
+          especificacion: string | null
+          estado: Database["public"]["Enums"]["estado_servicio_tercero"] | null
+          fecha: string | null
+          fecha_entrega: string | null
+          plazo_dias: number | null
+          fecha_conformidad: string | null
+          moneda: Database["public"]["Enums"]["moneda"] | null
+          monto: number | null
+          monto_base: number | null
+          numero_factura: string | null
+          fecha_factura: string | null
+          atrasada: boolean | null
+          etapa_id: string | null
+          etapa: string | null
+        }
+        Relationships: []
+      }
+      ot_avance_resumen: {
+        Row: {
+          id: string | null
+          orden_id: string | null
+          orden_numero: string | null
+          orden_estado: Database["public"]["Enums"]["estado_ot"] | null
+          cliente: string | null
+          placa: string | null
+          etapa_id: string | null
+          etapa: string | null
+          fecha: string | null
+          descripcion: string | null
+          avance_porcentaje: number | null
+          impedimento: string | null
+          registrado_por: string | null
+          registrado_por_nombre: string | null
+          creado_en: string | null
+          fotos: number | null
+        }
+        Relationships: []
+      }
       ot_horas_aprobadas: {
         Row: {
           detalle_id: string | null
@@ -4401,6 +4673,7 @@ export type Database = {
           etapas_terminadas: number | null
           etapas_en_proceso: number | null
           dias_atraso: number | null
+          dias_habiles_restantes: number | null
         }
         Relationships: []
       }
@@ -4431,6 +4704,37 @@ export type Database = {
           requiere_inspeccion: boolean | null
           inspeccion_conforme: boolean | null
           operarios_asignados: number | null
+        }
+        Relationships: []
+      }
+      unidad_tablero: {
+        Row: {
+          orden_id: string | null
+          orden_numero: string | null
+          orden_estado: Database["public"]["Enums"]["estado_ot"] | null
+          prioridad: Database["public"]["Enums"]["prioridad_ot"] | null
+          sede_id: string | null
+          unidad_id: string | null
+          placa: string | null
+          tipo_vehiculo: Database["public"]["Enums"]["tipo_vehiculo"] | null
+          marca: string | null
+          modelo: string | null
+          cliente_id: string | null
+          cliente: string | null
+          tipo_carroceria: string | null
+          descripcion: string | null
+          avance_porcentaje: number | null
+          fecha_entrega_comprometida: string | null
+          dias_habiles_restantes: number | null
+          responsable: string | null
+          etapa_actual: string | null
+          estado_etapa: Database["public"]["Enums"]["estado_etapa_ot"] | null
+          avance_etapa: number | null
+          ultimo_avance_fecha: string | null
+          ultimo_avance: string | null
+          dias_sin_avance: number | null
+          impedimento: string | null
+          fotos: number | null
         }
         Relationships: []
       }
@@ -4824,6 +5128,32 @@ export type Database = {
         }
         Returns: string
       }
+      cambiar_clave_personal: {
+        Args: {
+          p_usuario: string
+          p_clave: string
+        }
+        Returns: string
+      }
+      cambiar_estado_personal: {
+        Args: {
+          p_usuario: string
+          p_activo: boolean
+        }
+        Returns: string
+      }
+      cifrar_clave: {
+        Args: {
+          p_clave: string
+        }
+        Returns: string
+      }
+      completar_cuenta_acceso: {
+        Args: {
+          p_cuenta: string
+        }
+        Returns: string
+      }
       confirmar_movimiento_almacen: {
         Args: {
           p_movimiento: string
@@ -4860,6 +5190,38 @@ export type Database = {
         }
         Returns: number
       }
+      crear_personal: {
+        Args: {
+          p_nombres: string
+          p_apellidos: string
+          p_correo: string
+          p_clave: string
+          p_rol_id: string
+          p_sede_id: string
+          p_area_id?: string
+          p_cargo?: string
+          p_documento?: string
+          p_telefono?: string
+          p_es_operario?: boolean
+          p_costo_hora?: number
+        }
+        Returns: string
+      }
+      dar_conformidad_servicio: {
+        Args: {
+          p_servicio: string
+          p_observaciones?: string
+          p_fecha?: string
+        }
+        Returns: string
+      }
+      dias_habiles_entre: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: number
+      }
       documentos_obligatorios_faltantes: {
         Args: {
           p_orden_id: string
@@ -4868,6 +5230,12 @@ export type Database = {
       }
       es_admin: {
         Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      es_laborable: {
+        Args: {
+          p_fecha: string
+        }
         Returns: boolean
       }
       es_usuario_activo: {
@@ -4880,6 +5248,14 @@ export type Database = {
         }
         Returns: string
       }
+      firmar_documento: {
+        Args: {
+          p_aprobacion: string
+          p_estado: string
+          p_comentario?: string
+        }
+        Returns: string
+      }
       generar_presupuesto_desde_cotizacion: {
         Args: {
           p_orden_id: string
@@ -4887,6 +5263,55 @@ export type Database = {
           p_reemplazar?: boolean
         }
         Returns: number
+      }
+      informe_comercial: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: string[]
+      }
+      informe_consumo_materiales: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: string[]
+      }
+      informe_cumplimiento: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: string[]
+      }
+      informe_produccion: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: string[]
+      }
+      informe_rentabilidad: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: string[]
+      }
+      informe_resumen: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: string[]
+      }
+      informe_subcontratos: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: string[]
       }
       kardex_registrar: {
         Args: {
@@ -4972,6 +5397,12 @@ export type Database = {
         }
         Returns: string
       }
+      pascua: {
+        Args: {
+          p_anio: number
+        }
+        Returns: string
+      }
       produccion_siguiente_numero: {
         Args: {
           p_tipo: Database["public"]["Enums"]["tipo_correlativo"]
@@ -5026,11 +5457,31 @@ export type Database = {
         }
         Returns: string
       }
+      sembrar_feriados: {
+        Args: {
+          p_anio: number
+        }
+        Returns: number
+      }
       siguiente_correlativo: {
         Args: {
           p_tipo: Database["public"]["Enums"]["tipo_correlativo"]
           p_serie?: string
           p_sede?: string
+        }
+        Returns: string
+      }
+      solicitar_firmas: {
+        Args: {
+          p_documento: string
+          p_aprobadores: string[]
+        }
+        Returns: number
+      }
+      sumar_dias_habiles: {
+        Args: {
+          p_desde: string
+          p_dias: number
         }
         Returns: string
       }
@@ -5080,7 +5531,7 @@ export type Database = {
       estado_ot: "BORRADOR" | "APROBADA" | "PROGRAMADA" | "EN_PROCESO" | "PAUSADA" | "CONTROL_CALIDAD" | "TERMINADA" | "ENTREGADA" | "FACTURADA" | "ANULADA"
       estado_parte_diario: "BORRADOR" | "CERRADO" | "APROBADO"
       estado_requerimiento: "SOLICITADO" | "APROBADO" | "ATENDIDO_PARCIAL" | "ATENDIDO" | "RECHAZADO" | "ANULADO"
-      estado_servicio_tercero: "SOLICITADO" | "EJECUTADO" | "PAGADO" | "ANULADO"
+      estado_servicio_tercero: "SOLICITADO" | "EN_EJECUCION" | "EJECUTADO" | "CONFORME" | "PAGADO" | "ANULADO"
       estado_tarea_ot: "PENDIENTE" | "EN_PROCESO" | "TERMINADA" | "CANCELADA"
       magnitud_medida: "UNIDAD" | "MASA" | "LONGITUD" | "AREA" | "VOLUMEN"
       moneda: "PEN" | "USD"
@@ -5091,7 +5542,7 @@ export type Database = {
       tipo_acceso_documento: "VISTA" | "DESCARGA" | "IMPRESION" | "COMPARTIDO"
       tipo_almacen: "PRINCIPAL" | "OBRA" | "HERRAMIENTAS" | "MERMA"
       tipo_centro_costo: "PRODUCCION" | "ADMINISTRATIVO" | "VENTAS"
-      tipo_correlativo: "COTIZACION" | "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA"
+      tipo_correlativo: "COTIZACION" | "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO"
       tipo_costo: "MATERIAL" | "MANO_OBRA" | "SERVICIO" | "INDIRECTO" | "OTRO"
       tipo_costo_partida: "MATERIAL" | "MANO_OBRA" | "SERVICIO" | "OTRO"
       tipo_documento_cliente: "RUC" | "DNI" | "CE" | "PASAPORTE"

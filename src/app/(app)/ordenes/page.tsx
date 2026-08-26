@@ -95,6 +95,13 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                 const estado = definir(ESTADO_OT, orden.estado)
                 const prioridad = definir(PRIORIDAD, orden.prioridad)
                 const atraso = orden.dias_atraso ?? 0
+                // Los días que el taller tiene por delante, ya descontados los
+                // domingos y los feriados: es el número con el que se programa.
+                const habiles =
+                  orden.dias_habiles_restantes === null ||
+                  orden.dias_habiles_restantes === undefined
+                    ? null
+                    : Number(orden.dias_habiles_restantes)
 
                 return (
                   <TR key={orden.id}>
@@ -144,10 +151,20 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
 
                     <TD className="whitespace-nowrap">
                       {fecha(orden.fecha_entrega_comprometida)}
-                      {atraso > 0 && (
+                      {atraso > 0 ? (
                         <p className="text-[11px] font-medium text-peligro">
                           {atraso} {atraso === 1 ? 'día' : 'días'} de atraso
                         </p>
+                      ) : (
+                        habiles !== null && (
+                          <p
+                            className={`text-[11px] ${habiles <= 3 ? 'font-medium text-aviso' : 'text-texto-suave'}`}
+                          >
+                            {habiles === 0
+                              ? 'se entrega hoy'
+                              : `quedan ${habiles} ${habiles === 1 ? 'día' : 'días'} de taller`}
+                          </p>
+                        )
                       )}
                     </TD>
 
