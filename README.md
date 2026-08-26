@@ -204,10 +204,10 @@ Los permisos se editan por rol en `roles_permisos`, sin tocar código.
 | Módulo | Qué permite hacer |
 | --- | --- |
 | **Tablero** | Estado del taller: órdenes abiertas, en proceso, pausadas, atrasadas y urgentes |
-| **Órdenes de trabajo** | Alta, avance por etapa, control de calidad, costos, documentos y trazabilidad |
+| **Órdenes de trabajo** | Alta, ficha de taller, avance por etapa, control de calidad, costos, documentos y trazabilidad |
 | **Producción** | Partes diarios de horas por operario, orden y etapa; al aprobarlos se cargan a la orden |
 | **Clientes y unidades** | Ficha del cliente con su flota, contactos e historial de órdenes |
-| **Cotizaciones** | Partidas, aprobación y apertura de la orden con arrastre del presupuesto |
+| **Cotizaciones** | Ficha técnica del producto, partidas, aprobación y apertura de la orden con arrastre del presupuesto |
 | **Almacén** | Existencias valorizadas, movimientos con kardex, requerimientos, compras y proveedores |
 | **Avance en taller** | Una tarjeta por unidad: dónde está, hace cuánto no se toca, qué la traba y las fotos del día |
 | **Servicios de terceros** | Órdenes de servicio al subcontratista, con plazo, conformidad y pago |

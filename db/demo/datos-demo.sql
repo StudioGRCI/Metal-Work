@@ -711,6 +711,69 @@ begin
     end if;
   end if;
 
+  -- ------------------------------------------------ la ficha de taller de la OT
+  -- Los accesorios de la cotización recién existen unas líneas más arriba, así
+  -- que las órdenes que ya se aprobaron todavía no los tienen. Se arma la ficha
+  -- ahora y se deja a medio llenar, que es como se ve una unidad en planta.
+  if not exists (select 1 from public.ot_repuestos) then
+    for v_orden in
+      select id from public.ordenes_trabajo where estado not in ('BORRADOR', 'ANULADA')
+    loop
+      perform public.armar_ficha_ot(v_orden);
+    end loop;
+
+    -- La unidad que está en proceso: medidas tomadas y media lista marcada.
+    select o.id into v_orden
+      from public.ordenes_trabajo o
+     where o.estado = 'EN_PROCESO'
+     order by o.creado_en
+     limit 1;
+
+    if v_orden is not null then
+      update public.ordenes_trabajo
+         set largo_m = 5.60, ancho_m = 2.40, alto_m = 1.55,
+             capacidad_carga = '18 M3', ruedas = '10 ruedas',
+             tipo_llantas = '295/80 R22.5', cantidad_ejes = 3,
+             tipo_suspension = 'Muelles reforzados',
+             colores = 'Cabina blanca, tolva rojo institucional',
+             caracteristicas_especiales =
+               'Compuerta posterior con apertura mecánica automática. '
+               || 'Visera protectora de cabina en plancha de 2.5 mm.',
+             encargado_produccion_id = v_jefe
+       where id = v_orden;
+
+      insert into public.ot_repuestos (orden_id, orden, cantidad, descripcion, marca)
+      values (v_orden, 1, 2, 'Pistón hidráulico telescópico de repuesto', 'HYVA'),
+             (v_orden, 2, 4, 'Faro lateral LED 24V',                     'HELLA'),
+             (v_orden, 3, 1, 'Kit de mangueras hidráulicas',             'PARKER');
+
+      -- Los primeros pasos ya pasaron las dos revisiones; los del medio, solo
+      -- la primera. Lo que sigue está sin tocar.
+      update public.ot_verificaciones
+         set avance_1 = true, avance_1_en = now() - interval '9 days',
+             avance_2 = true, avance_2_en = now() - interval '7 days',
+             responsable_id = v_jefe
+       where orden_id = v_orden and numero <= 5;
+
+      update public.ot_verificaciones
+         set avance_1 = true, avance_1_en = now() - interval '3 days',
+             responsable_id = v_jefe
+       where orden_id = v_orden and numero between 6 and 8;
+
+      update public.ot_verificaciones
+         set observaciones = 'Falta el sello de la válvula; se pidió al proveedor.'
+       where orden_id = v_orden and numero = 9;
+
+      -- El V°B° de los accesorios ya montados.
+      update public.ot_accesorios
+         set verificado = true, verificado_en = now() - interval '2 days',
+             verificado_por = v_jefe
+       where orden_id = v_orden
+         and id in (select id from public.ot_accesorios
+                     where orden_id = v_orden order by orden limit 3);
+    end if;
+  end if;
+
   raise notice 'Datos de demostración cargados: % clientes, % unidades, % órdenes, % materiales',
     (select count(*) from public.clientes),
     (select count(*) from public.unidades),

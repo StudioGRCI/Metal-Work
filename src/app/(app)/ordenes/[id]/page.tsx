@@ -14,6 +14,12 @@ import {
   obtenerOrden,
 } from '@/lib/datos/ordenes'
 import { costoDeOrden, materialesDeOrden } from '@/lib/datos/costos'
+import {
+  accesoriosDeOrden,
+  personalDelTaller,
+  repuestosDeOrden,
+  verificacionesDeOrden,
+} from '@/lib/datos/ficha-ot'
 import { timelineDeOrden, tiposDocumento } from '@/lib/datos/documentos'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import type { CodigoMoneda } from '@/lib/format'
@@ -25,6 +31,7 @@ import { Bitacora } from './bitacora'
 import { Costos } from './costos'
 import { DocumentosOrden } from './documentos'
 import { Etapas } from './etapas'
+import { FichaTaller } from './ficha-taller'
 import { Pestanas } from './pestanas'
 
 export async function generateMetadata({ params }: PageProps<'/ordenes/[id]'>): Promise<Metadata> {
@@ -33,7 +40,17 @@ export async function generateMetadata({ params }: PageProps<'/ordenes/[id]'>): 
   return { title: orden ? `Orden ${orden.numero}` : 'Orden no encontrada' }
 }
 
-const VISTAS = ['resumen', 'etapas', 'avance', 'horas', 'costos', 'calidad', 'documentos', 'bitacora'] as const
+const VISTAS = [
+  'resumen',
+  'ficha',
+  'etapas',
+  'avance',
+  'horas',
+  'costos',
+  'calidad',
+  'documentos',
+  'bitacora',
+] as const
 type Vista = (typeof VISTAS)[number]
 
 export default async function PaginaOrden({ params, searchParams }: PageProps<'/ordenes/[id]'>) {
@@ -50,7 +67,21 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   // cientos de eventos y no tiene sentido traerlos para ver el resumen.
   const verCostos = vista === 'costos' && puede(perfil, 'costos.ver')
 
-  const [etapas, timeline, inspecciones, horas, costo, materiales, tipos] = await Promise.all([
+  const verFicha = vista === 'ficha'
+
+  const [
+    etapas,
+    timeline,
+    inspecciones,
+    horas,
+    costo,
+    materiales,
+    tipos,
+    accesorios,
+    repuestos,
+    verificaciones,
+    personal,
+  ] = await Promise.all([
     vista === 'etapas' || vista === 'resumen' ? listarEtapas(id) : Promise.resolve([]),
     vista === 'bitacora' ? timelineDeOrden(id) : Promise.resolve([]),
     vista === 'calidad' ? listarInspecciones(id) : Promise.resolve([]),
@@ -58,6 +89,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     verCostos ? costoDeOrden(id) : Promise.resolve(null),
     verCostos ? materialesDeOrden(id) : Promise.resolve([]),
     vista === 'documentos' ? tiposDocumento() : Promise.resolve([]),
+    verFicha ? accesoriosDeOrden(id) : Promise.resolve([]),
+    verFicha ? repuestosDeOrden(id) : Promise.resolve([]),
+    verFicha ? verificacionesDeOrden(id) : Promise.resolve([]),
+    verFicha ? personalDelTaller() : Promise.resolve([]),
   ])
 
   const estado = definir(ESTADO_OT, orden.estado)
@@ -192,6 +227,31 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
             </TarjetaCuerpo>
           </Tarjeta>
         </div>
+      )}
+
+      {vista === 'ficha' && (
+        <FichaTaller
+          ordenId={orden.id}
+          ficha={{
+            largo_m: orden.largo_m,
+            ancho_m: orden.ancho_m,
+            alto_m: orden.alto_m,
+            capacidad_carga: orden.capacidad_carga,
+            ruedas: orden.ruedas,
+            tipo_llantas: orden.tipo_llantas,
+            cantidad_ejes: orden.cantidad_ejes,
+            tipo_suspension: orden.tipo_suspension,
+            colores: orden.colores,
+            caracteristicas_especiales: orden.caracteristicas_especiales,
+            correo_contacto: orden.correo_contacto,
+            encargado_produccion_id: orden.encargado_produccion_id,
+          }}
+          accesorios={accesorios}
+          repuestos={repuestos}
+          verificaciones={verificaciones}
+          personal={personal}
+          puedeEditar={puede(perfil, ['ordenes.editar', 'produccion.registrar', 'calidad.inspeccionar'])}
+        />
       )}
 
       {vista === 'etapas' && (

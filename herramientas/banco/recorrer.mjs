@@ -58,6 +58,7 @@ const RUTAS = [
   cotizacionId && ['cotizacion-detalle', `/cotizaciones/${cotizacionId}`],
   ['avance-taller', '/avance'],
   ordenId && ['avance-unidad', `/avance/${ordenId}`],
+  ordenId && ['orden-ficha', `/ordenes/${ordenId}?vista=ficha`],
   ordenId && ['orden-avance', `/ordenes/${ordenId}?vista=avance`],
   ordenId && ['orden-documentos', `/ordenes/${ordenId}?vista=documentos`],
   ['produccion', '/produccion'],

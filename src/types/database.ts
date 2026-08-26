@@ -2188,6 +2188,18 @@ export type Database = {
           creado_por: string | null
           creado_en: string
           actualizado_en: string
+          largo_m: number | null
+          ancho_m: number | null
+          alto_m: number | null
+          capacidad_carga: string | null
+          ruedas: string | null
+          tipo_llantas: string | null
+          cantidad_ejes: number | null
+          tipo_suspension: string | null
+          colores: string | null
+          caracteristicas_especiales: string | null
+          encargado_produccion_id: string | null
+          correo_contacto: string | null
         }
         Insert: {
           id?: string
@@ -2222,6 +2234,18 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          largo_m?: number | null
+          ancho_m?: number | null
+          alto_m?: number | null
+          capacidad_carga?: string | null
+          ruedas?: string | null
+          tipo_llantas?: string | null
+          cantidad_ejes?: number | null
+          tipo_suspension?: string | null
+          colores?: string | null
+          caracteristicas_especiales?: string | null
+          encargado_produccion_id?: string | null
+          correo_contacto?: string | null
         }
         Update: {
           id?: string
@@ -2256,6 +2280,18 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          largo_m?: number | null
+          ancho_m?: number | null
+          alto_m?: number | null
+          capacidad_carga?: string | null
+          ruedas?: string | null
+          tipo_llantas?: string | null
+          cantidad_ejes?: number | null
+          tipo_suspension?: string | null
+          colores?: string | null
+          caracteristicas_especiales?: string | null
+          encargado_produccion_id?: string | null
+          correo_contacto?: string | null
         }
         Relationships: [
           {
@@ -2275,6 +2311,13 @@ export type Database = {
           {
             foreignKeyName: "ordenes_trabajo_creado_por_fkey"
             columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_trabajo_encargado_produccion_id_fkey"
+            columns: ["encargado_produccion_id"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -2312,6 +2355,69 @@ export type Database = {
             columns: ["unidad_id"]
             isOneToOne: false
             referencedRelation: "unidades"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_accesorios: {
+        Row: {
+          id: string
+          orden_id: string
+          orden: number
+          cantidad: number
+          unidad: string
+          descripcion: string
+          incluye_el_accesorio: boolean
+          verificado: boolean
+          verificado_por: string | null
+          verificado_en: string | null
+          observacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          orden?: number
+          cantidad?: number
+          unidad?: string
+          descripcion: string
+          incluye_el_accesorio?: boolean
+          verificado?: boolean
+          verificado_por?: string | null
+          verificado_en?: string | null
+          observacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          orden?: number
+          cantidad?: number
+          unidad?: string
+          descripcion?: string
+          incluye_el_accesorio?: boolean
+          verificado?: boolean
+          verificado_por?: string | null
+          verificado_en?: string | null
+          observacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_accesorios_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_accesorios_verificado_por_fkey"
+            columns: ["verificado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -3027,6 +3133,50 @@ export type Database = {
           }
         ]
       }
+      ot_repuestos: {
+        Row: {
+          id: string
+          orden_id: string
+          orden: number
+          cantidad: number
+          descripcion: string
+          marca: string | null
+          observacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          orden?: number
+          cantidad?: number
+          descripcion: string
+          marca?: string | null
+          observacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          orden?: number
+          cantidad?: number
+          descripcion?: string
+          marca?: string | null
+          observacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_repuestos_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_tareas: {
         Row: {
           id: string
@@ -3096,6 +3246,66 @@ export type Database = {
           },
           {
             foreignKeyName: "ot_tareas_responsable_id_fkey"
+            columns: ["responsable_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_verificaciones: {
+        Row: {
+          id: string
+          orden_id: string
+          numero: number
+          descripcion: string
+          responsable_id: string | null
+          avance_1: boolean
+          avance_1_en: string | null
+          avance_2: boolean
+          avance_2_en: string | null
+          observaciones: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          numero: number
+          descripcion: string
+          responsable_id?: string | null
+          avance_1?: boolean
+          avance_1_en?: string | null
+          avance_2?: boolean
+          avance_2_en?: string | null
+          observaciones?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          numero?: number
+          descripcion?: string
+          responsable_id?: string | null
+          avance_1?: boolean
+          avance_1_en?: string | null
+          avance_2?: boolean
+          avance_2_en?: string | null
+          observaciones?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_verificaciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_verificaciones_responsable_id_fkey"
             columns: ["responsable_id"]
             isOneToOne: false
             referencedRelation: "usuarios"
@@ -3392,6 +3602,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "plantillas_ficha_tipo_carroceria_id_fkey"
+            columns: ["tipo_carroceria_id"]
+            isOneToOne: false
+            referencedRelation: "tipos_carroceria"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      plantillas_verificacion: {
+        Row: {
+          id: string
+          tipo_carroceria_id: string | null
+          numero: number
+          descripcion: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          tipo_carroceria_id?: string | null
+          numero: number
+          descripcion: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          tipo_carroceria_id?: string | null
+          numero?: number
+          descripcion?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plantillas_verificacion_tipo_carroceria_id_fkey"
             columns: ["tipo_carroceria_id"]
             isOneToOne: false
             referencedRelation: "tipos_carroceria"
@@ -4886,6 +5131,19 @@ export type Database = {
         }
         Relationships: []
       }
+      ot_ficha_resumen: {
+        Row: {
+          orden_id: string | null
+          numero: string | null
+          accesorios: number | null
+          accesorios_verificados: number | null
+          pasos: number | null
+          pasos_avance_1: number | null
+          pasos_avance_2: number | null
+          repuestos: number | null
+        }
+        Relationships: []
+      }
       ot_horas_aprobadas: {
         Row: {
           detalle_id: string | null
@@ -5400,6 +5658,12 @@ export type Database = {
         }
         Returns: string
       }
+      armar_ficha_ot: {
+        Args: {
+          p_orden: string
+        }
+        Returns: string
+      }
       cambiar_clave_personal: {
         Args: {
           p_usuario: string
@@ -5732,6 +5996,13 @@ export type Database = {
       sembrar_feriados: {
         Args: {
           p_anio: number
+        }
+        Returns: number
+      }
+      sembrar_verificacion: {
+        Args: {
+          p_codigo: string
+          p_pasos: string[]
         }
         Returns: number
       }
