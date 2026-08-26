@@ -44,7 +44,21 @@ export async function tiposDocumento() {
   return data ?? []
 }
 
-export async function documentosFaltantes(ordenId: string) {
+export type DocumentoFaltante = {
+  tipo_documento_id: string
+  codigo: string
+  nombre: string
+}
+
+/**
+ * Documentación obligatoria que le falta a una orden para poder entregarse.
+ * Un tipo que exige firmas solo deja de figurar cuando las tiene todas.
+ *
+ * El tipo se declara a mano porque el generador aún no sabe leer funciones que
+ * devuelven tabla: las tipa como `string[]`. Hasta que sepa, esta anotación es
+ * la que vale.
+ */
+export async function documentosFaltantes(ordenId: string): Promise<DocumentoFaltante[]> {
   const supabase = await createClient()
 
   const { data, error } = await supabase.rpc('documentos_obligatorios_faltantes', {
@@ -52,7 +66,7 @@ export async function documentosFaltantes(ordenId: string) {
   })
 
   if (error) return []
-  return data ?? []
+  return (data ?? []) as unknown as DocumentoFaltante[]
 }
 
 export type EventoTimeline = {

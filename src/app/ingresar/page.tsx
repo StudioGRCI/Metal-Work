@@ -7,6 +7,15 @@ export const metadata: Metadata = { title: 'Ingresar' }
 export default async function PaginaIngreso({ searchParams }: PageProps<'/ingresar'>) {
   const params = await searchParams
   const redirigir = typeof params.redirigir === 'string' ? params.redirigir : '/'
+  const motivo = typeof params.motivo === 'string' ? params.motivo : null
+
+  const AVISOS: Record<string, string> = {
+    'sin-perfil':
+      'Tu cuenta existe pero todavía no tiene un perfil en el sistema. Pídele al administrador que te dé de alta y vuelve a entrar.',
+    inactivo:
+      'Tu cuenta está dada de baja. Si crees que es un error, comunícate con el administrador.',
+  }
+  const aviso = motivo ? AVISOS[motivo] : null
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-fondo px-4 py-10">
@@ -21,7 +30,24 @@ export default async function PaginaIngreso({ searchParams }: PageProps<'/ingres
           </p>
         </div>
 
+        {aviso && (
+          <div
+            role="status"
+            className="mb-4 rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-xs text-aviso"
+          >
+            {aviso}
+          </div>
+        )}
+
         <FormularioIngreso redirigir={redirigir} />
+
+        {motivo && (
+          <p className="mt-4 text-center text-xs">
+            <a href="/auth/salir" className="text-acento underline underline-offset-2">
+              Cerrar sesión y entrar con otra cuenta
+            </a>
+          </p>
+        )}
 
         <p className="mt-6 text-center text-xs text-texto-tenue">
           ¿Problemas para ingresar? Comunícate con el administrador del sistema.

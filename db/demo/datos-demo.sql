@@ -148,7 +148,17 @@ begin
     update public.ordenes_trabajo set estado = 'APROBADA'   where id = v_orden;
     update public.ordenes_trabajo set estado = 'EN_PROCESO' where id = v_orden;
 
-    -- Avance real de taller: las primeras etapas terminadas, soldadura en curso.
+    -- Diseño exige inspección conforme para poder cerrarse, igual que en el
+    -- taller: el jefe de área no cierra la etapa, la libera calidad. Sin este
+    -- paso la carga entera se caía al llegar acá.
+    insert into public.ot_inspecciones (orden_id, etapa_id, resultado, inspector_id, observaciones)
+    select v_orden, e.id, 'CONFORME', v_usuario, 'Planos revisados y conformes'
+      from public.ot_etapas e
+      join public.etapas_catalogo c on c.id = e.etapa_catalogo_id
+     where e.orden_id = v_orden and e.requiere_inspeccion
+       and c.codigo in ('HABILITADO_MP', 'DISENO');
+
+    -- Avance real de taller: las primeras etapas terminadas, producción en curso.
     update public.ot_etapas e set avance_porcentaje = 100, estado = 'TERMINADA'
       from public.etapas_catalogo c
      where e.etapa_catalogo_id = c.id and e.orden_id = v_orden
@@ -271,6 +281,15 @@ begin
            lower(replace(d.titulo, ' ', '-')) || '.pdf',
            'pdf', 186000, v_usuario
       from public.documentos d where d.orden_id = v_orden;
+
+    -- Los tipos que exigen firma no cuentan con solo estar cargados: mientras no
+    -- estén aprobados, la orden no se entrega. Es la misma regla que en planta,
+    -- donde el plano sin visar no libera la unidad.
+    insert into public.aprobaciones (documento_id, aprobador_id, orden_firma, estado, fecha)
+    select d.id, v_usuario, 1, 'APROBADO', now() - interval '5 days'
+      from public.documentos d
+      join public.tipos_documento t on t.id = d.tipo_documento_id
+     where d.orden_id = v_orden and t.requiere_aprobacion;
 
     -- Y un par de fotos del avance, que es lo que el taller sube a diario.
     insert into public.documentos (tipo_documento_id, titulo, entidad_tabla, entidad_id, orden_id, fecha_documento)

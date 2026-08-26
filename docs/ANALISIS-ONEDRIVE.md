@@ -273,7 +273,121 @@ Ordenado por lo que más duele:
 
 ---
 
-## 9. Fuentes
+## 9. Codificación de almacén
+
+De `PROYECTO SIG - MWP/PROYECTO DE CODIFICACION DE ALMACEN 2026/PROYECTO
+CODIFICACION ALMACEN -MWP.xlsx` (20 hojas, una por persona del área más las de
+catálogo). Es un proyecto en curso de 2026, no un documento histórico.
+
+**El código de material tiene cinco segmentos:**
+
+```
+FAMILIA - SUBFAMILIA - MATERIAL - TIPO - CORRELATIVO
+```
+
+Ejemplos reales del archivo: `MP-PL-AC-HX-0001`, `MP-BR-AS-RS-0001`,
+`MP-PR-AL-PT-0001`, `MP-TB-AC-RD-0001`.
+
+| Familia | Código | Qué agrupa |
+| --- | --- | --- |
+| Materia prima | `MP` | Planchas, perfiles, tubos, ángulos, aluminio, acero, FRP |
+| Materiales de producción | `MT` | Lijas, discos, abrasivos, adhesivos, tornillería |
+| Repuestos mecánicos | `RP` | Frenos, suspensión, motor, transmisión |
+| Repuestos eléctricos | `RE` | Baterías, cableado, luces, alternadores |
+| Pintura y químicos | `PQ` | Pinturas, primers, solventes, catalizadores |
+| Accesorios | `AC` | Cierres, bisagras, burletes, emblemas |
+| Equipos y maquinaria | `EQ` | Cortadora, plasma, compresores, taladros |
+| Herramientas | `HE` | Llaves, alicates, taladros, esmeriles |
+| Consumibles e insumos | `CO` | Guantes, trapos, EPP, silicona, lubricantes |
+| Instrumentos | `IN` | Los que requieren calibración |
+| Sistema hidráulico | `SH` | Bombas, válvulas, cilindros, mangueras, racores, filtros, sellos |
+| Sistema neumático | `SN` | Válvulas, bolsas de aire, muelles, conectores |
+
+**Subfamilias de materia prima:** `PL` planchas · `PR` perfiles · `TB` tubos ·
+`BR` barras · `FB` FRP y fibra.
+
+**Material:** `AC` acero ASTM A36 · `IN` inoxidable · `AL` aluminio · `AN` acero
+negro · `AG` galvanizado · `AS` SAE 1045.
+
+**Tipo**, que depende de la subfamilia:
+
+| Subfamilia | Tipos |
+| --- | --- |
+| Planchas | `ET` estriada · `ST` Strenx · `HX` Hardox |
+| Tubos | `RD` redondos · `RT` rectangulares · `CO` cuadrados |
+| Perfiles | `PT` platinas · `VG` vigas · `CN` canales · `AG` ángulos |
+| Barras | `RS` redonda sólida · `RP` redonda perforada · `RO` roscada · `CD` cuadrada |
+
+**La descripción también está normalizada:**
+`[Tipo] [Material/Parte] [Medida] [Norma/Grado] [Uso]`, por ejemplo
+`PLANCHA ACERO A36 6.0MM 1500X6000`.
+
+**El producto terminado usa su propio esquema**, `FAMILIA-SUBFAMILIA-MEDIDA-CORRELATIVO`
+(`VO-SM-STD-0001` = volquete estándar): `VO` volquetes · `TO` tolvas ·
+`CI` cisternas · `MX` mixers · `CO` compactadoras · `PL` plataformas ·
+`CB` cama baja; subfamilia `SM` semirremolque o `RE` remolque.
+
+**Ubicaciones físicas (LOC):** pasillo–rack–nivel–posición.
+
+### Qué le falta a la ficha de material
+
+El archivo enumera lo que el área espera de cada producto. Contrastado con la
+tabla `materiales` actual, faltan:
+
+- los cinco segmentos del código como campos estructurados, para poder armarlo
+  y validarlo en vez de escribirlo a mano
+- **criticidad A/B/C** — es lo que decide qué se compra primero cuando falta plata
+- ubicación por defecto y el mapa de ubicaciones
+- código del proveedor, distinto del código interno
+- costo de reposición, además del promedio ponderado que ya se calcula
+- control por lote, serie o caducidad como banderas por material
+
+> Nada de esto está implementado todavía.
+
+---
+
+## 10. Los formatos del área de almacén
+
+`PROYECTO SIG - MWP/9) Almacén ( ALM)` tiene siete formatos, y varios son
+justamente los que el sistema da por existentes:
+
+| Formato | Relación con el sistema |
+| --- | --- |
+| Control de calidad de materia prima | Es la inspección que la etapa `ALMACEN` exige y que la aplicación no tiene |
+| Recepción por unidad | Recepción de compra ligada a la OT |
+| Inventario según kardex | El kardex ya existe en base; falta contrastar columnas |
+| Entrega de consumibles por unidad | Salida de almacén imputada a la OT |
+| Entrega de herramientas | No modelado: herramienta prestada, no consumida |
+| EPP | No modelado |
+| Mapa de ubicación de productos | Ubicaciones físicas, no modeladas |
+
+El área de almacén también mantiene su matriz IPERC, que pertenece a SSOMA y
+queda fuera del alcance de este sistema.
+
+---
+
+## 11. Mapa del sistema documental
+
+`PROYECTO SIG - MWP` tiene una carpeta numerada por área, y ese número es el
+orden del proceso, no un capricho alfabético:
+
+```
+8)  Logística (LOG)        11) Ingeniería (ING)     14) Producción (PRD)
+9)  Almacén (ALM)          12) Diseño (DIS)         15) Acabados (ACB)
+10) Requerimientos (REQ)   13) Maestranza (MTZ)     16) Mantenimiento (MNT)
+                                                    18) SSOMA (SST) — vacía
+```
+
+Más `FORMATOS GENERALES`, `CODIFICACION DE AREAS.xlsx`, el flujograma
+`PROCESO DE SIG -MWP.vsdx` y `1. CRONOGRAMA DE AVANCE - SIG.xlsx`.
+
+La numeración empieza en 8 porque las áreas 1 a 7 —las administrativas— viven
+fuera de esta carpeta, en `1. ADMINISTRACION`, `3. TESORERIA`, `5. INGENIERIA`
+y `7. ALMACEN` en la raíz del OneDrive.
+
+---
+
+## 12. Fuentes
 
 | Archivo | Qué aportó |
 | --- | --- |
@@ -286,3 +400,5 @@ Ordenado por lo que más duele:
 | `ORDEN DE SERVICIO - 2026.xlsm` | Datos fiscales de la empresa |
 | `.../COMPRAS 2026/1. METAL WORK PERU/OC-5580-MW` | Numeración de órdenes de compra |
 | `SEGUIMIENTO DE FABRICACIÓN - MWP.xlsx` | Codificación de unidades fabricadas |
+| `PROYECTO CODIFICACION ALMACEN -MWP.xlsx` | Codificación de materiales y de producto terminado |
+| `PROYECTO SIG - MWP/9) Almacén ( ALM)` | Los siete formatos del área de almacén |

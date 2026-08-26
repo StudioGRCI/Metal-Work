@@ -106,14 +106,28 @@ export async function obtenerOrden(id: string) {
 export async function listarEtapas(ordenId: string) {
   const supabase = await createClient()
 
-  const { data, error } = await supabase
-    .from('ot_tablero_etapas')
-    .select('*')
-    .eq('orden_id', ordenId)
-    .order('orden_secuencia')
+  // Las observaciones no están en el tablero -que es una vista de avance- pero
+  // el formulario las edita. Sin traerlas, el campo salía vacío y al guardar
+  // pisaba lo anotado. Se piden aparte y se juntan por identificador de etapa.
+  const [tablero, notas] = await Promise.all([
+    supabase
+      .from('ot_tablero_etapas')
+      .select('*')
+      .eq('orden_id', ordenId)
+      .order('orden_secuencia'),
+    supabase
+      .from('ot_etapas')
+      .select('id, observaciones')
+      .eq('orden_id', ordenId),
+  ])
 
-  if (error) throw new Error(`No se pudieron cargar las etapas: ${error.message}`)
-  return data ?? []
+  if (tablero.error) throw new Error(`No se pudieron cargar las etapas: ${tablero.error.message}`)
+
+  const porEtapa = new Map((notas.data ?? []).map((n) => [n.id, n.observaciones]))
+  return (tablero.data ?? []).map((e) => ({
+    ...e,
+    observaciones: e.etapa_id ? (porEtapa.get(e.etapa_id) ?? null) : null,
+  }))
 }
 
 export async function listarInspecciones(ordenId: string) {

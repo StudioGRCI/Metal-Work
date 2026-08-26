@@ -4,6 +4,18 @@
 \set ON_ERROR_STOP on
 begin;
 
+-- Auxiliar de prueba: lee todas las órdenes saltando la seguridad por fila.
+-- Sirve para tomar el identificador de una orden ajena y comprobar que el
+-- INSERT la rechaza; sin esto habría que poder leerla, que es justo lo que se
+-- está probando que no se puede.
+create or replace function public.ot_todas_para_prueba()
+returns table (id uuid, descripcion text)
+language sql
+stable
+security definer
+set search_path = public
+as $fn$ select o.id, o.descripcion from public.ordenes_trabajo o $fn$;
+
 insert into public.empresa (ruc, razon_social) values ('20100000004', 'PRUEBAS RLS S.A.C.');
 insert into public.sedes (codigo, nombre) values ('T1', 'Taller principal');
 
@@ -151,6 +163,101 @@ begin
   perform test.afirmar(
     (select count(*) from public.audit_log) > 0,
     'y tiene acceso al historial de auditoría');
+end $$;
+
+reset role;
+
+-- --- el operario no puede ampliarse el alcance a sí mismo --------------------
+-- Las dos puertas que encontró la auditoría. Antes del blindaje estas dos
+-- comprobaciones pasaban sin error: esa era exactamente la falla.
+select test.como_usuario(:'operario_id');
+set role authenticated;
+
+do $$
+declare v_visibles_antes int;
+begin
+  select count(*) into v_visibles_antes from public.ordenes_trabajo;
+
+  -- Puerta A: dejar de ser operario para dejar de estar restringido.
+  perform test.debe_fallar(
+    format('update public.usuarios set es_operario = false where id = %L',
+           current_setting('request.jwt.claim.sub', true)),
+    'el operario no puede quitarse a sí mismo la marca de operario');
+
+  perform test.debe_fallar(
+    format('update public.usuarios set costo_hora = 999 where id = %L',
+           current_setting('request.jwt.claim.sub', true)),
+    'ni cambiarse su costo por hora');
+
+  perform test.afirmar(
+    (select count(*) from public.ordenes_trabajo) = v_visibles_antes,
+    'y su alcance de órdenes no cambió tras los intentos');
+end $$;
+
+reset role;
+
+-- Puerta B: imputarse horas en una orden ajena para que pase a ser visible.
+-- El parte diario sí lo puede crear -es su trabajo-; lo que no puede es
+-- colgarle una línea a una orden que no le corresponde.
+select test.como_usuario(:'operario_id');
+set role authenticated;
+
+do $$
+declare
+  v_parte  uuid;
+  v_ajena  uuid;
+  v_antes  int;
+begin
+  select count(*) into v_antes from public.ordenes_trabajo;
+
+  insert into public.partes_diarios (fecha, sede_id)
+    select current_date, id from public.sedes limit 1
+    returning id into v_parte;
+
+  -- La orden ajena no se ve desde acá, así que se toma su identificador de la
+  -- descripción con una función que corre con privilegios: lo que se prueba es
+  -- el insert, no si puede leerla.
+  select id into v_ajena from public.ot_todas_para_prueba()
+   where descripcion like '%ajena%';
+
+  perform test.debe_fallar(
+    format($sql$insert into public.parte_detalle (parte_id, orden_id, usuario_id, horas)
+                values (%L, %L, %L, 4)$sql$,
+           v_parte, v_ajena, current_setting('request.jwt.claim.sub', true)),
+    'el operario no puede imputar horas a una orden ajena');
+
+  perform test.afirmar(
+    (select count(*) from public.ordenes_trabajo) = v_antes,
+    'y por lo tanto esa orden sigue sin ser visible para él');
+end $$;
+
+reset role;
+
+-- --- las funciones privilegiadas exigen su permiso ---------------------------
+select test.como_usuario(:'operario_id');
+set role authenticated;
+
+do $$
+begin
+  perform test.debe_fallar(
+    'select public.exigir_permiso(''almacen.confirmar'')',
+    'un operario no tiene permiso para confirmar movimientos de almacén');
+  perform test.debe_fallar(
+    'select public.exigir_permiso(''requerimientos.aprobar'')',
+    'ni para aprobar requerimientos');
+end $$;
+
+reset role;
+
+-- --- y las internas no son alcanzables --------------------------------------
+select test.como_usuario(:'operario_id');
+set role authenticated;
+
+do $$
+begin
+  perform test.debe_fallar(
+    'select public.siguiente_correlativo(''ORDEN_TRABAJO'')',
+    'nadie quema correlativos a mano');
 end $$;
 
 reset role;

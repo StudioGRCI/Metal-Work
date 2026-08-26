@@ -45,7 +45,11 @@ export async function actualizarSesion(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (user && ruta === '/ingresar') {
+  // Con sesión iniciada no tiene sentido quedarse en la pantalla de ingreso...
+  // salvo que sea la propia aplicación la que mandó a esta persona acá, porque
+  // su cuenta de Supabase existe pero no tiene perfil o está dada de baja. Ahí
+  // devolverla sería encerrarla en un bucle: solo puede salir cerrando sesión.
+  if (user && ruta === '/ingresar' && !request.nextUrl.searchParams.has('motivo')) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
     url.search = ''

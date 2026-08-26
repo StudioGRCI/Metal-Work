@@ -64,7 +64,11 @@ export const obtenerSesion = cache(async (): Promise<PerfilSesion | null> => {
 export async function exigirSesion(): Promise<PerfilSesion> {
   const perfil = await obtenerSesion()
 
-  if (!perfil) redirect('/ingresar')
+  // El motivo no es solo para el mensaje: el proxy lo usa para no devolver a
+  // esta persona a la aplicación. Sin él se forma un bucle -la aplicación manda
+  // a ingresar, el proxy ve la sesión de Supabase y manda de vuelta- que deja al
+  // usuario dando vueltas sin poder hacer nada, ni siquiera cerrar sesión.
+  if (!perfil) redirect('/ingresar?motivo=sin-perfil')
   if (!perfil.activo) redirect('/ingresar?motivo=inactivo')
 
   return perfil
