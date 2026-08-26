@@ -59,6 +59,22 @@ begin
     end if;
   end loop;
 
+  -- Supabase lee estas columnas como texto obligatorio, nunca nulo. Una cuenta
+  -- creada por SQL las deja vacías, y entonces el servicio de sesión revienta
+  -- al leerla —«converting NULL to string»— y responde error del servidor, no
+  -- «contraseña incorrecta». Van en cadena vacía, que es lo que espera.
+  for v_columna in
+    select unnest(array['confirmation_token', 'recovery_token', 'email_change',
+                        'email_change_token_new', 'email_change_token_current',
+                        'phone_change', 'phone_change_token', 'reauthentication_token'])
+  loop
+    if exists (select 1 from information_schema.columns
+                where table_schema = 'auth' and table_name = 'users'
+                  and column_name = v_columna) then
+      v_columnas := v_columnas || format(', %I = coalesce(u.%I, %L)', v_columna, v_columna, '');
+    end if;
+  end loop;
+
   execute format(
     'update auth.users u
         set encrypted_password = %I.crypt(current_setting(''demo.clave''), %I.gen_salt(''bf''))%s
