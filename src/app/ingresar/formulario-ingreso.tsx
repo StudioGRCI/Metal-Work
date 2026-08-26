@@ -1,5 +1,6 @@
 'use client'
 
+import { Eye, EyeOff } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
@@ -13,6 +14,7 @@ export function FormularioIngreso({ redirigir }: { redirigir: string }) {
   const [clave, setClave] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [cargando, setCargando] = useState(false)
+  const [verClave, setVerClave] = useState(false)
 
   async function ingresar(evento: React.FormEvent) {
     evento.preventDefault()
@@ -59,14 +61,27 @@ export function FormularioIngreso({ redirigir }: { redirigir: string }) {
       </Campo>
 
       <Campo etiqueta="Contraseña" htmlFor="clave" requerido>
-        <Entrada
-          id="clave"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={clave}
-          onChange={(e) => setClave(e.target.value)}
-        />
+        {/* El ojo evita el ida y vuelta de escribir a ciegas una contraseña larga. */}
+        <div className="relative">
+          <Entrada
+            id="clave"
+            type={verClave ? 'text' : 'password'}
+            autoComplete="current-password"
+            required
+            value={clave}
+            onChange={(e) => setClave(e.target.value)}
+            className="pr-10"
+          />
+          <button
+            type="button"
+            onClick={() => setVerClave((v) => !v)}
+            aria-label={verClave ? 'Ocultar la contraseña' : 'Ver la contraseña'}
+            aria-pressed={verClave}
+            className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-texto-tenue hover:text-texto"
+          >
+            {verClave ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          </button>
+        </div>
       </Campo>
 
       {error && (
