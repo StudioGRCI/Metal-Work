@@ -219,30 +219,6 @@ begin
 
     perform public.confirmar_movimiento_almacen(v_mov);
 
-    -- Horas de taller de los últimos días.
-    select id into v_operario from public.usuarios where es_operario and activo limit 1;
-
-    if v_operario is not null then
-      for i in 1..3 loop
-        insert into public.partes_diarios (fecha, sede_id, responsable_id)
-        values (current_date - i, v_sede, v_usuario)
-        on conflict (sede_id, fecha) do nothing
-        returning id into v_parte;
-
-        if v_parte is not null then
-          insert into public.parte_detalle (parte_id, orden_id, etapa_id, usuario_id, horas, descripcion)
-          select v_parte, v_orden, e.id, v_operario, 8,
-                 'Soldadura de refuerzos y cordones estructurales'
-            from public.ot_etapas e
-            join public.etapas_catalogo c on c.id = e.etapa_catalogo_id
-           where e.orden_id = v_orden and c.codigo = 'PRODUCCION';
-
-          update public.partes_diarios set estado = 'CERRADO'  where id = v_parte;
-          update public.partes_diarios set estado = 'APROBADO' where id = v_parte;
-        end if;
-      end loop;
-    end if;
-
     -- 2) Orden pausada por falta de material.
     select c.id, u.id into v_cliente, v_unidad
       from public.clientes c join public.unidades u on u.cliente_id = c.id
@@ -353,6 +329,40 @@ begin
       'Reparación de estructura y cambio de barandas del remolque',
       v_usuario, 7800
       from public.tipos_carroceria tc where tc.codigo = 'BARANDA';
+  end if;
+
+  -- ---------------------------------------------------------- partes diarios
+  -- Las horas del taller de los últimos días, cargadas a la orden que está en
+  -- proceso. Va en su propia sección y no dentro de la creación de órdenes:
+  -- así el archivo se puede volver a pasar sobre una base que ya tiene las
+  -- órdenes cargadas y completa lo que falte.
+  if not exists (select 1 from public.partes_diarios) then
+    select id into v_operario from public.usuarios where es_operario and activo limit 1;
+
+    select o.id into v_orden
+      from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
+     where u.placa = 'V2G-841';
+
+    if v_operario is not null and v_orden is not null then
+      for i in 1..3 loop
+        insert into public.partes_diarios (fecha, sede_id, responsable_id)
+        values (current_date - i, v_sede, v_usuario)
+        on conflict (sede_id, fecha) do nothing
+        returning id into v_parte;
+
+        if v_parte is not null then
+          insert into public.parte_detalle (parte_id, orden_id, etapa_id, usuario_id, horas, descripcion)
+          select v_parte, v_orden, e.id, v_operario, 8,
+                 'Soldadura de refuerzos y cordones estructurales'
+            from public.ot_etapas e
+            join public.etapas_catalogo c on c.id = e.etapa_catalogo_id
+           where e.orden_id = v_orden and c.codigo = 'PRODUCCION';
+
+          update public.partes_diarios set estado = 'CERRADO'  where id = v_parte;
+          update public.partes_diarios set estado = 'APROBADO' where id = v_parte;
+        end if;
+      end loop;
+    end if;
   end if;
 
   -- ------------------------------------------------------------ cotización
