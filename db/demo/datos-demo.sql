@@ -40,13 +40,24 @@ begin
   -- como fichas de personal, no como accesos: la cuenta queda sin contraseña,
   -- así que ninguna de estas personas puede entrar hasta que administración
   -- le asigne una.
+  --
+  -- La casilla de operario no es cosmética: quien la tiene marcada solo alcanza
+  -- las órdenes donde está asignado o donde imputó horas. Por eso el jefe de
+  -- maestranza y el supervisor van sin marcar —necesitan ver todo el taller— y
+  -- los soldadores sí.
   if to_regclass('auth.users') is not null then
     for v_persona in
       select * from (values
-        ('jefe.taller@metalworkperusac.com',  'Aurelio',  'Ramírez',  'JEFE_TALLER', 'MTZ', true,  22.0, 'Jefe de maestranza'),
+        ('gerencia@metalworkperusac.com',     'Aníbal',   'Sologuren','GERENTE',     'GGE', false,  0.0, 'Gerente general'),
+        ('ventas@metalworkperusac.com',       'Karina',   'Bardales', 'VENDEDOR',    'GCO', false,  0.0, 'Ejecutiva comercial'),
+        ('jefe.taller@metalworkperusac.com',  'Aurelio',  'Ramírez',  'JEFE_TALLER', 'MTZ', false, 22.0, 'Jefe de maestranza'),
+        ('supervisor@metalworkperusac.com',   'Teodoro',  'Alva',     'SUPERVISOR',  'PRD', false, 18.0, 'Supervisor de producción'),
         ('soldador1@metalworkperusac.com',    'Elmer',    'Chávez',   'OPERARIO',    'PRD', true,  14.0, 'Soldador estructural'),
         ('soldador2@metalworkperusac.com',    'Máximo',   'Vargas',   'OPERARIO',    'PRD', true,  14.0, 'Soldador estructural'),
-        ('almacen@metalworkperusac.com',      'Rosa',     'Yupanqui', 'ALMACENERO',  'ALM', false, 12.0, 'Almacenera')
+        ('almacen@metalworkperusac.com',      'Rosa',     'Yupanqui', 'ALMACENERO',  'ALM', false, 12.0, 'Almacenera'),
+        ('compras@metalworkperusac.com',      'Nelson',   'Ibáñez',   'COMPRADOR',   'LOG', false,  0.0, 'Comprador'),
+        ('calidad@metalworkperusac.com',      'Lucía',    'Ferrer',   'CALIDAD',     'CAL', false,  0.0, 'Inspectora de calidad'),
+        ('costos@metalworkperusac.com',       'Gabriel',  'Ponce',    'COSTOS',      'CON', false,  0.0, 'Analista de costos')
       ) as p(correo, nombres, apellidos, rol, area, operario, costo, cargo)
     loop
       if not exists (select 1 from public.usuarios where correo = v_persona.correo) then
@@ -337,13 +348,23 @@ begin
   -- así el archivo se puede volver a pasar sobre una base que ya tiene las
   -- órdenes cargadas y completa lo que falte.
   if not exists (select 1 from public.partes_diarios) then
-    select id into v_operario from public.usuarios where es_operario and activo limit 1;
-
     select o.id into v_orden
       from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
      where u.placa = 'V2G-841';
 
-    if v_operario is not null and v_orden is not null then
+    -- La cuadrilla asignada a la orden. Sin esto un operario entra al sistema y
+    -- no ve nada: solo alcanza las órdenes donde está asignado o donde imputó
+    -- horas, que es justamente lo que se quiere probar.
+    if v_orden is not null then
+      insert into public.ot_personal (orden_id, usuario_id, rol, fecha_asignacion)
+      select v_orden, p.id, v.rol::public.rol_operario, current_date - 12
+        from (values ('soldador1@metalworkperusac.com', 'SOLDADOR'),
+                     ('soldador2@metalworkperusac.com', 'SOLDADOR'),
+                     ('supervisor@metalworkperusac.com', 'ARMADOR')) as v(correo, rol)
+        join public.usuarios p on p.correo = v.correo;
+    end if;
+
+    if v_orden is not null then
       for i in 1..3 loop
         insert into public.partes_diarios (fecha, sede_id, responsable_id)
         values (current_date - i, v_sede, v_usuario)
@@ -351,12 +372,18 @@ begin
         returning id into v_parte;
 
         if v_parte is not null then
-          insert into public.parte_detalle (parte_id, orden_id, etapa_id, usuario_id, horas, descripcion)
-          select v_parte, v_orden, e.id, v_operario, 8,
-                 'Soldadura de refuerzos y cordones estructurales'
-            from public.ot_etapas e
-            join public.etapas_catalogo c on c.id = e.etapa_catalogo_id
-           where e.orden_id = v_orden and c.codigo = 'PRODUCCION';
+          -- Las horas las cargan los dos soldadores, no el jefe.
+          for v_operario in
+            select p.id from public.usuarios p
+             where p.correo in ('soldador1@metalworkperusac.com', 'soldador2@metalworkperusac.com')
+          loop
+            insert into public.parte_detalle (parte_id, orden_id, etapa_id, usuario_id, horas, descripcion)
+            select v_parte, v_orden, e.id, v_operario, 8,
+                   'Soldadura de refuerzos y cordones estructurales'
+              from public.ot_etapas e
+              join public.etapas_catalogo c on c.id = e.etapa_catalogo_id
+             where e.orden_id = v_orden and c.codigo = 'PRODUCCION';
+          end loop;
 
           update public.partes_diarios set estado = 'CERRADO'  where id = v_parte;
           update public.partes_diarios set estado = 'APROBADO' where id = v_parte;

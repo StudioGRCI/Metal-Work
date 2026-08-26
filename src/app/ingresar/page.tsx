@@ -40,7 +40,10 @@ export default async function PaginaIngreso({ searchParams }: PageProps<'/ingres
       <div className="relative mx-auto flex min-h-dvh w-full max-w-6xl flex-col justify-center gap-10 px-5 py-12 lg:flex-row lg:items-center lg:gap-16 lg:px-8">
         {/* Presentación */}
         <section className="lg:flex-1">
-          <LogoMetalWork variante="claro" className="h-20 w-auto lg:h-28" />
+          {/* La marca es azul sobre blanco, así que sobre la foto va en su placa. */}
+          <div className="inline-flex rounded-[calc(var(--radius-base)*1.5)] bg-white px-5 py-4 shadow-lg shadow-black/25">
+            <LogoMetalWork className="h-11 w-auto lg:h-14" />
+          </div>
           <h1 className="mt-8 max-w-md text-2xl font-semibold text-white lg:text-4xl">
             Control de órdenes de trabajo, taller y costos
           </h1>
