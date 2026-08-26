@@ -31,6 +31,7 @@ declare
   v_jefe          uuid;
   v_documento     uuid;
   v_gerente       uuid;
+  v_plantilla     uuid;
 begin
   select id into v_sede from public.sedes where activo order by creado_en limit 1;
   select id into v_usuario from public.usuarios where activo order by creado_en limit 1;
@@ -668,6 +669,45 @@ begin
       insert into public.aprobaciones (documento_id, aprobador_id, orden_firma, solicitado_por)
       values (v_documento, coalesce(v_calidad, v_usuario), 1, v_usuario),
              (v_documento, v_gerente, 2, v_usuario);
+    end if;
+  end if;
+
+  -- ------------------------------------------------ la ficha de la cotización
+  -- La cotización de esta empresa es una ficha técnica: declara espesores,
+  -- normas y accesorios. Se aplica la plantilla del producto para que la
+  -- pantalla muestre lo que el cliente realmente recibe.
+  if not exists (select 1 from public.cotizacion_especificaciones) then
+    select c.id into v_cotizacion
+      from public.cotizaciones c
+      join public.tipos_carroceria t on t.id = c.tipo_carroceria_id
+     where t.codigo = 'TOLVA_VOLQUETE'
+     limit 1;
+
+    select p.id into v_plantilla
+      from public.plantillas_ficha p
+      join public.tipos_carroceria t on t.id = p.tipo_carroceria_id
+     where t.codigo = 'TOLVA_VOLQUETE' and p.activa
+     limit 1;
+
+    if v_cotizacion is not null and v_plantilla is not null then
+      -- Se copia a mano y no con aplicar_plantilla_ficha() porque esa función
+      -- exige permiso y acá no hay sesión iniciada.
+      insert into public.cotizacion_especificaciones
+        (cotizacion_id, seccion, orden_seccion, orden_linea, etiqueta, detalle)
+      select v_cotizacion, l.seccion, l.orden_seccion, l.orden_linea, l.etiqueta, l.detalle
+        from public.plantilla_ficha_lineas l where l.plantilla_id = v_plantilla;
+
+      insert into public.cotizacion_accesorios
+        (cotizacion_id, orden, cantidad, unidad, descripcion, incluye_el_accesorio)
+      select v_cotizacion, a.orden, a.cantidad, a.unidad, a.descripcion, a.incluye_el_accesorio
+        from public.plantilla_ficha_accesorios a where a.plantilla_id = v_plantilla;
+
+      update public.cotizaciones
+         set modelo = 'VASCULANTE', tipo = 'TOLVA',
+             largo_m = 5.60, ancho_m = 2.40, alto_m = 1.55,
+             capacidad = '18 M3', garantia_meses = 12, incluye_igv = true,
+             nota = 'Incluye certificado de montaje y expediente para registros públicos.'
+       where id = v_cotizacion;
     end if;
   end if;
 

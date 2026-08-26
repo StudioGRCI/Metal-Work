@@ -501,6 +501,97 @@ export type Database = {
           }
         ]
       }
+      cotizacion_accesorios: {
+        Row: {
+          id: string
+          cotizacion_id: string
+          orden: number
+          cantidad: number
+          unidad: string
+          descripcion: string
+          incluye_el_accesorio: boolean
+          observacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          cotizacion_id: string
+          orden?: number
+          cantidad?: number
+          unidad?: string
+          descripcion: string
+          incluye_el_accesorio?: boolean
+          observacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          cotizacion_id?: string
+          orden?: number
+          cantidad?: number
+          unidad?: string
+          descripcion?: string
+          incluye_el_accesorio?: boolean
+          observacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cotizacion_accesorios_cotizacion_id_fkey"
+            columns: ["cotizacion_id"]
+            isOneToOne: false
+            referencedRelation: "cotizaciones"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      cotizacion_especificaciones: {
+        Row: {
+          id: string
+          cotizacion_id: string
+          seccion: string
+          orden_seccion: number
+          orden_linea: number
+          etiqueta: string | null
+          detalle: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          cotizacion_id: string
+          seccion: string
+          orden_seccion?: number
+          orden_linea?: number
+          etiqueta?: string | null
+          detalle: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          cotizacion_id?: string
+          seccion?: string
+          orden_seccion?: number
+          orden_linea?: number
+          etiqueta?: string | null
+          detalle?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cotizacion_especificaciones_cotizacion_id_fkey"
+            columns: ["cotizacion_id"]
+            isOneToOne: false
+            referencedRelation: "cotizaciones"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       cotizacion_partidas: {
         Row: {
           id: string
@@ -588,6 +679,18 @@ export type Database = {
           creado_en: string
           actualizado_en: string
           creado_por: string | null
+          marca: string | null
+          modelo: string | null
+          tipo: string | null
+          largo_m: number | null
+          ancho_m: number | null
+          alto_m: number | null
+          capacidad: string | null
+          peso_neto_tn: number | null
+          garantia_meses: number
+          incluye_igv: boolean
+          plazo_en_habiles: boolean
+          nota: string | null
         }
         Insert: {
           id?: string
@@ -618,6 +721,18 @@ export type Database = {
           creado_en?: string
           actualizado_en?: string
           creado_por?: string | null
+          marca?: string | null
+          modelo?: string | null
+          tipo?: string | null
+          largo_m?: number | null
+          ancho_m?: number | null
+          alto_m?: number | null
+          capacidad?: string | null
+          peso_neto_tn?: number | null
+          garantia_meses?: number
+          incluye_igv?: boolean
+          plazo_en_habiles?: boolean
+          nota?: string | null
         }
         Update: {
           id?: string
@@ -648,6 +763,18 @@ export type Database = {
           creado_en?: string
           actualizado_en?: string
           creado_por?: string | null
+          marca?: string | null
+          modelo?: string | null
+          tipo?: string | null
+          largo_m?: number | null
+          ancho_m?: number | null
+          alto_m?: number | null
+          capacidad?: string | null
+          peso_neto_tn?: number | null
+          garantia_meses?: number
+          incluye_igv?: boolean
+          plazo_en_habiles?: boolean
+          nota?: string | null
         }
         Relationships: [
           {
@@ -3146,6 +3273,132 @@ export type Database = {
         }
         Relationships: []
       }
+      plantilla_ficha_accesorios: {
+        Row: {
+          id: string
+          plantilla_id: string
+          orden: number
+          cantidad: number
+          unidad: string
+          descripcion: string
+          incluye_el_accesorio: boolean
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          plantilla_id: string
+          orden?: number
+          cantidad?: number
+          unidad?: string
+          descripcion: string
+          incluye_el_accesorio?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          plantilla_id?: string
+          orden?: number
+          cantidad?: number
+          unidad?: string
+          descripcion?: string
+          incluye_el_accesorio?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plantilla_ficha_accesorios_plantilla_id_fkey"
+            columns: ["plantilla_id"]
+            isOneToOne: false
+            referencedRelation: "plantillas_ficha"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      plantilla_ficha_lineas: {
+        Row: {
+          id: string
+          plantilla_id: string
+          seccion: string
+          orden_seccion: number
+          orden_linea: number
+          etiqueta: string | null
+          detalle: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          plantilla_id: string
+          seccion: string
+          orden_seccion?: number
+          orden_linea?: number
+          etiqueta?: string | null
+          detalle: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          plantilla_id?: string
+          seccion?: string
+          orden_seccion?: number
+          orden_linea?: number
+          etiqueta?: string | null
+          detalle?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plantilla_ficha_lineas_plantilla_id_fkey"
+            columns: ["plantilla_id"]
+            isOneToOne: false
+            referencedRelation: "plantillas_ficha"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      plantillas_ficha: {
+        Row: {
+          id: string
+          tipo_carroceria_id: string | null
+          nombre: string
+          descripcion: string | null
+          activa: boolean
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          tipo_carroceria_id?: string | null
+          nombre: string
+          descripcion?: string | null
+          activa?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          tipo_carroceria_id?: string | null
+          nombre?: string
+          descripcion?: string | null
+          activa?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plantillas_ficha_tipo_carroceria_id_fkey"
+            columns: ["tipo_carroceria_id"]
+            isOneToOne: false
+            referencedRelation: "tipos_carroceria"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       prorrateo_indirectos: {
         Row: {
           id: string
@@ -4500,6 +4753,18 @@ export type Database = {
       }
     }
     Views: {
+      cotizacion_ficha: {
+        Row: {
+          cotizacion_id: string | null
+          numero: string | null
+          seccion: string | null
+          orden_seccion: number | null
+          orden_linea: number | null
+          etiqueta: string | null
+          detalle: string | null
+        }
+        Relationships: []
+      }
       cotizaciones_detalle: {
         Row: {
           id: string | null
@@ -5113,6 +5378,13 @@ export type Database = {
           p_motivo: string
         }
         Returns: string
+      }
+      aplicar_plantilla_ficha: {
+        Args: {
+          p_cotizacion: string
+          p_plantilla: string
+        }
+        Returns: number
       }
       aprobar_requerimiento: {
         Args: {
