@@ -22,12 +22,50 @@ declare
   v_mov       uuid;
   v_parte     uuid;
   v_operario  uuid;
+  v_cuenta    uuid;
+  v_persona   record;
+  v_cotizacion    uuid;
+  v_requerimiento uuid;
 begin
   select id into v_sede from public.sedes where activo order by creado_en limit 1;
   select id into v_usuario from public.usuarios where activo order by creado_en limit 1;
 
   if v_sede is null or v_usuario is null then
     raise exception 'Antes de cargar la demostración hay que registrar la empresa, una sede y un usuario. Ver el README.';
+  end if;
+
+  -- --------------------------------------------------------------- personal
+  -- Sin gente en el taller no hay horas, y sin horas no hay costo real ni
+  -- avance: las pantallas de producción y de costos se ven vacías. Se crean
+  -- como fichas de personal, no como accesos: la cuenta queda sin contraseña,
+  -- así que ninguna de estas personas puede entrar hasta que administración
+  -- le asigne una.
+  if to_regclass('auth.users') is not null then
+    for v_persona in
+      select * from (values
+        ('jefe.taller@metalworkperusac.com',  'Aurelio',  'Ramírez',  'JEFE_TALLER', 'MTZ', true,  22.0, 'Jefe de maestranza'),
+        ('soldador1@metalworkperusac.com',    'Elmer',    'Chávez',   'OPERARIO',    'PRD', true,  14.0, 'Soldador estructural'),
+        ('soldador2@metalworkperusac.com',    'Máximo',   'Vargas',   'OPERARIO',    'PRD', true,  14.0, 'Soldador estructural'),
+        ('almacen@metalworkperusac.com',      'Rosa',     'Yupanqui', 'ALMACENERO',  'ALM', false, 12.0, 'Almacenera')
+      ) as p(correo, nombres, apellidos, rol, area, operario, costo, cargo)
+    loop
+      if not exists (select 1 from public.usuarios where correo = v_persona.correo) then
+        v_cuenta := gen_random_uuid();
+
+        insert into auth.users (id, email, raw_user_meta_data)
+        values (v_cuenta, v_persona.correo,
+                jsonb_build_object('nombres', v_persona.nombres, 'apellidos', v_persona.apellidos))
+        on conflict do nothing;
+
+        insert into public.usuarios
+          (id, nombres, apellidos, correo, cargo, rol_id, sede_id, area_id, es_operario, costo_hora)
+        values (v_cuenta, v_persona.nombres, v_persona.apellidos, v_persona.correo, v_persona.cargo,
+                (select id from public.roles where codigo = v_persona.rol),
+                v_sede,
+                (select id from public.areas where codigo = v_persona.area),
+                v_persona.operario, v_persona.costo);
+      end if;
+    end loop;
   end if;
 
   -- ---------------------------------------------------------------- almacén
@@ -315,6 +353,72 @@ begin
       'Reparación de estructura y cambio de barandas del remolque',
       v_usuario, 7800
       from public.tipos_carroceria tc where tc.codigo = 'BARANDA';
+  end if;
+
+  -- ------------------------------------------------------------ cotización
+  -- El recorrido de una carrocería empieza acá, no en la orden. Se deja una
+  -- cotización aprobada del mismo cliente y la misma unidad de la orden que
+  -- está en taller, para poder seguir el hilo completo.
+  if not exists (select 1 from public.cotizaciones) then
+    select c.id, u.id into v_cliente, v_unidad
+      from public.clientes c join public.unidades u on u.cliente_id = c.id
+     where c.numero_documento = '20512345671' and u.placa = 'V2G-841';
+
+    insert into public.cotizaciones
+      (cliente_id, unidad_id, tipo_carroceria_id, sede_id, fecha_emision, validez_dias,
+       plazo_entrega_dias, forma_pago, condiciones, vendedor_id)
+    select v_cliente, v_unidad, tc.id, v_sede, current_date - 30, 20,
+           45, '50 % adelanto, saldo contra entrega',
+           'Precios en soles, no incluyen traslado fuera de la ciudad.',
+           v_usuario
+      from public.tipos_carroceria tc where tc.codigo = 'TOLVA_VOLQUETE'
+    returning id into v_cotizacion;
+
+    insert into public.cotizacion_partidas
+      (cotizacion_id, orden_secuencia, descripcion, unidad_medida, cantidad, precio_unitario, tipo_costo)
+    select v_cotizacion, v.secuencia, v.descripcion, v.unidad, v.cantidad, v.precio, v.tipo::public.tipo_costo_partida
+      from (values
+        (1, 'Fabricación de tolva de volquete de 18 m3 en acero A36 con piso Hardox 450',
+            'UND', 1.0, 42000.0, 'MATERIAL'),
+        (2, 'Sistema hidráulico: pistón telescópico de 5 etapas, bomba y mando',
+            'JGO', 1.0,  8600.0, 'MATERIAL'),
+        (3, 'Arenado y pintura: base epóxica y acabado poliuretano al color del cliente',
+            'UND', 1.0,  1900.0, 'SERVICIO')
+      ) as v(secuencia, descripcion, unidad, cantidad, precio, tipo);
+
+    -- Las partidas solo se pueden cargar mientras la cotización está en
+    -- borrador; recién entonces se envía y se aprueba, como en la realidad.
+    update public.cotizaciones set estado = 'ENVIADA' where id = v_cotizacion;
+    update public.cotizaciones
+       set estado = 'APROBADA', fecha_aprobacion = current_date - 24, aprobada_por = v_usuario
+     where id = v_cotizacion;
+
+    -- La orden en taller queda colgada de su cotización.
+    update public.ordenes_trabajo o
+       set cotizacion_id = v_cotizacion
+      from public.unidades u
+     where u.id = o.unidad_id and u.placa = 'V2G-841' and o.cotizacion_id is null;
+  end if;
+
+  -- -------------------------------------------------------- requerimiento
+  -- Lo que producción le pide al almacén para seguir avanzando.
+  if not exists (select 1 from public.requerimientos) then
+    select o.id into v_orden
+      from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
+     where u.placa = 'V2G-841';
+
+    insert into public.requerimientos
+      (orden_id, sede_id, almacen_id, estado, prioridad, fecha, fecha_requerida, solicitante_id, observaciones)
+    values (v_orden, v_sede, v_almacen, 'SOLICITADO', 'ALTA', current_date - 2, current_date + 3,
+            v_usuario, 'Para cerrar el ensamblaje de la tolva.')
+    returning id into v_requerimiento;
+
+    insert into public.requerimiento_detalle (requerimiento_id, material_id, cantidad_solicitada, especificacion)
+    select v_requerimiento, m.id, v.cantidad, v.especificacion
+      from (values ('PIN-BASE', 12.0, 'Base epóxica gris'),
+                   ('PIN-ESM',  10.0, 'Acabado poliuretano, color del cliente'),
+                   ('THI-ACR',  16.0, null)) as v(codigo, cantidad, especificacion)
+      join public.materiales m on m.codigo = v.codigo;
   end if;
 
   raise notice 'Datos de demostración cargados: % clientes, % unidades, % órdenes, % materiales',
