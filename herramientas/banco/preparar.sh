@@ -13,7 +13,12 @@ export PGPORT="${PGPORT:-5433}"
 export PGUSER="${PGUSER:-postgres}"
 BASE="${BANCO_BASE:-mw_demo}"
 CORREO="${BANCO_CORREO:-studiogrci@gmail.com}"
-CLAVE="${BANCO_CLAVE:-Mw-Carroceria-2026!}"
+CLAVE="${BANCO_CLAVE:-}"
+if [ -z "$CLAVE" ]; then
+  echo "Falta BANCO_CLAVE: es la contraseña de la cuenta de administración local." >&2
+  echo "  BANCO_CLAVE='la-que-quieras' ./herramientas/banco/preparar.sh" >&2
+  exit 1
+fi
 
 psql -q -d postgres -c "drop database if exists ${BASE} with (force);" >/dev/null
 psql -q -d postgres -c "create database ${BASE};" >/dev/null

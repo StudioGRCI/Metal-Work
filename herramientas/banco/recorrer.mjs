@@ -17,7 +17,11 @@ import pg from 'pg'
 
 const BASE = process.env.BANCO_APP ?? 'http://localhost:3111'
 const CORREO = process.env.BANCO_CORREO ?? 'studiogrci@gmail.com'
-const CLAVE = process.env.BANCO_CLAVE ?? 'Mw-Carroceria-2026!'
+const CLAVE = process.env.BANCO_CLAVE
+if (!CLAVE) {
+  console.error('Falta BANCO_CLAVE: la contraseña de la cuenta con la que se recorre el sistema.')
+  process.exit(1)
+}
 const CAPTURAS = process.env.BANCO_CAPTURAS ?? '/tmp/capturas-metalwork'
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 
