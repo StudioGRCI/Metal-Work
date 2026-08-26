@@ -8,6 +8,9 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { createClient } from '@/lib/supabase/client'
+import { NuevaUnidad } from '@/app/(app)/clientes/nueva-unidad'
+import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
+import { NuevoCliente } from '@/components/comercial/nuevo-cliente'
 
 import { crearOrden } from '../acciones'
 
@@ -24,10 +27,25 @@ const PRIORIDADES = opciones(PRIORIDAD)
 export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   const [resultado, ejecutar, pendiente] = useActionState(crearOrden, null)
   const [clienteId, setClienteId] = useState('')
+  const [unidadId, setUnidadId] = useState('')
+  const [carroceriaId, setCarroceriaId] = useState('')
   const [cargadas, setCargadas] = useState<{
     clienteId: string
     unidades: { id: string; placa: string; marca: string | null }[]
   } | null>(null)
+  // Lo dado de alta sin salir de acá se suma a las listas y queda elegido.
+  const [clientesNuevos, setClientesNuevos] = useState<Catalogos['clientes']>([])
+  const [carroceriasNuevas, setCarroceriasNuevas] = useState<Catalogos['tiposCarroceria']>([])
+  // Tras una acción de servidor Next refresca la página y el catálogo ya trae
+  // lo recién creado: se filtra para no listarlo dos veces.
+  const clientes = [
+    ...clientesNuevos.filter((n) => !catalogos.clientes.some((c) => c.id === n.id)),
+    ...catalogos.clientes,
+  ]
+  const carrocerias = [
+    ...carroceriasNuevas.filter((n) => !catalogos.tiposCarroceria.some((t) => t.id === n.id)),
+    ...catalogos.tiposCarroceria,
+  ]
 
   // Las unidades dependen del cliente: se cargan al vuelo para no traer al
   // navegador toda la flota de todos los clientes.
@@ -54,26 +72,54 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   // nuevo cliente está en vuelo no se muestran las unidades del anterior.
   const unidades = cargadas?.clienteId === clienteId ? cargadas.unidades : []
 
+  function clienteCreado(c: Catalogos['clientes'][number]) {
+    setClientesNuevos((lista) => (lista.some((x) => x.id === c.id) ? lista : [c, ...lista]))
+    setClienteId(c.id)
+    setUnidadId('')
+  }
+
+  function unidadCreada(u: { id: string; placa: string }) {
+    const fila = { ...u, marca: null }
+    setCargadas((previas) =>
+      previas?.clienteId === clienteId
+        ? { clienteId, unidades: [fila, ...previas.unidades.filter((x) => x.id !== u.id)] }
+        : { clienteId, unidades: [fila] },
+    )
+    setUnidadId(u.id)
+  }
+
+  function carroceriaCreada(t: { id: string; nombre: string }) {
+    setCarroceriasNuevas((lista) => (lista.some((x) => x.id === t.id) ? lista : [t, ...lista]))
+    setCarroceriaId(t.id)
+  }
+
   return (
     <form action={ejecutar} className="max-w-4xl space-y-4">
       <Tarjeta>
         <TarjetaCabecera titulo="Cliente y unidad" />
         <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2">
           <Campo etiqueta="Cliente" htmlFor="cliente_id" requerido>
-            <Seleccion
-              id="cliente_id"
-              name="cliente_id"
-              required
-              value={clienteId}
-              onChange={(e) => setClienteId(e.target.value)}
-            >
-              <option value="">Selecciona un cliente</option>
-              {catalogos.clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.razon_social} · {c.numero_documento}
-                </option>
-              ))}
-            </Seleccion>
+            <div className="flex items-center gap-2">
+              <Seleccion
+                id="cliente_id"
+                name="cliente_id"
+                required
+                value={clienteId}
+                onChange={(e) => {
+                  setClienteId(e.target.value)
+                  setUnidadId('')
+                }}
+                className="flex-1"
+              >
+                <option value="">Selecciona un cliente</option>
+                {clientes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.razon_social} · {c.numero_documento}
+                  </option>
+                ))}
+              </Seleccion>
+              <NuevoCliente onCreado={clienteCreado} />
+            </div>
           </Campo>
 
           <Campo
@@ -85,15 +131,33 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
                 : 'Vehículo sobre el que se ejecuta el trabajo'
             }
           >
-            <Seleccion id="unidad_id" name="unidad_id" disabled={!clienteId}>
-              <option value="">Sin unidad asignada</option>
-              {unidades.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.placa}
-                  {u.marca ? ` · ${u.marca}` : ''}
-                </option>
-              ))}
-            </Seleccion>
+            <div className="flex items-center gap-2">
+              <Seleccion
+                id="unidad_id"
+                name="unidad_id"
+                disabled={!clienteId}
+                value={unidadId}
+                onChange={(e) => setUnidadId(e.target.value)}
+                className="flex-1"
+              >
+                <option value="">Sin unidad asignada</option>
+                {unidades.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.placa}
+                    {u.marca ? ` · ${u.marca}` : ''}
+                  </option>
+                ))}
+              </Seleccion>
+              {clienteId && (
+                <NuevaUnidad
+                  key={clienteId}
+                  clienteId={clienteId}
+                  tiposCarroceria={carrocerias}
+                  onCreada={unidadCreada}
+                  compacta
+                />
+              )}
+            </div>
           </Campo>
         </TarjetaCuerpo>
       </Tarjeta>
@@ -112,14 +176,23 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
           </Campo>
 
           <Campo etiqueta="Tipo de carrocería" htmlFor="tipo_carroceria_id">
-            <Seleccion id="tipo_carroceria_id" name="tipo_carroceria_id">
-              <option value="">Sin especificar</option>
-              {catalogos.tiposCarroceria.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nombre}
-                </option>
-              ))}
-            </Seleccion>
+            <div className="flex items-center gap-2">
+              <Seleccion
+                id="tipo_carroceria_id"
+                name="tipo_carroceria_id"
+                value={carroceriaId}
+                onChange={(e) => setCarroceriaId(e.target.value)}
+                className="flex-1"
+              >
+                <option value="">Sin especificar</option>
+                {carrocerias.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.nombre}
+                  </option>
+                ))}
+              </Seleccion>
+              <NuevaCarroceria onCreada={carroceriaCreada} />
+            </div>
           </Campo>
 
           <Campo etiqueta="Tipo de trabajo" htmlFor="tipo_trabajo" requerido>
