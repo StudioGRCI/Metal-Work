@@ -5,7 +5,6 @@ import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
-import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { createClient } from '@/lib/supabase/client'
 
 export function FormularioIngreso({ redirigir }: { redirigir: string }) {
@@ -45,44 +44,43 @@ export function FormularioIngreso({ redirigir }: { redirigir: string }) {
   }
 
   return (
-    <Tarjeta>
-      <TarjetaCuerpo>
-        <form onSubmit={ingresar} className="space-y-4">
-          <Campo etiqueta="Correo electrónico" htmlFor="correo" requerido>
-            <Entrada
-              id="correo"
-              type="email"
-              autoComplete="username"
-              required
-              autoFocus
-              value={correo}
-              onChange={(e) => setCorreo(e.target.value)}
-              placeholder="usuario@empresa.com.pe"
-            />
-          </Campo>
+    <form onSubmit={ingresar} className="space-y-4">
+      <Campo etiqueta="Correo electrónico" htmlFor="correo" requerido>
+        <Entrada
+          id="correo"
+          type="email"
+          autoComplete="username"
+          required
+          autoFocus
+          value={correo}
+          onChange={(e) => setCorreo(e.target.value)}
+          placeholder="usuario@empresa.com.pe"
+        />
+      </Campo>
 
-          <Campo etiqueta="Contraseña" htmlFor="clave" requerido>
-            <Entrada
-              id="clave"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={clave}
-              onChange={(e) => setClave(e.target.value)}
-            />
-          </Campo>
+      <Campo etiqueta="Contraseña" htmlFor="clave" requerido>
+        <Entrada
+          id="clave"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={clave}
+          onChange={(e) => setClave(e.target.value)}
+        />
+      </Campo>
 
-          {error && (
-            <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
-              {error}
-            </p>
-          )}
+      {error && (
+        <p
+          role="alert"
+          className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro"
+        >
+          {error}
+        </p>
+      )}
 
-          <Boton type="submit" cargando={cargando} className="w-full justify-center">
-            Ingresar
-          </Boton>
-        </form>
-      </TarjetaCuerpo>
-    </Tarjeta>
+      <Boton type="submit" cargando={cargando} className="w-full justify-center">
+        Ingresar
+      </Boton>
+    </form>
   )
 }
