@@ -36,8 +36,11 @@
   --sombra: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 3px rgb(16 24 40 / 0.1);
 }
 
+/* El tema oscuro vale en dos casos: cuando lo pide el sistema y no se eligió
+   claro a mano, y cuando se eligió oscuro a mano. Los mismos valores en los
+   dos selectores, para que la elección de la persona gane siempre. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-tema="claro"]) {
     --fondo: #0d1117;
     --superficie: #151b23;
     --superficie-2: #1c232d;
@@ -64,6 +67,34 @@
 
     --sombra: 0 1px 2px rgb(0 0 0 / 0.4);
   }
+}
+
+:root[data-tema="oscuro"] {
+  --fondo: #0d1117;
+  --superficie: #151b23;
+  --superficie-2: #1c232d;
+  --borde: #262d38;
+  --borde-fuerte: #39424f;
+  --texto: #e6eaf0;
+  --texto-suave: #9aa4b2;
+  --texto-tenue: #6b7583;
+
+  --acento: #f59e0b;
+  --acento-fuerte: #fbbf24;
+  --acento-suave: #422006;
+  --acento-texto: #1a1206;
+
+  --exito: #4ade80;
+  --exito-suave: #052e16;
+  --aviso: #fbbf24;
+  --aviso-suave: #3b2f05;
+  --peligro: #f87171;
+  --peligro-suave: #450a0a;
+  --info: #60a5fa;
+  --info-suave: #0c2249;
+  --neutro-suave: #222a35;
+
+  --sombra: 0 1px 2px rgb(0 0 0 / 0.4);
 }
 
 @theme inline {

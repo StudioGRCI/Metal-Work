@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { LogOut } from 'lucide-react'
 
+import { CambiarTema } from '@/components/estructura/cambiar-tema'
 import { iniciales } from '@/lib/format'
 import type { PerfilSesion } from '@/lib/sesion'
 
@@ -15,6 +16,8 @@ export function BarraSuperior({ perfil }: { perfil: PerfilSesion }) {
       </Link>
 
       <div className="flex items-center gap-3">
+        <CambiarTema />
+
         <div className="hidden text-right sm:block">
           <p className="text-xs font-medium text-texto">
             {perfil.nombres} {perfil.apellidos}
