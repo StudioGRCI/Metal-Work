@@ -5,7 +5,10 @@
 -- no accesos. Este archivo le pone una contraseña temporal a esas cuentas para
 -- poder recorrer el sistema con cada rol y ver qué muestra y qué esconde.
 --
---   psql "$DATABASE_URL" -v clave='Demo-MetalWork-2026!' -f db/demo/claves-demo.sql
+--   psql "$DATABASE_URL" -v clave='LA-QUE-ELIJAS' -f db/demo/claves-demo.sql
+--
+-- La contraseña se pasa al ejecutar y no se escribe acá: este archivo vive en
+-- el repositorio, y lo que se escribe en el repositorio deja de ser secreto.
 --
 -- SOLO PARA DEMOSTRACIÓN. Antes de que el sistema entre en uso real hay que
 -- dar de baja estas cuentas o cambiarles la contraseña: comparten una sola.

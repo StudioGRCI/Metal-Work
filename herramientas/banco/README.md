@@ -15,8 +15,8 @@ Sirve para dos cosas:
 ## Cómo se usa
 
 ```bash
-./herramientas/banco/preparar.sh        # rehace la base local con datos de demostración
-node herramientas/banco/servidor.mjs    # levanta el servicio en el puerto 5599
+BANCO_CLAVE='la-que-quieras' ./herramientas/banco/preparar.sh   # rehace la base local
+node herramientas/banco/servidor.mjs                            # levanta el servicio (puerto 5599)
 ```
 
 El servicio imprime al arrancar las tres variables que hay que darle a la
@@ -32,7 +32,7 @@ npx next dev -p 3111
 Y para el recorrido automático de todas las pantallas:
 
 ```bash
-node herramientas/banco/recorrer.mjs
+BANCO_CLAVE='la-que-quieras' node herramientas/banco/recorrer.mjs
 ```
 
 Entra con la cuenta de demostración, visita las 27 rutas —las de detalle con
@@ -76,7 +76,8 @@ distintos de JSON, `upsert`, filtros sobre incrustaciones anidadas— no está: 
 la aplicación empieza a usarlo, el banco lo dirá con un 501 y habrá que
 agregarlo acá.
 
-**Las cuentas de prueba viven en la base local.** La contraseña de la cuenta de
-demostración es la que se le pase a `preparar.sh`; el resto del personal de
-demostración se crea sin contraseña, o sea que existe como ficha pero no puede
-entrar.
+**Las contraseñas se pasan al ejecutar, nunca escritas acá.** La de la cuenta de
+administración local es la que reciba `preparar.sh` en `BANCO_CLAVE`, y el resto
+del personal de demostración se crea sin contraseña: existe como ficha pero no
+puede entrar hasta que se le asigne una con `db/demo/claves-demo.sql`. Lo que se
+escribe en el repositorio deja de ser secreto, y este repositorio es público.
