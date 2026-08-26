@@ -147,3 +147,17 @@ export function diasHasta(valor: string | Date | null | undefined): number | nul
 export function iniciales(nombres?: string | null, apellidos?: string | null) {
   return `${nombres?.[0] ?? ''}${apellidos?.[0] ?? ''}`.toUpperCase() || '—'
 }
+
+/**
+ * La fecha de hoy en el taller (America/Lima), como YYYY-MM-DD comparable con
+ * las fechas planas de la base. new Date().toISOString() daría la de UTC, que
+ * de noche ya es la de mañana.
+ */
+export function hoyLima(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: ZONA,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}

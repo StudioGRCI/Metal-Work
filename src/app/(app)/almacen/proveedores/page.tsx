@@ -1,22 +1,26 @@
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { NuevoProveedor } from '@/components/proveedores/nuevo-proveedor'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { listarProveedores } from '@/lib/datos/almacen-operativo'
-import { exigirPermiso } from '@/lib/sesion'
+import { CONDICION_PAGO } from '@/lib/dominio/estados'
+import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { SubNavegacionAlmacen } from '../sub-navegacion'
 
 export const metadata = { title: 'Proveedores' }
 
 export default async function PaginaProveedores() {
-  await exigirPermiso('compras.ver')
+  const perfil = await exigirPermiso('compras.ver')
   const proveedores = await listarProveedores()
+  const daDeAlta = puede(perfil, ['compras.crear', 'almacen.maestros', 'costos.editar'])
 
   return (
     <>
       <EncabezadoPagina
         titulo="Proveedores"
         descripcion="Empresas que abastecen material y servicios al taller."
+        acciones={daDeAlta && <NuevoProveedor />}
       />
 
       <SubNavegacionAlmacen activa="/almacen/proveedores" />
@@ -37,7 +41,7 @@ export default async function PaginaProveedores() {
               <SinDatos
                 colSpan={5}
                 titulo="Sin proveedores"
-                descripcion="Los proveedores se registran al emitir la primera orden de compra."
+                descripcion="Da de alta el primero con el botón de arriba."
               />
             ) : (
               proveedores.map((p) => (
@@ -52,7 +56,9 @@ export default async function PaginaProveedores() {
                       </p>
                     )}
                   </TD>
-                  <TD className="text-texto-suave">{p.condicion_pago ?? '—'}</TD>
+                  <TD className="text-texto-suave">
+                    {p.condicion_pago ? (CONDICION_PAGO[p.condicion_pago] ?? p.condicion_pago) : '—'}
+                  </TD>
                   <TD className="tabular text-right">
                     {p.calificacion === null ? '—' : `${p.calificacion} / 5`}
                   </TD>

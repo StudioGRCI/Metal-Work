@@ -1,4 +1,13 @@
-export type ResultadoAccion = { ok: true; mensaje?: string } | { ok: false; error: string }
+/**
+ * Lo que devuelve una acción de servidor.
+ *
+ * El parámetro es para las pocas acciones que además tienen que devolver algo
+ * —dar de alta un proveedor devuelve el proveedor, para poder dejarlo elegido
+ * en el formulario desde el que se creó—. Sin él se comporta como siempre.
+ */
+export type ResultadoAccion<T = never> =
+  | { ok: true; mensaje?: string; datos?: T }
+  | { ok: false; error: string }
 
 /**
  * Traduce los errores de Postgres a algo que el usuario del taller entienda.

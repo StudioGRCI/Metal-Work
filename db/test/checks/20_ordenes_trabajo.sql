@@ -306,6 +306,17 @@ begin
     join public.tipos_documento t on t.id = d.tipo_documento_id
    where d.orden_id = v_id and t.requiere_aprobacion;
 
+  -- Sin la liberación de tesorería el acta tampoco entra: la regla del
+  -- flujograma —la unidad no sale si el cliente tiene deuda— la impone la base.
+  perform test.debe_fallar(
+    format($sql$insert into public.ot_entregas (orden_id, recibe_nombre, recibe_documento, garantia_meses)
+                values (%L, 'Carlos Huamán', '45678912', 12)$sql$, v_id),
+    'no se entrega sin la liberación de tesorería');
+
+  insert into public.liberaciones_tesoreria (orden_id, liberado_por, observacion)
+  select v_id, u.id, 'Cliente al día según estado de cuenta'
+    from public.usuarios u limit 1;
+
   -- El acta de conformidad es la que pasa la OT a ENTREGADA.
   insert into public.ot_entregas (orden_id, recibe_nombre, recibe_documento, garantia_meses)
     values (v_id, 'Carlos Huamán', '45678912', 12);

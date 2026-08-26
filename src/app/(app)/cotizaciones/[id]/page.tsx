@@ -8,12 +8,18 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { ESTADO_COTIZACION, definir } from '@/lib/dominio/estados'
 import { fecha, moneda, porcentaje } from '@/lib/format'
 import { obtenerCotizacion, partidasDeCotizacion } from '@/lib/datos/comercial'
+import {
+  accesoriosDeCotizacion,
+  fichaDeCotizacion,
+  plantillasDisponibles,
+} from '@/lib/datos/ficha'
 import { catalogosOrden } from '@/lib/datos/ordenes'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import type { CodigoMoneda } from '@/lib/format'
 
 import { AccionesCotizacion } from './acciones-cotizacion'
+import { FichaTecnica } from './ficha-tecnica'
 import { Partidas } from './partidas'
 
 export async function generateMetadata({
@@ -31,10 +37,19 @@ export default async function PaginaCotizacion({ params }: PageProps<'/cotizacio
   const cotizacion = await obtenerCotizacion(id)
   if (!cotizacion) notFound()
 
-  const [partidas, catalogos] = await Promise.all([
+  const [partidas, catalogos, ficha, accesorios, plantillas] = await Promise.all([
     partidasDeCotizacion(id),
     puede(perfil, 'ordenes.crear') ? catalogosOrden() : Promise.resolve(null),
+    fichaDeCotizacion(id),
+    accesoriosDeCotizacion(id),
+    plantillasDisponibles(cotizacion.tipo_carroceria_id),
   ])
+
+  // La ficha se edita mientras la cotización no esté cerrada: una aprobada es
+  // lo que el cliente aceptó, y cambiarla por detrás sería otra cosa.
+  const editaFicha =
+    puede(perfil, 'cotizaciones.editar') &&
+    ['BORRADOR', 'ENVIADA'].includes(cotizacion.estado as string)
 
   // Si esta cotización ya generó una orden, se enlaza en lugar de ofrecer crearla otra vez.
   const supabase = await createClient()
@@ -155,6 +170,32 @@ export default async function PaginaCotizacion({ params }: PageProps<'/cotizacio
             partidas={partidas}
             moneda={mon}
             editable={editable && puede(perfil, 'cotizaciones.editar')}
+          />
+        </div>
+
+        {/* La ficha técnica es el cuerpo de la cotización de esta empresa: es
+            lo que el taller fabrica y contra lo que el cliente reclama. */}
+        <div className="lg:col-span-3">
+          <FichaTecnica
+            cotizacionId={id}
+            cabecera={{
+              modelo: cotizacion.modelo,
+              tipo: cotizacion.tipo,
+              largo_m: cotizacion.largo_m,
+              ancho_m: cotizacion.ancho_m,
+              alto_m: cotizacion.alto_m,
+              capacidad: cotizacion.capacidad,
+              peso_neto_tn: cotizacion.peso_neto_tn,
+              garantia_meses: cotizacion.garantia_meses,
+              incluye_igv: cotizacion.incluye_igv,
+              plazo_en_habiles: cotizacion.plazo_en_habiles,
+              plazo_entrega_dias: cotizacion.plazo_entrega_dias,
+              nota: cotizacion.nota,
+            }}
+            secciones={ficha}
+            accesorios={accesorios}
+            plantillas={plantillas}
+            puedeEditar={editaFicha}
           />
         </div>
       </div>

@@ -145,4 +145,28 @@ begin
   raise notice '  ok · al cambiar el plazo la fecha de entrega se recalcula sola';
 end $$;
 
+
+
+-- --- la siembra exige el permiso de configuración ----------------------------
+do $$
+declare v_operario uuid;
+begin
+  select u.id into v_operario
+    from public.usuarios u join public.roles r on r.id = u.rol_id
+   where r.codigo = 'OPERARIO' limit 1;
+
+  if v_operario is null then
+    v_operario := test.crear_usuario('Justo', 'Prueba', 'justo@demo.pe', 'OPERARIO');
+  end if;
+
+  perform test.como_usuario(v_operario);
+  begin
+    perform public.sembrar_feriados(2031);
+    raise exception 'FALLA: un operario pudo sembrar feriados';
+  exception when others then
+    if sqlerrm like 'FALLA%' then raise; end if;
+    raise notice '  ok · sembrar feriados exige configuracion.editar (%)', sqlerrm;
+  end;
+end $$;
+
 rollback;

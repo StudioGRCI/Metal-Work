@@ -19,6 +19,14 @@ import { dirname, join } from 'node:path'
 
 import pg from 'pg'
 
+// PostgREST entrega los date como texto «YYYY-MM-DD». El driver de node, en
+// cambio, los convierte a Date de medianoche UTC, y la aplicación —que formatea
+// en hora de Lima— los corría un día hacia atrás. El banco imita a PostgREST:
+// la fecha sin hora viaja como texto y no se toca. (1082 date, 1114 timestamp
+// sin zona, 1182/1115 sus arreglos.)
+pg.types.setTypeParser(1082, (v) => v)
+pg.types.setTypeParser(1182, (v) => v)
+
 import { ErrorNoSoportado, leerEsquema } from './esquema.mjs'
 import { construirEscritura, construirLectura, construirLlamada } from './rest.mjs'
 

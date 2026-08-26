@@ -7,6 +7,7 @@ const SECCIONES = [
   { ruta: '/almacen/movimientos', titulo: 'Movimientos' },
   { ruta: '/almacen/requerimientos', titulo: 'Requerimientos' },
   { ruta: '/almacen/compras', titulo: 'Órdenes de compra' },
+  { ruta: '/almacen/materiales', titulo: 'Materiales' },
   { ruta: '/almacen/proveedores', titulo: 'Proveedores' },
 ]
 

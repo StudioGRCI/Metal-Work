@@ -1,8 +1,15 @@
+import { Arimo, Jost } from 'next/font/google'
 import type { Metadata, Viewport } from 'next'
 
 import { GuionEnLinea } from '@/components/estructura/guion-en-linea'
 
 import './globals.css'
+
+// La identidad de la marca pide Futura Now Headline para titulares y
+// Liberation Sans para el texto. Futura Now es de pago: Jost es el geométrico
+// libre que más se le parece. Arimo es Liberation Sans con otro nombre.
+const jost = Jost({ subsets: ['latin'], variable: '--fuente-titulos', display: 'swap' })
+const arimo = Arimo({ subsets: ['latin'], variable: '--fuente-texto', display: 'swap' })
 
 export const metadata: Metadata = {
   title: {
@@ -34,7 +41,7 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
     // El guion de arriba escribe `data-tema` en esta misma etiqueta antes de que
     // React hidrate, así que el atributo no coincide con lo que vino del
     // servidor. Es a propósito: se avisa para que React no lo reporte.
-    <html lang="es-PE" className="h-full" suppressHydrationWarning>
+    <html lang="es-PE" className={`h-full ${jost.variable} ${arimo.variable}`} suppressHydrationWarning>
       <head>
         <GuionEnLinea html={APLICAR_TEMA} />
       </head>

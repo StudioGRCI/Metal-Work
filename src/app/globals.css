@@ -2,9 +2,11 @@
 
 /* ---------------------------------------------------------------------------
    Metal-Work · sistema visual
-   Paleta acero con acento ámbar (el color del metal al soldar). Densidad alta:
-   la aplicación se usa en oficina y en tablet dentro del taller, donde importa
-   ver muchas órdenes de un vistazo.
+   Paleta del Manual de Identidad de la marca: azul corporativo #13467F
+   (Pantone 7687 C) y rojo #FD0002 (Pantone 2347 C). El azul manda; el rojo se
+   reserva para el peligro y los toques de marca, como en el propio logo.
+   Densidad alta: la aplicación se usa en oficina y en tablet dentro del
+   taller, donde importa ver muchas órdenes de un vistazo.
 --------------------------------------------------------------------------- */
 
 :root {
@@ -17,17 +19,20 @@
   --texto-suave: #5b6472;
   --texto-tenue: #8a93a1;
 
-  --acento: #b45309;
-  --acento-fuerte: #92400e;
-  --acento-suave: #fef3c7;
+  --marca-azul: #13467f;
+  --marca-rojo: #fd0002;
+
+  --acento: #13467f;
+  --acento-fuerte: #0e3560;
+  --acento-suave: #e4ecf7;
   --acento-texto: #ffffff;
 
   --exito: #15803d;
   --exito-suave: #dcfce7;
   --aviso: #a16207;
   --aviso-suave: #fef9c3;
-  --peligro: #b91c1c;
-  --peligro-suave: #fee2e2;
+  --peligro: #c40004;
+  --peligro-suave: #ffe4e4;
   --info: #1d4ed8;
   --info-suave: #dbeafe;
   --neutro-suave: #eef1f5;
@@ -50,17 +55,20 @@
     --texto-suave: #9aa4b2;
     --texto-tenue: #6b7583;
 
-    --acento: #f59e0b;
-    --acento-fuerte: #fbbf24;
-    --acento-suave: #422006;
-    --acento-texto: #1a1206;
+    --marca-azul: #13467f;
+    --marca-rojo: #fd0002;
+
+    --acento: #82abe0;
+    --acento-fuerte: #a5c4ec;
+    --acento-suave: #12263f;
+    --acento-texto: #081627;
 
     --exito: #4ade80;
     --exito-suave: #052e16;
     --aviso: #fbbf24;
     --aviso-suave: #3b2f05;
-    --peligro: #f87171;
-    --peligro-suave: #450a0a;
+    --peligro: #ff8a8b;
+    --peligro-suave: #45080a;
     --info: #60a5fa;
     --info-suave: #0c2249;
     --neutro-suave: #222a35;
@@ -79,17 +87,20 @@
   --texto-suave: #9aa4b2;
   --texto-tenue: #6b7583;
 
-  --acento: #f59e0b;
-  --acento-fuerte: #fbbf24;
-  --acento-suave: #422006;
-  --acento-texto: #1a1206;
+  --marca-azul: #13467f;
+  --marca-rojo: #fd0002;
+
+  --acento: #82abe0;
+  --acento-fuerte: #a5c4ec;
+  --acento-suave: #12263f;
+  --acento-texto: #081627;
 
   --exito: #4ade80;
   --exito-suave: #052e16;
   --aviso: #fbbf24;
   --aviso-suave: #3b2f05;
-  --peligro: #f87171;
-  --peligro-suave: #450a0a;
+  --peligro: #ff8a8b;
+  --peligro-suave: #45080a;
   --info: #60a5fa;
   --info-suave: #0c2249;
   --neutro-suave: #222a35;
@@ -119,14 +130,23 @@
   --color-info: var(--info);
   --color-info-suave: var(--info-suave);
   --color-neutro-suave: var(--neutro-suave);
+  --color-marca-azul: var(--marca-azul);
+  --color-marca-rojo: var(--marca-rojo);
   --radius-base: var(--radio);
 }
 
 body {
   background: var(--fondo);
   color: var(--texto);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--fuente-texto, "Liberation Sans"), "Liberation Sans", Arial, "Helvetica Neue", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Los títulos llevan la tipografía de titulares del manual (Futura Now en la
+   imprenta; Jost, su pariente geométrico libre, en la web). */
+h1, h2, h3 {
+  font-family: var(--fuente-titulos, inherit), "Century Gothic", "Futura", sans-serif;
+  letter-spacing: 0.01em;
 }
 
 /* Números alineados en columnas de cantidades e importes. */
