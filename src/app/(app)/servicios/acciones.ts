@@ -42,13 +42,6 @@ function nulo(valor: string | undefined) {
   return t ? t : null
 }
 
-/** Suma días de calendario a una fecha en formato AAAA-MM-DD. */
-function sumarDias(fecha: string, dias: number) {
-  const d = new Date(`${fecha}T00:00:00`)
-  d.setDate(d.getDate() + dias)
-  return d.toISOString().slice(0, 10)
-}
-
 export async function crearOrdenDeServicio(
   _previo: unknown,
   datos: FormData,
@@ -73,8 +66,9 @@ export async function crearOrdenDeServicio(
     descripcion: v.descripcion,
     especificacion: nulo(v.especificacion),
     fecha: v.fecha,
+    // La fecha de entrega no se manda: la calcula la base con el calendario del
+    // taller, que es la única que sabe qué días son domingo o feriado.
     plazo_dias: v.plazo_dias || null,
-    fecha_entrega: v.plazo_dias ? sumarDias(v.fecha, v.plazo_dias) : null,
     moneda: v.moneda,
     monto: v.monto,
     tipo_cambio: v.moneda === 'PEN' ? 1 : v.tipo_cambio,

@@ -959,6 +959,7 @@ export type Database = {
           costo_indirecto_hora: number
           creado_en: string
           actualizado_en: string
+          dias_laborables: number[]
         }
         Insert: {
           id?: string
@@ -978,6 +979,7 @@ export type Database = {
           costo_indirecto_hora?: number
           creado_en?: string
           actualizado_en?: string
+          dias_laborables?: number[]
         }
         Update: {
           id?: string
@@ -997,6 +999,7 @@ export type Database = {
           costo_indirecto_hora?: number
           creado_en?: string
           actualizado_en?: string
+          dias_laborables?: number[]
         }
         Relationships: []
       }
@@ -1045,6 +1048,33 @@ export type Database = {
           creado_en?: string
           actualizado_en?: string
           dias_estandar?: number
+        }
+        Relationships: []
+      }
+      feriados: {
+        Row: {
+          fecha: string
+          nombre: string
+          ambito: string
+          laborable: boolean
+          observacion: string | null
+          creado_en: string
+        }
+        Insert: {
+          fecha: string
+          nombre: string
+          ambito?: string
+          laborable?: boolean
+          observacion?: string | null
+          creado_en?: string
+        }
+        Update: {
+          fecha?: string
+          nombre?: string
+          ambito?: string
+          laborable?: boolean
+          observacion?: string | null
+          creado_en?: string
         }
         Relationships: []
       }
@@ -4465,6 +4495,7 @@ export type Database = {
           etapas_terminadas: number | null
           etapas_en_proceso: number | null
           dias_atraso: number | null
+          dias_habiles_restantes: number | null
         }
         Relationships: []
       }
@@ -4975,6 +5006,13 @@ export type Database = {
         }
         Returns: string
       }
+      dias_habiles_entre: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: number
+      }
       documentos_obligatorios_faltantes: {
         Args: {
           p_orden_id: string
@@ -4983,6 +5021,12 @@ export type Database = {
       }
       es_admin: {
         Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      es_laborable: {
+        Args: {
+          p_fecha: string
+        }
         Returns: boolean
       }
       es_usuario_activo: {
@@ -5087,6 +5131,12 @@ export type Database = {
         }
         Returns: string
       }
+      pascua: {
+        Args: {
+          p_anio: number
+        }
+        Returns: string
+      }
       produccion_siguiente_numero: {
         Args: {
           p_tipo: Database["public"]["Enums"]["tipo_correlativo"]
@@ -5141,11 +5191,24 @@ export type Database = {
         }
         Returns: string
       }
+      sembrar_feriados: {
+        Args: {
+          p_anio: number
+        }
+        Returns: number
+      }
       siguiente_correlativo: {
         Args: {
           p_tipo: Database["public"]["Enums"]["tipo_correlativo"]
           p_serie?: string
           p_sede?: string
+        }
+        Returns: string
+      }
+      sumar_dias_habiles: {
+        Args: {
+          p_desde: string
+          p_dias: number
         }
         Returns: string
       }

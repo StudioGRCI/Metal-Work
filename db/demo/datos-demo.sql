@@ -486,7 +486,8 @@ begin
   on conflict do nothing;
 
   -- -------------------------------------------------- servicios de terceros
-  -- Cada etapa del recorrido, para que la pantalla muestre el circuito entero:
+  -- La fecha de entrega no se carga: la calcula la base con el calendario del
+  -- taller. Cada etapa del recorrido, para que la pantalla muestre el circuito:
   -- lo que está afuera, lo que volvió y espera conformidad, lo aceptado y lo
   -- ya pagado. La conformidad se registra a nombre de calidad, como en la vida
   -- real, y por eso arrastra el monto al costo de la unidad.
@@ -502,41 +503,41 @@ begin
     -- Afuera, con el plazo todavía corriendo.
     insert into public.servicios_terceros
       (orden_id, proveedor_id, tipo_servicio, descripcion, especificacion, fecha, plazo_dias,
-       fecha_entrega, moneda, monto, tipo_cambio, estado)
+       moneda, monto, tipo_cambio, estado)
     select v_orden, p.id, 'ARENADO',
       'Arenado de la tolva antes de la base epóxica',
       'Grado comercial SA 2.5, perfil de anclaje 40-60 micras. Se entrega imprimada el mismo día.',
-      current_date - 2, 4, current_date + 2, 'PEN', 2400, 1, 'EN_EJECUCION'
+      current_date - 2, 4, 'PEN', 2400, 1, 'EN_EJECUCION'
       from public.proveedores p where p.codigo = 'PRV-001';
 
     -- Volvió y espera que calidad la acepte: es lo que la pantalla resalta.
     insert into public.servicios_terceros
       (orden_id, proveedor_id, tipo_servicio, descripcion, especificacion, fecha, plazo_dias,
-       fecha_entrega, moneda, monto, tipo_cambio, estado)
+       moneda, monto, tipo_cambio, estado)
     select v_orden, p.id, 'CORTE_LASER',
       'Corte láser de refuerzos y cartelas de la compuerta',
       'Plancha A36 de 6 mm, 42 piezas según plano PL-2481 rev. B.',
-      current_date - 9, 5, current_date - 4, 'PEN', 1850, 1, 'EJECUTADO'
+      current_date - 9, 5, 'PEN', 1850, 1, 'EJECUTADO'
       from public.proveedores p where p.codigo = 'PRV-002';
 
     -- Atrasada: pasó su fecha de entrega y sigue afuera.
     insert into public.servicios_terceros
       (orden_id, proveedor_id, tipo_servicio, descripcion, especificacion, fecha, plazo_dias,
-       fecha_entrega, moneda, monto, tipo_cambio, estado)
+       moneda, monto, tipo_cambio, estado)
     select v_orden, p.id, 'TORNO',
       'Torneado de bocinas y pines de la compuerta trasera',
       'Acero SAE 1045, 8 bocinas de 60 mm y 8 pines rectificados.',
-      current_date - 12, 5, current_date - 3, 'PEN', 780, 1, 'SOLICITADO'
+      current_date - 12, 5, 'PEN', 780, 1, 'SOLICITADO'
       from public.proveedores p where p.codigo = 'PRV-004';
 
     -- Aceptada por calidad: ya cuenta como costo de la unidad.
     insert into public.servicios_terceros
       (orden_id, proveedor_id, tipo_servicio, descripcion, especificacion, fecha, plazo_dias,
-       fecha_entrega, moneda, monto, tipo_cambio, estado)
+       moneda, monto, tipo_cambio, estado)
     select v_orden, p.id, 'GALVANIZADO',
       'Galvanizado en caliente de escaleras y pasarelas',
       'Recubrimiento mínimo 85 micras según NTP 350.085.',
-      current_date - 18, 7, current_date - 11, 'PEN', 1260, 1, 'EJECUTADO'
+      current_date - 18, 7, 'PEN', 1260, 1, 'EJECUTADO'
       from public.proveedores p where p.codigo = 'PRV-003'
     returning id into v_servicio;
 
@@ -555,11 +556,11 @@ begin
     if v_orden is not null then
       insert into public.servicios_terceros
         (orden_id, proveedor_id, tipo_servicio, descripcion, especificacion, fecha, plazo_dias,
-         fecha_entrega, moneda, monto, tipo_cambio, estado)
+         moneda, monto, tipo_cambio, estado)
       select v_orden, p.id, 'ARENADO',
         'Arenado y base epóxica del chasis de la tolva',
         'Grado comercial SA 2.5, base epóxica de 75 micras.',
-        current_date - 30, 4, current_date - 26, 'PEN', 1980, 1, 'EJECUTADO'
+        current_date - 30, 4, 'PEN', 1980, 1, 'EJECUTADO'
         from public.proveedores p where p.codigo = 'PRV-001'
       returning id into v_servicio;
 

@@ -147,7 +147,7 @@ export function NuevaOrdenDeServicio({ catalogos }: { catalogos: Catalogos }) {
             </Campo>
 
             <div className="grid gap-3 sm:grid-cols-4">
-              <Campo etiqueta="Plazo (días)" htmlFor="plazo_dias">
+              <Campo etiqueta="Plazo" htmlFor="plazo_dias" ayuda="Días de taller">
                 <Entrada id="plazo_dias" name="plazo_dias" type="number" min="0" defaultValue={3} />
               </Campo>
               <Campo etiqueta="Moneda" htmlFor="moneda">
