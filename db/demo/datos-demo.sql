@@ -342,6 +342,26 @@ begin
       from public.tipos_carroceria tc where tc.codigo = 'BARANDA';
   end if;
 
+  -- ----------------------------------------------------------------- cuadrilla
+  -- Quién trabaja en la orden que está en proceso. Sin esto un operario entra
+  -- al sistema y no ve nada: solo alcanza las órdenes donde está asignado o
+  -- donde imputó horas. Va en su propia sección para que se pueda completar
+  -- sobre una base que ya tiene las órdenes cargadas.
+  if not exists (select 1 from public.ot_personal) then
+    select o.id into v_orden
+      from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
+     where u.placa = 'V2G-841';
+
+    if v_orden is not null then
+      insert into public.ot_personal (orden_id, usuario_id, rol, fecha_asignacion)
+      select v_orden, p.id, v.rol::public.rol_operario, current_date - 12
+        from (values ('soldador1@metalworkperusac.com', 'SOLDADOR'),
+                     ('soldador2@metalworkperusac.com', 'SOLDADOR'),
+                     ('supervisor@metalworkperusac.com', 'ARMADOR')) as v(correo, rol)
+        join public.usuarios p on p.correo = v.correo;
+    end if;
+  end if;
+
   -- ---------------------------------------------------------- partes diarios
   -- Las horas del taller de los últimos días, cargadas a la orden que está en
   -- proceso. Va en su propia sección y no dentro de la creación de órdenes:
@@ -351,18 +371,6 @@ begin
     select o.id into v_orden
       from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
      where u.placa = 'V2G-841';
-
-    -- La cuadrilla asignada a la orden. Sin esto un operario entra al sistema y
-    -- no ve nada: solo alcanza las órdenes donde está asignado o donde imputó
-    -- horas, que es justamente lo que se quiere probar.
-    if v_orden is not null then
-      insert into public.ot_personal (orden_id, usuario_id, rol, fecha_asignacion)
-      select v_orden, p.id, v.rol::public.rol_operario, current_date - 12
-        from (values ('soldador1@metalworkperusac.com', 'SOLDADOR'),
-                     ('soldador2@metalworkperusac.com', 'SOLDADOR'),
-                     ('supervisor@metalworkperusac.com', 'ARMADOR')) as v(correo, rol)
-        join public.usuarios p on p.correo = v.correo;
-    end if;
 
     if v_orden is not null then
       for i in 1..3 loop
