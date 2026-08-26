@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
+import { createPortal } from 'react-dom'
 import { Plus } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
@@ -22,9 +23,14 @@ const TIPOS_VEHICULO = [
 export function NuevaUnidad({
   clienteId,
   tiposCarroceria,
+  onCreada,
+  compacta = false,
 }: {
   clienteId: string
   tiposCarroceria: { id: string; nombre: string }[]
+  /** Para los formularios que quieren quedarse con la unidad recién creada. */
+  onCreada?: (unidad: { id: string; placa: string }) => void
+  compacta?: boolean
 }) {
   const router = useRouter()
   const [pendiente, iniciarTransicion] = useTransition()
@@ -39,7 +45,9 @@ export function NuevaUnidad({
 
     if (resultado.ok) {
       setAbierto(false)
-      iniciarTransicion(() => router.refresh())
+      if (resultado.datos) onCreada?.(resultado.datos)
+      // Sin quien la escuche, es un alta suelta: se refresca la lista de atrás.
+      if (!onCreada) iniciarTransicion(() => router.refresh())
       return
     }
     setError(resultado.error)
@@ -52,13 +60,22 @@ export function NuevaUnidad({
 
   return (
     <>
-      <Boton variante="secundario" tamano="sm" onClick={abrir}>
+      <Boton type="button" variante={compacta ? 'contorno' : 'secundario'} tamano="sm" onClick={abrir}>
         <Plus aria-hidden className="size-3.5" />
-        Agregar unidad
+        {compacta ? 'Nueva' : 'Agregar unidad'}
       </Boton>
 
-      {abierto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
+      {abierto &&
+        // En un portal a propósito: el diálogo lleva su propio <form> y, si se
+        // renderizara dentro del formulario que lo abrió, quedarían anidados
+        // —HTML no lo permite y React envía el de afuera—.
+        createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Nueva unidad"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4"
+        >
           <button
             type="button"
             aria-label="Cancelar"
@@ -74,9 +91,9 @@ export function NuevaUnidad({
             <form action={enviar} className="mt-4 grid gap-4 sm:grid-cols-3">
               <input type="hidden" name="cliente_id" value={clienteId} />
 
-              <Campo etiqueta="Placa" htmlFor="placa" requerido>
+              <Campo etiqueta="Placa" htmlFor="nu-placa" requerido>
                 <Entrada
-                  id="placa"
+                  id="nu-placa"
                   name="placa"
                   required
                   autoFocus
@@ -85,8 +102,8 @@ export function NuevaUnidad({
                 />
               </Campo>
 
-              <Campo etiqueta="Tipo de vehículo" htmlFor="tipo_vehiculo" requerido>
-                <Seleccion id="tipo_vehiculo" name="tipo_vehiculo" defaultValue="VOLQUETE">
+              <Campo etiqueta="Tipo de vehículo" htmlFor="nu-tipo_vehiculo" requerido>
+                <Seleccion id="nu-tipo_vehiculo" name="tipo_vehiculo" defaultValue="VOLQUETE">
                   {TIPOS_VEHICULO.map(([valor, etiqueta]) => (
                     <option key={valor} value={valor}>
                       {etiqueta}
@@ -95,8 +112,8 @@ export function NuevaUnidad({
                 </Seleccion>
               </Campo>
 
-              <Campo etiqueta="Tipo de carrocería" htmlFor="tipo_carroceria_id">
-                <Seleccion id="tipo_carroceria_id" name="tipo_carroceria_id">
+              <Campo etiqueta="Tipo de carrocería" htmlFor="nu-tipo_carroceria_id">
+                <Seleccion id="nu-tipo_carroceria_id" name="tipo_carroceria_id">
                   <option value="">Sin especificar</option>
                   {tiposCarroceria.map((t) => (
                     <option key={t.id} value={t.id}>
@@ -106,17 +123,17 @@ export function NuevaUnidad({
                 </Seleccion>
               </Campo>
 
-              <Campo etiqueta="Marca" htmlFor="marca">
-                <Entrada id="marca" name="marca" placeholder="VOLVO" />
+              <Campo etiqueta="Marca" htmlFor="nu-marca">
+                <Entrada id="nu-marca" name="marca" placeholder="VOLVO" />
               </Campo>
 
-              <Campo etiqueta="Modelo" htmlFor="modelo">
-                <Entrada id="modelo" name="modelo" placeholder="FMX 440" />
+              <Campo etiqueta="Modelo" htmlFor="nu-modelo">
+                <Entrada id="nu-modelo" name="modelo" placeholder="FMX 440" />
               </Campo>
 
-              <Campo etiqueta="Año" htmlFor="anio">
+              <Campo etiqueta="Año" htmlFor="nu-anio">
                 <Entrada
-                  id="anio"
+                  id="nu-anio"
                   name="anio"
                   type="number"
                   min={1950}
@@ -125,17 +142,17 @@ export function NuevaUnidad({
                 />
               </Campo>
 
-              <Campo etiqueta="N.º de chasis" htmlFor="numero_chasis" className="sm:col-span-2">
-                <Entrada id="numero_chasis" name="numero_chasis" className="font-mono text-xs" />
+              <Campo etiqueta="N.º de chasis" htmlFor="nu-numero_chasis" className="sm:col-span-2">
+                <Entrada id="nu-numero_chasis" name="numero_chasis" className="font-mono text-xs" />
               </Campo>
 
-              <Campo etiqueta="Color" htmlFor="color">
-                <Entrada id="color" name="color" />
+              <Campo etiqueta="Color" htmlFor="nu-color">
+                <Entrada id="nu-color" name="color" />
               </Campo>
 
-              <Campo etiqueta="Capacidad (m³)" htmlFor="capacidad_m3">
+              <Campo etiqueta="Capacidad (m³)" htmlFor="nu-capacidad_m3">
                 <Entrada
-                  id="capacidad_m3"
+                  id="nu-capacidad_m3"
                   name="capacidad_m3"
                   type="number"
                   step="0.1"
@@ -144,9 +161,9 @@ export function NuevaUnidad({
                 />
               </Campo>
 
-              <Campo etiqueta="Capacidad (t)" htmlFor="capacidad_toneladas">
+              <Campo etiqueta="Capacidad (t)" htmlFor="nu-capacidad_toneladas">
                 <Entrada
-                  id="capacidad_toneladas"
+                  id="nu-capacidad_toneladas"
                   name="capacidad_toneladas"
                   type="number"
                   step="0.1"
@@ -155,8 +172,8 @@ export function NuevaUnidad({
                 />
               </Campo>
 
-              <Campo etiqueta="Observaciones" htmlFor="observaciones">
-                <AreaTexto id="observaciones" name="observaciones" rows={1} />
+              <Campo etiqueta="Observaciones" htmlFor="nu-observaciones">
+                <AreaTexto id="nu-observaciones" name="observaciones" rows={1} />
               </Campo>
 
               {error && (
@@ -175,7 +192,8 @@ export function NuevaUnidad({
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   )

@@ -124,3 +124,75 @@ export async function alternarFeriadoLaborable(_previo: unknown, datos: FormData
   revalidatePath('/configuracion')
   return { ok: true }
 }
+
+const esquemaCarroceria = z.object({
+  nombre: z.string().trim().min(3, 'Ponle nombre al tipo de carrocería'),
+  descripcion: z.string().trim().optional(),
+})
+
+/**
+ * Alta de un tipo de carrocería desde donde se cotiza.
+ *
+ * El catálogo no puede frenar una venta: si el cliente pide algo que no
+ * está, el vendedor lo da de alta con su nombre y sigue. El código se arma
+ * del nombre; las horas y los precios de referencia los ajusta administración
+ * después, desde Configuración.
+ */
+export async function crearCarroceria(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion<{ id: string; nombre: string }>> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ['cotizaciones.crear', 'ordenes.crear', 'configuracion.editar'])) {
+    return { ok: false, error: 'No tienes permiso para agregar tipos de carrocería.' }
+  }
+
+  const analisis = esquemaCarroceria.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los datos.' }
+  }
+
+  const v = analisis.data
+  const supabase = await createClient()
+
+  // El código sale del nombre: mayúsculas, sin tildes, con guiones bajos.
+  const codigo = v.nombre
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40)
+
+  // Si ya existe uno con ese nombre se devuelve el que estaba: la meta es
+  // seguir cotizando, no duplicar el catálogo.
+  const { data: existente } = await supabase
+    .from('tipos_carroceria')
+    .select('id, nombre')
+    .eq('codigo', codigo)
+    .maybeSingle()
+
+  if (existente) {
+    return {
+      ok: true,
+      mensaje: `Ese tipo ya estaba en el catálogo: ${existente.nombre}. Quedó elegido.`,
+      datos: existente,
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('tipos_carroceria')
+    .insert({
+      codigo,
+      nombre: v.nombre,
+      descripcion: v.descripcion?.trim() || null,
+      orden_secuencia: 99,
+    })
+    .select('id, nombre')
+    .single()
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+
+  revalidatePath('/configuracion')
+  return { ok: true, mensaje: 'Tipo de carrocería agregado. Administración le pondrá sus horas de referencia.', datos: data }
+}

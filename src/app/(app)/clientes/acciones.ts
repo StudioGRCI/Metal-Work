@@ -108,7 +108,10 @@ function numeroOpcional(valor?: string) {
   return Number.isFinite(n) ? n : null
 }
 
-export async function guardarUnidad(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+export async function guardarUnidad(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion<{ id: string; placa: string }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'clientes.crear')) {
     return { ok: false, error: 'No tienes permiso para registrar unidades.' }
@@ -122,7 +125,7 @@ export async function guardarUnidad(_previo: unknown, datos: FormData): Promise<
   const v = analisis.data
   const supabase = await createClient()
 
-  const { error } = await supabase.from('unidades').insert({
+  const { data: creada, error } = await supabase.from('unidades').insert({
     cliente_id: v.cliente_id,
     placa: v.placa,
     tipo_vehiculo: v.tipo_vehiculo,
@@ -137,10 +140,84 @@ export async function guardarUnidad(_previo: unknown, datos: FormData): Promise<
     tipo_carroceria_id: nulo(v.tipo_carroceria_id) as string | null,
     observaciones: nulo(v.observaciones),
   })
+    .select('id, placa')
+    .single()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
 
   revalidatePath(`/clientes/${v.cliente_id}`)
   revalidatePath('/unidades')
-  return { ok: true, mensaje: 'Unidad registrada.' }
+  return { ok: true, mensaje: 'Unidad registrada.', datos: creada }
+}
+
+const esquemaClienteRapido = z.object({
+  tipo_documento: z.enum(['RUC', 'DNI', 'CE', 'PASAPORTE']),
+  numero_documento: z.string().trim().min(8, 'El documento es obligatorio'),
+  razon_social: z.string().trim().min(3, 'La razón social es obligatoria'),
+  telefono: z.string().trim().optional(),
+  correo: z.string().trim().optional(),
+})
+
+/**
+ * Alta de cliente sin salir del formulario que lo necesita.
+ *
+ * Pide solo lo que hace falta para cotizar; la ficha completa se llena
+ * después con calma. Si el documento ya estaba registrado se devuelve ese
+ * cliente en lugar de un error: la meta es seguir cotizando, no discutir.
+ */
+export async function crearClienteRapido(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion<{ id: string; razon_social: string; numero_documento: string }>> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'clientes.crear')) {
+    return { ok: false, error: 'No tienes permiso para registrar clientes.' }
+  }
+
+  const analisis = esquemaClienteRapido.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los datos.' }
+  }
+
+  const v = analisis.data
+  if (v.tipo_documento === 'RUC' && !/^\d{11}$/.test(v.numero_documento)) {
+    return { ok: false, error: 'El RUC debe tener 11 dígitos.' }
+  }
+  if (v.tipo_documento === 'DNI' && !/^\d{8}$/.test(v.numero_documento)) {
+    return { ok: false, error: 'El DNI debe tener 8 dígitos.' }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('clientes')
+    .insert({
+      tipo_documento: v.tipo_documento,
+      numero_documento: v.numero_documento,
+      razon_social: v.razon_social.toUpperCase(),
+      telefono: nulo(v.telefono),
+      correo: nulo(v.correo),
+    })
+    .select('id, razon_social, numero_documento')
+    .single()
+
+  if (error) {
+    if (error.code === '23505') {
+      const { data: existente } = await supabase
+        .from('clientes')
+        .select('id, razon_social, numero_documento')
+        .eq('numero_documento', v.numero_documento)
+        .maybeSingle()
+      if (existente) {
+        return {
+          ok: true,
+          mensaje: `Ese documento ya estaba registrado: ${existente.razon_social}. Quedó elegido.`,
+          datos: existente,
+        }
+      }
+    }
+    return { ok: false, error: mensajeDeError(error) }
+  }
+
+  revalidatePath('/clientes')
+  return { ok: true, mensaje: 'Cliente registrado.', datos: data }
 }

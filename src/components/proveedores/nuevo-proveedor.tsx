@@ -3,6 +3,7 @@
 import { Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
+import { createPortal } from 'react-dom'
 
 import { crearProveedor } from '@/app/(app)/almacen/proveedores/acciones'
 import { Boton } from '@/components/ui/boton'
@@ -79,7 +80,11 @@ export function NuevoProveedor({
         {etiqueta}
       </Boton>
 
-      {abierto && (
+      {abierto &&
+        // En un portal a propósito: el diálogo lleva su propio <form> y, si se
+        // renderizara dentro del formulario que lo abrió, quedarían anidados
+        // —HTML no lo permite y React envía el de afuera—.
+        createPortal(
         <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/50 p-4 py-10">
           <div
             role="dialog"
@@ -168,7 +173,8 @@ export function NuevoProveedor({
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   )
