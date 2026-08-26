@@ -223,3 +223,66 @@ export async function indicadoresTablero(sedeId?: string | null) {
     ).map(([estado, cantidad]) => ({ estado, cantidad })),
   }
 }
+
+/** Las fechas límite que las reglas de plazo de la empresa le imponen a la orden. */
+export async function fechasClaveDeOrden(ordenId: string) {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('ot_fechas_clave')
+    .select(
+      'limite_os_produccion, limite_diseno, limite_os_acabados, limite_certificados, limite_tarjeta_placas, primera_os, fecha_entrega',
+    )
+    .eq('orden_id', ordenId)
+    .maybeSingle()
+
+  if (error) throw new Error(`No se pudieron leer las fechas clave: ${error.message}`)
+  return data as unknown as {
+    limite_os_produccion: string | null
+    limite_diseno: string | null
+    limite_os_acabados: string | null
+    limite_certificados: string | null
+    limite_tarjeta_placas: string | null
+    primera_os: string | null
+    fecha_entrega: string | null
+  } | null
+}
+
+/** Las tres compuertas de salida: papeles, tesorería y portería. */
+export async function estadoDeSalida(ordenId: string) {
+  const supabase = await createClient()
+
+  const [liberacion, entrega, faltantes] = await Promise.all([
+    supabase
+      .from('liberaciones_tesoreria')
+      .select('liberado_en, observacion, liberador:usuarios!liberaciones_tesoreria_liberado_por_fkey(nombres, apellidos)')
+      .eq('orden_id', ordenId)
+      .maybeSingle(),
+    supabase
+      .from('ot_entregas')
+      .select('id, fecha_entrega, salida_confirmada_en, confirmador:usuarios!ot_entregas_salida_confirmada_por_fkey(nombres, apellidos)')
+      .eq('orden_id', ordenId)
+      .maybeSingle(),
+    supabase.rpc('documentos_obligatorios_faltantes', { p_orden_id: ordenId }),
+  ])
+
+  if (liberacion.error) throw new Error(`No se pudo leer la liberación: ${liberacion.error.message}`)
+  if (entrega.error) throw new Error(`No se pudo leer la entrega: ${entrega.error.message}`)
+
+  return {
+    liberacion: liberacion.data as unknown as {
+      liberado_en: string
+      observacion: string | null
+      liberador: { nombres: string; apellidos: string } | null
+    } | null,
+    entrega: entrega.data as unknown as {
+      id: string
+      fecha_entrega: string
+      salida_confirmada_en: string | null
+      confirmador: { nombres: string; apellidos: string } | null
+    } | null,
+    documentosFaltantes: ((faltantes.data ?? []) as unknown as { nombre: string }[]).map(
+      (d) => d.nombre,
+    ),
+  }
+}

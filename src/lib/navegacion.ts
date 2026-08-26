@@ -13,6 +13,7 @@ import {
   Truck,
   UserCog,
   Users,
+  ShieldCheck,
   Wallet,
 } from 'lucide-react'
 
@@ -106,6 +107,14 @@ export const NAVEGACION: GrupoNavegacion[] = [
         disponible: true,
       },
       {
+        titulo: 'Garantías',
+        ruta: '/garantias',
+        icono: ShieldCheck,
+        permiso: 'garantias.ver',
+        descripcion: 'Unidades en garantía y sus reclamos',
+        disponible: true,
+      },
+      {
         titulo: 'Informes',
         ruta: '/informes',
         icono: BarChart3,
@@ -128,7 +137,14 @@ export const NAVEGACION: GrupoNavegacion[] = [
         descripcion: 'Altas, puestos y accesos',
         disponible: true,
       },
-      { titulo: 'Configuración', ruta: '/configuracion', icono: Settings, permiso: 'configuracion.ver' },
+      {
+        titulo: 'Configuración',
+        ruta: '/configuracion',
+        icono: Settings,
+        permiso: 'configuracion.ver',
+        descripcion: 'Calendario laboral y catálogos del taller',
+        disponible: true,
+      },
     ],
   },
 ]

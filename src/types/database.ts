@@ -451,6 +451,113 @@ export type Database = {
           }
         ]
       }
+      codificacion_familias: {
+        Row: {
+          codigo: string
+          nombre: string
+          agrupa: string | null
+          orden_visual: number
+          activo: boolean
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          codigo: string
+          nombre: string
+          agrupa?: string | null
+          orden_visual?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          codigo?: string
+          nombre?: string
+          agrupa?: string | null
+          orden_visual?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: []
+      }
+      codificacion_materiales: {
+        Row: {
+          codigo: string
+          nombre: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          codigo: string
+          nombre: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          codigo?: string
+          nombre?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: []
+      }
+      codificacion_subfamilias: {
+        Row: {
+          familia_codigo: string
+          codigo: string
+          nombre: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          familia_codigo: string
+          codigo: string
+          nombre: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          familia_codigo?: string
+          codigo?: string
+          nombre?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "codificacion_subfamilias_familia_codigo_fkey"
+            columns: ["familia_codigo"]
+            isOneToOne: false
+            referencedRelation: "codificacion_familias"
+            referencedColumns: ["codigo"]
+          }
+        ]
+      }
+      codificacion_tipos: {
+        Row: {
+          subfamilia_codigo: string
+          codigo: string
+          nombre: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          subfamilia_codigo: string
+          codigo: string
+          nombre: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          subfamilia_codigo?: string
+          codigo?: string
+          nombre?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: []
+      }
       contactos_cliente: {
         Row: {
           id: string
@@ -1205,6 +1312,93 @@ export type Database = {
         }
         Relationships: []
       }
+      garantia_reclamos: {
+        Row: {
+          id: string
+          entrega_id: string
+          correlativo: number
+          numero: string | null
+          fecha_reclamo: string
+          reportado_por: string | null
+          contacto: string | null
+          descripcion: string
+          dentro_de_garantia: boolean
+          estado: string
+          evaluacion: string | null
+          atendido_por: string | null
+          atendido_en: string | null
+          orden_reparacion_id: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          entrega_id: string
+          correlativo?: number
+          fecha_reclamo?: string
+          reportado_por?: string | null
+          contacto?: string | null
+          descripcion: string
+          dentro_de_garantia?: boolean
+          estado?: string
+          evaluacion?: string | null
+          atendido_por?: string | null
+          atendido_en?: string | null
+          orden_reparacion_id?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          entrega_id?: string
+          correlativo?: number
+          fecha_reclamo?: string
+          reportado_por?: string | null
+          contacto?: string | null
+          descripcion?: string
+          dentro_de_garantia?: boolean
+          estado?: string
+          evaluacion?: string | null
+          atendido_por?: string | null
+          atendido_en?: string | null
+          orden_reparacion_id?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "garantia_reclamos_atendido_por_fkey"
+            columns: ["atendido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "garantia_reclamos_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "garantia_reclamos_entrega_id_fkey"
+            columns: ["entrega_id"]
+            isOneToOne: false
+            referencedRelation: "ot_entregas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "garantia_reclamos_orden_reparacion_id_fkey"
+            columns: ["orden_reparacion_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       gastos_indirectos: {
         Row: {
           id: string
@@ -1407,6 +1601,51 @@ export type Database = {
           }
         ]
       }
+      liberaciones_tesoreria: {
+        Row: {
+          id: string
+          orden_id: string
+          liberado_por: string
+          liberado_en: string
+          observacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          liberado_por?: string
+          liberado_en?: string
+          observacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          liberado_por?: string
+          liberado_en?: string
+          observacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "liberaciones_tesoreria_liberado_por_fkey"
+            columns: ["liberado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "liberaciones_tesoreria_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       lotes_material: {
         Row: {
           id: string
@@ -1550,6 +1789,17 @@ export type Database = {
           creado_por: string | null
           creado_en: string
           actualizado_en: string
+          cod_familia: string | null
+          cod_subfamilia: string | null
+          cod_material: string | null
+          cod_tipo: string | null
+          cod_correlativo: number | null
+          criticidad: string | null
+          ubicacion: string | null
+          costo_reposicion: number | null
+          controla_serie: boolean
+          controla_caducidad: boolean
+          codigo_almacen: string | null
         }
         Insert: {
           id?: string
@@ -1581,6 +1831,16 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          cod_familia?: string | null
+          cod_subfamilia?: string | null
+          cod_material?: string | null
+          cod_tipo?: string | null
+          cod_correlativo?: number | null
+          criticidad?: string | null
+          ubicacion?: string | null
+          costo_reposicion?: number | null
+          controla_serie?: boolean
+          controla_caducidad?: boolean
         }
         Update: {
           id?: string
@@ -1612,14 +1872,52 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          cod_familia?: string | null
+          cod_subfamilia?: string | null
+          cod_material?: string | null
+          cod_tipo?: string | null
+          cod_correlativo?: number | null
+          criticidad?: string | null
+          ubicacion?: string | null
+          costo_reposicion?: number | null
+          controla_serie?: boolean
+          controla_caducidad?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_material_subfamilia"
+            columns: ["cod_familia", "cod_subfamilia"]
+            isOneToOne: false
+            referencedRelation: "codificacion_subfamilias"
+            referencedColumns: ["familia_codigo", "codigo"]
+          },
+          {
+            foreignKeyName: "fk_material_tipo"
+            columns: ["cod_subfamilia", "cod_tipo"]
+            isOneToOne: false
+            referencedRelation: "codificacion_tipos"
+            referencedColumns: ["subfamilia_codigo", "codigo"]
+          },
           {
             foreignKeyName: "materiales_categoria_id_fkey"
             columns: ["categoria_id"]
             isOneToOne: false
             referencedRelation: "categorias_material"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "materiales_cod_familia_fkey"
+            columns: ["cod_familia"]
+            isOneToOne: false
+            referencedRelation: "codificacion_familias"
+            referencedColumns: ["codigo"]
+          },
+          {
+            foreignKeyName: "materiales_cod_material_fkey"
+            columns: ["cod_material"]
+            isOneToOne: false
+            referencedRelation: "codificacion_materiales"
+            referencedColumns: ["codigo"]
           },
           {
             foreignKeyName: "materiales_creado_por_fkey"
@@ -2693,6 +2991,8 @@ export type Database = {
           creado_por: string | null
           creado_en: string
           actualizado_en: string
+          salida_confirmada_por: string | null
+          salida_confirmada_en: string | null
         }
         Insert: {
           id?: string
@@ -2709,6 +3009,8 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          salida_confirmada_por?: string | null
+          salida_confirmada_en?: string | null
         }
         Update: {
           id?: string
@@ -2725,6 +3027,8 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          salida_confirmada_por?: string | null
+          salida_confirmada_en?: string | null
         }
         Relationships: [
           {
@@ -2746,6 +3050,13 @@ export type Database = {
             columns: ["orden_id"]
             isOneToOne: false
             referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_entregas_salida_confirmada_por_fkey"
+            columns: ["salida_confirmada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -5057,6 +5368,25 @@ export type Database = {
         }
         Relationships: []
       }
+      garantias_resumen: {
+        Row: {
+          entrega_id: string | null
+          orden_id: string | null
+          orden: string | null
+          placa: string | null
+          marca: string | null
+          cliente: string | null
+          carroceria: string | null
+          fecha_entrega: string | null
+          garantia_meses: number | null
+          garantia_vence: string | null
+          vigente: boolean | null
+          dias_restantes: number | null
+          reclamos: number | null
+          reclamos_abiertos: number | null
+        }
+        Relationships: []
+      }
       mis_firmas_pendientes: {
         Row: {
           aprobacion_id: string | null
@@ -5128,6 +5458,21 @@ export type Database = {
           registrado_por_nombre: string | null
           creado_en: string | null
           fotos: number | null
+        }
+        Relationships: []
+      }
+      ot_fechas_clave: {
+        Row: {
+          orden_id: string | null
+          numero: string | null
+          fecha_registro: string | null
+          limite_os_produccion: string | null
+          limite_diseno: string | null
+          limite_os_acabados: string | null
+          limite_certificados: string | null
+          limite_tarjeta_placas: string | null
+          primera_os: string | null
+          fecha_entrega: string | null
         }
         Relationships: []
       }
@@ -5664,6 +6009,16 @@ export type Database = {
         }
         Returns: string
       }
+      asignar_codigo_almacen: {
+        Args: {
+          p_material: string
+          p_familia: string
+          p_subfamilia?: string
+          p_material_cod?: string
+          p_tipo?: string
+        }
+        Returns: string
+      }
       cambiar_clave_personal: {
         Args: {
           p_usuario: string
@@ -5711,6 +6066,12 @@ export type Database = {
       confirmar_recepcion_interna: {
         Args: {
           p_recepcion: string
+        }
+        Returns: string
+      }
+      confirmar_salida_porteria: {
+        Args: {
+          p_entrega: string
         }
         Returns: string
       }
@@ -5990,6 +6351,13 @@ export type Database = {
           p_tipo_evento: Database["public"]["Enums"]["tipo_evento_ot"]
           p_descripcion: string
           p_datos?: Json
+        }
+        Returns: string
+      }
+      restar_dias_habiles: {
+        Args: {
+          p_desde: string
+          p_dias: number
         }
         Returns: string
       }

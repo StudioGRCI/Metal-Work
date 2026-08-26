@@ -8,6 +8,8 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { ESTADO_OT, PRIORIDAD, TIPO_TRABAJO, definir } from '@/lib/dominio/estados'
 import { cantidad, fecha, fechaHora, moneda, numero as fmtNumero } from '@/lib/format'
 import {
+  estadoDeSalida,
+  fechasClaveDeOrden,
   listarEtapas,
   listarHorasOrden,
   listarInspecciones,
@@ -32,6 +34,7 @@ import { Costos } from './costos'
 import { DocumentosOrden } from './documentos'
 import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
+import { FechasClave, SalidaDeUnidad } from './salida-y-plazos'
 import { Pestanas } from './pestanas'
 
 export async function generateMetadata({ params }: PageProps<'/ordenes/[id]'>): Promise<Metadata> {
@@ -68,6 +71,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const verCostos = vista === 'costos' && puede(perfil, 'costos.ver')
 
   const verFicha = vista === 'ficha'
+  // La salida importa cuando la orden se acerca a la puerta.
+  const verSalida = vista === 'resumen' && ['TERMINADA', 'CONTROL_CALIDAD', 'ENTREGADA'].includes(orden.estado)
 
   const [
     etapas,
@@ -93,6 +98,11 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     verFicha ? repuestosDeOrden(id) : Promise.resolve([]),
     verFicha ? verificacionesDeOrden(id) : Promise.resolve([]),
     verFicha ? personalDelTaller() : Promise.resolve([]),
+  ])
+
+  const [salida, fechasClave] = await Promise.all([
+    verSalida ? estadoDeSalida(id) : Promise.resolve(null),
+    vista === 'resumen' ? fechasClaveDeOrden(id) : Promise.resolve(null),
   ])
 
   const estado = definir(ESTADO_OT, orden.estado)
@@ -191,6 +201,19 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               <Dato etiqueta="Inicio real" valor={fechaHora(orden.fecha_inicio_real)} />
             </TarjetaCuerpo>
           </Tarjeta>
+
+          {fechasClave && <FechasClave fechas={fechasClave} />}
+
+          {salida && (
+            <SalidaDeUnidad
+              ordenId={orden.id}
+              liberacion={salida.liberacion}
+              entrega={salida.entrega}
+              documentosFaltantes={salida.documentosFaltantes}
+              puedeLiberar={puede(perfil, 'tesoreria.liberar')}
+              puedeConfirmar={puede(perfil, ['ordenes.entregar', 'requerimientos.crear'])}
+            />
+          )}
 
           {orden.especificaciones_tecnicas && (
             <Tarjeta className="lg:col-span-2">

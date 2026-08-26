@@ -72,6 +72,7 @@ const RUTAS = [
   ['requerimiento-nuevo', '/almacen/requerimientos/nuevo'],
   requerimientoId && ['requerimiento-detalle', `/almacen/requerimientos/${requerimientoId}`],
   ['almacen-compras', '/almacen/compras'],
+  ['almacen-materiales', '/almacen/materiales'],
   ['almacen-proveedores', '/almacen/proveedores'],
   ['servicios', '/servicios'],
   ['servicios-por-conformar', '/servicios?estado=EJECUTADO'],
@@ -85,6 +86,8 @@ const RUTAS = [
   ['informe-comercial', '/informes/comercial?desde=2026-01-01&hasta=2026-12-31'],
   ['informe-materiales', '/informes/materiales?desde=2026-01-01&hasta=2026-12-31'],
   ['informe-subcontratos', '/informes/subcontratos?desde=2026-01-01&hasta=2026-12-31'],
+  ['garantias', '/garantias'],
+  ['configuracion', '/configuracion'],
   ['personal', '/personal'],
   ['sin-permiso', '/sin-permiso'],
 ].filter(Boolean)

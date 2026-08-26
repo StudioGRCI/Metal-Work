@@ -208,14 +208,16 @@ Los permisos se editan por rol en `roles_permisos`, sin tocar código.
 | **Producción** | Partes diarios de horas por operario, orden y etapa; al aprobarlos se cargan a la orden |
 | **Clientes y unidades** | Ficha del cliente con su flota, contactos e historial de órdenes |
 | **Cotizaciones** | Ficha técnica del producto, partidas, aprobación y apertura de la orden con arrastre del presupuesto |
-| **Almacén** | Existencias valorizadas, movimientos con kardex, requerimientos, compras y proveedores |
+| **Almacén** | Existencias valorizadas, movimientos con kardex, requerimientos, compras, proveedores y el maestro de materiales con su código de cinco segmentos y criticidad A/B/C |
 | **Avance en taller** | Una tarjeta por unidad: dónde está, hace cuánto no se toca, qué la traba y las fotos del día |
 | **Servicios de terceros** | Órdenes de servicio al subcontratista, con plazo, conformidad y pago |
 | **Costos** | Costo real contra presupuesto y margen, por orden y del conjunto |
 | **Documentos** | Repositorio versionado con carga de archivos y descarga con enlace temporal |
 | **Firmas** | Bandeja de lo que espera tu firma; la cadena de firmas de cada documento |
+| **Garantías** | Unidades en garantía con su vigencia y los reclamos, de la recepción al cierre |
 | **Informes** | Producción, cumplimiento de entregas, rentabilidad, cotizaciones, consumo y subcontratos |
 | **Personal** | Altas con su acceso, puestos, áreas y costo hora |
+| **Configuración** | Días de taller, feriados con siembra nacional, y los catálogos a la vista |
 
 ## Estructura del proyecto
 

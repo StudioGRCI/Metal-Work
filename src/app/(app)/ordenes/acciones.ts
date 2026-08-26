@@ -206,6 +206,22 @@ export async function registrarEntrega(_previo: unknown, datos: FormData): Promi
     }
   }
 
+  // La regla del flujograma: la unidad no sale si el cliente tiene deuda.
+  // Tesorería libera; recién entonces entra el acta.
+  const { data: liberacion } = await supabase
+    .from('liberaciones_tesoreria')
+    .select('id')
+    .eq('orden_id', v.orden_id)
+    .maybeSingle()
+
+  if (!liberacion) {
+    return {
+      ok: false,
+      error:
+        'Tesorería todavía no libera esta orden: falta confirmar que el cliente esté al día. Pide la liberación desde la tarjeta «Salida de la unidad».',
+    }
+  }
+
   const { error } = await supabase.from('ot_entregas').insert({
     orden_id: v.orden_id,
     recibe_nombre: v.recibe_nombre,
@@ -248,4 +264,60 @@ export async function comentarOrden(_previo: unknown, datos: FormData): Promise<
 
   revalidatePath(`/ordenes/${analisis.data.orden_id}`)
   return { ok: true, mensaje: 'Comentario registrado.' }
+}
+
+/**
+ * Tesorería confirma que el cliente está al día. Es la compuerta que la base
+ * exige antes de aceptar el acta de entrega.
+ */
+export async function liberarTesoreria(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tesoreria.liberar')) {
+    return { ok: false, error: 'Liberar la salida es de tesorería o de gerencia.' }
+  }
+
+  const analisis = z
+    .object({
+      orden_id: z.string().uuid(),
+      observacion: z.string().trim().optional(),
+    })
+    .safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
+
+  const supabase = await createClient()
+  const { error } = await supabase.from('liberaciones_tesoreria').insert({
+    orden_id: analisis.data.orden_id,
+    liberado_por: perfil.id,
+    observacion: analisis.data.observacion || null,
+  })
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+
+  revalidatePath(`/ordenes/${analisis.data.orden_id}`)
+  return { ok: true, mensaje: 'Salida liberada: el cliente está al día.' }
+}
+
+/** El último sello del flujo: avisar a portería que la unidad puede cruzar. */
+export async function confirmarSalida(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ['ordenes.entregar', 'requerimientos.crear'])) {
+    return { ok: false, error: 'Confirmar la salida es de quien coordina la entrega.' }
+  }
+
+  const analisis = z
+    .object({ entrega_id: z.string().uuid(), orden_id: z.string().uuid() })
+    .safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
+
+  // La función de la base exige el permiso, sella quién y cuándo, y rechaza
+  // la segunda confirmación: acá solo se transmite el resultado.
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('confirmar_salida_porteria', {
+    p_entrega: analisis.data.entrega_id,
+  })
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+
+  revalidatePath(`/ordenes/${analisis.data.orden_id}`)
+  return { ok: true, mensaje: 'Portería avisada: la unidad puede salir.' }
 }

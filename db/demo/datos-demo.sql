@@ -330,9 +330,24 @@ begin
     update public.ordenes_trabajo set estado = 'CONTROL_CALIDAD' where id = v_orden;
     update public.ordenes_trabajo set estado = 'TERMINADA'       where id = v_orden;
 
+    -- Tesorería confirma que el cliente está al día; sin esto el acta no entra.
+    insert into public.liberaciones_tesoreria (orden_id, liberado_por, observacion)
+    values (v_orden, v_usuario, 'Cliente al día: canceló el saldo con la factura F001-2210.');
+
     insert into public.ot_entregas
-      (orden_id, fecha_entrega, recibe_nombre, recibe_documento, recibe_cargo, garantia_meses, entregado_por)
-    values (v_orden, current_date - 5, 'Julio Ramírez Soto', '41255678', 'Jefe de flota', 12, v_usuario);
+      (orden_id, fecha_entrega, recibe_nombre, recibe_documento, recibe_cargo, garantia_meses,
+       entregado_por, salida_confirmada_por, salida_confirmada_en)
+    values (v_orden, current_date - 5, 'Julio Ramírez Soto', '41255678', 'Jefe de flota', 12,
+            v_usuario, v_usuario, now() - interval '5 days');
+
+    -- Y a los cuatro meses la unidad volvió: un reclamo de garantía en curso,
+    -- que es como se ve la bandeja del área un día cualquiera.
+    insert into public.garantia_reclamos
+      (entrega_id, fecha_reclamo, reportado_por, contacto, descripcion, estado, evaluacion)
+    select e.id, current_date - 2, 'Julio Ramírez Soto', '957000111',
+           'La compuerta posterior no cierra al ras después de cargar piedra; pide revisión de bisagras.',
+           'EN_EVALUACION', null
+      from public.ot_entregas e where e.orden_id = v_orden;
 
     -- 5) Orden en borrador, todavía sin liberar a taller.
     select c.id, u.id into v_cliente, v_unidad
