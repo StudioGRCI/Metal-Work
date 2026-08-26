@@ -5264,6 +5264,55 @@ export type Database = {
         }
         Returns: number
       }
+      informe_comercial: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: string[]
+      }
+      informe_consumo_materiales: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: string[]
+      }
+      informe_cumplimiento: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: string[]
+      }
+      informe_produccion: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: string[]
+      }
+      informe_rentabilidad: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: string[]
+      }
+      informe_resumen: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: string[]
+      }
+      informe_subcontratos: {
+        Args: {
+          p_desde: string
+          p_hasta: string
+        }
+        Returns: string[]
+      }
       kardex_registrar: {
         Args: {
           p_material: string

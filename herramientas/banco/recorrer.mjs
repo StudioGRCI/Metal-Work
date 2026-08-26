@@ -77,6 +77,13 @@ const RUTAS = [
   ['costos', '/costos'],
   ['documentos', '/documentos'],
   ['firmas', '/firmas'],
+  ['informes', '/informes'],
+  ['informe-produccion', '/informes/produccion?desde=2026-01-01&hasta=2026-12-31'],
+  ['informe-rentabilidad', '/informes/rentabilidad?desde=2026-01-01&hasta=2026-12-31'],
+  ['informe-cumplimiento', '/informes/cumplimiento?desde=2026-01-01&hasta=2026-12-31'],
+  ['informe-comercial', '/informes/comercial?desde=2026-01-01&hasta=2026-12-31'],
+  ['informe-materiales', '/informes/materiales?desde=2026-01-01&hasta=2026-12-31'],
+  ['informe-subcontratos', '/informes/subcontratos?desde=2026-01-01&hasta=2026-12-31'],
   ['personal', '/personal'],
   ['sin-permiso', '/sin-permiso'],
 ].filter(Boolean)

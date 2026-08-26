@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   Camera,
   ClipboardList,
   Factory,
@@ -102,6 +103,14 @@ export const NAVEGACION: GrupoNavegacion[] = [
         ruta: '/documentos',
         icono: FileText,
         permiso: 'documentos.ver',
+        disponible: true,
+      },
+      {
+        titulo: 'Informes',
+        ruta: '/informes',
+        icono: BarChart3,
+        permiso: 'reportes.ver',
+        descripcion: 'Producción, entregas, márgenes y consumo',
         disponible: true,
       },
       {
