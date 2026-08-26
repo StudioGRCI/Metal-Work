@@ -229,6 +229,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           ordenId={orden.id}
           tipos={tipos}
           puedeSubir={puede(perfil, 'documentos.subir')}
+          usuarioId={perfil.id}
+          puedePedirFirmas={puede(perfil, ['documentos.subir', 'documentos.aprobar'])}
         />
       )}
 

@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 
+import { GuionEnLinea } from '@/components/estructura/guion-en-linea'
+
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -34,7 +36,7 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
     // servidor. Es a propósito: se avisa para que React no lo reporte.
     <html lang="es-PE" className="h-full" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: APLICAR_TEMA }} />
+        <GuionEnLinea html={APLICAR_TEMA} />
       </head>
       <body className="min-h-full">{children}</body>
     </html>

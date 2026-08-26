@@ -59,6 +59,7 @@ const RUTAS = [
   ['avance-taller', '/avance'],
   ordenId && ['avance-unidad', `/avance/${ordenId}`],
   ordenId && ['orden-avance', `/ordenes/${ordenId}?vista=avance`],
+  ordenId && ['orden-documentos', `/ordenes/${ordenId}?vista=documentos`],
   ['produccion', '/produccion'],
   ['parte-nuevo', '/produccion/nuevo'],
   parteId && ['parte-detalle', `/produccion/${parteId}`],
@@ -75,6 +76,7 @@ const RUTAS = [
   ['servicios-por-conformar', '/servicios?estado=EJECUTADO'],
   ['costos', '/costos'],
   ['documentos', '/documentos'],
+  ['firmas', '/firmas'],
   ['personal', '/personal'],
   ['sin-permiso', '/sin-permiso'],
 ].filter(Boolean)

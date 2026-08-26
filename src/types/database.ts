@@ -4529,6 +4529,48 @@ export type Database = {
         }
         Relationships: []
       }
+      documento_firmas: {
+        Row: {
+          aprobacion_id: string | null
+          documento_id: string | null
+          orden_firma: number | null
+          estado: Database["public"]["Enums"]["estado_aprobacion"] | null
+          comentario: string | null
+          fecha: string | null
+          version_aprobada: number | null
+          solicitado_en: string | null
+          aprobador_id: string | null
+          aprobador: string | null
+          aprobador_cargo: string | null
+          solicitado_por_nombre: string | null
+          le_toca: boolean | null
+        }
+        Relationships: []
+      }
+      mis_firmas_pendientes: {
+        Row: {
+          aprobacion_id: string | null
+          documento_id: string | null
+          orden_firma: number | null
+          solicitado_en: string | null
+          titulo: string | null
+          descripcion: string | null
+          numero_externo: string | null
+          fecha_documento: string | null
+          version_actual: number | null
+          orden_id: string | null
+          orden_numero: string | null
+          cliente: string | null
+          placa: string | null
+          tipo_codigo: string | null
+          tipo_nombre: string | null
+          tipo_categoria: Database["public"]["Enums"]["categoria_documento"] | null
+          solicitado_por_nombre: string | null
+          le_toca: boolean | null
+          firmas_total: number | null
+        }
+        Relationships: []
+      }
       os_resumen: {
         Row: {
           id: string | null
@@ -5206,6 +5248,14 @@ export type Database = {
         }
         Returns: string
       }
+      firmar_documento: {
+        Args: {
+          p_aprobacion: string
+          p_estado: string
+          p_comentario?: string
+        }
+        Returns: string
+      }
       generar_presupuesto_desde_cotizacion: {
         Args: {
           p_orden_id: string
@@ -5371,6 +5421,13 @@ export type Database = {
           p_sede?: string
         }
         Returns: string
+      }
+      solicitar_firmas: {
+        Args: {
+          p_documento: string
+          p_aprobadores: string[]
+        }
+        Returns: number
       }
       sumar_dias_habiles: {
         Args: {

@@ -1,7 +1,7 @@
 'use client'
 
 import { Monitor, Moon, Sun } from 'lucide-react'
-import { useSyncExternalStore } from 'react'
+import { useLayoutEffect, useSyncExternalStore } from 'react'
 
 import { cn } from '@/lib/utils'
 
@@ -51,6 +51,17 @@ const temaEnElServidor = (): Tema => 'sistema'
 
 export function CambiarTema() {
   const tema = useSyncExternalStore(suscribir, temaGuardado, temaEnElServidor)
+
+  // En desarrollo React vuelve a montar una vez para sacar errores a la luz, y
+  // en ese remontaje limpia los atributos de <html> que no vienen del JSX,
+  // incluido el que puso el guion del encabezado. Se vuelve a poner antes de
+  // pintar. En producción no hace nada.
+  useLayoutEffect(() => {
+    const guardado = temaGuardado()
+    const raiz = document.documentElement
+    if (guardado === 'sistema') raiz.removeAttribute('data-tema')
+    else raiz.setAttribute('data-tema', guardado)
+  }, [tema])
 
   function elegir(nuevo: Tema) {
     const raiz = document.documentElement

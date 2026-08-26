@@ -6,6 +6,7 @@ import {
   Handshake,
   LayoutDashboard,
   Package,
+  PenLine,
   Receipt,
   Settings,
   Truck,
@@ -101,6 +102,13 @@ export const NAVEGACION: GrupoNavegacion[] = [
         ruta: '/documentos',
         icono: FileText,
         permiso: 'documentos.ver',
+        disponible: true,
+      },
+      {
+        titulo: 'Firmas',
+        ruta: '/firmas',
+        icono: PenLine,
+        descripcion: 'Documentos que esperan tu firma',
         disponible: true,
       },
       {
