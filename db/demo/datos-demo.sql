@@ -26,6 +26,8 @@ declare
   v_persona   record;
   v_cotizacion    uuid;
   v_requerimiento uuid;
+  v_servicio      uuid;
+  v_calidad       uuid;
 begin
   select id into v_sede from public.sedes where activo order by creado_en limit 1;
   select id into v_usuario from public.usuarios where activo order by creado_en limit 1;
@@ -464,6 +466,115 @@ begin
                    ('PIN-ESM',  10.0, 'Acabado poliuretano, color del cliente'),
                    ('THI-ACR',  16.0, null)) as v(codigo, cantidad, especificacion)
       join public.materiales m on m.codigo = v.codigo;
+  end if;
+
+  -- ------------------------------------------------------------ proveedores
+  -- El taller no arena ni tornea: eso se manda a hacer afuera. Sin proveedores
+  -- la pantalla de servicios de terceros no tiene con quién trabajar.
+  insert into public.proveedores
+    (codigo, numero_documento, razon_social, nombre_comercial, distrito, provincia, departamento,
+     telefono, contacto_nombre, condicion_pago, dias_credito, calificacion)
+  values
+    ('PRV-001', '20601234561', 'ARENADOS Y RECUBRIMIENTOS DEL NORTE E.I.R.L.', 'Arenados del Norte',
+     'La Esperanza', 'Trujillo', 'LA LIBERTAD', '044-283910', 'Marco Ruiz', 'CREDITO_30', 30, 4),
+    ('PRV-002', '20601234562', 'CORTES LÁSER INDUSTRIALES S.A.C.', 'Corte Láser Perú',
+     'El Porvenir', 'Trujillo', 'LA LIBERTAD', '044-291744', 'Elena Paredes', 'CREDITO_15', 15, 5),
+    ('PRV-003', '20601234563', 'GALVANIZADORA LIBERTAD S.A.', 'Galvanizadora Libertad',
+     'Moche', 'Trujillo', 'LA LIBERTAD', '044-460211', 'Jorge Ancajima', 'CREDITO_30', 30, 4),
+    ('PRV-004', '41235678', 'CHÁVEZ VÁSQUEZ, PEDRO ANTONIO', 'Torno Chávez',
+     'Trujillo', 'Trujillo', 'LA LIBERTAD', '949-118-220', 'Pedro Chávez', 'CONTADO', 0, 3)
+  on conflict do nothing;
+
+  -- -------------------------------------------------- servicios de terceros
+  -- Cada etapa del recorrido, para que la pantalla muestre el circuito entero:
+  -- lo que está afuera, lo que volvió y espera conformidad, lo aceptado y lo
+  -- ya pagado. La conformidad se registra a nombre de calidad, como en la vida
+  -- real, y por eso arrastra el monto al costo de la unidad.
+  if not exists (select 1 from public.servicios_terceros) then
+    select id into v_calidad from public.usuarios
+     where correo like '%calidad%' or cargo ilike '%calidad%' limit 1;
+    v_calidad := coalesce(v_calidad, v_usuario);
+
+    select o.id into v_orden
+      from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
+     where u.placa = 'V2G-841';
+
+    -- Afuera, con el plazo todavía corriendo.
+    insert into public.servicios_terceros
+      (orden_id, proveedor_id, tipo_servicio, descripcion, especificacion, fecha, plazo_dias,
+       fecha_entrega, moneda, monto, tipo_cambio, estado)
+    select v_orden, p.id, 'ARENADO',
+      'Arenado de la tolva antes de la base epóxica',
+      'Grado comercial SA 2.5, perfil de anclaje 40-60 micras. Se entrega imprimada el mismo día.',
+      current_date - 2, 4, current_date + 2, 'PEN', 2400, 1, 'EN_EJECUCION'
+      from public.proveedores p where p.codigo = 'PRV-001';
+
+    -- Volvió y espera que calidad la acepte: es lo que la pantalla resalta.
+    insert into public.servicios_terceros
+      (orden_id, proveedor_id, tipo_servicio, descripcion, especificacion, fecha, plazo_dias,
+       fecha_entrega, moneda, monto, tipo_cambio, estado)
+    select v_orden, p.id, 'CORTE_LASER',
+      'Corte láser de refuerzos y cartelas de la compuerta',
+      'Plancha A36 de 6 mm, 42 piezas según plano PL-2481 rev. B.',
+      current_date - 9, 5, current_date - 4, 'PEN', 1850, 1, 'EJECUTADO'
+      from public.proveedores p where p.codigo = 'PRV-002';
+
+    -- Atrasada: pasó su fecha de entrega y sigue afuera.
+    insert into public.servicios_terceros
+      (orden_id, proveedor_id, tipo_servicio, descripcion, especificacion, fecha, plazo_dias,
+       fecha_entrega, moneda, monto, tipo_cambio, estado)
+    select v_orden, p.id, 'TORNO',
+      'Torneado de bocinas y pines de la compuerta trasera',
+      'Acero SAE 1045, 8 bocinas de 60 mm y 8 pines rectificados.',
+      current_date - 12, 5, current_date - 3, 'PEN', 780, 1, 'SOLICITADO'
+      from public.proveedores p where p.codigo = 'PRV-004';
+
+    -- Aceptada por calidad: ya cuenta como costo de la unidad.
+    insert into public.servicios_terceros
+      (orden_id, proveedor_id, tipo_servicio, descripcion, especificacion, fecha, plazo_dias,
+       fecha_entrega, moneda, monto, tipo_cambio, estado)
+    select v_orden, p.id, 'GALVANIZADO',
+      'Galvanizado en caliente de escaleras y pasarelas',
+      'Recubrimiento mínimo 85 micras según NTP 350.085.',
+      current_date - 18, 7, current_date - 11, 'PEN', 1260, 1, 'EJECUTADO'
+      from public.proveedores p where p.codigo = 'PRV-003'
+    returning id into v_servicio;
+
+    update public.servicios_terceros
+       set estado                    = 'CONFORME',
+           fecha_conformidad         = current_date - 10,
+           conformidad_por           = v_calidad,
+           observaciones_conformidad = 'Espesor verificado con medidor, 92 micras promedio. Conforme.'
+     where id = v_servicio;
+
+    -- Y una ya pagada, con su factura, en la orden de la otra unidad.
+    select o.id into v_orden
+      from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
+     where u.placa = 'C4L-118';
+
+    if v_orden is not null then
+      insert into public.servicios_terceros
+        (orden_id, proveedor_id, tipo_servicio, descripcion, especificacion, fecha, plazo_dias,
+         fecha_entrega, moneda, monto, tipo_cambio, estado)
+      select v_orden, p.id, 'ARENADO',
+        'Arenado y base epóxica del chasis de la tolva',
+        'Grado comercial SA 2.5, base epóxica de 75 micras.',
+        current_date - 30, 4, current_date - 26, 'PEN', 1980, 1, 'EJECUTADO'
+        from public.proveedores p where p.codigo = 'PRV-001'
+      returning id into v_servicio;
+
+      update public.servicios_terceros
+         set estado            = 'CONFORME',
+             fecha_conformidad = current_date - 25,
+             conformidad_por   = v_calidad
+       where id = v_servicio;
+
+      update public.servicios_terceros
+         set estado         = 'PAGADO',
+             numero_factura = 'F001-00004417',
+             fecha_factura  = current_date - 24
+       where id = v_servicio;
+    end if;
   end if;
 
   raise notice 'Datos de demostración cargados: % clientes, % unidades, % órdenes, % materiales',

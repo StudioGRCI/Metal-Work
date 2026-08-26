@@ -68,6 +68,8 @@ const RUTAS = [
   requerimientoId && ['requerimiento-detalle', `/almacen/requerimientos/${requerimientoId}`],
   ['almacen-compras', '/almacen/compras'],
   ['almacen-proveedores', '/almacen/proveedores'],
+  ['servicios', '/servicios'],
+  ['servicios-por-conformar', '/servicios?estado=EJECUTADO'],
   ['costos', '/costos'],
   ['documentos', '/documentos'],
   ['personal', '/personal'],

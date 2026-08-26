@@ -2,6 +2,7 @@ import {
   ClipboardList,
   Factory,
   FileText,
+  Handshake,
   LayoutDashboard,
   Package,
   Receipt,
@@ -16,7 +17,8 @@ export type ItemNavegacion = {
   titulo: string
   ruta: string
   icono: typeof LayoutDashboard
-  permiso?: string
+  /** Con varios permisos basta con tener uno para que el módulo se vea. */
+  permiso?: string | string[]
   descripcion?: string
   /** Los módulos aún no construidos se muestran atenuados y sin enlace. */
   disponible?: boolean
@@ -71,6 +73,14 @@ export const NAVEGACION: GrupoNavegacion[] = [
     titulo: 'Logística',
     items: [
       { titulo: 'Almacén', ruta: '/almacen', icono: Package, permiso: 'almacen.ver', disponible: true },
+      {
+        titulo: 'Servicios',
+        ruta: '/servicios',
+        icono: Handshake,
+        permiso: ['compras.ver', 'costos.ver', 'calidad.ver'],
+        descripcion: 'Trabajos que se mandan a hacer afuera',
+        disponible: true,
+      },
       { titulo: 'Costos', ruta: '/costos', icono: Wallet, permiso: 'costos.ver', disponible: true },
     ],
   },

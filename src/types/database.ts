@@ -3765,6 +3765,13 @@ export type Database = {
           creado_por: string | null
           creado_en: string
           actualizado_en: string
+          numero: string
+          plazo_dias: number | null
+          aprobado_por: string | null
+          fecha_aprobacion: string | null
+          fecha_conformidad: string | null
+          conformidad_por: string | null
+          observaciones_conformidad: string | null
         }
         Insert: {
           id?: string
@@ -3788,6 +3795,13 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          numero?: string
+          plazo_dias?: number | null
+          aprobado_por?: string | null
+          fecha_aprobacion?: string | null
+          fecha_conformidad?: string | null
+          conformidad_por?: string | null
+          observaciones_conformidad?: string | null
         }
         Update: {
           id?: string
@@ -3811,6 +3825,13 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          numero?: string
+          plazo_dias?: number | null
+          aprobado_por?: string | null
+          fecha_aprobacion?: string | null
+          fecha_conformidad?: string | null
+          conformidad_por?: string | null
+          observaciones_conformidad?: string | null
         }
         Relationships: [
           {
@@ -3821,10 +3842,24 @@ export type Database = {
             referencedColumns: ["id", "orden_id"]
           },
           {
+            foreignKeyName: "servicios_terceros_aprobado_por_fkey"
+            columns: ["aprobado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "servicios_terceros_centro_costo_id_fkey"
             columns: ["centro_costo_id"]
             isOneToOne: false
             referencedRelation: "centros_costo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "servicios_terceros_conformidad_por_fkey"
+            columns: ["conformidad_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           },
           {
@@ -4346,6 +4381,35 @@ export type Database = {
           vendedor_id: string | null
           sede_id: string | null
           partidas: number | null
+        }
+        Relationships: []
+      }
+      os_resumen: {
+        Row: {
+          id: string | null
+          numero: string | null
+          orden_id: string | null
+          orden_numero: string | null
+          cliente: string | null
+          placa: string | null
+          proveedor_id: string | null
+          proveedor: string | null
+          tipo_servicio: Database["public"]["Enums"]["tipo_servicio_tercero"] | null
+          descripcion: string | null
+          especificacion: string | null
+          estado: Database["public"]["Enums"]["estado_servicio_tercero"] | null
+          fecha: string | null
+          fecha_entrega: string | null
+          plazo_dias: number | null
+          fecha_conformidad: string | null
+          moneda: Database["public"]["Enums"]["moneda"] | null
+          monto: number | null
+          monto_base: number | null
+          numero_factura: string | null
+          fecha_factura: string | null
+          atrasada: boolean | null
+          etapa_id: string | null
+          etapa: string | null
         }
         Relationships: []
       }
@@ -4903,6 +4967,14 @@ export type Database = {
         }
         Returns: string
       }
+      dar_conformidad_servicio: {
+        Args: {
+          p_servicio: string
+          p_observaciones?: string
+          p_fecha?: string
+        }
+        Returns: string
+      }
       documentos_obligatorios_faltantes: {
         Args: {
           p_orden_id: string
@@ -5123,7 +5195,7 @@ export type Database = {
       estado_ot: "BORRADOR" | "APROBADA" | "PROGRAMADA" | "EN_PROCESO" | "PAUSADA" | "CONTROL_CALIDAD" | "TERMINADA" | "ENTREGADA" | "FACTURADA" | "ANULADA"
       estado_parte_diario: "BORRADOR" | "CERRADO" | "APROBADO"
       estado_requerimiento: "SOLICITADO" | "APROBADO" | "ATENDIDO_PARCIAL" | "ATENDIDO" | "RECHAZADO" | "ANULADO"
-      estado_servicio_tercero: "SOLICITADO" | "EJECUTADO" | "PAGADO" | "ANULADO"
+      estado_servicio_tercero: "SOLICITADO" | "EN_EJECUCION" | "EJECUTADO" | "CONFORME" | "PAGADO" | "ANULADO"
       estado_tarea_ot: "PENDIENTE" | "EN_PROCESO" | "TERMINADA" | "CANCELADA"
       magnitud_medida: "UNIDAD" | "MASA" | "LONGITUD" | "AREA" | "VOLUMEN"
       moneda: "PEN" | "USD"
@@ -5134,7 +5206,7 @@ export type Database = {
       tipo_acceso_documento: "VISTA" | "DESCARGA" | "IMPRESION" | "COMPARTIDO"
       tipo_almacen: "PRINCIPAL" | "OBRA" | "HERRAMIENTAS" | "MERMA"
       tipo_centro_costo: "PRODUCCION" | "ADMINISTRATIVO" | "VENTAS"
-      tipo_correlativo: "COTIZACION" | "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA"
+      tipo_correlativo: "COTIZACION" | "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO"
       tipo_costo: "MATERIAL" | "MANO_OBRA" | "SERVICIO" | "INDIRECTO" | "OTRO"
       tipo_costo_partida: "MATERIAL" | "MANO_OBRA" | "SERVICIO" | "OTRO"
       tipo_documento_cliente: "RUC" | "DNI" | "CE" | "PASAPORTE"

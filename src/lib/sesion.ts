@@ -74,14 +74,20 @@ export async function exigirSesion(): Promise<PerfilSesion> {
   return perfil
 }
 
-export function puede(perfil: PerfilSesion | null, permiso: string): boolean {
+/**
+ * Si el usuario tiene el permiso. Cuando se pasan varios basta con uno: hay
+ * pantallas que miran distintas áreas —la orden de servicio la emite logística,
+ * la acepta calidad y la mira costos— y a todas les sirve la misma lista.
+ */
+export function puede(perfil: PerfilSesion | null, permiso: string | string[]): boolean {
   if (!perfil) return false
   if (perfil.rol.codigo === 'ADMIN') return true
-  return perfil.permisos.includes(permiso)
+  const pedidos = Array.isArray(permiso) ? permiso : [permiso]
+  return pedidos.some((p) => perfil.permisos.includes(p))
 }
 
 /** Corta la petición con 403 si el usuario no tiene el permiso indicado. */
-export async function exigirPermiso(permiso: string): Promise<PerfilSesion> {
+export async function exigirPermiso(permiso: string | string[]): Promise<PerfilSesion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, permiso)) redirect('/sin-permiso')
   return perfil
