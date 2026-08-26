@@ -13,7 +13,26 @@
 --
 -- Acá se cierran las dos cosas de una vez, y con una regla que sigue valiendo
 -- para lo que se agregue después.
+--
+-- Se dejan fuera las funciones que trajo una extensión —unaccent, pg_trgm,
+-- btree_gist viven en public—: no son nuestras, no las expone la aplicación y
+-- tocarlas fallaría por no ser su dueño. Y cada paso va con su red por si
+-- alguna función tiene otro dueño: se salta esa y sigue con el resto.
 -- =============================================================================
+
+-- Las que vinieron con una extensión no se tocan.
+create or replace function pg_temp.es_de_extension(p_oid oid)
+returns boolean
+language sql
+stable
+as $$
+  select exists (
+    select 1 from pg_depend d
+     where d.objid = p_oid
+       and d.classid = 'pg_proc'::regclass
+       and d.deptype = 'e'
+  );
+$$;
 
 -- ------------------------------------------- las funciones de los disparadores
 -- No las llama nadie a mano: las corre el trigger, que no pasa por el permiso
@@ -27,8 +46,13 @@ begin
       join pg_namespace n on n.oid = p.pronamespace
      where n.nspname = 'public'
        and p.prorettype = 'trigger'::regtype
+       and not pg_temp.es_de_extension(p.oid)
   loop
-    execute format('revoke all on function %s from public, anon, authenticated', f.firma);
+    begin
+      execute format('revoke all on function %s from public, anon, authenticated', f.firma);
+    exception when insufficient_privilege then
+      raise notice 'Sin permiso para cerrar %; se deja como está', f.firma;
+    end;
   end loop;
 end;
 $$;
@@ -55,18 +79,23 @@ begin
       join pg_namespace n on n.oid = p.pronamespace
      where n.nspname = 'public'
        and p.prorettype <> 'trigger'::regtype
+       and not pg_temp.es_de_extension(p.oid)
   loop
     v_auth := has_function_privilege('authenticated', f.firma, 'execute');
     v_serv := v_hay_service and has_function_privilege('service_role', f.firma, 'execute');
 
-    execute format('revoke all on function %s from public, anon', f.firma);
+    begin
+      execute format('revoke all on function %s from public, anon', f.firma);
 
-    if v_auth then
-      execute format('grant execute on function %s to authenticated', f.firma);
-    end if;
-    if v_serv then
-      execute format('grant execute on function %s to service_role', f.firma);
-    end if;
+      if v_auth then
+        execute format('grant execute on function %s to authenticated', f.firma);
+      end if;
+      if v_serv then
+        execute format('grant execute on function %s to service_role', f.firma);
+      end if;
+    exception when insufficient_privilege then
+      raise notice 'Sin permiso para cerrar %; se deja como está', f.firma;
+    end;
   end loop;
 end;
 $$;
@@ -84,11 +113,16 @@ begin
       join pg_namespace n on n.oid = p.pronamespace
      where n.nspname = 'public'
        and p.prokind = 'f'
+       and not pg_temp.es_de_extension(p.oid)
        and (p.proconfig is null
             or not exists (
               select 1 from unnest(p.proconfig) c where c like 'search_path=%'))
   loop
-    execute format('alter function %s set search_path to ''public''', f.firma);
+    begin
+      execute format('alter function %s set search_path to ''public''', f.firma);
+    exception when insufficient_privilege then
+      raise notice 'Sin permiso para fijar el camino de búsqueda de %', f.firma;
+    end;
   end loop;
 end;
 $$;

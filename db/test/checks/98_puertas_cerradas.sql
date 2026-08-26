@@ -1,7 +1,21 @@
 -- Ninguna función del sistema le contesta a quien no entró, y las de los
--- disparadores no le contestan a nadie.
+-- disparadores no le contestan a nadie. Las funciones que trajo una extensión
+-- quedan fuera: no son nuestras y la aplicación no las expone.
 \set ON_ERROR_STOP on
 begin;
+
+create or replace function pg_temp.es_de_extension(p_oid oid)
+returns boolean
+language sql
+stable
+as $$
+  select exists (
+    select 1 from pg_depend d
+     where d.objid = p_oid
+       and d.classid = 'pg_proc'::regclass
+       and d.deptype = 'e'
+  );
+$$;
 
 do $$
 declare
@@ -14,6 +28,7 @@ begin
     join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public'
      and p.prokind = 'f'
+     and not pg_temp.es_de_extension(p.oid)
      and has_function_privilege('anon', p.oid, 'execute');
 
   if v_cuantas > 0 then
@@ -33,6 +48,7 @@ begin
     join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public'
      and p.prorettype = 'trigger'::regtype
+     and not pg_temp.es_de_extension(p.oid)
      and (has_function_privilege('anon', p.oid, 'execute')
        or has_function_privilege('authenticated', p.oid, 'execute'));
 
@@ -53,6 +69,7 @@ begin
     join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public'
      and p.prokind = 'f'
+     and not pg_temp.es_de_extension(p.oid)
      and (p.proconfig is null
           or not exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%'));
 
