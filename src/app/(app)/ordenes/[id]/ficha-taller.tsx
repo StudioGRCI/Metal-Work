@@ -78,6 +78,8 @@ export function FichaTaller({
   verificaciones,
   personal,
   puedeEditar,
+  puedeEscribirOrden,
+  puedeArmar,
 }: {
   ordenId: string
   ficha: FichaFisica
@@ -85,7 +87,12 @@ export function FichaTaller({
   repuestos: RepuestoOT[]
   verificaciones: PasoVerificacion[]
   personal: Persona[]
+  /** Marcar el V°B° y anotar la verificación: taller y calidad. */
   puedeEditar: boolean
+  /** Escribir sobre la orden misma -medidas, colores, encargado-. */
+  puedeEscribirOrden: boolean
+  /** Poner y quitar líneas de la ficha: lo arma el taller. */
+  puedeArmar: boolean
 }) {
   const sinArmar = accesorios.length === 0 && verificaciones.length === 0
 
@@ -93,7 +100,10 @@ export function FichaTaller({
     <div className="space-y-4">
       {puedeEditar && sinArmar && <ArmarFicha ordenId={ordenId} />}
 
-      <Medidas ordenId={ordenId} ficha={ficha} personal={personal} puedeEditar={puedeEditar} />
+      {/* Cada sección con el permiso que su tabla honra de verdad: si la
+          pantalla ofrece más de lo que la base acepta, el botón responde que
+          sí y no guarda nada. */}
+      <Medidas ordenId={ordenId} ficha={ficha} personal={personal} puedeEditar={puedeEscribirOrden} />
 
       <Verificacion
         ordenId={ordenId}
@@ -102,9 +112,14 @@ export function FichaTaller({
         sinArmar={sinArmar}
       />
 
-      <Accesorios ordenId={ordenId} accesorios={accesorios} puedeEditar={puedeEditar} />
+      <Accesorios
+        ordenId={ordenId}
+        accesorios={accesorios}
+        puedeEditar={puedeEditar}
+        puedeArmar={puedeArmar}
+      />
 
-      <Repuestos ordenId={ordenId} repuestos={repuestos} puedeEditar={puedeEditar} />
+      <Repuestos ordenId={ordenId} repuestos={repuestos} puedeEditar={puedeArmar} />
     </div>
   )
 }
@@ -484,10 +499,14 @@ function Accesorios({
   ordenId,
   accesorios,
   puedeEditar,
+  puedeArmar,
 }: {
   ordenId: string
   accesorios: AccesorioOT[]
+  /** Marcar el visto bueno: taller y calidad. */
   puedeEditar: boolean
+  /** Agregar y quitar accesorios: solo el taller. */
+  puedeArmar: boolean
 }) {
   const [abierto, setAbierto] = useState(false)
   const [resultado, accion, enviando] = useActionState(agregarAccesorioOT, null)
@@ -506,7 +525,7 @@ function Accesorios({
             : 'Salen de lo que se cotizó: lo prometido es lo que hay que montar.'
         }
         acciones={
-          puedeEditar && (
+          puedeArmar && (
             <Boton variante="secundario" tamano="sm" onClick={() => setAbierto((a) => !a)}>
               {abierto ? (
                 <Minus aria-hidden className="size-3.5" />
@@ -519,7 +538,7 @@ function Accesorios({
         }
       />
       <TarjetaCuerpo className="space-y-3">
-        {abierto && puedeEditar && (
+        {abierto && puedeArmar && (
           <form action={accion} className="rounded-[var(--radius-base)] bg-superficie-2 p-3">
             <input type="hidden" name="orden_id" value={ordenId} />
             <div className="grid gap-3 sm:grid-cols-5">
@@ -601,7 +620,7 @@ function Accesorios({
                   )}
                 </span>
 
-                {puedeEditar && (
+                {puedeArmar && (
                   <form action={accionQuitar} className="opacity-0 group-hover:opacity-100">
                     <input type="hidden" name="id" value={a.id} />
                     <input type="hidden" name="orden_id" value={ordenId} />

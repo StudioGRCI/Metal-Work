@@ -35,12 +35,49 @@ async function exigirTaller(): Promise<Guarda> {
   return { ok: true, perfil }
 }
 
+/**
+ * Marcar la ficha y escribir la orden no son lo mismo. Un operario marca su
+ * avance y calidad da su visto bueno —eso vive en tablas propias—, pero las
+ * medidas, los colores y el encargado de producción se escriben sobre la orden
+ * misma, y ahí manda quien puede escribir órdenes.
+ *
+ * Sin esta distinción la guarda dejaba pasar al operario, el UPDATE chocaba con
+ * la política de la orden, afectaba cero filas y la pantalla le decía «Ficha
+ * guardada» con los datos sin guardar.
+ */
+async function exigirEscribirOrden(): Promise<Guarda> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ['ordenes.editar', 'ordenes.cambiar_estado'])) {
+    return {
+      ok: false,
+      error: 'Los datos de la unidad los llena el jefe de taller o el supervisor.',
+    }
+  }
+  return { ok: true, perfil }
+}
+
+/**
+ * Poner y quitar líneas de la ficha —un accesorio, un repuesto— es armar el
+ * trabajo: lo hace el taller. Calidad marca el visto bueno sobre lo que hay,
+ * que es otra cosa y tiene su propia guarda.
+ */
+async function exigirArmarFicha(): Promise<Guarda> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ['ordenes.editar', 'produccion.registrar'])) {
+    return {
+      ok: false,
+      error: 'Las líneas de la ficha las arma el taller; calidad da el visto bueno.',
+    }
+  }
+  return { ok: true, perfil }
+}
+
 /** Sección 4 del formato: medidas, colores y características especiales. */
 export async function guardarFichaFisica(
   _previo: unknown,
   datos: FormData,
 ): Promise<ResultadoAccion> {
-  const guarda = await exigirTaller()
+  const guarda = await exigirEscribirOrden()
   if (!guarda.ok) return { ok: false, error: guarda.error }
 
   const analisis = z
@@ -121,7 +158,7 @@ export async function agregarAccesorioOT(
   _previo: unknown,
   datos: FormData,
 ): Promise<ResultadoAccion> {
-  const guarda = await exigirTaller()
+  const guarda = await exigirArmarFicha()
   if (!guarda.ok) return { ok: false, error: guarda.error }
 
   const analisis = z
@@ -198,7 +235,7 @@ export async function quitarAccesorioOT(
   _previo: unknown,
   datos: FormData,
 ): Promise<ResultadoAccion> {
-  const guarda = await exigirTaller()
+  const guarda = await exigirArmarFicha()
   if (!guarda.ok) return { ok: false, error: guarda.error }
 
   const analisis = z
@@ -217,7 +254,7 @@ export async function quitarAccesorioOT(
 
 /** Sección 8: repuestos con su marca. */
 export async function agregarRepuesto(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
-  const guarda = await exigirTaller()
+  const guarda = await exigirArmarFicha()
   if (!guarda.ok) return { ok: false, error: guarda.error }
 
   const analisis = z
@@ -257,7 +294,7 @@ export async function agregarRepuesto(_previo: unknown, datos: FormData): Promis
 
 /** Quitar un repuesto. */
 export async function quitarRepuesto(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
-  const guarda = await exigirTaller()
+  const guarda = await exigirArmarFicha()
   if (!guarda.ok) return { ok: false, error: guarda.error }
 
   const analisis = z

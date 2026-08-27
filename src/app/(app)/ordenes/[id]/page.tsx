@@ -274,6 +274,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           verificaciones={verificaciones}
           personal={personal}
           puedeEditar={puede(perfil, ['ordenes.editar', 'produccion.registrar', 'calidad.inspeccionar'])}
+          puedeEscribirOrden={puede(perfil, ['ordenes.editar', 'ordenes.cambiar_estado'])}
+          puedeArmar={puede(perfil, ['ordenes.editar', 'produccion.registrar'])}
         />
       )}
 
