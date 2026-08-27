@@ -107,6 +107,10 @@ siguiente paso («Da de alta el primero con el botón de arriba»).
 
 ## Comprobación visual
 
+Las interacciones con botones tienen su propio recorrido:
+`node herramientas/banco/probar-cotizacion.mjs` (emitir, descargar, anular).
+Interacción nueva de peso → sumarle sus comprobaciones ahí.
+
 Ninguna pantalla se da por lista sin pasar por el banco:
 `node herramientas/banco/recorrer.mjs` la visita con sesión iniciada, junta
 los errores de consola y guarda captura. Pantalla nueva → sumarla a `RUTAS`
