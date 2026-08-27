@@ -77,11 +77,14 @@ export function ListaDocumentos({
 
     // Un window.open después de esperar al servidor ya no cuenta como acción
     // del usuario y el navegador lo bloquea sin decir nada: el botón parecía
-    // no hacer nada. Un enlace con «download» sí guarda el archivo siempre.
+    // no hacer nada. Un enlace sí abre siempre.
+    //
+    // Quien manda que esto se guarde en vez de abrirse es la cabecera del
+    // enlace firmado (urlDeDescarga lo pide ya marcado como descarga): el
+    // atributo «download» no vale acá porque el almacenamiento vive en otro
+    // dominio, así que ponerlo solo daría una falsa sensación de seguridad.
     const enlace = document.createElement('a')
     enlace.href = resultado.url
-    enlace.download = version.nombre_archivo || ''
-    enlace.rel = 'noopener'
     document.body.appendChild(enlace)
     enlace.click()
     enlace.remove()

@@ -8,7 +8,7 @@ import { Download } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 
-import { cambiarEstadoCotizacion, convertirEnOrden, marcarEnviadaAlDescargar } from '../acciones'
+import { cambiarEstadoCotizacion, convertirEnOrden } from '../acciones'
 
 /**
  * Transiciones que ofrece la interfaz desde cada estado. Es un espejo del
@@ -30,9 +30,11 @@ const SIGUIENTES: Record<
     { estado: 'APROBADA', etiqueta: 'Marcar aprobada', permiso: 'cotizaciones.aprobar' },
     { estado: 'RECHAZADA', etiqueta: 'Rechazar', permiso: 'cotizaciones.aprobar', motivo: true, peligro: true },
     { estado: 'BORRADOR', etiqueta: 'Volver a borrador', permiso: 'cotizaciones.editar' },
-  ],
-  APROBADA: [
     { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
+  ],
+  // Una aprobada es lo que el cliente ya aceptó: deshacerlo es de Gerencia.
+  APROBADA: [
+    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.anular', motivo: true, peligro: true },
   ],
   RECHAZADA: [
     { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
@@ -107,27 +109,17 @@ export function AccionesCotizacion({
   const puedeAbrirOrden =
     cotizacion.estado === 'APROBADA' && !ordenExistente && puede('ordenes.crear')
 
-  // Descargar un borrador es mandárselo al cliente: el documento pasa a
-  // ENVIADA solo. No se detiene la descarga esperando a que la marca termine.
-  const marcaAlDescargar = cotizacion.estado === 'BORRADOR' && puede('cotizaciones.editar')
-
-  function alDescargar() {
-    if (!marcaAlDescargar) return
-    iniciarTransicion(async () => {
-      await marcarEnviadaAlDescargar(cotizacion.id)
-      router.refresh()
-    })
-  }
-
   return (
     <div className="flex flex-col items-end gap-2">
       <div className="flex flex-wrap items-center gap-2">
         {/* Un enlace de verdad, no un window.open: el navegador guarda el
-            archivo sin que el bloqueador de ventanas se meta en el camino. */}
+            archivo sin que el bloqueador de ventanas se meta en el camino.
+            Marcar el borrador como enviado lo hace la ruta, y solo cuando el
+            documento salió: si lo hiciera este clic, una descarga fallida
+            dejaría igual la cotización «enviada» sin que nada saliera. */}
         <a
           href={`/cotizaciones/${cotizacion.id}/pdf`}
           download
-          onClick={alDescargar}
           className="inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-base)] border border-borde px-3 text-xs font-medium text-texto hover:bg-superficie-2"
         >
           <Download aria-hidden className="size-3.5" />

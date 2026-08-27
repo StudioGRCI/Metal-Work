@@ -30,9 +30,16 @@ export async function generateMetadata({
   return { title: cotizacion ? `Cotización ${cotizacion.numero}` : 'Cotización no encontrada' }
 }
 
-export default async function PaginaCotizacion({ params }: PageProps<'/cotizaciones/[id]'>) {
+export default async function PaginaCotizacion({
+  params,
+  searchParams,
+}: PageProps<'/cotizaciones/[id]'>) {
   const perfil = await exigirPermiso('cotizaciones.ver')
   const { id } = await params
+
+  // La ruta del PDF devuelve aquí con el motivo cuando no hay papel que
+  // entregar: un enlace de descarga que falla no muestra nada por sí solo.
+  const { aviso } = await searchParams
 
   const cotizacion = await obtenerCotizacion(id)
   if (!cotizacion) notFound()
@@ -94,6 +101,15 @@ export default async function PaginaCotizacion({ params }: PageProps<'/cotizacio
           />
         }
       />
+
+      {typeof aviso === 'string' && aviso && (
+        <p
+          role="alert"
+          className="mb-4 rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso"
+        >
+          {aviso}
+        </p>
+      )}
 
       {cotizacion.estado === 'RECHAZADA' && cotizacion.motivo_rechazo && (
         <p className="mb-4 rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-sm text-peligro">

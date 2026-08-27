@@ -311,11 +311,19 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
         {datos.ficha.length > 0 && (
           <>
             <Text style={estilos.tituloSeccion}>FICHA TÉCNICA</Text>
+            {/* La sección puede partirse entre hojas. Con wrap={false} una
+                sección más alta que la página no se paginaba: el motor la
+                recortaba y avisaba solo en el registro del servidor, así que
+                el cliente recibía una cotización sin espesores y nadie se
+                enteraba. Lo que no se parte es cada línea, y el título arrastra
+                consigo las primeras para no quedar huérfano al pie. */}
             {datos.ficha.map((seccion) => (
-              <View key={seccion.seccion} style={estilos.fichaSeccion} wrap={false}>
-                <Text style={estilos.fichaTitulo}>{seccion.seccion}</Text>
+              <View key={seccion.seccion} style={estilos.fichaSeccion}>
+                <Text style={estilos.fichaTitulo} minPresenceAhead={28}>
+                  {seccion.seccion}
+                </Text>
                 {seccion.lineas.map((linea) => (
-                  <View key={linea.id} style={estilos.fichaLinea}>
+                  <View key={linea.id} style={estilos.fichaLinea} wrap={false}>
                     <Text style={estilos.vineta}>•</Text>
                     {linea.etiqueta && <Text style={estilos.fichaEtiqueta}>{linea.etiqueta}</Text>}
                     <Text style={estilos.fichaDetalle}>{linea.detalle}</Text>
@@ -497,14 +505,26 @@ async function leerLogo(): Promise<Buffer | null> {
   }
 }
 
-/** El nombre del archivo tal como lo espera quien lo recibe por correo. */
+/**
+ * El nombre del archivo tal como lo espera quien lo recibe por correo.
+ *
+ * Todo lo que entra viene de la base y sale en una cabecera HTTP, as\u00ed que se
+ * limpia entero -n\u00famero incluido-: unas comillas metidas ah\u00ed dejan que el
+ * documento se guarde con el nombre que elija quien las puso, y un salto de
+ * l\u00ednea rompe la cabecera y tumba la descarga de esa cotizaci\u00f3n para siempre.
+ */
 export function nombreArchivoCotizacion(datos: CotizacionImpresa) {
-  const cliente = datos.cliente.razon_social
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^A-Za-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .toUpperCase()
+  return `COT-${aNombreDeArchivo(datos.numero)}-${aNombreDeArchivo(datos.cliente.razon_social)}.pdf`
+}
 
-  return `COT-${datos.numero}-${cliente}.pdf`
+function aNombreDeArchivo(texto: string) {
+  return (
+    texto
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Za-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .toUpperCase()
+      .slice(0, 60) || 'SIN-NOMBRE'
+  )
 }

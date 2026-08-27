@@ -140,6 +140,13 @@ const esquemaEstado = z.object({
   motivo: z.string().trim().optional(),
 })
 
+/** Aceptar o rechazar en nombre del cliente no es lo mismo que corregir el texto. */
+function permisoDelCambio(estado: string) {
+  return estado === 'APROBADA' || estado === 'RECHAZADA'
+    ? 'cotizaciones.aprobar'
+    : 'cotizaciones.editar'
+}
+
 export async function cambiarEstadoCotizacion(
   _previo: unknown,
   datos: FormData,
@@ -150,11 +157,27 @@ export async function cambiarEstadoCotizacion(
   if (!analisis.success) return { ok: false, error: 'Solicitud inválida.' }
   const { cotizacion_id, estado, motivo } = analisis.data
 
-  const permiso =
-    estado === 'APROBADA' || estado === 'RECHAZADA' ? 'cotizaciones.aprobar' : 'cotizaciones.editar'
-
-  if (!puede(perfil, permiso)) {
+  if (!puede(perfil, permisoDelCambio(estado))) {
     return { ok: false, error: 'No tienes permiso para este cambio de estado.' }
+  }
+
+  // Anular una aprobada deshace lo que el cliente ya aceptó: eso lo decide
+  // Gerencia, no quien redacta borradores. La base exige lo mismo; acá se
+  // comprueba antes para dar un mensaje entendible en lugar de un error SQL.
+  if (estado === 'ANULADA') {
+    const supabase = await createClient()
+    const { data: previa } = await supabase
+      .from('cotizaciones')
+      .select('estado')
+      .eq('id', cotizacion_id)
+      .maybeSingle()
+
+    if (previa?.estado === 'APROBADA' && !puede(perfil, 'cotizaciones.anular')) {
+      return {
+        ok: false,
+        error: 'Anular una cotización aprobada por el cliente le corresponde a Gerencia.',
+      }
+    }
   }
 
   if (estado === 'RECHAZADA' && !motivo) {
@@ -189,8 +212,13 @@ export async function cambiarEstadoCotizacion(
 /**
  * Una cotización descargada es una cotización que salió al cliente: al bajar el
  * PDF de un borrador, el documento pasa a ENVIADA sin que nadie tenga que
- * acordarse de marcarlo. Si no procede -no es borrador, o no tiene el permiso-
- * no hace nada y la descarga sigue su curso igual.
+ * acordarse de marcarlo. La llama la ruta del PDF **después** de armar el
+ * archivo: marcar antes dejaba cotizaciones «enviadas» que nunca llegaron a
+ * salir porque la descarga había fallado.
+ *
+ * Si no procede -no es un borrador, no tiene el permiso, o alguien la anuló
+ * mientras tanto- no marca nada y la descarga sigue su curso igual: el papel
+ * ya está armado y negárselo al vendedor no arregla nada.
  */
 export async function marcarEnviadaAlDescargar(cotizacionId: string): Promise<void> {
   if (!z.string().uuid().safeParse(cotizacionId).success) return
@@ -199,15 +227,21 @@ export async function marcarEnviadaAlDescargar(cotizacionId: string): Promise<vo
   if (!puede(perfil, 'cotizaciones.editar')) return
 
   const supabase = await createClient()
-  const { data } = await supabase
+
+  // Una sola sentencia: entre leer el estado y escribirlo, otro pudo anularla.
+  // El filtro por estado hace que la carrera termine en cero filas, no en una
+  // transición inventada, y el error de la base se registra en lugar de
+  // desaparecer.
+  const { error } = await supabase
     .from('cotizaciones')
-    .select('estado')
+    .update({ estado: 'ENVIADA' })
     .eq('id', cotizacionId)
-    .maybeSingle()
+    .eq('estado', 'BORRADOR')
 
-  if (data?.estado !== 'BORRADOR') return
-
-  await supabase.from('cotizaciones').update({ estado: 'ENVIADA' }).eq('id', cotizacionId)
+  if (error) {
+    console.error('No se pudo marcar la cotización como enviada:', mensajeDeError(error))
+    return
+  }
 
   revalidatePath(`/cotizaciones/${cotizacionId}`)
   revalidatePath('/cotizaciones')
