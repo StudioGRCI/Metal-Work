@@ -41,6 +41,16 @@ una, recoge los errores de consola y guarda las capturas. Termina con código
 distinto de cero si alguna pantalla falló, así que sirve tal cual en una
 comprobación automática.
 
+Y para lo que no se ve mirando pantallas —lo que pasa al apretar los botones—:
+
+```bash
+BANCO_CLAVE='la-que-quieras' node herramientas/banco/probar-cotizacion.mjs
+```
+
+Emite una cotización, la descarga en PDF, comprueba que el borrador descargado
+queda marcado como enviado, intenta anularla sin motivo (no la deja), la anula
+con motivo y vuelve a descargarla ya anulada.
+
 ## Qué hay dentro
 
 | Archivo | Qué hace |
@@ -50,6 +60,7 @@ comprobación automática.
 | `rest.mjs` | Traduce las peticiones de datos a SQL. |
 | `esquema.mjs` | Lee las claves foráneas para resolver las incrustaciones. |
 | `recorrer.mjs` | Recorre la aplicación con un navegador y deja el informe y las capturas. |
+| `probar-cotizacion.mjs` | Aprieta los botones de una cotización: emitir, descargar el PDF, anular con motivo y volver a descargar. |
 
 ## Lo que respeta y lo que no
 

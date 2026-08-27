@@ -6,7 +6,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_COTIZACION, definir } from '@/lib/dominio/estados'
-import { fecha, moneda, porcentaje } from '@/lib/format'
+import { fecha, fechaHora, moneda, porcentaje } from '@/lib/format'
 import { obtenerCotizacion, partidasDeCotizacion } from '@/lib/datos/comercial'
 import {
   accesoriosDeCotizacion,
@@ -30,9 +30,16 @@ export async function generateMetadata({
   return { title: cotizacion ? `Cotización ${cotizacion.numero}` : 'Cotización no encontrada' }
 }
 
-export default async function PaginaCotizacion({ params }: PageProps<'/cotizaciones/[id]'>) {
+export default async function PaginaCotizacion({
+  params,
+  searchParams,
+}: PageProps<'/cotizaciones/[id]'>) {
   const perfil = await exigirPermiso('cotizaciones.ver')
   const { id } = await params
+
+  // La ruta del PDF devuelve aquí con el motivo cuando no hay papel que
+  // entregar: un enlace de descarga que falla no muestra nada por sí solo.
+  const { aviso } = await searchParams
 
   const cotizacion = await obtenerCotizacion(id)
   if (!cotizacion) notFound()
@@ -65,6 +72,7 @@ export default async function PaginaCotizacion({ params }: PageProps<'/cotizacio
   const unidad = cotizacion.unidad as unknown as { placa: string; marca: string | null } | null
   const carroceria = cotizacion.tipo_carroceria as unknown as { nombre: string } | null
   const vendedor = cotizacion.vendedor as unknown as { nombres: string; apellidos: string } | null
+  const anulador = cotizacion.anulador as unknown as { nombres: string; apellidos: string } | null
   const editable = cotizacion.estado === 'BORRADOR' || cotizacion.estado === 'ENVIADA'
 
   return (
@@ -84,7 +92,7 @@ export default async function PaginaCotizacion({ params }: PageProps<'/cotizacio
         }
         acciones={
           <AccionesCotizacion
-            cotizacion={{ id: cotizacion.id, estado: cotizacion.estado }}
+            cotizacion={{ id: cotizacion.id, estado: cotizacion.estado, numero: cotizacion.numero }}
             permisos={perfil.permisos}
             esAdmin={perfil.rol.codigo === 'ADMIN'}
             sedes={catalogos?.sedes ?? []}
@@ -94,9 +102,28 @@ export default async function PaginaCotizacion({ params }: PageProps<'/cotizacio
         }
       />
 
+      {typeof aviso === 'string' && aviso && (
+        <p
+          role="alert"
+          className="mb-4 rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso"
+        >
+          {aviso}
+        </p>
+      )}
+
       {cotizacion.estado === 'RECHAZADA' && cotizacion.motivo_rechazo && (
         <p className="mb-4 rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-sm text-peligro">
           <strong>Rechazada:</strong> {cotizacion.motivo_rechazo}
+        </p>
+      )}
+
+      {/* La anulada se conserva y cuenta su historia: sin esto, el número
+          desaparecido de la serie no lo explica nadie. */}
+      {cotizacion.estado === 'ANULADA' && (
+        <p className="mb-4 rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-sm text-peligro">
+          <strong>Anulada:</strong> {cotizacion.motivo_anulacion || 'sin motivo registrado'}
+          {anulador && ` · ${anulador.nombres} ${anulador.apellidos}`}
+          {cotizacion.anulada_en && ` · ${fechaHora(cotizacion.anulada_en)}`}
         </p>
       )}
 

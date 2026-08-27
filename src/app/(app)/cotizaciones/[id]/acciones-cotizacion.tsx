@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
+import { Download } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
@@ -12,21 +13,48 @@ import { cambiarEstadoCotizacion, convertirEnOrden } from '../acciones'
 /**
  * Transiciones que ofrece la interfaz desde cada estado. Es un espejo del
  * trigger fn_cotizacion_transicion: aquí solo decide qué botones se muestran.
+ *
+ * «Enviar al cliente» ya no es un botón: enviar es descargar el PDF y mandarlo,
+ * así que ese paso lo da la descarga. Anular siempre pide motivo, porque la
+ * cotización no se borra nunca -es parte del correlativo de la empresa- y lo
+ * único que queda de ella es la explicación de por qué se dejó sin efecto.
  */
 const SIGUIENTES: Record<
   string,
   { estado: string; etiqueta: string; permiso: string; motivo?: boolean; peligro?: boolean }[]
 > = {
   BORRADOR: [
-    { estado: 'ENVIADA', etiqueta: 'Enviar al cliente', permiso: 'cotizaciones.editar' },
-    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', peligro: true },
+    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
   ],
   ENVIADA: [
     { estado: 'APROBADA', etiqueta: 'Marcar aprobada', permiso: 'cotizaciones.aprobar' },
     { estado: 'RECHAZADA', etiqueta: 'Rechazar', permiso: 'cotizaciones.aprobar', motivo: true, peligro: true },
     { estado: 'BORRADOR', etiqueta: 'Volver a borrador', permiso: 'cotizaciones.editar' },
+    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
   ],
-  VENCIDA: [{ estado: 'ENVIADA', etiqueta: 'Reenviar', permiso: 'cotizaciones.editar' }],
+  // Una aprobada es lo que el cliente ya aceptó: deshacerlo es de Gerencia.
+  APROBADA: [
+    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.anular', motivo: true, peligro: true },
+  ],
+  RECHAZADA: [
+    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
+  ],
+  VENCIDA: [
+    { estado: 'ENVIADA', etiqueta: 'Reenviar', permiso: 'cotizaciones.editar' },
+    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
+  ],
+}
+
+/** Lo que pide cada motivo, en el lenguaje de quien lo va a escribir. */
+const MOTIVOS: Record<string, { etiqueta: string; ejemplo: string }> = {
+  RECHAZADA: {
+    etiqueta: 'Motivo del rechazo',
+    ejemplo: 'Ej.: el cliente eligió otro proveedor por precio',
+  },
+  ANULADA: {
+    etiqueta: 'Motivo de la anulación',
+    ejemplo: 'Ej.: se emitió por error, va la 3570-2026 en su lugar',
+  },
 }
 
 export function AccionesCotizacion({
@@ -37,7 +65,7 @@ export function AccionesCotizacion({
   ordenExistente,
   tienePartidas,
 }: {
-  cotizacion: { id: string; estado: string }
+  cotizacion: { id: string; estado: string; numero: string }
   permisos: string[]
   esAdmin: boolean
   sedes: { id: string; nombre: string }[]
@@ -84,6 +112,20 @@ export function AccionesCotizacion({
   return (
     <div className="flex flex-col items-end gap-2">
       <div className="flex flex-wrap items-center gap-2">
+        {/* Un enlace de verdad, no un window.open: el navegador guarda el
+            archivo sin que el bloqueador de ventanas se meta en el camino.
+            Marcar el borrador como enviado lo hace la ruta, y solo cuando el
+            documento salió: si lo hiciera este clic, una descarga fallida
+            dejaría igual la cotización «enviada» sin que nada saliera. */}
+        <a
+          href={`/cotizaciones/${cotizacion.id}/pdf`}
+          download
+          className="inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-base)] border border-borde px-3 text-xs font-medium text-texto hover:bg-superficie-2"
+        >
+          <Download aria-hidden className="size-3.5" />
+          Descargar cotización
+        </a>
+
         {ordenExistente && (
           <Link
             href={`/ordenes/${ordenExistente.id}`}
@@ -139,18 +181,32 @@ export function AccionesCotizacion({
       )}
 
       {pidiendoMotivo && (
-        <Dialogo titulo={pidiendoMotivo.etiqueta} alCerrar={() => setPidiendoMotivo(null)}>
+        <Dialogo
+          titulo={`${pidiendoMotivo.etiqueta} la cotización ${cotizacion.numero}`}
+          alCerrar={() => setPidiendoMotivo(null)}
+        >
+          {pidiendoMotivo.estado === 'ANULADA' && (
+            <p className="mt-1 text-xs text-texto-suave">
+              La cotización no se elimina: su número es parte del correlativo de la empresa. Queda
+              anulada, con el motivo a la vista y sin poder modificarse.
+            </p>
+          )}
+
           <form action={cambiar} className="mt-4 space-y-3">
             <input type="hidden" name="cotizacion_id" value={cotizacion.id} />
             <input type="hidden" name="estado" value={pidiendoMotivo.estado} />
 
-            <Campo etiqueta="Motivo del rechazo" htmlFor="motivo" requerido>
+            <Campo
+              etiqueta={MOTIVOS[pidiendoMotivo.estado]?.etiqueta ?? 'Motivo'}
+              htmlFor="motivo"
+              requerido
+            >
               <AreaTexto
                 id="motivo"
                 name="motivo"
                 required
                 autoFocus
-                placeholder="Ej.: el cliente eligió otro proveedor por precio"
+                placeholder={MOTIVOS[pidiendoMotivo.estado]?.ejemplo}
               />
             </Campo>
 

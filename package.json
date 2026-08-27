@@ -9,10 +9,12 @@
     "lint": "eslint",
     "banco:preparar": "./herramientas/banco/preparar.sh",
     "banco": "node herramientas/banco/servidor.mjs",
-    "validar": "node herramientas/banco/recorrer.mjs"
+    "validar": "node herramientas/banco/recorrer.mjs",
+    "validar:cotizacion": "node herramientas/banco/probar-cotizacion.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
+    "@react-pdf/renderer": "^4.8.1",
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.112.4",
     "clsx": "^2.1.1",

@@ -79,3 +79,11 @@ Los correlativos son los de la empresa (OT `2921-2026` global y continuo,
 cotización `3568-2026`, compra `OC-5581-MW`) vía `series_documentarias`.
 Jamás burlarlos insertando números a mano: `siguiente_correlativo` está
 cerrado a propósito y el check lo vigila.
+
+**Un documento numerado no se borra nunca**, ni siquiera por el administrador:
+el hueco en la serie no lo puede explicar nadie después. Se anula, y la
+anulación es un dato completo —motivo obligatorio, quién y cuándo, sellados
+por trigger— tras el cual el documento queda congelado como evidencia. El
+patrón está en `20260101000034_anular_no_borrar.sql`: trigger propio de
+anulación, `fn_..._bloquear_borrado` que siempre levanta excepción, la
+política `borrar_*` eliminada y el `grant delete` revocado.

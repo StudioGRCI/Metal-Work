@@ -140,6 +140,13 @@ const esquemaEstado = z.object({
   motivo: z.string().trim().optional(),
 })
 
+/** Aceptar o rechazar en nombre del cliente no es lo mismo que corregir el texto. */
+function permisoDelCambio(estado: string) {
+  return estado === 'APROBADA' || estado === 'RECHAZADA'
+    ? 'cotizaciones.aprobar'
+    : 'cotizaciones.editar'
+}
+
 export async function cambiarEstadoCotizacion(
   _previo: unknown,
   datos: FormData,
@@ -150,28 +157,94 @@ export async function cambiarEstadoCotizacion(
   if (!analisis.success) return { ok: false, error: 'Solicitud inválida.' }
   const { cotizacion_id, estado, motivo } = analisis.data
 
-  const permiso =
-    estado === 'APROBADA' || estado === 'RECHAZADA' ? 'cotizaciones.aprobar' : 'cotizaciones.editar'
-
-  if (!puede(perfil, permiso)) {
+  if (!puede(perfil, permisoDelCambio(estado))) {
     return { ok: false, error: 'No tienes permiso para este cambio de estado.' }
+  }
+
+  // Anular una aprobada deshace lo que el cliente ya aceptó: eso lo decide
+  // Gerencia, no quien redacta borradores. La base exige lo mismo; acá se
+  // comprueba antes para dar un mensaje entendible en lugar de un error SQL.
+  if (estado === 'ANULADA') {
+    const supabase = await createClient()
+    const { data: previa } = await supabase
+      .from('cotizaciones')
+      .select('estado')
+      .eq('id', cotizacion_id)
+      .maybeSingle()
+
+    if (previa?.estado === 'APROBADA' && !puede(perfil, 'cotizaciones.anular')) {
+      return {
+        ok: false,
+        error: 'Anular una cotización aprobada por el cliente le corresponde a Gerencia.',
+      }
+    }
   }
 
   if (estado === 'RECHAZADA' && !motivo) {
     return { ok: false, error: 'Indica el motivo del rechazo.' }
   }
 
+  // Anular pide motivo y deja rastro; la base sella quién y cuándo.
+  if (estado === 'ANULADA' && !motivo) {
+    return { ok: false, error: 'Indica el motivo de la anulación.' }
+  }
+
   const supabase = await createClient()
   const { error } = await supabase
     .from('cotizaciones')
-    .update({ estado, ...(estado === 'RECHAZADA' ? { motivo_rechazo: motivo } : {}) })
+    .update({
+      estado,
+      ...(estado === 'RECHAZADA' ? { motivo_rechazo: motivo } : {}),
+      ...(estado === 'ANULADA' ? { motivo_anulacion: motivo } : {}),
+    })
     .eq('id', cotizacion_id)
 
   if (error) return { ok: false, error: mensajeDeError(error) }
 
   revalidatePath(`/cotizaciones/${cotizacion_id}`)
   revalidatePath('/cotizaciones')
-  return { ok: true, mensaje: 'Estado actualizado.' }
+  return {
+    ok: true,
+    mensaje: estado === 'ANULADA' ? 'Cotización anulada.' : 'Estado actualizado.',
+  }
+}
+
+/**
+ * Una cotización descargada es una cotización que salió al cliente: al bajar el
+ * PDF de un borrador, el documento pasa a ENVIADA sin que nadie tenga que
+ * acordarse de marcarlo. La llama la ruta del PDF **después** de armar el
+ * archivo: marcar antes dejaba cotizaciones «enviadas» que nunca llegaron a
+ * salir porque la descarga había fallado.
+ *
+ * Si no procede -no es un borrador, no tiene el permiso, o alguien la anuló
+ * mientras tanto- no marca nada y la descarga sigue su curso igual: el papel
+ * ya está armado y negárselo al vendedor no arregla nada.
+ */
+export async function marcarEnviadaAlDescargar(cotizacionId: string): Promise<void> {
+  if (!z.string().uuid().safeParse(cotizacionId).success) return
+
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'cotizaciones.editar')) return
+
+  const supabase = await createClient()
+
+  // Una sola sentencia: entre leer el estado y escribirlo, otro pudo anularla.
+  // El filtro por estado hace que la carrera termine en cero filas, no en una
+  // transición inventada, y el error de la base se registra en lugar de
+  // desaparecer.
+  const { error } = await supabase
+    .from('cotizaciones')
+    .update({ estado: 'ENVIADA' })
+    .eq('id', cotizacionId)
+    .eq('estado', 'BORRADOR')
+
+  if (error) {
+    console.error('No se pudo marcar la cotización como enviada:', mensajeDeError(error))
+    return
+  }
+
+  revalidatePath(`/cotizaciones/${cotizacionId}`)
+  revalidatePath('/cotizaciones')
 }
 
 /**

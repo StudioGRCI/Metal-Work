@@ -120,6 +120,26 @@ begin
     'y la orden queda entregada');
 end $$;
 
+-- Con la unidad ya entregada, la cotización que la originó todavía se puede
+-- anular: la guarda solo debe frenar a las órdenes que siguen en curso. Una
+-- ENTREGADA no se puede anular por diseño, así que exigirlo primero dejaba a
+-- toda cotización antigua sin salida, con un mensaje que mandaba a una puerta
+-- tapiada.
+do $$
+declare v_cot uuid;
+begin
+  select cotizacion_id into v_cot
+    from public.ordenes_trabajo where id = current_setting('prueba.ot')::uuid;
+
+  update public.cotizaciones
+     set estado = 'ANULADA', motivo_anulacion = 'Se emitió por duplicado; la unidad salió con la otra'
+   where id = v_cot;
+
+  perform test.afirmar(
+    (select estado = 'ANULADA' from public.cotizaciones where id = v_cot),
+    'una cotización cuya orden ya se entregó sí se puede anular');
+end $$;
+
 -- La confirmación a portería queda sellada con quién y cuándo, o no queda.
 select test.debe_fallar($$
   update public.ot_entregas

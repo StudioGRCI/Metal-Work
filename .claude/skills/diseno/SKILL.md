@@ -73,6 +73,31 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
 - Todo botón-icono lleva `aria-label`; los iconos decorativos, `aria-hidden`.
   Los estados marcables llevan `aria-pressed`.
 
+## Descargas
+
+Nunca `window.open` después de un `await`: al volver del servidor el clic ya
+no cuenta como acción del usuario, el navegador bloquea la ventana en
+silencio y el botón «no hace nada» (nos pasó con la descarga de documentos).
+Lo que sí funciona:
+
+- Archivo del mismo dominio → un `<a href download>` de verdad, o crear el
+  enlace y hacerle `click()` (ver `lista-documentos.tsx`).
+- Archivo del almacenamiento de Supabase → **otro dominio**, donde el
+  atributo `download` no vale: hay que pedir el enlace firmado ya marcado
+  como descarga (`createSignedUrl(ruta, 300, { download: nombre })`).
+- Contenido armado en el servidor → una ruta `route.ts` que devuelve el
+  archivo con `content-disposition: attachment`; una acción de servidor
+  devuelve datos, no adjuntos (ver `cotizaciones/[id]/pdf/route.ts`).
+
+## PDF de documentos de la empresa
+
+Se arman con `@react-pdf/renderer` en el servidor (`src/lib/pdf/`), con la
+paleta del manual y el logo oficial leído del disco. Dos trampas ya pagadas:
+el `lineHeight` puesto en el estilo de `<Page>` lo heredan los elementos
+`fixed` y **el pie desaparece de la hoja sin avisar** —va en cada estilo de
+texto—; y un `fontSize` grande necesita su `lineHeight` explícito o pisa la
+línea siguiente.
+
 ## Texto
 
 Castellano peruano de taller, sin anglicismos de oficina: «dar de alta»,
@@ -81,6 +106,10 @@ descripciones, para qué sirve. Los estados vacíos siempre dicen cuál es el
 siguiente paso («Da de alta el primero con el botón de arriba»).
 
 ## Comprobación visual
+
+Las interacciones con botones tienen su propio recorrido:
+`node herramientas/banco/probar-cotizacion.mjs` (emitir, descargar, anular).
+Interacción nueva de peso → sumarle sus comprobaciones ahí.
 
 Ninguna pantalla se da por lista sin pasar por el banco:
 `node herramientas/banco/recorrer.mjs` la visita con sesión iniciada, junta
