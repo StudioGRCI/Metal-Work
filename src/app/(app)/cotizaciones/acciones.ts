@@ -161,17 +161,56 @@ export async function cambiarEstadoCotizacion(
     return { ok: false, error: 'Indica el motivo del rechazo.' }
   }
 
+  // Anular pide motivo y deja rastro; la base sella quién y cuándo.
+  if (estado === 'ANULADA' && !motivo) {
+    return { ok: false, error: 'Indica el motivo de la anulación.' }
+  }
+
   const supabase = await createClient()
   const { error } = await supabase
     .from('cotizaciones')
-    .update({ estado, ...(estado === 'RECHAZADA' ? { motivo_rechazo: motivo } : {}) })
+    .update({
+      estado,
+      ...(estado === 'RECHAZADA' ? { motivo_rechazo: motivo } : {}),
+      ...(estado === 'ANULADA' ? { motivo_anulacion: motivo } : {}),
+    })
     .eq('id', cotizacion_id)
 
   if (error) return { ok: false, error: mensajeDeError(error) }
 
   revalidatePath(`/cotizaciones/${cotizacion_id}`)
   revalidatePath('/cotizaciones')
-  return { ok: true, mensaje: 'Estado actualizado.' }
+  return {
+    ok: true,
+    mensaje: estado === 'ANULADA' ? 'Cotización anulada.' : 'Estado actualizado.',
+  }
+}
+
+/**
+ * Una cotización descargada es una cotización que salió al cliente: al bajar el
+ * PDF de un borrador, el documento pasa a ENVIADA sin que nadie tenga que
+ * acordarse de marcarlo. Si no procede -no es borrador, o no tiene el permiso-
+ * no hace nada y la descarga sigue su curso igual.
+ */
+export async function marcarEnviadaAlDescargar(cotizacionId: string): Promise<void> {
+  if (!z.string().uuid().safeParse(cotizacionId).success) return
+
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'cotizaciones.editar')) return
+
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('cotizaciones')
+    .select('estado')
+    .eq('id', cotizacionId)
+    .maybeSingle()
+
+  if (data?.estado !== 'BORRADOR') return
+
+  await supabase.from('cotizaciones').update({ estado: 'ENVIADA' }).eq('id', cotizacionId)
+
+  revalidatePath(`/cotizaciones/${cotizacionId}`)
+  revalidatePath('/cotizaciones')
 }
 
 /**

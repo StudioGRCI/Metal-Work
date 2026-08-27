@@ -62,15 +62,29 @@ export function ListaDocumentos({
 
     setError(null)
     setDescargando(documentoId)
-    const resultado = await urlDeDescarga(version.bucket, version.ruta_storage, documentoId)
+    const resultado = await urlDeDescarga(
+      version.bucket,
+      version.ruta_storage,
+      documentoId,
+      version.nombre_archivo,
+    )
     setDescargando(null)
 
     if (!resultado.ok) {
       setError(resultado.error)
       return
     }
-    // El enlace firmado caduca en cinco minutos; se abre en otra pestaña.
-    window.open(resultado.url, '_blank', 'noopener,noreferrer')
+
+    // Un window.open después de esperar al servidor ya no cuenta como acción
+    // del usuario y el navegador lo bloquea sin decir nada: el botón parecía
+    // no hacer nada. Un enlace con «download» sí guarda el archivo siempre.
+    const enlace = document.createElement('a')
+    enlace.href = resultado.url
+    enlace.download = version.nombre_archivo || ''
+    enlace.rel = 'noopener'
+    document.body.appendChild(enlace)
+    enlace.click()
+    enlace.remove()
   }
 
   if (documentos.length === 0) {

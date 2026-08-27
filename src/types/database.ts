@@ -798,6 +798,9 @@ export type Database = {
           incluye_igv: boolean
           plazo_en_habiles: boolean
           nota: string | null
+          motivo_anulacion: string | null
+          anulada_por: string | null
+          anulada_en: string | null
         }
         Insert: {
           id?: string
@@ -840,6 +843,9 @@ export type Database = {
           incluye_igv?: boolean
           plazo_en_habiles?: boolean
           nota?: string | null
+          motivo_anulacion?: string | null
+          anulada_por?: string | null
+          anulada_en?: string | null
         }
         Update: {
           id?: string
@@ -882,8 +888,18 @@ export type Database = {
           incluye_igv?: boolean
           plazo_en_habiles?: boolean
           nota?: string | null
+          motivo_anulacion?: string | null
+          anulada_por?: string | null
+          anulada_en?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "cotizaciones_anulada_por_fkey"
+            columns: ["anulada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cotizaciones_aprobada_por_fkey"
             columns: ["aprobada_por"]
@@ -6111,6 +6127,10 @@ export type Database = {
           p_fecha?: string
         }
         Returns: string
+      }
+      datos_de_empresa: {
+        Args: Record<PropertyKey, never>
+        Returns: string[]
       }
       dias_habiles_entre: {
         Args: {
