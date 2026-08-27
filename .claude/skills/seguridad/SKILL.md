@@ -49,6 +49,24 @@ En la misma migración que la crea, sin excepción:
 
 ## Trampas que ya nos mordieron (no repetir)
 
+- **El permiso que la aplicación exige y la política no reconoce.** Es el fallo
+  más caro que ha tenido este proyecto y apareció once veces. Si `puede(perfil,
+  'x.aprobar')` deja pasar pero la política de la tabla solo acepta `x.editar`,
+  el UPDATE o el DELETE afecta **cero filas sin error** —una fila que el RLS
+  esconde no es un error para Postgres—, la acción devuelve `ok` y la pantalla
+  dice «listo» sin haber hecho nada. No se cae: miente. Antes de cerrar
+  cualquier acción de escritura, cruzar el permiso que exige con el que pide la
+  política de esa tabla, y comprobarlo **con el rol que va a usarla**.
+- **Un permiso que no tiene ningún rol es una puerta tapiada.** `configuracion.
+  ver` no estaba asignado a nadie y once catálogos lo exigían para leerse: el
+  desplegable de carrocerías llegaba vacío a todo el mundo salvo al
+  administrador, y sin él no se puede cotizar. Al crear un permiso, asignarlo
+  en la misma migración; al exigir uno, comprobar que alguien lo tiene.
+- **Probar como ADMIN no prueba nada.** ADMIN entra por `es_admin()` y nunca
+  toca el permiso, así que las pantallas salen llenas en la prueba y vacías
+  para la gente. Todo check y todo recorrido mira al menos una vez con los ojos
+  del rol que hace ese trabajo.
+
 - **El blindaje reescribe funciones.** `20260101000013_blindaje.sql` reescribe
   `fn_ot_despues_update` para que use la bitácora interna. Si otra migración
   vuelve a definir esa función con el texto original, reabre la guarda sin
