@@ -19,6 +19,10 @@ import { join } from 'node:path'
 
 const BASE = process.env.BANCO_URL ?? 'http://localhost:3111'
 const CORREO = process.env.BANCO_CORREO ?? 'studiogrci@gmail.com'
+// La cuenta de administración pasa por es_admin() y ve todo aunque las
+// políticas estén mal: por eso el recorrido termina mirando lo mismo con los
+// ojos de un vendedor, que es quien de verdad cotiza.
+const CORREO_VENDEDOR = process.env.BANCO_VENDEDOR ?? 'ventas@metalworkperusac.com'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR =
   process.env.NAVEGADOR ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -124,6 +128,34 @@ await descargaAnulada.saveAs(join(carpeta, 'anulada.pdf'))
 comprobar(true, 'la anulada se sigue pudiendo descargar como evidencia')
 
 comprobar(erroresConsola.length === 0, `sin errores de consola${erroresConsola.length ? `: ${erroresConsola[0]}` : ''}`)
+
+// ------------------- y lo mismo con los ojos de quien cotiza de verdad
+const otra = await navegador.newContext({ acceptDownloads: true })
+const comoVendedor = await otra.newPage()
+await comoVendedor.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
+await comoVendedor.fill('input[type="email"]', CORREO_VENDEDOR)
+await comoVendedor.fill('input[type="password"]', CLAVE)
+await Promise.all([
+  comoVendedor
+    .waitForURL((u) => !u.pathname.startsWith('/ingresar'), { timeout: 30000 })
+    .catch(() => {}),
+  comoVendedor.click('button[type="submit"]'),
+])
+await comoVendedor.waitForLoadState('networkidle')
+
+if (comoVendedor.url().includes('/ingresar')) {
+  comprobar(false, `no se pudo entrar como ${CORREO_VENDEDOR}`)
+} else {
+  await comoVendedor.goto(`${BASE}/cotizaciones/nueva`, { waitUntil: 'networkidle' })
+
+  const carrocerias = (await comoVendedor.locator('#tipo_carroceria_id option').allInnerTexts())
+    .filter((t) => t.trim()).length
+  const clientes = (await comoVendedor.locator('#cliente_id option').allInnerTexts())
+    .filter((t) => t.trim()).length
+
+  comprobar(carrocerias > 0, `el vendedor ve ${carrocerias} carrocerías, no un desplegable vacío`)
+  comprobar(clientes > 0, `y ${clientes} clientes a quienes cotizar`)
+}
 
 await navegador.close()
 
