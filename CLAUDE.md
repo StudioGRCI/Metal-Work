@@ -62,9 +62,17 @@ Regla de oro: **nada se declara terminado sin haberlo visto funcionar.** No vale
 declarar terminado lo que no se probó es el fallo más caro que se puede cometer
 aquí, porque la base tiene datos reales de la empresa.
 
-El recorrido completo está en la skill `esquema`. Las órdenes exactas para *esta*
-máquina —que no tiene Postgres ni `node` en el PATH— están en la memoria del
-proyecto; consultarlas antes de dar por imposible una comprobación.
+El código se comprueba con una sola orden, que resuelve `node` sola aunque no
+esté en el PATH y da los tres pasos en el orden correcto:
+
+```bash
+./scripts/verificar.sh    # tipos de Next, TypeScript, ESLint
+```
+
+Eso no ve la pantalla ni la base. El recorrido completo —banco local, checks del
+esquema, clic real— está en la skill `esquema`; qué se puede correr en *esta*
+máquina y qué no, en la memoria del proyecto. Consultarla antes de dar una
+comprobación por imposible.
 
 ## Documentación de Next.js 16, sin salir del disco
 

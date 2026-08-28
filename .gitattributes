@@ -1,0 +1,5 @@
+# Los scripts se ejecutan también fuera de Windows (Linux, CI, el contenedor de
+# despliegue). Si git los guarda con CRLF, el shebang se rompe con
+# «bad interpreter: /usr/bin/env bash^M» y no arranca ninguno.
+*.sh   text eol=lf
+*.mjs  text eol=lf

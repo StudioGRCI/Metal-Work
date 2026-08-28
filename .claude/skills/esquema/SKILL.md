@@ -45,6 +45,7 @@ banco local, y la interacción con clic real.
 ## El ciclo completo, en orden
 
 ```bash
+./scripts/verificar.sh                        # tipos, TypeScript y ESLint de una vez
 ./scripts/db-test.sh                         # esquema + todos los checks
 ./scripts/generar-tipos.sh                   # regenera src/types/database.ts
 BANCO_CLAVE='...' ./herramientas/banco/preparar.sh   # rehace mw_demo
