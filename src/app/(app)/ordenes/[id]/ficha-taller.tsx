@@ -1,12 +1,15 @@
 'use client'
 
 import { Check, Minus, Plus, Trash2, Wand2 } from 'lucide-react'
-import { useActionState, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { startTransition, useActionState, useState, useTransition } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Progreso } from '@/components/ui/progreso'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { ConfirmarAccion } from '@/components/ui/ventana'
+import type { ResultadoAccion } from '@/lib/acciones'
 import type { AccesorioOT, PasoVerificacion, RepuestoOT } from '@/lib/datos/ficha-ot'
 import { cantidad as formatearCantidad, fecha } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -205,15 +208,18 @@ function Medidas({
         <form action={accion} className="space-y-3">
           <input type="hidden" name="orden_id" value={ordenId} />
 
+          {/* Las medidas se toman en planta con el teléfono en la mano:
+              `inputMode` decimal abre el teclado de números con punto en vez
+              del alfabético, que obliga a cambiar de teclado por cada cifra. */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Campo etiqueta="Largo" htmlFor="largo_m" ayuda="Metros">
-              <Entrada id="largo_m" name="largo_m" type="number" step="0.01" defaultValue={ficha.largo_m ?? ''} />
+              <Entrada id="largo_m" name="largo_m" type="number" inputMode="decimal" step="0.01" defaultValue={ficha.largo_m ?? ''} />
             </Campo>
             <Campo etiqueta="Ancho" htmlFor="ancho_m" ayuda="Metros">
-              <Entrada id="ancho_m" name="ancho_m" type="number" step="0.01" defaultValue={ficha.ancho_m ?? ''} />
+              <Entrada id="ancho_m" name="ancho_m" type="number" inputMode="decimal" step="0.01" defaultValue={ficha.ancho_m ?? ''} />
             </Campo>
             <Campo etiqueta="Alto" htmlFor="alto_m" ayuda="Metros">
-              <Entrada id="alto_m" name="alto_m" type="number" step="0.01" defaultValue={ficha.alto_m ?? ''} />
+              <Entrada id="alto_m" name="alto_m" type="number" inputMode="decimal" step="0.01" defaultValue={ficha.alto_m ?? ''} />
             </Campo>
             <Campo etiqueta="Capacidad de carga" htmlFor="capacidad_carga" ayuda="Como va en la OT">
               <Entrada
@@ -242,6 +248,7 @@ function Medidas({
                 id="cantidad_ejes"
                 name="cantidad_ejes"
                 type="number"
+                inputMode="numeric"
                 min="1"
                 max="8"
                 defaultValue={ficha.cantidad_ejes ?? ''}
@@ -280,10 +287,15 @@ function Medidas({
               </Seleccion>
             </Campo>
             <Campo etiqueta="Correo de contacto" htmlFor="correo_contacto" ayuda="A dónde se avisa el avance">
+              {/* Sin autocompletar: es el correo del cliente, y el navegador
+                  ofrece aquí el de quien tiene la sesión abierta. Ese correo
+                  mal puesto se descubre cuando el aviso de avance no llega. */}
               <Entrada
                 id="correo_contacto"
                 name="correo_contacto"
                 type="email"
+                autoComplete="off"
+                inputMode="email"
                 defaultValue={ficha.correo_contacto ?? ''}
               />
             </Campo>
@@ -299,10 +311,12 @@ function Medidas({
             />
           </Campo>
 
+          {/* «Guardar» a secas no basta: en esta pantalla hay cuatro cosas
+              guardables y ninguna guarda a las otras. */}
           <div className="flex items-center justify-between gap-3">
             <Aviso resultado={resultado} />
             <Boton type="submit" cargando={enviando}>
-              Guardar
+              Guardar medidas
             </Boton>
           </div>
         </form>
@@ -322,7 +336,6 @@ function Verificacion({
   puedeEditar: boolean
   sinArmar: boolean
 }) {
-  const [, accionMarcar] = useActionState(marcarVerificacion, null)
   const [resultado, accionAnotar] = useActionState(anotarVerificacion, null)
   const [anotando, setAnotando] = useState<string | null>(null)
 
@@ -359,7 +372,9 @@ function Verificacion({
                   <th className="px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase">
                     Descripción
                   </th>
-                  <th className="px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase">
+                  {/* En el teléfono manda el paso y sus dos casillas: el
+                      responsable pierde su columna y baja a la descripción. */}
+                  <th className="hidden px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase sm:table-cell">
                     Responsable
                   </th>
                   <th className="w-20 px-2 py-2 text-center text-[11px] font-semibold text-texto-suave uppercase">
@@ -378,6 +393,11 @@ function Verificacion({
                       <span className={cn('text-texto', paso.avance_2 && 'text-texto-suave line-through')}>
                         {paso.descripcion}
                       </span>
+                      {paso.responsable && (
+                        <p className="text-[11px] text-texto-suave sm:hidden">
+                          {paso.responsable.nombres} {paso.responsable.apellidos}
+                        </p>
+                      )}
                       {paso.observaciones && (
                         <p className="mt-0.5 text-xs text-aviso">{paso.observaciones}</p>
                       )}
@@ -397,26 +417,27 @@ function Verificacion({
                               className="text-xs"
                             />
                             <Boton type="submit" tamano="sm">
-                              Guardar
+                              Guardar nota
                             </Boton>
                           </form>
                         ) : (
+                          // Once píxeles de letra no son un blanco para el dedo:
+                          // en el teléfono el enlace ocupa 44 px de alto.
                           <button
                             type="button"
                             onClick={() => setAnotando(paso.id)}
-                            className="mt-1 block text-[11px] text-texto-tenue hover:text-acento"
+                            className="mt-1 inline-flex min-h-11 items-center text-[11px] text-texto-tenue hover:text-acento sm:min-h-0"
                           >
                             {paso.observaciones ? 'Editar observación' : 'Anotar observación'}
                           </button>
                         ))}
                     </td>
-                    <td className="px-3 py-2 text-xs text-texto-suave">
+                    <td className="hidden px-3 py-2 text-xs text-texto-suave sm:table-cell">
                       {paso.responsable
                         ? `${paso.responsable.nombres} ${paso.responsable.apellidos}`
                         : '—'}
                     </td>
                     <Casilla
-                      accion={accionMarcar}
                       ordenId={ordenId}
                       pasoId={paso.id}
                       avance="1"
@@ -426,7 +447,6 @@ function Verificacion({
                       etiqueta={`Avance 1 del paso ${paso.numero}`}
                     />
                     <Casilla
-                      accion={accionMarcar}
                       ordenId={ordenId}
                       pasoId={paso.id}
                       avance="2"
@@ -449,7 +469,6 @@ function Verificacion({
 }
 
 function Casilla({
-  accion,
   ordenId,
   pasoId,
   avance,
@@ -458,7 +477,6 @@ function Casilla({
   puedeEditar,
   etiqueta,
 }: {
-  accion: (datos: FormData) => void
   ordenId: string
   pasoId: string
   avance: '1' | '2'
@@ -468,30 +486,98 @@ function Casilla({
   etiqueta: string
 }) {
   return (
-    <td className="px-2 py-2 text-center">
-      <form action={accion}>
-        <input type="hidden" name="id" value={pasoId} />
-        <input type="hidden" name="orden_id" value={ordenId} />
-        <input type="hidden" name="avance" value={avance} />
-        <input type="hidden" name="valor" value={marcado ? 'no' : 'si'} />
-        <button
-          type="submit"
-          disabled={!puedeEditar}
-          aria-label={etiqueta}
-          aria-pressed={marcado}
-          className={cn(
-            'mx-auto flex size-6 items-center justify-center rounded border transition-colors',
-            marcado
-              ? 'border-exito bg-exito-suave text-exito'
-              : 'border-borde-fuerte text-transparent hover:border-acento',
-            !puedeEditar && 'cursor-not-allowed opacity-40',
-          )}
-        >
-          <Check aria-hidden className="size-4" />
-        </button>
-      </form>
+    <td className="px-1 py-2 text-center sm:px-2">
+      <Visto
+        marcado={marcado}
+        puedeEditar={puedeEditar}
+        etiqueta={etiqueta}
+        className="mx-auto"
+        onCambiar={(marcar) => {
+          const datos = new FormData()
+          datos.set('id', pasoId)
+          datos.set('orden_id', ordenId)
+          datos.set('avance', avance)
+          datos.set('valor', marcar ? 'si' : 'no')
+          return marcarVerificacion(null, datos)
+        }}
+      />
       {cuando && <p className="mt-0.5 text-[10px] text-texto-tenue">{fecha(cuando)}</p>}
     </td>
+  )
+}
+
+/**
+ * El visto bueno de una casilla: un botón que se responde a sí mismo.
+ *
+ * Tiene estado propio a propósito. Con un solo estado compartido para toda la
+ * ficha, el segundo toque mandaba la respuesta del primero sobre un dato viejo
+ * y desmarcaba lo que se acababa de marcar; y si la base rechazaba el cambio,
+ * la casilla se quedaba pintada como si hubiera entrado. El de la cancha marca
+ * con guante y sin mirar dos veces: tiene que contestarle la casilla, no un
+ * aviso al final de la pantalla.
+ */
+function Visto({
+  marcado,
+  puedeEditar,
+  etiqueta,
+  onCambiar,
+  className,
+}: {
+  marcado: boolean
+  puedeEditar: boolean
+  etiqueta: string
+  onCambiar: (marcar: boolean) => Promise<ResultadoAccion>
+  className?: string
+}) {
+  const router = useRouter()
+  const [, iniciarTransicion] = useTransition()
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function alPulsar() {
+    if (enviando) return
+
+    setError(null)
+    setEnviando(true)
+    const salida = await onCambiar(!marcado)
+    setEnviando(false)
+
+    if (!salida.ok) {
+      setError(salida.error)
+      return
+    }
+
+    iniciarTransicion(() => router.refresh())
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={alPulsar}
+        disabled={!puedeEditar || enviando}
+        aria-label={etiqueta}
+        aria-pressed={marcado}
+        aria-busy={enviando}
+        className={cn(
+          'flex size-11 items-center justify-center rounded border transition-colors sm:size-6',
+          marcado
+            ? 'border-exito bg-exito-suave text-exito'
+            : 'border-borde-fuerte text-transparent hover:border-acento',
+          error && 'border-peligro',
+          (!puedeEditar || enviando) && 'cursor-not-allowed opacity-40',
+          className,
+        )}
+      >
+        <Check aria-hidden className="size-5 sm:size-4" />
+      </button>
+
+      {error && (
+        <p role="alert" className="mt-0.5 text-[10px] leading-tight text-peligro">
+          {error}
+        </p>
+      )}
+    </>
   )
 }
 
@@ -510,10 +596,25 @@ function Accesorios({
 }) {
   const [abierto, setAbierto] = useState(false)
   const [resultado, accion, enviando] = useActionState(agregarAccesorioOT, null)
-  const [, accionMarcar] = useActionState(marcarAccesorio, null)
   const [, accionQuitar] = useActionState(quitarAccesorioOT, null)
+  const [porQuitar, setPorQuitar] = useState<AccesorioOT | null>(null)
 
   const puestos = accesorios.filter((a) => a.verificado).length
+
+  // El accesorio se borra de verdad y no hay dónde recuperarlo: quien lo pierde
+  // vuelve a escribirlo. Con el icono agrandado para acertarlo con guante, se
+  // acierta también sin querer, así que ahora pregunta antes.
+  function quitarAccesorio() {
+    if (!porQuitar) return
+
+    const datos = new FormData()
+    datos.set('id', porQuitar.id)
+    datos.set('orden_id', ordenId)
+    // Dentro de una transición: la acción es asíncrona y llamarla suelta deja
+    // el pendiente de useActionState sin actualizar (React avisa por consola).
+    startTransition(() => accionQuitar(datos))
+    setPorQuitar(null)
+  }
 
   return (
     <Tarjeta>
@@ -547,6 +648,7 @@ function Accesorios({
                   id="cantidad"
                   name="cantidad"
                   type="number"
+                  inputMode="decimal"
                   step="0.5"
                   min="0.5"
                   defaultValue={1}
@@ -568,40 +670,41 @@ function Accesorios({
             <div className="mt-2 flex items-center justify-between gap-3">
               <Aviso resultado={resultado} />
               <Boton type="submit" tamano="sm" cargando={enviando}>
-                Agregar
+                Agregar accesorio
               </Boton>
             </div>
           </form>
         )}
 
         {accesorios.length === 0 ? (
-          <p className="py-6 text-center text-sm text-texto-suave">
-            Esta orden todavía no tiene accesorios que montar.
-          </p>
+          <div className="py-6 text-center">
+            <p className="text-sm font-medium text-texto">
+              Esta orden todavía no tiene accesorios que montar
+            </p>
+            <p className="mx-auto mt-1 max-w-md text-xs text-texto-suave">
+              {puedeArmar
+                ? 'Se traen solos de la cotización al armar la ficha. Si esta unidad lleva algo que no se cotizó, agrégalo con el botón de arriba.'
+                : 'Se traen de la cotización al armar la ficha de taller.'}
+            </p>
+          </div>
         ) : (
           <ul className="divide-y divide-borde">
             {accesorios.map((a) => (
               <li key={a.id} className="group flex items-center gap-3 py-2">
-                <form action={accionMarcar}>
-                  <input type="hidden" name="id" value={a.id} />
-                  <input type="hidden" name="orden_id" value={ordenId} />
-                  <input type="hidden" name="verificado" value={a.verificado ? 'no' : 'si'} />
-                  <button
-                    type="submit"
-                    disabled={!puedeEditar}
-                    aria-label={`Visto bueno de ${a.descripcion}`}
-                    aria-pressed={a.verificado}
-                    className={cn(
-                      'flex size-6 items-center justify-center rounded border transition-colors',
-                      a.verificado
-                        ? 'border-exito bg-exito-suave text-exito'
-                        : 'border-borde-fuerte text-transparent hover:border-acento',
-                      !puedeEditar && 'cursor-not-allowed opacity-40',
-                    )}
-                  >
-                    <Check aria-hidden className="size-4" />
-                  </button>
-                </form>
+                <div className="shrink-0">
+                  <Visto
+                    marcado={a.verificado}
+                    puedeEditar={puedeEditar}
+                    etiqueta={`Visto bueno de ${a.descripcion}`}
+                    onCambiar={(marcar) => {
+                      const datos = new FormData()
+                      datos.set('id', a.id)
+                      datos.set('orden_id', ordenId)
+                      datos.set('verificado', marcar ? 'si' : 'no')
+                      return marcarAccesorio(null, datos)
+                    }}
+                  />
+                </div>
 
                 <span className="tabular w-16 shrink-0 text-right text-sm text-texto-suave">
                   {formatearCantidad(a.cantidad)} {a.unidad}
@@ -621,22 +724,38 @@ function Accesorios({
                 </span>
 
                 {puedeArmar && (
-                  <form action={accionQuitar} className="opacity-0 group-hover:opacity-100">
-                    <input type="hidden" name="id" value={a.id} />
-                    <input type="hidden" name="orden_id" value={ordenId} />
-                    <button
-                      type="submit"
-                      aria-label={`Quitar ${a.descripcion}`}
-                      className="rounded p-1 text-texto-tenue hover:text-peligro"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
-                  </form>
+                  /* En el teléfono el botón está siempre a la vista (no hay
+                     ratón que lo revele) y mide lo que un dedo; en el
+                     monitor vuelve a ser el iconito de siempre. */
+                  <button
+                    type="button"
+                    onClick={() => setPorQuitar(a)}
+                    aria-label={`Quitar ${a.descripcion}`}
+                    className="inline-flex size-11 shrink-0 items-center justify-center rounded text-texto-tenue hover:text-peligro sm:size-auto sm:p-1 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
+                  >
+                    <Trash2 aria-hidden className="size-4 sm:size-3.5" />
+                  </button>
                 )}
               </li>
             ))}
           </ul>
         )}
+
+        <ConfirmarAccion
+          abierta={porQuitar !== null}
+          alCerrar={() => setPorQuitar(null)}
+          alConfirmar={quitarAccesorio}
+          titulo="¿Quitar el accesorio?"
+          detalle={
+            porQuitar
+              ? `Se va «${porQuitar.descripcion}» (${formatearCantidad(porQuitar.cantidad)} ${porQuitar.unidad}) de la ficha de taller. ${
+                  porQuitar.verificado
+                    ? 'Se lleva su visto bueno: hay que volver a escribirlo y volver a marcarlo.'
+                    : 'Hay que volver a escribirlo a mano.'
+                }`
+              : ''
+          }
+        />
       </TarjetaCuerpo>
     </Tarjeta>
   )
@@ -654,6 +773,19 @@ function Repuestos({
   const [abierto, setAbierto] = useState(false)
   const [resultado, accion, enviando] = useActionState(agregarRepuesto, null)
   const [, accionQuitar] = useActionState(quitarRepuesto, null)
+  const [porQuitar, setPorQuitar] = useState<RepuestoOT | null>(null)
+
+  // Mismo caso que los accesorios: el borrado es definitivo y el icono es un
+  // blanco grande. Se pregunta nombrando el repuesto que se va.
+  function quitarElRepuesto() {
+    if (!porQuitar) return
+
+    const datos = new FormData()
+    datos.set('id', porQuitar.id)
+    datos.set('orden_id', ordenId)
+    startTransition(() => accionQuitar(datos))
+    setPorQuitar(null)
+  }
 
   return (
     <Tarjeta>
@@ -683,6 +815,7 @@ function Repuestos({
                   id="cantidad_repuesto"
                   name="cantidad"
                   type="number"
+                  inputMode="numeric"
                   step="1"
                   min="1"
                   defaultValue={1}
@@ -704,16 +837,22 @@ function Repuestos({
             <div className="mt-2 flex items-center justify-between gap-3">
               <Aviso resultado={resultado} />
               <Boton type="submit" tamano="sm" cargando={enviando}>
-                Agregar
+                Agregar repuesto
               </Boton>
             </div>
           </form>
         )}
 
         {repuestos.length === 0 ? (
-          <p className="py-6 text-center text-sm text-texto-suave">
-            Esta orden no entrega repuestos.
-          </p>
+          <div className="py-6 text-center">
+            <p className="text-sm font-medium text-texto">Esta orden no entrega repuestos</p>
+            {puedeEditar && (
+              <p className="mx-auto mt-1 max-w-md text-xs text-texto-suave">
+                Si con la unidad se va alguna pieza de repuesto, anótala con el botón de arriba
+                para que quede en el acta de entrega.
+              </p>
+            )}
+          </div>
         ) : (
           <ul className="divide-y divide-borde">
             {repuestos.map((r) => (
@@ -724,22 +863,31 @@ function Repuestos({
                 <span className="flex-1 text-texto">{r.descripcion}</span>
                 <span className="text-xs text-texto-suave">{r.marca ?? '—'}</span>
                 {puedeEditar && (
-                  <form action={accionQuitar} className="opacity-0 group-hover:opacity-100">
-                    <input type="hidden" name="id" value={r.id} />
-                    <input type="hidden" name="orden_id" value={ordenId} />
-                    <button
-                      type="submit"
-                      aria-label={`Quitar ${r.descripcion}`}
-                      className="rounded p-1 text-texto-tenue hover:text-peligro"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
-                  </form>
+                  <button
+                    type="button"
+                    onClick={() => setPorQuitar(r)}
+                    aria-label={`Quitar ${r.descripcion}`}
+                    className="inline-flex size-11 shrink-0 items-center justify-center rounded text-texto-tenue hover:text-peligro sm:size-auto sm:p-1 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
+                  >
+                    <Trash2 aria-hidden className="size-4 sm:size-3.5" />
+                  </button>
                 )}
               </li>
             ))}
           </ul>
         )}
+
+        <ConfirmarAccion
+          abierta={porQuitar !== null}
+          alCerrar={() => setPorQuitar(null)}
+          alConfirmar={quitarElRepuesto}
+          titulo="¿Quitar el repuesto?"
+          detalle={
+            porQuitar
+              ? `Se va «${porQuitar.descripcion}»${porQuitar.marca ? ` (${porQuitar.marca})` : ''} ×${formatearCantidad(porQuitar.cantidad)} de los repuestos que salen con la unidad. Deja de figurar en el acta de entrega y hay que volver a escribirlo.`
+              : ''
+          }
+        />
       </TarjetaCuerpo>
     </Tarjeta>
   )

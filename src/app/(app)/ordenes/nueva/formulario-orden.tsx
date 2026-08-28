@@ -1,10 +1,11 @@
 'use client'
 
-import Link from 'next/link'
 import { useActionState, useEffect, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
+import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { createClient } from '@/lib/supabase/client'
@@ -29,6 +30,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   const [clienteId, setClienteId] = useState('')
   const [unidadId, setUnidadId] = useState('')
   const [carroceriaId, setCarroceriaId] = useState('')
+  const [responsableId, setResponsableId] = useState('')
   const [cargadas, setCargadas] = useState<{
     clienteId: string
     unidades: { id: string; placa: string; marca: string | null }[]
@@ -100,24 +102,25 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2">
           <Campo etiqueta="Cliente" htmlFor="cliente_id" requerido>
             <div className="flex items-center gap-2">
-              <Seleccion
+              <SeleccionBuscable
                 id="cliente_id"
                 name="cliente_id"
-                required
-                value={clienteId}
-                onChange={(e) => {
-                  setClienteId(e.target.value)
+                requerido
+                permiteVaciar={false}
+                className="flex-1"
+                valor={clienteId}
+                onChange={(v) => {
+                  setClienteId(v)
                   setUnidadId('')
                 }}
-                className="flex-1"
-              >
-                <option value="">Selecciona un cliente</option>
-                {clientes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.razon_social} · {c.numero_documento}
-                  </option>
-                ))}
-              </Seleccion>
+                marcador="Selecciona un cliente"
+                marcadorBusqueda="Razón social o RUC"
+                opciones={clientes.map((c) => ({
+                  valor: c.id,
+                  etiqueta: c.razon_social,
+                  detalle: c.numero_documento,
+                }))}
+              />
               <NuevoCliente onCreado={clienteCreado} />
             </div>
           </Campo>
@@ -132,22 +135,21 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
             }
           >
             <div className="flex items-center gap-2">
-              <Seleccion
+              <SeleccionBuscable
                 id="unidad_id"
                 name="unidad_id"
-                disabled={!clienteId}
-                value={unidadId}
-                onChange={(e) => setUnidadId(e.target.value)}
+                deshabilitado={!clienteId}
                 className="flex-1"
-              >
-                <option value="">Sin unidad asignada</option>
-                {unidades.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.placa}
-                    {u.marca ? ` · ${u.marca}` : ''}
-                  </option>
-                ))}
-              </Seleccion>
+                valor={unidadId}
+                onChange={setUnidadId}
+                marcador="Sin unidad asignada"
+                marcadorBusqueda="Placa o marca"
+                opciones={unidades.map((u) => ({
+                  valor: u.id,
+                  etiqueta: u.placa,
+                  detalle: u.marca,
+                }))}
+              />
               {clienteId && (
                 <NuevaUnidad
                   key={clienteId}
@@ -177,20 +179,16 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
 
           <Campo etiqueta="Tipo de carrocería" htmlFor="tipo_carroceria_id">
             <div className="flex items-center gap-2">
-              <Seleccion
+              <SeleccionBuscable
                 id="tipo_carroceria_id"
                 name="tipo_carroceria_id"
-                value={carroceriaId}
-                onChange={(e) => setCarroceriaId(e.target.value)}
                 className="flex-1"
-              >
-                <option value="">Sin especificar</option>
-                {carrocerias.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.nombre}
-                  </option>
-                ))}
-              </Seleccion>
+                valor={carroceriaId}
+                onChange={setCarroceriaId}
+                marcador="Sin especificar"
+                marcadorBusqueda="Tolva, cisterna, furgón…"
+                opciones={carrocerias.map((t) => ({ valor: t.id, etiqueta: t.nombre }))}
+              />
               <NuevaCarroceria onCreada={carroceriaCreada} />
             </div>
           </Campo>
@@ -266,21 +264,28 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
           </Campo>
 
           <Campo etiqueta="Responsable" htmlFor="responsable_id">
-            <Seleccion id="responsable_id" name="responsable_id">
-              <option value="">Sin asignar</option>
-              {catalogos.responsables.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.nombres} {r.apellidos}
-                </option>
-              ))}
-            </Seleccion>
+            <SeleccionBuscable
+              id="responsable_id"
+              name="responsable_id"
+              valor={responsableId}
+              onChange={setResponsableId}
+              marcador="Sin asignar"
+              marcadorBusqueda="Nombre o apellido"
+              opciones={catalogos.responsables.map((r) => ({
+                valor: r.id,
+                etiqueta: `${r.nombres} ${r.apellidos}`,
+              }))}
+            />
           </Campo>
 
           <Campo etiqueta="Monto presupuestado" htmlFor="monto_presupuestado">
+            {/* `inputMode` decimal: en el teléfono abre el teclado numérico con
+                punto, no el alfabético, que obliga a dos toques por cifra. */}
             <Entrada
               id="monto_presupuestado"
               name="monto_presupuestado"
               type="number"
+              inputMode="decimal"
               min={0}
               step="0.01"
               defaultValue={0}
@@ -301,12 +306,9 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
       )}
 
       <div className="flex justify-end gap-2">
-        <Link
-          href="/ordenes"
-          className="inline-flex h-9 items-center rounded-[var(--radius-base)] px-4 text-sm text-texto-suave hover:bg-superficie-2 hover:text-texto"
-        >
+        <EnlaceBoton href="/ordenes" variante="fantasma">
           Cancelar
-        </Link>
+        </EnlaceBoton>
         <Boton type="submit" cargando={pendiente}>
           Registrar orden
         </Boton>

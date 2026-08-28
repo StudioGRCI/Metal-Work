@@ -6,6 +6,7 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo } from '@/components/ui/campos'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { Entrada } from '@/components/ui/campos'
+import { Ventana } from '@/components/ui/ventana'
 import { cambiarEstadoOrden, registrarEntrega } from '../acciones'
 
 /**
@@ -116,115 +117,111 @@ export function AccionesEstado({
         </p>
       )}
 
-      {entregando_ && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <button
-            type="button"
-            aria-label="Cancelar"
-            onClick={() => setEntregando(false)}
-            className="absolute inset-0 bg-black/40"
-          />
-          <div className="relative w-full max-w-md rounded-[var(--radius-base)] border border-borde bg-superficie p-4 shadow-xl">
-            <h2 className="text-sm font-semibold text-texto">Acta de conformidad</h2>
-            <p className="mt-1 text-xs text-texto-suave">
-              Al registrar el acta la orden queda entregada. Si falta documentación
-              obligatoria o firmas, el sistema lo avisa y no la cierra.
-            </p>
+      <Ventana
+        abierta={entregando_}
+        alCerrar={() => setEntregando(false)}
+        titulo="Acta de conformidad"
+        descripcion="Al registrar el acta la orden queda entregada. Si falta documentación obligatoria o firmas, el sistema lo avisa y no la cierra."
+        ancho="sm"
+      >
+        <form
+          action={(datos) => {
+            registrar(datos)
+            setEntregando(false)
+          }}
+          className="space-y-3"
+        >
+          <input type="hidden" name="orden_id" value={orden.id} />
 
-            <form
-              action={(datos) => {
-                registrar(datos)
-                setEntregando(false)
-              }}
-              className="mt-4 space-y-3"
-            >
-              <input type="hidden" name="orden_id" value={orden.id} />
+          {/* `autoComplete="off"` en los tres: quien llena el acta es el
+              del taller, y el navegador le ofrece su propio nombre y su
+              propio DNI para el campo de quien retira la unidad. Ese dato
+              mal puesto queda firmado en el acta de conformidad. */}
+          <Campo etiqueta="Quién recibe" htmlFor="recibe_nombre" requerido>
+            <Entrada id="recibe_nombre" name="recibe_nombre" required
+                     autoComplete="off"
+                     placeholder="Nombre completo de quien retira la unidad" />
+          </Campo>
 
-              <Campo etiqueta="Quién recibe" htmlFor="recibe_nombre" requerido>
-                <Entrada id="recibe_nombre" name="recibe_nombre" required autoFocus
-                         placeholder="Nombre completo de quien retira la unidad" />
-              </Campo>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Campo etiqueta="Documento" htmlFor="recibe_documento">
-                  <Entrada id="recibe_documento" name="recibe_documento" placeholder="DNI" />
-                </Campo>
-                <Campo etiqueta="Cargo" htmlFor="recibe_cargo">
-                  <Entrada id="recibe_cargo" name="recibe_cargo" placeholder="Ej.: jefe de flota" />
-                </Campo>
-              </div>
-
-              <Campo etiqueta="Garantía (meses)" htmlFor="garantia_meses">
-                <Entrada id="garantia_meses" name="garantia_meses" type="number"
-                         min={0} max={120} defaultValue={12} />
-              </Campo>
-
-              <Campo etiqueta="Observaciones" htmlFor="obs_entrega">
-                <AreaTexto id="obs_entrega" name="observaciones" rows={2}
-                           placeholder="Novedades de la entrega, si las hubo" />
-              </Campo>
-
-              <div className="flex justify-end gap-2">
-                <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setEntregando(false)}>
-                  Cancelar
-                </Boton>
-                <Boton type="submit" tamano="sm" variante="primario" cargando={entregando}>
-                  Registrar entrega
-                </Boton>
-              </div>
-            </form>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Campo etiqueta="Documento" htmlFor="recibe_documento">
+              <Entrada id="recibe_documento" name="recibe_documento" autoComplete="off"
+                       inputMode="numeric" placeholder="DNI" />
+            </Campo>
+            <Campo etiqueta="Cargo" htmlFor="recibe_cargo">
+              <Entrada id="recibe_cargo" name="recibe_cargo" autoComplete="off"
+                       placeholder="Ej.: jefe de flota" />
+            </Campo>
           </div>
-        </div>
-      )}
 
-      {pidiendoMotivo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <button
-            type="button"
-            aria-label="Cancelar"
-            onClick={() => setPidiendoMotivo(null)}
-            className="absolute inset-0 bg-black/40"
-          />
-          <div className="relative w-full max-w-md rounded-[var(--radius-base)] border border-borde bg-superficie p-4 shadow-xl">
-            <h2 className="text-sm font-semibold text-texto">
-              {pidiendoMotivo.etiqueta} · {definir(ESTADO_OT, orden.estado).etiqueta}
-            </h2>
-            <p className="mt-1 text-xs text-texto-suave">
-              Este cambio queda registrado en la trazabilidad de la orden. Indica el motivo.
-            </p>
+          <Campo etiqueta="Garantía (meses)" htmlFor="garantia_meses">
+            <Entrada id="garantia_meses" name="garantia_meses" type="number"
+                     inputMode="numeric" min={0} max={120} defaultValue={12} />
+          </Campo>
 
-            <form
-              action={(datos) => {
-                ejecutar(datos)
-                setPidiendoMotivo(null)
-              }}
-              className="mt-4 space-y-3"
-            >
-              <input type="hidden" name="orden_id" value={orden.id} />
-              <input type="hidden" name="estado" value={pidiendoMotivo.estado} />
+          <Campo etiqueta="Observaciones" htmlFor="obs_entrega">
+            <AreaTexto id="obs_entrega" name="observaciones" rows={2}
+                       placeholder="Novedades de la entrega, si las hubo" />
+          </Campo>
 
-              <Campo etiqueta="Motivo" htmlFor="motivo" requerido>
-                <AreaTexto
-                  id="motivo"
-                  name="motivo"
-                  required
-                  autoFocus
-                  placeholder="Ej.: falta plancha de 6 mm, se espera ingreso el lunes"
-                />
-              </Campo>
-
-              <div className="flex justify-end gap-2">
-                <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setPidiendoMotivo(null)}>
-                  Cancelar
-                </Boton>
-                <Boton type="submit" tamano="sm" variante={pidiendoMotivo.estado === 'ANULADA' ? 'peligro' : 'primario'}>
-                  Confirmar
-                </Boton>
-              </div>
-            </form>
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setEntregando(false)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" tamano="sm" variante="primario" cargando={entregando}>
+              Registrar entrega
+            </Boton>
           </div>
-        </div>
-      )}
+        </form>
+      </Ventana>
+
+      {/* La ventana no pinta nada cuando está cerrada, así que se le pasa
+          siempre y el estado solo decide si se abre. Con `pidiendoMotivo` en
+          nulo los valores de adentro no llegan a verse. */}
+      <Ventana
+        abierta={pidiendoMotivo !== null}
+        alCerrar={() => setPidiendoMotivo(null)}
+        titulo={
+          pidiendoMotivo
+            ? `${pidiendoMotivo.etiqueta} · ${definir(ESTADO_OT, orden.estado).etiqueta}`
+            : ''
+        }
+        descripcion="Este cambio queda registrado en la trazabilidad de la orden. Indica el motivo."
+        ancho="sm"
+      >
+        <form
+          action={(datos) => {
+            ejecutar(datos)
+            setPidiendoMotivo(null)
+          }}
+          className="space-y-3"
+        >
+          <input type="hidden" name="orden_id" value={orden.id} />
+          <input type="hidden" name="estado" value={pidiendoMotivo?.estado ?? ''} />
+
+          <Campo etiqueta="Motivo" htmlFor="motivo" requerido>
+            <AreaTexto
+              id="motivo"
+              name="motivo"
+              required
+              placeholder="Ej.: falta plancha de 6 mm, se espera ingreso el lunes"
+            />
+          </Campo>
+
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setPidiendoMotivo(null)}>
+              Cancelar
+            </Boton>
+            <Boton
+              type="submit"
+              tamano="sm"
+              variante={pidiendoMotivo?.estado === 'ANULADA' ? 'peligro' : 'primario'}
+            >
+              Confirmar
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
     </div>
   )
 }

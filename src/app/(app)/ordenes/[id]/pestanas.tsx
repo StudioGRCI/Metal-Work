@@ -35,7 +35,10 @@ export function Pestanas({
             href={`/ordenes/${ordenId}?vista=${p.clave}`}
             aria-current={esActiva ? 'page' : undefined}
             className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors',
+              // 44 px de alto en el teléfono —nueve pestañas seguidas y el dedo
+              // gordo con guante— y en `sm:` los 36 px de siempre. `min-h` le
+              // gana a `py`, por eso hay que soltarlo en el monitor.
+              '-mb-px inline-flex min-h-11 items-center border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors sm:min-h-0',
               esActiva
                 ? 'border-acento font-medium text-acento'
                 : 'border-transparent text-texto-suave hover:border-borde-fuerte hover:text-texto',

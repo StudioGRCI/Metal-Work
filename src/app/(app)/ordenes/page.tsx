@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { Plus } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { Paginacion } from '@/components/estructura/paginacion'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia, Punto } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
@@ -40,6 +42,13 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
   const hayFiltros = Boolean(
     filtros.busqueda || filtros.estado || filtros.prioridad || filtros.atrasadas,
   )
+  const puedeCrear = puede(perfil, 'ordenes.crear')
+
+  // Cero con filtros puestos y cero de verdad no son lo mismo: al que busca le
+  // importa saber si el vacío lo produjo su propio filtro.
+  const vacio = hayFiltros
+    ? 'Ninguna orden coincide con los filtros aplicados'
+    : 'Ninguna orden registrada todavía'
 
   return (
     <>
@@ -47,18 +56,15 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
         titulo="Órdenes de trabajo"
         descripcion={
           total === 0
-            ? 'Ninguna orden registrada todavía'
+            ? vacio
             : `${total.toLocaleString('es-PE')} ${total === 1 ? 'orden' : 'órdenes'}${hayFiltros ? ' con los filtros aplicados' : ''}`
         }
         acciones={
-          puede(perfil, 'ordenes.crear') && (
-            <Link
-              href="/ordenes/nueva"
-              className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-base)] bg-acento px-4 text-sm font-medium text-acento-texto hover:bg-acento-fuerte"
-            >
+          puedeCrear && (
+            <EnlaceBoton href="/ordenes/nueva">
               <Plus aria-hidden className="size-4" />
               Nueva orden
-            </Link>
+            </EnlaceBoton>
           )
         }
       />
@@ -74,20 +80,37 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
               <TH>Trabajo</TH>
               <TH>Estado</TH>
               <TH className="w-40">Avance</TH>
-              <TH className="text-right">Horas</TH>
+              {/* Horas y responsable se esconden en el teléfono —donde la tabla
+                  ya no cabe— y su dato baja en letra chica a la celda de al
+                  lado, para no perderlo por el camino. */}
+              <TH className="hidden text-right sm:table-cell">Horas</TH>
               <TH>Entrega</TH>
-              <TH>Responsable</TH>
+              <TH className="hidden sm:table-cell">Responsable</TH>
             </tr>
           </TablaCabecera>
           <tbody>
             {ordenes.length === 0 ? (
               <SinDatos
                 colSpan={8}
-                titulo={hayFiltros ? 'Sin resultados' : 'Aún no hay órdenes de trabajo'}
+                titulo={hayFiltros ? 'Ninguna orden con estos filtros' : 'Aún no hay órdenes de trabajo'}
                 descripcion={
                   hayFiltros
-                    ? 'Prueba con otros filtros o limpia la búsqueda.'
+                    ? 'Con los filtros puestos no aparece ninguna. Prueba con otro estado, otra prioridad, o quita la búsqueda.'
                     : 'Registra la primera orden para empezar a controlar la producción.'
+                }
+                accion={
+                  hayFiltros ? (
+                    <EnlaceBoton href="/ordenes" variante="secundario" tamano="sm">
+                      Quitar los filtros
+                    </EnlaceBoton>
+                  ) : (
+                    puedeCrear && (
+                      <EnlaceBoton href="/ordenes/nueva" tamano="sm">
+                        <Plus aria-hidden className="size-4" />
+                        Registrar la primera orden
+                      </EnlaceBoton>
+                    )
+                  )
                 }
               />
             ) : (
@@ -106,9 +129,11 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                 return (
                   <TR key={orden.id}>
                     <TD className="whitespace-nowrap">
+                      {/* Blanco de dedo —y de guante— en el teléfono; en el
+                          monitor vuelve a ser una línea de texto y nada más. */}
                       <Link
                         href={`/ordenes/${orden.id}`}
-                        className="font-medium text-acento hover:underline"
+                        className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0"
                       >
                         {orden.numero}
                       </Link>
@@ -122,6 +147,11 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                       <p className="max-w-52 truncate text-texto">{orden.cliente}</p>
                       <p className="text-[11px] text-texto-suave">
                         {orden.placa ?? 'Sin unidad asignada'}
+                        {/* El responsable no tiene columna propia en el
+                            teléfono: viaja aquí, pegado a la unidad. */}
+                        {orden.responsable && (
+                          <span className="sm:hidden"> · {orden.responsable}</span>
+                        )}
                       </p>
                     </TD>
 
@@ -141,10 +171,14 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                       <Progreso valor={orden.avance_porcentaje} mostrarValor alto="sm" />
                       <p className="mt-1 text-[11px] text-texto-suave">
                         {orden.etapas_terminadas ?? 0} de {orden.etapas_total ?? 0} etapas
+                        <span className="tabular sm:hidden">
+                          {' · '}
+                          {cantidad(orden.horas_reales)}/{cantidad(orden.horas_estimadas)} h
+                        </span>
                       </p>
                     </TD>
 
-                    <TD className="tabular text-right whitespace-nowrap">
+                    <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">
                       <span className="text-texto">{cantidad(orden.horas_reales)}</span>
                       <span className="text-texto-tenue"> / {cantidad(orden.horas_estimadas)}</span>
                     </TD>
@@ -168,7 +202,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                       )}
                     </TD>
 
-                    <TD className="max-w-40 truncate text-texto-suave">
+                    <TD className="hidden max-w-40 truncate text-texto-suave sm:table-cell">
                       {orden.responsable ?? '—'}
                     </TD>
                   </TR>
@@ -179,59 +213,14 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
         </Tabla>
       </Tarjeta>
 
-      {paginas > 1 && (
-        <Paginacion pagina={pagina} paginas={paginas} total={total} params={params} />
-      )}
+      <Paginacion
+        ruta="/ordenes"
+        pagina={pagina}
+        paginas={paginas}
+        total={total}
+        porPagina={ORDENES_POR_PAGINA}
+        params={params}
+      />
     </>
-  )
-}
-
-function Paginacion({
-  pagina,
-  paginas,
-  total,
-  params,
-}: {
-  pagina: number
-  paginas: number
-  total: number
-  params: Record<string, string | string[] | undefined>
-}) {
-  const enlace = (destino: number) => {
-    const query = new URLSearchParams()
-    for (const [clave, valor] of Object.entries(params)) {
-      if (clave !== 'pagina' && typeof valor === 'string' && valor) query.set(clave, valor)
-    }
-    query.set('pagina', String(destino))
-    return `/ordenes?${query}`
-  }
-
-  const desde = (pagina - 1) * ORDENES_POR_PAGINA + 1
-  const hasta = Math.min(pagina * ORDENES_POR_PAGINA, total)
-
-  return (
-    <nav className="mt-4 flex items-center justify-between gap-4" aria-label="Paginación">
-      <p className="text-xs text-texto-suave">
-        Mostrando {desde}–{hasta} de {total}
-      </p>
-      <div className="flex gap-2">
-        {pagina > 1 && (
-          <Link
-            href={enlace(pagina - 1)}
-            className="rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs hover:bg-superficie-2"
-          >
-            Anterior
-          </Link>
-        )}
-        {pagina < paginas && (
-          <Link
-            href={enlace(pagina + 1)}
-            className="rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs hover:bg-superficie-2"
-          >
-            Siguiente
-          </Link>
-        )}
-      </div>
-    </nav>
   )
 }

@@ -128,7 +128,9 @@ export function SalidaDeUnidad({
         />
 
         {!liberacion && puedeLiberar && (
-          <form action={liberar} className="ml-8 flex flex-wrap items-end gap-2">
+          /* La sangría alinea el formulario con el texto de su compuerta; en el
+             teléfono esos 32 px son casi un décimo del ancho y se sueltan. */
+          <form action={liberar} className="flex flex-wrap items-end gap-2 sm:ml-8">
             <input type="hidden" name="orden_id" value={ordenId} />
             <Campo etiqueta="Constancia" htmlFor="observacion-liberacion" ayuda="Cómo se comprobó" className="min-w-64 flex-1">
               <Entrada
@@ -168,7 +170,7 @@ export function SalidaDeUnidad({
         />
 
         {entrega && !entrega.salida_confirmada_en && puedeConfirmar && (
-          <form action={confirmar} className="ml-8">
+          <form action={confirmar} className="sm:ml-8">
             <input type="hidden" name="entrega_id" value={entrega.id} />
             <input type="hidden" name="orden_id" value={ordenId} />
             <Boton type="submit" tamano="sm" cargando={confirmando}>

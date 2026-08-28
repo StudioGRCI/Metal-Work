@@ -49,7 +49,10 @@ export function Costos({
               : 'El presupuesto proviene del monto de la cabecera de la orden'
           }
         />
-        <TarjetaCuerpo className="grid gap-4 sm:grid-cols-4">
+        {/* Dos por fila en el teléfono: cuatro cifras apiladas obligan a rodar
+            la pantalla para comparar el costo con el presupuesto, que es
+            justamente lo que se viene a hacer aquí. */}
+        <TarjetaCuerpo className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Cifra titulo="Costo acumulado" valor={moneda(total, mon)} />
           <Cifra titulo="Presupuesto" valor={moneda(costo.presupuesto, mon)} />
           <Cifra
@@ -65,7 +68,7 @@ export function Costos({
             nota={costo.valor_venta ? `Venta ${moneda(costo.valor_venta, mon)}` : 'Sin valor de venta'}
           />
 
-          <div className="sm:col-span-4">
+          <div className="col-span-2 sm:col-span-4">
             <div className="mb-1 flex justify-between text-xs text-texto-suave">
               <span>Consumo del presupuesto</span>
               <span className="tabular">
@@ -83,9 +86,15 @@ export function Costos({
         <TarjetaCabecera titulo="Composición del costo" />
         <TarjetaCuerpo className="space-y-3">
           {componentes.length === 0 ? (
-            <p className="py-6 text-center text-sm text-texto-suave">
-              Aún no se ha imputado ningún costo a esta orden.
-            </p>
+            <div className="py-6 text-center">
+              <p className="text-sm font-medium text-texto">
+                Aún no se ha imputado ningún costo a esta orden
+              </p>
+              <p className="mx-auto mt-1 max-w-md text-xs text-texto-suave">
+                El costo se arma solo: material que sale del almacén, horas de partes aprobados y
+                servicios ejecutados. Aparecerá aquí en cuanto ocurra el primero.
+              </p>
+            </div>
           ) : (
             componentes.map((c) => {
               const def = definir(TIPO_COSTO, c.tipo)
@@ -142,8 +151,14 @@ export function Costos({
               <tbody>
                 {materiales.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="px-3 py-10 text-center text-sm text-texto-suave">
-                      No se ha entregado material a esta orden.
+                    <td colSpan={3} className="px-3 py-10 text-center">
+                      <p className="text-sm font-medium text-texto">
+                        No se ha entregado material a esta orden
+                      </p>
+                      <p className="mx-auto mt-1 max-w-sm text-xs text-texto-suave">
+                        El material se carga aquí cuando el almacén registra la salida contra esta
+                        orden, valorizada al costo promedio de ese momento.
+                      </p>
                     </td>
                   </tr>
                 ) : (

@@ -7,6 +7,15 @@ import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
+/**
+ * Lo que se responde cuando la escritura no encontró su fila. Pasa cuando la
+ * orden ya no está a la vista de quien marca -otra sede, otro estado- o cuando
+ * la pantalla quedó vieja. Un UPDATE así no es un error para Postgres: afecta
+ * cero filas y calla, y sin esto la casilla se pintaba marcada sin estarlo.
+ */
+const NO_TOCO_NADA =
+  'No se pudo marcar: vuelve a cargar la orden y comprueba que sigue siendo tuya.'
+
 function nulo(valor?: string | null) {
   const t = valor?.trim()
   return t ? t : null
@@ -215,7 +224,7 @@ export async function marcarAccesorio(_previo: unknown, datos: FormData): Promis
   const pone = v.verificado === 'si'
   const supabase = await createClient()
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('ot_accesorios')
     .update({
       verificado: pone,
@@ -223,8 +232,12 @@ export async function marcarAccesorio(_previo: unknown, datos: FormData): Promis
       verificado_por: pone ? guarda.perfil.id : null,
     })
     .eq('id', v.id)
+    .eq('orden_id', v.orden_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   return { ok: true }
@@ -346,12 +359,16 @@ export async function marcarVerificacion(
       : { avance_2: pone, avance_2_en: ahora }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('ot_verificaciones')
     .update({ ...cambio, responsable_id: guarda.perfil.id })
     .eq('id', v.id)
+    .eq('orden_id', v.orden_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   return { ok: true }
@@ -376,12 +393,16 @@ export async function anotarVerificacion(
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('ot_verificaciones')
     .update({ observaciones: nulo(analisis.data.observaciones) })
     .eq('id', analisis.data.id)
+    .eq('orden_id', analisis.data.orden_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${analisis.data.orden_id}`)
   return { ok: true, mensaje: 'Observación guardada.' }

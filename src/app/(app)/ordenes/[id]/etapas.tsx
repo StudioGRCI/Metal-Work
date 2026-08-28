@@ -68,10 +68,13 @@ export function Etapas({
                   <p className="flex items-center gap-2 text-sm font-medium text-texto">
                     {etapa.etapa}
                     {etapa.requiere_inspeccion &&
+                      /* `role="img"`: sin él la etiqueta del <svg> no se
+                         anuncia, y aquí el icono no adorna —dice si la etapa
+                         puede darse por terminada o no—. */
                       (etapa.inspeccion_conforme ? (
-                        <CheckCircle2 aria-label="Inspección conforme" className="size-3.5 text-exito" />
+                        <CheckCircle2 role="img" aria-label="Inspección conforme" className="size-3.5 text-exito" />
                       ) : (
-                        <ShieldAlert aria-label="Requiere inspección de calidad" className="size-3.5 text-aviso" />
+                        <ShieldAlert role="img" aria-label="Requiere inspección de calidad" className="size-3.5 text-aviso" />
                       ))}
                   </p>
                   <p className="text-[11px] text-texto-suave">
@@ -82,7 +85,10 @@ export function Etapas({
                   </p>
                 </div>
 
-                <div className="w-40">
+                {/* La barra ocupa la línea entera en el teléfono, donde si no
+                    se queda apretada entre el nombre y la insignia; en el
+                    monitor vuelve a sus 160 px de siempre. */}
+                <div className="w-full sm:w-40">
                   <Progreso valor={etapa.avance_porcentaje} mostrarValor alto="sm" />
                 </div>
 
@@ -162,11 +168,14 @@ function FormularioEtapa({
             step={5}
             value={avance}
             onChange={(e) => setAvance(Number(e.target.value))}
-            className="w-full accent-[var(--acento)]"
+            // El riel mide 4 px; el blanco para agarrarlo, 44 en el teléfono.
+            // En el monitor vuelve al alto natural del control.
+            className="h-11 w-full accent-[var(--acento)] sm:h-auto"
           />
           <Entrada
             aria-label="Avance en porcentaje"
             type="number"
+            inputMode="numeric"
             min={0}
             max={100}
             value={avance}

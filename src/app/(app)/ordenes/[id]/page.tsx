@@ -2,11 +2,13 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia, Punto } from '@/components/ui/etiqueta-estado'
+import { Indicador } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_OT, PRIORIDAD, TIPO_TRABAJO, definir } from '@/lib/dominio/estados'
-import { cantidad, fecha, fechaHora, moneda, numero as fmtNumero } from '@/lib/format'
+import { cantidad, fecha, fechaHora, hoyLima, moneda, numero as fmtNumero } from '@/lib/format'
 import {
   estadoDeSalida,
   fechasClaveDeOrden,
@@ -55,6 +57,29 @@ const VISTAS = [
   'bitacora',
 ] as const
 type Vista = (typeof VISTAS)[number]
+
+/** Estados en los que la orden ya no corre plazo: no puede estar atrasada. */
+const ESTADOS_CERRADOS: string[] = ['ENTREGADA', 'FACTURADA', 'ANULADA']
+
+function pasadoDeHoras(reales: number | null, estimadas: number | null) {
+  return Number(estimadas ?? 0) > 0 && Number(reales ?? 0) > Number(estimadas ?? 0)
+}
+
+/** Un número solo no dice nada: 120 h son pocas o muchas según lo estimado. */
+function pieDeHoras(reales: number | null, estimadas: number | null) {
+  const est = Number(estimadas ?? 0)
+  const real = Number(reales ?? 0)
+  if (est <= 0) return 'Sin horas estimadas con qué comparar'
+  if (real > est) return `${cantidad(real - est)} h por encima de lo estimado`
+  return `Quedan ${cantidad(est - real)} h del estimado`
+}
+
+function pieDeEntrega(finReal: string | null, comprometida: string | null, vencida: boolean) {
+  if (finReal) return `Trabajo terminado el ${fecha(finReal)}`
+  if (vencida) return 'Ya pasó la fecha prometida al cliente'
+  if (comprometida) return 'Fecha prometida al cliente'
+  return 'Todavía sin fecha comprometida'
+}
 
 export default async function PaginaOrden({ params, searchParams }: PageProps<'/ordenes/[id]'>) {
   const perfil = await exigirPermiso('ordenes.ver')
@@ -112,6 +137,19 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const sede = orden.sede as unknown as { nombre: string }
   const responsable = orden.responsable as unknown as { nombres: string; apellidos: string } | null
   const tipoCarroceria = orden.tipo_carroceria as unknown as { nombre: string } | null
+  const cotizacion = orden.cotizacion as unknown as { numero: string } | null
+
+  // Comparación de texto contra la fecha de hoy en el taller: son fechas planas
+  // YYYY-MM-DD y `hoyLima()` da la del taller, no la de UTC, que de noche ya va
+  // un día adelante y pintaba de rojo lo que todavía estaba en plazo. Esto es un
+  // componente de servidor, así que el navegador no lo vuelve a calcular y no
+  // hay error de hidratación que suprimir.
+  const entregaVencida = Boolean(
+    orden.fecha_entrega_comprometida &&
+      !orden.fecha_fin_real &&
+      !ESTADOS_CERRADOS.includes(orden.estado) &&
+      orden.fecha_entrega_comprometida < hoyLima(),
+  )
 
   return (
     <>
@@ -148,24 +186,45 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         </p>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-4">
-        <Indicador titulo="Avance">
-          <Progreso valor={orden.avance_porcentaje} mostrarValor />
-        </Indicador>
-        <Indicador titulo="Horas">
-          <p className="tabular text-lg font-semibold text-texto">
-            {cantidad(orden.horas_reales)}
-            <span className="text-sm font-normal text-texto-suave"> / {cantidad(orden.horas_estimadas)} h</span>
-          </p>
-        </Indicador>
-        <Indicador titulo="Presupuesto">
-          <p className="tabular text-lg font-semibold text-texto">
-            {moneda(orden.monto_presupuestado, orden.moneda as CodigoMoneda)}
-          </p>
-        </Indicador>
-        <Indicador titulo="Entrega comprometida">
-          <p className="text-lg font-semibold text-texto">{fecha(orden.fecha_entrega_comprometida)}</p>
-        </Indicador>
+      {/* Dos por fila desde el teléfono: cuatro tarjetas apiladas se comían la
+          pantalla entera antes de llegar a las pestañas. En el monitor siguen
+          siendo las cuatro de una fila, como siempre.
+          Cada cifra lleva ahora a dónde se explica: el avance a su pestaña, las
+          horas a los partes que las cargaron, el presupuesto al costo real. */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Indicador
+          titulo="Avance"
+          valor={<Progreso valor={orden.avance_porcentaje} mostrarValor />}
+          pie="Ponderado por las horas de cada etapa"
+          href={`/ordenes/${orden.id}?vista=avance`}
+        />
+        <Indicador
+          titulo="Horas"
+          valor={
+            <>
+              {cantidad(orden.horas_reales)}
+              <span className="text-sm font-normal text-texto-suave">
+                {' / '}
+                {cantidad(orden.horas_estimadas)} h
+              </span>
+            </>
+          }
+          tono={pasadoDeHoras(orden.horas_reales, orden.horas_estimadas) ? 'peligro' : 'neutro'}
+          pie={pieDeHoras(orden.horas_reales, orden.horas_estimadas)}
+          href={`/ordenes/${orden.id}?vista=horas`}
+        />
+        <Indicador
+          titulo="Presupuesto"
+          valor={moneda(orden.monto_presupuestado, orden.moneda as CodigoMoneda)}
+          pie={cotizacion ? `Cotización ${cotizacion.numero}` : 'Sin cotización asociada'}
+          href={puede(perfil, 'costos.ver') ? `/ordenes/${orden.id}?vista=costos` : undefined}
+        />
+        <Indicador
+          titulo="Entrega comprometida"
+          valor={fecha(orden.fecha_entrega_comprometida)}
+          tono={entregaVencida ? 'peligro' : 'neutro'}
+          pie={pieDeEntrega(orden.fecha_fin_real, orden.fecha_entrega_comprometida, entregaVencida)}
+        />
       </div>
 
       <Pestanas ordenId={orden.id} activa={vista} verCostos={puede(perfil, 'costos.ver')} />
@@ -239,7 +298,11 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               ) : (
                 etapas.map((etapa) => (
                   <div key={etapa.etapa_id} className="flex items-center gap-3">
-                    <span className="w-44 shrink-0 truncate text-sm text-texto">{etapa.etapa}</span>
+                    {/* En el teléfono el nombre cede sitio a la barra, que es
+                        lo que se viene a mirar; en el monitor no se mueve. */}
+                    <span className="w-28 shrink-0 truncate text-sm text-texto sm:w-44">
+                      {etapa.etapa}
+                    </span>
                     <Progreso valor={etapa.avance_porcentaje} alto="sm" />
                     <span className="tabular w-12 shrink-0 text-right text-xs text-texto-suave">
                       {fmtNumero(etapa.avance_porcentaje, 0)}%
@@ -295,7 +358,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         />
       )}
 
-      {vista === 'horas' && <TablaHoras horas={horas} />}
+      {vista === 'horas' && (
+        <TablaHoras horas={horas} puedeVerPartes={puede(perfil, 'produccion.ver')} />
+      )}
       {vista === 'costos' &&
         (verCostos ? (
           <Costos costo={costo} materiales={materiales} />
@@ -326,19 +391,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   )
 }
 
-function Indicador({ titulo, children }: { titulo: string; children: React.ReactNode }) {
-  return (
-    <Tarjeta>
-      <TarjetaCuerpo>
-        <p className="mb-2 text-[11px] font-medium tracking-wide text-texto-suave uppercase">
-          {titulo}
-        </p>
-        {children}
-      </TarjetaCuerpo>
-    </Tarjeta>
-  )
-}
-
 function Dato({ etiqueta, valor }: { etiqueta: string; valor?: string | number | null }) {
   return (
     <div className="flex justify-between gap-4 border-b border-borde py-2 text-sm last:border-0">
@@ -348,7 +400,13 @@ function Dato({ etiqueta, valor }: { etiqueta: string; valor?: string | number |
   )
 }
 
-function TablaHoras({ horas }: { horas: Awaited<ReturnType<typeof listarHorasOrden>> }) {
+function TablaHoras({
+  horas,
+  puedeVerPartes,
+}: {
+  horas: Awaited<ReturnType<typeof listarHorasOrden>>
+  puedeVerPartes: boolean
+}) {
   const total = horas.reduce((suma, h) => suma + Number(h.horas_totales ?? 0), 0)
 
   return (
@@ -362,19 +420,35 @@ function TablaHoras({ horas }: { horas: Awaited<ReturnType<typeof listarHorasOrd
           <table className="w-full text-sm">
             <thead className="border-b border-borde bg-superficie-2">
               <tr>
-                <th className="px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase">Parte</th>
+                {/* El número de parte y las horas extra se esconden en el
+                    teléfono y bajan a la celda de al lado en letra chica: son
+                    las dos columnas que menos se miran de pie en el taller. */}
+                <th className="hidden px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase sm:table-cell">Parte</th>
                 <th className="px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase">Fecha</th>
                 <th className="px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase">Operario</th>
                 <th className="px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase">Etapa</th>
                 <th className="px-3 py-2 text-right text-[11px] font-semibold text-texto-suave uppercase">Horas</th>
-                <th className="px-3 py-2 text-right text-[11px] font-semibold text-texto-suave uppercase">Extra</th>
+                <th className="hidden px-3 py-2 text-right text-[11px] font-semibold text-texto-suave uppercase sm:table-cell">Extra</th>
               </tr>
             </thead>
             <tbody>
               {horas.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-10 text-center text-sm text-texto-suave">
-                    Todavía no se han registrado horas en esta orden.
+                  <td colSpan={6} className="px-3 py-10 text-center">
+                    <p className="text-sm font-medium text-texto">
+                      Todavía no se han registrado horas en esta orden
+                    </p>
+                    <p className="mx-auto mt-1 max-w-md text-xs text-texto-suave">
+                      Las horas no se anotan aquí: llegan de los partes diarios del taller. Al
+                      aprobar un parte, sus horas se cargan a las etapas de esta orden.
+                    </p>
+                    {puedeVerPartes && (
+                      <div className="mt-4 flex justify-center">
+                        <EnlaceBoton href="/produccion" variante="secundario" tamano="sm">
+                          Ver los partes diarios
+                        </EnlaceBoton>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -382,20 +456,36 @@ function TablaHoras({ horas }: { horas: Awaited<ReturnType<typeof listarHorasOrd
                   const parte = h.parte as unknown as { numero: string; fecha: string; estado: string }
                   const usuario = h.usuario as unknown as { nombres: string; apellidos: string }
                   const etapa = h.etapa as unknown as { catalogo: { nombre: string } }
+                  const extra = Number(h.horas_extra ?? 0)
 
                   return (
                     <tr key={h.id} className="border-b border-borde last:border-0">
-                      <td className="px-3 py-2">
+                      <td className="hidden px-3 py-2 sm:table-cell">
                         {parte.numero}
                         {parte.estado !== 'APROBADO' && (
                           <span className="ml-1 text-[11px] text-aviso">(sin aprobar)</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap">{fecha(parte.fecha)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {fecha(parte.fecha)}
+                        <span className="block text-[11px] text-texto-suave sm:hidden">
+                          {parte.numero}
+                          {parte.estado !== 'APROBADO' && (
+                            <span className="ml-1 text-aviso">(sin aprobar)</span>
+                          )}
+                        </span>
+                      </td>
                       <td className="px-3 py-2">{`${usuario.nombres} ${usuario.apellidos}`}</td>
                       <td className="px-3 py-2 text-texto-suave">{etapa.catalogo.nombre}</td>
-                      <td className="tabular px-3 py-2 text-right">{cantidad(h.horas)}</td>
-                      <td className="tabular px-3 py-2 text-right text-texto-suave">
+                      <td className="tabular px-3 py-2 text-right">
+                        {cantidad(h.horas)}
+                        {extra > 0 && (
+                          <span className="block text-[11px] text-texto-suave sm:hidden">
+                            +{cantidad(extra)} extra
+                          </span>
+                        )}
+                      </td>
+                      <td className="tabular hidden px-3 py-2 text-right text-texto-suave sm:table-cell">
                         {cantidad(h.horas_extra)}
                       </td>
                     </tr>
@@ -422,9 +512,15 @@ function TablaInspecciones({
       <TarjetaCabecera titulo="Control de calidad" descripcion={`${inspecciones.length} inspecciones`} />
       <TarjetaCuerpo className="space-y-3">
         {inspecciones.length === 0 ? (
-          <p className="py-6 text-center text-sm text-texto-suave">
-            Aún no se han registrado inspecciones para esta orden.
-          </p>
+          <div className="py-6 text-center">
+            <p className="text-sm font-medium text-texto">
+              Aún no se han registrado inspecciones
+            </p>
+            <p className="mx-auto mt-1 max-w-md text-xs text-texto-suave">
+              Las levanta calidad sobre las etapas que exigen visto bueno; hasta que haya una
+              conforme, esas etapas no se pueden dar por terminadas.
+            </p>
+          </div>
         ) : (
           inspecciones.map((i) => {
             const inspector = i.inspector as unknown as { nombres: string; apellidos: string } | null
