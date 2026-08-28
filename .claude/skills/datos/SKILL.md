@@ -111,3 +111,64 @@ en `references/`, no el paquete entero.
 Manda esta skill y `seguridad` cuando discrepen: aquella habla de un proyecto
 Supabase genérico con políticas `auth.uid()`, y aquí el control de acceso va por
 permisos de módulo (`tiene_permiso`, `es_admin`), que es otro modelo.
+
+## Lo que ya se midió (2026-08-28)
+
+Está escrito para que nadie lo vuelva a medir, y sobre todo para no repetir una
+conclusión falsa que ya se sacó una vez.
+
+**El truco `(select …)` de Supabase aquí casi no aplica.** La recomendación
+conocida —envolver `auth.uid()` en un subselect para que se evalúe una vez y no
+por fila— **solo sirve si la expresión no depende de la fila**. Y cuando no
+depende, Postgres ya la saca por su cuenta: el plan la muestra como
+`One-Time Filter` y la función se llama una sola vez, esté envuelta o no.
+
+De las 274 políticas de `public`, **234 solo llaman a `tiene_permiso('x.y')` o
+`es_admin()` con argumento constante**: son independientes de la fila, Postgres
+las iza solo, y envolverlas no cambiaría nada. Se llegó a afirmar lo contrario
+mirando los archivos de migración con `grep`; el plan de ejecución lo desmintió.
+**El catálogo y el `explain` mandan sobre el texto de las migraciones.**
+
+Nótese que el advisor `auth_rls_initplan` de Supabase **nunca avisa de esto**:
+solo inspecciona llamadas a `auth.*` y `current_setting`, no las funciones
+propias. Para este proyecto su tablero es ciego por diseño.
+
+**Dónde sí cuesta: las 24 políticas que llaman `puede_ver_orden(<columna>)`.**
+Esa sí depende de la fila, así que no se puede izar de ninguna manera y se
+ejecuta una vez por fila examinada. Coste medido por llamada, con la base casi
+vacía:
+
+| Función | µs por llamada |
+| --- | --- |
+| `tiene_permiso('x.y')` | ~18 |
+| `puede_ver_orden(id)` | ~393 |
+
+`puede_ver_orden` es cara porque en cada invocación repite `es_admin()`,
+`usuario_actual()` y `tiene_permiso()` —todo ello independiente de la fila— antes
+de llegar a los dos `exists` sobre `ot_personal` y `parte_detalle`. A 1.000
+órdenes en un listado son ~0,4 s solo de política; a 10.000, ~4 s.
+
+El arreglo **no** es envolver la llamada entera, que es imposible, sino
+reestructurar la política para que la parte constante se ice y la variable quede
+indexada:
+
+```sql
+using (
+  (select public.es_admin())
+  or (select public.tiene_permiso('ordenes.ver'))
+  or exists (select 1 from public.ot_personal p
+              where p.orden_id = ordenes_trabajo.id
+                and p.usuario_id = (select public.usuario_actual()))
+)
+```
+
+Hoy nada de esto se nota: la base tiene 1.603 filas en total y la tabla mayor es
+`audit_log` con 320. Se nota a partir de unos miles de órdenes. Medir el
+rendimiento contra esta base **no prueba nada**, y un `explain analyze` que salga
+en microsegundos es un falso verde.
+
+Pendiente y confirmado por `get_advisors`: 19 claves foráneas sin índice
+—varias en rutas calientes como `ordenes_trabajo.encargado_produccion_id`,
+`cotizaciones.unidad_del_cliente`, `ot_avances.etapa_de_la_orden`— y 7 tablas de
+catálogo con dos políticas permisivas de `select` para `authenticated`, que se
+evalúan las dos.
