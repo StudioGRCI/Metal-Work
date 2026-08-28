@@ -81,14 +81,36 @@ export const ORDEN_ESTADO_ETAPA = [
   'PENDIENTE', 'EN_PROCESO', 'PAUSADA', 'REQUIERE_REVISION', 'TERMINADA', 'OMITIDA',
 ] as const satisfies readonly EstadoEtapa[]
 
+/**
+ * Las etiquetas dicen en qué mano está la cotización, no el nombre técnico del
+ * estado: quien mira la lista quiere saber a quién le toca mover.
+ */
 export const ESTADO_COTIZACION: Record<string, Def> = {
-  BORRADOR: { etiqueta: 'Borrador', tono: 'neutro' },
-  ENVIADA: { etiqueta: 'Enviada', tono: 'info' },
+  BORRADOR: { etiqueta: 'En ventas', tono: 'neutro' },
+  EN_COSTEO: { etiqueta: 'En costeo', tono: 'info' },
+  EN_REVISION: { etiqueta: 'Con Gerencia', tono: 'aviso' },
+  OBSERVADA: { etiqueta: 'Devuelta', tono: 'peligro' },
+  REVISADA: { etiqueta: 'Lista para enviar', tono: 'exito' },
+  ENVIADA: { etiqueta: 'Enviada al cliente', tono: 'info' },
   APROBADA: { etiqueta: 'Aprobada', tono: 'exito' },
   RECHAZADA: { etiqueta: 'Rechazada', tono: 'peligro' },
   VENCIDA: { etiqueta: 'Vencida', tono: 'aviso' },
   ANULADA: { etiqueta: 'Anulada', tono: 'peligro' },
 }
+
+/** El circuito en el orden en que ocurre, para los filtros y los listados. */
+export const ORDEN_ESTADO_COTIZACION = [
+  'BORRADOR',
+  'EN_COSTEO',
+  'EN_REVISION',
+  'OBSERVADA',
+  'REVISADA',
+  'ENVIADA',
+  'APROBADA',
+  'RECHAZADA',
+  'VENCIDA',
+  'ANULADA',
+] as const
 
 export const RESULTADO_INSPECCION: Record<string, Def> = {
   CONFORME: { etiqueta: 'Conforme', tono: 'exito' },

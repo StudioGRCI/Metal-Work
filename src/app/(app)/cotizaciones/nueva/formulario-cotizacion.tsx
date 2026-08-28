@@ -169,7 +169,10 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
       </Tarjeta>
 
       <Tarjeta>
-        <TarjetaCabecera titulo="Condiciones" />
+        <TarjetaCabecera
+          titulo="Precio y condiciones"
+          descripcion="Lo que se le ofrece al cliente. El detalle de partidas lo arma Administración después."
+        />
         <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Campo etiqueta="Fecha de emisión" htmlFor="fecha_emision">
             <Entrada id="fecha_emision" name="fecha_emision" type="date" defaultValue={hoy} />
@@ -195,6 +198,29 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
               <option value="PEN">Soles (S/)</option>
               <option value="USD">Dólares (US$)</option>
             </Seleccion>
+          </Campo>
+
+          {/* El precio va pegado a la moneda porque en la conversación con el
+              cliente van juntos: «tanto, en soles». Es lo único que el cliente
+              mira, así que no puede quedar al final del formulario. */}
+          <Campo
+            etiqueta="Precio ofrecido al cliente"
+            htmlFor="precio_venta"
+            ayuda="Es lo que se le promete al cliente y lo que imprime el papel. Se toma con IGV incluido; si el precio va sin IGV, se cambia en el detalle antes de imprimir."
+          >
+            {/* `inputMode="decimal"` saca el teclado con punto en el teléfono:
+                acá sí se escriben céntimos. El total impreso sale de este
+                número, no de la suma de las partidas —esa es el costo. */}
+            <Entrada
+              id="precio_venta"
+              name="precio_venta"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="0.01"
+              placeholder="0.00"
+              className="tabular text-right"
+            />
           </Campo>
 
           <Campo etiqueta="Plazo de entrega" htmlFor="plazo_entrega_dias" ayuda="Días calendario">
@@ -247,8 +273,10 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
         <EnlaceBoton href="/cotizaciones" variante="fantasma">
           Cancelar
         </EnlaceBoton>
+        {/* Ventas ya no carga partidas: abre la cotización y la manda a
+            costear desde el detalle. El botón dice lo que de verdad hace. */}
         <Boton type="submit" cargando={pendiente}>
-          Crear y agregar partidas
+          Crear cotización
         </Boton>
       </div>
     </form>

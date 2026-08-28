@@ -804,6 +804,15 @@ export type Database = {
           concepto: string | null
           concepto_cantidad: number
           concepto_unidad: string
+          precio_venta: number | null
+          costo_estimado: number
+          costeo_pedido_en: string | null
+          costeo_pedido_por: string | null
+          costeo_listo_en: string | null
+          costeo_listo_por: string | null
+          revisada_en: string | null
+          revisada_por: string | null
+          motivo_observacion: string | null
         }
         Insert: {
           id?: string
@@ -852,6 +861,15 @@ export type Database = {
           concepto?: string | null
           concepto_cantidad?: number
           concepto_unidad?: string
+          precio_venta?: number | null
+          costo_estimado?: number
+          costeo_pedido_en?: string | null
+          costeo_pedido_por?: string | null
+          costeo_listo_en?: string | null
+          costeo_listo_por?: string | null
+          revisada_en?: string | null
+          revisada_por?: string | null
+          motivo_observacion?: string | null
         }
         Update: {
           id?: string
@@ -900,6 +918,15 @@ export type Database = {
           concepto?: string | null
           concepto_cantidad?: number
           concepto_unidad?: string
+          precio_venta?: number | null
+          costo_estimado?: number
+          costeo_pedido_en?: string | null
+          costeo_pedido_por?: string | null
+          costeo_listo_en?: string | null
+          costeo_listo_por?: string | null
+          revisada_en?: string | null
+          revisada_por?: string | null
+          motivo_observacion?: string | null
         }
         Relationships: [
           {
@@ -6463,7 +6490,7 @@ export type Database = {
       categoria_gasto_indirecto: "ENERGIA" | "AGUA" | "ALQUILER" | "DEPRECIACION" | "SUELDOS_INDIRECTOS" | "MANTENIMIENTO_PLANTA" | "SEGUROS" | "EPP" | "COMUNICACIONES" | "LIMPIEZA" | "OTRO"
       condicion_pago: "CONTADO" | "CREDITO_7" | "CREDITO_15" | "CREDITO_30" | "CREDITO_45" | "CREDITO_60" | "LETRAS"
       estado_aprobacion: "PENDIENTE" | "APROBADO" | "OBSERVADO" | "RECHAZADO"
-      estado_cotizacion: "BORRADOR" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "VENCIDA" | "ANULADA"
+      estado_cotizacion: "BORRADOR" | "EN_COSTEO" | "EN_REVISION" | "OBSERVADA" | "REVISADA" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "VENCIDA" | "ANULADA"
       estado_documento: "VIGENTE" | "REEMPLAZADO" | "ANULADO"
       estado_etapa_ot: "PENDIENTE" | "EN_PROCESO" | "PAUSADA" | "TERMINADA" | "OMITIDA" | "REQUIERE_REVISION"
       estado_movimiento_almacen: "BORRADOR" | "CONFIRMADO" | "ANULADO"

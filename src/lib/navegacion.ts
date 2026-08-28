@@ -72,11 +72,21 @@ export const NAVEGACION: GrupoNavegacion[] = [
     items: [
       { titulo: 'Clientes', ruta: '/clientes', icono: Users, permiso: 'clientes.ver', disponible: true },
       { titulo: 'Unidades', ruta: '/unidades', icono: Truck, permiso: 'clientes.ver', disponible: true },
+      // Cotizar son dos actos de dos áreas: Ventas escribe la propuesta y su
+      // precio, Administración arma el detalle con el que se compra y se
+      // programa. Cada una ve la suya porque cada entrada pide su permiso.
       {
-        titulo: 'Cotizaciones',
+        titulo: 'Cotización de venta',
         ruta: '/cotizaciones',
         icono: Receipt,
         permiso: 'cotizaciones.ver',
+        disponible: true,
+      },
+      {
+        titulo: 'Cotización de trabajo',
+        ruta: '/cotizaciones/trabajo',
+        icono: ClipboardList,
+        permiso: 'cotizaciones.costear',
         disponible: true,
       },
     ],

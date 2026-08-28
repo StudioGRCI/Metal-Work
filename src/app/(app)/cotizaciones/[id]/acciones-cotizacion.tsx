@@ -11,26 +11,97 @@ import { Ventana } from '@/components/ui/ventana'
 
 import { cambiarEstadoCotizacion, convertirEnOrden } from '../acciones'
 
+type Paso = {
+  estado: string
+  /** El rótulo, en el idioma de quien lo pulsa. */
+  etiqueta: string
+  /**
+   * El permiso que se le exige acá tiene que ser **el mismo** que exige
+   * `permisoDelCambio()` en la acción. Si no coinciden, el botón aparece, la
+   * acción lo rechaza y la persona se queda sin saber por qué.
+   */
+  permiso: string
+  motivo?: boolean
+  peligro?: boolean
+  /** El paso que sigue el circuito; se pinta como el botón principal. */
+  principal?: boolean
+}
+
 /**
- * Transiciones que ofrece la interfaz desde cada estado. Es un espejo del
- * trigger fn_cotizacion_transicion: aquí solo decide qué botones se muestran.
+ * Cotizar son tres actos, y esto es el mapa de quién da cada paso.
  *
- * «Enviar al cliente» ya no es un botón: enviar es descargar el PDF y mandarlo,
- * así que ese paso lo da la descarga. Anular siempre pide motivo, porque la
- * cotización no se borra nunca -es parte del correlativo de la empresa- y lo
- * único que queda de ella es la explicación de por qué se dejó sin efecto.
+ * Ventas escribe el concepto y pone el precio, y la manda a costear.
+ * Administración arma la cotización de trabajo -partidas, ficha, accesorios- y
+ * la sube a Gerencia. Gerencia da el visto o la devuelve con una observación
+ * escrita. Recién con el visto puesto el papel sale al cliente.
+ *
+ * Es un espejo del trigger fn_cotizacion_transicion: cualquier salto que no
+ * esté en la base revienta allá, así que acá no se ofrece. «Enviar al cliente»
+ * no es un botón de este mapa: enviar es descargar el papel, y ese paso lo da
+ * la descarga. Anular siempre pide motivo, porque la cotización no se borra
+ * nunca -es parte del correlativo de la empresa- y lo único que queda de ella
+ * es la explicación de por qué se dejó sin efecto.
  */
-const SIGUIENTES: Record<
-  string,
-  { estado: string; etiqueta: string; permiso: string; motivo?: boolean; peligro?: boolean }[]
-> = {
+const SIGUIENTES: Record<string, Paso[]> = {
   BORRADOR: [
+    {
+      estado: 'EN_COSTEO',
+      etiqueta: 'Pasar a cotización de trabajo',
+      permiso: 'cotizaciones.editar',
+      principal: true,
+    },
+    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
+  ],
+  EN_COSTEO: [
+    {
+      estado: 'EN_REVISION',
+      etiqueta: 'Terminar el costeo',
+      permiso: 'cotizaciones.costear',
+      principal: true,
+    },
+    // Devolverla a ventas es de quien la escribe, no de quien la costea: la
+    // acción exige `cotizaciones.editar` para volver a BORRADOR.
+    { estado: 'BORRADOR', etiqueta: 'Volver a ventas', permiso: 'cotizaciones.editar' },
+    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
+  ],
+  EN_REVISION: [
+    { estado: 'REVISADA', etiqueta: 'Dar el visto', permiso: 'cotizaciones.revisar', principal: true },
+    {
+      estado: 'OBSERVADA',
+      etiqueta: 'Devolver a costeo',
+      permiso: 'cotizaciones.revisar',
+      motivo: true,
+    },
+    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
+  ],
+  // Devuelta: se retoma el costeo. La base no deja saltar de acá a revisión sin
+  // pasar otra vez por costeo, que es donde se corrige lo observado.
+  OBSERVADA: [
+    {
+      estado: 'EN_COSTEO',
+      etiqueta: 'Pasar a cotización de trabajo',
+      permiso: 'cotizaciones.editar',
+      principal: true,
+    },
+    { estado: 'BORRADOR', etiqueta: 'Volver a ventas', permiso: 'cotizaciones.editar' },
+    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
+  ],
+  // Con el visto puesto solo queda mandarla -eso lo hace la descarga-. Y si hay
+  // que cambiarle una partida, primero se devuelve: desde acá la cotización de
+  // trabajo está congelada y la base no deja tocarla.
+  REVISADA: [
+    {
+      estado: 'OBSERVADA',
+      etiqueta: 'Devolver a costeo',
+      permiso: 'cotizaciones.revisar',
+      motivo: true,
+    },
     { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
   ],
   ENVIADA: [
-    { estado: 'APROBADA', etiqueta: 'Marcar aprobada', permiso: 'cotizaciones.aprobar' },
+    { estado: 'APROBADA', etiqueta: 'Marcar aprobada', permiso: 'cotizaciones.aprobar', principal: true },
     { estado: 'RECHAZADA', etiqueta: 'Rechazar', permiso: 'cotizaciones.aprobar', motivo: true, peligro: true },
-    { estado: 'BORRADOR', etiqueta: 'Volver a borrador', permiso: 'cotizaciones.editar' },
+    { estado: 'BORRADOR', etiqueta: 'Volver a ventas', permiso: 'cotizaciones.editar' },
     { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
   ],
   // Una aprobada es lo que el cliente ya aceptó: deshacerlo es de Gerencia.
@@ -46,16 +117,43 @@ const SIGUIENTES: Record<
   ],
 }
 
-/** Lo que pide cada motivo, en el lenguaje de quien lo va a escribir. */
-const MOTIVOS: Record<string, { etiqueta: string; ejemplo: string }> = {
+/**
+ * Lo que pide cada motivo, en el lenguaje de quien lo va a escribir, y con qué
+ * rótulo se confirma: «Confirmar» no dice qué se confirma.
+ */
+const MOTIVOS: Record<string, { etiqueta: string; ejemplo: string; confirmar: string }> = {
+  OBSERVADA: {
+    etiqueta: 'Qué hay que corregir',
+    ejemplo: 'Ej.: falta el costo de la pintura y el plazo no cuadra con el taller',
+    confirmar: 'Devolver a costeo',
+  },
   RECHAZADA: {
     etiqueta: 'Motivo del rechazo',
     ejemplo: 'Ej.: el cliente eligió otro proveedor por precio',
+    confirmar: 'Rechazar la cotización',
   },
   ANULADA: {
     etiqueta: 'Motivo de la anulación',
     ejemplo: 'Ej.: se emitió por error, va la 3570-2026 en su lugar',
+    confirmar: 'Anular la cotización',
   },
+}
+
+/** Lo que hay que saber antes de escribir el motivo, cuando no es evidente. */
+const AVISO_MOTIVO: Record<string, string> = {
+  OBSERVADA:
+    'Lo que escribas acá es lo que va a leer quien la corrige: queda a la vista en la cotización, arriba del todo, hasta que vuelva a subir.',
+  ANULADA:
+    'La cotización no se elimina: su número es parte del correlativo de la empresa. Queda anulada, con el motivo a la vista y sin poder modificarse.',
+}
+
+/** Etapas en las que el papel todavía no está para salir. */
+const ANTES_DEL_VISTO = ['BORRADOR', 'EN_COSTEO', 'EN_REVISION', 'OBSERVADA']
+
+/** El paso que sigue el circuito se ve; los demás acompañan. */
+function varianteDel(paso: Paso) {
+  if (paso.peligro) return 'peligro' as const
+  return paso.principal ? ('primario' as const) : ('secundario' as const)
 }
 
 export function AccionesCotizacion({
@@ -77,12 +175,23 @@ export function AccionesCotizacion({
   const [, iniciarTransicion] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
-  const [pidiendoMotivo, setPidiendoMotivo] = useState<{ estado: string; etiqueta: string } | null>(null)
+  const [pidiendoMotivo, setPidiendoMotivo] = useState<Paso | null>(null)
   const [abriendoOrden, setAbriendoOrden] = useState(false)
   const [bajando, setBajando] = useState(false)
 
   const puede = (permiso: string) => esAdmin || permisos.includes(permiso)
   const disponibles = (SIGUIENTES[cotizacion.estado] ?? []).filter((t) => puede(t.permiso))
+
+  /**
+   * Con el visto puesto, descargar el papel es mandarlo. Antes del visto no hay
+   * nada que mandar: queda «Ver el papel», que no cambia nada.
+   *
+   * El permiso se mira acá porque quien marca la cotización como enviada es la
+   * acción del servidor, y exige `cotizaciones.editar`. Sin él la descarga
+   * saldría igual y la cotización se quedaría en REVISADA: el botón diría
+   * «enviada» sin que la base lo hubiera anotado.
+   */
+  const puedeEnviar = cotizacion.estado === 'REVISADA' && puede('cotizaciones.editar')
 
   /**
    * Descargar y marcar enviada, en ese orden y sin dejar la pantalla mintiendo.
@@ -178,10 +287,12 @@ export function AccionesCotizacion({
 
         {/* Marcar enviada lo sigue haciendo la ruta, y solo cuando el documento
             salió: si lo hiciera este clic, una descarga fallida dejaría igual
-            la cotización «enviada» sin que nada hubiera salido. */}
-        {cotizacion.estado === 'BORRADOR' ? (
+            la cotización «enviada» sin que nada hubiera salido.
+
+            Antes del visto no aparece ningún botón de descargar: mientras la
+            cotización se está armando, el papel se mira, no se baja. */}
+        {puedeEnviar && (
           <Boton
-            variante="secundario"
             tamano="sm"
             onClick={descargarYEnviar}
             cargando={bajando}
@@ -190,7 +301,9 @@ export function AccionesCotizacion({
             <Download aria-hidden className="size-3.5" />
             Descargar y marcar enviada
           </Boton>
-        ) : (
+        )}
+
+        {!puedeEnviar && !ANTES_DEL_VISTO.includes(cotizacion.estado) && (
           <Boton variante="secundario" tamano="sm" onClick={descargarYEnviar} cargando={bajando}>
             <Download aria-hidden className="size-3.5" />
             Descargar
@@ -217,9 +330,9 @@ export function AccionesCotizacion({
           t.motivo ? (
             <Boton
               key={t.estado}
-              variante="peligro"
+              variante={varianteDel(t)}
               tamano="sm"
-              onClick={() => setPidiendoMotivo({ estado: t.estado, etiqueta: t.etiqueta })}
+              onClick={() => setPidiendoMotivo(t)}
             >
               {t.etiqueta}
             </Boton>
@@ -227,18 +340,19 @@ export function AccionesCotizacion({
             <form key={t.estado} action={cambiar}>
               <input type="hidden" name="cotizacion_id" value={cotizacion.id} />
               <input type="hidden" name="estado" value={t.estado} />
-              <Boton
-                type="submit"
-                tamano="sm"
-                cargando={enviando}
-                variante={t.peligro ? 'peligro' : t.estado === 'APROBADA' ? 'primario' : 'secundario'}
-              >
+              <Boton type="submit" tamano="sm" cargando={enviando} variante={varianteDel(t)}>
                 {t.etiqueta}
               </Boton>
             </form>
           ),
         )}
       </div>
+
+      {puedeEnviar && !tienePartidas && (
+        <p className="text-xs text-texto-suave">
+          La cotización de trabajo no tiene partidas: el papel saldría sin precio.
+        </p>
+      )}
 
       {puedeAbrirOrden && !tienePartidas && (
         <p className="text-xs text-texto-suave">
@@ -260,11 +374,7 @@ export function AccionesCotizacion({
           abierta
           alCerrar={() => setPidiendoMotivo(null)}
           titulo={`${pidiendoMotivo.etiqueta} la cotización ${cotizacion.numero}`}
-          descripcion={
-            pidiendoMotivo.estado === 'ANULADA'
-              ? 'La cotización no se elimina: su número es parte del correlativo de la empresa. Queda anulada, con el motivo a la vista y sin poder modificarse.'
-              : undefined
-          }
+          descripcion={AVISO_MOTIVO[pidiendoMotivo.estado]}
           ancho="sm"
         >
           <form action={cambiar} className="space-y-3">
@@ -290,9 +400,14 @@ export function AccionesCotizacion({
                 Cancelar
               </Boton>
               {/* «Confirmar» no dice qué se confirma; el rótulo del botón que
-                  abrió el cuadro sí: Anular, Rechazar. */}
-              <Boton type="submit" tamano="sm" variante="peligro" cargando={enviando}>
-                {pidiendoMotivo.etiqueta} la cotización
+                  abrió el cuadro sí: Anular, Rechazar, Devolver a costeo. */}
+              <Boton
+                type="submit"
+                tamano="sm"
+                variante={pidiendoMotivo.peligro ? 'peligro' : 'primario'}
+                cargando={enviando}
+              >
+                {MOTIVOS[pidiendoMotivo.estado]?.confirmar ?? pidiendoMotivo.etiqueta}
               </Boton>
             </div>
           </form>

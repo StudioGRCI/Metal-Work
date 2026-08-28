@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { type PerfilSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import type { Enums, Tablas } from '@/types/database'
 
@@ -100,18 +101,119 @@ export async function ordenesDeCliente(clienteId: string) {
 
 export type EstadoCotizacion = Enums<'estado_cotizacion'>
 
-export async function listarCotizaciones(filtros: { estado?: string; busqueda?: string } = {}) {
+/**
+ * La bandeja de cada mano del circuito: qué estados le toca mover a quien tiene
+ * ese permiso. OBSERVADA aparece dos veces a propósito —una cotización devuelta
+ * la retoma Ventas o Administración, según qué haya pedido corregir Gerencia—.
+ */
+const BANDEJA_POR_PERMISO: Record<string, readonly EstadoCotizacion[]> = {
+  'cotizaciones.editar': ['BORRADOR', 'OBSERVADA'],
+  'cotizaciones.costear': ['EN_COSTEO', 'OBSERVADA'],
+  'cotizaciones.revisar': ['EN_REVISION'],
+}
+
+/**
+ * Los estados que le toca mover a quien está mirando. Vacío si no tiene ninguna
+ * de las tres manos: a ese «me toca a mí» no le devolvería nada y la pantalla
+ * ni siquiera le ofrece la pastilla.
+ *
+ * ADMIN pasa por `puede()` sin tener permisos y se lleva las tres bandejas
+ * juntas: su «me toca» es el circuito entero. Está bien —no hay trabajo suyo
+ * que separar— pero probar esta bandeja como ADMIN no prueba nada; hay que
+ * entrar con el rol que hace ese trabajo.
+ */
+
+/**
+ * La bandeja de Administración: lo que Ventas ya cotizó y espera su detalle.
+ *
+ * Va aparte de listarCotizaciones porque no es la misma pregunta. La de venta
+ * responde «cómo va lo que ofrecimos»; esta responde «qué me toca armar», y
+ * para eso necesita dos números que la otra no trae: el precio que se prometió
+ * y el costo que llevan sumadas las partidas. Ordena por lo que lleva más
+ * tiempo esperando, que es el orden en el que hay que atenderlas.
+ */
+export async function listarCotizacionesDeTrabajo(filtros: { estado?: string } = {}) {
   const supabase = await createClient()
 
   let consulta = supabase
     .from('cotizaciones')
-    .select('id, numero, fecha_emision, fecha_vencimiento, estado, moneda, total, cliente:clientes!inner(razon_social), unidad:unidades!cotizaciones_unidad_id_fkey(placa), tipo_carroceria:tipos_carroceria(nombre)')
+    .select('id, numero, fecha_emision, estado, moneda, precio_venta, costo_estimado, costeo_pedido_en, costeo_listo_en, motivo_observacion, cliente:clientes!inner(razon_social), unidad:unidades!cotizaciones_unidad_id_fkey(placa), tipo_carroceria:tipos_carroceria(nombre)')
+
+  if (filtros.estado) {
+    consulta = consulta.eq('estado', filtros.estado as EstadoCotizacion)
+  } else {
+    // Por defecto, el trabajo del área: lo que espera costeo, lo que Gerencia
+    // devolvió, y lo que ya subió a revisión, para poder seguirlo sin buscarlo.
+    consulta = consulta.in('estado', ['EN_COSTEO', 'OBSERVADA', 'EN_REVISION'])
+  }
+
+  const { data, error } = await consulta
+    .order('costeo_pedido_en', { ascending: true, nullsFirst: false })
+    .order('numero', { ascending: false })
+    .limit(200)
+
+  if (error) {
+    throw new Error(`No se pudieron listar las cotizaciones de trabajo: ${error.message}`)
+  }
+  return data ?? []
+}
+
+export function estadosQueMeTocan(perfil: PerfilSesion | null): EstadoCotizacion[] {
+  const estados = new Set<EstadoCotizacion>()
+  for (const [permiso, suyos] of Object.entries(BANDEJA_POR_PERMISO)) {
+    if (puede(perfil, permiso)) for (const estado of suyos) estados.add(estado)
+  }
+  return [...estados]
+}
+
+export async function listarCotizaciones(
+  filtros: {
+    estado?: string
+    busqueda?: string
+    /** Solo las que le toca mover a `perfil`, según su permiso. */
+    meToca?: boolean
+    perfil?: PerfilSesion | null
+  } = {},
+) {
+  const supabase = await createClient()
+
+  // Los tres sellos del circuito viajan con la fila: sin ellos la lista no
+  // puede decir cuánto lleva parada una cotización en la etapa donde está.
+  let consulta = supabase
+    .from('cotizaciones')
+    .select('id, numero, fecha_emision, fecha_vencimiento, estado, moneda, total, costeo_pedido_en, costeo_listo_en, revisada_en, cliente:clientes!inner(razon_social), unidad:unidades!cotizaciones_unidad_id_fkey(placa), tipo_carroceria:tipos_carroceria(nombre)')
 
   if (filtros.estado) consulta = consulta.eq('estado', filtros.estado as EstadoCotizacion)
 
+  if (filtros.meToca) {
+    const mios = estadosQueMeTocan(filtros.perfil ?? null)
+    // A quien no tiene ninguna de las tres manos no le toca nada. Se corta acá:
+    // un `in` con la lista vacía no devuelve «ninguna», es una consulta rota.
+    if (mios.length === 0) return []
+    consulta = consulta.in('estado', mios)
+  }
+
   if (filtros.busqueda?.trim()) {
     const t = filtros.busqueda.trim().replace(/[%,()]/g, '')
-    consulta = consulta.ilike('numero', `%${t}%`)
+
+    // El número es columna de la cotización, pero la razón social y la placa
+    // viven en otras tablas, y un `or` de PostgREST no mezcla una columna propia
+    // con las de un embebido: lo escrito así se buscaría en una columna que no
+    // existe. Se resuelven primero los ids que coinciden —los uuid no llevan
+    // comas ni paréntesis, así que entran limpios en el `in`— y la cotización se
+    // busca por su llave, como haría un `join`.
+    const [clientes, unidades] = await Promise.all([
+      supabase.from('clientes').select('id').ilike('razon_social', `%${t}%`).limit(200),
+      supabase.from('unidades').select('id').ilike('placa', `%${t}%`).limit(200),
+    ])
+
+    const condiciones = [`numero.ilike.%${t}%`]
+    const idsCliente = (clientes.data ?? []).map((c) => c.id)
+    const idsUnidad = (unidades.data ?? []).map((u) => u.id)
+    if (idsCliente.length > 0) condiciones.push(`cliente_id.in.(${idsCliente.join(',')})`)
+    if (idsUnidad.length > 0) condiciones.push(`unidad_id.in.(${idsUnidad.join(',')})`)
+
+    consulta = consulta.or(condiciones.join(','))
   }
 
   const { data, error } = await consulta

@@ -10,6 +10,10 @@ import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 
 const esquemaCotizacion = z.object({
   cliente_id: z.string().uuid('Selecciona un cliente'),
+  // El precio lo pone Ventas y manda sobre el papel: el total impreso sale de
+  // acá, no de la suma de las partidas. Puede entrar vacío mientras se arma la
+  // cotización y escribirse antes de mandarla a costear.
+  precio_venta: z.coerce.number().min(0, 'El precio no puede ser negativo').optional(),
   unidad_id: z.string().uuid().optional().or(z.literal('')),
   tipo_carroceria_id: z.string().uuid().optional().or(z.literal('')),
   sede_id: z.string().uuid().optional().or(z.literal('')),
@@ -45,6 +49,7 @@ export async function crearCotizacion(_previo: unknown, datos: FormData): Promis
     .from('cotizaciones')
     .insert({
       cliente_id: v.cliente_id,
+      precio_venta: v.precio_venta,
       unidad_id: nulo(v.unidad_id),
       tipo_carroceria_id: nulo(v.tipo_carroceria_id),
       sede_id: nulo(v.sede_id),
@@ -136,15 +141,49 @@ export async function eliminarPartida(_previo: unknown, datos: FormData): Promis
 
 const esquemaEstado = z.object({
   cotizacion_id: z.string().uuid(),
-  estado: z.enum(['BORRADOR', 'ENVIADA', 'APROBADA', 'RECHAZADA', 'VENCIDA', 'ANULADA']),
+  estado: z.enum([
+    'BORRADOR',
+    'EN_COSTEO',
+    'EN_REVISION',
+    'OBSERVADA',
+    'REVISADA',
+    'ENVIADA',
+    'APROBADA',
+    'RECHAZADA',
+    'VENCIDA',
+    'ANULADA',
+  ]),
   motivo: z.string().trim().optional(),
 })
 
-/** Aceptar o rechazar en nombre del cliente no es lo mismo que corregir el texto. */
+/**
+ * Cada paso del circuito lo da una mano distinta, y el permiso lo dice.
+ *
+ * Ventas escribe y manda a costear; Administración arma la cotización de trabajo
+ * y la sube a revisión; Gerencia da el visto o la devuelve. Registrar la
+ * respuesta del cliente —aprobada o rechazada— no es ninguna de las tres: es
+ * anotar lo que el cliente contestó, y por eso tiene permiso propio.
+ *
+ * Este mapa es un espejo del que exige la base en fn_cotizacion_transicion. Acá
+ * sirve para dar un mensaje entendible antes de intentarlo; el que manda es el
+ * de allá, porque la pantalla esconde botones y quien entra por otra puerta no
+ * ve pantallas.
+ */
 function permisoDelCambio(estado: string) {
-  return estado === 'APROBADA' || estado === 'RECHAZADA'
-    ? 'cotizaciones.aprobar'
-    : 'cotizaciones.editar'
+  if (estado === 'EN_REVISION') return 'cotizaciones.costear'
+  if (estado === 'REVISADA' || estado === 'OBSERVADA') return 'cotizaciones.revisar'
+  if (estado === 'APROBADA' || estado === 'RECHAZADA') return 'cotizaciones.aprobar'
+  return 'cotizaciones.editar'
+}
+
+/** Lo que el sistema responde cuando el paso salió bien, en su idioma. */
+const AVISO_DEL_PASO: Record<string, string> = {
+  EN_COSTEO: 'Pasó a cotización de trabajo. Administración la tiene en su bandeja.',
+  EN_REVISION: 'El costeo quedó listo. Gerencia la tiene para revisar.',
+  REVISADA: 'Visto puesto: ya se le puede mandar al cliente.',
+  OBSERVADA: 'Devuelta con la observación.',
+  BORRADOR: 'Vuelve a ventas.',
+  ANULADA: 'Cotización anulada.',
 }
 
 export async function cambiarEstadoCotizacion(
@@ -184,29 +223,41 @@ export async function cambiarEstadoCotizacion(
     return { ok: false, error: 'Indica el motivo del rechazo.' }
   }
 
+  // Devolver una cotización sin decir qué corregir es mandar a alguien a
+  // adivinar. La base exige lo mismo; acá se pregunta antes para no gastar el
+  // viaje.
+  if (estado === 'OBSERVADA' && !motivo) {
+    return { ok: false, error: 'Escribe qué es lo que hay que corregir antes de devolverla.' }
+  }
+
   // Anular pide motivo y deja rastro; la base sella quién y cuándo.
   if (estado === 'ANULADA' && !motivo) {
     return { ok: false, error: 'Indica el motivo de la anulación.' }
   }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('cotizaciones')
     .update({
       estado,
       ...(estado === 'RECHAZADA' ? { motivo_rechazo: motivo } : {}),
       ...(estado === 'ANULADA' ? { motivo_anulacion: motivo } : {}),
+      ...(estado === 'OBSERVADA' ? { motivo_observacion: motivo } : {}),
     })
     .eq('id', cotizacion_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  // Un UPDATE que no encuentra fila no es un error para Postgres: si el RLS la
+  // escondió, sin esto la pantalla diría «listo» sin haber movido nada.
+  if (!data) {
+    return { ok: false, error: 'No se pudo mover la cotización: vuelve a cargar la pantalla.' }
+  }
 
   revalidatePath(`/cotizaciones/${cotizacion_id}`)
   revalidatePath('/cotizaciones')
-  return {
-    ok: true,
-    mensaje: estado === 'ANULADA' ? 'Cotización anulada.' : 'Estado actualizado.',
-  }
+  return { ok: true, mensaje: AVISO_DEL_PASO[estado] ?? 'Estado actualizado.' }
 }
 
 /**
@@ -240,7 +291,10 @@ export async function marcarEnviadaAlDescargar(cotizacionId: string): Promise<vo
     .from('cotizaciones')
     .update({ estado: 'ENVIADA' })
     .eq('id', cotizacionId)
-    .eq('estado', 'BORRADOR')
+    // Antes salía desde el borrador: el vendedor bajaba el papel y la cotización
+    // se daba por enviada sin que nadie la hubiera mirado. Ahora sale del visto
+    // de Gerencia, que es el paso que existe justamente para eso.
+    .eq('estado', 'REVISADA')
     .gt('total', 0)
 
   if (error) {
@@ -417,6 +471,7 @@ export async function editarCotizacion(
     .from('cotizaciones')
     .update({
       cliente_id: v.cliente_id,
+      precio_venta: v.precio_venta,
       unidad_id: nulo(v.unidad_id),
       tipo_carroceria_id: nulo(v.tipo_carroceria_id),
       sede_id: nulo(v.sede_id),

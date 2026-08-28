@@ -22,6 +22,8 @@ export type CatalogosCotizacion = {
 export type CabeceraCotizacion = {
   id: string
   cliente_id: string
+  /** Lo que Ventas le ofrece al cliente. Manda sobre el papel. */
+  precio_venta: number | null
   unidad_id: string | null
   tipo_carroceria_id: string | null
   sede_id: string | null
@@ -35,10 +37,13 @@ export type CabeceraCotizacion = {
 }
 
 /**
- * Corregir la cabecera de una cotización que todavía no cerró: el cliente pidió
- * otra carrocería, el plazo se negoció, la forma de pago cambió. Antes había que
- * emitir una cotización nueva y quemar un número de la serie para arreglar una
- * línea de texto.
+ * Corregir la cabecera mientras la cotización se está armando —en ventas, en
+ * costeo o devuelta—: el cliente pidió otra carrocería, el plazo se negoció, la
+ * forma de pago cambió, el precio bajó. Antes había que emitir una cotización
+ * nueva y quemar un número de la serie para arreglar una línea de texto.
+ *
+ * Quién puede abrirla lo decide la pantalla: desde que Gerencia da el visto, la
+ * cabecera no se toca sin devolverla antes. Acá solo va el formulario.
  */
 export function EditarCotizacion({
   cotizacion,
@@ -122,7 +127,7 @@ export function EditarCotizacion({
         abierta={abierto}
         alCerrar={() => setAbierto(false)}
         titulo="Editar la cotización"
-        descripcion="Los totales no se tocan acá: los calcula la base a partir de las partidas."
+        descripcion="Acá va el precio que se le ofrece al cliente. El costo estimado no se escribe: lo arma Administración con las partidas."
         ancho="lg"
       >
         <form action={enviar} className="space-y-3">
@@ -195,7 +200,36 @@ export function EditarCotizacion({
             </Campo>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-4">
+          {/* El dinero, junto: el precio es lo que Ventas le ofrece al cliente
+              y la moneda dice en qué se le ofrece. Con la moneda tres campos más
+              allá, corregir un precio sin mirarla es demasiado fácil. */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Campo
+              etiqueta="Precio de venta"
+              htmlFor="precio_venta"
+              ayuda="Lo que se le ofrece al cliente: es el total que sale impreso."
+            >
+              <Entrada
+                id="precio_venta"
+                name="precio_venta"
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min={0}
+                defaultValue={cotizacion.precio_venta ?? ''}
+                className="tabular text-right"
+              />
+            </Campo>
+
+            <Campo etiqueta="Moneda" htmlFor="moneda">
+              <Seleccion id="moneda" name="moneda" defaultValue={cotizacion.moneda}>
+                <option value="PEN">Soles</option>
+                <option value="USD">Dólares</option>
+              </Seleccion>
+            </Campo>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
             <Campo etiqueta="Emisión" htmlFor="fecha_emision">
               <Entrada
                 id="fecha_emision"
@@ -217,13 +251,6 @@ export function EditarCotizacion({
                 defaultValue={cotizacion.validez_dias}
                 className="tabular text-right"
               />
-            </Campo>
-
-            <Campo etiqueta="Moneda" htmlFor="moneda">
-              <Seleccion id="moneda" name="moneda" defaultValue={cotizacion.moneda}>
-                <option value="PEN">Soles</option>
-                <option value="USD">Dólares</option>
-              </Seleccion>
             </Campo>
 
             <Campo etiqueta="Entrega (días)" htmlFor="plazo_entrega_dias">

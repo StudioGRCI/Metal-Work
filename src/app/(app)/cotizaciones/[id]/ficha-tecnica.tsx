@@ -22,6 +22,10 @@ import {
   quitarAccesorio,
   quitarLineaFicha,
 } from './acciones-ficha'
+// El mismo cartel que las partidas: la ficha y las partidas son las dos mitades
+// de la cotización de trabajo y se cierran juntas, así que el motivo se redacta
+// en un solo sitio y no en dos que un día dirán cosas distintas.
+import { CosteoCerrado } from './partidas'
 
 export type Plantilla = { id: string; nombre: string; descripcion: string | null; carroceria: string | null }
 
@@ -58,12 +62,15 @@ function Aviso({ resultado }: { resultado: { ok?: boolean; error?: string; mensa
 }
 
 /**
- * La ficha técnica de la cotización.
+ * La ficha técnica de la cotización de trabajo.
  *
  * La cotización de esta empresa no es una lista de precios: declara el espesor
  * de cada plancha, la norma de soldadura y qué accesorios entran y cuáles no.
  * Eso es lo que el taller fabrica y contra lo que el cliente reclama, así que
  * acá se llena como dato y no como párrafo.
+ *
+ * Es un acto de Administración, junto con las partidas: se arma en el costeo,
+ * no cuando Ventas escribe el precio.
  */
 export function FichaTecnica({
   cotizacionId,
@@ -72,16 +79,47 @@ export function FichaTecnica({
   accesorios,
   plantillas,
   puedeEditar,
+  estado,
 }: {
   cotizacionId: string
   cabecera: CabeceraTecnica
   secciones: SeccionFicha[]
   accesorios: AccesorioCotizado[]
   plantillas: Plantilla[]
+  /**
+   * Si esta mano puede armar la ficha ahora. La calcula la página cruzando el
+   * estado con el permiso `cotizaciones.costear`; acá no se recalcula.
+   */
   puedeEditar: boolean
+  /**
+   * Para contar por qué no se puede tocar. Opcional: sin él, el cartel dice la
+   * regla del circuito y no adivina en qué estado está la cotización.
+   */
+  estado?: string
 }) {
   return (
     <div className="space-y-4">
+      {/* El encabezado del bloque dice una sola vez de qué acto forma parte
+          todo esto; las tarjetas de abajo no lo repiten. */}
+      <div>
+        <h2 className="text-sm font-semibold text-texto">
+          Ficha técnica de la cotización de trabajo
+        </h2>
+        <p className="mt-0.5 text-xs text-texto-suave">
+          La arma Administración durante el costeo, junto con las partidas: con esto se compra el
+          material y se programa el taller. A diferencia de las partidas, la ficha y los accesorios
+          sí salen impresos en el papel del cliente.
+        </p>
+      </div>
+
+      {/* Antes, sin permiso o fuera de turno, las tarjetas se quedaban mudas:
+          ni botones ni motivo, y nadie sabía a quién pedirle el paso. */}
+      {!puedeEditar && (
+        <Tarjeta>
+          <CosteoCerrado estado={estado} que="La ficha técnica y los accesorios" />
+        </Tarjeta>
+      )}
+
       {puedeEditar && plantillas.length > 0 && (
         <AplicarFicha cotizacionId={cotizacionId} plantillas={plantillas} vacia={secciones.length === 0} />
       )}
@@ -169,7 +207,10 @@ function Medidas({
   if (!puedeEditar) {
     return (
       <Tarjeta>
-        <TarjetaCabecera titulo="Medidas y condiciones" />
+        <TarjetaCabecera
+          titulo="Medidas y condiciones"
+          descripcion="Lo que se le prometió al cliente en esta cotización: sale impreso en su papel."
+        />
         <TarjetaCuerpo className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
           <Dato titulo="Modelo" valor={cabecera.modelo} />
           <Dato titulo="Tipo" valor={cabecera.tipo} />
@@ -199,7 +240,7 @@ function Medidas({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Medidas y condiciones"
-        descripcion="Lo que cambia en cada cotización. La ficha de abajo trae el resto."
+        descripcion="Lo que cambia en cada cotización de trabajo; la ficha de abajo trae el resto. De acá salen las medidas con las que se compra la plancha, y esto sí sale impreso en el papel del cliente."
       />
       <TarjetaCuerpo>
         <form action={accion} className="space-y-3">
@@ -389,7 +430,7 @@ function Especificaciones({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Especificaciones técnicas"
-        descripcion="Lo que el taller va a fabricar y contra lo que el cliente va a reclamar."
+        descripcion="Lo que el taller va a fabricar y contra lo que el cliente va a reclamar: con esto se compra el material y se programa el taller. Se escribe en el costeo y sale impresa en el papel del cliente."
         acciones={
           puedeEditar && (
             <Boton variante="secundario" tamano="sm" onClick={() => setAbierto((a) => !a)}>
@@ -443,7 +484,7 @@ function Especificaciones({
             <p className="mt-1 text-xs text-texto-suave">
               {puedeEditar
                 ? 'Aplica una ficha ya escrita y ajusta lo que cambie, o escribe la primera línea a mano.'
-                : 'La escribe quien elabora la cotización, mientras siga abierta.'}
+                : 'La escribe Administración mientras la cotización está en costeo.'}
             </p>
             {puedeEditar && !abierto && (
               <div className="mt-4 flex justify-center">
@@ -644,7 +685,7 @@ function Accesorios({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Accesorios y equipamiento"
-        descripcion="Lo que la cotización promete entregar. El que dice «solo el soporte» va marcado."
+        descripcion="Lo que la cotización de trabajo promete entregar, y que el taller tiene que comprar o fabricar. El que dice «solo el soporte» va marcado. Sale impreso en el papel del cliente."
         acciones={
           puedeEditar && (
             <Boton variante="secundario" tamano="sm" onClick={() => setAbierto((a) => !a)}>
@@ -702,7 +743,7 @@ function Accesorios({
             <p className="mt-1 text-xs text-texto-suave">
               {puedeEditar
                 ? 'Lo que no figura acá no se prometió: el taller no lo monta y el cliente no lo reclama.'
-                : 'Los declara quien elabora la cotización, mientras siga abierta.'}
+                : 'Los declara Administración mientras la cotización está en costeo.'}
             </p>
             {puedeEditar && !abierto && (
               <div className="mt-4 flex justify-center">
