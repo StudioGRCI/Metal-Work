@@ -83,7 +83,10 @@ const esquemaPartida = z.object({
 
 export async function agregarPartida(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'cotizaciones.editar')) {
+  // Quien escribe la cotización y quien la costea son dos áreas distintas, y las
+  // políticas de la base aceptan a las dos. Pedir solo `editar` dejaba a
+  // Administración mirando botones que no funcionaban.
+  if (!puede(perfil, ['cotizaciones.editar', 'cotizaciones.costear'])) {
     return { ok: false, error: 'No tienes permiso para modificar cotizaciones.' }
   }
 
@@ -122,7 +125,10 @@ export async function agregarPartida(_previo: unknown, datos: FormData): Promise
 
 export async function eliminarPartida(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'cotizaciones.editar')) {
+  // Quien escribe la cotización y quien la costea son dos áreas distintas, y las
+  // políticas de la base aceptan a las dos. Pedir solo `editar` dejaba a
+  // Administración mirando botones que no funcionaban.
+  if (!puede(perfil, ['cotizaciones.editar', 'cotizaciones.costear'])) {
     return { ok: false, error: 'No tienes permiso para modificar cotizaciones.' }
   }
 
@@ -169,11 +175,17 @@ const esquemaEstado = z.object({
  * de allá, porque la pantalla esconde botones y quien entra por otra puerta no
  * ve pantallas.
  */
-function permisoDelCambio(estado: string) {
-  if (estado === 'EN_REVISION') return 'cotizaciones.costear'
-  if (estado === 'REVISADA' || estado === 'OBSERVADA') return 'cotizaciones.revisar'
-  if (estado === 'APROBADA' || estado === 'RECHAZADA') return 'cotizaciones.aprobar'
-  return 'cotizaciones.editar'
+function permisoDelCambio(estado: string): string[] {
+  if (estado === 'EN_REVISION') return ['cotizaciones.costear']
+  if (estado === 'REVISADA' || estado === 'OBSERVADA') return ['cotizaciones.revisar']
+  if (estado === 'APROBADA' || estado === 'RECHAZADA') return ['cotizaciones.aprobar']
+  // Anular una aprobada es de Gerencia, que tiene `anular` y no `editar`. Si
+  // acá se pidiera solo `editar`, el único que ve el botón sería el único al
+  // que la acción rechaza: la base distingue el caso por su cuenta.
+  if (estado === 'ANULADA') return ['cotizaciones.editar', 'cotizaciones.anular']
+  // Mandar a costear lo hace Ventas; retomar el costeo de una devuelta y
+  // devolverla a ventas, Administración. Las dos manos entran por acá.
+  return ['cotizaciones.editar', 'cotizaciones.costear']
 }
 
 /** Lo que el sistema responde cuando el paso salió bien, en su idioma. */
@@ -417,6 +429,9 @@ const esquemaConcepto = z.object({
 /** El nombre del trabajo tal como va impreso, con su cantidad y su unidad. */
 export async function editarConcepto(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
+  // Esto es de Ventas y solo de Ventas: el precio y el nombre del trabajo son lo
+  // que se le prometió al cliente. Quien costea arma el detalle, no cambia la
+  // promesa.
   if (!puede(perfil, 'cotizaciones.editar')) {
     return { ok: false, error: 'No tienes permiso para modificar cotizaciones.' }
   }
@@ -455,6 +470,9 @@ export async function editarCotizacion(
   datos: FormData,
 ): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
+  // Esto es de Ventas y solo de Ventas: el precio y el nombre del trabajo son lo
+  // que se le prometió al cliente. Quien costea arma el detalle, no cambia la
+  // promesa.
   if (!puede(perfil, 'cotizaciones.editar')) {
     return { ok: false, error: 'No tienes permiso para modificar cotizaciones.' }
   }
@@ -502,7 +520,10 @@ const esquemaPartidaEditada = esquemaPartida.extend({ partida_id: z.string().uui
 /** Corregir una partida ya cargada, sin tener que quitarla y volver a ponerla. */
 export async function editarPartida(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'cotizaciones.editar')) {
+  // Quien escribe la cotización y quien la costea son dos áreas distintas, y las
+  // políticas de la base aceptan a las dos. Pedir solo `editar` dejaba a
+  // Administración mirando botones que no funcionaban.
+  if (!puede(perfil, ['cotizaciones.editar', 'cotizaciones.costear'])) {
     return { ok: false, error: 'No tienes permiso para modificar cotizaciones.' }
   }
 

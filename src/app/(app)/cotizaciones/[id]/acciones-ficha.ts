@@ -14,7 +14,12 @@ function nulo(valor?: string | null) {
 
 async function exigirEdicion() {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'cotizaciones.editar')) return 'No tienes permiso para editar la cotización.'
+  // La ficha técnica y los accesorios son parte de la cotización de trabajo, y
+  // esa la arma Administración con `cotizaciones.costear`. La base ya lo acepta
+  // desde la migración 041; esto solo dejaba de acompañarla.
+  if (!puede(perfil, ['cotizaciones.editar', 'cotizaciones.costear'])) {
+    return 'No tienes permiso para editar la cotización.'
+  }
   return null
 }
 

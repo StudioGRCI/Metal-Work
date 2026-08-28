@@ -20,7 +20,7 @@ type Paso = {
    * `permisoDelCambio()` en la acción. Si no coinciden, el botón aparece, la
    * acción lo rechaza y la persona se queda sin saber por qué.
    */
-  permiso: string
+  permiso: string | string[]
   motivo?: boolean
   peligro?: boolean
   /** El paso que sigue el circuito; se pinta como el botón principal. */
@@ -50,7 +50,16 @@ const SIGUIENTES: Record<string, Paso[]> = {
       permiso: 'cotizaciones.editar',
       principal: true,
     },
-    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
+    {
+      estado: 'ANULADA',
+      etiqueta: 'Anular',
+      // Anular una aprobada es de Gerencia, que tiene `anular` y no `editar`;
+      // anular un borrador es de quien lo escribe. La acción acepta las dos y
+      // la base distingue el caso de la aprobada por su cuenta.
+      permiso: ['cotizaciones.editar', 'cotizaciones.anular'],
+      motivo: true,
+      peligro: true,
+    },
   ],
   EN_COSTEO: [
     {
@@ -59,10 +68,23 @@ const SIGUIENTES: Record<string, Paso[]> = {
       permiso: 'cotizaciones.costear',
       principal: true,
     },
-    // Devolverla a ventas es de quien la escribe, no de quien la costea: la
-    // acción exige `cotizaciones.editar` para volver a BORRADOR.
-    { estado: 'BORRADOR', etiqueta: 'Volver a ventas', permiso: 'cotizaciones.editar' },
-    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
+    // Devolverla a ventas la da quien la tiene en la mano: Administración, que
+    // es la que descubre que falta un dato del cliente para poder costear.
+    {
+      estado: 'BORRADOR',
+      etiqueta: 'Volver a ventas',
+      permiso: ['cotizaciones.editar', 'cotizaciones.costear'],
+    },
+    {
+      estado: 'ANULADA',
+      etiqueta: 'Anular',
+      // Anular una aprobada es de Gerencia, que tiene `anular` y no `editar`;
+      // anular un borrador es de quien lo escribe. La acción acepta las dos y
+      // la base distingue el caso de la aprobada por su cuenta.
+      permiso: ['cotizaciones.editar', 'cotizaciones.anular'],
+      motivo: true,
+      peligro: true,
+    },
   ],
   EN_REVISION: [
     { estado: 'REVISADA', etiqueta: 'Dar el visto', permiso: 'cotizaciones.revisar', principal: true },
@@ -72,19 +94,40 @@ const SIGUIENTES: Record<string, Paso[]> = {
       permiso: 'cotizaciones.revisar',
       motivo: true,
     },
-    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
+    {
+      estado: 'ANULADA',
+      etiqueta: 'Anular',
+      // Anular una aprobada es de Gerencia, que tiene `anular` y no `editar`;
+      // anular un borrador es de quien lo escribe. La acción acepta las dos y
+      // la base distingue el caso de la aprobada por su cuenta.
+      permiso: ['cotizaciones.editar', 'cotizaciones.anular'],
+      motivo: true,
+      peligro: true,
+    },
   ],
   // Devuelta: se retoma el costeo. La base no deja saltar de acá a revisión sin
   // pasar otra vez por costeo, que es donde se corrige lo observado.
   OBSERVADA: [
     {
       estado: 'EN_COSTEO',
-      etiqueta: 'Pasar a cotización de trabajo',
-      permiso: 'cotizaciones.editar',
+      etiqueta: 'Retomar el costeo',
+      // A quien le toca corregir lo observado es a Administración: si esto
+      // pidiera solo `editar`, la cotización devuelta se quedaría sin un solo
+      // botón para quien la tiene que arreglar.
+      permiso: ['cotizaciones.editar', 'cotizaciones.costear'],
       principal: true,
     },
     { estado: 'BORRADOR', etiqueta: 'Volver a ventas', permiso: 'cotizaciones.editar' },
-    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
+    {
+      estado: 'ANULADA',
+      etiqueta: 'Anular',
+      // Anular una aprobada es de Gerencia, que tiene `anular` y no `editar`;
+      // anular un borrador es de quien lo escribe. La acción acepta las dos y
+      // la base distingue el caso de la aprobada por su cuenta.
+      permiso: ['cotizaciones.editar', 'cotizaciones.anular'],
+      motivo: true,
+      peligro: true,
+    },
   ],
   // Con el visto puesto solo queda mandarla -eso lo hace la descarga-. Y si hay
   // que cambiarle una partida, primero se devuelve: desde acá la cotización de
@@ -96,24 +139,60 @@ const SIGUIENTES: Record<string, Paso[]> = {
       permiso: 'cotizaciones.revisar',
       motivo: true,
     },
-    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
+    {
+      estado: 'ANULADA',
+      etiqueta: 'Anular',
+      // Anular una aprobada es de Gerencia, que tiene `anular` y no `editar`;
+      // anular un borrador es de quien lo escribe. La acción acepta las dos y
+      // la base distingue el caso de la aprobada por su cuenta.
+      permiso: ['cotizaciones.editar', 'cotizaciones.anular'],
+      motivo: true,
+      peligro: true,
+    },
   ],
   ENVIADA: [
     { estado: 'APROBADA', etiqueta: 'Marcar aprobada', permiso: 'cotizaciones.aprobar', principal: true },
     { estado: 'RECHAZADA', etiqueta: 'Rechazar', permiso: 'cotizaciones.aprobar', motivo: true, peligro: true },
     { estado: 'BORRADOR', etiqueta: 'Volver a ventas', permiso: 'cotizaciones.editar' },
-    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
+    {
+      estado: 'ANULADA',
+      etiqueta: 'Anular',
+      // Anular una aprobada es de Gerencia, que tiene `anular` y no `editar`;
+      // anular un borrador es de quien lo escribe. La acción acepta las dos y
+      // la base distingue el caso de la aprobada por su cuenta.
+      permiso: ['cotizaciones.editar', 'cotizaciones.anular'],
+      motivo: true,
+      peligro: true,
+    },
   ],
   // Una aprobada es lo que el cliente ya aceptó: deshacerlo es de Gerencia.
   APROBADA: [
     { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.anular', motivo: true, peligro: true },
   ],
   RECHAZADA: [
-    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
+    {
+      estado: 'ANULADA',
+      etiqueta: 'Anular',
+      // Anular una aprobada es de Gerencia, que tiene `anular` y no `editar`;
+      // anular un borrador es de quien lo escribe. La acción acepta las dos y
+      // la base distingue el caso de la aprobada por su cuenta.
+      permiso: ['cotizaciones.editar', 'cotizaciones.anular'],
+      motivo: true,
+      peligro: true,
+    },
   ],
   VENCIDA: [
     { estado: 'ENVIADA', etiqueta: 'Reenviar', permiso: 'cotizaciones.editar' },
-    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.editar', motivo: true, peligro: true },
+    {
+      estado: 'ANULADA',
+      etiqueta: 'Anular',
+      // Anular una aprobada es de Gerencia, que tiene `anular` y no `editar`;
+      // anular un borrador es de quien lo escribe. La acción acepta las dos y
+      // la base distingue el caso de la aprobada por su cuenta.
+      permiso: ['cotizaciones.editar', 'cotizaciones.anular'],
+      motivo: true,
+      peligro: true,
+    },
   ],
 }
 
@@ -179,7 +258,8 @@ export function AccionesCotizacion({
   const [abriendoOrden, setAbriendoOrden] = useState(false)
   const [bajando, setBajando] = useState(false)
 
-  const puede = (permiso: string) => esAdmin || permisos.includes(permiso)
+  const puede = (permiso: string | string[]) =>
+    esAdmin || (Array.isArray(permiso) ? permiso : [permiso]).some((p) => permisos.includes(p))
   const disponibles = (SIGUIENTES[cotizacion.estado] ?? []).filter((t) => puede(t.permiso))
 
   /**
