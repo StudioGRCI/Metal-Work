@@ -167,8 +167,37 @@ Hoy nada de esto se nota: la base tiene 1.603 filas en total y la tabla mayor es
 rendimiento contra esta base **no prueba nada**, y un `explain analyze` que salga
 en microsegundos es un falso verde.
 
-Pendiente y confirmado por `get_advisors`: 19 claves foráneas sin índice
-—varias en rutas calientes como `ordenes_trabajo.encargado_produccion_id`,
-`cotizaciones.unidad_del_cliente`, `ot_avances.etapa_de_la_orden`— y 7 tablas de
-catálogo con dos políticas permisivas de `select` para `authenticated`, que se
-evalúan las dos.
+Y una corrección a lo que esta misma skill decía hace un rato: **el aviso «clave
+foránea sin índice» del tablero no es un hecho de rendimiento, es una regla de
+linter.** Exige que las columnas de la llave sean prefijo EXACTO de algún índice.
+Un índice de una sola columna sirve perfectamente para la sonda de integridad de
+una llave compuesta que empiece por esa columna — comprobado con `explain`
+contra producción:
+
+```
+Index Scan using idx_kardex_etapa on kardex
+  Index Cond: (etapa_id = ...)
+  Filter: (orden_id = ...)
+```
+
+De las 19 que reporta, solo **15** carecen de índice que empiece por su primera
+columna, y ninguna de esas 15 se justifica hoy: son catálogos acotados
+(`tipos_documento`, `series_documentarias`, `roles_permisos`, la codificación de
+`materiales`) o columnas de «quién firmó» que la aplicación nunca filtra y cuyo
+padre no se borra en ningún flujo —los únicos `.delete()` del código son sobre
+líneas de detalle—. Se decidió no crear ninguno el 2026-08-28.
+
+Antes de crear un índice de clave foránea, comprobar tres cosas: **(a)** si ya
+existe uno cuya primera columna coincida, **(b)** si la aplicación filtra de
+verdad por esa columna, **(c)** si el padre llega a borrarse alguna vez en este
+negocio. Si las tres fallan, el índice solo añade coste de escritura y un aviso
+más de «índice sin usar» a los 219 que el proyecto ya arrastra.
+
+El punto ciego que sí importa va al revés: el tablero **da por cubierta** una
+llave que solo tiene un índice PARCIAL, y la integridad referencial no puede
+usarlo porque mira todas las filas. Es el caso de `usuarios.area_id`, cubierta
+solo por `ix_usuarios_area (… where activo)`. Ninguna herramienta avisa de eso:
+lo vigila `db/test/checks/190_las_llaves_que_nadie_vigila.sql`.
+
+Sigue pendiente y confirmado por `get_advisors`: 7 tablas de catálogo con dos
+políticas permisivas de `select` para `authenticated`, que se evalúan las dos.
