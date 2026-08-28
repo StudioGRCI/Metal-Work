@@ -87,3 +87,11 @@ por trigger— tras el cual el documento queda congelado como evidencia. El
 patrón está en `20260101000034_anular_no_borrar.sql`: trigger propio de
 anulación, `fn_..._bloquear_borrado` que siempre levanta excepción, la
 política `borrar_*` eliminada y el `grant delete` revocado.
+
+## Trampas
+
+*(Sección viva: aquí se anota lo que salió mal al tocar el esquema. Ver `aprender`.)*
+
+- **`next typegen` antes de `tsc`.** Sin él, TypeScript reporta decenas de
+  «Cannot find name 'PageProps'» que no son errores del código y hacen perder
+  media hora persiguiendo un fallo inexistente.

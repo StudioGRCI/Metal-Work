@@ -117,3 +117,11 @@ los errores de consola y guarda captura. Pantalla nueva → sumarla a `RUTAS`
 en ese archivo. Interacción nueva → probarla con clic real vía
 `playwright-core` contra `localhost:3111` (patrón en
 `herramientas/presentacion/capturar.mjs`).
+
+## Trampas
+
+*(Sección viva: aquí se anota lo que salió mal al construir pantallas. Ver `aprender`.)*
+
+- **Una columna nueva no aparece sola.** Aunque esté en la base y en los tipos,
+  la pantalla la ignora hasta que se agrega al `select` explícito de
+  `src/lib/datos/*`. El síntoma es un campo vacío sin ningún error.
