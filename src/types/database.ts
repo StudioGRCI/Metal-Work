@@ -801,6 +801,9 @@ export type Database = {
           motivo_anulacion: string | null
           anulada_por: string | null
           anulada_en: string | null
+          concepto: string | null
+          concepto_cantidad: number
+          concepto_unidad: string
         }
         Insert: {
           id?: string
@@ -846,6 +849,9 @@ export type Database = {
           motivo_anulacion?: string | null
           anulada_por?: string | null
           anulada_en?: string | null
+          concepto?: string | null
+          concepto_cantidad?: number
+          concepto_unidad?: string
         }
         Update: {
           id?: string
@@ -891,6 +897,9 @@ export type Database = {
           motivo_anulacion?: string | null
           anulada_por?: string | null
           anulada_en?: string | null
+          concepto?: string | null
+          concepto_cantidad?: number
+          concepto_unidad?: string
         }
         Relationships: [
           {

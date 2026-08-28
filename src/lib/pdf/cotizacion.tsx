@@ -180,7 +180,7 @@ const estilos = StyleSheet.create({
 })
 
 /** Anchos de la tabla de partidas, en porcentaje del ancho útil. */
-const COL = { item: '6%', descripcion: '48%', cantidad: '10%', precio: '18%', total: '18%' } as const
+const COL = { item: '6%', descripcion: '50%', cantidad: '10%', unidad: '10%', precio: '24%' } as const
 
 function Dato({ etiqueta, valor, fuerte }: { etiqueta: string; valor?: string | null; fuerte?: boolean }) {
   return (
@@ -201,6 +201,39 @@ function medidas(c: CotizacionImpresa) {
   const partes = [c.largo_m, c.ancho_m, c.alto_m].filter((m) => m !== null)
   if (partes.length === 0) return null
   return `${partes.map((m) => numero(m, 2)).join(' × ')} m`
+}
+
+/**
+ * El nombre del trabajo tal como sale impreso. Lo escribe quien cotiza; si no
+ * lo escribió, se arma con la carrocería y su capacidad —que es de donde salía
+ * antes— para que ninguna de las cotizaciones ya emitidas quede sin decir qué
+ * se cotizó.
+ */
+function concepto(c: CotizacionImpresa) {
+  const escrito = c.concepto?.trim()
+  if (escrito) return escrito
+
+  const partes = [c.carroceria, c.capacidad, medidas(c)].filter(Boolean)
+  return partes.length > 0 ? partes.join(' · ') : 'Trabajo cotizado'
+}
+
+/**
+ * El precio de una unidad del concepto, tal como la casa lo promete.
+ *
+ * Antes salía siempre el bruto -el total repartido entre la cantidad- debajo de
+ * un Subtotal sin IGV: la cuenta solo cerraba contra el TOTAL y, con la casilla
+ * «el precio incluye IGV» destildada, el papel afirmaba «no incluye IGV» encima
+ * de un número que sí lo llevaba. Se contradecía solo, y ese es el número que
+ * el cliente lee.
+ *
+ * Ahora la casilla manda sobre lo impreso: si el precio incluye IGV se imprime
+ * el bruto -el mismo número del TOTAL-, y si no, el neto, que es el que cuadra
+ * con el Subtotal. El desglose de abajo no cambia en ningún caso.
+ */
+function precioDelConcepto(c: CotizacionImpresa) {
+  const cantidad = Number(c.concepto_cantidad) || 1
+  const base = c.subtotal - c.descuento
+  return (c.incluye_igv ? c.total : base) / cantidad
 }
 
 function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: Buffer | null }) {
@@ -351,39 +384,36 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
           </>
         )}
 
-        {/* ------------------------------------------------------- partidas */}
-        {datos.partidas.length > 0 && (
+        {/* ------------------------------------------- el trabajo y su precio */}
+        {/* Al cliente le toca saber qué se le va a fabricar y cuánto cuesta. El
+            desglose por partida es la cocina del taller —acero, mano de obra,
+            servicios de terceros— y se queda adentro: de él salen el
+            presupuesto de la OT y las compras de material, no el papel. */}
+        {(datos.partidas.length > 0 || datos.concepto) && (
           <>
-            <Text style={estilos.tituloSeccion}>DETALLE ECONÓMICO</Text>
+            <Text style={estilos.tituloSeccion}>TRABAJO A REALIZAR</Text>
             <View style={estilos.tabla}>
               <View style={estilos.encabezado}>
                 <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.item }]}>ÍTEM</Text>
                 <Text style={[estilos.celdaTitulo, { width: COL.descripcion }]}>DESCRIPCIÓN</Text>
                 <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.cantidad }]}>CANT.</Text>
-                <Text style={[estilos.celdaTitulo, estilos.derecha, { width: COL.precio }]}>P. UNITARIO</Text>
-                <Text style={[estilos.celdaTitulo, estilos.derecha, { width: COL.total }]}>IMPORTE</Text>
+                <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.unidad }]}>UND.</Text>
+                <Text style={[estilos.celdaTitulo, estilos.derecha, { width: COL.precio }]}>PRECIO</Text>
               </View>
 
-              {datos.partidas.map((p, i) => (
-                <View key={`${p.descripcion}-${i}`} style={estilos.fila} wrap={false}>
-                  <Text style={[estilos.celda, estilos.centro, { width: COL.item }]}>{i + 1}</Text>
-                  <Text style={[estilos.celda, { width: COL.descripcion }]}>
-                    {p.descripcion}
-                    {Number(p.descuento_porcentaje ?? 0) > 0
-                      ? ` (dscto. ${numero(p.descuento_porcentaje, 0)}%)`
-                      : ''}
-                  </Text>
-                  <Text style={[estilos.celda, estilos.centro, { width: COL.cantidad }]}>
-                    {`${numero(p.cantidad, 2)}${p.unidad_medida ? ` ${p.unidad_medida}` : ''}`}
-                  </Text>
-                  <Text style={[estilos.celda, estilos.derecha, { width: COL.precio }]}>
-                    {moneda(p.precio_unitario, mon)}
-                  </Text>
-                  <Text style={[estilos.celda, estilos.derecha, { width: COL.total }]}>
-                    {moneda(p.subtotal, mon)}
-                  </Text>
-                </View>
-              ))}
+              <View style={estilos.fila}>
+                <Text style={[estilos.celda, estilos.centro, { width: COL.item }]}>1</Text>
+                <Text style={[estilos.celda, { width: COL.descripcion }]}>{concepto(datos)}</Text>
+                <Text style={[estilos.celda, estilos.centro, { width: COL.cantidad }]}>
+                  {numero(datos.concepto_cantidad, 2)}
+                </Text>
+                <Text style={[estilos.celda, estilos.centro, { width: COL.unidad }]}>
+                  {datos.concepto_unidad}
+                </Text>
+                <Text style={[estilos.celda, estilos.derecha, { width: COL.precio }]}>
+                  {moneda(precioDelConcepto(datos), mon)}
+                </Text>
+              </View>
             </View>
 
             <View style={estilos.bloqueTotales}>
@@ -407,7 +437,9 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
                   <Text style={estilos.textoTotal}>{moneda(datos.total, mon)}</Text>
                 </View>
                 <Text style={[estilos.textoPie, { textAlign: 'right', marginTop: 2 }]}>
-                  {datos.incluye_igv ? 'Precio incluye IGV' : 'Precio no incluye IGV'}
+                  {datos.incluye_igv
+                    ? 'El precio indicado ya incluye el IGV'
+                    : 'El precio indicado no incluye el IGV; se detalla arriba'}
                 </Text>
               </View>
             </View>

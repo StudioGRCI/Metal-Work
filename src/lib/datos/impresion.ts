@@ -31,6 +31,11 @@ export type CotizacionImpresa = {
   empresa: Membrete | null
   numero: string
   estado: string
+  /** Lo que se va a hacer, tal como sale impreso. Vacío en las cotizaciones
+   *  anteriores al campo: el documento cae entonces a la carrocería. */
+  concepto: string | null
+  concepto_cantidad: number
+  concepto_unidad: string
   fecha_emision: string
   fecha_vencimiento: string | null
   moneda: string
@@ -125,6 +130,9 @@ export async function cotizacionParaImprimir(id: string): Promise<CotizacionImpr
     empresa,
     numero: String(c.numero),
     estado: String(c.estado),
+    concepto: (c.concepto as string | null) ?? null,
+    concepto_cantidad: Number(c.concepto_cantidad ?? 1),
+    concepto_unidad: String(c.concepto_unidad ?? 'UND'),
     fecha_emision: String(c.fecha_emision),
     fecha_vencimiento: (c.fecha_vencimiento as string | null) ?? null,
     moneda: String(c.moneda ?? 'PEN'),

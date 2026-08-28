@@ -266,6 +266,10 @@ scripts/                    Utilidades de desarrollo
   el dominio `cantidad` (4 decimales), porque una plancha se pesa en kilos con
   fracción.
 - Los documentos no se borran: se anulan, dejando constancia del motivo.
+- La cotización impresa dice **qué se va a hacer y cuánto cuesta**: una sola
+  línea con el concepto, la cantidad, la unidad y el precio. El desglose por
+  partida —acero, mano de obra, servicios— es la cocina del taller, sirve para
+  el presupuesto de la OT y las compras, y no sale en el papel del cliente.
 - Toda tabla nueva debe declarar sus políticas RLS; la migración `0007` falla si
   alguna queda sin protección, y también si alguna queda con RLS activo pero sin
   políticas, que la volvería inaccesible sin avisar.

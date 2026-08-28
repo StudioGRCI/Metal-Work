@@ -432,11 +432,15 @@ begin
 
     insert into public.cotizaciones
       (cliente_id, unidad_id, tipo_carroceria_id, sede_id, fecha_emision, validez_dias,
-       plazo_entrega_dias, forma_pago, condiciones, vendedor_id)
+       plazo_entrega_dias, forma_pago, condiciones, vendedor_id,
+       concepto, concepto_cantidad, concepto_unidad)
     select v_cliente, v_unidad, tc.id, v_sede, current_date - 30, 20,
            45, '50 % adelanto, saldo contra entrega',
            'Precios en soles, no incluyen traslado fuera de la ciudad.',
-           v_usuario
+           v_usuario,
+           -- Lo que sale impreso: el trabajo entero, sin abrir las partidas.
+           'Fabricación de tolva de volquete de 18 m3 en acero A36 con piso Hardox 450, sistema hidráulico y acabado',
+           1, 'UND'
       from public.tipos_carroceria tc where tc.codigo = 'TOLVA_VOLQUETE'
     returning id into v_cotizacion;
 
