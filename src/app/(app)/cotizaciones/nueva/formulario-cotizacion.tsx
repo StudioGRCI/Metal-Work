@@ -8,6 +8,7 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { createClient } from '@/lib/supabase/client'
+import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { NuevaUnidad } from '@/app/(app)/clientes/nueva-unidad'
 import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
 import { NuevoCliente } from '@/components/comercial/nuevo-cliente'
@@ -27,7 +28,7 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
   const [carroceriaId, setCarroceriaId] = useState('')
   const [cargadas, setCargadas] = useState<{
     clienteId: string
-    unidades: { id: string; placa: string }[]
+    unidades: { id: string; placa: string | null }[]
   } | null>(null)
   // Lo dado de alta sin salir de acá se suma a las listas y queda elegido.
   const [clientesNuevos, setClientesNuevos] = useState<Catalogos['clientes']>([])
@@ -70,7 +71,14 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
     setUnidadId('')
   }
 
-  function unidadCreada(u: { id: string; placa: string }) {
+  function unidadCreada(u: {
+    id: string
+    placa: string | null
+    codigo_interno?: string | null
+    numero_chasis?: string | null
+    marca?: string | null
+    modelo?: string | null
+  }) {
     setCargadas((previas) =>
       previas?.clienteId === clienteId
         ? { clienteId, unidades: [u, ...previas.unidades.filter((x) => x.id !== u.id)] }
@@ -126,7 +134,7 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
                 onChange={setUnidadId}
                 marcador="Sin unidad asignada"
                 marcadorBusqueda="Placa"
-                opciones={unidades.map((u) => ({ valor: u.id, etiqueta: u.placa }))}
+                opciones={unidades.map((u) => ({ valor: u.id, etiqueta: nombreDeUnidad(u) }))}
               />
               {clienteId && (
                 <NuevaUnidad

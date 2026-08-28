@@ -9,6 +9,7 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import { createClient } from '@/lib/supabase/client'
+import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { cn } from '@/lib/utils'
 
 import { editarCotizacion } from '../acciones'
@@ -67,7 +68,7 @@ export function EditarCotizacion({
   const [sedeId, setSedeId] = useState(cotizacion.sede_id ?? '')
   const [cargadas, setCargadas] = useState<{
     clienteId: string
-    unidades: { id: string; placa: string }[]
+    unidades: { id: string; placa: string | null }[]
   } | null>(unidadActual ? { clienteId: cotizacion.cliente_id, unidades: [unidadActual] } : null)
 
   // Las unidades son del cliente elegido: se piden al vuelo, como en el alta.
@@ -168,7 +169,7 @@ export function EditarCotizacion({
                 onChange={setUnidadId}
                 marcador="Sin unidad asignada"
                 marcadorBusqueda="Placa"
-                opciones={unidades.map((u) => ({ valor: u.id, etiqueta: u.placa }))}
+                opciones={unidades.map((u) => ({ valor: u.id, etiqueta: nombreDeUnidad(u) }))}
               />
             </Campo>
 

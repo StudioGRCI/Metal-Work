@@ -5136,7 +5136,7 @@ export type Database = {
         Row: {
           id: string
           cliente_id: string
-          placa: string
+          placa: string | null
           tipo_vehiculo: Database["public"]["Enums"]["tipo_vehiculo"]
           marca: string | null
           modelo: string | null
@@ -5157,7 +5157,7 @@ export type Database = {
         Insert: {
           id?: string
           cliente_id: string
-          placa: string
+          placa?: string | null
           tipo_vehiculo?: Database["public"]["Enums"]["tipo_vehiculo"]
           marca?: string | null
           modelo?: string | null
@@ -5178,7 +5178,7 @@ export type Database = {
         Update: {
           id?: string
           cliente_id?: string
-          placa?: string
+          placa?: string | null
           tipo_vehiculo?: Database["public"]["Enums"]["tipo_vehiculo"]
           marca?: string | null
           modelo?: string | null

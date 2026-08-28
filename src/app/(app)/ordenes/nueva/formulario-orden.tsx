@@ -9,6 +9,7 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { createClient } from '@/lib/supabase/client'
+import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { NuevaUnidad } from '@/app/(app)/clientes/nueva-unidad'
 import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
 import { NuevoCliente } from '@/components/comercial/nuevo-cliente'
@@ -33,7 +34,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   const [responsableId, setResponsableId] = useState('')
   const [cargadas, setCargadas] = useState<{
     clienteId: string
-    unidades: { id: string; placa: string; marca: string | null }[]
+    unidades: { id: string; placa: string | null; marca: string | null }[]
   } | null>(null)
   // Lo dado de alta sin salir de acá se suma a las listas y queda elegido.
   const [clientesNuevos, setClientesNuevos] = useState<Catalogos['clientes']>([])
@@ -80,7 +81,14 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     setUnidadId('')
   }
 
-  function unidadCreada(u: { id: string; placa: string }) {
+  function unidadCreada(u: {
+    id: string
+    placa: string | null
+    codigo_interno?: string | null
+    numero_chasis?: string | null
+    marca?: string | null
+    modelo?: string | null
+  }) {
     const fila = { ...u, marca: null }
     setCargadas((previas) =>
       previas?.clienteId === clienteId
@@ -146,7 +154,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
                 marcadorBusqueda="Placa o marca"
                 opciones={unidades.map((u) => ({
                   valor: u.id,
-                  etiqueta: u.placa,
+                  etiqueta: nombreDeUnidad(u),
                   detalle: u.marca,
                 }))}
               />

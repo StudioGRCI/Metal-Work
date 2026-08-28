@@ -87,7 +87,15 @@ export async function guardarCliente(_previo: unknown, datos: FormData): Promise
 
 const esquemaUnidad = z.object({
   cliente_id: z.string().uuid('Selecciona el cliente'),
-  placa: z.string().trim().toUpperCase().min(6, 'La placa es obligatoria'),
+  // Sin placa se puede registrar: la empresa fabrica sobre chasis que
+  // todavía no están matriculados y la placa llega al final del trabajo. Si se
+  // escribe, se guarda en mayúsculas y con su forma de siempre.
+  placa: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .optional()
+    .refine((p) => !p || p.length >= 6, 'La placa tiene menos caracteres de los que lleva una placa'),
   tipo_vehiculo: z.enum(['VOLQUETE', 'TRACTO', 'SEMIRREMOLQUE', 'CAMION', 'REMOLQUE', 'FURGON', 'OTRO']),
   marca: z.string().trim().optional(),
   modelo: z.string().trim().optional(),
@@ -111,7 +119,7 @@ function numeroOpcional(valor?: string) {
 export async function guardarUnidad(
   _previo: unknown,
   datos: FormData,
-): Promise<ResultadoAccion<{ id: string; placa: string }>> {
+): Promise<ResultadoAccion<{ id: string; placa: string | null }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'clientes.crear')) {
     return { ok: false, error: 'No tienes permiso para registrar unidades.' }
@@ -127,7 +135,7 @@ export async function guardarUnidad(
 
   const { data: creada, error } = await supabase.from('unidades').insert({
     cliente_id: v.cliente_id,
-    placa: v.placa,
+    placa: nulo(v.placa),
     tipo_vehiculo: v.tipo_vehiculo,
     marca: nulo(v.marca),
     modelo: nulo(v.modelo),
@@ -140,7 +148,7 @@ export async function guardarUnidad(
     tipo_carroceria_id: nulo(v.tipo_carroceria_id) as string | null,
     observaciones: nulo(v.observaciones),
   })
-    .select('id, placa')
+    .select('id, placa, codigo_interno, numero_chasis, marca, modelo')
     .single()
 
   if (error) return { ok: false, error: mensajeDeError(error) }

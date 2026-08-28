@@ -30,7 +30,16 @@ export function NuevaUnidad({
   clienteId: string
   tiposCarroceria: { id: string; nombre: string }[]
   /** Para los formularios que quieren quedarse con la unidad recién creada. */
-  onCreada?: (unidad: { id: string; placa: string }) => void
+  // La placa puede faltar: quien reciba la unidad recién creada la nombra con
+  // nombreDeUnidad(), no dando por hecho que hay matrícula.
+  onCreada?: (unidad: {
+    id: string
+    placa: string | null
+    codigo_interno?: string | null
+    numero_chasis?: string | null
+    marca?: string | null
+    modelo?: string | null
+  }) => void
   compacta?: boolean
 }) {
   const router = useRouter()
@@ -81,7 +90,11 @@ export function NuevaUnidad({
         <form action={enviar} className="grid gap-4 sm:grid-cols-3">
           <input type="hidden" name="cliente_id" value={clienteId} />
 
-          <Campo etiqueta="Placa" htmlFor="nu-placa" requerido>
+          <Campo
+                etiqueta="Placa"
+                htmlFor="nu-placa"
+                ayuda="Si el chasis todavía no está matriculado, déjala vacía"
+              >
             {/* La placa se escribe en mayúsculas y nunca la sabe el
                 navegador: sin esto el teclado del teléfono la empieza en
                 minúscula y el corrector la "arregla". Teclado normal, que la
@@ -89,7 +102,6 @@ export function NuevaUnidad({
             <Entrada
               id="nu-placa"
               name="placa"
-              required
               autoFocus
               autoComplete="off"
               autoCapitalize="characters"
