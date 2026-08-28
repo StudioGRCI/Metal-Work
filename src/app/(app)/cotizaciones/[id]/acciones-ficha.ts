@@ -241,3 +241,95 @@ export async function quitarAccesorio(_previo: unknown, datos: FormData): Promis
   revalidatePath(`/cotizaciones/${analisis.data.cotizacion_id}`)
   return { ok: true }
 }
+
+/**
+ * Corregir una línea de la ficha sin quitarla y volver a escribirla: el espesor
+ * que salió mal, la etiqueta que no era. Se comprueba que el UPDATE tocó su
+ * fila —un UPDATE que no encuentra fila no es un error para Postgres, y la
+ * pantalla diría «guardado» sin haber guardado nada.
+ */
+export async function editarLineaFicha(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion> {
+  const problema = await exigirEdicion()
+  if (problema) return { ok: false, error: problema }
+
+  const analisis = z
+    .object({
+      id: z.string().uuid(),
+      cotizacion_id: z.string().uuid(),
+      etiqueta: z.string().trim().optional(),
+      detalle: z.string().trim().min(3, 'Falta el detalle'),
+    })
+    .safeParse(Object.fromEntries(datos))
+
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa la línea.' }
+  }
+
+  const v = analisis.data
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('cotizacion_especificaciones')
+    .update({ etiqueta: nulo(v.etiqueta), detalle: v.detalle })
+    .eq('id', v.id)
+    .eq('cotizacion_id', v.cotizacion_id)
+    .select('id')
+    .maybeSingle()
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: 'No se pudo guardar la línea de la ficha.' }
+
+  revalidatePath(`/cotizaciones/${v.cotizacion_id}`)
+  return { ok: true, mensaje: 'Línea actualizada.' }
+}
+
+/** Corregir un accesorio ya ofrecido: la cantidad, la unidad o si se incluye. */
+export async function editarAccesorio(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion> {
+  const problema = await exigirEdicion()
+  if (problema) return { ok: false, error: problema }
+
+  const analisis = z
+    .object({
+      id: z.string().uuid(),
+      cotizacion_id: z.string().uuid(),
+      cantidad: z.coerce.number().positive('La cantidad tiene que ser mayor que cero'),
+      unidad: z.string().trim().default('unid'),
+      descripcion: z.string().trim().min(3, 'Falta la descripción'),
+      observacion: z.string().trim().optional(),
+      incluye_el_accesorio: z.string().optional(),
+    })
+    .safeParse(Object.fromEntries(datos))
+
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el accesorio.' }
+  }
+
+  const v = analisis.data
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('cotizacion_accesorios')
+    .update({
+      cantidad: v.cantidad,
+      unidad: v.unidad || 'unid',
+      descripcion: v.descripcion,
+      observacion: nulo(v.observacion),
+      incluye_el_accesorio: v.incluye_el_accesorio === 'on',
+    })
+    .eq('id', v.id)
+    .eq('cotizacion_id', v.cotizacion_id)
+    .select('id')
+    .maybeSingle()
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: 'No se pudo guardar el accesorio.' }
+
+  revalidatePath(`/cotizaciones/${v.cotizacion_id}`)
+  return { ok: true, mensaje: 'Accesorio actualizado.' }
+}

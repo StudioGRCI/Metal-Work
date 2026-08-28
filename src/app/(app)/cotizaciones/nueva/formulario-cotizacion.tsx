@@ -1,10 +1,11 @@
 'use client'
 
-import Link from 'next/link'
 import { useActionState, useEffect, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
+import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { createClient } from '@/lib/supabase/client'
 import { NuevaUnidad } from '@/app/(app)/clientes/nueva-unidad'
@@ -91,45 +92,42 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
         <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2">
           <Campo etiqueta="Cliente" htmlFor="cliente_id" requerido>
             <div className="flex items-center gap-2">
-              <Seleccion
+              <SeleccionBuscable
                 id="cliente_id"
                 name="cliente_id"
-                required
-                value={clienteId}
-                onChange={(e) => {
-                  setClienteId(e.target.value)
+                requerido
+                permiteVaciar={false}
+                className="flex-1"
+                valor={clienteId}
+                onChange={(v) => {
+                  setClienteId(v)
                   setUnidadId('')
                 }}
-                className="flex-1"
-              >
-                <option value="">Selecciona un cliente</option>
-                {clientes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.razon_social} · {c.numero_documento}
-                  </option>
-                ))}
-              </Seleccion>
+                marcador="Selecciona un cliente"
+                marcadorBusqueda="Razón social o RUC"
+                opciones={clientes.map((c) => ({
+                  valor: c.id,
+                  etiqueta: c.razon_social,
+                  detalle: c.numero_documento,
+                }))}
+              />
               <NuevoCliente onCreado={clienteCreado} />
             </div>
           </Campo>
 
           <Campo etiqueta="Unidad" htmlFor="unidad_id">
             <div className="flex items-center gap-2">
-              <Seleccion
+              <SeleccionBuscable
                 id="unidad_id"
                 name="unidad_id"
-                disabled={!clienteId}
-                value={unidadId}
-                onChange={(e) => setUnidadId(e.target.value)}
+                deshabilitado={!clienteId}
                 className="flex-1"
-              >
-                <option value="">Sin unidad asignada</option>
-                {unidades.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.placa}
-                  </option>
-                ))}
-              </Seleccion>
+                valor={unidadId}
+                onChange={setUnidadId}
+                marcador="Sin unidad asignada"
+                marcadorBusqueda="Placa"
+                opciones={unidades.map((u) => ({ valor: u.id, etiqueta: u.placa }))}
+              />
               {clienteId && (
                 <NuevaUnidad
                   key={clienteId}
@@ -144,20 +142,16 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
 
           <Campo etiqueta="Tipo de carrocería" htmlFor="tipo_carroceria_id">
             <div className="flex items-center gap-2">
-              <Seleccion
+              <SeleccionBuscable
                 id="tipo_carroceria_id"
                 name="tipo_carroceria_id"
-                value={carroceriaId}
-                onChange={(e) => setCarroceriaId(e.target.value)}
                 className="flex-1"
-              >
-                <option value="">Sin especificar</option>
-                {carrocerias.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.nombre}
-                  </option>
-                ))}
-              </Seleccion>
+                valor={carroceriaId}
+                onChange={setCarroceriaId}
+                marcador="Sin especificar"
+                marcadorBusqueda="Tolva, cisterna, furgón…"
+                opciones={carrocerias.map((t) => ({ valor: t.id, etiqueta: t.nombre }))}
+              />
               <NuevaCarroceria onCreada={carroceriaCreada} />
             </div>
           </Campo>
@@ -182,10 +176,13 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
           </Campo>
 
           <Campo etiqueta="Validez" htmlFor="validez_dias" ayuda="Días">
+            {/* `inputMode` saca el teclado numérico en el teléfono: aquí no se
+                escribe nunca una letra. */}
             <Entrada
               id="validez_dias"
               name="validez_dias"
               type="number"
+              inputMode="numeric"
               min={1}
               max={365}
               defaultValue={15}
@@ -205,6 +202,7 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
               id="plazo_entrega_dias"
               name="plazo_entrega_dias"
               type="number"
+              inputMode="numeric"
               min={0}
               max={999}
               defaultValue={30}
@@ -213,9 +211,13 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
           </Campo>
 
           <Campo etiqueta="Forma de pago" htmlFor="forma_pago" className="sm:col-span-2">
+            {/* Sin `autoComplete` el navegador ofrece aquí lo que guardó de
+                otros formularios —el correo del jefe, su dirección— y hay que
+                borrarlo antes de escribir. */}
             <Entrada
               id="forma_pago"
               name="forma_pago"
+              autoComplete="off"
               placeholder="50 % adelanto y saldo contra entrega"
             />
           </Campo>
@@ -242,12 +244,9 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
       )}
 
       <div className="flex justify-end gap-2">
-        <Link
-          href="/cotizaciones"
-          className="inline-flex h-9 items-center rounded-[var(--radius-base)] px-4 text-sm text-texto-suave hover:bg-superficie-2 hover:text-texto"
-        >
+        <EnlaceBoton href="/cotizaciones" variante="fantasma">
           Cancelar
-        </Link>
+        </EnlaceBoton>
         <Boton type="submit" cargando={pendiente}>
           Crear y agregar partidas
         </Boton>

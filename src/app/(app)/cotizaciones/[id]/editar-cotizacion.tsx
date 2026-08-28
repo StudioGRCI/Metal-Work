@@ -1,0 +1,294 @@
+'use client'
+
+import { useRouter } from 'next/navigation'
+import { useEffect, useState, useTransition } from 'react'
+import { Pencil } from 'lucide-react'
+
+import { Boton } from '@/components/ui/boton'
+import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
+import { Ventana } from '@/components/ui/ventana'
+import { createClient } from '@/lib/supabase/client'
+import { cn } from '@/lib/utils'
+
+import { editarCotizacion } from '../acciones'
+
+export type CatalogosCotizacion = {
+  clientes: { id: string; razon_social: string; numero_documento: string }[]
+  sedes: { id: string; nombre: string }[]
+  tiposCarroceria: { id: string; nombre: string }[]
+}
+
+export type CabeceraCotizacion = {
+  id: string
+  cliente_id: string
+  unidad_id: string | null
+  tipo_carroceria_id: string | null
+  sede_id: string | null
+  fecha_emision: string
+  validez_dias: number
+  moneda: string
+  plazo_entrega_dias: number | null
+  forma_pago: string | null
+  condiciones: string | null
+  observaciones: string | null
+}
+
+/**
+ * Corregir la cabecera de una cotización que todavía no cerró: el cliente pidió
+ * otra carrocería, el plazo se negoció, la forma de pago cambió. Antes había que
+ * emitir una cotización nueva y quemar un número de la serie para arreglar una
+ * línea de texto.
+ */
+export function EditarCotizacion({
+  cotizacion,
+  catalogos,
+  unidadActual,
+}: {
+  cotizacion: CabeceraCotizacion
+  catalogos: CatalogosCotizacion
+  /** La unidad que ya tiene, para poder mostrarla antes de cargar la lista. */
+  unidadActual: { id: string; placa: string } | null
+}) {
+  const router = useRouter()
+  const [, iniciarTransicion] = useTransition()
+  const [abierto, setAbierto] = useState(false)
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const [clienteId, setClienteId] = useState(cotizacion.cliente_id)
+  const [unidadId, setUnidadId] = useState(cotizacion.unidad_id ?? '')
+  const [carroceriaId, setCarroceriaId] = useState(cotizacion.tipo_carroceria_id ?? '')
+  const [sedeId, setSedeId] = useState(cotizacion.sede_id ?? '')
+  const [cargadas, setCargadas] = useState<{
+    clienteId: string
+    unidades: { id: string; placa: string }[]
+  } | null>(unidadActual ? { clienteId: cotizacion.cliente_id, unidades: [unidadActual] } : null)
+
+  // Las unidades son del cliente elegido: se piden al vuelo, como en el alta.
+  useEffect(() => {
+    if (!abierto || !clienteId) return
+
+    let vigente = true
+    createClient()
+      .from('unidades')
+      .select('id, placa')
+      .eq('cliente_id', clienteId)
+      .eq('activo', true)
+      .order('placa')
+      .then(({ data }) => {
+        if (vigente) setCargadas({ clienteId, unidades: data ?? [] })
+      })
+
+    return () => {
+      vigente = false
+    }
+  }, [abierto, clienteId])
+
+  const unidades = cargadas?.clienteId === clienteId ? cargadas.unidades : []
+
+  async function enviar(datos: FormData) {
+    setError(null)
+    setEnviando(true)
+    const salida = await editarCotizacion(null, datos)
+    setEnviando(false)
+
+    if (!salida.ok) {
+      setError(salida.error)
+      return
+    }
+
+    setAbierto(false)
+    iniciarTransicion(() => router.refresh())
+  }
+
+  return (
+    <>
+      {/* «Editar» a secas se repite tres veces en esta pantalla; el rótulo
+          accesible dice cuál de las tres es. */}
+      <Boton
+        variante="secundario"
+        tamano="sm"
+        onClick={() => setAbierto(true)}
+        aria-label="Editar los datos de la cotización"
+      >
+        <Pencil aria-hidden className="size-3.5" />
+        Editar
+      </Boton>
+
+      {/* El marco -fondo, caja, título, Escape, foco y el rodado de atrás- lo
+          pone la ventana del sistema; acá abajo solo va el formulario. */}
+      <Ventana
+        abierta={abierto}
+        alCerrar={() => setAbierto(false)}
+        titulo="Editar la cotización"
+        descripcion="Los totales no se tocan acá: los calcula la base a partir de las partidas."
+        ancho="lg"
+      >
+        <form action={enviar} className="space-y-3">
+          <input type="hidden" name="cotizacion_id" value={cotizacion.id} />
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Campo etiqueta="Cliente" htmlFor="cliente_id" requerido>
+              <SeleccionBuscable
+                id="cliente_id"
+                name="cliente_id"
+                requerido
+                permiteVaciar={false}
+                valor={clienteId}
+                onChange={(v) => {
+                  setClienteId(v)
+                  setUnidadId('')
+                }}
+                marcador="Selecciona un cliente"
+                marcadorBusqueda="Razón social o RUC"
+                opciones={catalogos.clientes.map((c) => ({
+                  valor: c.id,
+                  etiqueta: c.razon_social,
+                  detalle: c.numero_documento,
+                }))}
+              />
+            </Campo>
+
+            <Campo
+              etiqueta="Unidad"
+              htmlFor="unidad_id"
+              ayuda={clienteId ? undefined : 'Elige primero el cliente'}
+            >
+              <SeleccionBuscable
+                id="unidad_id"
+                name="unidad_id"
+                deshabilitado={!clienteId}
+                valor={unidadId}
+                onChange={setUnidadId}
+                marcador="Sin unidad asignada"
+                marcadorBusqueda="Placa"
+                opciones={unidades.map((u) => ({ valor: u.id, etiqueta: u.placa }))}
+              />
+            </Campo>
+
+            <Campo etiqueta="Tipo de carrocería" htmlFor="tipo_carroceria_id">
+              <SeleccionBuscable
+                id="tipo_carroceria_id"
+                name="tipo_carroceria_id"
+                valor={carroceriaId}
+                onChange={setCarroceriaId}
+                marcador="Sin especificar"
+                marcadorBusqueda="Tolva, cisterna, furgón…"
+                opciones={catalogos.tiposCarroceria.map((t) => ({
+                  valor: t.id,
+                  etiqueta: t.nombre,
+                }))}
+              />
+            </Campo>
+
+            <Campo etiqueta="Sede" htmlFor="sede_id">
+              <SeleccionBuscable
+                id="sede_id"
+                name="sede_id"
+                valor={sedeId}
+                onChange={setSedeId}
+                marcador="Sin sede"
+                marcadorBusqueda="Nombre de la sede"
+                opciones={catalogos.sedes.map((s) => ({ valor: s.id, etiqueta: s.nombre }))}
+              />
+            </Campo>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Campo etiqueta="Emisión" htmlFor="fecha_emision">
+              <Entrada
+                id="fecha_emision"
+                name="fecha_emision"
+                type="date"
+                defaultValue={cotizacion.fecha_emision}
+              />
+            </Campo>
+
+            <Campo etiqueta="Validez (días)" htmlFor="validez_dias">
+              {/* Teclado numérico en el teléfono: aquí solo van cifras. */}
+              <Entrada
+                id="validez_dias"
+                name="validez_dias"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={365}
+                defaultValue={cotizacion.validez_dias}
+                className="tabular text-right"
+              />
+            </Campo>
+
+            <Campo etiqueta="Moneda" htmlFor="moneda">
+              <Seleccion id="moneda" name="moneda" defaultValue={cotizacion.moneda}>
+                <option value="PEN">Soles</option>
+                <option value="USD">Dólares</option>
+              </Seleccion>
+            </Campo>
+
+            <Campo etiqueta="Entrega (días)" htmlFor="plazo_entrega_dias">
+              <Entrada
+                id="plazo_entrega_dias"
+                name="plazo_entrega_dias"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={999}
+                defaultValue={cotizacion.plazo_entrega_dias ?? 0}
+                className="tabular text-right"
+              />
+            </Campo>
+          </div>
+
+          <Campo etiqueta="Forma de pago" htmlFor="forma_pago">
+            {/* Sin `autoComplete` el navegador ofrece aquí lo que guardó
+                de otros formularios y hay que borrarlo para escribir. */}
+            <Entrada
+              id="forma_pago"
+              name="forma_pago"
+              autoComplete="off"
+              defaultValue={cotizacion.forma_pago ?? ''}
+              placeholder="50% adelanto, 50% contra entrega"
+            />
+          </Campo>
+
+          <Campo etiqueta="Condiciones" htmlFor="condiciones">
+            <AreaTexto
+              id="condiciones"
+              name="condiciones"
+              rows={2}
+              defaultValue={cotizacion.condiciones ?? ''}
+            />
+          </Campo>
+
+          <Campo etiqueta="Observaciones" htmlFor="observaciones">
+            <AreaTexto
+              id="observaciones"
+              name="observaciones"
+              rows={2}
+              defaultValue={cotizacion.observaciones ?? ''}
+            />
+          </Campo>
+
+          {error && (
+            <p
+              role="alert"
+              className={cn('rounded-[var(--radius-base)] px-3 py-2 text-xs', 'bg-peligro-suave text-peligro')}
+            >
+              {error}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" cargando={enviando}>
+              Guardar
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
+    </>
+  )
+}

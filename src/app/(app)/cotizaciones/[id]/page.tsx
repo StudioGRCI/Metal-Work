@@ -19,6 +19,8 @@ import { createClient } from '@/lib/supabase/server'
 import type { CodigoMoneda } from '@/lib/format'
 
 import { AccionesCotizacion } from './acciones-cotizacion'
+import { ConceptoImpreso } from './concepto-impreso'
+import { EditarCotizacion } from './editar-cotizacion'
 import { FichaTecnica } from './ficha-tecnica'
 import { Partidas } from './partidas'
 
@@ -46,7 +48,9 @@ export default async function PaginaCotizacion({
 
   const [partidas, catalogos, ficha, accesorios, plantillas] = await Promise.all([
     partidasDeCotizacion(id),
-    puede(perfil, 'ordenes.crear') ? catalogosOrden() : Promise.resolve(null),
+    puede(perfil, 'ordenes.crear') || puede(perfil, 'cotizaciones.editar')
+      ? catalogosOrden()
+      : Promise.resolve(null),
     fichaDeCotizacion(id),
     accesoriosDeCotizacion(id),
     plantillasDisponibles(cotizacion.tipo_carroceria_id),
@@ -75,6 +79,11 @@ export default async function PaginaCotizacion({
   const anulador = cotizacion.anulador as unknown as { nombres: string; apellidos: string } | null
   const editable = cotizacion.estado === 'BORRADOR' || cotizacion.estado === 'ENVIADA'
 
+  // Lo que se imprime cuando nadie escribió el concepto: es de donde salía la
+  // descripción antes de que el campo existiera.
+  const sugerenciaConcepto =
+    [carroceria?.nombre, cotizacion.capacidad].filter(Boolean).join(' · ') || 'Trabajo cotizado'
+
   return (
     <>
       <EncabezadoPagina
@@ -86,7 +95,12 @@ export default async function PaginaCotizacion({
           </span>
         }
         descripcion={
-          <Link href={`/clientes/${cliente.id}`} className="hover:underline">
+          // El nombre del cliente lleva a su ficha; en el teléfono se marca con
+          // el dedo, así que el enlace ocupa 44 px de alto.
+          <Link
+            href={`/clientes/${cliente.id}`}
+            className="inline-flex min-h-11 items-center hover:underline sm:min-h-0"
+          >
             {cliente.razon_social} · {cliente.numero_documento}
           </Link>
         }
@@ -139,7 +153,35 @@ export default async function PaginaCotizacion({
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Tarjeta>
-          <TarjetaCabecera titulo="Datos de la cotización" />
+          <TarjetaCabecera
+            titulo="Datos de la cotización"
+            acciones={
+              editable && puede(perfil, 'cotizaciones.editar') && catalogos ? (
+                <EditarCotizacion
+                  catalogos={catalogos}
+                  unidadActual={
+                    cotizacion.unidad_id && unidad
+                      ? { id: cotizacion.unidad_id, placa: unidad.placa }
+                      : null
+                  }
+                  cotizacion={{
+                    id: cotizacion.id,
+                    cliente_id: cotizacion.cliente_id,
+                    unidad_id: cotizacion.unidad_id,
+                    tipo_carroceria_id: cotizacion.tipo_carroceria_id,
+                    sede_id: cotizacion.sede_id,
+                    fecha_emision: cotizacion.fecha_emision,
+                    validez_dias: cotizacion.validez_dias,
+                    moneda: cotizacion.moneda,
+                    plazo_entrega_dias: cotizacion.plazo_entrega_dias,
+                    forma_pago: cotizacion.forma_pago,
+                    condiciones: cotizacion.condiciones,
+                    observaciones: cotizacion.observaciones,
+                  }}
+                />
+              ) : null
+            }
+          />
           <TarjetaCuerpo className="space-y-0">
             <Dato etiqueta="Emisión" valor={fecha(cotizacion.fecha_emision)} />
             <Dato etiqueta="Vence" valor={fecha(cotizacion.fecha_vencimiento)} />
@@ -192,6 +234,19 @@ export default async function PaginaCotizacion({
         </Tarjeta>
 
         <div className="lg:col-span-3">
+          <ConceptoImpreso
+            cotizacionId={id}
+            concepto={cotizacion.concepto}
+            cantidad={Number(cotizacion.concepto_cantidad ?? 1)}
+            unidad={cotizacion.concepto_unidad ?? 'UND'}
+            total={Number(cotizacion.total ?? 0)}
+            moneda={mon}
+            sugerencia={sugerenciaConcepto}
+            editable={editable && puede(perfil, 'cotizaciones.editar')}
+          />
+        </div>
+
+        <div className="lg:col-span-3">
           <Partidas
             cotizacionId={id}
             partidas={partidas}
@@ -233,8 +288,10 @@ export default async function PaginaCotizacion({
 function Dato({ etiqueta, valor }: { etiqueta: string; valor?: string | number | null }) {
   return (
     <div className="flex justify-between gap-4 border-b border-borde py-2 text-sm last:border-0">
-      <span className="text-texto-suave">{etiqueta}</span>
-      <span className="text-right font-medium text-texto">{valor || '—'}</span>
+      {/* El rótulo no se parte: en el teléfono, una forma de pago larga lo
+          dejaba en tres líneas de una palabra cada una. */}
+      <span className="shrink-0 text-texto-suave">{etiqueta}</span>
+      <span className="text-right font-medium wrap-break-word text-texto">{valor || '—'}</span>
     </div>
   )
 }
