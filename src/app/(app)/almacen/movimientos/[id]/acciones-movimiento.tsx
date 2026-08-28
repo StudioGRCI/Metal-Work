@@ -5,6 +5,7 @@ import { useState, useTransition } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo } from '@/components/ui/campos'
+import { Ventana } from '@/components/ui/ventana'
 
 import { anularMovimiento, confirmarMovimiento } from '../../acciones'
 
@@ -78,39 +79,33 @@ export function AccionesMovimiento({
         </p>
       )}
 
-      {anulando && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <button
-            type="button"
-            aria-label="Cancelar"
-            onClick={() => setAnulando(false)}
-            className="absolute inset-0 bg-black/40"
-          />
-          <div className="relative w-full max-w-md rounded-[var(--radius-base)] border border-borde bg-superficie p-4 text-left shadow-xl">
-            <h2 className="text-sm font-semibold text-texto">Anular movimiento</h2>
-            <p className="mt-1 text-xs text-texto-suave">
-              El documento queda sin efecto y su motivo se conserva en el historial.
-            </p>
+      {/* El motivo es obligatorio y se guarda: no es una ventana de la que se
+          salga con un roce, así que no cierra al tocar el fondo. */}
+      <Ventana
+        abierta={anulando}
+        alCerrar={() => setAnulando(false)}
+        titulo="Anular movimiento"
+        descripcion="El documento queda sin efecto y su motivo se conserva en el historial."
+        ancho="sm"
+      >
+        <form action={anular} className="space-y-3">
+          <input type="hidden" name="movimiento_id" value={movimiento.id} />
 
-            <form action={anular} className="mt-4 space-y-3">
-              <input type="hidden" name="movimiento_id" value={movimiento.id} />
+          <Campo etiqueta="Motivo" htmlFor="motivo" requerido>
+            {/* Sin autoFocus: el foco al abrir lo lleva la Ventana. */}
+            <AreaTexto id="motivo" name="motivo" required />
+          </Campo>
 
-              <Campo etiqueta="Motivo" htmlFor="motivo" requerido>
-                <AreaTexto id="motivo" name="motivo" required autoFocus />
-              </Campo>
-
-              <div className="flex justify-end gap-2">
-                <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAnulando(false)}>
-                  Cancelar
-                </Boton>
-                <Boton type="submit" tamano="sm" variante="peligro" cargando={enviando}>
-                  Anular
-                </Boton>
-              </div>
-            </form>
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAnulando(false)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" tamano="sm" variante="peligro" cargando={enviando}>
+              Anular
+            </Boton>
           </div>
-        </div>
-      )}
+        </form>
+      </Ventana>
     </div>
   )
 }

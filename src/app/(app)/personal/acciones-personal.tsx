@@ -1,12 +1,13 @@
 'use client'
 
 import { KeyRound, Pencil, Plus, UserMinus, UserPlus } from 'lucide-react'
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { TD, TR } from '@/components/ui/tabla'
+import { Ventana } from '@/components/ui/ventana'
 import type { PersonaEnLista } from '@/lib/datos/personal'
 import { cn } from '@/lib/utils'
 
@@ -18,39 +19,11 @@ type Catalogos = {
   sedes: { id: string; nombre: string }[]
 }
 
-/** Ventana modal simple, con el mismo aire que el resto del sistema. */
-function Ventana({
-  titulo,
-  descripcion,
-  onCerrar,
-  children,
-}: {
-  titulo: string
-  descripcion?: string
-  onCerrar: () => void
-  children: React.ReactNode
-}) {
-  useEffect(() => {
-    const salir = (e: KeyboardEvent) => e.key === 'Escape' && onCerrar()
-    document.addEventListener('keydown', salir)
-    return () => document.removeEventListener('keydown', salir)
-  }, [onCerrar])
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 py-10">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={titulo}
-        className="w-full max-w-lg rounded-[calc(var(--radius-base)*1.5)] border border-borde bg-superficie p-5 shadow-2xl shadow-black/30"
-      >
-        <h2 className="text-base font-semibold text-texto">{titulo}</h2>
-        {descripcion && <p className="mt-1 text-xs text-texto-suave">{descripcion}</p>}
-        <div className="mt-4">{children}</div>
-      </div>
-    </div>
-  )
-}
+// Botón de icono de la fila. En el teléfono ocupa 44 px —lo que mide un dedo, y
+// con guante puesto más—; a partir de `sm` vuelve a los 28 px de siempre, que es
+// lo que daban el `p-1.5` y el icono de 16 px del escritorio.
+const BOTON_ICONO =
+  'inline-flex size-11 items-center justify-center rounded-[var(--radius-base)] text-texto-suave hover:bg-superficie-2 hover:text-texto sm:size-7'
 
 function Aviso({ resultado }: { resultado: { ok?: boolean; error?: string; mensaje?: string } | null }) {
   if (!resultado) return null
@@ -81,11 +54,26 @@ function CamposDePersona({
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-2">
+        {/* `autoComplete="off"` en toda la ficha: el navegador rellena estos
+            campos con los datos de quien está usando el sistema, y aquí se está
+            dando de alta a otra persona. */}
         <Campo etiqueta="Nombres" htmlFor="nombres" requerido>
-          <Entrada id="nombres" name="nombres" required defaultValue={persona?.nombres} />
+          <Entrada
+            id="nombres"
+            name="nombres"
+            required
+            autoComplete="off"
+            defaultValue={persona?.nombres}
+          />
         </Campo>
         <Campo etiqueta="Apellidos" htmlFor="apellidos" requerido>
-          <Entrada id="apellidos" name="apellidos" required defaultValue={persona?.apellidos} />
+          <Entrada
+            id="apellidos"
+            name="apellidos"
+            required
+            autoComplete="off"
+            defaultValue={persona?.apellidos}
+          />
         </Campo>
       </div>
 
@@ -124,16 +112,30 @@ function CamposDePersona({
           </Seleccion>
         </Campo>
         <Campo etiqueta="Cargo" htmlFor="cargo" ayuda="Cómo se le llama en el taller">
-          <Entrada id="cargo" name="cargo" defaultValue={persona?.cargo ?? ''} />
+          <Entrada id="cargo" name="cargo" autoComplete="off" defaultValue={persona?.cargo ?? ''} />
         </Campo>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Campo etiqueta="Documento" htmlFor="documento">
-          <Entrada id="documento" name="documento" defaultValue={persona?.documento ?? ''} />
+          {/* Sin `inputMode="numeric"`: aquí también entran carnés de extranjería,
+              que llevan letras, y el teclado numérico no las tiene. */}
+          <Entrada
+            id="documento"
+            name="documento"
+            autoComplete="off"
+            defaultValue={persona?.documento ?? ''}
+          />
         </Campo>
         <Campo etiqueta="Teléfono" htmlFor="telefono">
-          <Entrada id="telefono" name="telefono" defaultValue={persona?.telefono ?? ''} />
+          <Entrada
+            id="telefono"
+            name="telefono"
+            type="tel"
+            inputMode="tel"
+            autoComplete="off"
+            defaultValue={persona?.telefono ?? ''}
+          />
         </Campo>
       </div>
 
@@ -163,8 +165,10 @@ function CamposDePersona({
                 id="costo_hora"
                 name="costo_hora"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 min="0"
+                className="tabular"
                 defaultValue={persona?.costo_hora ?? 0}
               />
             </Campo>
@@ -189,42 +193,41 @@ export function AltaDePersona({ catalogos }: { catalogos: Catalogos }) {
         Dar de alta
       </Boton>
 
-      {abierto && (
-        <Ventana
-          titulo="Dar de alta a una persona"
-          descripcion="Se crea su ficha y su acceso al sistema en un solo paso."
-          onCerrar={() => setAbierto(false)}
-        >
-          <form action={accion} className="space-y-3">
-            <CamposDePersona catalogos={catalogos} />
+      <Ventana
+        abierta={abierto}
+        alCerrar={() => setAbierto(false)}
+        titulo="Dar de alta a una persona"
+        descripcion="Se crea su ficha y su acceso al sistema en un solo paso."
+      >
+        <form action={accion} className="space-y-3">
+          <CamposDePersona catalogos={catalogos} />
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Campo etiqueta="Correo" htmlFor="correo" requerido ayuda="Con este correo entra al sistema">
-                <Entrada id="correo" name="correo" type="email" required autoComplete="off" />
-              </Campo>
-              <Campo
-                etiqueta="Contraseña temporal"
-                htmlFor="clave"
-                requerido
-                ayuda="Anótala: no se vuelve a mostrar"
-              >
-                <Entrada id="clave" name="clave" type="text" required minLength={10} autoComplete="off" />
-              </Campo>
-            </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Campo etiqueta="Correo" htmlFor="correo" requerido ayuda="Con este correo entra al sistema">
+              <Entrada id="correo" name="correo" type="email" required autoComplete="off" />
+            </Campo>
+            <Campo
+              etiqueta="Contraseña temporal"
+              htmlFor="clave"
+              requerido
+              ayuda="Anótala: no se vuelve a mostrar"
+            >
+              <Entrada id="clave" name="clave" type="text" required minLength={10} autoComplete="off" />
+            </Campo>
+          </div>
 
-            <Aviso resultado={resultado} />
+          <Aviso resultado={resultado} />
 
-            <div className="flex justify-end gap-2 pt-1">
-              <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
-                {resultado?.ok ? 'Cerrar' : 'Cancelar'}
-              </Boton>
-              <Boton type="submit" cargando={enviando}>
-                Dar de alta
-              </Boton>
-            </div>
-          </form>
-        </Ventana>
-      )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+              {resultado?.ok ? 'Cerrar' : 'Cancelar'}
+            </Boton>
+            <Boton type="submit" cargando={enviando}>
+              Dar de alta
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
     </>
   )
 }
@@ -252,10 +255,23 @@ export function FilaDePersona({
             {persona.apellidos}, {persona.nombres}
           </div>
           <div className="text-xs text-texto-suave">{persona.cargo ?? '—'}</div>
+          {/* El correo es la columna que se esconde en el teléfono; aquí abajo
+              sigue estando, que es el dato con el que se le escribe. */}
+          <div className="text-[11px] break-all text-texto-suave sm:hidden">{persona.correo}</div>
         </TD>
-        <TD className="text-xs">{persona.correo}</TD>
-        <TD className="text-xs">{persona.rol?.nombre ?? '—'}</TD>
-        <TD className="text-xs">{persona.area?.nombre ?? '—'}</TD>
+        <TD className="hidden text-xs sm:table-cell">{persona.correo}</TD>
+        <TD className="text-xs">
+          {persona.rol?.nombre ?? '—'}
+          <span className="block text-[11px] text-texto-tenue sm:hidden">
+            {[
+              persona.area?.nombre,
+              persona.es_operario ? `S/ ${Number(persona.costo_hora).toFixed(2)}/h` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ') || '—'}
+          </span>
+        </TD>
+        <TD className="hidden text-xs sm:table-cell">{persona.area?.nombre ?? '—'}</TD>
         <TD>
           {persona.es_operario ? (
             <Insignia tono="info">Solo sus órdenes</Insignia>
@@ -268,43 +284,50 @@ export function FilaDePersona({
             </span>
           )}
         </TD>
-        <TD className="tabular text-right text-xs">
+        <TD className="tabular hidden text-right text-xs sm:table-cell">
           {persona.es_operario ? `S/ ${Number(persona.costo_hora).toFixed(2)}` : '—'}
         </TD>
 
         {gestiona && (
+          // En fila y con hueco solo en el teléfono: en el monitor los botones
+          // iban pegados —JSX se come el salto de línea— y así siguen.
           <TD className="text-right whitespace-nowrap">
-            <button
-              type="button"
-              onClick={() => setVentana('editar')}
-              title="Editar la ficha"
-              aria-label={`Editar a ${persona.nombres}`}
-              className="rounded-[var(--radius-base)] p-1.5 text-texto-suave hover:bg-superficie-2 hover:text-texto"
-            >
-              <Pencil className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setVentana('clave')}
-              title="Cambiar la contraseña"
-              aria-label={`Cambiar la contraseña de ${persona.nombres}`}
-              className="rounded-[var(--radius-base)] p-1.5 text-texto-suave hover:bg-superficie-2 hover:text-texto"
-            >
-              <KeyRound className="size-4" />
-            </button>
-            <form action={accionEstado} className="inline">
-              <input type="hidden" name="id" value={persona.id} />
-              <input type="hidden" name="activo" value={persona.activo ? 'false' : 'true'} />
+            <div className="flex items-center justify-end gap-1 sm:gap-0">
               <button
-                type="submit"
-                disabled={cambiandoEstado}
-                title={persona.activo ? 'Dar de baja' : 'Reactivar'}
-                aria-label={persona.activo ? `Dar de baja a ${persona.nombres}` : `Reactivar a ${persona.nombres}`}
-                className="rounded-[var(--radius-base)] p-1.5 text-texto-suave hover:bg-superficie-2 hover:text-texto disabled:opacity-50"
+                type="button"
+                onClick={() => setVentana('editar')}
+                title="Editar la ficha"
+                aria-label={`Editar a ${persona.nombres}`}
+                className={BOTON_ICONO}
               >
-                {persona.activo ? <UserMinus className="size-4" /> : <UserPlus className="size-4" />}
+                <Pencil className="size-4" />
               </button>
-            </form>
+              <button
+                type="button"
+                onClick={() => setVentana('clave')}
+                title="Cambiar la contraseña"
+                aria-label={`Cambiar la contraseña de ${persona.nombres}`}
+                className={BOTON_ICONO}
+              >
+                <KeyRound className="size-4" />
+              </button>
+              {/* Dar de baja no pregunta: no se pierde nada —la ficha y sus
+                  horas siguen ahí— y se deshace con el mismo botón, que pasa a
+                  decir «Reactivar». */}
+              <form action={accionEstado} className="inline">
+                <input type="hidden" name="id" value={persona.id} />
+                <input type="hidden" name="activo" value={persona.activo ? 'false' : 'true'} />
+                <button
+                  type="submit"
+                  disabled={cambiandoEstado}
+                  title={persona.activo ? 'Dar de baja' : 'Reactivar'}
+                  aria-label={persona.activo ? `Dar de baja a ${persona.nombres}` : `Reactivar a ${persona.nombres}`}
+                  className={cn(BOTON_ICONO, 'disabled:opacity-50')}
+                >
+                  {persona.activo ? <UserMinus className="size-4" /> : <UserPlus className="size-4" />}
+                </button>
+              </form>
+            </div>
           </TD>
         )}
       </TR>
@@ -317,63 +340,62 @@ export function FilaDePersona({
         </TR>
       )}
 
-      {ventana === 'editar' && (
-        <Ventana
-          titulo={`${persona.nombres} ${persona.apellidos}`}
-          descripcion="Cambiar el puesto, el área o el alcance de esta persona."
-          onCerrar={() => setVentana(null)}
-        >
-          <form action={accionEditar} className="space-y-3">
-            <input type="hidden" name="id" value={persona.id} />
-            <CamposDePersona catalogos={catalogos} persona={persona} />
-            <Aviso resultado={edicion} />
-            <div className="flex justify-end gap-2 pt-1">
-              <Boton type="button" variante="contorno" onClick={() => setVentana(null)}>
-                Cerrar
-              </Boton>
-              <Boton type="submit" cargando={editando}>
-                Guardar
-              </Boton>
-            </div>
-          </form>
-        </Ventana>
-      )}
+      <Ventana
+        abierta={ventana === 'editar'}
+        alCerrar={() => setVentana(null)}
+        titulo={`${persona.nombres} ${persona.apellidos}`}
+        descripcion="Cambiar el puesto, el área o el alcance de esta persona."
+      >
+        <form action={accionEditar} className="space-y-3">
+          <input type="hidden" name="id" value={persona.id} />
+          <CamposDePersona catalogos={catalogos} persona={persona} />
+          <Aviso resultado={edicion} />
+          <div className="flex justify-end gap-2 pt-1">
+            <Boton type="button" variante="contorno" onClick={() => setVentana(null)}>
+              Cerrar
+            </Boton>
+            <Boton type="submit" cargando={editando}>
+              Guardar la ficha
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
 
-      {ventana === 'clave' && (
-        <Ventana
-          titulo="Cambiar la contraseña"
-          descripcion={`${persona.nombres} ${persona.apellidos} · ${persona.correo}`}
-          onCerrar={() => setVentana(null)}
-        >
-          <form action={accionClave} className="space-y-3">
-            <input type="hidden" name="id" value={persona.id} />
-            <Campo
-              etiqueta="Contraseña nueva"
-              htmlFor={`clave-${persona.id}`}
-              requerido
-              ayuda="Anótala y entrégasela: no se vuelve a mostrar"
-            >
-              <Entrada
-                id={`clave-${persona.id}`}
-                name="clave"
-                type="text"
-                required
-                minLength={10}
-                autoComplete="off"
-              />
-            </Campo>
-            <Aviso resultado={claveHecha} />
-            <div className="flex justify-end gap-2 pt-1">
-              <Boton type="button" variante="contorno" onClick={() => setVentana(null)}>
-                {claveHecha?.ok ? 'Cerrar' : 'Cancelar'}
-              </Boton>
-              <Boton type="submit" cargando={cambiandoClave}>
-                Cambiar
-              </Boton>
-            </div>
-          </form>
-        </Ventana>
-      )}
+      <Ventana
+        abierta={ventana === 'clave'}
+        alCerrar={() => setVentana(null)}
+        titulo="Cambiar la contraseña"
+        descripcion={`${persona.nombres} ${persona.apellidos} · ${persona.correo}`}
+        ancho="sm"
+      >
+        <form action={accionClave} className="space-y-3">
+          <input type="hidden" name="id" value={persona.id} />
+          <Campo
+            etiqueta="Contraseña nueva"
+            htmlFor={`clave-${persona.id}`}
+            requerido
+            ayuda="Anótala y entrégasela: no se vuelve a mostrar"
+          >
+            <Entrada
+              id={`clave-${persona.id}`}
+              name="clave"
+              type="text"
+              required
+              minLength={10}
+              autoComplete="off"
+            />
+          </Campo>
+          <Aviso resultado={claveHecha} />
+          <div className="flex justify-end gap-2 pt-1">
+            <Boton type="button" variante="contorno" onClick={() => setVentana(null)}>
+              {claveHecha?.ok ? 'Cerrar' : 'Cancelar'}
+            </Boton>
+            <Boton type="submit" cargando={cambiandoClave}>
+              Cambiar la contraseña
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
     </>
   )
 }

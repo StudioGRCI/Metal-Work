@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 
 export default function NoEncontrado() {
   return (
@@ -8,12 +8,9 @@ export default function NoEncontrado() {
       <p className="mt-2 max-w-sm text-sm text-texto-suave">
         La dirección no existe o el registro que buscas fue movido o anulado.
       </p>
-      <Link
-        href="/"
-        className="mt-6 rounded-[var(--radius-base)] bg-acento px-4 py-2 text-sm font-medium text-acento-texto"
-      >
+      <EnlaceBoton href="/" className="mt-6">
         Volver al tablero
-      </Link>
+      </EnlaceBoton>
     </main>
   )
 }

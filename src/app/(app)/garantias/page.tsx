@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -39,7 +40,17 @@ export default async function PaginaGarantias() {
           />
           <TarjetaCuerpo className="space-y-3">
             {abiertos.length === 0 ? (
-              <p className="py-4 text-center text-sm text-texto-suave">Sin reclamos abiertos.</p>
+              /* El vacío dice el siguiente paso, y no es el mismo para todos:
+                 quien no gestiona garantías no tiene ningún botón que pulsar y
+                 mandarlo a buscarlo sería hacerle perder el viaje. */
+              <div className="py-6 text-center">
+                <p className="text-sm font-medium text-texto">Ningún reclamo abierto</p>
+                <p className="mt-1 text-xs text-texto-suave">
+                  {gestiona
+                    ? 'Cuando entre uno, se registra desde su unidad en la tabla de abajo, con el botón «Reclamo».'
+                    : 'Los reclamos los registra el área de garantías; acá los vas a ver apenas entren.'}
+                </p>
+              </div>
             ) : (
               abiertos.map((r) => <TarjetaReclamo key={r.id} reclamo={r} puedeGestionar={gestiona} />)
             )}
@@ -55,10 +66,14 @@ export default async function PaginaGarantias() {
             <TablaCabecera>
               <tr>
                 <TH>Unidad</TH>
-                <TH>Cliente</TH>
-                <TH>Entregada</TH>
+                {/* En el teléfono sobran tres columnas: el cliente y la fecha de
+                    entrega bajan a la celda de la unidad en letra chica, y el
+                    estado lo dice ahí mismo su insignia. Nada se pierde, deja de
+                    haber que arrastrar la tabla de lado para leer una fila. */}
+                <TH className="hidden sm:table-cell">Cliente</TH>
+                <TH className="hidden sm:table-cell">Entregada</TH>
                 <TH>Vence</TH>
-                <TH className="text-center">Estado</TH>
+                <TH className="hidden text-center sm:table-cell">Estado</TH>
                 <TH className="text-right">Reclamos</TH>
                 {gestiona && <TH className="text-right">Acción</TH>}
               </tr>
@@ -69,6 +84,11 @@ export default async function PaginaGarantias() {
                   colSpan={gestiona ? 7 : 6}
                   titulo="Sin garantías registradas"
                   descripcion="Aparecen solas cuando se entrega una unidad con meses de garantía."
+                  accion={
+                    <EnlaceBoton href="/ordenes" variante="secundario">
+                      Ver las órdenes de trabajo
+                    </EnlaceBoton>
+                  }
                 />
               ) : (
                 garantias.map((g) => (
@@ -80,9 +100,19 @@ export default async function PaginaGarantias() {
                       <p className="text-[11px] font-normal text-texto-suave">
                         {g.carroceria ?? g.orden}
                       </p>
+                      <p className="text-[11px] font-normal text-texto-suave sm:hidden">
+                        {g.cliente} · entregada {fecha(g.fecha_entrega)}
+                      </p>
+                      <span className="mt-1 inline-flex sm:hidden">
+                        <Insignia tono={g.vigente ? 'exito' : 'neutro'}>
+                          {g.vigente ? 'Vigente' : 'Vencida'}
+                        </Insignia>
+                      </span>
                     </TD>
-                    <TD className="text-texto-suave">{g.cliente}</TD>
-                    <TD className="whitespace-nowrap">{fecha(g.fecha_entrega)}</TD>
+                    <TD className="hidden text-texto-suave sm:table-cell">{g.cliente}</TD>
+                    <TD className="hidden whitespace-nowrap sm:table-cell">
+                      {fecha(g.fecha_entrega)}
+                    </TD>
                     <TD className="whitespace-nowrap">
                       {fecha(g.garantia_vence)}
                       {g.vigente && (
@@ -91,7 +121,7 @@ export default async function PaginaGarantias() {
                         </p>
                       )}
                     </TD>
-                    <TD className="text-center">
+                    <TD className="hidden text-center sm:table-cell">
                       <Insignia tono={g.vigente ? 'exito' : 'neutro'}>
                         {g.vigente ? 'Vigente' : 'Vencida'}
                       </Insignia>

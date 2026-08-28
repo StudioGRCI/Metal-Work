@@ -1,10 +1,11 @@
 'use client'
 
-import Link from 'next/link'
-import { useActionState } from 'react'
+import { useActionState, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
+import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { PRIORIDAD, opciones } from '@/lib/dominio/estados'
 
@@ -22,20 +23,28 @@ export function FormularioRequerimiento({
   ordenInicial?: string
 }) {
   const [resultado, ejecutar, pendiente] = useActionState(crearRequerimiento, null)
+  const [ordenId, setOrdenId] = useState(ordenInicial ?? '')
 
   return (
     <form action={ejecutar} className="max-w-2xl space-y-4">
       <Tarjeta>
         <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2">
           <Campo etiqueta="Orden de trabajo" htmlFor="orden_id" requerido className="sm:col-span-2">
-            <Seleccion id="orden_id" name="orden_id" required defaultValue={ordenInicial ?? ''}>
-              <option value="">Selecciona la orden</option>
-              {ordenes.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.numero} · {o.cliente ?? ''} {o.placa ? `(${o.placa})` : ''}
-                </option>
-              ))}
-            </Seleccion>
+            <SeleccionBuscable
+              id="orden_id"
+              name="orden_id"
+              requerido
+              permiteVaciar={false}
+              valor={ordenId}
+              onChange={setOrdenId}
+              marcador="Selecciona la orden"
+              marcadorBusqueda="Número, cliente o placa"
+              opciones={ordenes.map((o) => ({
+                valor: o.id,
+                etiqueta: o.numero,
+                detalle: [o.cliente, o.placa].filter(Boolean).join(' · '),
+              }))}
+            />
           </Campo>
 
           <Campo etiqueta="Almacén" htmlFor="almacen_id" ayuda="De dónde saldrá el material">
@@ -79,14 +88,14 @@ export function FormularioRequerimiento({
         </p>
       )}
 
-      <div className="flex justify-end gap-2">
-        <Link
-          href="/almacen/requerimientos"
-          className="inline-flex h-9 items-center rounded-[var(--radius-base)] px-4 text-sm text-texto-suave hover:bg-superficie-2 hover:text-texto"
-        >
+      {/* En el teléfono los dos botones ocupan el ancho y el que sigue el
+          camino queda arriba, bajo el pulgar; `sm:` devuelve la fila de
+          siempre, con Cancelar a la izquierda. */}
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <EnlaceBoton href="/almacen/requerimientos" variante="fantasma" className="justify-center">
           Cancelar
-        </Link>
-        <Boton type="submit" cargando={pendiente}>
+        </EnlaceBoton>
+        <Boton type="submit" cargando={pendiente} className="justify-center">
           Crear y agregar materiales
         </Boton>
       </div>

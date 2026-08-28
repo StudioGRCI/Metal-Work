@@ -1,12 +1,14 @@
 'use client'
 
-import Link from 'next/link'
 import { useActionState, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
+import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { TIPO_MOVIMIENTO } from '@/lib/dominio/almacen'
+import { hoyLima } from '@/lib/format'
 
 import { crearMovimiento } from '../../acciones'
 
@@ -27,7 +29,12 @@ export function FormularioMovimiento({
 }) {
   const [resultado, ejecutar, pendiente] = useActionState(crearMovimiento, null)
   const [tipo, setTipo] = useState(tipoInicial ?? 'INGRESO')
-  const hoy = new Date().toISOString().slice(0, 10)
+  const [ordenId, setOrdenId] = useState(ordenInicial ?? '')
+  const [proveedorId, setProveedorId] = useState('')
+  // La fecha del taller, no la de UTC: pasadas las 7 de la noche en Lima el
+  // reloj universal ya está en mañana y el servidor y el navegador se
+  // contradecían en el mismo campo.
+  const hoy = hoyLima()
 
   const necesitaOrden = tipo === 'SALIDA_OT' || tipo === 'DEVOLUCION_OT'
   const necesitaDestino = tipo === 'TRANSFERENCIA'
@@ -96,28 +103,39 @@ export function FormularioMovimiento({
               requerido
               ayuda="El costo del material se carga a esta orden"
             >
-              <Seleccion id="orden_id" name="orden_id" required defaultValue={ordenInicial ?? ''}>
-                <option value="">Selecciona</option>
-                {catalogos.ordenes.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.numero} · {o.cliente ?? ''} {o.placa ? `(${o.placa})` : ''}
-                  </option>
-                ))}
-              </Seleccion>
+              <SeleccionBuscable
+                id="orden_id"
+                name="orden_id"
+                requerido
+                permiteVaciar={false}
+                valor={ordenId}
+                onChange={setOrdenId}
+                marcador="Selecciona la orden"
+                marcadorBusqueda="Número, cliente o placa"
+                opciones={catalogos.ordenes.map((o) => ({
+                  valor: o.id,
+                  etiqueta: o.numero,
+                  detalle: [o.cliente, o.placa].filter(Boolean).join(' · '),
+                }))}
+              />
             </Campo>
           )}
 
           {esIngreso && (
             <>
               <Campo etiqueta="Proveedor" htmlFor="proveedor_id">
-                <Seleccion id="proveedor_id" name="proveedor_id">
-                  <option value="">Sin proveedor</option>
-                  {catalogos.proveedores.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.razon_social}
-                    </option>
-                  ))}
-                </Seleccion>
+                <SeleccionBuscable
+                  id="proveedor_id"
+                  name="proveedor_id"
+                  valor={proveedorId}
+                  onChange={setProveedorId}
+                  marcador="Sin proveedor"
+                  marcadorBusqueda="Razón social"
+                  opciones={catalogos.proveedores.map((p) => ({
+                    valor: p.id,
+                    etiqueta: p.razon_social,
+                  }))}
+                />
               </Campo>
 
               <Campo
@@ -129,6 +147,9 @@ export function FormularioMovimiento({
                   id="documento_referencia"
                   name="documento_referencia"
                   placeholder="Guía 001-1234"
+                  // Es el número de una guía, no un dato del que rellena: sin
+                  // esto el navegador ofrece direcciones y nombres guardados.
+                  autoComplete="off"
                 />
               </Campo>
             </>
@@ -149,6 +170,7 @@ export function FormularioMovimiento({
               id="motivo"
               name="motivo"
               required={necesitaMotivo}
+              autoComplete="off"
               placeholder={
                 tipo === 'AJUSTE'
                   ? 'Inventario físico del 25/08: faltante de plancha'
@@ -171,14 +193,14 @@ export function FormularioMovimiento({
         </p>
       )}
 
-      <div className="flex justify-end gap-2">
-        <Link
-          href="/almacen/movimientos"
-          className="inline-flex h-9 items-center rounded-[var(--radius-base)] px-4 text-sm text-texto-suave hover:bg-superficie-2 hover:text-texto"
-        >
+      {/* En el teléfono los dos botones ocupan el ancho y el que sigue el
+          camino queda arriba, bajo el pulgar; `sm:` devuelve la fila de
+          siempre, con Cancelar a la izquierda. */}
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <EnlaceBoton href="/almacen/movimientos" variante="fantasma" className="justify-center">
           Cancelar
-        </Link>
-        <Boton type="submit" cargando={pendiente}>
+        </EnlaceBoton>
+        <Boton type="submit" cargando={pendiente} className="justify-center">
           Crear y agregar materiales
         </Boton>
       </div>

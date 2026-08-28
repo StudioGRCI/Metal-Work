@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { comoFecha, correrInforme, periodoPorDefecto } from '@/lib/datos/informes'
@@ -39,12 +40,13 @@ export default async function PaginaInforme({
 
   const filas = await correrInforme(clave, desde, hasta)
   const hayTotales = informe.columnas.some((c) => c.totaliza)
+  const inicioDeAnio = `${hasta.slice(0, 4)}-01-01`
 
   return (
     <>
       <Link
         href={`/informes?desde=${desde}&hasta=${hasta}`}
-        className="mb-3 inline-flex items-center gap-1.5 text-sm text-texto-suave hover:text-texto"
+        className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-sm text-texto-suave hover:text-texto sm:min-h-0"
       >
         <ArrowLeft aria-hidden className="size-4" />
         Todos los informes
@@ -75,10 +77,26 @@ export default async function PaginaInforme({
           </TablaCabecera>
           <tbody>
             {filas.length === 0 ? (
+              // El informe siempre viene filtrado por fechas: aquí «no hay
+              // nada» es siempre «no hay nada en este rango», y el siguiente
+              // paso es ensanchar el rango sin tener que escribirlo a mano.
               <SinDatos
                 colSpan={informe.columnas.length}
                 titulo="Sin movimiento en este período"
-                descripcion="Prueba con otro rango de fechas."
+                descripcion={`Entre el ${formatearFecha(desde)} y el ${formatearFecha(hasta)} no se registró nada para este informe.`}
+                accion={
+                  // Solo si de verdad ensancha: con un rango que ya empieza
+                  // antes de enero, el botón estaría recortando la búsqueda.
+                  desde <= inicioDeAnio ? undefined : (
+                    <EnlaceBoton
+                      href={`/informes/${clave}?desde=${inicioDeAnio}&hasta=${hasta}`}
+                      variante="secundario"
+                      tamano="sm"
+                    >
+                      Buscar en todo {hasta.slice(0, 4)}
+                    </EnlaceBoton>
+                  )
+                }
               />
             ) : (
               filas.map((fila, i) => (

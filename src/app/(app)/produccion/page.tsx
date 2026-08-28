@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { Plus } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
@@ -17,6 +19,15 @@ const ESTADOS = {
   APROBADO: { etiqueta: 'Aprobado', tono: 'exito' as const },
 }
 
+// Las mismas cuatro pastillas de siempre, ahora en el componente compartido:
+// así conservan lo que ya hubiera en la URL y marcan cuál está puesta.
+const FILTROS = [
+  { valor: null, etiqueta: 'Todos' },
+  { valor: 'BORRADOR', etiqueta: 'En borrador' },
+  { valor: 'CERRADO', etiqueta: 'Cerrados' },
+  { valor: 'APROBADO', etiqueta: 'Aprobados' },
+]
+
 export default async function PaginaProduccion({ searchParams }: PageProps<'/produccion'>) {
   const perfil = await exigirPermiso('produccion.ver')
   const params = await searchParams
@@ -24,44 +35,32 @@ export default async function PaginaProduccion({ searchParams }: PageProps<'/pro
 
   const partes = await listarPartes({ estado })
 
+  // El mismo botón arriba y en el estado vacío: quien llega a una lista sin
+  // nada tiene el siguiente paso a la mano y no vuelve a buscarlo arriba.
+  const botonNuevo = puede(perfil, 'produccion.registrar') ? (
+    <EnlaceBoton href="/produccion/nuevo">
+      <Plus aria-hidden className="size-4" />
+      Nuevo parte
+    </EnlaceBoton>
+  ) : null
+
   return (
     <>
       <EncabezadoPagina
         titulo="Partes diarios de producción"
         descripcion="Las horas del taller por día. Al aprobar un parte, sus horas se cargan a las etapas de cada orden y al costo de mano de obra."
-        acciones={
-          puede(perfil, 'produccion.registrar') && (
-            <Link
-              href="/produccion/nuevo"
-              className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-base)] bg-acento px-4 text-sm font-medium text-acento-texto hover:bg-acento-fuerte"
-            >
-              <Plus aria-hidden className="size-4" />
-              Nuevo parte
-            </Link>
-          )
-        }
+        acciones={botonNuevo}
       />
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        {[
-          { valor: '', titulo: 'Todos' },
-          { valor: 'BORRADOR', titulo: 'En borrador' },
-          { valor: 'CERRADO', titulo: 'Cerrados' },
-          { valor: 'APROBADO', titulo: 'Aprobados' },
-        ].map((o) => (
-          <Link
-            key={o.valor || 'todos'}
-            href={o.valor ? `/produccion?estado=${o.valor}` : '/produccion'}
-            className={
-              (estado ?? '') === o.valor
-                ? 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-xs font-medium text-acento'
-                : 'rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs text-texto-suave hover:bg-superficie-2'
-            }
-          >
-            {o.titulo}
-          </Link>
-        ))}
-      </div>
+      <PastillaFiltro
+        ruta="/produccion"
+        clave="estado"
+        opciones={FILTROS}
+        params={params}
+        activo={estado ?? null}
+        etiqueta="Filtrar los partes por estado"
+        className="mb-4"
+      />
 
       <Tarjeta className="overflow-hidden">
         <Tabla>
@@ -69,20 +68,33 @@ export default async function PaginaProduccion({ searchParams }: PageProps<'/pro
             <tr>
               <TH>Parte</TH>
               <TH>Fecha</TH>
-              <TH>Taller</TH>
-              <TH>Responsable</TH>
+              <TH className="hidden sm:table-cell">Taller</TH>
+              <TH className="hidden sm:table-cell">Responsable</TH>
               <TH>Estado</TH>
-              <TH className="text-right">Registros</TH>
+              <TH className="hidden text-right sm:table-cell">Registros</TH>
               <TH className="text-right">Horas</TH>
-              <TH className="text-right">Extra</TH>
+              <TH className="hidden text-right sm:table-cell">Extra</TH>
             </tr>
           </TablaCabecera>
           <tbody>
             {partes.length === 0 ? (
               <SinDatos
                 colSpan={8}
-                titulo={estado ? 'Sin partes en ese estado' : 'Aún no hay partes diarios'}
-                descripcion="Registra el parte del día para cargar las horas trabajadas a las órdenes."
+                titulo={estado ? 'Ningún parte en ese estado' : 'Todavía no hay partes diarios'}
+                descripcion={
+                  estado
+                    ? 'Con ese filtro no aparece ninguno. Quítalo para ver todos los partes del taller.'
+                    : 'Registra el parte del día para cargar las horas trabajadas a las órdenes.'
+                }
+                accion={
+                  estado ? (
+                    <EnlaceBoton href="/produccion" variante="secundario">
+                      Ver todos los partes
+                    </EnlaceBoton>
+                  ) : (
+                    botonNuevo
+                  )
+                }
               />
             ) : (
               partes.map((p) => {
@@ -90,28 +102,44 @@ export default async function PaginaProduccion({ searchParams }: PageProps<'/pro
                 const sede = p.sede as unknown as { nombre: string }
                 const responsable = p.responsable as unknown as { nombres: string; apellidos: string } | null
                 const registros = (p.detalle as unknown as { count: number }[])?.[0]?.count ?? 0
+                const extra = Number(p.total_horas_extra ?? 0)
 
                 return (
                   <TR key={p.id}>
-                    <TD className="whitespace-nowrap">
+                    <TD>
                       <Link
                         href={`/produccion/${p.id}`}
-                        className="font-medium text-acento hover:underline"
+                        className="inline-flex min-h-11 items-center font-medium whitespace-nowrap text-acento hover:underline sm:min-h-0"
                       >
                         {p.numero}
                       </Link>
+                      {/* En el teléfono no entran ocho columnas: taller, responsable
+                          y número de registros bajan acá en letra chica en vez de
+                          desaparecer con la columna. */}
+                      <p className="text-xs text-texto-suave sm:hidden">
+                        {sede.nombre}
+                        {responsable ? ` · ${responsable.nombres} ${responsable.apellidos}` : ''}
+                        {` · ${registros} ${registros === 1 ? 'registro' : 'registros'}`}
+                      </p>
                     </TD>
                     <TD className="whitespace-nowrap">{fecha(p.fecha)}</TD>
-                    <TD className="text-texto-suave">{sede.nombre}</TD>
-                    <TD className="text-texto-suave">
+                    <TD className="hidden text-texto-suave sm:table-cell">{sede.nombre}</TD>
+                    <TD className="hidden text-texto-suave sm:table-cell">
                       {responsable ? `${responsable.nombres} ${responsable.apellidos}` : '—'}
                     </TD>
                     <TD>
                       <Insignia tono={est.tono}>{est.etiqueta}</Insignia>
                     </TD>
-                    <TD className="tabular text-right">{registros}</TD>
-                    <TD className="tabular text-right font-medium">{cantidad(p.total_horas)}</TD>
-                    <TD className="tabular text-right text-texto-suave">
+                    <TD className="tabular hidden text-right sm:table-cell">{registros}</TD>
+                    <TD className="tabular text-right font-medium">
+                      {cantidad(p.total_horas)}
+                      {extra > 0 && (
+                        <span className="block text-xs font-normal text-texto-suave sm:hidden">
+                          +{cantidad(p.total_horas_extra)} extra
+                        </span>
+                      )}
+                    </TD>
+                    <TD className="tabular hidden text-right text-texto-suave sm:table-cell">
                       {cantidad(p.total_horas_extra)}
                     </TD>
                   </TR>

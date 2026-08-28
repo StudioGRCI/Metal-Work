@@ -48,10 +48,17 @@ export function DescargarCsv({
 
   return (
     <div className="flex items-center gap-2">
-      {error && <span className="text-xs text-peligro">{error}</span>}
+      {/* `role="alert"` porque el motivo aparece al lado de un botón que se
+          acaba de pulsar: sin él, quien usa lector de pantalla se queda
+          esperando un archivo que nunca bajó. */}
+      {error && (
+        <span role="alert" className="text-xs text-peligro">
+          {error}
+        </span>
+      )}
       <Boton variante="secundario" tamano="sm" onClick={bajar} cargando={bajando}>
         <Download aria-hidden className="size-3.5" />
-        Descargar
+        Descargar CSV
       </Boton>
     </div>
   )

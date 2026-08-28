@@ -1,7 +1,7 @@
-import Link from 'next/link'
-
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { PastillaFiltro, type OpcionFiltro } from '@/components/estructura/pastilla-filtro'
 import { ListaDocumentos } from '@/components/documentos/lista-documentos'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { listarDocumentos, tiposDocumento, versionesDeDocumento } from '@/lib/datos/documentos'
 import { firmasDeDocumentos, posiblesFirmantes } from '@/lib/datos/firmas'
@@ -45,6 +45,17 @@ export default async function PaginaDocumentos({ searchParams }: PageProps<'/doc
     }
   }
 
+  const opciones: OpcionFiltro[] = [
+    { valor: null, etiqueta: 'Todos' },
+    ...tipos.map((t) => ({ valor: t.id, etiqueta: t.nombre })),
+  ]
+
+  // El nombre del tipo puesto, para poder decirlo en el vacío: «no hay ninguna
+  // Ficha técnica» se entiende; «no hay documentos» con un filtro encendido
+  // hace pensar que el repositorio está vacío y manda a buscar a otro lado.
+  const nombreDelTipo = tipos.find((t) => t.id === tipoFiltro)?.nombre
+  const filtradoYVacio = Boolean(tipoFiltro) && documentos.length === 0
+
   return (
     <>
       <EncabezadoPagina
@@ -52,43 +63,41 @@ export default async function PaginaDocumentos({ searchParams }: PageProps<'/doc
         descripcion="Repositorio documental del taller. Cada archivo nuevo de un documento es una versión: la anterior se conserva."
       />
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Link
-          href="/documentos"
-          className={
-            !tipoFiltro
-              ? 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-xs font-medium text-acento'
-              : 'rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs text-texto-suave hover:bg-superficie-2'
-          }
-        >
-          Todos
-        </Link>
-        {tipos.map((t) => (
-          <Link
-            key={t.id}
-            href={`/documentos?tipo=${t.id}`}
-            className={
-              tipoFiltro === t.id
-                ? 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-xs font-medium text-acento'
-                : 'rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs text-texto-suave hover:bg-superficie-2'
-            }
-          >
-            {t.nombre}
-          </Link>
-        ))}
-      </div>
+      <PastillaFiltro
+        className="mb-4"
+        ruta="/documentos"
+        clave="tipo"
+        opciones={opciones}
+        params={params}
+        activo={tipoFiltro ?? null}
+        etiqueta="Filtrar por tipo de documento"
+      />
 
       <Tarjeta>
         <TarjetaCuerpo className="p-0">
           <ListaDocumentos
             documentos={documentos}
             versionesPorDocumento={versionesPorDocumento}
-            vacio="Todavía no se ha adjuntado ningún documento. Se suben desde la orden de trabajo correspondiente."
+            vacio={
+              filtradoYVacio
+                ? `Ningún documento de tipo «${nombreDelTipo ?? 'ese tipo'}». Quita el filtro para ver el resto.`
+                : 'Todavía no se ha adjuntado ningún documento. Se suben desde la orden de trabajo correspondiente.'
+            }
             firmas={firmas}
             firmantes={firmantes}
             usuarioId={perfil.id}
             puedePedirFirmas={pideFirmas}
           />
+
+          {/* El vacío por filtro tiene salida propia: quien llegó por una pastilla
+              necesita el camino de vuelta, no volver a leer la fila de arriba. */}
+          {filtradoYVacio && (
+            <div className="flex justify-center px-4 pb-6">
+              <EnlaceBoton href="/documentos" variante="secundario">
+                Ver todos los documentos
+              </EnlaceBoton>
+            </div>
+          )}
         </TarjetaCuerpo>
       </Tarjeta>
 

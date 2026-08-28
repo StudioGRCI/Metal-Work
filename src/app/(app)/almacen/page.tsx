@@ -1,12 +1,14 @@
 import { AlertTriangle } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
+import { Indicador } from '@/components/ui/indicador'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
-import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { Tarjeta } from '@/components/ui/tarjeta'
 import { cantidad, moneda, numero } from '@/lib/format'
 import { listarStock, resumenAlmacen } from '@/lib/datos/almacen'
-import { exigirPermiso } from '@/lib/sesion'
+import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { SubNavegacionAlmacen } from './sub-navegacion'
 
@@ -15,7 +17,7 @@ import { BuscadorStock } from './buscador-stock'
 export const metadata = { title: 'Almacén' }
 
 export default async function PaginaAlmacen({ searchParams }: PageProps<'/almacen'>) {
-  await exigirPermiso('almacen.ver')
+  const perfil = await exigirPermiso('almacen.ver')
   const params = await searchParams
 
   const filtros = {
@@ -25,6 +27,11 @@ export default async function PaginaAlmacen({ searchParams }: PageProps<'/almace
 
   const [stock, resumen] = await Promise.all([listarStock(filtros), resumenAlmacen()])
 
+  // Con filtro puesto, «no hay nada» quiere decir otra cosa: hay almacén, pero
+  // no con lo que se pidió. Quien busca necesita saber cuál de las dos es.
+  const filtrando = Boolean(filtros.busqueda) || filtros.bajoMinimo
+  const puedeMover = puede(perfil, 'almacen.movimientos')
+
   return (
     <>
       <EncabezadoPagina
@@ -32,39 +39,29 @@ export default async function PaginaAlmacen({ searchParams }: PageProps<'/almace
         descripcion="Existencias valorizadas al costo promedio ponderado."
       />
 
-      <div className="mb-4 grid gap-4 sm:grid-cols-3">
-        <Tarjeta>
-          <TarjetaCuerpo>
-            <p className="text-[11px] font-medium tracking-wide text-texto-suave uppercase">
-              Materiales con existencia
-            </p>
-            <p className="tabular mt-1 text-lg font-semibold text-texto">{resumen.materiales}</p>
-          </TarjetaCuerpo>
-        </Tarjeta>
-        <Tarjeta>
-          <TarjetaCuerpo>
-            <p className="text-[11px] font-medium tracking-wide text-texto-suave uppercase">
-              Valorización total
-            </p>
-            <p className="tabular mt-1 text-lg font-semibold text-texto">
-              {moneda(resumen.valorizado)}
-            </p>
-          </TarjetaCuerpo>
-        </Tarjeta>
-        <Tarjeta>
-          <TarjetaCuerpo>
-            <p className="text-[11px] font-medium tracking-wide text-texto-suave uppercase">
-              Bajo stock mínimo
-            </p>
-            <p
-              className={`tabular mt-1 text-lg font-semibold ${
-                resumen.bajoMinimo > 0 ? 'text-peligro' : 'text-exito'
-              }`}
-            >
-              {resumen.bajoMinimo}
-            </p>
-          </TarjetaCuerpo>
-        </Tarjeta>
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+        <Indicador
+          titulo="Materiales con existencia"
+          valor={resumen.materiales}
+          pie="con saldo en algún almacén"
+        />
+        <Indicador
+          titulo="Valorización total"
+          /* La moneda es la cifra más larga de las tres y en el teléfono comparte
+             fila: se queda un punto por debajo del resto para que no se corte. En
+             `sm:` mide igual que las demás, como siempre. */
+          valor={<span className="text-xl sm:text-lg">{moneda(resumen.valorizado)}</span>}
+        />
+        <Indicador
+          titulo="Bajo stock mínimo"
+          valor={resumen.bajoMinimo}
+          tono={resumen.bajoMinimo > 0 ? 'peligro' : 'exito'}
+          /* Sin nada bajo mínimo el enlace llevaría a una lista vacía: mejor que
+             no lleve a ninguna parte. */
+          href={resumen.bajoMinimo > 0 ? '/almacen?bajo=1' : undefined}
+          pie={resumen.bajoMinimo > 0 ? 'Ver solo estos' : 'Nada por reponer'}
+          className="col-span-2 sm:col-span-1"
+        />
       </div>
 
       <SubNavegacionAlmacen activa="/almacen" />
@@ -75,44 +72,64 @@ export default async function PaginaAlmacen({ searchParams }: PageProps<'/almace
         <Tabla>
           <TablaCabecera>
             <tr>
-              <TH>Código</TH>
+              <TH className="hidden sm:table-cell">Código</TH>
               <TH>Material</TH>
-              <TH>Almacén</TH>
+              <TH className="hidden sm:table-cell">Almacén</TH>
               <TH className="text-right">Stock</TH>
-              <TH className="text-right">Reservado</TH>
+              <TH className="hidden text-right sm:table-cell">Reservado</TH>
               <TH className="text-right">Disponible</TH>
-              <TH className="text-right">Costo prom.</TH>
-              <TH className="text-right">Valorizado</TH>
+              <TH className="hidden text-right sm:table-cell">Costo prom.</TH>
+              <TH className="hidden text-right sm:table-cell">Valorizado</TH>
             </tr>
           </TablaCabecera>
           <tbody>
             {stock.length === 0 ? (
               <SinDatos
                 colSpan={8}
-                titulo={filtros.busqueda || filtros.bajoMinimo ? 'Sin resultados' : 'Almacén vacío'}
+                titulo={filtrando ? 'Ningún material con ese filtro' : 'Almacén vacío'}
                 descripcion={
-                  filtros.busqueda || filtros.bajoMinimo
-                    ? 'Prueba con otro término o quita el filtro.'
-                    : 'Registra los ingresos de material para que aparezcan las existencias.'
+                  filtrando
+                    ? 'Prueba con otro término o quita el filtro para ver todo lo que hay.'
+                    : 'Registra un ingreso para cargar las existencias; el costo promedio lo calcula el sistema.'
+                }
+                accion={
+                  filtrando ? (
+                    <EnlaceBoton href="/almacen" variante="secundario" tamano="sm">
+                      Ver todo el almacén
+                    </EnlaceBoton>
+                  ) : puedeMover ? (
+                    <EnlaceBoton href="/almacen/movimientos/nuevo?tipo=INGRESO" tamano="sm">
+                      Registrar un ingreso
+                    </EnlaceBoton>
+                  ) : undefined
                 }
               />
             ) : (
               stock.map((f) => (
                 <TR key={f.stock_id}>
-                  <TD className="font-mono text-xs whitespace-nowrap">{f.material_codigo}</TD>
+                  <TD className="hidden font-mono text-xs whitespace-nowrap sm:table-cell">
+                    {f.material_codigo}
+                  </TD>
                   <TD>
                     <p className="max-w-72 truncate">{f.material_descripcion}</p>
                     <p className="text-[11px] text-texto-suave">
                       {f.categoria}
                       {f.especificacion_tecnica ? ` · ${f.especificacion_tecnica}` : ''}
                     </p>
+                    {/* En el teléfono el código y el almacén pierden su columna:
+                        bajan acá en letra chica para no perderlos del todo. */}
+                    <p className="font-mono text-[11px] text-texto-tenue sm:hidden">
+                      {f.material_codigo} · {f.almacen_nombre}
+                    </p>
                   </TD>
-                  <TD className="whitespace-nowrap text-texto-suave">{f.almacen_nombre}</TD>
+                  <TD className="hidden whitespace-nowrap text-texto-suave sm:table-cell">
+                    {f.almacen_nombre}
+                  </TD>
                   <TD className="tabular text-right">
                     {cantidad(f.cantidad)}
                     <span className="ml-1 text-[11px] text-texto-tenue">{f.unidad_medida}</span>
                   </TD>
-                  <TD className="tabular text-right text-texto-suave">
+                  <TD className="tabular hidden text-right text-texto-suave sm:table-cell">
                     {cantidad(f.cantidad_reservada)}
                   </TD>
                   <TD className="tabular text-right font-medium">
@@ -124,8 +141,10 @@ export default async function PaginaAlmacen({ searchParams }: PageProps<'/almace
                       </Insignia>
                     )}
                   </TD>
-                  <TD className="tabular text-right text-texto-suave">{numero(f.costo_promedio)}</TD>
-                  <TD className="tabular text-right">{numero(f.valorizado)}</TD>
+                  <TD className="tabular hidden text-right text-texto-suave sm:table-cell">
+                    {numero(f.costo_promedio)}
+                  </TD>
+                  <TD className="tabular hidden text-right sm:table-cell">{numero(f.valorizado)}</TD>
                 </TR>
               ))
             )}

@@ -94,7 +94,7 @@ export default async function PaginaMovimiento({
         </p>
       )}
 
-      <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Dato titulo="Orden de trabajo">
           {orden ? (
             <Link href={`/ordenes/${orden.id}`} className="text-acento hover:underline">
@@ -162,7 +162,7 @@ function Dato({ titulo, children }: { titulo: string; children: React.ReactNode 
     <Tarjeta>
       <TarjetaCuerpo>
         <p className="text-[11px] font-medium tracking-wide text-texto-suave uppercase">{titulo}</p>
-        <p className="mt-1 truncate text-sm font-medium text-texto">{children}</p>
+        <p className="mt-1 text-sm font-medium break-words text-texto sm:truncate">{children}</p>
       </TarjetaCuerpo>
     </Tarjeta>
   )

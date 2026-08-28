@@ -1,9 +1,9 @@
 'use client'
 
-import Link from 'next/link'
 import { useActionState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 
@@ -52,6 +52,7 @@ export function FormularioParte({
               id="observaciones"
               name="observaciones"
               rows={2}
+              autoComplete="off"
               placeholder="Novedades del día: cortes de energía, ausencias, incidentes"
             />
           </Campo>
@@ -65,12 +66,11 @@ export function FormularioParte({
       )}
 
       <div className="flex justify-end gap-2">
-        <Link
-          href="/produccion"
-          className="inline-flex h-9 items-center rounded-[var(--radius-base)] px-4 text-sm text-texto-suave hover:bg-superficie-2 hover:text-texto"
-        >
+        {/* Cancelar navega, no ejecuta: por eso es enlace con pinta de botón y no
+            un Boton. Las clases salían copiadas a mano y ya no coincidían. */}
+        <EnlaceBoton href="/produccion" variante="fantasma">
           Cancelar
-        </Link>
+        </EnlaceBoton>
         <Boton type="submit" cargando={pendiente}>
           Crear parte
         </Boton>

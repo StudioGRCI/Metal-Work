@@ -1,7 +1,9 @@
 import Link from 'next/link'
-import { AlertTriangle, ClipboardList, Factory, PauseCircle, Zap } from 'lucide-react'
+import { AlertTriangle, ClipboardList, Factory, PauseCircle, Plus, Zap } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
+import { Indicador } from '@/components/ui/indicador'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -17,12 +19,13 @@ export default async function PaginaTablero() {
 
   if (!puede(perfil, 'ordenes.ver')) {
     return (
-      <>
-        <EncabezadoPagina
-          titulo={`Hola, ${perfil.nombres}`}
-          descripcion="Usa el menú lateral para acceder a los módulos habilitados para tu perfil."
-        />
-      </>
+      <EncabezadoPagina
+        titulo={`Hola, ${perfil.nombres}`}
+        // «El menú» y no «la barra lateral»: en el teléfono es el botón de
+        // arriba, y a esta pantalla llega justamente quien todavía no sabe
+        // dónde está lo suyo.
+        descripcion="Abre el menú para entrar a los módulos habilitados para tu perfil."
+      />
     )
   }
 
@@ -32,6 +35,10 @@ export default async function PaginaTablero() {
   ])
 
   const atrasadas = ordenes.filter((o) => (o.dias_atraso ?? 0) > 0)
+  const puedeCrear = puede(perfil, 'ordenes.crear')
+  // Para el pie de «Órdenes abiertas»: un número suelto no dice si son muchas
+  // o pocas hasta que se ve contra el total registrado.
+  const totalOrdenes = indicadores.porEstado.reduce((suma, e) => suma + e.cantidad, 0)
 
   return (
     <>
@@ -40,12 +47,48 @@ export default async function PaginaTablero() {
         descripcion="Estado del taller al día de hoy."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Indicador icono={ClipboardList} titulo="Órdenes abiertas" valor={indicadores.abiertas} />
-        <Indicador icono={Factory} titulo="En proceso" valor={indicadores.enProceso} tono="acento" />
-        <Indicador icono={PauseCircle} titulo="Pausadas" valor={indicadores.pausadas} tono="aviso" />
-        <Indicador icono={AlertTriangle} titulo="Atrasadas" valor={indicadores.atrasadas} tono="peligro" />
-        <Indicador icono={Zap} titulo="Urgentes" valor={indicadores.urgentes} tono="peligro" />
+      {/* Dos columnas ya en el teléfono: cinco tarjetas apiladas ocupaban una
+          pantalla entera antes de llegar a la lista de órdenes. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+        <Indicador
+          icono={ClipboardList}
+          titulo="Órdenes abiertas"
+          valor={indicadores.abiertas}
+          pie={`de ${totalOrdenes} registradas`}
+          href="/ordenes?estado=ABIERTAS"
+        />
+        <Indicador
+          icono={Factory}
+          titulo="En proceso"
+          valor={indicadores.enProceso}
+          tono="acento"
+          pie={`de ${indicadores.abiertas} abiertas`}
+          href="/ordenes?estado=EN_PROCESO"
+        />
+        <Indicador
+          icono={PauseCircle}
+          titulo="Pausadas"
+          valor={indicadores.pausadas}
+          tono="aviso"
+          pie={`de ${indicadores.abiertas} abiertas`}
+          href="/ordenes?estado=PAUSADA"
+        />
+        <Indicador
+          icono={AlertTriangle}
+          titulo="Atrasadas"
+          valor={indicadores.atrasadas}
+          tono="peligro"
+          pie="pasaron la fecha comprometida"
+          href="/ordenes?estado=ABIERTAS&atrasadas=1"
+        />
+        <Indicador
+          icono={Zap}
+          titulo="Urgentes"
+          valor={indicadores.urgentes}
+          tono="peligro"
+          pie={`de ${indicadores.abiertas} abiertas`}
+          href="/ordenes?estado=ABIERTAS&prioridad=URGENTE"
+        />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
@@ -54,16 +97,30 @@ export default async function PaginaTablero() {
             titulo="Órdenes en taller"
             descripcion="Lo que está abierto ahora mismo, por fecha de registro"
             acciones={
-              <Link href="/ordenes?estado=ABIERTAS" className="text-xs text-acento hover:underline">
+              <Link
+                href="/ordenes?estado=ABIERTAS"
+                className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0"
+              >
                 Ver todas
               </Link>
             }
           />
           <TarjetaCuerpo className="space-y-3">
             {ordenes.length === 0 ? (
-              <p className="py-8 text-center text-sm text-texto-suave">
-                No hay órdenes abiertas en este momento.
-              </p>
+              <div className="py-8 text-center">
+                <p className="text-sm font-medium text-texto">No hay órdenes abiertas</p>
+                <p className="mt-1 text-xs text-texto-suave">
+                  En cuanto se apruebe una, aparece acá con su avance.
+                </p>
+                {puedeCrear && (
+                  <div className="mt-4 flex justify-center">
+                    <EnlaceBoton href="/ordenes/nueva" tamano="sm">
+                      <Plus aria-hidden className="size-3.5" />
+                      Nueva orden
+                    </EnlaceBoton>
+                  </div>
+                )}
+              </div>
             ) : (
               ordenes.slice(0, 8).map((orden) => {
                 const estado = definir(ESTADO_OT, orden.estado)
@@ -83,7 +140,9 @@ export default async function PaginaTablero() {
                         {orden.placa ? ` · ${orden.placa}` : ''}
                       </p>
                     </div>
-                    <div className="w-32 shrink-0">
+                    {/* La barra cede ancho en el teléfono: con 128 px fijos el
+                        número de orden y el cliente quedaban recortados. */}
+                    <div className="w-20 shrink-0 sm:w-32">
                       <Progreso valor={orden.avance_porcentaje} mostrarValor alto="sm" />
                     </div>
                   </Link>
@@ -98,7 +157,9 @@ export default async function PaginaTablero() {
             <TarjetaCabecera titulo="Por estado" />
             <TarjetaCuerpo className="space-y-2">
               {indicadores.porEstado.length === 0 ? (
-                <p className="py-4 text-center text-sm text-texto-suave">Sin datos.</p>
+                <p className="py-4 text-center text-sm text-texto-suave">
+                  Todavía no hay ninguna orden registrada.
+                </p>
               ) : (
                 [...indicadores.porEstado]
                   .sort(
@@ -109,10 +170,17 @@ export default async function PaginaTablero() {
                   .map(({ estado, cantidad }) => {
                     const def = definir(ESTADO_OT, estado)
                     return (
-                      <div key={estado} className="flex items-center justify-between gap-2 text-sm">
+                      // El conteo lleva a su lista filtrada: era un número que
+                      // no llevaba a ninguna parte y obligaba a repetir el
+                      // filtro a mano en Órdenes.
+                      <Link
+                        key={estado}
+                        href={`/ordenes?estado=${estado}`}
+                        className="flex min-h-11 items-center justify-between gap-2 rounded-[var(--radius-base)] text-sm hover:bg-superficie-2 sm:min-h-0"
+                      >
                         <Insignia tono={def.tono}>{def.etiqueta}</Insignia>
                         <span className="tabular font-medium text-texto">{cantidad}</span>
-                      </div>
+                      </Link>
                     )
                   })
               )}
@@ -149,36 +217,5 @@ export default async function PaginaTablero() {
         </div>
       </div>
     </>
-  )
-}
-
-function Indicador({
-  icono: Icono,
-  titulo,
-  valor,
-  tono = 'neutro',
-}: {
-  icono: typeof ClipboardList
-  titulo: string
-  valor: number
-  tono?: 'neutro' | 'acento' | 'aviso' | 'peligro'
-}) {
-  const color = {
-    neutro: 'text-texto-suave',
-    acento: 'text-acento',
-    aviso: 'text-aviso',
-    peligro: 'text-peligro',
-  }[tono]
-
-  return (
-    <Tarjeta>
-      <TarjetaCuerpo className="flex items-center gap-3">
-        <Icono aria-hidden className={`size-5 shrink-0 ${color}`} />
-        <div className="min-w-0">
-          <p className="tabular text-2xl leading-none font-semibold text-texto">{valor}</p>
-          <p className="mt-1 text-xs text-texto-suave">{titulo}</p>
-        </div>
-      </TarjetaCuerpo>
-    </Tarjeta>
   )
 }

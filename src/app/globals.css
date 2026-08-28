@@ -7,17 +7,49 @@
    reserva para el peligro y los toques de marca, como en el propio logo.
    Densidad alta: la aplicación se usa en oficina y en tablet dentro del
    taller, donde importa ver muchas órdenes de un vistazo.
+
+   CONTRASTE — por qué los grises son más oscuros de lo que parece bonito
+   La mitad de las pantallas se leen con el teléfono en la mano, en un taller
+   con luz de nave y a veces con el vidrio rayado. Un gris que en el monitor
+   del escritorio «se lee bien» ahí no se lee. Por eso cada par color/fondo de
+   este archivo está medido contra WCAG 2.1 (4.5:1 texto normal, 3:1 texto
+   grande, bordes y contornos de control) y la relación medida queda anotada
+   al lado. Si cambias un valor, vuelve a medir el par: el número que está
+   escrito es una promesa, no un adorno.
+
+   Relaciones que quedaron (medidas, no estimadas) — claro / oscuro:
+     texto        sobre superficie ......... 17.79 / 14.34
+     texto-suave  sobre superficie ..........  7.29 /  8.07   (mínimo 6.13 / 6.75)
+     texto-tenue  sobre superficie ..........  5.39 /  5.42   (mínimo 4.52 / 4.53)
+     tinta sobre relleno de peligro .........  6.27 /  7.42
+     tinta sobre relleno de éxito ...........  5.02 /  9.51
+     tinta sobre relleno de aviso ...........  4.92 /  9.84
+     borde-fuerte sobre superficie ..........  3.39 /  4.62
+     anillo de foco sobre fondo ............. 11.55 / 10.55
+   «Mínimo» = contra la superficie más adversa donde ese texto aparece de
+   verdad (cabecera de tabla, fila con hover, insignia).
 --------------------------------------------------------------------------- */
 
 :root {
   --fondo: #f6f7f9;
   --superficie: #ffffff;
   --superficie-2: #f1f3f6;
+
+  /* Dos bordes con dos oficios distintos, y no son intercambiables:
+     --borde separa superficies (tarjeta, fila de tabla) y puede ser un
+     susurro —1.26:1 sobre blanco—, porque nadie necesita verlo para saber
+     dónde escribir; --borde-fuerte es el contorno de un control (campo,
+     botón de contorno), que sí hace falta ver: WCAG 1.4.11 pide 3:1 y el
+     #cbd1da anterior daba 1.54, o sea ninguno. */
   --borde: #e2e5ea;
-  --borde-fuerte: #cbd1da;
-  --texto: #14181f;
-  --texto-suave: #5b6472;
-  --texto-tenue: #8a93a1;
+  --borde-fuerte: #838c9b; /* 3.39 sobre superficie · 3.17 sobre fondo · 3.05 sobre superficie-2 */
+
+  --texto: #14181f; /* 17.79 sobre superficie */
+  /* Al subir el tenue hasta el mínimo legible se le venía encima al suave y
+     los dos niveles se volvían el mismo gris; por eso el suave también baja.
+     Quedan tres escalones separados de verdad: 17.79 / 7.29 / 5.39. */
+  --texto-suave: #4e5766; /* 7.29 sobre superficie · 6.13 en el peor fondo */
+  --texto-tenue: #626b79; /* 5.39 sobre superficie · 4.52 en el peor fondo */
 
   --marca-azul: #13467f;
   --marca-rojo: #fd0002;
@@ -25,35 +57,59 @@
   --acento: #13467f;
   --acento-fuerte: #0e3560;
   --acento-suave: #e4ecf7;
-  --acento-texto: #ffffff;
+  --acento-texto: #ffffff; /* 9.50 sobre acento */
+  --anillo-foco: #0e3560; /* 11.55 sobre fondo · 12.38 sobre superficie */
 
+  /* Los *-texto son la tinta que va ENCIMA del relleno sólido del mismo tono.
+     En claro los tres rellenos son oscuros y el blanco alcanza; en oscuro son
+     claros y el blanco no alcanza —de ahí que la tinta sea variable y no un
+     `text-white` escrito a mano en el componente. */
   --exito: #15803d;
   --exito-suave: #dcfce7;
+  --exito-texto: #ffffff; /* 5.02 sobre exito */
   --aviso: #a16207;
   --aviso-suave: #fef9c3;
+  --aviso-texto: #ffffff; /* 4.92 sobre aviso */
   --peligro: #c40004;
   --peligro-suave: #ffe4e4;
+  --peligro-texto: #ffffff; /* 6.27 sobre peligro */
   --info: #1d4ed8;
   --info-suave: #dbeafe;
+  --info-texto: #ffffff; /* 6.70 sobre info */
   --neutro-suave: #eef1f5;
 
   --radio: 0.5rem;
   --sombra: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 3px rgb(16 24 40 / 0.1);
+  /* Superficies que flotan sobre el resto de la pantalla: modales, menús,
+     el desplegable del buscador. Sobre el velo la hoja blanca ya se despega
+     sola (4.18:1), así que aquí la sombra solo aporta la profundidad. */
+  --sombra-alta:
+    0 0 0 1px rgb(16 24 40 / 0.06), 0 12px 28px -8px rgb(16 24 40 / 0.22),
+    0 4px 10px -4px rgb(16 24 40 / 0.14);
 }
 
 /* El tema oscuro vale en dos casos: cuando lo pide el sistema y no se eligió
    claro a mano, y cuando se eligió oscuro a mano. Los mismos valores en los
-   dos selectores, para que la elección de la persona gane siempre. */
+   dos selectores, para que la elección de la persona gane siempre.
+   Si tocas uno, toca el otro: son copia exacta a propósito. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-tema="claro"]) {
     --fondo: #0d1117;
     --superficie: #151b23;
     --superficie-2: #1c232d;
-    --borde: #262d38;
-    --borde-fuerte: #39424f;
-    --texto: #e6eaf0;
-    --texto-suave: #9aa4b2;
-    --texto-tenue: #6b7583;
+
+    /* En oscuro las cuatro superficies viven a un pelo de luminancia unas de
+       otras: el borde es lo ÚNICO que dibuja la caja del campo, y el #262d38
+       anterior daba 1.25:1 —el campo no existía—. Aquí sí sube a 3:1, aunque
+       en claro se quede en susurro, porque en claro el blanco del campo ya se
+       distingue del papel y una línea de 3:1 en cada tarjeta convertiría la
+       pantalla en un alambrado. */
+    --borde: #626d7e; /* 3.30 sobre superficie · 3.61 sobre fondo · 3.02 sobre superficie-2 */
+    --borde-fuerte: #7a8593; /* 4.62 sobre superficie · 5.05 sobre fondo */
+
+    --texto: #e6eaf0; /* 14.34 sobre superficie */
+    --texto-suave: #a8b2c0; /* 8.07 sobre superficie · 6.75 en el peor fondo */
+    --texto-tenue: #87919e; /* 5.42 sobre superficie · 4.53 en el peor fondo */
 
     --marca-azul: #13467f;
     --marca-rojo: #fd0002;
@@ -61,19 +117,34 @@
     --acento: #82abe0;
     --acento-fuerte: #a5c4ec;
     --acento-suave: #12263f;
-    --acento-texto: #081627;
+    --acento-texto: #081627; /* 7.67 sobre acento */
+    --anillo-foco: #a5c4ec; /* 10.55 sobre fondo · 9.65 sobre superficie */
 
     --exito: #4ade80;
     --exito-suave: #052e16;
+    --exito-texto: #06240f; /* 9.51 sobre exito */
     --aviso: #fbbf24;
     --aviso-suave: #3b2f05;
-    --peligro: #ff8a8b;
+    --aviso-texto: #2b1d00; /* 9.84 sobre aviso */
+    /* Un poco más rojo que el #ff8a8b anterior: con tinta oscura encima, el
+       rosa no decía «peligro». Sigue siendo el rojo de marca aclarado, no
+       otro color. */
+    --peligro: #ff7a7c; /* 6.44 sobre peligro-suave · 6.87 sobre superficie */
     --peligro-suave: #45080a;
+    --peligro-texto: #2b0405; /* 7.42 sobre peligro — el blanco daba 2.27 y no se leía */
     --info: #60a5fa;
     --info-suave: #0c2249;
+    --info-texto: #081627; /* 7.16 sobre info */
     --neutro-suave: #222a35;
 
-    --sombra: 0 1px 2px rgb(0 0 0 / 0.4);
+    --sombra: 0 1px 2px rgb(0 0 0 / 0.6), 0 2px 6px -2px rgb(0 0 0 / 0.5);
+    /* Una sombra negra sobre un fondo casi negro no despega nada: la hoja del
+       modal contra el velo da 1.15:1 y el modal parecía pintado en el fondo.
+       Lo que lo despega es el filo de luz, no la sombra — ese anillo contra
+       el velo da 5.32:1. La sombra queda solo para la profundidad. */
+    --sombra-alta:
+      0 0 0 1px var(--borde-fuerte), 0 18px 44px -10px rgb(0 0 0 / 0.8),
+      0 6px 16px -8px rgb(0 0 0 / 0.65);
   }
 }
 
@@ -81,11 +152,13 @@
   --fondo: #0d1117;
   --superficie: #151b23;
   --superficie-2: #1c232d;
-  --borde: #262d38;
-  --borde-fuerte: #39424f;
-  --texto: #e6eaf0;
-  --texto-suave: #9aa4b2;
-  --texto-tenue: #6b7583;
+
+  --borde: #626d7e; /* 3.30 sobre superficie · 3.61 sobre fondo · 3.02 sobre superficie-2 */
+  --borde-fuerte: #7a8593; /* 4.62 sobre superficie · 5.05 sobre fondo */
+
+  --texto: #e6eaf0; /* 14.34 sobre superficie */
+  --texto-suave: #a8b2c0; /* 8.07 sobre superficie · 6.75 en el peor fondo */
+  --texto-tenue: #87919e; /* 5.42 sobre superficie · 4.53 en el peor fondo */
 
   --marca-azul: #13467f;
   --marca-rojo: #fd0002;
@@ -93,19 +166,27 @@
   --acento: #82abe0;
   --acento-fuerte: #a5c4ec;
   --acento-suave: #12263f;
-  --acento-texto: #081627;
+  --acento-texto: #081627; /* 7.67 sobre acento */
+  --anillo-foco: #a5c4ec; /* 10.55 sobre fondo · 9.65 sobre superficie */
 
   --exito: #4ade80;
   --exito-suave: #052e16;
+  --exito-texto: #06240f; /* 9.51 sobre exito */
   --aviso: #fbbf24;
   --aviso-suave: #3b2f05;
-  --peligro: #ff8a8b;
+  --aviso-texto: #2b1d00; /* 9.84 sobre aviso */
+  --peligro: #ff7a7c; /* 6.44 sobre peligro-suave · 6.87 sobre superficie */
   --peligro-suave: #45080a;
+  --peligro-texto: #2b0405; /* 7.42 sobre peligro — el blanco daba 2.27 y no se leía */
   --info: #60a5fa;
   --info-suave: #0c2249;
+  --info-texto: #081627; /* 7.16 sobre info */
   --neutro-suave: #222a35;
 
-  --sombra: 0 1px 2px rgb(0 0 0 / 0.4);
+  --sombra: 0 1px 2px rgb(0 0 0 / 0.6), 0 2px 6px -2px rgb(0 0 0 / 0.5);
+  --sombra-alta:
+    0 0 0 1px var(--borde-fuerte), 0 18px 44px -10px rgb(0 0 0 / 0.8),
+    0 6px 16px -8px rgb(0 0 0 / 0.65);
 }
 
 @theme inline {
@@ -121,18 +202,27 @@
   --color-acento-fuerte: var(--acento-fuerte);
   --color-acento-suave: var(--acento-suave);
   --color-acento-texto: var(--acento-texto);
+  --color-anillo-foco: var(--anillo-foco);
   --color-exito: var(--exito);
   --color-exito-suave: var(--exito-suave);
+  --color-exito-texto: var(--exito-texto);
   --color-aviso: var(--aviso);
   --color-aviso-suave: var(--aviso-suave);
+  --color-aviso-texto: var(--aviso-texto);
   --color-peligro: var(--peligro);
   --color-peligro-suave: var(--peligro-suave);
+  --color-peligro-texto: var(--peligro-texto);
   --color-info: var(--info);
   --color-info-suave: var(--info-suave);
+  --color-info-texto: var(--info-texto);
   --color-neutro-suave: var(--neutro-suave);
   --color-marca-azul: var(--marca-azul);
   --color-marca-rojo: var(--marca-rojo);
   --radius-base: var(--radio);
+  /* Para escribir `shadow-base` y `shadow-alta` en vez de repetir el
+     `shadow-[var(--sombra)]` a mano en cada tarjeta y cada modal. */
+  --shadow-base: var(--sombra);
+  --shadow-alta: var(--sombra-alta);
 }
 
 body {
@@ -154,11 +244,22 @@ h1, h2, h3 {
   font-variant-numeric: tabular-nums;
 }
 
-/* Foco visible y consistente; el taller usa teclado y lectores de pantalla. */
+/* Foco visible y consistente; el taller usa teclado y lectores de pantalla.
+   Tres detalles, los tres pagados:
+   - 3px y no 2px: con guante puesto y la pantalla a un brazo, dos píxeles no
+     se ven; el anillo es lo único que dice dónde va a caer el Enter.
+   - color propio (--anillo-foco) y no --acento: sobre un botón primario el
+     anillo era del mismo color que el botón. El tono fuerte da 11.55:1 en
+     claro y 10.55:1 en oscuro contra el fondo.
+   - el `outline-offset` deja 2px de superficie entre el control y el anillo,
+     así el anillo siempre contrasta contra la superficie y nunca contra el
+     relleno del propio botón.
+   No se fuerza `border-radius` aquí: al hacerlo, el anillo cambiaba el radio
+   del control al enfocarlo y las esquinas «saltaban». El outline sigue solo
+   el radio que ya tenga el elemento. */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid var(--acento);
+  outline: 3px solid var(--anillo-foco);
   outline-offset: 2px;
-  border-radius: 0.25rem;
 }
 
 ::selection {

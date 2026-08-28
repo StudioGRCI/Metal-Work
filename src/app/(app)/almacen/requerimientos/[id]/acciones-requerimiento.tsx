@@ -5,6 +5,7 @@ import { useState, useTransition } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo } from '@/components/ui/campos'
+import { Ventana } from '@/components/ui/ventana'
 
 import { aprobarRequerimiento, rechazarRequerimiento } from '../../acciones'
 
@@ -75,42 +76,37 @@ export function AccionesRequerimiento({
         </p>
       )}
 
-      {rechazando && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <button
-            type="button"
-            aria-label="Cancelar"
-            onClick={() => setRechazando(false)}
-            className="absolute inset-0 bg-black/40"
-          />
-          <div className="relative w-full max-w-md rounded-[var(--radius-base)] border border-borde bg-superficie p-4 text-left shadow-xl">
-            <h2 className="text-sm font-semibold text-texto">Rechazar requerimiento</h2>
+      {/* El motivo escrito no se puede recuperar si la ventana se cierra sola:
+          se sale por Cancelar, por la X o con Escape, no rozando el fondo. */}
+      <Ventana
+        abierta={rechazando}
+        alCerrar={() => setRechazando(false)}
+        titulo="Rechazar requerimiento"
+        ancho="sm"
+      >
+        <form action={rechazar} className="space-y-3">
+          <input type="hidden" name="requerimiento_id" value={requerimiento.id} />
 
-            <form action={rechazar} className="mt-4 space-y-3">
-              <input type="hidden" name="requerimiento_id" value={requerimiento.id} />
+          <Campo etiqueta="Motivo" htmlFor="motivo" requerido>
+            {/* Sin autoFocus: el foco al abrir lo lleva la Ventana. */}
+            <AreaTexto
+              id="motivo"
+              name="motivo"
+              required
+              placeholder="Ej.: el material solicitado no corresponde al alcance de la orden"
+            />
+          </Campo>
 
-              <Campo etiqueta="Motivo" htmlFor="motivo" requerido>
-                <AreaTexto
-                  id="motivo"
-                  name="motivo"
-                  required
-                  autoFocus
-                  placeholder="Ej.: el material solicitado no corresponde al alcance de la orden"
-                />
-              </Campo>
-
-              <div className="flex justify-end gap-2">
-                <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setRechazando(false)}>
-                  Cancelar
-                </Boton>
-                <Boton type="submit" tamano="sm" variante="peligro" cargando={enviando}>
-                  Rechazar
-                </Boton>
-              </div>
-            </form>
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setRechazando(false)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" tamano="sm" variante="peligro" cargando={enviando}>
+              Rechazar
+            </Boton>
           </div>
-        </div>
-      )}
+        </form>
+      </Ventana>
     </div>
   )
 }

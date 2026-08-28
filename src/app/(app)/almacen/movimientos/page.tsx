@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { Plus } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { PastillaFiltro, type OpcionFiltro } from '@/components/estructura/pastilla-filtro'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
@@ -15,6 +17,16 @@ import { SubNavegacionAlmacen } from '../sub-navegacion'
 
 export const metadata = { title: 'Movimientos de almacén' }
 
+// «Sin confirmar» filtra por estado y las demás por tipo: es el grupo mezclado
+// para el que `PastillaFiltro` acepta una clave por opción. Al pulsar una se
+// apagan las dos claves y se enciende solo la suya, así que nunca quedan dos
+// pastillas encendidas contradiciéndose.
+const FILTROS: OpcionFiltro[] = [
+  { valor: null, etiqueta: 'Todos' },
+  { valor: 'BORRADOR', etiqueta: 'Sin confirmar', clave: 'estado' },
+  ...Object.entries(TIPO_MOVIMIENTO).map(([valor, def]) => ({ valor, etiqueta: def.etiqueta })),
+]
+
 export default async function PaginaMovimientos({
   searchParams,
 }: PageProps<'/almacen/movimientos'>) {
@@ -25,6 +37,9 @@ export default async function PaginaMovimientos({
   const estado = typeof params.estado === 'string' ? params.estado : undefined
   const movimientos = await listarMovimientos({ tipo, estado })
 
+  const filtrando = Boolean(tipo || estado)
+  const puedeMover = puede(perfil, 'almacen.movimientos')
+
   return (
     <>
       <EncabezadoPagina
@@ -32,55 +47,26 @@ export default async function PaginaMovimientos({
         titulo="Movimientos de almacén"
         descripcion="Ingresos, vales de consumo, devoluciones, transferencias y ajustes. Al confirmarse afectan el kardex y ya no se pueden modificar."
         acciones={
-          puede(perfil, 'almacen.movimientos') && (
-            <Link
-              href="/almacen/movimientos/nuevo"
-              className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-base)] bg-acento px-4 text-sm font-medium text-acento-texto hover:bg-acento-fuerte"
-            >
+          puedeMover && (
+            <EnlaceBoton href="/almacen/movimientos/nuevo">
               <Plus aria-hidden className="size-4" />
               Nuevo movimiento
-            </Link>
+            </EnlaceBoton>
           )
         }
       />
 
       <SubNavegacionAlmacen activa="/almacen/movimientos" />
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Link
-          href="/almacen/movimientos"
-          className={
-            !tipo && !estado
-              ? 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-xs font-medium text-acento'
-              : 'rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs text-texto-suave hover:bg-superficie-2'
-          }
-        >
-          Todos
-        </Link>
-        <Link
-          href="/almacen/movimientos?estado=BORRADOR"
-          className={
-            estado === 'BORRADOR'
-              ? 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-xs font-medium text-acento'
-              : 'rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs text-texto-suave hover:bg-superficie-2'
-          }
-        >
-          Sin confirmar
-        </Link>
-        {Object.entries(TIPO_MOVIMIENTO).map(([valor, def]) => (
-          <Link
-            key={valor}
-            href={`/almacen/movimientos?tipo=${valor}`}
-            className={
-              tipo === valor
-                ? 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-xs font-medium text-acento'
-                : 'rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs text-texto-suave hover:bg-superficie-2'
-            }
-          >
-            {def.etiqueta}
-          </Link>
-        ))}
-      </div>
+      <PastillaFiltro
+        ruta="/almacen/movimientos"
+        clave="tipo"
+        opciones={FILTROS}
+        params={params}
+        activo={tipo ?? estado ?? null}
+        etiqueta="Filtrar movimientos"
+        className="mb-4"
+      />
 
       <Tarjeta className="overflow-hidden">
         <Tabla>
@@ -88,21 +74,37 @@ export default async function PaginaMovimientos({
             <tr>
               <TH>Documento</TH>
               <TH>Tipo</TH>
-              <TH>Fecha</TH>
-              <TH>Almacén</TH>
-              <TH>Orden</TH>
-              <TH>Referencia</TH>
+              <TH className="hidden sm:table-cell">Fecha</TH>
+              <TH className="hidden sm:table-cell">Almacén</TH>
+              <TH className="hidden sm:table-cell">Orden</TH>
+              <TH className="hidden sm:table-cell">Referencia</TH>
               <TH>Estado</TH>
-              <TH className="text-right">Líneas</TH>
-              <TH className="text-right">Valorizado</TH>
+              <TH className="hidden text-right sm:table-cell">Líneas</TH>
+              <TH className="hidden text-right sm:table-cell">Valorizado</TH>
             </tr>
           </TablaCabecera>
           <tbody>
             {movimientos.length === 0 ? (
               <SinDatos
                 colSpan={9}
-                titulo="Sin movimientos"
-                descripcion="Registra un ingreso para cargar existencias, o un vale de consumo para entregar material a una orden."
+                titulo={filtrando ? 'Ningún movimiento con ese filtro' : 'Sin movimientos'}
+                descripcion={
+                  filtrando
+                    ? 'Con este tipo o estado no hay documentos. Quita el filtro para ver todos.'
+                    : 'Registra un ingreso para cargar existencias, o un vale de consumo para entregar material a una orden.'
+                }
+                accion={
+                  filtrando ? (
+                    <EnlaceBoton href="/almacen/movimientos" variante="secundario" tamano="sm">
+                      Ver todos los movimientos
+                    </EnlaceBoton>
+                  ) : puedeMover ? (
+                    <EnlaceBoton href="/almacen/movimientos/nuevo" tamano="sm">
+                      <Plus aria-hidden className="size-3.5" />
+                      Nuevo movimiento
+                    </EnlaceBoton>
+                  ) : undefined
+                }
               />
             ) : (
               movimientos.map((m) => {
@@ -121,13 +123,22 @@ export default async function PaginaMovimientos({
                       >
                         {m.numero}
                       </Link>
+                      {/* En el teléfono la fecha, el almacén y la orden pierden su
+                          columna: bajan acá en letra chica, porque sin ellas la
+                          fila no dice de qué documento se trata. La orden va como
+                          texto y no como enlace a propósito: dos enlaces pegados
+                          en una fila estrecha se pulsan mal. */}
+                      <p className="mt-0.5 text-[11px] whitespace-normal text-texto-suave sm:hidden">
+                        {fecha(m.fecha)} · {almacen.nombre}
+                        {orden ? ` · ${orden.numero}` : ''}
+                      </p>
                     </TD>
                     <TD>
                       <Insignia tono={t.tono}>{t.etiqueta}</Insignia>
                     </TD>
-                    <TD className="whitespace-nowrap">{fecha(m.fecha)}</TD>
-                    <TD className="text-texto-suave">{almacen.nombre}</TD>
-                    <TD>
+                    <TD className="hidden whitespace-nowrap sm:table-cell">{fecha(m.fecha)}</TD>
+                    <TD className="hidden text-texto-suave sm:table-cell">{almacen.nombre}</TD>
+                    <TD className="hidden sm:table-cell">
                       {orden ? (
                         <Link href={`/ordenes/${orden.id}`} className="text-acento hover:underline">
                           {orden.numero}
@@ -136,14 +147,14 @@ export default async function PaginaMovimientos({
                         '—'
                       )}
                     </TD>
-                    <TD className="max-w-40 truncate text-texto-suave">
+                    <TD className="hidden max-w-40 truncate text-texto-suave sm:table-cell">
                       {m.documento_referencia ?? m.motivo ?? '—'}
                     </TD>
                     <TD>
                       <Insignia tono={e.tono}>{e.etiqueta}</Insignia>
                     </TD>
-                    <TD className="tabular text-right">{lineas}</TD>
-                    <TD className="tabular text-right whitespace-nowrap">
+                    <TD className="tabular hidden text-right sm:table-cell">{lineas}</TD>
+                    <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">
                       {m.estado === 'CONFIRMADO' ? moneda(m.total_valorizado) : '—'}
                     </TD>
                   </TR>

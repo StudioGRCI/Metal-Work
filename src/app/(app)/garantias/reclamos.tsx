@@ -21,7 +21,7 @@ const ESTADO_RECLAMO = {
 } as const
 
 function Aviso({ resultado }: { resultado: { ok?: boolean; error?: string; mensaje?: string } | null }) {
-  if (!resultado?.mensaje && resultado?.ok !== false) return null
+  if (!resultado) return null
   const malo = resultado.ok === false
   return (
     <p
@@ -31,7 +31,10 @@ function Aviso({ resultado }: { resultado: { ok?: boolean; error?: string; mensa
         malo ? 'bg-peligro-suave text-peligro' : 'bg-exito-suave text-exito',
       )}
     >
-      {malo ? resultado.error : resultado.mensaje}
+      {/* `moverReclamo` devuelve `ok` sin mensaje: sin este respaldo el que
+          movía un reclamo pulsaba «Guardar» y no pasaba nada visible, que es
+          justo el momento en que se pulsa dos veces. */}
+      {malo ? resultado.error : (resultado.mensaje ?? 'Listo, guardado.')}
     </p>
   )
 }
@@ -43,7 +46,14 @@ export function NuevoReclamo({ entregaId, unidad }: { entregaId: string; unidad:
 
   if (!abierto) {
     return (
-      <Boton variante="secundario" tamano="sm" onClick={() => setAbierto(true)}>
+      // En la tabla hay un botón «Reclamo» por fila y todos se llaman igual: el
+      // aria-label carga la unidad para saber sobre cuál se está reclamando.
+      <Boton
+        variante="secundario"
+        tamano="sm"
+        onClick={() => setAbierto(true)}
+        aria-label={`Registrar un reclamo sobre ${unidad}`}
+      >
         <Plus aria-hidden className="size-3.5" />
         Reclamo
       </Boton>
@@ -51,7 +61,13 @@ export function NuevoReclamo({ entregaId, unidad }: { entregaId: string; unidad:
   }
 
   return (
-    <form action={accion} className="w-full space-y-2 rounded-[var(--radius-base)] bg-superficie-2 p-3">
+    // `text-left` y `min-w-64`: el formulario vive dentro de una celda alineada
+    // a la derecha y sin esto hereda la alineación y se estruja al ancho del
+    // botón que lo abrió.
+    <form
+      action={accion}
+      className="w-full min-w-64 space-y-2 rounded-[var(--radius-base)] bg-superficie-2 p-3 text-left"
+    >
       <input type="hidden" name="entrega_id" value={entregaId} />
       <p className="text-xs font-medium text-texto">Reclamo sobre {unidad}</p>
       <Campo etiqueta="Qué reclama" htmlFor={`descripcion-${entregaId}`} requerido>
@@ -64,21 +80,28 @@ export function NuevoReclamo({ entregaId, unidad }: { entregaId: string; unidad:
         />
       </Campo>
       <div className="grid gap-2 sm:grid-cols-2">
+        {/* Sin `autoComplete="off"` el navegador ofrece el nombre y el correo
+            del que está sentado en la oficina como si fueran los del chofer. */}
         <Campo etiqueta="Quién reporta" htmlFor={`reportado-${entregaId}`}>
-          <Entrada id={`reportado-${entregaId}`} name="reportado_por" placeholder="Nombre del chofer o contacto" />
+          <Entrada
+            id={`reportado-${entregaId}`}
+            name="reportado_por"
+            autoComplete="off"
+            placeholder="Nombre del chofer o contacto"
+          />
         </Campo>
         <Campo etiqueta="Teléfono o correo" htmlFor={`contacto-${entregaId}`}>
-          <Entrada id={`contacto-${entregaId}`} name="contacto" />
+          <Entrada id={`contacto-${entregaId}`} name="contacto" autoComplete="off" />
         </Campo>
       </div>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Aviso resultado={resultado} />
-        <div className="flex gap-2">
+        <div className="flex flex-1 justify-end gap-2">
           <Boton type="button" variante="secundario" tamano="sm" onClick={() => setAbierto(false)}>
             {resultado?.ok ? 'Cerrar' : 'Cancelar'}
           </Boton>
           <Boton type="submit" tamano="sm" cargando={enviando}>
-            Registrar
+            Registrar reclamo
           </Boton>
         </div>
       </div>
@@ -132,7 +155,9 @@ export function TarjetaReclamo({ reclamo, puedeGestionar }: { reclamo: ReclamoGa
       {puedeGestionar && abierto && (
         <form action={accion} className="mt-2 flex flex-wrap items-end gap-2">
           <input type="hidden" name="id" value={reclamo.id} />
-          <Campo etiqueta="Mover a" htmlFor={`estado-${reclamo.id}`} className="w-44">
+          {/* En el teléfono cada control ocupa su renglón: apretados en fila el
+              desplegable queda de dos dedos de ancho. En `sm:` vuelve la fila. */}
+          <Campo etiqueta="Mover a" htmlFor={`estado-${reclamo.id}`} className="w-full sm:w-44">
             <Seleccion id={`estado-${reclamo.id}`} name="estado" required defaultValue="">
               <option value="" disabled>
                 Elegir…
@@ -147,17 +172,25 @@ export function TarjetaReclamo({ reclamo, puedeGestionar }: { reclamo: ReclamoGa
             etiqueta="Evaluación"
             htmlFor={`evaluacion-${reclamo.id}`}
             ayuda="Obligatoria para cerrar"
-            className="min-w-64 flex-1"
+            className="w-full min-w-64 sm:w-auto sm:flex-1"
           >
             <Entrada
               id={`evaluacion-${reclamo.id}`}
               name="evaluacion"
               defaultValue={reclamo.evaluacion ?? ''}
+              autoComplete="off"
               placeholder="Qué se encontró y qué se decide"
             />
           </Campo>
-          <Boton type="submit" tamano="sm" cargando={enviando}>
-            Guardar
+          {/* «Guardar» a secas no dice nada en una pantalla donde también se
+              registran reclamos nuevos: el botón nombra lo que guarda. */}
+          <Boton
+            type="submit"
+            tamano="sm"
+            cargando={enviando}
+            className="w-full justify-center sm:w-auto"
+          >
+            Guardar evaluación
           </Boton>
           <div className="w-full">
             <Aviso resultado={resultado} />

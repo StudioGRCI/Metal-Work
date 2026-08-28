@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Indicador } from '@/components/ui/indicador'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { catalogosParte, lineasDeParte, obtenerParte } from '@/lib/datos/produccion'
@@ -73,12 +74,16 @@ export default async function PaginaParte({ params }: PageProps<'/produccion/[id
         </p>
       )}
 
-      <div className="mb-4 grid gap-4 sm:grid-cols-3">
+      {/* Dos por fila en el teléfono: tres cifras en columna se comían media
+          pantalla antes de llegar a las horas del día. */}
+      <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
         <Indicador titulo="Horas normales" valor={cantidad(parte.total_horas)} />
         <Indicador titulo="Horas extra" valor={cantidad(parte.total_horas_extra)} />
         <Indicador
           titulo="Total horas-hombre"
           valor={cantidad(Number(parte.total_horas ?? 0) + Number(parte.total_horas_extra ?? 0))}
+          pie={`${lineas.length} ${lineas.length === 1 ? 'registro' : 'registros'} en el parte`}
+          className="col-span-2 sm:col-span-1"
         />
       </div>
 
@@ -101,16 +106,5 @@ export default async function PaginaParte({ params }: PageProps<'/produccion/[id
         ordenes={catalogos?.ordenes ?? []}
       />
     </>
-  )
-}
-
-function Indicador({ titulo, valor }: { titulo: string; valor: string }) {
-  return (
-    <Tarjeta>
-      <TarjetaCuerpo>
-        <p className="text-[11px] font-medium tracking-wide text-texto-suave uppercase">{titulo}</p>
-        <p className="tabular mt-1 text-lg font-semibold text-texto">{valor}</p>
-      </TarjetaCuerpo>
-    </Tarjeta>
   )
 }

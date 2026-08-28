@@ -35,7 +35,7 @@ export function BarraSuperior({ perfil }: { perfil: PerfilSesion }) {
             type="submit"
             title="Cerrar sesión"
             aria-label="Cerrar sesión"
-            className="flex size-8 items-center justify-center rounded-[var(--radius-base)] text-texto-suave hover:bg-superficie-2 hover:text-texto"
+            className="flex size-11 items-center justify-center rounded-[var(--radius-base)] text-texto-suave hover:bg-superficie-2 hover:text-texto sm:size-9"
           >
             <LogOut className="size-4" />
           </button>

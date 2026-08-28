@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useTransition } from 'react'
 
+import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Entrada } from '@/components/ui/campos'
 import { cn } from '@/lib/utils'
 
@@ -54,9 +55,15 @@ export function RangoDeFechas({
     },
   ]
 
+  // El atajo puesto es el que coincide con las dos fechas; con un rango escrito
+  // a mano no hay ninguno marcado, que es lo correcto.
+  const atajoActivo = atajos.find((a) => a.desde === desde && a.hasta === hasta)?.titulo ?? null
+
   return (
     <div className={cn('flex flex-wrap items-end gap-3', pendiente && 'opacity-60')}>
-      <div>
+      {/* En el teléfono los dos campos se reparten la línea; en el monitor
+          conservan su ancho natural de siempre. */}
+      <div className="min-w-36 flex-1 sm:min-w-0 sm:flex-initial">
         <label htmlFor="desde" className="mb-1 block text-xs text-texto-suave">
           Desde
         </label>
@@ -68,7 +75,7 @@ export function RangoDeFechas({
           onChange={(e) => ir(e.target.value, hasta)}
         />
       </div>
-      <div>
+      <div className="min-w-36 flex-1 sm:min-w-0 sm:flex-initial">
         <label htmlFor="hasta" className="mb-1 block text-xs text-texto-suave">
           Hasta
         </label>
@@ -81,26 +88,18 @@ export function RangoDeFechas({
         />
       </div>
 
-      <div className="flex flex-wrap gap-1 pb-0.5">
-        {atajos.map((a) => {
-          const activo = a.desde === desde && a.hasta === hasta
-          return (
-            <button
-              key={a.titulo}
-              type="button"
-              onClick={() => ir(a.desde, a.hasta)}
-              aria-pressed={activo}
-              className={
-                activo
-                  ? 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-xs font-medium text-acento'
-                  : 'rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs text-texto-suave hover:bg-superficie-2'
-              }
-            >
-              {a.titulo}
-            </button>
-          )
-        })}
-      </div>
+      {/* Mismas pastillas que filtran las listas: aquí no navegan, avisan qué
+          rango se pulsó y esta pantalla escribe las dos fechas en la URL. */}
+      <PastillaFiltro
+        className="pb-0.5"
+        etiqueta="Período"
+        activo={atajoActivo}
+        opciones={atajos.map((a) => ({ valor: a.titulo, etiqueta: a.titulo }))}
+        alPulsar={(valor) => {
+          const atajo = atajos.find((a) => a.titulo === valor)
+          if (atajo) ir(atajo.desde, atajo.hasta)
+        }}
+      />
     </div>
   )
 }

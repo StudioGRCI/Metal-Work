@@ -25,6 +25,15 @@ export function FilaMaterial({
 }) {
   const [abierto, setAbierto] = useState(false)
 
+  const controles =
+    [
+      material.controla_lote && 'lote',
+      material.controla_serie && 'serie',
+      material.controla_caducidad && 'caducidad',
+    ]
+      .filter(Boolean)
+      .join(' · ') || '—'
+
   return (
     <>
       <tr className="border-b border-borde text-sm last:border-0">
@@ -35,7 +44,8 @@ export function FilaMaterial({
             disabled={!puedeEditar}
             aria-expanded={abierto}
             aria-label={`Desplegar ${material.descripcion}`}
-            className="flex items-center gap-2 text-left disabled:cursor-default"
+            // Toda la celda es el blanco del dedo, no solo la flechita.
+            className="flex min-h-11 w-full items-center gap-2 text-left disabled:cursor-default sm:min-h-0"
           >
             {puedeEditar &&
               (abierto ? (
@@ -48,13 +58,21 @@ export function FilaMaterial({
               <span className="block text-[11px] text-texto-suave">
                 {material.categoria?.nombre ?? '—'} · {material.unidad?.codigo ?? ''}
               </span>
+              {/* En el teléfono el código anterior y los controles pierden su
+                  columna: bajan acá, que es donde se los reconoce. */}
+              <span className="tabular block text-[11px] text-texto-tenue sm:hidden">
+                antes {material.codigo}
+                {controles !== '—' ? ` · ${controles}` : ''}
+              </span>
             </span>
           </button>
         </td>
         <td className="tabular px-3 py-2 whitespace-nowrap">
           {material.codigo_almacen ?? <span className="text-aviso">sin codificar</span>}
         </td>
-        <td className="tabular px-3 py-2 text-texto-suave">{material.codigo}</td>
+        <td className="tabular hidden px-3 py-2 text-texto-suave sm:table-cell">
+          {material.codigo}
+        </td>
         <td className="px-3 py-2 text-center">
           {material.criticidad ? (
             <Insignia tono={TONO_CRITICIDAD[material.criticidad]}>{material.criticidad}</Insignia>
@@ -63,15 +81,7 @@ export function FilaMaterial({
           )}
         </td>
         <td className="tabular px-3 py-2 text-texto-suave">{material.ubicacion ?? '—'}</td>
-        <td className="px-3 py-2 text-xs text-texto-suave">
-          {[
-            material.controla_lote && 'lote',
-            material.controla_serie && 'serie',
-            material.controla_caducidad && 'caducidad',
-          ]
-            .filter(Boolean)
-            .join(' · ') || '—'}
-        </td>
+        <td className="hidden px-3 py-2 text-xs text-texto-suave sm:table-cell">{controles}</td>
       </tr>
       {abierto && puedeEditar && (
         <tr className="border-b border-borde bg-superficie-2 last:border-0">

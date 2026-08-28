@@ -6,12 +6,12 @@ import type { Enums, Tablas } from '@/types/database'
 export type Cliente = Tablas<'clientes'>
 export type Unidad = Tablas<'unidades'>
 
-const POR_PAGINA = 25
+export const CLIENTES_POR_PAGINA = 25
 
 export async function listarClientes(filtros: { busqueda?: string; pagina?: number } = {}) {
   const supabase = await createClient()
   const pagina = Math.max(1, filtros.pagina ?? 1)
-  const desde = (pagina - 1) * POR_PAGINA
+  const desde = (pagina - 1) * CLIENTES_POR_PAGINA
 
   let consulta = supabase
     .from('clientes')
@@ -25,7 +25,7 @@ export async function listarClientes(filtros: { busqueda?: string; pagina?: numb
 
   const { data, error, count } = await consulta
     .order('razon_social')
-    .range(desde, desde + POR_PAGINA - 1)
+    .range(desde, desde + CLIENTES_POR_PAGINA - 1)
 
   if (error) throw new Error(`No se pudieron listar los clientes: ${error.message}`)
 
@@ -33,7 +33,7 @@ export async function listarClientes(filtros: { busqueda?: string; pagina?: numb
     clientes: data ?? [],
     total: count ?? 0,
     pagina,
-    paginas: Math.max(1, Math.ceil((count ?? 0) / POR_PAGINA)),
+    paginas: Math.max(1, Math.ceil((count ?? 0) / CLIENTES_POR_PAGINA)),
   }
 }
 

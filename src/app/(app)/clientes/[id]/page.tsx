@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
-import { Pencil } from 'lucide-react'
+import { Pencil, Plus } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -42,6 +43,9 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
 
   const vendedor = cliente.vendedor as unknown as { nombres: string; apellidos: string } | null
 
+  // El estado vacío de las órdenes solo ofrece abrir una a quien puede abrirla.
+  const abreOrdenes = puede(perfil, 'ordenes.crear')
+
   return (
     <>
       <EncabezadoPagina
@@ -52,13 +56,10 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
         }`}
         acciones={
           puede(perfil, 'clientes.editar') && (
-            <Link
-              href={`/clientes/${id}/editar`}
-              className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-base)] border border-borde px-4 text-sm text-texto hover:bg-superficie-2"
-            >
+            <EnlaceBoton href={`/clientes/${id}/editar`} variante="contorno">
               <Pencil aria-hidden className="size-4" />
               Editar
-            </Link>
+            </EnlaceBoton>
           )
         }
       />
@@ -103,9 +104,22 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
           />
           <TarjetaCuerpo className="p-0">
             {unidades.length === 0 ? (
-              <p className="px-4 py-10 text-center text-sm text-texto-suave">
-                Este cliente aún no tiene unidades registradas.
-              </p>
+              // El estado vacío trae el mismo botón de la cabecera: en el teléfono
+              // la cabecera de la tarjeta queda arriba, fuera del pulgar, y sin
+              // esto no hay nada que tocar donde se está mirando.
+              <div className="px-4 py-10 text-center">
+                <p className="text-sm text-texto-suave">
+                  Este cliente aún no tiene unidades registradas.
+                </p>
+                <p className="mt-1 text-xs text-texto-tenue">
+                  Sin unidad no se le puede abrir una orden de trabajo.
+                </p>
+                {catalogos && (
+                  <div className="mt-4 flex justify-center">
+                    <NuevaUnidad clienteId={id} tiposCarroceria={catalogos.tiposCarroceria} />
+                  </div>
+                )}
+              </div>
             ) : (
               <ul className="divide-y divide-[var(--borde)]">
                 {unidades.map((u) => (
@@ -156,9 +170,19 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
           />
           <TarjetaCuerpo className="p-0">
             {ordenes.length === 0 ? (
-              <p className="px-4 py-10 text-center text-sm text-texto-suave">
-                Todavía no se ha abierto ninguna orden para este cliente.
-              </p>
+              <div className="px-4 py-10 text-center">
+                <p className="text-sm text-texto-suave">
+                  Todavía no se ha abierto ninguna orden para este cliente.
+                </p>
+                {abreOrdenes && (
+                  <div className="mt-4 flex justify-center">
+                    <EnlaceBoton href="/ordenes/nueva" variante="contorno">
+                      <Plus aria-hidden className="size-4" />
+                      Nueva orden de trabajo
+                    </EnlaceBoton>
+                  </div>
+                )}
+              </div>
             ) : (
               <ul className="divide-y divide-[var(--borde)]">
                 {ordenes.map((o) => {

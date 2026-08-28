@@ -34,9 +34,11 @@ export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avanc
 
   return (
     <>
+      {/* min-h-11 solo en el teléfono: el dedo necesita 44 px de alto para no
+          fallar el volver; con el ratón basta el texto y el monitor no se mueve. */}
       <Link
         href="/avance"
-        className="mb-3 inline-flex items-center gap-1.5 text-sm text-texto-suave hover:text-texto"
+        className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-sm text-texto-suave hover:text-texto sm:min-h-0"
       >
         <ArrowLeft aria-hidden className="size-4" />
         Volver al taller
@@ -78,7 +80,7 @@ export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avanc
 
           <Link
             href={`/ordenes/${id}`}
-            className="text-xs font-medium text-acento hover:underline"
+            className="inline-flex min-h-11 items-center text-xs font-medium text-acento hover:underline sm:min-h-0"
           >
             Ver la orden completa
           </Link>

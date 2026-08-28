@@ -61,27 +61,35 @@ export function DiasLaborables({
       />
       <TarjetaCuerpo>
         <form action={accion} className="space-y-3">
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-x-4 gap-y-0 sm:gap-y-4">
             {DIAS.map((d) => (
-              <label key={d.numero} className="flex items-center gap-2 text-sm text-texto">
+              // La etiqueta entera es el blanco: una casilla de 16 px no se
+              // marca con el dedo, y menos con guante. En el monitor vuelve a
+              // medir lo de siempre.
+              <label
+                key={d.numero}
+                className="flex min-h-11 items-center gap-2 text-sm text-texto sm:min-h-0"
+              >
                 <input
                   type="checkbox"
                   name="dia"
                   value={d.numero}
                   defaultChecked={dias.includes(d.numero)}
                   disabled={!puedeEditar}
-                  className="size-4 accent-[var(--acento)]"
+                  className="size-5 accent-[var(--acento)] sm:size-4"
                 />
                 {d.nombre}
               </label>
             ))}
           </div>
           {puedeEditar && (
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <Aviso resultado={resultado} />
+              {/* «Guardar» a secas no dice qué: en esta pantalla también se
+                  guardan feriados. */}
               <Boton type="submit" tamano="sm" cargando={enviando}>
                 <Hammer aria-hidden className="size-3.5" />
-                Guardar
+                Guardar días de taller
               </Boton>
             </div>
           )}
@@ -127,14 +135,22 @@ export function Feriados({
 
         {puedeEditar && (
           <form action={agregar} className="flex flex-wrap items-end gap-2 rounded-[var(--radius-base)] bg-superficie-2 p-3">
-            <Campo etiqueta="Fecha" htmlFor="fecha-feriado" requerido>
+            <Campo etiqueta="Fecha" htmlFor="fecha-feriado" requerido className="min-w-36 flex-1 sm:flex-initial">
               <Entrada id="fecha-feriado" name="fecha" type="date" required />
             </Campo>
+            {/* Sin `autoComplete="off"` el navegador ofrece el nombre del que
+                está sentado como nombre del feriado. */}
             <Campo etiqueta="Nombre" htmlFor="nombre-feriado" requerido className="min-w-56 flex-1">
-              <Entrada id="nombre-feriado" name="nombre" required placeholder="Aniversario de la empresa" />
+              <Entrada
+                id="nombre-feriado"
+                name="nombre"
+                required
+                autoComplete="off"
+                placeholder="Aniversario de la empresa"
+              />
             </Campo>
             <Boton type="submit" tamano="sm" cargando={agregando}>
-              Agregar
+              Agregar feriado
             </Boton>
             <div className="w-full">
               <Aviso resultado={resultadoAlta} />
@@ -143,17 +159,32 @@ export function Feriados({
         )}
 
         {feriados.length === 0 ? (
-          <p className="py-4 text-center text-sm text-texto-suave">
-            Este año todavía no tiene feriados cargados.
-          </p>
+          <div className="py-4 text-center">
+            <p className="text-sm text-texto">Este año todavía no tiene feriados cargados.</p>
+            {/* El estado vacío dice cuál es el siguiente paso y dónde está el
+                botón que lo da; sin feriados los plazos en días hábiles salen
+                cortos y nadie se entera hasta que la entrega se pasa. */}
+            <p className="mt-1 text-xs text-texto-suave">
+              {puedeEditar
+                ? `Empieza con «Cargar nacionales ${anio}», arriba, y agrega después los de la empresa.`
+                : 'Mientras no los haya, los plazos en días hábiles cuentan como si se trabajara todo el año.'}
+            </p>
+          </div>
         ) : (
           <ul className="divide-y divide-borde">
             {feriados.map((f) => (
-              <li key={f.fecha} className="flex items-center gap-3 py-1.5 text-sm">
+              // `flex-wrap`: en el teléfono la fecha, el nombre y el botón no
+              // entran en una línea, y sin esto el nombre quedaba en un hilo.
+              <li key={f.fecha} className="flex flex-wrap items-center gap-x-3 py-1.5 text-sm">
                 <span className="tabular w-28 shrink-0 whitespace-nowrap text-texto-suave">
                   {formatearFecha(f.fecha)}
                 </span>
-                <span className={cn('flex-1 text-texto', f.laborable && 'line-through opacity-60')}>
+                <span
+                  className={cn(
+                    'min-w-40 flex-1 text-texto',
+                    f.laborable && 'line-through opacity-60',
+                  )}
+                >
                   {f.nombre}
                   <span className="ml-2 text-[11px] text-texto-tenue">
                     {f.ambito === 'NACIONAL' ? 'nacional' : 'de la empresa'}
@@ -163,9 +194,16 @@ export function Feriados({
                   <form action={alternar}>
                     <input type="hidden" name="fecha" value={f.fecha} />
                     <input type="hidden" name="laborable" value={f.laborable ? 'no' : 'si'} />
+                    {/* El texto solo dice «Se trabaja»: con veinte filas
+                        iguales, el lector de pantalla necesita saber de cuál. */}
                     <button
                       type="submit"
-                      className="text-[11px] text-texto-tenue hover:text-acento"
+                      aria-label={
+                        f.laborable
+                          ? `Volver a marcar ${f.nombre} como feriado`
+                          : `Marcar que el día de ${f.nombre} se trabaja`
+                      }
+                      className="inline-flex min-h-11 items-center text-[11px] text-texto-tenue hover:text-acento sm:min-h-0"
                     >
                       {f.laborable ? 'Volver a feriado' : 'Se trabaja'}
                     </button>

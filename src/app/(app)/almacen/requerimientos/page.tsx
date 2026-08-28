@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { Plus } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { PastillaFiltro, type OpcionFiltro } from '@/components/estructura/pastilla-filtro'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia, Punto } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
@@ -15,6 +17,11 @@ import { SubNavegacionAlmacen } from '../sub-navegacion'
 
 export const metadata = { title: 'Requerimientos de material' }
 
+const FILTROS: OpcionFiltro[] = [
+  { valor: null, etiqueta: 'Todos' },
+  ...Object.entries(ESTADO_REQUERIMIENTO).map(([valor, def]) => ({ valor, etiqueta: def.etiqueta })),
+]
+
 export default async function PaginaRequerimientos({
   searchParams,
 }: PageProps<'/almacen/requerimientos'>) {
@@ -23,6 +30,7 @@ export default async function PaginaRequerimientos({
   const estado = typeof params.estado === 'string' ? params.estado : undefined
 
   const requerimientos = await listarRequerimientos({ estado })
+  const puedeCrear = puede(perfil, 'requerimientos.crear')
 
   return (
     <>
@@ -31,65 +39,62 @@ export default async function PaginaRequerimientos({
         titulo="Requerimientos de material"
         descripcion="Lo que el taller pide para cada orden. Al aprobarse se reserva el stock disponible."
         acciones={
-          puede(perfil, 'requerimientos.crear') && (
-            <Link
-              href="/almacen/requerimientos/nuevo"
-              className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-base)] bg-acento px-4 text-sm font-medium text-acento-texto hover:bg-acento-fuerte"
-            >
+          puedeCrear && (
+            <EnlaceBoton href="/almacen/requerimientos/nuevo">
               <Plus aria-hidden className="size-4" />
               Nuevo requerimiento
-            </Link>
+            </EnlaceBoton>
           )
         }
       />
 
       <SubNavegacionAlmacen activa="/almacen/requerimientos" />
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Link
-          href="/almacen/requerimientos"
-          className={
-            !estado
-              ? 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-xs font-medium text-acento'
-              : 'rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs text-texto-suave hover:bg-superficie-2'
-          }
-        >
-          Todos
-        </Link>
-        {Object.entries(ESTADO_REQUERIMIENTO).map(([valor, def]) => (
-          <Link
-            key={valor}
-            href={`/almacen/requerimientos?estado=${valor}`}
-            className={
-              estado === valor
-                ? 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-xs font-medium text-acento'
-                : 'rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs text-texto-suave hover:bg-superficie-2'
-            }
-          >
-            {def.etiqueta}
-          </Link>
-        ))}
-      </div>
+      <PastillaFiltro
+        ruta="/almacen/requerimientos"
+        clave="estado"
+        opciones={FILTROS}
+        params={params}
+        activo={estado ?? null}
+        etiqueta="Filtrar por estado"
+        className="mb-4"
+      />
 
       <Tarjeta className="overflow-hidden">
         <Tabla>
           <TablaCabecera>
             <tr>
               <TH>Número</TH>
-              <TH>Orden</TH>
-              <TH>Solicita</TH>
-              <TH>Fecha</TH>
+              <TH className="hidden sm:table-cell">Orden</TH>
+              <TH className="hidden sm:table-cell">Solicita</TH>
+              <TH className="hidden sm:table-cell">Fecha</TH>
               <TH>Requerido para</TH>
               <TH>Estado</TH>
-              <TH className="text-right">Materiales</TH>
+              <TH className="hidden text-right sm:table-cell">Materiales</TH>
             </tr>
           </TablaCabecera>
           <tbody>
             {requerimientos.length === 0 ? (
               <SinDatos
                 colSpan={7}
-                titulo="Sin requerimientos"
-                descripcion="El taller solicita material desde aquí para que almacén lo prepare."
+                titulo={estado ? 'Ningún requerimiento en ese estado' : 'Sin requerimientos'}
+                descripcion={
+                  estado
+                    ? 'Quita el filtro para ver todos los pedidos del taller.'
+                    : 'El taller solicita material desde aquí para que almacén lo prepare.'
+                }
+                accion={
+                  estado ? (
+                    <EnlaceBoton href="/almacen/requerimientos" variante="secundario" tamano="sm">
+                      Ver todos los requerimientos
+                    </EnlaceBoton>
+                  ) : puedeCrear ? (
+                    <EnlaceBoton href="/almacen/requerimientos/nuevo" tamano="sm">
+                      <Plus aria-hidden className="size-3.5" />
+                      Nuevo requerimiento
+                    </EnlaceBoton>
+                  ) : undefined
+                }
               />
             ) : (
               requerimientos.map((r) => {
@@ -114,8 +119,15 @@ export default async function PaginaRequerimientos({
                         <Punto tono={prioridad.tono} />
                         {prioridad.etiqueta}
                       </p>
+                      {/* En el teléfono la orden y quién pidió no tienen columna:
+                          bajan acá, que es lo que distingue un pedido de otro
+                          cuando el número todavía no dice nada. */}
+                      <p className="text-[11px] whitespace-normal text-texto-suave sm:hidden">
+                        {orden ? orden.numero : 'Sin orden'}
+                        {solicitante ? ` · ${solicitante.nombres} ${solicitante.apellidos}` : ''}
+                      </p>
                     </TD>
-                    <TD>
+                    <TD className="hidden sm:table-cell">
                       {orden ? (
                         <Link href={`/ordenes/${orden.id}`} className="text-acento hover:underline">
                           {orden.numero}
@@ -124,10 +136,10 @@ export default async function PaginaRequerimientos({
                         '—'
                       )}
                     </TD>
-                    <TD className="text-texto-suave">
+                    <TD className="hidden text-texto-suave sm:table-cell">
                       {solicitante ? `${solicitante.nombres} ${solicitante.apellidos}` : '—'}
                     </TD>
-                    <TD className="whitespace-nowrap">{fecha(r.fecha)}</TD>
+                    <TD className="hidden whitespace-nowrap sm:table-cell">{fecha(r.fecha)}</TD>
                     <TD className="whitespace-nowrap">
                       {fecha(r.fecha_requerida)}
                       {urgente && <p className="text-[11px] text-peligro">vencido</p>}
@@ -135,7 +147,7 @@ export default async function PaginaRequerimientos({
                     <TD>
                       <Insignia tono={est.tono}>{est.etiqueta}</Insignia>
                     </TD>
-                    <TD className="tabular text-right">{lineas}</TD>
+                    <TD className="tabular hidden text-right sm:table-cell">{lineas}</TD>
                   </TR>
                 )
               })

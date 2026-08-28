@@ -6,7 +6,9 @@ import { Plus, Trash2 } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { ConfirmarAccion } from '@/components/ui/ventana'
 import { cantidad } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 
@@ -43,6 +45,10 @@ export function LineasParte({
   const [enviando, setEnviando] = useState(false)
   const [ordenId, setOrdenId] = useState('')
   const [etapas, setEtapas] = useState<{ ordenId: string; lista: { etapa_id: string; etapa: string }[] } | null>(null)
+  // La línea que se está por quitar, con el detalle ya armado: dentro de la
+  // ventana ya no se tiene a mano el operario ni la orden de esa fila.
+  const [porQuitar, setPorQuitar] = useState<{ id: string; detalle: string } | null>(null)
+  const [quitando, setQuitando] = useState(false)
 
   // Las etapas dependen de la orden elegida; se cargan al vuelo.
   async function cambiarOrden(id: string) {
@@ -79,29 +85,40 @@ export function LineasParte({
     setError(resultado.error)
   }
 
-  async function borrar(lineaId: string) {
+  // Quitar horas no se deshace: la línea se borra de la base y hay que volver a
+  // anotarla de memoria. Por eso la papelera solo pregunta y el borrado ocurre
+  // aquí, ya con la respuesta dada.
+  async function quitar() {
+    if (!porQuitar) return
+
     const datos = new FormData()
-    datos.set('linea_id', lineaId)
+    datos.set('linea_id', porQuitar.id)
     datos.set('parte_id', parteId)
 
+    setError(null)
+    setQuitando(true)
     const resultado = await eliminarHoras(null, datos)
+    setQuitando(false)
+    setPorQuitar(null)
+
     if (!resultado.ok) setError(resultado.error)
     else iniciarTransicion(() => router.refresh())
   }
+
+  const botonAgregar =
+    editable && !agregando ? (
+      <Boton variante="secundario" tamano="sm" onClick={() => setAgregando(true)}>
+        <Plus aria-hidden className="size-3.5" />
+        Registrar horas
+      </Boton>
+    ) : null
 
   return (
     <Tarjeta>
       <TarjetaCabecera
         titulo="Horas del día"
         descripcion="Qué operario trabajó, en qué orden y etapa, y cuántas horas."
-        acciones={
-          editable && !agregando ? (
-            <Boton variante="secundario" tamano="sm" onClick={() => setAgregando(true)}>
-              <Plus aria-hidden className="size-3.5" />
-              Registrar horas
-            </Boton>
-          ) : null
-        }
+        acciones={botonAgregar}
       />
 
       <TarjetaCuerpo className="p-0">
@@ -115,16 +132,19 @@ export function LineasParte({
                 <th className="px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase">
                   Orden
                 </th>
-                <th className="px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase">
+                {/* Etapa, trabajo realizado y extra se esconden en el teléfono y
+                    bajan a la celda de la orden: siete columnas ahí solo se leen
+                    arrastrando la tabla de lado. */}
+                <th className="hidden px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase sm:table-cell">
                   Etapa
                 </th>
-                <th className="px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase">
+                <th className="hidden px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase sm:table-cell">
                   Trabajo realizado
                 </th>
                 <th className="px-3 py-2 text-right text-[11px] font-semibold text-texto-suave uppercase">
                   Horas
                 </th>
-                <th className="px-3 py-2 text-right text-[11px] font-semibold text-texto-suave uppercase">
+                <th className="hidden px-3 py-2 text-right text-[11px] font-semibold text-texto-suave uppercase sm:table-cell">
                   Extra
                 </th>
                 {editable && <th className="w-10" />}
@@ -132,16 +152,22 @@ export function LineasParte({
             </thead>
             <tbody>
               {lineas.length === 0 ? (
-                <tr>
-                  <td colSpan={editable ? 7 : 6} className="px-3 py-10 text-center text-sm text-texto-suave">
-                    Todavía no se han registrado horas en este parte.
-                  </td>
-                </tr>
+                <SinDatos
+                  colSpan={editable ? 7 : 6}
+                  titulo="Todavía no hay horas en este parte"
+                  descripcion={
+                    editable
+                      ? 'Agrega el primer registro: operario, orden, etapa y cuántas horas trabajó.'
+                      : 'El parte se cerró sin registros de horas.'
+                  }
+                  accion={botonAgregar}
+                />
               ) : (
                 lineas.map((l) => {
                   const usuario = l.usuario as { nombres: string; apellidos: string }
                   const orden = l.orden as { numero: string; descripcion: string }
                   const etapa = l.etapa as { catalogo: { nombre: string } }
+                  const extra = Number(l.horas_extra ?? 0)
 
                   return (
                     <tr key={l.id} className="border-b border-borde last:border-0">
@@ -153,20 +179,47 @@ export function LineasParte({
                         <p className="max-w-48 truncate text-[11px] text-texto-suave">
                           {orden.descripcion}
                         </p>
+                        <p className="text-[11px] text-texto-suave sm:hidden">
+                          {etapa.catalogo.nombre}
+                          {l.descripcion ? ' · ' + l.descripcion : ''}
+                        </p>
                       </td>
-                      <td className="px-3 py-2 text-texto-suave">{etapa.catalogo.nombre}</td>
-                      <td className="max-w-64 px-3 py-2 text-texto-suave">{l.descripcion ?? '—'}</td>
-                      <td className="tabular px-3 py-2 text-right font-medium">{cantidad(l.horas)}</td>
-                      <td className="tabular px-3 py-2 text-right text-texto-suave">
+                      <td className="hidden px-3 py-2 text-texto-suave sm:table-cell">
+                        {etapa.catalogo.nombre}
+                      </td>
+                      <td className="hidden max-w-64 px-3 py-2 text-texto-suave sm:table-cell">
+                        {l.descripcion ?? '—'}
+                      </td>
+                      <td className="tabular px-3 py-2 text-right font-medium">
+                        {cantidad(l.horas)}
+                        {extra > 0 && (
+                          <span className="block text-[11px] font-normal text-texto-suave sm:hidden">
+                            +{cantidad(l.horas_extra)} extra
+                          </span>
+                        )}
+                      </td>
+                      <td className="tabular hidden px-3 py-2 text-right text-texto-suave sm:table-cell">
                         {cantidad(l.horas_extra)}
                       </td>
                       {editable && (
                         <td className="px-3 py-2">
+                          {/* El margen negativo agranda lo que se puede tocar con
+                              el dedo sin mover ni un píxel la fila; en el monitor
+                              vuelve a ser el icono de siempre. */}
                           <button
                             type="button"
-                            onClick={() => borrar(l.id)}
-                            aria-label="Eliminar registro de horas"
-                            className="text-texto-tenue hover:text-peligro"
+                            onClick={() =>
+                              setPorQuitar({
+                                id: l.id,
+                                detalle:
+                                  `Se van ${cantidad(l.horas)} h` +
+                                  (extra > 0 ? ` y ${cantidad(extra)} h extra` : '') +
+                                  ` de ${usuario.nombres} ${usuario.apellidos} en ${orden.numero}, etapa ${etapa.catalogo.nombre}.` +
+                                  ' Habrá que volver a anotarlas a mano.',
+                              })
+                            }
+                            aria-label={'Eliminar las horas de ' + usuario.nombres + ' ' + usuario.apellidos + ' en ' + orden.numero}
+                            className="-m-2.5 p-2.5 text-texto-tenue hover:text-peligro sm:m-0 sm:p-0"
                           >
                             <Trash2 aria-hidden className="size-4" />
                           </button>
@@ -239,11 +292,14 @@ export function LineasParte({
               </Seleccion>
             </Campo>
 
+            {/* inputMode decimal: en el celular abre el teclado de números, no el
+                de letras. Estas horas se anotan de pie y a veces con guante. */}
             <Campo etiqueta="Horas" htmlFor="horas" requerido>
               <Entrada
                 id="horas"
                 name="horas"
                 type="number"
+                inputMode="decimal"
                 step="0.5"
                 min="0.5"
                 max={24}
@@ -258,6 +314,7 @@ export function LineasParte({
                 id="horas_extra"
                 name="horas_extra"
                 type="number"
+                inputMode="decimal"
                 step="0.5"
                 min={0}
                 max={12}
@@ -270,6 +327,7 @@ export function LineasParte({
               <Entrada
                 id="descripcion"
                 name="descripcion"
+                autoComplete="off"
                 placeholder="Soldadura de refuerzos laterales"
               />
             </Campo>
@@ -279,11 +337,20 @@ export function LineasParte({
                 Cancelar
               </Boton>
               <Boton type="submit" tamano="sm" cargando={enviando}>
-                Registrar
+                Registrar horas
               </Boton>
             </div>
           </form>
         )}
+
+        <ConfirmarAccion
+          abierta={porQuitar !== null}
+          alCerrar={() => setPorQuitar(null)}
+          alConfirmar={() => void quitar()}
+          titulo="¿Quitar estas horas del parte?"
+          detalle={porQuitar?.detalle ?? ''}
+          trabajando={quitando}
+        />
       </TarjetaCuerpo>
     </Tarjeta>
   )

@@ -1,10 +1,10 @@
 'use client'
 
-import Link from 'next/link'
 import { useActionState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { Tablas } from '@/types/database'
 
@@ -46,6 +46,7 @@ export function FormularioCliente({ cliente }: { cliente?: Tablas<'clientes'> })
               name="numero_documento"
               required
               inputMode="numeric"
+              autoComplete="off"
               defaultValue={cliente?.numero_documento ?? ''}
               className="tabular"
               placeholder="20512345678"
@@ -61,6 +62,7 @@ export function FormularioCliente({ cliente }: { cliente?: Tablas<'clientes'> })
               id="condicion_pago_dias"
               name="condicion_pago_dias"
               type="number"
+              inputMode="numeric"
               min={0}
               max={365}
               defaultValue={cliente?.condicion_pago_dias ?? 0}
@@ -74,6 +76,7 @@ export function FormularioCliente({ cliente }: { cliente?: Tablas<'clientes'> })
               name="razon_social"
               required
               minLength={3}
+              autoComplete="off"
               defaultValue={cliente?.razon_social ?? ''}
               placeholder="TRANSPORTES ANDINOS S.A.C."
             />
@@ -83,6 +86,7 @@ export function FormularioCliente({ cliente }: { cliente?: Tablas<'clientes'> })
             <Entrada
               id="nombre_comercial"
               name="nombre_comercial"
+              autoComplete="off"
               defaultValue={cliente?.nombre_comercial ?? ''}
             />
           </Campo>
@@ -96,16 +100,27 @@ export function FormularioCliente({ cliente }: { cliente?: Tablas<'clientes'> })
             <Entrada
               id="direccion_fiscal"
               name="direccion_fiscal"
+              autoComplete="off"
               defaultValue={cliente?.direccion_fiscal ?? ''}
             />
           </Campo>
 
           <Campo etiqueta="Distrito" htmlFor="distrito">
-            <Entrada id="distrito" name="distrito" defaultValue={cliente?.distrito ?? ''} />
+            <Entrada
+              id="distrito"
+              name="distrito"
+              autoComplete="off"
+              defaultValue={cliente?.distrito ?? ''}
+            />
           </Campo>
 
           <Campo etiqueta="Provincia" htmlFor="provincia">
-            <Entrada id="provincia" name="provincia" defaultValue={cliente?.provincia ?? ''} />
+            <Entrada
+              id="provincia"
+              name="provincia"
+              autoComplete="off"
+              defaultValue={cliente?.provincia ?? ''}
+            />
           </Campo>
 
           <Campo etiqueta="Departamento" htmlFor="departamento">
@@ -124,11 +139,26 @@ export function FormularioCliente({ cliente }: { cliente?: Tablas<'clientes'> })
           </Campo>
 
           <Campo etiqueta="Teléfono" htmlFor="telefono">
-            <Entrada id="telefono" name="telefono" type="tel" defaultValue={cliente?.telefono ?? ''} />
+            <Entrada
+              id="telefono"
+              name="telefono"
+              type="tel"
+              inputMode="tel"
+              autoComplete="off"
+              defaultValue={cliente?.telefono ?? ''}
+            />
           </Campo>
 
           <Campo etiqueta="Correo electrónico" htmlFor="correo" className="sm:col-span-2">
-            <Entrada id="correo" name="correo" type="email" defaultValue={cliente?.correo ?? ''} />
+            {/* Sin autocompletado: el navegador ofrece el correo de quien está
+                dentro del sistema, y este es el correo del cliente. */}
+            <Entrada
+              id="correo"
+              name="correo"
+              type="email"
+              autoComplete="off"
+              defaultValue={cliente?.correo ?? ''}
+            />
           </Campo>
 
           <Campo etiqueta="Observaciones" htmlFor="observaciones" className="sm:col-span-3">
@@ -154,12 +184,9 @@ export function FormularioCliente({ cliente }: { cliente?: Tablas<'clientes'> })
       )}
 
       <div className="flex justify-end gap-2">
-        <Link
-          href={cliente ? `/clientes/${cliente.id}` : '/clientes'}
-          className="inline-flex h-9 items-center rounded-[var(--radius-base)] px-4 text-sm text-texto-suave hover:bg-superficie-2 hover:text-texto"
-        >
+        <EnlaceBoton href={cliente ? `/clientes/${cliente.id}` : '/clientes'} variante="fantasma">
           Cancelar
-        </Link>
+        </EnlaceBoton>
         <Boton type="submit" cargando={pendiente}>
           {editando ? 'Guardar cambios' : 'Registrar cliente'}
         </Boton>

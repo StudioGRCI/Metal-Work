@@ -1,7 +1,12 @@
+import type { ReactNode } from 'react'
+
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
+import { Indicador } from '@/components/ui/indicador'
 import { SinDatos, TH, Tabla, TablaCabecera } from '@/components/ui/tabla'
-import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { Tarjeta } from '@/components/ui/tarjeta'
 import { catalogosDeServicio, listarOrdenesDeServicio, resumirServicios } from '@/lib/datos/servicios'
 import { moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -36,6 +41,28 @@ export default async function PaginaServicios({ searchParams }: PageProps<'/serv
   const conforma = puede(perfil, 'calidad.inspeccionar')
   const paga = puede(perfil, 'costos.editar')
 
+  const etiquetaFiltro = FILTROS.find((f) => f.valor === estado)?.etiqueta ?? 'Todas'
+
+  /** Cambiar de filtro no debe tirar lo que la persona escribió en el buscador. */
+  const rutaConBusqueda = (valor: string) =>
+    busqueda
+      ? `/servicios?estado=${valor}&q=${encodeURIComponent(busqueda)}`
+      : `/servicios?estado=${valor}`
+
+  // Una lista vacía porque no hay nada y una vacía por el filtro se arreglan de
+  // maneras opuestas: emitir la primera orden, o soltar el filtro.
+  const filtrando = Boolean(busqueda) || estado !== 'todas'
+  let accionSinDatos: ReactNode = null
+  if (filtrando) {
+    accionSinDatos = (
+      <EnlaceBoton href="/servicios?estado=todas" variante="contorno">
+        Ver todas las órdenes
+      </EnlaceBoton>
+    )
+  } else if (emite && catalogos) {
+    accionSinDatos = <NuevaOrdenDeServicio catalogos={catalogos} />
+  }
+
   return (
     <>
       <EncabezadoPagina
@@ -44,23 +71,28 @@ export default async function PaginaServicios({ searchParams }: PageProps<'/serv
         acciones={emite && catalogos && <NuevaOrdenDeServicio catalogos={catalogos} />}
       />
 
-      <div className="mb-4 grid gap-4 sm:grid-cols-4">
-        <Resumen titulo="Órdenes listadas" valor={String(resumen.total)} />
-        <Resumen
+      {/* Dos por fila en el teléfono: cuatro apiladas se comían la pantalla antes
+          de llegar a la lista, que es a lo que se viene. */}
+      <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <Indicador titulo="Órdenes listadas" valor={resumen.total} pie={`Filtro: ${etiquetaFiltro}`} />
+        <Indicador
           titulo="Comprometido"
           valor={moneda(resumen.comprometido)}
-          nota="Pedido y todavía afuera"
+          pie="Pedido y todavía afuera"
         />
-        <Resumen
+        {/* Este número sí lleva a algún lado: es exactamente el filtro
+            «Por conformar», con la búsqueda que hubiera puesta. */}
+        <Indicador
           titulo="Por conformar"
-          valor={String(resumen.porConformar)}
-          nota="Volvieron y esperan la aceptación"
+          valor={resumen.porConformar}
+          pie="Volvieron y esperan la aceptación"
           tono={resumen.porConformar > 0 ? 'aviso' : 'neutro'}
+          href={rutaConBusqueda('EJECUTADO')}
         />
-        <Resumen
+        <Indicador
           titulo="Atrasadas"
-          valor={String(resumen.atrasadas)}
-          nota="Pasaron su fecha de entrega"
+          valor={resumen.atrasadas}
+          pie="Pasaron su fecha de entrega"
           tono={resumen.atrasadas > 0 ? 'peligro' : 'neutro'}
         />
       </div>
@@ -73,22 +105,16 @@ export default async function PaginaServicios({ searchParams }: PageProps<'/serv
             marcador="Buscar por número, proveedor, trabajo u OT"
           />
         </div>
-        <div className="flex flex-wrap gap-1">
-          {FILTROS.map((f) => (
-            <a
-              key={f.valor}
-              href={`/servicios?estado=${f.valor}${busqueda ? `&q=${encodeURIComponent(busqueda)}` : ''}`}
-              aria-current={estado === f.valor ? 'page' : undefined}
-              className={
-                estado === f.valor
-                  ? 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-sm font-medium text-acento'
-                  : 'rounded-[var(--radius-base)] px-3 py-1.5 text-sm text-texto-suave hover:bg-superficie-2'
-              }
-            >
-              {f.etiqueta}
-            </a>
-          ))}
-        </div>
+        {/* Antes cada pastilla rearmaba la URL a mano; PastillaFiltro conserva
+            todos los parámetros y no recarga la pantalla entera. */}
+        <PastillaFiltro
+          ruta="/servicios"
+          clave="estado"
+          opciones={FILTROS}
+          params={params}
+          activo={estado}
+          etiqueta="Filtrar por estado"
+        />
       </div>
 
       <Tarjeta className="mt-4 overflow-hidden">
@@ -96,10 +122,13 @@ export default async function PaginaServicios({ searchParams }: PageProps<'/serv
           <TablaCabecera>
             <tr>
               <TH>Orden</TH>
-              <TH>Proveedor</TH>
+              {/* En el teléfono el proveedor baja bajo el número de orden y la
+                  entrega bajo el estado; sus columnas se esconden para que quepan
+                  el trabajo, el monto y los botones. */}
+              <TH className="hidden sm:table-cell">Proveedor</TH>
               <TH>Trabajo</TH>
               <TH>Estado</TH>
-              <TH>Entrega</TH>
+              <TH className="hidden sm:table-cell">Entrega</TH>
               <TH className="text-right">Monto</TH>
               <TH className="text-right">Acciones</TH>
             </tr>
@@ -108,8 +137,13 @@ export default async function PaginaServicios({ searchParams }: PageProps<'/serv
             {servicios.length === 0 && (
               <SinDatos
                 colSpan={7}
-                titulo="No hay órdenes de servicio"
-                descripcion="Aquí aparece cada trabajo que se manda a hacer afuera, con su plazo y su monto."
+                titulo={filtrando ? 'Ninguna orden coincide' : 'Todavía no se mandó nada afuera'}
+                descripcion={
+                  filtrando
+                    ? `Con lo que hay puesto —${etiquetaFiltro.toLowerCase()}— no queda ninguna orden en la lista.`
+                    : 'Aquí aparece cada trabajo que se manda a hacer afuera, con su plazo y su monto.'
+                }
+                accion={accionSinDatos}
               />
             )}
 
@@ -131,29 +165,5 @@ export default async function PaginaServicios({ searchParams }: PageProps<'/serv
         costo de la unidad, y recién ahí se puede registrar la factura y el pago.
       </p>
     </>
-  )
-}
-
-function Resumen({
-  titulo,
-  valor,
-  nota,
-  tono = 'neutro',
-}: {
-  titulo: string
-  valor: string
-  nota?: string
-  tono?: 'neutro' | 'aviso' | 'peligro'
-}) {
-  const color = { neutro: 'text-texto', aviso: 'text-aviso', peligro: 'text-peligro' }[tono]
-
-  return (
-    <Tarjeta>
-      <TarjetaCuerpo>
-        <p className="text-[11px] font-medium tracking-wide text-texto-suave uppercase">{titulo}</p>
-        <p className={`tabular mt-1 text-lg font-semibold ${color}`}>{valor}</p>
-        {nota && <p className="mt-0.5 text-xs text-texto-tenue">{nota}</p>}
-      </TarjetaCuerpo>
-    </Tarjeta>
   )
 }

@@ -136,7 +136,7 @@ export function ListaDocumentos({
                   type="button"
                   onClick={() => descargar(d.id)}
                   disabled={descargando === d.id}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-base)] border border-borde px-3 text-xs text-texto hover:bg-superficie-2 disabled:opacity-50"
+                  className="inline-flex h-10 items-center gap-1.5 rounded-[var(--radius-base)] border border-borde px-3 text-xs text-texto hover:bg-superficie-2 disabled:opacity-50 sm:h-8"
                 >
                   <Download aria-hidden className="size-3.5" />
                   {descargando === d.id ? 'Generando…' : 'Descargar'}

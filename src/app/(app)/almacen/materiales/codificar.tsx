@@ -133,7 +133,7 @@ export function CodificarMaterial({
         </Campo>
       </div>
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="tabular text-xs text-texto-suave">
           {vista ? (
             <>
@@ -169,7 +169,9 @@ export function FichaAlmacen({
   return (
     <form action={accion} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="material_id" value={materialId} />
-      <Campo etiqueta="Criticidad" htmlFor={`criticidad-${materialId}`} className="w-28">
+      {/* Ancho de columna en el monitor, ancho completo en el teléfono: un
+          selector de 7 rem al lado de otro no se acierta con el dedo. */}
+      <Campo etiqueta="Criticidad" htmlFor={`criticidad-${materialId}`} className="w-full sm:w-28">
         <Seleccion id={`criticidad-${materialId}`} name="criticidad" defaultValue={criticidad ?? ''}>
           <option value="">Sin clasificar</option>
           <option value="A">A · primero</option>
@@ -177,16 +179,25 @@ export function FichaAlmacen({
           <option value="C">C</option>
         </Seleccion>
       </Campo>
-      <Campo etiqueta="Ubicación" htmlFor={`ubicacion-${materialId}`} ayuda="Pasillo–rack–nivel–posición" className="w-44">
+      <Campo
+        etiqueta="Ubicación"
+        htmlFor={`ubicacion-${materialId}`}
+        ayuda="Pasillo–rack–nivel–posición"
+        className="w-full sm:w-44"
+      >
         <Entrada
           id={`ubicacion-${materialId}`}
           name="ubicacion"
           defaultValue={ubicacion ?? ''}
           placeholder="P2-R3-N1-05"
+          autoComplete="off"
+          autoCapitalize="characters"
         />
       </Campo>
+      {/* En esta fila desplegada hay dos formularios: uno asigna el código y
+          otro guarda esto. Un botón que solo dice «Guardar» no distingue cuál. */}
       <Boton type="submit" tamano="sm" variante="secundario" cargando={enviando}>
-        Guardar
+        Guardar ficha
       </Boton>
       <Aviso resultado={resultado} />
     </form>

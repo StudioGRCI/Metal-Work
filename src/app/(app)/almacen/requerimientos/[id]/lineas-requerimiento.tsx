@@ -5,7 +5,8 @@ import { useState, useTransition } from 'react'
 import { Plus } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
-import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { Campo, Entrada } from '@/components/ui/campos'
+import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cantidad } from '@/lib/format'
@@ -38,6 +39,7 @@ export function LineasRequerimiento({
   const [agregando, setAgregando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
+  const [materialId, setMaterialId] = useState('')
 
   async function enviar(datos: FormData) {
     setError(null)
@@ -78,10 +80,14 @@ export function LineasRequerimiento({
                 <th className="px-3 py-2 text-right text-[11px] font-semibold text-texto-suave uppercase">
                   Solicitado
                 </th>
-                <th className="px-3 py-2 text-right text-[11px] font-semibold text-texto-suave uppercase">
+                {/* Lo aprobado y lo reservado ceden su columna en el teléfono y
+                    bajan bajo el material: caben en una línea y así la fila deja
+                    sitio para lo que de verdad se consulta parado, que es cuánto
+                    falta por entregar. */}
+                <th className="hidden px-3 py-2 text-right text-[11px] font-semibold text-texto-suave uppercase sm:table-cell">
                   Aprobado
                 </th>
-                <th className="px-3 py-2 text-right text-[11px] font-semibold text-texto-suave uppercase">
+                <th className="hidden px-3 py-2 text-right text-[11px] font-semibold text-texto-suave uppercase sm:table-cell">
                   Reservado
                 </th>
                 <th className="px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase">
@@ -92,8 +98,27 @@ export function LineasRequerimiento({
             <tbody>
               {lineas.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-10 text-center text-sm text-texto-suave">
-                    Este requerimiento aún no tiene materiales.
+                  <td colSpan={5} className="px-3 py-10 text-center text-sm">
+                    <p className="text-texto-suave">Este requerimiento aún no tiene materiales.</p>
+                    {editable && (
+                      <>
+                        <p className="mt-1 text-xs text-texto-tenue">
+                          Sin al menos uno no hay nada que aprobar ni que reservar.
+                        </p>
+                        {!agregando && (
+                          <div className="mt-4 flex justify-center">
+                            <Boton
+                              variante="secundario"
+                              tamano="sm"
+                              onClick={() => setAgregando(true)}
+                            >
+                              <Plus aria-hidden className="size-3.5" />
+                              Agregar material
+                            </Boton>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -115,6 +140,12 @@ export function LineasRequerimiento({
                         {l.especificacion && (
                           <p className="text-[11px] text-texto-suave">{l.especificacion}</p>
                         )}
+                        <p className="tabular text-[11px] text-texto-tenue sm:hidden">
+                          {l.cantidad_aprobada === null
+                            ? 'sin aprobar'
+                            : `aprobado ${cantidad(l.cantidad_aprobada)}`}
+                          {` · reservado ${cantidad(l.cantidad_reservada ?? 0)}`}
+                        </p>
                       </td>
                       <td className="tabular px-3 py-2 text-right whitespace-nowrap">
                         {cantidad(solicitado)}
@@ -122,10 +153,10 @@ export function LineasRequerimiento({
                           {material.unidad.codigo}
                         </span>
                       </td>
-                      <td className="tabular px-3 py-2 text-right">
+                      <td className="tabular hidden px-3 py-2 text-right sm:table-cell">
                         {l.cantidad_aprobada === null ? '—' : cantidad(l.cantidad_aprobada)}
                       </td>
-                      <td className="tabular px-3 py-2 text-right text-texto-suave">
+                      <td className="tabular hidden px-3 py-2 text-right text-texto-suave sm:table-cell">
                         {cantidad(l.cantidad_reservada ?? 0)}
                       </td>
                       <td className="px-3 py-2">
@@ -155,14 +186,20 @@ export function LineasRequerimiento({
             <input type="hidden" name="requerimiento_id" value={requerimientoId} />
 
             <Campo etiqueta="Material" htmlFor="material_id" requerido className="sm:col-span-3">
-              <Seleccion id="material_id" name="material_id" required autoFocus>
-                <option value="">Selecciona</option>
-                {materiales.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.codigo} · {m.descripcion}
-                  </option>
-                ))}
-              </Seleccion>
+              <SeleccionBuscable
+                id="material_id"
+                name="material_id"
+                requerido
+                valor={materialId}
+                onChange={setMaterialId}
+                marcador="Selecciona el material"
+                marcadorBusqueda="Código o descripción"
+                opciones={materiales.map((m) => ({
+                  valor: m.id,
+                  etiqueta: m.descripcion,
+                  detalle: m.codigo,
+                }))}
+              />
             </Campo>
 
             <Campo etiqueta="Cantidad" htmlFor="cantidad_solicitada" requerido>
@@ -173,6 +210,9 @@ export function LineasRequerimiento({
                 step="0.0001"
                 min="0.0001"
                 required
+                // El pedido se escribe desde la nave, con el teléfono en la mano:
+                // el teclado tiene que abrir en números y con separador decimal.
+                inputMode="decimal"
                 className="tabular text-right"
               />
             </Campo>
@@ -182,6 +222,9 @@ export function LineasRequerimiento({
                 id="especificacion"
                 name="especificacion"
                 placeholder="Medida o detalle particular"
+                // Es una medida de esta línea, no un dato de quien la escribe: sin
+                // esto el navegador ofrece lo que guardó de otros formularios.
+                autoComplete="off"
               />
             </Campo>
 
@@ -189,8 +232,10 @@ export function LineasRequerimiento({
               <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAgregando(false)}>
                 Cancelar
               </Boton>
+              {/* En esta pantalla también se aprueba y se rechaza: el botón dice
+                  qué agrega para que no se confunda con esas. */}
               <Boton type="submit" tamano="sm" cargando={enviando}>
-                Agregar
+                Agregar material
               </Boton>
             </div>
           </form>

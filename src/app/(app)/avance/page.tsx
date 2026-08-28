@@ -2,7 +2,10 @@ import { AlertTriangle, Camera, Clock } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Indicador } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { listarTablero, resumirTablero } from '@/lib/datos/avances'
@@ -11,6 +14,11 @@ import { fecha as formatearFecha } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
 export const metadata = { title: 'Avance en taller' }
+
+const FILTROS = [
+  { valor: null, etiqueta: 'Todas' },
+  { valor: '1', etiqueta: 'Solo las trabadas' },
+]
 
 export default async function PaginaAvance({ searchParams }: PageProps<'/avance'>) {
   await exigirPermiso('produccion.ver')
@@ -27,52 +35,45 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
         descripcion="Una tarjeta por unidad: dónde está, cuánto lleva, hace cuánto no se toca y qué la traba."
       />
 
-      <div className="mb-4 grid gap-4 sm:grid-cols-4">
-        <Resumen titulo="Unidades en taller" valor={String(resumen.total)} />
-        <Resumen
-          titulo="Trabadas"
-          valor={String(resumen.trabadas)}
-          nota="Esperando material o decisión"
-          tono={resumen.trabadas > 0 ? 'peligro' : 'neutro'}
+      {/* Dos por fila en el teléfono; las cuatro de siempre en el monitor. */}
+      <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <Indicador
+          titulo="Unidades en taller"
+          valor={resumen.total}
+          pie={soloTrabadas ? 'Contando solo las trabadas' : undefined}
         />
-        <Resumen
+        <Indicador
+          titulo="Trabadas"
+          valor={resumen.trabadas}
+          pie="Esperando material o decisión"
+          tono={resumen.trabadas > 0 ? 'peligro' : 'neutro'}
+          /* Este número sí tiene una lista detrás; los otros tres todavía no
+             tienen filtro en la consulta, así que no llevan a ninguna parte. */
+          href={soloTrabadas ? undefined : '/avance?trabadas=1'}
+        />
+        <Indicador
           titulo="Sin noticias"
-          valor={String(resumen.sinNoticias)}
-          nota="Tres días o más sin avance registrado"
+          valor={resumen.sinNoticias}
+          pie="Tres días o más sin avance registrado"
           tono={resumen.sinNoticias > 0 ? 'aviso' : 'neutro'}
         />
-        <Resumen
+        <Indicador
           titulo="Fuera de plazo"
-          valor={String(resumen.atrasadas)}
-          nota="Pasaron la fecha prometida"
+          valor={resumen.atrasadas}
+          pie="Pasaron la fecha prometida"
           tono={resumen.atrasadas > 0 ? 'peligro' : 'neutro'}
         />
       </div>
 
-      <div className="mb-4 flex gap-2">
-        <Link
-          href="/avance"
-          aria-current={soloTrabadas ? undefined : 'page'}
-          className={
-            soloTrabadas
-              ? 'rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs text-texto-suave hover:bg-superficie-2'
-              : 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-xs font-medium text-acento'
-          }
-        >
-          Todas
-        </Link>
-        <Link
-          href="/avance?trabadas=1"
-          aria-current={soloTrabadas ? 'page' : undefined}
-          className={
-            soloTrabadas
-              ? 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-xs font-medium text-acento'
-              : 'rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs text-texto-suave hover:bg-superficie-2'
-          }
-        >
-          Solo las trabadas
-        </Link>
-      </div>
+      <PastillaFiltro
+        ruta="/avance"
+        clave="trabadas"
+        opciones={FILTROS}
+        params={params}
+        activo={soloTrabadas ? '1' : null}
+        etiqueta="Filtrar las unidades"
+        className="mb-4"
+      />
 
       {filas.length === 0 ? (
         <Tarjeta>
@@ -85,6 +86,19 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
                 ? 'Todo lo que está en el taller puede seguir avanzando.'
                 : 'Cuando se apruebe una orden de trabajo, la unidad aparecerá acá.'}
             </p>
+            {/* Vacío por el filtro y vacío de verdad no son lo mismo: cada uno
+                lleva a su siguiente paso en vez de dejar a medio camino. */}
+            <div className="mt-4">
+              {soloTrabadas ? (
+                <EnlaceBoton href="/avance" variante="secundario">
+                  Ver todas las unidades
+                </EnlaceBoton>
+              ) : (
+                <EnlaceBoton href="/ordenes" variante="secundario">
+                  Ver las órdenes de trabajo
+                </EnlaceBoton>
+              )}
+            </div>
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (
@@ -97,13 +111,16 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
               f.dias_habiles_restantes === null ? null : Number(f.dias_habiles_restantes)
 
             return (
-              <Tarjeta key={f.orden_id} className="flex flex-col">
+              // `relative` + el `after` del enlace: en el teléfono se abre la
+              // unidad tocando la tarjeta entera, no apuntando a la placa. No hay
+              // otro enlace dentro, así que nada queda tapado.
+              <Tarjeta key={f.orden_id} className="relative flex flex-col">
                 <TarjetaCuerpo className="flex flex-1 flex-col gap-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <Link
                         href={`/avance/${f.orden_id}`}
-                        className="text-base font-semibold text-acento hover:underline"
+                        className="text-base font-semibold text-acento after:absolute after:inset-0 hover:underline"
                       >
                         {f.placa ?? f.orden_numero}
                       </Link>
@@ -182,29 +199,5 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
         </div>
       )}
     </>
-  )
-}
-
-function Resumen({
-  titulo,
-  valor,
-  nota,
-  tono = 'neutro',
-}: {
-  titulo: string
-  valor: string
-  nota?: string
-  tono?: 'neutro' | 'aviso' | 'peligro'
-}) {
-  const color = { neutro: 'text-texto', aviso: 'text-aviso', peligro: 'text-peligro' }[tono]
-
-  return (
-    <Tarjeta>
-      <TarjetaCuerpo>
-        <p className="text-[11px] font-medium tracking-wide text-texto-suave uppercase">{titulo}</p>
-        <p className={`tabular mt-1 text-lg font-semibold ${color}`}>{valor}</p>
-        {nota && <p className="mt-0.5 text-xs text-texto-tenue">{nota}</p>}
-      </TarjetaCuerpo>
-    </Tarjeta>
   )
 }

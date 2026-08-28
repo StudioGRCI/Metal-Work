@@ -21,15 +21,17 @@ export function AccionesParte({
   const router = useRouter()
   const [, iniciarTransicion] = useTransition()
   const [error, setError] = useState<string | null>(null)
-  const [enviando, setEnviando] = useState(false)
+  // Cuál se está ejecutando, no si hay alguna: con «Reabrir» y «Aprobar»
+  // juntos en pantalla, un booleano ponía a girar las dos a la vez.
+  const [enviando, setEnviando] = useState<string | null>(null)
 
   const puede = (permiso: string) => esAdmin || permisos.includes(permiso)
 
   async function cambiar(datos: FormData) {
     setError(null)
-    setEnviando(true)
+    setEnviando(String(datos.get('estado') ?? ''))
     const resultado = await cambiarEstadoParte(null, datos)
-    setEnviando(false)
+    setEnviando(null)
 
     if (resultado.ok) iniciarTransicion(() => router.refresh())
     else setError(resultado.error)
@@ -68,7 +70,8 @@ export function AccionesParte({
             <Boton
               type="submit"
               tamano="sm"
-              cargando={enviando}
+              cargando={enviando === a.estado}
+              disabled={enviando !== null}
               variante={a.primario ? 'primario' : 'secundario'}
             >
               {a.etiqueta}

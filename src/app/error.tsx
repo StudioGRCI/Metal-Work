@@ -2,6 +2,8 @@
 
 import { useEffect } from 'react'
 
+import { Boton } from '@/components/ui/boton'
+
 export default function ErrorGlobal({
   error,
   reset,
@@ -20,13 +22,9 @@ export default function ErrorGlobal({
         No se pudo completar la operación. Si el problema persiste, informa al administrador
         indicando el código {error.digest ?? 'sin código'}.
       </p>
-      <button
-        type="button"
-        onClick={reset}
-        className="mt-6 rounded-[var(--radius-base)] bg-acento px-4 py-2 text-sm font-medium text-acento-texto"
-      >
+      <Boton type="button" onClick={reset} className="mt-6">
         Reintentar
-      </button>
+      </Boton>
     </main>
   )
 }

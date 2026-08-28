@@ -6,6 +6,7 @@ import { Paperclip, Upload } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { Ventana } from '@/components/ui/ventana'
 import { createClient } from '@/lib/supabase/client'
 
 import { registrarDocumento } from '@/app/(app)/documentos/acciones'
@@ -129,101 +130,92 @@ export function SubirDocumento({
         {etiqueta}
       </Boton>
 
-      {abierto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
-          <button
-            type="button"
-            aria-label="Cancelar"
-            onClick={() => setAbierto(false)}
-            className="absolute inset-0 bg-black/40"
-          />
-          <div className="relative my-8 w-full max-w-lg rounded-[var(--radius-base)] border border-borde bg-superficie p-4 text-left shadow-xl">
-            <h2 className="text-sm font-semibold text-texto">Adjuntar documento</h2>
+      {/* La `Ventana` del sistema pinta el fondo, la caja, el título y el botón
+          de cerrar, y no cierra al tocar el fondo: el archivo elegido y el
+          título escrito ya no se pierden con un roce mientras se sube. */}
+      <Ventana abierta={abierto} alCerrar={() => setAbierto(false)} titulo="Adjuntar documento">
+        <form action={enviar} className="space-y-4">
+          <Campo etiqueta="Tipo de documento" htmlFor="tipo_documento_id" requerido>
+            <Seleccion
+              id="tipo_documento_id"
+              name="tipo_documento_id"
+              required
+              value={tipoId}
+              onChange={(e) => setTipoId(e.target.value)}
+            >
+              {tipos.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.nombre}
+                </option>
+              ))}
+            </Seleccion>
+          </Campo>
 
-            <form action={enviar} className="mt-4 space-y-4">
-              <Campo etiqueta="Tipo de documento" htmlFor="tipo_documento_id" requerido>
-                <Seleccion
-                  id="tipo_documento_id"
-                  name="tipo_documento_id"
-                  required
-                  value={tipoId}
-                  onChange={(e) => setTipoId(e.target.value)}
-                >
-                  {tipos.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.nombre}
-                    </option>
-                  ))}
-                </Seleccion>
-              </Campo>
+          <Campo
+            etiqueta="Archivo"
+            htmlFor="archivo"
+            requerido
+            ayuda={
+              tipo
+                ? `${tipo.extensiones_permitidas.join(', ')} · máximo ${tipo.tamano_maximo_mb} MB`
+                : undefined
+            }
+          >
+            <input
+              id="archivo"
+              type="file"
+              required
+              accept={tipo?.extensiones_permitidas.map((e) => `.${e}`).join(',')}
+              onChange={(e) => setArchivo(e.target.files?.[0] ?? null)}
+              className="w-full rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-superficie-2 file:px-3 file:py-1 file:text-xs file:text-texto"
+            />
+          </Campo>
 
-              <Campo
-                etiqueta="Archivo"
-                htmlFor="archivo"
-                requerido
-                ayuda={
-                  tipo
-                    ? `${tipo.extensiones_permitidas.join(', ')} · máximo ${tipo.tamano_maximo_mb} MB`
-                    : undefined
-                }
-              >
-                <input
-                  id="archivo"
-                  type="file"
-                  required
-                  accept={tipo?.extensiones_permitidas.map((e) => `.${e}`).join(',')}
-                  onChange={(e) => setArchivo(e.target.files?.[0] ?? null)}
-                  className="w-full rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-superficie-2 file:px-3 file:py-1 file:text-xs file:text-texto"
-                />
-              </Campo>
+          <Campo etiqueta="Título" htmlFor="titulo" requerido>
+            <Entrada
+              id="titulo"
+              name="titulo"
+              required
+              minLength={3}
+              defaultValue={tipo?.nombre ?? ''}
+            />
+          </Campo>
 
-              <Campo etiqueta="Título" htmlFor="titulo" requerido>
-                <Entrada
-                  id="titulo"
-                  name="titulo"
-                  required
-                  minLength={3}
-                  defaultValue={tipo?.nombre ?? ''}
-                />
-              </Campo>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Campo
+              etiqueta="Número externo"
+              htmlFor="numero_externo"
+              ayuda="Factura, guía o código del documento"
+            >
+              <Entrada id="numero_externo" name="numero_externo" />
+            </Campo>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Campo
-                  etiqueta="Número externo"
-                  htmlFor="numero_externo"
-                  ayuda="Factura, guía o código del documento"
-                >
-                  <Entrada id="numero_externo" name="numero_externo" />
-                </Campo>
-
-                <Campo etiqueta="Fecha del documento" htmlFor="fecha_documento">
-                  <Entrada id="fecha_documento" name="fecha_documento" type="date" />
-                </Campo>
-              </div>
-
-              <Campo etiqueta="Descripción" htmlFor="descripcion">
-                <AreaTexto id="descripcion" name="descripcion" rows={2} />
-              </Campo>
-
-              {error && (
-                <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
-                  {error}
-                </p>
-              )}
-
-              <div className="flex justify-end gap-2">
-                <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierto(false)}>
-                  Cancelar
-                </Boton>
-                <Boton type="submit" tamano="sm" cargando={subiendo}>
-                  <Upload aria-hidden className="size-3.5" />
-                  Subir y adjuntar
-                </Boton>
-              </div>
-            </form>
+            <Campo etiqueta="Fecha del documento" htmlFor="fecha_documento">
+              <Entrada id="fecha_documento" name="fecha_documento" type="date" />
+            </Campo>
           </div>
-        </div>
-      )}
+
+          <Campo etiqueta="Descripción" htmlFor="descripcion">
+            <AreaTexto id="descripcion" name="descripcion" rows={2} />
+          </Campo>
+
+          {error && (
+            <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
+              {error}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierto(false)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" tamano="sm" cargando={subiendo}>
+              <Upload aria-hidden className="size-3.5" />
+              Subir y adjuntar
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
     </>
   )
 }

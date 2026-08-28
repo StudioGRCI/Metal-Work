@@ -1,11 +1,12 @@
 'use client'
 
 import { Check, CircleDashed, MessageSquareWarning, PenLine, X } from 'lucide-react'
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useState } from 'react'
 
 import { firmar, pedirFirmas } from '@/app/(app)/firmas/acciones'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
+import { Ventana } from '@/components/ui/ventana'
 import { fecha as formatearFecha } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -74,7 +75,7 @@ export function FirmasDocumento({
         <button
           type="button"
           onClick={() => setPidiendo(true)}
-          className="inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-base)] border border-borde px-3 text-xs text-texto hover:bg-superficie-2"
+          className="inline-flex h-10 items-center gap-1.5 rounded-[var(--radius-base)] border border-borde px-3 text-xs text-texto hover:bg-superficie-2 sm:h-8"
         >
           <PenLine aria-hidden className="size-3.5" />
           Pedir firma
@@ -112,7 +113,7 @@ export function FirmasDocumento({
                 <button
                   type="button"
                   onClick={() => setFirmando(f.aprobacion_id)}
-                  className="ml-1 inline-flex h-6 items-center gap-1 rounded-[var(--radius-base)] bg-acento px-2 text-[11px] font-medium text-white hover:opacity-90"
+                  className="ml-1 inline-flex h-7 items-center gap-1 rounded-[var(--radius-base)] bg-acento px-2 text-[11px] font-medium text-acento-texto hover:opacity-90 sm:h-6"
                 >
                   <PenLine aria-hidden className="size-3" />
                   Firmar
@@ -152,6 +153,11 @@ export function FirmasDocumento({
   )
 }
 
+/**
+ * Quien la abre la monta y quien la cierra la desmonta, así que nace abierta y
+ * por eso `abierta` va fijo. Al desmontarse se olvidan la cadena a medio armar
+ * y el aviso del intento anterior, que es lo que se quiere al reabrirla.
+ */
 function VentanaPedir({
   documentoId,
   firmantes,
@@ -167,12 +173,12 @@ function VentanaPedir({
   const disponibles = firmantes.filter((f) => !elegidos.includes(f.id))
 
   return (
-    <Ventana titulo="Pedir la firma del documento" onCerrar={onCerrar}>
-      <p className="mb-3 text-xs text-texto-suave">
-        Se firma en el orden en que se agregan: el segundo no puede decidir mientras el primero no
-        lo haya hecho.
-      </p>
-
+    <Ventana
+      abierta
+      alCerrar={onCerrar}
+      titulo="Pedir la firma del documento"
+      descripcion="Se firma en el orden en que se agregan: el segundo no puede decidir mientras el primero no lo haya hecho."
+    >
       <form action={accion} className="space-y-3">
         <input type="hidden" name="documento_id" value={documentoId} />
         <input type="hidden" name="aprobadores" value={elegidos.join(',')} />
@@ -193,6 +199,9 @@ function VentanaPedir({
                       <span className="text-xs text-texto-suave"> · {persona.cargo}</span>
                     )}
                   </span>
+                  {/* Sin confirmación a propósito: la cadena todavía no se pidió
+                      y quien se quita vuelve con un toque desde «Agregar a la
+                      cadena». No hay nada que recuperar. */}
                   <button
                     type="button"
                     onClick={() => setElegidos((e) => e.filter((x) => x !== id))}
@@ -240,6 +249,12 @@ function VentanaPedir({
   )
 }
 
+/**
+ * La ventana de firma. La montan y la desmontan quienes la abren —la bandeja de
+ * firmas y la cadena de acá arriba—, así que nace abierta: por eso `abierta` va
+ * fijo. Al desmontarse se olvidan la decisión marcada y el aviso del intento
+ * anterior, que es lo que se quiere al volver a abrirla.
+ */
 export function VentanaFirmar({
   aprobacionId,
   onCerrar,
@@ -251,7 +266,7 @@ export function VentanaFirmar({
   const [resultado, accion, enviando] = useActionState(firmar, null)
 
   return (
-    <Ventana titulo="Firmar el documento" onCerrar={onCerrar}>
+    <Ventana abierta alCerrar={onCerrar} titulo="Firmar el documento">
       <form action={accion} className="space-y-3">
         <input type="hidden" name="aprobacion_id" value={aprobacionId} />
         <input type="hidden" name="estado" value={decision} />
@@ -316,36 +331,6 @@ export function VentanaFirmar({
         </div>
       </form>
     </Ventana>
-  )
-}
-
-function Ventana({
-  titulo,
-  onCerrar,
-  children,
-}: {
-  titulo: string
-  onCerrar: () => void
-  children: React.ReactNode
-}) {
-  useEffect(() => {
-    const salir = (e: KeyboardEvent) => e.key === 'Escape' && onCerrar()
-    document.addEventListener('keydown', salir)
-    return () => document.removeEventListener('keydown', salir)
-  }, [onCerrar])
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 py-10">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={titulo}
-        className="w-full max-w-lg rounded-[calc(var(--radius-base)*1.5)] border border-borde bg-superficie p-5 shadow-2xl shadow-black/30"
-      >
-        <h2 className="mb-3 text-base font-semibold text-texto">{titulo}</h2>
-        {children}
-      </div>
-    </div>
   )
 }
 
