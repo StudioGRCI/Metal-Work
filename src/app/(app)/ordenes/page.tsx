@@ -221,7 +221,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                       )}
                     </TD>
 
-                    <TD className="hidden text-texto-suave sm:table-cell">
+                    <TD className="hidden whitespace-nowrap text-texto-suave sm:table-cell">
                       {nombreCorto(orden.responsable)}
                     </TD>
                   </TR>
