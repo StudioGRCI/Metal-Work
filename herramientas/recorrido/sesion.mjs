@@ -43,14 +43,17 @@ export async function sesionGuardada({ urlBase, usuario, clave, archivo, intento
 
   try {
     for (let intento = 1; intento <= intentos; intento++) {
-      // Ni `domcontentloaded` ni `networkidle`. Con el primero el clic caía antes
-      // de que React hidratara y el formulario se enviaba en crudo —sin acción y
-      // sin campos con nombre—, así que la pantalla se recargaba y parecía que
-      // el ingreso no respondía. Con el segundo, la espera no terminaba nunca
-      // cuando alguna petición se quedaba abierta, y ni se llegaba a escribir la
-      // contraseña. Se espera al `load` y se le da un respiro a la hidratación.
-      await pagina.goto(`${urlBase}/ingresar`, { waitUntil: 'load', timeout: 60000 })
-      await pagina.waitForTimeout(2000)
+      // No se espera a ningún evento de la página, y es a propósito. Los tres
+      // que ofrece Playwright fallan acá por motivos distintos:
+      // `domcontentloaded` llega antes de que React hidrate —el clic se iba en
+      // un envío en crudo del formulario y la pantalla se recargaba—, y
+      // `networkidle` y `load` no llegan nunca cuando alguna petición se queda
+      // abierta, cosa que pasa en los minutos siguientes a cada despliegue.
+      // Se espera a lo único que hace falta: que el campo de la contraseña esté
+      // en pantalla, más un respiro para que React se enganche a él.
+      await pagina.goto(`${urlBase}/ingresar`, { waitUntil: 'commit', timeout: 60000 })
+      await pagina.locator('input[type="password"]').waitFor({ state: 'visible', timeout: 60000 })
+      await pagina.waitForTimeout(2500)
       await pagina.fill('input[type="email"], input[name="correo"]', usuario)
       await pagina.fill('input[type="password"]', clave)
       await pagina.click('button[type="submit"]')

@@ -54,6 +54,7 @@ export function NuevoContacto({
         type="button"
         variante="contorno"
         tamano="sm"
+        aria-label="Nuevo contacto"
         onClick={() => {
           setResultado(null)
           setAbierto(true)

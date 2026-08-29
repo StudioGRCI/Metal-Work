@@ -48,7 +48,13 @@ export function NuevaCarroceria({
 
   return (
     <>
-      <Boton type="button" variante="contorno" tamano="sm" onClick={abrir}>
+      <Boton
+        type="button"
+        variante="contorno"
+        tamano="sm"
+        aria-label="Nuevo tipo de carrocería"
+        onClick={abrir}
+      >
         <Plus aria-hidden className="size-3.5" />
         Nuevo
       </Boton>

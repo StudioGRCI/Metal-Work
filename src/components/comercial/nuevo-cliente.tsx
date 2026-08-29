@@ -52,7 +52,7 @@ export function NuevoCliente({
 
   return (
     <>
-      <Boton type="button" variante="contorno" tamano="sm" onClick={abrir}>
+      <Boton type="button" variante="contorno" tamano="sm" aria-label="Nuevo cliente" onClick={abrir}>
         <Plus aria-hidden className="size-3.5" />
         Nuevo
       </Boton>

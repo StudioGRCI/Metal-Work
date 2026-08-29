@@ -71,7 +71,13 @@ export function NuevaUnidad({
 
   return (
     <>
-      <Boton type="button" variante={compacta ? 'contorno' : 'secundario'} tamano="sm" onClick={abrir}>
+      <Boton
+        type="button"
+        variante={compacta ? 'contorno' : 'secundario'}
+        tamano="sm"
+        aria-label="Nueva unidad"
+        onClick={abrir}
+      >
         <Plus aria-hidden className="size-3.5" />
         {compacta ? 'Nueva' : 'Agregar unidad'}
       </Boton>
