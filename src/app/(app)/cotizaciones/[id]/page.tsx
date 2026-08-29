@@ -98,6 +98,23 @@ export default async function PaginaCotizacion({
     ['EN_COSTEO', 'OBSERVADA'].includes(cotizacion.estado as string) &&
     puede(perfil, 'cotizaciones.costear')
 
+  /**
+   * Mientras la cotización está solo en manos de Ventas, la pantalla no enseña
+   * lo que arma Administración.
+   *
+   * En BORRADOR nadie ha costeado nada todavía, así que las partidas, la ficha
+   * técnica y los accesorios salían como cuatro cajas vacías con un candado y
+   * un cartel de «ahora no se puede tocar». Eso no informa: ocupa media
+   * pantalla anunciando trabajo que no es de quien está mirando, y hace parecer
+   * que a la cotización de venta le falta algo. Aparecen cuando la cotización
+   * pasa a costeo, que es cuando existen y cuando alguien puede llenarlas.
+   *
+   * Desde OBSERVADA en adelante sí se muestran aunque la cotización haya vuelto
+   * a Ventas: ahí ya tienen contenido, y el vendedor necesita ver qué se
+   * prometió —la ficha y los accesorios se imprimen en el papel del cliente—.
+   */
+  const soloEnVentas = cotizacion.estado === 'BORRADOR'
+
   // La cabecera —cliente, unidad, condiciones y el precio— se corrige mientras
   // la cotización se está armando, y solo entonces.
   const puedeEditarCabecera =
@@ -403,39 +420,48 @@ export default async function PaginaCotizacion({
         </div>
 
         {/* Las partidas son la cotización de trabajo: con ellas se compra el
-            material y se programa el taller. Las arma Administración. */}
-        <div className="lg:col-span-3">
-          <Partidas cotizacionId={id} partidas={partidas} moneda={mon} editable={puedeCostear} />
-        </div>
+            material y se programa el taller. Las arma Administración, y hasta
+            que la cotización llega a sus manos no se muestran.
+            `verCostos` además: la tabla lleva el costo unitario de cada
+            partida, y el vendedor no tiene permiso de costos. Se le estaba
+            enseñando igual lo que la empresa paga por el material. */}
+        {!soloEnVentas && verCostos && (
+          <div className="lg:col-span-3">
+            <Partidas cotizacionId={id} partidas={partidas} moneda={mon} editable={puedeCostear} />
+          </div>
+        )}
 
         {/* La ficha técnica es el cuerpo de la cotización de esta empresa: es
-            lo que el taller fabrica y contra lo que el cliente reclama. */}
-        <div className="lg:col-span-3">
-          <FichaTecnica
-            cotizacionId={id}
-            cabecera={{
-              modelo: cotizacion.modelo,
-              tipo: cotizacion.tipo,
-              largo_m: cotizacion.largo_m,
-              ancho_m: cotizacion.ancho_m,
-              alto_m: cotizacion.alto_m,
-              capacidad: cotizacion.capacidad,
-              peso_neto_tn: cotizacion.peso_neto_tn,
-              garantia_meses: cotizacion.garantia_meses,
-              garantia_texto: cotizacion.garantia_texto,
-              peso_tolerancia: cotizacion.peso_tolerancia,
-              no_incluye: cotizacion.no_incluye,
-              incluye_igv: cotizacion.incluye_igv,
-              plazo_en_habiles: cotizacion.plazo_en_habiles,
-              plazo_entrega_dias: cotizacion.plazo_entrega_dias,
-              nota: cotizacion.nota,
-            }}
-            secciones={ficha}
-            accesorios={accesorios}
-            plantillas={plantillas}
-            puedeEditar={puedeCostear}
-          />
-        </div>
+            lo que el taller fabrica y contra lo que el cliente reclama. La
+            escribe Administración durante el costeo, así que en venta no está. */}
+        {!soloEnVentas && (
+          <div className="lg:col-span-3">
+            <FichaTecnica
+              cotizacionId={id}
+              cabecera={{
+                modelo: cotizacion.modelo,
+                tipo: cotizacion.tipo,
+                largo_m: cotizacion.largo_m,
+                ancho_m: cotizacion.ancho_m,
+                alto_m: cotizacion.alto_m,
+                capacidad: cotizacion.capacidad,
+                peso_neto_tn: cotizacion.peso_neto_tn,
+                garantia_meses: cotizacion.garantia_meses,
+                garantia_texto: cotizacion.garantia_texto,
+                peso_tolerancia: cotizacion.peso_tolerancia,
+                no_incluye: cotizacion.no_incluye,
+                incluye_igv: cotizacion.incluye_igv,
+                plazo_en_habiles: cotizacion.plazo_en_habiles,
+                plazo_entrega_dias: cotizacion.plazo_entrega_dias,
+                nota: cotizacion.nota,
+              }}
+              secciones={ficha}
+              accesorios={accesorios}
+              plantillas={plantillas}
+              puedeEditar={puedeCostear}
+            />
+          </div>
+        )}
       </div>
     </>
   )
