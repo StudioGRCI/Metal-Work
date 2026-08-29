@@ -736,3 +736,47 @@ export async function editarPartida(_previo: unknown, datos: FormData): Promise<
   revalidatePath(`/cotizaciones/${v.cotizacion_id}`)
   return { ok: true, mensaje: 'Partida actualizada.' }
 }
+
+/**
+ * Borrar un borrador que nunca salió de la oficina.
+ *
+ * La regla de la casa —un documento numerado no se borra— sigue en pie y la
+ * defiende la base: una cotización enviada, revisada o aprobada se anula con su
+ * motivo y queda como evidencia. Pero un borrador es una hoja a medio escribir;
+ * obligar a anularlo llena la lista de papeles anulados que nadie emitió.
+ */
+export async function eliminarCotizacion(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ['cotizaciones.editar', 'cotizaciones.anular'])) {
+    return { ok: false, error: 'No tienes permiso para borrar cotizaciones.' }
+  }
+
+  const id = String(datos.get('cotizacion_id') ?? '')
+  if (!z.string().uuid().safeParse(id).success) return { ok: false, error: 'Solicitud inválida.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('cotizaciones')
+    .delete()
+    // El filtro por estado hace que una carrera —alguien la envía mientras otro
+    // la borra— termine en cero filas y no en un documento emitido que
+    // desaparece.
+    .eq('id', id)
+    .eq('estado', 'BORRADOR')
+    .select('id')
+    .maybeSingle()
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) {
+    return {
+      ok: false,
+      error: 'No se pudo borrar: la cotización ya salió de borrador. Anúlala con su motivo.',
+    }
+  }
+
+  revalidatePath('/cotizaciones')
+  redirect('/cotizaciones')
+}

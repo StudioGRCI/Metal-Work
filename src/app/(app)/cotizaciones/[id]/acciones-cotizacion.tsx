@@ -2,14 +2,14 @@
 
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
-import { Download, Eye } from 'lucide-react'
+import { Download, Eye, Trash2 } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
-import { Ventana } from '@/components/ui/ventana'
+import { ConfirmarAccion, Ventana } from '@/components/ui/ventana'
 
-import { cambiarEstadoCotizacion, convertirEnOrden } from '../acciones'
+import { cambiarEstadoCotizacion, convertirEnOrden, eliminarCotizacion } from '../acciones'
 
 type Paso = {
   estado: string
@@ -256,6 +256,7 @@ export function AccionesCotizacion({
   const [enviando, setEnviando] = useState(false)
   const [pidiendoMotivo, setPidiendoMotivo] = useState<Paso | null>(null)
   const [abriendoOrden, setAbriendoOrden] = useState(false)
+  const [borrando, setBorrando] = useState(false)
   const [bajando, setBajando] = useState(false)
 
   const puede = (permiso: string | string[]) =>
@@ -406,6 +407,16 @@ export function AccionesCotizacion({
           </Boton>
         )}
 
+        {/* Un borrador nunca salió de la oficina: se puede tirar. Desde que
+            sale de borrador ya es un documento y se anula con su motivo, que es
+            lo que defiende la base. */}
+        {cotizacion.estado === 'BORRADOR' && puede('cotizaciones.editar') && (
+          <Boton variante="fantasma" tamano="sm" onClick={() => setBorrando(true)}>
+            <Trash2 aria-hidden className="size-3.5" />
+            Borrar
+          </Boton>
+        )}
+
         {disponibles.map((t) =>
           t.motivo ? (
             <Boton
@@ -427,6 +438,23 @@ export function AccionesCotizacion({
           ),
         )}
       </div>
+
+      <ConfirmarAccion
+        abierta={borrando}
+        alCerrar={() => setBorrando(false)}
+        alConfirmar={() => {
+          const datos = new FormData()
+          datos.set('cotizacion_id', cotizacion.id)
+          // La acción redirige al listado, así que no hay nada que refrescar
+          // después: esta pantalla deja de existir.
+          iniciarTransicion(() => {
+            void eliminarCotizacion(null, datos)
+          })
+        }}
+        titulo="¿Borrar el borrador?"
+        detalle={`Se va la cotización ${cotizacion.numero} con lo que lleve escrito: partidas, ficha técnica y accesorios. Como todavía no salió de la oficina, no queda constancia de ella.`}
+        etiquetaConfirmar="Sí, borrar"
+      />
 
       {puedeEnviar && !tienePartidas && (
         <p className="text-xs text-texto-suave">
