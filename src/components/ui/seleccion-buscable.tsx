@@ -128,7 +128,13 @@ export function SeleccionBuscable({
   return (
     <div
       ref={contenedor}
-      className={cn('relative', className)}
+      // `min-w-0` porque en flexbox un hijo no encoge por debajo de su
+      // contenido salvo que se le diga. Al lado de un botón «Nuevo», con una
+      // opción larga elegida —«Tolva para volquete (catálogo anterior)»— este
+      // desplegable se negaba a ceder, la fila se pasaba del ancho de su columna
+      // y el campo de al lado se montaba encima del botón. Se veía como si el
+      // botón estuviera tapado; en realidad era esta caja empujándolo fuera.
+      className={cn('relative min-w-0', className)}
       onBlur={(e) => {
         // Solo cierra si el foco se fue del componente entero, no al pasar de
         // la caja de búsqueda a una opción.
