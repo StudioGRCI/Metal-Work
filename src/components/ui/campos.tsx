@@ -97,31 +97,28 @@ export interface CampoProps {
  */
 const LARGO_QUE_ESTORBA = 70
 
-/** La «i» que guarda la ayuda larga, y la ayuda que sale al pasar por encima. */
-function AyudaEnIcono({ id, texto, etiqueta }: { id: string; texto: string; etiqueta: string }) {
+/**
+ * La «i» que guarda la ayuda larga. El texto lo pinta `Campo`, no este botón.
+ *
+ * Colgado del icono, el globo se salía por el borde derecho de la pantalla en
+ * los campos de la última columna: 256 px de ancho anclados a un icono que ya
+ * está pegado al borde no caben en ningún sitio. Anclado a la fila de la
+ * etiqueta —que mide exactamente lo que mide el campo— no puede salirse, porque
+ * el campo por definición cabe.
+ */
+function AyudaEnIcono({ id, etiqueta }: { id: string; etiqueta: string }) {
   return (
-    <span className="group relative inline-flex align-middle">
-      <button
-        type="button"
-        // Es un botón y no un icono suelto porque en el teléfono no hay «pasar
-        // por encima»: al tocarlo recibe el foco y `group-focus-within` muestra
-        // el texto. Un `title` de HTML se lo habría comido el táctil.
-        aria-label={`Qué es «${etiqueta}»`}
-        aria-describedby={id}
-        className="flex size-4 items-center justify-center rounded-full border border-borde text-[10px] leading-none font-semibold text-texto-tenue hover:border-acento hover:text-acento focus-visible:border-acento focus-visible:text-acento"
-      >
-        i
-      </button>
-      <span
-        id={id}
-        role="tooltip"
-        // `z-20` y colgando de la etiqueta: dentro de una tarjeta con varias
-        // columnas, salir por debajo del campo lo tapaba.
-        className="pointer-events-none absolute top-6 left-0 z-20 w-64 max-w-[70vw] rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2 text-xs leading-snug font-normal text-texto-suave opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-      >
-        {texto}
-      </span>
-    </span>
+    <button
+      type="button"
+      // Es un botón y no un icono suelto porque en el teléfono no hay «pasar por
+      // encima»: al tocarlo recibe el foco y `group-focus-within` muestra el
+      // texto. Un `title` de HTML se lo habría comido el táctil.
+      aria-label={`Qué es «${etiqueta}»`}
+      aria-describedby={id}
+      className="flex size-4 shrink-0 items-center justify-center rounded-full border border-borde text-[10px] leading-none font-semibold text-texto-tenue hover:border-acento hover:text-acento focus-visible:border-acento focus-visible:text-acento"
+    >
+      i
+    </button>
   )
 }
 
@@ -151,13 +148,26 @@ export function Campo({
 
   return (
     <div className={cn('space-y-1.5', className)}>
-      <div className="flex items-center gap-1.5">
+      {/* El globo cuelga de esta fila y no del icono: así mide lo que mide el
+          campo y no puede salirse de la pantalla. El grupo lleva nombre para
+          que lo abra pasar por la etiqueta o por la «i» —que es donde se busca
+          una explicación— y no el simple hecho de escribir en el campo. */}
+      <div className="group/ayuda relative flex items-center gap-1.5">
         <label htmlFor={htmlFor} className="block text-xs font-medium text-texto-suave">
           {etiqueta}
           {requerido && <span className="ml-0.5 text-peligro">*</span>}
         </label>
         {ayuda && enIcono && !error && (
-          <AyudaEnIcono id={idAyuda} texto={ayuda} etiqueta={etiqueta} />
+          <>
+            <AyudaEnIcono id={idAyuda} etiqueta={etiqueta} />
+            <span
+              id={idAyuda}
+              role="tooltip"
+              className="pointer-events-none absolute top-full left-0 z-20 mt-1 w-max max-w-full rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2 text-xs leading-snug font-normal text-texto-suave opacity-0 shadow-lg transition-opacity group-focus-within/ayuda:opacity-100 group-hover/ayuda:opacity-100"
+            >
+              {ayuda}
+            </span>
+          </>
         )}
       </div>
       {idDescripcion ? describirControl(children, idDescripcion, Boolean(error)) : children}
