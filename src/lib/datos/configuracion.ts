@@ -113,3 +113,30 @@ export async function ultimosTiposCambio(limite = 15) {
   if (error) throw new Error(`No se pudieron leer los tipos de cambio: ${error.message}`)
   return (data ?? []) as TipoCambio[]
 }
+
+/**
+ * Quién puede firmar y quién está elegido hoy.
+ *
+ * Los candidatos son el personal que no es de taller: firmar una cotización no
+ * es tarea de quien suelda. Sale de la misma tabla que el resto y no de una
+ * lista escrita a mano, para que dar de alta a alguien lo haga elegible sin
+ * tocar código.
+ */
+export async function quienFirmaLasCotizaciones() {
+  const supabase = await createClient()
+
+  const [empresa, candidatos] = await Promise.all([
+    supabase.from('empresa').select('gerente_general_id').limit(1).maybeSingle(),
+    supabase
+      .from('usuarios')
+      .select('id, nombres, apellidos, cargo')
+      .eq('activo', true)
+      .eq('es_operario', false)
+      .order('apellidos'),
+  ])
+
+  return {
+    gerenteId: (empresa.data?.gerente_general_id as string | null) ?? null,
+    candidatos: candidatos.data ?? [],
+  }
+}

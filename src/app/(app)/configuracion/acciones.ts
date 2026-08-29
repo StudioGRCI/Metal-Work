@@ -427,3 +427,43 @@ function nuloSiVacio(valor?: string) {
   const t = valor?.trim()
   return t ? t : null
 }
+
+/**
+ * Quién firma las cotizaciones.
+ *
+ * Vacío es una opción válida —el papel cierra entonces con la razón social— así
+ * que el campo se guarda tal cual: aquí «no hay nadie elegido» es una decisión,
+ * no un olvido, y confundir las dos cosas dejaría el nombre viejo pegado para
+ * siempre.
+ */
+export async function guardarQuienFirma(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion> {
+  const problema = await exigirEdicion()
+  if (problema) return { ok: false, error: problema }
+
+  const elegido = String(datos.get('gerente_general_id') ?? '').trim()
+  if (elegido && !/^[0-9a-f-]{36}$/i.test(elegido)) {
+    return { ok: false, error: 'Elige a alguien de la lista.' }
+  }
+
+  const supabase = await createClient()
+  const { data: empresa } = await supabase.from('empresa').select('id').limit(1).maybeSingle()
+  if (!empresa) return { ok: false, error: 'No se encontró la ficha de la empresa.' }
+
+  const { error } = await supabase
+    .from('empresa')
+    .update({ gerente_general_id: elegido || null })
+    .eq('id', empresa.id)
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+
+  revalidatePath('/configuracion')
+  return {
+    ok: true,
+    mensaje: elegido
+      ? 'Guardado. Las cotizaciones que se impriman desde ahora cierran con ese nombre.'
+      : 'Guardado. Las cotizaciones cierran con el nombre de la empresa.',
+  }
+}

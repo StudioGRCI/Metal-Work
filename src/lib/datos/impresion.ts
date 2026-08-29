@@ -16,6 +16,9 @@ export type Membrete = {
   telefono: string | null
   correo: string | null
   web: string | null
+  /** Quien firma la cotización. En la casa es siempre el gerente general. */
+  gerente_general: string | null
+  gerente_general_cargo: string | null
 }
 
 export type PartidaImpresa = {

@@ -3,12 +3,18 @@ import { Boton } from '@/components/ui/boton'
 import { Entrada } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { calendarioLaboral, catalogosDelTaller, ultimosTiposCambio } from '@/lib/datos/configuracion'
+import {
+  calendarioLaboral,
+  catalogosDelTaller,
+  quienFirmaLasCotizaciones,
+  ultimosTiposCambio,
+} from '@/lib/datos/configuracion'
 import { cantidad, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { DiasLaborables, Feriados } from './calendario'
 import { MedidasCarroceria, type CarroceriaConMedidas } from './medidas-carroceria'
+import { QuienFirma } from './quien-firma'
 import { TipoDeCambio } from './tipo-cambio'
 
 export const metadata = { title: 'Configuración' }
@@ -22,10 +28,11 @@ export default async function PaginaConfiguracion({
   const hoy = new Date().getFullYear()
   const anio = Number(typeof query.anio === 'string' ? query.anio : hoy) || hoy
 
-  const [calendario, catalogos, cambios] = await Promise.all([
+  const [calendario, catalogos, cambios, firma] = await Promise.all([
     calendarioLaboral(anio),
     catalogosDelTaller(),
     ultimosTiposCambio(),
+    quienFirmaLasCotizaciones(),
   ])
   const puedeEditar = puede(perfil, 'configuracion.editar')
 
@@ -64,6 +71,11 @@ export default async function PaginaConfiguracion({
           {/* Va primero a propósito: es el único dato de esta pantalla que, si
               falta, se cuela en cada cotización en dólares sin decir nada. */}
           <TipoDeCambio hoy={hoyLima()} cambios={cambios} puedeEditar={puedeEditar} />
+          <QuienFirma
+            gerenteId={firma.gerenteId}
+            candidatos={firma.candidatos}
+            puedeEditar={puedeEditar}
+          />
           <DiasLaborables dias={calendario.diasLaborables} puedeEditar={puedeEditar} />
           <Feriados anio={anio} feriados={calendario.feriados} puedeEditar={puedeEditar} />
         </div>

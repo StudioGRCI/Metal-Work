@@ -1257,6 +1257,7 @@ export type Database = {
           costo_indirecto_hora: number
           creado_en: string
           actualizado_en: string
+          gerente_general_id?: string | null
           dias_laborables: number[]
         }
         Insert: {
@@ -1277,6 +1278,7 @@ export type Database = {
           costo_indirecto_hora?: number
           creado_en?: string
           actualizado_en?: string
+          gerente_general_id?: string | null
           dias_laborables?: number[]
         }
         Update: {
@@ -1297,6 +1299,7 @@ export type Database = {
           costo_indirecto_hora?: number
           creado_en?: string
           actualizado_en?: string
+          gerente_general_id?: string | null
           dias_laborables?: number[]
         }
         Relationships: []

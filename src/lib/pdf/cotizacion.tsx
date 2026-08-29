@@ -132,7 +132,8 @@ const estilos = StyleSheet.create({
 
   condicionesBloque: { marginTop: 8, paddingLeft: 10 },
 
-  despedida: { fontSize: 8.5, marginBottom: 26 },
+  despedida: { fontSize: 8.5, marginBottom: 44 },
+  cargoFirma: { fontSize: 7.5, textAlign: 'center', color: GRIS, marginTop: 1 },
 
   filaDatos: { flexDirection: 'row', gap: 14 },
   columna: { flex: 1 },
@@ -228,10 +229,12 @@ const estilos = StyleSheet.create({
   },
   condiciones: { marginTop: 4 },
   parrafo: { fontSize: 7.8, marginBottom: 2, lineHeight: 1.35 },
-  // El cierre de la carta: «Atentamente,» y debajo quien vende. No es una firma
-  // —la empresa lo aclaró— y por eso no lleva raya ni hueco para firmar encima:
-  // es el nombre de quien atiende, que es lo que el cliente necesita para saber
-  // a quién llamar.
+  // El cierre de la carta: «Atentamente,» y debajo quien firma, que en esta
+  // empresa es siempre el gerente general —lo dijo con todas las letras—. El
+  // vendedor no va acá: sale arriba, como un dato más del documento.
+  //
+  // El hueco de la despedida es para que quepa la rúbrica a mano. No hay raya:
+  // se firma sobre el blanco, encima del nombre.
   cierreCarta: { marginTop: 40, alignItems: 'center' },
   nombreVendedor: {
     fontSize: 8.5,
@@ -563,6 +566,14 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
               valor={datos.contacto?.telefono ?? datos.cliente.telefono}
             />
             <Dato etiqueta="Correo" valor={datos.contacto?.correo} />
+            {/* Quien atiende, como dato y no como rúbrica: el cliente necesita
+                saber a quién llamar, y firmar la firma el gerente general. */}
+            <Dato
+              etiqueta="Vendedor"
+              valor={
+                datos.vendedor ? `${datos.vendedor.nombres} ${datos.vendedor.apellidos}` : null
+              }
+            />
           </View>
         </View>
 
@@ -785,11 +796,13 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
         <View style={estilos.cierreCarta} wrap={false}>
           <Text style={estilos.despedida}>Atentamente,</Text>
           <Text style={estilos.nombreVendedor}>
-            {(datos.vendedor
-              ? `${datos.vendedor.nombres} ${datos.vendedor.apellidos}`
-              : (empresa?.razon_social ?? 'Metal Work Perú S.A.C.')
-            ).toUpperCase()}
+            {(empresa?.gerente_general ?? empresa?.razon_social ?? 'Metal Work Perú S.A.C.').toUpperCase()}
           </Text>
+          {empresa?.gerente_general && (
+            <Text style={estilos.cargoFirma}>
+              {empresa.gerente_general_cargo ?? 'Gerente General'}
+            </Text>
+          )}
         </View>
 
         <View style={estilos.pie} fixed>
