@@ -2304,6 +2304,50 @@ export type Database = {
           }
         ]
       }
+      notificaciones: {
+        Row: {
+          id: string
+          usuario_id: string
+          titulo: string
+          cuerpo: string | null
+          ruta: string | null
+          origen_tabla: string | null
+          origen_id: string | null
+          leida_en: string | null
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          usuario_id: string
+          titulo: string
+          cuerpo?: string | null
+          ruta?: string | null
+          origen_tabla?: string | null
+          origen_id?: string | null
+          leida_en?: string | null
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          usuario_id?: string
+          titulo?: string
+          cuerpo?: string | null
+          ruta?: string | null
+          origen_tabla?: string | null
+          origen_id?: string | null
+          leida_en?: string | null
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notificaciones_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notas_cotizacion: {
         Row: {
           id: string

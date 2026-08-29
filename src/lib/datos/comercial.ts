@@ -143,8 +143,10 @@ export async function listarCotizacionesDeTrabajo(filtros: { estado?: string } =
     consulta = consulta.eq('estado', filtros.estado as EstadoCotizacion)
   } else {
     // Por defecto, el trabajo del área: lo que espera costeo, lo que Gerencia
-    // devolvió, y lo que ya subió a revisión, para poder seguirlo sin buscarlo.
-    consulta = consulta.in('estado', ['EN_COSTEO', 'OBSERVADA', 'EN_REVISION'])
+    // devolvió, lo que ya subió a revisión —para poder seguirlo sin buscarlo— y
+    // lo que Gerencia ya aprobó, porque la empresa pidió que el visto «les salga
+    // a ambos»: es lo que le dice a Administración que su trabajo pasó.
+    consulta = consulta.in('estado', ['EN_COSTEO', 'OBSERVADA', 'EN_REVISION', 'REVISADA'])
   }
 
   const { data, error } = await consulta
