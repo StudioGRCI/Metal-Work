@@ -84,7 +84,13 @@ async function main() {
     await pagina.fill('input[type="email"], input[name="correo"]', USUARIO)
     await pagina.fill('input[type="password"]', CLAVE)
     await pagina.click('button[type="submit"]')
-    await pagina.waitForLoadState('networkidle')
+    // Una acción de servidor no recarga la página, así que esperar a que la red
+    // se calme termina antes de tiempo y el botón todavía está girando. Se
+    // espera a que la dirección deje de ser la de ingreso, que es la señal de
+    // que el servidor contestó que sí.
+    await pagina
+      .waitForURL((u) => !u.pathname.includes('/ingresar'), { timeout: 45000 })
+      .catch(() => {})
     await capturar(pagina, '02-dentro')
 
     if (pagina.url().includes('/ingresar')) {
@@ -114,8 +120,23 @@ async function main() {
     anotar('precio escrito', '45000')
 
     await capturar(pagina, '04-llena')
-    await pagina.click('button[type="submit"]')
-    await pagina.waitForLoadState('networkidle')
+    // Por su nombre, no por `button[type=submit]`: el primero de la página es el
+    // de cerrar sesión de la barra superior, y el recorrido se salía del sistema
+    // creyendo que guardaba. El registro del servidor lo delató con un
+    // «POST /auth/salir» justo donde debía haber una cotización nueva.
+    const guardar = pagina.getByRole('button', { name: /crear cotización/i })
+    if ((await guardar.count()) === 0) {
+      throw new Error(
+        `no aparece el botón de crear. En pantalla: ${(
+          await pagina.getByRole('button').allTextContents()
+        ).join(' | ')}`,
+      )
+    }
+    await guardar.first().click()
+    // Crear la cotización redirige a su detalle: se espera esa dirección.
+    await pagina
+      .waitForURL((u) => /\/cotizaciones\/[0-9a-f-]{36}/.test(u.pathname), { timeout: 45000 })
+      .catch(() => {})
     await capturar(pagina, '05-guardada')
 
     const avisos = await avisosEnPantalla(pagina)
@@ -127,21 +148,44 @@ async function main() {
     anotar('cotización creada', pagina.url().split('/').pop())
 
     // ------------------------------------------------ pasarla a costeo
+    // El detalle entra por su esqueleto de carga, así que preguntar por los
+    // botones en cuanto cambia la dirección devuelve los cuatro del tema y
+    // ninguno más. Se espera al botón, no al reloj.
     const pasar = pagina.getByRole('button', { name: /cotización de trabajo/i })
-    if ((await pasar.count()) === 0) {
+    try {
+      await pasar.first().waitFor({ state: 'visible', timeout: 30000 })
+    } catch {
       throw new Error(
         `no aparece el botón «Pasar a cotización de trabajo». En pantalla: ${(
           await pagina.getByRole('button').allTextContents()
-        ).join(' | ')}`,
+        )
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .join(' | ')}`,
       )
     }
     await pasar.first().click()
-    await pagina.waitForLoadState('networkidle')
+    // Pasar a costeo no cambia de dirección: cambia la insignia de la etapa.
+    await pagina
+      .getByText('En costeo', { exact: false })
+      .first()
+      .waitFor({ timeout: 45000 })
+      .catch(() => {})
     await capturar(pagina, '06-en-costeo')
     anotar('pasó a costeo', (await avisosEnPantalla(pagina)).join(' · ') || 'sin aviso')
 
     // ------------------------------------------------ ¿está en la bandeja?
     await pagina.goto(`${URL_BASE}/cotizaciones/trabajo`, { waitUntil: 'networkidle' })
+
+    // La bandeja entra por su esqueleto, y contar filas antes de que termine da
+    // cero: es lo que hizo a este mismo recorrido dictaminar que la cotización
+    // no aparecía cuando sí estaba. Se espera a que la pantalla conteste una de
+    // las dos cosas —una fila o el mensaje de vacío— antes de juzgar.
+    await Promise.race([
+      pagina.locator('tbody tr').first().waitFor({ state: 'visible', timeout: 30000 }),
+      pagina.getByText('No hay nada esperando costeo').waitFor({ timeout: 30000 }),
+    ]).catch(() => {})
+
     await capturar(pagina, '07-bandeja')
     const filas = await pagina.locator('tbody tr').count()
     const vacia = await pagina.getByText('No hay nada esperando costeo').count()
