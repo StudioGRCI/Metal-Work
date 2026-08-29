@@ -88,6 +88,44 @@ const estilos = StyleSheet.create({
     marginBottom: 5,
   },
 
+  // El producto, como abre su papel: grande, centrado y subrayado. El
+  // interlineado explícito porque a este tamaño la caja automática se queda
+  // corta y la línea de abajo se le monta.
+  tituloProducto: {
+    fontSize: 12,
+    fontFamily: 'Helvetica-Bold',
+    color: AZUL,
+    textAlign: 'center',
+    textDecoration: 'underline',
+    lineHeight: 1.3,
+    marginTop: 8,
+    marginBottom: 2,
+  },
+
+  // La ficha va en una columna, no en dos: sus etiquetas son largas
+  // —«LONGITUD CAMA ÚTIL»— y en dos columnas los dos puntos dejan de alinearse.
+  especificaciones: { paddingLeft: 10 },
+  especEtiqueta: { width: 132, fontSize: 8, fontFamily: 'Helvetica-Bold' },
+  especValor: { flex: 1, fontSize: 8, lineHeight: 1.35 },
+  normas: {
+    fontSize: 8,
+    fontFamily: 'Helvetica-Bold',
+    marginTop: 6,
+    marginBottom: 2,
+    paddingLeft: 10,
+  },
+
+  negrita: { fontFamily: 'Helvetica-Bold' },
+  // El total con fondo amarillo, como lo resalta su papel.
+  totalResaltado: {
+    fontFamily: 'Helvetica-Bold',
+    backgroundColor: '#FFF2A8',
+  },
+
+  condicionesBloque: { marginTop: 8, paddingLeft: 10 },
+
+  despedida: { fontSize: 8.5, marginBottom: 26 },
+
   filaDatos: { flexDirection: 'row', gap: 14 },
   columna: { flex: 1 },
   dato: { flexDirection: 'row', marginBottom: 1.5 },
@@ -221,8 +259,14 @@ const estilos = StyleSheet.create({
   textoPie: { fontSize: 6.8, color: GRIS },
 })
 
-/** Anchos de la tabla de partidas, en porcentaje del ancho útil. */
-const COL = { item: '6%', descripcion: '50%', cantidad: '10%', unidad: '10%', precio: '24%' } as const
+/** Anchos de la tabla de la propuesta, en porcentaje del ancho útil. */
+const COL = {
+  item: '8%',
+  descripcion: '44%',
+  cantidad: '13%',
+  unitario: '17.5%',
+  total: '17.5%',
+} as const
 
 function Dato({ etiqueta, valor, fuerte }: { etiqueta: string; valor?: string | null; fuerte?: boolean }) {
   return (
@@ -385,10 +429,49 @@ function concepto(c: CotizacionImpresa) {
  * el bruto -el mismo número del TOTAL-, y si no, el neto, que es el que cuadra
  * con el Subtotal. El desglose de abajo no cambia en ningún caso.
  */
+/** «11.80 MTS», como lo escribe la casa. Sin dato, nada: una raya no informa. */
+function enMetros(valor: number | null | undefined): string | null {
+  if (valor === null || valor === undefined) return null
+  const n = Number(valor)
+  if (!Number.isFinite(n) || n <= 0) return null
+  return `${numero(n, 2)} MTS`
+}
+
+/**
+ * La cantidad de la propuesta con dos dígitos —«01»—, que es como la escriben.
+ * Solo cuando es un entero: «1.50 unidades» con cero delante no se lee.
+ */
+function cantidadImpresa(valor: number): string {
+  const n = Number(valor) || 1
+  return Number.isInteger(n) ? String(n).padStart(2, '0') : numero(n, 2)
+}
+
+/**
+ * El precio total de la línea, que es el que va resaltado.
+ *
+ * Con el IGV incluido es el total tal cual; sin él, la base imponible menos el
+ * descuento —el mismo número que el papel llama «precio total» y que el
+ * renglón de condiciones explica—.
+ */
+function totalImpreso(c: CotizacionImpresa): number {
+  return c.incluye_igv ? c.total : c.subtotal - c.descuento
+}
+
 function precioDelConcepto(c: CotizacionImpresa) {
   const cantidad = Number(c.concepto_cantidad) || 1
   const base = c.subtotal - c.descuento
   return (c.incluye_igv ? c.total : base) / cantidad
+}
+
+/** Un renglón de la ficha: etiqueta a la izquierda, dos puntos y el dato. */
+function Especificacion({ etiqueta, valor }: { etiqueta: string; valor?: string | null }) {
+  if (!valor) return null
+  return (
+    <View style={estilos.dato}>
+      <Text style={estilos.especEtiqueta}>{`— ${etiqueta}`}</Text>
+      <Text style={estilos.especValor}>{`: ${valor}`}</Text>
+    </View>
+  )
 }
 
 function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: Buffer | null }) {
@@ -467,32 +550,40 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
           </View>
         </View>
 
-        {/* -------------------------------------------------------- la unidad */}
-        {(datos.unidad || datos.carroceria || medidas(datos) || datos.capacidad) && (
-          <>
-            <Text style={estilos.tituloSeccion}>UNIDAD Y CARROCERÍA</Text>
-            <View style={estilos.filaDatos}>
-              <View style={estilos.columna}>
-                <Dato etiqueta="Carrocería" valor={datos.carroceria} fuerte />
-                <Dato etiqueta="Marca" valor={datos.marca} />
-                <Dato etiqueta="Modelo" valor={datos.modelo} />
-                {/* El año va en todas sus fichas. No es una cantidad: numero()
-                    lo escribiría «2,024», así que se imprime tal cual. */}
-                <Dato
-                  etiqueta="Año"
-                  valor={datos.unidad?.anio ? String(datos.unidad.anio) : null}
-                />
-                <Dato etiqueta="Tipo" valor={datos.tipo} />
-              </View>
-              <View style={estilos.columna}>
-                <Dato etiqueta="Unidad" valor={unidadImpresa(datos.unidad)} />
-                <Dato etiqueta="Medidas" valor={medidas(datos)} />
-                <Dato etiqueta="Capacidad" valor={datos.capacidad} />
-                <Dato etiqueta="Peso neto" valor={pesoImpreso(datos)} />
-              </View>
-            </View>
-          </>
-        )}
+        {/* ------------------------------------------------ el nombre del trabajo */}
+        {/* Su papel abre con el producto en grande y subrayado —«SEMIRREMOLQUE
+            CAMA BAJA 03 EJES SUSPENSIÓN MECÁNICA»— antes de cualquier detalle.
+            Es lo primero que el cliente mira para saber si la cotización que
+            tiene en la mano es la que pidió. */}
+        <Text style={estilos.tituloProducto}>{concepto(datos).toUpperCase()}</Text>
+
+        {/* ------------------------------------------- especificaciones técnicas */}
+        {/* Los renglones de su ficha, con sus mismas etiquetas y en su orden.
+            El que no tiene dato no se imprime: una raya al lado de «PESO NETO»
+            no informa, ocupa. */}
+        <Text style={estilos.tituloSeccion}>ESPECIFICACIONES TÉCNICAS</Text>
+        <View style={estilos.especificaciones}>
+          <Especificacion etiqueta="MARCA" valor={datos.marca ?? 'METAL WORK'} />
+          <Especificacion
+            etiqueta="AÑO"
+            valor={datos.anio_fabricacion ? String(datos.anio_fabricacion) : null}
+          />
+          <Especificacion etiqueta="CARROCERÍA" valor={datos.carroceria_texto ?? datos.carroceria} />
+          <Especificacion etiqueta="TIPO" valor={datos.tipo} />
+          <Especificacion etiqueta="LONGITUD" valor={enMetros(datos.largo_m)} />
+          <Especificacion etiqueta="LONGITUD CAMA ÚTIL" valor={enMetros(datos.largo_util_m)} />
+          <Especificacion etiqueta="ANCHO" valor={enMetros(datos.ancho_m)} />
+          <Especificacion etiqueta="ALTO" valor={enMetros(datos.alto_m)} />
+          <Especificacion etiqueta="CAPACIDAD" valor={datos.capacidad} />
+          <Especificacion etiqueta="PESO NETO" valor={pesoImpreso(datos)} />
+          <Especificacion etiqueta="EJES" valor={datos.ejes} />
+          <Especificacion etiqueta="UNIDAD" valor={unidadImpresa(datos.unidad)} />
+        </View>
+
+        {/* La línea de normas va suelta bajo la ficha, sin viñeta y sin sección:
+            así está en sus papeles. */}
+        {datos.normas ? <Text style={estilos.normas}>{datos.normas}</Text> : null}
+
 
         {/* --------------------------------------------------- ficha técnica */}
         {datos.ficha.length > 0 && (
@@ -577,68 +668,77 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
           <Text style={estilos.tituloSeccion}>PROPUESTA ECONÓMICA:</Text>
           <View style={estilos.tabla}>
             <View style={estilos.encabezado}>
-              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.item }]}>ÍTEM</Text>
-              <Text style={[estilos.celdaTitulo, { width: COL.descripcion }]}>DESCRIPCIÓN</Text>
-              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.cantidad }]}>CANT.</Text>
-              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.unidad }]}>UND.</Text>
-              <Text style={[estilos.celdaTitulo, estilos.derecha, { width: COL.precio }]}>PRECIO</Text>
+              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.item }]}>ITEM</Text>
+              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.descripcion }]}>
+                DESCRIPCIÓN
+              </Text>
+              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.cantidad }]}>
+                CANTIDAD
+              </Text>
+              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.unitario }]}>
+                PRECIO UNITARIO
+              </Text>
+              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.total }]}>
+                PRECIO TOTAL
+              </Text>
             </View>
 
             <View style={estilos.fila}>
-              <Text style={[estilos.celda, estilos.centro, { width: COL.item }]}>1</Text>
-              <Text style={[estilos.celda, { width: COL.descripcion }]}>{concepto(datos)}</Text>
-              <Text style={[estilos.celda, estilos.centro, { width: COL.cantidad }]}>
-                {numero(datos.concepto_cantidad, 2)}
+              <Text style={[estilos.celda, estilos.centro, { width: COL.item }]}>1.</Text>
+              <Text
+                style={[estilos.celda, estilos.centro, estilos.negrita, { width: COL.descripcion }]}
+              >
+                {concepto(datos).toUpperCase()}
               </Text>
-              <Text style={[estilos.celda, estilos.centro, { width: COL.unidad }]}>
-                {datos.concepto_unidad}
+              <Text
+                style={[estilos.celda, estilos.centro, estilos.negrita, { width: COL.cantidad }]}
+              >
+                {cantidadImpresa(datos.concepto_cantidad)}
               </Text>
-              <Text style={[estilos.celda, estilos.derecha, { width: COL.precio }]}>
+              <Text
+                style={[estilos.celda, estilos.centro, estilos.negrita, { width: COL.unitario }]}
+              >
                 {moneda(precioDelConcepto(datos), mon)}
+              </Text>
+              {/* El total resaltado, como en su papel: es la cifra que el
+                  cliente busca y la que se discute. */}
+              <Text
+                style={[estilos.celda, estilos.centro, estilos.totalResaltado, { width: COL.total }]}
+              >
+                {moneda(totalImpreso(datos), mon)}
               </Text>
             </View>
           </View>
 
-          <View style={estilos.bloqueTotales}>
-            <View style={estilos.totales}>
-              <View style={estilos.lineaTotal}>
-                <Text>Subtotal</Text>
-                <Text>{moneda(datos.subtotal, mon)}</Text>
-              </View>
-              {datos.descuento > 0 && (
-                <View style={estilos.lineaTotal}>
-                  <Text>Descuento</Text>
-                  <Text>− {moneda(datos.descuento, mon)}</Text>
-                </View>
-              )}
-              <View style={estilos.lineaTotal}>
-                <Text>{`IGV (${numero(datos.igv_porcentaje, 0)}%)`}</Text>
-                <Text>{moneda(datos.igv, mon)}</Text>
-              </View>
-              <View style={estilos.lineaTotalFuerte}>
-                <Text style={estilos.textoTotal}>TOTAL</Text>
-                <Text style={estilos.textoTotal}>{moneda(datos.total, mon)}</Text>
-              </View>
-              <Text style={[estilos.textoPie, { textAlign: 'right', marginTop: 2 }]}>
-                {datos.incluye_igv
-                  ? 'El precio indicado ya incluye el IGV'
-                  : 'El precio indicado no incluye el IGV; se detalla arriba'}
-              </Text>
-            </View>
-          </View>
+          {/* Sin desglose de subtotal e IGV: su papel no lo lleva. Lo dice en
+              una línea de las condiciones —«Expresado en dólares americanos e
+              incluye IGV»— y el descuento, cuando lo hay, ya está dentro del
+              precio que se ofrece. Un desglose que el original no tiene invita
+              a discutir cifras que nadie preguntó. */}
+          {datos.descuento > 0 && (
+            <Text style={[estilos.textoPie, { textAlign: 'right', marginTop: 3 }]}>
+              {`Incluye un descuento de ${moneda(datos.descuento, mon)}`}
+            </Text>
+          )}
 
         {/* ----------------------------------------------------- condiciones */}
         {/* Siempre las mismas cinco y en este orden, que es el de sus papeles:
             precio, forma de pago, validez, garantía y tiempo de entrega. Quien
             recibe la cotización las busca en ese renglón; cambiarlas de sitio
             obliga a leer el documento entero para encontrar el plazo. */}
-        <Text style={estilos.tituloSeccion}>CONDICIONES COMERCIALES</Text>
-        <View>
+        {/* Las cuatro de su papel, en su orden —precio, forma de pago,
+            garantía y tiempo de entrega— y la validez al final. La validez no
+            está en el suyo, pero el sistema la lleva y una cotización que vence
+            sin avisar es peor que un renglón de más.
+
+            Sin la banda azul de sección: en su papel estas cuatro van sueltas
+            debajo de la tabla, alineadas por los dos puntos. */}
+        <View style={estilos.condicionesBloque}>
           <Condicion etiqueta="PRECIO" valor={textoPrecio(datos, mon)} fuerte />
           <Condicion etiqueta="FORMA DE PAGO" valor={datos.forma_pago} />
-          <Condicion etiqueta="VALIDEZ" valor={textoValidez(datos)} />
-          <Condicion etiqueta="GARANTÍA" valor={textoGarantia(datos)} />
+          <Condicion etiqueta="GARANTIA" valor={textoGarantia(datos)} />
           <Condicion etiqueta="TIEMPO DE ENTREGA" valor={textoPlazo(datos)} />
+          <Condicion etiqueta="VALIDEZ" valor={textoValidez(datos)} />
         </View>
 
         {cierre.length > 0 && (
@@ -661,21 +761,18 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
         {/* Una sola firma, la de la casa. El recuadro de conformidad del
             cliente se quitó por decisión de Gerencia: una cotización no se
             devuelve firmada, se acepta con una orden de compra. */}
+        {/* «Atentamente,» y el nombre de quien atiende, sin raya. Así lo
+            manda la casa: la raya la puso este sistema por su cuenta, y la
+            empresa avisó de que sobraba —una cotización se acepta con una orden
+            de compra, no devolviéndola firmada—. */}
         <View style={estilos.firmas} wrap={false}>
-          <View style={estilos.firma}>
-            <View style={estilos.espacioFirma} />
-            <View style={estilos.lineaFirma}>
-              <Text style={estilos.nombreFirma}>
-                {datos.vendedor
-                  ? `${datos.vendedor.nombres} ${datos.vendedor.apellidos}`
-                  : empresa?.razon_social ?? 'Metal Work Perú S.A.C.'}
-              </Text>
-              <Text style={estilos.textoFirma}>
-                {[datos.vendedor?.telefono, datos.vendedor?.correo].filter(Boolean).join(' · ') ||
-                  'Área Comercial'}
-              </Text>
-            </View>
-          </View>
+          <Text style={estilos.despedida}>Atentamente,</Text>
+          <Text style={estilos.nombreFirma}>
+            {(datos.vendedor
+              ? `${datos.vendedor.nombres} ${datos.vendedor.apellidos}`
+              : (empresa?.razon_social ?? 'Metal Work Perú S.A.C.')
+            ).toUpperCase()}
+          </Text>
         </View>
 
         <View style={estilos.pie} fixed>

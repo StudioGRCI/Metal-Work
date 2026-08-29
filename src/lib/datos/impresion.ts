@@ -72,6 +72,15 @@ export type CotizacionImpresa = {
   alto_m: number | null
   capacidad: string | null
   peso_neto_tn: number | null
+  /** Los cuatro renglones de su ficha que el sistema no sabía guardar hasta la
+   *  migración 059, más la línea de normas: año de fabricación de la carrocería
+   *  —no del chasis—, cómo se describe la carrocería, la cama útil (que en una
+   *  cama baja no es el largo total) y los ejes con su trocha. */
+  anio_fabricacion: number | null
+  carroceria_texto: string | null
+  largo_util_m: number | null
+  ejes: string | null
+  normas: string | null
   /** La tolerancia del peso, «+/- 5%», que la empresa siempre escribe: sin ella
    *  el peso impreso se lee como exacto y nadie firma un peso exacto. */
   peso_tolerancia: string | null
@@ -186,6 +195,11 @@ export async function cotizacionParaImprimir(id: string): Promise<CotizacionImpr
     alto_m: numeroOpcional(c.alto_m),
     capacidad: (c.capacidad as string | null) ?? null,
     peso_neto_tn: numeroOpcional(c.peso_neto_tn),
+    anio_fabricacion: numeroOpcional((c as Record<string, unknown>).anio_fabricacion),
+    carroceria_texto: ((c as Record<string, unknown>).carroceria_texto as string | null) ?? null,
+    largo_util_m: numeroOpcional((c as Record<string, unknown>).largo_util_m),
+    ejes: ((c as Record<string, unknown>).ejes as string | null) ?? null,
+    normas: ((c as Record<string, unknown>).normas as string | null) ?? null,
     peso_tolerancia: (c.peso_tolerancia as string | null) ?? null,
     cliente: c.cliente as CotizacionImpresa['cliente'],
     contacto: primerContacto(c.contacto),
