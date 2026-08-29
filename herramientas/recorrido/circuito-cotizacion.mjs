@@ -20,7 +20,7 @@
  * se puede hacer sin credenciales.
  */
 import { chromium } from 'playwright-core'
-import { mkdirSync, existsSync } from 'node:fs'
+import { mkdirSync, existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const URL_BASE = process.env.URL ?? 'http://localhost:3111'
@@ -281,9 +281,16 @@ async function main() {
     // ------------------------------------------------------------- el papel
     const papel = await pagina.request.get(`${URL_BASE}/cotizaciones/${idCotizacion}/pdf`)
     const tipo = papel.headers()['content-type'] ?? ''
-    const peso = (await papel.body()).length
+    const cuerpo = await papel.body()
+    const peso = cuerpo.length
     if (!tipo.includes('pdf')) throw new Error(`el papel no salió en PDF, salió ${tipo}`)
-    anotar('el papel sale', `${Math.round(peso / 1024)} KB`)
+
+    // Se guarda junto a las capturas: el papel es lo único de todo el circuito
+    // que sale de la empresa, y las quejas que llegan son de cómo se ve —«las
+    // firmas están muy pegadas»—, no de si el endpoint contestó 200.
+    mkdirSync(CAPTURAS, { recursive: true })
+    writeFileSync(join(CAPTURAS, 'cotizacion.pdf'), cuerpo)
+    anotar('el papel sale', `${Math.round(peso / 1024)} KB — guardado en cotizacion.pdf`)
 
     // ---------------------------------------------- el cliente la recibe y contesta
     // Descargar marca ENVIADA —ese es el gesto que la manda— y recién entonces
