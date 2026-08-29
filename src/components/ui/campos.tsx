@@ -74,6 +74,55 @@ export interface CampoProps {
   error?: string
   className?: string
   children: React.ReactNode
+  /**
+   * Fuerza la ayuda al icono aunque sea corta, o la baja al pie aunque sea
+   * larga. Sin esto decide el largo del texto (ver `LARGO_QUE_ESTORBA`).
+   */
+  ayudaEnIcono?: boolean
+}
+
+/**
+ * A partir de acá, una ayuda deja de acompañar y empieza a estorbar.
+ *
+ * Un «Días calendario» debajo del campo se lee de reojo y no molesta a nadie.
+ * Un párrafo de cuatro renglones explicando el IGV separa el campo del
+ * siguiente, alarga el formulario y obliga a desplazarse para llegar al botón
+ * de guardar; en el teléfono, el campo del precio y el de plazo terminaban a
+ * media pantalla de distancia. Esos se guardan detrás de una «i» y salen al
+ * pasar por encima o al tocarla.
+ *
+ * El texto sigue estando en el documento y sigue atado al control con
+ * `aria-describedby`: quien usa lector de pantalla lo escucha igual que antes.
+ * Esconder no es quitar.
+ */
+const LARGO_QUE_ESTORBA = 70
+
+/** La «i» que guarda la ayuda larga, y la ayuda que sale al pasar por encima. */
+function AyudaEnIcono({ id, texto, etiqueta }: { id: string; texto: string; etiqueta: string }) {
+  return (
+    <span className="group relative inline-flex align-middle">
+      <button
+        type="button"
+        // Es un botón y no un icono suelto porque en el teléfono no hay «pasar
+        // por encima»: al tocarlo recibe el foco y `group-focus-within` muestra
+        // el texto. Un `title` de HTML se lo habría comido el táctil.
+        aria-label={`Qué es «${etiqueta}»`}
+        aria-describedby={id}
+        className="flex size-4 items-center justify-center rounded-full border border-borde text-[10px] leading-none font-semibold text-texto-tenue hover:border-acento hover:text-acento focus-visible:border-acento focus-visible:text-acento"
+      >
+        i
+      </button>
+      <span
+        id={id}
+        role="tooltip"
+        // `z-20` y colgando de la etiqueta: dentro de una tarjeta con varias
+        // columnas, salir por debajo del campo lo tapaba.
+        className="pointer-events-none absolute top-6 left-0 z-20 w-64 max-w-[70vw] rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2 text-xs leading-snug font-normal text-texto-suave opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+      >
+        {texto}
+      </span>
+    </span>
+  )
 }
 
 export function Campo({
@@ -84,6 +133,7 @@ export function Campo({
   error,
   className,
   children,
+  ayudaEnIcono,
 }: CampoProps) {
   // `useId` da el mismo identificador en el servidor y en el navegador; uno al
   // azar dispararía error de hidratación en cuanto los dos no coincidieran.
@@ -95,12 +145,21 @@ export function Campo({
   // lector en lugar de ayudarlo.
   const idDescripcion = error ? idError : ayuda ? idAyuda : undefined
 
+  // La ayuda larga se va a la «i» de la etiqueta; la corta se queda al pie,
+  // donde se lee de reojo sin tener que ir a buscarla.
+  const enIcono = ayuda ? (ayudaEnIcono ?? ayuda.length > LARGO_QUE_ESTORBA) : false
+
   return (
     <div className={cn('space-y-1.5', className)}>
-      <label htmlFor={htmlFor} className="block text-xs font-medium text-texto-suave">
-        {etiqueta}
-        {requerido && <span className="ml-0.5 text-peligro">*</span>}
-      </label>
+      <div className="flex items-center gap-1.5">
+        <label htmlFor={htmlFor} className="block text-xs font-medium text-texto-suave">
+          {etiqueta}
+          {requerido && <span className="ml-0.5 text-peligro">*</span>}
+        </label>
+        {ayuda && enIcono && !error && (
+          <AyudaEnIcono id={idAyuda} texto={ayuda} etiqueta={etiqueta} />
+        )}
+      </div>
       {idDescripcion ? describirControl(children, idDescripcion, Boolean(error)) : children}
       {error ? (
         // `role="alert"` para que el motivo del rechazo se lea solo al aparecer:
@@ -109,7 +168,8 @@ export function Campo({
           {error}
         </p>
       ) : (
-        ayuda && (
+        ayuda &&
+        !enIcono && (
           <p id={idAyuda} className="text-xs text-texto-tenue">
             {ayuda}
           </p>

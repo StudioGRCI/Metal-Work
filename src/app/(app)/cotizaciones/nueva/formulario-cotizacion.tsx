@@ -113,7 +113,10 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
     <form action={ejecutar} className="max-w-3xl space-y-4">
       <Tarjeta>
         <TarjetaCabecera titulo="Cliente y trabajo" />
-        <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2">
+        {/* Más aire entre columnas: el botón de «Nuevo» de la izquierda queda
+            a un dedo del campo de la derecha, y con el hueco de siempre parecía
+            pertenecerle a ese otro campo. */}
+        <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2 sm:gap-x-6">
           <Campo etiqueta="Cliente" htmlFor="cliente_id" requerido>
             <div className="flex items-center gap-2">
               <SeleccionBuscable

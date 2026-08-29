@@ -105,7 +105,10 @@ const esquemaUnidad = z.object({
   color: z.string().trim().optional(),
   capacidad_m3: z.string().trim().optional(),
   capacidad_toneladas: z.string().trim().optional(),
-  tipo_carroceria_id: z.string().uuid().optional().or(z.literal('')),
+  // Obligatoria desde que la ficha empieza por «qué es esta unidad»: sin la
+  // carrocería, el taller no sabe qué se va a fabricar y la orden nace muda.
+  // La placa, en cambio, puede faltar —hay chasis que llegan sin matricular—.
+  tipo_carroceria_id: z.string().uuid('Elige el tipo de carrocería'),
   observaciones: z.string().trim().optional(),
 })
 

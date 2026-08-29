@@ -29,8 +29,14 @@ export const TAMANOS: Record<Tamano, string> = {
   icono: 'size-11 sm:size-9 justify-center',
 }
 
+// `shrink-0` y `whitespace-nowrap` porque un botón nunca debe encoger. Al lado
+// de un desplegable con `flex-1` —el patrón de «elige uno o crea uno nuevo» que
+// hay en cotizaciones, órdenes y unidades— el desplegable se llevaba todo el
+// ancho y al botón le recortaba la palabra: quedaba un «+» pelado, pegado al
+// campo siguiente, que parecía pertenecer a ese otro campo. La empresa lo
+// reportó como «el botón de más lo tapa unidad».
 export const BASE_BOTON =
-  'inline-flex items-center rounded-[var(--radius-base)] font-medium transition-colors'
+  'inline-flex shrink-0 items-center whitespace-nowrap rounded-[var(--radius-base)] font-medium transition-colors'
 
 export interface BotonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variante?: Variante

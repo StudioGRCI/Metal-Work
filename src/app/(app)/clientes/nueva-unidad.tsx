@@ -90,30 +90,20 @@ export function NuevaUnidad({
         <form action={enviar} className="grid gap-4 sm:grid-cols-3">
           <input type="hidden" name="cliente_id" value={clienteId} />
 
-          <Campo
-                etiqueta="Placa"
-                htmlFor="nu-placa"
-                ayuda="Si el chasis todavía no está matriculado, déjala vacía"
-              >
-            {/* La placa se escribe en mayúsculas y nunca la sabe el
-                navegador: sin esto el teclado del teléfono la empieza en
-                minúscula y el corrector la "arregla". Teclado normal, que la
-                placa peruana lleva letras. */}
-            <Entrada
-              id="nu-placa"
-              name="placa"
-              autoFocus
-              autoComplete="off"
-              autoCapitalize="characters"
-              autoCorrect="off"
-              spellCheck={false}
-              placeholder="V2G-841"
-              className="tabular uppercase"
-            />
-          </Campo>
-
+          {/* Qué es la unidad va primero, y es lo obligatorio: el tipo de
+              vehículo y la carrocería son lo que la casa necesita para saber
+              qué se va a fabricar. La placa viene después porque muchas veces
+              todavía no existe —el chasis llega sin matricular— y encabezar el
+              formulario con un campo que a menudo se deja vacío hacía empezar
+              en falso. */}
           <Campo etiqueta="Tipo de vehículo" htmlFor="nu-tipo_vehiculo" requerido>
-            <Seleccion id="nu-tipo_vehiculo" name="tipo_vehiculo" defaultValue="VOLQUETE">
+            <Seleccion
+              id="nu-tipo_vehiculo"
+              name="tipo_vehiculo"
+              defaultValue="VOLQUETE"
+              autoFocus
+              required
+            >
               {TIPOS_VEHICULO.map(([valor, etiqueta]) => (
                 <option key={valor} value={valor}>
                   {etiqueta}
@@ -122,15 +112,37 @@ export function NuevaUnidad({
             </Seleccion>
           </Campo>
 
-          <Campo etiqueta="Tipo de carrocería" htmlFor="nu-tipo_carroceria_id">
+          <Campo etiqueta="Tipo de carrocería" htmlFor="nu-tipo_carroceria_id" requerido>
             <SeleccionBuscable
               id="nu-tipo_carroceria_id"
               name="tipo_carroceria_id"
               valor={carroceriaId}
               onChange={setCarroceriaId}
-              marcador="Sin especificar"
+              marcador="Elige la carrocería"
               marcadorBusqueda="Tolva, cisterna, furgón…"
+              requerido
               opciones={tiposCarroceria.map((t) => ({ valor: t.id, etiqueta: t.nombre }))}
+            />
+          </Campo>
+
+          <Campo
+            etiqueta="Placa"
+            htmlFor="nu-placa"
+            ayuda="Déjala vacía si el chasis todavía no está matriculado: la unidad se nombra sola con el chasis o el código interno hasta que tenga placa."
+          >
+            {/* La placa se escribe en mayúsculas y nunca la sabe el
+                navegador: sin esto el teclado del teléfono la empieza en
+                minúscula y el corrector la "arregla". Teclado normal, que la
+                placa peruana lleva letras. */}
+            <Entrada
+              id="nu-placa"
+              name="placa"
+              autoComplete="off"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="V2G-841"
+              className="tabular uppercase"
             />
           </Campo>
 
