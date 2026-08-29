@@ -4,8 +4,9 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { fecha as fechaDelDia, numero } from '@/lib/format'
+import { fecha as fechaDelDia, hoyLima, numero } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
+import { traerDeSunat } from '@/lib/tipo-cambio/sunat'
 import { createClient } from '@/lib/supabase/server'
 
 async function exigirEdicion() {
@@ -262,7 +263,10 @@ export async function registrarTipoCambio(
   const supabase = await createClient()
   const { error } = await supabase
     .from('tipos_cambio')
-    .upsert({ fecha: analisis.data.fecha, compra, venta }, { onConflict: 'fecha' })
+    .upsert(
+      { fecha: analisis.data.fecha, compra, venta, fuente: 'MANUAL' },
+      { onConflict: 'fecha' },
+    )
 
   if (error) return { ok: false, error: mensajeDeError(error) }
 
@@ -270,5 +274,70 @@ export async function registrarTipoCambio(
   return {
     ok: true,
     mensaje: `Tipo de cambio del ${fechaDelDia(analisis.data.fecha)} guardado, venta ${numero(venta, 3)}. Lo que se emita desde acá ya lo usa; lo ya emitido conserva el suyo.`,
+  }
+}
+
+/**
+ * Traerlo de SUNAT en vez de escribirlo.
+ *
+ * Escribirlo a mano todos los días es una tarea que alguien deja de hacer un
+ * martes cualquiera, y el sistema no se cae cuando eso pasa: sigue costeando
+ * con el cambio de la última vez que alguien se acordó. Este botón —y el mismo
+ * trabajo, una vez al día, desde el cron— es lo que hace que dejar de acordarse
+ * no cueste plata.
+ *
+ * No pisa lo que ya está: si el día pedido ya tiene cambio, no consulta. El
+ * servicio corta con 429 a la segunda consulta seguida, y además un valor
+ * corregido a mano no se reemplaza por el automático a espaldas de quien lo
+ * corrigió.
+ */
+export async function traerTipoCambioDeSunat(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion> {
+  const problema = await exigirEdicion()
+  if (problema) return { ok: false, error: problema }
+
+  const pedida = String(datos.get('fecha') ?? '')
+  const fecha = /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : hoyLima()
+
+  const supabase = await createClient()
+
+  const { data: yaEsta } = await supabase
+    .from('tipos_cambio')
+    .select('fecha, venta, fuente')
+    .eq('fecha', fecha)
+    .maybeSingle()
+
+  if (yaEsta) {
+    return {
+      ok: true,
+      mensaje: `El ${fechaDelDia(fecha)} ya tenía cambio cargado (venta ${numero(yaEsta.venta, 3)}, ${yaEsta.fuente}). No se volvió a consultar.`,
+    }
+  }
+
+  const resultado = await traerDeSunat(fecha)
+  if (!resultado.ok) return { ok: false, error: resultado.error }
+
+  const { cambio } = resultado
+  const { error } = await supabase
+    .from('tipos_cambio')
+    .upsert(
+      { fecha: cambio.fecha, compra: cambio.compra, venta: cambio.venta, fuente: cambio.fuente },
+      { onConflict: 'fecha' },
+    )
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+
+  revalidatePath('/configuracion')
+
+  // SUNAT no publica sábados, domingos ni feriados: contesta con el último día
+  // hábil. Se dice, porque si no parece que el botón no hizo caso a la fecha.
+  const otroDia = cambio.fecha !== fecha
+  return {
+    ok: true,
+    mensaje: otroDia
+      ? `SUNAT no publicó el ${fechaDelDia(fecha)}; se guardó el del ${fechaDelDia(cambio.fecha)}, venta ${numero(cambio.venta, 3)}.`
+      : `Tipo de cambio del ${fechaDelDia(cambio.fecha)} traído de SUNAT, venta ${numero(cambio.venta, 3)}.`,
   }
 }

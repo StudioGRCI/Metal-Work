@@ -4998,18 +4998,21 @@ export type Database = {
           fecha: string
           compra: number
           venta: number
+          fuente: string
           creado_en: string
         }
         Insert: {
           fecha: string
           compra: number
           venta: number
+          fuente?: string
           creado_en?: string
         }
         Update: {
           fecha?: string
           compra?: number
           venta?: number
+          fuente?: string
           creado_en?: string
         }
         Relationships: []

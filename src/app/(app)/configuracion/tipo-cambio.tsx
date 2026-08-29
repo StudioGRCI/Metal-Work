@@ -1,6 +1,6 @@
 'use client'
 
-import { CircleDollarSign } from 'lucide-react'
+import { CircleDollarSign, Download } from 'lucide-react'
 import { useActionState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
@@ -10,7 +10,7 @@ import type { TipoCambio } from '@/lib/datos/configuracion'
 import { fecha as formatearFecha, numero } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import { registrarTipoCambio } from './acciones'
+import { registrarTipoCambio, traerTipoCambioDeSunat } from './acciones'
 
 function Aviso({ resultado }: { resultado: { ok?: boolean; error?: string; mensaje?: string } | null }) {
   if (!resultado?.mensaje && resultado?.ok !== false) return null
@@ -50,10 +50,19 @@ export function TipoDeCambio({
   puedeEditar: boolean
 }) {
   const [resultado, accion, guardando] = useActionState(registrarTipoCambio, null)
+  const [resultadoSunat, accionSunat, trayendo] = useActionState(traerTipoCambioDeSunat, null)
 
   // La lista viene del más reciente al más antiguo: el primero es justo el que
   // `tipo_cambio_vigente()` está aplicando a todo lo que se emite hoy.
   const vigente = cambios[0] ?? null
+
+  // Se cuenta contra el hoy que resolvió el servidor, no contra el reloj del
+  // navegador: si el que mira tiene el reloj corrido, el aviso mentiría.
+  const diasDeAtraso = vigente
+    ? Math.round(
+        (Date.parse(hoy + 'T00:00:00Z') - Date.parse(vigente.fecha + 'T00:00:00Z')) / 86400000,
+      )
+    : 0
 
   return (
     <Tarjeta>
@@ -63,17 +72,34 @@ export function TipoDeCambio({
       />
       <TarjetaCuerpo className="space-y-3">
         {vigente ? (
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2.5">
-            <span className="text-[11px] font-medium tracking-wide text-texto-suave uppercase">
-              Vigente
-            </span>
-            <span className="tabular text-xl leading-tight font-semibold text-acento">
-              S/ {numero(vigente.venta, 3)}
-            </span>
-            <span className="text-xs text-texto-suave">
-              venta · compra <span className="tabular">S/ {numero(vigente.compra, 3)}</span> · del{' '}
-              {formatearFecha(vigente.fecha)}
-            </span>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2.5">
+              <span className="text-[11px] font-medium tracking-wide text-texto-suave uppercase">
+                Vigente
+              </span>
+              <span className="tabular text-xl leading-tight font-semibold text-acento">
+                S/ {numero(vigente.venta, 3)}
+              </span>
+              <span className="text-xs text-texto-suave">
+                venta · compra <span className="tabular">S/ {numero(vigente.compra, 3)}</span> · del{' '}
+                {formatearFecha(vigente.fecha)} · {vigente.fuente}
+              </span>
+            </div>
+
+            {/* El modo silencioso de equivocarse: la base no se queda sin dato,
+                se queda con el de la última vez que alguien se acordó, y sigue
+                costeando con él sin decir nada. Un dólar de hace tres semanas
+                no avisa, solo desvía el presupuesto de a poquito. */}
+            {diasDeAtraso > 3 && (
+              <p
+                role="status"
+                className="rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-xs text-aviso"
+              >
+                Este cambio es del {formatearFecha(vigente.fecha)}: {diasDeAtraso} días atrás. Todo
+                lo que se cotice hoy en dólares se está costeando con él.
+                {puedeEditar ? ' Tráelo de SUNAT o cárgalo a mano.' : ''}
+              </p>
+            )}
           </div>
         ) : (
           // No es una lista vacía cualquiera: es la que hace que todo lo
@@ -92,6 +118,25 @@ export function TipoDeCambio({
                 : ' Lo carga administración desde esta misma pantalla.'}
             </p>
           </div>
+        )}
+
+        {puedeEditar && (
+          // Traerlo es un formulario aparte del de escribirlo: comparten la
+          // tarjeta pero no el estado, así que el aviso de uno no borra el del
+          // otro y se ve cuál de los dos contestó.
+          <form action={accionSunat} className="flex flex-wrap items-center gap-2">
+            <input type="hidden" name="fecha" value={hoy} />
+            <Boton type="submit" variante="secundario" tamano="sm" cargando={trayendo}>
+              <Download aria-hidden className="size-3.5" />
+              Traerlo de SUNAT
+            </Boton>
+            <span className="text-xs text-texto-tenue">
+              Se trae solo una vez al día. Si el día ya está cargado, no lo pisa.
+            </span>
+            <div className="w-full">
+              <Aviso resultado={resultadoSunat} />
+            </div>
+          </form>
         )}
 
         {puedeEditar && (

@@ -84,6 +84,8 @@ export type TipoCambio = {
   fecha: string
   compra: number
   venta: number
+  /** MANUAL cuando lo escribió alguien, o el servicio que lo publicó. */
+  fuente: string
 }
 
 /**
@@ -100,7 +102,7 @@ export async function ultimosTiposCambio(limite = 15) {
 
   const { data, error } = await supabase
     .from('tipos_cambio')
-    .select('fecha, compra, venta')
+    .select('fecha, compra, venta, fuente')
     .order('fecha', { ascending: false })
     .limit(limite)
 

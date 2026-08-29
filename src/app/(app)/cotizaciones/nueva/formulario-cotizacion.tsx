@@ -217,10 +217,15 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
             />
           </Campo>
 
+          {/* Dólares primero porque es lo que la casa cotiza. Estaba en soles y
+              había que acordarse de cambiarlo: el que se olvidaba emitía una
+              cotización de «S/ 40,000» por un trabajo de US$ 40,000, y eso no
+              se ve hasta que el cliente contesta. El orden de las opciones
+              también cambia, para que el ojo no elija por costumbre. */}
           <Campo etiqueta="Moneda" htmlFor="moneda">
-            <Seleccion id="moneda" name="moneda" defaultValue="PEN">
-              <option value="PEN">Soles (S/)</option>
+            <Seleccion id="moneda" name="moneda" defaultValue="USD">
               <option value="USD">Dólares (US$)</option>
+              <option value="PEN">Soles (S/)</option>
             </Seleccion>
           </Campo>
 

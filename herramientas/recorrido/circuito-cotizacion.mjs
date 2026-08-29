@@ -145,6 +145,21 @@ async function main() {
     }
     anotar('entró', pagina.url())
 
+    // ------------------------------------------------ el cambio que va a regir
+    // La casa cotiza en dólares y costea en soles, así que el presupuesto de la
+    // orden depende de esta cifra. Se lee de la pantalla en vez de suponerla:
+    // así el recorrido comprueba de paso que Configuración la está mostrando, y
+    // no se rompe cada día cuando el dólar se mueve.
+    await pagina.goto(`${URL_BASE}/configuracion`, { waitUntil: 'networkidle' })
+    const vigente = pagina.locator('div').filter({ hasText: /^Vigente/ }).last()
+    await vigente.waitFor({ state: 'visible', timeout: 30000 })
+    const textoCambio = (await vigente.innerText()).replace(/\s+/g, ' ')
+    const tipoCambio = Number(textoCambio.match(/S\/\s*([\d.,]+)/)?.[1]?.replace(/,/g, '') ?? '0')
+    if (!(tipoCambio > 0)) {
+      throw new Error(`no se pudo leer el tipo de cambio vigente · «${textoCambio.slice(0, 120)}»`)
+    }
+    anotar('tipo de cambio vigente', tipoCambio)
+
     // -------------------------------------------------- la cotización de venta
     await pagina.goto(`${URL_BASE}/cotizaciones/nueva`, { waitUntil: 'networkidle' })
     await capturar(pagina, '03-nueva-cotizacion')
@@ -160,10 +175,18 @@ async function main() {
     anotar('clientes a elegir', String(cuantos))
     await opciones.first().click()
 
+    // La moneda no se toca a propósito: se comprueba que viene en dólares sola,
+    // que es lo que la casa cotiza. Ponerla a mano acá haría pasar el recorrido
+    // aunque el desplegable volviera a abrir en soles, que es justo el olvido
+    // que se quiso quitar de encima.
+    const moneda = await pagina.locator('#moneda').inputValue()
+    if (moneda !== 'USD') throw new Error(`la cotización abre en ${moneda}, se esperaba USD`)
+    anotar('abre en dólares', 'sin tocar el desplegable')
+
     const precio = pagina.locator('input[name="precio_venta"]')
     if ((await precio.count()) === 0) throw new Error('no existe el campo de precio ofrecido')
     await precio.fill(String(PRECIO_VENTA))
-    anotar('precio escrito', PRECIO_VENTA)
+    anotar('precio escrito', `US$ ${PRECIO_VENTA}`)
 
     await capturar(pagina, '04-llena')
     // Por su nombre, no por `button[type=submit]`: el primero de la página es el
@@ -351,18 +374,36 @@ async function main() {
     const cifra = (await tarjeta.innerText()).replace(/\s+/g, ' ').trim()
     const numero = Number((cifra.match(/[\d.,]{3,}/)?.[0] ?? '0').replace(/,/g, ''))
 
-    // Tiene que ser el COSTO que cargó Administración, no el precio que puso
-    // Ventas. Es la comprobación que importa de todo el recorrido: cuando la
-    // orden nacía con el precio, nada fallaba ni avisaba —la pantalla mostraba
-    // un número redondo y creíble— y el taller se pasaba de plata en verde.
-    if (numero !== COSTO_PARTIDA) {
+    // Acá se cruzan las dos cosas que este circuito puede confundir, y las dos
+    // se confundían de verdad hasta hoy:
+    //
+    //   · el COSTO con el PRECIO — la orden nacía presupuestada con lo que se
+    //     le cobró al cliente, así que un trabajo pasado de costo salía en
+    //     verde;
+    //   · los DÓLARES con los SOLES — se cotiza en dólares y se gasta en soles,
+    //     y sin convertir, un presupuesto de US$ 30,000 se comparaba contra
+    //     facturas en soles como si fueran la misma plata.
+    //
+    // Ninguna de las dos se cae ni avisa: las dos dan un número creíble.
+    const esperado = Math.round(COSTO_PARTIDA * tipoCambio * 100) / 100
+    const equivocaciones = [
+      [COSTO_PARTIDA, 'el costo en dólares, sin pasarlo a soles'],
+      [Math.round(PRECIO_VENTA * tipoCambio * 100) / 100, 'el PRECIO de venta en soles, no el costo'],
+      [PRECIO_VENTA, 'el PRECIO de venta en dólares'],
+    ]
+
+    if (Math.abs(numero - esperado) > 1) {
+      const conocida = equivocaciones.find(([v]) => Math.abs(numero - v) <= 1)
       throw new Error(
-        numero === PRECIO_VENTA
-          ? `la orden nació con el PRECIO (${numero}) en vez del costo (${COSTO_PARTIDA})`
-          : `presupuesto inesperado: ${numero}, se esperaba ${COSTO_PARTIDA} · «${cifra}»`,
+        conocida
+          ? `la orden nació con ${conocida[1]}: ${numero}, se esperaba ${esperado}`
+          : `presupuesto inesperado: ${numero}, se esperaba ${esperado} · «${cifra}»`,
       )
     }
-    anotar('presupuesto en la orden', `${cifra} — es el costo, no el precio`)
+    anotar(
+      'presupuesto en la orden',
+      `${cifra} — el costo de US$ ${COSTO_PARTIDA} pasado a soles al ${tipoCambio}`,
+    )
   } finally {
     if (errores.length > 0) {
       console.log('\nErrores de consola del navegador:')

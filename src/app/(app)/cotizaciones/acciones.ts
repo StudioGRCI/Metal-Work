@@ -402,9 +402,14 @@ function sumarDiasCorridos(desde: string, dias: number): string {
 function presupuestoDeUnaUnidad(cotizacion: {
   costo_estimado?: number | null
   concepto_cantidad?: number | null
+  tipo_cambio?: number | null
 }): number {
   const unidades = Math.max(Number(cotizacion.concepto_cantidad) || 1, 1)
-  return Math.round(((Number(cotizacion.costo_estimado) || 0) / unidades) * 100) / 100
+  // El cambio pasa la cifra a soles. En una cotización en soles vale 1 —eso lo
+  // fija la base, no la falta de dato— así que la cuenta es la misma para las
+  // dos monedas y no hace falta preguntar por la moneda acá.
+  const aSoles = Number(cotizacion.tipo_cambio) || 1
+  return Math.round(((Number(cotizacion.costo_estimado) || 0) * aSoles) / unidades * 100) / 100
 }
 
 /**
@@ -456,7 +461,7 @@ export async function convertirEnOrden(_previo: unknown, datos: FormData): Promi
     // fabricar. Sin traerlos, la orden nace con el nombre de una partida y con
     // una fecha contada en días corridos.
     .select(
-      'id, estado, cliente_id, unidad_id, tipo_carroceria_id, moneda, total, costo_estimado, concepto, concepto_cantidad, plazo_entrega_dias, plazo_en_habiles, largo_m, ancho_m, alto_m, capacidad, observaciones, partidas:cotizacion_partidas(descripcion)',
+      'id, estado, cliente_id, unidad_id, tipo_carroceria_id, moneda, tipo_cambio, total, costo_estimado, concepto, concepto_cantidad, plazo_entrega_dias, plazo_en_habiles, largo_m, ancho_m, alto_m, capacidad, observaciones, partidas:cotizacion_partidas(descripcion)',
     )
     .eq('id', cotizacionId)
     .maybeSingle()
@@ -546,7 +551,13 @@ export async function convertirEnOrden(_previo: unknown, datos: FormData): Promi
       tipo_carroceria_id: cotizacion.tipo_carroceria_id,
       sede_id: sedeId,
       descripcion,
-      moneda: cotizacion.moneda,
+      // La orden va SIEMPRE en soles, aunque se haya cotizado en dólares. No es
+      // un detalle de formato: el costo real que se le va a comparar —material
+      // del almacén, horas del personal, indirectos— está todo en soles. Una
+      // orden en dólares con gastos en soles compara peras con manzanas y la
+      // desviación deja de significar nada. El puente es el tipo de cambio que
+      // la cotización congeló, y por eso queda escrito en ella.
+      moneda: 'PEN',
       // El presupuesto de la orden es lo que se espera GASTAR, no lo que se le
       // cobró al cliente: contra él se mide después la desviación del taller.
       // Hasta el circuito de tres manos daba igual —el total de la cotización
