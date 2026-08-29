@@ -5,6 +5,7 @@ import path from 'node:path'
 
 import {
   Document,
+  Font,
   Image,
   Page,
   StyleSheet,
@@ -17,6 +18,13 @@ import { cantidad, fecha, moneda, numero } from '@/lib/format'
 import type { CodigoMoneda } from '@/lib/format'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import type { CotizacionImpresa } from '@/lib/datos/impresion'
+
+// Sin partir palabras. El motor corta con guion cuando algo no entra en su
+// columna, y en el papel de la casa eso salía como «MENBER INGENIERIA
+// CONSTRUCCION Y SER-VICIOS S.R.L.»: la razón social de un cliente partida a la
+// mitad en el encabezado del documento que se le manda. Antes que un guion, que
+// la palabra pase entera a la línea siguiente.
+Font.registerHyphenationCallback((palabra) => [palabra])
 
 // Los colores del manual de identidad. En el papel el azul es el que manda y
 // el rojo se reserva para la marca, igual que en los documentos impresos.
@@ -268,11 +276,21 @@ const COL = {
   total: '17.5%',
 } as const
 
+/**
+ * Un renglón de datos. Sin dato no hay renglón.
+ *
+ * Antes escribía una raya, y en una cotización sin contacto cargado el bloque
+ * del cliente salía con tres rayas seguidas —«Atención —», «Teléfono —»,
+ * «Correo —»— que no dicen nada y ocupan tres renglones del papel que se le
+ * manda al cliente. El papel de la casa directamente no lleva esos renglones
+ * cuando no hay a quién dirigirlos.
+ */
 function Dato({ etiqueta, valor, fuerte }: { etiqueta: string; valor?: string | null; fuerte?: boolean }) {
+  if (!valor?.trim()) return null
   return (
     <View style={estilos.dato}>
       <Text style={estilos.etiqueta}>{etiqueta}</Text>
-      <Text style={fuerte ? estilos.valorFuerte : estilos.valor}>{valor || '—'}</Text>
+      <Text style={fuerte ? estilos.valorFuerte : estilos.valor}>{valor}</Text>
     </View>
   )
 }
