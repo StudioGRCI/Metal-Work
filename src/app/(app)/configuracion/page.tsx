@@ -8,6 +8,7 @@ import { cantidad, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { DiasLaborables, Feriados } from './calendario'
+import { MedidasCarroceria, type CarroceriaConMedidas } from './medidas-carroceria'
 import { TipoDeCambio } from './tipo-cambio'
 
 export const metadata = { title: 'Configuración' }
@@ -71,7 +72,7 @@ export default async function PaginaConfiguracion({
           <Tarjeta>
             <TarjetaCabecera
               titulo="Tipos de carrocería"
-              descripcion="Lo que el taller fabrica. Cada uno arrastra su ficha y sus pasos de verificación."
+              descripcion="Lo que el taller fabrica, con las medidas que la cotización copia al elegir el tipo. Una vez copiadas se corrigen en la cotización."
             />
             <TarjetaCuerpo className="space-y-1">
               {/* La lista vacía sin explicación se lee como pantalla rota. Es
@@ -83,15 +84,11 @@ export default async function PaginaConfiguracion({
                 </p>
               )}
               {catalogos.carrocerias.map((c) => (
-                <div key={c.id} className="flex items-center justify-between gap-3 border-b border-borde py-1.5 text-sm last:border-0">
-                  <span className="text-texto">
-                    {c.nombre}
-                    {!c.activo && <span className="ml-2 text-[11px] text-texto-tenue">(inactivo)</span>}
-                  </span>
-                  <span className="tabular text-xs text-texto-suave">
-                    {cantidad(c.horas_hombre_estandar)} h estándar
-                  </span>
-                </div>
+                <MedidasCarroceria
+                  key={c.id}
+                  carroceria={c as unknown as CarroceriaConMedidas}
+                  puedeEditar={puedeEditar}
+                />
               ))}
             </TarjetaCuerpo>
           </Tarjeta>

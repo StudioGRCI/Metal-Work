@@ -97,9 +97,19 @@ const esquemaUnidad = z.object({
     .optional()
     .refine((p) => !p || p.length >= 6, 'La placa tiene menos caracteres de los que lleva una placa'),
   tipo_vehiculo: z.enum(['VOLQUETE', 'TRACTO', 'SEMIRREMOLQUE', 'CAMION', 'REMOLQUE', 'FURGON', 'OTRO']),
-  marca: z.string().trim().optional(),
-  modelo: z.string().trim().optional(),
-  anio: z.string().trim().optional(),
+  // Marca, modelo y año son obligatorios desde que la empresa pidió que una
+  // unidad sin esos datos no pueda estar en el catálogo: sin ellos la ficha de
+  // la cotización sale con rayas y el taller no sabe sobre qué chasis fabrica.
+  // La placa sigue siendo opcional —hay chasis que llegan sin matricular—, que
+  // es otra cosa: se puede no tener todavía, pero la marca del camión se sabe
+  // desde el primer día.
+  marca: z.string().trim().min(2, 'Falta la marca del vehículo'),
+  modelo: z.string().trim().min(1, 'Falta el modelo del vehículo'),
+  anio: z.coerce
+    .number({ message: 'Falta el año del vehículo' })
+    .int()
+    .min(1950, 'El año no parece correcto')
+    .max(2100, 'El año no parece correcto'),
   numero_chasis: z.string().trim().optional(),
   numero_motor: z.string().trim().optional(),
   color: z.string().trim().optional(),
@@ -140,9 +150,9 @@ export async function guardarUnidad(
     cliente_id: v.cliente_id,
     placa: nulo(v.placa),
     tipo_vehiculo: v.tipo_vehiculo,
-    marca: nulo(v.marca),
-    modelo: nulo(v.modelo),
-    anio: numeroOpcional(v.anio),
+    marca: v.marca,
+    modelo: v.modelo,
+    anio: v.anio,
     numero_chasis: nulo(v.numero_chasis),
     numero_motor: nulo(v.numero_motor),
     color: nulo(v.color),

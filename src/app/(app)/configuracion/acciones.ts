@@ -341,3 +341,89 @@ export async function traerTipoCambioDeSunat(
       : `Tipo de cambio del ${fechaDelDia(cambio.fecha)} traído de SUNAT, venta ${numero(cambio.venta, 3)}.`,
   }
 }
+
+const esquemaMedidasCarroceria = z.object({
+  id: z.string().uuid(),
+  modelo: z.string().trim().optional(),
+  tipo: z.string().trim().optional(),
+  largo_m: z.string().trim().optional(),
+  ancho_m: z.string().trim().optional(),
+  alto_m: z.string().trim().optional(),
+  capacidad: z.string().trim().optional(),
+  peso_neto_tn: z.string().trim().optional(),
+})
+
+/**
+ * Una cifra que puede venir vacía, con coma decimal o mal escrita.
+ *
+ * La coma es la que está a mano en el teclado y hay navegadores que la mandan
+ * tal cual; sin cambiarla por punto, `Number()` devuelve NaN y se rechaza un
+ * número que estaba bien escrito. Vacío es vacío —se borra el dato— y no cero,
+ * que en una medida significa otra cosa.
+ */
+function medidaOpcional(texto?: string): number | null {
+  const limpio = texto?.trim().replace(',', '.')
+  if (!limpio) return null
+  const n = Number(limpio)
+  return Number.isFinite(n) && n >= 0 ? n : null
+}
+
+/**
+ * Las medidas de referencia de un tipo de carrocería.
+ *
+ * Son lo que la cotización copia al elegir el tipo: una tolva volquete de piso
+ * circular mide lo que mide, y escribirlo en cada cotización terminaba en fichas
+ * con rayas. Copiadas a la cotización se pueden corregir ahí —«a veces no todas
+ * terminan igual»— sin que eso toque este catálogo.
+ */
+export async function guardarMedidasCarroceria(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion> {
+  const problema = await exigirEdicion()
+  if (problema) return { ok: false, error: problema }
+
+  const analisis = esquemaMedidasCarroceria.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa las medidas.' }
+  }
+
+  const v = analisis.data
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('tipos_carroceria')
+    .update({
+      modelo: nuloSiVacio(v.modelo),
+      tipo: nuloSiVacio(v.tipo),
+      largo_m: medidaOpcional(v.largo_m),
+      ancho_m: medidaOpcional(v.ancho_m),
+      alto_m: medidaOpcional(v.alto_m),
+      capacidad: nuloSiVacio(v.capacidad),
+      peso_neto_tn: medidaOpcional(v.peso_neto_tn),
+    })
+    .eq('id', v.id)
+    // Sin esto, una política de RLS que esconda la fila deja el UPDATE en cero
+    // filas y la pantalla dice «guardado» sin haber guardado nada.
+    .select('id')
+    .maybeSingle()
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) {
+    return {
+      ok: false,
+      error: 'No se pudo guardar: tu perfil no tiene permiso para cambiar el catálogo.',
+    }
+  }
+
+  revalidatePath('/configuracion')
+  return {
+    ok: true,
+    mensaje: 'Medidas guardadas. Las cotizaciones nuevas de este tipo las traen solas.',
+  }
+}
+
+function nuloSiVacio(valor?: string) {
+  const t = valor?.trim()
+  return t ? t : null
+}

@@ -5023,6 +5023,13 @@ export type Database = {
           codigo: string
           nombre: string
           descripcion: string | null
+          modelo: string | null
+          tipo: string | null
+          largo_m: number | null
+          ancho_m: number | null
+          alto_m: number | null
+          capacidad: string | null
+          peso_neto_tn: number | null
           horas_hombre_estandar: number
           peso_estimado_kg: number
           precio_referencial: number
@@ -5037,6 +5044,13 @@ export type Database = {
           codigo: string
           nombre: string
           descripcion?: string | null
+          modelo?: string | null
+          tipo?: string | null
+          largo_m?: number | null
+          ancho_m?: number | null
+          alto_m?: number | null
+          capacidad?: string | null
+          peso_neto_tn?: number | null
           horas_hombre_estandar?: number
           peso_estimado_kg?: number
           precio_referencial?: number
@@ -5051,6 +5065,13 @@ export type Database = {
           codigo?: string
           nombre?: string
           descripcion?: string | null
+          modelo?: string | null
+          tipo?: string | null
+          largo_m?: number | null
+          ancho_m?: number | null
+          alto_m?: number | null
+          capacidad?: string | null
+          peso_neto_tn?: number | null
           horas_hombre_estandar?: number
           peso_estimado_kg?: number
           precio_referencial?: number

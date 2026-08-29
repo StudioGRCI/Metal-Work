@@ -152,15 +152,24 @@ export function NuevaUnidad({
             />
           </Campo>
 
-          <Campo etiqueta="Marca" htmlFor="nu-marca">
-            <Entrada id="nu-marca" name="marca" autoComplete="off" placeholder="VOLVO" />
+          {/* Los tres son obligatorios: una unidad sin marca, modelo ni año no
+              puede estar en el catálogo. Sin ellos la ficha de la cotización
+              sale con rayas y el taller no sabe sobre qué chasis fabrica. */}
+          <Campo etiqueta="Marca" htmlFor="nu-marca" requerido>
+            <Entrada id="nu-marca" name="marca" autoComplete="off" placeholder="VOLVO" required />
           </Campo>
 
-          <Campo etiqueta="Modelo" htmlFor="nu-modelo">
-            <Entrada id="nu-modelo" name="modelo" autoComplete="off" placeholder="FMX 440" />
+          <Campo etiqueta="Modelo" htmlFor="nu-modelo" requerido>
+            <Entrada
+              id="nu-modelo"
+              name="modelo"
+              autoComplete="off"
+              placeholder="FMX 440"
+              required
+            />
           </Campo>
 
-          <Campo etiqueta="Año" htmlFor="nu-anio">
+          <Campo etiqueta="Año" htmlFor="nu-anio" requerido>
             <Entrada
               id="nu-anio"
               name="anio"
@@ -169,6 +178,7 @@ export function NuevaUnidad({
               min={1950}
               max={2100}
               className="tabular"
+              required
             />
           </Campo>
 

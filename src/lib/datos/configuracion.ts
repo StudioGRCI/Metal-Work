@@ -40,7 +40,11 @@ export async function catalogosDelTaller() {
   const [carrocerias, etapas, fichas, verificaciones] = await Promise.all([
     supabase
       .from('tipos_carroceria')
-      .select('id, codigo, nombre, horas_hombre_estandar, activo')
+      // Las medidas viajan porque son lo que la cotización copia al elegir el
+      // tipo: si no se ven acá, nadie sabe qué va a traer.
+      .select(
+        'id, codigo, nombre, horas_hombre_estandar, activo, modelo, tipo, largo_m, ancho_m, alto_m, capacidad, peso_neto_tn',
+      )
       .order('orden_secuencia'),
     supabase
       .from('etapas_catalogo')
