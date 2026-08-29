@@ -128,6 +128,9 @@ export default async function PaginaCotizacion({
   const costoEstimado = Number(cotizacion.costo_estimado ?? 0)
   const hayPrecio = cotizacion.precio_venta !== null && precioVenta > 0
   const margen = precioVenta - costoEstimado
+  // Sin partidas cargadas no hay costo, y sin costo no hay margen: la resta
+  // daría el precio entero y eso no es margen, es la falta del dato.
+  const hayCosteo = costoEstimado > 0
 
   /*
    * El tipo de cambio se congela al emitir. `tipo_cambio_vigente()` responde 1
@@ -332,13 +335,9 @@ export default async function PaginaCotizacion({
                 <Indicador
                   titulo="Margen"
                   icono={Percent}
-                  tono={margenTono(hayPrecio, margen)}
-                  valor={hayPrecio ? moneda(margen, mon) : '—'}
-                  pie={
-                    hayPrecio
-                      ? `${porcentaje((margen / precioVenta) * 100, 1)} del precio`
-                      : 'Sin precio no hay margen que medir'
-                  }
+                  tono={margenTono(hayPrecio, hayCosteo, margen)}
+                  valor={hayPrecio && hayCosteo ? moneda(margen, mon) : '—'}
+                  pie={pieDelMargen(hayPrecio, hayCosteo, margen, precioVenta)}
                 />
               )}
             </div>
@@ -542,11 +541,28 @@ function BarraCircuito({ estado }: { estado: string }) {
 /**
  * El margen no es un adorno: si el costo se comió el precio, Gerencia tiene que
  * verlo antes de dar el visto, no después de fabricar.
+ *
+ * Y sin costeo no hay margen. Una cotización recién creada tiene precio y no
+ * tiene partidas, así que la resta daba el precio entero y la tarjeta anunciaba
+ * «100.0% del precio» en verde: el mejor margen posible, sobre un trabajo que
+ * nadie ha costeado. Un número creíble y falso es peor que ningún número —el
+ * que lo lee decide con él— así que mientras no haya costo se dice que falta.
  */
-function margenTono(hayPrecio: boolean, margen: number): TonoIndicador {
-  if (!hayPrecio) return 'neutro'
+function margenTono(hayPrecio: boolean, hayCosteo: boolean, margen: number): TonoIndicador {
+  if (!hayPrecio || !hayCosteo) return 'neutro'
   if (margen <= 0) return 'peligro'
   return 'exito'
+}
+
+function pieDelMargen(
+  hayPrecio: boolean,
+  hayCosteo: boolean,
+  margen: number,
+  precioVenta: number,
+): string {
+  if (!hayPrecio) return 'Sin precio no hay margen que medir'
+  if (!hayCosteo) return 'Falta el costeo: se sabrá cuando Administración cargue las partidas'
+  return `${porcentaje((margen / precioVenta) * 100, 1)} del precio`
 }
 
 function Dato({ etiqueta, valor }: { etiqueta: string; valor?: string | number | null }) {

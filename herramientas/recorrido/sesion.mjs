@@ -43,11 +43,14 @@ export async function sesionGuardada({ urlBase, usuario, clave, archivo, intento
 
   try {
     for (let intento = 1; intento <= intentos; intento++) {
-      // `networkidle` y no `domcontentloaded`: con el segundo, el clic caía
-      // antes de que React hidratara y el formulario se enviaba en crudo —sin
-      // acción y sin campos con nombre—, así que la pantalla se recargaba igual
-      // y parecía que el ingreso no respondía.
-      await pagina.goto(`${urlBase}/ingresar`, { waitUntil: 'networkidle', timeout: 60000 })
+      // Ni `domcontentloaded` ni `networkidle`. Con el primero el clic caía antes
+      // de que React hidratara y el formulario se enviaba en crudo —sin acción y
+      // sin campos con nombre—, así que la pantalla se recargaba y parecía que
+      // el ingreso no respondía. Con el segundo, la espera no terminaba nunca
+      // cuando alguna petición se quedaba abierta, y ni se llegaba a escribir la
+      // contraseña. Se espera al `load` y se le da un respiro a la hidratación.
+      await pagina.goto(`${urlBase}/ingresar`, { waitUntil: 'load', timeout: 60000 })
+      await pagina.waitForTimeout(2000)
       await pagina.fill('input[type="email"], input[name="correo"]', usuario)
       await pagina.fill('input[type="password"]', clave)
       await pagina.click('button[type="submit"]')
@@ -61,7 +64,13 @@ export async function sesionGuardada({ urlBase, usuario, clave, archivo, intento
         .then(() => true)
         .catch(() => false)
 
-      if (entro) {
+      // Si la espera venció, puede que la navegación esté llegando justo ahora:
+      // el tablero tarda, y preguntarle a la página en ese instante revienta con
+      // «execution context destroyed». Se le da un respiro y se vuelve a mirar
+      // antes de declarar que no entró.
+      if (!entro) await pagina.waitForTimeout(5000)
+
+      if (entro || !pagina.url().includes('/ingresar')) {
         const estado = await contexto.storageState()
         mkdirSync(dirname(archivo), { recursive: true })
         writeFileSync(archivo, JSON.stringify(estado))
@@ -71,9 +80,13 @@ export async function sesionGuardada({ urlBase, usuario, clave, archivo, intento
       // Un `[role="alert"]` vacío no es un mensaje: el hueco existe siempre y
       // solo se llena cuando hay algo que decir. Tomarlo por un error hacía
       // contar «no se pudo entrar: » con la razón en blanco.
-      const avisos = (await pagina.locator('[role="alert"]').allTextContents())
-        .map((t) => t.trim())
-        .filter(Boolean)
+      // En try/catch porque leer la pantalla mientras navega tira una excepción
+      // que no dice nada del ingreso y esconde el motivo de verdad.
+      const avisos = await pagina
+        .locator('[role="alert"]')
+        .allTextContents()
+        .then((ts) => ts.map((x) => x.trim()).filter(Boolean))
+        .catch(() => [])
       if (avisos.length > 0) throw new Error(`no se pudo entrar: ${avisos.join(' · ')}`)
       console.log(`  (el ingreso no respondió, intento ${intento} de ${intentos})`)
     }
