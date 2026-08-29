@@ -1,5 +1,16 @@
 import Link from 'next/link'
-import { AlertTriangle, ClipboardList, Factory, PauseCircle, Plus, Zap } from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ClipboardList,
+  Factory,
+  FileText,
+  HandCoins,
+  PauseCircle,
+  Plus,
+  Send,
+  Zap,
+} from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
@@ -9,7 +20,8 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_OT, ORDEN_ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
-import { fecha } from '@/lib/format'
+import { fecha, moneda } from '@/lib/format'
+import { resumenComercial, type ResumenComercial } from '@/lib/datos/comercial'
 import { indicadoresTablero, listarOrdenes } from '@/lib/datos/ordenes'
 import { exigirSesion, puede } from '@/lib/sesion'
 
@@ -18,7 +30,23 @@ export const metadata = { title: 'Tablero' }
 export default async function PaginaTablero() {
   const perfil = await exigirSesion()
 
+  const veVentas = puede(perfil, 'cotizaciones.ver')
+  const comercial = veVentas ? await resumenComercial(perfil) : null
+
   if (!puede(perfil, 'ordenes.ver')) {
+    // Quien vende no tiene por qué ver órdenes de trabajo, pero sí lo suyo.
+    if (comercial) {
+      return (
+        <>
+          <EncabezadoPagina
+            titulo={`Hola, ${perfil.nombres}`}
+            descripcion="Tus cotizaciones al día de hoy."
+          />
+          <TarjetasDeVentas resumen={comercial} />
+        </>
+      )
+    }
+
     return (
       <EncabezadoPagina
         titulo={`Hola, ${perfil.nombres}`}
@@ -47,6 +75,8 @@ export default async function PaginaTablero() {
         titulo={`Hola, ${perfil.nombres}`}
         descripcion="Estado del taller al día de hoy."
       />
+
+      {comercial && <TarjetasDeVentas resumen={comercial} />}
 
       {/* Dos columnas ya en el teléfono: cinco tarjetas apiladas ocupaban una
           pantalla entera antes de llegar a la lista de órdenes. */}
@@ -236,5 +266,52 @@ export default async function PaginaTablero() {
         </div>
       </div>
     </>
+  )
+}
+
+/**
+ * Lo comercial del tablero: qué me toca mover, qué está esperando al cliente y
+ * cuánto se ofreció y se cerró este mes.
+ *
+ * Todo en soles, convertido con el tipo de cambio que congeló cada cotización:
+ * la casa cotiza en dólares y gasta en soles, y una cifra que mezcla las dos
+ * monedas no significa nada.
+ */
+function TarjetasDeVentas({ resumen }: { resumen: ResumenComercial }) {
+  return (
+    <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <Indicador
+        icono={FileText}
+        titulo="Me toca mover"
+        valor={resumen.meTocan}
+        tono={resumen.meTocan > 0 ? 'acento' : 'neutro'}
+        pie={resumen.meTocan > 0 ? 'Cotizaciones paradas en tu mano' : 'Nada esperándote'}
+        href="/cotizaciones?mias=1"
+      />
+      <Indicador
+        icono={Send}
+        titulo="Con el cliente"
+        valor={resumen.esperandoCliente}
+        pie={
+          resumen.listasParaEnviar > 0
+            ? `y ${resumen.listasParaEnviar} lista(s) para enviar`
+            : 'Enviadas y sin respuesta'
+        }
+        href="/cotizaciones?estado=ENVIADA"
+      />
+      <Indicador
+        icono={HandCoins}
+        titulo="Ofrecido este mes"
+        valor={moneda(resumen.ofrecidoDelMes, 'PEN')}
+        pie={`${resumen.cotizadasDelMes} cotización(es)`}
+      />
+      <Indicador
+        icono={CheckCircle2}
+        titulo="Cerrado este mes"
+        valor={moneda(resumen.cerradoDelMes, 'PEN')}
+        tono={resumen.cerradoDelMes > 0 ? 'exito' : 'neutro'}
+        pie={`${resumen.cerradasDelMes} aprobada(s) por el cliente`}
+      />
+    </div>
   )
 }

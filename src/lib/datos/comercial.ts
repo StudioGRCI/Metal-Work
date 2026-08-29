@@ -256,3 +256,62 @@ export async function partidasDeCotizacion(cotizacionId: string) {
   if (error) throw new Error(`No se pudieron cargar las partidas: ${error.message}`)
   return data ?? []
 }
+
+export type ResumenComercial = {
+  /** Las que este perfil tiene que mover ahora. */
+  meTocan: number
+  /** Enviadas al cliente y todavía sin respuesta. */
+  esperandoCliente: number
+  /** Las que Gerencia ya aprobó y siguen sin salir. */
+  listasParaEnviar: number
+  /** Del mes en curso, pasado a soles con el cambio que cada una congeló. */
+  ofrecidoDelMes: number
+  cerradoDelMes: number
+  cotizadasDelMes: number
+  cerradasDelMes: number
+}
+
+/**
+ * Las cifras de ventas del tablero.
+ *
+ * Todo en soles, convertido con el tipo de cambio que **cada cotización
+ * congeló**: sumar dólares y soles en la misma cifra es sumar peras y manzanas,
+ * y convertir todo con el cambio de hoy reescribiría el mes cada mañana. Para
+ * eso está esa columna.
+ *
+ * Se lee de una sola consulta y se cuenta en memoria. Son decenas de filas al
+ * mes, no millones: cinco consultas de agregación costarían más que traerlas.
+ */
+export async function resumenComercial(perfil: PerfilSesion | null): Promise<ResumenComercial> {
+  const supabase = await createClient()
+
+  const hoy = new Date()
+  const desdeMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`
+
+  const { data, error } = await supabase
+    .from('cotizaciones')
+    .select('estado, total, tipo_cambio, fecha_emision')
+    .neq('estado', 'ANULADA')
+    .limit(1000)
+
+  if (error) throw new Error(`No se pudo resumir lo comercial: ${error.message}`)
+
+  const filas = data ?? []
+  const mios = new Set(estadosQueMeTocan(perfil))
+  const enSoles = (f: { total: number | null; tipo_cambio: number | null }) =>
+    Number(f.total ?? 0) * (Number(f.tipo_cambio) || 1)
+
+  const delMes = filas.filter((f) => (f.fecha_emision ?? '') >= desdeMes)
+
+  return {
+    meTocan: filas.filter((f) => mios.has(f.estado as EstadoCotizacion)).length,
+    esperandoCliente: filas.filter((f) => f.estado === 'ENVIADA').length,
+    listasParaEnviar: filas.filter((f) => f.estado === 'REVISADA').length,
+    cotizadasDelMes: delMes.length,
+    ofrecidoDelMes: delMes.reduce((s, f) => s + enSoles(f), 0),
+    cerradasDelMes: delMes.filter((f) => f.estado === 'APROBADA').length,
+    cerradoDelMes: delMes
+      .filter((f) => f.estado === 'APROBADA')
+      .reduce((s, f) => s + enSoles(f), 0),
+  }
+}
