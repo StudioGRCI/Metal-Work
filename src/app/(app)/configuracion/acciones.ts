@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { fecha as fechaDelDia, numero } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -195,4 +196,79 @@ export async function crearCarroceria(
 
   revalidatePath('/configuracion')
   return { ok: true, mensaje: 'Tipo de carrocería agregado. Administración le pondrá sus horas de referencia.', datos: data }
+}
+
+const esquemaTipoCambio = z.object({
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elige la fecha del tipo de cambio.'),
+  compra: z.string().trim().min(1, 'Falta el tipo de cambio compra.'),
+  venta: z.string().trim().min(1, 'Falta el tipo de cambio venta.'),
+})
+
+/**
+ * Un tipo de cambio escrito a mano.
+ *
+ * La coma decimal es la que está a mano en el teclado y hay navegadores que la
+ * mandan tal cual: sin cambiarla por punto, Number() devuelve NaN y se rechaza
+ * un número que estaba bien escrito. La columna es numeric(10,4), así que se
+ * redondea a cuatro decimales acá y no se descubre el recorte al releerlo.
+ */
+function cifraDeCambio(texto: string): number | null {
+  const n = Number(texto.replace(',', '.'))
+  if (!Number.isFinite(n) || n <= 0) return null
+  return Math.round(n * 10000) / 10000
+}
+
+/**
+ * El tipo de cambio del día: es lo que le falta a la base para poder costear en
+ * dólares. Mientras la tabla está vacía, `tipo_cambio_vigente()` devuelve 1 y
+ * cada cotización en dólares se congela con el dólar a un sol.
+ *
+ * La fecha es la clave primaria: cargar dos veces el mismo día corrige, no
+ * duplica. Corregirlo tampoco reescribe la historia —cada documento congela su
+ * tipo de cambio al emitirse—, así que lo ya emitido se queda con el que tenía.
+ */
+export async function registrarTipoCambio(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion> {
+  const problema = await exigirEdicion()
+  if (problema) return { ok: false, error: problema }
+
+  const analisis = esquemaTipoCambio.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el tipo de cambio.' }
+  }
+
+  const compra = cifraDeCambio(analisis.data.compra)
+  const venta = cifraDeCambio(analisis.data.venta)
+  if (compra === null || venta === null) {
+    return { ok: false, error: 'La compra y la venta van en soles por dólar y mayores que cero: 3.62 y 3.65.' }
+  }
+
+  // Un cambio de tres cifras es siempre el punto decimal que se quedó en el
+  // camino (365 en vez de 3.65). Congelado, multiplica por cien el presupuesto
+  // de la orden y nadie lo vuelve a mirar.
+  if (compra > 100 || venta > 100) {
+    return { ok: false, error: 'El tipo de cambio va en soles por dólar: 3.65, no 365.' }
+  }
+
+  // Ningún banco vende más barato de lo que compra: cuando pasa, las dos cifras
+  // entraron cambiadas de sitio. Y la que congelan los documentos es la venta,
+  // así que dejarla pasar mete el error en todo lo que se emita después.
+  if (venta < compra) {
+    return { ok: false, error: 'La venta no puede ser menor que la compra: parece que están cambiadas de sitio.' }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('tipos_cambio')
+    .upsert({ fecha: analisis.data.fecha, compra, venta }, { onConflict: 'fecha' })
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+
+  revalidatePath('/configuracion')
+  return {
+    ok: true,
+    mensaje: `Tipo de cambio del ${fechaDelDia(analisis.data.fecha)} guardado, venta ${numero(venta, 3)}. Lo que se emita desde acá ya lo usa; lo ya emitido conserva el suyo.`,
+  }
 }

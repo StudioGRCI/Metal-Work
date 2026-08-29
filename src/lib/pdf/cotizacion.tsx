@@ -13,7 +13,7 @@ import {
   renderToBuffer,
 } from '@react-pdf/renderer'
 
-import { fecha, moneda, numero } from '@/lib/format'
+import { cantidad, fecha, moneda, numero } from '@/lib/format'
 import type { CodigoMoneda } from '@/lib/format'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import type { CotizacionImpresa } from '@/lib/datos/impresion'
@@ -109,6 +109,29 @@ const estilos = StyleSheet.create({
   },
   fichaLinea: { flexDirection: 'row', marginBottom: 1.2 },
   vineta: { width: 9, color: AZUL, fontSize: 8 },
+
+  // ------------------------------------------------ lo que NO va incluido
+  // Va enmarcado y con su propia viñeta: metido entre los accesorios, «NO
+  // INCLUYE AROS NI LLANTAS» se lee como un renglón más de lo que sí se
+  // entrega, y eso se discute después, con la unidad ya en el patio.
+  advertencias: {
+    borderWidth: 0.75,
+    borderColor: ROJO,
+    borderRadius: 2,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    marginTop: 6,
+  },
+  advertenciaTitulo: {
+    fontSize: 7.5,
+    fontFamily: 'Helvetica-Bold',
+    color: ROJO,
+    letterSpacing: 0.5,
+    marginBottom: 2.5,
+  },
+  vinetaNegativa: { width: 9, color: ROJO, fontSize: 8, fontFamily: 'Helvetica-Bold' },
+  advertenciaLinea: { flex: 1, fontSize: 7.8, fontFamily: 'Helvetica-Bold', lineHeight: 1.35 },
+
   fichaEtiqueta: { width: 82, fontFamily: 'Helvetica-Bold', fontSize: 7.8, lineHeight: 1.35 },
   fichaDetalle: { flex: 1, fontSize: 7.8, lineHeight: 1.35 },
 
@@ -148,12 +171,27 @@ const estilos = StyleSheet.create({
   textoTotal: { color: '#FFFFFF', fontSize: 9.5, fontFamily: 'Helvetica-Bold' },
 
   // ------------------------------------------------------- cierre y pie
+  // Las condiciones van en una sola columna: son cinco renglones que se leen en
+  // orden, y en dos columnas el orden de la casa deja de verse.
+  etiquetaCondicion: {
+    width: 104,
+    color: GRIS,
+    fontSize: 7.5,
+    fontFamily: 'Helvetica-Bold',
+    lineHeight: 1.35,
+  },
   condiciones: { marginTop: 4 },
   parrafo: { fontSize: 7.8, marginBottom: 2, lineHeight: 1.35 },
-  firmas: { flexDirection: 'row', gap: 40, marginTop: 26 },
-  firma: { flex: 1, alignItems: 'center' },
-  lineaFirma: { borderTopWidth: 0.75, borderTopColor: '#1B2430', width: '100%', paddingTop: 3 },
+  // El bloque se separa del texto de arriba y la firma tiene su hueco: 46
+  // puntos son unos dieciséis milímetros, que es lo que ocupa una firma con su
+  // sello al lado. Sin ese hueco, la raya quedaba pegada a las condiciones y no
+  // había dónde firmar.
+  firmas: { marginTop: 40, alignItems: 'center' },
+  firma: { width: '58%' },
+  espacioFirma: { height: 46 },
+  lineaFirma: { borderTopWidth: 0.75, borderTopColor: '#1B2430', width: '100%', paddingTop: 4 },
   textoFirma: { fontSize: 7.5, textAlign: 'center', color: GRIS },
+  nombreFirma: { fontSize: 8.5, textAlign: 'center', color: '#1B2430' },
 
   sello: {
     position: 'absolute',
@@ -192,10 +230,103 @@ function Dato({ etiqueta, valor, fuerte }: { etiqueta: string; valor?: string | 
   )
 }
 
-/** El plazo como lo dice la empresa: «45 días hábiles», no una fecha. */
+/** Un renglón de las condiciones comerciales, con la etiqueta de la casa. */
+function Condicion({
+  etiqueta,
+  valor,
+  fuerte,
+}: Readonly<{ etiqueta: string; valor?: string | null; fuerte?: boolean }>) {
+  return (
+    <View style={estilos.dato}>
+      <Text style={estilos.etiquetaCondicion}>{etiqueta}</Text>
+      <Text style={fuerte ? estilos.valorFuerte : estilos.valor}>{valor || '—'}</Text>
+    </View>
+  )
+}
+
+/**
+ * El plazo como lo dice la empresa: «45 días hábiles después de emitida la orden
+ * de compra». Los días y el disparador van en el MISMO renglón porque uno sin el
+ * otro no compromete nada —cuarenta y cinco días contados desde cuándo es la
+ * llamada que llega a los quince—, y así es como está escrito en sus papeles.
+ */
 function textoPlazo(c: CotizacionImpresa) {
-  if (!c.plazo_entrega_dias) return null
-  return `${c.plazo_entrega_dias} días ${c.plazo_en_habiles ? 'hábiles' : 'calendario'}`
+  const desde = c.plazo_desde?.trim() || null
+  if (!c.plazo_entrega_dias) return desde
+
+  const cuenta = c.plazo_en_habiles ? 'hábiles' : 'calendario'
+  const dias = `${c.plazo_entrega_dias} días ${cuenta}`
+  return desde ? `${dias} ${desde}` : dias
+}
+
+/**
+ * La garantía tal como la escribe la casa. Cuando está escrita manda esa y no se
+ * toca: se parte por sistema —«01 año fallas de fabricación / 6 meses en sistema
+ * hidráulico»— y ningún número de meses dice eso. Cuando no está escrita, se
+ * arma con los meses en la forma que ellos usan.
+ */
+function textoGarantia(c: CotizacionImpresa) {
+  const escrita = c.garantia_texto?.trim()
+  if (escrita) return escrita
+  if (!c.garantia_meses) return 'Sin garantía'
+  return `${enMesesOAnios(c.garantia_meses)} contra eventuales fallas de fabricación`
+}
+
+/** «01 año», «02 años», «06 meses»: con el cero delante que la empresa escribe. */
+function enMesesOAnios(meses: number) {
+  if (meses % 12 === 0) {
+    const anios = meses / 12
+    return `${String(anios).padStart(2, '0')} ${anios === 1 ? 'año' : 'años'}`
+  }
+  return `${String(meses).padStart(2, '0')} ${meses === 1 ? 'mes' : 'meses'}`
+}
+
+/** «15 días a partir de hoy», que es como la casa promete sostener el precio. */
+function textoValidez(c: CotizacionImpresa) {
+  if (c.validez_dias > 0) return `${c.validez_dias} días a partir de hoy`
+  return c.fecha_vencimiento ? `Hasta el ${fecha(c.fecha_vencimiento)}` : null
+}
+
+/**
+ * El precio como condición comercial: el mismo TOTAL del cuadro, repetido acá
+ * porque es lo primero que el cliente busca. Sin partidas no hay precio que
+ * prometer y el renglón se queda vacío, que es más honesto que prometer cero.
+ */
+function textoPrecio(c: CotizacionImpresa, mon: CodigoMoneda) {
+  if (c.total <= 0) return null
+  return `${moneda(c.total, mon)}${c.igv > 0 ? ' incluido el IGV' : ''}`
+}
+
+/**
+ * El peso con la tolerancia que la empresa siempre escribe: «6.7 TN (+/- 5%)».
+ * Un peso a secas se lee como exacto, y una carrocería no sale nunca al gramo.
+ *
+ * Sin tolerancia —las cotizaciones anteriores al campo— el renglón sale como
+ * salía, con sus dos decimales: el papel ya emitido no cambia de forma por un
+ * dato que nadie llegó a escribir.
+ */
+function pesoImpreso(c: CotizacionImpresa) {
+  if (c.peso_neto_tn === null) return null
+
+  const tolerancia = c.peso_tolerancia?.trim()
+  if (!tolerancia) return `${numero(c.peso_neto_tn, 2)} TN`
+  return `${cantidad(c.peso_neto_tn)} TN (${tolerancia})`
+}
+
+/**
+ * Un texto de varios renglones, como renglones.
+ *
+ * La nota de cierre son promesas distintas —certificados, expediente, placas—
+ * escritas una por línea. El motor arma un párrafo con todo lo que le llega en
+ * un solo <Text>, así que salían pegadas en una sola frase corrida y la tercera
+ * ya no se leía como un compromiso aparte. Los saltos llegan como \r\n desde
+ * Windows y como \n desde el navegador: se parten los dos.
+ */
+function renglones(texto: string | null | undefined): string[] {
+  return (texto ?? '')
+    .split(/\r?\n/)
+    .map((linea) => linea.trim())
+    .filter(Boolean)
 }
 
 /**
@@ -264,6 +395,11 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
   const domicilio = [empresa?.direccion, empresa?.distrito, empresa?.provincia, empresa?.departamento]
     .filter(Boolean)
     .join(' · ')
+
+  // El cierre del documento: condiciones, observaciones y la nota, cada renglón
+  // por su cuenta. La nota son varias promesas escritas una por línea y salían
+  // pegadas en un párrafo corrido.
+  const cierre = [datos.condiciones, datos.observaciones, datos.nota].flatMap(renglones)
 
   return (
     <Document
@@ -337,16 +473,19 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
                 <Dato etiqueta="Carrocería" valor={datos.carroceria} fuerte />
                 <Dato etiqueta="Marca" valor={datos.marca} />
                 <Dato etiqueta="Modelo" valor={datos.modelo} />
+                {/* El año va en todas sus fichas. No es una cantidad: numero()
+                    lo escribiría «2,024», así que se imprime tal cual. */}
+                <Dato
+                  etiqueta="Año"
+                  valor={datos.unidad?.anio ? String(datos.unidad.anio) : null}
+                />
                 <Dato etiqueta="Tipo" valor={datos.tipo} />
               </View>
               <View style={estilos.columna}>
                 <Dato etiqueta="Unidad" valor={unidadImpresa(datos.unidad)} />
                 <Dato etiqueta="Medidas" valor={medidas(datos)} />
                 <Dato etiqueta="Capacidad" valor={datos.capacidad} />
-                <Dato
-                  etiqueta="Peso neto"
-                  valor={datos.peso_neto_tn ? `${numero(datos.peso_neto_tn, 2)} TN` : null}
-                />
+                <Dato etiqueta="Peso neto" valor={pesoImpreso(datos)} />
               </View>
             </View>
           </>
@@ -382,9 +521,12 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
         {/* ----------------------------------------------------- accesorios */}
         {datos.accesorios.length > 0 && (
           <>
-            <Text style={estilos.tituloSeccion}>ACCESORIOS QUE INCLUYE</Text>
+            {/* El rótulo es el de sus cotizaciones, con dos puntos incluidos. */}
+            <Text style={estilos.tituloSeccion}>
+              INCLUYE LOS SIGUIENTES ACCESORIOS O EQUIPAMIENTO:
+            </Text>
             {datos.accesorios.map((a) => (
-              <View key={a.id} style={estilos.fichaLinea}>
+              <View key={a.id} style={estilos.fichaLinea} wrap={false}>
                 <Text style={estilos.vineta}>•</Text>
                 <Text style={estilos.fichaDetalle}>
                   {`${numero(a.cantidad, 0).padStart(2, '0')} ${a.unidad}. ${a.descripcion}`}
@@ -396,6 +538,25 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
           </>
         )}
 
+        {/* ---------------------------------------------- lo que NO se entrega */}
+        {/* Aparte de los accesorios y enmarcado: son lo contrario de uno. La
+            caja puede partirse entre hojas —una lista más alta que la página se
+            recortaría sin avisar, como pasó con la ficha—; lo que no se parte
+            es cada advertencia. */}
+        {renglones(datos.no_incluye).length > 0 && (
+          <View style={estilos.advertencias}>
+            <Text style={estilos.advertenciaTitulo} minPresenceAhead={24}>
+              LO QUE NO INCLUYE
+            </Text>
+            {renglones(datos.no_incluye).map((advertencia) => (
+              <View key={advertencia} style={estilos.fichaLinea} wrap={false}>
+                <Text style={estilos.vinetaNegativa}>×</Text>
+                <Text style={estilos.advertenciaLinea}>{advertencia}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* ------------------------------------------- el trabajo y su precio */}
         {/* Al cliente le toca saber qué se le va a fabricar y cuánto cuesta. El
             desglose por partida es la cocina del taller —acero, mano de obra,
@@ -403,7 +564,8 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
             presupuesto de la OT y las compras de material, no el papel. */}
         {(datos.partidas.length > 0 || datos.concepto) && (
           <>
-            <Text style={estilos.tituloSeccion}>TRABAJO A REALIZAR</Text>
+            {/* Así se titula en sus cotizaciones, con los dos puntos. */}
+            <Text style={estilos.tituloSeccion}>PROPUESTA ECONÓMICA:</Text>
             <View style={estilos.tabla}>
               <View style={estilos.encabezado}>
                 <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.item }]}>ÍTEM</Text>
@@ -459,31 +621,26 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
         )}
 
         {/* ----------------------------------------------------- condiciones */}
+        {/* Siempre las mismas cinco y en este orden, que es el de sus papeles:
+            precio, forma de pago, validez, garantía y tiempo de entrega. Quien
+            recibe la cotización las busca en ese renglón; cambiarlas de sitio
+            obliga a leer el documento entero para encontrar el plazo. */}
         <Text style={estilos.tituloSeccion}>CONDICIONES COMERCIALES</Text>
-        <View style={estilos.filaDatos}>
-          <View style={estilos.columna}>
-            <Dato etiqueta="Plazo de entrega" valor={textoPlazo(datos)} fuerte />
-            <Dato etiqueta="Forma de pago" valor={datos.forma_pago} />
-          </View>
-          <View style={estilos.columna}>
-            <Dato
-              etiqueta="Garantía"
-              valor={datos.garantia_meses ? `${datos.garantia_meses} meses` : 'Sin garantía'}
-              fuerte
-            />
-            <Dato etiqueta="Validez" valor={datos.fecha_vencimiento ? `Hasta el ${fecha(datos.fecha_vencimiento)}` : null} />
-          </View>
+        <View>
+          <Condicion etiqueta="PRECIO" valor={textoPrecio(datos, mon)} fuerte />
+          <Condicion etiqueta="FORMA DE PAGO" valor={datos.forma_pago} />
+          <Condicion etiqueta="VALIDEZ" valor={textoValidez(datos)} />
+          <Condicion etiqueta="GARANTÍA" valor={textoGarantia(datos)} />
+          <Condicion etiqueta="TIEMPO DE ENTREGA" valor={textoPlazo(datos)} />
         </View>
 
-        {(datos.condiciones || datos.observaciones || datos.nota) && (
+        {cierre.length > 0 && (
           <View style={estilos.condiciones}>
-            {[datos.condiciones, datos.observaciones, datos.nota]
-              .filter(Boolean)
-              .map((texto, i) => (
-                <Text key={i} style={estilos.parrafo}>
-                  {texto}
-                </Text>
-              ))}
+            {cierre.map((texto, i) => (
+              <Text key={`${i}-${texto}`} style={estilos.parrafo}>
+                {texto}
+              </Text>
+            ))}
           </View>
         )}
 
@@ -494,10 +651,14 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
         )}
 
         {/* --------------------------------------------------------- firmas */}
+        {/* Una sola firma, la de la casa. El recuadro de conformidad del
+            cliente se quitó por decisión de Gerencia: una cotización no se
+            devuelve firmada, se acepta con una orden de compra. */}
         <View style={estilos.firmas} wrap={false}>
           <View style={estilos.firma}>
+            <View style={estilos.espacioFirma} />
             <View style={estilos.lineaFirma}>
-              <Text style={estilos.textoFirma}>
+              <Text style={estilos.nombreFirma}>
                 {datos.vendedor
                   ? `${datos.vendedor.nombres} ${datos.vendedor.apellidos}`
                   : empresa?.razon_social ?? 'Metal Work Perú S.A.C.'}
@@ -506,12 +667,6 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
                 {[datos.vendedor?.telefono, datos.vendedor?.correo].filter(Boolean).join(' · ') ||
                   'Área Comercial'}
               </Text>
-            </View>
-          </View>
-          <View style={estilos.firma}>
-            <View style={estilos.lineaFirma}>
-              <Text style={estilos.textoFirma}>Conformidad del cliente</Text>
-              <Text style={estilos.textoFirma}>Firma, sello y fecha</Text>
             </View>
           </View>
         </View>
@@ -550,25 +705,61 @@ async function leerLogo(): Promise<Buffer | null> {
 }
 
 /**
- * El nombre del archivo tal como lo espera quien lo recibe por correo.
+ * El nombre del archivo tal como la empresa archiva:
+ * «COT. N°3571-2026 - FURGON ISOTERMICO - TRANSPORTES SANTA ROSA SAC - 12-05-26.pdf».
  *
- * Todo lo que entra viene de la base y sale en una cabecera HTTP, as\u00ed que se
- * limpia entero -n\u00famero incluido-: unas comillas metidas ah\u00ed dejan que el
+ * Sin el producto ni la fecha el archivo no entra en el árbol de carpetas que ya
+ * existe en el OneDrive de la casa, y quien lo recibe lo renombra a mano, uno
+ * por uno, hasta que se cansa y los deja sueltos.
+ *
+ * Todo lo que entra viene de la base y sale en una cabecera HTTP, así que se
+ * limpia entero —número incluido—: unas comillas metidas ahí dejan que el
  * documento se guarde con el nombre que elija quien las puso, y un salto de
- * l\u00ednea rompe la cabecera y tumba la descarga de esa cotizaci\u00f3n para siempre.
+ * línea rompe la cabecera y tumba la descarga de esa cotización para siempre.
  */
 export function nombreArchivoCotizacion(datos: CotizacionImpresa) {
-  return `COT-${aNombreDeArchivo(datos.numero)}-${aNombreDeArchivo(datos.cliente.razon_social)}.pdf`
+  const partes = [
+    `COT. N°${aNombreDeArchivo(datos.numero, 20)}`,
+    // El producto es la carrocería, que es como la casa nombra la carpeta; sin
+    // ella sirve el trabajo escrito. Lo que NO entra acá es el concepto armado
+    // con medidas y capacidad: «30 M3 9.50 2.60 2.80 M» no es un producto, y en
+    // el nombre del archivo estorba más que un hueco.
+    aNombreDeArchivo(datos.carroceria || datos.concepto || '', 40),
+    aNombreDeArchivo(datos.cliente.razon_social, 40),
+    fechaDeArchivo(datos.fecha_emision),
+  ].filter(Boolean)
+
+  return `${partes.join(' - ')}.pdf`
 }
 
-function aNombreDeArchivo(texto: string) {
-  return (
-    texto
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^A-Za-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .toUpperCase()
-      .slice(0, 60) || 'SIN-NOMBRE'
-  )
+/**
+ * La fecha como la fechan ellos: dd-mm-aa. Sale de fecha() —la única que sabe
+ * que un día del calendario se lee tal cual— y le cambia las barras por guiones,
+ * porque una barra en un nombre de archivo es una carpeta que no existe.
+ */
+function fechaDeArchivo(valor: string) {
+  const [dia, mes, anio] = fecha(valor).split('/')
+  if (!dia || !mes || !anio) return ''
+  return `${dia}-${mes}-${anio.slice(-2)}`
+}
+
+/**
+ * Un trozo de nombre que el disco admite y la cabecera no puede malinterpretar:
+ * sin acentos —el nombre viaja en una cabecera HTTP, que no es UTF-8—, sin los
+ * caracteres que ningún sistema de archivos acepta (\ / : * ? " < > |), sin
+ * saltos de línea, y sin puntos ni espacios al final, que Windows recorta solo.
+ *
+ * El espacio y el guion se conservan: son la forma en que la empresa archiva y
+ * cambiarlos por guiones bajos ya no es su nombre.
+ */
+function aNombreDeArchivo(texto: string, largo: number) {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9 .,()-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase()
+    .slice(0, largo)
+    .replace(/[.\s]+$/, '')
 }

@@ -79,3 +79,31 @@ export async function catalogosDelTaller() {
     verificaciones: [...porTipo.values()],
   }
 }
+
+export type TipoCambio = {
+  fecha: string
+  compra: number
+  venta: number
+}
+
+/**
+ * Los tipos de cambio cargados, del más reciente al más antiguo.
+ *
+ * `tipo_cambio_vigente(fecha)` toma el registro más reciente con fecha menor o
+ * igual a la del documento, así que el primero de esta lista es el que la base
+ * está aplicando hoy. Cuando la lista viene vacía esa función devuelve 1 —no
+ * porque el dólar valga un sol, sino porque no hay nada que devolver— y todo lo
+ * que se compare en soles sale por menos de un tercio de lo que vale.
+ */
+export async function ultimosTiposCambio(limite = 15) {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('tipos_cambio')
+    .select('fecha, compra, venta')
+    .order('fecha', { ascending: false })
+    .limit(limite)
+
+  if (error) throw new Error(`No se pudieron leer los tipos de cambio: ${error.message}`)
+  return (data ?? []) as TipoCambio[]
+}

@@ -5,8 +5,10 @@ import { redirect } from 'next/navigation'
 import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
+import type { Database } from '@/types/database'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { hoyLima } from '@/lib/format'
 
 const esquemaCotizacion = z.object({
   cliente_id: z.string().uuid('Selecciona un cliente'),
@@ -24,11 +26,83 @@ const esquemaCotizacion = z.object({
   forma_pago: z.string().trim().optional(),
   condiciones: z.string().trim().optional(),
   observaciones: z.string().trim().optional(),
+  // Los cuatro datos que la casa escribe en todas sus cotizaciones y que hasta
+  // ahora no tenían dónde guardarse: terminaban a mano dentro de «observaciones»
+  // o se perdían. Llevan el mismo nombre que su columna (migración 045).
+  //
+  // Desde cuándo cuenta el plazo —«después de emitida la orden de compra», «a
+  // partir del abono en la cuenta de la empresa»—, la garantía tal como se
+  // redacta y partida por sistema, la tolerancia del peso —«+/- 5%»— y las
+  // advertencias en negativo, que no son accesorios sino lo contrario: «NO
+  // INCLUYE AROS NI LLANTAS».
+  plazo_desde: z.string().trim().optional(),
+  garantia_texto: z.string().trim().optional(),
+  peso_tolerancia: z.string().trim().optional(),
+  no_incluye: z.string().trim().optional(),
 })
 
 function nulo(valor?: string | null) {
   const t = valor?.trim()
   return t ? t : null
+}
+
+type CabeceraCotizacion = Database['public']['Tables']['cotizaciones']['Insert']
+
+/**
+ * Los cuatro rótulos que la casa escribe en todas sus cotizaciones.
+ *
+ * Van opcionales a propósito: los escriben dos pantallas distintas —el plazo
+ * entra por la cabecera y los otros tres por la ficha técnica— y una clave que
+ * no viajó no es una clave vacía. Si se mandaran siempre, el formulario que no
+ * las tiene las pondría en nulo y borraría lo que la otra pantalla guardó.
+ */
+type RotulosDeLaCasa = {
+  plazo_desde?: string | null
+  garantia_texto?: string | null
+  peso_tolerancia?: string | null
+  no_incluye?: string | null
+}
+
+/**
+ * La cabecera tal como se guarda. Es la misma en el alta y en la edición, y por
+ * eso se arma en un solo sitio: escrita dos veces, un campo nuevo entra por una
+ * y se olvida en la otra —que es justo lo que había pasado con estos cuatro—.
+ */
+function cabeceraGuardable(
+  v: z.infer<typeof esquemaCotizacion>,
+): CabeceraCotizacion & RotulosDeLaCasa {
+  return {
+    cliente_id: v.cliente_id,
+    precio_venta: v.precio_venta,
+    unidad_id: nulo(v.unidad_id),
+    tipo_carroceria_id: nulo(v.tipo_carroceria_id),
+    sede_id: nulo(v.sede_id),
+    fecha_emision: v.fecha_emision || undefined,
+    validez_dias: v.validez_dias,
+    moneda: v.moneda,
+    plazo_entrega_dias: v.plazo_entrega_dias,
+    forma_pago: nulo(v.forma_pago),
+    condiciones: nulo(v.condiciones),
+    observaciones: nulo(v.observaciones),
+    // Estos cuatro los escriben dos pantallas distintas: el plazo entra por la
+    // cabecera y los otros tres por la ficha técnica. Si se mandaran siempre,
+    // el formulario que no los tiene los enviaría vacíos y la primera
+    // corrección de cabecera borraría lo que la ficha guardó, sin avisar. Solo
+    // viaja lo que de verdad venía en el formulario.
+    ...soloSiVino('plazo_desde', v.plazo_desde),
+    ...soloSiVino('garantia_texto', v.garantia_texto),
+    ...soloSiVino('peso_tolerancia', v.peso_tolerancia),
+    ...soloSiVino('no_incluye', v.no_incluye),
+  }
+}
+
+/**
+ * Un campo que el formulario no trajo no se toca; uno que trajo vacío se borra
+ * a propósito. La diferencia entre «no me lo preguntaron» y «lo dejé en blanco»
+ * es la que hace que dos pantallas puedan escribir la misma fila sin pisarse.
+ */
+function soloSiVino(clave: string, valor: string | undefined) {
+  return valor === undefined ? {} : { [clave]: nulo(valor) }
 }
 
 export async function crearCotizacion(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -47,20 +121,7 @@ export async function crearCotizacion(_previo: unknown, datos: FormData): Promis
 
   const { data, error } = await supabase
     .from('cotizaciones')
-    .insert({
-      cliente_id: v.cliente_id,
-      precio_venta: v.precio_venta,
-      unidad_id: nulo(v.unidad_id),
-      tipo_carroceria_id: nulo(v.tipo_carroceria_id),
-      sede_id: nulo(v.sede_id),
-      fecha_emision: v.fecha_emision || undefined,
-      validez_dias: v.validez_dias,
-      moneda: v.moneda,
-      plazo_entrega_dias: v.plazo_entrega_dias,
-      forma_pago: nulo(v.forma_pago),
-      condiciones: nulo(v.condiciones),
-      observaciones: nulo(v.observaciones),
-    })
+    .insert(cabeceraGuardable(v) as CabeceraCotizacion)
     .select('id')
     .single()
 
@@ -319,8 +380,45 @@ export async function marcarEnviadaAlDescargar(cotizacionId: string): Promise<vo
 }
 
 /**
- * Abre una orden de trabajo a partir de una cotización aprobada y arrastra sus
- * partidas al presupuesto de la orden.
+ * Días corridos sobre una fecha plana (YYYY-MM-DD). La cuenta va en UTC a
+ * propósito: la fecha de partida ya viene resuelta en hora de Lima y volver a
+ * pasarla por la zona del servidor la correría un día.
+ */
+function sumarDiasCorridos(desde: string, dias: number): string {
+  const fecha = new Date(`${desde}T00:00:00Z`)
+  fecha.setUTCDate(fecha.getUTCDate() + dias)
+  return fecha.toISOString().slice(0, 10)
+}
+
+/**
+ * La ficha técnica de la cotización, en el texto que el taller lee en la orden.
+ * Cada sección con sus líneas debajo, en el orden en que se imprimieron.
+ */
+function fichaComoTexto(
+  lineas: { seccion: string; etiqueta: string | null; detalle: string }[],
+): string | null {
+  if (lineas.length === 0) return null
+
+  const renglones: string[] = []
+  let seccion: string | null = null
+
+  for (const linea of lineas) {
+    if (linea.seccion !== seccion) {
+      if (seccion !== null) renglones.push('')
+      seccion = linea.seccion
+      renglones.push(seccion)
+    }
+    renglones.push(linea.etiqueta ? `- ${linea.etiqueta}: ${linea.detalle}` : `- ${linea.detalle}`)
+  }
+
+  return renglones.join('\n')
+}
+
+/**
+ * Abre una orden de trabajo a partir de una cotización aprobada y baja con ella
+ * lo que se le prometió al cliente por escrito: el presupuesto, la ficha técnica
+ * —espesores y medidas—, los accesorios y la fecha de entrega contada como la
+ * cuenta la casa.
  */
 export async function convertirEnOrden(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -336,7 +434,13 @@ export async function convertirEnOrden(_previo: unknown, datos: FormData): Promi
 
   const { data: cotizacion, error: errorCot } = await supabase
     .from('cotizaciones')
-    .select('id, estado, cliente_id, unidad_id, tipo_carroceria_id, moneda, total, plazo_entrega_dias, observaciones, partidas:cotizacion_partidas(descripcion)')
+    // El concepto es el nombre del trabajo que se imprimió; `plazo_en_habiles`
+    // dice cómo se cuenta el plazo, y las medidas son las que el taller va a
+    // fabricar. Sin traerlos, la orden nace con el nombre de una partida y con
+    // una fecha contada en días corridos.
+    .select(
+      'id, estado, cliente_id, unidad_id, tipo_carroceria_id, moneda, total, concepto, plazo_entrega_dias, plazo_en_habiles, largo_m, ancho_m, alto_m, capacidad, observaciones, partidas:cotizacion_partidas(descripcion)',
+    )
     .eq('id', cotizacionId)
     .maybeSingle()
 
@@ -356,13 +460,65 @@ export async function convertirEnOrden(_previo: unknown, datos: FormData): Promi
     return { ok: false, error: `Esta cotización ya generó la orden ${existente.numero}.` }
   }
 
+  // Lo que no se pudo bajar se junta acá y se avisa al final: la orden se crea
+  // igual, pero nadie se queda creyendo que bajó completa.
+  const avisos: string[] = []
+
+  // La ficha técnica de la cotización —espesores, normas de soldadura, medidas—
+  // es lo que el taller tiene que fabricar, y hasta ahora se quedaba en el papel
+  // del cliente. Se lee con la misma llave que la cotización, así que quien
+  // llegó hasta acá ya la tiene.
+  const { data: lineasFicha, error: errorFicha } = await supabase
+    .from('cotizacion_especificaciones')
+    .select('seccion, etiqueta, detalle')
+    .eq('cotizacion_id', cotizacionId)
+    .order('orden_seccion')
+    .order('orden_linea')
+
+  if (errorFicha) avisos.push(`no bajó la ficha técnica: ${mensajeDeError(errorFicha)}`)
+
+  // El tablero del taller nombra la unidad con esta descripción. Tiene que ser
+  // el concepto —el nombre del trabajo que se le imprimió al cliente—, no la
+  // primera partida del presupuesto: «Plancha ASTM A-36 de 6 mm» no nombra a
+  // ninguna unidad.
   const partidas = (cotizacion.partidas ?? []) as { descripcion: string }[]
   const descripcion =
-    partidas[0]?.descripcion ?? 'Trabajo según cotización aprobada'
+    nulo(cotizacion.concepto) ?? partidas[0]?.descripcion ?? 'Trabajo según cotización aprobada'
 
-  const entrega = cotizacion.plazo_entrega_dias
-    ? new Date(Date.now() + cotizacion.plazo_entrega_dias * 86400000).toISOString().slice(0, 10)
-    : null
+  // La casa promete SIEMPRE en días hábiles: 45 días hábiles contados corridos
+  // caen nueve días antes de lo prometido, y el semáforo de atraso mediría
+  // contra esa fecha inventada. La cuenta la hace la base, que es la que tiene
+  // el calendario laboral —domingos y feriados—, con la misma función que ya
+  // usan las órdenes de servicio.
+  //
+  // Y se parte del día del taller: `Date.now()` en el servidor está en UTC, y
+  // toda orden abierta después de las siete de la noche se fechaba un día más
+  // adelante.
+  const hoy = hoyLima()
+  let entrega: string | null = null
+
+  if (cotizacion.plazo_entrega_dias) {
+    if (cotizacion.plazo_en_habiles) {
+      const { data: fechaHabil, error: errorFecha } = await supabase.rpc('sumar_dias_habiles', {
+        p_desde: hoy,
+        p_dias: cotizacion.plazo_entrega_dias,
+      })
+
+      // Todavía no se creó nada: se para acá antes que abrir la orden con una
+      // fecha comprometida inventada, que es contra la que después se mide el
+      // atraso y por la que responde la empresa.
+      if (errorFecha) {
+        return {
+          ok: false,
+          error: `No se pudo calcular la fecha de entrega con el calendario laboral: ${mensajeDeError(errorFecha)}`,
+        }
+      }
+
+      entrega = fechaHabil
+    } else {
+      entrega = sumarDiasCorridos(hoy, cotizacion.plazo_entrega_dias)
+    }
+  }
 
   const { data: orden, error } = await supabase
     .from('ordenes_trabajo')
@@ -377,6 +533,13 @@ export async function convertirEnOrden(_previo: unknown, datos: FormData): Promi
       monto_presupuestado: cotizacion.total ?? 0,
       fecha_entrega_comprometida: entrega,
       observaciones: cotizacion.observaciones,
+      // Las medidas prometidas van a las columnas de la sección 4 del formato de
+      // OT; el resto de la ficha, al texto que el taller lee al costado.
+      largo_m: cotizacion.largo_m,
+      ancho_m: cotizacion.ancho_m,
+      alto_m: cotizacion.alto_m,
+      capacidad_carga: cotizacion.capacidad,
+      especificaciones_tecnicas: fichaComoTexto(lineasFicha ?? []),
     })
     .select('id')
     .single()
@@ -390,17 +553,39 @@ export async function convertirEnOrden(_previo: unknown, datos: FormData): Promi
   )
 
   if (errorPresupuesto) {
-    // La orden ya quedó creada; se avisa para que el usuario cargue el
-    // presupuesto a mano en lugar de dejarlo pensar que todo salió bien.
-    revalidatePath('/ordenes')
-    return {
-      ok: false,
-      error: `La orden se creó, pero no se pudo arrastrar el presupuesto: ${errorPresupuesto.message}`,
-    }
+    avisos.push(`no se pudo arrastrar el presupuesto: ${mensajeDeError(errorPresupuesto)}`)
+  }
+
+  // Los accesorios que se cotizaron son los que el taller tiene que montar y
+  // verificar antes de entregar. `armar_ficha_ot` los copia a la ficha de la OT
+  // y baja además los pasos de verificación de esa carrocería.
+  //
+  // Va por la función y no por un insert propio a propósito: escribir
+  // `ot_accesorios` desde acá exigiría `ordenes.editar`, que quien abre órdenes
+  // no tiene por qué tener. La función corre con permisos propios y es
+  // idempotente —no copia si ya hay ficha—, así que el disparador que la vuelve
+  // a llamar cuando la orden deja de ser borrador no duplica nada.
+  //
+  // Se baja ya, con la orden recién abierta y todavía en borrador, porque acá la
+  // carrocería no está por decidirse: la fijó la cotización que el cliente
+  // aprobó, y el taller necesita la lista desde el primer día.
+  const { error: errorFichaOT } = await supabase.rpc('armar_ficha_ot', { p_orden: orden.id })
+
+  if (errorFichaOT) {
+    avisos.push(
+      `no bajaron los accesorios ni los pasos de verificación: ${mensajeDeError(errorFichaOT)}`,
+    )
   }
 
   revalidatePath('/ordenes')
   revalidatePath(`/cotizaciones/${cotizacionId}`)
+
+  // La orden ya quedó creada; se dice qué falta para que se cargue a mano en
+  // lugar de dejar pensar que todo salió bien.
+  if (avisos.length > 0) {
+    return { ok: false, error: `La orden se creó, pero ${avisos.join('; ')}.` }
+  }
+
   redirect(`/ordenes/${orden.id}`)
 }
 
@@ -487,20 +672,7 @@ export async function editarCotizacion(
 
   const { data, error } = await supabase
     .from('cotizaciones')
-    .update({
-      cliente_id: v.cliente_id,
-      precio_venta: v.precio_venta,
-      unidad_id: nulo(v.unidad_id),
-      tipo_carroceria_id: nulo(v.tipo_carroceria_id),
-      sede_id: nulo(v.sede_id),
-      fecha_emision: v.fecha_emision || undefined,
-      validez_dias: v.validez_dias,
-      moneda: v.moneda,
-      plazo_entrega_dias: v.plazo_entrega_dias,
-      forma_pago: nulo(v.forma_pago),
-      condiciones: nulo(v.condiciones),
-      observaciones: nulo(v.observaciones),
-    })
+    .update(cabeceraGuardable(v) as CabeceraCotizacion)
     .eq('id', v.cotizacion_id)
     .select('id')
     .maybeSingle()

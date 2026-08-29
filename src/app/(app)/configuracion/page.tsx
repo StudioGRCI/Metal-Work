@@ -3,11 +3,12 @@ import { Boton } from '@/components/ui/boton'
 import { Entrada } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { calendarioLaboral, catalogosDelTaller } from '@/lib/datos/configuracion'
-import { cantidad } from '@/lib/format'
+import { calendarioLaboral, catalogosDelTaller, ultimosTiposCambio } from '@/lib/datos/configuracion'
+import { cantidad, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { DiasLaborables, Feriados } from './calendario'
+import { TipoDeCambio } from './tipo-cambio'
 
 export const metadata = { title: 'Configuración' }
 
@@ -20,9 +21,10 @@ export default async function PaginaConfiguracion({
   const hoy = new Date().getFullYear()
   const anio = Number(typeof query.anio === 'string' ? query.anio : hoy) || hoy
 
-  const [calendario, catalogos] = await Promise.all([
+  const [calendario, catalogos, cambios] = await Promise.all([
     calendarioLaboral(anio),
     catalogosDelTaller(),
+    ultimosTiposCambio(),
   ])
   const puedeEditar = puede(perfil, 'configuracion.editar')
 
@@ -58,6 +60,9 @@ export default async function PaginaConfiguracion({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-4">
+          {/* Va primero a propósito: es el único dato de esta pantalla que, si
+              falta, se cuela en cada cotización en dólares sin decir nada. */}
+          <TipoDeCambio hoy={hoyLima()} cambios={cambios} puedeEditar={puedeEditar} />
           <DiasLaborables dias={calendario.diasLaborables} puedeEditar={puedeEditar} />
           <Feriados anio={anio} feriados={calendario.feriados} puedeEditar={puedeEditar} />
         </div>

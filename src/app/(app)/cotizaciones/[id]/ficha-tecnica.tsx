@@ -1,5 +1,6 @@
 'use client'
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { Check, Minus, Pencil, Plus, Trash2, Wand2, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useActionState, useState, useTransition } from 'react'
@@ -10,6 +11,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { ConfirmarAccion } from '@/components/ui/ventana'
 import type { AccesorioCotizado, SeccionFicha } from '@/lib/datos/ficha'
 import { cantidad as formatearCantidad } from '@/lib/format'
+import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
 import {
@@ -42,6 +44,20 @@ export type CabeceraTecnica = {
   plazo_en_habiles: boolean
   plazo_entrega_dias: number | null
   nota: string | null
+  /**
+   * Los cuatro datos que la migración 045 agregó porque están en todas las
+   * cotizaciones de la casa y no había dónde guardarlos.
+   *
+   * Van opcionales mientras la página no los pase: la consulta que la alimenta
+   * pide `*`, así que el dato ya viaja, pero el objeto que arma la página
+   * todavía no los nombra y los tipos generados aún no conocen las columnas.
+   */
+  /** La garantía tal como se escribe, partida por sistema. Manda sobre los meses. */
+  garantia_texto?: string | null
+  /** La tolerancia que la casa siempre pone junto al peso: «+/- 5%». */
+  peso_tolerancia?: string | null
+  /** Las advertencias en negativo: «NO INCLUYE AROS NI LLANTAS». */
+  no_incluye?: string | null
 }
 
 function Aviso({ resultado }: { resultado: { ok?: boolean; error?: string; mensaje?: string } | null }) {
@@ -215,10 +231,18 @@ function Medidas({
           <Dato titulo="Modelo" valor={cabecera.modelo} />
           <Dato titulo="Tipo" valor={cabecera.tipo} />
           <Dato titulo="Capacidad" valor={cabecera.capacidad} />
+          {/* El peso nunca se lee solo: la casa lo escribe siempre con su
+              tolerancia, y sin ella el número parece exacto. */}
+          <Dato titulo="Peso neto" valor={pesoConTolerancia(cabecera)} />
           <Dato titulo="Largo" valor={cabecera.largo_m ? `${cabecera.largo_m} m` : null} />
           <Dato titulo="Ancho" valor={cabecera.ancho_m ? `${cabecera.ancho_m} m` : null} />
           <Dato titulo="Alto" valor={cabecera.alto_m ? `${cabecera.alto_m} m` : null} />
-          <Dato titulo="Garantía" valor={`${cabecera.garantia_meses} meses`} />
+          {/* Si está escrita a mano manda esa, que es la que se parte por
+              sistema; los meses son el respaldo. */}
+          <Dato
+            titulo="Garantía"
+            valor={cabecera.garantia_texto?.trim() || `${cabecera.garantia_meses} meses`}
+          />
           <Dato titulo="Precio" valor={cabecera.incluye_igv ? 'Incluye IGV' : 'No incluye IGV'} />
           <Dato
             titulo="Plazo"
@@ -228,6 +252,12 @@ function Medidas({
                 : null
             }
           />
+          {cabecera.no_incluye && (
+            <p className="text-xs text-texto-suave sm:col-span-3">
+              <span className="font-medium text-texto">No incluye: </span>
+              {cabecera.no_incluye}
+            </p>
+          )}
           {cabecera.nota && (
             <p className="text-xs text-texto-suave sm:col-span-3">{cabecera.nota}</p>
           )}
@@ -246,15 +276,16 @@ function Medidas({
         <form action={accion} className="space-y-3">
           <input type="hidden" name="cotizacion_id" value={cotizacionId} />
 
+          {/* El peso subió de fila para quedar pegado a su tolerancia: en el
+              papel de la casa van juntos —«PESO NETO: 6.7 TN (+/- 5%)»— y
+              separarlos era lo que hacía que la tolerancia se olvidara. La
+              capacidad bajó con las medidas, que es lo que acompaña. */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Campo etiqueta="Modelo" htmlFor="modelo">
               <Entrada id="modelo" name="modelo" defaultValue={cabecera.modelo ?? ''} placeholder="VASCULANTE" />
             </Campo>
             <Campo etiqueta="Tipo" htmlFor="tipo">
               <Entrada id="tipo" name="tipo" defaultValue={cabecera.tipo ?? ''} placeholder="PLATAFORMA REFORZADA" />
-            </Campo>
-            <Campo etiqueta="Capacidad" htmlFor="capacidad" ayuda="Como va en la cotización">
-              <Entrada id="capacidad" name="capacidad" defaultValue={cabecera.capacidad ?? ''} placeholder="10 M3" />
             </Campo>
             <Campo etiqueta="Peso neto" htmlFor="peso_neto_tn" ayuda="Toneladas">
               <Entrada
@@ -266,9 +297,33 @@ function Medidas({
                 defaultValue={cabecera.peso_neto_tn ?? ''}
               />
             </Campo>
+            <Campo
+              etiqueta="Tolerancia del peso"
+              htmlFor="peso_tolerancia"
+              ayuda="La casa siempre la escribe; sin ella el peso se lee como exacto."
+            >
+              {/* Es texto y no número: el papel dice «+/- 5%» tal cual. */}
+              <Entrada
+                id="peso_tolerancia"
+                name="peso_tolerancia"
+                autoComplete="off"
+                list="peso-tolerancia-usuales"
+                defaultValue={cabecera.peso_tolerancia ?? ''}
+                placeholder="+/- 5%"
+              />
+            </Campo>
+            {/* Fuera del Campo: el Campo clona a sus hijos para atarles la
+                ayuda, y al datalist no hay nada que atarle. */}
+            <datalist id="peso-tolerancia-usuales">
+              <option value="+/- 5%" />
+              <option value="+/- 3%" />
+            </datalist>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Campo etiqueta="Capacidad" htmlFor="capacidad" ayuda="Como va en la cotización">
+              <Entrada id="capacidad" name="capacidad" defaultValue={cabecera.capacidad ?? ''} placeholder="10 M3" />
+            </Campo>
             <Campo etiqueta="Largo" htmlFor="largo_m" ayuda="Metros">
               <Entrada
                 id="largo_m"
@@ -299,6 +354,9 @@ function Medidas({
                 defaultValue={cabecera.alto_m ?? ''}
               />
             </Campo>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Campo etiqueta="Garantía" htmlFor="garantia_meses" ayuda="Meses">
               <Entrada
                 id="garantia_meses"
@@ -308,6 +366,23 @@ function Medidas({
                 min="0"
                 max="120"
                 defaultValue={cabecera.garantia_meses}
+              />
+            </Campo>
+            {/* Los meses solos no alcanzan: la casa parte la garantía por
+                sistema y eso es lo que firma. Va pegado a los meses porque es
+                el mismo dato contado con más detalle. */}
+            <Campo
+              etiqueta="Garantía, como va escrita"
+              htmlFor="garantia_texto"
+              ayuda="La garantía se parte por sistema: «01 año contra fallas de fabricación / 6 meses en sistema hidráulico». Si se deja vacía, el papel escribe los meses."
+              className="sm:col-span-2 lg:col-span-3"
+            >
+              <Entrada
+                id="garantia_texto"
+                name="garantia_texto"
+                autoComplete="off"
+                defaultValue={cabecera.garantia_texto ?? ''}
+                placeholder="01 año contra eventuales fallas de fabricación"
               />
             </Campo>
           </div>
@@ -336,15 +411,24 @@ function Medidas({
             </label>
           </div>
 
-          <Campo etiqueta="Nota al pie" htmlFor="nota">
+          {/* Lejos de los accesorios a propósito: los accesorios son lo que se
+              entrega y esto es exactamente lo contrario. Puestos juntos, lo
+              segundo se lee como más de lo primero. */}
+          <Campo
+            etiqueta="No incluye"
+            htmlFor="no_incluye"
+            ayuda="Lo que el cliente podría dar por incluido y no lo está. Va en mayúsculas, como en el papel."
+          >
             <AreaTexto
-              id="nota"
-              name="nota"
+              id="no_incluye"
+              name="no_incluye"
               rows={2}
-              defaultValue={cabecera.nota ?? ''}
-              placeholder="Incluye certificado de montaje y expediente para registros públicos."
+              defaultValue={cabecera.no_incluye ?? ''}
+              placeholder="NO INCLUYE AROS NI LLANTAS"
             />
           </Campo>
+
+          <NotaDeCierre nota={cabecera.nota ?? ''} />
 
           <Aviso resultado={resultado} />
 
@@ -358,6 +442,197 @@ function Medidas({
         </form>
       </TarjetaCuerpo>
     </Tarjeta>
+  )
+}
+
+/**
+ * El peso como lo escribe la casa: «6.7 TN (+/- 5%)».
+ *
+ * La tolerancia va pegada al número y no en una línea aparte: un peso sin
+ * tolerancia se lee como promesa exacta, y eso es lo que después se reclama con
+ * la unidad en la balanza.
+ */
+function pesoConTolerancia(cabecera: CabeceraTecnica) {
+  if (!cabecera.peso_neto_tn) return null
+  const tolerancia = cabecera.peso_tolerancia?.trim()
+  return `${formatearCantidad(cabecera.peso_neto_tn)} TN${tolerancia ? ` (${tolerancia})` : ''}`
+}
+
+/** Una nota de cierre del catálogo `public.notas_cotizacion`. */
+type NotaCatalogo = { id: string; codigo: string; texto: string; orden: number }
+
+/**
+ * La forma de `notas_cotizacion`, escrita acá a mano a propósito.
+ *
+ * La tabla entró con la migración 045 y `src/types/database.ts` todavía no se
+ * regeneró —no es de este encargo—, así que en vez de inventar el archivo
+ * generado se declara solo lo que esta pantalla consulta. Cuando se corra
+ * `./scripts/generar-tipos.sh`, esto sobra: se borra el tipo y el `as` de abajo.
+ */
+type BaseNotas = {
+  public: {
+    Tables: {
+      notas_cotizacion: {
+        Row: NotaCatalogo & { activo: boolean }
+        Insert: NotaCatalogo & { activo: boolean }
+        Update: Partial<NotaCatalogo & { activo: boolean }>
+        Relationships: []
+      }
+    }
+    Views: Record<string, never>
+    Functions: Record<string, never>
+  }
+}
+
+/**
+ * La nota que cierra el papel del cliente, con el catálogo de la casa al lado.
+ *
+ * Las notas finales de esta empresa hablan siempre de lo mismo —certificados,
+ * expediente para registros públicos, tarjeta, placas, plaqueta— y hasta ahora
+ * se volvían a teclear en cada cotización: cada una terminaba diciendo una cosa
+ * distinta. Acá se eligen del catálogo y se suman al texto, que sigue siendo
+ * libre para lo que el catálogo no cubra.
+ */
+function NotaDeCierre({ nota }: { nota: string }) {
+  const [texto, setTexto] = useState(nota)
+  const [catalogo, setCatalogo] = useState<NotaCatalogo[] | null>(null)
+  const [abierto, setAbierto] = useState(false)
+  const [cargando, setCargando] = useState(false)
+  const [fallo, setFallo] = useState<string | null>(null)
+
+  // El catálogo se pide al abrirlo, no al cargar la pantalla: la mayoría de las
+  // veces la ficha se toca sin mirar las notas. Y se pide desde el manejador
+  // del clic, no desde un efecto, que en este proyecto está cerrado.
+  async function alternarCatalogo() {
+    if (abierto) {
+      setAbierto(false)
+      return
+    }
+
+    setAbierto(true)
+    if (catalogo || cargando) return
+
+    setCargando(true)
+    setFallo(null)
+
+    // Es vocabulario de la casa: lo lee cualquiera con la sesión iniciada, así
+    // que va con el cliente del navegador y no por una acción de servidor.
+    const supabase = createClient() as unknown as SupabaseClient<BaseNotas>
+    const { data, error } = await supabase
+      .from('notas_cotizacion')
+      .select('id, codigo, texto, orden')
+      .eq('activo', true)
+      .order('orden')
+
+    setCargando(false)
+
+    if (error) {
+      setFallo('No se pudo traer el catálogo de notas. La nota se puede escribir a mano.')
+      return
+    }
+
+    setCatalogo(data ?? [])
+  }
+
+  function agregar(elegida: NotaCatalogo) {
+    setTexto((actual) => {
+      const limpio = actual.trim()
+      // Se juntan con un espacio porque el papel imprime la nota como un solo
+      // párrafo; en renglones sueltos saldría una lista que nadie escribió así.
+      return limpio ? `${limpio} ${elegida.texto}` : elegida.texto
+    })
+  }
+
+  return (
+    <div className="space-y-2">
+      <Campo
+        etiqueta="Nota al pie"
+        htmlFor="nota"
+        ayuda="Cierra el papel del cliente. Lo que se repite en todas está en el catálogo de la casa."
+      >
+        <AreaTexto
+          id="nota"
+          name="nota"
+          rows={3}
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          placeholder="Incluye certificado de montaje y expediente para registros públicos."
+        />
+      </Campo>
+
+      {/* El catálogo va fuera del Campo: el Campo clona a sus hijos para
+          atarles la ayuda, y esto no es un control del formulario. */}
+      <div className="space-y-2">
+        <Boton
+          type="button"
+          variante="secundario"
+          tamano="sm"
+          aria-expanded={abierto}
+          cargando={cargando}
+          onClick={() => {
+            void alternarCatalogo()
+          }}
+        >
+          {abierto ? <Minus aria-hidden className="size-3.5" /> : <Plus aria-hidden className="size-3.5" />}
+          Notas de la casa
+        </Boton>
+
+        {abierto && (
+          <div className="rounded-[var(--radius-base)] bg-superficie-2 p-3">
+            {fallo && (
+              <p role="alert" className="text-xs text-peligro">
+                {fallo}
+              </p>
+            )}
+
+            {!fallo && cargando && (
+              <p role="status" className="text-xs text-texto-suave">
+                Trayendo las notas…
+              </p>
+            )}
+
+            {catalogo?.length === 0 && (
+              <p className="text-xs text-texto-suave">
+                El catálogo está vacío. Las notas que se repiten se dan de alta en Configuración.
+              </p>
+            )}
+
+            {catalogo && catalogo.length > 0 && (
+              <ul className="flex flex-wrap gap-1.5">
+                {catalogo.map((n) => {
+                  // Si ya está en el texto no se ofrece de nuevo: dos veces la
+                  // misma frase en la misma nota es lo que se quiere evitar.
+                  const yaEsta = texto.includes(n.texto)
+
+                  return (
+                    <li key={n.id}>
+                      <Boton
+                        type="button"
+                        variante="contorno"
+                        tamano="sm"
+                        disabled={yaEsta}
+                        onClick={() => agregar(n)}
+                        aria-label={yaEsta ? `Ya está en la nota: ${n.texto}` : `Agregar a la nota: ${n.texto}`}
+                        // La frase entera es el rótulo, así que el botón crece
+                        // hacia abajo en vez de recortarla.
+                        className="h-auto min-h-10 py-1.5 text-left whitespace-normal sm:h-auto sm:min-h-8"
+                      >
+                        {yaEsta ? (
+                          <Check aria-hidden className="size-3.5 shrink-0" />
+                        ) : (
+                          <Plus aria-hidden className="size-3.5 shrink-0" />
+                        )}
+                        {n.texto}
+                      </Boton>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 

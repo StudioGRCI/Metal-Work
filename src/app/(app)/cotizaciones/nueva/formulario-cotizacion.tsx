@@ -21,6 +21,22 @@ type Catalogos = {
   tiposCarroceria: { id: string; nombre: string }[]
 }
 
+/**
+ * Las tres maneras en que la casa cuenta el plazo, transcritas de sus propias
+ * cotizaciones. La lista sugiere y no obliga —el campo acepta cualquier texto—
+ * porque no siempre es una de las tres: hay clientes que cuentan desde la firma
+ * del contrato o desde la entrega del chasis.
+ *
+ * La misma lista está en `editar-cotizacion.tsx`: son dos pantallas distintas y
+ * todavía no hay un archivo de dominio que las dos puedan leer. Si se toca una,
+ * se toca la otra.
+ */
+const PLAZO_DESDE_USUALES = [
+  'después de emitida la orden de compra',
+  'a partir del día de depósito',
+  'a partir del abono en la cuenta de la empresa',
+]
+
 export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
   const [resultado, ejecutar, pendiente] = useActionState(crearCotizacion, null)
   const [clienteId, setClienteId] = useState('')
@@ -243,6 +259,33 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
               className="tabular text-right"
             />
           </Campo>
+
+          {/* Va pegado al plazo y en el mismo renglón, como en el papel de la
+              casa: un plazo de 30 días sin decir desde cuándo se cuentan es una
+              fecha que cada uno calcula distinto. */}
+          <Campo
+            etiqueta="¿Desde cuándo cuenta el plazo?"
+            htmlFor="plazo_desde"
+            ayuda="Elige una de las que usa la casa o escribe la que se acordó."
+            className="sm:col-span-2 lg:col-span-3"
+          >
+            {/* Sin `autoComplete` el navegador tapa la lista de la casa con lo
+                que guardó de otros formularios. */}
+            <Entrada
+              id="plazo_desde"
+              name="plazo_desde"
+              autoComplete="off"
+              list="plazo-desde-alta"
+              placeholder="después de emitida la orden de compra"
+            />
+          </Campo>
+          {/* Fuera del Campo a propósito: el Campo clona a sus hijos para
+              atarles la ayuda, y al datalist no hay nada que atarle. */}
+          <datalist id="plazo-desde-alta">
+            {PLAZO_DESDE_USUALES.map((texto) => (
+              <option key={texto} value={texto} />
+            ))}
+          </datalist>
 
           <Campo etiqueta="Forma de pago" htmlFor="forma_pago" className="sm:col-span-2">
             {/* Sin `autoComplete` el navegador ofrece aquí lo que guardó de

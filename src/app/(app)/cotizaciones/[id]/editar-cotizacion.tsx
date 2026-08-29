@@ -32,10 +32,32 @@ export type CabeceraCotizacion = {
   validez_dias: number
   moneda: string
   plazo_entrega_dias: number | null
+  /**
+   * Desde cuándo cuenta ese plazo, tal como lo escribe la casa. Opcional
+   * mientras la página no lo traiga: la consulta que la alimenta pide `*`, así
+   * que el dato ya viaja, pero el objeto que arma la página todavía no lo pasa
+   * y los tipos generados aún no conocen la columna (migración 045).
+   */
+  plazo_desde?: string | null
   forma_pago: string | null
   condiciones: string | null
   observaciones: string | null
 }
+
+/**
+ * Las tres maneras en que la casa cuenta el plazo, transcritas de sus propias
+ * cotizaciones. Sugieren y no obligan: el campo acepta cualquier texto porque
+ * no siempre es una de las tres.
+ *
+ * La misma lista está en el alta (`nueva/formulario-cotizacion.tsx`): son dos
+ * pantallas distintas y todavía no hay un archivo de dominio que las dos
+ * puedan leer. Si se toca una, se toca la otra.
+ */
+const PLAZO_DESDE_USUALES = [
+  'después de emitida la orden de compra',
+  'a partir del día de depósito',
+  'a partir del abono en la cuenta de la empresa',
+]
 
 /**
  * Corregir la cabecera mientras la cotización se está armando —en ventas, en
@@ -267,6 +289,33 @@ export function EditarCotizacion({
               />
             </Campo>
           </div>
+
+          {/* Pegado al plazo, porque en el papel de la casa van en el mismo
+              renglón: «30 días hábiles después de emitida la orden de compra».
+              El número solo no alcanza para saber qué día se entrega. */}
+          <Campo
+            etiqueta="¿Desde cuándo cuenta el plazo?"
+            htmlFor="plazo_desde"
+            ayuda="Elige una de las que usa la casa o escribe la que se acordó."
+          >
+            {/* Sin `autoComplete` el navegador tapa la lista de la casa con lo
+                que guardó de otros formularios. */}
+            <Entrada
+              id="plazo_desde"
+              name="plazo_desde"
+              autoComplete="off"
+              list="plazo-desde-edicion"
+              defaultValue={cotizacion.plazo_desde ?? ''}
+              placeholder="después de emitida la orden de compra"
+            />
+          </Campo>
+          {/* Fuera del Campo a propósito: el Campo clona a sus hijos para
+              atarles la ayuda, y al datalist no hay nada que atarle. */}
+          <datalist id="plazo-desde-edicion">
+            {PLAZO_DESDE_USUALES.map((texto) => (
+              <option key={texto} value={texto} />
+            ))}
+          </datalist>
 
           <Campo etiqueta="Forma de pago" htmlFor="forma_pago">
             {/* Sin `autoComplete` el navegador ofrece aquí lo que guardó

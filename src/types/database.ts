@@ -804,6 +804,10 @@ export type Database = {
           concepto: string | null
           concepto_cantidad: number
           concepto_unidad: string
+          plazo_desde: string | null
+          garantia_texto: string | null
+          peso_tolerancia: string | null
+          no_incluye: string | null
           precio_venta: number | null
           costo_estimado: number
           costeo_pedido_en: string | null
@@ -861,6 +865,10 @@ export type Database = {
           concepto?: string | null
           concepto_cantidad?: number
           concepto_unidad?: string
+          plazo_desde?: string | null
+          garantia_texto?: string | null
+          peso_tolerancia?: string | null
+          no_incluye?: string | null
           precio_venta?: number | null
           costo_estimado?: number
           costeo_pedido_en?: string | null
@@ -918,6 +926,10 @@ export type Database = {
           concepto?: string | null
           concepto_cantidad?: number
           concepto_unidad?: string
+          plazo_desde?: string | null
+          garantia_texto?: string | null
+          peso_tolerancia?: string | null
+          no_incluye?: string | null
           precio_venta?: number | null
           costo_estimado?: number
           costeo_pedido_en?: string | null
@@ -2291,6 +2303,36 @@ export type Database = {
             referencedColumns: ["id"]
           }
         ]
+      }
+      notas_cotizacion: {
+        Row: {
+          id: string
+          codigo: string
+          texto: string
+          orden: number
+          activo: boolean
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo: string
+          texto: string
+          orden?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo?: string
+          texto?: string
+          orden?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: []
       }
       orden_compra_detalle: {
         Row: {

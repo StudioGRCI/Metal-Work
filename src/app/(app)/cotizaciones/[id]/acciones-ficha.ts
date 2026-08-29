@@ -65,6 +65,13 @@ export async function guardarCabeceraTecnica(
       capacidad: z.string().trim().optional(),
       peso_neto_tn: z.string().trim().optional(),
       garantia_meses: z.coerce.number().int().min(0).max(120).default(12),
+      // La garantía de la casa se parte por sistema —«01 año fallas de
+      // fabricación / 6 meses en sistema hidráulico»— y un número de meses no
+      // alcanza. Los tres campos los pinta la ficha; si no se declaran acá, zod
+      // los descarta sin decir nada y la pantalla responde «guardado».
+      garantia_texto: z.string().trim().optional(),
+      peso_tolerancia: z.string().trim().optional(),
+      no_incluye: z.string().trim().optional(),
       incluye_igv: z.string().optional(),
       plazo_en_habiles: z.string().optional(),
       nota: z.string().trim().optional(),
@@ -95,6 +102,9 @@ export async function guardarCabeceraTecnica(
       capacidad: nulo(v.capacidad),
       peso_neto_tn: numero(v.peso_neto_tn),
       garantia_meses: v.garantia_meses,
+      garantia_texto: nulo(v.garantia_texto),
+      peso_tolerancia: nulo(v.peso_tolerancia),
+      no_incluye: nulo(v.no_incluye),
       incluye_igv: v.incluye_igv === 'on',
       plazo_en_habiles: v.plazo_en_habiles === 'on',
       nota: nulo(v.nota),

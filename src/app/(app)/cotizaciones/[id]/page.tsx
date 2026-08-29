@@ -9,7 +9,7 @@ import { Indicador, type TonoIndicador } from '@/components/ui/indicador'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_COTIZACION, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
-import { fecha, fechaHora, moneda, porcentaje } from '@/lib/format'
+import { fecha, fechaHora, moneda, numero, porcentaje } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { obtenerCotizacion, partidasDeCotizacion } from '@/lib/datos/comercial'
 import {
@@ -112,6 +112,15 @@ export default async function PaginaCotizacion({
   const hayPrecio = cotizacion.precio_venta !== null && precioVenta > 0
   const margen = precioVenta - costoEstimado
 
+  /*
+   * El tipo de cambio se congela al emitir. `tipo_cambio_vigente()` responde 1
+   * cuando la tabla `tipos_cambio` está vacía —no porque el dólar valga un sol,
+   * sino porque no tiene nada que responder—, así que una cotización en dólares
+   * congelada en 1 es una que se emitió sin tipo de cambio cargado.
+   */
+  const tipoCambio = Number(cotizacion.tipo_cambio ?? 1)
+  const cambioSinCargar = mon === 'USD' && tipoCambio === 1
+
   // Lo que se imprime cuando nadie escribió el concepto: es de donde salía la
   // descripción antes de que el campo existiera.
   const sugerenciaConcepto =
@@ -188,6 +197,35 @@ export default async function PaginaCotizacion({
         </p>
       )}
 
+      {/* El número que hace que Gerencia apruebe un precio equivocado: la
+          cotización se lee bien en dólares, y todo lo que después la pasa a
+          soles la lee por menos de un tercio de lo que vale. */}
+      {cambioSinCargar && (
+        <div
+          role="alert"
+          className="mb-4 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2.5 text-sm text-aviso"
+        >
+          <p className="text-[11px] font-medium tracking-wide uppercase">
+            El tipo de cambio no está cargado
+          </p>
+          <p className="mt-1">
+            Esta cotización está en dólares y quedó congelada con el dólar a S/ 1.00, que es lo que
+            responde la base cuando nadie cargó ninguno. Los importes de acá abajo están bien —son
+            dólares—, pero todo lo que los pasa a soles sale por menos de un tercio: el presupuesto
+            que esta cotización le arrastra a su orden de trabajo nace corto y el taller se lo come
+            con la primera compra de material.
+          </p>
+          <p className="mt-1">
+            Cárgalo en{' '}
+            <Link href="/configuracion" className="font-medium underline">
+              Configuración
+            </Link>{' '}
+            antes de dar el visto a este precio. Cargarlo no corrige esta cotización —cada documento
+            se queda con el cambio que tenía al emitirse—: esta hay que rehacerla.
+          </p>
+        </div>
+      )}
+
       {cotizacion.estado === 'RECHAZADA' && cotizacion.motivo_rechazo && (
         <p className="mb-4 rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-sm text-peligro">
           <strong>Rechazada:</strong> {cotizacion.motivo_rechazo}
@@ -238,6 +276,7 @@ export default async function PaginaCotizacion({
                     validez_dias: cotizacion.validez_dias,
                     moneda: cotizacion.moneda,
                     plazo_entrega_dias: cotizacion.plazo_entrega_dias,
+                    plazo_desde: cotizacion.plazo_desde,
                     forma_pago: cotizacion.forma_pago,
                     condiciones: cotizacion.condiciones,
                     observaciones: cotizacion.observaciones,
@@ -295,6 +334,19 @@ export default async function PaginaCotizacion({
               etiqueta="Plazo de entrega"
               valor={cotizacion.plazo_entrega_dias ? `${cotizacion.plazo_entrega_dias} días` : null}
             />
+            {/* Solo cuando es en dólares: en soles vale siempre 1 y gastar un
+                renglón en eso es ruido. Es el número con el que se pasa a soles
+                todo lo de arriba, y hasta ahora no se veía en ninguna pantalla. */}
+            {mon === 'USD' && (
+              <Dato
+                etiqueta="Tipo de cambio"
+                valor={
+                  cambioSinCargar
+                    ? 'S/ 1.000 por dólar — sin cargar'
+                    : `S/ ${numero(tipoCambio, 3)} por dólar`
+                }
+              />
+            )}
             <Dato etiqueta="Forma de pago" valor={cotizacion.forma_pago} />
             <Dato
               etiqueta="Vendedor"
@@ -370,6 +422,9 @@ export default async function PaginaCotizacion({
               capacidad: cotizacion.capacidad,
               peso_neto_tn: cotizacion.peso_neto_tn,
               garantia_meses: cotizacion.garantia_meses,
+              garantia_texto: cotizacion.garantia_texto,
+              peso_tolerancia: cotizacion.peso_tolerancia,
+              no_incluye: cotizacion.no_incluye,
               incluye_igv: cotizacion.incluye_igv,
               plazo_en_habiles: cotizacion.plazo_en_habiles,
               plazo_entrega_dias: cotizacion.plazo_entrega_dias,
