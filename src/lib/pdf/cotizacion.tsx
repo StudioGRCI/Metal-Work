@@ -571,60 +571,61 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
             económica: el cliente recibía las condiciones, con un «PRECIO» suelto
             entre ellas, y ninguna línea que dijera qué se le está cotizando ni
             el desglose del IGV. La cotización sin su precio no es una
-            cotización, y `concepto()` siempre devuelve un nombre. */}
-            {/* Así se titula en sus cotizaciones, con los dos puntos. */}
-            <Text style={estilos.tituloSeccion}>PROPUESTA ECONÓMICA:</Text>
-            <View style={estilos.tabla}>
-              <View style={estilos.encabezado}>
-                <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.item }]}>ÍTEM</Text>
-                <Text style={[estilos.celdaTitulo, { width: COL.descripcion }]}>DESCRIPCIÓN</Text>
-                <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.cantidad }]}>CANT.</Text>
-                <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.unidad }]}>UND.</Text>
-                <Text style={[estilos.celdaTitulo, estilos.derecha, { width: COL.precio }]}>PRECIO</Text>
-              </View>
+            cotización, y `concepto()` siempre devuelve un nombre.
 
-              <View style={estilos.fila}>
-                <Text style={[estilos.celda, estilos.centro, { width: COL.item }]}>1</Text>
-                <Text style={[estilos.celda, { width: COL.descripcion }]}>{concepto(datos)}</Text>
-                <Text style={[estilos.celda, estilos.centro, { width: COL.cantidad }]}>
-                  {numero(datos.concepto_cantidad, 2)}
-                </Text>
-                <Text style={[estilos.celda, estilos.centro, { width: COL.unidad }]}>
-                  {datos.concepto_unidad}
-                </Text>
-                <Text style={[estilos.celda, estilos.derecha, { width: COL.precio }]}>
-                  {moneda(precioDelConcepto(datos), mon)}
-                </Text>
-              </View>
+            Así se titula en sus cotizaciones, con los dos puntos. */}
+          <Text style={estilos.tituloSeccion}>PROPUESTA ECONÓMICA:</Text>
+          <View style={estilos.tabla}>
+            <View style={estilos.encabezado}>
+              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.item }]}>ÍTEM</Text>
+              <Text style={[estilos.celdaTitulo, { width: COL.descripcion }]}>DESCRIPCIÓN</Text>
+              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.cantidad }]}>CANT.</Text>
+              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.unidad }]}>UND.</Text>
+              <Text style={[estilos.celdaTitulo, estilos.derecha, { width: COL.precio }]}>PRECIO</Text>
             </View>
 
-            <View style={estilos.bloqueTotales}>
-              <View style={estilos.totales}>
-                <View style={estilos.lineaTotal}>
-                  <Text>Subtotal</Text>
-                  <Text>{moneda(datos.subtotal, mon)}</Text>
-                </View>
-                {datos.descuento > 0 && (
-                  <View style={estilos.lineaTotal}>
-                    <Text>Descuento</Text>
-                    <Text>− {moneda(datos.descuento, mon)}</Text>
-                  </View>
-                )}
-                <View style={estilos.lineaTotal}>
-                  <Text>{`IGV (${numero(datos.igv_porcentaje, 0)}%)`}</Text>
-                  <Text>{moneda(datos.igv, mon)}</Text>
-                </View>
-                <View style={estilos.lineaTotalFuerte}>
-                  <Text style={estilos.textoTotal}>TOTAL</Text>
-                  <Text style={estilos.textoTotal}>{moneda(datos.total, mon)}</Text>
-                </View>
-                <Text style={[estilos.textoPie, { textAlign: 'right', marginTop: 2 }]}>
-                  {datos.incluye_igv
-                    ? 'El precio indicado ya incluye el IGV'
-                    : 'El precio indicado no incluye el IGV; se detalla arriba'}
-                </Text>
-              </View>
+            <View style={estilos.fila}>
+              <Text style={[estilos.celda, estilos.centro, { width: COL.item }]}>1</Text>
+              <Text style={[estilos.celda, { width: COL.descripcion }]}>{concepto(datos)}</Text>
+              <Text style={[estilos.celda, estilos.centro, { width: COL.cantidad }]}>
+                {numero(datos.concepto_cantidad, 2)}
+              </Text>
+              <Text style={[estilos.celda, estilos.centro, { width: COL.unidad }]}>
+                {datos.concepto_unidad}
+              </Text>
+              <Text style={[estilos.celda, estilos.derecha, { width: COL.precio }]}>
+                {moneda(precioDelConcepto(datos), mon)}
+              </Text>
             </View>
+          </View>
+
+          <View style={estilos.bloqueTotales}>
+            <View style={estilos.totales}>
+              <View style={estilos.lineaTotal}>
+                <Text>Subtotal</Text>
+                <Text>{moneda(datos.subtotal, mon)}</Text>
+              </View>
+              {datos.descuento > 0 && (
+                <View style={estilos.lineaTotal}>
+                  <Text>Descuento</Text>
+                  <Text>− {moneda(datos.descuento, mon)}</Text>
+                </View>
+              )}
+              <View style={estilos.lineaTotal}>
+                <Text>{`IGV (${numero(datos.igv_porcentaje, 0)}%)`}</Text>
+                <Text>{moneda(datos.igv, mon)}</Text>
+              </View>
+              <View style={estilos.lineaTotalFuerte}>
+                <Text style={estilos.textoTotal}>TOTAL</Text>
+                <Text style={estilos.textoTotal}>{moneda(datos.total, mon)}</Text>
+              </View>
+              <Text style={[estilos.textoPie, { textAlign: 'right', marginTop: 2 }]}>
+                {datos.incluye_igv
+                  ? 'El precio indicado ya incluye el IGV'
+                  : 'El precio indicado no incluye el IGV; se detalla arriba'}
+              </Text>
+            </View>
+          </View>
 
         {/* ----------------------------------------------------- condiciones */}
         {/* Siempre las mismas cinco y en este orden, que es el de sus papeles:
