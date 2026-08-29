@@ -103,11 +103,12 @@ try {
     try {
       const respuesta = await pagina.goto(URL_BASE + ruta, { waitUntil: 'commit', timeout: 90000 })
       estado = respuesta?.status() ?? '?'
-      // La pantalla llega en dos tiempos y el esqueleto de carga no tiene ni
-      // una letra: capturarlo sería fotografiar el cargando, no la pantalla.
-      await pagina.waitForFunction(() => document.body.innerText.trim().length > 200, {
-        timeout: 60000,
-      })
+      // La pantalla llega en dos tiempos y el esqueleto de carga no tiene ni una
+      // letra. Contar las letras del cuerpo no sirve: el menú lateral solo ya
+      // pasa de doscientas, así que la cuenta se cumplía con la pantalla todavía
+      // en gris y las capturas salían del esqueleto. Se espera al título dentro
+      // del contenido, que es lo primero que escribe la pantalla de verdad.
+      await pagina.locator('main h1').first().waitFor({ state: 'visible', timeout: 60000 })
       tarda = Number(process.hrtime.bigint() - arranque) / 1e6
     } catch {
       tarda = Number(process.hrtime.bigint() - arranque) / 1e6

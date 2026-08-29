@@ -8,7 +8,7 @@ import { Insignia, Punto } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { cantidad, fecha } from '@/lib/format'
+import { cantidad, fecha, nombreCorto } from '@/lib/format'
 import { ESTADO_OT, PRIORIDAD, TIPO_TRABAJO, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import {
@@ -169,7 +169,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                         {/* El responsable no tiene columna propia en el
                             teléfono: viaja aquí, pegado a la unidad. */}
                         {orden.responsable && (
-                          <span className="sm:hidden"> · {orden.responsable}</span>
+                          <span className="sm:hidden"> · {nombreCorto(orden.responsable)}</span>
                         )}
                       </p>
                     </TD>
@@ -221,8 +221,8 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                       )}
                     </TD>
 
-                    <TD className="hidden max-w-40 truncate text-texto-suave sm:table-cell">
-                      {orden.responsable ?? '—'}
+                    <TD className="hidden text-texto-suave sm:table-cell">
+                      {nombreCorto(orden.responsable)}
                     </TD>
                   </TR>
                 )

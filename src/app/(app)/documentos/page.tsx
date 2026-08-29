@@ -3,7 +3,12 @@ import { PastillaFiltro, type OpcionFiltro } from '@/components/estructura/pasti
 import { ListaDocumentos } from '@/components/documentos/lista-documentos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { listarDocumentos, tiposDocumento, ultimasVersiones } from '@/lib/datos/documentos'
+import {
+  documentosPorTipo,
+  listarDocumentos,
+  tiposDocumento,
+  ultimasVersiones,
+} from '@/lib/datos/documentos'
 import { firmasDeDocumentos, posiblesFirmantes } from '@/lib/datos/firmas'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -14,9 +19,10 @@ export default async function PaginaDocumentos({ searchParams }: PageProps<'/doc
   const params = await searchParams
   const tipoFiltro = typeof params.tipo === 'string' ? params.tipo : undefined
 
-  const [documentos, tipos] = await Promise.all([
+  const [documentos, tipos, cuentaPorTipo] = await Promise.all([
     listarDocumentos({ tipo: tipoFiltro }),
     tiposDocumento(),
+    documentosPorTipo(),
   ])
 
   const pideFirmas = puede(perfil, ['documentos.subir', 'documentos.aprobar'])
@@ -27,9 +33,20 @@ export default async function PaginaDocumentos({ searchParams }: PageProps<'/doc
     pideFirmas ? posiblesFirmantes() : Promise.resolve([]),
   ])
 
+  // Solo los tipos que tienen algo guardado, con su cuenta al lado. El
+  // catálogo entero eran dieciocho pastillas en cuatro líneas —quince de ellas
+  // llevando a una pantalla vacía— y en el teléfono empujaban la lista fuera de
+  // la vista antes de mostrar un solo documento. El tipo que se está filtrando
+  // se queda aunque su cuenta sea cero: si no, la pastilla encendida desaparece
+  // debajo del dedo que la acaba de tocar.
   const opciones: OpcionFiltro[] = [
     { valor: null, etiqueta: 'Todos' },
-    ...tipos.map((t) => ({ valor: t.id, etiqueta: t.nombre })),
+    ...tipos
+      .filter((t) => (cuentaPorTipo[t.id] ?? 0) > 0 || t.id === tipoFiltro)
+      .map((t) => ({
+        valor: t.id,
+        etiqueta: `${t.nombre} (${cuentaPorTipo[t.id] ?? 0})`,
+      })),
   ]
 
   // El nombre del tipo puesto, para poder decirlo en el vacío: «no hay ninguna

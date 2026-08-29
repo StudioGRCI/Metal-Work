@@ -32,6 +32,30 @@ export async function versionesDeDocumento(documentoId: string) {
   return data ?? []
 }
 
+/**
+ * Cuántos documentos vigentes hay de cada tipo.
+ *
+ * El repositorio ofrecía una pastilla de filtro por cada tipo del catálogo:
+ * dieciocho pastillas en cuatro líneas, para tres documentos guardados. Quince
+ * de esas pastillas llevaban a una pantalla vacía, y las cuatro líneas empujaban
+ * la lista fuera de la vista en el teléfono. Un filtro que no filtra nada no es
+ * una opción, es un estorbo.
+ */
+export async function documentosPorTipo(): Promise<Record<string, number>> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('documentos')
+    .select('tipo_documento_id')
+    .eq('estado', 'VIGENTE')
+
+  if (error) throw new Error(`No se pudieron contar los documentos: ${error.message}`)
+
+  const cuenta: Record<string, number> = {}
+  for (const d of data ?? []) cuenta[d.tipo_documento_id] = (cuenta[d.tipo_documento_id] ?? 0) + 1
+  return cuenta
+}
+
 /** El archivo que se descarga de un documento: siempre el de la versión más alta. */
 export type UltimaVersion = {
   bucket: string

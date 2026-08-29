@@ -161,3 +161,26 @@ export function hoyLima(): string {
     day: '2-digit',
   }).format(new Date())
 }
+
+/**
+ * Un nombre que entra en una columna: «Rosa Mercedes Quispe Huamán» sale como
+ * «Rosa Quispe».
+ *
+ * En la lista de órdenes la columna de responsable mostraba «Administrador
+ * Meta…» en las cinco filas: una columna entera repitiendo un texto cortado,
+ * que ocupaba sitio y no decía a quién. Cortar con puntos suspensivos deja al
+ * lector adivinando; quedarse con el primer nombre y el primer apellido dice
+ * quién es y cabe.
+ *
+ * No se recorta a iniciales: en el taller hay gente que se llama por el nombre
+ * y una «R. Q.» no le dice nada a nadie.
+ */
+export function nombreCorto(completo?: string | null): string {
+  const partes = (completo ?? '').trim().split(/\s+/).filter(Boolean)
+  if (partes.length === 0) return '—'
+  if (partes.length <= 2) return partes.join(' ')
+
+  // Con tres partes es «nombre apellido apellido»: el paterno va segundo. Con
+  // cuatro o más son dos nombres y dos apellidos, y el paterno va tercero.
+  return `${partes[0]} ${partes[partes.length === 3 ? 1 : 2]}`
+}

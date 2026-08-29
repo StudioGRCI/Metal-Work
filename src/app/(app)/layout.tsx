@@ -10,7 +10,11 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
       <BarraSuperior perfil={perfil} />
       <div className="flex flex-1">
         <BarraLateral permisos={perfil.permisos} esAdmin={perfil.rol.codigo === 'ADMIN'} />
-        <main className="min-w-0 flex-1 px-4 py-6 lg:px-6">{children}</main>
+        {/* El hueco de abajo en el teléfono no es estético: el botón del menú
+            va fijo en esa esquina y, sin él, se sienta encima de la última fila
+            de cada lista. En las capturas tapaba la última cotización y media
+            tarjeta de avance. En monitor el botón no existe y el hueco sobra. */}
+        <main className="min-w-0 flex-1 px-4 pt-6 pb-24 lg:px-6 lg:pb-6">{children}</main>
       </div>
     </div>
   )

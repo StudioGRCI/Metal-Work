@@ -285,3 +285,28 @@ h1, h2, h3 {
 
 :root[data-tema='claro'] .marca-en-fondo-claro  { display: block; }
 :root[data-tema='claro'] .marca-en-fondo-oscuro { display: none; }
+
+/* -----------------------------------------------------------------------------
+   UNA TABLA QUE SIGUE, Y SE NOTA
+   En el teléfono una tabla de ocho columnas entra a medias y el corte no se ve:
+   la fila termina en el borde de la pantalla como si ahí se acabara. En el
+   recorrido, la lista de órdenes cortaba «Fabricación de…» a mitad de palabra y
+   nada invitaba a arrastrar; el estado, el avance y la entrega quedaban del otro
+   lado sin que nadie sospechara que estaban.
+
+   Los cuatro degradados son el truco clásico de Roman Komarov: dos «tapas» del
+   color del fondo ancladas al contenido (`local`) y dos sombras ancladas al
+   marco (`scroll`). Cuando hay más a la derecha, la tapa se va con el scroll y
+   deja ver la sombra; al llegar al final la tapa vuelve a cubrirla. Sin
+   JavaScript y sin escuchar el desplazamiento.
+   -------------------------------------------------------------------------- */
+.tabla-con-corte {
+  background:
+    linear-gradient(to right, var(--superficie) 30%, transparent) left center,
+    linear-gradient(to left,  var(--superficie) 30%, transparent) right center,
+    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.16), transparent) left center,
+    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.16), transparent) right center;
+  background-repeat: no-repeat;
+  background-size: 36px 100%, 36px 100%, 14px 100%, 14px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
