@@ -32,6 +32,53 @@ export async function versionesDeDocumento(documentoId: string) {
   return data ?? []
 }
 
+/** El archivo que se descarga de un documento: siempre el de la versión más alta. */
+export type UltimaVersion = {
+  bucket: string
+  ruta_storage: string
+  nombre_archivo: string
+}
+
+/**
+ * La última versión de varios documentos, en una sola consulta.
+ *
+ * Las dos pantallas que listan documentos necesitan, de cada uno, con qué
+ * archivo armar el botón de descargar. Lo pedían documento por documento dentro
+ * de un `Promise.all`, y como la lista trae hasta doscientos, eso eran
+ * doscientas idas y vueltas a la base para pintar una pantalla. No se rompía
+ * nada: solo tardaba, y cuanto más papel guardara la empresa, más.
+ *
+ * Se trae todo junto y se elige el máximo acá. `documento_id` viene ordenado
+ * por versión descendente, así que la primera de cada documento es la suya.
+ */
+export async function ultimasVersiones(
+  documentoIds: string[],
+): Promise<Record<string, UltimaVersion>> {
+  if (documentoIds.length === 0) return {}
+
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('documento_versiones')
+    .select('documento_id, version, bucket, ruta_storage, nombre_archivo')
+    .in('documento_id', documentoIds)
+    .order('version', { ascending: false })
+
+  if (error) throw new Error(`No se pudieron cargar los archivos: ${error.message}`)
+
+  const porDocumento: Record<string, UltimaVersion> = {}
+  for (const v of data ?? []) {
+    // La primera que aparece de cada documento es la más alta: no se pisa.
+    porDocumento[v.documento_id] ??= {
+      bucket: v.bucket,
+      ruta_storage: v.ruta_storage,
+      nombre_archivo: v.nombre_archivo,
+    }
+  }
+
+  return porDocumento
+}
+
 export async function tiposDocumento() {
   const supabase = await createClient()
 

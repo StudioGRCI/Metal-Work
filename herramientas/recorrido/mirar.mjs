@@ -69,7 +69,15 @@ try {
   })
 
   mkdirSync(CAPTURAS, { recursive: true })
-  await pagina.screenshot({ path: join(CAPTURAS, `${nombre}.png`), fullPage: true })
+  // Con las animaciones vivas, una captura de página entera espera a que todo
+  // se quede quieto y nunca se queda quieto: el tablero tiene barras que se
+  // animan al entrar y la captura vencía sin decir por qué.
+  await pagina.screenshot({
+    path: join(CAPTURAS, `${nombre}.png`),
+    fullPage: true,
+    animations: 'disabled',
+    timeout: 60000,
+  })
   console.log(`captura · ${join(CAPTURAS, `${nombre}.png`)}`)
 
   for (const selector of selectores) {

@@ -17,8 +17,11 @@
  * que es como lo usa el taller.
  */
 import { chromium } from 'playwright-core'
-import { mkdirSync, existsSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+
+import { navegadorDelSistema, sesionGuardada } from './sesion.mjs'
 
 const URL_BASE = process.env.URL ?? 'http://localhost:3111'
 const USUARIO = process.env.USUARIO ?? ''
@@ -26,12 +29,6 @@ const CLAVE = process.env.CLAVE ?? ''
 const ANCHO = Number(process.argv[2]) || 1440
 const CAPTURAS = join(process.env.CAPTURAS ?? 'capturas/produccion', String(ANCHO))
 
-const NAVEGADORES = [
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-]
-const exe = NAVEGADORES.find((r) => existsSync(r))
-if (!exe) throw new Error('No hay Chrome ni Edge en esta máquina')
 
 const RUTAS = [
   ['tablero', '/'],
@@ -62,11 +59,20 @@ const RUTAS = [
   ['personal', '/personal'],
 ]
 
-const navegador = await chromium.launch({ executablePath: exe })
+// La sesión se reutiliza entre recorridos: entrar es lo más frágil de todo
+// esto y no tiene nada que ver con lo que se quiere mirar.
+const estado = await sesionGuardada({
+  urlBase: URL_BASE,
+  usuario: USUARIO,
+  clave: CLAVE,
+  archivo: join(tmpdir(), 'metal-work-sesion.json'),
+})
+
+const navegador = await chromium.launch({ executablePath: navegadorDelSistema() })
 const contexto = await navegador.newContext({
   viewport: { width: ANCHO, height: ANCHO < 600 ? 844 : 1000 },
-  deviceScaleFactor: 2,
   locale: 'es-PE',
+  storageState: estado,
 })
 const pagina = await contexto.newPage()
 
@@ -84,40 +90,47 @@ pagina.on('response', (r) => {
 mkdirSync(CAPTURAS, { recursive: true })
 
 try {
-  await pagina.goto(`${URL_BASE}/ingresar`, { waitUntil: 'networkidle', timeout: 60000 })
-  await pagina.fill('input[type="email"], input[name="correo"]', USUARIO)
-  await pagina.fill('input[type="password"]', CLAVE)
-  await pagina.click('button[type="submit"]')
-  await pagina
-    .waitForURL((u) => !u.pathname.includes('/ingresar'), { timeout: 90000 })
-    .catch(() => {})
-
-  if (pagina.url().includes('/ingresar')) throw new Error('no se pudo entrar')
   console.log(`\nRecorrido a ${ANCHO}px · ${URL_BASE}\n`)
 
   for (const [nombre, ruta] of RUTAS) {
     errores = []
     let estado = '?'
+    // Lo que tarda desde que se pide la pantalla hasta que hay algo que leer.
+    // Es la cifra que importa: el usuario no espera al `load` del navegador,
+    // espera a ver su lista.
+    const arranque = process.hrtime.bigint()
+    let tarda = 0
     try {
-      const respuesta = await pagina.goto(URL_BASE + ruta, { waitUntil: 'networkidle', timeout: 60000 })
+      const respuesta = await pagina.goto(URL_BASE + ruta, { waitUntil: 'commit', timeout: 90000 })
       estado = respuesta?.status() ?? '?'
       // La pantalla llega en dos tiempos y el esqueleto de carga no tiene ni
       // una letra: capturarlo sería fotografiar el cargando, no la pantalla.
       await pagina.waitForFunction(() => document.body.innerText.trim().length > 200, {
-        timeout: 25000,
+        timeout: 60000,
       })
+      tarda = Number(process.hrtime.bigint() - arranque) / 1e6
     } catch {
+      tarda = Number(process.hrtime.bigint() - arranque) / 1e6
       errores.push('no terminó de cargar')
     }
 
-    await pagina.screenshot({ path: join(CAPTURAS, `${nombre}.png`), fullPage: true })
+    await pagina.screenshot({
+      path: join(CAPTURAS, `${nombre}.png`),
+      fullPage: true,
+      animations: 'disabled',
+      timeout: 60000,
+    })
 
+    const segundos = tarda / 1000
     const cuerpo = await pagina.locator('body').innerText()
     const roto = /Ocurrió un error inesperado|Application error|no se pudo|No se pudieron/i.test(cuerpo)
     if (roto) errores.push('la pantalla dice que algo falló')
 
-    const marca = errores.length > 0 ? '✗' : '·'
-    console.log(`  ${marca} ${nombre.padEnd(24)} ${estado}${errores.length ? ' — ' + errores.join(' | ') : ''}`)
+    const marca = errores.length > 0 ? '✗' : segundos > 4 ? '⏳' : '·'
+    console.log(
+      `  ${marca} ${nombre.padEnd(24)} ${String(estado).padEnd(4)} ${segundos.toFixed(1)}s` +
+        (errores.length ? ' — ' + errores.join(' | ') : ''),
+    )
   }
 } finally {
   await navegador.close()

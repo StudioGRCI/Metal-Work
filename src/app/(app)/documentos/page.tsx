@@ -3,7 +3,7 @@ import { PastillaFiltro, type OpcionFiltro } from '@/components/estructura/pasti
 import { ListaDocumentos } from '@/components/documentos/lista-documentos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { listarDocumentos, tiposDocumento, versionesDeDocumento } from '@/lib/datos/documentos'
+import { listarDocumentos, tiposDocumento, ultimasVersiones } from '@/lib/datos/documentos'
 import { firmasDeDocumentos, posiblesFirmantes } from '@/lib/datos/firmas'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -21,29 +21,11 @@ export default async function PaginaDocumentos({ searchParams }: PageProps<'/doc
 
   const pideFirmas = puede(perfil, ['documentos.subir', 'documentos.aprobar'])
 
-  const [versiones, firmas, firmantes] = await Promise.all([
-    Promise.all(
-      documentos.map(async (d) => ({ id: d.id, versiones: await versionesDeDocumento(d.id) })),
-    ),
+  const [versionesPorDocumento, firmas, firmantes] = await Promise.all([
+    ultimasVersiones(documentos.map((d) => d.id)),
     firmasDeDocumentos(documentos.map((d) => d.id)),
     pideFirmas ? posiblesFirmantes() : Promise.resolve([]),
   ])
-
-  const versionesPorDocumento: Record<
-    string,
-    { bucket: string; ruta_storage: string; nombre_archivo: string }
-  > = {}
-
-  for (const { id, versiones: lista } of versiones) {
-    const ultima = lista[0]
-    if (ultima) {
-      versionesPorDocumento[id] = {
-        bucket: ultima.bucket,
-        ruta_storage: ultima.ruta_storage,
-        nombre_archivo: ultima.nombre_archivo,
-      }
-    }
-  }
 
   const opciones: OpcionFiltro[] = [
     { valor: null, etiqueta: 'Todos' },

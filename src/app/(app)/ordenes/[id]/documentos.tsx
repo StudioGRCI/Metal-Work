@@ -3,7 +3,7 @@ import { AlertTriangle } from 'lucide-react'
 import { ListaDocumentos } from '@/components/documentos/lista-documentos'
 import { SubirDocumento, type TipoDocumento } from '@/components/documentos/subir-documento'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { listarDocumentos, documentosFaltantes, versionesDeDocumento } from '@/lib/datos/documentos'
+import { listarDocumentos, documentosFaltantes, ultimasVersiones } from '@/lib/datos/documentos'
 import { firmasDeDocumentos, posiblesFirmantes } from '@/lib/datos/firmas'
 
 export async function DocumentosOrden({
@@ -24,31 +24,13 @@ export async function DocumentosOrden({
     documentosFaltantes(ordenId),
   ])
 
-  // Se resuelve la versión vigente de cada documento para el botón de descarga.
-  const versiones = await Promise.all(
-    documentos.map(async (d) => ({ id: d.id, versiones: await versionesDeDocumento(d.id) })),
-  )
-
-  const [firmas, firmantes] = await Promise.all([
+  // La versión vigente de cada documento, para el botón de descarga: en una
+  // sola consulta, no una por documento.
+  const [versionesPorDocumento, firmas, firmantes] = await Promise.all([
+    ultimasVersiones(documentos.map((d) => d.id)),
     firmasDeDocumentos(documentos.map((d) => d.id)),
     puedePedirFirmas ? posiblesFirmantes() : Promise.resolve([]),
   ])
-
-  const versionesPorDocumento: Record<
-    string,
-    { bucket: string; ruta_storage: string; nombre_archivo: string }
-  > = {}
-
-  for (const { id, versiones: lista } of versiones) {
-    const ultima = lista[0]
-    if (ultima) {
-      versionesPorDocumento[id] = {
-        bucket: ultima.bucket,
-        ruta_storage: ultima.ruta_storage,
-        nombre_archivo: ultima.nombre_archivo,
-      }
-    }
-  }
 
   const pendientes = faltantes as unknown as { codigo: string; nombre: string }[]
 
