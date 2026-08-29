@@ -227,18 +227,18 @@ export function EditarCotizacion({
             </Campo>
 
             {/* Se puede corregir después de emitir: quien atiende cambia, y sin
-                esto el papel salía firmado por la empresa para siempre. */}
+                esto el papel salía sin decir quién vende. */}
             <Campo
               etiqueta="Vendedor"
               htmlFor="vendedor_id"
-              ayuda="Quien atiende esta cotización. Su nombre va en la firma del papel; si se deja vacío firma la empresa."
+              ayuda="Quien atiende esta cotización. Su nombre sale en el papel como vendedor; no es una firma."
             >
               <SeleccionBuscable
                 id="vendedor_id"
                 name="vendedor_id"
                 valor={vendedorId}
                 onChange={setVendedorId}
-                marcador="Firma la empresa"
+                marcador="Sin vendedor asignado"
                 marcadorBusqueda="Nombre"
                 opciones={catalogos.responsables.map((r) => ({
                   valor: r.id,

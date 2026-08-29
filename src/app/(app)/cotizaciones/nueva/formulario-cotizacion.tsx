@@ -263,10 +263,10 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
           <Campo
             etiqueta="Vendedor"
             htmlFor="vendedor_id"
-            ayuda="Quien atiende esta cotización. Su nombre va en la firma del papel; si se deja vacío firma la empresa."
+            ayuda="Quien atiende esta cotización. Su nombre sale en el papel como vendedor; no es una firma."
           >
             <Seleccion id="vendedor_id" name="vendedor_id" defaultValue="">
-              <option value="">Firma la empresa</option>
+              <option value="">Sin vendedor asignado</option>
               {catalogos.responsables.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.nombres} {r.apellidos}

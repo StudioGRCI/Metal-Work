@@ -228,19 +228,17 @@ const estilos = StyleSheet.create({
   },
   condiciones: { marginTop: 4 },
   parrafo: { fontSize: 7.8, marginBottom: 2, lineHeight: 1.35 },
-  // El bloque se separa del texto de arriba y la firma tiene su hueco: 46
-  // puntos son unos dieciséis milímetros, que es lo que ocupa una firma con su
-  // sello al lado. Sin ese hueco, la raya quedaba pegada a las condiciones y no
-  // había dónde firmar.
-  firmas: { marginTop: 40, alignItems: 'center' },
-  // Poco más de un tercio de la hoja. Al 58 % la raya cruzaba media página y no
-  // parecía un renglón para firmar sino un subrayado; una firma se pone en el
-  // ancho de una mano, no en el de la hoja.
-  firma: { width: '36%' },
-  espacioFirma: { height: 46 },
-  lineaFirma: { borderTopWidth: 0.75, borderTopColor: '#1B2430', width: '100%', paddingTop: 4 },
-  textoFirma: { fontSize: 7.5, textAlign: 'center', color: GRIS },
-  nombreFirma: { fontSize: 8.5, textAlign: 'center', color: '#1B2430' },
+  // El cierre de la carta: «Atentamente,» y debajo quien vende. No es una firma
+  // —la empresa lo aclaró— y por eso no lleva raya ni hueco para firmar encima:
+  // es el nombre de quien atiende, que es lo que el cliente necesita para saber
+  // a quién llamar.
+  cierreCarta: { marginTop: 40, alignItems: 'center' },
+  nombreVendedor: {
+    fontSize: 8.5,
+    fontFamily: 'Helvetica-Bold',
+    textAlign: 'center',
+    color: '#1B2430',
+  },
 
   sello: {
     position: 'absolute',
@@ -775,17 +773,18 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
           </Text>
         )}
 
-        {/* --------------------------------------------------------- firmas */}
+        {/* --------------------------------------------------- cierre de carta */}
         {/* Una sola firma, la de la casa. El recuadro de conformidad del
             cliente se quitó por decisión de Gerencia: una cotización no se
             devuelve firmada, se acepta con una orden de compra. */}
-        {/* «Atentamente,» y el nombre de quien atiende, sin raya. Así lo
-            manda la casa: la raya la puso este sistema por su cuenta, y la
-            empresa avisó de que sobraba —una cotización se acepta con una orden
-            de compra, no devolviéndola firmada—. */}
-        <View style={estilos.firmas} wrap={false}>
+        {/* «Atentamente,» y el nombre de quien vende. No es una firma: la
+            empresa lo dijo con todas las letras —«esto no se firma, solamente es
+            para que salga en la cotización como vendedor»—. Por eso no hay raya
+            ni hueco para firmar encima; una cotización se acepta con una orden
+            de compra, no devolviéndola firmada. */}
+        <View style={estilos.cierreCarta} wrap={false}>
           <Text style={estilos.despedida}>Atentamente,</Text>
-          <Text style={estilos.nombreFirma}>
+          <Text style={estilos.nombreVendedor}>
             {(datos.vendedor
               ? `${datos.vendedor.nombres} ${datos.vendedor.apellidos}`
               : (empresa?.razon_social ?? 'Metal Work Perú S.A.C.')
