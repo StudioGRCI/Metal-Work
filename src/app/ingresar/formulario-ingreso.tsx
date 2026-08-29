@@ -1,15 +1,26 @@
 'use client'
 
 import { Eye, EyeOff } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { createClient } from '@/lib/supabase/client'
 
+/**
+ * A dónde mandar al usuario después de entrar.
+ *
+ * `redirigir` viene de la dirección, así que lo elige quien arma el enlace. Sin
+ * mirarlo, un `?redirigir=https://otro-sitio` mandaría a la gente fuera del
+ * sistema justo después de escribir su contraseña, con la confianza de venir de
+ * la pantalla de la empresa. Solo se aceptan rutas de la casa: empiezan con una
+ * barra y no con dos —`//otro-sitio` es una dirección externa disfrazada.
+ */
+function destinoSeguro(ruta: string): string {
+  return ruta.startsWith('/') && !ruta.startsWith('//') ? ruta : '/'
+}
+
 export function FormularioIngreso({ redirigir }: { redirigir: string }) {
-  const router = useRouter()
   const [correo, setCorreo] = useState('')
   const [clave, setClave] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -40,9 +51,21 @@ export function FormularioIngreso({ redirigir }: { redirigir: string }) {
       return
     }
 
-    // refresh() obliga al middleware a releer la cookie recién escrita.
-    router.replace(redirigir)
-    router.refresh()
+    // Navegación completa a propósito, no `router.replace()`.
+    //
+    // Antes había un `router.replace()` seguido de `router.refresh()`, y el
+    // refresh cancelaba la navegación que el replace acababa de empezar: en la
+    // red se veían dos peticiones al destino abortadas y el usuario se quedaba
+    // en esta pantalla con el botón girando para siempre. No fallaba siempre
+    // —depende de cuál de las dos gane la carrera— y por eso se veía como
+    // «a veces no entra». La sesión sí quedaba iniciada: reintentar funcionaba,
+    // lo que hacía pensar que era la clave mal escrita.
+    //
+    // Una navegación del navegador entero no compite con nada: descarta la
+    // caché de rutas de Next y hace que el proxy vuelva a leer la cookie recién
+    // escrita, que es lo que el refresh intentaba conseguir. Cuesta una carga
+    // completa, una sola vez al entrar.
+    window.location.assign(destinoSeguro(redirigir))
   }
 
   return (
