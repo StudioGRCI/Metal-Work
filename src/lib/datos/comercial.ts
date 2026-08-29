@@ -137,7 +137,7 @@ export async function listarCotizacionesDeTrabajo(filtros: { estado?: string } =
 
   let consulta = supabase
     .from('cotizaciones')
-    .select('id, numero, fecha_emision, estado, moneda, precio_venta, costo_estimado, costeo_pedido_en, costeo_listo_en, motivo_observacion, cliente:clientes!inner(razon_social), unidad:unidades!cotizaciones_unidad_id_fkey(placa), tipo_carroceria:tipos_carroceria(nombre)')
+    .select('id, numero, fecha_emision, estado, moneda, precio_venta, costo_estimado, costeo_pedido_en, costeo_listo_en, motivo_observacion, cliente:clientes!inner(razon_social), unidad:unidades!cotizaciones_unidad_id_fkey(placa, codigo_interno, numero_chasis, marca, modelo), tipo_carroceria:tipos_carroceria(nombre)')
 
   if (filtros.estado) {
     consulta = consulta.eq('estado', filtros.estado as EstadoCotizacion)
@@ -181,7 +181,7 @@ export async function listarCotizaciones(
   // puede decir cuánto lleva parada una cotización en la etapa donde está.
   let consulta = supabase
     .from('cotizaciones')
-    .select('id, numero, fecha_emision, fecha_vencimiento, estado, moneda, total, costeo_pedido_en, costeo_listo_en, revisada_en, cliente:clientes!inner(razon_social), unidad:unidades!cotizaciones_unidad_id_fkey(placa), tipo_carroceria:tipos_carroceria(nombre)')
+    .select('id, numero, fecha_emision, fecha_vencimiento, estado, moneda, total, costeo_pedido_en, costeo_listo_en, revisada_en, cliente:clientes!inner(razon_social), unidad:unidades!cotizaciones_unidad_id_fkey(placa, codigo_interno, numero_chasis, marca, modelo), tipo_carroceria:tipos_carroceria(nombre)')
 
   if (filtros.estado) consulta = consulta.eq('estado', filtros.estado as EstadoCotizacion)
 
@@ -204,7 +204,11 @@ export async function listarCotizaciones(
     // busca por su llave, como haría un `join`.
     const [clientes, unidades] = await Promise.all([
       supabase.from('clientes').select('id').ilike('razon_social', `%${t}%`).limit(200),
-      supabase.from('unidades').select('id').ilike('placa', `%${t}%`).limit(200),
+      supabase
+        .from('unidades')
+        .select('id')
+        .or(`placa.ilike.%${t}%,codigo_interno.ilike.%${t}%,numero_chasis.ilike.%${t}%`)
+        .limit(200),
     ])
 
     const condiciones = [`numero.ilike.%${t}%`]
@@ -230,7 +234,7 @@ export async function obtenerCotizacion(id: string) {
 
   const { data, error } = await supabase
     .from('cotizaciones')
-    .select('*, cliente:clientes!inner(id, razon_social, numero_documento), unidad:unidades!cotizaciones_unidad_id_fkey(id, placa, marca, modelo), tipo_carroceria:tipos_carroceria(id, nombre), vendedor:usuarios!cotizaciones_vendedor_id_fkey(nombres, apellidos), anulador:usuarios!cotizaciones_anulada_por_fkey(nombres, apellidos)')
+    .select('*, cliente:clientes!inner(id, razon_social, numero_documento), unidad:unidades!cotizaciones_unidad_id_fkey(id, placa, marca, modelo, codigo_interno, numero_chasis), tipo_carroceria:tipos_carroceria(id, nombre), vendedor:usuarios!cotizaciones_vendedor_id_fkey(nombres, apellidos), anulador:usuarios!cotizaciones_anulada_por_fkey(nombres, apellidos)')
     .eq('id', id)
     .maybeSingle()
 

@@ -8,13 +8,14 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { TIPO_MOVIMIENTO } from '@/lib/dominio/almacen'
+import { nombreDeUnidad, type UnidadNombrable } from '@/lib/dominio/unidades'
 import { hoyLima } from '@/lib/format'
 
 import { crearMovimiento } from '../../acciones'
 
 type Catalogos = {
   almacenes: { id: string; nombre: string }[]
-  ordenes: { id: string; numero: string; cliente: string | null; placa: string | null }[]
+  ordenes: { id: string; numero: string; cliente: string | null; unidad: UnidadNombrable | null }[]
   proveedores: { id: string; razon_social: string }[]
 }
 
@@ -111,11 +112,14 @@ export function FormularioMovimiento({
                 valor={ordenId}
                 onChange={setOrdenId}
                 marcador="Selecciona la orden"
-                marcadorBusqueda="Número, cliente o placa"
+                marcadorBusqueda="Número, cliente o unidad"
                 opciones={catalogos.ordenes.map((o) => ({
                   valor: o.id,
                   etiqueta: o.numero,
-                  detalle: [o.cliente, o.placa].filter(Boolean).join(' · '),
+                  // La unidad se nombra en un solo sitio: la carrocería que aún
+                  // no tiene placa se llama por su código de fabricación o por
+                  // su chasis, y el renglón no queda a medias.
+                  detalle: [o.cliente, nombreDeUnidad(o.unidad)].filter(Boolean).join(' · '),
                 }))}
               />
             </Campo>

@@ -8,6 +8,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_OT, ORDEN_ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha } from '@/lib/format'
 import { indicadoresTablero, listarOrdenes } from '@/lib/datos/ordenes'
 import { exigirSesion, puede } from '@/lib/sesion'
@@ -124,6 +125,18 @@ export default async function PaginaTablero() {
             ) : (
               ordenes.slice(0, 8).map((orden) => {
                 const estado = definir(ESTADO_OT, orden.estado)
+                // Con unidad el renglón la nombra siempre, tenga placa o no;
+                // sin unidad no se nombra nada, para no gastar el ancho de una
+                // línea que se lee de un vistazo.
+                const unidad = orden.unidad_id
+                  ? {
+                      placa: orden.placa,
+                      codigo_interno: orden.codigo_interno,
+                      numero_chasis: orden.numero_chasis,
+                      marca: orden.marca,
+                      modelo: orden.modelo,
+                    }
+                  : null
                 return (
                   <Link
                     key={orden.id}
@@ -137,7 +150,13 @@ export default async function PaginaTablero() {
                       </p>
                       <p className="truncate text-xs text-texto-suave">
                         {orden.cliente}
-                        {orden.placa ? ` · ${orden.placa}` : ''}
+                        {unidad && (
+                          <span
+                            className={todaviaSinPlaca(unidad) ? 'text-texto-tenue' : undefined}
+                          >
+                            {` · ${nombreDeUnidad(unidad)}`}
+                          </span>
+                        )}
                       </p>
                     </div>
                     {/* La barra cede ancho en el teléfono: con 128 px fijos el

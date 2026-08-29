@@ -9,6 +9,8 @@ import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ConfirmarAccion } from '@/components/ui/ventana'
+import { nombreDeUnidad } from '@/lib/dominio/unidades'
+import type { UnidadNombrable } from '@/lib/dominio/unidades'
 import { cantidad } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 
@@ -36,7 +38,13 @@ export function LineasParte({
   lineas: Linea[]
   editable: boolean
   operarios: { id: string; nombres: string; apellidos: string }[]
-  ordenes: { id: string; numero: string; descripcion: string; cliente: string | null; placa: string | null }[]
+  ordenes: {
+    id: string
+    numero: string
+    descripcion: string
+    cliente: string | null
+    unidad: UnidadNombrable | null
+  }[]
 }) {
   const router = useRouter()
   const [, iniciarTransicion] = useTransition()
@@ -263,9 +271,14 @@ export function LineasParte({
                 onChange={(e) => cambiarOrden(e.target.value)}
               >
                 <option value="">Selecciona</option>
+                {/* La unidad siempre se nombra —placa si la tiene, y si no, lo
+                    que la identifique—: el operario elige la orden por el
+                    camión que tiene delante, no por el número. Se arma con
+                    `join` para que un cliente sin nombre no deje un separador
+                    suelto en la lista. */}
                 {ordenes.map((o) => (
                   <option key={o.id} value={o.id}>
-                    {o.numero} · {o.cliente ?? ''} {o.placa ? `(${o.placa})` : ''}
+                    {[o.numero, o.cliente, nombreDeUnidad(o.unidad)].filter(Boolean).join(' · ')}
                   </option>
                 ))}
               </Seleccion>

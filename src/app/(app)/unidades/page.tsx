@@ -6,6 +6,7 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { numero } from '@/lib/format'
+import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { listarUnidades } from '@/lib/datos/comercial'
 import { exigirPermiso } from '@/lib/sesion'
 
@@ -35,7 +36,10 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
         <Tabla>
           <TablaCabecera>
             <tr>
-              <TH>Placa</TH>
+              {/* Se llamaba «Placa», pero la placa llega meses después de que
+                  la unidad entra al taller: la columna nombra la unidad, con
+                  la matrícula cuando la tiene. */}
+              <TH>Unidad</TH>
               <TH>Cliente</TH>
               <TH>Vehículo</TH>
               {/* Siete columnas no entran en un teléfono. Las cuatro de detalle se
@@ -87,9 +91,28 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                   .filter(Boolean)
                   .join(' · ')
 
+                // El aviso de que falta la placa solo se agrega cuando el nombre
+                // no lo dice ya por sí mismo: «Volvo FH, sin placa» no necesita
+                // repetirlo debajo.
+                const nombre = nombreDeUnidad(u)
+                const avisarFalta = todaviaSinPlaca(u) && !nombre.includes('sin placa')
+
                 return (
                   <TR key={u.id}>
-                    <TD className="tabular font-medium whitespace-nowrap">{u.placa}</TD>
+                    <TD className="font-medium whitespace-nowrap">
+                      {/* Aquí es donde se busca la unidad con la vista. Sin
+                          placa se nombra con lo que la identifique —código
+                          interno, chasis, marca— y se dice que le falta, para
+                          que nadie lea eso como si fuera una matrícula. */}
+                      <span className={todaviaSinPlaca(u) ? 'text-texto-suave' : 'tabular'}>
+                        {nombre}
+                      </span>
+                      {avisarFalta && (
+                        <span className="block text-[11px] font-normal text-texto-tenue">
+                          sin placa
+                        </span>
+                      )}
+                    </TD>
                     <TD>
                       <Link
                         href={`/clientes/${cliente.id}`}

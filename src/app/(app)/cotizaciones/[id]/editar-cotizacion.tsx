@@ -78,7 +78,7 @@ export function EditarCotizacion({
     let vigente = true
     createClient()
       .from('unidades')
-      .select('id, placa')
+      .select('id, placa, codigo_interno, numero_chasis, marca, modelo')
       .eq('cliente_id', clienteId)
       .eq('activo', true)
       .order('placa')

@@ -9,7 +9,9 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha } from '@/lib/format'
+import type { UnidadNombrable } from '@/lib/dominio/unidades'
 import {
   contactosDeCliente,
   listarUnidades,
@@ -124,9 +126,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
               <ul className="divide-y divide-[var(--borde)]">
                 {unidades.map((u) => (
                   <li key={u.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                    <span className="tabular rounded-[var(--radius-base)] bg-superficie-2 px-2 py-1 text-sm font-medium">
-                      {u.placa}
-                    </span>
+                    <NombreUnidad unidad={u} />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm text-texto">
                         {[u.marca, u.modelo, u.anio].filter(Boolean).join(' ') || 'Sin datos'}
@@ -198,7 +198,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                         <div className="min-w-40 flex-1">
                           <p className="truncate text-sm text-texto">{o.descripcion}</p>
                           <p className="text-[11px] text-texto-suave">
-                            {o.placa ?? 'sin unidad'} · {fecha(o.fecha_registro)}
+                            {nombreDeUnidad({ placa: o.placa })} · {fecha(o.fecha_registro)}
                           </p>
                         </div>
                         <div className="w-28">
@@ -214,6 +214,30 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
         </Tarjeta>
       </div>
     </>
+  )
+}
+
+/**
+ * El recuadro donde se busca la matrícula con la vista. Mientras la placa no
+ * llega —y en esta empresa llega meses después—, la unidad se nombra con lo que
+ * la identifique y se dice que le falta, para que nadie lea un código interno
+ * como si fuera una matrícula. El aviso se calla cuando el nombre ya lo trae.
+ */
+function NombreUnidad({ unidad }: { unidad: UnidadNombrable }) {
+  const nombre = nombreDeUnidad(unidad)
+  const falta = todaviaSinPlaca(unidad)
+
+  return (
+    <span
+      className={`rounded-[var(--radius-base)] bg-superficie-2 px-2 py-1 text-sm font-medium ${
+        falta ? 'text-texto-suave' : 'tabular'
+      }`}
+    >
+      {nombre}
+      {falta && !nombre.includes('sin placa') && (
+        <span className="ml-1 text-[11px] font-normal text-texto-tenue">sin placa</span>
+      )}
+    </span>
   )
 }
 

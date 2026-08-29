@@ -58,7 +58,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     let vigente = true
     createClient()
       .from('unidades')
-      .select('id, placa, marca')
+      .select('id, placa, marca, codigo_interno, numero_chasis, modelo')
       .eq('cliente_id', clienteId)
       .eq('activo', true)
       .order('placa')

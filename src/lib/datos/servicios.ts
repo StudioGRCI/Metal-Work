@@ -77,7 +77,7 @@ export async function catalogosDeServicio() {
       .limit(500),
     supabase
       .from('ot_resumen')
-      .select('id, numero, cliente, placa')
+      .select('id, numero, cliente, unidad_id, placa')
       .in('estado', ['PROGRAMADA', 'EN_PROCESO', 'PAUSADA', 'CONTROL_CALIDAD', 'TERMINADA'])
       .order('numero', { ascending: false })
       .limit(200),
@@ -90,7 +90,17 @@ export async function catalogosDeServicio() {
   // ya sabemos que la orden existe, así que se descarta lo que venga sin id.
   const listaOrdenes = (ordenes.data ?? [])
     .filter((o): o is typeof o & { id: string; numero: string } => !!o.id && !!o.numero)
-    .map((o) => ({ id: o.id, numero: o.numero, cliente: o.cliente, placa: o.placa }))
+    .map((o) => ({
+      id: o.id,
+      numero: o.numero,
+      cliente: o.cliente,
+      // La unidad viaja aparte, y en null cuando la OT no tiene ninguna: así el
+      // desplegable la nombra con `nombreDeUnidad` y no confunde «sin unidad» con
+      // «unidad que todavía no tiene placa». `ot_resumen` hoy solo expone la
+      // placa; cuando exponga también codigo_interno, numero_chasis, marca y
+      // modelo se suman aquí y el nombre cae solo.
+      unidad: o.unidad_id ? { placa: o.placa } : null,
+    }))
 
   return { proveedores: proveedores.data ?? [], ordenes: listaOrdenes }
 }

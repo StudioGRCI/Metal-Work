@@ -9,6 +9,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_OT, PRIORIDAD, TIPO_TRABAJO, definir } from '@/lib/dominio/estados'
 import { cantidad, fecha, fechaHora, hoyLima, moneda, numero as fmtNumero } from '@/lib/format'
+import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import {
   estadoDeSalida,
   fechasClaveDeOrden,
@@ -133,7 +134,18 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const estado = definir(ESTADO_OT, orden.estado)
   const prioridad = definir(PRIORIDAD, orden.prioridad)
   const cliente = orden.cliente as unknown as { razon_social: string; numero_documento: string; telefono: string | null }
-  const unidad = orden.unidad as unknown as { placa: string; marca: string | null; modelo: string | null; anio: number | null; numero_chasis: string | null } | null
+  // La placa dejó de ser obligatoria: la unidad existe desde el chasis y la
+  // matrícula llega meses después, con la tarjeta de propiedad.
+  // `codigo_interno` va opcional porque el select de `obtenerOrden` todavía no
+  // lo trae; en cuanto lo traiga, nombreDeUnidad lo usa sin tocar esta pantalla.
+  const unidad = orden.unidad as unknown as {
+    placa: string | null
+    codigo_interno?: string | null
+    marca: string | null
+    modelo: string | null
+    anio: number | null
+    numero_chasis: string | null
+  } | null
   const sede = orden.sede as unknown as { nombre: string }
   const responsable = orden.responsable as unknown as { nombres: string; apellidos: string } | null
   const tipoCarroceria = orden.tipo_carroceria as unknown as { nombre: string } | null
@@ -237,7 +249,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               <Dato etiqueta="Cliente" valor={cliente.razon_social} />
               <Dato etiqueta="Documento" valor={cliente.numero_documento} />
               <Dato etiqueta="Teléfono" valor={cliente.telefono} />
-              <Dato etiqueta="Placa" valor={unidad?.placa} />
+              {/* «Unidad» y no «Placa»: mientras no esté matriculada lo que
+                  aquí sale es el código de fábrica o el chasis, y llamarlo
+                  placa sería mentir. Sin unidad, la función ya lo dice. */}
+              <Dato etiqueta="Unidad" valor={nombreDeUnidad(unidad)} />
               <Dato
                 etiqueta="Vehículo"
                 valor={[unidad?.marca, unidad?.modelo, unidad?.anio].filter(Boolean).join(' ') || null}

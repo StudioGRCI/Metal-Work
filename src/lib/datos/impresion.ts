@@ -93,7 +93,7 @@ export async function cotizacionParaImprimir(id: string): Promise<CotizacionImpr
       `*,
        cliente:clientes!inner(razon_social, numero_documento, direccion_fiscal, distrito, provincia, telefono),
        contacto:contactos_cliente!cotizaciones_contacto_id_fkey(nombre, telefono, correo),
-       unidad:unidades!cotizaciones_unidad_id_fkey(placa, marca, modelo),
+       unidad:unidades!cotizaciones_unidad_id_fkey(placa, marca, modelo, codigo_interno, numero_chasis),
        tipo_carroceria:tipos_carroceria(nombre),
        vendedor:usuarios!cotizaciones_vendedor_id_fkey(nombres, apellidos, telefono, correo),
        partidas:cotizacion_partidas(descripcion, cantidad, unidad_medida, precio_unitario, descuento_porcentaje, subtotal, orden_secuencia)`,

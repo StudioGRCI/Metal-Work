@@ -15,6 +15,7 @@ import {
 
 import { fecha, moneda, numero } from '@/lib/format'
 import type { CodigoMoneda } from '@/lib/format'
+import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import type { CotizacionImpresa } from '@/lib/datos/impresion'
 
 // Los colores del manual de identidad. En el papel el azul es el que manda y
@@ -197,6 +198,26 @@ function textoPlazo(c: CotizacionImpresa) {
   return `${c.plazo_entrega_dias} días ${c.plazo_en_habiles ? 'hábiles' : 'calendario'}`
 }
 
+/**
+ * El renglón de la unidad tal como sale impreso: su nombre —la placa cuando la
+ * tiene y, si no, lo que de verdad la identifica— seguido de la marca y el
+ * modelo, unidos por un punto.
+ *
+ * Sin placa el nombre puede salir ya de la marca y el modelo, y entonces no se
+ * repiten detrás: el papel diría «VOLVO FH, sin placa · VOLVO · FH». Así el
+ * renglón se lee igual de bien con matrícula y sin ella, sin un punto suelto
+ * delante ni un hueco donde va el nombre.
+ */
+function unidadImpresa(unidad: CotizacionImpresa['unidad']) {
+  if (!unidad) return null
+
+  const nombre = nombreDeUnidad(unidad)
+  const vehiculo = [unidad.marca, unidad.modelo].filter(Boolean)
+  if (vehiculo.length === 0 || nombre.startsWith(vehiculo.join(' '))) return nombre
+
+  return [nombre, ...vehiculo].join(' · ')
+}
+
 function medidas(c: CotizacionImpresa) {
   const partes = [c.largo_m, c.ancho_m, c.alto_m].filter((m) => m !== null)
   if (partes.length === 0) return null
@@ -319,16 +340,7 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
                 <Dato etiqueta="Tipo" valor={datos.tipo} />
               </View>
               <View style={estilos.columna}>
-                <Dato
-                  etiqueta="Unidad"
-                  valor={
-                    datos.unidad
-                      ? [datos.unidad.placa, datos.unidad.marca, datos.unidad.modelo]
-                          .filter(Boolean)
-                          .join(' · ')
-                      : null
-                  }
-                />
+                <Dato etiqueta="Unidad" valor={unidadImpresa(datos.unidad)} />
                 <Dato etiqueta="Medidas" valor={medidas(datos)} />
                 <Dato etiqueta="Capacidad" valor={datos.capacidad} />
                 <Dato

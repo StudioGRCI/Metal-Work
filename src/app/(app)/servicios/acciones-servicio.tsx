@@ -11,6 +11,7 @@ import { TD, TR } from '@/components/ui/tabla'
 import { ConfirmarAccion, Ventana } from '@/components/ui/ventana'
 import type { OrdenDeServicio } from '@/lib/datos/servicios'
 import { ESTADO_SERVICIO, TIPO_SERVICIO } from '@/lib/dominio/servicios'
+import { nombreDeUnidad, todaviaSinPlaca, type UnidadNombrable } from '@/lib/dominio/unidades'
 import { type CodigoMoneda, fecha as formatearFecha, moneda as formatearMoneda } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -18,7 +19,7 @@ import { cambiarEstadoServicio, crearOrdenDeServicio, darConformidad, registrarP
 
 type Catalogos = {
   proveedores: { id: string; razon_social: string; numero_documento: string }[]
-  ordenes: { id: string; numero: string; cliente: string | null; placa: string | null }[]
+  ordenes: { id: string; numero: string; cliente: string | null; unidad: UnidadNombrable | null }[]
 }
 
 // Botón de icono de la fila. 44 px en el teléfono —lo que ocupa un dedo, y con
@@ -77,9 +78,12 @@ export function NuevaOrdenDeServicio({ catalogos }: { catalogos: Catalogos }) {
             <Campo etiqueta="Orden de trabajo" htmlFor="orden_id" requerido>
               <Seleccion id="orden_id" name="orden_id" required>
                 <option value="">Elegir…</option>
+                {/* La unidad se nombra siempre: la carrocería que todavía no
+                    tiene placa se llama por su código de fabricación o por su
+                    chasis, no por un hueco. */}
                 {catalogos.ordenes.map((o) => (
                   <option key={o.id} value={o.id}>
-                    {o.numero} · {o.placa ?? o.cliente ?? ''}
+                    {o.numero} · {nombreDeUnidad(o.unidad)}
                   </option>
                 ))}
               </Seleccion>
@@ -270,7 +274,13 @@ export function FilaDeServicio({
           </div>
           {servicio.orden_numero && (
             <div className="text-xs text-texto-suave">
-              {servicio.orden_numero} · {servicio.placa ?? servicio.cliente}
+              {/* Mientras la unidad no tenga placa, su nombre va más tenue: en el
+                  renglón que se lee de lejos, un código de fabricación no se
+                  puede confundir con una matrícula. */}
+              {servicio.orden_numero} ·{' '}
+              <span className={cn(todaviaSinPlaca(servicio) && 'text-texto-tenue')}>
+                {nombreDeUnidad(servicio)}
+              </span>
             </div>
           )}
         </TD>

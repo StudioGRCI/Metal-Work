@@ -10,6 +10,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { listarTablero, resumirTablero } from '@/lib/datos/avances'
 import { ESTADO_OT, PRIORIDAD, definir } from '@/lib/dominio/estados'
+import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha as formatearFecha } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
@@ -106,6 +107,12 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
           {filas.map((f) => {
             const estado = definir(ESTADO_OT, f.orden_estado)
             const prioridad = definir(PRIORIDAD, f.prioridad)
+            // Una orden sin unidad y una unidad sin placa no son lo mismo, y la
+            // tarjeta lo tiene que decir: sin `unidad_id` no hay nada que
+            // nombrar; con él, el nombre lo decide `nombreDeUnidad` (placa,
+            // código interno, chasis, o marca y modelo).
+            const unidad = f.unidad_id ? f : null
+            const noEsMatricula = !unidad || todaviaSinPlaca(unidad)
             const sinNoticias = f.dias_sin_avance === null ? null : Number(f.dias_sin_avance)
             const restantes =
               f.dias_habiles_restantes === null ? null : Number(f.dias_habiles_restantes)
@@ -118,11 +125,18 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
                 <TarjetaCuerpo className="flex flex-1 flex-col gap-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
+                      {/* Cuando ese texto no es una matrícula va en letra
+                          tenue: de lejos, y con el teléfono en la mano, se ve
+                          que a esa unidad todavía le falta la placa. No lleva
+                          además un «sin placa» al lado porque el propio nombre
+                          ya lo dice cuando cae en la marca y el modelo. */}
                       <Link
                         href={`/avance/${f.orden_id}`}
-                        className="text-base font-semibold text-acento after:absolute after:inset-0 hover:underline"
+                        className={`text-base font-semibold after:absolute after:inset-0 hover:underline ${
+                          noEsMatricula ? 'text-texto-suave' : 'text-acento'
+                        }`}
                       >
-                        {f.placa ?? f.orden_numero}
+                        {nombreDeUnidad(unidad)}
                       </Link>
                       <p className="truncate text-xs text-texto-suave">
                         {f.orden_numero} · {f.cliente}

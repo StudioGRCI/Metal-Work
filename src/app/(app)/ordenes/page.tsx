@@ -10,6 +10,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { cantidad, fecha } from '@/lib/format'
 import { ESTADO_OT, PRIORIDAD, TIPO_TRABAJO, definir } from '@/lib/dominio/estados'
+import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import {
   ORDENES_POR_PAGINA,
   comoEstado,
@@ -125,6 +126,19 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                   orden.dias_habiles_restantes === undefined
                     ? null
                     : Number(orden.dias_habiles_restantes)
+                // La unidad se nombra en un solo sitio. `unidad_id` distingue
+                // la orden que no tiene unidad —esa sí es «sin unidad
+                // asignada»— de la que la tiene y todavía no está matriculada.
+                const unidad = orden.unidad_id
+                  ? {
+                      placa: orden.placa,
+                      codigo_interno: orden.codigo_interno,
+                      numero_chasis: orden.numero_chasis,
+                      marca: orden.marca,
+                      modelo: orden.modelo,
+                    }
+                  : null
+                const sinPlaca = todaviaSinPlaca(unidad)
 
                 return (
                   <TR key={orden.id}>
@@ -146,7 +160,12 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                     <TD>
                       <p className="max-w-52 truncate text-texto">{orden.cliente}</p>
                       <p className="text-[11px] text-texto-suave">
-                        {orden.placa ?? 'Sin unidad asignada'}
+                        {/* Sin placa el nombre lo pone el código de fábrica o
+                            el chasis: va más tenue para que nadie lo lea de
+                            lejos como si fuera una matrícula. */}
+                        <span className={sinPlaca ? 'text-texto-tenue' : undefined}>
+                          {nombreDeUnidad(unidad)}
+                        </span>
                         {/* El responsable no tiene columna propia en el
                             teléfono: viaja aquí, pegado a la unidad. */}
                         {orden.responsable && (

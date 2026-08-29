@@ -7,6 +7,7 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import type { ReclamoGarantia } from '@/lib/datos/garantias'
+import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -123,7 +124,13 @@ export function TarjetaReclamo({ reclamo, puedeGestionar }: { reclamo: ReclamoGa
           {reclamo.numero}
           {orden && (
             <span className="ml-2 font-normal text-texto-suave">
-              {orden.unidad?.placa ?? orden.numero} · {orden.cliente.razon_social}
+              {/* Sin placa el nombre lo pone el código de fábrica o el chasis:
+                  va más tenue para que no se lea como una matrícula. */}
+              <span className={todaviaSinPlaca(orden.unidad) ? 'text-texto-tenue' : undefined}>
+                {nombreDeUnidad(orden.unidad)}
+              </span>
+              {' · '}
+              {orden.cliente.razon_social}
             </span>
           )}
         </p>

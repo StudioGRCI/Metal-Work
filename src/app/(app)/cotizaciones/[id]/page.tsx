@@ -8,6 +8,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador, type TonoIndicador } from '@/components/ui/indicador'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_COTIZACION, definir } from '@/lib/dominio/estados'
+import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha, fechaHora, moneda, porcentaje } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { obtenerCotizacion, partidasDeCotizacion } from '@/lib/datos/comercial'
@@ -70,7 +71,9 @@ export default async function PaginaCotizacion({
   const estado = definir(ESTADO_COTIZACION, cotizacion.estado)
   const mon = (cotizacion.moneda ?? 'PEN') as CodigoMoneda
   const cliente = cotizacion.cliente as unknown as { id: string; razon_social: string; numero_documento: string }
-  const unidad = cotizacion.unidad as unknown as { placa: string; marca: string | null } | null
+  const unidad = cotizacion.unidad as unknown as
+    | { id: string; placa: string | null; marca: string | null; modelo: string | null }
+    | null
   const carroceria = cotizacion.tipo_carroceria as unknown as { nombre: string } | null
   const vendedor = cotizacion.vendedor as unknown as { nombres: string; apellidos: string } | null
   const anulador = cotizacion.anulador as unknown as { nombres: string; apellidos: string } | null
@@ -113,6 +116,21 @@ export default async function PaginaCotizacion({
   // descripción antes de que el campo existiera.
   const sugerenciaConcepto =
     [carroceria?.nombre, cotizacion.capacidad].filter(Boolean).join(' · ') || 'Trabajo cotizado'
+
+  // Cómo se nombra la unidad en la ficha: la placa cuando la tiene y, mientras
+  // no llega, lo que la identifique. La marca solo se agrega si el nombre no la
+  // trae ya, y se dice «sin placa» para que un código interno no se lea como
+  // matrícula.
+  const nombreUnidad = unidad ? nombreDeUnidad(unidad) : null
+  const textoUnidad = nombreUnidad
+    ? [
+        nombreUnidad,
+        unidad?.marca && !nombreUnidad.includes(unidad.marca) ? unidad.marca : null,
+        todaviaSinPlaca(unidad) && !nombreUnidad.includes('sin placa') ? 'sin placa' : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : null
 
   return (
     <>
@@ -206,7 +224,7 @@ export default async function PaginaCotizacion({
                   catalogos={catalogos}
                   unidadActual={
                     cotizacion.unidad_id && unidad
-                      ? { id: cotizacion.unidad_id, placa: unidad.placa }
+                      ? { id: cotizacion.unidad_id, placa: nombreDeUnidad(unidad) }
                       : null
                   }
                   cotizacion={{
@@ -271,7 +289,7 @@ export default async function PaginaCotizacion({
 
             <Dato etiqueta="Emisión" valor={fecha(cotizacion.fecha_emision)} />
             <Dato etiqueta="Vence" valor={fecha(cotizacion.fecha_vencimiento)} />
-            <Dato etiqueta="Unidad" valor={unidad ? `${unidad.placa}${unidad.marca ? ` · ${unidad.marca}` : ''}` : null} />
+            <Dato etiqueta="Unidad" valor={textoUnidad} />
             <Dato etiqueta="Carrocería" valor={carroceria?.nombre} />
             <Dato
               etiqueta="Plazo de entrega"

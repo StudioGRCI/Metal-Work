@@ -65,7 +65,7 @@ export async function catalogosAlmacen() {
     supabase.from('almacenes').select('id, nombre, sede_id').eq('activo', true).order('nombre'),
     supabase
       .from('ot_resumen')
-      .select('id, numero, cliente, placa')
+      .select('id, numero, cliente, unidad_id, placa')
       .in('estado', ['APROBADA', 'PROGRAMADA', 'EN_PROCESO', 'PAUSADA', 'CONTROL_CALIDAD'])
       .order('numero'),
     supabase.from('proveedores').select('id, razon_social').eq('activo', true).order('razon_social'),
@@ -76,7 +76,17 @@ export async function catalogosAlmacen() {
     almacenes: almacenes.data ?? [],
     ordenes: (ordenes.data ?? [])
       .filter((o) => o.id && o.numero)
-      .map((o) => ({ id: o.id as string, numero: o.numero as string, cliente: o.cliente, placa: o.placa })),
+      .map((o) => ({
+        id: o.id as string,
+        numero: o.numero as string,
+        cliente: o.cliente,
+        // La unidad viaja aparte, y en null cuando la OT no tiene ninguna: así la
+        // pantalla la nombra con `nombreDeUnidad` y no confunde «sin unidad» con
+        // «unidad que todavía no tiene placa». `ot_resumen` hoy solo expone la
+        // placa; cuando exponga también codigo_interno, numero_chasis, marca y
+        // modelo se suman aquí y el nombre cae solo.
+        unidad: o.unidad_id ? { placa: o.placa } : null,
+      })),
     proveedores: proveedores.data ?? [],
   }
 }

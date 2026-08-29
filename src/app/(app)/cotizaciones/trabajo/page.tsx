@@ -8,10 +8,12 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { ESTADO_COTIZACION, definir } from '@/lib/dominio/estados'
+import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { diasHasta, fecha, moneda } from '@/lib/format'
 import { listarCotizacionesDeTrabajo } from '@/lib/datos/comercial'
 import { exigirPermiso } from '@/lib/sesion'
 import type { CodigoMoneda } from '@/lib/format'
+import type { UnidadNombrable } from '@/lib/dominio/unidades'
 
 export const metadata = { title: 'Cotización de trabajo' }
 
@@ -137,7 +139,7 @@ export default async function PaginaCotizacionDeTrabajo({
                 const etapa = definir(ESTADO_COTIZACION, c.estado)
                 const mon = (c.moneda ?? 'PEN') as CodigoMoneda
                 const cliente = c.cliente as unknown as { razon_social: string } | null
-                const unidad = c.unidad as unknown as { placa: string } | null
+                const unidad = c.unidad as unknown as UnidadNombrable | null
                 const carroceria = c.tipo_carroceria as unknown as { nombre: string } | null
                 const aguarda = espera(esperandoDesde(c))
 
@@ -162,7 +164,12 @@ export default async function PaginaCotizacionDeTrabajo({
                     <TD>
                       <p className="max-w-52 truncate text-texto">{cliente?.razon_social ?? '—'}</p>
                       <p className="text-[11px] text-texto-suave">
-                        {unidad?.placa ?? 'Sin unidad asignada'}
+                        {/* Mientras la placa no llega, la unidad se nombra con lo
+                            que la identifique; en letra más tenue para que no se
+                            confunda con una matrícula. */}
+                        <span className={todaviaSinPlaca(unidad) ? 'text-texto-tenue' : undefined}>
+                          {nombreDeUnidad(unidad)}
+                        </span>
                         <span className="sm:hidden">
                           {carroceria?.nombre ? ` · ${carroceria.nombre}` : ''}
                         </span>

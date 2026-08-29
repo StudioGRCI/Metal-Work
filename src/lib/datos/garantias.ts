@@ -65,7 +65,7 @@ export async function listarReclamos(): Promise<ReclamoGarantia[]> {
   const { data, error } = await supabase
     .from('garantia_reclamos')
     .select(
-      'id, numero, entrega_id, fecha_reclamo, reportado_por, contacto, descripcion, dentro_de_garantia, estado, evaluacion, atendido_en, atendido:usuarios!garantia_reclamos_atendido_por_fkey(nombres, apellidos), entrega:ot_entregas(garantia_vence, orden:ordenes_trabajo(id, numero, unidad:unidades(placa), cliente:clientes(razon_social)))',
+      'id, numero, entrega_id, fecha_reclamo, reportado_por, contacto, descripcion, dentro_de_garantia, estado, evaluacion, atendido_en, atendido:usuarios!garantia_reclamos_atendido_por_fkey(nombres, apellidos), entrega:ot_entregas(garantia_vence, orden:ordenes_trabajo(id, numero, unidad:unidades(placa, codigo_interno, numero_chasis, marca, modelo), cliente:clientes(razon_social)))',
     )
     .order('creado_en', { ascending: false })
     .limit(200)

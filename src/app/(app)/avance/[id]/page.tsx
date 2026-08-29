@@ -9,6 +9,7 @@ import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
 import { cabeceraDeAvance, etapasDeLaOrden } from '@/lib/datos/avances'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { fecha as formatearFecha } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -44,8 +45,12 @@ export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avanc
         Volver al taller
       </Link>
 
+      {/* El título es el nombre de la unidad, no su placa: hay carrocerías que
+          se construyen sobre chasis todavía sin matricular. El número de la
+          orden queda a la vista en la descripción, que es como se pide por
+          teléfono. */}
       <EncabezadoPagina
-        titulo={orden.placa ?? (orden.numero as string)}
+        titulo={nombreDeUnidad(orden)}
         descripcion={`${orden.numero} · ${orden.cliente} · ${orden.descripcion}`}
         acciones={registra && <RegistrarAvance ordenId={id} etapas={etapas} />}
       />

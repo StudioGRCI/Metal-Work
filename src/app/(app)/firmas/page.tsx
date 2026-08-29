@@ -6,6 +6,7 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { misFirmasPendientes } from '@/lib/datos/firmas'
+import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha as formatearFecha, fechaHora } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 
@@ -86,6 +87,11 @@ function Fila({
   firma: Awaited<ReturnType<typeof misFirmasPendientes>>[number]
   activa?: boolean
 }) {
+  // La unidad se nombra en un solo sitio. Un documento sin orden no tiene
+  // unidad que nombrar —eso sí se puede decir, y por eso va en null—; con
+  // orden, el nombre lo pone `nombreDeUnidad` con lo que trae la bandeja.
+  const unidad = firma.orden_id ? { placa: firma.placa } : null
+
   return (
     <Tarjeta>
       <TarjetaCuerpo className="flex flex-wrap items-center gap-4">
@@ -121,7 +127,11 @@ function Fila({
                 {' · '}
               </>
             )}
-            {firma.placa ?? firma.cliente ?? 'Sin unidad'}
+            {/* Sin placa el nombre lo pone el código de fábrica o el chasis: va
+                más tenue para que nadie lo lea de lejos como una matrícula. */}
+            <span className={todaviaSinPlaca(unidad) ? 'text-texto-tenue' : undefined}>
+              {nombreDeUnidad(unidad)}
+            </span>
             {firma.fecha_documento && ` · ${formatearFecha(firma.fecha_documento)}`}
           </p>
 

@@ -5594,6 +5594,10 @@ export type Database = {
           etapas_en_proceso: number | null
           dias_atraso: number | null
           dias_habiles_restantes: number | null
+          codigo_interno: string | null
+          numero_chasis: string | null
+          marca: string | null
+          modelo: string | null
         }
         Relationships: []
       }

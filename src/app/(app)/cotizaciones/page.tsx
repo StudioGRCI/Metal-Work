@@ -9,10 +9,12 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { ESTADO_COTIZACION, ORDEN_ESTADO_COTIZACION, definir, opciones } from '@/lib/dominio/estados'
+import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { diasHasta, fecha, moneda } from '@/lib/format'
 import { estadosQueMeTocan, listarCotizaciones } from '@/lib/datos/comercial'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import type { CodigoMoneda } from '@/lib/format'
+import type { UnidadNombrable } from '@/lib/dominio/unidades'
 
 export const metadata = { title: 'Cotizaciones' }
 
@@ -209,9 +211,11 @@ export default async function PaginaCotizaciones({ searchParams }: PageProps<'/c
               cotizaciones.map((c) => {
                 const est = definir(ESTADO_COTIZACION, c.estado)
                 const cliente = c.cliente as unknown as { razon_social: string }
-                const unidad = c.unidad as unknown as { placa: string } | null
+                const unidad = c.unidad as unknown as UnidadNombrable | null
                 const carroceria = c.tipo_carroceria as unknown as { nombre: string } | null
-                const trabajo = [carroceria?.nombre, unidad?.placa].filter(Boolean).join(' · ')
+                const trabajo = [carroceria?.nombre, unidad && nombreDeUnidad(unidad)]
+                  .filter(Boolean)
+                  .join(' · ')
                 const aviso = avisoDeVigencia(c.estado, diasHasta(c.fecha_vencimiento))
                 const desde = esperandoDesde(c)
                 const parada = espera(desde)
@@ -244,7 +248,14 @@ export default async function PaginaCotizaciones({ searchParams }: PageProps<'/c
                     </TD>
                     <TD className="hidden text-texto-suave sm:table-cell">
                       {carroceria?.nombre ?? '—'}
-                      {unidad && <span className="tabular"> · {unidad.placa}</span>}
+                      {/* Sin placa, el nombre sale de otro dato de la unidad; en
+                          letra más tenue para que no se lea como matrícula. */}
+                      {unidad && (
+                        <span className={todaviaSinPlaca(unidad) ? 'text-texto-tenue' : 'tabular'}>
+                          {' · '}
+                          {nombreDeUnidad(unidad)}
+                        </span>
+                      )}
                     </TD>
                     <TD className="hidden whitespace-nowrap sm:table-cell">
                       {fecha(c.fecha_emision)}

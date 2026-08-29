@@ -6,8 +6,10 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { listarGarantias, listarReclamos } from '@/lib/datos/garantias'
+import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
+import { cn } from '@/lib/utils'
 
 import { NuevoReclamo, TarjetaReclamo } from './reclamos'
 
@@ -94,8 +96,14 @@ export default async function PaginaGarantias() {
                 garantias.map((g) => (
                   <TR key={g.entrega_id}>
                     <TD className="font-medium">
-                      <Link href={`/ordenes/${g.orden_id}`} className="hover:underline">
-                        {g.placa ?? g.orden}
+                      {/* Sin placa el nombre lo pone el código de fábrica o el
+                          chasis: va más tenue para que en una columna que se
+                          lee de lejos nadie lo tome por una matrícula. */}
+                      <Link
+                        href={`/ordenes/${g.orden_id}`}
+                        className={cn('hover:underline', todaviaSinPlaca(g) && 'text-texto-tenue')}
+                      >
+                        {nombreDeUnidad(g)}
                       </Link>
                       <p className="text-[11px] font-normal text-texto-suave">
                         {g.carroceria ?? g.orden}
@@ -134,7 +142,7 @@ export default async function PaginaGarantias() {
                     </TD>
                     {gestiona && (
                       <TD className="text-right">
-                        <NuevoReclamo entregaId={g.entrega_id} unidad={g.placa ?? g.orden} />
+                        <NuevoReclamo entregaId={g.entrega_id} unidad={nombreDeUnidad(g)} />
                       </TD>
                     )}
                   </TR>

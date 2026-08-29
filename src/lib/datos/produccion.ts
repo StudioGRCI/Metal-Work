@@ -60,7 +60,7 @@ export async function catalogosParte(sedeId?: string | null) {
       .order('apellidos'),
     supabase
       .from('ot_resumen')
-      .select('id, numero, descripcion, cliente, placa, sede_id')
+      .select('id, numero, descripcion, cliente, unidad_id, placa, sede_id')
       .in('estado', ['APROBADA', 'PROGRAMADA', 'EN_PROCESO', 'CONTROL_CALIDAD'])
       .order('numero'),
     supabase.from('sedes').select('id, nombre').eq('activo', true).order('nombre'),
@@ -78,7 +78,13 @@ export async function catalogosParte(sedeId?: string | null) {
         numero: o.numero as string,
         descripcion: o.descripcion ?? '',
         cliente: o.cliente,
-        placa: o.placa,
+        // La unidad la nombra `nombreDeUnidad`, no la placa cruda: se trabaja
+        // sobre chasis que todavía no están matriculados. Sin `unidad_id` no
+        // hay unidad, que no es lo mismo que no tener placa.
+        // Ojo: la vista `ot_resumen` hoy solo expone la placa. Cuando exponga
+        // también código interno, número de chasis, marca y modelo, se agregan
+        // acá y el nombre mejora solo en todas las pantallas que lo usan.
+        unidad: o.unidad_id ? { placa: o.placa } : null,
       })),
     sedes: sedes.data ?? [],
   }
