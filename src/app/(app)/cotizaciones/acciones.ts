@@ -17,6 +17,13 @@ const esquemaCotizacion = z.object({
   // cotización y escribirse antes de mandarla a costear.
   precio_venta: z.coerce.number().min(0, 'El precio no puede ser negativo').optional(),
   unidad_id: z.string().uuid().optional().or(z.literal('')),
+  // Quién vende y a quién se le dirige el papel. Los dos salen impresos —el
+  // vendedor firma abajo y el contacto encabeza el «Señores»— y hasta ahora no
+  // había dónde escribirlos: el vendedor se heredaba del cliente si alguien se
+  // lo había asignado alguna vez, y el contacto no se llenaba nunca, así que la
+  // cotización salía con «Atención —» y «Correo —».
+  vendedor_id: z.string().uuid().optional().or(z.literal('')),
+  contacto_id: z.string().uuid().optional().or(z.literal('')),
   tipo_carroceria_id: z.string().uuid().optional().or(z.literal('')),
   sede_id: z.string().uuid().optional().or(z.literal('')),
   fecha_emision: z.string().optional(),
@@ -89,6 +96,11 @@ function cabeceraGuardable(
     // el formulario que no los tiene los enviaría vacíos y la primera
     // corrección de cabecera borraría lo que la ficha guardó, sin avisar. Solo
     // viaja lo que de verdad venía en el formulario.
+    // Con `soloSiVino` y no directos: la pantalla de ficha técnica guarda la
+    // misma fila sin preguntar por el vendedor ni por el contacto, y mandarlos
+    // siempre los borraría en cuanto Administración tocara la ficha.
+    ...soloSiVino('vendedor_id', v.vendedor_id),
+    ...soloSiVino('contacto_id', v.contacto_id),
     ...soloSiVino('plazo_desde', v.plazo_desde),
     ...soloSiVino('garantia_texto', v.garantia_texto),
     ...soloSiVino('peso_tolerancia', v.peso_tolerancia),

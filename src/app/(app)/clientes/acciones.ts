@@ -232,3 +232,57 @@ export async function crearClienteRapido(
   revalidatePath('/clientes')
   return { ok: true, mensaje: 'Cliente registrado.', datos: data }
 }
+
+const esquemaContactoRapido = z.object({
+  cliente_id: z.string().uuid(),
+  nombre: z.string().trim().min(3, 'Escribe el nombre de la persona'),
+  cargo: z.string().trim().optional(),
+  telefono: z.string().trim().optional(),
+  correo: z.string().trim().email('El correo no parece válido').optional().or(z.literal('')),
+})
+
+/**
+ * La persona del cliente a la que se dirige la cotización, dada de alta sin
+ * salir del formulario.
+ *
+ * El papel encabeza con «Atención» y lleva su teléfono y su correo, pero la
+ * tabla de contactos estaba vacía y no había pantalla para llenarla: todas las
+ * cotizaciones salían con «Atención —» y «Correo —». Se da de alta desde donde
+ * hace falta, como el cliente y la unidad, porque parar una cotización para ir
+ * a otra pantalla es lo que hace que el dato no se cargue nunca.
+ */
+export async function crearContactoRapido(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion<{ id: string; nombre: string; cargo: string | null }>> {
+  const perfil = await exigirSesion()
+  // El mismo permiso que da de alta un cliente: un contacto es un dato del
+  // cliente, no un documento.
+  if (!puede(perfil, ['clientes.crear', 'clientes.editar'])) {
+    return { ok: false, error: 'No tienes permiso para registrar contactos.' }
+  }
+
+  const analisis = esquemaContactoRapido.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los datos.' }
+  }
+
+  const v = analisis.data
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('contactos_cliente')
+    .insert({
+      cliente_id: v.cliente_id,
+      nombre: v.nombre,
+      cargo: nulo(v.cargo),
+      telefono: nulo(v.telefono),
+      correo: nulo(v.correo),
+    })
+    .select('id, nombre, cargo')
+    .single()
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+
+  return { ok: true, mensaje: 'Contacto registrado.', datos: data }
+}

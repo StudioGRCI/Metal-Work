@@ -187,7 +187,10 @@ const estilos = StyleSheet.create({
   // sello al lado. Sin ese hueco, la raya quedaba pegada a las condiciones y no
   // había dónde firmar.
   firmas: { marginTop: 40, alignItems: 'center' },
-  firma: { width: '58%' },
+  // Poco más de un tercio de la hoja. Al 58 % la raya cruzaba media página y no
+  // parecía un renglón para firmar sino un subrayado; una firma se pone en el
+  // ancho de una mano, no en el de la hoja.
+  firma: { width: '36%' },
   espacioFirma: { height: 46 },
   lineaFirma: { borderTopWidth: 0.75, borderTopColor: '#1B2430', width: '100%', paddingTop: 4 },
   textoFirma: { fontSize: 7.5, textAlign: 'center', color: GRIS },

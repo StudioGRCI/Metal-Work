@@ -18,6 +18,7 @@ export type CatalogosCotizacion = {
   clientes: { id: string; razon_social: string; numero_documento: string }[]
   sedes: { id: string; nombre: string }[]
   tiposCarroceria: { id: string; nombre: string }[]
+  responsables: { id: string; nombres: string; apellidos: string }[]
 }
 
 export type CabeceraCotizacion = {
@@ -28,6 +29,8 @@ export type CabeceraCotizacion = {
   unidad_id: string | null
   tipo_carroceria_id: string | null
   sede_id: string | null
+  /** Quien firma el papel. Vacío = firma la empresa. */
+  vendedor_id?: string | null
   fecha_emision: string
   validez_dias: number
   moneda: string
@@ -88,6 +91,7 @@ export function EditarCotizacion({
   const [unidadId, setUnidadId] = useState(cotizacion.unidad_id ?? '')
   const [carroceriaId, setCarroceriaId] = useState(cotizacion.tipo_carroceria_id ?? '')
   const [sedeId, setSedeId] = useState(cotizacion.sede_id ?? '')
+  const [vendedorId, setVendedorId] = useState(cotizacion.vendedor_id ?? '')
   const [cargadas, setCargadas] = useState<{
     clienteId: string
     unidades: { id: string; placa: string | null }[]
@@ -219,6 +223,27 @@ export function EditarCotizacion({
                 marcador="Sin sede"
                 marcadorBusqueda="Nombre de la sede"
                 opciones={catalogos.sedes.map((s) => ({ valor: s.id, etiqueta: s.nombre }))}
+              />
+            </Campo>
+
+            {/* Se puede corregir después de emitir: quien atiende cambia, y sin
+                esto el papel salía firmado por la empresa para siempre. */}
+            <Campo
+              etiqueta="Vendedor"
+              htmlFor="vendedor_id"
+              ayuda="Quien atiende esta cotización. Su nombre va en la firma del papel; si se deja vacío firma la empresa."
+            >
+              <SeleccionBuscable
+                id="vendedor_id"
+                name="vendedor_id"
+                valor={vendedorId}
+                onChange={setVendedorId}
+                marcador="Firma la empresa"
+                marcadorBusqueda="Nombre"
+                opciones={catalogos.responsables.map((r) => ({
+                  valor: r.id,
+                  etiqueta: `${r.nombres} ${r.apellidos}`,
+                }))}
               />
             </Campo>
           </div>

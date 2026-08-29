@@ -292,6 +292,7 @@ export default async function PaginaCotizacion({
                     unidad_id: cotizacion.unidad_id,
                     tipo_carroceria_id: cotizacion.tipo_carroceria_id,
                     sede_id: cotizacion.sede_id,
+                    vendedor_id: cotizacion.vendedor_id,
                     fecha_emision: cotizacion.fecha_emision,
                     validez_dias: cotizacion.validez_dias,
                     moneda: cotizacion.moneda,
@@ -313,7 +314,16 @@ export default async function PaginaCotizacion({
                 el ancho— y vuelven a abrirse en el monitor grande; entre medio
                 la tarjeta es un tercio de la pantalla y tres cifras al lado no
                 entran sin partirse. */}
-            <div className={cn('mb-3 grid gap-2', verCostos && 'sm:grid-cols-2 xl:grid-cols-3')}>
+            {/* El costo y el margen son cifras de costeo: mientras la cotización
+                está en manos de Ventas no salen. Antes de que Administración
+                cargue una sola partida solo pueden decir «cero» y «falta el
+                costeo», que es ocupar dos tarjetas para no decir nada. */}
+            <div
+              className={cn(
+                'mb-3 grid gap-2',
+                verCostos && !soloEnVentas && 'sm:grid-cols-2 xl:grid-cols-3',
+              )}
+            >
               <Indicador
                 titulo="Precio de venta"
                 icono={Tag}
@@ -322,7 +332,7 @@ export default async function PaginaCotizacion({
                 pie={hayPrecio ? 'Lo que se le ofrece al cliente' : 'Ventas todavía no lo puso'}
               />
 
-              {verCostos && (
+              {verCostos && !soloEnVentas && (
                 <Indicador
                   titulo="Costo estimado"
                   icono={Wallet}
@@ -331,7 +341,7 @@ export default async function PaginaCotizacion({
                 />
               )}
 
-              {verCostos && (
+              {verCostos && !soloEnVentas && (
                 <Indicador
                   titulo="Margen"
                   icono={Percent}

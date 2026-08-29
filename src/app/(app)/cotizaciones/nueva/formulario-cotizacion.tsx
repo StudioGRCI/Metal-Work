@@ -12,6 +12,7 @@ import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { NuevaUnidad } from '@/app/(app)/clientes/nueva-unidad'
 import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
 import { NuevoCliente } from '@/components/comercial/nuevo-cliente'
+import { NuevoContacto, type ContactoElegible } from '@/components/comercial/nuevo-contacto'
 
 import { crearCotizacion } from '../acciones'
 
@@ -19,6 +20,8 @@ type Catalogos = {
   clientes: { id: string; razon_social: string; numero_documento: string }[]
   sedes: { id: string; nombre: string }[]
   tiposCarroceria: { id: string; nombre: string }[]
+  /** Quién puede figurar como vendedor: el personal que no es de taller. */
+  responsables: { id: string; nombres: string; apellidos: string }[]
 }
 
 /**
@@ -42,6 +45,10 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
   const [clienteId, setClienteId] = useState('')
   const [unidadId, setUnidadId] = useState('')
   const [carroceriaId, setCarroceriaId] = useState('')
+  const [contactoId, setContactoId] = useState('')
+  const [contactos, setContactos] = useState<{ clienteId: string; lista: ContactoElegible[] } | null>(
+    null,
+  )
   const [cargadas, setCargadas] = useState<{
     clienteId: string
     unidades: { id: string; placa: string | null }[]
@@ -64,7 +71,9 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
     if (!clienteId) return
 
     let vigente = true
-    createClient()
+    const supabase = createClient()
+
+    supabase
       .from('unidades')
       .select('id, placa, codigo_interno, numero_chasis, marca, modelo')
       .eq('cliente_id', clienteId)
@@ -74,12 +83,25 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
         if (vigente) setCargadas({ clienteId, unidades: data ?? [] })
       })
 
+    // Las personas de ese cliente, para el «Atención» del papel.
+    supabase
+      .from('contactos_cliente')
+      .select('id, nombre, cargo')
+      .eq('cliente_id', clienteId)
+      .eq('activo', true)
+      .order('es_principal', { ascending: false })
+      .order('nombre')
+      .then(({ data }) => {
+        if (vigente) setContactos({ clienteId, lista: data ?? [] })
+      })
+
     return () => {
       vigente = false
     }
   }, [clienteId])
 
   const unidades = cargadas?.clienteId === clienteId ? cargadas.unidades : []
+  const contactosDelCliente = contactos?.clienteId === clienteId ? contactos.lista : []
 
   function clienteCreado(c: Catalogos['clientes'][number]) {
     setClientesNuevos((lista) => (lista.some((x) => x.id === c.id) ? lista : [c, ...lista]))
@@ -129,6 +151,9 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
                 onChange={(v) => {
                   setClienteId(v)
                   setUnidadId('')
+                  // El contacto es de un cliente: al cambiar de cliente, el que
+                  // estaba elegido pertenece a otra empresa.
+                  setContactoId('')
                 }}
                 marcador="Selecciona un cliente"
                 marcadorBusqueda="Razón social o RUC"
@@ -188,6 +213,63 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
               {catalogos.sedes.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.nombre}
+                </option>
+              ))}
+            </Seleccion>
+          </Campo>
+
+          {/* Atención y vendedor salen impresos —el primero encabeza el
+              «Señores» con su teléfono y su correo, el segundo firma abajo— y
+              hasta ahora no tenían dónde escribirse: el papel salía con
+              «Atención —», «Correo —» y «Vendedor —». */}
+          <Campo
+            etiqueta="Atención"
+            htmlFor="contacto_id"
+            ayuda="La persona del cliente a la que va dirigida. Su nombre, teléfono y correo encabezan el papel."
+          >
+            <div className="flex items-center gap-2">
+              <SeleccionBuscable
+                id="contacto_id"
+                name="contacto_id"
+                deshabilitado={!clienteId}
+                className="flex-1"
+                valor={contactoId}
+                onChange={setContactoId}
+                marcador={clienteId ? 'Sin persona indicada' : 'Elige primero el cliente'}
+                marcadorBusqueda="Nombre"
+                opciones={contactosDelCliente.map((c) => ({
+                  valor: c.id,
+                  etiqueta: c.nombre,
+                  detalle: c.cargo ?? undefined,
+                }))}
+              />
+              {clienteId && (
+                <NuevoContacto
+                  key={clienteId}
+                  clienteId={clienteId}
+                  onCreado={(c) => {
+                    setContactos((previos) =>
+                      previos?.clienteId === clienteId
+                        ? { clienteId, lista: [c, ...previos.lista.filter((x) => x.id !== c.id)] }
+                        : { clienteId, lista: [c] },
+                    )
+                    setContactoId(c.id)
+                  }}
+                />
+              )}
+            </div>
+          </Campo>
+
+          <Campo
+            etiqueta="Vendedor"
+            htmlFor="vendedor_id"
+            ayuda="Quien atiende esta cotización. Su nombre va en la firma del papel; si se deja vacío firma la empresa."
+          >
+            <Seleccion id="vendedor_id" name="vendedor_id" defaultValue="">
+              <option value="">Firma la empresa</option>
+              {catalogos.responsables.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.nombres} {r.apellidos}
                 </option>
               ))}
             </Seleccion>
