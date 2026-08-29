@@ -565,8 +565,13 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
             desglose por partida es la cocina del taller —acero, mano de obra,
             servicios de terceros— y se queda adentro: de él salen el
             presupuesto de la OT y las compras de material, no el papel. */}
-        {(datos.partidas.length > 0 || datos.concepto) && (
-          <>
+        {/* Se imprime siempre. La condición miraba `concepto` —la columna, no
+            la función que le busca alternativa— así que una cotización con
+            precio pero sin concepto escrito ni partidas salía sin su propuesta
+            económica: el cliente recibía las condiciones, con un «PRECIO» suelto
+            entre ellas, y ninguna línea que dijera qué se le está cotizando ni
+            el desglose del IGV. La cotización sin su precio no es una
+            cotización, y `concepto()` siempre devuelve un nombre. */}
             {/* Así se titula en sus cotizaciones, con los dos puntos. */}
             <Text style={estilos.tituloSeccion}>PROPUESTA ECONÓMICA:</Text>
             <View style={estilos.tabla}>
@@ -620,8 +625,6 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
                 </Text>
               </View>
             </View>
-          </>
-        )}
 
         {/* ----------------------------------------------------- condiciones */}
         {/* Siempre las mismas cinco y en este orden, que es el de sus papeles:
