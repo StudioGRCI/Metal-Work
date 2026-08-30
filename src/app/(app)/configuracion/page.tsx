@@ -71,11 +71,7 @@ export default async function PaginaConfiguracion({
           {/* Va primero a propósito: es el único dato de esta pantalla que, si
               falta, se cuela en cada cotización en dólares sin decir nada. */}
           <TipoDeCambio hoy={hoyLima()} cambios={cambios} puedeEditar={puedeEditar} />
-          <QuienFirma
-            gerenteId={firma.gerenteId}
-            candidatos={firma.candidatos}
-            puedeEditar={puedeEditar}
-          />
+          <QuienFirma nombre={firma.nombre} cargo={firma.cargo} puedeEditar={puedeEditar} />
           <DiasLaborables dias={calendario.diasLaborables} puedeEditar={puedeEditar} />
           <Feriados anio={anio} feriados={calendario.feriados} puedeEditar={puedeEditar} />
         </div>

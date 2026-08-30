@@ -431,10 +431,14 @@ function nuloSiVacio(valor?: string) {
 /**
  * Quién firma las cotizaciones.
  *
+ * Un nombre y un cargo escritos, no una cuenta del sistema: quien firma un
+ * documento y quien usa el programa no son la misma lista, y atarlo a la tabla
+ * de usuarios obligaba a darle acceso a alguien que a lo mejor nunca va a
+ * entrar.
+ *
  * Vacío es una opción válida —el papel cierra entonces con la razón social— así
- * que el campo se guarda tal cual: aquí «no hay nadie elegido» es una decisión,
- * no un olvido, y confundir las dos cosas dejaría el nombre viejo pegado para
- * siempre.
+ * que se guarda tal cual: «no hay nadie puesto» es una decisión, no un olvido, y
+ * confundir las dos cosas dejaría el nombre viejo pegado para siempre.
  */
 export async function guardarQuienFirma(
   _previo: unknown,
@@ -443,9 +447,13 @@ export async function guardarQuienFirma(
   const problema = await exigirEdicion()
   if (problema) return { ok: false, error: problema }
 
-  const elegido = String(datos.get('gerente_general_id') ?? '').trim()
-  if (elegido && !/^[0-9a-f-]{36}$/i.test(elegido)) {
-    return { ok: false, error: 'Elige a alguien de la lista.' }
+  const nombre = String(datos.get('firma_nombre') ?? '').trim()
+  const cargo = String(datos.get('firma_cargo') ?? '').trim()
+
+  // Un cargo sin nombre no firma nada: quedaría un «Gerente General» suelto
+  // debajo de «Atentamente», sin persona.
+  if (cargo && !nombre) {
+    return { ok: false, error: 'Escribe también el nombre de quien firma.' }
   }
 
   const supabase = await createClient()
@@ -454,7 +462,7 @@ export async function guardarQuienFirma(
 
   const { error } = await supabase
     .from('empresa')
-    .update({ gerente_general_id: elegido || null })
+    .update({ firma_nombre: nombre || null, firma_cargo: cargo || null })
     .eq('id', empresa.id)
 
   if (error) return { ok: false, error: mensajeDeError(error) }
@@ -462,8 +470,8 @@ export async function guardarQuienFirma(
   revalidatePath('/configuracion')
   return {
     ok: true,
-    mensaje: elegido
-      ? 'Guardado. Las cotizaciones que se impriman desde ahora cierran con ese nombre.'
+    mensaje: nombre
+      ? `Guardado. Las cotizaciones que se impriman desde ahora cierran con ${nombre}.`
       : 'Guardado. Las cotizaciones cierran con el nombre de la empresa.',
   }
 }

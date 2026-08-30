@@ -115,28 +115,24 @@ export async function ultimosTiposCambio(limite = 15) {
 }
 
 /**
- * Quién puede firmar y quién está elegido hoy.
+ * Quién firma las cotizaciones: un nombre y un cargo, tal como van impresos.
  *
- * Los candidatos son el personal que no es de taller: firmar una cotización no
- * es tarea de quien suelda. Sale de la misma tabla que el resto y no de una
- * lista escrita a mano, para que dar de alta a alguien lo haga elegible sin
- * tocar código.
+ * No es una referencia a un usuario del sistema, y eso fue una corrección: quien
+ * firma un documento y quien usa el programa no son la misma lista. Atarlo a la
+ * tabla de usuarios obligaba a darle acceso a alguien que a lo mejor nunca va a
+ * entrar.
  */
 export async function quienFirmaLasCotizaciones() {
   const supabase = await createClient()
 
-  const [empresa, candidatos] = await Promise.all([
-    supabase.from('empresa').select('gerente_general_id').limit(1).maybeSingle(),
-    supabase
-      .from('usuarios')
-      .select('id, nombres, apellidos, cargo')
-      .eq('activo', true)
-      .eq('es_operario', false)
-      .order('apellidos'),
-  ])
+  const { data } = await supabase
+    .from('empresa')
+    .select('firma_nombre, firma_cargo')
+    .limit(1)
+    .maybeSingle()
 
   return {
-    gerenteId: (empresa.data?.gerente_general_id as string | null) ?? null,
-    candidatos: candidatos.data ?? [],
+    nombre: (data?.firma_nombre as string | null) ?? null,
+    cargo: (data?.firma_cargo as string | null) ?? null,
   }
 }

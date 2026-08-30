@@ -4,7 +4,7 @@ import { PenLine } from 'lucide-react'
 import { useActionState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { Campo, Seleccion } from '@/components/ui/campos'
+import { Campo, Entrada } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cn } from '@/lib/utils'
 
@@ -15,22 +15,24 @@ import { guardarQuienFirma } from './acciones'
  *
  * En esta empresa es siempre el gerente general, y el papel cerraba con el
  * nombre del vendedor porque el sistema dio por hecho que quien atiende es quien
- * firma. Se elige acá, y no se deduce del rol al imprimir: hoy hay un solo
- * gerente y deducirlo funcionaría, pero el día que haya dos el documento saldría
- * firmado por el que tocara en el orden de la consulta —y un papel que sale del
- * taller con el nombre equivocado debajo de «Atentamente» no se arregla después.
+ * firma.
+ *
+ * Es un nombre escrito y no una cuenta del sistema, y eso fue una corrección:
+ * al principio se ató a la tabla de usuarios, lo que obliga a darle acceso a
+ * alguien que a lo mejor nunca va a entrar y deja el papel sin firma el día que
+ * esa cuenta se dé de baja. Quien firma un documento y quien usa el programa no
+ * son la misma lista.
  */
 export function QuienFirma({
-  gerenteId,
-  candidatos,
+  nombre,
+  cargo,
   puedeEditar,
 }: {
-  gerenteId: string | null
-  candidatos: { id: string; nombres: string; apellidos: string; cargo: string | null }[]
+  nombre: string | null
+  cargo: string | null
   puedeEditar: boolean
 }) {
   const [resultado, accion, guardando] = useActionState(guardarQuienFirma, null)
-  const elegido = candidatos.find((c) => c.id === gerenteId)
 
   return (
     <Tarjeta>
@@ -39,58 +41,69 @@ export function QuienFirma({
         descripcion="Su nombre y su cargo cierran el papel, debajo de «Atentamente». El vendedor sale aparte, como dato."
       />
       <TarjetaCuerpo className="space-y-3">
-        {elegido ? (
-          <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2.5 text-sm">
-            <span className="font-semibold text-texto">
-              {elegido.nombres} {elegido.apellidos}
-            </span>
-            <span className="text-texto-suave"> · {elegido.cargo ?? 'Gerente general'}</span>
-          </p>
+        {nombre ? (
+          <div className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2.5">
+            <p className="text-sm font-semibold text-texto">{nombre}</p>
+            <p className="text-xs text-texto-suave">{cargo ?? 'Gerente General'}</p>
+          </div>
         ) : (
-          // Sin elegir, el papel cierra con la razón social. No es un error,
+          // Sin nombre, el papel cierra con la razón social. No es un error,
           // pero tampoco es lo que la empresa pidió.
           <p
             role="status"
             className="rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2.5 text-sm text-aviso"
           >
-            Todavía no hay nadie elegido: las cotizaciones cierran con el nombre de la empresa.
+            Todavía no hay nadie puesto: las cotizaciones cierran con el nombre de la empresa.
           </p>
         )}
 
         {puedeEditar && (
-          <form action={accion} className="flex flex-wrap items-end gap-2">
-            <Campo etiqueta="Gerente general" htmlFor="gerente_general_id" className="min-w-52 flex-1">
-              <Seleccion
-                id="gerente_general_id"
-                name="gerente_general_id"
-                defaultValue={gerenteId ?? ''}
+          <form action={accion} className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Campo
+                etiqueta="Nombre"
+                htmlFor="firma_nombre"
+                ayuda="Tal como va impreso. En sus cotizaciones va en mayúsculas."
               >
-                <option value="">Cierra con el nombre de la empresa</option>
-                {candidatos.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombres} {c.apellidos}
-                    {c.cargo ? ` · ${c.cargo}` : ''}
-                  </option>
-                ))}
-              </Seleccion>
-            </Campo>
-            <Boton type="submit" tamano="sm" cargando={guardando}>
-              <PenLine aria-hidden className="size-3.5" />
-              Guardar
-            </Boton>
-            {resultado && (
-              <p
-                role={resultado.ok === false ? 'alert' : 'status'}
-                className={cn(
-                  'w-full rounded-[var(--radius-base)] px-3 py-2 text-xs',
-                  resultado.ok === false
-                    ? 'bg-peligro-suave text-peligro'
-                    : 'bg-exito-suave text-exito',
-                )}
-              >
-                {resultado.ok === false ? resultado.error : resultado.mensaje}
-              </p>
-            )}
+                <Entrada
+                  id="firma_nombre"
+                  name="firma_nombre"
+                  defaultValue={nombre ?? ''}
+                  autoComplete="off"
+                  placeholder="YHON SANDOVAL JUAREZ"
+                />
+              </Campo>
+
+              <Campo etiqueta="Cargo" htmlFor="firma_cargo">
+                <Entrada
+                  id="firma_cargo"
+                  name="firma_cargo"
+                  defaultValue={cargo ?? ''}
+                  autoComplete="off"
+                  placeholder="Gerente General"
+                />
+              </Campo>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Boton type="submit" tamano="sm" cargando={guardando}>
+                <PenLine aria-hidden className="size-3.5" />
+                Guardar
+              </Boton>
+              {resultado && (
+                <p
+                  role={resultado.ok === false ? 'alert' : 'status'}
+                  className={cn(
+                    'rounded-[var(--radius-base)] px-3 py-2 text-xs',
+                    resultado.ok === false
+                      ? 'bg-peligro-suave text-peligro'
+                      : 'bg-exito-suave text-exito',
+                  )}
+                >
+                  {resultado.ok === false ? resultado.error : resultado.mensaje}
+                </p>
+              )}
+            </div>
           </form>
         )}
       </TarjetaCuerpo>
