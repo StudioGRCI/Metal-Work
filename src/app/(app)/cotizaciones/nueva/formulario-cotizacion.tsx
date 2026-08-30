@@ -408,17 +408,23 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
             />
           </Campo>
 
-          <Campo etiqueta="Condiciones" htmlFor="condiciones" className="sm:col-span-2 lg:col-span-4">
+          {/* Una sola caja de texto libre. Había dos —«Condiciones» y
+              «Observaciones»— que pedían lo mismo y salían las dos en el mismo
+              bloque del papel, y encima la primera volvía a pedir la garantía,
+              que ya tiene su campo arriba. Dos cajas para lo mismo terminan con
+              la mitad del acuerdo en una y la otra mitad en la otra. */}
+          <Campo
+            etiqueta="Notas"
+            htmlFor="condiciones"
+            ayuda="Lo que no entra en los campos de arriba: características especiales, acuerdos particulares, lo que se acordó de palabra. Sale impreso al final del papel."
+            className="sm:col-span-2 lg:col-span-4"
+          >
             <AreaTexto
               id="condiciones"
               name="condiciones"
-              rows={2}
-              placeholder="Garantía, alcance, exclusiones y todo lo que deba quedar por escrito"
+              rows={3}
+              placeholder="Ej.: incluye tarjeta de propiedad y placas de rodaje · color a elección del cliente"
             />
-          </Campo>
-
-          <Campo etiqueta="Observaciones" htmlFor="observaciones" className="sm:col-span-2 lg:col-span-4">
-            <AreaTexto id="observaciones" name="observaciones" rows={2} />
           </Campo>
         </TarjetaCuerpo>
       </Tarjeta>

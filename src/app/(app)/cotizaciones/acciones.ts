@@ -94,7 +94,10 @@ function cabeceraGuardable(
     plazo_entrega_dias: v.plazo_entrega_dias,
     forma_pago: nulo(v.forma_pago),
     condiciones: nulo(v.condiciones),
-    observaciones: nulo(v.observaciones),
+    // Con `soloSiVino`: el formulario dejó de tener caja de observaciones —se
+    // fundió con las notas— y mandarla siempre en nulo habría borrado la de las
+    // cotizaciones viejas en la primera corrección de cabecera, sin avisar.
+    ...soloSiVino('observaciones', v.observaciones),
     // Estos cuatro los escriben dos pantallas distintas: el plazo entra por la
     // cabecera y los otros tres por la ficha técnica. Si se mandaran siempre,
     // el formulario que no los tiene los enviaría vacíos y la primera

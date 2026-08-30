@@ -374,21 +374,14 @@ export function EditarCotizacion({
             />
           </Campo>
 
-          <Campo etiqueta="Condiciones" htmlFor="condiciones">
+          {/* Una sola, como en el alta: «Condiciones» y «Observaciones» pedían
+              lo mismo y salían juntas en el papel. */}
+          <Campo etiqueta="Notas" htmlFor="condiciones" ayuda="Lo que no entra en los campos de arriba: características especiales, acuerdos particulares, lo que se acordó de palabra. Sale impreso al final del papel.">
             <AreaTexto
               id="condiciones"
               name="condiciones"
-              rows={2}
+              rows={3}
               defaultValue={cotizacion.condiciones ?? ''}
-            />
-          </Campo>
-
-          <Campo etiqueta="Observaciones" htmlFor="observaciones">
-            <AreaTexto
-              id="observaciones"
-              name="observaciones"
-              rows={2}
-              defaultValue={cotizacion.observaciones ?? ''}
             />
           </Campo>
 
