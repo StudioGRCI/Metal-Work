@@ -387,7 +387,121 @@ y `7. ALMACEN` en la raíz del OneDrive.
 
 ---
 
-## 12. Fuentes
+## 12. Cómo costea la empresa
+
+Lo que sigue no estaba en este documento hasta el 2026-08-30 y es la pieza que
+más lejos deja al sistema de la realidad: las `cotizacion_partidas` se diseñaron
+sin haber visto un solo costeo suyo.
+
+### Quién y cuándo
+
+El costeo es **posterior a la fabricación, no previo a la cotización**. Lo dice
+`4. LOGISTICA 2026/ESTRUCTURA LOGISTICA - 2026.pdf`: «se registran los costeos de
+forma mensual por unidades que ya se culminaron compras». Lo lleva **una sola
+persona** —Fernando, en todos los registros de 2026— y se controla en
+`6. REQUERIMIENTOS/COSTEOS DE EMPRESAS/SEGUIMIENTO DE COSTEOS.xlsx`, con tres
+hojas separadas —MWP, JAMISA y GARANTÍAS— y tres estados: **NO INICIA · EN
+PROCESO · CULMINADO**, con su fecha de culminación.
+
+El archivo se nombra `COSTOS - OT N° - UNIDAD - CLIENTE - MW - FECHA DE
+CULMINACIÓN`, y los de garantía `COSTOS - GT - OT N° - …`.
+
+### La hoja de detalle
+
+Una fila por compra, en `4. LOGISTICA 2026/1. COSTEOS/<mes>/<empresa>/`:
+
+| Columna | Qué es |
+| --- | --- |
+| CLASIFICACIÓN | El grupo del oficio. Se escribe una vez y las filas siguientes van en blanco |
+| FECHA DE REQUERIMIENTO | Cuándo se pidió; una misma clasificación tiene varias fechas |
+| DESCRIPCIÓN | El material con su medida exacta: «PLANCHA A36 3/8" x 1500 x 6000 mm» |
+| REQUERIDO | Cantidad, con decimales: 0,2 de una plancha es lo que se consumió |
+| U.M | UND, METROS, GL, BALDES, JUEGO, BOLSA |
+| VALOR VENTA S/ | Precio del proveedor, sin IGV |
+| VALOR VENTA $ | = VALOR VENTA S/ ÷ T.C. |
+| SUBTOTAL | = REQUERIDO × VALOR VENTA $ |
+
+Al pie: SUBTOTAL, IGV (18 %) y TOTAL. El tipo de cambio va en la cabecera junto
+al cliente, y de ahí salen todas las conversiones. Cuando el precio del
+proveedor viene con IGV, la celda lo divide entre 1,18 a mano.
+
+**La clasificación no es un enum de cuatro valores.** En una sola tolva
+aparecieron: ESTRUCTURA · PINES Y BOCINAS · ACCESORIO ESTRUCTURAL · COMPUERTA DE
+TOLVA · SISTEMA ELÉCTRICO · ACCESORIOS · ACCESORIOS SISTEMA HIDRÁULICO · SISTEMA
+NEUMÁTICO · CONECTORES SISTEMA HIDRÁULICO · SISTEMA DE LEVANTE DE PORTA LLANTAS ·
+PERNERÍA · SISTEMA DE ENGRASE · ACABADOS · STICKERS · FIN DE CARRERA · SISTEMA DE
+COMPUERTA POSTERIOR · MANGUERAS HIDRÁULICAS · CONEXIONES HIDRÁULICAS · CONEXIONES
+NEUMÁTICAS · TAPÓN · LOGEADO. Son etiquetas del oficio, se inventan sobre la
+marcha y algunas se repiten con distinta escritura. El `tipo_costo_partida` del
+sistema —MATERIAL, MANO_OBRA, SERVICIO, OTRO— no las representa.
+
+Los servicios entran como una fila más: SERVICIO DE ARENADO, SERVICIO DE
+REDUCCIÓN DE MANGUERAS, ENCOMIENDA.
+
+### La hoja RESUMEN — la estructura de costo real
+
+Esto es lo que el sistema no tiene en ninguna parte. Cada línea lleva un importe
+**mensual del área** y una **tasa aplicada**: el porcentaje de ese gasto que
+carga esta unidad. La base del prorrateo está escrita arriba a la derecha:
+**«ESTÁNDAR 9 A 10 UNIDADES»**.
+
+```
+COSTOS DE PRODUCCIÓN
+  COSTOS DIRECTOS                              con IGV   tasa
+    MATERIA PRIMA        una línea por clasificación      100 %
+    MANO DE OBRA TERCERA armado / pintura / arenado       100 %
+    MANO DE OBRA         Producción                        10 %
+                         Transporte (conductor)             5 %
+  COSTOS INDIRECTOS
+    MANO DE OBRA         Ingeniería                        10 %
+                         Almacén                           10 %
+    OTROS                Seguros                            5 %
+                         Sistema de seguridad               5 %
+                         Electricidad                       8 %
+                         Celulares                         10 %
+                         Correos e internet                10 %
+                         Agua                              10 %
+  = TOTAL COSTOS DE PRODUCCIÓN
+
+GASTOS DE OPERACIÓN
+  VENTAS                 Comisiones por ventas            100 %
+  ADMINISTRATIVOS        Administración                    10 %
+                         Logística                         10 %
+                         Contabilidad                      10 %
+                         Tesorería                         10 %
+                         Vendedores                        10 %
+                         Trámites de placas y documentación 100 %
+  DEPRECIACIÓN           Maquinaria empleada                2 %
+                         Equipos de cómputo y otros        0,2 %
+  = TOTAL GASTOS DE OPERACIÓN
+
+= TOTAL EGRESOS Y EROGACIONES PARA FABRICACIÓN
++ UTILIDAD CALCULADA                                      15,0 %
+= PRECIO DE VENTA SIN IGV (US$)
+× 1,18 = PRECIO DE VENTA CON IGV (US$), y su equivalente en S/ al T.C.
+```
+
+La hoja de detalle alimenta a la de RESUMEN por clasificación: al pie del
+detalle hay un cuadro «COSTO POR CLASIFICACIÓN» y el RESUMEN lo referencia
+celda a celda.
+
+### Las tres consecuencias para el sistema
+
+1. **El precio sale del costo, no al revés.** La hoja calcula el precio de venta
+   sumando egresos y agregando 15 % de utilidad. Hoy el sistema hace lo
+   contrario: Ventas escribe el precio y Administración costea después. Las dos
+   cosas pueden convivir —el costeo diría cuál *debería* ser el precio y Gerencia
+   compara las dos cifras antes de aprobar— pero hoy esa comparación no existe.
+2. **Falta el prorrateo de indirectos entero.** No hay dónde guardar el gasto
+   mensual de cada área ni la tasa que carga cada unidad, y sin eso el «costo»
+   del sistema es solo material: se queda corto en todo lo que la empresa sí
+   suma.
+3. **La clasificación tiene que ser un catálogo abierto**, no un enum de cuatro
+   valores.
+
+---
+
+## 13. Fuentes
 
 | Archivo | Qué aportó |
 | --- | --- |
@@ -402,3 +516,7 @@ y `7. ALMACEN` en la raíz del OneDrive.
 | `SEGUIMIENTO DE FABRICACIÓN - MWP.xlsx` | Codificación de unidades fabricadas |
 | `PROYECTO CODIFICACION ALMACEN -MWP.xlsx` | Codificación de materiales y de producto terminado |
 | `PROYECTO SIG - MWP/9) Almacén ( ALM)` | Los siete formatos del área de almacén |
+| `4. LOGISTICA 2026/1. COSTEOS/AGOSTO/METAL WORK/40- TOLVA 17 M3 -TRINCO.xlsx` | La hoja de detalle del costeo y sus clasificaciones |
+| `.../COSTEOS DE EMPRESAS/6. COSTOS JUNIO/JAMISA/38-COSTEO-GARANTIA CISTERNA INCOAC.xlsx` | La hoja RESUMEN: prorrateo de indirectos y cálculo del precio |
+| `6. REQUERIMIENTOS/COSTEOS DE EMPRESAS/SEGUIMIENTO DE COSTEOS.xlsx` | Quién costea, en qué estados y con qué fechas |
+| `4. LOGISTICA 2026/ESTRUCTURA LOGISTICA - 2026.pdf` | Cuándo se costea y cómo se archiva |
