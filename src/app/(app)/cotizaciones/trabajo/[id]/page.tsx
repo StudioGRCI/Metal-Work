@@ -125,30 +125,15 @@ export default async function PaginaCotizacionDeTrabajo({
         </TarjetaCuerpo>
       </Tarjeta>
 
+      {/* El orden es el del costeo, no el que fueron quedando los cambios.
+          Estaba primero la tabla del costo: se le pedía a Administración poner
+          precio al material antes de que existiera una sola medida escrita. No
+          se puede costear lo que todavía no está definido.
+
+          Primero qué se fabrica —medidas, espesores, accesorios—, que es de
+          donde salen la lista de material y las horas. Después cuánto cuesta.
+          Y al final cuánto tarda, que depende de las dos cosas anteriores. */}
       <div className="space-y-4">
-        {/* Con el precio ofrecido delante: el costo y el margen salieron de la
-            cotización de venta —ahí se los estaba enseñando al vendedor— y su
-            sitio es este, pegados a las partidas de las que se calculan. */}
-        <Partidas
-          cotizacionId={id}
-          partidas={partidas}
-          moneda={mon}
-          editable={puedeCostear}
-          precioVenta={Number(cotizacion.precio_venta ?? 0)}
-          estado={cotizacion.estado as string}
-        />
-
-        {/* El «para cuándo» de la cotización de trabajo. Va antes de la ficha
-            porque es lo que Gerencia mira junto con el costo: cuánto cuesta y
-            cuánto tarda son la misma decisión. */}
-        <ProgramaDeTaller
-          cotizacionId={id}
-          etapas={programa}
-          editable={puedeCostear}
-          estado={cotizacion.estado as string}
-          plazoOfrecido={cotizacion.plazo_entrega_dias}
-        />
-
         <FichaTecnica
           cotizacionId={id}
           cabecera={{
@@ -172,6 +157,26 @@ export default async function PaginaCotizacionDeTrabajo({
           accesorios={accesorios}
           plantillas={plantillas}
           puedeEditar={puedeCostear}
+        />
+
+        {/* Con el precio ofrecido delante: el costo y el margen salieron de la
+            cotización de venta —ahí se los estaba enseñando al vendedor— y su
+            sitio es este, pegados a las partidas de las que se calculan. */}
+        <Partidas
+          cotizacionId={id}
+          partidas={partidas}
+          moneda={mon}
+          editable={puedeCostear}
+          precioVenta={Number(cotizacion.precio_venta ?? 0)}
+          estado={cotizacion.estado as string}
+        />
+
+        <ProgramaDeTaller
+          cotizacionId={id}
+          etapas={programa}
+          editable={puedeCostear}
+          estado={cotizacion.estado as string}
+          plazoOfrecido={cotizacion.plazo_entrega_dias}
         />
       </div>
     </>

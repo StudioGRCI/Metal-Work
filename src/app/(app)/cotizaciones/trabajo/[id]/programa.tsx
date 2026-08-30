@@ -90,7 +90,7 @@ export function ProgramaDeTaller({
     return (
       <Tarjeta>
         <TarjetaCabecera
-          titulo="Tiempo por área"
+          titulo="3 · Tiempo por área — cuánto tarda"
           descripcion="El programa aparece cuando la cotización entra a costeo."
         />
       </Tarjeta>
@@ -100,7 +100,7 @@ export function ProgramaDeTaller({
   return (
     <Tarjeta>
       <TarjetaCabecera
-        titulo="Tiempo por área"
+        titulo="3 · Tiempo por área — cuánto tarda"
         descripcion="Cuántos días de taller para la unidad en cada área. La suma es el plazo de fabricación, y al abrir la orden cada área baja con su fecha ya contada sin domingos ni feriados."
         acciones={
           !editable && estado ? (

@@ -118,13 +118,17 @@ export function FichaTecnica({
       {/* El encabezado del bloque dice una sola vez de qué acto forma parte
           todo esto; las tarjetas de abajo no lo repiten. */}
       <div>
+        {/* El número dice en qué punto del costeo va este bloque. Sin él, tres
+            tarjetas seguidas parecen tres cosas sueltas que se pueden llenar en
+            cualquier orden, y no lo son: de acá salen la lista de material y las
+            horas de las dos siguientes. */}
         <h2 className="text-sm font-semibold text-texto">
-          Ficha técnica de la cotización de trabajo
+          1 · Ficha técnica — qué se va a fabricar
         </h2>
         <p className="mt-0.5 text-xs text-texto-suave">
-          La arma Administración durante el costeo, junto con las partidas: con esto se compra el
-          material y se programa el taller. A diferencia de las partidas, la ficha y los accesorios
-          sí salen impresos en el papel del cliente.
+          Medidas, espesores y accesorios. Es el primer paso del costeo porque de acá salen la
+          lista de material y las horas de taller. A diferencia de las partidas, la ficha y los
+          accesorios sí salen impresos en el papel del cliente.
         </p>
       </div>
 

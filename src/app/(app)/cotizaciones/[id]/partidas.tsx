@@ -115,7 +115,7 @@ export function Partidas({
   return (
     <Tarjeta>
       <TarjetaCabecera
-        titulo="Partidas de la cotización de trabajo"
+        titulo="2 · Partidas — cuánto cuesta"
         descripcion="El costo del trabajo partida por partida: con esto Administración compra el material y programa el taller. No sale impreso en el papel del cliente."
         acciones={
           editable && !agregando && !editando ? (
