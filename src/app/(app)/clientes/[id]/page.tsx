@@ -100,7 +100,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
             descripcion={`${unidades.length} ${unidades.length === 1 ? 'vehículo' : 'vehículos'} registrados`}
             acciones={
               catalogos && (
-                <NuevaUnidad clienteId={id} tiposCarroceria={catalogos.tiposCarroceria} />
+                <NuevaUnidad clienteId={id} />
               )
             }
           />
@@ -118,7 +118,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                 </p>
                 {catalogos && (
                   <div className="mt-4 flex justify-center">
-                    <NuevaUnidad clienteId={id} tiposCarroceria={catalogos.tiposCarroceria} />
+                    <NuevaUnidad clienteId={id} />
                   </div>
                 )}
               </div>

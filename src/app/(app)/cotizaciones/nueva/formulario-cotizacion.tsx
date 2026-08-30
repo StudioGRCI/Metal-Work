@@ -184,7 +184,6 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
                 <NuevaUnidad
                   key={clienteId}
                   clienteId={clienteId}
-                  tiposCarroceria={carrocerias}
                   onCreada={unidadCreada}
                   compacta
                 />

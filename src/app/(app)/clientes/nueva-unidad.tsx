@@ -6,7 +6,6 @@ import { Plus } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
-import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 
 import { guardarUnidad } from './acciones'
@@ -23,12 +22,10 @@ const TIPOS_VEHICULO = [
 
 export function NuevaUnidad({
   clienteId,
-  tiposCarroceria,
   onCreada,
   compacta = false,
 }: {
   clienteId: string
-  tiposCarroceria: { id: string; nombre: string }[]
   /** Para los formularios que quieren quedarse con la unidad recién creada. */
   // La placa puede faltar: quien reciba la unidad recién creada la nombra con
   // nombreDeUnidad(), no dando por hecho que hay matrícula.
@@ -45,7 +42,6 @@ export function NuevaUnidad({
   const router = useRouter()
   const [pendiente, iniciarTransicion] = useTransition()
   const [abierto, setAbierto] = useState(false)
-  const [carroceriaId, setCarroceriaId] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   // Se envía con un manejador propio en lugar de useActionState para poder
@@ -96,12 +92,16 @@ export function NuevaUnidad({
         <form action={enviar} className="grid gap-4 sm:grid-cols-3">
           <input type="hidden" name="cliente_id" value={clienteId} />
 
-          {/* Qué es la unidad va primero, y es lo obligatorio: el tipo de
-              vehículo y la carrocería son lo que la casa necesita para saber
-              qué se va a fabricar. La placa viene después porque muchas veces
-              todavía no existe —el chasis llega sin matricular— y encabezar el
-              formulario con un campo que a menudo se deja vacío hacía empezar
-              en falso. */}
+          {/* Esta ficha describe el chasis que trae el cliente y nada más. La
+              carrocería NO va acá: es lo que Metal Work va a fabricar y se
+              decide en la cotización, que es donde el vendedor la elige y donde
+              puede cambiar. Ponerla en la unidad obligaba a decidirla antes de
+              cotizar y dejaba dos sitios diciendo qué se construye.
+
+              El tipo de vehículo va primero y es obligatorio. La placa viene
+              después porque muchas veces todavía no existe —el chasis llega sin
+              matricular— y encabezar el formulario con un campo que a menudo se
+              deja vacío hacía empezar en falso. */}
           <Campo etiqueta="Tipo de vehículo" htmlFor="nu-tipo_vehiculo" requerido>
             <Seleccion
               id="nu-tipo_vehiculo"
@@ -116,19 +116,6 @@ export function NuevaUnidad({
                 </option>
               ))}
             </Seleccion>
-          </Campo>
-
-          <Campo etiqueta="Tipo de carrocería" htmlFor="nu-tipo_carroceria_id" requerido>
-            <SeleccionBuscable
-              id="nu-tipo_carroceria_id"
-              name="tipo_carroceria_id"
-              valor={carroceriaId}
-              onChange={setCarroceriaId}
-              marcador="Elige la carrocería"
-              marcadorBusqueda="Tolva, cisterna, furgón…"
-              requerido
-              opciones={tiposCarroceria.map((t) => ({ valor: t.id, etiqueta: t.nombre }))}
-            />
           </Campo>
 
           <Campo
@@ -196,30 +183,6 @@ export function NuevaUnidad({
 
           <Campo etiqueta="Color" htmlFor="nu-color">
             <Entrada id="nu-color" name="color" autoComplete="off" />
-          </Campo>
-
-          <Campo etiqueta="Capacidad (m³)" htmlFor="nu-capacidad_m3">
-            <Entrada
-              id="nu-capacidad_m3"
-              name="capacidad_m3"
-              type="number"
-              inputMode="decimal"
-              step="0.1"
-              min={0}
-              className="tabular text-right"
-            />
-          </Campo>
-
-          <Campo etiqueta="Capacidad (t)" htmlFor="nu-capacidad_toneladas">
-            <Entrada
-              id="nu-capacidad_toneladas"
-              name="capacidad_toneladas"
-              type="number"
-              inputMode="decimal"
-              step="0.1"
-              min={0}
-              className="tabular text-right"
-            />
           </Campo>
 
           <Campo etiqueta="Observaciones" htmlFor="nu-observaciones">

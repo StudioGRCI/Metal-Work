@@ -115,10 +115,10 @@ const esquemaUnidad = z.object({
   color: z.string().trim().optional(),
   capacidad_m3: z.string().trim().optional(),
   capacidad_toneladas: z.string().trim().optional(),
-  // Obligatoria desde que la ficha empieza por «qué es esta unidad»: sin la
-  // carrocería, el taller no sabe qué se va a fabricar y la orden nace muda.
-  // La placa, en cambio, puede faltar —hay chasis que llegan sin matricular—.
-  tipo_carroceria_id: z.string().uuid('Elige el tipo de carrocería'),
+  // La carrocería ya no se pide acá: es lo que Metal Work va a fabricar y se
+  // decide en la cotización. Se acepta si viene —hay unidades registradas antes
+  // del cambio y pantallas que todavía la mandan— pero no se exige.
+  tipo_carroceria_id: z.string().uuid().optional().or(z.literal('')),
   observaciones: z.string().trim().optional(),
 })
 
