@@ -699,6 +699,51 @@ export type Database = {
           }
         ]
       }
+      cotizacion_etapas: {
+        Row: {
+          id: string
+          cotizacion_id: string
+          etapa_catalogo_id: string
+          orden_secuencia: number
+          dias: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          cotizacion_id: string
+          etapa_catalogo_id: string
+          orden_secuencia: number
+          dias?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          cotizacion_id?: string
+          etapa_catalogo_id?: string
+          orden_secuencia?: number
+          dias?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cotizacion_etapas_cotizacion_id_fkey"
+            columns: ["cotizacion_id"]
+            isOneToOne: false
+            referencedRelation: "cotizaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizacion_etapas_etapa_catalogo_id_fkey"
+            columns: ["etapa_catalogo_id"]
+            isOneToOne: false
+            referencedRelation: "etapas_catalogo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       cotizacion_partidas: {
         Row: {
           id: string
@@ -776,6 +821,7 @@ export type Database = {
           igv: number
           total: number
           plazo_entrega_dias: number | null
+          dias_programados: number
           forma_pago: string | null
           condiciones: string | null
           observaciones: string | null
@@ -837,6 +883,7 @@ export type Database = {
           igv?: number
           total?: number
           plazo_entrega_dias?: number | null
+          dias_programados?: number
           forma_pago?: string | null
           condiciones?: string | null
           observaciones?: string | null
@@ -898,6 +945,7 @@ export type Database = {
           igv?: number
           total?: number
           plazo_entrega_dias?: number | null
+          dias_programados?: number
           forma_pago?: string | null
           condiciones?: string | null
           observaciones?: string | null
@@ -6252,6 +6300,12 @@ export type Database = {
           p_orden_id: string
         }
         Returns: string
+      }
+      cotizacion_sembrar_etapas: {
+        Args: {
+          p_cotizacion_id: string
+        }
+        Returns: number
       }
       crear_etapas_ot: {
         Args: {

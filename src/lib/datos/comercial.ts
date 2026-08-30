@@ -259,6 +259,28 @@ export async function partidasDeCotizacion(cotizacionId: string) {
   return data ?? []
 }
 
+/**
+ * Cuántos días para la unidad en cada área.
+ *
+ * Trae también el nombre y el estándar del catálogo: la pantalla enseña al lado
+ * lo que la casa suele tardar ahí, y quien costea ve enseguida si el número que
+ * puso se sale de lo normal. La lista se ordena por el orden que se copió al
+ * sembrar, no por el del catálogo: si mañana se reordena el catálogo, el
+ * programa de una cotización ya costeada no se baraja solo.
+ */
+export async function programaDeCotizacion(cotizacionId: string) {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('cotizacion_etapas')
+    .select('id, dias, orden_secuencia, etapa:etapas_catalogo!inner(id, nombre, dias_estandar)')
+    .eq('cotizacion_id', cotizacionId)
+    .order('orden_secuencia')
+
+  if (error) throw new Error(`No se pudo cargar el programa de taller: ${error.message}`)
+  return data ?? []
+}
+
 export type ResumenComercial = {
   /** Las que este perfil tiene que mover ahora. */
   meTocan: number

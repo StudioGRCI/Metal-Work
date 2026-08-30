@@ -838,3 +838,95 @@ export async function eliminarCotizacion(
   revalidatePath('/cotizaciones')
   redirect('/cotizaciones')
 }
+
+// =============================================================================
+// CUÁNTO TIEMPO PARA EN CADA ÁREA
+// -----------------------------------------------------------------------------
+// El programa de taller es cotización de trabajo: lo escribe quien costea, con
+// `cotizaciones.costear`, que es exactamente el permiso que aceptan las
+// políticas de `cotizacion_etapas`. Si acá se pidiera `cotizaciones.editar` —el
+// de Ventas—, el UPDATE afectaría cero filas, Postgres no daría error y la
+// pantalla diría «programa guardado» sin haber guardado nada.
+// =============================================================================
+
+const esquemaPrograma = z.object({
+  cotizacion_id: z.string().uuid(),
+  // Llegan como `dias_<id de la fila>`; se leen aparte porque son tantos como
+  // etapas tenga el catálogo.
+})
+
+/**
+ * Guarda de una vez los días de cada área.
+ *
+ * Va en un solo envío y no fila por fila a propósito: quien costea mira las
+ * catorce juntas —el total es lo que importa, no el renglón suelto— y catorce
+ * guardados sueltos dejarían un programa a medio escribir si el segundo falla.
+ */
+export async function guardarProgramaTaller(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'cotizaciones.costear')) {
+    return { ok: false, error: 'No tienes permiso para programar el taller.' }
+  }
+
+  const analisis = esquemaPrograma.safeParse({ cotizacion_id: datos.get('cotizacion_id') })
+  if (!analisis.success) return { ok: false, error: 'Solicitud inválida.' }
+
+  const cotizacionId = analisis.data.cotizacion_id
+
+  // Cada casilla viaja como `dias_<uuid>`. Se valida una por una: un texto vacío
+  // o una letra tienen que parar acá y no llegar a la base como cero silencioso,
+  // porque cero significa «no pasa por esa área» y eso es una decisión, no un
+  // descuido.
+  const cambios: { id: string; dias: number }[] = []
+
+  for (const [clave, valor] of datos.entries()) {
+    if (!clave.startsWith('dias_')) continue
+
+    const id = clave.slice(5)
+    if (!z.string().uuid().safeParse(id).success) continue
+
+    const dias = Number(String(valor).trim())
+    if (!Number.isInteger(dias) || dias < 0 || dias > 365) {
+      return { ok: false, error: 'Los días de cada área van de 0 a 365, sin decimales.' }
+    }
+
+    cambios.push({ id, dias })
+  }
+
+  if (cambios.length === 0) return { ok: false, error: 'No llegó ningún plazo que guardar.' }
+
+  const supabase = await createClient()
+
+  // Se actualiza fila por fila pero se comprueba el total: si el RLS escondiera
+  // alguna, el UPDATE devolvería cero filas sin error y el programa quedaría a
+  // medias diciendo que se guardó.
+  const guardadas: string[] = []
+
+  for (const cambio of cambios) {
+    const { data, error } = await supabase
+      .from('cotizacion_etapas')
+      .update({ dias: cambio.dias })
+      .eq('id', cambio.id)
+      .eq('cotizacion_id', cotizacionId)
+      .select('id')
+      .maybeSingle()
+
+    if (error) return { ok: false, error: mensajeDeError(error) }
+    if (data) guardadas.push(data.id)
+  }
+
+  if (guardadas.length !== cambios.length) {
+    return {
+      ok: false,
+      error:
+        'No se pudo guardar el programa completo: la cotización ya está cerrada o no la tienes a la vista.',
+    }
+  }
+
+  revalidatePath(`/cotizaciones/trabajo/${cotizacionId}`)
+  revalidatePath(`/cotizaciones/${cotizacionId}`)
+  return { ok: true, mensaje: 'Programa de taller guardado.' }
+}

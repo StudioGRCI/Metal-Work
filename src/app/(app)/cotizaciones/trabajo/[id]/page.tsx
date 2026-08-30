@@ -7,7 +7,11 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_COTIZACION, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
-import { obtenerCotizacion, partidasDeCotizacion } from '@/lib/datos/comercial'
+import {
+  obtenerCotizacion,
+  partidasDeCotizacion,
+  programaDeCotizacion,
+} from '@/lib/datos/comercial'
 import {
   accesoriosDeCotizacion,
   fichaDeCotizacion,
@@ -18,6 +22,7 @@ import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { FichaTecnica } from '../../[id]/ficha-tecnica'
 import { Partidas } from '../../[id]/partidas'
+import { ProgramaDeTaller } from './programa'
 
 export async function generateMetadata({
   params,
@@ -55,11 +60,12 @@ export default async function PaginaCotizacionDeTrabajo({
   const cotizacion = await obtenerCotizacion(id)
   if (!cotizacion) notFound()
 
-  const [partidas, ficha, accesorios, plantillas] = await Promise.all([
+  const [partidas, ficha, accesorios, plantillas, programa] = await Promise.all([
     partidasDeCotizacion(id),
     fichaDeCotizacion(id),
     accesoriosDeCotizacion(id),
     plantillasDisponibles(cotizacion.tipo_carroceria_id),
+    programaDeCotizacion(id),
   ])
 
   const estado = definir(ESTADO_COTIZACION, cotizacion.estado)
@@ -121,6 +127,17 @@ export default async function PaginaCotizacionDeTrabajo({
 
       <div className="space-y-4">
         <Partidas cotizacionId={id} partidas={partidas} moneda={mon} editable={puedeCostear} />
+
+        {/* El «para cuándo» de la cotización de trabajo. Va antes de la ficha
+            porque es lo que Gerencia mira junto con el costo: cuánto cuesta y
+            cuánto tarda son la misma decisión. */}
+        <ProgramaDeTaller
+          cotizacionId={id}
+          etapas={programa}
+          editable={puedeCostear}
+          estado={cotizacion.estado as string}
+          plazoOfrecido={cotizacion.plazo_entrega_dias}
+        />
 
         <FichaTecnica
           cotizacionId={id}
