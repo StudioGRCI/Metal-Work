@@ -33,6 +33,8 @@ export type CabeceraCotizacion = {
   vendedor_id?: string | null
   fecha_emision: string
   validez_dias: number
+  /** Los meses que se prometen. Los pone Ventas, con el precio y el plazo. */
+  garantia_meses?: number | null
   moneda: string
   plazo_entrega_dias: number | null
   /**
@@ -299,6 +301,22 @@ export function EditarCotizacion({
                 min={1}
                 max={365}
                 defaultValue={cotizacion.validez_dias}
+                className="tabular text-right"
+              />
+            </Campo>
+
+            {/* La garantía va con la validez y la entrega: las tres son lo que
+                Ventas le promete al cliente, y las tres salen en las condiciones
+                del papel. */}
+            <Campo etiqueta="Garantía (meses)" htmlFor="garantia_meses">
+              <Entrada
+                id="garantia_meses"
+                name="garantia_meses"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={120}
+                defaultValue={cotizacion.garantia_meses ?? 12}
                 className="tabular text-right"
               />
             </Campo>

@@ -43,6 +43,10 @@ const esquemaCotizacion = z.object({
   // advertencias en negativo, que no son accesorios sino lo contrario: «NO
   // INCLUYE AROS NI LLANTAS».
   plazo_desde: z.string().trim().optional(),
+  // Los meses de garantía los promete Ventas, junto al precio y al plazo: es
+  // parte de lo que se le ofrece al cliente, no del costeo. El texto con el que
+  // se redacta sigue siendo de la ficha, que la escribe Administración.
+  garantia_meses: z.coerce.number().int().min(0).max(120).optional(),
   garantia_texto: z.string().trim().optional(),
   peso_tolerancia: z.string().trim().optional(),
   no_incluye: z.string().trim().optional(),
@@ -102,6 +106,7 @@ function cabeceraGuardable(
     ...soloSiVino('vendedor_id', v.vendedor_id),
     ...soloSiVino('contacto_id', v.contacto_id),
     ...soloSiVino('plazo_desde', v.plazo_desde),
+    ...(v.garantia_meses === undefined ? {} : { garantia_meses: v.garantia_meses }),
     ...soloSiVino('garantia_texto', v.garantia_texto),
     ...soloSiVino('peso_tolerancia', v.peso_tolerancia),
     ...soloSiVino('no_incluye', v.no_incluye),

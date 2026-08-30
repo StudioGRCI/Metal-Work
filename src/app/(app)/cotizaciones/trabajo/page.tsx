@@ -153,7 +153,7 @@ export default async function PaginaCotizacionDeTrabajo({
                   <TR key={c.id}>
                     <TD className="whitespace-nowrap">
                       <Link
-                        href={`/cotizaciones/${c.id}`}
+                        href={`/cotizaciones/trabajo/${c.id}`}
                         className="font-medium text-acento hover:underline"
                       >
                         {c.numero}

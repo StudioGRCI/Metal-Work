@@ -4,6 +4,7 @@ import type { Metadata } from 'next'
 import { ChevronRight, Percent, Tag, Wallet } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador, type TonoIndicador } from '@/components/ui/indicador'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -25,8 +26,6 @@ import type { CodigoMoneda } from '@/lib/format'
 import { AccionesCotizacion } from './acciones-cotizacion'
 import { ConceptoImpreso } from './concepto-impreso'
 import { EditarCotizacion } from './editar-cotizacion'
-import { FichaTecnica } from './ficha-tecnica'
-import { Partidas } from './partidas'
 
 export async function generateMetadata({
   params,
@@ -50,14 +49,14 @@ export default async function PaginaCotizacion({
   const cotizacion = await obtenerCotizacion(id)
   if (!cotizacion) notFound()
 
-  const [partidas, catalogos, ficha, accesorios, plantillas] = await Promise.all([
+  // La ficha, los accesorios y las plantillas ya no se piden acá: son de la
+  // cotización de trabajo y se cargan en su pantalla. Las partidas sí, pero
+  // solo para saber si hay con qué descargar el papel —no se listan—.
+  const [partidas, catalogos] = await Promise.all([
     partidasDeCotizacion(id),
     puede(perfil, 'ordenes.crear') || puede(perfil, 'cotizaciones.editar')
       ? catalogosOrden()
       : Promise.resolve(null),
-    fichaDeCotizacion(id),
-    accesoriosDeCotizacion(id),
-    plantillasDisponibles(cotizacion.tipo_carroceria_id),
   ])
 
   // Si esta cotización ya generó una orden, se enlaza en lugar de ofrecer crearla otra vez.
@@ -99,21 +98,16 @@ export default async function PaginaCotizacion({
     puede(perfil, 'cotizaciones.costear')
 
   /**
-   * Mientras la cotización está solo en manos de Ventas, la pantalla no enseña
-   * lo que arma Administración.
+   * Esta pantalla es la cotización de VENTA y solo eso.
    *
-   * En BORRADOR nadie ha costeado nada todavía, así que las partidas, la ficha
-   * técnica y los accesorios salían como cuatro cajas vacías con un candado y
-   * un cartel de «ahora no se puede tocar». Eso no informa: ocupa media
-   * pantalla anunciando trabajo que no es de quien está mirando, y hace parecer
-   * que a la cotización de venta le falta algo. Aparecen cuando la cotización
-   * pasa a costeo, que es cuando existen y cuando alguien puede llenarlas.
-   *
-   * Desde OBSERVADA en adelante sí se muestran aunque la cotización haya vuelto
-   * a Ventas: ahí ya tienen contenido, y el vendedor necesita ver qué se
-   * prometió —la ficha y los accesorios se imprimen en el papel del cliente—.
+   * Las partidas, la ficha técnica y los accesorios son la cotización de
+   * TRABAJO: los arma Administración y viven en `/cotizaciones/trabajo/[id]`.
+   * Estuvieron acá escondidos con condiciones y la empresa lo devolvió dos
+   * veces; una condición se olvida en el siguiente cambio de estado, una ruta
+   * distinta no. Si alguna vez vuelve a hacer falta un bloque de costeo en esta
+   * página, la respuesta es que no: va en la otra.
    */
-  const soloEnVentas = cotizacion.estado === 'BORRADOR'
+  const verTrabajo = puede(perfil, ['cotizaciones.costear', 'cotizaciones.revisar'])
 
   // La cabecera —cliente, unidad, condiciones y el precio— se corrige mientras
   // la cotización se está armando, y solo entonces.
@@ -295,6 +289,7 @@ export default async function PaginaCotizacion({
                     vendedor_id: cotizacion.vendedor_id,
                     fecha_emision: cotizacion.fecha_emision,
                     validez_dias: cotizacion.validez_dias,
+                    garantia_meses: cotizacion.garantia_meses,
                     moneda: cotizacion.moneda,
                     plazo_entrega_dias: cotizacion.plazo_entrega_dias,
                     plazo_desde: cotizacion.plazo_desde,
@@ -321,7 +316,7 @@ export default async function PaginaCotizacion({
             <div
               className={cn(
                 'mb-3 grid gap-2',
-                verCostos && !soloEnVentas && 'sm:grid-cols-2 xl:grid-cols-3',
+                verCostos && verTrabajo && 'sm:grid-cols-2 xl:grid-cols-3',
               )}
             >
               <Indicador
@@ -332,7 +327,7 @@ export default async function PaginaCotizacion({
                 pie={hayPrecio ? 'Lo que se le ofrece al cliente' : 'Ventas todavía no lo puso'}
               />
 
-              {verCostos && !soloEnVentas && (
+              {verCostos && verTrabajo && (
                 <Indicador
                   titulo="Costo estimado"
                   icono={Wallet}
@@ -341,7 +336,7 @@ export default async function PaginaCotizacion({
                 />
               )}
 
-              {verCostos && !soloEnVentas && (
+              {verCostos && verTrabajo && (
                 <Indicador
                   titulo="Margen"
                   icono={Percent}
@@ -428,51 +423,78 @@ export default async function PaginaCotizacion({
           />
         </div>
 
-        {/* Las partidas son la cotización de trabajo: con ellas se compra el
-            material y se programa el taller. Las arma Administración, y hasta
-            que la cotización llega a sus manos no se muestran.
-            `verCostos` además: la tabla lleva el costo unitario de cada
-            partida, y el vendedor no tiene permiso de costos. Se le estaba
-            enseñando igual lo que la empresa paga por el material. */}
-        {!soloEnVentas && verCostos && (
-          <div className="lg:col-span-3">
-            <Partidas cotizacionId={id} partidas={partidas} moneda={mon} editable={puedeCostear} />
-          </div>
-        )}
 
-        {/* La ficha técnica es el cuerpo de la cotización de esta empresa: es
-            lo que el taller fabrica y contra lo que el cliente reclama. La
-            escribe Administración durante el costeo, así que en venta no está. */}
-        {!soloEnVentas && (
-          <div className="lg:col-span-3">
-            <FichaTecnica
-              cotizacionId={id}
-              cabecera={{
-                modelo: cotizacion.modelo,
-                tipo: cotizacion.tipo,
-                largo_m: cotizacion.largo_m,
-                ancho_m: cotizacion.ancho_m,
-                alto_m: cotizacion.alto_m,
-                capacidad: cotizacion.capacidad,
-                peso_neto_tn: cotizacion.peso_neto_tn,
-                garantia_meses: cotizacion.garantia_meses,
-                garantia_texto: cotizacion.garantia_texto,
-                peso_tolerancia: cotizacion.peso_tolerancia,
-                no_incluye: cotizacion.no_incluye,
-                incluye_igv: cotizacion.incluye_igv,
-                plazo_en_habiles: cotizacion.plazo_en_habiles,
-                plazo_entrega_dias: cotizacion.plazo_entrega_dias,
-                nota: cotizacion.nota,
-              }}
-              secciones={ficha}
-              accesorios={accesorios}
-              plantillas={plantillas}
-              puedeEditar={puedeCostear}
-            />
-          </div>
-        )}
+        {/* En vez de los bloques de trabajo: dónde está la cotización y quién
+            la tiene. Al vendedor le basta con eso; el detalle es de la otra
+            pantalla y de la otra gente. */}
+        <div className="lg:col-span-3">
+          <EnEsperaDe estado={cotizacion.estado} id={id} puedeEntrar={verTrabajo} />
+        </div>
       </div>
     </>
+  )
+}
+
+/**
+ * Qué le está pasando a la cotización mientras no está en manos de Ventas.
+ *
+ * La cotización de venta no muestra partidas, ficha ni accesorios en ningún
+ * estado: son la cotización de trabajo, la arma Administración y vive en su
+ * propia pantalla. Acá solo se dice en qué punto va, que es lo que el vendedor
+ * necesita para contestarle al cliente.
+ */
+function EnEsperaDe({
+  estado,
+  id,
+  puedeEntrar,
+}: {
+  estado: string
+  id: string
+  puedeEntrar: boolean
+}) {
+  const QUE_PASA: Record<string, { titulo: string; detalle: string }> = {
+    BORRADOR: {
+      titulo: 'En ventas',
+      detalle:
+        'Escribe el concepto, pon el precio y pásala a cotización de trabajo para que Administración la costee.',
+    },
+    EN_COSTEO: {
+      titulo: 'En espera de costeo',
+      detalle:
+        'Administración está armando la cotización de trabajo: las partidas, la ficha técnica y los accesorios. Cuando termine, pasa a Gerencia.',
+    },
+    EN_REVISION: {
+      titulo: 'Con Gerencia',
+      detalle: 'Administración terminó el costeo y Gerencia la está revisando.',
+    },
+    OBSERVADA: {
+      titulo: 'Devuelta por Gerencia',
+      detalle: 'Volvió con observaciones. Administración la corrige y la sube otra vez.',
+    },
+    REVISADA: {
+      titulo: 'Lista para enviar',
+      detalle: 'Gerencia dio el visto. Ya se puede descargar el papel y mandárselo al cliente.',
+    },
+    ENVIADA: {
+      titulo: 'Con el cliente',
+      detalle: 'Se le envió y todavía no contesta.',
+    },
+  }
+
+  const que = QUE_PASA[estado]
+  if (!que) return null
+
+  return (
+    <Tarjeta>
+      <TarjetaCabecera titulo={que.titulo} descripcion={que.detalle} />
+      {puedeEntrar && estado !== 'BORRADOR' && (
+        <TarjetaCuerpo>
+          <EnlaceBoton href={`/cotizaciones/trabajo/${id}`} variante="secundario">
+            Abrir la cotización de trabajo
+          </EnlaceBoton>
+        </TarjetaCuerpo>
+      )}
+    </Tarjeta>
   )
 }
 

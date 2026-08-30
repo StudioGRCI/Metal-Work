@@ -235,7 +235,12 @@ const estilos = StyleSheet.create({
   //
   // El hueco de la despedida es para que quepa la rúbrica a mano. No hay raya:
   // se firma sobre el blanco, encima del nombre.
-  cierreCarta: { marginTop: 40, alignItems: 'center' },
+  // A la derecha, que es donde va en una carta: el que la lee llega al final
+  // por ese lado. Centrado quedaba flotando en medio de la hoja.
+  cierreCarta: { marginTop: 40, alignItems: 'flex-end', paddingRight: 24 },
+  // El bloque tiene su propio ancho para que el nombre y el cargo queden
+  // centrados entre ellos, no cada uno por su lado.
+  bloqueFirma: { width: 220, alignItems: 'center' },
   nombreVendedor: {
     fontSize: 8.5,
     fontFamily: 'Helvetica-Bold',
@@ -796,15 +801,21 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
             ni hueco para firmar encima; una cotización se acepta con una orden
             de compra, no devolviéndola firmada. */}
         <View style={estilos.cierreCarta} wrap={false}>
-          <Text style={estilos.despedida}>Atentamente,</Text>
-          <Text style={estilos.nombreVendedor}>
-            {(empresa?.gerente_general ?? empresa?.razon_social ?? 'Metal Work Perú S.A.C.').toUpperCase()}
-          </Text>
-          {empresa?.gerente_general && (
-            <Text style={estilos.cargoFirma}>
-              {empresa.gerente_general_cargo ?? 'Gerente General'}
+          <View style={estilos.bloqueFirma}>
+            <Text style={estilos.despedida}>Atentamente,</Text>
+            <Text style={estilos.nombreVendedor}>
+              {(
+                empresa?.gerente_general ??
+                empresa?.razon_social ??
+                'Metal Work Perú S.A.C.'
+              ).toUpperCase()}
             </Text>
-          )}
+            {empresa?.gerente_general && (
+              <Text style={estilos.cargoFirma}>
+                {empresa.gerente_general_cargo ?? 'Gerente General'}
+              </Text>
+            )}
+          </View>
         </View>
 
         <View style={estilos.pie} fixed>

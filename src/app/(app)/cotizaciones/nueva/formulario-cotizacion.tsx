@@ -339,6 +339,23 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
             />
           </Campo>
 
+          {/* La garantía la promete Ventas, con el precio y el plazo: es parte
+              de lo que se le ofrece al cliente y sale en las condiciones del
+              papel. El texto con el que se redacta lo escribe Administración en
+              la ficha; acá van los meses. */}
+          <Campo etiqueta="Garantía" htmlFor="garantia_meses" ayuda="Meses">
+            <Entrada
+              id="garantia_meses"
+              name="garantia_meses"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={120}
+              defaultValue={12}
+              className="tabular text-right"
+            />
+          </Campo>
+
           <Campo etiqueta="Plazo de entrega" htmlFor="plazo_entrega_dias" ayuda="Días calendario">
             <Entrada
               id="plazo_entrega_dias"

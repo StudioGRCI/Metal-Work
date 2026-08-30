@@ -125,3 +125,18 @@ en ese archivo. Interacción nueva → probarla con clic real vía
 - **Una columna nueva no aparece sola.** Aunque esté en la base y en los tipos,
   la pantalla la ignora hasta que se agrega al `select` explícito de
   `src/lib/datos/*`. El síntoma es un campo vacío sin ningún error.
+
+- **Dos documentos son dos pantallas, no una con condiciones.** La cotización de
+  venta y la cotización de trabajo son documentos distintos, los hace gente
+  distinta y llevan datos que la otra parte no debe ver: el vendedor no tiene
+  por qué mirar el costo del acero. Se intentó dos veces meter las partidas, la
+  ficha técnica y los accesorios en la pantalla de venta escondiéndolos con
+  condiciones —primero por permiso, después por estado— y la empresa lo devolvió
+  las dos veces: una condición tapa el bloque en el estado que se pensó y lo
+  deja asomar en el siguiente. Hoy viven en `/cotizaciones/trabajo/[id]`.
+
+  **La regla:** cuando el negocio dice que son dos cosas, se separan por ruta y
+  por permiso, no con un `&&`. Si aparece la tentación de añadir una condición
+  más para esconder un bloque de otra área, esa es la señal de que falta una
+  pantalla. Lo que no se separa se vuelve a colar, y quien lo descubre es el
+  cliente mirando por encima del hombro de alguien.
