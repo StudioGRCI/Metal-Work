@@ -3,6 +3,7 @@ import {
   Camera,
   ClipboardList,
   Factory,
+  FileSpreadsheet,
   FileText,
   Handshake,
   LayoutDashboard,
@@ -39,14 +40,6 @@ export const NAVEGACION: GrupoNavegacion[] = [
         ruta: '/',
         icono: LayoutDashboard,
         descripcion: 'Estado general del taller',
-        disponible: true,
-      },
-      {
-        titulo: 'Órdenes de trabajo',
-        ruta: '/ordenes',
-        icono: ClipboardList,
-        permiso: 'ordenes.ver',
-        descripcion: 'Todas las OT y su avance',
         disponible: true,
       },
       {
@@ -96,6 +89,18 @@ export const NAVEGACION: GrupoNavegacion[] = [
         icono: ClipboardList,
         permiso: 'cotizaciones.costear',
         descripcion: 'El costo, la ficha técnica y el tiempo por área',
+        disponible: true,
+      },
+      // La orden la emite Administración —lo dice su propio flujograma: «Gerencia
+      // aprueba → Administración emite la orden de trabajo»— así que vive con lo
+      // suyo y no en Operación, donde quedaba suelta entre el tablero y el
+      // avance de taller.
+      {
+        titulo: 'Órdenes de trabajo',
+        ruta: '/ordenes',
+        icono: FileSpreadsheet,
+        permiso: 'ordenes.ver',
+        descripcion: 'Todas las OT y su avance',
         disponible: true,
       },
     ],

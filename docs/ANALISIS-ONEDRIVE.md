@@ -501,7 +501,85 @@ celda a celda.
 
 ---
 
-## 13. Fuentes
+## 13. Cómo controlan que las áreas cumplan
+
+De `5. INGENIERIA/CONTROL DE PLAZOS - MWP - 2026.xlsx`, vivo: la última edición
+es del 2026-08-29. Es la respuesta a «¿cómo mido que cada área trabaje a tiempo
+y reporte?», y la empresa ya la tiene resuelta en papel.
+
+### Una hoja por área
+
+Siete hojas: **DISEÑO · MAESTRANZA · REQUERIMIENTOS · LOGÍSTICA · PRODUCCIÓN ·
+ACABADOS · TRÁMITES Y DISEÑO**. Cada una con la misma cabecera —`FECHA DE
+CIERRE` y `ÁREA`— y la misma tabla:
+
+| Columna | Qué es |
+| --- | --- |
+| N° | Correlativo dentro de la hoja |
+| Unidades en producción | El nombre de la carrocería y el cliente: «CARROCERÍA FURGÓN / RENE» |
+| Código interno | `FUL_CM_N3_4_26/35` — el mismo de `SEGUIMIENTO DE FABRICACIÓN` |
+| Fecha de inicio | Cuándo le tocó a esa área |
+| Fecha de culminación | Cuándo tiene que estar |
+| DIAS | `= fecha de culminación − HOY`. Negativo es que ya se pasó |
+| Estado | Calculado, no escrito a mano |
+| Observaciones | Qué falta y por qué. Lo escribe el área |
+
+### La regla del semáforo, en su propia fórmula
+
+```
+Estado = SI(DIAS >= 7;            "Vigente";
+         SI(DIAS entre 1 y 6;     "Por Vencer";
+                                  "Vencido"))
+```
+
+Tres estados y un umbral de **siete días**. Y es derivado: nadie lo escribe, se
+recalcula solo contra la fecha de hoy. Es exactamente el criterio que este
+sistema ya adoptó para «Atrasada» —no se guarda, se calcula— pero con los
+nombres y el umbral de la casa.
+
+### Lo que de verdad se reporta
+
+La columna de observaciones es donde está el valor, y no es un campo de adorno:
+
+> «NO SE CUMPLIÓ LA FECHA POR FALTA DE MEDIDAS EN ACCESORIOS (CAJA DE
+> HERRAMIENTAS, DEFENSA LATERALES, PORTA EXTINTOR, PORTA CONO)» — Maestranza
+>
+> «En proceso de modelado y liberación de planos, por sobrecarga de unidades a
+> un solo diseñador» — Diseño
+>
+> «MP (FALTA DE APROBACIÓN) // SIST. ELÉCTRICO (FALTA DE APROBACIÓN) // PINTURA
+> (UNIDAD NO ESTÁ ARENADA)» — Logística
+
+Cada área no reporta que va tarde: reporta **quién la trabó**. Diseño espera un
+diseñador, Maestranza espera medidas de Diseño, Logística espera aprobaciones,
+Acabados espera que la unidad esté arenada. Ese encadenamiento es la
+trazabilidad que la empresa quiere y lo que un tablero tiene que enseñar.
+
+### El estado real al 2026-08-11
+
+De las 18 unidades de Requerimientos, **17 vencidas y 1 por vencer**. En
+Maestranza, 15 de 15 vencidas. En Diseño, 4 de 5. No es un problema de registro:
+es lo que el control mide y nadie ve a tiempo.
+
+### Qué falta en el sistema para tenerlo
+
+Casi nada, y ese es el punto: `ot_etapas` ya guarda
+`fecha_inicio_programada`, `fecha_fin_programada`, `estado`, `responsable_id` y
+`observaciones`, y desde la migración 63 las fechas bajan solas del tiempo por
+área de la cotización. Lo que hace falta encima:
+
+1. **El semáforo con su regla** —Vigente / Por Vencer / Vencido, umbral de 7
+   días— calculado, nunca guardado.
+2. **Una pantalla por área**: quien trabaja en Maestranza entra y ve sus
+   unidades, sus fechas y escribe su observación. Hoy hay que entrar OT por OT.
+3. **Responsable por etapa.** La columna existe y nadie la llena; sin ella no se
+   puede decir a quién reclamarle.
+4. **El cierre.** Su hoja lleva `FECHA DE CIERRE` y de ahí sale el informe
+   semanal por área (`INFORME SEMANAL N° 0000 - LOGÍSTICA - FECHA`).
+
+---
+
+## 14. Fuentes
 
 | Archivo | Qué aportó |
 | --- | --- |
@@ -520,3 +598,4 @@ celda a celda.
 | `.../COSTEOS DE EMPRESAS/6. COSTOS JUNIO/JAMISA/38-COSTEO-GARANTIA CISTERNA INCOAC.xlsx` | La hoja RESUMEN: prorrateo de indirectos y cálculo del precio |
 | `6. REQUERIMIENTOS/COSTEOS DE EMPRESAS/SEGUIMIENTO DE COSTEOS.xlsx` | Quién costea, en qué estados y con qué fechas |
 | `4. LOGISTICA 2026/ESTRUCTURA LOGISTICA - 2026.pdf` | Cuándo se costea y cómo se archiva |
+| `5. INGENIERIA/CONTROL DE PLAZOS - MWP - 2026.xlsx` | El control de plazos por área, su semáforo y lo que cada una reporta |
