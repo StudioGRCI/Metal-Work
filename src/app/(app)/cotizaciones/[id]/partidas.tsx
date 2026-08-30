@@ -151,6 +151,19 @@ export function Partidas({
     return [...porClave.values()].sort((a, b) => a.orden - b.orden)
   })()
 
+  // El número de fila corre por toda la tabla y no por grupo: numerando dentro
+  // de cada uno salían tres partidas distintas llamadas «1», que se lee como un
+  // error antes que como una numeración por grupo. La columna «#» dice cuántas
+  // partidas hay y en qué orden van, y eso es una sola cuenta.
+  const numeroDe = new Map<string, number>()
+  let corrido = 0
+  for (const grupo of grupos) {
+    for (const fila of grupo.filas) {
+      corrido += 1
+      numeroDe.set(fila.id, corrido)
+    }
+  }
+
   async function borrar(partida: Partida) {
     const datos = new FormData()
     datos.set('partida_id', partida.id)
@@ -296,7 +309,7 @@ export function Partidas({
                     </td>
                     {editable && <td />}
                   </tr>,
-                  ...grupo.filas.map((p, i) => {
+                  ...grupo.filas.map((p) => {
                   const enEdicion = editando?.id === p.id
                   const dcto = Number(p.descuento_porcentaje ?? 0)
 
@@ -305,7 +318,7 @@ export function Partidas({
                       key={p.id}
                       className={`border-b border-borde last:border-0 ${enEdicion ? 'bg-acento-suave' : ''}`}
                     >
-                      <td className="tabular px-3 py-2 text-texto-tenue">{i + 1}</td>
+                      <td className="tabular px-3 py-2 text-texto-tenue">{numeroDe.get(p.id)}</td>
                       <td className="px-3 py-2">
                         <p className="text-texto">{p.descripcion}</p>
                         {p.detalle && (
