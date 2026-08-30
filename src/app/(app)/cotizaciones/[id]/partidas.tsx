@@ -9,7 +9,7 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ConfirmarAccion } from '@/components/ui/ventana'
-import { ESTADO_COTIZACION, TIPO_COSTO, definir } from '@/lib/dominio/estados'
+import { ESTADO_COTIZACION, definir } from '@/lib/dominio/estados'
 import { cantidad, moneda, numero, porcentaje } from '@/lib/format'
 import type { CodigoMoneda } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -17,13 +17,30 @@ import type { Tablas } from '@/types/database'
 
 import { agregarPartida, editarPartida, eliminarPartida } from '../acciones'
 
-type Partida = Tablas<'cotizacion_partidas'>
+/**
+ * La partida trae su clasificación embebida, y la clasificación su área.
+ *
+ * No es `Tablas<'cotizacion_partidas'>` a secas porque el `select` de
+ * `partidasDeCotizacion` la trae con el embed, y el tipo generado solo conoce
+ * las columnas de la tabla.
+ */
+export type ClasificacionElegible = {
+  id: string
+  nombre: string
+  orden: number
+  etapa: { nombre: string } | null
+}
+
+type Partida = Tablas<'cotizacion_partidas'> & {
+  clasificacion?: ClasificacionElegible | null
+}
 
 const UNIDADES = ['UND', 'JGO', 'PZA', 'KG', 'M', 'M2', 'M3', 'L', 'GAL', 'GLB', 'SERV']
 
 export function Partidas({
   cotizacionId,
   partidas,
+  clasificaciones,
   moneda: mon,
   editable,
   precioVenta = 0,
@@ -31,6 +48,11 @@ export function Partidas({
 }: {
   cotizacionId: string
   partidas: Partida[]
+  /**
+   * El catálogo con el que la empresa agrupa un costeo. Viene de la página
+   * porque es un dato del servidor; acá solo se pinta.
+   */
+  clasificaciones: ClasificacionElegible[]
   moneda: CodigoMoneda
   /**
    * Si esta mano puede armar la cotización de trabajo ahora. La calcula la
@@ -96,6 +118,38 @@ export function Partidas({
     }
     setError(resultado.error)
   }
+
+  /**
+   * Las filas agrupadas por clasificación, en el orden del catálogo.
+   *
+   * Es como está su hoja de costeo: la clasificación se escribe una vez y
+   * debajo van sus líneas. Una lista plana de sesenta partidas —que es lo que
+   * tiene una tolva— no se lee, y sobre todo no deja ver que a pintura le tocan
+   * cuatro cosas y a estructura veintiocho.
+   */
+  const grupos = (() => {
+    const porClave = new Map<
+      string,
+      { nombre: string; area: string | null; orden: number; filas: Partida[]; costo: number }
+    >()
+
+    for (const p of partidas) {
+      const clave = p.clasificacion?.id ?? 'sin-clasificar'
+      const grupo = porClave.get(clave) ?? {
+        nombre: p.clasificacion?.nombre ?? 'Sin clasificar',
+        area: p.clasificacion?.etapa?.nombre ?? null,
+        // Las viejas, sin clasificación, al final y no al principio.
+        orden: p.clasificacion?.orden ?? 9999,
+        filas: [] as Partida[],
+        costo: 0,
+      }
+      grupo.filas.push(p)
+      grupo.costo += Number(p.subtotal ?? 0)
+      porClave.set(clave, grupo)
+    }
+
+    return [...porClave.values()].sort((a, b) => a.orden - b.orden)
+  })()
 
   async function borrar(partida: Partida) {
     const datos = new FormData()
@@ -181,7 +235,7 @@ export function Partidas({
                     siempre está. Sin eso, la tabla se va de lado y el subtotal
                     -lo que se viene a mirar- queda fuera de la pantalla. */}
                 <th className="hidden px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase sm:table-cell">
-                  Tipo
+                  U.M
                 </th>
                 <th className="hidden px-3 py-2 text-right text-[11px] font-semibold text-texto-suave uppercase sm:table-cell">
                   Cantidad
@@ -221,8 +275,28 @@ export function Partidas({
                   </td>
                 </tr>
               ) : (
-                partidas.map((p, i) => {
-                  const tipo = definir(TIPO_COSTO, p.tipo_costo)
+                grupos.flatMap((grupo, g) => [
+                  /* La fila de grupo: el nombre de la clasificación, a qué área
+                     del taller va lo que hay debajo y lo que suma. El área es la
+                     razón de ser de todo esto —cuando la cotización se convierte
+                     en orden, estas líneas caen ahí— y por eso se enseña desde
+                     que se costea, no recién al abrir la OT. */
+                  <tr key={`g-${g}`} className="border-b border-borde bg-superficie-2">
+                    <td />
+                    <td colSpan={4} className="px-3 py-1.5">
+                      <span className="text-[11px] font-semibold tracking-wide text-texto uppercase">
+                        {grupo.nombre}
+                      </span>
+                      {grupo.area && (
+                        <span className="ml-2 text-[11px] text-texto-suave">→ {grupo.area}</span>
+                      )}
+                    </td>
+                    <td className="tabular px-3 py-1.5 text-right text-[11px] text-texto-suave">
+                      {moneda(grupo.costo, mon)}
+                    </td>
+                    {editable && <td />}
+                  </tr>,
+                  ...grupo.filas.map((p, i) => {
                   const enEdicion = editando?.id === p.id
                   const dcto = Number(p.descuento_porcentaje ?? 0)
 
@@ -240,17 +314,15 @@ export function Partidas({
                           </p>
                         )}
                         <p className="tabular mt-0.5 text-[11px] text-texto-suave sm:hidden">
-                          {tipo.etiqueta} · {cantidad(p.cantidad)} {p.unidad_medida} ×{' '}
-                          {numero(p.precio_unitario)}
+                          {cantidad(p.cantidad)} {p.unidad_medida} × {numero(p.precio_unitario)}
                           {dcto > 0 && ` · −${numero(dcto, 0)}%`}
                         </p>
                       </td>
-                      <td className="hidden px-3 py-2 sm:table-cell">
-                        <Insignia tono={tipo.tono}>{tipo.etiqueta}</Insignia>
+                      <td className="hidden px-3 py-2 text-texto-suave sm:table-cell">
+                        {p.unidad_medida}
                       </td>
                       <td className="tabular hidden px-3 py-2 text-right whitespace-nowrap sm:table-cell">
                         {cantidad(p.cantidad)}
-                        <span className="ml-1 text-[11px] text-texto-tenue">{p.unidad_medida}</span>
                       </td>
                       <td className="tabular hidden px-3 py-2 text-right sm:table-cell">
                         {numero(p.precio_unitario)}
@@ -298,7 +370,8 @@ export function Partidas({
                       )}
                     </tr>
                   )
-                })
+                  }),
+                ])
               )}
             </tbody>
           </table>
@@ -316,7 +389,7 @@ export function Partidas({
         {agregando && (
           <form action={enviar} className="grid gap-3 border-t border-borde p-4 sm:grid-cols-6">
             <input type="hidden" name="cotizacion_id" value={cotizacionId} />
-            <CamposPartida />
+            <CamposPartida clasificaciones={clasificaciones} />
 
             <div className="flex items-end justify-end gap-2 sm:col-span-2">
               <Boton
@@ -348,7 +421,7 @@ export function Partidas({
               El costo de la cotización de trabajo se recalcula solo.
             </p>
 
-            <CamposPartida partida={editando} />
+            <CamposPartida partida={editando} clasificaciones={clasificaciones} />
 
             <div className="flex items-end justify-end gap-2 sm:col-span-2">
               <Boton
@@ -496,7 +569,13 @@ function motivoDelBloqueo(estado: string | undefined, que: string) {
  * escriben dos veces, un día se agrega un campo en un formulario y no en el
  * otro, y la partida corregida pierde lo que la nueva sí guarda.
  */
-function CamposPartida({ partida }: { partida?: Partida }) {
+function CamposPartida({
+  partida,
+  clasificaciones,
+}: {
+  partida?: Partida
+  clasificaciones: ClasificacionElegible[]
+}) {
   const unidad = partida?.unidad_medida ?? 'UND'
   const unidades = UNIDADES.includes(unidad) ? UNIDADES : [unidad, ...UNIDADES]
   // Los identificadores llevan prefijo propio porque en esta misma pantalla la
@@ -519,16 +598,32 @@ function CamposPartida({ partida }: { partida?: Partida }) {
         />
       </Campo>
 
-      <Campo etiqueta="Tipo de costo" htmlFor={`${id}-tipo_costo`} className="sm:col-span-2">
+      {/* Reemplaza al «Tipo de costo» de cuatro valores que había acá. La
+          clasificación es la palabra que la empresa usa en sus hojas, agrupa la
+          tabla y dice a qué área va la partida; el tipo de costo lo deduce la
+          base a partir de ella, así que ya no se pregunta dos veces lo mismo. */}
+      <Campo
+        etiqueta="Clasificación"
+        htmlFor={`${id}-clasificacion_id`}
+        requerido
+        className="sm:col-span-2"
+        ayuda="Agrupa la partida como en la hoja de costeo y decide a qué área del taller le toca cuando se abra la orden."
+      >
         <Seleccion
-          id={`${id}-tipo_costo`}
-          name="tipo_costo"
-          defaultValue={partida?.tipo_costo ?? 'MATERIAL'}
+          id={`${id}-clasificacion_id`}
+          name="clasificacion_id"
+          required
+          defaultValue={partida?.clasificacion?.id ?? ''}
         >
-          <option value="MATERIAL">Materiales</option>
-          <option value="MANO_OBRA">Mano de obra</option>
-          <option value="SERVICIO">Servicio</option>
-          <option value="OTRO">Otro</option>
+          <option value="" disabled>
+            Elige una
+          </option>
+          {clasificaciones.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nombre}
+              {c.etapa ? ` → ${c.etapa.nombre}` : ''}
+            </option>
+          ))}
         </Seleccion>
       </Campo>
 

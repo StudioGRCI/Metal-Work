@@ -9,6 +9,7 @@ import { ESTADO_COTIZACION, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import {
   obtenerCotizacion,
+  clasificacionesDeCosteo,
   partidasDeCotizacion,
   programaDeCotizacion,
 } from '@/lib/datos/comercial'
@@ -60,12 +61,13 @@ export default async function PaginaCotizacionDeTrabajo({
   const cotizacion = await obtenerCotizacion(id)
   if (!cotizacion) notFound()
 
-  const [partidas, ficha, accesorios, plantillas, programa] = await Promise.all([
+  const [partidas, ficha, accesorios, plantillas, programa, clasificaciones] = await Promise.all([
     partidasDeCotizacion(id),
     fichaDeCotizacion(id),
     accesoriosDeCotizacion(id),
     plantillasDisponibles(cotizacion.tipo_carroceria_id),
     programaDeCotizacion(id),
+    clasificacionesDeCosteo(),
   ])
 
   const estado = definir(ESTADO_COTIZACION, cotizacion.estado)
@@ -165,6 +167,7 @@ export default async function PaginaCotizacionDeTrabajo({
         <Partidas
           cotizacionId={id}
           partidas={partidas}
+          clasificaciones={clasificaciones}
           moneda={mon}
           editable={puedeCostear}
           precioVenta={Number(cotizacion.precio_venta ?? 0)}

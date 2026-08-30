@@ -655,6 +655,50 @@ export type Database = {
           }
         ]
       }
+      clasificaciones_costeo: {
+        Row: {
+          id: string
+          codigo: string
+          nombre: string
+          etapa_catalogo_id: string | null
+          tipo_costo: Database["public"]["Enums"]["tipo_costo_partida"]
+          orden: number
+          activo: boolean
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo: string
+          nombre: string
+          etapa_catalogo_id?: string | null
+          tipo_costo?: Database["public"]["Enums"]["tipo_costo_partida"]
+          orden?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo?: string
+          nombre?: string
+          etapa_catalogo_id?: string | null
+          tipo_costo?: Database["public"]["Enums"]["tipo_costo_partida"]
+          orden?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clasificaciones_costeo_etapa_catalogo_id_fkey"
+            columns: ["etapa_catalogo_id"]
+            isOneToOne: false
+            referencedRelation: "etapas_catalogo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       cotizacion_especificaciones: {
         Row: {
           id: string
@@ -757,6 +801,7 @@ export type Database = {
           descuento_porcentaje: number
           subtotal: number
           tipo_costo: Database["public"]["Enums"]["tipo_costo_partida"]
+          clasificacion_id: string | null
           creado_en: string
           actualizado_en: string
         }
@@ -772,6 +817,7 @@ export type Database = {
           descuento_porcentaje?: number
           subtotal?: number
           tipo_costo?: Database["public"]["Enums"]["tipo_costo_partida"]
+          clasificacion_id?: string | null
           creado_en?: string
           actualizado_en?: string
         }
@@ -787,10 +833,18 @@ export type Database = {
           descuento_porcentaje?: number
           subtotal?: number
           tipo_costo?: Database["public"]["Enums"]["tipo_costo_partida"]
+          clasificacion_id?: string | null
           creado_en?: string
           actualizado_en?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cotizacion_partidas_clasificacion_id_fkey"
+            columns: ["clasificacion_id"]
+            isOneToOne: false
+            referencedRelation: "clasificaciones_costeo"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cotizacion_partidas_cotizacion_id_fkey"
             columns: ["cotizacion_id"]

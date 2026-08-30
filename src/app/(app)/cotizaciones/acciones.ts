@@ -159,7 +159,11 @@ const esquemaPartida = z.object({
   cantidad: z.coerce.number().positive('La cantidad debe ser mayor que cero'),
   precio_unitario: z.coerce.number().min(0, 'El precio no puede ser negativo'),
   descuento_porcentaje: z.coerce.number().min(0).max(100).default(0),
-  tipo_costo: z.enum(['MATERIAL', 'MANO_OBRA', 'SERVICIO', 'OTRO']).default('MATERIAL'),
+  // La clasificación es obligatoria: es la que dice a qué área del taller va la
+  // partida, y una partida sin área no se puede repartir cuando la cotización se
+  // convierte en orden. El tipo de costo ya no viaja —lo deduce la base de la
+  // clasificación—, así que no hay dos campos que puedan contradecirse.
+  clasificacion_id: z.string().uuid('Elige la clasificación de la partida'),
 })
 
 export async function agregarPartida(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -195,7 +199,8 @@ export async function agregarPartida(_previo: unknown, datos: FormData): Promise
     cantidad: v.cantidad,
     precio_unitario: v.precio_unitario,
     descuento_porcentaje: v.descuento_porcentaje,
-    tipo_costo: v.tipo_costo,
+    // `tipo_costo` no se manda: lo pone la base a partir de la clasificación.
+    clasificacion_id: v.clasificacion_id,
   })
 
   if (error) return { ok: false, error: mensajeDeError(error) }
@@ -776,7 +781,7 @@ export async function editarPartida(_previo: unknown, datos: FormData): Promise<
       cantidad: v.cantidad,
       precio_unitario: v.precio_unitario,
       descuento_porcentaje: v.descuento_porcentaje,
-      tipo_costo: v.tipo_costo,
+      clasificacion_id: v.clasificacion_id,
     })
     .eq('id', v.partida_id)
     .eq('cotizacion_id', v.cotizacion_id)

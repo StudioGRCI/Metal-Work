@@ -249,13 +249,41 @@ export async function obtenerCotizacion(id: string) {
 export async function partidasDeCotizacion(cotizacionId: string) {
   const supabase = await createClient()
 
+  // La clasificación viaja con su área: la tabla agrupa por ella —como la hoja
+  // de costeo de la empresa— y dice a qué área del taller va cada grupo.
   const { data, error } = await supabase
     .from('cotizacion_partidas')
-    .select('*')
+    .select(
+      '*, clasificacion:clasificaciones_costeo(id, nombre, orden, etapa:etapas_catalogo(nombre))',
+    )
     .eq('cotizacion_id', cotizacionId)
     .order('orden_secuencia')
 
   if (error) throw new Error(`No se pudieron cargar las partidas: ${error.message}`)
+  return data ?? []
+}
+
+/**
+ * Cómo agrupa la empresa las líneas de un costeo.
+ *
+ * Sale de sus propias hojas —ESTRUCTURA, PERNERÍA, ACABADOS…— y cada una apunta
+ * al área del taller que recibe esa partida cuando la cotización se convierte en
+ * orden de trabajo. Es un catálogo cerrado a propósito: en sus hojas «PERNERIA»
+ * aparece dos veces y «ACCESORIO» convive con «ACCESORIOS», y con texto libre en
+ * tres meses hay cuarenta clasificaciones para veintiuna cosas.
+ */
+export async function clasificacionesDeCosteo() {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('clasificaciones_costeo')
+    .select('id, nombre, orden, etapa:etapas_catalogo(nombre)')
+    .eq('activo', true)
+    .order('orden')
+
+  if (error) {
+    throw new Error(`No se pudo cargar el catálogo de clasificaciones: ${error.message}`)
+  }
   return data ?? []
 }
 
