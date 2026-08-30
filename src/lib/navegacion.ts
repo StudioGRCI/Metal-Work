@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Camera,
+  CalendarClock,
   ClipboardList,
   Factory,
   FileSpreadsheet,
@@ -40,6 +41,16 @@ export const NAVEGACION: GrupoNavegacion[] = [
         ruta: '/',
         icono: LayoutDashboard,
         descripcion: 'Estado general del taller',
+        disponible: true,
+      },
+      // El control de plazos es de todas las áreas y lo mira cualquiera: que
+      // Maestranza vea que Diseño la tiene trabada es el punto.
+      {
+        titulo: 'Control de plazos',
+        ruta: '/plazos',
+        icono: CalendarClock,
+        permiso: ['ordenes.ver', 'produccion.ver'],
+        descripcion: 'En qué va cada área y qué la trabó',
         disponible: true,
       },
       {

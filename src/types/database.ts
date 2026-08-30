@@ -190,6 +190,7 @@ export type Database = {
       }
       areas: {
         Row: {
+          jefe_id: string | null
           id: string
           codigo: string
           nombre: string
@@ -1411,6 +1412,7 @@ export type Database = {
       }
       etapas_catalogo: {
         Row: {
+          area_id: string | null
           id: string
           codigo: string
           nombre: string
@@ -3304,6 +3306,47 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_etapa_reportes: {
+        Row: {
+          id: string
+          etapa_id: string
+          orden_id: string
+          texto: string
+          creado_por: string | null
+          creado_en: string
+          verificado_por: string | null
+          verificado_en: string | null
+        }
+        Insert: {
+          id?: string
+          etapa_id: string
+          orden_id: string
+          texto: string
+          creado_por?: string | null
+          creado_en?: string
+          verificado_por?: string | null
+          verificado_en?: string | null
+        }
+        Update: {
+          id?: string
+          etapa_id?: string
+          orden_id?: string
+          texto?: string
+          creado_por?: string | null
+          creado_en?: string
+          verificado_por?: string | null
+          verificado_en?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_reporte_etapa"
+            columns: ["etapa_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id", "orden_id"]
           }
         ]
       }
@@ -6170,6 +6213,36 @@ export type Database = {
         }
         Relationships: []
       }
+      v_plazos_por_area: {
+        Row: {
+          etapa_id: string | null
+          orden_id: string | null
+          orden_numero: string | null
+          area_id: string | null
+          area_codigo: string | null
+          area_nombre: string | null
+          area_encargado: string | null
+          etapa_nombre: string | null
+          orden_secuencia: number | null
+          unidad: string | null
+          cliente: string | null
+          codigo_interno: string | null
+          placa: string | null
+          fecha_inicio_programada: string | null
+          fecha_fin_programada: string | null
+          fecha_fin_real: string | null
+          estado: Database["public"]["Enums"]["estado_etapa_ot"] | null
+          avance_porcentaje: number | null
+          responsable_id: string | null
+          dias: number | null
+          plazo: Database["public"]["Enums"]["estado_plazo"] | null
+          ultimo_reporte_id: string | null
+          ultimo_reporte: string | null
+          ultimo_reporte_en: string | null
+          ultimo_reporte_verificado_en: string | null
+        }
+        Relationships: []
+      }
       v_stock_actual: {
         Row: {
           stock_id: string | null
@@ -6720,6 +6793,12 @@ export type Database = {
       estado_aprobacion: "PENDIENTE" | "APROBADO" | "OBSERVADO" | "RECHAZADO"
       estado_cotizacion: "BORRADOR" | "EN_COSTEO" | "EN_REVISION" | "OBSERVADA" | "REVISADA" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "VENCIDA" | "ANULADA"
       estado_documento: "VIGENTE" | "REEMPLAZADO" | "ANULADO"
+      estado_plazo:
+        | "VIGENTE"
+        | "POR_VENCER"
+        | "VENCIDO"
+        | "CUMPLIDO"
+        | "CUMPLIDO_TARDE"
       estado_etapa_ot: "PENDIENTE" | "EN_PROCESO" | "PAUSADA" | "TERMINADA" | "OMITIDA" | "REQUIERE_REVISION"
       estado_movimiento_almacen: "BORRADOR" | "CONFIRMADO" | "ANULADO"
       estado_orden_compra: "BORRADOR" | "APROBADA" | "ENVIADA" | "RECIBIDA_PARCIAL" | "RECIBIDA" | "ANULADA"

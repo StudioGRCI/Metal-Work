@@ -301,7 +301,9 @@ grant select, insert, update on public.ot_etapa_reportes to authenticated;
 -- último reporte. Filtrando por área, es exactamente una de sus siete hojas.
 -- =============================================================================
 
-create or replace view public.v_plazos_por_area
+drop view if exists public.v_plazos_por_area;
+
+create view public.v_plazos_por_area
 with (security_invoker = true) as
 select
   oe.id                       as etapa_id,
@@ -326,6 +328,7 @@ select
   -- Los días que faltan, como en su columna DIAS: negativo es que ya se pasó.
   (oe.fecha_fin_programada - current_date) as dias,
   public.estado_del_plazo(oe.fecha_fin_programada, oe.fecha_fin_real) as plazo,
+  r.id                        as ultimo_reporte_id,
   r.texto                     as ultimo_reporte,
   r.creado_en                 as ultimo_reporte_en,
   r.verificado_en             as ultimo_reporte_verificado_en
@@ -336,7 +339,7 @@ left join public.areas a on a.id = ec.area_id
 left join public.clientes c on c.id = o.cliente_id
 left join public.unidades u on u.id = o.unidad_id
 left join lateral (
-  select texto, creado_en, verificado_en
+  select id, texto, creado_en, verificado_en
     from public.ot_etapa_reportes rr
    where rr.etapa_id = oe.id
    order by rr.creado_en desc
