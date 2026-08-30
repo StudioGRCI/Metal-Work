@@ -550,7 +550,9 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
         <Text style={estilos.tituloSeccion}>SEÑORES</Text>
         <View style={estilos.filaDatos}>
           <View style={estilos.columna}>
-            <Dato etiqueta="Cliente" valor={datos.cliente.razon_social} fuerte />
+            {/* «Señores» para la empresa y «Cliente» para la persona: es como
+                lo escribe la casa, y su papel encabeza con esa misma palabra. */}
+            <Dato etiqueta="Señores" valor={datos.cliente.razon_social} fuerte />
             <Dato etiqueta="RUC / DNI" valor={datos.cliente.numero_documento} />
             <Dato
               etiqueta="Dirección"
@@ -560,7 +562,7 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
             />
           </View>
           <View style={estilos.columna}>
-            <Dato etiqueta="Atención" valor={datos.contacto?.nombre} />
+            <Dato etiqueta="Cliente" valor={datos.contacto?.nombre} />
             <Dato
               etiqueta="Teléfono"
               valor={datos.contacto?.telefono ?? datos.cliente.telefono}

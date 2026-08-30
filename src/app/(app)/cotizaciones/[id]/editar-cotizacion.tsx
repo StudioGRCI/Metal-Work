@@ -161,7 +161,9 @@ export function EditarCotizacion({
           <input type="hidden" name="cotizacion_id" value={cotizacion.id} />
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Campo etiqueta="Cliente" htmlFor="cliente_id" requerido>
+            {/* «Señores» para la empresa, igual que en el papel y en el
+                formulario de alta. */}
+            <Campo etiqueta="Señores" htmlFor="cliente_id" requerido>
               <SeleccionBuscable
                 id="cliente_id"
                 name="cliente_id"

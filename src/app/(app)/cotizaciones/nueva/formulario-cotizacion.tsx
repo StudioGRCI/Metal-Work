@@ -139,7 +139,10 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
             a un dedo del campo de la derecha, y con el hueco de siempre parecía
             pertenecerle a ese otro campo. */}
         <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2 sm:gap-x-6">
-          <Campo etiqueta="Cliente" htmlFor="cliente_id" requerido>
+          {/* «Señores» es la empresa y «Cliente» la persona: las dos palabras
+              son las de sus cotizaciones, y así el formulario se lee igual que
+              el papel que va a salir. */}
+          <Campo etiqueta="Señores" htmlFor="cliente_id" requerido>
             <div className="flex items-center gap-2">
               <SeleccionBuscable
                 id="cliente_id"
@@ -222,9 +225,9 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
               hasta ahora no tenían dónde escribirse: el papel salía con
               «Atención —», «Correo —» y «Vendedor —». */}
           <Campo
-            etiqueta="Atención"
+            etiqueta="Cliente"
             htmlFor="contacto_id"
-            ayuda="La persona del cliente a la que va dirigida. Su nombre, teléfono y correo encabezan el papel."
+            ayuda="La persona de esa empresa con la que se trata. Su nombre, teléfono y correo encabezan el papel."
           >
             <div className="flex items-center gap-2">
               <SeleccionBuscable
