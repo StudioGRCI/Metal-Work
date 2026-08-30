@@ -175,8 +175,6 @@ export async function listarCotizaciones(
     /** Una etapa de venta: agrupa los estados que para Ventas dicen lo mismo. */
     etapa?: string
     busqueda?: string
-    /** Solo las que le toca mover a `perfil`, según su permiso. */
-    meToca?: boolean
     perfil?: PerfilSesion | null
   } = {},
 ) {
@@ -197,14 +195,6 @@ export async function listarCotizaciones(
     consulta = consulta.in('estado', estados as EstadoCotizacion[])
   } else if (filtros.estado) {
     consulta = consulta.eq('estado', filtros.estado as EstadoCotizacion)
-  }
-
-  if (filtros.meToca) {
-    const mios = estadosQueMeTocan(filtros.perfil ?? null)
-    // A quien no tiene ninguna de las tres manos no le toca nada. Se corta acá:
-    // un `in` con la lista vacía no devuelve «ninguna», es una consulta rota.
-    if (mios.length === 0) return []
-    consulta = consulta.in('estado', mios)
   }
 
   if (filtros.busqueda?.trim()) {

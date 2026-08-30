@@ -286,7 +286,7 @@ function TarjetasDeVentas({ resumen }: { resumen: ResumenComercial }) {
         valor={resumen.meTocan}
         tono={resumen.meTocan > 0 ? 'acento' : 'neutro'}
         pie={resumen.meTocan > 0 ? 'Cotizaciones paradas en tu mano' : 'Nada esperándote'}
-        href="/cotizaciones?mias=1"
+        href="/cotizaciones"
       />
       <Indicador
         icono={Send}

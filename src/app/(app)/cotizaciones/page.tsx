@@ -11,11 +11,7 @@ import { Tarjeta } from '@/components/ui/tarjeta'
 import { ESTADO_COTIZACION, ETAPA_VENTA, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { diasHasta, fecha, moneda } from '@/lib/format'
-import {
-  cotizacionesPorEstado,
-  estadosQueMeTocan,
-  listarCotizaciones,
-} from '@/lib/datos/comercial'
+import { cotizacionesPorEstado, listarCotizaciones } from '@/lib/datos/comercial'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import type { CodigoMoneda } from '@/lib/format'
 import type { UnidadNombrable } from '@/lib/dominio/unidades'
@@ -74,21 +70,14 @@ function espera(desde: string | null) {
 
 /**
  * Qué dice la tabla cuando no sale ninguna fila. Son tres vacíos distintos y el
- * siguiente paso de cada uno también: la bandeja vacía es una buena noticia, el
- * filtro vacío se arregla soltando el filtro, y la lista vacía de verdad se
- * arregla dando de alta la primera.
+ * siguiente paso de cada uno también: el filtro vacío se arregla soltando el
+ * filtro, y la lista vacía de verdad se arregla dando de alta la primera.
  */
-function estadoVacio(mio: boolean, hayFiltro: boolean) {
-  if (mio) {
-    return {
-      titulo: 'No tienes nada pendiente',
-      descripcion: 'Ninguna cotización está esperando por ti en este momento.',
-    }
-  }
+function estadoVacio(hayFiltro: boolean) {
   if (hayFiltro) {
     return {
       titulo: 'Con este filtro no sale ninguna',
-      descripcion: 'Prueba con otro estado, con otra búsqueda, o mira todas las cotizaciones.',
+      descripcion: 'Prueba con otra etapa, con otra búsqueda, o mira todas las cotizaciones.',
     }
   }
   return {
@@ -115,26 +104,17 @@ export default async function PaginaCotizaciones({ searchParams }: PageProps<'/c
   const params = await searchParams
 
   const busqueda = typeof params.q === 'string' ? params.q : undefined
-  // «Me toca a mí» y un estado suelto se pisan: la pastilla que se pulsa apaga
-  // la clave de la otra, y si alguien llega con las dos escritas en la URL manda
-  // la bandeja, que es la pregunta más concreta de las dos.
-  const mio = params.mio === '1'
-  const etapa = !mio && typeof params.etapa === 'string' ? params.etapa : undefined
+  const etapa = typeof params.etapa === 'string' ? params.etapa : undefined
   // Un estado suelto sigue funcionando: los enlaces del tablero apuntan a uno.
-  const estado = !mio && !etapa && typeof params.estado === 'string' ? params.estado : undefined
+  const estado = !etapa && typeof params.estado === 'string' ? params.estado : undefined
 
   const [cotizaciones, cuenta] = await Promise.all([
-    listarCotizaciones({ estado, etapa, busqueda, meToca: mio, perfil }),
+    listarCotizaciones({ estado, etapa, busqueda, perfil }),
     cotizacionesPorEstado(),
   ])
   const puedeCrear = puede(perfil, 'cotizaciones.crear')
-  const hayFiltro = Boolean(estado || etapa || mio || busqueda)
-  const vacio = estadoVacio(mio, hayFiltro)
-
-  // La bandeja solo se le ofrece a quien tiene alguna mano en el circuito; al
-  // que únicamente mira no le devolvería ninguna fila. Qué estados son los suyos
-  // lo decide la consulta, no esta pantalla.
-  const tieneBandeja = estadosQueMeTocan(perfil).length > 0
+  const hayFiltro = Boolean(estado || etapa || busqueda)
+  const vacio = estadoVacio(hayFiltro)
 
   // Cada etapa lleva su cuenta detrás, y la que no tiene ninguna no se ofrece:
   // un filtro que lleva a una pantalla vacía hace perder el clic. La encendida
@@ -146,7 +126,6 @@ export default async function PaginaCotizaciones({ searchParams }: PageProps<'/c
 
   const filtros = [
     { valor: null, etiqueta: total > 0 ? `Todas (${total})` : 'Todas' },
-    ...(tieneBandeja ? [{ valor: '1', etiqueta: 'Me toca a mí', clave: 'mio' }] : []),
     ...ETAPA_VENTA.filter((e) => enEtapa(e) > 0 || e.clave === etapa).map((e) => ({
       valor: e.clave,
       etiqueta: `${e.etiqueta} (${enEtapa(e)})`,
@@ -184,7 +163,7 @@ export default async function PaginaCotizaciones({ searchParams }: PageProps<'/c
         clave="etapa"
         opciones={filtros}
         params={params}
-        activo={mio ? '1' : (etapa ?? null)}
+        activo={etapa ?? null}
         etiqueta="Filtrar por etapa"
         className="mt-4 mb-1"
       />
