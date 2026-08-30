@@ -17,11 +17,19 @@ import type { UnidadNombrable } from '@/lib/dominio/unidades'
 
 export const metadata = { title: 'Cotización de trabajo' }
 
-/** Los tres estados en los que el papel pasa por esta mesa. */
+/**
+ * Los tres estados en los que el papel pasa por esta mesa.
+ *
+ * La primera pastilla es la que apaga el filtro y se llama «Todas», como en la
+ * lista de Ventas. Decía «Lo que me toca» —la misma frase que la empresa mandó
+ * quitar de la otra lista— y además no era cierto: no filtra por persona, sino
+ * que muestra las tres etapas juntas. Sin ella no habría forma de volver atrás
+ * después de encender un filtro, salvo escribiendo la dirección a mano.
+ */
 const FILTROS = [
-  { valor: null, etiqueta: 'Lo que me toca' },
+  { valor: null, etiqueta: 'Todas' },
   { valor: 'EN_COSTEO', etiqueta: 'Por costear' },
-  { valor: 'OBSERVADA', etiqueta: 'Devueltas' },
+  { valor: 'OBSERVADA', etiqueta: 'Por corregir' },
   { valor: 'EN_REVISION', etiqueta: 'Con Gerencia' },
 ]
 
@@ -82,8 +90,11 @@ export default async function PaginaCotizacionDeTrabajo({
           pie="Ventas ya las mandó"
           href="/cotizaciones/trabajo?estado=EN_COSTEO"
         />
+        {/* La tarjeta y la pastilla nombran lo mismo, así que dicen lo mismo:
+            «Devueltas» arriba y «Por corregir» abajo obligaría a adivinar si son
+            dos cosas distintas. */}
         <Indicador
-          titulo="Devueltas"
+          titulo="Por corregir"
           valor={devueltas}
           icono={RotateCcw}
           tono={devueltas > 0 ? 'peligro' : 'neutro'}
