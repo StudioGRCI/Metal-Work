@@ -52,9 +52,14 @@ export function NuevoCliente({
 
   return (
     <>
-      <Boton type="button" variante="contorno" tamano="sm" aria-label="Nuevo cliente" onClick={abrir}>
+      {/* El botón dice qué crea, no solo «Nuevo». En el formulario de cotización
+          este está al lado de «Señores» y el de contactos al lado de «Cliente»,
+          y con la misma palabra en los dos alguien buscó dónde dar de alta una
+          empresa nueva, encontró la que decía «Cliente» y registró la empresa
+          como si fuera una persona de otra. Pasó en producción. */}
+      <Boton type="button" variante="contorno" tamano="sm" onClick={abrir}>
         <Plus aria-hidden className="size-3.5" />
-        Nuevo
+        Nuevo cliente
       </Boton>
 
       {/* El portal, el fondo, la caja, el título y el botón de cerrar los pone

@@ -89,7 +89,7 @@ export function NuevaUnidad({
         descripcion="El vehículo del cliente sobre el que se ejecutará el trabajo."
         ancho="lg"
       >
-        <form action={enviar} className="grid gap-4 sm:grid-cols-3">
+        <form action={enviar} className="grid items-start gap-4 sm:grid-cols-3">
           <input type="hidden" name="cliente_id" value={clienteId} />
 
           {/* Esta ficha describe el chasis que trae el cliente y nada más. La
@@ -98,10 +98,15 @@ export function NuevaUnidad({
               puede cambiar. Ponerla en la unidad obligaba a decidirla antes de
               cotizar y dejaba dos sitios diciendo qué se construye.
 
-              El tipo de vehículo va primero y es obligatorio. La placa viene
-              después porque muchas veces todavía no existe —el chasis llega sin
-              matricular— y encabezar el formulario con un campo que a menudo se
-              deja vacío hacía empezar en falso. */}
+              El orden es el de la rejilla, y no el que fueron pidiendo los
+              cambios: primero los cuatro obligatorios —tipo, marca, modelo y
+              año—, que llenan la primera fila y el arranque de la segunda;
+              después lo que puede faltar. Antes quedaban repartidos con la placa
+              en medio, y la segunda fila terminaba en un hueco.
+
+              La placa va con los opcionales porque muchas veces todavía no
+              existe: el chasis llega sin matricular, y encabezar el formulario
+              con un campo que a menudo se deja vacío hacía empezar en falso. */}
           <Campo etiqueta="Tipo de vehículo" htmlFor="nu-tipo_vehiculo" requerido>
             <Seleccion
               id="nu-tipo_vehiculo"
@@ -116,27 +121,6 @@ export function NuevaUnidad({
                 </option>
               ))}
             </Seleccion>
-          </Campo>
-
-          <Campo
-            etiqueta="Placa"
-            htmlFor="nu-placa"
-            ayuda="Déjala vacía si el chasis todavía no está matriculado: la unidad se nombra sola con el chasis o el código interno hasta que tenga placa."
-          >
-            {/* La placa se escribe en mayúsculas y nunca la sabe el
-                navegador: sin esto el teclado del teléfono la empieza en
-                minúscula y el corrector la "arregla". Teclado normal, que la
-                placa peruana lleva letras. */}
-            <Entrada
-              id="nu-placa"
-              name="placa"
-              autoComplete="off"
-              autoCapitalize="characters"
-              autoCorrect="off"
-              spellCheck={false}
-              placeholder="V2G-841"
-              className="tabular uppercase"
-            />
           </Campo>
 
           {/* Los tres son obligatorios: una unidad sin marca, modelo ni año no
@@ -164,12 +148,42 @@ export function NuevaUnidad({
               inputMode="numeric"
               min={1950}
               max={2100}
+              placeholder="2024"
               className="tabular"
               required
             />
           </Campo>
 
-          <Campo etiqueta="N.º de chasis" htmlFor="nu-numero_chasis" className="sm:col-span-2">
+          <Campo
+            etiqueta="Placa"
+            htmlFor="nu-placa"
+            ayuda="Déjala vacía si el chasis todavía no está matriculado: la unidad se nombra sola con el chasis o el código interno hasta que tenga placa."
+          >
+            {/* La placa se escribe en mayúsculas y nunca la sabe el
+                navegador: sin esto el teclado del teléfono la empieza en
+                minúscula y el corrector la "arregla". Teclado normal, que la
+                placa peruana lleva letras. */}
+            <Entrada
+              id="nu-placa"
+              name="placa"
+              autoComplete="off"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="V2G-841"
+              className="tabular uppercase"
+            />
+          </Campo>
+
+          <Campo etiqueta="Color" htmlFor="nu-color">
+            <Entrada id="nu-color" name="color" autoComplete="off" placeholder="Blanco" />
+          </Campo>
+
+          {/* Los dos largos, uno por fila y de lado a lado. El chasis es el dato
+              más largo del formulario —diecisiete caracteres que se copian de la
+              tarjeta— y estaba en dos columnas con el color al costado, que es
+              una palabra. */}
+          <Campo etiqueta="N.º de chasis" htmlFor="nu-numero_chasis" className="sm:col-span-3">
             <Entrada
               id="nu-numero_chasis"
               name="numero_chasis"
@@ -177,16 +191,13 @@ export function NuevaUnidad({
               autoCapitalize="characters"
               autoCorrect="off"
               spellCheck={false}
-              className="font-mono text-xs"
+              placeholder="9BM958344MB123456"
+              className="font-mono text-xs uppercase"
             />
           </Campo>
 
-          <Campo etiqueta="Color" htmlFor="nu-color">
-            <Entrada id="nu-color" name="color" autoComplete="off" />
-          </Campo>
-
-          <Campo etiqueta="Observaciones" htmlFor="nu-observaciones">
-            <AreaTexto id="nu-observaciones" name="observaciones" rows={1} />
+          <Campo etiqueta="Observaciones" htmlFor="nu-observaciones" className="sm:col-span-3">
+            <AreaTexto id="nu-observaciones" name="observaciones" rows={2} />
           </Campo>
 
           {error && (

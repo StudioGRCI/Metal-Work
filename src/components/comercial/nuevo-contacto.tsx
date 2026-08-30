@@ -37,6 +37,14 @@ export function NuevoContacto({
   // ventana en cuanto el contacto existe, y encadenarlo a un efecto dispara
   // renderizados de más —y la regla del proyecto lo prohíbe—.
   async function enviar(datos: FormData) {
+    // Un envío a la vez. El botón se deshabilita mientras se guarda, pero entre
+    // el clic y el repintado cabe un segundo clic —o un Enter en el campo
+    // seguido del clic—, y cada uno inserta su fila: así entraron dos «pepito»
+    // con un segundo de diferencia. La reja de verdad está en la base, que ya no
+    // acepta dos contactos con el mismo nombre en el mismo cliente; esto evita
+    // el viaje.
+    if (enviando) return
+
     setEnviando(true)
     const salida = await crearContactoRapido(null, datos)
     setEnviando(false)
@@ -54,14 +62,13 @@ export function NuevoContacto({
         type="button"
         variante="contorno"
         tamano="sm"
-        aria-label="Nuevo contacto"
         onClick={() => {
           setResultado(null)
           setAbierto(true)
         }}
       >
         <Plus aria-hidden className="size-3.5" />
-        Nuevo
+        Nuevo contacto
       </Boton>
 
       <Ventana

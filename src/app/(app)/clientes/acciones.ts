@@ -292,7 +292,31 @@ export async function crearContactoRapido(
     .select('id, nombre, cargo')
     .single()
 
-  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (error) {
+    // La base no acepta dos contactos con el mismo nombre en el mismo cliente.
+    // Cuando el choque viene de un doble envío —el mismo formulario mandado dos
+    // veces con un segundo de diferencia, que es como entraron dos «pepito»—,
+    // devolver un error sería mentir: el contacto sí quedó registrado, lo hizo
+    // el primer envío. Se busca el que ya está y se contesta con él, así la
+    // pantalla lo elige igual que si lo acabara de crear.
+    if (error.code === '23505') {
+      const { data: existente } = await supabase
+        .from('contactos_cliente')
+        .select('id, nombre, cargo')
+        .eq('cliente_id', v.cliente_id)
+        .ilike('nombre', v.nombre)
+        .maybeSingle()
+
+      if (existente) return { ok: true, mensaje: 'Ese contacto ya estaba.', datos: existente }
+
+      return {
+        ok: false,
+        error: `Este cliente ya tiene un contacto llamado «${v.nombre}».`,
+      }
+    }
+
+    return { ok: false, error: mensajeDeError(error) }
+  }
 
   return { ok: true, mensaje: 'Contacto registrado.', datos: data }
 }
