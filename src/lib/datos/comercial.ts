@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { estadosDeEtapa } from '@/lib/dominio/estados'
 import { type PerfilSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import type { Enums, Tablas } from '@/types/database'
@@ -171,6 +172,8 @@ export function estadosQueMeTocan(perfil: PerfilSesion | null): EstadoCotizacion
 export async function listarCotizaciones(
   filtros: {
     estado?: string
+    /** Una etapa de venta: agrupa los estados que para Ventas dicen lo mismo. */
+    etapa?: string
     busqueda?: string
     /** Solo las que le toca mover a `perfil`, según su permiso. */
     meToca?: boolean
@@ -185,7 +188,16 @@ export async function listarCotizaciones(
     .from('cotizaciones')
     .select('id, numero, fecha_emision, fecha_vencimiento, estado, moneda, total, costeo_pedido_en, costeo_listo_en, revisada_en, cliente:clientes!inner(razon_social), unidad:unidades!cotizaciones_unidad_id_fkey(placa, codigo_interno, numero_chasis, marca, modelo), tipo_carroceria:tipos_carroceria(nombre)')
 
-  if (filtros.estado) consulta = consulta.eq('estado', filtros.estado as EstadoCotizacion)
+  // Una etapa de venta agrupa varios estados —«En costeo» son tres— así que
+  // se filtra por lista y no por igualdad. Un estado suelto sigue valiendo:
+  // los enlaces del tablero apuntan a uno concreto.
+  if (filtros.etapa) {
+    const estados = estadosDeEtapa(filtros.etapa)
+    if (estados.length === 0) return []
+    consulta = consulta.in('estado', estados as EstadoCotizacion[])
+  } else if (filtros.estado) {
+    consulta = consulta.eq('estado', filtros.estado as EstadoCotizacion)
+  }
 
   if (filtros.meToca) {
     const mios = estadosQueMeTocan(filtros.perfil ?? null)
@@ -314,4 +326,24 @@ export async function resumenComercial(perfil: PerfilSesion | null): Promise<Res
       .filter((f) => f.estado === 'APROBADA')
       .reduce((s, f) => s + enSoles(f), 0),
   }
+}
+
+
+/**
+ * Cuántas cotizaciones hay en cada estado.
+ *
+ * Va en una sola consulta y se cuenta en memoria: son decenas de filas, no
+ * millones, y siete consultas de agregación —una por pastilla— costarían más que
+ * traer la columna. Sirve para que cada filtro diga cuántas hay detrás: un
+ * filtro que lleva a una pantalla vacía hace perder el clic.
+ */
+export async function cotizacionesPorEstado(): Promise<Record<string, number>> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase.from('cotizaciones').select('estado').limit(2000)
+  if (error) throw new Error(`No se pudieron contar las cotizaciones: ${error.message}`)
+
+  const cuenta: Record<string, number> = {}
+  for (const c of data ?? []) cuenta[c.estado as string] = (cuenta[c.estado as string] ?? 0) + 1
+  return cuenta
 }

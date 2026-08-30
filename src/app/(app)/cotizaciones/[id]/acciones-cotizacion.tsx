@@ -169,7 +169,16 @@ const SIGUIENTES: Record<string, Paso[]> = {
   APROBADA: [
     { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'cotizaciones.anular', motivo: true, peligro: true },
   ],
+  // Un «no» de hoy es un «sí» de dentro de dos meses con otro precio. Retomarla
+  // la devuelve a Ventas con su ficha, su costeo y su número: hasta ahora la
+  // única salida era anularla y escribirla otra vez entera.
   RECHAZADA: [
+    {
+      estado: 'BORRADOR',
+      etiqueta: 'Retomar la cotización',
+      permiso: 'cotizaciones.editar',
+      principal: true,
+    },
     {
       estado: 'ANULADA',
       etiqueta: 'Anular',
@@ -182,6 +191,13 @@ const SIGUIENTES: Record<string, Paso[]> = {
     },
   ],
   VENCIDA: [
+    {
+      estado: 'BORRADOR',
+      etiqueta: 'Retomar la cotización',
+      permiso: 'cotizaciones.editar',
+      principal: true,
+    },
+    // Reenviar tal cual sirve cuando solo se pasó la fecha y el precio aguanta.
     { estado: 'ENVIADA', etiqueta: 'Reenviar', permiso: 'cotizaciones.editar' },
     {
       estado: 'ANULADA',

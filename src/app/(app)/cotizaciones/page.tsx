@@ -8,20 +8,21 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { ESTADO_COTIZACION, ORDEN_ESTADO_COTIZACION, definir, opciones } from '@/lib/dominio/estados'
+import { ESTADO_COTIZACION, ETAPA_VENTA, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { diasHasta, fecha, moneda } from '@/lib/format'
-import { estadosQueMeTocan, listarCotizaciones } from '@/lib/datos/comercial'
+import {
+  cotizacionesPorEstado,
+  estadosQueMeTocan,
+  listarCotizaciones,
+} from '@/lib/datos/comercial'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import type { CodigoMoneda } from '@/lib/format'
 import type { UnidadNombrable } from '@/lib/dominio/unidades'
 
 export const metadata = { title: 'Cotizaciones' }
 
-// Las pastillas de estado salen del mismo mapa con el que se pinta la insignia
-// de cada fila, en el orden en que ocurre el circuito y no en el del enum: quien
-// mira la bandeja lee de arriba abajo el camino que recorre el papel.
-const FILTROS_ESTADO = opciones(ESTADO_COTIZACION, ORDEN_ESTADO_COTIZACION)
+
 
 /**
  * De quién es la pelota en cada estado. La insignia dice dónde está parada la
@@ -118,11 +119,16 @@ export default async function PaginaCotizaciones({ searchParams }: PageProps<'/c
   // la clave de la otra, y si alguien llega con las dos escritas en la URL manda
   // la bandeja, que es la pregunta más concreta de las dos.
   const mio = params.mio === '1'
-  const estado = !mio && typeof params.estado === 'string' ? params.estado : undefined
+  const etapa = !mio && typeof params.etapa === 'string' ? params.etapa : undefined
+  // Un estado suelto sigue funcionando: los enlaces del tablero apuntan a uno.
+  const estado = !mio && !etapa && typeof params.estado === 'string' ? params.estado : undefined
 
-  const cotizaciones = await listarCotizaciones({ estado, busqueda, meToca: mio, perfil })
+  const [cotizaciones, cuenta] = await Promise.all([
+    listarCotizaciones({ estado, etapa, busqueda, meToca: mio, perfil }),
+    cotizacionesPorEstado(),
+  ])
   const puedeCrear = puede(perfil, 'cotizaciones.crear')
-  const hayFiltro = Boolean(estado || mio || busqueda)
+  const hayFiltro = Boolean(estado || etapa || mio || busqueda)
   const vacio = estadoVacio(mio, hayFiltro)
 
   // La bandeja solo se le ofrece a quien tiene alguna mano en el circuito; al
@@ -130,11 +136,27 @@ export default async function PaginaCotizaciones({ searchParams }: PageProps<'/c
   // lo decide la consulta, no esta pantalla.
   const tieneBandeja = estadosQueMeTocan(perfil).length > 0
 
+  // Cada etapa lleva su cuenta detrás, y la que no tiene ninguna no se ofrece:
+  // un filtro que lleva a una pantalla vacía hace perder el clic. La encendida
+  // se queda aunque quede en cero, o desaparecería debajo del dedo que la acaba
+  // de tocar.
+  const total = Object.values(cuenta).reduce((s, n) => s + n, 0)
+  const enEtapa = (e: (typeof ETAPA_VENTA)[number]) =>
+    e.estados.reduce((s, estadoDeLaEtapa) => s + (cuenta[estadoDeLaEtapa] ?? 0), 0)
+
   const filtros = [
-    { valor: null, etiqueta: 'Todas' },
+    { valor: null, etiqueta: total > 0 ? `Todas (${total})` : 'Todas' },
     ...(tieneBandeja ? [{ valor: '1', etiqueta: 'Me toca a mí', clave: 'mio' }] : []),
-    ...FILTROS_ESTADO,
+    ...ETAPA_VENTA.filter((e) => enEtapa(e) > 0 || e.clave === etapa).map((e) => ({
+      valor: e.clave,
+      etiqueta: `${e.etiqueta} (${enEtapa(e)})`,
+    })),
   ]
+
+  // El pie de la etapa encendida: la pastilla dice cómo se llama y esto, qué
+  // significa. Sin él, «Ya costeada» no le dice nada a quien entra por primera
+  // vez.
+  const pieDeEtapa = ETAPA_VENTA.find((e) => e.clave === etapa)?.pie
 
   return (
     <>
@@ -159,13 +181,16 @@ export default async function PaginaCotizaciones({ searchParams }: PageProps<'/c
 
       <PastillaFiltro
         ruta="/cotizaciones"
-        clave="estado"
+        clave="etapa"
         opciones={filtros}
         params={params}
-        activo={mio ? '1' : (estado ?? null)}
-        etiqueta="Filtrar por estado"
-        className="my-4"
+        activo={mio ? '1' : (etapa ?? null)}
+        etiqueta="Filtrar por etapa"
+        className="mt-4 mb-1"
       />
+
+      {pieDeEtapa && <p className="mb-3 px-0.5 text-xs text-texto-suave">{pieDeEtapa}</p>}
+      {!pieDeEtapa && <div className="mb-3" />}
 
       <Tarjeta className="overflow-hidden">
         <Tabla>

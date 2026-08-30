@@ -163,3 +163,69 @@ export const CONDICION_PAGO: Record<string, string> = {
   CREDITO_60: 'Crédito 60 días',
   LETRAS: 'Letras',
 }
+
+/**
+ * Las etapas de una cotización en el idioma de Ventas.
+ *
+ * La lista de cotizaciones ofrecía una pastilla por cada estado del circuito
+ * —diez— y con el nombre interno de cada uno: «En costeo», «Con Gerencia»,
+ * «Devuelta». Eso describe el trámite por dentro, que es de Administración; el
+ * vendedor no necesita saber en cuál de las tres manos está parada, necesita
+ * saber si ya puede mandársela al cliente.
+ *
+ * Cada etapa agrupa los estados que para Ventas significan lo mismo. Las
+ * cerradas siguen estando —una rechazada se retoma, y ese es justo el caso en
+ * el que hay que ir a buscarla—.
+ */
+export const ETAPA_VENTA = [
+  {
+    clave: 'realizada',
+    etiqueta: 'Cotización realizada',
+    estados: ['BORRADOR'],
+    pie: 'Escrita, sin mandar a costear',
+  },
+  {
+    clave: 'costeando',
+    etiqueta: 'En costeo',
+    estados: ['EN_COSTEO', 'EN_REVISION', 'OBSERVADA'],
+    pie: 'En manos de Administración o Gerencia',
+  },
+  {
+    clave: 'costeada',
+    etiqueta: 'Ya costeada',
+    estados: ['REVISADA'],
+    pie: 'Con el visto: lista para enviar al cliente',
+  },
+  {
+    clave: 'con-cliente',
+    etiqueta: 'Con el cliente',
+    estados: ['ENVIADA'],
+    pie: 'Enviada, sin respuesta todavía',
+  },
+  {
+    clave: 'aprobada',
+    etiqueta: 'Aprobada',
+    estados: ['APROBADA'],
+    pie: 'El cliente la aceptó',
+  },
+  {
+    clave: 'rechazada',
+    etiqueta: 'Rechazada',
+    estados: ['RECHAZADA', 'VENCIDA'],
+    pie: 'Se puede retomar y volver a ofrecer',
+  },
+  {
+    clave: 'anulada',
+    etiqueta: 'Anulada',
+    estados: ['ANULADA'],
+    pie: 'Anulada con su motivo, queda como evidencia',
+  },
+] as const
+
+export type EtapaVenta = (typeof ETAPA_VENTA)[number]
+
+/** Los estados que hay detrás de una etapa. Vacío si la clave no existe. */
+export function estadosDeEtapa(clave?: string | null): string[] {
+  if (!clave) return []
+  return [...(ETAPA_VENTA.find((e) => e.clave === clave)?.estados ?? [])]
+}
