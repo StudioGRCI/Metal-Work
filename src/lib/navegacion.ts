@@ -67,28 +67,44 @@ export const NAVEGACION: GrupoNavegacion[] = [
       },
     ],
   },
+  // Cotizar son dos actos de dos áreas y por eso son dos grupos, no dos
+  // entradas seguidas dentro de «Comercial»: puestas una debajo de la otra con
+  // nombres parecidos, cualquiera entraba a la que no era. El menú dice de quién
+  // es cada cosa antes de decir cómo se llama.
+  //
+  // Cada grupo se muestra solo a quien tiene su permiso, así que el vendedor no
+  // ve «Administrador» y a quien costea no le aparece «Vendedor» si no vende.
   {
-    titulo: 'Comercial',
+    titulo: 'Vendedor',
     items: [
-      { titulo: 'Clientes', ruta: '/clientes', icono: Users, permiso: 'clientes.ver', disponible: true },
-      { titulo: 'Unidades', ruta: '/unidades', icono: Truck, permiso: 'clientes.ver', disponible: true },
-      // Cotizar son dos actos de dos áreas: Ventas escribe la propuesta y su
-      // precio, Administración arma el detalle con el que se compra y se
-      // programa. Cada una ve la suya porque cada entrada pide su permiso.
       {
         titulo: 'Cotización de venta',
         ruta: '/cotizaciones',
         icono: Receipt,
         permiso: 'cotizaciones.ver',
+        descripcion: 'Lo que se le ofrece al cliente y a qué precio',
         disponible: true,
       },
+    ],
+  },
+  {
+    titulo: 'Administrador',
+    items: [
       {
         titulo: 'Cotización de trabajo',
         ruta: '/cotizaciones/trabajo',
         icono: ClipboardList,
         permiso: 'cotizaciones.costear',
+        descripcion: 'El costo, la ficha técnica y el tiempo por área',
         disponible: true,
       },
+    ],
+  },
+  {
+    titulo: 'Comercial',
+    items: [
+      { titulo: 'Clientes', ruta: '/clientes', icono: Users, permiso: 'clientes.ver', disponible: true },
+      { titulo: 'Unidades', ruta: '/unidades', icono: Truck, permiso: 'clientes.ver', disponible: true },
     ],
   },
   {

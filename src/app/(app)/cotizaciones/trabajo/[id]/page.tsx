@@ -126,7 +126,17 @@ export default async function PaginaCotizacionDeTrabajo({
       </Tarjeta>
 
       <div className="space-y-4">
-        <Partidas cotizacionId={id} partidas={partidas} moneda={mon} editable={puedeCostear} />
+        {/* Con el precio ofrecido delante: el costo y el margen salieron de la
+            cotización de venta —ahí se los estaba enseñando al vendedor— y su
+            sitio es este, pegados a las partidas de las que se calculan. */}
+        <Partidas
+          cotizacionId={id}
+          partidas={partidas}
+          moneda={mon}
+          editable={puedeCostear}
+          precioVenta={Number(cotizacion.precio_venta ?? 0)}
+          estado={cotizacion.estado as string}
+        />
 
         {/* El «para cuándo» de la cotización de trabajo. Va antes de la ficha
             porque es lo que Gerencia mira junto con el costo: cuánto cuesta y

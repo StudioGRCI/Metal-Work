@@ -1,12 +1,11 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
-import { ChevronRight, Percent, Tag, Wallet } from 'lucide-react'
+import { ChevronRight, Tag } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
-import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { Indicador, type TonoIndicador } from '@/components/ui/indicador'
+import { Indicador } from '@/components/ui/indicador'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_COTIZACION, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
@@ -97,17 +96,18 @@ export default async function PaginaCotizacion({
     ['EN_COSTEO', 'OBSERVADA'].includes(cotizacion.estado as string) &&
     puede(perfil, 'cotizaciones.costear')
 
-  /**
+  /*
    * Esta pantalla es la cotización de VENTA y solo eso.
    *
-   * Las partidas, la ficha técnica y los accesorios son la cotización de
-   * TRABAJO: los arma Administración y viven en `/cotizaciones/trabajo/[id]`.
-   * Estuvieron acá escondidos con condiciones y la empresa lo devolvió dos
-   * veces; una condición se olvida en el siguiente cambio de estado, una ruta
-   * distinta no. Si alguna vez vuelve a hacer falta un bloque de costeo en esta
-   * página, la respuesta es que no: va en la otra.
+   * Las partidas, la ficha técnica, los accesorios, el costo y el margen son la
+   * cotización de TRABAJO: los arma Administración y viven en
+   * `/cotizaciones/trabajo/[id]`. Estuvieron acá escondidos con condiciones y la
+   * empresa lo devolvió tres veces; la última, con el costo y el margen puestos
+   * detrás de un permiso, que al administrador —que los tiene todos— no le tapa
+   * nada. No queda ninguna bandera de este tipo en la página, y no vuelve: si
+   * alguna vez parece hacer falta un bloque de costeo acá, la respuesta es que
+   * va en la otra pantalla.
    */
-  const verTrabajo = puede(perfil, ['cotizaciones.costear', 'cotizaciones.revisar'])
 
   // La cabecera —cliente, unidad, condiciones y el precio— se corrige mientras
   // la cotización se está armando, y solo entonces.
@@ -115,16 +115,10 @@ export default async function PaginaCotizacion({
     ['BORRADOR', 'EN_COSTEO', 'OBSERVADA'].includes(cotizacion.estado as string) &&
     puede(perfil, 'cotizaciones.editar')
 
-  // El costo estimado y el margen son la cifra con la que Gerencia decide: los
-  // ve quien tiene costos, no cualquiera que pueda abrir la cotización.
-  const verCostos = puede(perfil, 'costos.ver')
+  // El precio, y solo el precio. El costo y el margen se calculan y se miran en
+  // la cotización de trabajo.
   const precioVenta = Number(cotizacion.precio_venta ?? 0)
-  const costoEstimado = Number(cotizacion.costo_estimado ?? 0)
   const hayPrecio = cotizacion.precio_venta !== null && precioVenta > 0
-  const margen = precioVenta - costoEstimado
-  // Sin partidas cargadas no hay costo, y sin costo no hay margen: la resta
-  // daría el precio entero y eso no es margen, es la falta del dato.
-  const hayCosteo = costoEstimado > 0
 
   /*
    * El tipo de cambio se congela al emitir. `tipo_cambio_vigente()` responde 1
@@ -309,16 +303,14 @@ export default async function PaginaCotizacion({
                 el ancho— y vuelven a abrirse en el monitor grande; entre medio
                 la tarjeta es un tercio de la pantalla y tres cifras al lado no
                 entran sin partirse. */}
-            {/* El costo y el margen son cifras de costeo: mientras la cotización
-                está en manos de Ventas no salen. Antes de que Administración
-                cargue una sola partida solo pueden decir «cero» y «falta el
-                costeo», que es ocupar dos tarjetas para no decir nada. */}
-            <div
-              className={cn(
-                'mb-3 grid gap-2',
-                verCostos && verTrabajo && 'sm:grid-cols-2 xl:grid-cols-3',
-              )}
-            >
+            {/* Solo el precio. El costo estimado y el margen son cifras de
+                costeo y estaban acá detrás de un permiso, que es la condición que
+                la empresa ya mandó quitar dos veces: al administrador —que tiene
+                todos los permisos— la cotización de venta le enseñaba lo que
+                cuesta el acero y cuánto se gana, en la pantalla del vendedor.
+                Viven en la cotización de trabajo, junto a las partidas de las
+                que salen. */}
+            <div className="mb-3 grid gap-2">
               <Indicador
                 titulo="Precio de venta"
                 icono={Tag}
@@ -326,25 +318,6 @@ export default async function PaginaCotizacion({
                 valor={hayPrecio ? moneda(precioVenta, mon) : '—'}
                 pie={hayPrecio ? 'Lo que se le ofrece al cliente' : 'Ventas todavía no lo puso'}
               />
-
-              {verCostos && verTrabajo && (
-                <Indicador
-                  titulo="Costo estimado"
-                  icono={Wallet}
-                  valor={moneda(costoEstimado, mon)}
-                  pie="Suma de las partidas"
-                />
-              )}
-
-              {verCostos && verTrabajo && (
-                <Indicador
-                  titulo="Margen"
-                  icono={Percent}
-                  tono={margenTono(hayPrecio, hayCosteo, margen)}
-                  valor={hayPrecio && hayCosteo ? moneda(margen, mon) : '—'}
-                  pie={pieDelMargen(hayPrecio, hayCosteo, margen, precioVenta)}
-                />
-              )}
             </div>
 
             <Dato etiqueta="Emisión" valor={fecha(cotizacion.fecha_emision)} />
@@ -428,7 +401,7 @@ export default async function PaginaCotizacion({
             la tiene. Al vendedor le basta con eso; el detalle es de la otra
             pantalla y de la otra gente. */}
         <div className="lg:col-span-3">
-          <EnEsperaDe estado={cotizacion.estado} id={id} puedeEntrar={verTrabajo} />
+          <EnEsperaDe estado={cotizacion.estado} />
         </div>
       </div>
     </>
@@ -443,15 +416,7 @@ export default async function PaginaCotizacion({
  * propia pantalla. Acá solo se dice en qué punto va, que es lo que el vendedor
  * necesita para contestarle al cliente.
  */
-function EnEsperaDe({
-  estado,
-  id,
-  puedeEntrar,
-}: {
-  estado: string
-  id: string
-  puedeEntrar: boolean
-}) {
+function EnEsperaDe({ estado }: { estado: string }) {
   const QUE_PASA: Record<string, { titulo: string; detalle: string }> = {
     BORRADOR: {
       titulo: 'En ventas',
@@ -484,16 +449,12 @@ function EnEsperaDe({
   const que = QUE_PASA[estado]
   if (!que) return null
 
+  // Solo dice en qué punto va. El botón que abría la cotización de trabajo se
+  // fue: desde la pantalla de Ventas no se entra al costeo, ni siquiera con
+  // permiso. Quien costea llega por su propia entrada del menú.
   return (
     <Tarjeta>
       <TarjetaCabecera titulo={que.titulo} descripcion={que.detalle} />
-      {puedeEntrar && estado !== 'BORRADOR' && (
-        <TarjetaCuerpo>
-          <EnlaceBoton href={`/cotizaciones/trabajo/${id}`} variante="secundario">
-            Abrir la cotización de trabajo
-          </EnlaceBoton>
-        </TarjetaCuerpo>
-      )}
     </Tarjeta>
   )
 }
@@ -568,33 +529,6 @@ function BarraCircuito({ estado }: { estado: string }) {
       <p className="mt-1 px-0.5 text-sm text-texto-suave">{LE_TOCA[estado]}</p>
     </div>
   )
-}
-
-/**
- * El margen no es un adorno: si el costo se comió el precio, Gerencia tiene que
- * verlo antes de dar el visto, no después de fabricar.
- *
- * Y sin costeo no hay margen. Una cotización recién creada tiene precio y no
- * tiene partidas, así que la resta daba el precio entero y la tarjeta anunciaba
- * «100.0% del precio» en verde: el mejor margen posible, sobre un trabajo que
- * nadie ha costeado. Un número creíble y falso es peor que ningún número —el
- * que lo lee decide con él— así que mientras no haya costo se dice que falta.
- */
-function margenTono(hayPrecio: boolean, hayCosteo: boolean, margen: number): TonoIndicador {
-  if (!hayPrecio || !hayCosteo) return 'neutro'
-  if (margen <= 0) return 'peligro'
-  return 'exito'
-}
-
-function pieDelMargen(
-  hayPrecio: boolean,
-  hayCosteo: boolean,
-  margen: number,
-  precioVenta: number,
-): string {
-  if (!hayPrecio) return 'Sin precio no hay margen que medir'
-  if (!hayCosteo) return 'Falta el costeo: se sabrá cuando Administración cargue las partidas'
-  return `${porcentaje((margen / precioVenta) * 100, 1)} del precio`
 }
 
 function Dato({ etiqueta, valor }: { etiqueta: string; valor?: string | number | null }) {
