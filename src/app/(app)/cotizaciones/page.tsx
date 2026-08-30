@@ -238,7 +238,13 @@ export default async function PaginaCotizaciones({ searchParams }: PageProps<'/c
                 const cliente = c.cliente as unknown as { razon_social: string }
                 const unidad = c.unidad as unknown as UnidadNombrable | null
                 const carroceria = c.tipo_carroceria as unknown as { nombre: string } | null
-                const trabajo = [carroceria?.nombre, unidad && nombreDeUnidad(unidad)]
+                // Lo que se va a hacer es lo que escribió Ventas; la carrocería
+                // es de dónde sale cuando todavía no lo escribió. La columna
+                // enseñaba solo la carrocería y salía con raya en toda
+                // cotización sin tipo puesto, aunque tuviera el concepto escrito
+                // y ese fuera justo el texto que iba a salir impreso.
+                const queSeHace = (c.concepto as string | null) ?? carroceria?.nombre ?? null
+                const trabajo = [queSeHace, unidad && nombreDeUnidad(unidad)]
                   .filter(Boolean)
                   .join(' · ')
                 const aviso = avisoDeVigencia(c.estado, diasHasta(c.fecha_vencimiento))
@@ -272,7 +278,7 @@ export default async function PaginaCotizaciones({ searchParams }: PageProps<'/c
                       )}
                     </TD>
                     <TD className="hidden text-texto-suave sm:table-cell">
-                      {carroceria?.nombre ?? '—'}
+                      {queSeHace ?? '—'}
                       {/* Sin placa, el nombre sale de otro dato de la unidad; en
                           letra más tenue para que no se lea como matrícula. */}
                       {unidad && (

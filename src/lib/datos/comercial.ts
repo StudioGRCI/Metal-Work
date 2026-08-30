@@ -186,7 +186,7 @@ export async function listarCotizaciones(
   // puede decir cuánto lleva parada una cotización en la etapa donde está.
   let consulta = supabase
     .from('cotizaciones')
-    .select('id, numero, fecha_emision, fecha_vencimiento, estado, moneda, total, costeo_pedido_en, costeo_listo_en, revisada_en, cliente:clientes!inner(razon_social), unidad:unidades!cotizaciones_unidad_id_fkey(placa, codigo_interno, numero_chasis, marca, modelo), tipo_carroceria:tipos_carroceria(nombre)')
+    .select('id, numero, fecha_emision, fecha_vencimiento, estado, moneda, total, concepto, costeo_pedido_en, costeo_listo_en, revisada_en, cliente:clientes!inner(razon_social), unidad:unidades!cotizaciones_unidad_id_fkey(placa, codigo_interno, numero_chasis, marca, modelo), tipo_carroceria:tipos_carroceria(nombre)')
 
   // Una etapa de venta agrupa varios estados —«En costeo» son tres— así que
   // se filtra por lista y no por igualdad. Un estado suelto sigue valiendo:
