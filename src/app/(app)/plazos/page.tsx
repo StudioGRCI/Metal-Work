@@ -7,7 +7,7 @@ import { Indicador } from '@/components/ui/indicador'
 import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { fecha } from '@/lib/format'
+import { fecha, moneda } from '@/lib/format'
 import { plazosPorArea, resumenDePlazos } from '@/lib/datos/plazos'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -198,7 +198,20 @@ export default async function PaginaPlazos({ searchParams }: PageProps<'/plazos'
                         )}
                       </TD>
 
-                      <TD className="max-w-44 text-sm text-texto-suave">{f.etapa_nombre}</TD>
+                      {/* Bajo el nombre del área, lo que le toca de esta unidad.
+                          Es lo que convierte «Maestranza va tarde» en «Maestranza
+                          va tarde y tiene doce cosas por habilitar»: sin la cifra,
+                          el semáforo dice que hay un problema pero no su tamaño. */}
+                      <TD className="max-w-44">
+                        <p className="text-sm text-texto-suave">{f.etapa_nombre}</p>
+                        {(f.material_lineas ?? 0) > 0 && (
+                          <p className="text-[11px] text-texto-tenue">
+                            {f.material_lineas}
+                            {f.material_lineas === 1 ? ' línea · ' : ' líneas · '}
+                            {moneda(Number(f.material_monto ?? 0), 'PEN')}
+                          </p>
+                        )}
+                      </TD>
 
                       <TD className="hidden text-xs whitespace-nowrap text-texto-suave sm:table-cell">
                         {fecha(f.fecha_inicio_programada) ?? '—'}

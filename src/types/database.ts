@@ -3633,6 +3633,7 @@ export type Database = {
       }
       ot_presupuesto: {
         Row: {
+          etapa_id: string | null
           id: string
           orden_id: string
           tipo_costo: Database["public"]["Enums"]["tipo_costo"]
@@ -6236,6 +6237,8 @@ export type Database = {
           responsable_id: string | null
           dias: number | null
           plazo: Database["public"]["Enums"]["estado_plazo"] | null
+          material_lineas: number | null
+          material_monto: number | null
           ultimo_reporte_id: string | null
           ultimo_reporte: string | null
           ultimo_reporte_en: string | null
