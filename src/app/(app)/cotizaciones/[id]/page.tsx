@@ -279,6 +279,8 @@ export default async function PaginaCotizacion({
                     precio_venta: cotizacion.precio_venta,
                     unidad_id: cotizacion.unidad_id,
                     tipo_carroceria_id: cotizacion.tipo_carroceria_id,
+                    tipo_unidad: cotizacion.tipo_unidad,
+                    categoria_vehicular: cotizacion.categoria_vehicular,
                     sede_id: cotizacion.sede_id,
                     vendedor_id: cotizacion.vendedor_id,
                     fecha_emision: cotizacion.fecha_emision,

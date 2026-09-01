@@ -25,6 +25,12 @@ const esquemaCotizacion = z.object({
   vendedor_id: z.string().uuid().optional().or(z.literal('')),
   contacto_id: z.string().uuid().optional().or(z.literal('')),
   tipo_carroceria_id: z.string().uuid().optional().or(z.literal('')),
+  // Las dos piezas del código de producto de la casa. Bajan del catálogo al
+  // elegir la carrocería y acá se corrigen: su hoja lo pide con «revisar en cot
+  // la capacidad», porque una misma tolva se fabrica sobre chasis o como
+  // semirremolque según el pedido.
+  tipo_unidad: z.enum(['SEMIRREMOLQUE', 'CARROCERIA_MONTADA']).optional().or(z.literal('')),
+  categoria_vehicular: z.enum(['O3', 'O4', 'N1', 'N2', 'N3']).optional().or(z.literal('')),
   sede_id: z.string().uuid().optional().or(z.literal('')),
   fecha_emision: z.string().optional(),
   validez_dias: z.coerce.number().int().min(1).max(365).default(15),
@@ -87,6 +93,10 @@ function cabeceraGuardable(
     precio_venta: v.precio_venta,
     unidad_id: nulo(v.unidad_id),
     tipo_carroceria_id: nulo(v.tipo_carroceria_id),
+    // Con `soloSiVino` como el resto: la pantalla de ficha técnica guarda la
+    // misma fila sin preguntar por estos dos, y mandarlos siempre los borraría.
+    ...soloSiVino('tipo_unidad', v.tipo_unidad),
+    ...soloSiVino('categoria_vehicular', v.categoria_vehicular),
     sede_id: nulo(v.sede_id),
     fecha_emision: v.fecha_emision || undefined,
     validez_dias: v.validez_dias,
