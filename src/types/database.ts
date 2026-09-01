@@ -857,6 +857,8 @@ export type Database = {
       }
       cotizaciones: {
         Row: {
+          tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          categoria_vehicular: Database["public"]["Enums"]["categoria_vehicular"] | null
           id: string
           numero: string
           cliente_id: string
@@ -920,6 +922,8 @@ export type Database = {
           motivo_observacion: string | null
         }
         Insert: {
+          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          categoria_vehicular?: Database["public"]["Enums"]["categoria_vehicular"] | null
           id?: string
           numero?: string
           cliente_id: string
@@ -982,6 +986,8 @@ export type Database = {
           motivo_observacion?: string | null
         }
         Update: {
+          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          categoria_vehicular?: Database["public"]["Enums"]["categoria_vehicular"] | null
           id?: string
           numero?: string
           cliente_id?: string
@@ -5215,6 +5221,8 @@ export type Database = {
       }
       tipos_carroceria: {
         Row: {
+          tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          categoria_vehicular: Database["public"]["Enums"]["categoria_vehicular"] | null
           id: string
           codigo: string
           nombre: string
@@ -5236,6 +5244,8 @@ export type Database = {
           actualizado_en: string
         }
         Insert: {
+          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          categoria_vehicular?: Database["public"]["Enums"]["categoria_vehicular"] | null
           id?: string
           codigo: string
           nombre: string
@@ -5257,6 +5267,8 @@ export type Database = {
           actualizado_en?: string
         }
         Update: {
+          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          categoria_vehicular?: Database["public"]["Enums"]["categoria_vehicular"] | null
           id?: string
           codigo?: string
           nombre?: string
@@ -6796,6 +6808,8 @@ export type Database = {
       estado_aprobacion: "PENDIENTE" | "APROBADO" | "OBSERVADO" | "RECHAZADO"
       estado_cotizacion: "BORRADOR" | "EN_COSTEO" | "EN_REVISION" | "OBSERVADA" | "REVISADA" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "VENCIDA" | "ANULADA"
       estado_documento: "VIGENTE" | "REEMPLAZADO" | "ANULADO"
+      tipo_unidad_carroceria: "SEMIRREMOLQUE" | "CARROCERIA_MONTADA"
+      categoria_vehicular: "O3" | "O4" | "N1" | "N2" | "N3"
       estado_plazo:
         | "VIGENTE"
         | "POR_VENCER"
