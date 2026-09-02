@@ -687,6 +687,26 @@ Microsoft 365, extracción a JSON, consolidación por variante real, y un
 convertidor a `sembrar_plantilla_ficha` (migración `071`), que reemplaza la
 plantilla entera: volver a correr la `072` deja lo mismo.
 
+### Segunda ronda: las proformas que la OT no traía
+
+Nueve de las OT «sin ficha todavía» decían «REVISAR PROFORMA». La proforma
+existe en otra carpeta de OneDrive (`INFORMACION ANTIGUA DE EMPRESAS/…/
+COTIZACIONES INGENIERIAS`) y se buscó una por una cruzando cliente, producto y
+fecha. Salieron **9 plantillas más en 7 carrocerías** (migración `074`):
+compactadora 15.5 m³ (COS), furgón pollero de 4 y de 7 TN (FUM), mixer 9 m³
+(HOR), contenedor almacén (PC), planta trituradora 50 TH (PT), planta de
+zarandeo 80/115 TH (PZ) y dos plataformas más (mecánica de 13.5 m y montada de
+13 TN sobre Isuzu). La OT 2809 quedó fuera: su proforma son tres reparaciones,
+no una ficha. Cada descripción dice de qué cotización sale y qué quedó dudoso.
+
+Con eso, 20 de las 34 carrocerías activas tienen ficha. Las 14 que faltan no
+tienen ninguna OT entre 2024 y 2026 (ABU, BOB, CCO, CIG, CIP, FRG, FUR, GIV,
+MA, VOM, VPC, REPOTENCIACION) o son tipos genéricos que conviene dar de baja
+(BARANDA, FURGON). Para esas no hace falta otra migración: la primera vez que
+Diseño escribe la ficha de una en la cotización de trabajo, la guarda con el
+botón **«Guardar como plantilla»** (migración `073`), y la siguiente cotización
+de esa carrocería ya nace con ella.
+
 ---
 
 ## 14. Fuentes

@@ -21,6 +21,7 @@ import {
   editarAccesorio,
   editarLineaFicha,
   guardarCabeceraTecnica,
+  guardarComoPlantilla,
   quitarAccesorio,
   quitarLineaFicha,
 } from './acciones-ficha'
@@ -157,7 +158,74 @@ export function FichaTecnica({
         accesorios={accesorios}
         puedeEditar={puedeEditar}
       />
+
+      {/* Al final, cuando la ficha ya está escrita: es el paso que hace que la
+          siguiente cotización de esta carrocería no empiece de cero. */}
+      {puedeEditar && secciones.length > 0 && (
+        <GuardarComoPlantilla cotizacionId={cotizacionId} sinPlantillas={plantillas.length === 0} />
+      )}
     </div>
+  )
+}
+
+function GuardarComoPlantilla({
+  cotizacionId,
+  sinPlantillas,
+}: {
+  cotizacionId: string
+  /** Esta carrocería todavía no tiene ninguna ficha guardada. */
+  sinPlantillas: boolean
+}) {
+  const [resultado, accion, enviando] = useActionState(guardarComoPlantilla, null)
+
+  return (
+    <Tarjeta className={sinPlantillas ? 'border-acento' : undefined}>
+      <TarjetaCabecera
+        titulo="Guardar esta ficha como plantilla de la carrocería"
+        descripcion={
+          sinPlantillas
+            ? 'Esta carrocería no tiene ninguna ficha guardada: la próxima cotización empezaría de cero. Guarda esta y ya no.'
+            : 'Si esta ficha es una variante que se va a volver a vender, guárdala con su nombre y saldrá en la lista de arriba.'
+        }
+      />
+      <TarjetaCuerpo>
+        <form action={accion} className="flex flex-wrap items-end gap-3">
+          <input type="hidden" name="cotizacion_id" value={cotizacionId} />
+          <Campo
+            etiqueta="Nombre de la plantilla"
+            htmlFor="plantilla-nombre"
+            ayuda="Corto y como lo diría el taller: «Bombona 20 m³ · 3 ejes», «Cisterna GNV 10,000 gls»"
+            className="min-w-64 flex-1"
+          >
+            <Entrada
+              id="plantilla-nombre"
+              name="nombre"
+              required
+              minLength={3}
+              maxLength={120}
+              autoComplete="off"
+              placeholder="Cisterna GNV 10,000 gls · semirremolque"
+            />
+          </Campo>
+          <label htmlFor="plantilla-predeterminada" className="flex min-h-11 items-center gap-2 text-sm text-texto sm:min-h-0">
+            <input
+              id="plantilla-predeterminada"
+              name="predeterminada"
+              type="checkbox"
+              defaultChecked={sinPlantillas}
+              className="size-4 accent-[var(--acento)]"
+            />
+            La que baja sola al elegir esta carrocería
+          </label>
+          <Boton type="submit" variante="secundario" cargando={enviando}>
+            Guardar como plantilla
+          </Boton>
+        </form>
+        <div className="mt-2">
+          <Aviso resultado={resultado} />
+        </div>
+      </TarjetaCuerpo>
+    </Tarjeta>
   )
 }
 

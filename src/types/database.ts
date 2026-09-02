@@ -6962,6 +6962,14 @@ export type Database = {
         }
         Returns: string
       }
+      guardar_cotizacion_como_plantilla: {
+        Args: {
+          p_cotizacion: string
+          p_nombre: string
+          p_predeterminada?: boolean
+        }
+        Returns: string
+      }
       sembrar_feriados: {
         Args: {
           p_anio: number

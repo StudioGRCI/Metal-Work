@@ -46,6 +46,56 @@ export async function aplicarPlantilla(_previo: unknown, datos: FormData): Promi
   return { ok: true, mensaje: `Ficha aplicada: ${data ?? 0} líneas.` }
 }
 
+/**
+ * La ficha de esta cotización pasa a ser plantilla de su carrocería.
+ *
+ * Es lo que convierte el catálogo en una base que se corrige sola: la primera
+ * vez que Diseño escribe la ficha de una carrocería que no tenía, la guarda y
+ * la siguiente cotización de esa carrocería ya nace con ella. La función de la
+ * base exige `cotizaciones.costear`, el mismo permiso que esta acción.
+ */
+export async function guardarComoPlantilla(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion> {
+  const problema = await exigirEdicion()
+  if (problema) return { ok: false, error: problema }
+
+  const analisis = z
+    .object({
+      cotizacion_id: z.string().uuid(),
+      nombre: z
+        .string()
+        .trim()
+        .min(3, 'Ponle un nombre a la plantilla, corto y reconocible')
+        .max(120, 'El nombre es demasiado largo'),
+      predeterminada: z.string().optional(),
+    })
+    .safeParse(Object.fromEntries(datos))
+
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el nombre.' }
+  }
+
+  const v = analisis.data
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('guardar_cotizacion_como_plantilla', {
+    p_cotizacion: v.cotizacion_id,
+    p_nombre: v.nombre,
+    p_predeterminada: v.predeterminada === 'on',
+  })
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+
+  revalidatePath(`/cotizaciones/${v.cotizacion_id}`)
+  revalidatePath(`/cotizaciones/trabajo/${v.cotizacion_id}`)
+  revalidatePath('/carrocerias')
+  return {
+    ok: true,
+    mensaje: `Guardada como «${v.nombre}». La próxima cotización de esta carrocería ya nace con esta ficha.`,
+  }
+}
+
 /** Los datos que cambian en cada cotización: medidas, garantía, plazo. */
 export async function guardarCabeceraTecnica(
   _previo: unknown,
