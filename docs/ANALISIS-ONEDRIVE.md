@@ -634,6 +634,61 @@ Maestranza: Producción las arma con las piezas ya entregadas.
 
 ---
 
+## 16. Las carrocerías de la casa, transcritas de sus propias OT
+
+«En la cotización de trabajo ya se tienen modelos de OT de casi la mayoría de
+carrocerías: lo que quieren es que, si seleccionan una carrocería, ya haya algo
+y solo se edite.» Se leyeron las **138 OT en PDF** de OneDrive —129 en
+`1. METAL WORK PERU S.A.C/2. ORDENES DE TRABAJO/2025` y `/2026`, más 9 que
+solo estaban en la carpeta de cada trabajo (OT 2923–2932 y dos de 2024)—; 91
+son unidades distintas una vez quitadas las copias por chasis, y 47 traen la
+cotización adjunta con la ficha técnica.
+
+### Qué salió
+
+**27 plantillas en 14 carrocerías** (migración `072`), cada una con la ficha
+sección por sección, los accesorios con su «no incluye accesorio» y las OT de
+las que se transcribió:
+
+| Carrocería | Plantillas | De qué OT |
+| --- | --- | --- |
+| Plataforma (PLA) | reforzada 13.50 m · 3 ejes estándar · Strenx 700 | 20 OT, la que más se vende |
+| Tolva piso plano (VPP) | semirroquera 17 m³ Hardox · 24 m³ carga de palma · 15 m³ residuos sólidos | 2919, 2866, 2892, 2920… |
+| Tolva semicircular (VSC) | 18–24 m³ Hardox constructora · semirroquera 16 m³ | 2896, 2864, 2904, 2902 |
+| Tolva granelera (VOG) | semirremolque 45–48 m³ Strenx/Hardox | 2842, 2816 |
+| Tolva genérica | estándar de la 024 · volquete con tiro 23 m³ | 2909 |
+| Cisternas (CIA, CIV, COM) | agua 5,000 gal · vacío 15 m³ · combustible 9,000 gls SR · 2,000 gls montada | 2897, 2879, 2931, 2863, 2921, 2922 |
+| Furgones (FUA, FUL) | acanalado · acanalado sin techo · cuello ganso doble nivel · alargue y cardán · liso · liso con 3er eje · volumétrico remolque | 2893, 2894, 2839, 2854, 2872, 2914, 2915… |
+| Baranda (BAR) | rebatible · telera · furgón baranda de gas | 2853, 2878, 2895, 2926 |
+| Cama baja (CB), Compactador (COA), Ambulancia (ABR) | una cada una | 2900, 2849+2932, 2882+2848 |
+
+Al elegir la carrocería en una cotización baja la **predeterminada** (la que
+más OT respaldan); desde la ficha se cambia por otra de la misma carrocería.
+
+### Qué no salió, y por qué
+
+- Ocho OT sin cotización adjunta (plataforma mecánica, plataforma montada
+  Isuzu, dos furgones polleros, remolque con tiro, mixer, dos reparaciones)
+  solo traían el nombre y la lista impresa de 30 accesorios de la sección 6,
+  que no dice qué se vendió: quedaron como **«sin ficha todavía»** en lugar de
+  cargar 30 accesorios falsos.
+- Siete OT de 2025 (2795, 2800, 2806, 2819, 2826, 2833, 2834) no tienen ni el
+  producto escrito.
+- Los pasos de verificación de la sección 11 son un formulario impreso: los
+  mismos 18 en todas las OT, y el texto plano del PDF no conserva su orden. Se
+  dejaron las listas por carrocería de la migración `026`.
+- Cosas que el taller debe confirmar y que quedaron anotadas en la descripción
+  de cada plantilla: dos anchos de eje distintos en la misma cotización (cama
+  baja, cuello ganso), «02 eje retráctil» en la COT 3664, erratas copiadas tal
+  cual («MAMPARON TAPDO GANZO», «ELEPTICO», «Cuatro (02) unidades»).
+
+Cómo se hizo: dos pasadas de agentes leyendo los PDF con el conector de
+Microsoft 365, extracción a JSON, consolidación por variante real, y un
+convertidor a `sembrar_plantilla_ficha` (migración `071`), que reemplaza la
+plantilla entera: volver a correr la `072` deja lo mismo.
+
+---
+
 ## 14. Fuentes
 
 | Archivo | Qué aportó |
