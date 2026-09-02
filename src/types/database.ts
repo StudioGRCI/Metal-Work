@@ -4315,6 +4315,10 @@ export type Database = {
           nombre: string
           descripcion: string | null
           activa: boolean
+          predeterminada: boolean
+          tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          capacidad_habitual: string | null
+          fuentes: string[]
           creado_en: string
           actualizado_en: string
         }
@@ -4324,6 +4328,10 @@ export type Database = {
           nombre: string
           descripcion?: string | null
           activa?: boolean
+          predeterminada?: boolean
+          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          capacidad_habitual?: string | null
+          fuentes?: string[]
           creado_en?: string
           actualizado_en?: string
         }
@@ -4333,6 +4341,10 @@ export type Database = {
           nombre?: string
           descripcion?: string | null
           activa?: boolean
+          predeterminada?: boolean
+          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          capacidad_habitual?: string | null
+          fuentes?: string[]
           creado_en?: string
           actualizado_en?: string
         }
