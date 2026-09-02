@@ -9,15 +9,20 @@
 --      `grant select … to anon` es un `select` abierto a internet. En este
 --      proyecto los grants van **solo** a `authenticated`.
 --
---      Cuidado con el origen: Supabase trae de fábrica
+--      Cuidado con el origen: Supabase traía de fábrica
 --      `alter default privileges in schema public grant all on tables to anon,
---      authenticated, service_role`, así que **toda tabla o vista nueva nace
---      con permisos para `anon`** salvo que la migración los revoque a mano.
---      Hoy lo que salva a esas tablas es el RLS —todas las políticas del
---      proyecto son `to authenticated`, así que `anon` lee cero filas—, pero es
---      una sola línea de distancia: el día que a una tabla se le apague el RLS,
---      o que una política se escriba sin `to authenticated`, queda pública. Se
---      cierra con `revoke all on <objeto> from anon, public;`.
+--      authenticated, service_role`, así que **toda tabla o vista nueva nacía
+--      con permisos para `anon`**. Esta consulta encontró 41 objetos así el
+--      2026-09-02 —de los 122 del esquema, con INSERT, UPDATE, DELETE y
+--      TRUNCATE incluidos—. No había fuga, porque el RLS los frenaba: todas
+--      las políticas del proyecto son `to authenticated`. Pero estaba a una
+--      línea de distancia: el día que a una tabla se le apagara el RLS, o que
+--      una política se escribiera sin `to authenticated`, quedaba pública.
+--
+--      La migración `080` revocó lo dado **y la regla que lo daba**
+--      (`alter default privileges … revoke all … from anon`), así que las
+--      tablas nuevas ya no lo heredan. Si esta consulta vuelve a devolver
+--      filas, alguien repuso esa regla por omisión o dio el permiso a mano.
 --
 -- Se lee de `pg_class.relacl` con `aclexplode`, no de `information_schema`:
 -- ahí solo salen los permisos que involucran al usuario de la conexión.
