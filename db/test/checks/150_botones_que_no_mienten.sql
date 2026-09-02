@@ -11,6 +11,9 @@ begin;
 insert into public.empresa (ruc, razon_social) values ('20100000019', 'PRUEBAS BOTONES S.A.C.');
 insert into public.sedes (codigo, nombre) values ('T1', 'Taller principal');
 
+-- El administrador no prueba ningún botón: solo monta lo que la prueba necesita
+-- —una orden aprobada y en taller— sin pedirle a nadie un permiso que no tiene.
+select test.crear_usuario('Aldo',  'Quiroz',   'aldo@demo.pe',  'ADMIN',       (select id from public.sedes limit 1)) as admin_id \gset
 select test.crear_usuario('Vera',  'Sandoval', 'vera@demo.pe',  'VENDEDOR',    (select id from public.sedes limit 1)) as vendedor_id \gset
 select test.crear_usuario('Jesus', 'Campos',   'jesus@demo.pe', 'ALMACENERO',  (select id from public.sedes limit 1)) as almacenero_id \gset
 select test.crear_usuario('Rosa',  'Yupanqui', 'rosa@demo.pe',  'JEFE_TALLER', (select id from public.sedes limit 1)) as jefe_id \gset
@@ -99,6 +102,14 @@ end $$;
 reset role;
 
 -- ------------------ el supervisor corrige las horas mal imputadas del parte
+-- El `reset role` de arriba devuelve el rol de la base, pero deja viva la
+-- sesión del almacenero: sin esto, aprobar la orden de aquí abajo se haría en su
+-- nombre, y el almacenero no aprueba órdenes. La orden la monta el armazón de la
+-- prueba, así que la monta el administrador. Tampoco vale dejar la sesión en
+-- blanco: sin usuario, `puede_ver_orden` es falso y la bitácora de la orden
+-- rechaza el evento que crea sus etapas.
+select test.como_usuario(:'admin_id');
+
 do $$
 declare v_ot uuid;
 begin

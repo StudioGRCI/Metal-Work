@@ -15,6 +15,12 @@
  *
  * El ancho por omisión es de monitor (1440). Con `390` recorre como teléfono,
  * que es como lo usa el taller.
+ *
+ * Las rutas salen del menú lateral (`src/lib/navegacion.ts`), así que una
+ * pantalla nueva entra sola en el recorrido; la lista a mano se conserva como
+ * respaldo y para las subpantallas que el menú no nombra. Y al terminar **sale
+ * con código 1 si alguna pantalla dio errores**: antes salía con 0 siempre, y
+ * un recorrido con seis pantallas rotas se leía igual que uno limpio.
  */
 import { chromium } from 'playwright-core'
 import { mkdirSync } from 'node:fs'
@@ -22,6 +28,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
 import { navegadorDelSistema, sesionGuardada } from './sesion.mjs'
+import { rutasDelRecorrido } from './rutas.mjs'
 
 const URL_BASE = process.env.URL ?? 'http://localhost:3111'
 const USUARIO = process.env.USUARIO ?? ''
@@ -29,35 +36,7 @@ const CLAVE = process.env.CLAVE ?? ''
 const ANCHO = Number(process.argv[2]) || 1440
 const CAPTURAS = join(process.env.CAPTURAS ?? 'capturas/produccion', String(ANCHO))
 
-
-const RUTAS = [
-  ['tablero', '/'],
-  ['ordenes', '/ordenes'],
-  ['orden-nueva', '/ordenes/nueva'],
-  ['clientes', '/clientes'],
-  ['cliente-nuevo', '/clientes/nuevo'],
-  ['unidades', '/unidades'],
-  ['cotizaciones', '/cotizaciones'],
-  ['cotizacion-nueva', '/cotizaciones/nueva'],
-  ['cotizacion-trabajo', '/cotizaciones/trabajo'],
-  ['avance-taller', '/avance'],
-  ['produccion', '/produccion'],
-  ['parte-nuevo', '/produccion/nuevo'],
-  ['almacen', '/almacen'],
-  ['almacen-movimientos', '/almacen/movimientos'],
-  ['almacen-requerimientos', '/almacen/requerimientos'],
-  ['almacen-compras', '/almacen/compras'],
-  ['almacen-materiales', '/almacen/materiales'],
-  ['almacen-proveedores', '/almacen/proveedores'],
-  ['servicios', '/servicios'],
-  ['costos', '/costos'],
-  ['documentos', '/documentos'],
-  ['firmas', '/firmas'],
-  ['informes', '/informes'],
-  ['garantias', '/garantias'],
-  ['configuracion', '/configuracion'],
-  ['personal', '/personal'],
-]
+const { rutas: RUTAS, delMenu, aMano } = rutasDelRecorrido((aviso) => console.log(`  ! ${aviso}`))
 
 // La sesión se reutiliza entre recorridos: entrar es lo más frágil de todo
 // esto y no tiene nada que ver con lo que se quiere mirar.
@@ -77,23 +56,39 @@ const contexto = await navegador.newContext({
 const pagina = await contexto.newPage()
 
 let errores = []
+let avisos = []
+
+// Los prefetch de Next se cancelan solos al navegar y una imagen que no carga
+// deja la pantalla fea pero funcionando: se anotan como aviso y no cuentan.
+const esPrefetch = (url) => url.includes('_rsc=')
+
 pagina.on('console', (m) => {
   if (m.type() === 'error') errores.push(`consola: ${m.text().slice(0, 160)}`)
 })
 pagina.on('response', (r) => {
-  // Los prefetch de Next se cancelan solos al navegar: eso no es un fallo.
-  if (r.status() >= 400 && !r.url().includes('_rsc=')) {
-    errores.push(`${r.status()} ${r.url().replace(URL_BASE, '').slice(0, 90)}`)
-  }
+  if (r.status() < 400) return
+  const linea = `${r.status()} ${r.url().replace(URL_BASE, '').slice(0, 90)}`
+  if (esPrefetch(r.url())) avisos.push(linea)
+  else errores.push(linea)
+})
+pagina.on('requestfailed', (p) => {
+  const linea = `${p.method()} ${p.url().replace(URL_BASE, '').slice(0, 90)} — ${p.failure()?.errorText}`
+  if (esPrefetch(p.url()) || p.resourceType() === 'image') avisos.push(linea)
+  else errores.push(linea)
 })
 
 mkdirSync(CAPTURAS, { recursive: true })
 
+let conErrores = 0
+let avisosTotales = 0
+
 try {
-  console.log(`\nRecorrido a ${ANCHO}px · ${URL_BASE}\n`)
+  console.log(`\nRecorrido a ${ANCHO}px · ${URL_BASE}`)
+  console.log(`${RUTAS.length} rutas (${delMenu} del menú, ${aMano} de la lista a mano)\n`)
 
   for (const [nombre, ruta] of RUTAS) {
     errores = []
+    avisos = []
     let estado = '?'
     // Lo que tarda desde que se pide la pantalla hasta que hay algo que leer.
     // Es la cifra que importa: el usuario no espera al `load` del navegador,
@@ -127,6 +122,9 @@ try {
     const roto = /Ocurrió un error inesperado|Application error|no se pudo|No se pudieron/i.test(cuerpo)
     if (roto) errores.push('la pantalla dice que algo falló')
 
+    if (errores.length > 0) conErrores += 1
+    avisosTotales += avisos.length
+
     const marca = errores.length > 0 ? '✗' : segundos > 4 ? '⏳' : '·'
     console.log(
       `  ${marca} ${nombre.padEnd(24)} ${String(estado).padEnd(4)} ${segundos.toFixed(1)}s` +
@@ -137,4 +135,10 @@ try {
   await navegador.close()
 }
 
-console.log(`\nCapturas en ${CAPTURAS}`)
+console.log(`\n${RUTAS.length} rutas · ${conErrores} con errores`)
+if (avisosTotales > 0) {
+  console.log(`${avisosTotales} aviso(s) de red que no cuentan: prefetch de Next e imágenes`)
+}
+console.log(`Capturas en ${CAPTURAS}`)
+
+process.exit(conErrores > 0 ? 1 : 0)

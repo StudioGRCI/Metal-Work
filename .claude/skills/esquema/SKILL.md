@@ -103,3 +103,19 @@ política `borrar_*` eliminada y el `grant delete` revocado.
 - **`next typegen` antes de `tsc`.** Sin él, TypeScript reporta decenas de
   «Cannot find name 'PageProps'» que no son errores del código y hacen perder
   media hora persiguiendo un fallo inexistente.
+
+- **Un check sin sesión no puede aprobar una orden, y varios lo intentan.**
+  Desde el blindaje (migración `013`), `ot_registrar_evento` exige
+  `puede_ver_orden`, y sin usuario en la sesión eso es falso: aprobar una OT
+  levanta «No puede registrar eventos en una orden que no le corresponde», que
+  es lo que dispara `crear_etapas_ot`. Comprobado contra la base viva el
+  2026-09-02. El armazón de un check —crear la orden, aprobarla, ponerla en
+  taller— se monta **con un usuario ADMIN** (`test.crear_usuario(..., 'ADMIN',
+  ...)` y `test.como_usuario`), no sin sesión y no con el rol que la prueba está
+  examinando: si se monta con ese rol, al primer disparador que exija un permiso
+  la prueba se cae por el armazón y no por lo que quería probar. Está arreglado
+  así en `150_botones_que_no_mienten.sql`; **quedan checks anteriores que
+  aprueban órdenes sin sesión y hoy no pasarían** — al tocar uno, arreglarlo con
+  este patrón. Que no se note es la otra mitad del problema: `db-test.sh` no
+  corre en la máquina de trabajo (ver la memoria del proyecto), así que el
+  conjunto se pudre sin que nadie lo vea.

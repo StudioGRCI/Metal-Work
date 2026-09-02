@@ -8,6 +8,10 @@
  *
  *   URL=... USUARIO=... CLAVE=... \
  *   node herramientas/recorrido/mirar.mjs /documentos captura [selector...]
+ *
+ * Sale con código 1 si la pantalla dio errores de consola o respuestas de 4xx y
+ * 5xx. Antes salía con 0 pasara lo que pasara: los errores se imprimían y
+ * quedaban ahí, así que una pantalla rota se declaraba «vista y funcionando».
  */
 import { chromium } from 'playwright-core'
 import { mkdirSync, existsSync } from 'node:fs'
@@ -33,13 +37,45 @@ const pagina = await navegador.newPage({ viewport: { width: 1440, height: 1000 }
 // Cuando el ingreso se queda girando sin decir nada, lo único que lo explica es
 // mirar la red y la consola: el botón no distingue «no contestó» de «contestó
 // que no».
-pagina.on('requestfailed', (p) => console.log(`  ✗ ${p.method()} ${p.url()} — ${p.failure()?.errorText}`))
+//
+// No todo lo que la red reporta es un fallo de la pantalla: Next cancela solos
+// sus prefetch (`_rsc=`) al navegar, y una imagen que no carga deja la pantalla
+// fea pero funcionando. Esos se imprimen como aviso y no cuentan; lo demás sí.
+let errores = []
+let avisos = []
+
+const esPrefetch = (url) => url.includes('_rsc=')
+
+pagina.on('requestfailed', (p) => {
+  const linea = `${p.method()} ${p.url().slice(0, 120)} — ${p.failure()?.errorText}`
+  if (esPrefetch(p.url()) || p.resourceType() === 'image') {
+    avisos.push(linea)
+    console.log(`  · ${linea}`)
+  } else {
+    errores.push(linea)
+    console.log(`  ✗ ${linea}`)
+  }
+})
 pagina.on('console', (m) => {
-  if (m.type() === 'error') console.log(`  ✗ consola: ${m.text().slice(0, 200)}`)
+  if (m.type() === 'error') {
+    const linea = `consola: ${m.text().slice(0, 200)}`
+    errores.push(linea)
+    console.log(`  ✗ ${linea}`)
+  }
 })
-pagina.on('response', async (r) => {
-  if (r.status() >= 400) console.log(`  ✗ ${r.status()} ${r.url().slice(0, 120)}`)
+pagina.on('response', (r) => {
+  if (r.status() < 400) return
+  const linea = `${r.status()} ${r.url().slice(0, 120)}`
+  if (esPrefetch(r.url())) {
+    avisos.push(linea)
+    console.log(`  · ${linea}`)
+  } else {
+    errores.push(linea)
+    console.log(`  ✗ ${linea}`)
+  }
 })
+
+let fallo = null
 
 try {
   await pagina.goto(`${URL_BASE}/ingresar`, { waitUntil: 'networkidle', timeout: 60000 })
@@ -56,9 +92,14 @@ try {
   if (pagina.url().includes('/ingresar')) {
     mkdirSync(CAPTURAS, { recursive: true })
     await pagina.screenshot({ path: join(CAPTURAS, 'ingreso-FALLO.png'), fullPage: true })
-    const avisos = await pagina.locator('[role="alert"], [role="status"]').allTextContents()
-    throw new Error(`no se pudo entrar: ${avisos.join(' · ') || 'sin mensaje en pantalla'}`)
+    const avisosEnPantalla = await pagina.locator('[role="alert"], [role="status"]').allTextContents()
+    throw new Error(`no se pudo entrar: ${avisosEnPantalla.join(' · ') || 'sin mensaje en pantalla'}`)
   }
+
+  // Lo que se juzga es la pantalla que se pidió, no el ingreso: lo que haya
+  // dicho la consola mientras se entraba se descarta aquí.
+  errores = []
+  avisos = []
 
   await pagina.goto(`${URL_BASE}${ruta}`, { waitUntil: 'networkidle' })
   // La pantalla llega en dos tiempos: el esqueleto de carga no tiene ni una
@@ -88,6 +129,18 @@ try {
       if (limpio) console.log(`  · ${limpio}`)
     }
   }
+} catch (e) {
+  fallo = e
 } finally {
   await navegador.close()
 }
+
+const conErrores = fallo || errores.length > 0 ? 1 : 0
+console.log(`\n1 ruta (${ruta}) · ${conErrores} con errores`)
+if (fallo) console.log(`  ✗ ${fallo.message}`)
+for (const e of errores) console.log(`  ✗ ${e}`)
+if (avisos.length > 0) {
+  console.log(`  (${avisos.length} aviso(s) de red que no cuentan: prefetch de Next e imágenes)`)
+}
+
+process.exit(conErrores)
