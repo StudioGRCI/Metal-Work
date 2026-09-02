@@ -30,7 +30,9 @@ const esquemaCotizacion = z.object({
   // la capacidad», porque una misma tolva se fabrica sobre chasis o como
   // semirremolque según el pedido.
   tipo_unidad: z.enum(['SEMIRREMOLQUE', 'CARROCERIA_MONTADA']).optional().or(z.literal('')),
-  categoria_vehicular: z.enum(['O3', 'O4', 'N1', 'N2', 'N3']).optional().or(z.literal('')),
+  // La capacidad se escribe: en sus hojas conviven «45 M3», «5000 GALONES»,
+  // «2,000 GLS» y «04 TN». Un desplegable obligaría a inventar una unidad.
+  capacidad: z.string().trim().max(60, 'La capacidad es demasiado larga').optional(),
   sede_id: z.string().uuid().optional().or(z.literal('')),
   fecha_emision: z.string().optional(),
   validez_dias: z.coerce.number().int().min(1).max(365).default(15),
@@ -96,7 +98,7 @@ function cabeceraGuardable(
     // Con `soloSiVino` como el resto: la pantalla de ficha técnica guarda la
     // misma fila sin preguntar por estos dos, y mandarlos siempre los borraría.
     ...soloSiVino('tipo_unidad', v.tipo_unidad),
-    ...soloSiVino('categoria_vehicular', v.categoria_vehicular),
+    ...soloSiVino('capacidad', v.capacidad),
     sede_id: nulo(v.sede_id),
     fecha_emision: v.fecha_emision || undefined,
     validez_dias: v.validez_dias,

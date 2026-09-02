@@ -8,18 +8,6 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 
-/** Las dos escalas del código de producto de la casa. Ver el alta. */
-const CAPACIDADES: Record<string, [string, string][]> = {
-  SEMIRREMOLQUE: [
-    ['O3', 'O3 — más de 3,5 t hasta 10 t'],
-    ['O4', 'O4 — más de 10 t'],
-  ],
-  CARROCERIA_MONTADA: [
-    ['N1', 'N1'],
-    ['N2', 'N2 — más de 3,5 t hasta 12 t'],
-    ['N3', 'N3 — más de 12 t'],
-  ],
-}
 import { Ventana } from '@/components/ui/ventana'
 import { createClient } from '@/lib/supabase/client'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
@@ -42,7 +30,7 @@ export type CabeceraCotizacion = {
   unidad_id: string | null
   tipo_carroceria_id: string | null
   tipo_unidad: string | null
-  categoria_vehicular: string | null
+  capacidad: string | null
   sede_id: string | null
   /** Quien firma el papel. Vacío = firma la empresa. */
   vendedor_id?: string | null
@@ -108,7 +96,6 @@ export function EditarCotizacion({
   const [unidadId, setUnidadId] = useState(cotizacion.unidad_id ?? '')
   const [carroceriaId, setCarroceriaId] = useState(cotizacion.tipo_carroceria_id ?? '')
   const [tipoUnidad, setTipoUnidad] = useState(cotizacion.tipo_unidad ?? '')
-  const [capacidad, setCapacidad] = useState(cotizacion.categoria_vehicular ?? '')
   const [sedeId, setSedeId] = useState(cotizacion.sede_id ?? '')
   const [vendedorId, setVendedorId] = useState(cotizacion.vendedor_id ?? '')
   const [cargadas, setCargadas] = useState<{
@@ -231,10 +218,7 @@ export function EditarCotizacion({
                 id="ed-tipo_unidad"
                 name="tipo_unidad"
                 value={tipoUnidad}
-                onChange={(e) => {
-                  setTipoUnidad(e.target.value)
-                  setCapacidad('')
-                }}
+                onChange={(e) => setTipoUnidad(e.target.value)}
               >
                 <option value="">Sin definir</option>
                 <option value="SEMIRREMOLQUE">Semirremolque</option>
@@ -242,25 +226,14 @@ export function EditarCotizacion({
               </Seleccion>
             </Campo>
 
-            <Campo
-              etiqueta="Capacidad"
-              htmlFor="ed-categoria_vehicular"
-              ayuda="La categoría por peso bruto vehicular, la misma que va en el código de producto."
-            >
-              <Seleccion
-                id="ed-categoria_vehicular"
-                name="categoria_vehicular"
-                value={capacidad}
-                onChange={(e) => setCapacidad(e.target.value)}
-                disabled={!tipoUnidad}
-              >
-                <option value="">{tipoUnidad ? 'Sin definir' : 'Elige primero el tipo'}</option>
-                {CAPACIDADES[tipoUnidad]?.map(([valor, etiqueta]) => (
-                  <option key={valor} value={valor}>
-                    {etiqueta}
-                  </option>
-                ))}
-              </Seleccion>
+            <Campo etiqueta="Capacidad" htmlFor="ed-capacidad" ayuda="Como la escriben ustedes: 15 m³, 45 M3, 5000 galones, 2000 GLS, 04 TN. Sale impresa en el papel del cliente.">
+              <Entrada
+                id="ed-capacidad"
+                name="capacidad"
+                autoComplete="off"
+                placeholder="15 m³"
+                defaultValue={cotizacion.capacidad ?? ''}
+              />
             </Campo>
 
             <Campo etiqueta="Tipo de carrocería" htmlFor="tipo_carroceria_id">

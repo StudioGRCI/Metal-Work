@@ -9,23 +9,6 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 
-/**
- * Qué capacidad admite cada tipo. Son dos escalas distintas del reglamento
- * vehicular y la empresa las usa tal cual en su código de producto: los
- * semirremolques van por peso bruto del remolque, las montadas por el del
- * vehículo. Mezclarlas produce un código que no existe en su catálogo.
- */
-const CAPACIDADES: Record<string, [string, string][]> = {
-  SEMIRREMOLQUE: [
-    ['O3', 'O3 — más de 3,5 t hasta 10 t'],
-    ['O4', 'O4 — más de 10 t'],
-  ],
-  CARROCERIA_MONTADA: [
-    ['N1', 'N1'],
-    ['N2', 'N2 — más de 3,5 t hasta 12 t'],
-    ['N3', 'N3 — más de 12 t'],
-  ],
-}
 
 /**
  * Alta de un tipo de carrocería desde el propio formulario.
@@ -44,7 +27,6 @@ export function NuevaCarroceria({
   const [abierto, setAbierto] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [tipoUnidad, setTipoUnidad] = useState('')
-  const [capacidad, setCapacidad] = useState('')
   const [resultado, setResultado] = useState<
     { ok: true; mensaje?: string } | { ok: false; error: string } | null
   >(null)
@@ -102,11 +84,7 @@ export function NuevaCarroceria({
                 id="ncar-tipo_unidad"
                 name="tipo_unidad"
                 value={tipoUnidad}
-                onChange={(e) => {
-                  setTipoUnidad(e.target.value)
-                  // La capacidad elegida deja de valer al cambiar de escala.
-                  setCapacidad('')
-                }}
+                onChange={(e) => setTipoUnidad(e.target.value)}
               >
                 <option value="">Sin definir</option>
                 <option value="SEMIRREMOLQUE">Semirremolque</option>
@@ -116,23 +94,10 @@ export function NuevaCarroceria({
 
             <Campo
               etiqueta="Capacidad"
-              htmlFor="ncar-categoria"
-              ayuda="La categoría por peso bruto vehicular, la misma del código de producto."
+              htmlFor="ncar-capacidad"
+              ayuda="La habitual de esta carrocería. Baja sola a la cotización y ahí se corrige."
             >
-              <Seleccion
-                id="ncar-categoria"
-                name="categoria_vehicular"
-                value={capacidad}
-                onChange={(e) => setCapacidad(e.target.value)}
-                disabled={!tipoUnidad}
-              >
-                <option value="">{tipoUnidad ? 'Sin definir' : 'Elige primero el tipo'}</option>
-                {CAPACIDADES[tipoUnidad]?.map(([valor, etiqueta]) => (
-                  <option key={valor} value={valor}>
-                    {etiqueta}
-                  </option>
-                ))}
-              </Seleccion>
+              <Entrada id="ncar-capacidad" name="capacidad" autoComplete="off" placeholder="15 m³" />
             </Campo>
           </div>
 

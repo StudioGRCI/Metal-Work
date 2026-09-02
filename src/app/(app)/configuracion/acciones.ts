@@ -131,25 +131,11 @@ const esquemaCarroceria = z
   .object({
     nombre: z.string().trim().min(3, 'Ponle nombre al tipo de carrocería'),
     descripcion: z.string().trim().optional(),
-    // Las dos piezas del código de producto de la casa: `VSC_**SR**_**O4**_6_26/30`.
+    // Semirremolque o carrocería montada: el SR/CM de su código de producto.
     tipo_unidad: z.enum(['SEMIRREMOLQUE', 'CARROCERIA_MONTADA']).optional(),
-    categoria_vehicular: z.enum(['O3', 'O4', 'N1', 'N2', 'N3']).optional(),
+    // La habitual de esta carrocería, escrita como la escriben ellos.
+    capacidad: z.string().trim().max(60).optional(),
   })
-  // Un semirremolque no puede ser N2 ni una montada O4: son dos escalas y
-  // mezclarlas produce un código que no existe en su catálogo. Lo defiende
-  // también la base; acá se dice con palabras antes de llegar allá.
-  .refine(
-    (v) =>
-      !v.tipo_unidad ||
-      !v.categoria_vehicular ||
-      (v.tipo_unidad === 'SEMIRREMOLQUE'
-        ? ['O3', 'O4'].includes(v.categoria_vehicular)
-        : ['N1', 'N2', 'N3'].includes(v.categoria_vehicular)),
-    {
-      message: 'Un semirremolque va con O3 u O4; una carrocería montada, con N1, N2 o N3.',
-      path: ['categoria_vehicular'],
-    },
-  )
 
 /**
  * Alta de un tipo de carrocería desde donde se cotiza.
@@ -208,7 +194,7 @@ export async function crearCarroceria(
       nombre: v.nombre,
       descripcion: v.descripcion?.trim() || null,
       tipo_unidad: v.tipo_unidad ?? null,
-      categoria_vehicular: v.categoria_vehicular ?? null,
+      capacidad: v.capacidad?.trim() || null,
       orden_secuencia: 99,
     })
     .select('id, nombre')

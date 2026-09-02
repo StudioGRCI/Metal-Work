@@ -12,23 +12,6 @@ import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { NuevaUnidad } from '@/app/(app)/clientes/nueva-unidad'
 import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
 
-/**
- * Qué capacidad admite cada tipo. Son dos escalas del reglamento vehicular y la
- * empresa las usa tal cual en su código de producto: los semirremolques van por
- * peso bruto del remolque, las montadas por el del vehículo. Mezclarlas produce
- * un código que no existe en su catálogo, y la base lo rechaza.
- */
-const CAPACIDADES: Record<string, [string, string][]> = {
-  SEMIRREMOLQUE: [
-    ['O3', 'O3 — más de 3,5 t hasta 10 t'],
-    ['O4', 'O4 — más de 10 t'],
-  ],
-  CARROCERIA_MONTADA: [
-    ['N1', 'N1'],
-    ['N2', 'N2 — más de 3,5 t hasta 12 t'],
-    ['N3', 'N3 — más de 12 t'],
-  ],
-}
 import { NuevoCliente } from '@/components/comercial/nuevo-cliente'
 import { NuevoContacto, type ContactoElegible } from '@/components/comercial/nuevo-contacto'
 
@@ -64,7 +47,6 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
   const [unidadId, setUnidadId] = useState('')
   const [carroceriaId, setCarroceriaId] = useState('')
   const [tipoUnidad, setTipoUnidad] = useState('')
-  const [capacidad, setCapacidad] = useState('')
   const [contactoId, setContactoId] = useState('')
   const [contactos, setContactos] = useState<{ clienteId: string; lista: ContactoElegible[] } | null>(
     null,
@@ -233,11 +215,7 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
               id="tipo_unidad"
               name="tipo_unidad"
               value={tipoUnidad}
-              onChange={(e) => {
-                setTipoUnidad(e.target.value)
-                // La capacidad elegida deja de valer al cambiar de escala.
-                setCapacidad('')
-              }}
+              onChange={(e) => setTipoUnidad(e.target.value)}
             >
               <option value="">Sin definir</option>
               <option value="SEMIRREMOLQUE">Semirremolque</option>
@@ -245,25 +223,8 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
             </Seleccion>
           </Campo>
 
-          <Campo
-            etiqueta="Capacidad"
-            htmlFor="categoria_vehicular"
-            ayuda="La categoría por peso bruto vehicular, la misma que va en el código de producto."
-          >
-            <Seleccion
-              id="categoria_vehicular"
-              name="categoria_vehicular"
-              value={capacidad}
-              onChange={(e) => setCapacidad(e.target.value)}
-              disabled={!tipoUnidad}
-            >
-              <option value="">{tipoUnidad ? 'Sin definir' : 'Elige primero el tipo'}</option>
-              {CAPACIDADES[tipoUnidad]?.map(([valor, etiqueta]) => (
-                <option key={valor} value={valor}>
-                  {etiqueta}
-                </option>
-              ))}
-            </Seleccion>
+          <Campo etiqueta="Capacidad" htmlFor="capacidad" ayuda="Como la escriben ustedes: 15 m³, 45 M3, 5000 galones, 2000 GLS, 04 TN. Sale impresa en el papel del cliente.">
+            <Entrada id="capacidad" name="capacidad" autoComplete="off" placeholder="15 m³" />
           </Campo>
 
           <Campo etiqueta="Tipo de carrocería" htmlFor="tipo_carroceria_id">
