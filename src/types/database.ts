@@ -3356,6 +3356,136 @@ export type Database = {
           }
         ]
       }
+      ot_planos: {
+        Row: {
+          id: string
+          orden_id: string
+          orden_secuencia: number
+          numero_plano: string
+          nombre: string
+          peso_pct: number
+          fecha_entrega: string | null
+          observacion: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          orden_secuencia?: number
+          numero_plano: string
+          nombre: string
+          peso_pct?: number
+          fecha_entrega?: string | null
+          observacion?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          orden_secuencia?: number
+          numero_plano?: string
+          nombre?: string
+          peso_pct?: number
+          fecha_entrega?: string | null
+          observacion?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_planos_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_piezas: {
+        Row: {
+          id: string
+          plano_id: string
+          orden_id: string
+          orden_secuencia: number
+          numero_pieza: string
+          nombre: string
+          cantidad: number
+          es_ensamble: boolean
+          observacion: string | null
+          mtz_inicio: string | null
+          mtz_habilitado: boolean
+          mtz_culminacion: string | null
+          mtz_entregado: boolean
+          mtz_observacion: string | null
+          prd_recepcion: string | null
+          prd_recibido: boolean
+          prd_inicio: string | null
+          prd_armado: boolean
+          prd_observacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          plano_id: string
+          orden_id: string
+          orden_secuencia?: number
+          numero_pieza: string
+          nombre: string
+          cantidad?: number
+          es_ensamble?: boolean
+          observacion?: string | null
+          mtz_inicio?: string | null
+          mtz_habilitado?: boolean
+          mtz_culminacion?: string | null
+          mtz_entregado?: boolean
+          mtz_observacion?: string | null
+          prd_recepcion?: string | null
+          prd_recibido?: boolean
+          prd_inicio?: string | null
+          prd_armado?: boolean
+          prd_observacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          plano_id?: string
+          orden_id?: string
+          orden_secuencia?: number
+          numero_pieza?: string
+          nombre?: string
+          cantidad?: number
+          es_ensamble?: boolean
+          observacion?: string | null
+          mtz_inicio?: string | null
+          mtz_habilitado?: boolean
+          mtz_culminacion?: string | null
+          mtz_entregado?: boolean
+          mtz_observacion?: string | null
+          prd_recepcion?: string | null
+          prd_recibido?: boolean
+          prd_inicio?: string | null
+          prd_armado?: boolean
+          prd_observacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_pieza_plano"
+            columns: ["plano_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_planos"
+            referencedColumns: ["id", "orden_id"]
+          }
+        ]
+      }
       ot_etapas: {
         Row: {
           id: string
@@ -6255,6 +6385,93 @@ export type Database = {
           ultimo_reporte: string | null
           ultimo_reporte_en: string | null
           ultimo_reporte_verificado_en: string | null
+        }
+        Relationships: []
+      }
+      v_cronograma_ot: {
+        Row: {
+          etapa_id: string | null
+          orden_id: string | null
+          etapa_codigo: string | null
+          etapa: string | null
+          color: string | null
+          orden_secuencia: number | null
+          area_codigo: string | null
+          area_nombre: string | null
+          estado: Database["public"]["Enums"]["estado_etapa_ot"] | null
+          avance_porcentaje: number | null
+          fecha_inicio_programada: string | null
+          fecha_fin_programada: string | null
+          fecha_inicio_real: string | null
+          fecha_fin_real: string | null
+          dias: number | null
+          plazo: Database["public"]["Enums"]["estado_plazo"] | null
+          ultimo_reporte: string | null
+          ultimo_reporte_en: string | null
+        }
+        Relationships: []
+      }
+      v_cumplimiento_ot: {
+        Row: {
+          orden_id: string | null
+          numero: string | null
+          planos: number | null
+          planos_entregados: number | null
+          piezas: number | null
+          piezas_entregadas: number | null
+          piezas_armadas: number | null
+          peso_total: number | null
+          avance_pct: number | null
+          primer_plano: string | null
+          ultimo_plano: string | null
+        }
+        Relationships: []
+      }
+      v_cumplimiento_piezas: {
+        Row: {
+          id: string | null
+          plano_id: string | null
+          orden_id: string | null
+          orden_secuencia: number | null
+          numero_pieza: string | null
+          nombre: string | null
+          cantidad: number | null
+          es_ensamble: boolean | null
+          observacion: string | null
+          mtz_inicio: string | null
+          mtz_habilitado: boolean | null
+          mtz_culminacion: string | null
+          mtz_entregado: boolean | null
+          mtz_observacion: string | null
+          prd_recepcion: string | null
+          prd_recibido: boolean | null
+          prd_inicio: string | null
+          prd_armado: boolean | null
+          prd_observacion: string | null
+          creado_en: string | null
+          actualizado_en: string | null
+          avance_pct: number | null
+        }
+        Relationships: []
+      }
+      v_cumplimiento_planos: {
+        Row: {
+          plano_id: string | null
+          orden_id: string | null
+          orden_secuencia: number | null
+          numero_plano: string | null
+          nombre: string | null
+          peso_pct: number | null
+          fecha_entrega: string | null
+          observacion: string | null
+          piezas: number | null
+          piezas_entregadas: number | null
+          piezas_armadas: number | null
+          avance_pct: number | null
+          mtz_desde: string | null
+          mtz_hasta: string | null
+          prd_desde: string | null
+          prd_hasta: string | null
         }
         Relationships: []
       }

@@ -579,6 +579,61 @@ Casi nada, y ese es el punto: `ot_etapas` ya guarda
 
 ---
 
+## 15. Cómo mide Diseño que cada área cumpla (MW-FOR-ING-8)
+
+`5. INGENIERIA/CUMPLIMIENTO DE AREAS - 2026.xlsx` es la hoja que Diseño arma
+**por cada OT**. Es el formato `MW-FOR-ING-8 · CUMPLIMIENTO DE TIEMPOS –
+ÁREAS`, y es más fino que el control de plazos de la sección 13: ahí se mide la
+etapa entera; acá, **pieza por pieza**.
+
+### La hoja
+
+Cabecera: `CLIENTE`, `UNIDAD`, `CÓDIGO INTERNO`, `DISEÑADOR`, `INICIO`,
+`CULMINACIÓN` y el `%` de la unidad. Debajo, una fila por pieza con tres
+bloques, uno por área:
+
+| Bloque | Columnas | Quién la llena |
+| --- | --- | --- |
+| Diseño | `%` · `FECHA` · `# PLANO` · `# PIEZAS` · `NOMBRE` · `CANTIDAD` · `OBSERVACIÓN` | Diseño, al entregar el plano |
+| Maestranza | `FECHA INICIO` · `HABILITADO ✓` · `FECHA CULMINACIÓN` · `ENTREGADO ✓` · `OBSERVACIÓN` | Maestranza |
+| Producción | `FECHA RECEPCIÓN` · `RECIBIDO ✓` · `FECHA INICIO` · `ARMADO ✓` · `OBSERVACIÓN` | Producción |
+
+Cada **plano** abre un grupo: una fila de cabecera (`HABILITADO`, el número de
+plano, el rango de piezas y el `%` que ese grupo pesa en la unidad), luego las
+piezas, y al final las filas `ENSAMBLE` (`# PIEZAS = ENS`), que no pasan por
+Maestranza: Producción las arma con las piezas ya entregadas.
+
+### Lo que la hoja no podía hacer cumplir
+
+- **Diseño no quiere entregar planos, pero tiene que entregarlos.** En la hoja
+  la `FECHA` del plano se dejaba vacía y Maestranza reportaba igual. En el
+  sistema, mientras el plano no tenga fecha de entrega, ninguna pieza suya
+  admite fecha de inicio de habilitado —y el inicio no puede ser anterior a la
+  entrega—.
+- **Cada área escribe su bloque.** La base acepta a Diseño (`diseno.planos`)
+  y al taller (`produccion.registrar`) sobre la misma fila, y un disparador
+  mira qué columnas cambiaron: Maestranza no corrige cantidades ni Diseño marca
+  habilitados.
+- **El porcentaje no se escribe: sale de los vistos.** Una pieza vale 25 al
+  habilitarse, 50 al entregarse, 75 al recibirse y 100 al armarse (un ensamble:
+  50 al empezar, 100 al armarse). El plano pondera sus piezas por cantidad; la
+  unidad pondera sus planos por el `%` que Diseño les puso, que entre todos no
+  puede pasar de 100.
+
+### Dónde quedó en el sistema
+
+- Migración `070`: `ot_planos`, `ot_piezas`, las vistas `v_cumplimiento_piezas`,
+  `v_cumplimiento_planos` y `v_cumplimiento_ot`, y el rol **DISEÑO**, que además
+  hereda las partidas de la cotización de trabajo (`cotizaciones.costear`):
+  Administración no crea partidas, lo dijo Gerencia.
+- Pestaña **Cumplimiento** de la orden de trabajo: la hoja tal cual, con los
+  tres bloques y los botones de cada mano.
+- Pestaña **Cronograma**: la misma orden como diagrama de Gantt, con lo
+  programado (el tiempo por área de la cotización), lo real y el semáforo de la
+  sección 13. Sale de `v_cronograma_ot`.
+
+---
+
 ## 14. Fuentes
 
 | Archivo | Qué aportó |
@@ -599,3 +654,5 @@ Casi nada, y ese es el punto: `ot_etapas` ya guarda
 | `6. REQUERIMIENTOS/COSTEOS DE EMPRESAS/SEGUIMIENTO DE COSTEOS.xlsx` | Quién costea, en qué estados y con qué fechas |
 | `4. LOGISTICA 2026/ESTRUCTURA LOGISTICA - 2026.pdf` | Cuándo se costea y cómo se archiva |
 | `5. INGENIERIA/CONTROL DE PLAZOS - MWP - 2026.xlsx` | El control de plazos por área, su semáforo y lo que cada una reporta |
+| `5. INGENIERIA/CUMPLIMIENTO DE AREAS - 2026.xlsx` | El MW-FOR-ING-8: planos, piezas y lo que Maestranza y Producción reportan de cada una |
+| `1. METAL WORK PERU S.A.C/2. ORDENES DE TRABAJO/2025` y `/2026` | Las 129 OT en PDF de las que salen las plantillas por carrocería |

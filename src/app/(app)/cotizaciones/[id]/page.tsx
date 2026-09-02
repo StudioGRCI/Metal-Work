@@ -12,11 +12,6 @@ import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha, fechaHora, moneda, numero, porcentaje } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { obtenerCotizacion, partidasDeCotizacion } from '@/lib/datos/comercial'
-import {
-  accesoriosDeCotizacion,
-  fichaDeCotizacion,
-  plantillasDisponibles,
-} from '@/lib/datos/ficha'
 import { catalogosOrden } from '@/lib/datos/ordenes'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -91,10 +86,6 @@ export default async function PaginaCotizacion({
   const puedeVender =
     ['BORRADOR', 'OBSERVADA'].includes(cotizacion.estado as string) &&
     puede(perfil, 'cotizaciones.editar')
-
-  const puedeCostear =
-    ['EN_COSTEO', 'OBSERVADA'].includes(cotizacion.estado as string) &&
-    puede(perfil, 'cotizaciones.costear')
 
   /*
    * Esta pantalla es la cotización de VENTA y solo eso.

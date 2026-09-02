@@ -91,17 +91,26 @@ export const NAVEGACION: GrupoNavegacion[] = [
       },
     ],
   },
+  // Las partidas pasaron a Diseño: Administración no crea partidas —lo dijo
+  // Gerencia— y quien sabe qué lleva la unidad es quien la dibuja. El grupo se
+  // ve para quien costea, sea de Diseño o de Administración, que conserva el
+  // permiso porque sigue emitiendo la orden.
   {
-    titulo: 'Administrador',
+    titulo: 'Diseño e ingeniería',
     items: [
       {
         titulo: 'Cotización de trabajo',
         ruta: '/cotizaciones/trabajo',
         icono: ClipboardList,
         permiso: 'cotizaciones.costear',
-        descripcion: 'El costo, la ficha técnica y el tiempo por área',
+        descripcion: 'Las partidas, la ficha técnica y el tiempo por área',
         disponible: true,
       },
+    ],
+  },
+  {
+    titulo: 'Administrador',
+    items: [
       // La orden la emite Administración —lo dice su propio flujograma: «Gerencia
       // aprueba → Administración emite la orden de trabajo»— así que vive con lo
       // suyo y no en Operación, donde quedaba suelta entre el tablero y el

@@ -6,6 +6,11 @@ const PESTANAS = [
   { clave: 'resumen', titulo: 'Resumen' },
   { clave: 'ficha', titulo: 'Ficha de taller' },
   { clave: 'etapas', titulo: 'Etapas' },
+  // El Gantt y la hoja de cumplimiento van pegados a las etapas: son las dos
+  // maneras de ver si cada área va a tiempo, primero por fechas y después por
+  // piezas.
+  { clave: 'cronograma', titulo: 'Cronograma' },
+  { clave: 'cumplimiento', titulo: 'Cumplimiento' },
   { clave: 'avance', titulo: 'Avance' },
   { clave: 'horas', titulo: 'Horas' },
   { clave: 'costos', titulo: 'Costos', permiso: 'costos.ver' },

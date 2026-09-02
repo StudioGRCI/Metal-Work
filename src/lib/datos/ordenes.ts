@@ -130,6 +130,26 @@ export async function listarEtapas(ordenId: string) {
   }))
 }
 
+/**
+ * La orden como diagrama de Gantt: por etapa, el área, lo programado, lo real
+ * y el semáforo. El semáforo lo calcula la base con la fórmula de la casa; la
+ * pantalla solo lo pinta.
+ */
+export async function cronogramaDeOrden(ordenId: string) {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('v_cronograma_ot')
+    .select(
+      'etapa_id, orden_id, etapa_codigo, etapa, color, orden_secuencia, area_codigo, area_nombre, estado, avance_porcentaje, fecha_inicio_programada, fecha_fin_programada, fecha_inicio_real, fecha_fin_real, dias, plazo, ultimo_reporte, ultimo_reporte_en',
+    )
+    .eq('orden_id', ordenId)
+    .order('orden_secuencia')
+
+  if (error) throw new Error(`No se pudo cargar el cronograma: ${error.message}`)
+  return data ?? []
+}
+
 export async function listarInspecciones(ordenId: string) {
   const supabase = await createClient()
 

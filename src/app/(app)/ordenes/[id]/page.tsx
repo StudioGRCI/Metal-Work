@@ -11,6 +11,7 @@ import { ESTADO_OT, PRIORIDAD, TIPO_TRABAJO, definir } from '@/lib/dominio/estad
 import { cantidad, fecha, fechaHora, hoyLima, moneda, numero as fmtNumero } from '@/lib/format'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import {
+  cronogramaDeOrden,
   estadoDeSalida,
   fechasClaveDeOrden,
   listarEtapas,
@@ -19,6 +20,7 @@ import {
   obtenerOrden,
 } from '@/lib/datos/ordenes'
 import { costoDeOrden, materialesDeOrden } from '@/lib/datos/costos'
+import { cumplimientoDeOrden } from '@/lib/datos/cumplimiento'
 import {
   accesoriosDeOrden,
   personalDelTaller,
@@ -34,6 +36,8 @@ import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
 
 import { Bitacora } from './bitacora'
 import { Costos } from './costos'
+import { Cronograma } from './cronograma'
+import { Cumplimiento } from './cumplimiento'
 import { DocumentosOrden } from './documentos'
 import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
@@ -50,6 +54,8 @@ const VISTAS = [
   'resumen',
   'ficha',
   'etapas',
+  'cronograma',
+  'cumplimiento',
   'avance',
   'horas',
   'costos',
@@ -112,6 +118,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     repuestos,
     verificaciones,
     personal,
+    cronograma,
+    cumplimiento,
   ] = await Promise.all([
     vista === 'etapas' || vista === 'resumen' ? listarEtapas(id) : Promise.resolve([]),
     vista === 'bitacora' ? timelineDeOrden(id) : Promise.resolve([]),
@@ -124,6 +132,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     verFicha ? repuestosDeOrden(id) : Promise.resolve([]),
     verFicha ? verificacionesDeOrden(id) : Promise.resolve([]),
     verFicha ? personalDelTaller() : Promise.resolve([]),
+    vista === 'cronograma' ? cronogramaDeOrden(id) : Promise.resolve([]),
+    vista === 'cumplimiento' ? cumplimientoDeOrden(id) : Promise.resolve(null),
   ])
 
   const [salida, fechasClave] = await Promise.all([
@@ -362,6 +372,21 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           ordenId={orden.id}
           etapas={etapas}
           puedeRegistrar={puede(perfil, 'produccion.registrar')}
+        />
+      )}
+
+      {vista === 'cronograma' && (
+        <Cronograma filas={cronograma} entregaComprometida={orden.fecha_entrega_comprometida} />
+      )}
+
+      {vista === 'cumplimiento' && (
+        <Cumplimiento
+          ordenId={orden.id}
+          resumen={cumplimiento?.resumen ?? null}
+          planos={cumplimiento?.planos ?? []}
+          puedeDisenar={puede(perfil, 'diseno.planos')}
+          puedeReportar={puede(perfil, 'produccion.registrar')}
+          ordenViva={!['BORRADOR', ...ESTADOS_CERRADOS].includes(orden.estado)}
         />
       )}
 
