@@ -64,6 +64,14 @@ export function TipoDeCambio({
       )
     : 0
 
+  // Cualquier fecha anterior a hoy ya es atraso: el cron de Vercel escribe el
+  // del día a media mañana, así que si el vigente sigue siendo el de ayer es
+  // que no llegó. Y cuando no llega no se queja nadie —la ruta contesta 401 en
+  // silencio si le falta CRON_SECRET—, así que esta pantalla es el único sitio
+  // donde eso se ve. Se compara como texto, que una fecha AAAA-MM-DD ordena
+  // sola y pasarla por Date la corre un día.
+  const atrasado = vigente !== null && vigente.fecha < hoy
+
   return (
     <Tarjeta>
       <TarjetaCabecera
@@ -90,14 +98,18 @@ export function TipoDeCambio({
                 se queda con el de la última vez que alguien se acordó, y sigue
                 costeando con él sin decir nada. Un dólar de hace tres semanas
                 no avisa, solo desvía el presupuesto de a poquito. */}
-            {diasDeAtraso > 3 && (
+            {atrasado && (
               <p
                 role="status"
                 className="rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-xs text-aviso"
               >
-                Este cambio es del {formatearFecha(vigente.fecha)}: {diasDeAtraso} días atrás. Todo
-                lo que se cotice hoy en dólares se está costeando con él.
-                {puedeEditar ? ' Tráelo de SUNAT o cárgalo a mano.' : ''}
+                El cambio de hoy no llegó solo: se está costeando con el del{' '}
+                {formatearFecha(vigente.fecha)}
+                {diasDeAtraso > 1 ? `, de hace ${diasDeAtraso} días` : ''}. Todo lo que se cotice
+                hoy en dólares sale con ese número.
+                {puedeEditar
+                  ? ' Revisa CRON_SECRET en Vercel, o cárgalo acá abajo con el botón.'
+                  : ' Avísale a administración para que lo cargue.'}
               </p>
             )}
           </div>

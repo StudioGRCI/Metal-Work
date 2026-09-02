@@ -6,7 +6,7 @@ import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
 import { exigirSesion, puede } from '@/lib/sesion'
-import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 
 const esquemaParte = z.object({
   fecha: z.string().min(10, 'Indica la fecha del parte'),
@@ -110,9 +110,18 @@ export async function eliminarHoras(_previo: unknown, datos: FormData): Promise<
   if (!id || !parteId) return { ok: false, error: 'Solicitud inválida.' }
 
   const supabase = await createClient()
-  const { error } = await supabase.from('parte_detalle').delete().eq('id', id)
+  // Acotado también por el parte del formulario: el id de la línea llega del
+  // navegador y sin esto podría apuntar a la de otro parte.
+  const { data, error } = await supabase
+    .from('parte_detalle')
+    .delete()
+    .eq('id', id)
+    .eq('parte_id', parteId)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/produccion/${parteId}`)
   return { ok: true, mensaje: 'Registro eliminado.' }
@@ -141,15 +150,48 @@ export async function cambiarEstadoParte(
   }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('partes_diarios')
     .update({ estado, ...(estado === 'APROBADO' ? { aprobado_por: perfil.id } : {}) })
     .eq('id', parte_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/produccion/${parte_id}`)
   revalidatePath('/produccion')
   revalidatePath('/ordenes')
   return { ok: true, mensaje: 'Parte actualizado.' }
+}
+
+/**
+ * Las etapas de una orden, para el desplegable del parte diario.
+ *
+ * Va por acción de servidor y no por consulta desde el navegador: así el error
+ * llega a la pantalla en vez de perderse —antes la lista quedaba vacía sin que
+ * nadie supiera por qué— y esta ruta deja de cargar el cliente de Supabase.
+ */
+export async function etapasParaElParte(
+  ordenId: string,
+): Promise<ResultadoAccion<{ etapa_id: string; etapa: string }[]>> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'produccion.registrar')) {
+    return { ok: false, error: 'No tienes permiso para registrar horas.' }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('ot_tablero_etapas')
+    .select('etapa_id, etapa, orden_secuencia')
+    .eq('orden_id', ordenId)
+    .order('orden_secuencia')
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+
+  return {
+    ok: true,
+    datos: (data ?? []).map((e) => ({ etapa_id: e.etapa_id as string, etapa: e.etapa as string })),
+  }
 }

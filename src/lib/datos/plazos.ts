@@ -57,16 +57,22 @@ export type FilaPlazo = Awaited<ReturnType<typeof plazosPorArea>>[number]
 export async function resumenDePlazos() {
   const supabase = await createClient()
 
+  // Cuenta la base y devuelve una fila por área y semáforo: como mucho unas
+  // decenas. Contarlo trayendo la lista entera se rompía en silencio, porque
+  // con catorce etapas por orden el corte de mil filas de PostgREST llega con
+  // unas setenta órdenes abiertas y a partir de ahí faltan etapas sin aviso.
   const { data, error } = await supabase
-    .from('v_plazos_por_area')
-    .select('area_codigo, area_nombre, plazo')
+    .from('v_plazos_resumen')
+    .select('area_codigo, area_nombre, plazo, cantidad')
 
   if (error) throw new Error(`No se pudo contar el control de plazos: ${error.message}`)
 
   const porArea = new Map<string, { codigo: string; nombre: string; total: number; vencidas: number }>()
   const porPlazo: Record<string, number> = {}
+  let total = 0
 
   for (const fila of data ?? []) {
+    const cantidad = fila.cantidad ?? 0
     const codigo = fila.area_codigo ?? 'SIN'
     const area = porArea.get(codigo) ?? {
       codigo,
@@ -74,17 +80,18 @@ export async function resumenDePlazos() {
       total: 0,
       vencidas: 0,
     }
-    area.total += 1
-    if (fila.plazo === 'VENCIDO') area.vencidas += 1
+    area.total += cantidad
+    if (fila.plazo === 'VENCIDO') area.vencidas += cantidad
     porArea.set(codigo, area)
 
-    if (fila.plazo) porPlazo[fila.plazo] = (porPlazo[fila.plazo] ?? 0) + 1
+    if (fila.plazo) porPlazo[fila.plazo] = (porPlazo[fila.plazo] ?? 0) + cantidad
+    total += cantidad
   }
 
   return {
     areas: [...porArea.values()].sort((a, b) => b.vencidas - a.vencidas || b.total - a.total),
     porPlazo,
-    total: data?.length ?? 0,
+    total,
   }
 }
 

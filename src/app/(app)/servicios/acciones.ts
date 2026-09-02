@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
-import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -102,12 +102,15 @@ export async function cambiarEstadoServicio(
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('servicios_terceros')
     .update({ estado: analisis.data.estado })
     .eq('id', analisis.data.id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/servicios')
   revalidatePath('/costos')
@@ -158,7 +161,7 @@ export async function registrarPago(_previo: unknown, datos: FormData): Promise<
   }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('servicios_terceros')
     .update({
       estado: 'PAGADO',
@@ -166,8 +169,11 @@ export async function registrarPago(_previo: unknown, datos: FormData): Promise<
       fecha_factura: analisis.data.fecha_factura,
     })
     .eq('id', analisis.data.id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/servicios')
   revalidatePath('/costos')

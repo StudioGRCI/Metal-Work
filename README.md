@@ -68,6 +68,7 @@ Las claves están en el panel de Supabase, en **Project Settings → API**:
 | `NEXT_PUBLIC_SUPABASE_URL` | Navegador y servidor |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Navegador y servidor |
 | `SUPABASE_SERVICE_ROLE_KEY` | Solo servidor: alta de usuarios y tareas de administración |
+| `CRON_SECRET` | Solo servidor: la eliges tú y la manda Vercel al llamar `/api/tipo-cambio` (ver `vercel.json`) |
 
 `SUPABASE_SERVICE_ROLE_KEY` ignora RLS. Nunca debe llegar al navegador ni
 subirse al repositorio.
@@ -131,7 +132,9 @@ npx tsc --noEmit     # comprobación de tipos
 ## Despliegue en Vercel
 
 1. Importa el repositorio en Vercel.
-2. Define las tres variables de entorno de Supabase.
+2. Define las tres variables de entorno de Supabase y `CRON_SECRET`, la que Vercel
+   manda al llamar `/api/tipo-cambio`. Sin ella el cron contesta 401 y el tipo de
+   cambio deja de actualizarse solo, sin avisar a nadie.
 3. Añade el dominio de Vercel en **Authentication → URL Configuration** de
    Supabase, tanto en *Site URL* como en *Redirect URLs*.
 

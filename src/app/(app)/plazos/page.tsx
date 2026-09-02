@@ -4,9 +4,10 @@ import { AlertTriangle, CalendarClock, CircleCheck } from 'lucide-react'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Indicador } from '@/components/ui/indicador'
-import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
+import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
+import { ESTADO_PLAZO } from '@/lib/dominio/estados'
 import { fecha, moneda } from '@/lib/format'
 import { plazosPorArea, resumenDePlazos } from '@/lib/datos/plazos'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -15,17 +16,6 @@ import { Reporte } from './reporte'
 
 export const metadata = { title: 'Control de plazos' }
 
-/**
- * Cómo se lee cada semáforo. Los tres primeros son la fórmula de la empresa;
- * los dos de cierre los agregó el sistema porque su hoja no los tenía.
- */
-const SEMAFORO: Record<string, { etiqueta: string; tono: Tono }> = {
-  VENCIDO: { etiqueta: 'Vencido', tono: 'peligro' },
-  POR_VENCER: { etiqueta: 'Por vencer', tono: 'aviso' },
-  VIGENTE: { etiqueta: 'Vigente', tono: 'exito' },
-  CUMPLIDO: { etiqueta: 'Cumplido', tono: 'neutro' },
-  CUMPLIDO_TARDE: { etiqueta: 'Cumplido tarde', tono: 'neutro' },
-}
 
 /**
  * El control de plazos por área.
@@ -167,7 +157,7 @@ export default async function PaginaPlazos({ searchParams }: PageProps<'/plazos'
                 />
               ) : (
                 filas.map((f) => {
-                  const semaforo = f.plazo ? SEMAFORO[f.plazo] : null
+                  const semaforo = f.plazo ? ESTADO_PLAZO[f.plazo] : null
                   const dias = f.dias
                   const cerrada = f.plazo === 'CUMPLIDO' || f.plazo === 'CUMPLIDO_TARDE'
 

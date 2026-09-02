@@ -8,6 +8,7 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { hoyLima } from '@/lib/format'
 
 import { registrarAvance } from './acciones'
 
@@ -43,7 +44,9 @@ export function RegistrarAvance({
   const [etapaId, setEtapaId] = useState('')
   const [resultado, accion, enviando] = useActionState(registrarAvance, null)
 
-  const hoy = new Date().toISOString().slice(0, 10)
+  // La fecha del taller, no la del reloj universal: pasadas las siete de la
+  // noche en Lima el reloj universal ya está en el día siguiente.
+  const hoy = hoyLima()
   const enCurso = etapas.filter((e) => !['TERMINADA', 'OMITIDA'].includes(e.estado))
 
   async function agregar(lista: FileList | null) {

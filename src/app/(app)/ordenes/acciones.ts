@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { documentosFaltantes } from '@/lib/datos/documentos'
 import { exigirSesion, puede } from '@/lib/sesion'
-import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 
 const esquemaNuevaOrden = z.object({
   cliente_id: z.string().uuid('Selecciona un cliente'),
@@ -106,7 +106,7 @@ export async function cambiarEstadoOrden(
   }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('ordenes_trabajo')
     .update({
       estado,
@@ -114,8 +114,11 @@ export async function cambiarEstadoOrden(
       ...(estado === 'ANULADA' ? { motivo_anulacion: motivo } : {}),
     })
     .eq('id', orden_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${orden_id}`)
   revalidatePath('/ordenes')
@@ -144,7 +147,7 @@ export async function actualizarEtapa(_previo: unknown, datos: FormData): Promis
   const v = analisis.data
   const supabase = await createClient()
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('ot_etapas')
     .update({
       avance_porcentaje: v.avance_porcentaje,
@@ -155,8 +158,11 @@ export async function actualizarEtapa(_previo: unknown, datos: FormData): Promis
       ...(v.observaciones !== undefined ? { observaciones: v.observaciones || null } : {}),
     })
     .eq('id', v.etapa_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   return { ok: true, mensaje: 'Avance registrado.' }

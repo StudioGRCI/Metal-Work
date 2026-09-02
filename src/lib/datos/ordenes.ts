@@ -213,35 +213,59 @@ export async function unidadesDeCliente(clienteId: string) {
   return data ?? []
 }
 
-/** Indicadores del tablero principal. */
+/**
+ * Indicadores del tablero principal.
+ *
+ * Los cuenta la base. Antes se traían todas las órdenes y se contaban en el
+ * servidor, y eso tiene fecha de caducidad: PostgREST corta la respuesta en mil
+ * filas sin dar error, así que a partir de mil órdenes el tablero habría
+ * seguido diciendo «de 1000 registradas» para siempre.
+ */
 export async function indicadoresTablero(sedeId?: string | null) {
   const supabase = await createClient()
 
-  let consulta = supabase
-    .from('ot_resumen')
-    .select('id, estado, prioridad, dias_atraso, avance_porcentaje, monto_presupuestado')
-  if (sedeId) consulta = consulta.eq('sede_id', sedeId)
-
-  const { data, error } = await consulta
+  const { data, error } = await supabase
+    .rpc('indicadores_tablero', { p_sede_id: sedeId ?? undefined })
+    .single()
   if (error) throw new Error(`No se pudieron cargar los indicadores: ${error.message}`)
 
-  const filas = data ?? []
-  const abiertas = filas.filter((o) => ESTADOS_ABIERTOS.includes(o.estado as Enums<'estado_ot'>))
-
+  const porEstado = (data.por_estado ?? {}) as Record<string, number>
   return {
-    abiertas: abiertas.length,
-    enProceso: filas.filter((o) => o.estado === 'EN_PROCESO').length,
-    pausadas: filas.filter((o) => o.estado === 'PAUSADA').length,
-    atrasadas: abiertas.filter((o) => (o.dias_atraso ?? 0) > 0).length,
-    urgentes: abiertas.filter((o) => o.prioridad === 'URGENTE').length,
-    porEstado: Object.entries(
-      filas.reduce<Record<string, number>>((acc, o) => {
-        const clave = o.estado ?? 'SIN_ESTADO'
-        acc[clave] = (acc[clave] ?? 0) + 1
-        return acc
-      }, {}),
-    ).map(([estado, cantidad]) => ({ estado, cantidad })),
+    abiertas: data.abiertas ?? 0,
+    enProceso: data.en_proceso ?? 0,
+    pausadas: data.pausadas ?? 0,
+    atrasadas: data.atrasadas ?? 0,
+    urgentes: data.urgentes ?? 0,
+    total: data.total ?? 0,
+    porEstado: Object.entries(porEstado).map(([estado, cantidad]) => ({
+      estado,
+      cantidad: Number(cantidad),
+    })),
   }
+}
+
+/**
+ * Las órdenes abiertas más atrasadas, para la tarjeta «Requieren atención».
+ *
+ * Se ordena por fecha comprometida ascendente, que es lo mismo que por días de
+ * atraso descendente. Antes esta lista salía de las órdenes más RECIENTES, así
+ * que una orden vieja y muy atrasada no aparecía y la tarjeta llegaba a decir
+ * «ninguna orden atrasada» mientras el indicador de arriba contaba varias.
+ */
+export async function ordenesAtrasadas(limite = 6) {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('ot_resumen')
+    .select('id, numero, cliente, placa, unidad_id, codigo_interno, marca, modelo, dias_atraso, fecha_entrega_comprometida')
+    .in('estado', ESTADOS_ABIERTOS)
+    .gt('dias_atraso', 0)
+    .order('fecha_entrega_comprometida', { ascending: true })
+    .order('numero')
+    .limit(limite)
+
+  if (error) throw new Error(`No se pudieron cargar las órdenes atrasadas: ${error.message}`)
+  return data ?? []
 }
 
 /** Las fechas límite que las reglas de plazo de la empresa le imponen a la orden. */

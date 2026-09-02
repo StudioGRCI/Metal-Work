@@ -1,22 +1,12 @@
-import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
+import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { ESTADO_PLAZO } from '@/lib/dominio/estados'
 import { fecha, hoyLima, numero } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { Vistas } from '@/types/database'
 
 export type FilaCronograma = Vistas<'v_cronograma_ot'>
 
-/**
- * Cómo se pinta cada semáforo. Los tres primeros son la fórmula de la casa
- * (`estado_del_plazo`); los dos de cierre los agregó el sistema.
- */
-const SEMAFORO: Record<string, { etiqueta: string; tono: Tono; barra: string }> = {
-  VENCIDO: { etiqueta: 'Vencido', tono: 'peligro', barra: 'bg-peligro' },
-  POR_VENCER: { etiqueta: 'Por vencer', tono: 'aviso', barra: 'bg-aviso' },
-  VIGENTE: { etiqueta: 'Vigente', tono: 'exito', barra: 'bg-acento' },
-  CUMPLIDO: { etiqueta: 'Cumplido', tono: 'neutro', barra: 'bg-exito' },
-  CUMPLIDO_TARDE: { etiqueta: 'Cumplido tarde', tono: 'neutro', barra: 'bg-aviso' },
-}
 
 const DIA = 86_400_000
 
@@ -137,7 +127,7 @@ export function Cronograma({
             </div>
 
             {filas.map((f) => {
-              const semaforo = f.plazo ? SEMAFORO[f.plazo] : null
+              const semaforo = f.plazo ? ESTADO_PLAZO[f.plazo] : null
               const pi = dia(f.fecha_inicio_programada)
               const pf = dia(f.fecha_fin_programada)
               const ri = dia(f.fecha_inicio_real)

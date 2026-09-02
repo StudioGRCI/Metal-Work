@@ -3,18 +3,10 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
-import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
-/**
- * Lo que se responde cuando la escritura no encontró su fila. Pasa cuando la
- * orden ya no está a la vista de quien marca -otra sede, otro estado- o cuando
- * la pantalla quedó vieja. Un UPDATE así no es un error para Postgres: afecta
- * cero filas y calla, y sin esto la casilla se pintaba marcada sin estarlo.
- */
-const NO_TOCO_NADA =
-  'No se pudo marcar: vuelve a cargar la orden y comprueba que sigue siendo tuya.'
 
 function nulo(valor?: string | null) {
   const t = valor?.trim()
@@ -118,7 +110,7 @@ export async function guardarFichaFisica(
   }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('ordenes_trabajo')
     .update({
       largo_m: numero(v.largo_m),
@@ -135,8 +127,11 @@ export async function guardarFichaFisica(
       encargado_produccion_id: nulo(v.encargado_produccion_id),
     })
     .eq('id', v.orden_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   return { ok: true, mensaje: 'Ficha de la unidad actualizada.' }
@@ -258,8 +253,15 @@ export async function quitarAccesorioOT(
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
 
   const supabase = await createClient()
-  const { error } = await supabase.from('ot_accesorios').delete().eq('id', analisis.data.id)
+  const { data, error } = await supabase
+    .from('ot_accesorios')
+    .delete()
+    .eq('id', analisis.data.id)
+    .eq('orden_id', analisis.data.orden_id)
+    .select('id')
+    .maybeSingle()
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${analisis.data.orden_id}`)
   return { ok: true }
@@ -317,8 +319,15 @@ export async function quitarRepuesto(_previo: unknown, datos: FormData): Promise
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
 
   const supabase = await createClient()
-  const { error } = await supabase.from('ot_repuestos').delete().eq('id', analisis.data.id)
+  const { data, error } = await supabase
+    .from('ot_repuestos')
+    .delete()
+    .eq('id', analisis.data.id)
+    .eq('orden_id', analisis.data.orden_id)
+    .select('id')
+    .maybeSingle()
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${analisis.data.orden_id}`)
   return { ok: true }

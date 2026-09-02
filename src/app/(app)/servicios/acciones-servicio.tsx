@@ -12,7 +12,12 @@ import { ConfirmarAccion, Ventana } from '@/components/ui/ventana'
 import type { OrdenDeServicio } from '@/lib/datos/servicios'
 import { ESTADO_SERVICIO, TIPO_SERVICIO } from '@/lib/dominio/servicios'
 import { nombreDeUnidad, todaviaSinPlaca, type UnidadNombrable } from '@/lib/dominio/unidades'
-import { type CodigoMoneda, fecha as formatearFecha, moneda as formatearMoneda } from '@/lib/format'
+import {
+  type CodigoMoneda,
+  fecha as formatearFecha,
+  hoyLima,
+  moneda as formatearMoneda,
+} from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { cambiarEstadoServicio, crearOrdenDeServicio, darConformidad, registrarPago } from './acciones'
@@ -57,7 +62,9 @@ export function NuevaOrdenDeServicio({ catalogos }: { catalogos: Catalogos }) {
 
   // Emitida la orden, la ventana no se cierra sola: queda a la vista el número
   // que le tocó, que es lo que hay que dictarle al proveedor.
-  const hoy = new Date().toISOString().slice(0, 10)
+  // La fecha del taller, no la del reloj universal: pasadas las siete de la
+  // noche en Lima el reloj universal ya está en el día siguiente.
+  const hoy = hoyLima()
 
   return (
     <>
@@ -240,6 +247,9 @@ export function FilaDeServicio({
   const [ventana, setVentana] = useState<'conformidad' | 'pago' | null>(null)
   const [anulando, setAnulando] = useState(false)
   const formularioAnular = useRef<HTMLFormElement>(null)
+  // La fecha del taller, no la del reloj universal: pasadas las siete de la
+  // noche en Lima el reloj universal ya está en el día siguiente.
+  const hoy = hoyLima()
 
   const [movido, accionMover, moviendo] = useActionState(cambiarEstadoServicio, null)
   const [conforme, accionConformar, conformando] = useActionState(darConformidad, null)
@@ -445,7 +455,7 @@ export function FilaDeServicio({
                 name="fecha_factura"
                 type="date"
                 required
-                defaultValue={new Date().toISOString().slice(0, 10)}
+                defaultValue={hoy}
               />
             </Campo>
           </div>

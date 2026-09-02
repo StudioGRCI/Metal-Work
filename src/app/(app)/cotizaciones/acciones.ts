@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import type { Database } from '@/types/database'
 import { exigirSesion, puede } from '@/lib/sesion'
-import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 import { hoyLima } from '@/lib/format'
 
 const esquemaCotizacion = z.object({
@@ -235,9 +235,17 @@ export async function eliminarPartida(_previo: unknown, datos: FormData): Promis
   if (!id || !cotizacionId) return { ok: false, error: 'Solicitud inválida.' }
 
   const supabase = await createClient()
-  const { error } = await supabase.from('cotizacion_partidas').delete().eq('id', id)
+  // Acotado también por la cotización del formulario, que ya viene validada.
+  const { data, error } = await supabase
+    .from('cotizacion_partidas')
+    .delete()
+    .eq('id', id)
+    .eq('cotizacion_id', cotizacionId)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/cotizaciones/${cotizacionId}`)
   return { ok: true, mensaje: 'Partida eliminada.' }

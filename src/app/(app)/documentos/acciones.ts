@@ -142,10 +142,7 @@ export async function agregarVersion(_previo: unknown, datos: FormData): Promise
  * del acceso, que es parte de la trazabilidad documental.
  */
 export async function urlDeDescarga(
-  bucket: string,
-  ruta: string,
-  documentoId?: string,
-  nombreArchivo?: string,
+  documentoId: string,
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'documentos.ver')) {
@@ -153,23 +150,38 @@ export async function urlDeDescarga(
   }
 
   const supabase = await createClient()
+
+  // El depósito y la ruta se leen acá, no llegan del navegador. Antes venían en
+  // la llamada junto al identificador del documento y nada ataba las dos cosas:
+  // se podía firmar un archivo y dejar anotado en la trazabilidad que se
+  // descargó otro. La consulta pasa por la seguridad por fila, así que quien no
+  // puede ver el documento tampoco saca su enlace.
+  const { data: version, error: fallo } = await supabase
+    .from('documento_versiones')
+    .select('bucket, ruta_storage, nombre_archivo')
+    .eq('documento_id', documentoId)
+    .order('version', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (fallo) return { ok: false, error: mensajeDeError(fallo) }
+  if (!version) return { ok: false, error: 'Este documento no tiene ningún archivo cargado.' }
+
   // El almacenamiento vive en otro dominio, y ahí el atributo «download» del
   // enlace no vale: quien manda es la cabecera del servidor. Por eso se pide
   // el enlace ya marcado como descarga, con el nombre real del archivo.
   const { data, error } = await supabase.storage
-    .from(bucket)
-    .createSignedUrl(ruta, 300, nombreArchivo ? { download: nombreArchivo } : { download: true })
+    .from(version.bucket)
+    .createSignedUrl(version.ruta_storage, 300, { download: version.nombre_archivo || true })
 
   if (error || !data) {
     return { ok: false, error: 'No se pudo generar el enlace de descarga.' }
   }
 
-  if (documentoId) {
-    await supabase.rpc('registrar_acceso_documento', {
-      p_documento_id: documentoId,
-      p_tipo_acceso: 'DESCARGA',
-    })
-  }
+  await supabase.rpc('registrar_acceso_documento', {
+    p_documento_id: documentoId,
+    p_tipo_acceso: 'DESCARGA',
+  })
 
   return { ok: true, url: data.signedUrl }
 }

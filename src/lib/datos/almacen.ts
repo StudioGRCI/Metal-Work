@@ -23,19 +23,17 @@ export async function listarStock(filtros: { busqueda?: string; bajoMinimo?: boo
   return data ?? []
 }
 
+/** Cuenta y valoriza el almacén en la base: traer todas las filas para sumarlas
+ * se queda corto en cuanto el catálogo pase de mil materiales. */
 export async function resumenAlmacen() {
   const supabase = await createClient()
 
-  const { data, error } = await supabase
-    .from('v_stock_actual')
-    .select('valorizado, bajo_minimo, cantidad')
-
+  const { data, error } = await supabase.rpc('resumen_almacen').single()
   if (error) throw new Error(`No se pudo cargar el resumen de almacén: ${error.message}`)
 
-  const filas = data ?? []
   return {
-    materiales: filas.length,
-    valorizado: filas.reduce((s, f) => s + Number(f.valorizado ?? 0), 0),
-    bajoMinimo: filas.filter((f) => f.bajo_minimo).length,
+    materiales: data.materiales ?? 0,
+    valorizado: Number(data.valorizado ?? 0),
+    bajoMinimo: data.bajo_minimo ?? 0,
   }
 }

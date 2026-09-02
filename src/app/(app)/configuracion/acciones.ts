@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
-import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 import { fecha as fechaDelDia, hoyLima, numero } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { traerDeSunat } from '@/lib/tipo-cambio/sunat'
@@ -35,12 +35,15 @@ export async function guardarDiasLaborables(_previo: unknown, datos: FormData): 
   const { data: empresa } = await supabase.from('empresa').select('id').limit(1).maybeSingle()
   if (!empresa) return { ok: false, error: 'No se encontró la empresa.' }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('empresa')
     .update({ dias_laborables: dias })
     .eq('id', empresa.id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/configuracion')
   return { ok: true, mensaje: 'Calendario guardado. Los plazos en días hábiles ya lo usan.' }
@@ -116,12 +119,15 @@ export async function alternarFeriadoLaborable(_previo: unknown, datos: FormData
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('feriados')
     .update({ laborable: analisis.data.laborable === 'si' })
     .eq('fecha', analisis.data.fecha)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/configuracion')
   return { ok: true }
@@ -467,12 +473,15 @@ export async function guardarQuienFirma(
   const { data: empresa } = await supabase.from('empresa').select('id').limit(1).maybeSingle()
   if (!empresa) return { ok: false, error: 'No se encontró la ficha de la empresa.' }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('empresa')
     .update({ firma_nombre: nombre || null, firma_cargo: cargo || null })
     .eq('id', empresa.id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/configuracion')
   return {

@@ -49,7 +49,7 @@ export default async function PaginaInformes({ searchParams }: PageProps<'/infor
         descripcion="Las preguntas del mes: si el taller gana o pierde, si entrega cuando promete y en qué se va el material."
       />
 
-      <RangoDeFechas ruta="/informes" desde={desde} hasta={hasta} />
+      <RangoDeFechas ruta="/informes" hoy={defecto.hasta} desde={desde} hasta={hasta} />
 
       {resumen && (
         // Dos columnas ya en el teléfono; en el monitor sigue el mismo salto de

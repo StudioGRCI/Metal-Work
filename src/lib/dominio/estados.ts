@@ -82,6 +82,23 @@ export const ORDEN_ESTADO_ETAPA = [
 ] as const satisfies readonly EstadoEtapa[]
 
 /**
+ * El semáforo del plazo, tal como lo calcula `estado_del_plazo` en la base. Los
+ * tres primeros son la fórmula de la empresa; los dos de cierre los agregó el
+ * sistema porque su hoja no los tenía.
+ *
+ * `barra` es el color de la barra del cronograma; el resto de pantallas solo
+ * usa etiqueta y tono. Estaba copiado en dos sitios y ya habían empezado a
+ * discrepar: un enum tiene un solo mapa, y vive aquí.
+ */
+export const ESTADO_PLAZO: Record<string, Def & { barra: string }> = {
+  VENCIDO: { etiqueta: 'Vencido', tono: 'peligro', barra: 'bg-peligro' },
+  POR_VENCER: { etiqueta: 'Por vencer', tono: 'aviso', barra: 'bg-aviso' },
+  VIGENTE: { etiqueta: 'Vigente', tono: 'exito', barra: 'bg-acento' },
+  CUMPLIDO: { etiqueta: 'Cumplido', tono: 'neutro', barra: 'bg-exito' },
+  CUMPLIDO_TARDE: { etiqueta: 'Cumplido tarde', tono: 'neutro', barra: 'bg-aviso' },
+}
+
+/**
  * Las etiquetas dicen en qué mano está la cotización, no el nombre técnico del
  * estado: quien mira la lista quiere saber a quién le toca mover.
  */

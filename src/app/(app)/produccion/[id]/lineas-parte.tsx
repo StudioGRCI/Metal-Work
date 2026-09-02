@@ -12,9 +12,7 @@ import { ConfirmarAccion } from '@/components/ui/ventana'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import type { UnidadNombrable } from '@/lib/dominio/unidades'
 import { cantidad } from '@/lib/format'
-import { createClient } from '@/lib/supabase/client'
-
-import { agregarHoras, eliminarHoras } from '../acciones'
+import { agregarHoras, eliminarHoras, etapasParaElParte } from '../acciones'
 
 type Linea = {
   id: string
@@ -53,6 +51,7 @@ export function LineasParte({
   const [enviando, setEnviando] = useState(false)
   const [ordenId, setOrdenId] = useState('')
   const [etapas, setEtapas] = useState<{ ordenId: string; lista: { etapa_id: string; etapa: string }[] } | null>(null)
+  const [falloEtapas, setFalloEtapas] = useState<string | null>(null)
   // La línea que se está por quitar, con el detalle ya armado: dentro de la
   // ventana ya no se tiene a mano el operario ni la orden de esa fila.
   const [porQuitar, setPorQuitar] = useState<{ id: string; detalle: string } | null>(null)
@@ -63,16 +62,14 @@ export function LineasParte({
     setOrdenId(id)
     if (!id) return
 
-    const { data } = await createClient()
-      .from('ot_tablero_etapas')
-      .select('etapa_id, etapa, orden_secuencia')
-      .eq('orden_id', id)
-      .order('orden_secuencia')
-
-    setEtapas({
-      ordenId: id,
-      lista: (data ?? []).map((e) => ({ etapa_id: e.etapa_id as string, etapa: e.etapa as string })),
-    })
+    setFalloEtapas(null)
+    const resultado = await etapasParaElParte(id)
+    if (!resultado.ok) {
+      setFalloEtapas(resultado.error)
+      setEtapas({ ordenId: id, lista: [] })
+      return
+    }
+    setEtapas({ ordenId: id, lista: resultado.datos ?? [] })
   }
 
   const etapasVisibles = etapas?.ordenId === ordenId ? etapas.lista : []
@@ -290,9 +287,11 @@ export function LineasParte({
               requerido
               className="sm:col-span-2"
               ayuda={
-                ordenId && etapasVisibles.length === 0
-                  ? 'Esta orden aún no tiene etapas; apruébala primero'
-                  : undefined
+                falloEtapas
+                  ? `No se pudieron cargar las etapas: ${falloEtapas}`
+                  : ordenId && etapasVisibles.length === 0
+                    ? 'Esta orden aún no tiene etapas; apruébala primero'
+                    : undefined
               }
             >
               <Seleccion id="etapa_id" name="etapa_id" required disabled={!ordenId}>

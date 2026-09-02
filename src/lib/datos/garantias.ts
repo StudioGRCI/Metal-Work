@@ -42,9 +42,15 @@ export type ReclamoGarantia = {
 export async function listarGarantias(soloVigentes = false): Promise<GarantiaResumen[]> {
   const supabase = await createClient()
 
+  // Las vigentes arriba y las que vencen primero al frente, ordenado en la
+  // base. Ordenarlo después en memoria era mentira: el corte de 200 filas se
+  // aplica antes, así que pasadas las 200 entregas el listado se llenaba de
+  // vencidas viejas y las vigentes —las únicas sobre las que puede llegar un
+  // reclamo— se quedaban fuera sin aviso.
   let consulta = supabase
     .from('garantias_resumen')
     .select('*')
+    .order('vigente', { ascending: false })
     .order('garantia_vence', { ascending: true })
     .limit(200)
 
@@ -52,10 +58,7 @@ export async function listarGarantias(soloVigentes = false): Promise<GarantiaRes
 
   const { data, error } = await consulta
   if (error) throw new Error(`No se pudieron leer las garantías: ${error.message}`)
-  // Las vigentes arriba, las vencidas al final.
-  return ((data ?? []) as unknown as GarantiaResumen[]).sort(
-    (a, b) => Number(b.vigente) - Number(a.vigente),
-  )
+  return (data ?? []) as unknown as GarantiaResumen[]
 }
 
 /** Los reclamos, los abiertos primero. */

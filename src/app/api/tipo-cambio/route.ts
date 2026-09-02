@@ -21,7 +21,12 @@ export const dynamic = 'force-dynamic'
 
 function autorizado(pedido: Request): boolean {
   const secreto = process.env.CRON_SECRET
-  if (!secreto) return false
+  if (!secreto) {
+    // A quien llama no se le cuenta nada, así que esta línea del registro es la
+    // única señal de que el cron pasa todos los días sin escribir el cambio.
+    console.error('CRON_SECRET no está configurado: el cron del tipo de cambio no puede escribir')
+    return false
+  }
   return pedido.headers.get('authorization') === `Bearer ${secreto}`
 }
 

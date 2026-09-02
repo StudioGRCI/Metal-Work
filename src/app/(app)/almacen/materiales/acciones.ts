@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
-import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -70,15 +70,18 @@ export async function guardarFichaAlmacen(_previo: unknown, datos: FormData): Pr
 
   const v = analisis.data
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('materiales')
     .update({
       criticidad: v.criticidad || null,
       ubicacion: v.ubicacion?.trim() || null,
     })
     .eq('id', v.material_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/almacen/materiales')
   return { ok: true }

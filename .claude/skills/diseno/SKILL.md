@@ -107,16 +107,31 @@ siguiente paso («Da de alta el primero con el botón de arriba»).
 
 ## Comprobación visual
 
-Las interacciones con botones tienen su propio recorrido:
-`node herramientas/banco/probar-cotizacion.mjs` (emitir, descargar, anular).
-Interacción nueva de peso → sumarle sus comprobaciones ahí.
+**En esta máquina el banco local no corre** —no hay Postgres ni `psql`—, así que
+`recorrer.mjs` y `probar-cotizacion.mjs` no son una opción aquí. La comprobación
+que sí funciona es mirar la pantalla **en el despliegue**, después de `git push`
+(Vercel tarda 2–3 min):
 
-Ninguna pantalla se da por lista sin pasar por el banco:
-`node herramientas/banco/recorrer.mjs` la visita con sesión iniciada, junta
-los errores de consola y guarda captura. Pantalla nueva → sumarla a `RUTAS`
-en ese archivo. Interacción nueva → probarla con clic real vía
-`playwright-core` contra `localhost:3111` (patrón en
-`herramientas/presentacion/capturar.mjs`).
+```bash
+MSYS_NO_PATHCONV=1 URL=https://metal-work-sandy.vercel.app USUARIO=studiogrci@gmail.com \
+CLAVE='<la clave de prueba>' CAPTURAS="<carpeta del scratchpad>" \
+"/c/Program Files/nodejs/node.exe" herramientas/recorrido/mirar.mjs /carrocerias carrocerias 'h1' 'tbody tr'
+```
+
+Los selectores que se le pasan **se cuentan y se listan por texto**, y eso es la
+prueba: cuántas filas trajo la tabla y qué dicen. La captura PNG no vale como
+comprobación —no siempre se puede abrir—, así que una pantalla no se da por vista
+sin el conteo y el texto. Sin selectores, `mirar.mjs` solo dice que la página
+cargó, que es casi nada. Pantalla nueva → mirarla con los selectores que la
+delatan si viene vacía (`tbody tr`, el `h1`, el estado vacío).
+
+Donde el banco sí corre (Linux con Postgres local) el recorrido sigue siendo el
+bueno: `node herramientas/banco/recorrer.mjs` visita cada pantalla con sesión
+iniciada, junta los errores de consola y guarda captura —pantalla nueva →
+sumarla a `RUTAS`—, y `node herramientas/banco/probar-cotizacion.mjs` cubre las
+interacciones con botones (emitir, descargar, anular); interacción nueva de peso
+→ sumarle sus comprobaciones ahí, con clic real vía `playwright-core` contra
+`localhost:3111` (patrón en `herramientas/presentacion/capturar.mjs`).
 
 ## Trampas
 

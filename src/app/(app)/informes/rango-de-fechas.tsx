@@ -7,13 +7,23 @@ import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Entrada } from '@/components/ui/campos'
 import { cn } from '@/lib/utils'
 
-/** El período del informe, con los atajos que se usan de verdad. */
+/**
+ * El período del informe, con los atajos que se usan de verdad.
+ *
+ * `hoy` llega resuelto desde el servidor (`hoyLima()`) y toda la aritmética va
+ * en UTC sobre ese texto. Calcularlo aquí con `new Date()` daba un día distinto
+ * en el servidor (UTC) y en el navegador (Lima) a partir de las siete de la
+ * tarde: React marcaba error de hidratación cada tarde y los atajos del cierre
+ * de mes salían corridos.
+ */
 export function RangoDeFechas({
   ruta,
+  hoy,
   desde,
   hasta,
 }: {
   ruta: string
+  hoy: string
   desde: string
   hasta: string
 }) {
@@ -28,30 +38,31 @@ export function RangoDeFechas({
     iniciarTransicion(() => router.push(`${ruta}?${query}`))
   }
 
-  const hoy = new Date()
-  const texto = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  // Date.UTC absorbe el mes 0 y el día 0 o negativo: «día 0 del mes que viene»
+  // es el último de este, y restar 90 días retrocede de mes solo.
+  const [anio, mes, dia] = hoy.split('-').map(Number)
+  const texto = (t: number) => new Date(t).toISOString().slice(0, 10)
 
   const atajos = [
     {
       titulo: 'Este mes',
-      desde: texto(new Date(hoy.getFullYear(), hoy.getMonth(), 1)),
-      hasta: texto(hoy),
+      desde: texto(Date.UTC(anio, mes - 1, 1)),
+      hasta: hoy,
     },
     {
       titulo: 'Mes pasado',
-      desde: texto(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)),
-      hasta: texto(new Date(hoy.getFullYear(), hoy.getMonth(), 0)),
+      desde: texto(Date.UTC(anio, mes - 2, 1)),
+      hasta: texto(Date.UTC(anio, mes - 1, 0)),
     },
     {
       titulo: 'Últimos 90 días',
-      desde: texto(new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 90)),
-      hasta: texto(hoy),
+      desde: texto(Date.UTC(anio, mes - 1, dia - 90)),
+      hasta: hoy,
     },
     {
       titulo: 'Este año',
-      desde: `${hoy.getFullYear()}-01-01`,
-      hasta: texto(hoy),
+      desde: `${anio}-01-01`,
+      hasta: hoy,
     },
   ]
 

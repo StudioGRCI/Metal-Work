@@ -6,7 +6,7 @@ import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
 import { exigirSesion, puede } from '@/lib/sesion'
-import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 
 const esquemaMovimiento = z.object({
   tipo: z.enum(['INGRESO', 'SALIDA_OT', 'DEVOLUCION_OT', 'TRANSFERENCIA', 'AJUSTE', 'SALIDA_MERMA']),
@@ -132,9 +132,18 @@ export async function eliminarLineaMovimiento(
   if (!id || !movimientoId) return { ok: false, error: 'Solicitud inválida.' }
 
   const supabase = await createClient()
-  const { error } = await supabase.from('movimiento_detalle').delete().eq('id', id)
+  // Acotado también por el movimiento del formulario: el id de la línea llega
+  // del navegador y sin esto podría apuntar a la de otro documento.
+  const { data, error } = await supabase
+    .from('movimiento_detalle')
+    .delete()
+    .eq('id', id)
+    .eq('movimiento_id', movimientoId)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/almacen/movimientos/${movimientoId}`)
   return { ok: true, mensaje: 'Línea eliminada.' }
@@ -330,12 +339,15 @@ export async function rechazarRequerimiento(
   if (!motivo) return { ok: false, error: 'Indica el motivo del rechazo.' }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('requerimientos')
     .update({ estado: 'RECHAZADO', motivo_rechazo: motivo, aprobador_id: perfil.id })
     .eq('id', id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/almacen/requerimientos/${id}`)
   return { ok: true, mensaje: 'Requerimiento rechazado.' }

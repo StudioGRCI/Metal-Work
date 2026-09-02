@@ -62,12 +62,8 @@ export function ListaDocumentos({
 
     setError(null)
     setDescargando(documentoId)
-    const resultado = await urlDeDescarga(
-      version.bucket,
-      version.ruta_storage,
-      documentoId,
-      version.nombre_archivo,
-    )
+    // Solo viaja el documento: el archivo lo resuelve el servidor.
+    const resultado = await urlDeDescarga(documentoId)
     setDescargando(null)
 
     if (!resultado.ok) {

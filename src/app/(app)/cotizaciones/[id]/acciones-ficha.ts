@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
-import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -58,8 +58,13 @@ export async function guardarComoPlantilla(
   _previo: unknown,
   datos: FormData,
 ): Promise<ResultadoAccion> {
-  const problema = await exigirEdicion()
-  if (problema) return { ok: false, error: problema }
+  // Aquí sí es solo `costear`, que es lo que exige la función de la base: si la
+  // acción dejara pasar a quien solo puede editar, el botón fallaría siempre
+  // para ese rol. El permiso de la acción y el de la base son el mismo.
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'cotizaciones.costear')) {
+    return { ok: false, error: 'La ficha la guarda como plantilla quien la costea.' }
+  }
 
   const analisis = z
     .object({
@@ -141,7 +146,7 @@ export async function guardarCabeceraTecnica(
   }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('cotizaciones')
     .update({
       modelo: nulo(v.modelo),
@@ -160,8 +165,11 @@ export async function guardarCabeceraTecnica(
       nota: nulo(v.nota),
     })
     .eq('id', v.cotizacion_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/cotizaciones/${v.cotizacion_id}`)
   return { ok: true, mensaje: 'Ficha actualizada.' }
@@ -299,9 +307,16 @@ export async function quitarAccesorio(_previo: unknown, datos: FormData): Promis
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
 
   const supabase = await createClient()
-  const { error } = await supabase.from('cotizacion_accesorios').delete().eq('id', analisis.data.id)
+  const { data, error } = await supabase
+    .from('cotizacion_accesorios')
+    .delete()
+    .eq('id', analisis.data.id)
+    .eq('cotizacion_id', analisis.data.cotizacion_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/cotizaciones/${analisis.data.cotizacion_id}`)
   return { ok: true }

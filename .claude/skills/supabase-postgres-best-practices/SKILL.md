@@ -12,6 +12,14 @@ metadata:
 
 # Supabase Postgres Best Practices
 
+> **Metal Work — leer esto primero.** Esta skill es una referencia genérica de
+> Supabase, vendorizada tal cual: no conoce este proyecto. Cuando discrepe,
+> mandan `datos` (sección «Lo que ya se midió»), `esquema` y `seguridad`. En
+> concreto: **no se crean índices de clave foránea porque lo diga esta skill ni
+> el tablero** —hay que cumplir (a), (b) o (c) de `datos`—, y **no se envuelven
+> `tiene_permiso` ni `es_admin` en `(select …)`**: con argumento constante
+> Postgres ya las iza solo, está medido, y envolverlas no cambia el plan.
+
 Comprehensive performance optimization guide for Postgres, maintained by Supabase. Contains rules across 8 categories, prioritized by impact to guide automated query optimization and schema design.
 
 ## When to Apply

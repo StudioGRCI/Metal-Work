@@ -6,6 +6,7 @@ import { Boton } from '@/components/ui/boton'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { hoyLima } from '@/lib/format'
 
 import { crearParte } from '../acciones'
 
@@ -17,7 +18,9 @@ export function FormularioParte({
   sedePorDefecto: string | null
 }) {
   const [resultado, ejecutar, pendiente] = useActionState(crearParte, null)
-  const hoy = new Date().toISOString().slice(0, 10)
+  // La fecha del taller, no la del reloj universal: pasadas las siete de la
+  // noche en Lima el reloj universal ya está en el día siguiente.
+  const hoy = hoyLima()
 
   return (
     <form action={ejecutar} className="max-w-xl space-y-4">

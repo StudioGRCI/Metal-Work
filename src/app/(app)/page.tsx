@@ -22,7 +22,7 @@ import { ESTADO_OT, ORDEN_ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha, moneda } from '@/lib/format'
 import { resumenComercial, type ResumenComercial } from '@/lib/datos/comercial'
-import { indicadoresTablero, listarOrdenes } from '@/lib/datos/ordenes'
+import { indicadoresTablero, listarOrdenes, ordenesAtrasadas } from '@/lib/datos/ordenes'
 import { exigirSesion, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Tablero' }
@@ -58,16 +58,18 @@ export default async function PaginaTablero() {
     )
   }
 
-  const [indicadores, { ordenes }] = await Promise.all([
+  // Las atrasadas se piden aparte y ordenadas por fecha comprometida: sacarlas
+  // de la primera página de abiertas dejaba fuera una orden vieja y muy
+  // atrasada, y la tarjeta llegaba a decir «ninguna» con el indicador en tres.
+  const [indicadores, { ordenes }, atrasadas] = await Promise.all([
     indicadoresTablero(),
     listarOrdenes({ estado: 'ABIERTAS', pagina: 1 }),
+    ordenesAtrasadas(),
   ])
-
-  const atrasadas = ordenes.filter((o) => (o.dias_atraso ?? 0) > 0)
   const puedeCrear = puede(perfil, 'ordenes.crear')
   // Para el pie de «Órdenes abiertas»: un número suelto no dice si son muchas
   // o pocas hasta que se ve contra el total registrado.
-  const totalOrdenes = indicadores.porEstado.reduce((suma, e) => suma + e.cantidad, 0)
+  const totalOrdenes = indicadores.total
 
   return (
     <>

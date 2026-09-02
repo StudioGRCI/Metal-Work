@@ -20,6 +20,7 @@ aquí. Cargarla **antes** de escribir sale más barato que descubrirlo después.
 | RLS, permisos, funciones SQL, acciones de servidor, revisar un diff | `seguridad` |
 | Pantallas, componentes, formularios | `diseno` |
 | Consultar o diagnosticar la base viva | `datos` |
+| Índices, rendimiento, avisos de `get_advisors`, políticas | `datos` |
 | El usuario te corrigió | `aprender` |
 
 ## Mapa
@@ -34,6 +35,7 @@ src/types/database.ts         generado por ./scripts/generar-tipos.sh
 supabase/migrations/          idempotentes, 202601010000NN_nombre.sql
 db/test/checks/               checks en begin/rollback
 docs/ANALISIS-ONEDRIVE.md     fuente de verdad de formatos, numeración y códigos reales
+docs/PERMISOS.md              qué permiso tiene cada rol, sacado de la base
 herramientas/banco/           PostgREST propio para probar pantallas sin Supabase
 ```
 
@@ -69,10 +71,20 @@ esté en el PATH y da los tres pasos en el orden correcto:
 ./scripts/verificar.sh    # tipos de Next, TypeScript, ESLint
 ```
 
-Eso no ve la pantalla ni la base. El recorrido completo —banco local, checks del
-esquema, clic real— está en la skill `esquema`; qué se puede correr en *esta*
-máquina y qué no, en la memoria del proyecto. Consultarla antes de dar una
-comprobación por imposible.
+Eso no ve la pantalla ni la base. **Terminado aquí son cinco cosas:**
+
+1. `./scripts/verificar.sh` en verde.
+2. La base probada en SQL, en una transacción que termina en `raise exception`,
+   **con el rol real y `set local role authenticated`** — nunca como ADMIN, que
+   entra por `es_admin()` y no toca el permiso. La receta, en la skill `datos`.
+3. `get_advisors`, si se tocó el esquema.
+4. La pantalla vista en el despliegue con `herramientas/recorrido/mirar.mjs`
+   (aquí el banco local no corre; el mando exacto, en la skill `diseno`).
+5. Dicho en voz alta qué de eso **no** se pudo comprobar, y por qué.
+
+**Los bloques largos se escriben con `Write`, no con heredoc de bash.** Un
+`cat <<'EOF'` de doscientas líneas con `$$` y comillas muere con «unexpected EOF»
+y deja el archivo sin escribir, sin que nada avise. El heredoc, para tres líneas.
 
 ## Documentación de Next.js 16, sin salir del disco
 

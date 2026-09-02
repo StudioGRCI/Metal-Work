@@ -26,6 +26,13 @@ banco local, y la interacción con clic real.
   mensajes de `raise exception` los lee el usuario final — se redactan como
   para él («La OT 2921-2026 no se puede programar sin fecha…»).
 - Seguridad de cada objeto nuevo: ver la skill `seguridad`. No es opcional.
+- **Un índice de clave foránea solo se crea si la migración dice cuál de las
+  tres cumple**: (a) no existe ya un índice cuya primera columna coincida, (b) la
+  aplicación filtra de verdad por esa columna, (c) el padre se borra en algún
+  flujo. Ninguna de las tres → no se crea, aunque `get_advisors` lo pida: solo
+  añade coste de escritura y otro aviso de «índice sin usar». Está medido en la
+  skill `datos`, «Lo que ya se midió»; saltárselo costó 28 índices y una
+  migración para retirarlos.
 
 ## Checks (`db/test/checks/`)
 

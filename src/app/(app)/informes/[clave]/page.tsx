@@ -62,7 +62,7 @@ export default async function PaginaInforme({
         }
       />
 
-      <RangoDeFechas ruta={`/informes/${clave}`} desde={desde} hasta={hasta} />
+      <RangoDeFechas ruta={`/informes/${clave}`} hoy={defecto.hasta} desde={desde} hasta={hasta} />
 
       <Tarjeta className="mt-4 overflow-hidden">
         <Tabla>

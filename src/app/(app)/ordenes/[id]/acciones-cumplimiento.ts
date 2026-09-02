@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
-import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -22,8 +22,6 @@ import { createClient } from '@/lib/supabase/server'
  * sin haber guardado: por eso cada escritura vuelve con `.select('id')` y se
  * comprueba que tocó su fila.
  */
-const NO_TOCO_NADA = 'No se pudo guardar: vuelve a cargar la orden y comprueba que sigue a la vista.'
-
 /**
  * Las reglas de la hoja que la base defiende con `check`. Postgres las nombra
  * por su constraint y `mensajeDeError` las traduce como «no cumple la regla

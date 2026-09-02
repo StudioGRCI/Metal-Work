@@ -17,7 +17,18 @@ import { createClient } from '@/lib/supabase/client'
  * barra y no con dos —`//otro-sitio` es una dirección externa disfrazada.
  */
 function destinoSeguro(ruta: string): string {
-  return ruta.startsWith('/') && !ruta.startsWith('//') ? ruta : '/'
+  // Se resuelve contra un origen que no existe y se exige que el resultado siga
+  // en él. Mirar solo que empiece por una barra y no por dos no bastaba:
+  // `/\otro-sitio` pasaba el filtro y el navegador lo lee como `//otro-sitio`,
+  // es decir, sale de la casa.
+  try {
+    const casa = 'https://metal-work.invalid'
+    const destino = new URL(ruta, casa)
+    if (destino.origin !== casa) return '/'
+    return `${destino.pathname}${destino.search}${destino.hash}`
+  } catch {
+    return '/'
+  }
 }
 
 export function FormularioIngreso({ redirigir }: { redirigir: string }) {

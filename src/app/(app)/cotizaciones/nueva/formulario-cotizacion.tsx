@@ -14,6 +14,7 @@ import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
 
 import { NuevoCliente } from '@/components/comercial/nuevo-cliente'
 import { NuevoContacto, type ContactoElegible } from '@/components/comercial/nuevo-contacto'
+import { hoyLima } from '@/lib/format'
 
 import { crearCotizacion } from '../acciones'
 
@@ -131,7 +132,9 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
     setCarroceriasNuevas((lista) => (lista.some((x) => x.id === t.id) ? lista : [t, ...lista]))
     setCarroceriaId(t.id)
   }
-  const hoy = new Date().toISOString().slice(0, 10)
+  // La fecha del taller, no la del reloj universal: pasadas las siete de la
+  // noche en Lima el reloj universal ya está en el día siguiente.
+  const hoy = hoyLima()
 
   return (
     <form action={ejecutar} className="max-w-3xl space-y-4">

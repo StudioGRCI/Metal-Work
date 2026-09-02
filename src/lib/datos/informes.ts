@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { INFORMES, type Informe, informePorClave } from '@/lib/dominio/informes'
+import { hoyLima } from '@/lib/format'
 import { type PerfilSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -53,17 +54,14 @@ export async function resumenDelPeriodo(desde: string, hasta: string) {
 /**
  * El período por defecto: el mes que corre. Se devuelve en AAAA-MM-DD, que es
  * lo que entiende tanto la base como el campo de fecha del navegador.
+ *
+ * El día sale de `hoyLima()` y no de `new Date()`: el servidor corre en UTC, y
+ * con la hora local Gerencia abría los informes al cierre del último día del
+ * mes y le salía el resumen del mes siguiente, vacío.
  */
 export function periodoPorDefecto() {
-  const hoy = new Date()
-  const primero = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
-  return { desde: aTexto(primero), hasta: aTexto(hoy) }
-}
-
-function aTexto(d: Date) {
-  const mes = String(d.getMonth() + 1).padStart(2, '0')
-  const dia = String(d.getDate()).padStart(2, '0')
-  return `${d.getFullYear()}-${mes}-${dia}`
+  const hoy = hoyLima()
+  return { desde: `${hoy.slice(0, 8)}01`, hasta: hoy }
 }
 
 /** Acepta una fecha de la URL solo si tiene forma de fecha. */
