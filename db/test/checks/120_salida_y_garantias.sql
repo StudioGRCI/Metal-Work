@@ -50,12 +50,12 @@ begin
   update public.ordenes_trabajo set estado = 'EN_PROCESO' where id = v_id;
   update public.ordenes_trabajo set estado = 'TERMINADA'  where id = v_id;
 
-  -- Documentos obligatorios cargados y firmados (incluido el check list de
-  -- salida nuevo, que el catálogo ya declara obligatorio).
+  -- Documentos obligatorios cargados (incluido el check list de salida nuevo,
+  -- que el catálogo ya declara obligatorio).
   perform test.afirmar(
     exists (select 1 from public.tipos_documento
-             where codigo = 'CHECKLIST_SALIDA' and obligatorio_para_cierre and requiere_aprobacion),
-    'el check list de salida es obligatorio y con firma');
+             where codigo = 'CHECKLIST_SALIDA' and obligatorio_para_cierre),
+    'el check list de salida es obligatorio para cerrar');
 
   insert into public.documentos (tipo_documento_id, titulo, entidad_tabla, entidad_id, orden_id)
   select td.id, td.nombre, 'ordenes_trabajo', v_id, v_id
@@ -65,13 +65,6 @@ begin
     (documento_id, ruta_storage, nombre_archivo, extension, tamano_bytes)
   select d.id, 'ot/' || v_id || '/' || d.id || '.pdf', 'documento.pdf', 'pdf', 120000
     from public.documentos d where d.orden_id = v_id;
-
-  insert into public.aprobaciones (documento_id, aprobador_id, orden_firma, estado, fecha)
-  select d.id, u.id, 1, 'APROBADO', now()
-    from public.documentos d
-    cross join lateral (select id from public.usuarios limit 1) u
-    join public.tipos_documento t on t.id = d.tipo_documento_id
-   where d.orden_id = v_id and t.requiere_aprobacion;
 end $$;
 
 -- Con papeles completos pero sin liberación, la entrega no entra.

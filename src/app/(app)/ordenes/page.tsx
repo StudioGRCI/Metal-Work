@@ -28,7 +28,10 @@ function texto(valor: unknown) {
 }
 
 export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordenes'>) {
-  const perfil = await exigirPermiso('ordenes.ver')
+  // `ordenes.listar` y no `ordenes.ver`: el segundo es la llave de lectura que
+  // ventas necesita para sus garantías y sus documentos; entrar al módulo es
+  // otra cosa, y ahí ventas no pinta nada.
+  const perfil = await exigirPermiso('ordenes.listar')
   const params = await searchParams
 
   const filtros = {

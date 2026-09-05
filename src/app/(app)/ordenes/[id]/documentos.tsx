@@ -4,20 +4,15 @@ import { ListaDocumentos } from '@/components/documentos/lista-documentos'
 import { SubirDocumento, type TipoDocumento } from '@/components/documentos/subir-documento'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { listarDocumentos, documentosFaltantes, ultimasVersiones } from '@/lib/datos/documentos'
-import { firmasDeDocumentos, posiblesFirmantes } from '@/lib/datos/firmas'
 
 export async function DocumentosOrden({
   ordenId,
   tipos,
   puedeSubir,
-  usuarioId,
-  puedePedirFirmas,
 }: {
   ordenId: string
   tipos: TipoDocumento[]
   puedeSubir: boolean
-  usuarioId: string
-  puedePedirFirmas: boolean
 }) {
   const [documentos, faltantes] = await Promise.all([
     listarDocumentos({ ordenId }),
@@ -26,11 +21,7 @@ export async function DocumentosOrden({
 
   // La versión vigente de cada documento, para el botón de descarga: en una
   // sola consulta, no una por documento.
-  const [versionesPorDocumento, firmas, firmantes] = await Promise.all([
-    ultimasVersiones(documentos.map((d) => d.id)),
-    firmasDeDocumentos(documentos.map((d) => d.id)),
-    puedePedirFirmas ? posiblesFirmantes() : Promise.resolve([]),
-  ])
+  const versionesPorDocumento = await ultimasVersiones(documentos.map((d) => d.id))
 
   const pendientes = faltantes as unknown as { codigo: string; nombre: string }[]
 
@@ -66,10 +57,6 @@ export async function DocumentosOrden({
             documentos={documentos}
             versionesPorDocumento={versionesPorDocumento}
             vacio="Esta orden todavía no tiene documentos adjuntos."
-            firmas={firmas}
-            firmantes={firmantes}
-            usuarioId={usuarioId}
-            puedePedirFirmas={puedePedirFirmas}
           />
         </TarjetaCuerpo>
       </Tarjeta>

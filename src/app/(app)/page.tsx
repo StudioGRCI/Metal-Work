@@ -33,7 +33,7 @@ export default async function PaginaTablero() {
   const veVentas = puede(perfil, 'cotizaciones.ver')
   const comercial = veVentas ? await resumenComercial(perfil) : null
 
-  if (!puede(perfil, 'ordenes.ver')) {
+  if (!puede(perfil, 'ordenes.listar')) {
     // Quien vende no tiene por qué ver órdenes de trabajo, pero sí lo suyo.
     if (comercial) {
       return (

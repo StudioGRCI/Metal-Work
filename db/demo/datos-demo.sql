@@ -30,7 +30,6 @@ declare
   v_calidad       uuid;
   v_jefe          uuid;
   v_documento     uuid;
-  v_gerente       uuid;
   v_plantilla     uuid;
 begin
   select id into v_sede from public.sedes where activo order by creado_en limit 1;
@@ -312,15 +311,6 @@ begin
            lower(replace(d.titulo, ' ', '-')) || '.pdf',
            'pdf', 186000, v_usuario
       from public.documentos d where d.orden_id = v_orden;
-
-    -- Los tipos que exigen firma no cuentan con solo estar cargados: mientras no
-    -- estén aprobados, la orden no se entrega. Es la misma regla que en planta,
-    -- donde el plano sin visar no libera la unidad.
-    insert into public.aprobaciones (documento_id, aprobador_id, orden_firma, estado, fecha)
-    select d.id, v_usuario, 1, 'APROBADO', now() - interval '5 days'
-      from public.documentos d
-      join public.tipos_documento t on t.id = d.tipo_documento_id
-     where d.orden_id = v_orden and t.requiere_aprobacion;
 
     -- Y un par de fotos del avance, que es lo que el taller sube a diario.
     insert into public.documentos (tipo_documento_id, titulo, entidad_tabla, entidad_id, orden_id, fecha_documento)
@@ -658,16 +648,12 @@ begin
     perform set_config('request.jwt.claim.sub', '', true);
   end if;
 
-  -- ------------------------------------------------------- circuito de firma
-  -- Un plano subido y esperando la cadena de firmas: primero calidad, después
-  -- gerencia. Es lo que llena la bandeja de firmas de cada quien.
+  -- --------------------------------------------------------------- el plano
+  -- El plano de la tolva, subido y con su archivo: es lo que la pantalla de
+  -- documentos de la orden tiene que mostrar.
   if not exists (
     select 1 from public.documentos where titulo like 'Plano de fabricación tolva 18 m3%'
   ) then
-    select id into v_gerente from public.usuarios
-     where cargo ilike '%gerente%' or cargo ilike '%gerencia%' limit 1;
-    v_gerente := coalesce(v_gerente, v_usuario);
-
     select o.id into v_orden
       from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
      where u.placa = 'V2G-841';
@@ -684,10 +670,6 @@ begin
         (documento_id, ruta_storage, nombre_archivo, extension, tamano_bytes, mime_type, subido_por)
       values (v_documento, 'ot/plano-tolva-18m3-revB.pdf', 'plano-tolva-18m3-revB.pdf',
               'pdf', 486400, 'application/pdf', v_usuario);
-
-      insert into public.aprobaciones (documento_id, aprobador_id, orden_firma, solicitado_por)
-      values (v_documento, coalesce(v_calidad, v_usuario), 1, v_usuario),
-             (v_documento, v_gerente, 2, v_usuario);
     end if;
   end if;
 

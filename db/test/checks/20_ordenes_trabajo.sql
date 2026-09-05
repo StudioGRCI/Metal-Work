@@ -291,22 +291,7 @@ begin
     (select version_actual from public.documentos where orden_id = v_id limit 1) = 1,
     'la primera versión del documento se numera sola');
 
-  -- Un documento obligatorio que exige firmas no cuenta con solo estar cargado:
-  -- mientras no tenga todas sus aprobaciones, la orden no se entrega.
-  perform test.debe_fallar(
-    format($sql$insert into public.ot_entregas (orden_id, recibe_nombre, recibe_documento, garantia_meses)
-                values (%L, 'Carlos Huamán', '45678912', 12)$sql$, v_id),
-    'no se entrega con el documento obligatorio cargado pero sin firmar');
-
-  -- Se firma lo que exige firma.
-  insert into public.aprobaciones (documento_id, aprobador_id, orden_firma, estado, fecha)
-  select d.id, u.id, 1, 'APROBADO', now()
-    from public.documentos d
-    cross join lateral (select id from public.usuarios limit 1) u
-    join public.tipos_documento t on t.id = d.tipo_documento_id
-   where d.orden_id = v_id and t.requiere_aprobacion;
-
-  -- Sin la liberación de tesorería el acta tampoco entra: la regla del
+  -- Sin la liberación de tesorería el acta no entra: la regla del
   -- flujograma —la unidad no sale si el cliente tiene deuda— la impone la base.
   perform test.debe_fallar(
     format($sql$insert into public.ot_entregas (orden_id, recibe_nombre, recibe_documento, garantia_meses)

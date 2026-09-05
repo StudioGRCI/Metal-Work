@@ -101,25 +101,13 @@ begin
     exists (select 1 from public.documentos_obligatorios_faltantes(v_ot)
              where codigo = 'ACTA_CONF'),
     'el acta de conformidad figura como documento obligatorio pendiente');
-  -- Adjuntar no alcanza cuando el tipo exige firmas: mientras el plano no esté
-  -- aprobado sigue contando como pendiente. Es lo que impide entregar una
-  -- carrocería con el plano sin visar.
-  perform test.afirmar(
-    exists (select 1 from public.documentos_obligatorios_faltantes(v_ot)
-             where codigo = 'PLANO'),
-    'el plano adjunto pero sin firmar sigue figurando como pendiente');
 
-  insert into public.aprobaciones (documento_id, aprobador_id, orden_firma, estado, fecha)
-  select d.id, u.id, 1, 'APROBADO', now()
-    from public.documentos d
-    cross join lateral (select id from public.usuarios limit 1) u
-    join public.tipos_documento t on t.id = d.tipo_documento_id
-   where d.orden_id = v_ot and t.codigo = 'PLANO';
-
+  -- Desde que no hay circuito de firmas, un obligatorio se cumple con estar
+  -- adjunto y vigente: el plano cargado deja de figurar como pendiente.
   perform test.afirmar(
     not exists (select 1 from public.documentos_obligatorios_faltantes(v_ot)
                  where codigo = 'PLANO'),
-    'firmado, el plano deja de figurar como pendiente');
+    'el plano adjunto deja de figurar como pendiente');
 end $$;
 
 -- --- un documento anulado deja de contar --------------------------------------

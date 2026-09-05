@@ -7,7 +7,7 @@ export async function listarDocumentos(filtros: { ordenId?: string; tipo?: strin
 
   let consulta = supabase
     .from('documentos')
-    .select('id, titulo, descripcion, numero_externo, fecha_documento, estado, estado_aprobacion, version_actual, etiquetas, entidad_tabla, entidad_id, creado_en, tipo:tipos_documento!inner(codigo, nombre, categoria, bucket), orden:ordenes_trabajo(id, numero), creador:usuarios(nombres, apellidos)')
+    .select('id, titulo, descripcion, numero_externo, fecha_documento, estado, version_actual, etiquetas, entidad_tabla, entidad_id, creado_en, tipo:tipos_documento!inner(codigo, nombre, categoria, bucket), orden:ordenes_trabajo(id, numero), creador:usuarios(nombres, apellidos)')
     .eq('estado', 'VIGENTE')
 
   if (filtros.ordenId) consulta = consulta.eq('orden_id', filtros.ordenId)
@@ -108,7 +108,7 @@ export async function tiposDocumento() {
 
   const { data } = await supabase
     .from('tipos_documento')
-    .select('id, codigo, nombre, categoria, bucket, extensiones_permitidas, tamano_maximo_mb, requiere_aprobacion, obligatorio_para_cierre')
+    .select('id, codigo, nombre, categoria, bucket, extensiones_permitidas, tamano_maximo_mb, obligatorio_para_cierre')
     .eq('activo', true)
     .order('orden_visualizacion')
 

@@ -121,73 +121,6 @@ export type Database = {
           }
         ]
       }
-      aprobaciones: {
-        Row: {
-          id: string
-          documento_id: string
-          aprobador_id: string
-          orden_firma: number
-          estado: Database["public"]["Enums"]["estado_aprobacion"]
-          comentario: string | null
-          fecha: string | null
-          version_aprobada: number | null
-          solicitado_por: string | null
-          solicitado_en: string
-          creado_en: string
-          actualizado_en: string
-        }
-        Insert: {
-          id?: string
-          documento_id: string
-          aprobador_id: string
-          orden_firma?: number
-          estado?: Database["public"]["Enums"]["estado_aprobacion"]
-          comentario?: string | null
-          fecha?: string | null
-          version_aprobada?: number | null
-          solicitado_por?: string | null
-          solicitado_en?: string
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Update: {
-          id?: string
-          documento_id?: string
-          aprobador_id?: string
-          orden_firma?: number
-          estado?: Database["public"]["Enums"]["estado_aprobacion"]
-          comentario?: string | null
-          fecha?: string | null
-          version_aprobada?: number | null
-          solicitado_por?: string | null
-          solicitado_en?: string
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "aprobaciones_aprobador_id_fkey"
-            columns: ["aprobador_id"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "aprobaciones_documento_id_fkey"
-            columns: ["documento_id"]
-            isOneToOne: false
-            referencedRelation: "documentos"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "aprobaciones_solicitado_por_fkey"
-            columns: ["solicitado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
       areas: {
         Row: {
           id: string
@@ -1308,8 +1241,6 @@ export type Database = {
           etiquetas: string[]
           version_actual: number
           reemplaza_a: string | null
-          estado_aprobacion: Database["public"]["Enums"]["estado_aprobacion"] | null
-          aprobado_en: string | null
           vence_en: string | null
           motivo_anulacion: string | null
           creado_por: string | null
@@ -1331,8 +1262,6 @@ export type Database = {
           etiquetas?: string[]
           version_actual?: number
           reemplaza_a?: string | null
-          estado_aprobacion?: Database["public"]["Enums"]["estado_aprobacion"] | null
-          aprobado_en?: string | null
           vence_en?: string | null
           motivo_anulacion?: string | null
           creado_por?: string | null
@@ -1354,8 +1283,6 @@ export type Database = {
           etiquetas?: string[]
           version_actual?: number
           reemplaza_a?: string | null
-          estado_aprobacion?: Database["public"]["Enums"]["estado_aprobacion"] | null
-          aprobado_en?: string | null
           vence_en?: string | null
           motivo_anulacion?: string | null
           creado_por?: string | null
@@ -5539,7 +5466,6 @@ export type Database = {
           descripcion: string | null
           categoria: Database["public"]["Enums"]["categoria_documento"]
           entidad_tabla: string | null
-          requiere_aprobacion: boolean
           obligatorio_para_cierre: boolean
           extensiones_permitidas: string[]
           tamano_maximo_mb: number
@@ -5562,7 +5488,6 @@ export type Database = {
           descripcion?: string | null
           categoria?: Database["public"]["Enums"]["categoria_documento"]
           entidad_tabla?: string | null
-          requiere_aprobacion?: boolean
           obligatorio_para_cierre?: boolean
           extensiones_permitidas?: string[]
           tamano_maximo_mb?: number
@@ -5584,7 +5509,6 @@ export type Database = {
           descripcion?: string | null
           categoria?: Database["public"]["Enums"]["categoria_documento"]
           entidad_tabla?: string | null
-          requiere_aprobacion?: boolean
           obligatorio_para_cierre?: boolean
           extensiones_permitidas?: string[]
           tamano_maximo_mb?: number
@@ -5916,24 +5840,6 @@ export type Database = {
         }
         Relationships: []
       }
-      documento_firmas: {
-        Row: {
-          aprobacion_id: string | null
-          documento_id: string | null
-          orden_firma: number | null
-          estado: Database["public"]["Enums"]["estado_aprobacion"] | null
-          comentario: string | null
-          fecha: string | null
-          version_aprobada: number | null
-          solicitado_en: string | null
-          aprobador_id: string | null
-          aprobador: string | null
-          aprobador_cargo: string | null
-          solicitado_por_nombre: string | null
-          le_toca: boolean | null
-        }
-        Relationships: []
-      }
       garantias_resumen: {
         Row: {
           entrega_id: string | null
@@ -5950,30 +5856,6 @@ export type Database = {
           dias_restantes: number | null
           reclamos: number | null
           reclamos_abiertos: number | null
-        }
-        Relationships: []
-      }
-      mis_firmas_pendientes: {
-        Row: {
-          aprobacion_id: string | null
-          documento_id: string | null
-          orden_firma: number | null
-          solicitado_en: string | null
-          titulo: string | null
-          descripcion: string | null
-          numero_externo: string | null
-          fecha_documento: string | null
-          version_actual: number | null
-          orden_id: string | null
-          orden_numero: string | null
-          cliente: string | null
-          placa: string | null
-          tipo_codigo: string | null
-          tipo_nombre: string | null
-          tipo_categoria: Database["public"]["Enums"]["categoria_documento"] | null
-          solicitado_por_nombre: string | null
-          le_toca: boolean | null
-          firmas_total: number | null
         }
         Relationships: []
       }
@@ -6270,22 +6152,6 @@ export type Database = {
         }
         Relationships: []
       }
-      v_documentos_por_aprobar: {
-        Row: {
-          aprobacion_id: string | null
-          documento_id: string | null
-          aprobador_id: string | null
-          orden_firma: number | null
-          solicitado_en: string | null
-          titulo: string | null
-          orden_id: string | null
-          version_actual: number | null
-          tipo_codigo: string | null
-          tipo_nombre: string | null
-          le_toca: boolean | null
-        }
-        Relationships: []
-      }
       v_documentos_vigentes: {
         Row: {
           id: string | null
@@ -6305,8 +6171,6 @@ export type Database = {
           es_confidencial: boolean | null
           etiquetas: string[] | null
           version_actual: number | null
-          estado_aprobacion: Database["public"]["Enums"]["estado_aprobacion"] | null
-          aprobado_en: string | null
           vence_en: string | null
           vencido: boolean | null
           version_id: string | null
@@ -6918,14 +6782,6 @@ export type Database = {
         }
         Returns: string
       }
-      firmar_documento: {
-        Args: {
-          p_aprobacion: string
-          p_estado: string
-          p_comentario?: string
-        }
-        Returns: string
-      }
       generar_presupuesto_desde_cotizacion: {
         Args: {
           p_orden_id: string
@@ -7315,13 +7171,6 @@ export type Database = {
         }
         Returns: string
       }
-      solicitar_firmas: {
-        Args: {
-          p_documento: string
-          p_aprobadores: string[]
-        }
-        Returns: number
-      }
       sumar_dias_habiles: {
         Args: {
           p_desde: string
@@ -7373,7 +7222,6 @@ export type Database = {
       categoria_gasto_indirecto: "ENERGIA" | "AGUA" | "ALQUILER" | "DEPRECIACION" | "SUELDOS_INDIRECTOS" | "MANTENIMIENTO_PLANTA" | "SEGUROS" | "EPP" | "COMUNICACIONES" | "LIMPIEZA" | "OTRO"
       categoria_vehicular: "O3" | "O4" | "N1" | "N2" | "N3"
       condicion_pago: "CONTADO" | "CREDITO_7" | "CREDITO_15" | "CREDITO_30" | "CREDITO_45" | "CREDITO_60" | "LETRAS"
-      estado_aprobacion: "PENDIENTE" | "APROBADO" | "OBSERVADO" | "RECHAZADO"
       estado_cotizacion: "BORRADOR" | "EN_COSTEO" | "EN_REVISION" | "OBSERVADA" | "REVISADA" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "VENCIDA" | "ANULADA"
       estado_documento: "VIGENTE" | "REEMPLAZADO" | "ANULADO"
       estado_etapa_ot: "PENDIENTE" | "EN_PROCESO" | "PAUSADA" | "TERMINADA" | "OMITIDA" | "REQUIERE_REVISION"

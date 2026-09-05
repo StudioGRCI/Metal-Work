@@ -27,11 +27,14 @@ export const metadata = { title: 'Control de plazos' }
  *
  * La responsabilidad es del área y no de una persona —un área es siempre un
  * equipo— así que acá no se nombra a nadie: se agrupa por área. Y la ve
- * cualquiera que pueda ver órdenes o producción: que Maestranza vea que Diseño
- * la tiene trabada es justamente el punto.
+ * cualquier área del taller —que Maestranza vea que Diseño la tiene trabada es
+ * justamente el punto—, pero no ventas: quien vende no responde por un plazo de
+ * taller. De ahí `ordenes.listar`, que es entrar al módulo, en vez de
+ * `ordenes.ver`, que es la llave de lectura que ventas sí necesita para sus
+ * garantías.
  */
 export default async function PaginaPlazos({ searchParams }: PageProps<'/plazos'>) {
-  const perfil = await exigirPermiso(['ordenes.ver', 'produccion.ver'])
+  const perfil = await exigirPermiso(['ordenes.listar', 'produccion.ver'])
   const params = await searchParams
 
   const area = typeof params.area === 'string' ? params.area : undefined

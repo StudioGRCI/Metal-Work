@@ -10,7 +10,6 @@ import {
   Layers,
   LayoutDashboard,
   Package,
-  PenLine,
   Receipt,
   Settings,
   Truck,
@@ -44,13 +43,16 @@ export const NAVEGACION: GrupoNavegacion[] = [
         descripcion: 'Estado general del taller',
         disponible: true,
       },
-      // El control de plazos es de todas las áreas y lo mira cualquiera: que
-      // Maestranza vea que Diseño la tiene trabada es el punto.
+      // El control de plazos es de todas las áreas del taller y lo mira
+      // cualquiera de ellas: que Maestranza vea que Diseño la tiene trabada es
+      // el punto. Del taller, no de ventas: por eso cuelga de `ordenes.listar`
+      // —entrar al módulo— y no de `ordenes.ver`, que es la llave de lectura
+      // que ventas necesita para sus garantías y sus documentos.
       {
         titulo: 'Control de plazos',
         ruta: '/plazos',
         icono: CalendarClock,
-        permiso: ['ordenes.ver', 'produccion.ver'],
+        permiso: ['ordenes.listar', 'produccion.ver'],
         descripcion: 'En qué va cada área y qué la trabó',
         disponible: true,
       },
@@ -128,7 +130,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
         titulo: 'Órdenes de trabajo',
         ruta: '/ordenes',
         icono: FileSpreadsheet,
-        permiso: 'ordenes.ver',
+        permiso: 'ordenes.listar',
         descripcion: 'Todas las OT y su avance',
         disponible: true,
       },
@@ -180,13 +182,6 @@ export const NAVEGACION: GrupoNavegacion[] = [
         icono: BarChart3,
         permiso: 'reportes.ver',
         descripcion: 'Producción, entregas, márgenes y consumo',
-        disponible: true,
-      },
-      {
-        titulo: 'Firmas',
-        ruta: '/firmas',
-        icono: PenLine,
-        descripcion: 'Documentos que esperan tu firma',
         disponible: true,
       },
       {

@@ -9,13 +9,12 @@ import {
   tiposDocumento,
   ultimasVersiones,
 } from '@/lib/datos/documentos'
-import { firmasDeDocumentos, posiblesFirmantes } from '@/lib/datos/firmas'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { exigirPermiso } from '@/lib/sesion'
 
 export const metadata = { title: 'Documentos' }
 
 export default async function PaginaDocumentos({ searchParams }: PageProps<'/documentos'>) {
-  const perfil = await exigirPermiso('documentos.ver')
+  await exigirPermiso('documentos.ver')
   const params = await searchParams
   const tipoFiltro = typeof params.tipo === 'string' ? params.tipo : undefined
 
@@ -25,13 +24,7 @@ export default async function PaginaDocumentos({ searchParams }: PageProps<'/doc
     documentosPorTipo(),
   ])
 
-  const pideFirmas = puede(perfil, ['documentos.subir', 'documentos.aprobar'])
-
-  const [versionesPorDocumento, firmas, firmantes] = await Promise.all([
-    ultimasVersiones(documentos.map((d) => d.id)),
-    firmasDeDocumentos(documentos.map((d) => d.id)),
-    pideFirmas ? posiblesFirmantes() : Promise.resolve([]),
-  ])
+  const versionesPorDocumento = await ultimasVersiones(documentos.map((d) => d.id))
 
   // Solo los tipos que tienen algo guardado, con su cuenta al lado. El
   // catálogo entero eran dieciocho pastillas en cuatro líneas —quince de ellas
@@ -82,10 +75,6 @@ export default async function PaginaDocumentos({ searchParams }: PageProps<'/doc
                 ? `Ningún documento de tipo «${nombreDelTipo ?? 'ese tipo'}». Quita el filtro para ver el resto.`
                 : 'Todavía no se ha adjuntado ningún documento. Se suben desde la orden de trabajo correspondiente.'
             }
-            firmas={firmas}
-            firmantes={firmantes}
-            usuarioId={perfil.id}
-            puedePedirFirmas={pideFirmas}
           />
 
           {/* El vacío por filtro tiene salida propia: quien llegó por una pastilla
