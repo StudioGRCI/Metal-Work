@@ -20,6 +20,7 @@ import {
   obtenerOrden,
 } from '@/lib/datos/ordenes'
 import { costoDeOrden, materialesDeOrden } from '@/lib/datos/costos'
+import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
 import { cumplimientoDeOrden } from '@/lib/datos/cumplimiento'
 import {
   accesoriosDeOrden,
@@ -39,6 +40,7 @@ import { Costos } from './costos'
 import { Cronograma } from './cronograma'
 import { Cumplimiento } from './cumplimiento'
 import { DocumentosOrden } from './documentos'
+import { MaterialesDeOrden } from './materiales'
 import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
 import { FechasClave, SalidaDeUnidad } from './salida-y-plazos'
@@ -56,6 +58,7 @@ const VISTAS = [
   'etapas',
   'cronograma',
   'cumplimiento',
+  'materiales',
   'avance',
   'horas',
   'costos',
@@ -140,6 +143,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     verSalida ? estadoDeSalida(id) : Promise.resolve(null),
     vista === 'resumen' ? fechasClaveDeOrden(id) : Promise.resolve(null),
   ])
+
+  // La lista de Diseño va aparte porque son dos consultas encadenadas: el stock
+  // se pide solo para los materiales que están en la lista.
+  const listaMateriales = vista === 'materiales' ? await materialesParaPantalla(id) : null
 
   const estado = definir(ESTADO_OT, orden.estado)
   const prioridad = definir(PRIORIDAD, orden.prioridad)
@@ -386,6 +393,17 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           planos={cumplimiento?.planos ?? []}
           puedeDisenar={puede(perfil, 'diseno.planos')}
           puedeReportar={puede(perfil, 'produccion.registrar')}
+          ordenViva={!['BORRADOR', ...ESTADOS_CERRADOS].includes(orden.estado)}
+        />
+      )}
+
+      {vista === 'materiales' && listaMateriales && (
+        <MaterialesDeOrden
+          ordenId={orden.id}
+          materiales={listaMateriales.materiales}
+          catalogo={listaMateriales.catalogo}
+          puedeDisenar={puede(perfil, 'diseno.planos')}
+          puedePedir={puede(perfil, 'requerimientos.crear')}
           ordenViva={!['BORRADOR', ...ESTADOS_CERRADOS].includes(orden.estado)}
         />
       )}

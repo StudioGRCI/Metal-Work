@@ -3563,6 +3563,81 @@ export type Database = {
           }
         ]
       }
+      ot_materiales: {
+        Row: {
+          id: string
+          orden_id: string
+          plano_id: string | null
+          etapa_id: string | null
+          material_id: string
+          cantidad: number
+          observacion: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          plano_id?: string | null
+          etapa_id?: string | null
+          material_id: string
+          cantidad: number
+          observacion?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          plano_id?: string | null
+          etapa_id?: string | null
+          material_id?: string
+          cantidad?: number
+          observacion?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_ot_material_etapa"
+            columns: ["etapa_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id", "orden_id"]
+          },
+          {
+            foreignKeyName: "fk_ot_material_plano"
+            columns: ["plano_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_planos"
+            referencedColumns: ["id", "orden_id"]
+          },
+          {
+            foreignKeyName: "ot_materiales_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_materiales_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_materiales_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_personal: {
         Row: {
           id: string
@@ -4835,6 +4910,7 @@ export type Database = {
           cantidad_reservada: number
           especificacion: string | null
           observaciones: string | null
+          ot_material_id: string | null
           creado_en: string
           actualizado_en: string
         }
@@ -4848,6 +4924,7 @@ export type Database = {
           cantidad_reservada?: number
           especificacion?: string | null
           observaciones?: string | null
+          ot_material_id?: string | null
           creado_en?: string
           actualizado_en?: string
         }
@@ -4861,10 +4938,18 @@ export type Database = {
           cantidad_reservada?: number
           especificacion?: string | null
           observaciones?: string | null
+          ot_material_id?: string | null
           creado_en?: string
           actualizado_en?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "requerimiento_detalle_ot_material_id_fkey"
+            columns: ["ot_material_id"]
+            isOneToOne: false
+            referencedRelation: "ot_materiales"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "requerimiento_detalle_material_id_fkey"
             columns: ["material_id"]
@@ -6423,6 +6508,31 @@ export type Database = {
         }
         Relationships: []
       }
+      v_ot_materiales: {
+        Row: {
+          id: string | null
+          orden_id: string | null
+          plano_id: string | null
+          numero_plano: string | null
+          plano_nombre: string | null
+          etapa_id: string | null
+          etapa: string | null
+          area: string | null
+          material_id: string | null
+          material_codigo: string | null
+          material: string | null
+          especificacion_tecnica: string | null
+          unidad: string | null
+          cantidad: number | null
+          cantidad_pedida: number | null
+          cantidad_pendiente: number | null
+          completo: boolean | null
+          observacion: string | null
+          creado_por: string | null
+          creado_en: string | null
+        }
+        Relationships: []
+      }
       v_ot_timeline: {
         Row: {
           orden_id: string | null
@@ -6959,6 +7069,17 @@ export type Database = {
           p_fecha?: string
         }
         Returns: number
+      }
+      mandar_material_a_requerimiento: {
+        Args: {
+          p_orden: string
+          p_lineas: Json
+          p_almacen?: string | null
+          p_prioridad?: string
+          p_fecha_requerida?: string | null
+          p_observaciones?: string | null
+        }
+        Returns: string
       }
       mi_rol: {
         Args: Record<PropertyKey, never>

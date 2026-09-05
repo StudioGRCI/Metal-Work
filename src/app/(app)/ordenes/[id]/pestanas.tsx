@@ -11,6 +11,10 @@ const PESTANAS = [
   // piezas.
   { clave: 'cronograma', titulo: 'Cronograma' },
   { clave: 'cumplimiento', titulo: 'Cumplimiento' },
+  // Los materiales van pegados al cumplimiento porque son la otra mitad de lo
+  // mismo: en la hoja de Diseño está qué hay que hacer, y acá qué hace falta
+  // para hacerlo.
+  { clave: 'materiales', titulo: 'Materiales' },
   { clave: 'avance', titulo: 'Avance' },
   { clave: 'horas', titulo: 'Horas' },
   { clave: 'costos', titulo: 'Costos', permiso: 'costos.ver' },
