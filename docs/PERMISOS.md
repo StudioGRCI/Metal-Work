@@ -30,7 +30,7 @@ del final: los datos cambian, este archivo no se edita a mano.
 | `OPERARIO` | Operario | 20 | 2 | 6 |
 | `COSTOS` | Costos | 45 | 1 | 12 |
 | `VENDEDOR` | Comercial | 45 | 1 | 10 |
-| `DISENO` | Diseño e ingeniería | 48 | 0 | 8 |
+| `DISENO` | Diseño e ingeniería | 48 | 0 | 11 |
 | `ALMACENERO` | Almacenero | 50 | 1 | 13 |
 | `COMPRADOR` | Compras | 50 | 1 | 9 |
 | `CALIDAD` | Control de calidad | 55 | 1 | 9 |
@@ -67,9 +67,10 @@ ellos pueden usar no la está mirando nadie todavía.
 `cotizaciones.editar`, `cotizaciones.ver`, `documentos.subir`, `documentos.ver`,
 `garantias.ver`, `ordenes.ver`
 
-**`DISENO` — Diseño e ingeniería** (8)
-`clientes.ver`, `configuracion.ver`, `cotizaciones.costear`, `cotizaciones.ver`,
-`diseno.planos`, `ordenes.listar`, `ordenes.ver`, `produccion.ver`
+**`DISENO` — Diseño e ingeniería** (11)
+`almacen.ver`, `clientes.ver`, `configuracion.ver`, `cotizaciones.costear`,
+`cotizaciones.ver`, `diseno.planos`, `ordenes.listar`, `ordenes.ver`,
+`produccion.ver`, `requerimientos.crear`, `requerimientos.ver`
 
 **`ALMACENERO` — Almacenero** (13)
 `almacen.confirmar`, `almacen.inventario`, `almacen.maestros`,
@@ -126,10 +127,10 @@ la política exige y se mira quién lo tiene de verdad.
 | Almacén | `almacen.inventario` | Realizar inventarios y ajustes de existencias | `ALMACENERO` |
 | Almacén | `almacen.maestros` | Administrar el catálogo de materiales y almacenes | `ALMACENERO` |
 | Almacén | `almacen.movimientos` | Registrar ingresos, salidas y devoluciones | `ALMACENERO` |
-| Almacén | `almacen.ver` | Consultar stock, kardex y movimientos | `CONSULTA`, `COSTOS`, `ALMACENERO`, `COMPRADOR`, `SUPERVISOR`, `JEFE_TALLER`, `GERENTE` |
+| Almacén | `almacen.ver` | Consultar stock, kardex y movimientos | `CONSULTA`, `COSTOS`, `DISENO`, `ALMACENERO`, `COMPRADOR`, `SUPERVISOR`, `JEFE_TALLER`, `GERENTE` |
 | Almacén | `requerimientos.aprobar` | Aprobar requerimientos y reservar stock | `ALMACENERO`, `JEFE_TALLER` |
-| Almacén | `requerimientos.crear` | Solicitar material para una orden de trabajo | `OPERARIO`, `SUPERVISOR`, `JEFE_TALLER` |
-| Almacén | `requerimientos.ver` | Ver requerimientos de material | `ALMACENERO`, `COMPRADOR`, `SUPERVISOR`, `JEFE_TALLER`, `GERENTE` |
+| Almacén | `requerimientos.crear` | Solicitar material para una orden de trabajo | `OPERARIO`, `DISENO`, `SUPERVISOR`, `JEFE_TALLER` |
+| Almacén | `requerimientos.ver` | Ver requerimientos de material | `DISENO`, `ALMACENERO`, `COMPRADOR`, `SUPERVISOR`, `JEFE_TALLER`, `GERENTE` |
 | Calidad | `calidad.inspeccionar` | Registrar inspecciones y levantar observaciones | `CALIDAD` |
 | Calidad | `calidad.ver` | Ver inspecciones de calidad | `CALIDAD`, `SUPERVISOR`, `JEFE_TALLER`, `GERENTE` |
 | Comercial | `clientes.crear` | Registrar clientes y unidades | `VENDEDOR` |
