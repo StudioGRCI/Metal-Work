@@ -857,6 +857,7 @@ export type Database = {
           revisada_por: string | null
           motivo_observacion: string | null
           plazo_desde: string | null
+          plazo_arranca_en: string | null
           garantia_texto: string | null
           peso_tolerancia: string | null
           no_incluye: string | null
@@ -926,6 +927,7 @@ export type Database = {
           revisada_por?: string | null
           motivo_observacion?: string | null
           plazo_desde?: string | null
+          plazo_arranca_en?: string | null
           garantia_texto?: string | null
           peso_tolerancia?: string | null
           no_incluye?: string | null
@@ -995,6 +997,7 @@ export type Database = {
           revisada_por?: string | null
           motivo_observacion?: string | null
           plazo_desde?: string | null
+          plazo_arranca_en?: string | null
           garantia_texto?: string | null
           peso_tolerancia?: string | null
           no_incluye?: string | null
@@ -4138,6 +4141,73 @@ export type Database = {
           }
         ]
       }
+      pagos_cliente: {
+        Row: {
+          id: string
+          cotizacion_id: string
+          orden_id: string | null
+          tipo: Database["public"]["Enums"]["tipo_pago_cliente"]
+          fecha: string
+          monto: number
+          medio: Database["public"]["Enums"]["medio_pago"]
+          referencia: string | null
+          observaciones: string | null
+          registrado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          cotizacion_id: string
+          orden_id?: string | null
+          tipo?: Database["public"]["Enums"]["tipo_pago_cliente"]
+          fecha?: string
+          monto: number
+          medio?: Database["public"]["Enums"]["medio_pago"]
+          referencia?: string | null
+          observaciones?: string | null
+          registrado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          cotizacion_id?: string
+          orden_id?: string | null
+          tipo?: Database["public"]["Enums"]["tipo_pago_cliente"]
+          fecha?: string
+          monto?: number
+          medio?: Database["public"]["Enums"]["medio_pago"]
+          referencia?: string | null
+          observaciones?: string | null
+          registrado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pagos_cliente_cotizacion_id_fkey"
+            columns: ["cotizacion_id"]
+            isOneToOne: false
+            referencedRelation: "cotizaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_cliente_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_cliente_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       parte_detalle: {
         Row: {
           id: string
@@ -6548,6 +6618,21 @@ export type Database = {
         }
         Relationships: []
       }
+      v_pagos_cotizacion: {
+        Row: {
+          cotizacion_id: string | null
+          numero: string | null
+          moneda: Database["public"]["Enums"]["moneda"] | null
+          precio_venta: number | null
+          plazo_arranca_en: string | null
+          pagado: number | null
+          saldo: number | null
+          pagado_pct: number | null
+          pagos: number | null
+          primer_pago: string | null
+        }
+        Relationships: []
+      }
       v_plazos_por_area: {
         Row: {
           etapa_id: string | null
@@ -7355,6 +7440,7 @@ export type Database = {
       estado_servicio_tercero: "SOLICITADO" | "EN_EJECUCION" | "EJECUTADO" | "CONFORME" | "PAGADO" | "ANULADO"
       estado_tarea_ot: "PENDIENTE" | "EN_PROCESO" | "TERMINADA" | "CANCELADA"
       magnitud_medida: "UNIDAD" | "MASA" | "LONGITUD" | "AREA" | "VOLUMEN"
+      medio_pago: "TRANSFERENCIA" | "DEPOSITO" | "CHEQUE" | "EFECTIVO" | "LETRA" | "OTRO"
       moneda: "PEN" | "USD"
       origen_presupuesto: "COTIZACION" | "MANUAL"
       prioridad_ot: "BAJA" | "NORMAL" | "ALTA" | "URGENTE"
@@ -7370,6 +7456,7 @@ export type Database = {
       tipo_evento_ot: "CREACION" | "CAMBIO_ESTADO" | "AVANCE" | "MATERIAL" | "DOCUMENTO" | "INSPECCION" | "PAUSA" | "REANUDACION" | "COMENTARIO" | "ENTREGA"
       tipo_movimiento_almacen: "INGRESO" | "SALIDA_OT" | "DEVOLUCION_OT" | "TRANSFERENCIA" | "AJUSTE" | "SALIDA_MERMA"
       tipo_movimiento_kardex: "INGRESO_COMPRA" | "INGRESO_DEVOLUCION" | "INGRESO_AJUSTE" | "INGRESO_TRANSFERENCIA" | "SALIDA_OT" | "SALIDA_AJUSTE" | "SALIDA_TRANSFERENCIA" | "SALIDA_MERMA"
+      tipo_pago_cliente: "ADELANTO" | "PARCIAL" | "SALDO"
       tipo_servicio_tercero: "ARENADO" | "CORTE_LASER" | "CORTE_PLASMA" | "DOBLADO" | "TORNO" | "GALVANIZADO" | "TRATAMIENTO_TERMICO" | "TAPICERIA" | "PINTURA" | "ELECTRICIDAD" | "HIDRAULICA" | "TRANSPORTE" | "CERTIFICACION" | "OTRO"
       tipo_trabajo_ot: "FABRICACION" | "REPARACION" | "REPOTENCIACION" | "MANTENIMIENTO" | "GARANTIA"
       tipo_unidad_carroceria: "SEMIRREMOLQUE" | "CARROCERIA_MONTADA"

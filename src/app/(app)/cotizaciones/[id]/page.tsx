@@ -13,6 +13,7 @@ import { fecha, fechaHora, moneda, numero, porcentaje } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { obtenerCotizacion, partidasDeCotizacion } from '@/lib/datos/comercial'
 import { catalogosOrden } from '@/lib/datos/ordenes'
+import { pagosDeCotizacion } from '@/lib/datos/pagos'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import type { CodigoMoneda } from '@/lib/format'
@@ -20,6 +21,7 @@ import type { CodigoMoneda } from '@/lib/format'
 import { AccionesCotizacion } from './acciones-cotizacion'
 import { ConceptoImpreso } from './concepto-impreso'
 import { EditarCotizacion } from './editar-cotizacion'
+import { PagosDelCliente } from './pagos'
 
 export async function generateMetadata({
   params,
@@ -46,11 +48,14 @@ export default async function PaginaCotizacion({
   // La ficha, los accesorios y las plantillas ya no se piden acá: son de la
   // cotización de trabajo y se cargan en su pantalla. Las partidas sí, pero
   // solo para saber si hay con qué descargar el papel —no se listan—.
-  const [partidas, catalogos] = await Promise.all([
+  const puedeVerPagos = puede(perfil, 'pagos.ver')
+
+  const [partidas, catalogos, pagos] = await Promise.all([
     partidasDeCotizacion(id),
     puede(perfil, 'ordenes.crear') || puede(perfil, 'cotizaciones.editar')
       ? catalogosOrden()
       : Promise.resolve(null),
+    puedeVerPagos ? pagosDeCotizacion(id) : Promise.resolve(null),
   ])
 
   // Si esta cotización ya generó una orden, se enlaza en lugar de ofrecer crearla otra vez.
@@ -389,6 +394,20 @@ export default async function PaginaCotizacion({
           />
         </div>
 
+
+        {/* Los pagos van en la cotización y no en la orden porque el adelanto
+            llega antes de que la orden exista: es lo que hace que se emita. Y
+            porque es acá donde está el precio contra el que se cuentan. */}
+        {puedeVerPagos && (
+          <div className="lg:col-span-3">
+            <PagosDelCliente
+              cotizacionId={id}
+              pagos={pagos?.pagos ?? []}
+              resumen={pagos?.resumen ?? null}
+              puedeRegistrar={puede(perfil, 'pagos.registrar')}
+            />
+          </div>
+        )}
 
         {/* En vez de los bloques de trabajo: dónde está la cotización y quién
             la tiene. Al vendedor le basta con eso; el detalle es de la otra
