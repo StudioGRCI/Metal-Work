@@ -30,7 +30,7 @@ del final: los datos cambian, este archivo no se edita a mano.
 | `OPERARIO` | Operario | 20 | 2 | 6 |
 | `COSTOS` | Costos | 45 | 1 | 12 |
 | `VENDEDOR` | Comercial | 45 | 1 | 10 |
-| `DISENO` | Diseño e ingeniería | 48 | 0 | 11 |
+| `DISENO` | Diseño e ingeniería | 48 | 1 | 11 |
 | `ALMACENERO` | Almacenero | 50 | 1 | 13 |
 | `COMPRADOR` | Compras | 50 | 1 | 9 |
 | `CALIDAD` | Control de calidad | 55 | 1 | 9 |
@@ -39,8 +39,9 @@ del final: los datos cambian, este archivo no se edita a mano.
 | `GERENTE` | Gerencia | 90 | 1 | 29 |
 | `ADMIN` | Administrador | 100 | 1 | 0 → por `es_admin()` |
 
-`CONSULTA` y `DISENO` no tienen hoy ningún usuario activo: una pantalla que solo
-ellos pueden usar no la está mirando nadie todavía.
+`CONSULTA` no tiene hoy ningún usuario activo: una pantalla que solo
+ese rol pueda usar no la está mirando nadie todavía. `DISENO` estrenó cuenta el
+2026-09-05, para el recorrido de venta → trabajo → gerencia → orden → planos.
 
 ## Qué tiene cada rol
 
