@@ -49,8 +49,9 @@ const ORDEN = {
   aprobacion: 7,
   orden: 8,
   libera: 9,
-  diseno: 10,
-  repaso: 11,
+  plano: 10,
+  diseno: 11,
+  repaso: 12,
 }
 
 const archivoEstado = join(SALIDA, 'estado.json')
@@ -530,7 +531,20 @@ const TRAMOS = {
     await irA(pagina, `/cotizaciones/${estado.cotizacion}`, quien,
       'La cotización con su costeo: 19.800 de costo contra 48.000 ofrecidos')
     await pulsar(pagina, 'Terminar el costeo', 6000)
-    await esperarTexto(pagina, 'En revisión')
+
+    // La prueba de que entró es que el botón ya no está: la insignia de estado
+    // no se busca por texto porque la pantalla lo escribe a su manera y daba
+    // un rojo falso sobre una transición que sí había ocurrido.
+    const sigue = await pagina
+      .getByRole('button', { name: /Terminar el costeo/i })
+      .first()
+      .isVisible()
+      .catch(() => false)
+    if (sigue) {
+      const dichos = await quejas(pagina)
+      throw new Error(`el costeo no se cerró${dichos.length ? `: ${dichos.join(' · ')}` : ''}`)
+    }
+
     await rotulo(pagina, quien, 'Sube a Gerencia para el visto')
     await respirar(pagina, 3000)
     await salir(pagina)
@@ -614,6 +628,33 @@ const TRAMOS = {
     await salir(pagina)
   },
 
+  /** Diseño entrega el plano: sin él, Maestranza no puede reportar nada. */
+  async plano(pagina) {
+    const quien = 'Diseño e ingeniería'
+    await entrar(pagina, 'diseno', quien, 'Diseño reparte el trabajo del taller')
+    await irA(pagina, `/ordenes/${estado.orden}?vista=cumplimiento`, quien,
+      'Un plano por grupo de piezas, con lo que pesa en el avance de la unidad')
+
+    if ((await pagina.locator('tbody').getByText('ESTRUCTURA DEL CAJÓN').count()) > 0) {
+      console.log('  (el plano ya estaba)')
+      await respirar(pagina, 3000)
+      await salir(pagina)
+      return
+    }
+
+    await pulsar(pagina, 'Nuevo plano', 1500)
+    await escribir(pagina, 'numero_plano', '1')
+    await escribir(pagina, 'nombre', 'ESTRUCTURA DEL CAJÓN')
+    await escribir(pagina, 'peso_pct', '60')
+    await rotulo(pagina, quien, 'El plano 1: la estructura, que pesa el 60 % de la unidad')
+    await respirar(pagina, 1500)
+    await pulsarYComprobar(pagina, 'Agregar el plano', 4500)
+    await esperarTexto(pagina, 'ESTRUCTURA DEL CAJÓN')
+    await rotulo(pagina, quien, 'Entregado el plano, Maestranza ya puede reportar sus piezas')
+    await respirar(pagina, 4000)
+    await salir(pagina)
+  },
+
   /** Diseño: los planos, el material y el pedido al almacén. */
   async diseno(pagina) {
     const quien = 'Diseño e ingeniería'
@@ -622,7 +663,10 @@ const TRAMOS = {
     // --------------------------------------------------- los planos y las piezas
     await irA(pagina, `/ordenes/${estado.orden}?vista=cumplimiento`, quien,
       'Diseño reparte el trabajo del taller: un plano por grupo de piezas')
-    if ((await pagina.getByText('ESTRUCTURA DEL CAJÓN').count()) === 0) {
+    // Dentro de la tabla de planos, no en toda la página: la cabecera de la
+    // orden lleva su descripción —«Estructura del cajón en plancha…»— y buscar
+    // el texto suelto daba por hecho un plano que no existía.
+    if ((await pagina.locator('tbody').getByText('ESTRUCTURA DEL CAJÓN').count()) === 0) {
       await pulsar(pagina, 'Nuevo plano', 1500)
       await escribir(pagina, 'numero_plano', '1')
       await escribir(pagina, 'nombre', 'ESTRUCTURA DEL CAJÓN')
