@@ -27,6 +27,28 @@ export function NavegacionLista({
 }) {
   const ruta = usePathname()
 
+  /**
+   * Cuál de todos los módulos es el que se está mirando: gana el de ruta más
+   * larga que encaje.
+   *
+   * Antes cada módulo se marcaba por su cuenta con `ruta.startsWith(su ruta)`, y
+   * eso encendía dos a la vez: dentro de `/cotizaciones/trabajo/…` se marcaba
+   * también «Cotización de venta», porque la ruta empieza igual. Comparten el
+   * documento pero no la función —una la escribe Ventas y la otra Diseño, y la
+   * de trabajo lleva el costo que Ventas no ve—, así que el menú tiene que
+   * decir en cuál de las dos está parado uno.
+   *
+   * La comparación es por segmento (`/cotizaciones/trabajo` encaja, pero
+   * `/cotizaciones-viejas` no).
+   */
+  const encaja = (base: string) =>
+    base === '/' ? ruta === '/' : ruta === base || ruta.startsWith(`${base}/`)
+
+  const activa = NAVEGACION.flatMap((g) => g.items)
+    .map((i) => i.ruta)
+    .filter(encaja)
+    .sort((a, b) => b.length - a.length)[0]
+
   const grupos = NAVEGACION.map((g) => ({
     ...g,
     items: g.items.filter(
@@ -46,8 +68,7 @@ export function NavegacionLista({
           </p>
           <ul className="space-y-0.5">
             {grupo.items.map((item) => {
-              // "/" solo coincide exacto; el resto también con sus subrutas.
-              const activo = item.ruta === '/' ? ruta === '/' : ruta.startsWith(item.ruta)
+              const activo = item.ruta === activa
               const Icono = item.icono
 
               // Los módulos todavía no construidos se muestran para que se vea
