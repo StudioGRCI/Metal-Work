@@ -25,11 +25,11 @@ del final: los datos cambian, este archivo no se edita a mano.
 
 | Código | Nombre | Nivel | Usuarios activos | Permisos |
 | --- | --- | ---: | ---: | ---: |
-| `ADMINISTRACION` | Administración | 0 | 1 | 8 |
+| `ADMINISTRACION` | Administración | 0 | 1 | 9 |
 | `CONSULTA` | Solo consulta | 10 | 0 | 9 |
 | `OPERARIO` | Operario | 20 | 2 | 6 |
-| `COSTOS` | Costos | 45 | 1 | 12 |
-| `VENDEDOR` | Comercial | 45 | 1 | 10 |
+| `COSTOS` | Costos | 45 | 1 | 13 |
+| `VENDEDOR` | Comercial | 45 | 1 | 11 |
 | `DISENO` | Diseño e ingeniería | 48 | 1 | 11 |
 | `ALMACENERO` | Almacenero | 50 | 1 | 13 |
 | `COMPRADOR` | Compras | 50 | 1 | 9 |
@@ -45,9 +45,9 @@ ese rol pueda usar no la está mirando nadie todavía. `DISENO` estrenó cuenta 
 
 ## Qué tiene cada rol
 
-**`ADMINISTRACION` — Administración** (8)
-`clientes.ver`, `costos.ver`, `cotizaciones.costear`, `cotizaciones.ver`,
-`ordenes.crear`, `ordenes.editar`, `ordenes.listar`, `ordenes.ver`
+**`ADMINISTRACION` — Administración** (9)
+`clientes.ver`, `costos.ver`, `cotizaciones.aprobar`, `cotizaciones.costear`,
+`cotizaciones.ver`, `ordenes.crear`, `ordenes.editar`, `ordenes.listar`, `ordenes.ver`
 
 **`CONSULTA` — Solo consulta** (9)
 `almacen.ver`, `clientes.ver`, `cotizaciones.ver`, `documentos.ver`,
@@ -58,14 +58,14 @@ ese rol pueda usar no la está mirando nadie todavía. `DISENO` estrenó cuenta 
 `documentos.ver`, `ordenes.listar`, `ordenes.ver`, `produccion.registrar`,
 `produccion.ver`, `requerimientos.crear`
 
-**`COSTOS` — Costos** (12)
+**`COSTOS` — Costos** (13)
 `almacen.ver`, `compras.ver`, `costos.cerrar`, `costos.editar`, `costos.ver`,
-`cotizaciones.ver`, `documentos.ver`, `ordenes.listar`, `ordenes.ver`,
+`cotizaciones.aprobar`, `cotizaciones.ver`, `documentos.ver`, `ordenes.listar`, `ordenes.ver`,
 `produccion.ver`, `reportes.ver`, `tesoreria.liberar`
 
-**`VENDEDOR` — Comercial** (10)
-`clientes.crear`, `clientes.editar`, `clientes.ver`, `cotizaciones.crear`,
-`cotizaciones.editar`, `cotizaciones.ver`, `documentos.subir`, `documentos.ver`,
+**`VENDEDOR` — Comercial** (11)
+`clientes.crear`, `clientes.editar`, `clientes.ver`, `cotizaciones.aprobar`,
+`cotizaciones.crear`, `cotizaciones.editar`, `cotizaciones.ver`, `documentos.subir`, `documentos.ver`,
 `garantias.ver`, `ordenes.ver`
 
 **`DISENO` — Diseño e ingeniería** (11)
@@ -137,7 +137,7 @@ la política exige y se mira quién lo tiene de verdad.
 | Comercial | `clientes.crear` | Registrar clientes y unidades | `VENDEDOR` |
 | Comercial | `clientes.editar` | Modificar clientes y unidades | `VENDEDOR` |
 | Comercial | `clientes.ver` | Ver clientes y unidades | `ADMINISTRACION`, `CONSULTA`, `VENDEDOR`, `DISENO`, `JEFE_TALLER`, `GERENTE` |
-| Comercial | `cotizaciones.aprobar` | Aprobar o rechazar una cotización | `GERENTE` |
+| Comercial | `cotizaciones.aprobar` | Registrar que el cliente aceptó (o rechazó) la cotización | `ADMINISTRACION`, `COSTOS`, `VENDEDOR`, `GERENTE` |
 | Comercial | `cotizaciones.costear` | Armar la cotización de trabajo: partidas, ficha técnica y accesorios | `ADMINISTRACION`, `DISENO`, `GERENTE` |
 | Comercial | `cotizaciones.crear` | Elaborar cotizaciones | `VENDEDOR` |
 | Comercial | `cotizaciones.editar` | Modificar cotizaciones en borrador | `VENDEDOR` |
