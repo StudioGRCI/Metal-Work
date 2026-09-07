@@ -15,6 +15,10 @@ const PESTANAS = [
   // mismo: en la hoja de Diseño está qué hay que hacer, y acá qué hace falta
   // para hacerlo.
   { clave: 'materiales', titulo: 'Materiales' },
+  // La hoja de cada area: sus actividades y el reporte de cada dia. Va antes de
+  // «Avance», que son las fotos del taller: primero cuanto se lleva, despues
+  // como se ve.
+  { clave: 'actividades', titulo: 'Actividades' },
   { clave: 'avance', titulo: 'Avance' },
   { clave: 'horas', titulo: 'Horas' },
   { clave: 'costos', titulo: 'Costos', permiso: 'costos.ver' },

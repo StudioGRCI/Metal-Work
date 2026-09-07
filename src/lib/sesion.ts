@@ -12,6 +12,8 @@ export type PerfilSesion = {
   activo: boolean
   es_operario: boolean
   sede_id: string | null
+  /** Su área del taller. La hoja de avance le propone la suya al armar la lista. */
+  area_id: string | null
   rol: { codigo: string; nombre: string; nivel: number }
   permisos: string[]
 }
@@ -32,7 +34,7 @@ export const obtenerSesion = cache(async (): Promise<PerfilSesion | null> => {
   const { data } = await supabase
     .from('usuarios')
     .select(
-      'id, nombres, apellidos, correo, cargo, activo, es_operario, sede_id, rol:roles!inner(codigo, nombre, nivel, roles_permisos(permiso_codigo))',
+      'id, nombres, apellidos, correo, cargo, activo, es_operario, sede_id, area_id, rol:roles!inner(codigo, nombre, nivel, roles_permisos(permiso_codigo))',
     )
     .eq('id', user.id)
     .maybeSingle()
@@ -55,6 +57,7 @@ export const obtenerSesion = cache(async (): Promise<PerfilSesion | null> => {
     activo: data.activo,
     es_operario: data.es_operario,
     sede_id: data.sede_id,
+    area_id: data.area_id,
     rol: { codigo: rol.codigo, nombre: rol.nombre, nivel: rol.nivel },
     permisos: (rol.roles_permisos ?? []).map((p) => p.permiso_codigo),
   }

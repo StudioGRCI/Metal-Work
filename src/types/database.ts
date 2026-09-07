@@ -2960,6 +2960,121 @@ export type Database = {
           }
         ]
       }
+      ot_actividad_avances: {
+        Row: {
+          id: string
+          actividad_id: string
+          orden_id: string
+          fecha: string
+          avance_pct: number
+          nota: string | null
+          reportado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          actividad_id: string
+          orden_id: string
+          fecha?: string
+          avance_pct: number
+          nota?: string | null
+          reportado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          actividad_id?: string
+          orden_id?: string
+          fecha?: string
+          avance_pct?: number
+          nota?: string | null
+          reportado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_avance_actividad"
+            columns: ["actividad_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_actividades"
+            referencedColumns: ["id", "orden_id"]
+          },
+          {
+            foreignKeyName: "ot_actividad_avances_reportado_por_fkey"
+            columns: ["reportado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_actividades: {
+        Row: {
+          id: string
+          orden_id: string
+          area_id: string
+          orden_secuencia: number
+          nombre: string
+          detalle: string | null
+          referencia: string | null
+          peso_pct: number
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          area_id: string
+          orden_secuencia?: number
+          nombre: string
+          detalle?: string | null
+          referencia?: string | null
+          peso_pct?: number
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          area_id?: string
+          orden_secuencia?: number
+          nombre?: string
+          detalle?: string | null
+          referencia?: string | null
+          peso_pct?: number
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_actividades_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_actividades_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_actividades_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_avance_fotos: {
         Row: {
           id: string
@@ -6390,6 +6505,41 @@ export type Database = {
           cantidad_recibida: number | null
           cantidad_pendiente: number | null
           dias_atraso: number | null
+        }
+        Relationships: []
+      }
+      v_ot_actividades: {
+        Row: {
+          id: string | null
+          orden_id: string | null
+          area_id: string | null
+          area_codigo: string | null
+          area: string | null
+          orden_secuencia: number | null
+          nombre: string | null
+          detalle: string | null
+          referencia: string | null
+          peso_pct: number | null
+          avance_pct: number | null
+          terminada: boolean | null
+          ultimo_reporte: string | null
+          reportes: number | null
+          creado_por: string | null
+          creado_en: string | null
+        }
+        Relationships: []
+      }
+      v_ot_avance_areas: {
+        Row: {
+          orden_id: string | null
+          area_id: string | null
+          area_codigo: string | null
+          area: string | null
+          actividades: number | null
+          terminadas: number | null
+          peso_repartido: number | null
+          avance_pct: number | null
+          ultimo_reporte: string | null
         }
         Relationships: []
       }

@@ -20,6 +20,7 @@ import {
   obtenerOrden,
 } from '@/lib/datos/ordenes'
 import { costoDeOrden, materialesDeOrden } from '@/lib/datos/costos'
+import { actividadesDeOrden, areasDelTaller } from '@/lib/datos/actividades'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
 import { cumplimientoDeOrden } from '@/lib/datos/cumplimiento'
 import {
@@ -40,6 +41,7 @@ import { Costos } from './costos'
 import { Cronograma } from './cronograma'
 import { Cumplimiento } from './cumplimiento'
 import { DocumentosOrden } from './documentos'
+import { ActividadesDeOrden } from './actividades'
 import { MaterialesDeOrden } from './materiales'
 import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
@@ -59,6 +61,7 @@ const VISTAS = [
   'cronograma',
   'cumplimiento',
   'materiales',
+  'actividades',
   'avance',
   'horas',
   'costos',
@@ -147,6 +150,12 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   // La lista de Diseño va aparte porque son dos consultas encadenadas: el stock
   // se pide solo para los materiales que están en la lista.
   const listaMateriales = vista === 'materiales' ? await materialesParaPantalla(id) : null
+
+  // La hoja de avance de cada area, con sus actividades y el diario.
+  const hojaAreas =
+    vista === 'actividades'
+      ? await Promise.all([actividadesDeOrden(id), areasDelTaller()])
+      : null
 
   const estado = definir(ESTADO_OT, orden.estado)
   const prioridad = definir(PRIORIDAD, orden.prioridad)
@@ -405,6 +414,20 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           puedeDisenar={puede(perfil, 'diseno.planos')}
           puedePedir={puede(perfil, 'requerimientos.crear')}
           ordenViva={!['BORRADOR', ...ESTADOS_CERRADOS].includes(orden.estado)}
+        />
+      )}
+
+      {vista === 'actividades' && hojaAreas && (
+        <ActividadesDeOrden
+          ordenId={orden.id}
+          actividades={hojaAreas[0].actividades}
+          areas={hojaAreas[0].areas}
+          diario={hojaAreas[0].diario}
+          subcontratos={hojaAreas[0].subcontratos}
+          areasDisponibles={hojaAreas[1]}
+          puedeArmar={puede(perfil, 'produccion.actividades')}
+          puedeReportar={puede(perfil, 'produccion.registrar')}
+          areaPropia={perfil.area_id}
         />
       )}
 
