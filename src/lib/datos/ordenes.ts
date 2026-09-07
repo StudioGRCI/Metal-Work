@@ -88,13 +88,24 @@ export async function listarOrdenes(filtros: FiltrosOrdenes) {
   }
 }
 
+/**
+ * Una orden con todo lo que la pantalla necesita.
+ *
+ * El cliente va con join normal y NO con `!inner`, y es la diferencia entre que
+ * el taller pueda abrir una orden o no: con `!inner`, a quien no tiene
+ * `clientes.ver` -operarios, supervisor, calidad, almacén, compras- el RLS le
+ * esconde la fila del cliente y con ella desaparecía la orden entera. La
+ * pantalla respondía «404, la dirección no existe» a seis personas que sí
+ * tienen permiso para verla. Ahora la orden se abre y lo que no se ve es el
+ * nombre del cliente, que es exactamente lo que el permiso dice.
+ */
 export async function obtenerOrden(id: string) {
   const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('ordenes_trabajo')
     .select(
-      'id, numero, estado, prioridad, tipo_trabajo, descripcion, especificaciones_tecnicas, datos_tecnicos, fecha_registro, fecha_inicio_programada, fecha_fin_programada, fecha_entrega_comprometida, fecha_inicio_real, fecha_fin_real, avance_porcentaje, horas_estimadas, horas_reales, moneda, monto_presupuestado, motivo_pausa, motivo_anulacion, observaciones, creado_en, largo_m, ancho_m, alto_m, capacidad_carga, ruedas, tipo_llantas, cantidad_ejes, tipo_suspension, colores, caracteristicas_especiales, correo_contacto, encargado_produccion_id, cliente:clientes!inner(id, razon_social, numero_documento, telefono, correo), unidad:unidades(id, placa, marca, modelo, anio, tipo_vehiculo, numero_chasis, codigo_interno), sede:sedes!inner(id, nombre), tipo_carroceria:tipos_carroceria(id, nombre), responsable:usuarios!ordenes_trabajo_responsable_id_fkey(id, nombres, apellidos), supervisor:usuarios!ordenes_trabajo_supervisor_id_fkey(id, nombres, apellidos), cotizacion:cotizaciones(id, numero, total, moneda)',
+      'id, numero, estado, prioridad, tipo_trabajo, descripcion, especificaciones_tecnicas, datos_tecnicos, fecha_registro, fecha_inicio_programada, fecha_fin_programada, fecha_entrega_comprometida, fecha_inicio_real, fecha_fin_real, avance_porcentaje, horas_estimadas, horas_reales, moneda, monto_presupuestado, motivo_pausa, motivo_anulacion, observaciones, creado_en, largo_m, ancho_m, alto_m, capacidad_carga, ruedas, tipo_llantas, cantidad_ejes, tipo_suspension, colores, caracteristicas_especiales, correo_contacto, encargado_produccion_id, cliente:clientes(id, razon_social, numero_documento, telefono, correo), unidad:unidades(id, placa, marca, modelo, anio, tipo_vehiculo, numero_chasis, codigo_interno), sede:sedes!inner(id, nombre), tipo_carroceria:tipos_carroceria(id, nombre), responsable:usuarios!ordenes_trabajo_responsable_id_fkey(id, nombres, apellidos), supervisor:usuarios!ordenes_trabajo_supervisor_id_fkey(id, nombres, apellidos), cotizacion:cotizaciones(id, numero, total, moneda)',
     )
     .eq('id', id)
     .maybeSingle()

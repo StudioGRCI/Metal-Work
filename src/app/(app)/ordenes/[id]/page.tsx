@@ -159,7 +159,13 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
   const estado = definir(ESTADO_OT, orden.estado)
   const prioridad = definir(PRIORIDAD, orden.prioridad)
-  const cliente = orden.cliente as unknown as { razon_social: string; numero_documento: string; telefono: string | null }
+  // Puede venir vacío: quien no tiene `clientes.ver` abre la orden igual, pero
+  // sin los datos del cliente.
+  const cliente = orden.cliente as unknown as {
+    razon_social: string
+    numero_documento: string
+    telefono: string | null
+  } | null
   // La placa dejó de ser obligatoria: la unidad existe desde el chasis y la
   // matrícula llega meses después, con la tarjeta de propiedad.
   // `codigo_interno` va opcional porque el select de `obtenerOrden` todavía no
@@ -272,9 +278,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           <Tarjeta>
             <TarjetaCabecera titulo="Cliente y unidad" />
             <TarjetaCuerpo className="space-y-0">
-              <Dato etiqueta="Cliente" valor={cliente.razon_social} />
-              <Dato etiqueta="Documento" valor={cliente.numero_documento} />
-              <Dato etiqueta="Teléfono" valor={cliente.telefono} />
+              <Dato etiqueta="Cliente" valor={cliente?.razon_social ?? null} />
+              <Dato etiqueta="Documento" valor={cliente?.numero_documento ?? null} />
+              <Dato etiqueta="Teléfono" valor={cliente?.telefono ?? null} />
               {/* «Unidad» y no «Placa»: mientras no esté matriculada lo que
                   aquí sale es el código de fábrica o el chasis, y llamarlo
                   placa sería mentir. Sin unidad, la función ya lo dice. */}
