@@ -18,25 +18,25 @@ Dos advertencias antes de leer la tabla:
   correcta, la tabla está llena y todo el mundo ve el vacío. Están listados al
   final; hoy queda uno, `usuarios.ver`, y está sin repartir a propósito.
 
-Foto de la base de producción del **2026-09-05**. Se regenera con las consultas
+Foto de la base de producción del **2026-09-07**. Se regenera con las consultas
 del final: los datos cambian, este archivo no se edita a mano.
 
 ## Los roles
 
 | Código | Nombre | Nivel | Usuarios activos | Permisos |
 | --- | --- | ---: | ---: | ---: |
-| `ADMINISTRACION` | Administración | 0 | 1 | 9 |
+| `ADMINISTRACION` | Administración | 0 | 1 | 11 |
 | `CONSULTA` | Solo consulta | 10 | 0 | 9 |
 | `OPERARIO` | Operario | 20 | 2 | 6 |
-| `COSTOS` | Costos | 45 | 1 | 13 |
-| `VENDEDOR` | Comercial | 45 | 1 | 11 |
+| `COSTOS` | Costos | 45 | 1 | 16 |
+| `VENDEDOR` | Comercial | 45 | 1 | 12 |
 | `DISENO` | Diseño e ingeniería | 48 | 1 | 11 |
 | `ALMACENERO` | Almacenero | 50 | 1 | 13 |
 | `COMPRADOR` | Compras | 50 | 1 | 9 |
 | `CALIDAD` | Control de calidad | 55 | 1 | 9 |
-| `SUPERVISOR` | Supervisor | 60 | 1 | 13 |
-| `JEFE_TALLER` | Jefe de taller | 70 | 1 | 23 |
-| `GERENTE` | Gerencia | 90 | 1 | 29 |
+| `SUPERVISOR` | Supervisor | 60 | 1 | 14 |
+| `JEFE_TALLER` | Jefe de taller | 70 | 1 | 24 |
+| `GERENTE` | Gerencia | 90 | 1 | 31 |
 | `ADMIN` | Administrador | 100 | 1 | 0 → por `es_admin()` |
 
 `CONSULTA` no tiene hoy ningún usuario activo: una pantalla que solo
@@ -45,9 +45,10 @@ ese rol pueda usar no la está mirando nadie todavía. `DISENO` estrenó cuenta 
 
 ## Qué tiene cada rol
 
-**`ADMINISTRACION` — Administración** (9)
+**`ADMINISTRACION` — Administración** (11)
 `clientes.ver`, `costos.ver`, `cotizaciones.aprobar`, `cotizaciones.costear`,
-`cotizaciones.ver`, `ordenes.crear`, `ordenes.editar`, `ordenes.listar`, `ordenes.ver`
+`cotizaciones.ver`, `ordenes.crear`, `ordenes.editar`, `ordenes.listar`,
+`ordenes.ver`, `pagos.registrar`, `pagos.ver`
 
 **`CONSULTA` — Solo consulta** (9)
 `almacen.ver`, `clientes.ver`, `cotizaciones.ver`, `documentos.ver`,
@@ -58,15 +59,17 @@ ese rol pueda usar no la está mirando nadie todavía. `DISENO` estrenó cuenta 
 `documentos.ver`, `ordenes.listar`, `ordenes.ver`, `produccion.registrar`,
 `produccion.ver`, `requerimientos.crear`
 
-**`COSTOS` — Costos** (13)
-`almacen.ver`, `compras.ver`, `costos.cerrar`, `costos.editar`, `costos.ver`,
-`cotizaciones.aprobar`, `cotizaciones.ver`, `documentos.ver`, `ordenes.listar`, `ordenes.ver`,
+**`COSTOS` — Costos** (16)
+`almacen.ver`, `clientes.ver`, `compras.ver`, `costos.cerrar`, `costos.editar`,
+`costos.ver`, `cotizaciones.aprobar`, `cotizaciones.ver`, `documentos.ver`,
+`ordenes.listar`, `ordenes.ver`, `pagos.registrar`, `pagos.ver`,
 `produccion.ver`, `reportes.ver`, `tesoreria.liberar`
 
-**`VENDEDOR` — Comercial** (11)
+**`VENDEDOR` — Comercial** (12)
 `clientes.crear`, `clientes.editar`, `clientes.ver`, `cotizaciones.aprobar`,
-`cotizaciones.crear`, `cotizaciones.editar`, `cotizaciones.ver`, `documentos.subir`, `documentos.ver`,
-`garantias.ver`, `ordenes.ver`
+`cotizaciones.crear`, `cotizaciones.editar`, `cotizaciones.ver`,
+`documentos.subir`, `documentos.ver`, `garantias.ver`, `ordenes.ver`,
+`pagos.ver`
 
 **`DISENO` — Diseño e ingeniería** (11)
 `almacen.ver`, `clientes.ver`, `configuracion.ver`, `cotizaciones.costear`,
@@ -89,30 +92,31 @@ ese rol pueda usar no la está mirando nadie todavía. `DISENO` estrenó cuenta 
 `garantias.gestionar`, `garantias.ver`, `ordenes.listar`, `ordenes.ver`,
 `produccion.ver`
 
-**`SUPERVISOR` — Supervisor** (13)
+**`SUPERVISOR` — Supervisor** (14)
 `almacen.ver`, `calidad.ver`, `documentos.subir`, `documentos.ver`,
 `garantias.ver`, `ordenes.cambiar_estado`, `ordenes.listar`, `ordenes.ver`,
-`produccion.aprobar_parte`, `produccion.registrar`, `produccion.ver`,
-`requerimientos.crear`, `requerimientos.ver`
+`produccion.actividades`, `produccion.aprobar_parte`, `produccion.registrar`,
+`produccion.ver`, `requerimientos.crear`, `requerimientos.ver`
 
-**`JEFE_TALLER` — Jefe de taller** (23)
+**`JEFE_TALLER` — Jefe de taller** (24)
 `almacen.ver`, `calidad.ver`, `clientes.ver`, `costos.ver`, `cotizaciones.ver`,
 `documentos.subir`, `documentos.ver`, `garantias.gestionar`, `garantias.ver`,
-`ordenes.cambiar_estado`, `ordenes.crear`, `ordenes.editar`, `ordenes.entregar`,
-`ordenes.listar`, `ordenes.ver`, `produccion.aprobar_parte`,
-`produccion.planificar`, `produccion.registrar`, `produccion.ver`, `reportes.ver`,
-`requerimientos.aprobar`, `requerimientos.crear`, `requerimientos.ver`
+`ordenes.cambiar_estado`, `ordenes.crear`, `ordenes.editar`,
+`ordenes.entregar`, `ordenes.listar`, `ordenes.ver`, `produccion.actividades`,
+`produccion.aprobar_parte`, `produccion.planificar`, `produccion.registrar`,
+`produccion.ver`, `reportes.ver`, `requerimientos.aprobar`,
+`requerimientos.crear`, `requerimientos.ver`
 
-**`GERENTE` — Gerencia** (29)
+**`GERENTE` — Gerencia** (31)
 `almacen.ver`, `auditoria.ver`, `calidad.ver`, `clientes.ver`,
 `compras.aprobar`, `compras.ver`, `configuracion.editar`, `configuracion.ver`,
-`costos.cerrar`, `costos.ver`,
-`cotizaciones.anular`, `cotizaciones.aprobar`, `cotizaciones.costear`,
-`cotizaciones.revisar`, `cotizaciones.ver`, `diseno.planos`,
-`documentos.eliminar`, `documentos.ver`,
-`garantias.gestionar`, `garantias.ver`, `usuarios.gestionar`,
-`ordenes.anular`, `ordenes.aprobar`, `ordenes.listar`, `ordenes.ver`,
-`produccion.ver`, `reportes.ver`, `requerimientos.ver`, `tesoreria.liberar`
+`costos.cerrar`, `costos.ver`, `cotizaciones.anular`, `cotizaciones.aprobar`,
+`cotizaciones.costear`, `cotizaciones.revisar`, `cotizaciones.ver`,
+`diseno.planos`, `documentos.eliminar`, `documentos.ver`,
+`garantias.gestionar`, `garantias.ver`, `ordenes.anular`, `ordenes.aprobar`,
+`ordenes.listar`, `ordenes.ver`, `pagos.ver`, `produccion.actividades`,
+`produccion.ver`, `reportes.ver`, `requerimientos.ver`, `tesoreria.liberar`,
+`usuarios.gestionar`
 
 **`ADMIN` — Administrador** (0 en `roles_permisos`)
 Ninguno asignado. Pasa por `es_admin()`.
@@ -170,6 +174,7 @@ la política exige y se mira quién lo tiene de verdad.
 | Órdenes de trabajo | `ordenes.listar` | Entrar al módulo de órdenes de trabajo y al control de plazos | todos menos `ADMIN` y `VENDEDOR` (11 roles) |
 | Órdenes de trabajo | `ordenes.ver` | Ver órdenes de trabajo y su detalle | todos menos `ADMIN` (12 roles) |
 | Producción | `diseno.planos` | Armar la lista de planos y piezas y dar por entregado cada plano | `DISENO`, `GERENTE` |
+| Producción | `produccion.actividades` | Armar la lista de actividades de su área en una orden y ponerles su peso | `SUPERVISOR`, `JEFE_TALLER`, `GERENTE` |
 | Producción | `produccion.aprobar_parte` | Aprobar el parte diario y cargar las horas a la orden | `SUPERVISOR`, `JEFE_TALLER` |
 | Producción | `produccion.planificar` | Programar fechas y asignar personal a las órdenes | `JEFE_TALLER` |
 | Producción | `produccion.registrar` | Registrar avance de etapas y horas trabajadas | `OPERARIO`, `SUPERVISOR`, `JEFE_TALLER` |
