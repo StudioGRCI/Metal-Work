@@ -30,7 +30,7 @@ import {
   verificacionesDeOrden,
 } from '@/lib/datos/ficha-ot'
 import { timelineDeOrden, tiposDocumento } from '@/lib/datos/documentos'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { areasDeSuMano, exigirPermiso, puede } from '@/lib/sesion'
 import type { CodigoMoneda } from '@/lib/format'
 
 import { AccionesEstado } from './acciones-estado'
@@ -430,8 +430,14 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           areas={hojaAreas[0].areas}
           diario={hojaAreas[0].diario}
           subcontratos={hojaAreas[0].subcontratos}
-          areasDisponibles={hojaAreas[1]}
-          puedeArmar={puede(perfil, 'produccion.actividades')}
+          /* Las áreas de la lista son las que esta persona puede escribir: la
+             suya, o todas si responde por el taller entero. Ofrecerle las que
+             el RLS le va a rechazar es prometerle un botón que no hace nada. */
+          areasDisponibles={areasDeSuMano(perfil, hojaAreas[1])}
+          puedeArmar={
+            puede(perfil, 'produccion.actividades') &&
+            areasDeSuMano(perfil, hojaAreas[1]).length > 0
+          }
           puedeReportar={puede(perfil, 'produccion.registrar')}
           areaPropia={perfil.area_id}
         />

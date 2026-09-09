@@ -89,6 +89,33 @@ export function puede(perfil: PerfilSesion | null, permiso: string | string[]): 
   return pedidos.some((p) => perfil.permisos.includes(p))
 }
 
+/**
+ * Si esta persona puede meterse en la hoja de un área: la suya siempre, las
+ * demás solo con `produccion.cualquier_area` —el jefe de producción, el de
+ * taller y Gerencia—.
+ *
+ * Es el gemelo exacto de `public.puede_hoja_de_area(uuid)` en la base, y tiene
+ * que seguir siéndolo: si la pantalla dejara pasar lo que la política rechaza,
+ * el INSERT afectaría cero filas sin error y la pantalla diría «listo» sin
+ * haber hecho nada. Acá se comprueba para dar un mensaje que se entienda; quien
+ * manda es el RLS.
+ */
+export function puedeHojaDeArea(perfil: PerfilSesion | null, areaId: string | null): boolean {
+  if (!perfil) return false
+  if (puede(perfil, 'produccion.cualquier_area')) return true
+  return areaId !== null && perfil.area_id === areaId
+}
+
+/** Las áreas cuya hoja puede escribir: la suya, o todas si tiene el permiso. */
+export function areasDeSuMano<T extends { id: string }>(
+  perfil: PerfilSesion | null,
+  areas: T[],
+): T[] {
+  if (!perfil) return []
+  if (puede(perfil, 'produccion.cualquier_area')) return areas
+  return areas.filter((a) => a.id === perfil.area_id)
+}
+
 /** Corta la petición con 403 si el usuario no tiene el permiso indicado. */
 export async function exigirPermiso(permiso: string | string[]): Promise<PerfilSesion> {
   const perfil = await exigirSesion()

@@ -88,7 +88,10 @@ function CamposDePersona({
             ))}
           </Seleccion>
         </Campo>
-        <Campo etiqueta="Área" htmlFor="area_id">
+        {/* El área ya no es solo para agrupar en el tablero: decide de qué área
+            es la hoja de avance que esta persona puede escribir. Quien reporta
+            producción y se queda sin área no puede escribir nada. */}
+        <Campo etiqueta="Área" htmlFor="area_id" ayuda="De quién es su hoja de avance">
           <Seleccion id="area_id" name="area_id" defaultValue={persona?.area?.id ?? ''}>
             <option value="">Sin área</option>
             {catalogos.areas.map((a) => (

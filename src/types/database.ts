@@ -6540,6 +6540,32 @@ export type Database = {
           peso_repartido: number | null
           avance_pct: number | null
           ultimo_reporte: string | null
+          orden_numero: string | null
+          orden_estado: string | null
+        }
+        Relationships: []
+      }
+      v_ot_avance_diario: {
+        Row: {
+          id: string | null
+          fecha: string | null
+          avance_pct: number | null
+          nota: string | null
+          creado_en: string | null
+          actividad_id: string | null
+          actividad: string | null
+          referencia: string | null
+          peso_pct: number | null
+          area_id: string | null
+          area_codigo: string | null
+          area: string | null
+          orden_id: string | null
+          orden_numero: string | null
+          orden_estado: string | null
+          orden_descripcion: string | null
+          reportado_por: string | null
+          reportado_por_nombre: string | null
+          acumulado_pct: number | null
         }
         Relationships: []
       }
@@ -7429,6 +7455,18 @@ export type Database = {
           p_periodo: string
         }
         Returns: string[]
+      }
+      puede_hoja_de_actividad: {
+        Args: {
+          p_actividad_id: string
+        }
+        Returns: boolean
+      }
+      puede_hoja_de_area: {
+        Args: {
+          p_area_id: string
+        }
+        Returns: boolean
       }
       puede_ver_orden: {
         Args: {

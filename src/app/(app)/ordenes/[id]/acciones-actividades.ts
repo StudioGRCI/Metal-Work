@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { areaDeActividad } from '@/lib/datos/actividades'
+import { exigirSesion, puede, puedeHojaDeArea } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -20,6 +21,12 @@ import { createClient } from '@/lib/supabase/server'
  * traducen: que las actividades de un área no pasen del 100 % y que lo
  * reportado no pase del 100 % de la actividad son reglas del negocio, no de la
  * pantalla, y tienen que valer aunque se escriba por otra vía.
+ *
+ * Y hay un tercer filtro, el del área: la hoja de Maestranza no la escribe el
+ * supervisor de Acabados. Eso lo decide el RLS —`puede_hoja_de_area`— y acá se
+ * comprueba lo mismo, con `puedeHojaDeArea`, solo para poder decir por qué. Sin
+ * esta comprobación el UPDATE afecta cero filas y no da error: el fallo mudo de
+ * siempre.
  */
 const REGLAS: Record<string, string> = {
   uq_ot_actividad: 'Esa área ya tiene una actividad con ese nombre en esta orden.',
@@ -61,6 +68,11 @@ export async function agregarActividad(_previo: unknown, datos: FormData): Promi
   }
 
   const v = analisis.data
+
+  if (!puedeHojaDeArea(perfil, v.area_id)) {
+    return { ok: false, error: 'Esa hoja es de otra área: cada uno arma la suya.' }
+  }
+
   const supabase = await createClient()
 
   const { data, error } = await supabase
@@ -106,6 +118,11 @@ export async function cambiarPesoActividad(
   }
 
   const v = analisis.data
+
+  if (!puedeHojaDeArea(perfil, await areaDeActividad(v.id))) {
+    return { ok: false, error: 'Ese peso es de la hoja de otra área.' }
+  }
+
   const supabase = await createClient()
 
   const { data, error } = await supabase
@@ -140,9 +157,13 @@ export async function quitarActividad(_previo: unknown, datos: FormData): Promis
   // lo puede explicar nadie después.
   const { data: reportada } = await supabase
     .from('v_ot_actividades')
-    .select('nombre, reportes')
+    .select('nombre, reportes, area_id')
     .eq('id', v.id)
     .maybeSingle()
+
+  if (!puedeHojaDeArea(perfil, reportada?.area_id ?? null)) {
+    return { ok: false, error: 'Esa actividad es de la hoja de otra área.' }
+  }
 
   if (reportada && Number(reportada.reportes ?? 0) > 0) {
     return {
@@ -186,6 +207,11 @@ export async function reportarAvance(_previo: unknown, datos: FormData): Promise
   }
 
   const v = analisis.data
+
+  if (!puedeHojaDeArea(perfil, await areaDeActividad(v.actividad_id))) {
+    return { ok: false, error: 'Ese avance es de otra área: cada uno reporta lo suyo.' }
+  }
+
   const supabase = await createClient()
 
   const { data, error } = await supabase

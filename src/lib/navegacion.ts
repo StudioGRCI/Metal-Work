@@ -64,6 +64,18 @@ export const NAVEGACION: GrupoNavegacion[] = [
         descripcion: 'Dónde está cada unidad y qué la traba',
         disponible: true,
       },
+      // El parte de la jornada del jefe de producción. Va pegado al avance de
+      // taller —es el mismo módulo, visto por día en vez de por unidad— y no
+      // dentro de «Producción», que son los partes de horas y es otra cosa: dos
+      // entradas con nombre parecido y contenido distinto se confunden.
+      {
+        titulo: 'El día en el taller',
+        ruta: '/avance/diario',
+        icono: ClipboardList,
+        permiso: 'produccion.ver',
+        descripcion: 'Lo que reportó cada área hoy, y quién no reportó',
+        disponible: true,
+      },
       {
         titulo: 'Producción',
         ruta: '/produccion',
