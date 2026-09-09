@@ -629,16 +629,6 @@ export async function convertirEnOrden(_previo: unknown, datos: FormData): Promi
 
   if (error) return { ok: false, error: mensajeDeError(error) }
 
-  // El presupuesto detallado se arrastra desde las partidas de la cotización.
-  const { error: errorPresupuesto } = await supabase.rpc(
-    'generar_presupuesto_desde_cotizacion',
-    { p_orden_id: orden.id },
-  )
-
-  if (errorPresupuesto) {
-    avisos.push(`no se pudo arrastrar el presupuesto: ${mensajeDeError(errorPresupuesto)}`)
-  }
-
   // Los accesorios que se cotizaron son los que el taller tiene que montar y
   // verificar antes de entregar. `armar_ficha_ot` los copia a la ficha de la OT
   // y baja además los pasos de verificación de esa carrocería.

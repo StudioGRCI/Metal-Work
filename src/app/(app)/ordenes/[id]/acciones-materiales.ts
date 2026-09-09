@@ -14,10 +14,6 @@ import { createClient } from '@/lib/supabase/server'
  * `ot_materiales` —cruzado a propósito: si acá se pidiera otro permiso, el
  * UPDATE afectaría cero filas sin error y la pantalla diría «guardado» sin
  * haber guardado—.
- *
- * Mandar al almacén es otra mano y otro permiso: `requerimientos.crear`. La
- * función de la base lo vuelve a exigir, así que esconder el botón no es la
- * única defensa.
  */
 const REGLAS: Record<string, string> = {
   uq_ot_material: 'Ese material ya está en la lista para ese plano. Corrige la cantidad en vez de agregarlo otra vez.',
@@ -133,21 +129,6 @@ export async function quitarMaterial(_previo: unknown, datos: FormData): Promise
   const v = analisis.data
   const supabase = await createClient()
 
-  // Lo ya pedido al almacén no se puede borrar de la lista: quedaría un
-  // requerimiento apuntando a una línea que nadie puede explicar.
-  const { data: linea } = await supabase
-    .from('v_ot_materiales')
-    .select('cantidad_pedida, material')
-    .eq('id', v.id)
-    .maybeSingle()
-
-  if (linea && Number(linea.cantidad_pedida) > 0) {
-    return {
-      ok: false,
-      error: `De «${linea.material}» ya se pidió material al almacén: esta línea no se puede quitar. Anula el requerimiento si fue un error.`,
-    }
-  }
-
   const { data, error } = await supabase
     .from('ot_materiales')
     .delete()
@@ -160,70 +141,4 @@ export async function quitarMaterial(_previo: unknown, datos: FormData): Promise
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   return { ok: true, mensaje: 'Material quitado de la lista.' }
-}
-
-/**
- * El pase al almacén. La pantalla manda cantidades —el porcentaje lo convierte
- * ella— y la base comprueba que ninguna pase del saldo pendiente.
- */
-const esquemaPedido = z.object({
-  orden_id: z.string().uuid(),
-  lineas: z.string(),
-  almacen_id: z.string().uuid().optional().or(z.literal('')),
-  prioridad: z.enum(['BAJA', 'NORMAL', 'ALTA', 'URGENTE']).default('NORMAL'),
-  fecha_requerida: z.string().optional(),
-  observaciones: z.string().trim().optional(),
-})
-
-const esquemaLineas = z.array(
-  z.object({ material: z.string().uuid(), cantidad: z.number().positive() }),
-)
-
-export async function mandarAlRequerimiento(
-  _previo: unknown,
-  datos: FormData,
-): Promise<ResultadoAccion<{ requerimiento: string }>> {
-  const perfil = await exigirSesion()
-  if (!puede(perfil, 'requerimientos.crear')) {
-    return { ok: false, error: 'No tienes permiso para solicitar material.' }
-  }
-
-  const analisis = esquemaPedido.safeParse(Object.fromEntries(datos))
-  if (!analisis.success) {
-    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el pedido.' }
-  }
-
-  const v = analisis.data
-
-  let lineas: { material: string; cantidad: number }[]
-  try {
-    lineas = esquemaLineas.parse(JSON.parse(v.lineas))
-  } catch {
-    return { ok: false, error: 'No se entendió qué material se está pidiendo.' }
-  }
-
-  if (lineas.length === 0) {
-    return { ok: false, error: 'Marca al menos un material para pedir.' }
-  }
-
-  const supabase = await createClient()
-
-  const { data, error } = await supabase.rpc('mandar_material_a_requerimiento', {
-    p_orden: v.orden_id,
-    p_lineas: lineas,
-    p_almacen: nulo(v.almacen_id),
-    p_prioridad: v.prioridad,
-    p_fecha_requerida: nulo(v.fecha_requerida),
-    p_observaciones: nulo(v.observaciones),
-  })
-
-  if (error) return { ok: false, error: mensajeDeError(error) }
-
-  revalidatePath(`/ordenes/${v.orden_id}`)
-  revalidatePath('/almacen/requerimientos')
-  return {
-    ok: true,
-    mensaje: 'Material mandado al almacén.',
-    datos: { requerimiento: data as unknown as string },
-  }
 }

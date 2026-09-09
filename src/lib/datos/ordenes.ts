@@ -141,57 +141,6 @@ export async function listarEtapas(ordenId: string) {
   }))
 }
 
-/**
- * La orden como diagrama de Gantt: por etapa, el área, lo programado, lo real
- * y el semáforo. El semáforo lo calcula la base con la fórmula de la casa; la
- * pantalla solo lo pinta.
- */
-export async function cronogramaDeOrden(ordenId: string) {
-  const supabase = await createClient()
-
-  const { data, error } = await supabase
-    .from('v_cronograma_ot')
-    .select(
-      'etapa_id, orden_id, etapa_codigo, etapa, color, orden_secuencia, area_codigo, area_nombre, estado, avance_porcentaje, fecha_inicio_programada, fecha_fin_programada, fecha_inicio_real, fecha_fin_real, dias, plazo, ultimo_reporte, ultimo_reporte_en',
-    )
-    .eq('orden_id', ordenId)
-    .order('orden_secuencia')
-
-  if (error) throw new Error(`No se pudo cargar el cronograma: ${error.message}`)
-  return data ?? []
-}
-
-export async function listarInspecciones(ordenId: string) {
-  const supabase = await createClient()
-
-  const { data, error } = await supabase
-    .from('ot_inspecciones')
-    .select(
-      'id, numero, fecha, resultado, observaciones, acciones_correctivas, fecha_levantamiento, inspector:usuarios!ot_inspecciones_inspector_id_fkey(nombres, apellidos)',
-    )
-    .eq('orden_id', ordenId)
-    .order('fecha', { ascending: false })
-
-  if (error) throw new Error(`No se pudieron cargar las inspecciones: ${error.message}`)
-  return data ?? []
-}
-
-export async function listarHorasOrden(ordenId: string) {
-  const supabase = await createClient()
-
-  const { data, error } = await supabase
-    .from('parte_detalle')
-    .select(
-      'id, horas, horas_extra, horas_totales, descripcion, parte:partes_diarios!inner(numero, fecha, estado), usuario:usuarios!inner(nombres, apellidos), etapa:ot_etapas!inner(etapa_catalogo_id, catalogo:etapas_catalogo!inner(nombre))',
-    )
-    .eq('orden_id', ordenId)
-    .order('id', { ascending: false })
-    .limit(200)
-
-  if (error) throw new Error(`No se pudieron cargar las horas: ${error.message}`)
-  return data ?? []
-}
-
 /** Catálogos que necesitan los formularios de alta y edición. */
 export async function catalogosOrden() {
   const supabase = await createClient()
@@ -307,7 +256,7 @@ export async function fechasClaveDeOrden(ordenId: string) {
 export async function estadoDeSalida(ordenId: string) {
   const supabase = await createClient()
 
-  const [liberacion, entrega, faltantes] = await Promise.all([
+  const [liberacion, entrega] = await Promise.all([
     supabase
       .from('liberaciones_tesoreria')
       .select('liberado_en, observacion, liberador:usuarios!liberaciones_tesoreria_liberado_por_fkey(nombres, apellidos)')
@@ -318,7 +267,6 @@ export async function estadoDeSalida(ordenId: string) {
       .select('id, fecha_entrega, salida_confirmada_en, confirmador:usuarios!ot_entregas_salida_confirmada_por_fkey(nombres, apellidos)')
       .eq('orden_id', ordenId)
       .maybeSingle(),
-    supabase.rpc('documentos_obligatorios_faltantes', { p_orden_id: ordenId }),
   ])
 
   if (liberacion.error) throw new Error(`No se pudo leer la liberación: ${liberacion.error.message}`)
@@ -336,8 +284,58 @@ export async function estadoDeSalida(ordenId: string) {
       salida_confirmada_en: string | null
       confirmador: { nombres: string; apellidos: string } | null
     } | null,
-    documentosFaltantes: ((faltantes.data ?? []) as unknown as { nombre: string }[]).map(
-      (d) => d.nombre,
-    ),
   }
+}
+
+export type EventoTimeline = {
+  clave: string
+  ocurrido_en: string
+  categoria: string
+  titulo: string
+  detalle: string | null
+  usuario: string | null
+}
+
+/**
+ * La trazabilidad de la orden: la bitácora de eventos, del más reciente al
+ * más viejo, con el nombre de quien lo hizo.
+ */
+export async function timelineDeOrden(ordenId: string, limite = 200): Promise<EventoTimeline[]> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('v_ot_timeline')
+    .select('*')
+    .eq('orden_id', ordenId)
+    .order('ocurrido_en', { ascending: false })
+    .limit(limite)
+
+  if (error) throw new Error(`No se pudo cargar la trazabilidad: ${error.message}`)
+
+  const filas = data ?? []
+
+  // La vista solo trae usuario_id; los nombres se resuelven en una sola consulta.
+  const ids = [...new Set(filas.map((f) => f.usuario_id).filter(Boolean))] as string[]
+  const nombres = new Map<string, string>()
+
+  if (ids.length > 0) {
+    const { data: usuarios } = await supabase
+      .from('usuarios')
+      .select('id, nombres, apellidos')
+      .in('id', ids)
+
+    for (const u of usuarios ?? []) nombres.set(u.id, `${u.nombres} ${u.apellidos}`)
+  }
+
+  return filas
+    .filter((f) => f.ocurrido_en)
+    .map((f, i) => ({
+      // La vista es una unión sin clave propia; el índice basta para React.
+      clave: `${f.referencia_tabla ?? 'evento'}-${f.referencia_id ?? i}-${i}`,
+      ocurrido_en: f.ocurrido_en as string,
+      categoria: f.categoria ?? 'EVENTO',
+      titulo: f.titulo ?? '',
+      detalle: f.detalle,
+      usuario: f.usuario_id ? (nombres.get(f.usuario_id) ?? null) : null,
+    }))
 }

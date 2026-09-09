@@ -1,5 +1,5 @@
 import { EsqueletoListado } from '@/components/ui/esqueleto'
 
 export default function Cargando() {
-  return <EsqueletoListado columnas={6} />
+  return <EsqueletoListado columnas={5} />
 }

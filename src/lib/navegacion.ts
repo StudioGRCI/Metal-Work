@@ -1,22 +1,16 @@
 import {
-  BarChart3,
+  Boxes,
   Camera,
   CalendarClock,
   ClipboardList,
-  Factory,
   FileSpreadsheet,
-  FileText,
-  Handshake,
   Layers,
   LayoutDashboard,
-  Package,
   Receipt,
   Settings,
   Truck,
   UserCog,
   Users,
-  ShieldCheck,
-  Wallet,
 } from 'lucide-react'
 
 export type ItemNavegacion = {
@@ -32,6 +26,13 @@ export type ItemNavegacion = {
 
 export type GrupoNavegacion = { titulo: string; items: ItemNavegacion[] }
 
+/**
+ * El menú es el circuito de la empresa y nada más: cotización de venta →
+ * cotización de trabajo → Gerencia aprueba → Administración abre la orden →
+ * Diseño desglosa → el taller reporta. Lo que no está en ese circuito (almacén,
+ * servicios, partes diarios, costos, calidad, documentos, garantías, informes)
+ * se retiró el 2026-09-09 porque no se iba a usar y costaba entender.
+ */
 export const NAVEGACION: GrupoNavegacion[] = [
   {
     titulo: 'Operación',
@@ -47,7 +48,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
       // cualquiera de ellas: que Maestranza vea que Diseño la tiene trabada es
       // el punto. Del taller, no de ventas: por eso cuelga de `ordenes.listar`
       // —entrar al módulo— y no de `ordenes.ver`, que es la llave de lectura
-      // que ventas necesita para sus garantías y sus documentos.
+      // que ventas necesita.
       {
         titulo: 'Control de plazos',
         ruta: '/plazos',
@@ -65,23 +66,13 @@ export const NAVEGACION: GrupoNavegacion[] = [
         disponible: true,
       },
       // El parte de la jornada del jefe de producción. Va pegado al avance de
-      // taller —es el mismo módulo, visto por día en vez de por unidad— y no
-      // dentro de «Producción», que son los partes de horas y es otra cosa: dos
-      // entradas con nombre parecido y contenido distinto se confunden.
+      // taller: es el mismo módulo, visto por día en vez de por unidad.
       {
         titulo: 'El día en el taller',
         ruta: '/avance/diario',
         icono: ClipboardList,
         permiso: 'produccion.ver',
         descripcion: 'Lo que reportó cada área hoy, y quién no reportó',
-        disponible: true,
-      },
-      {
-        titulo: 'Producción',
-        ruta: '/produccion',
-        icono: Factory,
-        permiso: 'produccion.ver',
-        descripcion: 'Partes diarios y horas de taller',
         disponible: true,
       },
     ],
@@ -129,6 +120,16 @@ export const NAVEGACION: GrupoNavegacion[] = [
         descripcion: 'Lo que la casa ya fabricó, con su ficha técnica lista',
         disponible: true,
       },
+      // El catálogo chico del que Diseño elige al desglosar los materiales de
+      // la orden: nombre, unidad y especificación. Sin stock ni almacén.
+      {
+        titulo: 'Materiales',
+        ruta: '/materiales',
+        icono: Boxes,
+        permiso: ['diseno.planos', 'cotizaciones.costear'],
+        descripcion: 'El catálogo del que Diseño arma el desglose',
+        disponible: true,
+      },
     ],
   },
   {
@@ -156,46 +157,8 @@ export const NAVEGACION: GrupoNavegacion[] = [
     ],
   },
   {
-    titulo: 'Logística',
-    items: [
-      { titulo: 'Almacén', ruta: '/almacen', icono: Package, permiso: 'almacen.ver', disponible: true },
-      {
-        titulo: 'Servicios',
-        ruta: '/servicios',
-        icono: Handshake,
-        permiso: ['compras.ver', 'costos.ver', 'calidad.ver'],
-        descripcion: 'Trabajos que se mandan a hacer afuera',
-        disponible: true,
-      },
-      { titulo: 'Costos', ruta: '/costos', icono: Wallet, permiso: 'costos.ver', disponible: true },
-    ],
-  },
-  {
     titulo: 'Gestión',
     items: [
-      {
-        titulo: 'Documentos',
-        ruta: '/documentos',
-        icono: FileText,
-        permiso: 'documentos.ver',
-        disponible: true,
-      },
-      {
-        titulo: 'Garantías',
-        ruta: '/garantias',
-        icono: ShieldCheck,
-        permiso: 'garantias.ver',
-        descripcion: 'Unidades en garantía y sus reclamos',
-        disponible: true,
-      },
-      {
-        titulo: 'Informes',
-        ruta: '/informes',
-        icono: BarChart3,
-        permiso: 'reportes.ver',
-        descripcion: 'Producción, entregas, márgenes y consumo',
-        disponible: true,
-      },
       {
         titulo: 'Personal',
         ruta: '/personal',

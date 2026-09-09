@@ -7,7 +7,7 @@ import { AreaTexto } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { fechaHora, tiempoRelativo } from '@/lib/format'
-import type { EventoTimeline } from '@/lib/datos/documentos'
+import type { EventoTimeline } from '@/lib/datos/ordenes'
 import type { Tono } from '@/components/ui/etiqueta-estado'
 
 import { comentarOrden } from '../acciones'

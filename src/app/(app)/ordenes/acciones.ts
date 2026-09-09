@@ -5,7 +5,6 @@ import { redirect } from 'next/navigation'
 import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
-import { documentosFaltantes } from '@/lib/datos/documentos'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 
@@ -199,18 +198,6 @@ export async function registrarEntrega(_previo: unknown, datos: FormData): Promi
 
   const v = analisis.data
   const supabase = await createClient()
-
-  // Se avisa qué falta con nombres legibles antes de intentar el insert. Si no,
-  // el usuario recibiría el mensaje del disparador, que nombra códigos internos
-  // y no dice cuántos documentos faltan.
-  const faltantes = await documentosFaltantes(v.orden_id)
-  if (faltantes.length > 0) {
-    const lista = faltantes.map((d) => d.nombre).join(', ')
-    return {
-      ok: false,
-      error: `Falta documentación para entregar: ${lista}. Cárgala y consigue sus firmas antes de registrar el acta.`,
-    }
-  }
 
   // La regla del flujograma: la unidad no sale si el cliente tiene deuda.
   // Tesorería libera; recién entonces entra el acta.

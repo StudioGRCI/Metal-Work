@@ -69,22 +69,20 @@ function Compuerta({
 }
 
 /**
- * Las tres compuertas del flujograma antes de que la unidad cruce portería:
- * papeles completos, tesorería confirma que el cliente está al día, y el aviso
- * final a portería. En ese orden, porque así está escrito el procedimiento.
+ * Las dos compuertas antes de que la unidad cruce portería: tesorería confirma
+ * que el cliente está al día, y el aviso final a portería. En ese orden, porque
+ * así está escrito el procedimiento.
  */
 export function SalidaDeUnidad({
   ordenId,
   liberacion,
   entrega,
-  documentosFaltantes,
   puedeLiberar,
   puedeConfirmar,
 }: {
   ordenId: string
   liberacion: Liberacion
   entrega: Entrega
-  documentosFaltantes: string[]
   puedeLiberar: boolean
   puedeConfirmar: boolean
 }) {
@@ -95,19 +93,9 @@ export function SalidaDeUnidad({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Salida de la unidad"
-        descripcion="Papeles, tesorería y portería: las tres compuertas del procedimiento, en su orden."
+        descripcion="Tesorería y portería: las dos compuertas del procedimiento, en su orden."
       />
       <TarjetaCuerpo className="space-y-4">
-        <Compuerta
-          cumplida={documentosFaltantes.length === 0}
-          titulo="Documentación obligatoria firmada"
-          detalle={
-            documentosFaltantes.length === 0
-              ? 'Completa, incluido el check list de salida.'
-              : `Falta: ${documentosFaltantes.join(', ')}.`
-          }
-        />
-
         <Compuerta
           cumplida={Boolean(liberacion)}
           titulo="Liberación de tesorería"

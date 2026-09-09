@@ -17,25 +17,17 @@ export type MaterialDeOrden = {
   especificacion_tecnica: string | null
   unidad: string | null
   cantidad: number
-  cantidad_pedida: number
-  cantidad_pendiente: number
-  completo: boolean
   observacion: string | null
 }
 
-/**
- * La lista de materiales que Diseño escribió para la orden, con lo que ya se
- * mandó al almacén y lo que queda. El saldo lo calcula la vista sumando los
- * requerimientos vivos: guardarlo en la fila se desincroniza en cuanto alguien
- * anula un pedido.
- */
+/** La lista de materiales que Diseño escribió para la orden. */
 export async function listaDeMateriales(ordenId: string): Promise<MaterialDeOrden[]> {
   const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('v_ot_materiales')
     .select(
-      'id, orden_id, plano_id, numero_plano, plano_nombre, etapa_id, etapa, area, material_id, material_codigo, material, especificacion_tecnica, unidad, cantidad, cantidad_pedida, cantidad_pendiente, completo, observacion',
+      'id, orden_id, plano_id, numero_plano, plano_nombre, etapa_id, etapa, area, material_id, material_codigo, material, especificacion_tecnica, unidad, cantidad, observacion',
     )
     .eq('orden_id', ordenId)
     .order('numero_plano', { nullsFirst: false })
@@ -46,17 +38,12 @@ export async function listaDeMateriales(ordenId: string): Promise<MaterialDeOrde
   return (data ?? []) as unknown as MaterialDeOrden[]
 }
 
-/**
- * Lo que la pestaña carga de una vez. Son dos consultas encadenadas —el stock
- * se pide solo para lo que está en la lista— y por eso viven juntas acá y no en
- * el `Promise.all` de la pantalla.
- */
+/** Lo que la pestaña carga de una vez: la lista y el catálogo para armarla. */
 export async function materialesParaPantalla(ordenId: string) {
-  const materiales = await listaDeMateriales(ordenId)
-  const catalogo = await catalogoDeMateriales(
-    ordenId,
-    materiales.map((m) => m.material_id),
-  )
+  const [materiales, catalogo] = await Promise.all([
+    listaDeMateriales(ordenId),
+    catalogoDeMateriales(ordenId),
+  ])
   return { materiales, catalogo }
 }
 
@@ -72,31 +59,22 @@ export type CatalogoMateriales = {
   materiales: OpcionMaterial[]
   planos: { id: string; numero_plano: string; nombre: string }[]
   etapas: { id: string; nombre: string; area: string | null }[]
-  almacenes: { id: string; nombre: string }[]
-  /** Existencia disponible de cada material de la lista, sumando almacenes. */
-  disponible: Record<string, number>
 }
 
 /**
- * Lo que la pestaña necesita para armar la lista: el catálogo de materiales,
- * los planos y las etapas de esta orden, y el stock que hay.
- *
- * El stock se pide solo para los materiales que ya están en la lista: es lo
- * único que se muestra, y traer el almacén entero para pintar una columna sería
- * caro el día que la empresa tenga tres años de existencias.
+ * Lo que la pestaña necesita para armar la lista: el catálogo de materiales
+ * —el chico de Diseño, sin stock ni almacén—, los planos y las etapas de esta
+ * orden.
  */
-export async function catalogoDeMateriales(
-  ordenId: string,
-  materialesEnLista: string[] = [],
-): Promise<CatalogoMateriales> {
+export async function catalogoDeMateriales(ordenId: string): Promise<CatalogoMateriales> {
   const supabase = await createClient()
 
-  const [materiales, planos, etapas, almacenes, stock] = await Promise.all([
+  const [materiales, planos, etapas] = await Promise.all([
     supabase
       .from('materiales')
       .select('id, codigo, descripcion, especificacion_tecnica, unidad:unidades_medida(codigo)')
       .eq('activo', true)
-      .order('codigo')
+      .order('descripcion')
       .limit(1000),
     supabase
       .from('ot_planos')
@@ -108,19 +86,7 @@ export async function catalogoDeMateriales(
       .select('id, orden_secuencia, etapa:etapas_catalogo(nombre, area:areas(nombre))')
       .eq('orden_id', ordenId)
       .order('orden_secuencia'),
-    supabase.from('almacenes').select('id, nombre').eq('activo', true).order('nombre'),
-    materialesEnLista.length > 0
-      ? supabase
-          .from('v_stock_actual')
-          .select('material_id, cantidad_disponible')
-          .in('material_id', materialesEnLista)
-      : Promise.resolve({ data: [], error: null }),
   ])
-
-  const disponible: Record<string, number> = {}
-  for (const fila of (stock.data ?? []) as { material_id: string; cantidad_disponible: number }[]) {
-    disponible[fila.material_id] = (disponible[fila.material_id] ?? 0) + Number(fila.cantidad_disponible ?? 0)
-  }
 
   return {
     materiales: (materiales.data ?? []).map((m) => {
@@ -138,11 +104,9 @@ export async function catalogoDeMateriales(
       const etapa = e.etapa as { nombre: string; area: { nombre: string } | null } | null
       return {
         id: e.id,
-        nombre: etapa?.nombre ?? 'Etapa',
+        nombre: etapa?.nombre ?? `Etapa ${e.orden_secuencia}`,
         area: etapa?.area?.nombre ?? null,
       }
     }),
-    almacenes: almacenes.data ?? [],
-    disponible,
   }
 }
