@@ -15,11 +15,6 @@ import { comentarOrden } from '../acciones'
 /** Color de cada categoría de la línea de tiempo. */
 const CATEGORIAS: Record<string, { etiqueta: string; tono: Tono }> = {
   BITACORA: { etiqueta: 'Bitácora', tono: 'acento' },
-  DOCUMENTO: { etiqueta: 'Documento', tono: 'info' },
-  MATERIAL: { etiqueta: 'Material', tono: 'neutro' },
-  ALMACEN: { etiqueta: 'Almacén', tono: 'neutro' },
-  INSPECCION: { etiqueta: 'Inspección', tono: 'aviso' },
-  CALIDAD: { etiqueta: 'Calidad', tono: 'aviso' },
   AUDITORIA: { etiqueta: 'Cambio', tono: 'neutro' },
   ENTREGA: { etiqueta: 'Entrega', tono: 'exito' },
 }
@@ -54,7 +49,7 @@ export function Bitacora({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Trazabilidad"
-        descripcion="Todo lo ocurrido con esta orden: cambios de estado, documentos, material, inspecciones y comentarios. Es un registro inmutable."
+        descripcion="Todo lo ocurrido con esta orden: cambios de estado, avances y comentarios. Es un registro inmutable."
       />
 
       {puedeComentar && (

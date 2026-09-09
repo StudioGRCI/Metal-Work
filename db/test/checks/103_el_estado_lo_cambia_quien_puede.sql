@@ -1,13 +1,11 @@
 -- El estado lo cambia quien puede, también por la puerta de atrás.
 --
--- La pantalla exigía `produccion.aprobar_parte` para aprobar un parte diario y
--- `ordenes.aprobar` / `.anular` para mover una OT, pero la base no exigía
--- ninguno de los dos: sus políticas aceptaban `produccion.registrar` y
--- `ordenes.cambiar_estado` para cualquier columna. Como la clave anónima viaja
--- al navegador y el repositorio es público, la regla que vive solo en la
--- pantalla no es una regla. La migración 077 la bajó a la base, y este check
--- vigila que siga ahí, junto con las otras cuatro puertas que esa migración
--- cerró.
+-- La pantalla exigía `ordenes.aprobar` / `.anular` para mover una OT, pero la
+-- base no lo exigía: su política aceptaba `ordenes.cambiar_estado` para
+-- cualquier columna. Como la clave anónima viaja al navegador y el repositorio
+-- es público, la regla que vive solo en la pantalla no es una regla. La
+-- migración 077 la bajó a la base, y este check vigila que siga ahí. (Las
+-- puertas del parte diario y de los proveedores se fueron con sus módulos.)
 --
 -- Todo lo que tiene que pasar por RLS va con `set local role authenticated`.
 -- Sin esa línea la sentencia corre como `postgres`, que es dueño de las tablas
@@ -31,9 +29,6 @@ select test.crear_usuario('Silvia', 'Ramos',   'silvia@demo.pe', 'SUPERVISOR',  
 select test.crear_usuario('Rosa',   'Yupanqui','rosa@demo.pe',   'JEFE_TALLER', (select id from public.sedes limit 1)) as jefe_id \gset
 select test.crear_usuario('Gabriel','Rojas',   'gabriel@demo.pe','GERENTE',     (select id from public.sedes limit 1)) as gerente_id \gset
 select test.crear_usuario('Nadia',  'Pinto',   'nadia@demo.pe',  'DISENO',      (select id from public.sedes limit 1)) as diseno_id \gset
-select test.crear_usuario('Carla',  'Vidal',   'carla@demo.pe',  'COSTOS',      (select id from public.sedes limit 1)) as costos_id \gset
-select test.crear_usuario('Jesús',  'Campos',  'jesus@demo.pe',  'ALMACENERO',  (select id from public.sedes limit 1)) as almacenero_id \gset
-select test.crear_usuario('Lucía',  'Ferrer',  'lucia@demo.pe',  'CALIDAD',     (select id from public.sedes limit 1)) as calidad_id \gset
 
 insert into public.clientes (tipo_documento, numero_documento, razon_social)
   values ('RUC', '20601010109', 'TRANSPORTES SAN BORJA S.A.C.');
@@ -76,13 +71,12 @@ select set_config('prueba.ot_taller',
   (select id::text from public.ordenes_trabajo
     where descripcion = 'Furgón en taller con sus etapas'), false);
 
--- El parte diario del turno, ya cerrado y esperando firma. Se arma desde la
--- conexión administrativa; lo que se prueba después es quién lo aprueba.
+-- Las etapas que la aprobación instanció; la primera queda a mano para las
+-- secciones de abajo.
 do $$
 declare
   v_ot    uuid := current_setting('prueba.ot_taller')::uuid;
   v_etapa uuid;
-  v_parte uuid;
   v_etapas int;
 begin
   select count(*) into v_etapas from public.ot_etapas where orden_id = v_ot;
@@ -92,80 +86,8 @@ begin
 
   select id into v_etapa
     from public.ot_etapas where orden_id = v_ot order by orden_secuencia limit 1;
-
-  insert into public.partes_diarios (fecha, sede_id, responsable_id)
-    select current_date, s.id, current_setting('prueba.supervisor')::uuid
-      from public.sedes s limit 1
-    returning id into v_parte;
-
-  insert into public.parte_detalle (parte_id, orden_id, etapa_id, usuario_id, horas, descripcion)
-    values (v_parte, v_ot, v_etapa, current_setting('prueba.operario')::uuid, 8,
-            'Armado de laterales');
-
-  update public.partes_diarios set estado = 'CERRADO' where id = v_parte;
-
-  perform set_config('prueba.parte', v_parte::text, false);
   perform set_config('prueba.etapa', v_etapa::text, false);
 end $$;
-
--- ===========================================================================
--- 1. EL PARTE DIARIO NO SE APRUEBA SOLO
--- ===========================================================================
-select test.como_usuario(:'operario_id');
-set local role authenticated;
-
-do $$
-declare
-  v_parte uuid := current_setting('prueba.parte')::uuid;
-  v_filas int;
-begin
-  -- Primero se demuestra que el operario alcanza la fila y que la política de
-  -- escritura le deja tocarla. Sin esto, el fallo de abajo podría ser un
-  -- «cero filas» del RLS disfrazado de guardia, que es el falso verde más
-  -- caro de este proyecto.
-  perform test.afirmar(
-    (select count(*) from public.partes_diarios where id = v_parte) = 1,
-    'el operario ve el parte de su turno');
-
-  update public.partes_diarios set observaciones = 'Turno de tarde' where id = v_parte;
-  get diagnostics v_filas = row_count;
-  perform test.afirmar(v_filas = 1,
-    'y la política le deja escribir en él: lo que falle después será la guardia, no el RLS');
-
-  perform test.debe_fallar(
-    format('update public.partes_diarios set estado = ''APROBADO'' where id = %L', v_parte),
-    'un operario no aprueba su propio parte',
-    'produccion.aprobar_parte');
-end $$;
-
-reset role;
-
--- --------------------------------------- el supervisor sí, y firma él
-select test.como_usuario(:'supervisor_id');
-set local role authenticated;
-
-do $$
-declare
-  v_parte uuid := current_setting('prueba.parte')::uuid;
-  v_filas int;
-  v_firma uuid;
-begin
-  -- El formulario manda la firma del operario. La base la ignora: firma quien
-  -- aprueba, no quien lo pide.
-  update public.partes_diarios
-     set estado = 'APROBADO',
-         aprobado_por = current_setting('prueba.operario')::uuid
-   where id = v_parte;
-  get diagnostics v_filas = row_count;
-
-  perform test.afirmar(v_filas = 1, 'el supervisor sí aprueba el parte');
-
-  select aprobado_por into v_firma from public.partes_diarios where id = v_parte;
-  perform test.afirmar(v_firma = current_setting('prueba.supervisor')::uuid,
-    'y la firma queda a nombre del supervisor aunque el formulario mandara otra');
-end $$;
-
-reset role;
 
 -- ===========================================================================
 -- 2. LA ORDEN LA APRUEBA Y LA ANULA QUIEN PUEDE
@@ -316,54 +238,6 @@ begin
            current_setting('prueba.cotizacion'), current_setting('prueba.plantilla')),
     'quien solo ve órdenes no aplica una ficha técnica',
     'No tiene permiso para aplicar una ficha');
-end $$;
-
-reset role;
-
--- ===========================================================================
--- 5. EL PROVEEDOR LO DA DE ALTA QUIEN LO NECESITA
--- ===========================================================================
--- El proveedor nuevo se da de alta justo cuando hace falta emitirle algo, así
--- que Almacén y Costos ven el botón. La política solo aceptaba `compras.crear`
--- y les devolvía un error siempre.
-select test.como_usuario(:'costos_id');
-set local role authenticated;
-
-do $$
-declare v_filas int;
-begin
-  insert into public.proveedores (numero_documento, razon_social)
-    values ('20100000200', 'SUMINISTROS DEL NORTE S.A.C.');
-  get diagnostics v_filas = row_count;
-  perform test.afirmar(v_filas = 1, 'Costos da de alta un proveedor');
-end $$;
-
-reset role;
-
-select test.como_usuario(:'almacenero_id');
-set local role authenticated;
-
-do $$
-declare v_filas int;
-begin
-  insert into public.proveedores (numero_documento, razon_social)
-    values ('20100000201', 'ACEROS DEL SUR S.A.C.');
-  get diagnostics v_filas = row_count;
-  perform test.afirmar(v_filas = 1, 'y Almacén también');
-end $$;
-
-reset role;
-
-select test.como_usuario(:'calidad_id');
-set local role authenticated;
-
-do $$
-begin
-  perform test.debe_fallar(
-    'insert into public.proveedores (numero_documento, razon_social)
-       values (''20100000202'', ''PINTURAS DEL ESTE S.A.C.'')',
-    'Calidad no da de alta proveedores',
-    'row-level security');
 end $$;
 
 reset role;

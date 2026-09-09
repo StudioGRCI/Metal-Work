@@ -191,19 +191,8 @@ export default async function PaginaPlazos({ searchParams }: PageProps<'/plazos'
                         )}
                       </TD>
 
-                      {/* Bajo el nombre del área, lo que le toca de esta unidad.
-                          Es lo que convierte «Maestranza va tarde» en «Maestranza
-                          va tarde y tiene doce cosas por habilitar»: sin la cifra,
-                          el semáforo dice que hay un problema pero no su tamaño. */}
                       <TD className="max-w-44">
                         <p className="text-sm text-texto-suave">{f.etapa_nombre}</p>
-                        {(f.material_lineas ?? 0) > 0 && (
-                          <p className="text-[11px] text-texto-tenue">
-                            {f.material_lineas}
-                            {f.material_lineas === 1 ? ' línea · ' : ' líneas · '}
-                            {moneda(Number(f.material_monto ?? 0), 'PEN')}
-                          </p>
-                        )}
                       </TD>
 
                       <TD className="hidden text-xs whitespace-nowrap text-texto-suave sm:table-cell">

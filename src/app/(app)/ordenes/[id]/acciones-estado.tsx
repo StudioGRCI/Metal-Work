@@ -30,14 +30,12 @@ const SIGUIENTES: Record<string, { estado: string; etiqueta: string; permiso: st
   ],
   EN_PROCESO: [
     { estado: 'PAUSADA', etiqueta: 'Pausar', permiso: 'ordenes.cambiar_estado', motivo: true },
-    { estado: 'CONTROL_CALIDAD', etiqueta: 'Enviar a calidad', permiso: 'ordenes.cambiar_estado' },
     { estado: 'TERMINADA', etiqueta: 'Terminar', permiso: 'ordenes.cambiar_estado' },
   ],
   PAUSADA: [{ estado: 'EN_PROCESO', etiqueta: 'Reanudar', permiso: 'ordenes.cambiar_estado' }],
-  CONTROL_CALIDAD: [
-    { estado: 'EN_PROCESO', etiqueta: 'Devolver a taller', permiso: 'ordenes.cambiar_estado' },
-    { estado: 'TERMINADA', etiqueta: 'Terminar', permiso: 'ordenes.cambiar_estado' },
-  ],
+  // CONTROL_CALIDAD sigue en el enum de la base pero ya no se llega a él:
+  // el módulo de calidad se retiró. Si una orden vieja lo tuviera, se termina.
+  CONTROL_CALIDAD: [{ estado: 'TERMINADA', etiqueta: 'Terminar', permiso: 'ordenes.cambiar_estado' }],
   TERMINADA: [{ estado: 'EN_PROCESO', etiqueta: 'Reabrir para retrabajo', permiso: 'ordenes.cambiar_estado' }],
   // ENTREGADA no figura como transición a propósito: no se alcanza cambiando el
   // estado -la base rechaza ese UPDATE- sino registrando el acta de conformidad.

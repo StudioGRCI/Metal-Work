@@ -41,35 +41,18 @@ export type ReporteDiario = {
   reportado: { nombres: string; apellidos: string } | null
 }
 
-export type SubcontratoDeOrden = {
-  id: string
-  numero: string | null
-  tipo_servicio: string | null
-  descripcion: string | null
-  estado: string | null
-  proveedor: string | null
-  fecha_entrega: string | null
-  atrasada: boolean | null
-}
-
 /**
- * La hoja de cada área: sus actividades, cuánto lleva de lo suyo, el diario de
- * los últimos días y lo que está esperando de afuera.
- *
- * Los subcontratos se leen del módulo que ya existe y **sin el monto**: el jefe
- * de producción necesita saber qué está esperando del tercero, no lo que
- * cuesta, que es de quien tiene `costos.ver`. El select explícito es lo que lo
- * garantiza.
+ * La hoja de cada área: sus actividades, cuánto lleva de lo suyo y el diario de
+ * los últimos días.
  */
 export async function actividadesDeOrden(ordenId: string): Promise<{
   actividades: ActividadArea[]
   areas: AvanceDeArea[]
   diario: ReporteDiario[]
-  subcontratos: SubcontratoDeOrden[]
 }> {
   const supabase = await createClient()
 
-  const [actividades, areas, diario, subcontratos] = await Promise.all([
+  const [actividades, areas, diario] = await Promise.all([
     supabase
       .from('v_ot_actividades')
       .select(
@@ -91,12 +74,6 @@ export async function actividadesDeOrden(ordenId: string): Promise<{
       .eq('orden_id', ordenId)
       .order('fecha', { ascending: false })
       .limit(40),
-    supabase
-      .from('os_resumen')
-      .select('id, numero, tipo_servicio, descripcion, estado, proveedor, fecha_entrega, atrasada')
-      .eq('orden_id', ordenId)
-      .order('fecha', { ascending: false })
-      .limit(30),
   ])
 
   if (actividades.error) {
@@ -107,7 +84,6 @@ export async function actividadesDeOrden(ordenId: string): Promise<{
     actividades: (actividades.data ?? []) as unknown as ActividadArea[],
     areas: (areas.data ?? []) as unknown as AvanceDeArea[],
     diario: (diario.data ?? []) as unknown as ReporteDiario[],
-    subcontratos: (subcontratos.data ?? []) as unknown as SubcontratoDeOrden[],
   }
 }
 

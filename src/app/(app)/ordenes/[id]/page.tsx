@@ -251,7 +251,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               liberacion={salida.liberacion}
               entrega={salida.entrega}
               puedeLiberar={puede(perfil, 'tesoreria.liberar')}
-              puedeConfirmar={puede(perfil, ['ordenes.entregar', 'requerimientos.crear'])}
+              puedeConfirmar={puede(perfil, ['ordenes.entregar', 'produccion.actividades'])}
             />
           )}
 
@@ -317,7 +317,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           repuestos={repuestos}
           verificaciones={verificaciones}
           personal={personal}
-          puedeEditar={puede(perfil, ['ordenes.editar', 'produccion.registrar', 'calidad.inspeccionar'])}
+          puedeEditar={puede(perfil, ['ordenes.editar', 'produccion.registrar'])}
           puedeEscribirOrden={puede(perfil, ['ordenes.editar', 'ordenes.cambiar_estado'])}
           puedeArmar={puede(perfil, ['ordenes.editar', 'produccion.registrar'])}
         />
@@ -358,7 +358,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           actividades={hojaAreas[0].actividades}
           areas={hojaAreas[0].areas}
           diario={hojaAreas[0].diario}
-          subcontratos={hojaAreas[0].subcontratos}
           /* Las áreas de la lista son las que esta persona puede escribir: la
              suya, o todas si responde por el taller entero. Ofrecerle las que
              el RLS le va a rechazar es prometerle un botón que no hace nada. */

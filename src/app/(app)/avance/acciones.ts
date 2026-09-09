@@ -111,7 +111,6 @@ export async function registrarAvance(
   revalidatePath('/avance')
   revalidatePath(`/avance/${v.orden_id}`)
   revalidatePath(`/ordenes/${v.orden_id}`)
-  revalidatePath('/produccion')
   return { ok: true, mensaje: 'Avance registrado.' }
 }
 
@@ -120,7 +119,7 @@ export async function urlDeFoto(
   ruta: string,
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['produccion.ver', 'documentos.ver'])) {
+  if (!puede(perfil, 'produccion.ver')) {
     return { ok: false, error: 'No tienes permiso para ver las fotos del taller.' }
   }
 

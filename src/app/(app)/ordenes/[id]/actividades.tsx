@@ -1,13 +1,11 @@
 'use client'
 
-import { CalendarDays, ExternalLink, Plus, Trash2, TrendingUp, Truck } from 'lucide-react'
-import Link from 'next/link'
+import { CalendarDays, Plus, Trash2, TrendingUp, Truck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
-import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -16,7 +14,6 @@ import type {
   ActividadArea,
   AvanceDeArea,
   ReporteDiario,
-  SubcontratoDeOrden,
 } from '@/lib/datos/actividades'
 import { fecha as fmtFecha, hoyLima, numero } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -75,7 +72,6 @@ export function ActividadesDeOrden({
   actividades,
   areas,
   diario,
-  subcontratos,
   areasDisponibles,
   puedeArmar,
   puedeReportar,
@@ -85,7 +81,6 @@ export function ActividadesDeOrden({
   actividades: ActividadArea[]
   areas: AvanceDeArea[]
   diario: ReporteDiario[]
-  subcontratos: SubcontratoDeOrden[]
   areasDisponibles: { id: string; codigo: string; nombre: string }[]
   /** `produccion.actividades`: el jefe de maestranza y el supervisor. */
   puedeArmar: boolean
@@ -235,56 +230,6 @@ export function ActividadesDeOrden({
           </TarjetaCuerpo>
         </Tarjeta>
       ))}
-
-      {subcontratos.length > 0 && (
-        <Tarjeta>
-          <TarjetaCabecera
-            titulo="Lo que se está esperando de afuera"
-            descripcion="Servicios de terceros de esta orden: arenado, corte, torno. Se registran en Servicios; acá se ven para saber qué traba el avance."
-          />
-          <TarjetaCuerpo className="p-0">
-            <Tabla>
-              <TablaCabecera>
-                <TR>
-                  <TH>N.º</TH>
-                  <TH>Servicio</TH>
-                  <TH>Proveedor</TH>
-                  <TH>Entrega</TH>
-                  <TH>Estado</TH>
-                </TR>
-              </TablaCabecera>
-              <tbody>
-                {subcontratos.map((s) => (
-                  <TR key={s.id}>
-                    <TD className="whitespace-nowrap text-sm">
-                      <Link href={`/servicios/${s.id}`} className="inline-flex items-center gap-1 underline">
-                        {s.numero}
-                        <ExternalLink aria-hidden className="size-3" />
-                      </Link>
-                    </TD>
-                    <TD className="text-sm">
-                      <p className="font-medium text-texto">{s.tipo_servicio}</p>
-                      {s.descripcion && (
-                        <p className="text-[11px] text-texto-suave">{s.descripcion}</p>
-                      )}
-                    </TD>
-                    <TD className="text-sm text-texto-suave">{s.proveedor ?? '—'}</TD>
-                    <TD className="text-sm">
-                      {s.fecha_entrega ? fmtFecha(s.fecha_entrega) : '—'}
-                      {s.atrasada && (
-                        <Insignia tono="peligro" className="ml-2">
-                          atrasado
-                        </Insignia>
-                      )}
-                    </TD>
-                    <TD className="text-xs text-texto-suave">{s.estado}</TD>
-                  </TR>
-                ))}
-              </tbody>
-            </Tabla>
-          </TarjetaCuerpo>
-        </Tarjeta>
-      )}
 
       {diario.length > 0 && (
         <Tarjeta>

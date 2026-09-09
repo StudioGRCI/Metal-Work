@@ -87,7 +87,6 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
               {/* Horas y responsable se esconden en el teléfono —donde la tabla
                   ya no cabe— y su dato baja en letra chica a la celda de al
                   lado, para no perderlo por el camino. */}
-              <TH className="hidden text-right sm:table-cell">Horas</TH>
               <TH>Entrega</TH>
               <TH className="hidden sm:table-cell">Responsable</TH>
             </tr>
@@ -193,16 +192,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                       <Progreso valor={orden.avance_porcentaje} mostrarValor alto="sm" />
                       <p className="mt-1 text-[11px] text-texto-suave">
                         {orden.etapas_terminadas ?? 0} de {orden.etapas_total ?? 0} etapas
-                        <span className="tabular sm:hidden">
-                          {' · '}
-                          {cantidad(orden.horas_reales)}/{cantidad(orden.horas_estimadas)} h
-                        </span>
                       </p>
-                    </TD>
-
-                    <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">
-                      <span className="text-texto">{cantidad(orden.horas_reales)}</span>
-                      <span className="text-texto-tenue"> / {cantidad(orden.horas_estimadas)}</span>
                     </TD>
 
                     <TD className="whitespace-nowrap">

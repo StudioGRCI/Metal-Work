@@ -1,14 +1,8 @@
--- La lista de materiales de la orden es de Diseño, y el pase al almacén es de
--- quien puede pedir. Este check aprieta las tres cosas que pueden mentir:
---
---   1. Que quien no es Diseño no pueda tocar la lista. Un UPDATE que el RLS
---      esconde afecta cero filas SIN error: por eso se cuenta con
---      `get diagnostics` y no se confía en que la sentencia «pasó».
---   2. Que el saldo salga de los requerimientos vivos: se pide el 40 % y tienen
---      que quedar exactamente los otros 300 kg.
---   3. Que la base pare un pedido de más de lo que queda. Es la única defensa
---      real: la pantalla puede tener el número mal y el almacén acabaría
---      comprando el doble.
+-- La lista de materiales de la orden es de Diseño. Este check aprieta lo que
+-- puede mentir: que quien no es Diseño no pueda tocar la lista. Un UPDATE que
+-- el RLS esconde afecta cero filas SIN error: por eso se cuenta con
+-- `get diagnostics` y no se confía en que la sentencia «pasó». (El pase al
+-- almacén y el saldo por requerimientos se fueron con el almacén.)
 --
 -- El armazón —material, orden— se monta con ADMIN, como manda la skill: si se
 -- montara con el rol examinado, la prueba se caería por el armazón.
@@ -24,8 +18,6 @@ select test.crear_usuario('Rosa',  'Yupanqui','rosa@demo.pe',  'JEFE_TALLER', (s
 
 insert into public.clientes (tipo_documento, numero_documento, razon_social)
   values ('RUC', '20607761907', 'TRANSPORTES VEGA PIUNDO S.A.C');
-insert into public.almacenes (codigo, nombre, sede_id)
-  select 'A1', 'Almacén central', id from public.sedes limit 1;
 insert into public.unidades_medida (codigo, nombre) values ('KG', 'Kilogramo') on conflict do nothing;
 insert into public.categorias_material (codigo, nombre) values ('GEN', 'General') on conflict do nothing;
 insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
@@ -40,7 +32,6 @@ insert into public.ordenes_trabajo (cliente_id, sede_id, descripcion)
 
 select set_config('prueba.orden',    (select id::text from public.ordenes_trabajo limit 1), false);
 select set_config('prueba.material', (select id::text from public.materiales limit 1), false);
-select set_config('prueba.almacen',  (select id::text from public.almacenes limit 1), false);
 
 -- --------------------------------------------- Diseño escribe qué lleva la OT
 select test.como_usuario(:'diseno_id');
@@ -95,76 +86,30 @@ begin
     (select cantidad from public.ot_materiales where id = current_setting('prueba.linea')::uuid) = 500,
     'y la cantidad quedó como la dejó Diseño');
 
-  -- Pero sí puede pedir: el 40 % de los 500 kg.
-  v_req := public.mandar_material_a_requerimiento(
-    current_setting('prueba.orden')::uuid,
-    jsonb_build_array(jsonb_build_object(
-      'material', current_setting('prueba.linea')::uuid, 'cantidad', 200)),
-    current_setting('prueba.almacen')::uuid,
-    'ALTA', null, 'Primer pedido');
-
-  perform set_config('prueba.req', v_req::text, false);
-
-  perform test.afirmar(
-    (select cantidad_pedida from public.v_ot_materiales
-      where id = current_setting('prueba.linea')::uuid) = 200,
-    'el pedido descuenta 200 de la lista');
-
-  perform test.afirmar(
-    (select cantidad_pendiente from public.v_ot_materiales
-      where id = current_setting('prueba.linea')::uuid) = 300,
-    'y quedan 300 por pedir');
-
-  perform test.afirmar(
-    (select count(*) from public.requerimiento_detalle
-      where requerimiento_id = v_req
-        and ot_material_id = current_setting('prueba.linea')::uuid) = 1,
-    'la línea del requerimiento sabe de qué línea de la lista salió');
 end $$;
 
 reset role;
 
--- --------------------------------------- no se pide más de lo que la lista dice
-select test.como_usuario(:'jefe_id');
-set local role authenticated;
-
-select test.debe_fallar(
-  format($sql$select public.mandar_material_a_requerimiento(
-                %L, jsonb_build_array(jsonb_build_object('material', %L, 'cantidad', 301)))$sql$,
-         current_setting('prueba.orden'), current_setting('prueba.linea')),
-  'no deja pedir más de lo que queda pendiente',
-  'quedan');
-
-reset role;
-
--- --------------------------- un requerimiento anulado devuelve el saldo
--- Si el saldo estuviera guardado en la fila en vez de calculado, acá se
--- quedaría en 300 para siempre y ese material no se volvería a pedir nunca.
-update public.requerimientos set estado = 'ANULADO'
- where id = current_setting('prueba.req')::uuid;
-
-do $$
-begin
-  perform test.afirmar(
-    (select cantidad_pendiente from public.v_ot_materiales
-      where id = current_setting('prueba.linea')::uuid) = 500,
-    'al anular el requerimiento, los 500 kg vuelven a estar por pedir');
-end $$;
-
--- ------------------------------------------------- quien no ve la orden no ve la lista
+-- ------------------------------------------- el operario ve la lista, pero no la escribe
 select test.crear_usuario('Pedro', 'Silva', 'pedro@demo.pe', 'OPERARIO',
                           (select id from public.sedes limit 1)) as operario_id \gset
 select test.como_usuario(:'operario_id');
 set local role authenticated;
 
 do $$
+declare v_filas int;
 begin
-  -- Un operario solo alcanza las órdenes donde está asignado o imputó horas, y
-  -- en esta no está ni una cosa ni la otra.
+  -- Desde la migración 094 el operario ve las órdenes como todos (ordenes.ver);
+  -- lo que sigue cerrado es escribir en la hoja de Diseño.
   perform test.afirmar(
     (select count(*) from public.ot_materiales
-      where orden_id = current_setting('prueba.orden')::uuid) = 0,
-    'un operario ajeno a la orden no ve su lista de materiales');
+      where orden_id = current_setting('prueba.orden')::uuid) = 1,
+    'el operario ve la lista de materiales de la orden');
+
+  update public.ot_materiales set cantidad = 1
+   where id = current_setting('prueba.linea')::uuid;
+  get diagnostics v_filas = row_count;
+  perform test.afirmar(v_filas = 0, 'pero no la cambia: cero filas, como manda la política');
 end $$;
 
 reset role;

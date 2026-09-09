@@ -107,46 +107,6 @@ begin
   raise notice '  ok · un plazo ya vencido se cuenta en negativo';
 end $$;
 
--- ------------------------------------- el plazo de la orden de servicio
-do $$
-declare
-  v_entrega date;
-  v_os      uuid;
-begin
-  insert into public.clientes (tipo_documento, numero_documento, razon_social)
-    values ('RUC', '20777777771', 'MINERA DEL SUR S.A.');
-  insert into public.unidades (cliente_id, placa, tipo_vehiculo)
-    values ((select id from public.clientes limit 1), 'XYZ-987', 'VOLQUETE');
-  insert into public.ordenes_trabajo (cliente_id, unidad_id, sede_id, descripcion)
-    values ((select id from public.clientes limit 1), (select id from public.unidades limit 1),
-            (select id from public.sedes limit 1), 'Tolva de prueba');
-  insert into public.proveedores (numero_documento, razon_social)
-    values ('20999999991', 'ARENADOS DEL SUR E.I.R.L.');
-
-  -- Se manda a arenar el viernes 28 con plazo de 2 días: vuelve el lunes 31.
-  insert into public.servicios_terceros
-    (orden_id, proveedor_id, tipo_servicio, descripcion, fecha, plazo_dias, moneda, monto, tipo_cambio, estado)
-  values ((select id from public.ordenes_trabajo limit 1),
-          (select id from public.proveedores limit 1),
-          'ARENADO', 'Arenado de la tolva', date '2026-08-28', 2, 'PEN', 1000, 1, 'SOLICITADO')
-  returning id, fecha_entrega into v_os, v_entrega;
-
-  if v_entrega <> date '2026-08-31' then
-    raise exception 'FALLA: la orden de servicio quedó con entrega el %', v_entrega;
-  end if;
-  raise notice '  ok · la orden de servicio calcula su entrega en días de taller';
-
-  -- Cambiar el plazo recalcula la fecha; no hace falta tocarla a mano.
-  update public.servicios_terceros set plazo_dias = 5 where id = v_os;
-  select fecha_entrega into v_entrega from public.servicios_terceros where id = v_os;
-  if v_entrega <> date '2026-09-03' then
-    raise exception 'FALLA: al ampliar el plazo la entrega quedó en %', v_entrega;
-  end if;
-  raise notice '  ok · al cambiar el plazo la fecha de entrega se recalcula sola';
-end $$;
-
-
-
 -- --- la siembra exige el permiso de configuración ----------------------------
 do $$
 declare v_operario uuid;

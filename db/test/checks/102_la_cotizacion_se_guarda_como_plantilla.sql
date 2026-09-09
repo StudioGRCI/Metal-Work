@@ -122,7 +122,7 @@ begin
    where p.pronamespace = 'public'::regnamespace
      and p.proname in ('notificar_a_permiso', 'notificar_a_usuario', 'plantilla_de_la_carroceria',
                        'tipo_cambio_exigido', 'sembrar_verificacion', 'cotizacion_sembrar_etapas',
-                       'generar_presupuesto_desde_cotizacion', 'sembrar_plantilla_ficha')
+                       'sembrar_plantilla_ficha')
      and (has_function_privilege('anon', p.oid, 'execute')
        or has_function_privilege('authenticated', p.oid, 'execute'));
   if v_cuantas > 0 then

@@ -80,14 +80,14 @@ begin
 end $$;
 
 -- Y lo que sí tiene que seguir funcionando: quien entró puede consultar el
--- calendario y correr los informes.
+-- calendario y mirar el tablero.
 do $$
 begin
   if not has_function_privilege('authenticated', 'public.sumar_dias_habiles(date, int)', 'execute') then
     raise exception 'FALLA: quien entró se quedó sin poder calcular plazos';
   end if;
-  if not has_function_privilege('authenticated', 'public.informe_resumen(date, date)', 'execute') then
-    raise exception 'FALLA: quien entró se quedó sin informes';
+  if not has_function_privilege('authenticated', 'public.indicadores_tablero(uuid)', 'execute') then
+    raise exception 'FALLA: quien entró se quedó sin el tablero';
   end if;
   -- Y lo que estaba cerrado a propósito sigue cerrado.
   if has_function_privilege('authenticated', 'public.siguiente_correlativo(public.tipo_correlativo, text, uuid)', 'execute') then

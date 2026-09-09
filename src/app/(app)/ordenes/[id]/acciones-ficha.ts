@@ -30,15 +30,15 @@ type Guarda =
 
 async function exigirTaller(): Promise<Guarda> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['ordenes.editar', 'produccion.registrar', 'calidad.inspeccionar'])) {
+  if (!puede(perfil, ['ordenes.editar', 'produccion.registrar'])) {
     return { ok: false, error: 'No tienes permiso para llenar la ficha de la orden.' }
   }
   return { ok: true, perfil }
 }
 
 /**
- * Marcar la ficha y escribir la orden no son lo mismo. Un operario marca su
- * avance y calidad da su visto bueno —eso vive en tablas propias—, pero las
+ * Marcar la ficha y escribir la orden no son lo mismo. El taller marca lo que
+ * verifica —eso vive en tablas propias—, pero las
  * medidas, los colores y el encargado de producción se escriben sobre la orden
  * misma, y ahí manda quien puede escribir órdenes.
  *
@@ -59,15 +59,15 @@ async function exigirEscribirOrden(): Promise<Guarda> {
 
 /**
  * Poner y quitar líneas de la ficha —un accesorio, un repuesto— es armar el
- * trabajo: lo hace el taller. Calidad marca el visto bueno sobre lo que hay,
- * que es otra cosa y tiene su propia guarda.
+ * trabajo: lo hace el taller, y el visto bueno sobre lo que hay tiene su
+ * propia guarda.
  */
 async function exigirArmarFicha(): Promise<Guarda> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['ordenes.editar', 'produccion.registrar'])) {
     return {
       ok: false,
-      error: 'Las líneas de la ficha las arma el taller; calidad da el visto bueno.',
+      error: 'Las líneas de la ficha las arma el taller.',
     }
   }
   return { ok: true, perfil }

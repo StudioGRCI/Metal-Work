@@ -293,7 +293,7 @@ export async function liberarTesoreria(_previo: unknown, datos: FormData): Promi
 /** El último sello del flujo: avisar a portería que la unidad puede cruzar. */
 export async function confirmarSalida(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['ordenes.entregar', 'requerimientos.crear'])) {
+  if (!puede(perfil, ['ordenes.entregar', 'produccion.actividades'])) {
     return { ok: false, error: 'Confirmar la salida es de quien coordina la entrega.' }
   }
 

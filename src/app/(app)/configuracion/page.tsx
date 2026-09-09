@@ -1,7 +1,6 @@
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Boton } from '@/components/ui/boton'
 import { Entrada } from '@/components/ui/campos'
-import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import {
   calendarioLaboral,
@@ -104,7 +103,7 @@ export default async function PaginaConfiguracion({
           <Tarjeta>
             <TarjetaCabecera
               titulo="Etapas de fabricación"
-              descripcion="En este orden avanza cada orden. Las marcadas exigen inspección de calidad."
+              descripcion="En este orden avanza cada orden."
             />
             <TarjetaCuerpo className="space-y-1">
               {catalogos.etapas.length === 0 && (
@@ -119,7 +118,6 @@ export default async function PaginaConfiguracion({
                     {e.nombre}
                   </span>
                   <span className="flex items-center gap-2">
-                    {e.requiere_inspeccion && <Insignia tono="aviso">calidad</Insignia>}
                     <span className="tabular text-xs text-texto-suave">{cantidad(e.horas_estandar)} h</span>
                   </span>
                 </div>

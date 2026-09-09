@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
-import { CheckCircle2, ShieldAlert } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -52,7 +51,6 @@ export function Etapas({
         {etapas.map((etapa) => {
           const estado = definir(ESTADO_ETAPA, etapa.estado)
           const abierta = editando === etapa.etapa_id
-          const bloqueada = Boolean(etapa.requiere_inspeccion) && !etapa.inspeccion_conforme
 
           return (
             <div
@@ -67,20 +65,9 @@ export function Etapas({
                 <div className="min-w-40 flex-1">
                   <p className="flex items-center gap-2 text-sm font-medium text-texto">
                     {etapa.etapa}
-                    {etapa.requiere_inspeccion &&
-                      /* `role="img"`: sin él la etiqueta del <svg> no se
-                         anuncia, y aquí el icono no adorna —dice si la etapa
-                         puede darse por terminada o no—. */
-                      (etapa.inspeccion_conforme ? (
-                        <CheckCircle2 role="img" aria-label="Inspección conforme" className="size-3.5 text-exito" />
-                      ) : (
-                        <ShieldAlert role="img" aria-label="Requiere inspección de calidad" className="size-3.5 text-aviso" />
-                      ))}
                   </p>
                   <p className="text-[11px] text-texto-suave">
-                    {cantidad(etapa.horas_reales)} de {cantidad(etapa.horas_estimadas)} h
-                    {(etapa.operarios_asignados ?? 0) > 0 &&
-                      ` · ${etapa.operarios_asignados} operarios`}
+                    {cantidad(etapa.horas_estimadas)} h estimadas
                     {etapa.fecha_fin_real && ` · terminada el ${fecha(etapa.fecha_fin_real)}`}
                   </p>
                 </div>
@@ -110,7 +97,6 @@ export function Etapas({
                 <FormularioEtapa
                   ordenId={ordenId}
                   etapa={etapa}
-                  bloqueada={bloqueada}
                   alTerminar={() => setEditando(null)}
                 />
               )}
@@ -125,12 +111,10 @@ export function Etapas({
 function FormularioEtapa({
   ordenId,
   etapa,
-  bloqueada,
   alTerminar,
 }: {
   ordenId: string
   etapa: Etapa
-  bloqueada: boolean
   alTerminar: () => void
 }) {
   const router = useRouter()
@@ -185,18 +169,14 @@ function FormularioEtapa({
         </div>
       </Campo>
 
-      <Campo
-        etiqueta="Estado"
-        htmlFor={`estado-${etapa.etapa_id}`}
-        ayuda={bloqueada ? 'Requiere inspección de calidad conforme para poder terminarse' : undefined}
-      >
+      <Campo etiqueta="Estado" htmlFor={`estado-${etapa.etapa_id}`}>
         <Seleccion
           id={`estado-${etapa.etapa_id}`}
           name="estado"
           defaultValue={etapa.estado ?? 'PENDIENTE'}
         >
           {ESTADOS.map((o) => (
-            <option key={o.valor} value={o.valor} disabled={o.valor === 'TERMINADA' && bloqueada}>
+            <option key={o.valor} value={o.valor}>
               {o.etiqueta}
             </option>
           ))}

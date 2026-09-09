@@ -142,12 +142,6 @@ export const ORDEN_ESTADO_COTIZACION = [
   'ANULADA',
 ] as const
 
-export const RESULTADO_INSPECCION: Record<string, Def> = {
-  CONFORME: { etiqueta: 'Conforme', tono: 'exito' },
-  OBSERVADO: { etiqueta: 'Observado', tono: 'aviso' },
-  RECHAZADO: { etiqueta: 'Rechazado', tono: 'peligro' },
-}
-
 export const TIPO_EVENTO_BITACORA: Record<string, Def> = {
   CREACION: { etiqueta: 'Creación', tono: 'info' },
   CAMBIO_ESTADO: { etiqueta: 'Cambio de estado', tono: 'acento' },
@@ -159,14 +153,6 @@ export const TIPO_EVENTO_BITACORA: Record<string, Def> = {
   REANUDACION: { etiqueta: 'Reanudación', tono: 'exito' },
   COMENTARIO: { etiqueta: 'Comentario', tono: 'neutro' },
   ENTREGA: { etiqueta: 'Entrega', tono: 'exito' },
-}
-
-export const TIPO_COSTO: Record<string, Def> = {
-  MATERIAL: { etiqueta: 'Materiales', tono: 'info' },
-  MANO_OBRA: { etiqueta: 'Mano de obra', tono: 'acento' },
-  SERVICIO: { etiqueta: 'Servicios de terceros', tono: 'aviso' },
-  INDIRECTO: { etiqueta: 'Gastos indirectos', tono: 'neutro' },
-  OTRO: { etiqueta: 'Otros', tono: 'neutro' },
 }
 
 const VACIO: Def = { etiqueta: '—', tono: 'neutro' }
@@ -181,17 +167,6 @@ export function definir(mapa: Record<string, Def>, valor: string | null | undefi
 export function opciones(mapa: Record<string, Def>, orden?: readonly string[]) {
   const claves = orden ?? Object.keys(mapa)
   return claves.map((valor) => ({ valor, etiqueta: mapa[valor]?.etiqueta ?? valor }))
-}
-
-/** Cómo se le dice a cada condición de pago fuera de la base de datos. */
-export const CONDICION_PAGO: Record<string, string> = {
-  CONTADO: 'Contado',
-  CREDITO_7: 'Crédito 7 días',
-  CREDITO_15: 'Crédito 15 días',
-  CREDITO_30: 'Crédito 30 días',
-  CREDITO_45: 'Crédito 45 días',
-  CREDITO_60: 'Crédito 60 días',
-  LETRAS: 'Letras',
 }
 
 /**
