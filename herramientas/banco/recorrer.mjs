@@ -42,6 +42,7 @@ const cotizacionId = await primero('select id from public.cotizaciones limit 1')
 const parteId = await primero('select id from public.partes_diarios limit 1')
 const movimientoId = await primero('select id from public.movimientos_almacen limit 1')
 const requerimientoId = await primero('select id from public.requerimientos limit 1')
+const flotaId = await primero('select id from public.flota_unidades order by ingreso desc limit 1')
 
 const RUTAS = [
   ['tablero', '/'],
@@ -58,6 +59,10 @@ const RUTAS = [
   cotizacionId && ['cotizacion-detalle', `/cotizaciones/${cotizacionId}`],
   ['avance-taller', '/avance'],
   ordenId && ['avance-unidad', `/avance/${ordenId}`],
+  ['avance-diario', '/avance/diario'],
+  ['avance-flota', '/avance/flota'],
+  ['avance-flota-nueva', '/avance/flota/nueva'],
+  flotaId && ['avance-flota-unidad', `/avance/flota/${flotaId}`],
   ordenId && ['orden-ficha', `/ordenes/${ordenId}?vista=ficha`],
   ordenId && ['orden-avance', `/ordenes/${ordenId}?vista=avance`],
   ordenId && ['orden-documentos', `/ordenes/${ordenId}?vista=documentos`],

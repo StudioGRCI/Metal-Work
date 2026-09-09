@@ -51,6 +51,15 @@ export function nombreDeUnidad(unidad: UnidadNombrable | null | undefined): stri
 }
 
 /**
+ * El nombre de una unidad que entró sin orden. Tiene menos datos que una
+ * unidad de cliente —placa o descripción, lo que el supervisor escribió en la
+ * puerta— y la base garantiza que al menos uno de los dos existe.
+ */
+export function nombreDeFlota(unidad: { placa?: string | null; descripcion?: string | null }): string {
+  return limpio(unidad.placa) ?? limpio(unidad.descripcion) ?? 'Unidad sin nombre'
+}
+
+/**
  * `true` cuando lo que se está mostrando NO es la placa. Sirve para que la
  * pantalla lo diga en vez de dejar creer que ese texto es una matrícula: quien
  * lee «Chasis 9BM…» tiene que saber que esa unidad todavía no está matriculada.

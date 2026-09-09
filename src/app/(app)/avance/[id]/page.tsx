@@ -12,6 +12,7 @@ import { ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { fecha as formatearFecha } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
+import { esUuid } from '@/lib/utils'
 
 import { RegistrarAvance } from '../registrar-avance'
 
@@ -20,6 +21,8 @@ export const metadata = { title: 'Avance de la unidad' }
 export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avance/[id]'>) {
   const perfil = await exigirPermiso('produccion.ver')
   const { id } = await params
+  // Un id mal formado es «no existe», no un error del servidor.
+  if (!esUuid(id)) notFound()
 
   const orden = await cabeceraDeAvance(id)
   if (!orden) notFound()

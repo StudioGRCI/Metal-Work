@@ -1478,6 +1478,197 @@ export type Database = {
         }
         Relationships: []
       }
+      flota_avance_fotos: {
+        Row: {
+          id: string
+          avance_id: string
+          flota_id: string
+          bucket: string
+          ruta_storage: string
+          nombre_archivo: string
+          mime_type: string | null
+          tamano_bytes: number | null
+          pie: string | null
+          orden_visual: number
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          avance_id: string
+          flota_id: string
+          bucket?: string
+          ruta_storage: string
+          nombre_archivo: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          pie?: string | null
+          orden_visual?: number
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          avance_id?: string
+          flota_id?: string
+          bucket?: string
+          ruta_storage?: string
+          nombre_archivo?: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          pie?: string | null
+          orden_visual?: number
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_flota_foto_de_su_reporte"
+            columns: ["avance_id", "flota_id"]
+            isOneToOne: false
+            referencedRelation: "flota_avances"
+            referencedColumns: ["id", "flota_id"]
+          }
+        ]
+      }
+      flota_avances: {
+        Row: {
+          id: string
+          flota_id: string
+          area_id: string
+          fecha: string
+          descripcion: string
+          avance_porcentaje: number | null
+          impedimento: string | null
+          registrado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          flota_id: string
+          area_id: string
+          fecha?: string
+          descripcion: string
+          avance_porcentaje?: number | null
+          impedimento?: string | null
+          registrado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          flota_id?: string
+          area_id?: string
+          fecha?: string
+          descripcion?: string
+          avance_porcentaje?: number | null
+          impedimento?: string | null
+          registrado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flota_avances_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flota_avances_flota_id_fkey"
+            columns: ["flota_id"]
+            isOneToOne: false
+            referencedRelation: "flota_unidades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flota_avances_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      flota_unidades: {
+        Row: {
+          id: string
+          placa: string | null
+          placa_clave: string | null
+          descripcion: string | null
+          cliente: string | null
+          trajo: string | null
+          trabajo: string
+          estado: Database["public"]["Enums"]["estado_flota"]
+          ingreso: string
+          lista_en: string | null
+          salio_en: string | null
+          salio_por: string | null
+          retiro: string | null
+          sede_id: string | null
+          registrado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          placa?: string | null
+          descripcion?: string | null
+          cliente?: string | null
+          trajo?: string | null
+          trabajo: string
+          estado?: Database["public"]["Enums"]["estado_flota"]
+          ingreso?: string
+          lista_en?: string | null
+          salio_en?: string | null
+          salio_por?: string | null
+          retiro?: string | null
+          sede_id?: string | null
+          registrado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          placa?: string | null
+          descripcion?: string | null
+          cliente?: string | null
+          trajo?: string | null
+          trabajo?: string
+          estado?: Database["public"]["Enums"]["estado_flota"]
+          ingreso?: string
+          lista_en?: string | null
+          salio_en?: string | null
+          salio_por?: string | null
+          retiro?: string | null
+          sede_id?: string | null
+          registrado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flota_unidades_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flota_unidades_salio_por_fkey"
+            columns: ["salio_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flota_unidades_sede_id_fkey"
+            columns: ["sede_id"]
+            isOneToOne: false
+            referencedRelation: "sedes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       garantia_reclamos: {
         Row: {
           id: string
@@ -6458,6 +6649,60 @@ export type Database = {
         }
         Relationships: []
       }
+      v_flota_avance_diario: {
+        Row: {
+          id: string | null
+          flota_id: string | null
+          fecha: string | null
+          descripcion: string | null
+          avance_porcentaje: number | null
+          impedimento: string | null
+          creado_en: string | null
+          area_id: string | null
+          area_codigo: string | null
+          area: string | null
+          placa: string | null
+          unidad: string | null
+          cliente: string | null
+          trabajo: string | null
+          estado: string | null
+          registrado_por: string | null
+          registrado_por_nombre: string | null
+          fotos: number | null
+        }
+        Relationships: []
+      }
+      v_flota_unidades: {
+        Row: {
+          id: string | null
+          placa: string | null
+          placa_clave: string | null
+          descripcion: string | null
+          cliente: string | null
+          trajo: string | null
+          trabajo: string | null
+          estado: string | null
+          ingreso: string | null
+          ingreso_fecha: string | null
+          lista_en: string | null
+          salio_en: string | null
+          retiro: string | null
+          sede_id: string | null
+          registrado_por: string | null
+          registrado_por_nombre: string | null
+          ultimo_avance_fecha: string | null
+          ultimo_avance: string | null
+          area_actual_id: string | null
+          area_actual: string | null
+          avance_porcentaje: number | null
+          dias_sin_avance: number | null
+          dias_en_taller: number | null
+          impedimento: string | null
+          fotos: number | null
+          reportes: number | null
+        }
+        Relationships: []
+      }
       v_material_por_area: {
         Row: {
           presupuesto_id: string | null
@@ -7126,6 +7371,12 @@ export type Database = {
           nombre: string | null
         }[]
       }
+      flota_sigue_en_taller: {
+        Args: {
+          p_flota: string
+        }
+        Returns: boolean
+      }
       es_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -7619,6 +7870,7 @@ export type Database = {
       estado_cotizacion: "BORRADOR" | "EN_COSTEO" | "EN_REVISION" | "OBSERVADA" | "REVISADA" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "VENCIDA" | "ANULADA"
       estado_documento: "VIGENTE" | "REEMPLAZADO" | "ANULADO"
       estado_etapa_ot: "PENDIENTE" | "EN_PROCESO" | "PAUSADA" | "TERMINADA" | "OMITIDA" | "REQUIERE_REVISION"
+      estado_flota: "EN_TALLER" | "LISTA" | "SALIO"
       estado_movimiento_almacen: "BORRADOR" | "CONFIRMADO" | "ANULADO"
       estado_orden_compra: "BORRADOR" | "APROBADA" | "ENVIADA" | "RECIBIDA_PARCIAL" | "RECIBIDA" | "ANULADA"
       estado_ot: "BORRADOR" | "APROBADA" | "PROGRAMADA" | "EN_PROCESO" | "PAUSADA" | "CONTROL_CALIDAD" | "TERMINADA" | "ENTREGADA" | "FACTURADA" | "ANULADA"

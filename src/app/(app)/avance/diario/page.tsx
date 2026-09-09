@@ -1,4 +1,4 @@
-import { CalendarDays, ClipboardList, Layers, MessageSquareDashed } from 'lucide-react'
+import { AlertTriangle, CalendarDays, Camera, ClipboardList, Layers, MessageSquareDashed } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -9,7 +9,9 @@ import { Progreso } from '@/components/ui/progreso'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { avancesDelDia, hojasAbiertas } from '@/lib/datos/actividades'
+import { flotaDelDia, flotaEnTaller } from '@/lib/datos/flota'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { nombreDeFlota } from '@/lib/dominio/unidades'
 import { fecha as fmtFecha, hoyLima, numero } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
@@ -21,9 +23,10 @@ const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/
  * El parte de la jornada, que es la pantalla del jefe de producción.
  *
  * Hasta ahora el avance diario solo se podía leer orden por orden: entrar a la
- * OT, abrir la pestaña, mirar el diario, salir. Acá llega todo junto, un bloque
- * por área, y —lo que ninguna lista de reportes enseña— **quién no reportó**,
- * que es la mitad por la que pregunta el jefe cuando cierra el día.
+ * OT, abrir la pestaña, mirar el diario, salir. Acá llega todo junto —las
+ * hojas por área de las órdenes y los reportes de las unidades sin orden— y,
+ * lo que ninguna lista de reportes enseña, **quién no reportó**, que es la
+ * mitad por la que pregunta el jefe cuando cierra el día.
  */
 export default async function PaginaDiaEnElTaller({
   searchParams,
@@ -35,14 +38,28 @@ export default async function PaginaDiaEnElTaller({
   const hoy = hoyLima()
   const dia = pedida ?? hoy
 
-  const [reportes, hojas] = await Promise.all([avancesDelDia(dia), hojasAbiertas()])
+  const [reportes, hojas, flotaDia, flota] = await Promise.all([
+    avancesDelDia(dia),
+    hojasAbiertas(),
+    flotaDelDia(dia),
+    flotaEnTaller(),
+  ])
 
   // Un área que reportó otro día pero no este: es la pregunta del jefe, y no
-  // sale de la lista de reportes sino de lo que falta en ella.
+  // sale de la lista de reportes sino de lo que falta en ella. Las unidades sin
+  // orden entran igual, salvo las que ya están listas esperando al cliente.
   const calladas = hojas.filter((h) => !h.ultimo_reporte || h.ultimo_reporte < dia)
+  const flotaCallada = flota.filter(
+    (u) =>
+      u.estado === 'EN_TALLER' &&
+      u.ingreso_fecha <= dia &&
+      !flotaDia.some((r) => r.flota_id === u.id),
+  )
 
-  const areas = [...new Set(reportes.map((r) => r.area_id))]
-  const ordenes = [...new Set(reportes.map((r) => r.orden_id))]
+  const areas = new Set([...reportes.map((r) => r.area_id), ...flotaDia.map((r) => r.area_id)])
+  const unidades = new Set([...reportes.map((r) => r.orden_id), ...flotaDia.map((r) => r.flota_id)])
+  const totalReportes = reportes.length + flotaDia.length
+  const sinReportar = calladas.length + flotaCallada.length
 
   // Un bloque por área, en el orden en que el taller las nombra.
   const porArea = [...new Map(reportes.map((r) => [r.area_id, r])).values()].map((cabeza) => ({
@@ -57,7 +74,7 @@ export default async function PaginaDiaEnElTaller({
       <EncabezadoPagina
         migas={[{ titulo: 'Avance en taller', ruta: '/avance' }, { titulo: 'El día' }]}
         titulo="El día en el taller"
-        descripcion="Lo que cada área reportó ese día: sobre qué orden, cuánto avanzó y en cuánto quedó. Cada área tiene su propio 100 %."
+        descripcion="Lo que cada área reportó ese día: sobre qué orden o unidad, cuánto avanzó y en cuánto quedó. Cada área tiene su propio 100 %."
       />
 
       {/* Un día es un día: se elige con el calendario y se conserva en la URL,
@@ -87,22 +104,22 @@ export default async function PaginaDiaEnElTaller({
       <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Indicador
           titulo="Reportes del día"
-          valor={reportes.length}
+          valor={totalReportes}
           icono={ClipboardList}
-          pie={fmtFecha(dia)}
+          pie={flotaDia.length > 0 ? `${fmtFecha(dia)} · ${flotaDia.length} sin orden` : fmtFecha(dia)}
         />
-        <Indicador titulo="Áreas que reportaron" valor={areas.length} icono={Layers} />
-        <Indicador titulo="Unidades tocadas" valor={ordenes.length} icono={CalendarDays} />
+        <Indicador titulo="Áreas que reportaron" valor={areas.size} icono={Layers} />
+        <Indicador titulo="Unidades tocadas" valor={unidades.size} icono={CalendarDays} />
         <Indicador
-          titulo="Hojas sin reportar"
-          valor={calladas.length}
+          titulo="Sin reportar"
+          valor={sinReportar}
           icono={MessageSquareDashed}
-          tono={calladas.length > 0 ? 'aviso' : 'exito'}
-          pie="Abiertas y sin noticias ese día"
+          tono={sinReportar > 0 ? 'aviso' : 'exito'}
+          pie="Hojas y unidades abiertas sin noticias ese día"
         />
       </div>
 
-      {reportes.length === 0 ? (
+      {totalReportes === 0 ? (
         <Tarjeta>
           <TarjetaCuerpo>
             <p className="text-sm font-medium text-texto">
@@ -110,7 +127,8 @@ export default async function PaginaDiaEnElTaller({
             </p>
             <p className="mt-1 text-sm text-texto-suave">
               El avance del día lo escribe cada área en la pestaña «Actividades» de su orden de
-              trabajo. Abajo están las hojas que siguen abiertas y de las que no hay noticias.
+              trabajo, o con «Reportar» en la unidad sin orden. Abajo está lo que sigue abierto y
+              de lo que no hay noticias.
             </p>
           </TarjetaCuerpo>
         </Tarjeta>
@@ -123,7 +141,7 @@ export default async function PaginaDiaEnElTaller({
                 descripcion={
                   area.codigo === 'MTZ'
                     ? 'Lo que Maestranza habilitó ese día, por pieza solicitada.'
-                    : 'Lo que el área avanzó ese día.'
+                    : 'Lo que el área avanzó ese día en sus órdenes.'
                 }
                 acciones={
                   <Insignia tono="acento">
@@ -191,20 +209,87 @@ export default async function PaginaDiaEnElTaller({
               </TarjetaCuerpo>
             </Tarjeta>
           ))}
+
+          {/* Las unidades sin orden van en su propia tarjeta y con sus propias
+              columnas: acá no hay peso ni acumulado, el porcentaje es a ojo y
+              se lee como «va en», no como «avanzó». */}
+          {flotaDia.length > 0 && (
+            <Tarjeta>
+              <TarjetaCabecera
+                titulo="Unidades sin orden"
+                descripcion="Lo que se les hizo ese día a las unidades que entraron sin orden de trabajo."
+                acciones={
+                  <Insignia tono="acento">
+                    {flotaDia.length} {flotaDia.length === 1 ? 'reporte' : 'reportes'}
+                  </Insignia>
+                }
+              />
+              <TarjetaCuerpo className="p-0">
+                <Tabla>
+                  <TablaCabecera>
+                    <TR>
+                      <TH className="w-40">Unidad</TH>
+                      <TH className="w-32">Área</TH>
+                      <TH>Qué se hizo</TH>
+                      <TH className="w-24 text-right">Va en</TH>
+                      <TH>Quién</TH>
+                    </TR>
+                  </TablaCabecera>
+                  <tbody>
+                    {flotaDia.map((r) => (
+                      <TR key={r.id}>
+                        <TD className="align-top">
+                          <Link
+                            href={`/avance/flota/${r.flota_id}`}
+                            className="text-sm font-medium text-acento hover:underline"
+                          >
+                            {nombreDeFlota({ placa: r.placa, descripcion: r.unidad })}
+                          </Link>
+                          <p className="text-[11px] text-texto-suave">{r.cliente ?? 'sin orden'}</p>
+                        </TD>
+                        <TD className="align-top text-sm text-texto">{r.area}</TD>
+                        <TD className="align-top">
+                          <p className="text-sm text-texto">{r.descripcion}</p>
+                          {r.impedimento && (
+                            <p className="mt-1 flex items-center gap-1 text-xs text-peligro">
+                              <AlertTriangle aria-hidden className="size-3" />
+                              {r.impedimento}
+                            </p>
+                          )}
+                          {r.fotos > 0 && (
+                            <p className="mt-0.5 flex items-center gap-1 text-[11px] text-texto-tenue">
+                              <Camera aria-hidden className="size-3" />
+                              {r.fotos} {r.fotos === 1 ? 'foto' : 'fotos'}
+                            </p>
+                          )}
+                        </TD>
+                        <TD className="align-top text-right tabular text-sm text-texto-suave">
+                          {r.avance_porcentaje === null ? '—' : `~${numero(r.avance_porcentaje, 0)} %`}
+                        </TD>
+                        <TD className="align-top text-xs text-texto-suave">
+                          {r.registrado_por_nombre ?? '—'}
+                        </TD>
+                      </TR>
+                    ))}
+                  </tbody>
+                </Tabla>
+              </TarjetaCuerpo>
+            </Tarjeta>
+          )}
         </div>
       )}
 
-      {calladas.length > 0 && (
+      {sinReportar > 0 && (
         <Tarjeta className="mt-4">
           <TarjetaCabecera
             titulo="Sin reporte ese día"
-            descripcion="Hojas abiertas en órdenes vivas de las que no hubo noticias. No siempre es que no se trabajó: a veces es que no se escribió."
+            descripcion="Hojas abiertas en órdenes vivas, y unidades sin orden que siguen en trabajo, de las que no hubo noticias. No siempre es que no se trabajó: a veces es que no se escribió."
           />
           <TarjetaCuerpo className="p-0">
             <Tabla>
               <TablaCabecera>
                 <TR>
-                  <TH className="w-32">Orden</TH>
+                  <TH className="w-40">Orden o unidad</TH>
                   <TH>Área</TH>
                   <TH className="w-44">Lleva</TH>
                   <TH>Último reporte</TH>
@@ -235,6 +320,29 @@ export default async function PaginaDiaEnElTaller({
                     </TD>
                   </TR>
                 ))}
+                {flotaCallada.map((u) => {
+                  const dias = Number(u.dias_en_taller ?? 0)
+                  return (
+                    <TR key={u.id}>
+                      <TD>
+                        <Link
+                          href={`/avance/flota/${u.id}`}
+                          className="text-sm font-medium text-acento hover:underline"
+                        >
+                          {nombreDeFlota(u)}
+                        </Link>
+                        <p className="text-[11px] text-texto-suave">sin orden</p>
+                      </TD>
+                      <TD className="text-sm text-texto">{u.area_actual ?? 'Nadie la tomó todavía'}</TD>
+                      <TD className={`tabular text-xs ${dias >= 5 ? 'font-medium text-aviso' : 'text-texto-suave'}`}>
+                        {dias} {dias === 1 ? 'día' : 'días'} en el taller
+                      </TD>
+                      <TD className="text-xs text-texto-suave">
+                        {u.ultimo_avance_fecha ? fmtFecha(u.ultimo_avance_fecha) : 'nunca reportó'}
+                      </TD>
+                    </TR>
+                  )
+                })}
               </tbody>
             </Tabla>
           </TarjetaCuerpo>
