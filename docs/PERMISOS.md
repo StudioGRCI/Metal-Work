@@ -25,24 +25,27 @@ del final: los datos cambian, este archivo no se edita a mano.
 
 | Código | Nombre | Nivel | Usuarios activos | Permisos |
 | --- | --- | ---: | ---: | ---: |
-| `ADMINISTRACION` | Administración | 0 | 1 | 11 |
-| `CONSULTA` | Solo consulta | 10 | 0 | 9 |
-| `OPERARIO` | Operario | 20 | 2 | 6 |
-| `COSTOS` | Costos | 45 | 1 | 16 |
-| `VENDEDOR` | Comercial | 45 | 1 | 12 |
-| `DISENO` | Diseño e ingeniería | 48 | 1 | 11 |
-| `ALMACENERO` | Almacenero | 50 | 1 | 13 |
-| `COMPRADOR` | Compras | 50 | 1 | 9 |
-| `CALIDAD` | Control de calidad | 55 | 1 | 9 |
-| `SUPERVISOR` | Supervisor | 60 | 3 | 14 |
-| `JEFE_PRODUCCION` | Jefe de producción | 65 | 1 | 17 |
-| `JEFE_TALLER` | Jefe de taller | 70 | 1 | 25 |
-| `GERENTE` | Gerencia | 90 | 1 | 32 |
+| `ADMINISTRACION` | Administración | 0 | 1 | 10 |
+| `CONSULTA` | Solo consulta | 10 | 0 | 5 |
+| `OPERARIO` | Operario | 20 | 2 | 4 |
+| `COSTOS` | Costos | 45 | 0 | 9 |
+| `VENDEDOR` | Comercial | 45 | 1 | 9 |
+| `DISENO` | Diseño e ingeniería | 48 | 1 | 8 |
+| `ALMACENERO` | Almacenero | 50 | 0 | 2 |
+| `COMPRADOR` | Compras | 50 | 0 | 2 |
+| `CALIDAD` | Control de calidad | 55 | 0 | 3 |
+| `SUPERVISOR` | Supervisor | 60 | 3 | 6 |
+| `JEFE_PRODUCCION` | Jefe de producción | 65 | 1 | 8 |
+| `JEFE_TALLER` | Jefe de taller | 70 | 1 | 13 |
+| `GERENTE` | Gerencia | 90 | 1 | 20 |
 | `ADMIN` | Administrador | 100 | 1 | 0 → por `es_admin()` |
 
 `CONSULTA` no tiene hoy ningún usuario activo: una pantalla que solo
 ese rol pueda usar no la está mirando nadie todavía. `DISENO` estrenó cuenta el
 2026-09-05, para el recorrido de venta → trabajo → gerencia → orden → planos.
+`COSTOS`, `ALMACENERO`, `COMPRADOR` y `CALIDAD` se quedaron sin cuentas activas
+el 2026-09-09, cuando se retiraron sus módulos (migración `094`): los roles
+siguen en el catálogo, con lo poco que les queda, por decisión del cliente.
 
 **Hay una tercera cosa que decide el acceso, además del rol y de `es_admin()`:
 el área.** `SUPERVISOR` tiene tres cuentas —Producción, Acabados y Maestranza—
@@ -56,91 +59,67 @@ afectará cero filas sin dar error.
 
 ## Qué tiene cada rol
 
-**`ADMINISTRACION` — Administración** (11)
-`clientes.ver`, `costos.ver`, `cotizaciones.aprobar`, `cotizaciones.costear`,
+**`ADMINISTRACION` — Administración** (10)
+`clientes.ver`, `cotizaciones.aprobar`, `cotizaciones.costear`,
 `cotizaciones.ver`, `ordenes.crear`, `ordenes.editar`, `ordenes.listar`,
 `ordenes.ver`, `pagos.registrar`, `pagos.ver`
 
-**`CONSULTA` — Solo consulta** (9)
-`almacen.ver`, `clientes.ver`, `cotizaciones.ver`, `documentos.ver`,
-`garantias.ver`, `ordenes.listar`, `ordenes.ver`, `produccion.ver`,
-`reportes.ver`
-
-**`OPERARIO` — Operario** (6)
-`documentos.ver`, `ordenes.listar`, `ordenes.ver`, `produccion.registrar`,
-`produccion.ver`, `requerimientos.crear`
-
-**`COSTOS` — Costos** (16)
-`almacen.ver`, `clientes.ver`, `compras.ver`, `costos.cerrar`, `costos.editar`,
-`costos.ver`, `cotizaciones.aprobar`, `cotizaciones.ver`, `documentos.ver`,
-`ordenes.listar`, `ordenes.ver`, `pagos.registrar`, `pagos.ver`,
-`produccion.ver`, `reportes.ver`, `tesoreria.liberar`
-
-**`VENDEDOR` — Comercial** (12)
-`clientes.crear`, `clientes.editar`, `clientes.ver`, `cotizaciones.aprobar`,
-`cotizaciones.crear`, `cotizaciones.editar`, `cotizaciones.ver`,
-`documentos.subir`, `documentos.ver`, `garantias.ver`, `ordenes.ver`,
-`pagos.ver`
-
-**`DISENO` — Diseño e ingeniería** (11)
-`almacen.ver`, `clientes.ver`, `configuracion.ver`, `cotizaciones.costear`,
-`cotizaciones.ver`, `diseno.planos`, `ordenes.listar`, `ordenes.ver`,
-`produccion.ver`, `requerimientos.crear`, `requerimientos.ver`
-
-**`ALMACENERO` — Almacenero** (13)
-`almacen.confirmar`, `almacen.inventario`, `almacen.maestros`,
-`almacen.movimientos`, `almacen.ver`, `compras.recibir`, `compras.ver`,
-`documentos.subir`, `documentos.ver`, `ordenes.listar`, `ordenes.ver`,
-`requerimientos.aprobar`, `requerimientos.ver`
-
-**`COMPRADOR` — Compras** (9)
-`almacen.ver`, `compras.crear`, `compras.recibir`, `compras.ver`,
-`documentos.subir`, `documentos.ver`, `ordenes.listar`, `ordenes.ver`,
-`requerimientos.ver`
-
-**`CALIDAD` — Control de calidad** (9)
-`calidad.inspeccionar`, `calidad.ver`, `documentos.subir`, `documentos.ver`,
-`garantias.gestionar`, `garantias.ver`, `ordenes.listar`, `ordenes.ver`,
+**`CONSULTA` — Solo consulta** (5)
+`clientes.ver`, `cotizaciones.ver`, `ordenes.listar`, `ordenes.ver`,
 `produccion.ver`
 
-**`SUPERVISOR` — Supervisor** (14)
-`almacen.ver`, `calidad.ver`, `documentos.subir`, `documentos.ver`,
-`garantias.ver`, `ordenes.cambiar_estado`, `ordenes.listar`, `ordenes.ver`,
-`produccion.actividades`, `produccion.aprobar_parte`, `produccion.registrar`,
-`produccion.ver`, `requerimientos.crear`, `requerimientos.ver`
+**`OPERARIO` — Operario** (4)
+`ordenes.listar`, `ordenes.ver`, `produccion.registrar`, `produccion.ver`
 
-**`JEFE_PRODUCCION` — Jefe de producción** (17)
-`almacen.ver`, `calidad.ver`, `documentos.subir`, `documentos.ver`,
-`garantias.ver`, `ordenes.cambiar_estado`, `ordenes.listar`, `ordenes.ver`,
-`produccion.actividades`, `produccion.aprobar_parte`,
-`produccion.cualquier_area`, `produccion.planificar`, `produccion.registrar`,
-`produccion.ver`, `reportes.ver`, `requerimientos.crear`, `requerimientos.ver`
+**`COSTOS` — Costos** (9)
+`clientes.ver`, `cotizaciones.aprobar`, `cotizaciones.ver`, `ordenes.listar`,
+`ordenes.ver`, `pagos.registrar`, `pagos.ver`, `produccion.ver`,
+`tesoreria.liberar`
 
-Es el supervisor más las tres áreas, programar y los indicadores. **Sin
-`costos.ver` a propósito**: de los subcontratos necesita saber qué está
-esperando del tercero, no lo que cuesta. Y sin `clientes.ver`, como el resto del
-taller.
+**`VENDEDOR` — Comercial** (9)
+`clientes.crear`, `clientes.editar`, `clientes.ver`, `cotizaciones.aprobar`,
+`cotizaciones.crear`, `cotizaciones.editar`, `cotizaciones.ver`, `ordenes.ver`,
+`pagos.ver`
 
-**`JEFE_TALLER` — Jefe de taller** (25)
-`almacen.ver`, `calidad.ver`, `clientes.ver`, `costos.ver`, `cotizaciones.ver`,
-`documentos.subir`, `documentos.ver`, `garantias.gestionar`, `garantias.ver`,
-`ordenes.cambiar_estado`, `ordenes.crear`, `ordenes.editar`,
-`ordenes.entregar`, `ordenes.listar`, `ordenes.ver`, `produccion.actividades`,
-`produccion.aprobar_parte`, `produccion.cualquier_area`,
-`produccion.planificar`, `produccion.registrar`,
-`produccion.ver`, `reportes.ver`, `requerimientos.aprobar`,
-`requerimientos.crear`, `requerimientos.ver`
+**`DISENO` — Diseño e ingeniería** (8)
+`clientes.ver`, `configuracion.ver`, `cotizaciones.costear`,
+`cotizaciones.ver`, `diseno.planos`, `ordenes.listar`, `ordenes.ver`,
+`produccion.ver`
 
-**`GERENTE` — Gerencia** (32)
-`almacen.ver`, `auditoria.ver`, `calidad.ver`, `clientes.ver`,
-`compras.aprobar`, `compras.ver`, `configuracion.editar`, `configuracion.ver`,
-`costos.cerrar`, `costos.ver`, `cotizaciones.anular`, `cotizaciones.aprobar`,
-`cotizaciones.costear`, `cotizaciones.revisar`, `cotizaciones.ver`,
-`diseno.planos`, `documentos.eliminar`, `documentos.ver`,
-`garantias.gestionar`, `garantias.ver`, `ordenes.anular`, `ordenes.aprobar`,
-`ordenes.listar`, `ordenes.ver`, `pagos.ver`, `produccion.actividades`,
-`produccion.cualquier_area`, `produccion.ver`, `reportes.ver`,
-`requerimientos.ver`, `tesoreria.liberar`, `usuarios.gestionar`
+**`ALMACENERO` — Almacenero** (2)
+`ordenes.listar`, `ordenes.ver`
+
+**`COMPRADOR` — Compras** (2)
+`ordenes.listar`, `ordenes.ver`
+
+**`CALIDAD` — Control de calidad** (3)
+`ordenes.listar`, `ordenes.ver`, `produccion.ver`
+
+**`SUPERVISOR` — Supervisor** (6)
+`ordenes.cambiar_estado`, `ordenes.listar`, `ordenes.ver`,
+`produccion.actividades`, `produccion.registrar`, `produccion.ver`
+
+**`JEFE_PRODUCCION` — Jefe de producción** (8)
+`ordenes.cambiar_estado`, `ordenes.listar`, `ordenes.ver`,
+`produccion.actividades`, `produccion.cualquier_area`, `produccion.planificar`,
+`produccion.registrar`, `produccion.ver`
+
+Es el supervisor más las tres áreas y programar. Sin `clientes.ver`, como el
+resto del taller: a él le llegan los avances, no los clientes.
+
+**`JEFE_TALLER` — Jefe de taller** (13)
+`clientes.ver`, `cotizaciones.ver`, `ordenes.cambiar_estado`, `ordenes.crear`,
+`ordenes.editar`, `ordenes.entregar`, `ordenes.listar`, `ordenes.ver`,
+`produccion.actividades`, `produccion.cualquier_area`, `produccion.planificar`,
+`produccion.registrar`, `produccion.ver`
+
+**`GERENTE` — Gerencia** (20)
+`auditoria.ver`, `clientes.ver`, `configuracion.editar`, `configuracion.ver`,
+`cotizaciones.anular`, `cotizaciones.aprobar`, `cotizaciones.costear`,
+`cotizaciones.revisar`, `cotizaciones.ver`, `diseno.planos`, `ordenes.anular`,
+`ordenes.aprobar`, `ordenes.listar`, `ordenes.ver`, `pagos.ver`,
+`produccion.actividades`, `produccion.cualquier_area`, `produccion.ver`,
+`tesoreria.liberar`, `usuarios.gestionar`
 
 **`ADMIN` — Administrador** (0 en `roles_permisos`)
 Ninguno asignado. Pasa por `es_admin()`.
@@ -152,43 +131,21 @@ la política exige y se mira quién lo tiene de verdad.
 
 | Módulo | Permiso | Para qué | Lo tienen |
 | --- | --- | --- | --- |
-| Almacén | `almacen.confirmar` | Confirmar movimientos y afectar el kardex | `ALMACENERO` |
-| Almacén | `almacen.inventario` | Realizar inventarios y ajustes de existencias | `ALMACENERO` |
-| Almacén | `almacen.maestros` | Administrar el catálogo de materiales y almacenes | `ALMACENERO` |
-| Almacén | `almacen.movimientos` | Registrar ingresos, salidas y devoluciones | `ALMACENERO` |
-| Almacén | `almacen.ver` | Consultar stock, kardex y movimientos | `CONSULTA`, `COSTOS`, `DISENO`, `ALMACENERO`, `COMPRADOR`, `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
-| Almacén | `requerimientos.aprobar` | Aprobar requerimientos y reservar stock | `ALMACENERO`, `JEFE_TALLER` |
-| Almacén | `requerimientos.crear` | Solicitar material para una orden de trabajo | `OPERARIO`, `DISENO`, `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER` |
-| Almacén | `requerimientos.ver` | Ver requerimientos de material | `DISENO`, `ALMACENERO`, `COMPRADOR`, `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
-| Calidad | `calidad.inspeccionar` | Registrar inspecciones y levantar observaciones | `CALIDAD` |
-| Calidad | `calidad.ver` | Ver inspecciones de calidad | `CALIDAD`, `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
 | Comercial | `clientes.crear` | Registrar clientes y unidades | `VENDEDOR` |
 | Comercial | `clientes.editar` | Modificar clientes y unidades | `VENDEDOR` |
-| Comercial | `clientes.ver` | Ver clientes y unidades | `ADMINISTRACION`, `CONSULTA`, `VENDEDOR`, `DISENO`, `JEFE_TALLER`, `GERENTE` |
-| Comercial | `cotizaciones.aprobar` | Registrar que el cliente aceptó (o rechazó) la cotización | `ADMINISTRACION`, `COSTOS`, `VENDEDOR`, `GERENTE` |
+| Comercial | `clientes.ver` | Ver clientes y unidades | `ADMINISTRACION`, `CONSULTA`, `COSTOS`, `VENDEDOR`, `DISENO`, `JEFE_TALLER`, `GERENTE` |
+| Comercial | `cotizaciones.aprobar` | Aprobar o rechazar una cotización | `ADMINISTRACION`, `COSTOS`, `VENDEDOR`, `GERENTE` |
 | Comercial | `cotizaciones.costear` | Armar la cotización de trabajo: partidas, ficha técnica y accesorios | `ADMINISTRACION`, `DISENO`, `GERENTE` |
 | Comercial | `cotizaciones.crear` | Elaborar cotizaciones | `VENDEDOR` |
 | Comercial | `cotizaciones.editar` | Modificar cotizaciones en borrador | `VENDEDOR` |
-| Comercial | `cotizaciones.revisar` | Dar el visto de Gerencia antes de que salga al cliente | `GERENTE` |
+| Comercial | `cotizaciones.revisar` | Dar el visto de Gerencia a una cotización antes de que salga al cliente | `GERENTE` |
 | Comercial | `cotizaciones.ver` | Ver cotizaciones | `ADMINISTRACION`, `CONSULTA`, `COSTOS`, `VENDEDOR`, `DISENO`, `JEFE_TALLER`, `GERENTE` |
-| cotizaciones | `cotizaciones.anular` | Anular una cotización que el cliente ya aprobó | `GERENTE` |
-| Compras | `compras.aprobar` | Aprobar órdenes de compra | `GERENTE` |
-| Compras | `compras.crear` | Generar órdenes de compra | `COMPRADOR` |
-| Compras | `compras.recibir` | Registrar la recepción de mercadería | `ALMACENERO`, `COMPRADOR` |
-| Compras | `compras.ver` | Ver órdenes de compra y proveedores | `COSTOS`, `ALMACENERO`, `COMPRADOR`, `GERENTE` |
 | Configuración | `auditoria.ver` | Consultar el historial de auditoría | `GERENTE` |
 | Configuración | `configuracion.editar` | Modificar catálogos, series y parámetros | `GERENTE` |
 | Configuración | `configuracion.ver` | Ver la configuración del sistema | `DISENO`, `GERENTE` |
 | Configuración | `usuarios.gestionar` | Crear usuarios y asignar roles | `GERENTE` |
 | Configuración | `usuarios.ver` | Ver usuarios | **(ninguno)** |
-| Costos | `costos.cerrar` | Cerrar el costeo de una orden | `COSTOS`, `GERENTE` |
-| Costos | `costos.editar` | Registrar presupuestos, servicios de terceros y gastos | `COSTOS` |
-| Costos | `costos.ver` | Ver el costeo y el margen de las órdenes | `ADMINISTRACION`, `COSTOS`, `JEFE_TALLER`, `GERENTE` |
-| Documentos | `documentos.eliminar` | Anular documentos | `GERENTE` |
-| Documentos | `documentos.subir` | Adjuntar documentos y nuevas versiones | `VENDEDOR`, `ALMACENERO`, `COMPRADOR`, `CALIDAD`, `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER` |
-| Documentos | `documentos.ver` | Ver y descargar documentos | `CONSULTA`, `OPERARIO`, `COSTOS`, `VENDEDOR`, `ALMACENERO`, `COMPRADOR`, `CALIDAD`, `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
-| garantias | `garantias.gestionar` | Registrar reclamos, evaluarlos y cerrarlos | `CALIDAD`, `JEFE_TALLER`, `GERENTE` |
-| garantias | `garantias.ver` | Ver las garantías vigentes y sus reclamos | `CONSULTA`, `VENDEDOR`, `CALIDAD`, `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
+| cotizaciones | `cotizaciones.anular` | Anular una cotización que el cliente ya aprobó | `GERENTE` |
 | Órdenes de trabajo | `ordenes.anular` | Anular una orden de trabajo | `GERENTE` |
 | Órdenes de trabajo | `ordenes.aprobar` | Aprobar una orden y liberarla a producción | `GERENTE` |
 | Órdenes de trabajo | `ordenes.cambiar_estado` | Iniciar, pausar, reanudar o terminar una orden | `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER` |
@@ -200,11 +157,11 @@ la política exige y se mira quién lo tiene de verdad.
 | Producción | `diseno.planos` | Armar la lista de planos y piezas de una orden y dar por entregado cada plano | `DISENO`, `GERENTE` |
 | Producción | `produccion.actividades` | Armar la lista de actividades de su área en una orden y ponerles su peso | `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
 | Producción | `produccion.cualquier_area` | Armar y reportar la hoja de cualquier área, no solo la propia | `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
-| Producción | `produccion.aprobar_parte` | Aprobar el parte diario y cargar las horas a la orden | `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER` |
-| Producción | `produccion.planificar` | Programar fechas y asignar personal a las órdenes | `JEFE_PRODUCCION`, `JEFE_TALLER` |
-| Producción | `produccion.registrar` | Registrar avance de etapas y horas trabajadas | `OPERARIO`, `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER` |
-| Producción | `produccion.ver` | Ver etapas, avances y partes diarios | `CONSULTA`, `OPERARIO`, `COSTOS`, `DISENO`, `CALIDAD`, `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
-| Reportes | `reportes.ver` | Ver reportes e indicadores de gestión | `CONSULTA`, `COSTOS`, `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
+| Producción | `produccion.planificar` | Programar las fechas de las etapas de una orden | `JEFE_PRODUCCION`, `JEFE_TALLER` |
+| Producción | `produccion.registrar` | Reportar el avance del día: etapas, actividades, unidades sin orden y sus fotos | `OPERARIO`, `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER` |
+| Producción | `produccion.ver` | Ver etapas, avances y el día en el taller | `CONSULTA`, `OPERARIO`, `COSTOS`, `DISENO`, `CALIDAD`, `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
+| tesoreria | `pagos.registrar` | Registrar un pago del cliente y arrancar el plazo | `ADMINISTRACION`, `COSTOS` |
+| tesoreria | `pagos.ver` | Ver los pagos que hizo el cliente | `ADMINISTRACION`, `COSTOS`, `VENDEDOR`, `GERENTE` |
 | tesoreria | `tesoreria.liberar` | Confirmar que el cliente está al día y liberar la salida de su unidad | `COSTOS`, `GERENTE` |
 
 ## Puertas tapiadas: las que había y la que queda
@@ -226,6 +183,13 @@ El 2026-09-02 se encontraron cuatro y se cerraron tres (migración `079`):
 - `usuarios.ver` **no lo exige nadie**: se queda sin repartir a propósito. Quien
   necesita ver a la gente del taller entra por `es_usuario_activo()`, que es lo
   que pide la política de `usuarios`.
+
+El 2026-09-09 la migración `094` retiró 24 permisos con sus módulos —almacén,
+requerimientos, compras, costos, calidad, documentos, garantías, reportes y el
+parte diario— y comprobó al final que ninguna política ni función viva los
+siguiera citando: un permiso citado y retirado es la misma puerta tapiada, solo
+que sin fila en el catálogo que la delate. `documentos.eliminar`, de la lista de
+arriba, se fue con ellos.
 
 Y una trampa que salió de ahí y conviene no olvidar: **editar sin ver no sirve**.
 Dar `configuracion.editar` a Gerencia no bastaba, porque un

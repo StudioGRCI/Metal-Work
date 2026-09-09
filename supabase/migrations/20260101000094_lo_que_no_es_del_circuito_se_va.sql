@@ -580,9 +580,16 @@ begin
       );
   $pol$, v_dueno);
 
-  -- El repositorio documental se va con su bucket (estaba vacío).
-  execute $sql$delete from storage.objects where bucket_id = 'documentos'$sql$;
-  execute $sql$delete from storage.buckets where id = 'documentos'$sql$;
+  -- El repositorio documental se va. Su bucket no se puede borrar por SQL:
+  -- Supabase protege storage.objects y storage.buckets con un trigger
+  -- (protect_delete) que solo deja borrar por la API de Storage. Se queda sin
+  -- políticas —nadie lee ni escribe en él— y se retira desde el panel.
+  -- Se comprobó vacío el 2026-09-09; si alguien lo llenó desde entonces, se dice.
+  if exists (select 1 from storage.objects where bucket_id = 'documentos') then
+    raise warning 'El bucket documentos tiene archivos: revisarlos antes de retirarlo desde el panel de Storage';
+  elsif exists (select 1 from storage.buckets where id = 'documentos') then
+    raise notice 'El bucket documentos queda vacío y sin políticas: retirarlo desde el panel de Storage';
+  end if;
 end $$;
 
 -- =============================================================================
@@ -628,14 +635,18 @@ drop function if exists public.prorratear_indirectos(date);
 
 -- =============================================================================
 -- 5. LAS COLUMNAS DE ALMACÉN DEL CATÁLOGO DE MATERIALES
+-- El código de almacén es una columna generada a partir de los cinco segmentos:
+-- se suelta primero, sola, porque Postgres se niega a quitar un segmento
+-- mientras ella exista. Sus índices y checks caen con cada columna.
 -- =============================================================================
+alter table public.materiales drop column if exists codigo_almacen;
+
 alter table public.materiales
   drop column if exists cod_familia,
   drop column if exists cod_subfamilia,
   drop column if exists cod_material,
   drop column if exists cod_tipo,
   drop column if exists cod_correlativo,
-  drop column if exists codigo_almacen,
   drop column if exists criticidad,
   drop column if exists ubicacion,
   drop column if exists costo_reposicion,

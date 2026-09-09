@@ -119,3 +119,19 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   este patrón. Que no se note es la otra mitad del problema: `db-test.sh` no
   corre en la máquina de trabajo (ver la memoria del proyecto), así que el
   conjunto se pudre sin que nadie lo vea.
+
+- **Storage no se borra por SQL.** Supabase protege `storage.objects` y
+  `storage.buckets` con un trigger (`protect_delete`) que rechaza cualquier
+  `delete` directo, aunque el bucket esté vacío: «Direct deletion from storage
+  tables is not allowed. Use the Storage API instead». La migración `094` cayó
+  entera por eso el 2026-09-09. Un bucket que sobra se deja sin políticas —nadie
+  lee ni escribe— y se retira desde el panel de Storage; la migración solo avisa
+  con `raise notice`.
+
+- **Una columna generada se suelta antes que sus fuentes.** `drop column` de
+  una columna de la que depende una `generated always as (…) stored` se niega
+  sin cascade («other objects depend on it»), y el orden dentro de un mismo
+  `alter table … drop column a, drop column b` no lo salva. Primero la generada,
+  en su propio `alter table`; después el resto. Los índices y checks que nombran
+  a la columna sí caen solos con ella. Le pasó a `materiales.codigo_almacen` en
+  la `094`.
