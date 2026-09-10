@@ -10,6 +10,18 @@ export type ResultadoAccion<T = never> =
   | { ok: false; error: string }
 
 /**
+ * Lo que se le dice al usuario cuando la escritura no tocó ninguna fila.
+ *
+ * Una fila que la seguridad por fila esconde no es un error para Postgres: el
+ * UPDATE afecta cero filas, `error` viene vacío y la pantalla diría «listo» sin
+ * haber hecho nada. No se cae: miente, que es el fallo más caro que ha tenido
+ * este proyecto. Toda escritura acotada por permiso termina en
+ * `.select('id').maybeSingle()` y devuelve esto si no vuelve fila.
+ */
+export const NO_TOCO_NADA =
+  'No se pudo guardar: vuelve a cargar la pantalla y comprueba que el registro sigue a la vista.'
+
+/**
  * Traduce los errores de Postgres a algo que el usuario del taller entienda.
  * Los triggers del esquema ya lanzan mensajes redactados en español, así que se
  * dejan pasar tal cual; aquí solo se reescribe lo que emite el propio motor.

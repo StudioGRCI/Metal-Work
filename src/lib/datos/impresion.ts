@@ -16,6 +16,9 @@ export type Membrete = {
   telefono: string | null
   correo: string | null
   web: string | null
+  /** Quien firma la cotización. En la casa es siempre el gerente general. */
+  gerente_general: string | null
+  gerente_general_cargo: string | null
 }
 
 export type PartidaImpresa = {
@@ -31,8 +34,15 @@ export type CotizacionImpresa = {
   empresa: Membrete | null
   numero: string
   estado: string
+  /** Lo que se va a hacer, tal como sale impreso. Vacío en las cotizaciones
+   *  anteriores al campo: el documento cae entonces a la carrocería. */
+  concepto: string | null
+  concepto_cantidad: number
+  concepto_unidad: string
   fecha_emision: string
   fecha_vencimiento: string | null
+  /** Los días que la casa promete sostener el precio: «15 días a partir de hoy». */
+  validez_dias: number
   moneda: string
   subtotal: number
   descuento: number
@@ -41,12 +51,21 @@ export type CotizacionImpresa = {
   total: number
   incluye_igv: boolean
   garantia_meses: number
+  /** La garantía tal como la escribe la casa, partida por sistema. Manda sobre
+   *  los meses cuando está escrita; vacía en todo lo emitido antes del campo. */
+  garantia_texto: string | null
   plazo_entrega_dias: number | null
   plazo_en_habiles: boolean
+  /** Desde cuándo cuenta el plazo: «después de emitida la orden de compra».
+   *  Va en el mismo renglón que los días, que es como lo escriben ellos. */
+  plazo_desde: string | null
   forma_pago: string | null
   condiciones: string | null
   observaciones: string | null
   nota: string | null
+  /** Las advertencias en negativo, un renglón cada una: «NO INCLUYE AROS NI
+   *  LLANTAS». No son accesorios y no se imprimen con ellos. */
+  no_incluye: string | null
   motivo_anulacion: string | null
   marca: string | null
   modelo: string | null
@@ -56,6 +75,18 @@ export type CotizacionImpresa = {
   alto_m: number | null
   capacidad: string | null
   peso_neto_tn: number | null
+  /** Los cuatro renglones de su ficha que el sistema no sabía guardar hasta la
+   *  migración 059, más la línea de normas: año de fabricación de la carrocería
+   *  —no del chasis—, cómo se describe la carrocería, la cama útil (que en una
+   *  cama baja no es el largo total) y los ejes con su trocha. */
+  anio_fabricacion: number | null
+  carroceria_texto: string | null
+  largo_util_m: number | null
+  ejes: string | null
+  normas: string | null
+  /** La tolerancia del peso, «+/- 5%», que la empresa siempre escribe: sin ella
+   *  el peso impreso se lee como exacto y nadie firma un peso exacto. */
+  peso_tolerancia: string | null
   cliente: {
     razon_social: string
     numero_documento: string
@@ -65,7 +96,17 @@ export type CotizacionImpresa = {
     telefono: string | null
   }
   contacto: { nombre: string | null; telefono: string | null; correo: string | null } | null
-  unidad: { placa: string; marca: string | null; modelo: string | null } | null
+  /** Se declara entera la unidad que trae el select: el código interno y el
+   *  chasis los necesita `nombreDeUnidad()` para nombrar una unidad todavía sin
+   *  placa, y el año va impreso en todas las fichas de la casa. */
+  unidad: {
+    placa: string | null
+    marca: string | null
+    modelo: string | null
+    anio: number | null
+    codigo_interno: string | null
+    numero_chasis: string | null
+  } | null
   carroceria: string | null
   vendedor: { nombres: string; apellidos: string; telefono: string | null; correo: string | null } | null
   partidas: PartidaImpresa[]
@@ -88,7 +129,7 @@ export async function cotizacionParaImprimir(id: string): Promise<CotizacionImpr
       `*,
        cliente:clientes!inner(razon_social, numero_documento, direccion_fiscal, distrito, provincia, telefono),
        contacto:contactos_cliente!cotizaciones_contacto_id_fkey(nombre, telefono, correo),
-       unidad:unidades!cotizaciones_unidad_id_fkey(placa, marca, modelo),
+       unidad:unidades!cotizaciones_unidad_id_fkey(placa, marca, modelo, anio, codigo_interno, numero_chasis),
        tipo_carroceria:tipos_carroceria(nombre),
        vendedor:usuarios!cotizaciones_vendedor_id_fkey(nombres, apellidos, telefono, correo),
        partidas:cotizacion_partidas(descripcion, cantidad, unidad_medida, precio_unitario, descuento_porcentaje, subtotal, orden_secuencia)`,
@@ -125,8 +166,12 @@ export async function cotizacionParaImprimir(id: string): Promise<CotizacionImpr
     empresa,
     numero: String(c.numero),
     estado: String(c.estado),
+    concepto: (c.concepto as string | null) ?? null,
+    concepto_cantidad: Number(c.concepto_cantidad ?? 1),
+    concepto_unidad: String(c.concepto_unidad ?? 'UND'),
     fecha_emision: String(c.fecha_emision),
     fecha_vencimiento: (c.fecha_vencimiento as string | null) ?? null,
+    validez_dias: Number(c.validez_dias ?? 0),
     moneda: String(c.moneda ?? 'PEN'),
     subtotal: Number(c.subtotal ?? 0),
     descuento: Number(c.descuento ?? 0),
@@ -135,12 +180,15 @@ export async function cotizacionParaImprimir(id: string): Promise<CotizacionImpr
     total: Number(c.total ?? 0),
     incluye_igv: Boolean(c.incluye_igv),
     garantia_meses: Number(c.garantia_meses ?? 0),
+    garantia_texto: (c.garantia_texto as string | null) ?? null,
     plazo_entrega_dias: (c.plazo_entrega_dias as number | null) ?? null,
     plazo_en_habiles: Boolean(c.plazo_en_habiles),
+    plazo_desde: (c.plazo_desde as string | null) ?? null,
     forma_pago: (c.forma_pago as string | null) ?? null,
     condiciones: (c.condiciones as string | null) ?? null,
     observaciones: (c.observaciones as string | null) ?? null,
     nota: (c.nota as string | null) ?? null,
+    no_incluye: (c.no_incluye as string | null) ?? null,
     motivo_anulacion: (c.motivo_anulacion as string | null) ?? null,
     marca: (c.marca as string | null) ?? null,
     modelo: (c.modelo as string | null) ?? null,
@@ -150,6 +198,12 @@ export async function cotizacionParaImprimir(id: string): Promise<CotizacionImpr
     alto_m: numeroOpcional(c.alto_m),
     capacidad: (c.capacidad as string | null) ?? null,
     peso_neto_tn: numeroOpcional(c.peso_neto_tn),
+    anio_fabricacion: numeroOpcional((c as Record<string, unknown>).anio_fabricacion),
+    carroceria_texto: ((c as Record<string, unknown>).carroceria_texto as string | null) ?? null,
+    largo_util_m: numeroOpcional((c as Record<string, unknown>).largo_util_m),
+    ejes: ((c as Record<string, unknown>).ejes as string | null) ?? null,
+    normas: ((c as Record<string, unknown>).normas as string | null) ?? null,
+    peso_tolerancia: (c.peso_tolerancia as string | null) ?? null,
     cliente: c.cliente as CotizacionImpresa['cliente'],
     contacto: primerContacto(c.contacto),
     unidad: (c.unidad as CotizacionImpresa['unidad']) ?? null,

@@ -47,6 +47,20 @@ export const ESTADOS_ACTIVOS_OT = [
   'CONTROL_CALIDAD',
 ] as const
 
+/**
+ * En qué va un trabajo sin orden: una unidad que entró sin orden de trabajo o
+ * algo que el taller está implementando. No hay «entregado» a propósito: en este
+ * sistema entregar es el acta de conformidad, y eso no pasa cuando el
+ * supervisor lo marca desde el celular. «Terminado» existe para que entre
+ * «terminé el jueves» y «el chofer la recogió el lunes» no cuente como sin
+ * noticias. En la base siguen siendo EN_TALLER, LISTA y SALIO.
+ */
+export const ESTADO_FLOTA: Record<string, Def> = {
+  EN_TALLER: { etiqueta: 'En curso', tono: 'acento', descripcion: 'Se está trabajando' },
+  LISTA: { etiqueta: 'Terminado', tono: 'exito', descripcion: 'Terminado; si es una unidad, falta que la recojan' },
+  SALIO: { etiqueta: 'Cerrado', tono: 'neutro', descripcion: 'Ya no se trabaja: salió del taller o se dio por cerrado' },
+}
+
 export const PRIORIDAD: Record<string, Def> = {
   BAJA: { etiqueta: 'Baja', tono: 'neutro' },
   NORMAL: { etiqueta: 'Normal', tono: 'info' },
@@ -81,20 +95,53 @@ export const ORDEN_ESTADO_ETAPA = [
   'PENDIENTE', 'EN_PROCESO', 'PAUSADA', 'REQUIERE_REVISION', 'TERMINADA', 'OMITIDA',
 ] as const satisfies readonly EstadoEtapa[]
 
+/**
+ * El semáforo del plazo, tal como lo calcula `estado_del_plazo` en la base. Los
+ * tres primeros son la fórmula de la empresa; los dos de cierre los agregó el
+ * sistema porque su hoja no los tenía.
+ *
+ * `barra` es el color de la barra del cronograma; el resto de pantallas solo
+ * usa etiqueta y tono. Estaba copiado en dos sitios y ya habían empezado a
+ * discrepar: un enum tiene un solo mapa, y vive aquí.
+ */
+export const ESTADO_PLAZO: Record<string, Def & { barra: string }> = {
+  VENCIDO: { etiqueta: 'Vencido', tono: 'peligro', barra: 'bg-peligro' },
+  POR_VENCER: { etiqueta: 'Por vencer', tono: 'aviso', barra: 'bg-aviso' },
+  VIGENTE: { etiqueta: 'Vigente', tono: 'exito', barra: 'bg-acento' },
+  CUMPLIDO: { etiqueta: 'Cumplido', tono: 'neutro', barra: 'bg-exito' },
+  CUMPLIDO_TARDE: { etiqueta: 'Cumplido tarde', tono: 'neutro', barra: 'bg-aviso' },
+}
+
+/**
+ * Las etiquetas dicen en qué mano está la cotización, no el nombre técnico del
+ * estado: quien mira la lista quiere saber a quién le toca mover.
+ */
 export const ESTADO_COTIZACION: Record<string, Def> = {
-  BORRADOR: { etiqueta: 'Borrador', tono: 'neutro' },
-  ENVIADA: { etiqueta: 'Enviada', tono: 'info' },
+  BORRADOR: { etiqueta: 'En ventas', tono: 'neutro' },
+  EN_COSTEO: { etiqueta: 'En costeo', tono: 'info' },
+  EN_REVISION: { etiqueta: 'Con Gerencia', tono: 'aviso' },
+  OBSERVADA: { etiqueta: 'Devuelta', tono: 'peligro' },
+  REVISADA: { etiqueta: 'Lista para enviar', tono: 'exito' },
+  ENVIADA: { etiqueta: 'Enviada al cliente', tono: 'info' },
   APROBADA: { etiqueta: 'Aprobada', tono: 'exito' },
   RECHAZADA: { etiqueta: 'Rechazada', tono: 'peligro' },
   VENCIDA: { etiqueta: 'Vencida', tono: 'aviso' },
   ANULADA: { etiqueta: 'Anulada', tono: 'peligro' },
 }
 
-export const RESULTADO_INSPECCION: Record<string, Def> = {
-  CONFORME: { etiqueta: 'Conforme', tono: 'exito' },
-  OBSERVADO: { etiqueta: 'Observado', tono: 'aviso' },
-  RECHAZADO: { etiqueta: 'Rechazado', tono: 'peligro' },
-}
+/** El circuito en el orden en que ocurre, para los filtros y los listados. */
+export const ORDEN_ESTADO_COTIZACION = [
+  'BORRADOR',
+  'EN_COSTEO',
+  'EN_REVISION',
+  'OBSERVADA',
+  'REVISADA',
+  'ENVIADA',
+  'APROBADA',
+  'RECHAZADA',
+  'VENCIDA',
+  'ANULADA',
+] as const
 
 export const TIPO_EVENTO_BITACORA: Record<string, Def> = {
   CREACION: { etiqueta: 'Creación', tono: 'info' },
@@ -107,14 +154,6 @@ export const TIPO_EVENTO_BITACORA: Record<string, Def> = {
   REANUDACION: { etiqueta: 'Reanudación', tono: 'exito' },
   COMENTARIO: { etiqueta: 'Comentario', tono: 'neutro' },
   ENTREGA: { etiqueta: 'Entrega', tono: 'exito' },
-}
-
-export const TIPO_COSTO: Record<string, Def> = {
-  MATERIAL: { etiqueta: 'Materiales', tono: 'info' },
-  MANO_OBRA: { etiqueta: 'Mano de obra', tono: 'acento' },
-  SERVICIO: { etiqueta: 'Servicios de terceros', tono: 'aviso' },
-  INDIRECTO: { etiqueta: 'Gastos indirectos', tono: 'neutro' },
-  OTRO: { etiqueta: 'Otros', tono: 'neutro' },
 }
 
 const VACIO: Def = { etiqueta: '—', tono: 'neutro' }
@@ -131,13 +170,68 @@ export function opciones(mapa: Record<string, Def>, orden?: readonly string[]) {
   return claves.map((valor) => ({ valor, etiqueta: mapa[valor]?.etiqueta ?? valor }))
 }
 
-/** Cómo se le dice a cada condición de pago fuera de la base de datos. */
-export const CONDICION_PAGO: Record<string, string> = {
-  CONTADO: 'Contado',
-  CREDITO_7: 'Crédito 7 días',
-  CREDITO_15: 'Crédito 15 días',
-  CREDITO_30: 'Crédito 30 días',
-  CREDITO_45: 'Crédito 45 días',
-  CREDITO_60: 'Crédito 60 días',
-  LETRAS: 'Letras',
+/**
+ * Las etapas de una cotización en el idioma de Ventas.
+ *
+ * La lista de cotizaciones ofrecía una pastilla por cada estado del circuito
+ * —diez— y con el nombre interno de cada uno: «En costeo», «Con Gerencia»,
+ * «Devuelta». Eso describe el trámite por dentro, que es de Administración; el
+ * vendedor no necesita saber en cuál de las tres manos está parada, necesita
+ * saber si ya puede mandársela al cliente.
+ *
+ * Cada etapa agrupa los estados que para Ventas significan lo mismo. Las
+ * cerradas siguen estando —una rechazada se retoma, y ese es justo el caso en
+ * el que hay que ir a buscarla—.
+ */
+export const ETAPA_VENTA = [
+  {
+    clave: 'realizada',
+    etiqueta: 'Cotización realizada',
+    estados: ['BORRADOR'],
+    pie: 'Escrita, sin mandar a costear',
+  },
+  {
+    clave: 'costeando',
+    etiqueta: 'En costeo',
+    estados: ['EN_COSTEO', 'EN_REVISION', 'OBSERVADA'],
+    pie: 'En manos de Administración o Gerencia',
+  },
+  {
+    clave: 'costeada',
+    etiqueta: 'Ya costeada',
+    estados: ['REVISADA'],
+    pie: 'Con el visto: lista para enviar al cliente',
+  },
+  {
+    clave: 'con-cliente',
+    etiqueta: 'Con el cliente',
+    estados: ['ENVIADA'],
+    pie: 'Enviada, sin respuesta todavía',
+  },
+  {
+    clave: 'aprobada',
+    etiqueta: 'Aprobada',
+    estados: ['APROBADA'],
+    pie: 'El cliente la aceptó',
+  },
+  {
+    clave: 'rechazada',
+    etiqueta: 'Rechazada',
+    estados: ['RECHAZADA', 'VENCIDA'],
+    pie: 'Se puede retomar y volver a ofrecer',
+  },
+  {
+    clave: 'anulada',
+    etiqueta: 'Anulada',
+    estados: ['ANULADA'],
+    pie: 'Anulada con su motivo, queda como evidencia',
+  },
+] as const
+
+export type EtapaVenta = (typeof ETAPA_VENTA)[number]
+
+/** Los estados que hay detrás de una etapa. Vacío si la clave no existe. */
+export function estadosDeEtapa(clave?: string | null): string[] {
+  if (!clave) return []
+  return [...(ETAPA_VENTA.find((e) => e.clave === clave)?.estados ?? [])]
 }

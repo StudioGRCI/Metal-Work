@@ -15,7 +15,7 @@ export default async function PaginaNuevaCotizacion() {
       <EncabezadoPagina
         migas={[{ titulo: 'Cotizaciones', ruta: '/cotizaciones' }, { titulo: 'Nueva' }]}
         titulo="Nueva cotización"
-        descripcion="Primero la cabecera; las partidas se agregan enseguida, en el detalle."
+        descripcion="Ventas escribe a quién se le cotiza, sobre qué unidad y a qué precio; de acá pasa a Administración, que arma la cotización de trabajo."
       />
       <FormularioCotizacion catalogos={catalogos} />
     </>

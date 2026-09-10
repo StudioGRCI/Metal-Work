@@ -77,11 +77,15 @@ export default async function PaginaIngreso({ searchParams }: PageProps<'/ingres
             </div>
 
             {motivo && (
-              <p className="mt-4 text-center text-xs">
-                <a href="/auth/salir" className="text-acento underline underline-offset-2">
+              // Formulario y no enlace: /auth/salir solo acepta POST —un cierre
+              // de sesión por GET lo dispara cualquier página de fuera con una
+              // etiqueta de imagen— y con un enlace esta cuenta encerrada
+              // recibía 405 del único botón que se le ofrece.
+              <form action="/auth/salir" method="post" className="mt-4 text-center text-xs">
+                <button type="submit" className="text-acento underline underline-offset-2">
                   Cerrar sesión y entrar con otra cuenta
-                </a>
-              </p>
+                </button>
+              </form>
             )}
 
             <p className="mt-5 border-t border-borde pt-4 text-center text-xs text-texto-tenue">

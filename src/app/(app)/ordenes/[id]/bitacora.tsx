@@ -7,7 +7,7 @@ import { AreaTexto } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { fechaHora, tiempoRelativo } from '@/lib/format'
-import type { EventoTimeline } from '@/lib/datos/documentos'
+import type { EventoTimeline } from '@/lib/datos/ordenes'
 import type { Tono } from '@/components/ui/etiqueta-estado'
 
 import { comentarOrden } from '../acciones'
@@ -15,11 +15,6 @@ import { comentarOrden } from '../acciones'
 /** Color de cada categoría de la línea de tiempo. */
 const CATEGORIAS: Record<string, { etiqueta: string; tono: Tono }> = {
   BITACORA: { etiqueta: 'Bitácora', tono: 'acento' },
-  DOCUMENTO: { etiqueta: 'Documento', tono: 'info' },
-  MATERIAL: { etiqueta: 'Material', tono: 'neutro' },
-  ALMACEN: { etiqueta: 'Almacén', tono: 'neutro' },
-  INSPECCION: { etiqueta: 'Inspección', tono: 'aviso' },
-  CALIDAD: { etiqueta: 'Calidad', tono: 'aviso' },
   AUDITORIA: { etiqueta: 'Cambio', tono: 'neutro' },
   ENTREGA: { etiqueta: 'Entrega', tono: 'exito' },
 }
@@ -54,7 +49,7 @@ export function Bitacora({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Trazabilidad"
-        descripcion="Todo lo ocurrido con esta orden: cambios de estado, documentos, material, inspecciones y comentarios. Es un registro inmutable."
+        descripcion="Todo lo ocurrido con esta orden: cambios de estado, avances y comentarios. Es un registro inmutable."
       />
 
       {puedeComentar && (
@@ -84,7 +79,14 @@ export function Bitacora({
 
       <TarjetaCuerpo>
         {eventos.length === 0 ? (
-          <p className="py-8 text-center text-sm text-texto-suave">Sin eventos registrados.</p>
+          <div className="py-8 text-center">
+            <p className="text-sm font-medium text-texto">Todavía no ha pasado nada con esta orden</p>
+            <p className="mx-auto mt-1 max-w-md text-xs text-texto-suave">
+              {puedeComentar
+                ? 'Se irá llenando sola con cada cambio de estado, documento y salida de material. Si hay algo que contar antes, anótalo arriba.'
+                : 'Se irá llenando sola con cada cambio de estado, documento y salida de material.'}
+            </p>
+          </div>
         ) : (
           <ol className="space-y-0">
             {eventos.map((evento, i) => {

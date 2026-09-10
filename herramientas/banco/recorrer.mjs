@@ -39,9 +39,7 @@ const ordenId = await primero(
 )
 const clienteId = await primero('select id from public.clientes order by razon_social limit 1')
 const cotizacionId = await primero('select id from public.cotizaciones limit 1')
-const parteId = await primero('select id from public.partes_diarios limit 1')
-const movimientoId = await primero('select id from public.movimientos_almacen limit 1')
-const requerimientoId = await primero('select id from public.requerimientos limit 1')
+const flotaId = await primero('select id from public.flota_unidades order by ingreso desc limit 1')
 
 const RUTAS = [
   ['tablero', '/'],
@@ -58,35 +56,12 @@ const RUTAS = [
   cotizacionId && ['cotizacion-detalle', `/cotizaciones/${cotizacionId}`],
   ['avance-taller', '/avance'],
   ordenId && ['avance-unidad', `/avance/${ordenId}`],
+  ['avance-diario', '/avance/diario'],
+  ['avance-trabajos', '/avance/trabajos'],
+  ['avance-trabajos-nuevo', '/avance/trabajos/nueva'],
+  flotaId && ['avance-trabajo', `/avance/trabajos/${flotaId}`],
   ordenId && ['orden-ficha', `/ordenes/${ordenId}?vista=ficha`],
   ordenId && ['orden-avance', `/ordenes/${ordenId}?vista=avance`],
-  ordenId && ['orden-documentos', `/ordenes/${ordenId}?vista=documentos`],
-  ['produccion', '/produccion'],
-  ['parte-nuevo', '/produccion/nuevo'],
-  parteId && ['parte-detalle', `/produccion/${parteId}`],
-  ['almacen', '/almacen'],
-  ['almacen-movimientos', '/almacen/movimientos'],
-  ['movimiento-nuevo', '/almacen/movimientos/nuevo'],
-  movimientoId && ['movimiento-detalle', `/almacen/movimientos/${movimientoId}`],
-  ['almacen-requerimientos', '/almacen/requerimientos'],
-  ['requerimiento-nuevo', '/almacen/requerimientos/nuevo'],
-  requerimientoId && ['requerimiento-detalle', `/almacen/requerimientos/${requerimientoId}`],
-  ['almacen-compras', '/almacen/compras'],
-  ['almacen-materiales', '/almacen/materiales'],
-  ['almacen-proveedores', '/almacen/proveedores'],
-  ['servicios', '/servicios'],
-  ['servicios-por-conformar', '/servicios?estado=EJECUTADO'],
-  ['costos', '/costos'],
-  ['documentos', '/documentos'],
-  ['firmas', '/firmas'],
-  ['informes', '/informes'],
-  ['informe-produccion', '/informes/produccion?desde=2026-01-01&hasta=2026-12-31'],
-  ['informe-rentabilidad', '/informes/rentabilidad?desde=2026-01-01&hasta=2026-12-31'],
-  ['informe-cumplimiento', '/informes/cumplimiento?desde=2026-01-01&hasta=2026-12-31'],
-  ['informe-comercial', '/informes/comercial?desde=2026-01-01&hasta=2026-12-31'],
-  ['informe-materiales', '/informes/materiales?desde=2026-01-01&hasta=2026-12-31'],
-  ['informe-subcontratos', '/informes/subcontratos?desde=2026-01-01&hasta=2026-12-31'],
-  ['garantias', '/garantias'],
   ['configuracion', '/configuracion'],
   ['personal', '/personal'],
   ['sin-permiso', '/sin-permiso'],

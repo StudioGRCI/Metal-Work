@@ -1,8 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
-import { CheckCircle2, ShieldAlert } from 'lucide-react'
+import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -11,6 +9,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_ETAPA, ORDEN_ESTADO_ETAPA, definir, opciones } from '@/lib/dominio/estados'
 import { cantidad, fecha } from '@/lib/format'
+import { useEnvio } from '@/lib/envio'
 import type { Vistas } from '@/types/database'
 
 import { actualizarEtapa } from '../acciones'
@@ -52,7 +51,6 @@ export function Etapas({
         {etapas.map((etapa) => {
           const estado = definir(ESTADO_ETAPA, etapa.estado)
           const abierta = editando === etapa.etapa_id
-          const bloqueada = Boolean(etapa.requiere_inspeccion) && !etapa.inspeccion_conforme
 
           return (
             <div
@@ -67,22 +65,17 @@ export function Etapas({
                 <div className="min-w-40 flex-1">
                   <p className="flex items-center gap-2 text-sm font-medium text-texto">
                     {etapa.etapa}
-                    {etapa.requiere_inspeccion &&
-                      (etapa.inspeccion_conforme ? (
-                        <CheckCircle2 aria-label="Inspección conforme" className="size-3.5 text-exito" />
-                      ) : (
-                        <ShieldAlert aria-label="Requiere inspección de calidad" className="size-3.5 text-aviso" />
-                      ))}
                   </p>
                   <p className="text-[11px] text-texto-suave">
-                    {cantidad(etapa.horas_reales)} de {cantidad(etapa.horas_estimadas)} h
-                    {(etapa.operarios_asignados ?? 0) > 0 &&
-                      ` · ${etapa.operarios_asignados} operarios`}
+                    {cantidad(etapa.horas_estimadas)} h estimadas
                     {etapa.fecha_fin_real && ` · terminada el ${fecha(etapa.fecha_fin_real)}`}
                   </p>
                 </div>
 
-                <div className="w-40">
+                {/* La barra ocupa la línea entera en el teléfono, donde si no
+                    se queda apretada entre el nombre y la insignia; en el
+                    monitor vuelve a sus 160 px de siempre. */}
+                <div className="w-full sm:w-40">
                   <Progreso valor={etapa.avance_porcentaje} mostrarValor alto="sm" />
                 </div>
 
@@ -104,7 +97,6 @@ export function Etapas({
                 <FormularioEtapa
                   ordenId={ordenId}
                   etapa={etapa}
-                  bloqueada={bloqueada}
                   alTerminar={() => setEditando(null)}
                 />
               )}
@@ -119,35 +111,19 @@ export function Etapas({
 function FormularioEtapa({
   ordenId,
   etapa,
-  bloqueada,
   alTerminar,
 }: {
   ordenId: string
   etapa: Etapa
-  bloqueada: boolean
   alTerminar: () => void
 }) {
-  const router = useRouter()
-  const [pendiente, iniciarTransicion] = useTransition()
   const [avance, setAvance] = useState(Number(etapa.avance_porcentaje ?? 0))
-  const [error, setError] = useState<string | null>(null)
+  // El formulario se cierra únicamente cuando el guardado fue correcto.
+  const { alEnviar, enviando, error } = useEnvio(actualizarEtapa, alTerminar)
 
-  // Manejador propio en lugar de useActionState: así el formulario se cierra
-  // únicamente cuando el guardado fue correcto.
-  async function enviar(datos: FormData) {
-    setError(null)
-    const resultado = await actualizarEtapa(null, datos)
-
-    if (resultado.ok) {
-      alTerminar()
-      iniciarTransicion(() => router.refresh())
-      return
-    }
-    setError(resultado.error)
-  }
 
   return (
-    <form action={enviar} className="mt-3 grid gap-3 border-t border-borde pt-3 sm:grid-cols-3">
+    <form onSubmit={alEnviar} className="mt-3 grid gap-3 border-t border-borde pt-3 sm:grid-cols-3">
       <input type="hidden" name="etapa_id" value={etapa.etapa_id ?? ''} />
       <input type="hidden" name="orden_id" value={ordenId} />
 
@@ -162,11 +138,14 @@ function FormularioEtapa({
             step={5}
             value={avance}
             onChange={(e) => setAvance(Number(e.target.value))}
-            className="w-full accent-[var(--acento)]"
+            // El riel mide 4 px; el blanco para agarrarlo, 44 en el teléfono.
+            // En el monitor vuelve al alto natural del control.
+            className="h-11 w-full accent-[var(--acento)] sm:h-auto"
           />
           <Entrada
             aria-label="Avance en porcentaje"
             type="number"
+            inputMode="numeric"
             min={0}
             max={100}
             value={avance}
@@ -176,18 +155,14 @@ function FormularioEtapa({
         </div>
       </Campo>
 
-      <Campo
-        etiqueta="Estado"
-        htmlFor={`estado-${etapa.etapa_id}`}
-        ayuda={bloqueada ? 'Requiere inspección de calidad conforme para poder terminarse' : undefined}
-      >
+      <Campo etiqueta="Estado" htmlFor={`estado-${etapa.etapa_id}`}>
         <Seleccion
           id={`estado-${etapa.etapa_id}`}
           name="estado"
           defaultValue={etapa.estado ?? 'PENDIENTE'}
         >
           {ESTADOS.map((o) => (
-            <option key={o.valor} value={o.valor} disabled={o.valor === 'TERMINADA' && bloqueada}>
+            <option key={o.valor} value={o.valor}>
               {o.etiqueta}
             </option>
           ))}
@@ -214,7 +189,7 @@ function FormularioEtapa({
         <Boton type="button" variante="fantasma" tamano="sm" onClick={alTerminar}>
           Cancelar
         </Boton>
-        <Boton type="submit" tamano="sm" cargando={pendiente}>
+        <Boton type="submit" tamano="sm" cargando={enviando}>
           Guardar avance
         </Boton>
       </div>

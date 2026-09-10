@@ -102,7 +102,18 @@ const bloqueFunciones = [...porNombre.values()]
 ${f.argumentos.map((a) => `          ${a.nombre}${a.opcional ? '?' : ''}: ${tipo(a.tipo)}`).join('\n')}
         }`
       : 'Record<PropertyKey, never>'
-    const retorno = f.retorna === 'void' ? 'undefined' : tipo(f.retorna)
+    // Una función que devuelve una tabla devuelve filas con nombre; su tipo es
+    // el objeto, no el escalar en que cae el catálogo (`record` → string).
+    const columnas = f.retorna_columnas ?? []
+    let retorno
+    if (columnas.length) {
+      const campos = columnas.map((c) => `          ${c.nombre}: ${tipo(c.tipo)} | null`)
+      retorno = `{\n${campos.join('\n')}\n        }`
+    } else if (f.retorna === 'void') {
+      retorno = 'undefined'
+    } else {
+      retorno = tipo(f.retorna)
+    }
     return `      ${f.nombre}: {
         Args: ${args}
         Returns: ${retorno}${f.retorna_conjunto ? '[]' : ''}

@@ -1,14 +1,17 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
-import { Pencil } from 'lucide-react'
+import { Pencil, Plus } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha } from '@/lib/format'
+import type { UnidadNombrable } from '@/lib/dominio/unidades'
 import {
   contactosDeCliente,
   listarUnidades,
@@ -42,6 +45,9 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
 
   const vendedor = cliente.vendedor as unknown as { nombres: string; apellidos: string } | null
 
+  // El estado vacío de las órdenes solo ofrece abrir una a quien puede abrirla.
+  const abreOrdenes = puede(perfil, 'ordenes.crear')
+
   return (
     <>
       <EncabezadoPagina
@@ -52,13 +58,10 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
         }`}
         acciones={
           puede(perfil, 'clientes.editar') && (
-            <Link
-              href={`/clientes/${id}/editar`}
-              className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-base)] border border-borde px-4 text-sm text-texto hover:bg-superficie-2"
-            >
+            <EnlaceBoton href={`/clientes/${id}/editar`} variante="contorno">
               <Pencil aria-hidden className="size-4" />
               Editar
-            </Link>
+            </EnlaceBoton>
           )
         }
       />
@@ -97,22 +100,33 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
             descripcion={`${unidades.length} ${unidades.length === 1 ? 'vehículo' : 'vehículos'} registrados`}
             acciones={
               catalogos && (
-                <NuevaUnidad clienteId={id} tiposCarroceria={catalogos.tiposCarroceria} />
+                <NuevaUnidad clienteId={id} />
               )
             }
           />
           <TarjetaCuerpo className="p-0">
             {unidades.length === 0 ? (
-              <p className="px-4 py-10 text-center text-sm text-texto-suave">
-                Este cliente aún no tiene unidades registradas.
-              </p>
+              // El estado vacío trae el mismo botón de la cabecera: en el teléfono
+              // la cabecera de la tarjeta queda arriba, fuera del pulgar, y sin
+              // esto no hay nada que tocar donde se está mirando.
+              <div className="px-4 py-10 text-center">
+                <p className="text-sm text-texto-suave">
+                  Este cliente aún no tiene unidades registradas.
+                </p>
+                <p className="mt-1 text-xs text-texto-tenue">
+                  Sin unidad no se le puede abrir una orden de trabajo.
+                </p>
+                {catalogos && (
+                  <div className="mt-4 flex justify-center">
+                    <NuevaUnidad clienteId={id} />
+                  </div>
+                )}
+              </div>
             ) : (
               <ul className="divide-y divide-[var(--borde)]">
                 {unidades.map((u) => (
                   <li key={u.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                    <span className="tabular rounded-[var(--radius-base)] bg-superficie-2 px-2 py-1 text-sm font-medium">
-                      {u.placa}
-                    </span>
+                    <NombreUnidad unidad={u} />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm text-texto">
                         {[u.marca, u.modelo, u.anio].filter(Boolean).join(' ') || 'Sin datos'}
@@ -156,9 +170,19 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
           />
           <TarjetaCuerpo className="p-0">
             {ordenes.length === 0 ? (
-              <p className="px-4 py-10 text-center text-sm text-texto-suave">
-                Todavía no se ha abierto ninguna orden para este cliente.
-              </p>
+              <div className="px-4 py-10 text-center">
+                <p className="text-sm text-texto-suave">
+                  Todavía no se ha abierto ninguna orden para este cliente.
+                </p>
+                {abreOrdenes && (
+                  <div className="mt-4 flex justify-center">
+                    <EnlaceBoton href="/ordenes/nueva" variante="contorno">
+                      <Plus aria-hidden className="size-4" />
+                      Nueva orden de trabajo
+                    </EnlaceBoton>
+                  </div>
+                )}
+              </div>
             ) : (
               <ul className="divide-y divide-[var(--borde)]">
                 {ordenes.map((o) => {
@@ -174,7 +198,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                         <div className="min-w-40 flex-1">
                           <p className="truncate text-sm text-texto">{o.descripcion}</p>
                           <p className="text-[11px] text-texto-suave">
-                            {o.placa ?? 'sin unidad'} · {fecha(o.fecha_registro)}
+                            {nombreDeUnidad({ placa: o.placa })} · {fecha(o.fecha_registro)}
                           </p>
                         </div>
                         <div className="w-28">
@@ -190,6 +214,30 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
         </Tarjeta>
       </div>
     </>
+  )
+}
+
+/**
+ * El recuadro donde se busca la matrícula con la vista. Mientras la placa no
+ * llega —y en esta empresa llega meses después—, la unidad se nombra con lo que
+ * la identifique y se dice que le falta, para que nadie lea un código interno
+ * como si fuera una matrícula. El aviso se calla cuando el nombre ya lo trae.
+ */
+function NombreUnidad({ unidad }: { unidad: UnidadNombrable }) {
+  const nombre = nombreDeUnidad(unidad)
+  const falta = todaviaSinPlaca(unidad)
+
+  return (
+    <span
+      className={`rounded-[var(--radius-base)] bg-superficie-2 px-2 py-1 text-sm font-medium ${
+        falta ? 'text-texto-suave' : 'tabular'
+      }`}
+    >
+      {nombre}
+      {falta && !nombre.includes('sin placa') && (
+        <span className="ml-1 text-[11px] font-normal text-texto-tenue">sin placa</span>
+      )}
+    </span>
   )
 }
 

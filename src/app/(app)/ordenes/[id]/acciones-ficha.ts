@@ -3,9 +3,10 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
-import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
+
 
 function nulo(valor?: string | null) {
   const t = valor?.trim()
@@ -29,15 +30,15 @@ type Guarda =
 
 async function exigirTaller(): Promise<Guarda> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['ordenes.editar', 'produccion.registrar', 'calidad.inspeccionar'])) {
+  if (!puede(perfil, ['ordenes.editar', 'produccion.registrar'])) {
     return { ok: false, error: 'No tienes permiso para llenar la ficha de la orden.' }
   }
   return { ok: true, perfil }
 }
 
 /**
- * Marcar la ficha y escribir la orden no son lo mismo. Un operario marca su
- * avance y calidad da su visto bueno —eso vive en tablas propias—, pero las
+ * Marcar la ficha y escribir la orden no son lo mismo. El taller marca lo que
+ * verifica —eso vive en tablas propias—, pero las
  * medidas, los colores y el encargado de producción se escriben sobre la orden
  * misma, y ahí manda quien puede escribir órdenes.
  *
@@ -58,15 +59,15 @@ async function exigirEscribirOrden(): Promise<Guarda> {
 
 /**
  * Poner y quitar líneas de la ficha —un accesorio, un repuesto— es armar el
- * trabajo: lo hace el taller. Calidad marca el visto bueno sobre lo que hay,
- * que es otra cosa y tiene su propia guarda.
+ * trabajo: lo hace el taller, y el visto bueno sobre lo que hay tiene su
+ * propia guarda.
  */
 async function exigirArmarFicha(): Promise<Guarda> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['ordenes.editar', 'produccion.registrar'])) {
     return {
       ok: false,
-      error: 'Las líneas de la ficha las arma el taller; calidad da el visto bueno.',
+      error: 'Las líneas de la ficha las arma el taller.',
     }
   }
   return { ok: true, perfil }
@@ -109,7 +110,7 @@ export async function guardarFichaFisica(
   }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('ordenes_trabajo')
     .update({
       largo_m: numero(v.largo_m),
@@ -126,8 +127,11 @@ export async function guardarFichaFisica(
       encargado_produccion_id: nulo(v.encargado_produccion_id),
     })
     .eq('id', v.orden_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   return { ok: true, mensaje: 'Ficha de la unidad actualizada.' }
@@ -215,7 +219,7 @@ export async function marcarAccesorio(_previo: unknown, datos: FormData): Promis
   const pone = v.verificado === 'si'
   const supabase = await createClient()
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('ot_accesorios')
     .update({
       verificado: pone,
@@ -223,8 +227,12 @@ export async function marcarAccesorio(_previo: unknown, datos: FormData): Promis
       verificado_por: pone ? guarda.perfil.id : null,
     })
     .eq('id', v.id)
+    .eq('orden_id', v.orden_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   return { ok: true }
@@ -245,8 +253,15 @@ export async function quitarAccesorioOT(
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
 
   const supabase = await createClient()
-  const { error } = await supabase.from('ot_accesorios').delete().eq('id', analisis.data.id)
+  const { data, error } = await supabase
+    .from('ot_accesorios')
+    .delete()
+    .eq('id', analisis.data.id)
+    .eq('orden_id', analisis.data.orden_id)
+    .select('id')
+    .maybeSingle()
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${analisis.data.orden_id}`)
   return { ok: true }
@@ -304,8 +319,15 @@ export async function quitarRepuesto(_previo: unknown, datos: FormData): Promise
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
 
   const supabase = await createClient()
-  const { error } = await supabase.from('ot_repuestos').delete().eq('id', analisis.data.id)
+  const { data, error } = await supabase
+    .from('ot_repuestos')
+    .delete()
+    .eq('id', analisis.data.id)
+    .eq('orden_id', analisis.data.orden_id)
+    .select('id')
+    .maybeSingle()
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${analisis.data.orden_id}`)
   return { ok: true }
@@ -346,12 +368,16 @@ export async function marcarVerificacion(
       : { avance_2: pone, avance_2_en: ahora }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('ot_verificaciones')
     .update({ ...cambio, responsable_id: guarda.perfil.id })
     .eq('id', v.id)
+    .eq('orden_id', v.orden_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   return { ok: true }
@@ -376,12 +402,16 @@ export async function anotarVerificacion(
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('ot_verificaciones')
     .update({ observaciones: nulo(analisis.data.observaciones) })
     .eq('id', analisis.data.id)
+    .eq('orden_id', analisis.data.orden_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${analisis.data.orden_id}`)
   return { ok: true, mensaje: 'Observación guardada.' }

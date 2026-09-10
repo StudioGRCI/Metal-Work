@@ -25,9 +25,6 @@ select (select id from public.clientes limit 1), (select id from public.unidades
 update public.ordenes_trabajo set estado = 'APROBADA';
 update public.ordenes_trabajo set estado = 'EN_PROCESO';
 
-insert into public.ot_personal (orden_id, usuario_id, rol)
-  values ((select id from public.ordenes_trabajo limit 1), :'operario_id', 'SOLDADOR');
-
 -- La bitácora no acepta anotaciones de nadie: hay que estar identificado y
 -- alcanzar la orden. Se trabaja como el jefe de taller, que las ve todas.
 select test.como_usuario(:'jefe_id');

@@ -38,22 +38,17 @@ insert into public.ordenes_trabajo (cliente_id, sede_id, descripcion)
 
 update public.ordenes_trabajo set estado = 'APROBADA';
 
-insert into public.ot_personal (orden_id, usuario_id, rol)
-  select id, :'operario_id', 'SOLDADOR'
-    from public.ordenes_trabajo where descripcion like '%Diego%';
-
--- --- el operario solo ve las órdenes en las que participa -------------------
+-- --- el operario ve las órdenes como todos ----------------------------------
+-- El alcance por cuadrilla se fue con los partes diarios (migración 094): lo
+-- que acota al operario es lo que puede escribir, no lo que puede ver.
 select test.como_usuario(:'operario_id');
 set role authenticated;
 
 do $$
 begin
   perform test.afirmar(
-    (select count(*) from public.ordenes_trabajo) = 1,
-    'el operario ve solo la orden en la que está asignado');
-  perform test.afirmar(
-    (select descripcion from public.ordenes_trabajo) like '%Diego%',
-    'y es exactamente la suya');
+    (select count(*) from public.ordenes_trabajo) = 2,
+    'el operario ve las órdenes del taller: tiene ordenes.ver y ya no hay cuadrilla que lo acote');
   perform test.debe_fallar(
     'insert into public.clientes (tipo_documento, numero_documento, razon_social)
      values (''RUC'', ''20555555555'', ''CLIENTE COLADO'')',
@@ -66,20 +61,7 @@ end $$;
 
 reset role;
 
--- --- el segundo operario no ve nada -----------------------------------------
-select test.como_usuario(:'operario2_id');
-set role authenticated;
-
-do $$
-begin
-  perform test.afirmar(
-    (select count(*) from public.ordenes_trabajo) = 0,
-    'un operario sin órdenes asignadas no ve ninguna');
-end $$;
-
-reset role;
-
--- --- el vendedor ve órdenes pero no toca almacén ni costos ------------------
+-- --- el vendedor ve órdenes pero no toca el catálogo de materiales ----------
 select test.como_usuario(:'vendedor_id');
 set role authenticated;
 
@@ -89,9 +71,6 @@ begin
   perform test.afirmar(
     (select count(*) from public.ordenes_trabajo) = 2,
     'el vendedor ve todas las órdenes');
-  perform test.afirmar(
-    (select count(*) from public.kardex) = 0,
-    'el vendedor no ve el kardex');
   perform test.debe_fallar(
     'insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
      select ''X'', ''Material colado'',
@@ -196,43 +175,6 @@ end $$;
 
 reset role;
 
--- Puerta B: imputarse horas en una orden ajena para que pase a ser visible.
--- El parte diario sí lo puede crear -es su trabajo-; lo que no puede es
--- colgarle una línea a una orden que no le corresponde.
-select test.como_usuario(:'operario_id');
-set role authenticated;
-
-do $$
-declare
-  v_parte  uuid;
-  v_ajena  uuid;
-  v_antes  int;
-begin
-  select count(*) into v_antes from public.ordenes_trabajo;
-
-  insert into public.partes_diarios (fecha, sede_id)
-    select current_date, id from public.sedes limit 1
-    returning id into v_parte;
-
-  -- La orden ajena no se ve desde acá, así que se toma su identificador de la
-  -- descripción con una función que corre con privilegios: lo que se prueba es
-  -- el insert, no si puede leerla.
-  select id into v_ajena from public.ot_todas_para_prueba()
-   where descripcion like '%ajena%';
-
-  perform test.debe_fallar(
-    format($sql$insert into public.parte_detalle (parte_id, orden_id, usuario_id, horas)
-                values (%L, %L, %L, 4)$sql$,
-           v_parte, v_ajena, current_setting('request.jwt.claim.sub', true)),
-    'el operario no puede imputar horas a una orden ajena');
-
-  perform test.afirmar(
-    (select count(*) from public.ordenes_trabajo) = v_antes,
-    'y por lo tanto esa orden sigue sin ser visible para él');
-end $$;
-
-reset role;
-
 -- --- las funciones privilegiadas exigen su permiso ---------------------------
 select test.como_usuario(:'operario_id');
 set role authenticated;
@@ -240,11 +182,11 @@ set role authenticated;
 do $$
 begin
   perform test.debe_fallar(
-    'select public.exigir_permiso(''almacen.confirmar'')',
-    'un operario no tiene permiso para confirmar movimientos de almacén');
+    'select public.exigir_permiso(''produccion.actividades'')',
+    'un operario no tiene permiso para armar la lista de actividades');
   perform test.debe_fallar(
-    'select public.exigir_permiso(''requerimientos.aprobar'')',
-    'ni para aprobar requerimientos');
+    'select public.exigir_permiso(''usuarios.gestionar'')',
+    'ni para dar de alta personal');
 end $$;
 
 reset role;

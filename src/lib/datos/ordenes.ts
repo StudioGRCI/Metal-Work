@@ -88,13 +88,24 @@ export async function listarOrdenes(filtros: FiltrosOrdenes) {
   }
 }
 
+/**
+ * Una orden con todo lo que la pantalla necesita.
+ *
+ * El cliente va con join normal y NO con `!inner`, y es la diferencia entre que
+ * el taller pueda abrir una orden o no: con `!inner`, a quien no tiene
+ * `clientes.ver` -operarios, supervisor, calidad, almacén, compras- el RLS le
+ * esconde la fila del cliente y con ella desaparecía la orden entera. La
+ * pantalla respondía «404, la dirección no existe» a seis personas que sí
+ * tienen permiso para verla. Ahora la orden se abre y lo que no se ve es el
+ * nombre del cliente, que es exactamente lo que el permiso dice.
+ */
 export async function obtenerOrden(id: string) {
   const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('ordenes_trabajo')
     .select(
-      'id, numero, estado, prioridad, tipo_trabajo, descripcion, especificaciones_tecnicas, datos_tecnicos, fecha_registro, fecha_inicio_programada, fecha_fin_programada, fecha_entrega_comprometida, fecha_inicio_real, fecha_fin_real, avance_porcentaje, horas_estimadas, horas_reales, moneda, monto_presupuestado, motivo_pausa, motivo_anulacion, observaciones, creado_en, largo_m, ancho_m, alto_m, capacidad_carga, ruedas, tipo_llantas, cantidad_ejes, tipo_suspension, colores, caracteristicas_especiales, correo_contacto, encargado_produccion_id, cliente:clientes!inner(id, razon_social, numero_documento, telefono, correo), unidad:unidades(id, placa, marca, modelo, anio, tipo_vehiculo, numero_chasis), sede:sedes!inner(id, nombre), tipo_carroceria:tipos_carroceria(id, nombre), responsable:usuarios!ordenes_trabajo_responsable_id_fkey(id, nombres, apellidos), supervisor:usuarios!ordenes_trabajo_supervisor_id_fkey(id, nombres, apellidos), cotizacion:cotizaciones(id, numero, total, moneda)',
+      'id, numero, estado, prioridad, tipo_trabajo, descripcion, especificaciones_tecnicas, datos_tecnicos, fecha_registro, fecha_inicio_programada, fecha_fin_programada, fecha_entrega_comprometida, fecha_inicio_real, fecha_fin_real, avance_porcentaje, horas_estimadas, horas_reales, moneda, monto_presupuestado, motivo_pausa, motivo_anulacion, observaciones, creado_en, largo_m, ancho_m, alto_m, capacidad_carga, ruedas, tipo_llantas, cantidad_ejes, tipo_suspension, colores, caracteristicas_especiales, correo_contacto, encargado_produccion_id, cliente:clientes(id, razon_social, numero_documento, telefono, correo), unidad:unidades(id, placa, marca, modelo, anio, tipo_vehiculo, numero_chasis, codigo_interno), sede:sedes!inner(id, nombre), tipo_carroceria:tipos_carroceria(id, nombre), responsable:usuarios!ordenes_trabajo_responsable_id_fkey(id, nombres, apellidos), supervisor:usuarios!ordenes_trabajo_supervisor_id_fkey(id, nombres, apellidos), cotizacion:cotizaciones(id, numero, total, moneda)',
     )
     .eq('id', id)
     .maybeSingle()
@@ -130,37 +141,6 @@ export async function listarEtapas(ordenId: string) {
   }))
 }
 
-export async function listarInspecciones(ordenId: string) {
-  const supabase = await createClient()
-
-  const { data, error } = await supabase
-    .from('ot_inspecciones')
-    .select(
-      'id, numero, fecha, resultado, observaciones, acciones_correctivas, fecha_levantamiento, inspector:usuarios!ot_inspecciones_inspector_id_fkey(nombres, apellidos)',
-    )
-    .eq('orden_id', ordenId)
-    .order('fecha', { ascending: false })
-
-  if (error) throw new Error(`No se pudieron cargar las inspecciones: ${error.message}`)
-  return data ?? []
-}
-
-export async function listarHorasOrden(ordenId: string) {
-  const supabase = await createClient()
-
-  const { data, error } = await supabase
-    .from('parte_detalle')
-    .select(
-      'id, horas, horas_extra, horas_totales, descripcion, parte:partes_diarios!inner(numero, fecha, estado), usuario:usuarios!inner(nombres, apellidos), etapa:ot_etapas!inner(etapa_catalogo_id, catalogo:etapas_catalogo!inner(nombre))',
-    )
-    .eq('orden_id', ordenId)
-    .order('id', { ascending: false })
-    .limit(200)
-
-  if (error) throw new Error(`No se pudieron cargar las horas: ${error.message}`)
-  return data ?? []
-}
-
 /** Catálogos que necesitan los formularios de alta y edición. */
 export async function catalogosOrden() {
   const supabase = await createClient()
@@ -193,35 +173,59 @@ export async function unidadesDeCliente(clienteId: string) {
   return data ?? []
 }
 
-/** Indicadores del tablero principal. */
+/**
+ * Indicadores del tablero principal.
+ *
+ * Los cuenta la base. Antes se traían todas las órdenes y se contaban en el
+ * servidor, y eso tiene fecha de caducidad: PostgREST corta la respuesta en mil
+ * filas sin dar error, así que a partir de mil órdenes el tablero habría
+ * seguido diciendo «de 1000 registradas» para siempre.
+ */
 export async function indicadoresTablero(sedeId?: string | null) {
   const supabase = await createClient()
 
-  let consulta = supabase
-    .from('ot_resumen')
-    .select('id, estado, prioridad, dias_atraso, avance_porcentaje, monto_presupuestado')
-  if (sedeId) consulta = consulta.eq('sede_id', sedeId)
-
-  const { data, error } = await consulta
+  const { data, error } = await supabase
+    .rpc('indicadores_tablero', { p_sede_id: sedeId ?? undefined })
+    .single()
   if (error) throw new Error(`No se pudieron cargar los indicadores: ${error.message}`)
 
-  const filas = data ?? []
-  const abiertas = filas.filter((o) => ESTADOS_ABIERTOS.includes(o.estado as Enums<'estado_ot'>))
-
+  const porEstado = (data.por_estado ?? {}) as Record<string, number>
   return {
-    abiertas: abiertas.length,
-    enProceso: filas.filter((o) => o.estado === 'EN_PROCESO').length,
-    pausadas: filas.filter((o) => o.estado === 'PAUSADA').length,
-    atrasadas: abiertas.filter((o) => (o.dias_atraso ?? 0) > 0).length,
-    urgentes: abiertas.filter((o) => o.prioridad === 'URGENTE').length,
-    porEstado: Object.entries(
-      filas.reduce<Record<string, number>>((acc, o) => {
-        const clave = o.estado ?? 'SIN_ESTADO'
-        acc[clave] = (acc[clave] ?? 0) + 1
-        return acc
-      }, {}),
-    ).map(([estado, cantidad]) => ({ estado, cantidad })),
+    abiertas: data.abiertas ?? 0,
+    enProceso: data.en_proceso ?? 0,
+    pausadas: data.pausadas ?? 0,
+    atrasadas: data.atrasadas ?? 0,
+    urgentes: data.urgentes ?? 0,
+    total: data.total ?? 0,
+    porEstado: Object.entries(porEstado).map(([estado, cantidad]) => ({
+      estado,
+      cantidad: Number(cantidad),
+    })),
   }
+}
+
+/**
+ * Las órdenes abiertas más atrasadas, para la tarjeta «Requieren atención».
+ *
+ * Se ordena por fecha comprometida ascendente, que es lo mismo que por días de
+ * atraso descendente. Antes esta lista salía de las órdenes más RECIENTES, así
+ * que una orden vieja y muy atrasada no aparecía y la tarjeta llegaba a decir
+ * «ninguna orden atrasada» mientras el indicador de arriba contaba varias.
+ */
+export async function ordenesAtrasadas(limite = 6) {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('ot_resumen')
+    .select('id, numero, cliente, placa, unidad_id, codigo_interno, marca, modelo, dias_atraso, fecha_entrega_comprometida')
+    .in('estado', ESTADOS_ABIERTOS)
+    .gt('dias_atraso', 0)
+    .order('fecha_entrega_comprometida', { ascending: true })
+    .order('numero')
+    .limit(limite)
+
+  if (error) throw new Error(`No se pudieron cargar las órdenes atrasadas: ${error.message}`)
+  return data ?? []
 }
 
 /** Las fechas límite que las reglas de plazo de la empresa le imponen a la orden. */
@@ -252,7 +256,7 @@ export async function fechasClaveDeOrden(ordenId: string) {
 export async function estadoDeSalida(ordenId: string) {
   const supabase = await createClient()
 
-  const [liberacion, entrega, faltantes] = await Promise.all([
+  const [liberacion, entrega] = await Promise.all([
     supabase
       .from('liberaciones_tesoreria')
       .select('liberado_en, observacion, liberador:usuarios!liberaciones_tesoreria_liberado_por_fkey(nombres, apellidos)')
@@ -263,7 +267,6 @@ export async function estadoDeSalida(ordenId: string) {
       .select('id, fecha_entrega, salida_confirmada_en, confirmador:usuarios!ot_entregas_salida_confirmada_por_fkey(nombres, apellidos)')
       .eq('orden_id', ordenId)
       .maybeSingle(),
-    supabase.rpc('documentos_obligatorios_faltantes', { p_orden_id: ordenId }),
   ])
 
   if (liberacion.error) throw new Error(`No se pudo leer la liberación: ${liberacion.error.message}`)
@@ -281,8 +284,58 @@ export async function estadoDeSalida(ordenId: string) {
       salida_confirmada_en: string | null
       confirmador: { nombres: string; apellidos: string } | null
     } | null,
-    documentosFaltantes: ((faltantes.data ?? []) as unknown as { nombre: string }[]).map(
-      (d) => d.nombre,
-    ),
   }
+}
+
+export type EventoTimeline = {
+  clave: string
+  ocurrido_en: string
+  categoria: string
+  titulo: string
+  detalle: string | null
+  usuario: string | null
+}
+
+/**
+ * La trazabilidad de la orden: la bitácora de eventos, del más reciente al
+ * más viejo, con el nombre de quien lo hizo.
+ */
+export async function timelineDeOrden(ordenId: string, limite = 200): Promise<EventoTimeline[]> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('v_ot_timeline')
+    .select('*')
+    .eq('orden_id', ordenId)
+    .order('ocurrido_en', { ascending: false })
+    .limit(limite)
+
+  if (error) throw new Error(`No se pudo cargar la trazabilidad: ${error.message}`)
+
+  const filas = data ?? []
+
+  // La vista solo trae usuario_id; los nombres se resuelven en una sola consulta.
+  const ids = [...new Set(filas.map((f) => f.usuario_id).filter(Boolean))] as string[]
+  const nombres = new Map<string, string>()
+
+  if (ids.length > 0) {
+    const { data: usuarios } = await supabase
+      .from('usuarios')
+      .select('id, nombres, apellidos')
+      .in('id', ids)
+
+    for (const u of usuarios ?? []) nombres.set(u.id, `${u.nombres} ${u.apellidos}`)
+  }
+
+  return filas
+    .filter((f) => f.ocurrido_en)
+    .map((f, i) => ({
+      // La vista es una unión sin clave propia; el índice basta para React.
+      clave: `${f.referencia_tabla ?? 'evento'}-${f.referencia_id ?? i}-${i}`,
+      ocurrido_en: f.ocurrido_en as string,
+      categoria: f.categoria ?? 'EVENTO',
+      titulo: f.titulo ?? '',
+      detalle: f.detalle,
+      usuario: f.usuario_id ? (nombres.get(f.usuario_id) ?? null) : null,
+    }))
 }

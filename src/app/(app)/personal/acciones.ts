@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
-import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -104,7 +104,7 @@ export async function guardarPersona(_previo: unknown, datos: FormData): Promise
   const v = analisis.data
   const supabase = await createClient()
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('usuarios')
     .update({
       nombres: v.nombres,
@@ -119,8 +119,11 @@ export async function guardarPersona(_previo: unknown, datos: FormData): Promise
       costo_hora: v.costo_hora,
     })
     .eq('id', v.id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/personal')
   return { ok: true, mensaje: 'Ficha actualizada.' }

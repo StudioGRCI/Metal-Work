@@ -59,14 +59,31 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
 
 ## Formularios
 
-- Acción de servidor + `useActionState`; el resultado es
-  `ResultadoAccion<T>` de `src/lib/acciones.ts` y se muestra con un
-  componente `Aviso` local (rol `alert`/`status`).
+- **Un formulario que escribe se envía con `useEnvio`** (`src/lib/envio.ts`):
+  `<form onSubmit={alEnviar}>` y `<Boton type="submit" cargando={enviando}>`.
+  El resultado es `ResultadoAccion<T>` de `src/lib/acciones.ts`; el error va
+  en un `<p role="alert">` local, y lo que pasa al salir bien —cerrar la
+  ventana, avisar, navegar— en el `alTerminar`, que es un evento.
+- **Prohibido `<form action={fn}>` con un `useState` para «enviando».** La
+  función de un `<form action>` corre dentro de una transición, y React 19 no
+  pinta lo que cambia adentro hasta que la acción termina: el botón no se
+  desactiva, cada toque de más queda en cola y el registro entra dos o tres
+  veces. Pasó con dos contactos iguales y con un reporte de flota que entró tres
+  veces con un segundo de diferencia (2026-09-09). La primera vez se culpó al
+  tiempo entre el clic y el repintado, y el `if (enviando) return` que se puso
+  no sirvió de nada: diecinueve formularios tenían el mismo defecto. Tampoco
+  sirve el `isPending` de una transición que solo se prende para el refresco,
+  después de la acción. Y React vacía un `<form action>` al terminar aunque
+  haya fallado: lo escrito se perdía con el primer rechazo.
+- **Se comprueba tocando, no leyendo:** `herramientas/recorrido/doble-toque.mjs`
+  toca «Registrar» tres veces con un texto que el servidor rechaza, y tiene que
+  dar un envío, el botón desactivado y el texto todavía en el campo.
+- `useActionState` sí desactiva su botón a tiempo, pero también vacía el
+  formulario tras un rechazo. En formularios largos o del taller, `useEnvio`.
 - **Prohibido cerrar o resetear con `useEffect` sobre el resultado** — la
   regla `react-hooks/set-state-in-effect` lo rechaza y ya nos pasó tres
-  veces. Alternativas que usamos: mostrar «Cerrar» en lugar de «Cancelar»
-  tras el éxito, o llamar la acción directo con `useState` + `useTransition`
-  (ver `nuevo-proveedor.tsx`).
+  veces. Se cierra en el `alTerminar` de `useEnvio`, o se muestra «Cerrar» en
+  lugar de «Cancelar» tras el éxito.
 - Marcar de a uno (un check, un V°B°) es un `<form>` mínimo por casilla con
   campos ocultos — sin modal, sin recargar el formulario entero (ver
   `ficha-taller.tsx`).
@@ -107,13 +124,51 @@ siguiente paso («Da de alta el primero con el botón de arriba»).
 
 ## Comprobación visual
 
-Las interacciones con botones tienen su propio recorrido:
-`node herramientas/banco/probar-cotizacion.mjs` (emitir, descargar, anular).
-Interacción nueva de peso → sumarle sus comprobaciones ahí.
+**En esta máquina el banco local no corre** —no hay Postgres ni `psql`—, así que
+`recorrer.mjs` y `probar-cotizacion.mjs` no son una opción aquí. La comprobación
+que sí funciona es mirar la pantalla **en el despliegue**, después de `git push`
+(Vercel tarda 2–3 min):
 
-Ninguna pantalla se da por lista sin pasar por el banco:
-`node herramientas/banco/recorrer.mjs` la visita con sesión iniciada, junta
-los errores de consola y guarda captura. Pantalla nueva → sumarla a `RUTAS`
-en ese archivo. Interacción nueva → probarla con clic real vía
-`playwright-core` contra `localhost:3111` (patrón en
-`herramientas/presentacion/capturar.mjs`).
+```bash
+MSYS_NO_PATHCONV=1 URL=https://metal-work-sandy.vercel.app USUARIO=studiogrci@gmail.com \
+CLAVE='<la clave de prueba>' CAPTURAS="<carpeta del scratchpad>" \
+"/c/Program Files/nodejs/node.exe" herramientas/recorrido/mirar.mjs /carrocerias carrocerias 'h1' 'tbody tr'
+```
+
+Los selectores que se le pasan **se cuentan y se listan por texto**, y eso es la
+prueba: cuántas filas trajo la tabla y qué dicen. La captura PNG no vale como
+comprobación —no siempre se puede abrir—, así que una pantalla no se da por vista
+sin el conteo y el texto. Sin selectores, `mirar.mjs` solo dice que la página
+cargó, que es casi nada. Pantalla nueva → mirarla con los selectores que la
+delatan si viene vacía (`tbody tr`, el `h1`, el estado vacío).
+
+Donde el banco sí corre (Linux con Postgres local) el recorrido sigue siendo el
+bueno: `node herramientas/banco/recorrer.mjs` visita cada pantalla con sesión
+iniciada, junta los errores de consola y guarda captura —pantalla nueva →
+sumarla a `RUTAS`—, y `node herramientas/banco/probar-cotizacion.mjs` cubre las
+interacciones con botones (emitir, descargar, anular); interacción nueva de peso
+→ sumarle sus comprobaciones ahí, con clic real vía `playwright-core` contra
+`localhost:3111` (patrón en `herramientas/presentacion/capturar.mjs`).
+
+## Trampas
+
+*(Sección viva: aquí se anota lo que salió mal al construir pantallas. Ver `aprender`.)*
+
+- **Una columna nueva no aparece sola.** Aunque esté en la base y en los tipos,
+  la pantalla la ignora hasta que se agrega al `select` explícito de
+  `src/lib/datos/*`. El síntoma es un campo vacío sin ningún error.
+
+- **Dos documentos son dos pantallas, no una con condiciones.** La cotización de
+  venta y la cotización de trabajo son documentos distintos, los hace gente
+  distinta y llevan datos que la otra parte no debe ver: el vendedor no tiene
+  por qué mirar el costo del acero. Se intentó dos veces meter las partidas, la
+  ficha técnica y los accesorios en la pantalla de venta escondiéndolos con
+  condiciones —primero por permiso, después por estado— y la empresa lo devolvió
+  las dos veces: una condición tapa el bloque en el estado que se pensó y lo
+  deja asomar en el siguiente. Hoy viven en `/cotizaciones/trabajo/[id]`.
+
+  **La regla:** cuando el negocio dice que son dos cosas, se separan por ruta y
+  por permiso, no con un `&&`. Si aparece la tentación de añadir una condición
+  más para esconder un bloque de otra área, esa es la señal de que falta una
+  pantalla. Lo que no se separa se vuelve a colar, y quien lo descubre es el
+  cliente mirando por encima del hombro de alguien.

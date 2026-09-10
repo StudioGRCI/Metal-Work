@@ -83,14 +83,36 @@ end;
 $$;
 
 -- Verifica que una sentencia falle. Si NO falla, la prueba falla.
-create or replace function test.debe_fallar(p_sql text, p_mensaje text)
-returns void language plpgsql as $$
+--
+-- `p_contiene` es opcional y es lo que separa una prueba de una coartada. Sin
+-- él este ayudante da por buena CUALQUIER excepción, así que el check pasa
+-- igual cuando la sentencia falla porque la rechazó la política —que es lo que
+-- se quería probar— que cuando falla porque una columna está mal escrita. Si
+-- viene, el mensaje del error tiene que contenerlo (sin distinguir mayúsculas)
+-- y, si no lo contiene, la prueba falla diciendo qué error salió de verdad.
+--
+-- Se borra antes la versión de dos argumentos: dejar las dos vivas volvería
+-- ambigua toda llamada con dos, porque el tercer parámetro tiene valor por
+-- omisión. Los checks que llaman con dos siguen funcionando igual.
+drop function if exists test.debe_fallar(text, text);
+
+create or replace function test.debe_fallar(
+  p_sql      text,
+  p_mensaje  text,
+  p_contiene text default null
+) returns void language plpgsql as $$
 begin
   begin
     execute p_sql;
   exception
     when assert_failure then raise;
     when others then
+      if p_contiene is not null
+         and position(lower(p_contiene) in lower(sqlerrm)) = 0 then
+        raise exception 'FALLA: % · falló, pero por otra cosa: se esperaba un error que dijera «%» y dijo «%»',
+          p_mensaje, p_contiene, sqlerrm
+          using errcode = 'assert_failure';
+      end if;
       raise notice '  ok · % (%).', p_mensaje, sqlerrm;
       return;
   end;

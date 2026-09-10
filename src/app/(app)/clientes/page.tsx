@@ -1,10 +1,13 @@
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { Plus } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { Paginacion } from '@/components/estructura/paginacion'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { listarClientes } from '@/lib/datos/comercial'
+import { CLIENTES_POR_PAGINA, listarClientes } from '@/lib/datos/comercial'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
@@ -16,10 +19,31 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
   const params = await searchParams
 
   const busqueda = typeof params.q === 'string' ? params.q : undefined
-  const { clientes, total } = await listarClientes({
+  const { clientes, total, pagina, paginas } = await listarClientes({
     busqueda,
     pagina: Number(params.pagina) || 1,
   })
+
+  const crea = puede(perfil, 'clientes.crear')
+
+  // «No hay ninguno» y «no hay ninguno que coincida» se resuelven distinto: en el
+  // primer caso el siguiente paso es dar de alta, en el segundo es soltar la
+  // búsqueda. El botón del estado vacío es el que da ese paso.
+  let accionSinDatos: ReactNode = null
+  if (busqueda) {
+    accionSinDatos = (
+      <EnlaceBoton href="/clientes" variante="contorno">
+        Ver todos los clientes
+      </EnlaceBoton>
+    )
+  } else if (crea) {
+    accionSinDatos = (
+      <EnlaceBoton href="/clientes/nuevo">
+        <Plus aria-hidden className="size-4" />
+        Nuevo cliente
+      </EnlaceBoton>
+    )
+  }
 
   return (
     <>
@@ -27,14 +51,11 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
         titulo="Clientes"
         descripcion={total === 1 ? '1 cliente registrado' : `${total} clientes registrados`}
         acciones={
-          puede(perfil, 'clientes.crear') && (
-            <Link
-              href="/clientes/nuevo"
-              className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-base)] bg-acento px-4 text-sm font-medium text-acento-texto hover:bg-acento-fuerte"
-            >
+          crea && (
+            <EnlaceBoton href="/clientes/nuevo">
               <Plus aria-hidden className="size-4" />
               Nuevo cliente
-            </Link>
+            </EnlaceBoton>
           )
         }
       />
@@ -51,8 +72,11 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
             <tr>
               <TH>Cliente</TH>
               <TH>Documento</TH>
-              <TH>Contacto</TH>
-              <TH>Ubicación</TH>
+              {/* En el teléfono no caben seis columnas: contacto y ubicación se
+                  esconden aquí y bajan a la celda del nombre en letra chica, que
+                  es donde el dedo ya está mirando. */}
+              <TH className="hidden sm:table-cell">Contacto</TH>
+              <TH className="hidden sm:table-cell">Ubicación</TH>
               <TH className="text-right">Unidades</TH>
               <TH className="text-right">Órdenes</TH>
             </tr>
@@ -61,17 +85,23 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
             {clientes.length === 0 ? (
               <SinDatos
                 colSpan={6}
-                titulo={busqueda ? 'Sin resultados' : 'Aún no hay clientes'}
+                titulo={busqueda ? 'Ningún cliente coincide' : 'Aún no hay clientes'}
                 descripcion={
                   busqueda
-                    ? 'Prueba con otro término de búsqueda.'
+                    ? `Nada con «${busqueda}». Prueba con el RUC o con el nombre comercial.`
                     : 'Registra el primer cliente para poder abrir órdenes de trabajo.'
                 }
+                accion={accionSinDatos}
               />
             ) : (
               clientes.map((c) => {
                 const unidades = (c.unidades as unknown as { count: number }[])?.[0]?.count ?? 0
                 const ordenes = (c.ordenes_trabajo as unknown as { count: number }[])?.[0]?.count ?? 0
+                const ubicacion = [c.distrito, c.provincia].filter(Boolean).join(', ')
+                // Lo que en el teléfono se pierde al esconder dos columnas vuelve
+                // aquí en una sola línea; sin esto el listado móvil no diría ni el
+                // teléfono del cliente ni de dónde es.
+                const enElTelefono = [c.telefono, ubicacion].filter(Boolean).join(' · ')
 
                 return (
                   <TR key={c.id}>
@@ -85,18 +115,19 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                       {c.nombre_comercial && (
                         <p className="text-[11px] text-texto-suave">{c.nombre_comercial}</p>
                       )}
+                      {enElTelefono && (
+                        <p className="text-[11px] text-texto-suave sm:hidden">{enElTelefono}</p>
+                      )}
                     </TD>
                     <TD className="whitespace-nowrap">
                       <span className="text-texto-suave">{c.tipo_documento}</span>{' '}
                       <span className="tabular">{c.numero_documento}</span>
                     </TD>
-                    <TD className="text-texto-suave">
+                    <TD className="hidden text-texto-suave sm:table-cell">
                       {c.telefono ?? '—'}
                       {c.correo && <p className="text-[11px]">{c.correo}</p>}
                     </TD>
-                    <TD className="text-texto-suave">
-                      {[c.distrito, c.provincia].filter(Boolean).join(', ') || '—'}
-                    </TD>
+                    <TD className="hidden text-texto-suave sm:table-cell">{ubicacion || '—'}</TD>
                     <TD className="tabular text-right">{unidades}</TD>
                     <TD className="tabular text-right">{ordenes}</TD>
                   </TR>
@@ -106,6 +137,15 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
           </tbody>
         </Tabla>
       </Tarjeta>
+
+      <Paginacion
+        ruta="/clientes"
+        pagina={pagina}
+        paginas={paginas}
+        total={total}
+        porPagina={CLIENTES_POR_PAGINA}
+        params={params}
+      />
     </>
   )
 }

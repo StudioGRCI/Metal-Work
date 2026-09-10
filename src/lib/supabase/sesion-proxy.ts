@@ -1,8 +1,17 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
-/** Rutas accesibles sin haber iniciado sesión. */
-const RUTAS_PUBLICAS = ['/ingresar', '/auth', '/api/health']
+/**
+ * Rutas accesibles sin haber iniciado sesión.
+ *
+ * `/api/tipo-cambio` la llama el cron de Vercel, que no tiene sesión ni puede
+ * tenerla: sin esta línea el proxy la mandaba a /ingresar con un 307 y el cron
+ * quedaba «corriendo» todos los días sin hacer nada. No queda abierta: esa ruta
+ * exige su propia credencial (CRON_SECRET) y contesta 401 sin ella. Se lista
+ * una por una a propósito —no `/api`— para que una ruta futura no herede el
+ * permiso de estar sin sesión por descuido.
+ */
+const RUTAS_PUBLICAS = ['/ingresar', '/auth', '/api/health', '/api/tipo-cambio']
 
 /**
  * Refresca el token de Supabase en cada navegación y redirige a /ingresar

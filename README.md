@@ -4,9 +4,11 @@ Sistema de gestión para una empresa de fabricación y reparación de carrocerí
 tolvas de volquete, plataformas, furgones, cisternas, camas bajas y
 repotenciaciones.
 
-Cubre el ciclo completo del trabajo en taller: la orden de trabajo, la
-trazabilidad de todo documento, el almacén de materiales, el costo real de cada
-orden y el seguimiento de la elaboración.
+Cubre el circuito que la empresa presentó y usa: la cotización de venta, la
+cotización de trabajo, la aprobación de Gerencia, la orden con el desglose de
+Diseño —actividades y materiales— y el avance del taller, con foto, unidad por
+unidad. Lo que no era de ese circuito (almacén, servicios, partes diarios,
+costos, calidad, documentos, garantías, informes) se retiró el 2026-09-09.
 
 ## Qué resuelve
 
@@ -14,10 +16,9 @@ orden y el seguimiento de la elaboración.
 | --- | --- |
 | ¿En qué va la tolva del cliente X? | Tablero y detalle de la orden, con avance por etapa |
 | ¿Por qué está parada esa orden? | Bitácora de la OT, con el motivo y quién la pausó |
-| ¿Cuánto llevo gastado en esta OT? | Costeo real: materiales, mano de obra, servicios e indirectos |
-| ¿Voy a perder plata con este trabajo? | Vista de margen: valor de venta contra costo acumulado |
-| ¿Tengo plancha de 6 mm para empezar? | Stock por almacén, con disponible y comprometido |
-| ¿Qué acero entró en esta carrocería? | Trazabilidad de lotes y coladas |
+| ¿Qué reportó cada área hoy, y quién no reportó? | El día en el taller |
+| ¿Qué lleva esta unidad y a qué plano va? | El desglose de materiales de Diseño en la orden |
+| ¿Qué le hicieron a la unidad que entró sin orden? | Unidades sin orden, con su reporte diario y sus fotos |
 | ¿Quién aprobó este cambio y cuándo? | Historial de auditoría de cada registro |
 
 ## Arquitectura
@@ -33,14 +34,14 @@ Next.js 16 (App Router, Server Components)
                     ├── RLS por rol y permiso
                     ├── Reglas de negocio en triggers y funciones
                     ├── Auth
-                    └── Storage (documentos y fotos de avance)
+                    └── Storage (fotos de avance)
 ```
 
 **Las reglas de negocio viven en la base de datos.** Una orden no se cierra con
-etapas abiertas, una etapa crítica no cierra sin inspección de calidad
-conforme, no se entrega sin acta de conformidad, el kardex es inmutable y el
-stock no puede quedar negativo. Se cumplen venga el cambio de la aplicación, de
-un script o del panel de Supabase.
+etapas abiertas, no se entrega sin acta de conformidad ni sin la liberación de
+Tesorería, las actividades de un área no pesan más de 100 % y un reporte de
+avance no pasa del 100 % de su actividad. Se cumplen venga el cambio de la
+aplicación, de un script o del panel de Supabase.
 
 **Trazabilidad por diseño.** Cada cambio queda en `audit_log` con los campos que
 realmente cambiaron; los eventos de negocio, en `ot_bitacora`. Ninguna de las
@@ -68,6 +69,7 @@ Las claves están en el panel de Supabase, en **Project Settings → API**:
 | `NEXT_PUBLIC_SUPABASE_URL` | Navegador y servidor |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Navegador y servidor |
 | `SUPABASE_SERVICE_ROLE_KEY` | Solo servidor: alta de usuarios y tareas de administración |
+| `CRON_SECRET` | Solo servidor: la eliges tú y la manda Vercel al llamar `/api/tipo-cambio` (ver `vercel.json`) |
 
 `SUPABASE_SERVICE_ROLE_KEY` ignora RLS. Nunca debe llegar al navegador ni
 subirse al repositorio.
@@ -131,7 +133,9 @@ npx tsc --noEmit     # comprobación de tipos
 ## Despliegue en Vercel
 
 1. Importa el repositorio en Vercel.
-2. Define las tres variables de entorno de Supabase.
+2. Define las tres variables de entorno de Supabase y `CRON_SECRET`, la que Vercel
+   manda al llamar `/api/tipo-cambio`. Sin ella el cron contesta 401 y el tipo de
+   cambio deja de actualizarse solo, sin avisar a nadie.
 3. Añade el dominio de Vercel en **Authentication → URL Configuration** de
    Supabase, tanto en *Site URL* como en *Redirect URLs*.
 
@@ -188,14 +192,16 @@ Docker, a diferencia de `supabase gen types`.
 | Administrador | Todo, incluida la configuración y el historial de auditoría |
 | Gerencia | Consulta total; aprueba cotizaciones, órdenes y compras |
 | Jefe de taller | Planifica, libera y controla la ejecución de las órdenes |
-| Supervisor | Supervisa etapas y aprueba los partes diarios |
-| Control de calidad | Registra inspecciones y levanta observaciones |
-| Almacenero | Ingresos, salidas, inventarios y catálogo de materiales |
-| Compras | Proveedores y órdenes de compra |
-| Comercial | Clientes, unidades y cotizaciones |
-| Costos | Presupuestos, gastos y cierre del costeo |
-| Operario | Registra su avance y sus horas; **solo ve sus propias órdenes** |
+| Jefe de producción | Recibe el avance diario de las tres áreas, arma sus listas y programa |
+| Supervisor | Arma la lista de actividades de su área y reporta su avance; hay uno por área |
+| Diseño e ingeniería | Cotización de trabajo, ficha técnica, planos y desglose de materiales |
+| Administración | Emite la orden de trabajo y registra los pagos |
+| Comercial | Clientes, unidades y cotizaciones de venta |
+| Operario | Reporta el avance de su área |
 | Solo consulta | Lectura sin poder modificar nada |
+
+Los roles de almacén, compras, calidad y costos siguen en el catálogo, sin
+cuentas activas: sus módulos se retiraron.
 
 Los permisos se editan por rol en `roles_permisos`, sin tocar código.
 
@@ -204,18 +210,14 @@ Los permisos se editan por rol en `roles_permisos`, sin tocar código.
 | Módulo | Qué permite hacer |
 | --- | --- |
 | **Tablero** | Estado del taller: órdenes abiertas, en proceso, pausadas, atrasadas y urgentes |
-| **Órdenes de trabajo** | Alta, ficha de taller, avance por etapa, control de calidad, costos, documentos y trazabilidad |
-| **Producción** | Partes diarios de horas por operario, orden y etapa; al aprobarlos se cargan a la orden |
+| **Cotización de venta** | Lo que se le ofrece al cliente y a qué precio; el circuito hasta la aprobación de Gerencia |
+| **Cotización de trabajo** | Las partidas, la ficha técnica y el tiempo por área, que arma Diseño |
+| **Carrocerías y materiales** | Lo que la casa ya fabricó con su ficha lista, y el catálogo del que Diseño arma el desglose |
+| **Órdenes de trabajo** | Alta desde la cotización, ficha de taller, etapas y plazos por área, hoja de Diseño, materiales, actividades por área, avance y trazabilidad |
+| **Control de plazos** | En qué va cada área y qué la trabó |
+| **Avance en taller** | Una tarjeta por unidad: dónde está, hace cuánto no se toca, qué la traba y las fotos del día; y las unidades que entraron sin orden |
+| **El día en el taller** | Lo que reportó cada área ese día, y quién no reportó |
 | **Clientes y unidades** | Ficha del cliente con su flota, contactos e historial de órdenes |
-| **Cotizaciones** | Ficha técnica del producto, partidas, aprobación y apertura de la orden con arrastre del presupuesto |
-| **Almacén** | Existencias valorizadas, movimientos con kardex, requerimientos, compras, proveedores y el maestro de materiales con su código de cinco segmentos y criticidad A/B/C |
-| **Avance en taller** | Una tarjeta por unidad: dónde está, hace cuánto no se toca, qué la traba y las fotos del día |
-| **Servicios de terceros** | Órdenes de servicio al subcontratista, con plazo, conformidad y pago |
-| **Costos** | Costo real contra presupuesto y margen, por orden y del conjunto |
-| **Documentos** | Repositorio versionado con carga de archivos y descarga con enlace temporal |
-| **Firmas** | Bandeja de lo que espera tu firma; la cadena de firmas de cada documento |
-| **Garantías** | Unidades en garantía con su vigencia y los reclamos, de la recepción al cierre |
-| **Informes** | Producción, cumplimiento de entregas, rentabilidad, cotizaciones, consumo y subcontratos |
 | **Personal** | Altas con su acceso, puestos, áreas y costo hora |
 | **Configuración** | Días de taller, feriados con siembra nacional, y los catálogos a la vista |
 
@@ -227,22 +229,17 @@ src/
 │   ├── (app)/              Pantallas con sesión iniciada
 │   │   ├── page.tsx        Tablero del taller
 │   │   ├── ordenes/        Órdenes de trabajo
-│   │   ├── produccion/     Partes diarios
+│   │   ├── plazos/         Control de plazos por área
 │   │   ├── clientes/       Clientes y sus unidades
-│   │   ├── cotizaciones/   Cotizaciones y conversión a orden
-│   │   ├── avance/         Tablero por unidad y avance diario con fotos
-│   │   ├── almacen/        Existencias, movimientos, requerimientos, compras
-│   │   ├── servicios/      Órdenes de servicio a subcontratistas
-│   │   ├── costos/         Costeo y margen
-│   │   ├── documentos/     Repositorio documental
-│   │   ├── firmas/         Bandeja de firmas pendientes
-│   │   ├── informes/       Informes de gestión con descarga a Excel
+│   │   ├── cotizaciones/   Cotización de venta y de trabajo, conversión a orden
+│   │   ├── carrocerias/    Las carrocerías de la casa con su ficha
+│   │   ├── materiales/     El catálogo chico de Diseño
+│   │   ├── avance/         Tablero por unidad, el día en el taller, unidades sin orden
 │   │   └── personal/       Altas de personal y sus accesos
 │   ├── ingresar/           Inicio de sesión
 │   └── auth/               Cierre de sesión
 ├── components/
-│   ├── avance/             Línea de avance de una unidad
-│   ├── documentos/         Subida y descarga de archivos, cadena de firmas
+│   ├── avance/             Línea de avance de una unidad y selector de fotos
 │   ├── estructura/         Navegación y encabezados
 │   └── ui/                 Componentes base
 ├── lib/
@@ -266,6 +263,10 @@ scripts/                    Utilidades de desarrollo
   el dominio `cantidad` (4 decimales), porque una plancha se pesa en kilos con
   fracción.
 - Los documentos no se borran: se anulan, dejando constancia del motivo.
+- La cotización impresa dice **qué se va a hacer y cuánto cuesta**: una sola
+  línea con el concepto, la cantidad, la unidad y el precio. El desglose por
+  partida —acero, mano de obra, servicios— es la cocina del taller, sirve para
+  el presupuesto de la OT y las compras, y no sale en el papel del cliente.
 - Toda tabla nueva debe declarar sus políticas RLS; la migración `0007` falla si
   alguna queda sin protección, y también si alguna queda con RLS activo pero sin
   políticas, que la volvería inaccesible sin avisar.

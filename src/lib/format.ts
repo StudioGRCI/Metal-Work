@@ -91,6 +91,16 @@ export function fechaHora(valor: string | Date | null | undefined) {
   )
 }
 
+/** La hora de Lima, «13:39»: para decir a qué hora entró un reporte del día. */
+export function hora(valor: string | Date | null | undefined) {
+  if (!valor) return '—'
+  const d = typeof valor === 'string' ? new Date(valor) : valor
+  if (Number.isNaN(d.getTime())) return '—'
+  return espaciosNormales(
+    d.toLocaleTimeString('es-PE', { timeZone: ZONA, hour: '2-digit', minute: '2-digit', hour12: false }),
+  )
+}
+
 export function fechaLarga(valor: string | Date | null | undefined) {
   if (!valor) return '—'
   // Igual que en fecha(): un día del calendario se lee tal cual.
@@ -132,16 +142,41 @@ export function tiempoRelativo(valor: string | Date | null | undefined) {
   return rtf.format(segundos, 'second')
 }
 
-/** Días entre hoy y una fecha, negativo si ya pasó. Sirve para los vencimientos. */
+/**
+ * Días entre hoy y una fecha, negativo si ya pasó. Sirve para los vencimientos.
+ *
+ * La cuenta va sobre el calendario del taller, no sobre la zona en que corra el
+ * servidor. Con `new Date()` y `setHours` el corte del día caía a las siete de
+ * la tarde de Lima en Vercel —un requerimiento para hoy salía «vencido» desde
+ * esa hora— y un día antes en una máquina con la zona de Lima, porque
+ * `new Date('2026-09-05')` se lee como medianoche UTC. Las dos fechas se pasan
+ * a la medianoche UTC de su día de Lima y ahí sí se restan.
+ */
 export function diasHasta(valor: string | Date | null | undefined): number | null {
   if (!valor) return null
-  const d = typeof valor === 'string' ? new Date(valor) : valor
+  const objetivo = typeof valor === 'string' ? diaDeLima(valor) : diaUtcDe(valor)
+  if (objetivo === null) return null
+  const hoy = Date.parse(`${hoyLima()}T00:00:00Z`)
+  return Math.round((objetivo - hoy) / 86400000)
+}
+
+/** El día que le toca a un texto de la base: si trae hora, se lee en Lima. */
+function diaDeLima(texto: string): number | null {
+  if (SOLO_FECHA.test(texto)) return Date.parse(`${texto}T00:00:00Z`)
+  const d = new Date(texto)
+  return Number.isNaN(d.getTime()) ? null : diaUtcDe(d)
+}
+
+/** La medianoche UTC del día que ese instante tiene en Lima. */
+function diaUtcDe(d: Date): number | null {
   if (Number.isNaN(d.getTime())) return null
-  const hoy = new Date()
-  hoy.setHours(0, 0, 0, 0)
-  const objetivo = new Date(d)
-  objetivo.setHours(0, 0, 0, 0)
-  return Math.round((objetivo.getTime() - hoy.getTime()) / 86400000)
+  const enLima = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ZONA,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d)
+  return Date.parse(`${enLima}T00:00:00Z`)
 }
 
 export function iniciales(nombres?: string | null, apellidos?: string | null) {
@@ -160,4 +195,27 @@ export function hoyLima(): string {
     month: '2-digit',
     day: '2-digit',
   }).format(new Date())
+}
+
+/**
+ * Un nombre que entra en una columna: «Rosa Mercedes Quispe Huamán» sale como
+ * «Rosa Quispe».
+ *
+ * En la lista de órdenes la columna de responsable mostraba «Administrador
+ * Meta…» en las cinco filas: una columna entera repitiendo un texto cortado,
+ * que ocupaba sitio y no decía a quién. Cortar con puntos suspensivos deja al
+ * lector adivinando; quedarse con el primer nombre y el primer apellido dice
+ * quién es y cabe.
+ *
+ * No se recorta a iniciales: en el taller hay gente que se llama por el nombre
+ * y una «R. Q.» no le dice nada a nadie.
+ */
+export function nombreCorto(completo?: string | null): string {
+  const partes = (completo ?? '').trim().split(/\s+/).filter(Boolean)
+  if (partes.length === 0) return '—'
+  if (partes.length <= 2) return partes.join(' ')
+
+  // Con tres partes es «nombre apellido apellido»: el paterno va segundo. Con
+  // cuatro o más son dos nombres y dos apellidos, y el paterno va tercero.
+  return `${partes[0]} ${partes[partes.length === 3 ? 1 : 2]}`
 }

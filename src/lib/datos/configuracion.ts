@@ -40,7 +40,11 @@ export async function catalogosDelTaller() {
   const [carrocerias, etapas, fichas, verificaciones] = await Promise.all([
     supabase
       .from('tipos_carroceria')
-      .select('id, codigo, nombre, horas_hombre_estandar, activo')
+      // Las medidas viajan porque son lo que la cotización copia al elegir el
+      // tipo: si no se ven acá, nadie sabe qué va a traer.
+      .select(
+        'id, codigo, nombre, horas_hombre_estandar, activo, modelo, tipo, largo_m, ancho_m, alto_m, capacidad, peso_neto_tn',
+      )
       .order('orden_secuencia'),
     supabase
       .from('etapas_catalogo')
@@ -77,5 +81,58 @@ export async function catalogosDelTaller() {
       carroceria: (f.tipo as unknown as { nombre: string } | null)?.nombre ?? null,
     })),
     verificaciones: [...porTipo.values()],
+  }
+}
+
+export type TipoCambio = {
+  fecha: string
+  compra: number
+  venta: number
+  /** MANUAL cuando lo escribió alguien, o el servicio que lo publicó. */
+  fuente: string
+}
+
+/**
+ * Los tipos de cambio cargados, del más reciente al más antiguo.
+ *
+ * `tipo_cambio_vigente(fecha)` toma el registro más reciente con fecha menor o
+ * igual a la del documento, así que el primero de esta lista es el que la base
+ * está aplicando hoy. Cuando la lista viene vacía esa función devuelve 1 —no
+ * porque el dólar valga un sol, sino porque no hay nada que devolver— y todo lo
+ * que se compare en soles sale por menos de un tercio de lo que vale.
+ */
+export async function ultimosTiposCambio(limite = 15) {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('tipos_cambio')
+    .select('fecha, compra, venta, fuente')
+    .order('fecha', { ascending: false })
+    .limit(limite)
+
+  if (error) throw new Error(`No se pudieron leer los tipos de cambio: ${error.message}`)
+  return (data ?? []) as TipoCambio[]
+}
+
+/**
+ * Quién firma las cotizaciones: un nombre y un cargo, tal como van impresos.
+ *
+ * No es una referencia a un usuario del sistema, y eso fue una corrección: quien
+ * firma un documento y quien usa el programa no son la misma lista. Atarlo a la
+ * tabla de usuarios obligaba a darle acceso a alguien que a lo mejor nunca va a
+ * entrar.
+ */
+export async function quienFirmaLasCotizaciones() {
+  const supabase = await createClient()
+
+  const { data } = await supabase
+    .from('empresa')
+    .select('firma_nombre, firma_cargo')
+    .limit(1)
+    .maybeSingle()
+
+  return {
+    nombre: (data?.firma_nombre as string | null) ?? null,
+    cargo: (data?.firma_cargo as string | null) ?? null,
   }
 }

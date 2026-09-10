@@ -1,90 +1,132 @@
-import { AlertTriangle, Camera, Clock } from 'lucide-react'
+import { AlertTriangle, Camera, Clock, Plus } from 'lucide-react'
 import Link from 'next/link'
 
+import { TarjetaTrabajo } from '@/components/avance/tarjeta-trabajo'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Indicador } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { areasDelTaller } from '@/lib/datos/actividades'
 import { listarTablero, resumirTablero } from '@/lib/datos/avances'
+import { flotaEnTaller } from '@/lib/datos/flota'
 import { ESTADO_OT, PRIORIDAD, definir } from '@/lib/dominio/estados'
+import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha as formatearFecha } from '@/lib/format'
-import { exigirPermiso } from '@/lib/sesion'
+import { areasDeSuMano, exigirPermiso, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Avance en taller' }
 
+const FILTROS = [
+  { valor: null, etiqueta: 'Todas' },
+  { valor: '1', etiqueta: 'Solo las trabadas' },
+]
+
 export default async function PaginaAvance({ searchParams }: PageProps<'/avance'>) {
-  await exigirPermiso('produccion.ver')
+  const perfil = await exigirPermiso('produccion.ver')
   const params = await searchParams
   const soloTrabadas = params.trabadas === '1'
 
-  const filas = await listarTablero({ trabadas: soloTrabadas })
+  const [filas, flota, areas] = await Promise.all([
+    listarTablero({ trabadas: soloTrabadas }),
+    flotaEnTaller(),
+    areasDelTaller(),
+  ])
   const resumen = resumirTablero(filas)
+
+  // Los trabajos sin orden cuentan en los mismos números: si no, el jefe lee
+  // «4 en taller» cuando hay 11.
+  const flotaVisible = soloTrabadas ? flota.filter((u) => u.impedimento) : flota
+  const enTaller = resumen.total + flotaVisible.length
+  const trabadas = resumen.trabadas + flota.filter((u) => u.impedimento).length
+  const sinNoticias =
+    resumen.sinNoticias +
+    flota.filter((u) => u.estado === 'EN_TALLER' && Number(u.dias_sin_avance ?? 0) >= 3).length
+
+  const puedeRegistrarFlota =
+    puede(perfil, 'produccion.actividades') && areasDeSuMano(perfil, areas).length > 0
 
   return (
     <>
       <EncabezadoPagina
         titulo="Avance en taller"
         descripcion="Una tarjeta por unidad: dónde está, cuánto lleva, hace cuánto no se toca y qué la traba."
+        acciones={
+          puedeRegistrarFlota && (
+            <EnlaceBoton href="/avance/trabajos/nueva" variante="secundario">
+              <Plus aria-hidden className="size-4" />
+              Nuevo trabajo sin orden
+            </EnlaceBoton>
+          )
+        }
       />
 
-      <div className="mb-4 grid gap-4 sm:grid-cols-4">
-        <Resumen titulo="Unidades en taller" valor={String(resumen.total)} />
-        <Resumen
+      {/* Dos por fila en el teléfono; las cuatro de siempre en el monitor. */}
+      <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <Indicador
+          titulo="En el taller"
+          valor={enTaller}
+          pie={soloTrabadas ? 'Contando solo las trabadas' : `${flota.length} sin orden`}
+        />
+        <Indicador
           titulo="Trabadas"
-          valor={String(resumen.trabadas)}
-          nota="Esperando material o decisión"
-          tono={resumen.trabadas > 0 ? 'peligro' : 'neutro'}
+          valor={trabadas}
+          pie="Esperando material o decisión"
+          tono={trabadas > 0 ? 'peligro' : 'neutro'}
+          /* Este número sí tiene una lista detrás; los otros tres todavía no
+             tienen filtro en la consulta, así que no llevan a ninguna parte. */
+          href={soloTrabadas ? undefined : '/avance?trabadas=1'}
         />
-        <Resumen
+        <Indicador
           titulo="Sin noticias"
-          valor={String(resumen.sinNoticias)}
-          nota="Tres días o más sin avance registrado"
-          tono={resumen.sinNoticias > 0 ? 'aviso' : 'neutro'}
+          valor={sinNoticias}
+          pie="Tres días o más sin avance registrado"
+          tono={sinNoticias > 0 ? 'aviso' : 'neutro'}
         />
-        <Resumen
+        <Indicador
           titulo="Fuera de plazo"
-          valor={String(resumen.atrasadas)}
-          nota="Pasaron la fecha prometida"
+          valor={resumen.atrasadas}
+          pie="Pasaron la fecha prometida"
           tono={resumen.atrasadas > 0 ? 'peligro' : 'neutro'}
         />
       </div>
 
-      <div className="mb-4 flex gap-2">
-        <Link
-          href="/avance"
-          aria-current={soloTrabadas ? undefined : 'page'}
-          className={
-            soloTrabadas
-              ? 'rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs text-texto-suave hover:bg-superficie-2'
-              : 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-xs font-medium text-acento'
-          }
-        >
-          Todas
-        </Link>
-        <Link
-          href="/avance?trabadas=1"
-          aria-current={soloTrabadas ? 'page' : undefined}
-          className={
-            soloTrabadas
-              ? 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-xs font-medium text-acento'
-              : 'rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs text-texto-suave hover:bg-superficie-2'
-          }
-        >
-          Solo las trabadas
-        </Link>
-      </div>
+      <PastillaFiltro
+        ruta="/avance"
+        clave="trabadas"
+        opciones={FILTROS}
+        params={params}
+        activo={soloTrabadas ? '1' : null}
+        etiqueta="Filtrar las unidades"
+        className="mb-4"
+      />
 
       {filas.length === 0 ? (
         <Tarjeta>
           <TarjetaCuerpo>
             <p className="text-sm font-medium text-texto">
-              {soloTrabadas ? 'Ninguna unidad está trabada' : 'No hay unidades en el taller'}
+              {soloTrabadas ? 'Ninguna orden está trabada' : 'No hay órdenes en el taller'}
             </p>
             <p className="mt-1 text-sm text-texto-suave">
               {soloTrabadas
-                ? 'Todo lo que está en el taller puede seguir avanzando.'
+                ? 'Todo lo que está en el taller con orden puede seguir avanzando.'
                 : 'Cuando se apruebe una orden de trabajo, la unidad aparecerá acá.'}
             </p>
+            {/* Vacío por el filtro y vacío de verdad no son lo mismo: cada uno
+                lleva a su siguiente paso en vez de dejar a medio camino. */}
+            <div className="mt-4">
+              {soloTrabadas ? (
+                <EnlaceBoton href="/avance" variante="secundario">
+                  Ver todas las unidades
+                </EnlaceBoton>
+              ) : (
+                <EnlaceBoton href="/ordenes" variante="secundario">
+                  Ver las órdenes de trabajo
+                </EnlaceBoton>
+              )}
+            </div>
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (
@@ -92,20 +134,36 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
           {filas.map((f) => {
             const estado = definir(ESTADO_OT, f.orden_estado)
             const prioridad = definir(PRIORIDAD, f.prioridad)
+            // Una orden sin unidad y una unidad sin placa no son lo mismo, y la
+            // tarjeta lo tiene que decir: sin `unidad_id` no hay nada que
+            // nombrar; con él, el nombre lo decide `nombreDeUnidad` (placa,
+            // código interno, chasis, o marca y modelo).
+            const unidad = f.unidad_id ? f : null
+            const noEsMatricula = !unidad || todaviaSinPlaca(unidad)
             const sinNoticias = f.dias_sin_avance === null ? null : Number(f.dias_sin_avance)
             const restantes =
               f.dias_habiles_restantes === null ? null : Number(f.dias_habiles_restantes)
 
             return (
-              <Tarjeta key={f.orden_id} className="flex flex-col">
+              // `relative` + el `after` del enlace: en el teléfono se abre la
+              // unidad tocando la tarjeta entera, no apuntando a la placa. No hay
+              // otro enlace dentro, así que nada queda tapado.
+              <Tarjeta key={f.orden_id} className="relative flex min-w-0 flex-col">
                 <TarjetaCuerpo className="flex flex-1 flex-col gap-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
+                      {/* Cuando ese texto no es una matrícula va en letra
+                          tenue: de lejos, y con el teléfono en la mano, se ve
+                          que a esa unidad todavía le falta la placa. No lleva
+                          además un «sin placa» al lado porque el propio nombre
+                          ya lo dice cuando cae en la marca y el modelo. */}
                       <Link
                         href={`/avance/${f.orden_id}`}
-                        className="text-base font-semibold text-acento hover:underline"
+                        className={`text-base font-semibold after:absolute after:inset-0 hover:underline ${
+                          noEsMatricula ? 'text-texto-suave' : 'text-acento'
+                        }`}
                       >
-                        {f.placa ?? f.orden_numero}
+                        {nombreDeUnidad(unidad)}
                       </Link>
                       <p className="truncate text-xs text-texto-suave">
                         {f.orden_numero} · {f.cliente}
@@ -181,30 +239,53 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
           })}
         </div>
       )}
+
+      {/* Los trabajos sin orden van en su propia sección y no mezclados con las
+          órdenes: son otra cosa —sin etapas, sin plazo, sin cliente en el
+          sistema— y se leen distinto. Pueden ser una unidad de un cliente o algo
+          que el taller está implementando. */}
+      <section id="sin-orden" className="mt-8" aria-labelledby="titulo-sin-orden">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 id="titulo-sin-orden" className="text-base font-semibold text-texto">
+              Trabajos sin orden
+            </h2>
+            <p className="text-sm text-texto-suave">
+              Unidades que entraron sin orden de trabajo, o lo que el propio taller está
+              implementando. Se reportan igual, para que el jefe y la oficina sepan cómo va.
+            </p>
+          </div>
+          <Link
+            href="/avance/trabajos"
+            className="inline-flex min-h-11 items-center text-sm text-acento hover:underline sm:min-h-0"
+          >
+            Ver todos, también los cerrados
+          </Link>
+        </div>
+
+        {flotaVisible.length === 0 ? (
+          <Tarjeta>
+            <TarjetaCuerpo>
+              <p className="text-sm font-medium text-texto">
+                {soloTrabadas ? 'Ningún trabajo sin orden está trabado' : 'Ningún trabajo sin orden en curso'}
+              </p>
+              <p className="mt-1 text-sm text-texto-suave">
+                {soloTrabadas
+                  ? 'Los que hay se pueden seguir trabajando.'
+                  : puedeRegistrarFlota
+                    ? 'Cuando empiece uno, regístralo con «Nuevo trabajo sin orden», arriba.'
+                    : 'Los registra el supervisor de cada área.'}
+              </p>
+            </TarjetaCuerpo>
+          </Tarjeta>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {flotaVisible.map((t) => (
+              <TarjetaTrabajo key={t.id} trabajo={t} />
+            ))}
+          </div>
+        )}
+      </section>
     </>
-  )
-}
-
-function Resumen({
-  titulo,
-  valor,
-  nota,
-  tono = 'neutro',
-}: {
-  titulo: string
-  valor: string
-  nota?: string
-  tono?: 'neutro' | 'aviso' | 'peligro'
-}) {
-  const color = { neutro: 'text-texto', aviso: 'text-aviso', peligro: 'text-peligro' }[tono]
-
-  return (
-    <Tarjeta>
-      <TarjetaCuerpo>
-        <p className="text-[11px] font-medium tracking-wide text-texto-suave uppercase">{titulo}</p>
-        <p className={`tabular mt-1 text-lg font-semibold ${color}`}>{valor}</p>
-        {nota && <p className="mt-0.5 text-xs text-texto-tenue">{nota}</p>}
-      </TarjetaCuerpo>
-    </Tarjeta>
   )
 }

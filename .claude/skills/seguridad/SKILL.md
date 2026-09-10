@@ -56,7 +56,9 @@ En la misma migración que la crea, sin excepción:
   esconde no es un error para Postgres—, la acción devuelve `ok` y la pantalla
   dice «listo» sin haber hecho nada. No se cae: miente. Antes de cerrar
   cualquier acción de escritura, cruzar el permiso que exige con el que pide la
-  política de esa tabla, y comprobarlo **con el rol que va a usarla**.
+  política de esa tabla, y comprobarlo **con el rol que va a usarla**. Qué
+  permiso tiene cada rol está en `docs/PERMISOS.md`, sacado de la base: cruzarlo
+  ahí cuesta un vistazo. Cómo se prueba con el rol real, en la skill `datos`.
 - **Un permiso que no tiene ningún rol es una puerta tapiada.** `configuracion.
   ver` no estaba asignado a nadie y once catálogos lo exigían para leerse: el
   desplegable de carrocerías llegaba vacío a todo el mundo salvo al

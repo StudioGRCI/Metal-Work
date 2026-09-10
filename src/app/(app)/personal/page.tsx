@@ -1,5 +1,9 @@
+import type { ReactNode } from 'react'
+
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SinDatos, TH, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { catalogosDePersonal, listarPersonal } from '@/lib/datos/personal'
@@ -30,6 +34,20 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
   const gestiona = puede(perfil, 'usuarios.gestionar')
   const operarios = personal.filter((p) => p.es_operario).length
 
+  // «No hay nadie» y «no hay nadie con este filtro» piden pasos distintos: soltar
+  // el filtro en un caso, dar de alta en el otro.
+  const filtrando = Boolean(busqueda) || estado !== 'todos'
+  let accionSinDatos: ReactNode = null
+  if (filtrando) {
+    accionSinDatos = (
+      <EnlaceBoton href="/personal?estado=todos" variante="contorno">
+        Ver a todo el personal
+      </EnlaceBoton>
+    )
+  } else if (gestiona) {
+    accionSinDatos = <AltaDePersona catalogos={catalogos} />
+  }
+
   return (
     <>
       <EncabezadoPagina
@@ -50,22 +68,17 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
             marcador="Buscar por nombre, correo o documento"
           />
         </div>
-        <div className="flex gap-1">
-          {FILTROS.map((f) => (
-            <a
-              key={f.valor}
-              href={`/personal?estado=${f.valor}${busqueda ? `&q=${encodeURIComponent(busqueda)}` : ''}`}
-              aria-current={estado === f.valor ? 'page' : undefined}
-              className={
-                estado === f.valor
-                  ? 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-sm font-medium text-acento'
-                  : 'rounded-[var(--radius-base)] px-3 py-1.5 text-sm text-texto-suave hover:bg-superficie-2'
-              }
-            >
-              {f.etiqueta}
-            </a>
-          ))}
-        </div>
+        {/* Antes cada pastilla era un <a> que rearmaba la URL a mano y solo se
+            acordaba de `q`. PastillaFiltro conserva todos los parámetros y navega
+            sin recargar la pantalla entera. */}
+        <PastillaFiltro
+          ruta="/personal"
+          clave="estado"
+          opciones={FILTROS}
+          params={params}
+          activo={estado}
+          etiqueta="Filtrar por estado"
+        />
       </div>
 
       <Tarjeta className="mt-4 overflow-hidden">
@@ -73,11 +86,13 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
           <TablaCabecera>
             <tr>
               <TH>Persona</TH>
-              <TH>Correo</TH>
+              {/* En el teléfono quedan persona, puesto, alcance y acciones; correo,
+                  área y costo bajan a la celda de al lado en letra chica. */}
+              <TH className="hidden sm:table-cell">Correo</TH>
               <TH>Puesto</TH>
-              <TH>Área</TH>
+              <TH className="hidden sm:table-cell">Área</TH>
               <TH>Alcance</TH>
-              <TH className="text-right">Costo hora</TH>
+              <TH className="hidden text-right sm:table-cell">Costo hora</TH>
               {gestiona && <TH className="text-right">Acciones</TH>}
             </tr>
           </TablaCabecera>
@@ -85,8 +100,13 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
             {personal.length === 0 && (
               <SinDatos
                 colSpan={gestiona ? 7 : 6}
-                titulo="No hay personal que coincida"
-                descripcion="Prueba con otra búsqueda o cambia el filtro de estado."
+                titulo={filtrando ? 'Nadie coincide con lo que se pidió' : 'Aún no hay personal'}
+                descripcion={
+                  filtrando
+                    ? 'Con esa búsqueda y ese estado no queda nadie en la lista.'
+                    : 'Da de alta a la primera persona: se crea su ficha y su acceso al sistema en un solo paso.'
+                }
+                accion={accionSinDatos}
               />
             )}
 

@@ -241,10 +241,11 @@ set local role authenticated;
 do $$
 declare v_ot uuid := current_setting('prueba.ot')::uuid;
 begin
-  -- El operario ve las órdenes en las que está asignado. En esta no lo está.
+  -- Desde la migración 094 el operario ve las órdenes como todos (ordenes.ver):
+  -- la ficha también. Lo que no puede es escribirla sin ser del taller.
   perform test.afirmar(
-    (select count(*) from public.ot_verificaciones where orden_id = v_ot) = 0,
-    'un operario no ve la ficha de una orden que no le tocó');
+    (select count(*) from public.ot_verificaciones where orden_id = v_ot) > 0,
+    'el operario ve la ficha de la orden: tiene ordenes.ver');
 end $$;
 
 reset role;

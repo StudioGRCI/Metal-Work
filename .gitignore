@@ -46,8 +46,11 @@ next-env.d.ts
 
 # Generados por Next.js para asistentes de IA
 /AGENTS.md
-/CLAUDE.md
 
 # Archivos temporales de la CLI de Supabase
 /supabase/.temp/
 /supabase/.branches/
+
+# Registro local de correcciones del asistente (ver .claude/skills/aprender)
+/.claude/aprendizaje/
+/.claude/settings.local.json

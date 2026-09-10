@@ -92,6 +92,28 @@ export async function listarAvances(ordenId: string, limite = 60) {
 }
 
 /** Las fotos de un puñado de avances, agrupadas por avance. */
+/**
+ * Los avances con foto de todas las órdenes en un día: los que el taller
+ * registra con «Registrar avance» en la tarjeta de la unidad. Van a «El día en
+ * el taller» junto con las hojas por área y los trabajos sin orden, porque el
+ * jefe de producción tiene que ver todo lo del día en un solo lugar.
+ */
+export async function avancesDeOrdenesDelDia(dia: string, limite = 300) {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('ot_avance_resumen')
+    .select(
+      'id, orden_id, orden_numero, cliente, placa, etapa_id, etapa, fecha, descripcion, avance_porcentaje, impedimento, registrado_por_nombre, creado_en, fotos',
+    )
+    .eq('fecha', dia)
+    .order('creado_en', { ascending: false })
+    .limit(limite)
+
+  if (error) throw new Error(`No se pudo leer el avance del día: ${error.message}`)
+  return (data ?? []) as unknown as Avance[]
+}
+
 export async function fotosDeAvances(avanceIds: string[]) {
   if (avanceIds.length === 0) return {} as Record<string, FotoDeAvance[]>
 

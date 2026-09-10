@@ -1,20 +1,16 @@
 import {
-  BarChart3,
+  Boxes,
   Camera,
+  CalendarClock,
   ClipboardList,
-  Factory,
-  FileText,
-  Handshake,
+  FileSpreadsheet,
+  Layers,
   LayoutDashboard,
-  Package,
-  PenLine,
   Receipt,
   Settings,
   Truck,
   UserCog,
   Users,
-  ShieldCheck,
-  Wallet,
 } from 'lucide-react'
 
 export type ItemNavegacion = {
@@ -30,6 +26,13 @@ export type ItemNavegacion = {
 
 export type GrupoNavegacion = { titulo: string; items: ItemNavegacion[] }
 
+/**
+ * El menú es el circuito de la empresa y nada más: cotización de venta →
+ * cotización de trabajo → Gerencia aprueba → Administración abre la orden →
+ * Diseño desglosa → el taller reporta. Lo que no está en ese circuito (almacén,
+ * servicios, partes diarios, costos, calidad, documentos, garantías, informes)
+ * se retiró el 2026-09-09 porque no se iba a usar y costaba entender.
+ */
 export const NAVEGACION: GrupoNavegacion[] = [
   {
     titulo: 'Operación',
@@ -41,12 +44,17 @@ export const NAVEGACION: GrupoNavegacion[] = [
         descripcion: 'Estado general del taller',
         disponible: true,
       },
+      // El control de plazos es de todas las áreas del taller y lo mira
+      // cualquiera de ellas: que Maestranza vea que Diseño la tiene trabada es
+      // el punto. Del taller, no de ventas: por eso cuelga de `ordenes.listar`
+      // —entrar al módulo— y no de `ordenes.ver`, que es la llave de lectura
+      // que ventas necesita.
       {
-        titulo: 'Órdenes de trabajo',
-        ruta: '/ordenes',
-        icono: ClipboardList,
-        permiso: 'ordenes.ver',
-        descripcion: 'Todas las OT y su avance',
+        titulo: 'Control de plazos',
+        ruta: '/plazos',
+        icono: CalendarClock,
+        permiso: ['ordenes.listar', 'produccion.ver'],
+        descripcion: 'En qué va cada área y qué la trabó',
         disponible: true,
       },
       {
@@ -57,12 +65,86 @@ export const NAVEGACION: GrupoNavegacion[] = [
         descripcion: 'Dónde está cada unidad y qué la traba',
         disponible: true,
       },
+      // El parte de la jornada del jefe de producción. Va pegado al avance de
+      // taller: es el mismo módulo, visto por día en vez de por unidad.
       {
-        titulo: 'Producción',
-        ruta: '/produccion',
-        icono: Factory,
+        titulo: 'El día en el taller',
+        ruta: '/avance/diario',
+        icono: ClipboardList,
         permiso: 'produccion.ver',
-        descripcion: 'Partes diarios y horas de taller',
+        descripcion: 'Lo que reportó cada área hoy, y quién no reportó',
+        disponible: true,
+      },
+    ],
+  },
+  // Cotizar son dos actos de dos áreas y por eso son dos grupos, no dos
+  // entradas seguidas dentro de «Comercial»: puestas una debajo de la otra con
+  // nombres parecidos, cualquiera entraba a la que no era. El menú dice de quién
+  // es cada cosa antes de decir cómo se llama.
+  //
+  // Cada grupo se muestra solo a quien tiene su permiso, así que el vendedor no
+  // ve «Administrador» y a quien costea no le aparece «Vendedor» si no vende.
+  {
+    titulo: 'Vendedor',
+    items: [
+      {
+        titulo: 'Cotización de venta',
+        ruta: '/cotizaciones',
+        icono: Receipt,
+        permiso: 'cotizaciones.ver',
+        descripcion: 'Lo que se le ofrece al cliente y a qué precio',
+        disponible: true,
+      },
+    ],
+  },
+  // Las partidas pasaron a Diseño: Administración no crea partidas —lo dijo
+  // Gerencia— y quien sabe qué lleva la unidad es quien la dibuja. El grupo se
+  // ve para quien costea, sea de Diseño o de Administración, que conserva el
+  // permiso porque sigue emitiendo la orden.
+  {
+    titulo: 'Diseño e ingeniería',
+    items: [
+      {
+        titulo: 'Cotización de trabajo',
+        ruta: '/cotizaciones/trabajo',
+        icono: ClipboardList,
+        permiso: 'cotizaciones.costear',
+        descripcion: 'Las partidas, la ficha técnica y el tiempo por área',
+        disponible: true,
+      },
+      {
+        titulo: 'Carrocerías',
+        ruta: '/carrocerias',
+        icono: Layers,
+        permiso: ['cotizaciones.costear', 'cotizaciones.ver', 'configuracion.ver'],
+        descripcion: 'Lo que la casa ya fabricó, con su ficha técnica lista',
+        disponible: true,
+      },
+      // El catálogo chico del que Diseño elige al desglosar los materiales de
+      // la orden: nombre, unidad y especificación. Sin stock ni almacén.
+      {
+        titulo: 'Materiales',
+        ruta: '/materiales',
+        icono: Boxes,
+        permiso: ['diseno.planos', 'cotizaciones.costear'],
+        descripcion: 'El catálogo del que Diseño arma el desglose',
+        disponible: true,
+      },
+    ],
+  },
+  {
+    titulo: 'Administrador',
+    items: [
+      // La orden la emite Administración —lo dice su propio flujograma: «Gerencia
+      // aprueba → Administración emite la orden de trabajo»— así que vive con lo
+      // suyo y no en Operación, donde quedaba suelta entre el tablero y el
+      // avance de taller.
+      {
+        titulo: 'Órdenes de trabajo',
+        ruta: '/ordenes',
+        icono: FileSpreadsheet,
+        permiso: 'ordenes.listar',
+        descripcion: 'Todas las OT y su avance',
         disponible: true,
       },
     ],
@@ -72,63 +154,11 @@ export const NAVEGACION: GrupoNavegacion[] = [
     items: [
       { titulo: 'Clientes', ruta: '/clientes', icono: Users, permiso: 'clientes.ver', disponible: true },
       { titulo: 'Unidades', ruta: '/unidades', icono: Truck, permiso: 'clientes.ver', disponible: true },
-      {
-        titulo: 'Cotizaciones',
-        ruta: '/cotizaciones',
-        icono: Receipt,
-        permiso: 'cotizaciones.ver',
-        disponible: true,
-      },
-    ],
-  },
-  {
-    titulo: 'Logística',
-    items: [
-      { titulo: 'Almacén', ruta: '/almacen', icono: Package, permiso: 'almacen.ver', disponible: true },
-      {
-        titulo: 'Servicios',
-        ruta: '/servicios',
-        icono: Handshake,
-        permiso: ['compras.ver', 'costos.ver', 'calidad.ver'],
-        descripcion: 'Trabajos que se mandan a hacer afuera',
-        disponible: true,
-      },
-      { titulo: 'Costos', ruta: '/costos', icono: Wallet, permiso: 'costos.ver', disponible: true },
     ],
   },
   {
     titulo: 'Gestión',
     items: [
-      {
-        titulo: 'Documentos',
-        ruta: '/documentos',
-        icono: FileText,
-        permiso: 'documentos.ver',
-        disponible: true,
-      },
-      {
-        titulo: 'Garantías',
-        ruta: '/garantias',
-        icono: ShieldCheck,
-        permiso: 'garantias.ver',
-        descripcion: 'Unidades en garantía y sus reclamos',
-        disponible: true,
-      },
-      {
-        titulo: 'Informes',
-        ruta: '/informes',
-        icono: BarChart3,
-        permiso: 'reportes.ver',
-        descripcion: 'Producción, entregas, márgenes y consumo',
-        disponible: true,
-      },
-      {
-        titulo: 'Firmas',
-        ruta: '/firmas',
-        icono: PenLine,
-        descripcion: 'Documentos que esperan tu firma',
-        disponible: true,
-      },
       {
         titulo: 'Personal',
         ruta: '/personal',
@@ -147,4 +177,46 @@ export const NAVEGACION: GrupoNavegacion[] = [
       },
     ],
   },
+]
+
+/** Si una persona ve un módulo del menú: sin permiso declarado lo ve todo el mundo. */
+export function puedeVer(item: ItemNavegacion, permisos: string[], esAdmin: boolean) {
+  if (!item.permiso || esAdmin) return true
+  return (Array.isArray(item.permiso) ? item.permiso : [item.permiso]).some((p) => permisos.includes(p))
+}
+
+/**
+ * Cuál de los módulos es el que se está mirando: gana el de ruta más larga que
+ * encaje, comparando por segmento. Dentro de `/cotizaciones/trabajo/…` se
+ * marca «Cotización de trabajo» y no también la de venta; `/cotizaciones-viejas`
+ * no encaja en `/cotizaciones`.
+ */
+export function rutaActiva(ruta: string, rutas: string[]) {
+  const encaja = (base: string) =>
+    base === '/' ? ruta === '/' : ruta === base || ruta.startsWith(`${base}/`)
+  return rutas.filter(encaja).sort((a, b) => b.length - a.length)[0]
+}
+
+/**
+ * Las pestañas de abajo en el teléfono: las cuatro primeras de esta lista que
+ * la persona ve, y después «Más». El orden está pensado para que a cada puesto
+ * le queden las suyas sin escribir un rol a mano: al taller, Taller, Órdenes,
+ * El día y Plazos; a Diseño y Administración, sus dos cotizaciones primero; a
+ * Ventas, Cotizaciones, Clientes y el tablero. El nombre va corto porque la
+ * pestaña es angosta.
+ */
+export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
+  { ruta: '/cotizaciones/trabajo', corto: 'Trabajo' },
+  { ruta: '/cotizaciones', corto: 'Cotizaciones' },
+  { ruta: '/avance', corto: 'Taller' },
+  { ruta: '/ordenes', corto: 'Órdenes' },
+  { ruta: '/avance/diario', corto: 'El día' },
+  { ruta: '/plazos', corto: 'Plazos' },
+  { ruta: '/clientes', corto: 'Clientes' },
+  { ruta: '/', corto: 'Tablero' },
+  { ruta: '/unidades', corto: 'Unidades' },
+  { ruta: '/carrocerias', corto: 'Carrocerías' },
+  { ruta: '/materiales', corto: 'Materiales' },
+  { ruta: '/configuracion', corto: 'Ajustes' },
+  { ruta: '/personal', corto: 'Personal' },
 ]

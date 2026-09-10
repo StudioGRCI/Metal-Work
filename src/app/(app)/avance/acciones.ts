@@ -74,7 +74,16 @@ export async function registrarAvance(
     .select('id')
     .single()
 
-  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (error) {
+    // La base no acepta el mismo avance, con las mismas palabras, dos veces el
+    // mismo día (migración 095): casi siempre es un toque de más.
+    return {
+      ok: false,
+      error: error.message.includes('uq_ot_avance_no_se_repite')
+        ? 'Ese mismo avance ya se registró hoy. Si hubo algo más, cuéntalo con otras palabras.'
+        : mensajeDeError(error),
+    }
+  }
 
   if (v.fotos) {
     let fotos: z.infer<typeof esquemaFotos> = []
@@ -111,7 +120,6 @@ export async function registrarAvance(
   revalidatePath('/avance')
   revalidatePath(`/avance/${v.orden_id}`)
   revalidatePath(`/ordenes/${v.orden_id}`)
-  revalidatePath('/produccion')
   return { ok: true, mensaje: 'Avance registrado.' }
 }
 
@@ -120,7 +128,7 @@ export async function urlDeFoto(
   ruta: string,
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['produccion.ver', 'documentos.ver'])) {
+  if (!puede(perfil, 'produccion.ver')) {
     return { ok: false, error: 'No tienes permiso para ver las fotos del taller.' }
   }
 

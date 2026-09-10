@@ -5,9 +5,8 @@ import { redirect } from 'next/navigation'
 import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
-import { documentosFaltantes } from '@/lib/datos/documentos'
 import { exigirSesion, puede } from '@/lib/sesion'
-import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 
 const esquemaNuevaOrden = z.object({
   cliente_id: z.string().uuid('Selecciona un cliente'),
@@ -106,7 +105,7 @@ export async function cambiarEstadoOrden(
   }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('ordenes_trabajo')
     .update({
       estado,
@@ -114,8 +113,11 @@ export async function cambiarEstadoOrden(
       ...(estado === 'ANULADA' ? { motivo_anulacion: motivo } : {}),
     })
     .eq('id', orden_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${orden_id}`)
   revalidatePath('/ordenes')
@@ -144,7 +146,7 @@ export async function actualizarEtapa(_previo: unknown, datos: FormData): Promis
   const v = analisis.data
   const supabase = await createClient()
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('ot_etapas')
     .update({
       avance_porcentaje: v.avance_porcentaje,
@@ -155,8 +157,11 @@ export async function actualizarEtapa(_previo: unknown, datos: FormData): Promis
       ...(v.observaciones !== undefined ? { observaciones: v.observaciones || null } : {}),
     })
     .eq('id', v.etapa_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   return { ok: true, mensaje: 'Avance registrado.' }
@@ -193,18 +198,6 @@ export async function registrarEntrega(_previo: unknown, datos: FormData): Promi
 
   const v = analisis.data
   const supabase = await createClient()
-
-  // Se avisa qué falta con nombres legibles antes de intentar el insert. Si no,
-  // el usuario recibiría el mensaje del disparador, que nombra códigos internos
-  // y no dice cuántos documentos faltan.
-  const faltantes = await documentosFaltantes(v.orden_id)
-  if (faltantes.length > 0) {
-    const lista = faltantes.map((d) => d.nombre).join(', ')
-    return {
-      ok: false,
-      error: `Falta documentación para entregar: ${lista}. Cárgala y consigue sus firmas antes de registrar el acta.`,
-    }
-  }
 
   // La regla del flujograma: la unidad no sale si el cliente tiene deuda.
   // Tesorería libera; recién entonces entra el acta.
@@ -300,7 +293,7 @@ export async function liberarTesoreria(_previo: unknown, datos: FormData): Promi
 /** El último sello del flujo: avisar a portería que la unidad puede cruzar. */
 export async function confirmarSalida(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['ordenes.entregar', 'requerimientos.crear'])) {
+  if (!puede(perfil, ['ordenes.entregar', 'produccion.actividades'])) {
     return { ok: false, error: 'Confirmar la salida es de quien coordina la entrega.' }
   }
 

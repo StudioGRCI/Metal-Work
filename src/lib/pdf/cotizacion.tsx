@@ -5,6 +5,7 @@ import path from 'node:path'
 
 import {
   Document,
+  Font,
   Image,
   Page,
   StyleSheet,
@@ -13,9 +14,17 @@ import {
   renderToBuffer,
 } from '@react-pdf/renderer'
 
-import { fecha, moneda, numero } from '@/lib/format'
+import { cantidad, fecha, moneda, numero } from '@/lib/format'
 import type { CodigoMoneda } from '@/lib/format'
+import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import type { CotizacionImpresa } from '@/lib/datos/impresion'
+
+// Sin partir palabras. El motor corta con guion cuando algo no entra en su
+// columna, y en el papel de la casa eso salía como «MENBER INGENIERIA
+// CONSTRUCCION Y SER-VICIOS S.R.L.»: la razón social de un cliente partida a la
+// mitad en el encabezado del documento que se le manda. Antes que un guion, que
+// la palabra pase entera a la línea siguiente.
+Font.registerHyphenationCallback((palabra) => [palabra])
 
 // Los colores del manual de identidad. En el papel el azul es el que manda y
 // el rojo se reserva para la marca, igual que en los documentos impresos.
@@ -87,6 +96,45 @@ const estilos = StyleSheet.create({
     marginBottom: 5,
   },
 
+  // El producto, como abre su papel: grande, centrado y subrayado. El
+  // interlineado explícito porque a este tamaño la caja automática se queda
+  // corta y la línea de abajo se le monta.
+  tituloProducto: {
+    fontSize: 12,
+    fontFamily: 'Helvetica-Bold',
+    color: AZUL,
+    textAlign: 'center',
+    textDecoration: 'underline',
+    lineHeight: 1.3,
+    marginTop: 8,
+    marginBottom: 2,
+  },
+
+  // La ficha va en una columna, no en dos: sus etiquetas son largas
+  // —«LONGITUD CAMA ÚTIL»— y en dos columnas los dos puntos dejan de alinearse.
+  especificaciones: { paddingLeft: 10 },
+  especEtiqueta: { width: 132, fontSize: 8, fontFamily: 'Helvetica-Bold' },
+  especValor: { flex: 1, fontSize: 8, lineHeight: 1.35 },
+  normas: {
+    fontSize: 8,
+    fontFamily: 'Helvetica-Bold',
+    marginTop: 6,
+    marginBottom: 2,
+    paddingLeft: 10,
+  },
+
+  negrita: { fontFamily: 'Helvetica-Bold' },
+  // El total con fondo amarillo, como lo resalta su papel.
+  totalResaltado: {
+    fontFamily: 'Helvetica-Bold',
+    backgroundColor: '#FFF2A8',
+  },
+
+  condicionesBloque: { marginTop: 8, paddingLeft: 10 },
+
+  despedida: { fontSize: 8.5, marginBottom: 44 },
+  cargoFirma: { fontSize: 7.5, textAlign: 'center', color: GRIS, marginTop: 1 },
+
   filaDatos: { flexDirection: 'row', gap: 14 },
   columna: { flex: 1 },
   dato: { flexDirection: 'row', marginBottom: 1.5 },
@@ -108,6 +156,29 @@ const estilos = StyleSheet.create({
   },
   fichaLinea: { flexDirection: 'row', marginBottom: 1.2 },
   vineta: { width: 9, color: AZUL, fontSize: 8 },
+
+  // ------------------------------------------------ lo que NO va incluido
+  // Va enmarcado y con su propia viñeta: metido entre los accesorios, «NO
+  // INCLUYE AROS NI LLANTAS» se lee como un renglón más de lo que sí se
+  // entrega, y eso se discute después, con la unidad ya en el patio.
+  advertencias: {
+    borderWidth: 0.75,
+    borderColor: ROJO,
+    borderRadius: 2,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    marginTop: 6,
+  },
+  advertenciaTitulo: {
+    fontSize: 7.5,
+    fontFamily: 'Helvetica-Bold',
+    color: ROJO,
+    letterSpacing: 0.5,
+    marginBottom: 2.5,
+  },
+  vinetaNegativa: { width: 9, color: ROJO, fontSize: 8, fontFamily: 'Helvetica-Bold' },
+  advertenciaLinea: { flex: 1, fontSize: 7.8, fontFamily: 'Helvetica-Bold', lineHeight: 1.35 },
+
   fichaEtiqueta: { width: 82, fontFamily: 'Helvetica-Bold', fontSize: 7.8, lineHeight: 1.35 },
   fichaDetalle: { flex: 1, fontSize: 7.8, lineHeight: 1.35 },
 
@@ -147,12 +218,35 @@ const estilos = StyleSheet.create({
   textoTotal: { color: '#FFFFFF', fontSize: 9.5, fontFamily: 'Helvetica-Bold' },
 
   // ------------------------------------------------------- cierre y pie
+  // Las condiciones van en una sola columna: son cinco renglones que se leen en
+  // orden, y en dos columnas el orden de la casa deja de verse.
+  etiquetaCondicion: {
+    width: 104,
+    color: GRIS,
+    fontSize: 7.5,
+    fontFamily: 'Helvetica-Bold',
+    lineHeight: 1.35,
+  },
   condiciones: { marginTop: 4 },
   parrafo: { fontSize: 7.8, marginBottom: 2, lineHeight: 1.35 },
-  firmas: { flexDirection: 'row', gap: 40, marginTop: 26 },
-  firma: { flex: 1, alignItems: 'center' },
-  lineaFirma: { borderTopWidth: 0.75, borderTopColor: '#1B2430', width: '100%', paddingTop: 3 },
-  textoFirma: { fontSize: 7.5, textAlign: 'center', color: GRIS },
+  // El cierre de la carta: «Atentamente,» y debajo quien firma, que en esta
+  // empresa es siempre el gerente general —lo dijo con todas las letras—. El
+  // vendedor no va acá: sale arriba, como un dato más del documento.
+  //
+  // El hueco de la despedida es para que quepa la rúbrica a mano. No hay raya:
+  // se firma sobre el blanco, encima del nombre.
+  // A la derecha, que es donde va en una carta: el que la lee llega al final
+  // por ese lado. Centrado quedaba flotando en medio de la hoja.
+  cierreCarta: { marginTop: 40, alignItems: 'flex-end', paddingRight: 24 },
+  // El bloque tiene su propio ancho para que el nombre y el cargo queden
+  // centrados entre ellos, no cada uno por su lado.
+  bloqueFirma: { width: 220, alignItems: 'center' },
+  nombreVendedor: {
+    fontSize: 8.5,
+    fontFamily: 'Helvetica-Bold',
+    textAlign: 'center',
+    color: '#1B2430',
+  },
 
   sello: {
     position: 'absolute',
@@ -179,28 +273,229 @@ const estilos = StyleSheet.create({
   textoPie: { fontSize: 6.8, color: GRIS },
 })
 
-/** Anchos de la tabla de partidas, en porcentaje del ancho útil. */
-const COL = { item: '6%', descripcion: '48%', cantidad: '10%', precio: '18%', total: '18%' } as const
+/** Anchos de la tabla de la propuesta, en porcentaje del ancho útil. */
+const COL = {
+  item: '8%',
+  descripcion: '44%',
+  cantidad: '13%',
+  unitario: '17.5%',
+  total: '17.5%',
+} as const
 
+/**
+ * Un renglón de datos. Sin dato no hay renglón.
+ *
+ * Antes escribía una raya, y en una cotización sin contacto cargado el bloque
+ * del cliente salía con tres rayas seguidas —«Atención —», «Teléfono —»,
+ * «Correo —»— que no dicen nada y ocupan tres renglones del papel que se le
+ * manda al cliente. El papel de la casa directamente no lleva esos renglones
+ * cuando no hay a quién dirigirlos.
+ */
 function Dato({ etiqueta, valor, fuerte }: { etiqueta: string; valor?: string | null; fuerte?: boolean }) {
+  if (!valor?.trim()) return null
   return (
     <View style={estilos.dato}>
       <Text style={estilos.etiqueta}>{etiqueta}</Text>
+      <Text style={fuerte ? estilos.valorFuerte : estilos.valor}>{valor}</Text>
+    </View>
+  )
+}
+
+/** Un renglón de las condiciones comerciales, con la etiqueta de la casa. */
+function Condicion({
+  etiqueta,
+  valor,
+  fuerte,
+}: Readonly<{ etiqueta: string; valor?: string | null; fuerte?: boolean }>) {
+  return (
+    <View style={estilos.dato}>
+      <Text style={estilos.etiquetaCondicion}>{etiqueta}</Text>
       <Text style={fuerte ? estilos.valorFuerte : estilos.valor}>{valor || '—'}</Text>
     </View>
   )
 }
 
-/** El plazo como lo dice la empresa: «45 días hábiles», no una fecha. */
+/**
+ * El plazo como lo dice la empresa: «45 días hábiles después de emitida la orden
+ * de compra». Los días y el disparador van en el MISMO renglón porque uno sin el
+ * otro no compromete nada —cuarenta y cinco días contados desde cuándo es la
+ * llamada que llega a los quince—, y así es como está escrito en sus papeles.
+ */
 function textoPlazo(c: CotizacionImpresa) {
-  if (!c.plazo_entrega_dias) return null
-  return `${c.plazo_entrega_dias} días ${c.plazo_en_habiles ? 'hábiles' : 'calendario'}`
+  const desde = c.plazo_desde?.trim() || null
+  if (!c.plazo_entrega_dias) return desde
+
+  const cuenta = c.plazo_en_habiles ? 'hábiles' : 'calendario'
+  const dias = `${c.plazo_entrega_dias} días ${cuenta}`
+  return desde ? `${dias} ${desde}` : dias
+}
+
+/**
+ * La garantía tal como la escribe la casa. Cuando está escrita manda esa y no se
+ * toca: se parte por sistema —«01 año fallas de fabricación / 6 meses en sistema
+ * hidráulico»— y ningún número de meses dice eso. Cuando no está escrita, se
+ * arma con los meses en la forma que ellos usan.
+ */
+function textoGarantia(c: CotizacionImpresa) {
+  const escrita = c.garantia_texto?.trim()
+  if (escrita) return escrita
+  if (!c.garantia_meses) return 'Sin garantía'
+  return `${enMesesOAnios(c.garantia_meses)} contra eventuales fallas de fabricación`
+}
+
+/** «01 año», «02 años», «06 meses»: con el cero delante que la empresa escribe. */
+function enMesesOAnios(meses: number) {
+  if (meses % 12 === 0) {
+    const anios = meses / 12
+    return `${String(anios).padStart(2, '0')} ${anios === 1 ? 'año' : 'años'}`
+  }
+  return `${String(meses).padStart(2, '0')} ${meses === 1 ? 'mes' : 'meses'}`
+}
+
+/** «15 días a partir de hoy», que es como la casa promete sostener el precio. */
+function textoValidez(c: CotizacionImpresa) {
+  if (c.validez_dias > 0) return `${c.validez_dias} días a partir de hoy`
+  return c.fecha_vencimiento ? `Hasta el ${fecha(c.fecha_vencimiento)}` : null
+}
+
+/**
+ * El precio como condición comercial: el mismo TOTAL del cuadro, repetido acá
+ * porque es lo primero que el cliente busca. Sin partidas no hay precio que
+ * prometer y el renglón se queda vacío, que es más honesto que prometer cero.
+ */
+function textoPrecio(c: CotizacionImpresa, mon: CodigoMoneda) {
+  if (c.total <= 0) return null
+  return `${moneda(c.total, mon)}${c.igv > 0 ? ' incluido el IGV' : ''}`
+}
+
+/**
+ * El peso con la tolerancia que la empresa siempre escribe: «6.7 TN (+/- 5%)».
+ * Un peso a secas se lee como exacto, y una carrocería no sale nunca al gramo.
+ *
+ * Sin tolerancia —las cotizaciones anteriores al campo— el renglón sale como
+ * salía, con sus dos decimales: el papel ya emitido no cambia de forma por un
+ * dato que nadie llegó a escribir.
+ */
+function pesoImpreso(c: CotizacionImpresa) {
+  if (c.peso_neto_tn === null) return null
+
+  const tolerancia = c.peso_tolerancia?.trim()
+  if (!tolerancia) return `${numero(c.peso_neto_tn, 2)} TN`
+  return `${cantidad(c.peso_neto_tn)} TN (${tolerancia})`
+}
+
+/**
+ * Un texto de varios renglones, como renglones.
+ *
+ * La nota de cierre son promesas distintas —certificados, expediente, placas—
+ * escritas una por línea. El motor arma un párrafo con todo lo que le llega en
+ * un solo <Text>, así que salían pegadas en una sola frase corrida y la tercera
+ * ya no se leía como un compromiso aparte. Los saltos llegan como \r\n desde
+ * Windows y como \n desde el navegador: se parten los dos.
+ */
+function renglones(texto: string | null | undefined): string[] {
+  return (texto ?? '')
+    .split(/\r?\n/)
+    .map((linea) => linea.trim())
+    .filter(Boolean)
+}
+
+/**
+ * El renglón de la unidad tal como sale impreso: su nombre —la placa cuando la
+ * tiene y, si no, lo que de verdad la identifica— seguido de la marca y el
+ * modelo, unidos por un punto.
+ *
+ * Sin placa el nombre puede salir ya de la marca y el modelo, y entonces no se
+ * repiten detrás: el papel diría «VOLVO FH, sin placa · VOLVO · FH». Así el
+ * renglón se lee igual de bien con matrícula y sin ella, sin un punto suelto
+ * delante ni un hueco donde va el nombre.
+ */
+function unidadImpresa(unidad: CotizacionImpresa['unidad']) {
+  if (!unidad) return null
+
+  const nombre = nombreDeUnidad(unidad)
+  const vehiculo = [unidad.marca, unidad.modelo].filter(Boolean)
+  if (vehiculo.length === 0 || nombre.startsWith(vehiculo.join(' '))) return nombre
+
+  return [nombre, ...vehiculo].join(' · ')
 }
 
 function medidas(c: CotizacionImpresa) {
   const partes = [c.largo_m, c.ancho_m, c.alto_m].filter((m) => m !== null)
   if (partes.length === 0) return null
   return `${partes.map((m) => numero(m, 2)).join(' × ')} m`
+}
+
+/**
+ * El nombre del trabajo tal como sale impreso. Lo escribe quien cotiza; si no
+ * lo escribió, se arma con la carrocería y su capacidad —que es de donde salía
+ * antes— para que ninguna de las cotizaciones ya emitidas quede sin decir qué
+ * se cotizó.
+ */
+function concepto(c: CotizacionImpresa) {
+  const escrito = c.concepto?.trim()
+  if (escrito) return escrito
+
+  const partes = [c.carroceria, c.capacidad, medidas(c)].filter(Boolean)
+  return partes.length > 0 ? partes.join(' · ') : 'Trabajo cotizado'
+}
+
+/**
+ * El precio de una unidad del concepto, tal como la casa lo promete.
+ *
+ * Antes salía siempre el bruto -el total repartido entre la cantidad- debajo de
+ * un Subtotal sin IGV: la cuenta solo cerraba contra el TOTAL y, con la casilla
+ * «el precio incluye IGV» destildada, el papel afirmaba «no incluye IGV» encima
+ * de un número que sí lo llevaba. Se contradecía solo, y ese es el número que
+ * el cliente lee.
+ *
+ * Ahora la casilla manda sobre lo impreso: si el precio incluye IGV se imprime
+ * el bruto -el mismo número del TOTAL-, y si no, el neto, que es el que cuadra
+ * con el Subtotal. El desglose de abajo no cambia en ningún caso.
+ */
+/** «11.80 MTS», como lo escribe la casa. Sin dato, nada: una raya no informa. */
+function enMetros(valor: number | null | undefined): string | null {
+  if (valor === null || valor === undefined) return null
+  const n = Number(valor)
+  if (!Number.isFinite(n) || n <= 0) return null
+  return `${numero(n, 2)} MTS`
+}
+
+/**
+ * La cantidad de la propuesta con dos dígitos —«01»—, que es como la escriben.
+ * Solo cuando es un entero: «1.50 unidades» con cero delante no se lee.
+ */
+function cantidadImpresa(valor: number): string {
+  const n = Number(valor) || 1
+  return Number.isInteger(n) ? String(n).padStart(2, '0') : numero(n, 2)
+}
+
+/**
+ * El precio total de la línea, que es el que va resaltado.
+ *
+ * Con el IGV incluido es el total tal cual; sin él, la base imponible menos el
+ * descuento —el mismo número que el papel llama «precio total» y que el
+ * renglón de condiciones explica—.
+ */
+function totalImpreso(c: CotizacionImpresa): number {
+  return c.incluye_igv ? c.total : c.subtotal - c.descuento
+}
+
+function precioDelConcepto(c: CotizacionImpresa) {
+  const cantidad = Number(c.concepto_cantidad) || 1
+  const base = c.subtotal - c.descuento
+  return (c.incluye_igv ? c.total : base) / cantidad
+}
+
+/** Un renglón de la ficha: etiqueta a la izquierda, dos puntos y el dato. */
+function Especificacion({ etiqueta, valor }: { etiqueta: string; valor?: string | null }) {
+  if (!valor) return null
+  return (
+    <View style={estilos.dato}>
+      <Text style={estilos.especEtiqueta}>{`— ${etiqueta}`}</Text>
+      <Text style={estilos.especValor}>{`: ${valor}`}</Text>
+    </View>
+  )
 }
 
 function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: Buffer | null }) {
@@ -210,6 +505,11 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
   const domicilio = [empresa?.direccion, empresa?.distrito, empresa?.provincia, empresa?.departamento]
     .filter(Boolean)
     .join(' · ')
+
+  // El cierre del documento: condiciones, observaciones y la nota, cada renglón
+  // por su cuenta. La nota son varias promesas escritas una por línea y salían
+  // pegadas en un párrafo corrido.
+  const cierre = [datos.condiciones, datos.observaciones, datos.nota].flatMap(renglones)
 
   return (
     <Document
@@ -255,7 +555,9 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
         <Text style={estilos.tituloSeccion}>SEÑORES</Text>
         <View style={estilos.filaDatos}>
           <View style={estilos.columna}>
-            <Dato etiqueta="Cliente" valor={datos.cliente.razon_social} fuerte />
+            {/* «Señores» para la empresa y «Cliente» para la persona: es como
+                lo escribe la casa, y su papel encabeza con esa misma palabra. */}
+            <Dato etiqueta="Señores" valor={datos.cliente.razon_social} fuerte />
             <Dato etiqueta="RUC / DNI" valor={datos.cliente.numero_documento} />
             <Dato
               etiqueta="Dirección"
@@ -265,47 +567,57 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
             />
           </View>
           <View style={estilos.columna}>
-            <Dato etiqueta="Atención" valor={datos.contacto?.nombre} />
+            <Dato etiqueta="Cliente" valor={datos.contacto?.nombre} />
             <Dato
               etiqueta="Teléfono"
               valor={datos.contacto?.telefono ?? datos.cliente.telefono}
             />
             <Dato etiqueta="Correo" valor={datos.contacto?.correo} />
+            {/* Quien atiende, como dato y no como rúbrica: el cliente necesita
+                saber a quién llamar, y firmar la firma el gerente general. */}
+            <Dato
+              etiqueta="Vendedor"
+              valor={
+                datos.vendedor ? `${datos.vendedor.nombres} ${datos.vendedor.apellidos}` : null
+              }
+            />
           </View>
         </View>
 
-        {/* -------------------------------------------------------- la unidad */}
-        {(datos.unidad || datos.carroceria || medidas(datos) || datos.capacidad) && (
-          <>
-            <Text style={estilos.tituloSeccion}>UNIDAD Y CARROCERÍA</Text>
-            <View style={estilos.filaDatos}>
-              <View style={estilos.columna}>
-                <Dato etiqueta="Carrocería" valor={datos.carroceria} fuerte />
-                <Dato etiqueta="Marca" valor={datos.marca} />
-                <Dato etiqueta="Modelo" valor={datos.modelo} />
-                <Dato etiqueta="Tipo" valor={datos.tipo} />
-              </View>
-              <View style={estilos.columna}>
-                <Dato
-                  etiqueta="Unidad"
-                  valor={
-                    datos.unidad
-                      ? [datos.unidad.placa, datos.unidad.marca, datos.unidad.modelo]
-                          .filter(Boolean)
-                          .join(' · ')
-                      : null
-                  }
-                />
-                <Dato etiqueta="Medidas" valor={medidas(datos)} />
-                <Dato etiqueta="Capacidad" valor={datos.capacidad} />
-                <Dato
-                  etiqueta="Peso neto"
-                  valor={datos.peso_neto_tn ? `${numero(datos.peso_neto_tn, 2)} TN` : null}
-                />
-              </View>
-            </View>
-          </>
-        )}
+        {/* ------------------------------------------------ el nombre del trabajo */}
+        {/* Su papel abre con el producto en grande y subrayado —«SEMIRREMOLQUE
+            CAMA BAJA 03 EJES SUSPENSIÓN MECÁNICA»— antes de cualquier detalle.
+            Es lo primero que el cliente mira para saber si la cotización que
+            tiene en la mano es la que pidió. */}
+        <Text style={estilos.tituloProducto}>{concepto(datos).toUpperCase()}</Text>
+
+        {/* ------------------------------------------- especificaciones técnicas */}
+        {/* Los renglones de su ficha, con sus mismas etiquetas y en su orden.
+            El que no tiene dato no se imprime: una raya al lado de «PESO NETO»
+            no informa, ocupa. */}
+        <Text style={estilos.tituloSeccion}>ESPECIFICACIONES TÉCNICAS</Text>
+        <View style={estilos.especificaciones}>
+          <Especificacion etiqueta="MARCA" valor={datos.marca ?? 'METAL WORK'} />
+          <Especificacion
+            etiqueta="AÑO"
+            valor={datos.anio_fabricacion ? String(datos.anio_fabricacion) : null}
+          />
+          <Especificacion etiqueta="CARROCERÍA" valor={datos.carroceria_texto ?? datos.carroceria} />
+          <Especificacion etiqueta="TIPO" valor={datos.tipo} />
+          <Especificacion etiqueta="LONGITUD" valor={enMetros(datos.largo_m)} />
+          <Especificacion etiqueta="LONGITUD CAMA ÚTIL" valor={enMetros(datos.largo_util_m)} />
+          <Especificacion etiqueta="ANCHO" valor={enMetros(datos.ancho_m)} />
+          <Especificacion etiqueta="ALTO" valor={enMetros(datos.alto_m)} />
+          <Especificacion etiqueta="CAPACIDAD" valor={datos.capacidad} />
+          <Especificacion etiqueta="PESO NETO" valor={pesoImpreso(datos)} />
+          <Especificacion etiqueta="EJES" valor={datos.ejes} />
+          <Especificacion etiqueta="UNIDAD" valor={unidadImpresa(datos.unidad)} />
+        </View>
+
+        {/* La línea de normas va suelta bajo la ficha, sin viñeta y sin sección:
+            así está en sus papeles. */}
+        {datos.normas ? <Text style={estilos.normas}>{datos.normas}</Text> : null}
+
 
         {/* --------------------------------------------------- ficha técnica */}
         {datos.ficha.length > 0 && (
@@ -337,9 +649,12 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
         {/* ----------------------------------------------------- accesorios */}
         {datos.accesorios.length > 0 && (
           <>
-            <Text style={estilos.tituloSeccion}>ACCESORIOS QUE INCLUYE</Text>
+            {/* El rótulo es el de sus cotizaciones, con dos puntos incluidos. */}
+            <Text style={estilos.tituloSeccion}>
+              INCLUYE LOS SIGUIENTES ACCESORIOS O EQUIPAMIENTO:
+            </Text>
             {datos.accesorios.map((a) => (
-              <View key={a.id} style={estilos.fichaLinea}>
+              <View key={a.id} style={estilos.fichaLinea} wrap={false}>
                 <Text style={estilos.vineta}>•</Text>
                 <Text style={estilos.fichaDetalle}>
                   {`${numero(a.cantidad, 0).padStart(2, '0')} ${a.unidad}. ${a.descripcion}`}
@@ -351,95 +666,122 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
           </>
         )}
 
-        {/* ------------------------------------------------------- partidas */}
-        {datos.partidas.length > 0 && (
-          <>
-            <Text style={estilos.tituloSeccion}>DETALLE ECONÓMICO</Text>
-            <View style={estilos.tabla}>
-              <View style={estilos.encabezado}>
-                <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.item }]}>ÍTEM</Text>
-                <Text style={[estilos.celdaTitulo, { width: COL.descripcion }]}>DESCRIPCIÓN</Text>
-                <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.cantidad }]}>CANT.</Text>
-                <Text style={[estilos.celdaTitulo, estilos.derecha, { width: COL.precio }]}>P. UNITARIO</Text>
-                <Text style={[estilos.celdaTitulo, estilos.derecha, { width: COL.total }]}>IMPORTE</Text>
+        {/* ---------------------------------------------- lo que NO se entrega */}
+        {/* Aparte de los accesorios y enmarcado: son lo contrario de uno. La
+            caja puede partirse entre hojas —una lista más alta que la página se
+            recortaría sin avisar, como pasó con la ficha—; lo que no se parte
+            es cada advertencia. */}
+        {renglones(datos.no_incluye).length > 0 && (
+          <View style={estilos.advertencias}>
+            <Text style={estilos.advertenciaTitulo} minPresenceAhead={24}>
+              LO QUE NO INCLUYE
+            </Text>
+            {renglones(datos.no_incluye).map((advertencia) => (
+              <View key={advertencia} style={estilos.fichaLinea} wrap={false}>
+                <Text style={estilos.vinetaNegativa}>×</Text>
+                <Text style={estilos.advertenciaLinea}>{advertencia}</Text>
               </View>
-
-              {datos.partidas.map((p, i) => (
-                <View key={`${p.descripcion}-${i}`} style={estilos.fila} wrap={false}>
-                  <Text style={[estilos.celda, estilos.centro, { width: COL.item }]}>{i + 1}</Text>
-                  <Text style={[estilos.celda, { width: COL.descripcion }]}>
-                    {p.descripcion}
-                    {Number(p.descuento_porcentaje ?? 0) > 0
-                      ? ` (dscto. ${numero(p.descuento_porcentaje, 0)}%)`
-                      : ''}
-                  </Text>
-                  <Text style={[estilos.celda, estilos.centro, { width: COL.cantidad }]}>
-                    {`${numero(p.cantidad, 2)}${p.unidad_medida ? ` ${p.unidad_medida}` : ''}`}
-                  </Text>
-                  <Text style={[estilos.celda, estilos.derecha, { width: COL.precio }]}>
-                    {moneda(p.precio_unitario, mon)}
-                  </Text>
-                  <Text style={[estilos.celda, estilos.derecha, { width: COL.total }]}>
-                    {moneda(p.subtotal, mon)}
-                  </Text>
-                </View>
-              ))}
-            </View>
-
-            <View style={estilos.bloqueTotales}>
-              <View style={estilos.totales}>
-                <View style={estilos.lineaTotal}>
-                  <Text>Subtotal</Text>
-                  <Text>{moneda(datos.subtotal, mon)}</Text>
-                </View>
-                {datos.descuento > 0 && (
-                  <View style={estilos.lineaTotal}>
-                    <Text>Descuento</Text>
-                    <Text>− {moneda(datos.descuento, mon)}</Text>
-                  </View>
-                )}
-                <View style={estilos.lineaTotal}>
-                  <Text>{`IGV (${numero(datos.igv_porcentaje, 0)}%)`}</Text>
-                  <Text>{moneda(datos.igv, mon)}</Text>
-                </View>
-                <View style={estilos.lineaTotalFuerte}>
-                  <Text style={estilos.textoTotal}>TOTAL</Text>
-                  <Text style={estilos.textoTotal}>{moneda(datos.total, mon)}</Text>
-                </View>
-                <Text style={[estilos.textoPie, { textAlign: 'right', marginTop: 2 }]}>
-                  {datos.incluye_igv ? 'Precio incluye IGV' : 'Precio no incluye IGV'}
-                </Text>
-              </View>
-            </View>
-          </>
+            ))}
+          </View>
         )}
 
+        {/* ------------------------------------------- el trabajo y su precio */}
+        {/* Al cliente le toca saber qué se le va a fabricar y cuánto cuesta. El
+            desglose por partida es la cocina del taller —acero, mano de obra,
+            servicios de terceros— y se queda adentro: de él salen el
+            presupuesto de la OT y las compras de material, no el papel. */}
+        {/* Se imprime siempre. La condición miraba `concepto` —la columna, no
+            la función que le busca alternativa— así que una cotización con
+            precio pero sin concepto escrito ni partidas salía sin su propuesta
+            económica: el cliente recibía las condiciones, con un «PRECIO» suelto
+            entre ellas, y ninguna línea que dijera qué se le está cotizando ni
+            el desglose del IGV. La cotización sin su precio no es una
+            cotización, y `concepto()` siempre devuelve un nombre.
+
+            Así se titula en sus cotizaciones, con los dos puntos. */}
+          <Text style={estilos.tituloSeccion}>PROPUESTA ECONÓMICA:</Text>
+          <View style={estilos.tabla}>
+            <View style={estilos.encabezado}>
+              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.item }]}>ITEM</Text>
+              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.descripcion }]}>
+                DESCRIPCIÓN
+              </Text>
+              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.cantidad }]}>
+                CANTIDAD
+              </Text>
+              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.unitario }]}>
+                PRECIO UNITARIO
+              </Text>
+              <Text style={[estilos.celdaTitulo, estilos.centro, { width: COL.total }]}>
+                PRECIO TOTAL
+              </Text>
+            </View>
+
+            <View style={estilos.fila}>
+              <Text style={[estilos.celda, estilos.centro, { width: COL.item }]}>1.</Text>
+              <Text
+                style={[estilos.celda, estilos.centro, estilos.negrita, { width: COL.descripcion }]}
+              >
+                {concepto(datos).toUpperCase()}
+              </Text>
+              <Text
+                style={[estilos.celda, estilos.centro, estilos.negrita, { width: COL.cantidad }]}
+              >
+                {cantidadImpresa(datos.concepto_cantidad)}
+              </Text>
+              <Text
+                style={[estilos.celda, estilos.centro, estilos.negrita, { width: COL.unitario }]}
+              >
+                {moneda(precioDelConcepto(datos), mon)}
+              </Text>
+              {/* El total resaltado, como en su papel: es la cifra que el
+                  cliente busca y la que se discute. */}
+              <Text
+                style={[estilos.celda, estilos.centro, estilos.totalResaltado, { width: COL.total }]}
+              >
+                {moneda(totalImpreso(datos), mon)}
+              </Text>
+            </View>
+          </View>
+
+          {/* Sin desglose de subtotal e IGV: su papel no lo lleva. Lo dice en
+              una línea de las condiciones —«Expresado en dólares americanos e
+              incluye IGV»— y el descuento, cuando lo hay, ya está dentro del
+              precio que se ofrece. Un desglose que el original no tiene invita
+              a discutir cifras que nadie preguntó. */}
+          {datos.descuento > 0 && (
+            <Text style={[estilos.textoPie, { textAlign: 'right', marginTop: 3 }]}>
+              {`Incluye un descuento de ${moneda(datos.descuento, mon)}`}
+            </Text>
+          )}
+
         {/* ----------------------------------------------------- condiciones */}
-        <Text style={estilos.tituloSeccion}>CONDICIONES COMERCIALES</Text>
-        <View style={estilos.filaDatos}>
-          <View style={estilos.columna}>
-            <Dato etiqueta="Plazo de entrega" valor={textoPlazo(datos)} fuerte />
-            <Dato etiqueta="Forma de pago" valor={datos.forma_pago} />
-          </View>
-          <View style={estilos.columna}>
-            <Dato
-              etiqueta="Garantía"
-              valor={datos.garantia_meses ? `${datos.garantia_meses} meses` : 'Sin garantía'}
-              fuerte
-            />
-            <Dato etiqueta="Validez" valor={datos.fecha_vencimiento ? `Hasta el ${fecha(datos.fecha_vencimiento)}` : null} />
-          </View>
+        {/* Siempre las mismas cinco y en este orden, que es el de sus papeles:
+            precio, forma de pago, validez, garantía y tiempo de entrega. Quien
+            recibe la cotización las busca en ese renglón; cambiarlas de sitio
+            obliga a leer el documento entero para encontrar el plazo. */}
+        {/* Las cuatro de su papel, en su orden —precio, forma de pago,
+            garantía y tiempo de entrega— y la validez al final. La validez no
+            está en el suyo, pero el sistema la lleva y una cotización que vence
+            sin avisar es peor que un renglón de más.
+
+            Sin la banda azul de sección: en su papel estas cuatro van sueltas
+            debajo de la tabla, alineadas por los dos puntos. */}
+        <View style={estilos.condicionesBloque}>
+          <Condicion etiqueta="PRECIO" valor={textoPrecio(datos, mon)} fuerte />
+          <Condicion etiqueta="FORMA DE PAGO" valor={datos.forma_pago} />
+          <Condicion etiqueta="GARANTIA" valor={textoGarantia(datos)} />
+          <Condicion etiqueta="TIEMPO DE ENTREGA" valor={textoPlazo(datos)} />
+          <Condicion etiqueta="VALIDEZ" valor={textoValidez(datos)} />
         </View>
 
-        {(datos.condiciones || datos.observaciones || datos.nota) && (
+        {cierre.length > 0 && (
           <View style={estilos.condiciones}>
-            {[datos.condiciones, datos.observaciones, datos.nota]
-              .filter(Boolean)
-              .map((texto, i) => (
-                <Text key={i} style={estilos.parrafo}>
-                  {texto}
-                </Text>
-              ))}
+            {cierre.map((texto, i) => (
+              <Text key={`${i}-${texto}`} style={estilos.parrafo}>
+                {texto}
+              </Text>
+            ))}
           </View>
         )}
 
@@ -449,26 +791,30 @@ function DocumentoCotizacion({ datos, logo }: { datos: CotizacionImpresa; logo: 
           </Text>
         )}
 
-        {/* --------------------------------------------------------- firmas */}
-        <View style={estilos.firmas} wrap={false}>
-          <View style={estilos.firma}>
-            <View style={estilos.lineaFirma}>
-              <Text style={estilos.textoFirma}>
-                {datos.vendedor
-                  ? `${datos.vendedor.nombres} ${datos.vendedor.apellidos}`
-                  : empresa?.razon_social ?? 'Metal Work Perú S.A.C.'}
+        {/* --------------------------------------------------- cierre de carta */}
+        {/* Una sola firma, la de la casa. El recuadro de conformidad del
+            cliente se quitó por decisión de Gerencia: una cotización no se
+            devuelve firmada, se acepta con una orden de compra. */}
+        {/* «Atentamente,» y el nombre de quien vende. No es una firma: la
+            empresa lo dijo con todas las letras —«esto no se firma, solamente es
+            para que salga en la cotización como vendedor»—. Por eso no hay raya
+            ni hueco para firmar encima; una cotización se acepta con una orden
+            de compra, no devolviéndola firmada. */}
+        <View style={estilos.cierreCarta} wrap={false}>
+          <View style={estilos.bloqueFirma}>
+            <Text style={estilos.despedida}>Atentamente,</Text>
+            <Text style={estilos.nombreVendedor}>
+              {(
+                empresa?.gerente_general ??
+                empresa?.razon_social ??
+                'Metal Work Perú S.A.C.'
+              ).toUpperCase()}
+            </Text>
+            {empresa?.gerente_general && (
+              <Text style={estilos.cargoFirma}>
+                {empresa.gerente_general_cargo ?? 'Gerente General'}
               </Text>
-              <Text style={estilos.textoFirma}>
-                {[datos.vendedor?.telefono, datos.vendedor?.correo].filter(Boolean).join(' · ') ||
-                  'Área Comercial'}
-              </Text>
-            </View>
-          </View>
-          <View style={estilos.firma}>
-            <View style={estilos.lineaFirma}>
-              <Text style={estilos.textoFirma}>Conformidad del cliente</Text>
-              <Text style={estilos.textoFirma}>Firma, sello y fecha</Text>
-            </View>
+            )}
           </View>
         </View>
 
@@ -506,25 +852,61 @@ async function leerLogo(): Promise<Buffer | null> {
 }
 
 /**
- * El nombre del archivo tal como lo espera quien lo recibe por correo.
+ * El nombre del archivo tal como la empresa archiva:
+ * «COT. N°3571-2026 - FURGON ISOTERMICO - TRANSPORTES SANTA ROSA SAC - 12-05-26.pdf».
  *
- * Todo lo que entra viene de la base y sale en una cabecera HTTP, as\u00ed que se
- * limpia entero -n\u00famero incluido-: unas comillas metidas ah\u00ed dejan que el
+ * Sin el producto ni la fecha el archivo no entra en el árbol de carpetas que ya
+ * existe en el OneDrive de la casa, y quien lo recibe lo renombra a mano, uno
+ * por uno, hasta que se cansa y los deja sueltos.
+ *
+ * Todo lo que entra viene de la base y sale en una cabecera HTTP, así que se
+ * limpia entero —número incluido—: unas comillas metidas ahí dejan que el
  * documento se guarde con el nombre que elija quien las puso, y un salto de
- * l\u00ednea rompe la cabecera y tumba la descarga de esa cotizaci\u00f3n para siempre.
+ * línea rompe la cabecera y tumba la descarga de esa cotización para siempre.
  */
 export function nombreArchivoCotizacion(datos: CotizacionImpresa) {
-  return `COT-${aNombreDeArchivo(datos.numero)}-${aNombreDeArchivo(datos.cliente.razon_social)}.pdf`
+  const partes = [
+    `COT. N°${aNombreDeArchivo(datos.numero, 20)}`,
+    // El producto es la carrocería, que es como la casa nombra la carpeta; sin
+    // ella sirve el trabajo escrito. Lo que NO entra acá es el concepto armado
+    // con medidas y capacidad: «30 M3 9.50 2.60 2.80 M» no es un producto, y en
+    // el nombre del archivo estorba más que un hueco.
+    aNombreDeArchivo(datos.carroceria || datos.concepto || '', 40),
+    aNombreDeArchivo(datos.cliente.razon_social, 40),
+    fechaDeArchivo(datos.fecha_emision),
+  ].filter(Boolean)
+
+  return `${partes.join(' - ')}.pdf`
 }
 
-function aNombreDeArchivo(texto: string) {
-  return (
-    texto
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^A-Za-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .toUpperCase()
-      .slice(0, 60) || 'SIN-NOMBRE'
-  )
+/**
+ * La fecha como la fechan ellos: dd-mm-aa. Sale de fecha() —la única que sabe
+ * que un día del calendario se lee tal cual— y le cambia las barras por guiones,
+ * porque una barra en un nombre de archivo es una carpeta que no existe.
+ */
+function fechaDeArchivo(valor: string) {
+  const [dia, mes, anio] = fecha(valor).split('/')
+  if (!dia || !mes || !anio) return ''
+  return `${dia}-${mes}-${anio.slice(-2)}`
+}
+
+/**
+ * Un trozo de nombre que el disco admite y la cabecera no puede malinterpretar:
+ * sin acentos —el nombre viaja en una cabecera HTTP, que no es UTF-8—, sin los
+ * caracteres que ningún sistema de archivos acepta (\ / : * ? " < > |), sin
+ * saltos de línea, y sin puntos ni espacios al final, que Windows recorta solo.
+ *
+ * El espacio y el guion se conservan: son la forma en que la empresa archiva y
+ * cambiarlos por guiones bajos ya no es su nombre.
+ */
+function aNombreDeArchivo(texto: string, largo: number) {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9 .,()-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase()
+    .slice(0, largo)
+    .replace(/[.\s]+$/, '')
 }

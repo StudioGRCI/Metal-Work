@@ -387,7 +387,329 @@ y `7. ALMACEN` en la raíz del OneDrive.
 
 ---
 
-## 12. Fuentes
+## 12. Cómo costea la empresa
+
+Lo que sigue no estaba en este documento hasta el 2026-08-30 y es la pieza que
+más lejos deja al sistema de la realidad: las `cotizacion_partidas` se diseñaron
+sin haber visto un solo costeo suyo.
+
+### Quién y cuándo
+
+El costeo es **posterior a la fabricación, no previo a la cotización**. Lo dice
+`4. LOGISTICA 2026/ESTRUCTURA LOGISTICA - 2026.pdf`: «se registran los costeos de
+forma mensual por unidades que ya se culminaron compras». Lo lleva **una sola
+persona** —Fernando, en todos los registros de 2026— y se controla en
+`6. REQUERIMIENTOS/COSTEOS DE EMPRESAS/SEGUIMIENTO DE COSTEOS.xlsx`, con tres
+hojas separadas —MWP, JAMISA y GARANTÍAS— y tres estados: **NO INICIA · EN
+PROCESO · CULMINADO**, con su fecha de culminación.
+
+El archivo se nombra `COSTOS - OT N° - UNIDAD - CLIENTE - MW - FECHA DE
+CULMINACIÓN`, y los de garantía `COSTOS - GT - OT N° - …`.
+
+### La hoja de detalle
+
+Una fila por compra, en `4. LOGISTICA 2026/1. COSTEOS/<mes>/<empresa>/`:
+
+| Columna | Qué es |
+| --- | --- |
+| CLASIFICACIÓN | El grupo del oficio. Se escribe una vez y las filas siguientes van en blanco |
+| FECHA DE REQUERIMIENTO | Cuándo se pidió; una misma clasificación tiene varias fechas |
+| DESCRIPCIÓN | El material con su medida exacta: «PLANCHA A36 3/8" x 1500 x 6000 mm» |
+| REQUERIDO | Cantidad, con decimales: 0,2 de una plancha es lo que se consumió |
+| U.M | UND, METROS, GL, BALDES, JUEGO, BOLSA |
+| VALOR VENTA S/ | Precio del proveedor, sin IGV |
+| VALOR VENTA $ | = VALOR VENTA S/ ÷ T.C. |
+| SUBTOTAL | = REQUERIDO × VALOR VENTA $ |
+
+Al pie: SUBTOTAL, IGV (18 %) y TOTAL. El tipo de cambio va en la cabecera junto
+al cliente, y de ahí salen todas las conversiones. Cuando el precio del
+proveedor viene con IGV, la celda lo divide entre 1,18 a mano.
+
+**La clasificación no es un enum de cuatro valores.** En una sola tolva
+aparecieron: ESTRUCTURA · PINES Y BOCINAS · ACCESORIO ESTRUCTURAL · COMPUERTA DE
+TOLVA · SISTEMA ELÉCTRICO · ACCESORIOS · ACCESORIOS SISTEMA HIDRÁULICO · SISTEMA
+NEUMÁTICO · CONECTORES SISTEMA HIDRÁULICO · SISTEMA DE LEVANTE DE PORTA LLANTAS ·
+PERNERÍA · SISTEMA DE ENGRASE · ACABADOS · STICKERS · FIN DE CARRERA · SISTEMA DE
+COMPUERTA POSTERIOR · MANGUERAS HIDRÁULICAS · CONEXIONES HIDRÁULICAS · CONEXIONES
+NEUMÁTICAS · TAPÓN · LOGEADO. Son etiquetas del oficio, se inventan sobre la
+marcha y algunas se repiten con distinta escritura. El `tipo_costo_partida` del
+sistema —MATERIAL, MANO_OBRA, SERVICIO, OTRO— no las representa.
+
+Los servicios entran como una fila más: SERVICIO DE ARENADO, SERVICIO DE
+REDUCCIÓN DE MANGUERAS, ENCOMIENDA.
+
+### La hoja RESUMEN — la estructura de costo real
+
+Esto es lo que el sistema no tiene en ninguna parte. Cada línea lleva un importe
+**mensual del área** y una **tasa aplicada**: el porcentaje de ese gasto que
+carga esta unidad. La base del prorrateo está escrita arriba a la derecha:
+**«ESTÁNDAR 9 A 10 UNIDADES»**.
+
+```
+COSTOS DE PRODUCCIÓN
+  COSTOS DIRECTOS                              con IGV   tasa
+    MATERIA PRIMA        una línea por clasificación      100 %
+    MANO DE OBRA TERCERA armado / pintura / arenado       100 %
+    MANO DE OBRA         Producción                        10 %
+                         Transporte (conductor)             5 %
+  COSTOS INDIRECTOS
+    MANO DE OBRA         Ingeniería                        10 %
+                         Almacén                           10 %
+    OTROS                Seguros                            5 %
+                         Sistema de seguridad               5 %
+                         Electricidad                       8 %
+                         Celulares                         10 %
+                         Correos e internet                10 %
+                         Agua                              10 %
+  = TOTAL COSTOS DE PRODUCCIÓN
+
+GASTOS DE OPERACIÓN
+  VENTAS                 Comisiones por ventas            100 %
+  ADMINISTRATIVOS        Administración                    10 %
+                         Logística                         10 %
+                         Contabilidad                      10 %
+                         Tesorería                         10 %
+                         Vendedores                        10 %
+                         Trámites de placas y documentación 100 %
+  DEPRECIACIÓN           Maquinaria empleada                2 %
+                         Equipos de cómputo y otros        0,2 %
+  = TOTAL GASTOS DE OPERACIÓN
+
+= TOTAL EGRESOS Y EROGACIONES PARA FABRICACIÓN
++ UTILIDAD CALCULADA                                      15,0 %
+= PRECIO DE VENTA SIN IGV (US$)
+× 1,18 = PRECIO DE VENTA CON IGV (US$), y su equivalente en S/ al T.C.
+```
+
+La hoja de detalle alimenta a la de RESUMEN por clasificación: al pie del
+detalle hay un cuadro «COSTO POR CLASIFICACIÓN» y el RESUMEN lo referencia
+celda a celda.
+
+### Las tres consecuencias para el sistema
+
+1. **El precio sale del costo, no al revés.** La hoja calcula el precio de venta
+   sumando egresos y agregando 15 % de utilidad. Hoy el sistema hace lo
+   contrario: Ventas escribe el precio y Administración costea después. Las dos
+   cosas pueden convivir —el costeo diría cuál *debería* ser el precio y Gerencia
+   compara las dos cifras antes de aprobar— pero hoy esa comparación no existe.
+2. **Falta el prorrateo de indirectos entero.** No hay dónde guardar el gasto
+   mensual de cada área ni la tasa que carga cada unidad, y sin eso el «costo»
+   del sistema es solo material: se queda corto en todo lo que la empresa sí
+   suma.
+3. **La clasificación tiene que ser un catálogo abierto**, no un enum de cuatro
+   valores.
+
+---
+
+## 13. Cómo controlan que las áreas cumplan
+
+De `5. INGENIERIA/CONTROL DE PLAZOS - MWP - 2026.xlsx`, vivo: la última edición
+es del 2026-08-29. Es la respuesta a «¿cómo mido que cada área trabaje a tiempo
+y reporte?», y la empresa ya la tiene resuelta en papel.
+
+### Una hoja por área
+
+Siete hojas: **DISEÑO · MAESTRANZA · REQUERIMIENTOS · LOGÍSTICA · PRODUCCIÓN ·
+ACABADOS · TRÁMITES Y DISEÑO**. Cada una con la misma cabecera —`FECHA DE
+CIERRE` y `ÁREA`— y la misma tabla:
+
+| Columna | Qué es |
+| --- | --- |
+| N° | Correlativo dentro de la hoja |
+| Unidades en producción | El nombre de la carrocería y el cliente: «CARROCERÍA FURGÓN / RENE» |
+| Código interno | `FUL_CM_N3_4_26/35` — el mismo de `SEGUIMIENTO DE FABRICACIÓN` |
+| Fecha de inicio | Cuándo le tocó a esa área |
+| Fecha de culminación | Cuándo tiene que estar |
+| DIAS | `= fecha de culminación − HOY`. Negativo es que ya se pasó |
+| Estado | Calculado, no escrito a mano |
+| Observaciones | Qué falta y por qué. Lo escribe el área |
+
+### La regla del semáforo, en su propia fórmula
+
+```
+Estado = SI(DIAS >= 7;            "Vigente";
+         SI(DIAS entre 1 y 6;     "Por Vencer";
+                                  "Vencido"))
+```
+
+Tres estados y un umbral de **siete días**. Y es derivado: nadie lo escribe, se
+recalcula solo contra la fecha de hoy. Es exactamente el criterio que este
+sistema ya adoptó para «Atrasada» —no se guarda, se calcula— pero con los
+nombres y el umbral de la casa.
+
+### Lo que de verdad se reporta
+
+La columna de observaciones es donde está el valor, y no es un campo de adorno:
+
+> «NO SE CUMPLIÓ LA FECHA POR FALTA DE MEDIDAS EN ACCESORIOS (CAJA DE
+> HERRAMIENTAS, DEFENSA LATERALES, PORTA EXTINTOR, PORTA CONO)» — Maestranza
+>
+> «En proceso de modelado y liberación de planos, por sobrecarga de unidades a
+> un solo diseñador» — Diseño
+>
+> «MP (FALTA DE APROBACIÓN) // SIST. ELÉCTRICO (FALTA DE APROBACIÓN) // PINTURA
+> (UNIDAD NO ESTÁ ARENADA)» — Logística
+
+Cada área no reporta que va tarde: reporta **quién la trabó**. Diseño espera un
+diseñador, Maestranza espera medidas de Diseño, Logística espera aprobaciones,
+Acabados espera que la unidad esté arenada. Ese encadenamiento es la
+trazabilidad que la empresa quiere y lo que un tablero tiene que enseñar.
+
+### El estado real al 2026-08-11
+
+De las 18 unidades de Requerimientos, **17 vencidas y 1 por vencer**. En
+Maestranza, 15 de 15 vencidas. En Diseño, 4 de 5. No es un problema de registro:
+es lo que el control mide y nadie ve a tiempo.
+
+### Qué falta en el sistema para tenerlo
+
+Casi nada, y ese es el punto: `ot_etapas` ya guarda
+`fecha_inicio_programada`, `fecha_fin_programada`, `estado`, `responsable_id` y
+`observaciones`, y desde la migración 63 las fechas bajan solas del tiempo por
+área de la cotización. Lo que hace falta encima:
+
+1. **El semáforo con su regla** —Vigente / Por Vencer / Vencido, umbral de 7
+   días— calculado, nunca guardado.
+2. **Una pantalla por área**: quien trabaja en Maestranza entra y ve sus
+   unidades, sus fechas y escribe su observación. Hoy hay que entrar OT por OT.
+3. **Responsable por etapa.** La columna existe y nadie la llena; sin ella no se
+   puede decir a quién reclamarle.
+4. **El cierre.** Su hoja lleva `FECHA DE CIERRE` y de ahí sale el informe
+   semanal por área (`INFORME SEMANAL N° 0000 - LOGÍSTICA - FECHA`).
+
+---
+
+## 15. Cómo mide Diseño que cada área cumpla (MW-FOR-ING-8)
+
+`5. INGENIERIA/CUMPLIMIENTO DE AREAS - 2026.xlsx` es la hoja que Diseño arma
+**por cada OT**. Es el formato `MW-FOR-ING-8 · CUMPLIMIENTO DE TIEMPOS –
+ÁREAS`, y es más fino que el control de plazos de la sección 13: ahí se mide la
+etapa entera; acá, **pieza por pieza**.
+
+### La hoja
+
+Cabecera: `CLIENTE`, `UNIDAD`, `CÓDIGO INTERNO`, `DISEÑADOR`, `INICIO`,
+`CULMINACIÓN` y el `%` de la unidad. Debajo, una fila por pieza con tres
+bloques, uno por área:
+
+| Bloque | Columnas | Quién la llena |
+| --- | --- | --- |
+| Diseño | `%` · `FECHA` · `# PLANO` · `# PIEZAS` · `NOMBRE` · `CANTIDAD` · `OBSERVACIÓN` | Diseño, al entregar el plano |
+| Maestranza | `FECHA INICIO` · `HABILITADO ✓` · `FECHA CULMINACIÓN` · `ENTREGADO ✓` · `OBSERVACIÓN` | Maestranza |
+| Producción | `FECHA RECEPCIÓN` · `RECIBIDO ✓` · `FECHA INICIO` · `ARMADO ✓` · `OBSERVACIÓN` | Producción |
+
+Cada **plano** abre un grupo: una fila de cabecera (`HABILITADO`, el número de
+plano, el rango de piezas y el `%` que ese grupo pesa en la unidad), luego las
+piezas, y al final las filas `ENSAMBLE` (`# PIEZAS = ENS`), que no pasan por
+Maestranza: Producción las arma con las piezas ya entregadas.
+
+### Lo que la hoja no podía hacer cumplir
+
+- **Diseño no quiere entregar planos, pero tiene que entregarlos.** En la hoja
+  la `FECHA` del plano se dejaba vacía y Maestranza reportaba igual. En el
+  sistema, mientras el plano no tenga fecha de entrega, ninguna pieza suya
+  admite fecha de inicio de habilitado —y el inicio no puede ser anterior a la
+  entrega—.
+- **Cada área escribe su bloque.** La base acepta a Diseño (`diseno.planos`)
+  y al taller (`produccion.registrar`) sobre la misma fila, y un disparador
+  mira qué columnas cambiaron: Maestranza no corrige cantidades ni Diseño marca
+  habilitados.
+- **El porcentaje no se escribe: sale de los vistos.** Una pieza vale 25 al
+  habilitarse, 50 al entregarse, 75 al recibirse y 100 al armarse (un ensamble:
+  50 al empezar, 100 al armarse). El plano pondera sus piezas por cantidad; la
+  unidad pondera sus planos por el `%` que Diseño les puso, que entre todos no
+  puede pasar de 100.
+
+### Dónde quedó en el sistema
+
+- Migración `070`: `ot_planos`, `ot_piezas`, las vistas `v_cumplimiento_piezas`,
+  `v_cumplimiento_planos` y `v_cumplimiento_ot`, y el rol **DISEÑO**, que además
+  hereda las partidas de la cotización de trabajo (`cotizaciones.costear`):
+  Administración no crea partidas, lo dijo Gerencia.
+- Pestaña **Cumplimiento** de la orden de trabajo: la hoja tal cual, con los
+  tres bloques y los botones de cada mano.
+- Pestaña **Cronograma**: la misma orden como diagrama de Gantt, con lo
+  programado (el tiempo por área de la cotización), lo real y el semáforo de la
+  sección 13. Sale de `v_cronograma_ot`.
+
+---
+
+## 16. Las carrocerías de la casa, transcritas de sus propias OT
+
+«En la cotización de trabajo ya se tienen modelos de OT de casi la mayoría de
+carrocerías: lo que quieren es que, si seleccionan una carrocería, ya haya algo
+y solo se edite.» Se leyeron las **138 OT en PDF** de OneDrive —129 en
+`1. METAL WORK PERU S.A.C/2. ORDENES DE TRABAJO/2025` y `/2026`, más 9 que
+solo estaban en la carpeta de cada trabajo (OT 2923–2932 y dos de 2024)—; 91
+son unidades distintas una vez quitadas las copias por chasis, y 47 traen la
+cotización adjunta con la ficha técnica.
+
+### Qué salió
+
+**27 plantillas en 14 carrocerías** (migración `072`), cada una con la ficha
+sección por sección, los accesorios con su «no incluye accesorio» y las OT de
+las que se transcribió:
+
+| Carrocería | Plantillas | De qué OT |
+| --- | --- | --- |
+| Plataforma (PLA) | reforzada 13.50 m · 3 ejes estándar · Strenx 700 | 20 OT, la que más se vende |
+| Tolva piso plano (VPP) | semirroquera 17 m³ Hardox · 24 m³ carga de palma · 15 m³ residuos sólidos | 2919, 2866, 2892, 2920… |
+| Tolva semicircular (VSC) | 18–24 m³ Hardox constructora · semirroquera 16 m³ | 2896, 2864, 2904, 2902 |
+| Tolva granelera (VOG) | semirremolque 45–48 m³ Strenx/Hardox | 2842, 2816 |
+| Tolva genérica | estándar de la 024 · volquete con tiro 23 m³ | 2909 |
+| Cisternas (CIA, CIV, COM) | agua 5,000 gal · vacío 15 m³ · combustible 9,000 gls SR · 2,000 gls montada | 2897, 2879, 2931, 2863, 2921, 2922 |
+| Furgones (FUA, FUL) | acanalado · acanalado sin techo · cuello ganso doble nivel · alargue y cardán · liso · liso con 3er eje · volumétrico remolque | 2893, 2894, 2839, 2854, 2872, 2914, 2915… |
+| Baranda (BAR) | rebatible · telera · furgón baranda de gas | 2853, 2878, 2895, 2926 |
+| Cama baja (CB), Compactador (COA), Ambulancia (ABR) | una cada una | 2900, 2849+2932, 2882+2848 |
+
+Al elegir la carrocería en una cotización baja la **predeterminada** (la que
+más OT respaldan); desde la ficha se cambia por otra de la misma carrocería.
+
+### Qué no salió, y por qué
+
+- Ocho OT sin cotización adjunta (plataforma mecánica, plataforma montada
+  Isuzu, dos furgones polleros, remolque con tiro, mixer, dos reparaciones)
+  solo traían el nombre y la lista impresa de 30 accesorios de la sección 6,
+  que no dice qué se vendió: quedaron como **«sin ficha todavía»** en lugar de
+  cargar 30 accesorios falsos.
+- Siete OT de 2025 (2795, 2800, 2806, 2819, 2826, 2833, 2834) no tienen ni el
+  producto escrito.
+- Los pasos de verificación de la sección 11 son un formulario impreso: los
+  mismos 18 en todas las OT, y el texto plano del PDF no conserva su orden. Se
+  dejaron las listas por carrocería de la migración `026`.
+- Cosas que el taller debe confirmar y que quedaron anotadas en la descripción
+  de cada plantilla: dos anchos de eje distintos en la misma cotización (cama
+  baja, cuello ganso), «02 eje retráctil» en la COT 3664, erratas copiadas tal
+  cual («MAMPARON TAPDO GANZO», «ELEPTICO», «Cuatro (02) unidades»).
+
+Cómo se hizo: dos pasadas de agentes leyendo los PDF con el conector de
+Microsoft 365, extracción a JSON, consolidación por variante real, y un
+convertidor a `sembrar_plantilla_ficha` (migración `071`), que reemplaza la
+plantilla entera: volver a correr la `072` deja lo mismo.
+
+### Segunda ronda: las proformas que la OT no traía
+
+Nueve de las OT «sin ficha todavía» decían «REVISAR PROFORMA». La proforma
+existe en otra carpeta de OneDrive (`INFORMACION ANTIGUA DE EMPRESAS/…/
+COTIZACIONES INGENIERIAS`) y se buscó una por una cruzando cliente, producto y
+fecha. Salieron **9 plantillas más en 7 carrocerías** (migración `074`):
+compactadora 15.5 m³ (COS), furgón pollero de 4 y de 7 TN (FUM), mixer 9 m³
+(HOR), contenedor almacén (PC), planta trituradora 50 TH (PT), planta de
+zarandeo 80/115 TH (PZ) y dos plataformas más (mecánica de 13.5 m y montada de
+13 TN sobre Isuzu). La OT 2809 quedó fuera: su proforma son tres reparaciones,
+no una ficha. Cada descripción dice de qué cotización sale y qué quedó dudoso.
+
+Con eso, 20 de las 34 carrocerías activas tienen ficha. Las 14 que faltan no
+tienen ninguna OT entre 2024 y 2026 (ABU, BOB, CCO, CIG, CIP, FRG, FUR, GIV,
+MA, VOM, VPC, REPOTENCIACION) o son tipos genéricos que conviene dar de baja
+(BARANDA, FURGON). Para esas no hace falta otra migración: la primera vez que
+Diseño escribe la ficha de una en la cotización de trabajo, la guarda con el
+botón **«Guardar como plantilla»** (migración `073`), y la siguiente cotización
+de esa carrocería ya nace con ella.
+
+---
+
+## 14. Fuentes
 
 | Archivo | Qué aportó |
 | --- | --- |
@@ -402,3 +724,10 @@ y `7. ALMACEN` en la raíz del OneDrive.
 | `SEGUIMIENTO DE FABRICACIÓN - MWP.xlsx` | Codificación de unidades fabricadas |
 | `PROYECTO CODIFICACION ALMACEN -MWP.xlsx` | Codificación de materiales y de producto terminado |
 | `PROYECTO SIG - MWP/9) Almacén ( ALM)` | Los siete formatos del área de almacén |
+| `4. LOGISTICA 2026/1. COSTEOS/AGOSTO/METAL WORK/40- TOLVA 17 M3 -TRINCO.xlsx` | La hoja de detalle del costeo y sus clasificaciones |
+| `.../COSTEOS DE EMPRESAS/6. COSTOS JUNIO/JAMISA/38-COSTEO-GARANTIA CISTERNA INCOAC.xlsx` | La hoja RESUMEN: prorrateo de indirectos y cálculo del precio |
+| `6. REQUERIMIENTOS/COSTEOS DE EMPRESAS/SEGUIMIENTO DE COSTEOS.xlsx` | Quién costea, en qué estados y con qué fechas |
+| `4. LOGISTICA 2026/ESTRUCTURA LOGISTICA - 2026.pdf` | Cuándo se costea y cómo se archiva |
+| `5. INGENIERIA/CONTROL DE PLAZOS - MWP - 2026.xlsx` | El control de plazos por área, su semáforo y lo que cada una reporta |
+| `5. INGENIERIA/CUMPLIMIENTO DE AREAS - 2026.xlsx` | El MW-FOR-ING-8: planos, piezas y lo que Maestranza y Producción reportan de cada una |
+| `1. METAL WORK PERU S.A.C/2. ORDENES DE TRABAJO/2025` y `/2026` | Las 129 OT en PDF de las que salen las plantillas por carrocería |

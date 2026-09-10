@@ -114,7 +114,20 @@ select json_build_object(
         from unnest(p.proargtypes) with ordinality as u(oid, ord)
       ),
       'retorna', pg_temp.tipo_ts(p.prorettype),
-      'retorna_conjunto', p.proretset
+      'retorna_conjunto', p.proretset,
+      -- Una función `returns table(...)` devuelve filas, no un escalar: sus
+      -- columnas viven en proargmodes/proargnames como argumentos de salida
+      -- ('t' de tabla, 'o' de out). Sin esto el tipo salía `string[]` y la
+      -- pantalla que la llamaba no compilaba —o peor, compilaba mintiendo—.
+      'retorna_columnas', (
+        select coalesce(json_agg(json_build_object(
+          'nombre', p.proargnames[u.ord],
+          'tipo', pg_temp.tipo_ts(u.oid)
+        ) order by u.ord), '[]'::json)
+        from unnest(p.proallargtypes) with ordinality as u(oid, ord)
+        where p.proargmodes is not null
+          and p.proargmodes[u.ord] in ('t', 'o')
+      )
     ) order by p.proname), '[]'::json)
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace

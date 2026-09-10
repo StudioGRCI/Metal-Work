@@ -12,6 +12,8 @@ export type PerfilSesion = {
   activo: boolean
   es_operario: boolean
   sede_id: string | null
+  /** Su área del taller. La hoja de avance le propone la suya al armar la lista. */
+  area_id: string | null
   rol: { codigo: string; nombre: string; nivel: number }
   permisos: string[]
 }
@@ -32,7 +34,7 @@ export const obtenerSesion = cache(async (): Promise<PerfilSesion | null> => {
   const { data } = await supabase
     .from('usuarios')
     .select(
-      'id, nombres, apellidos, correo, cargo, activo, es_operario, sede_id, rol:roles!inner(codigo, nombre, nivel, roles_permisos(permiso_codigo))',
+      'id, nombres, apellidos, correo, cargo, activo, es_operario, sede_id, area_id, rol:roles!inner(codigo, nombre, nivel, roles_permisos(permiso_codigo))',
     )
     .eq('id', user.id)
     .maybeSingle()
@@ -55,6 +57,7 @@ export const obtenerSesion = cache(async (): Promise<PerfilSesion | null> => {
     activo: data.activo,
     es_operario: data.es_operario,
     sede_id: data.sede_id,
+    area_id: data.area_id,
     rol: { codigo: rol.codigo, nombre: rol.nombre, nivel: rol.nivel },
     permisos: (rol.roles_permisos ?? []).map((p) => p.permiso_codigo),
   }
@@ -84,6 +87,33 @@ export function puede(perfil: PerfilSesion | null, permiso: string | string[]): 
   if (perfil.rol.codigo === 'ADMIN') return true
   const pedidos = Array.isArray(permiso) ? permiso : [permiso]
   return pedidos.some((p) => perfil.permisos.includes(p))
+}
+
+/**
+ * Si esta persona puede meterse en la hoja de un área: la suya siempre, las
+ * demás solo con `produccion.cualquier_area` —el jefe de producción, el de
+ * taller y Gerencia—.
+ *
+ * Es el gemelo exacto de `public.puede_hoja_de_area(uuid)` en la base, y tiene
+ * que seguir siéndolo: si la pantalla dejara pasar lo que la política rechaza,
+ * el INSERT afectaría cero filas sin error y la pantalla diría «listo» sin
+ * haber hecho nada. Acá se comprueba para dar un mensaje que se entienda; quien
+ * manda es el RLS.
+ */
+export function puedeHojaDeArea(perfil: PerfilSesion | null, areaId: string | null): boolean {
+  if (!perfil) return false
+  if (puede(perfil, 'produccion.cualquier_area')) return true
+  return areaId !== null && perfil.area_id === areaId
+}
+
+/** Las áreas cuya hoja puede escribir: la suya, o todas si tiene el permiso. */
+export function areasDeSuMano<T extends { id: string }>(
+  perfil: PerfilSesion | null,
+  areas: T[],
+): T[] {
+  if (!perfil) return []
+  if (puede(perfil, 'produccion.cualquier_area')) return areas
+  return areas.filter((a) => a.id === perfil.area_id)
 }
 
 /** Corta la petición con 403 si el usuario no tiene el permiso indicado. */

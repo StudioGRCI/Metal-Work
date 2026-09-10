@@ -1,70 +1,175 @@
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
 
+import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { ESTADO_COTIZACION, definir, opciones } from '@/lib/dominio/estados'
+import { ESTADO_COTIZACION, ETAPA_VENTA, definir } from '@/lib/dominio/estados'
+import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { diasHasta, fecha, moneda } from '@/lib/format'
-import { listarCotizaciones } from '@/lib/datos/comercial'
+import { cotizacionesPorEstado, listarCotizaciones } from '@/lib/datos/comercial'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import type { CodigoMoneda } from '@/lib/format'
+import type { UnidadNombrable } from '@/lib/dominio/unidades'
 
 export const metadata = { title: 'Cotizaciones' }
 
-const ESTADOS = opciones(ESTADO_COTIZACION)
+
+
+/**
+ * De quién es la pelota en cada estado. La insignia dice dónde está parada la
+ * cotización; esto dice a quién hay que ir a buscar, que es justo lo que la
+ * lista no contaba. Los estados cerrados no salen: ahí ya no le toca a nadie.
+ */
+const LE_TOCA_A: Record<string, string> = {
+  BORRADOR: 'le toca a Ventas',
+  EN_COSTEO: 'le toca a Administración',
+  EN_REVISION: 'le toca a Gerencia',
+  OBSERVADA: 'vuelve a Ventas o Administración',
+  REVISADA: 'Ventas la manda al cliente',
+  ENVIADA: 'espera respuesta del cliente',
+}
+
+/**
+ * Desde cuándo lleva esperando en la etapa donde está.
+ *
+ * Solo tres estados tienen sello propio. En «En ventas» y en «Devuelta» la base
+ * no guarda cuándo entró —no hay columna de cuándo la devolvió Gerencia— y se
+ * prefiere una raya antes que un número inventado: un dato de espera equivocado
+ * es peor que ninguno, porque se usa para ir a reclamar.
+ */
+function esperandoDesde(cotizacion: {
+  estado: string
+  costeo_pedido_en: string | null
+  costeo_listo_en: string | null
+  revisada_en: string | null
+}) {
+  if (cotizacion.estado === 'EN_COSTEO') return cotizacion.costeo_pedido_en
+  if (cotizacion.estado === 'EN_REVISION') return cotizacion.costeo_listo_en
+  if (cotizacion.estado === 'REVISADA') return cotizacion.revisada_en
+  return null
+}
+
+/** Los días parados en esta etapa, con el tono que ya merece la espera. */
+function espera(desde: string | null) {
+  const restantes = diasHasta(desde)
+  if (restantes === null) return null
+
+  const dias = Math.max(0, -restantes)
+  return {
+    texto: dias === 0 ? 'hoy' : `${dias} ${dias === 1 ? 'día' : 'días'}`,
+    // Un par de días es el trámite normal; de tres para arriba es una
+    // cotización olvidada, y a la semana ya se le pasó el turno al cliente.
+    clase: dias >= 7 ? 'text-peligro' : dias >= 3 ? 'text-aviso' : 'text-texto-suave',
+  }
+}
+
+/**
+ * Qué dice la tabla cuando no sale ninguna fila. Son tres vacíos distintos y el
+ * siguiente paso de cada uno también: el filtro vacío se arregla soltando el
+ * filtro, y la lista vacía de verdad se arregla dando de alta la primera.
+ */
+function estadoVacio(hayFiltro: boolean) {
+  if (hayFiltro) {
+    return {
+      titulo: 'Con este filtro no sale ninguna',
+      descripcion: 'Prueba con otra etapa, con otra búsqueda, o mira todas las cotizaciones.',
+    }
+  }
+  return {
+    titulo: 'Aún no hay cotizaciones',
+    descripcion: 'Elabora la primera para presentarle el precio al cliente.',
+  }
+}
+
+/**
+ * El aviso de vigencia, una sola vez: se pinta en su columna en el monitor y
+ * bajo el número en el teléfono, donde esa columna no está. Solo tiene sentido
+ * mientras la cotización sigue viva —una aprobada o anulada ya no «vence»—.
+ */
+function avisoDeVigencia(estado: string, dias: number | null) {
+  const viva = estado === 'ENVIADA' || estado === 'BORRADOR'
+  if (!viva || dias === null) return null
+  if (dias < 0) return { texto: 'vencida', clase: 'text-peligro' }
+  if (dias > 3) return null
+  return { texto: dias === 0 ? 'vence hoy' : `vence en ${dias} d`, clase: 'text-aviso' }
+}
 
 export default async function PaginaCotizaciones({ searchParams }: PageProps<'/cotizaciones'>) {
   const perfil = await exigirPermiso('cotizaciones.ver')
   const params = await searchParams
-  const estado = typeof params.estado === 'string' ? params.estado : undefined
 
-  const cotizaciones = await listarCotizaciones({ estado })
+  const busqueda = typeof params.q === 'string' ? params.q : undefined
+  const etapa = typeof params.etapa === 'string' ? params.etapa : undefined
+  // Un estado suelto sigue funcionando: los enlaces del tablero apuntan a uno.
+  const estado = !etapa && typeof params.estado === 'string' ? params.estado : undefined
+
+  const [cotizaciones, cuenta] = await Promise.all([
+    listarCotizaciones({ estado, etapa, busqueda, perfil }),
+    cotizacionesPorEstado(),
+  ])
+  const puedeCrear = puede(perfil, 'cotizaciones.crear')
+  const hayFiltro = Boolean(estado || etapa || busqueda)
+  const vacio = estadoVacio(hayFiltro)
+
+  // Cada etapa lleva su cuenta detrás, y la que no tiene ninguna no se ofrece:
+  // un filtro que lleva a una pantalla vacía hace perder el clic. La encendida
+  // se queda aunque quede en cero, o desaparecería debajo del dedo que la acaba
+  // de tocar.
+  const total = Object.values(cuenta).reduce((s, n) => s + n, 0)
+  const enEtapa = (e: (typeof ETAPA_VENTA)[number]) =>
+    e.estados.reduce((s, estadoDeLaEtapa) => s + (cuenta[estadoDeLaEtapa] ?? 0), 0)
+
+  const filtros = [
+    { valor: null, etiqueta: total > 0 ? `Todas (${total})` : 'Todas' },
+    ...ETAPA_VENTA.filter((e) => enEtapa(e) > 0 || e.clave === etapa).map((e) => ({
+      valor: e.clave,
+      etiqueta: `${e.etiqueta} (${enEtapa(e)})`,
+    })),
+  ]
+
+  // El pie de la etapa encendida: la pastilla dice cómo se llama y esto, qué
+  // significa. Sin él, «Ya costeada» no le dice nada a quien entra por primera
+  // vez.
+  const pieDeEtapa = ETAPA_VENTA.find((e) => e.clave === etapa)?.pie
 
   return (
     <>
       <EncabezadoPagina
         titulo="Cotizaciones"
-        descripcion="Propuestas económicas al cliente. Una cotización aprobada es el origen de la orden de trabajo."
+        descripcion="Ventas pone el precio, Administración arma el costeo y Gerencia da el visto antes de que el papel salga al cliente."
         acciones={
-          puede(perfil, 'cotizaciones.crear') && (
-            <Link
-              href="/cotizaciones/nueva"
-              className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-base)] bg-acento px-4 text-sm font-medium text-acento-texto hover:bg-acento-fuerte"
-            >
+          puedeCrear && (
+            <EnlaceBoton href="/cotizaciones/nueva">
               <Plus aria-hidden className="size-4" />
               Nueva cotización
-            </Link>
+            </EnlaceBoton>
           )
         }
       />
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Link
-          href="/cotizaciones"
-          className={
-            !estado
-              ? 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-xs font-medium text-acento'
-              : 'rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs text-texto-suave hover:bg-superficie-2'
-          }
-        >
-          Todas
-        </Link>
-        {ESTADOS.map((o) => (
-          <Link
-            key={o.valor}
-            href={`/cotizaciones?estado=${o.valor}`}
-            className={
-              estado === o.valor
-                ? 'rounded-[var(--radius-base)] bg-acento-suave px-3 py-1.5 text-xs font-medium text-acento'
-                : 'rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs text-texto-suave hover:bg-superficie-2'
-            }
-          >
-            {o.etiqueta}
-          </Link>
-        ))}
-      </div>
+      <BuscadorSimple
+        ruta="/cotizaciones"
+        etiqueta="Buscar cotizaciones"
+        marcador="Buscar por número, cliente o placa"
+      />
+
+      <PastillaFiltro
+        ruta="/cotizaciones"
+        clave="etapa"
+        opciones={filtros}
+        params={params}
+        activo={etapa ?? null}
+        etiqueta="Filtrar por etapa"
+        className="mt-4 mb-1"
+      />
+
+      {pieDeEtapa && <p className="mb-3 px-0.5 text-xs text-texto-suave">{pieDeEtapa}</p>}
+      {!pieDeEtapa && <div className="mb-3" />}
 
       <Tarjeta className="overflow-hidden">
         <Tabla>
@@ -72,58 +177,129 @@ export default async function PaginaCotizaciones({ searchParams }: PageProps<'/c
             <tr>
               <TH>Número</TH>
               <TH>Cliente</TH>
-              <TH>Trabajo</TH>
-              <TH>Emisión</TH>
-              <TH>Vigencia</TH>
+              {/* En el teléfono estas tres se esconden y su dato baja a las dos
+                  primeras celdas: caben cuatro columnas, no siete. */}
+              <TH className="hidden sm:table-cell">Trabajo</TH>
+              <TH className="hidden sm:table-cell">Emisión</TH>
+              <TH className="hidden sm:table-cell">Vigencia</TH>
               <TH>Estado</TH>
+              {/* La espera aparece un tramo más tarde que las otras: es la
+                  columna nueva y no vale que empuje al Total fuera de la hoja.
+                  Hasta ese ancho el dato viaja pegado al estado. */}
+              <TH className="hidden md:table-cell">Esperando</TH>
               <TH className="text-right">Total</TH>
             </tr>
           </TablaCabecera>
           <tbody>
             {cotizaciones.length === 0 ? (
               <SinDatos
-                colSpan={7}
-                titulo={estado ? 'Sin cotizaciones en ese estado' : 'Aún no hay cotizaciones'}
-                descripcion="Elabora una cotización para presentarle el precio al cliente."
+                colSpan={8}
+                titulo={vacio.titulo}
+                descripcion={vacio.descripcion}
+                accion={
+                  hayFiltro ? (
+                    <EnlaceBoton href="/cotizaciones" variante="secundario" tamano="sm">
+                      Ver todas
+                    </EnlaceBoton>
+                  ) : (
+                    puedeCrear && (
+                      <EnlaceBoton href="/cotizaciones/nueva" tamano="sm">
+                        <Plus aria-hidden className="size-3.5" />
+                        Nueva cotización
+                      </EnlaceBoton>
+                    )
+                  )
+                }
               />
             ) : (
               cotizaciones.map((c) => {
                 const est = definir(ESTADO_COTIZACION, c.estado)
                 const cliente = c.cliente as unknown as { razon_social: string }
-                const unidad = c.unidad as unknown as { placa: string } | null
+                const unidad = c.unidad as unknown as UnidadNombrable | null
                 const carroceria = c.tipo_carroceria as unknown as { nombre: string } | null
-                const dias = diasHasta(c.fecha_vencimiento)
-                const vigente = c.estado === 'ENVIADA' || c.estado === 'BORRADOR'
+                // Lo que se va a hacer es lo que escribió Ventas; la carrocería
+                // es de dónde sale cuando todavía no lo escribió. La columna
+                // enseñaba solo la carrocería y salía con raya en toda
+                // cotización sin tipo puesto, aunque tuviera el concepto escrito
+                // y ese fuera justo el texto que iba a salir impreso.
+                const queSeHace = (c.concepto as string | null) ?? carroceria?.nombre ?? null
+                const trabajo = [queSeHace, unidad && nombreDeUnidad(unidad)]
+                  .filter(Boolean)
+                  .join(' · ')
+                const aviso = avisoDeVigencia(c.estado, diasHasta(c.fecha_vencimiento))
+                const desde = esperandoDesde(c)
+                const parada = espera(desde)
+                const mano = LE_TOCA_A[c.estado]
 
                 return (
                   <TR key={c.id}>
                     <TD className="whitespace-nowrap">
+                      {/* El número es la puerta a la ficha: en el teléfono se
+                          marca con el dedo, así que el enlace ocupa los 44 px
+                          de alto en vez de la altura de la letra. */}
                       <Link
                         href={`/cotizaciones/${c.id}`}
-                        className="font-medium text-acento hover:underline"
+                        className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0"
                       >
                         {c.numero}
                       </Link>
+                      <p className="tabular mt-0.5 text-[11px] text-texto-suave sm:hidden">
+                        {fecha(c.fecha_emision)} → {fecha(c.fecha_vencimiento)}
+                      </p>
+                      {aviso && (
+                        <p className={`text-[11px] sm:hidden ${aviso.clase}`}>{aviso.texto}</p>
+                      )}
                     </TD>
-                    <TD className="max-w-48 truncate">{cliente.razon_social}</TD>
-                    <TD className="text-texto-suave">
-                      {carroceria?.nombre ?? '—'}
-                      {unidad && <span className="tabular"> · {unidad.placa}</span>}
+                    <TD className="max-w-48">
+                      <p className="truncate">{cliente.razon_social}</p>
+                      {trabajo && (
+                        <p className="truncate text-[11px] text-texto-suave sm:hidden">{trabajo}</p>
+                      )}
                     </TD>
-                    <TD className="whitespace-nowrap">{fecha(c.fecha_emision)}</TD>
-                    <TD className="whitespace-nowrap">
+                    <TD className="hidden text-texto-suave sm:table-cell">
+                      {queSeHace ?? '—'}
+                      {/* Sin placa, el nombre sale de otro dato de la unidad; en
+                          letra más tenue para que no se lea como matrícula. */}
+                      {unidad && (
+                        <span className={todaviaSinPlaca(unidad) ? 'text-texto-tenue' : 'tabular'}>
+                          {' · '}
+                          {nombreDeUnidad(unidad)}
+                        </span>
+                      )}
+                    </TD>
+                    <TD className="hidden whitespace-nowrap sm:table-cell">
+                      {fecha(c.fecha_emision)}
+                    </TD>
+                    <TD className="hidden whitespace-nowrap sm:table-cell">
                       {fecha(c.fecha_vencimiento)}
-                      {vigente && dias !== null && dias < 0 && (
-                        <p className="text-[11px] text-peligro">vencida</p>
-                      )}
-                      {vigente && dias !== null && dias >= 0 && dias <= 3 && (
-                        <p className="text-[11px] text-aviso">
-                          vence en {dias === 0 ? 'hoy' : `${dias} d`}
-                        </p>
-                      )}
+                      {aviso && <p className={`text-[11px] ${aviso.clase}`}>{aviso.texto}</p>}
                     </TD>
                     <TD>
                       <Insignia tono={est.tono}>{est.etiqueta}</Insignia>
+                      {/* La insignia dice dónde está; esta línea, de quién es la
+                          pelota. Debajo del ancho en que aparece la columna de
+                          espera, los días viajan acá pegados al responsable. */}
+                      {(mano || parada) && (
+                        <p className="mt-0.5 text-[11px] text-texto-suave">
+                          {mano}
+                          {parada && (
+                            <span className={`md:hidden ${parada.clase}`}>
+                              {mano ? ' · ' : ''}
+                              {parada.texto}
+                            </span>
+                          )}
+                        </p>
+                      )}
+                    </TD>
+                    <TD className="hidden whitespace-nowrap md:table-cell">
+                      {parada ? (
+                        <>
+                          <span className={`tabular ${parada.clase}`}>{parada.texto}</span>
+                          <p className="text-[11px] text-texto-tenue">desde {fecha(desde)}</p>
+                        </>
+                      ) : (
+                        <span className="text-texto-tenue">—</span>
+                      )}
                     </TD>
                     <TD className="tabular text-right font-medium whitespace-nowrap">
                       {moneda(c.total, (c.moneda ?? 'PEN') as CodigoMoneda)}

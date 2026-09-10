@@ -26,6 +26,13 @@ banco local, y la interacción con clic real.
   mensajes de `raise exception` los lee el usuario final — se redactan como
   para él («La OT 2921-2026 no se puede programar sin fecha…»).
 - Seguridad de cada objeto nuevo: ver la skill `seguridad`. No es opcional.
+- **Un índice de clave foránea solo se crea si la migración dice cuál de las
+  tres cumple**: (a) no existe ya un índice cuya primera columna coincida, (b) la
+  aplicación filtra de verdad por esa columna, (c) el padre se borra en algún
+  flujo. Ninguna de las tres → no se crea, aunque `get_advisors` lo pida: solo
+  añade coste de escritura y otro aviso de «índice sin usar». Está medido en la
+  skill `datos`, «Lo que ya se midió»; saltárselo costó 28 índices y una
+  migración para retirarlos.
 
 ## Checks (`db/test/checks/`)
 
@@ -45,6 +52,7 @@ banco local, y la interacción con clic real.
 ## El ciclo completo, en orden
 
 ```bash
+./scripts/verificar.sh                        # tipos, TypeScript y ESLint de una vez
 ./scripts/db-test.sh                         # esquema + todos los checks
 ./scripts/generar-tipos.sh                   # regenera src/types/database.ts
 BANCO_CLAVE='...' ./herramientas/banco/preparar.sh   # rehace mw_demo
@@ -87,3 +95,43 @@ por trigger— tras el cual el documento queda congelado como evidencia. El
 patrón está en `20260101000034_anular_no_borrar.sql`: trigger propio de
 anulación, `fn_..._bloquear_borrado` que siempre levanta excepción, la
 política `borrar_*` eliminada y el `grant delete` revocado.
+
+## Trampas
+
+*(Sección viva: aquí se anota lo que salió mal al tocar el esquema. Ver `aprender`.)*
+
+- **`next typegen` antes de `tsc`.** Sin él, TypeScript reporta decenas de
+  «Cannot find name 'PageProps'» que no son errores del código y hacen perder
+  media hora persiguiendo un fallo inexistente.
+
+- **Un check sin sesión no puede aprobar una orden, y varios lo intentan.**
+  Desde el blindaje (migración `013`), `ot_registrar_evento` exige
+  `puede_ver_orden`, y sin usuario en la sesión eso es falso: aprobar una OT
+  levanta «No puede registrar eventos en una orden que no le corresponde», que
+  es lo que dispara `crear_etapas_ot`. Comprobado contra la base viva el
+  2026-09-02. El armazón de un check —crear la orden, aprobarla, ponerla en
+  taller— se monta **con un usuario ADMIN** (`test.crear_usuario(..., 'ADMIN',
+  ...)` y `test.como_usuario`), no sin sesión y no con el rol que la prueba está
+  examinando: si se monta con ese rol, al primer disparador que exija un permiso
+  la prueba se cae por el armazón y no por lo que quería probar. Está arreglado
+  así en `150_botones_que_no_mienten.sql`; **quedan checks anteriores que
+  aprueban órdenes sin sesión y hoy no pasarían** — al tocar uno, arreglarlo con
+  este patrón. Que no se note es la otra mitad del problema: `db-test.sh` no
+  corre en la máquina de trabajo (ver la memoria del proyecto), así que el
+  conjunto se pudre sin que nadie lo vea.
+
+- **Storage no se borra por SQL.** Supabase protege `storage.objects` y
+  `storage.buckets` con un trigger (`protect_delete`) que rechaza cualquier
+  `delete` directo, aunque el bucket esté vacío: «Direct deletion from storage
+  tables is not allowed. Use the Storage API instead». La migración `094` cayó
+  entera por eso el 2026-09-09. Un bucket que sobra se deja sin políticas —nadie
+  lee ni escribe— y se retira desde el panel de Storage; la migración solo avisa
+  con `raise notice`.
+
+- **Una columna generada se suelta antes que sus fuentes.** `drop column` de
+  una columna de la que depende una `generated always as (…) stored` se niega
+  sin cascade («other objects depend on it»), y el orden dentro de un mismo
+  `alter table … drop column a, drop column b` no lo salva. Primero la generada,
+  en su propio `alter table`; después el resto. Los índices y checks que nombran
+  a la columna sí caen solos con ella. Le pasó a `materiales.codigo_almacen` en
+  la `094`.

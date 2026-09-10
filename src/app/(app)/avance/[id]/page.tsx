@@ -9,8 +9,10 @@ import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
 import { cabeceraDeAvance, etapasDeLaOrden } from '@/lib/datos/avances'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { fecha as formatearFecha } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
+import { esUuid } from '@/lib/utils'
 
 import { RegistrarAvance } from '../registrar-avance'
 
@@ -19,6 +21,8 @@ export const metadata = { title: 'Avance de la unidad' }
 export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avance/[id]'>) {
   const perfil = await exigirPermiso('produccion.ver')
   const { id } = await params
+  // Un id mal formado es «no existe», no un error del servidor.
+  if (!esUuid(id)) notFound()
 
   const orden = await cabeceraDeAvance(id)
   if (!orden) notFound()
@@ -34,16 +38,22 @@ export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avanc
 
   return (
     <>
+      {/* min-h-11 solo en el teléfono: el dedo necesita 44 px de alto para no
+          fallar el volver; con el ratón basta el texto y el monitor no se mueve. */}
       <Link
         href="/avance"
-        className="mb-3 inline-flex items-center gap-1.5 text-sm text-texto-suave hover:text-texto"
+        className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-sm text-texto-suave hover:text-texto sm:min-h-0"
       >
         <ArrowLeft aria-hidden className="size-4" />
         Volver al taller
       </Link>
 
+      {/* El título es el nombre de la unidad, no su placa: hay carrocerías que
+          se construyen sobre chasis todavía sin matricular. El número de la
+          orden queda a la vista en la descripción, que es como se pide por
+          teléfono. */}
       <EncabezadoPagina
-        titulo={orden.placa ?? (orden.numero as string)}
+        titulo={nombreDeUnidad(orden)}
         descripcion={`${orden.numero} · ${orden.cliente} · ${orden.descripcion}`}
         acciones={registra && <RegistrarAvance ordenId={id} etapas={etapas} />}
       />
@@ -78,7 +88,7 @@ export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avanc
 
           <Link
             href={`/ordenes/${id}`}
-            className="text-xs font-medium text-acento hover:underline"
+            className="inline-flex min-h-11 items-center text-xs font-medium text-acento hover:underline sm:min-h-0"
           >
             Ver la orden completa
           </Link>
