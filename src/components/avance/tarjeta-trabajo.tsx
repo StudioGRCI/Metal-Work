@@ -21,7 +21,9 @@ export function TarjetaTrabajo({ trabajo: t }: { trabajo: TrabajoSinOrden }) {
   const detalle = [t.placa ? t.descripcion : null, t.cliente].filter(Boolean).join(' · ')
 
   return (
-    <Tarjeta className="relative flex flex-col">
+    // `min-w-0`: en una grilla, sin él el nombre del cliente —recortado en una
+    // línea— estira la tarjeta hasta su largo y la pantalla se sale de costado.
+    <Tarjeta className="relative flex min-w-0 flex-col">
       <TarjetaCuerpo className="flex flex-1 flex-col gap-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">

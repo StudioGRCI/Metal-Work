@@ -37,7 +37,10 @@ export function EncabezadoPagina({
           <h1 className="text-xl font-semibold tracking-tight text-texto">{titulo}</h1>
           {descripcion && <p className="mt-1 text-sm text-texto-suave">{descripcion}</p>}
         </div>
-        {acciones && <div className="flex shrink-0 flex-wrap items-center gap-2">{acciones}</div>}
+        {/* Sin `shrink-0`: cuando las acciones bajan a su propia línea y no caben
+            —tres botones en el teléfono—, se acomodan en dos filas en vez de
+            empujar la pantalla de costado. */}
+        {acciones && <div className="flex min-w-0 flex-wrap items-center gap-2">{acciones}</div>}
       </div>
     </div>
   )

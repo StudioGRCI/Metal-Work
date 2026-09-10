@@ -148,7 +148,7 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
               // `relative` + el `after` del enlace: en el teléfono se abre la
               // unidad tocando la tarjeta entera, no apuntando a la placa. No hay
               // otro enlace dentro, así que nada queda tapado.
-              <Tarjeta key={f.orden_id} className="relative flex flex-col">
+              <Tarjeta key={f.orden_id} className="relative flex min-w-0 flex-col">
                 <TarjetaCuerpo className="flex flex-1 flex-col gap-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
