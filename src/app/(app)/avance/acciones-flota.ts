@@ -29,6 +29,8 @@ const REGLAS: Record<string, string> = {
   ck_flota_como_se_llama: 'Escribe la placa o, si no tiene, describe la unidad.',
   ck_flota_avance_fecha: 'El reporte no puede ser de pasado mañana.',
   ck_flota_foto_ruta: 'Una de las fotos no es de esta unidad.',
+  uq_flota_avance_no_se_repite:
+    'Ese mismo reporte ya se registró hoy. Si hubo algo más, cuéntalo con otras palabras.',
 }
 
 function traducir(error: { message: string; code?: string }) {

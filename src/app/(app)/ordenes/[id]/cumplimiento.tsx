@@ -1,8 +1,7 @@
 'use client'
 
 import { Check, Minus, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
@@ -17,6 +16,7 @@ import type {
   ResumenCumplimiento,
 } from '@/lib/datos/cumplimiento'
 import { cantidad as fmtCantidad, fecha, hoyLima, numero } from '@/lib/format'
+import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 
 import {
@@ -31,35 +31,11 @@ import {
   reportarProduccion,
 } from './acciones-cumplimiento'
 
-type Accion = (previo: unknown, datos: FormData) => Promise<ResultadoAccion>
 
 /**
  * Manejador propio en lugar de useActionState: el formulario se cierra solo
  * cuando el guardado fue correcto, y el error se queda a la vista si no.
  */
-function useEnvio(accion: Accion, alTerminar?: () => void) {
-  const router = useRouter()
-  const [, iniciarTransicion] = useTransition()
-  const [enviando, setEnviando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function enviar(datos: FormData) {
-    if (enviando) return
-    setError(null)
-    setEnviando(true)
-    const resultado = await accion(null, datos)
-    setEnviando(false)
-
-    if (resultado.ok) {
-      alTerminar?.()
-      iniciarTransicion(() => router.refresh())
-      return
-    }
-    setError(resultado.error)
-  }
-
-  return { enviar, enviando, error }
-}
 
 function Error_({ texto }: { texto: string | null }) {
   if (!texto) return null
@@ -213,7 +189,7 @@ function Cifra({ titulo, children }: { titulo: string; children: React.ReactNode
 // ================================================================= los planos
 function NuevoPlano({ ordenId, pesoLibre }: { ordenId: string; pesoLibre: number }) {
   const [abierto, setAbierto] = useState(false)
-  const { enviar, enviando, error } = useEnvio(agregarPlano, () => setAbierto(false))
+  const { alEnviar, enviando, error } = useEnvio(agregarPlano, () => setAbierto(false))
 
   if (!abierto) {
     return (
@@ -233,7 +209,7 @@ function NuevoPlano({ ordenId, pesoLibre }: { ordenId: string; pesoLibre: number
         descripcion="Como la fila de cabecera de su hoja: el número del plano, qué agrupa y cuánto pesa."
       />
       <TarjetaCuerpo>
-        <form action={enviar} className="grid gap-3 sm:grid-cols-6">
+        <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
           <input type="hidden" name="orden_id" value={ordenId} />
           <Campo etiqueta="N.º plano" htmlFor="np-numero">
             <Entrada id="np-numero" name="numero_plano" required autoFocus placeholder="1" />
@@ -408,10 +384,10 @@ function FormularioEntrega({
   planoId: string
   alTerminar: () => void
 }) {
-  const { enviar, enviando, error } = useEnvio(entregarPlano, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(entregarPlano, alTerminar)
 
   return (
-    <form action={enviar} className="flex flex-wrap items-end gap-3 border-t border-borde bg-superficie-2 px-4 py-3">
+    <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-3 border-t border-borde bg-superficie-2 px-4 py-3">
       <input type="hidden" name="orden_id" value={ordenId} />
       <input type="hidden" name="plano_id" value={planoId} />
       <Campo etiqueta="Entregado el" htmlFor={`entrega-${planoId}`} ayuda="Desde ese día Maestranza puede empezar a habilitar">
@@ -441,11 +417,11 @@ function FormularioPlano({
   plano: PlanoCumplimiento
   alTerminar: () => void
 }) {
-  const { enviar, enviando, error } = useEnvio(editarPlano, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(editarPlano, alTerminar)
   const id = plano.plano_id ?? ''
 
   return (
-    <form action={enviar} className="grid gap-3 border-t border-borde bg-superficie-2 px-4 py-3 sm:grid-cols-6">
+    <form onSubmit={alEnviar} className="grid gap-3 border-t border-borde bg-superficie-2 px-4 py-3 sm:grid-cols-6">
       <input type="hidden" name="orden_id" value={ordenId} />
       <input type="hidden" name="plano_id" value={id} />
       <Campo etiqueta="N.º plano" htmlFor={`ep-numero-${id}`}>
@@ -490,6 +466,8 @@ function FormularioPlano({
   )
 }
 
+type Accion = (previo: unknown, datos: FormData) => Promise<ResultadoAccion>
+
 function ConfirmarQuitar({
   accion,
   id,
@@ -503,10 +481,10 @@ function ConfirmarQuitar({
   texto: string
   alTerminar: () => void
 }) {
-  const { enviar, enviando, error } = useEnvio(accion, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(accion, alTerminar)
 
   return (
-    <form action={enviar} className="flex flex-wrap items-center gap-3 border-t border-borde bg-peligro-suave px-4 py-3">
+    <form onSubmit={alEnviar} className="flex flex-wrap items-center gap-3 border-t border-borde bg-peligro-suave px-4 py-3">
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="orden_id" value={ordenId} />
       <p className="flex-1 text-xs text-peligro">{texto}</p>
@@ -534,10 +512,10 @@ function FormularioPiezas({
   planoId: string
   alTerminar: () => void
 }) {
-  const { enviar, enviando, error } = useEnvio(agregarPiezas, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(agregarPiezas, alTerminar)
 
   return (
-    <form action={enviar} className="space-y-2">
+    <form onSubmit={alEnviar} className="space-y-2">
       <input type="hidden" name="orden_id" value={ordenId} />
       <input type="hidden" name="plano_id" value={planoId} />
       <Campo
@@ -787,11 +765,11 @@ function FormularioMaestranza({
   pieza: PiezaCumplimiento
   alTerminar: () => void
 }) {
-  const { enviar, enviando, error } = useEnvio(reportarMaestranza, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(reportarMaestranza, alTerminar)
   const id = pieza.id ?? ''
 
   return (
-    <form action={enviar} className="grid gap-3 sm:grid-cols-5">
+    <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-5">
       <input type="hidden" name="orden_id" value={ordenId} />
       <input type="hidden" name="pieza_id" value={id} />
       <p className="text-xs font-semibold text-texto sm:col-span-5">Maestranza reporta «{pieza.nombre}»</p>
@@ -832,12 +810,12 @@ function FormularioProduccion({
   pieza: PiezaCumplimiento
   alTerminar: () => void
 }) {
-  const { enviar, enviando, error } = useEnvio(reportarProduccion, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(reportarProduccion, alTerminar)
   const id = pieza.id ?? ''
   const ensamble = Boolean(pieza.es_ensamble)
 
   return (
-    <form action={enviar} className="grid gap-3 sm:grid-cols-5">
+    <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-5">
       <input type="hidden" name="orden_id" value={ordenId} />
       <input type="hidden" name="pieza_id" value={id} />
       <p className="text-xs font-semibold text-texto sm:col-span-5">Producción reporta «{pieza.nombre}»</p>
@@ -882,11 +860,11 @@ function FormularioPieza({
   pieza: PiezaCumplimiento
   alTerminar: () => void
 }) {
-  const { enviar, enviando, error } = useEnvio(editarPieza, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(editarPieza, alTerminar)
   const id = pieza.id ?? ''
 
   return (
-    <form action={enviar} className="grid gap-3 sm:grid-cols-5">
+    <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-5">
       <input type="hidden" name="orden_id" value={ordenId} />
       <input type="hidden" name="pieza_id" value={id} />
       <Campo etiqueta="N.º" htmlFor={`en-${id}`}>

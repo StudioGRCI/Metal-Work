@@ -1,12 +1,12 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 import { Plus } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
+import { useEnvio } from '@/lib/envio'
 
 import { guardarUnidad } from './acciones'
 
@@ -39,29 +39,20 @@ export function NuevaUnidad({
   }) => void
   compacta?: boolean
 }) {
-  const router = useRouter()
-  const [pendiente, iniciarTransicion] = useTransition()
   const [abierto, setAbierto] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  // Se envía con un manejador propio en lugar de useActionState para poder
-  // cerrar el diálogo solo cuando el guardado sale bien, sin efectos.
-  async function enviar(datos: FormData) {
-    setError(null)
-    const resultado = await guardarUnidad(null, datos)
-
-    if (resultado.ok) {
+  // El diálogo se cierra solo cuando el guardado sale bien. Sin quien escuche
+  // la unidad nueva, es un alta suelta: se repinta la lista de atrás.
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
+    guardarUnidad,
+    (r) => {
       setAbierto(false)
-      if (resultado.datos) onCreada?.(resultado.datos)
-      // Sin quien la escuche, es un alta suelta: se refresca la lista de atrás.
-      if (!onCreada) iniciarTransicion(() => router.refresh())
-      return
-    }
-    setError(resultado.error)
-  }
+      if (r.datos) onCreada?.(r.datos)
+    },
+    { refrescar: !onCreada },
+  )
 
   function abrir() {
-    setError(null)
+    limpiar()
     setAbierto(true)
   }
 
@@ -89,7 +80,7 @@ export function NuevaUnidad({
         descripcion="El vehículo del cliente sobre el que se ejecutará el trabajo."
         ancho="lg"
       >
-        <form action={enviar} className="grid items-start gap-4 sm:grid-cols-3">
+        <form onSubmit={alEnviar} className="grid items-start gap-4 sm:grid-cols-3">
           <input type="hidden" name="cliente_id" value={clienteId} />
 
           {/* Esta ficha describe el chasis que trae el cliente y nada más. La
@@ -210,7 +201,7 @@ export function NuevaUnidad({
             <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierto(false)}>
               Cancelar
             </Boton>
-            <Boton type="submit" tamano="sm" cargando={pendiente}>
+            <Boton type="submit" tamano="sm" cargando={enviando}>
               Registrar unidad
             </Boton>
           </div>

@@ -1,7 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 import { AlertTriangle, CalendarClock, Lock } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
@@ -9,6 +8,7 @@ import { Entrada } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { cn } from '@/lib/utils'
+import { useEnvio } from '@/lib/envio'
 
 import { guardarProgramaTaller } from '../../acciones'
 
@@ -50,11 +50,8 @@ export function ProgramaDeTaller({
    */
   plazoOfrecido?: number | null
 }) {
-  const router = useRouter()
-  const [, iniciarTransicion] = useTransition()
-  const [error, setError] = useState<string | null>(null)
-  const [guardado, setGuardado] = useState(false)
-  const [enviando, setEnviando] = useState(false)
+  const { alEnviar, enviando, resultado, error } = useEnvio(guardarProgramaTaller)
+  const guardado = resultado?.ok === true
   // Lo escrito en las casillas, para poder sumar sin ir al servidor. Arranca en
   // lo que hay guardado.
   const [dias, setDias] = useState<Record<string, string>>(() =>
@@ -70,21 +67,6 @@ export function ProgramaDeTaller({
   // Prometer 45 días y programar 123 no es un detalle: es la fecha por la que
   // responde la empresa. Se dice acá, mientras todavía se puede negociar.
   const seExcede = Boolean(plazoOfrecido && total > plazoOfrecido)
-
-  async function enviar(datos: FormData) {
-    setError(null)
-    setGuardado(false)
-    setEnviando(true)
-    const resultado = await guardarProgramaTaller(null, datos)
-    setEnviando(false)
-
-    if (resultado.ok) {
-      setGuardado(true)
-      iniciarTransicion(() => router.refresh())
-      return
-    }
-    setError(resultado.error)
-  }
 
   if (etapas.length === 0) {
     return (
@@ -112,7 +94,7 @@ export function ProgramaDeTaller({
         }
       />
 
-      <form action={enviar}>
+      <form onSubmit={alEnviar}>
         <input type="hidden" name="cotizacion_id" value={cotizacionId} />
 
         <div className="overflow-x-auto">

@@ -11,6 +11,7 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import { createClient } from '@/lib/supabase/client'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
+import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 
 import { editarCotizacion } from '../acciones'
@@ -89,8 +90,7 @@ export function EditarCotizacion({
   const router = useRouter()
   const [, iniciarTransicion] = useTransition()
   const [abierto, setAbierto] = useState(false)
-  const [enviando, setEnviando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { alEnviar, enviando, error } = useEnvio(editarCotizacion, () => setAbierto(false))
 
   const [clienteId, setClienteId] = useState(cotizacion.cliente_id)
   const [unidadId, setUnidadId] = useState(cotizacion.unidad_id ?? '')
@@ -125,21 +125,6 @@ export function EditarCotizacion({
 
   const unidades = cargadas?.clienteId === clienteId ? cargadas.unidades : []
 
-  async function enviar(datos: FormData) {
-    setError(null)
-    setEnviando(true)
-    const salida = await editarCotizacion(null, datos)
-    setEnviando(false)
-
-    if (!salida.ok) {
-      setError(salida.error)
-      return
-    }
-
-    setAbierto(false)
-    iniciarTransicion(() => router.refresh())
-  }
-
   return (
     <>
       {/* «Editar» a secas se repite tres veces en esta pantalla; el rótulo
@@ -163,7 +148,7 @@ export function EditarCotizacion({
         descripcion="Acá va el precio que se le ofrece al cliente. El costo estimado no se escribe: lo arma Administración con las partidas."
         ancho="lg"
       >
-        <form action={enviar} className="space-y-3">
+        <form onSubmit={alEnviar} className="space-y-3">
           <input type="hidden" name="cotizacion_id" value={cotizacion.id} />
 
           <div className="grid gap-3 sm:grid-cols-2">

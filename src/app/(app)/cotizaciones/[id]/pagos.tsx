@@ -1,8 +1,7 @@
 'use client'
 
 import { CalendarCheck, Plus, Wallet } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -11,6 +10,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { PagoCliente, ResumenPagos } from '@/lib/datos/pagos'
+import { useEnvio } from '@/lib/envio'
 import { fecha as fmtFecha, hoyLima, moneda as fmtMoneda } from '@/lib/format'
 
 import { registrarPago } from './acciones-pagos'
@@ -55,28 +55,10 @@ export function PagosDelCliente({
   puedeRegistrar: boolean
 }) {
   const [abierto, setAbierto] = useState(false)
-  const router = useRouter()
-  const [, iniciarTransicion] = useTransition()
-  const [enviando, setEnviando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { alEnviar, enviando, error, limpiar } = useEnvio(registrarPago, () => setAbierto(false))
 
   const money = (v: number | null | undefined) =>
     fmtMoneda(Number(v ?? 0), resumen?.moneda ?? 'PEN')
-
-  async function enviar(datos: FormData) {
-    if (enviando) return
-    setError(null)
-    setEnviando(true)
-    const resultado = await registrarPago(null, datos)
-    setEnviando(false)
-
-    if (resultado.ok) {
-      setAbierto(false)
-      iniciarTransicion(() => router.refresh())
-      return
-    }
-    setError(resultado.error)
-  }
 
   return (
     <Tarjeta>
@@ -85,7 +67,14 @@ export function PagosDelCliente({
         descripcion="Lo que el cliente ya pagó de esta cotización. El primer pago es el que arranca el plazo de fabricación."
         acciones={
           puedeRegistrar && !abierto ? (
-            <Boton variante="secundario" tamano="sm" onClick={() => setAbierto(true)}>
+            <Boton
+              variante="secundario"
+              tamano="sm"
+              onClick={() => {
+                limpiar()
+                setAbierto(true)
+              }}
+            >
               <Plus aria-hidden className="size-3.5" />
               Registrar pago
             </Boton>
@@ -135,7 +124,7 @@ export function PagosDelCliente({
         {resumen?.pagado_pct != null && <Progreso valor={Math.min(resumen.pagado_pct, 100)} />}
 
         {abierto && puedeRegistrar && (
-          <form action={enviar} className="grid gap-3 rounded-[var(--radius-base)] bg-superficie-2 p-3 sm:grid-cols-6">
+          <form onSubmit={alEnviar} className="grid gap-3 rounded-[var(--radius-base)] bg-superficie-2 p-3 sm:grid-cols-6">
             <input type="hidden" name="cotizacion_id" value={cotizacionId} />
 
             <Campo etiqueta="Qué pago es" htmlFor="pg-tipo">

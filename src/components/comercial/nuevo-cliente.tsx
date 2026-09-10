@@ -1,13 +1,13 @@
 'use client'
 
 import { Plus } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 
 import { crearClienteRapido } from '@/app/(app)/clientes/acciones'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
+import { useEnvio } from '@/lib/envio'
 
 /**
  * Alta de cliente sin salir del formulario.
@@ -22,31 +22,20 @@ export function NuevoCliente({
 }: {
   onCreado?: (cliente: { id: string; razon_social: string; numero_documento: string }) => void
 }) {
-  const router = useRouter()
-  const [, iniciarTransicion] = useTransition()
   const [abierto, setAbierto] = useState(false)
-  const [enviando, setEnviando] = useState(false)
-  const [resultado, setResultado] = useState<
-    { ok: true; mensaje?: string } | { ok: false; error: string } | null
-  >(null)
-
-  // La acción se llama directo, sin useActionState: hay que avisar a quien
-  // abrió la ventana en cuanto el cliente existe, y encadenarlo a un efecto
-  // dispara renderizados de más.
-  async function enviar(datos: FormData) {
-    setEnviando(true)
-    const salida = await crearClienteRapido(null, datos)
-    setEnviando(false)
-    setResultado(salida)
-
-    if (salida.ok && salida.datos) {
-      onCreado?.(salida.datos)
-      if (!onCreado) iniciarTransicion(() => router.refresh())
-    }
-  }
+  // Hay que avisar a quien abrió la ventana en cuanto el cliente existe, sin
+  // encadenarlo a un efecto. Tras el éxito la ventana queda con «Cerrar» y sin
+  // el botón de registrar: no hay segundo envío posible.
+  const { alEnviar, enviando, resultado, limpiar } = useEnvio(
+    crearClienteRapido,
+    (r) => {
+      if (r.datos) onCreado?.(r.datos)
+    },
+    { refrescar: !onCreado },
+  )
 
   function abrir() {
-    setResultado(null)
+    limpiar()
     setAbierto(true)
   }
 
@@ -70,7 +59,7 @@ export function NuevoCliente({
         titulo="Nuevo cliente"
         descripcion="Lo justo para cotizar. La ficha completa se llena después en Clientes."
       >
-        <form action={enviar} className="space-y-3">
+        <form onSubmit={alEnviar} className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-[8rem_1fr]">
             <Campo etiqueta="Documento" htmlFor="nc-tipo" requerido>
               <Seleccion id="nc-tipo" name="tipo_documento" defaultValue="RUC" required>

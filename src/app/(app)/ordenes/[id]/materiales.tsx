@@ -1,45 +1,20 @@
 'use client'
 
 import { PackagePlus, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import type { ResultadoAccion } from '@/lib/acciones'
 import type { CatalogoMateriales, MaterialDeOrden } from '@/lib/datos/materiales-orden'
 import { cantidad as fmtCantidad } from '@/lib/format'
+import { useEnvio } from '@/lib/envio'
 
 import { agregarMaterial, cambiarCantidadMaterial, quitarMaterial } from './acciones-materiales'
 
-type Accion = (previo: unknown, datos: FormData) => Promise<ResultadoAccion>
 
-function useEnvio(accion: Accion, alTerminar?: () => void) {
-  const router = useRouter()
-  const [, iniciarTransicion] = useTransition()
-  const [enviando, setEnviando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function enviar(datos: FormData) {
-    if (enviando) return
-    setError(null)
-    setEnviando(true)
-    const resultado = await accion(null, datos)
-    setEnviando(false)
-
-    if (resultado.ok) {
-      alTerminar?.()
-      iniciarTransicion(() => router.refresh())
-      return
-    }
-    setError(resultado.error)
-  }
-
-  return { enviar, enviando, error }
-}
 
 function Error_({ texto }: { texto: string | null }) {
   if (!texto) return null
@@ -167,12 +142,12 @@ function Dato({ titulo, valor, pie }: { titulo: string; valor: string; pie: stri
 
 function AccionesLinea({ material, ordenId }: { material: MaterialDeOrden; ordenId: string }) {
   const [editando, setEditando] = useState(false)
-  const { enviar, enviando, error } = useEnvio(cambiarCantidadMaterial, () => setEditando(false))
+  const { alEnviar, enviando, error } = useEnvio(cambiarCantidadMaterial, () => setEditando(false))
   const quitar = useEnvio(quitarMaterial)
 
   if (editando) {
     return (
-      <form action={enviar} className="flex items-center gap-1">
+      <form onSubmit={alEnviar} className="flex items-center gap-1">
         <input type="hidden" name="id" value={material.id} />
         <input type="hidden" name="orden_id" value={ordenId} />
         <Entrada
@@ -208,7 +183,7 @@ function AccionesLinea({ material, ordenId }: { material: MaterialDeOrden; orden
       >
         <Pencil aria-hidden className="size-4" />
       </Boton>
-      <form action={quitar.enviar}>
+      <form onSubmit={quitar.alEnviar}>
         <input type="hidden" name="id" value={material.id} />
         <input type="hidden" name="orden_id" value={ordenId} />
         <Boton
@@ -237,7 +212,7 @@ function NuevoMaterial({
 }) {
   const [abierto, setAbierto] = useState(false)
   const [materialId, setMaterialId] = useState('')
-  const { enviar, enviando, error } = useEnvio(agregarMaterial, () => {
+  const { alEnviar, enviando, error } = useEnvio(agregarMaterial, () => {
     setAbierto(false)
     setMaterialId('')
   })
@@ -263,7 +238,7 @@ function NuevoMaterial({
         descripcion="Qué lleva la unidad y cuánto. El plano y la etapa son opcionales: hay material que es de la unidad entera. Si el material no está en el catálogo, se agrega en «Materiales» del menú."
       />
       <TarjetaCuerpo>
-        <form action={enviar} className="grid gap-3 sm:grid-cols-6">
+        <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
           <input type="hidden" name="orden_id" value={ordenId} />
 
           <Campo etiqueta="Material" htmlFor="nm-material" requerido className="sm:col-span-3">

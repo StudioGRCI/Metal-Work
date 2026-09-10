@@ -1,15 +1,14 @@
 'use client'
 
 import { Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { TD, TR } from '@/components/ui/tabla'
 import { Ventana } from '@/components/ui/ventana'
-import type { ResultadoAccion } from '@/lib/acciones'
+import { useEnvio } from '@/lib/envio'
 import type { MaterialDelCatalogo } from '@/lib/datos/materiales'
 
 import { cambiarEstadoMaterial, guardarMaterial } from './acciones'
@@ -19,30 +18,7 @@ type Catalogos = {
   unidades: { id: string; codigo: string; nombre: string }[]
 }
 
-type Accion = (previo: unknown, datos: FormData) => Promise<ResultadoAccion>
 
-function useEnvio(accion: Accion, alTerminar?: () => void) {
-  const router = useRouter()
-  const [, iniciarTransicion] = useTransition()
-  const [enviando, setEnviando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function enviar(datos: FormData) {
-    if (enviando) return
-    setError(null)
-    setEnviando(true)
-    const resultado = await accion(null, datos)
-    setEnviando(false)
-    if (resultado.ok) {
-      alTerminar?.()
-      iniciarTransicion(() => router.refresh())
-      return
-    }
-    setError(resultado.error)
-  }
-
-  return { enviar, enviando, error, limpiar: () => setError(null) }
-}
 
 /** La misma ventana para dar de alta y para corregir: cambia solo lo que trae. */
 function FormularioMaterial({
@@ -56,7 +32,7 @@ function FormularioMaterial({
   abierto: boolean
   alCerrar: () => void
 }) {
-  const { enviar, enviando, error } = useEnvio(guardarMaterial, alCerrar)
+  const { alEnviar, enviando, error } = useEnvio(guardarMaterial, alCerrar)
 
   return (
     <Ventana
@@ -66,7 +42,7 @@ function FormularioMaterial({
       descripcion="Cómo se llama, en qué unidad se cuenta y su especificación, para que en el desglose de la orden todos elijan el mismo."
       ancho="md"
     >
-      <form action={enviar} className="space-y-3">
+      <form onSubmit={alEnviar} className="space-y-3">
         {material && <input type="hidden" name="id" value={material.id} />}
 
         <Campo etiqueta="Nombre" htmlFor="fm-descripcion" requerido>
@@ -193,7 +169,7 @@ export function FilaMaterial({
             >
               <Pencil aria-hidden className="size-4" />
             </Boton>
-            <form action={estado.enviar}>
+            <form onSubmit={estado.alEnviar}>
               <input type="hidden" name="id" value={material.id} />
               <input type="hidden" name="activo" value={material.activo ? '0' : '1'} />
               <Boton

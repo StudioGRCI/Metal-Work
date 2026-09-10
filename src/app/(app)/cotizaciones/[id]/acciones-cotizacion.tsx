@@ -7,6 +7,7 @@ import { Download, Eye, Trash2 } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
+import { useEnvio } from '@/lib/envio'
 import { ConfirmarAccion, Ventana } from '@/components/ui/ventana'
 
 import { cambiarEstadoCotizacion, convertirEnOrden, eliminarCotizacion } from '../acciones'
@@ -269,7 +270,6 @@ export function AccionesCotizacion({
   const router = useRouter()
   const [, iniciarTransicion] = useTransition()
   const [error, setError] = useState<string | null>(null)
-  const [enviando, setEnviando] = useState(false)
   const [pidiendoMotivo, setPidiendoMotivo] = useState<Paso | null>(null)
   const [abriendoOrden, setAbriendoOrden] = useState(false)
   const [borrando, setBorrando] = useState(false)
@@ -333,29 +333,11 @@ export function AccionesCotizacion({
     }
   }
 
-  async function cambiar(datos: FormData) {
-    setError(null)
-    setEnviando(true)
-    const resultado = await cambiarEstadoCotizacion(null, datos)
-    setEnviando(false)
-    setPidiendoMotivo(null)
-
-    if (resultado.ok) iniciarTransicion(() => router.refresh())
-    else setError(resultado.error)
-  }
-
-  async function abrirOrden(datos: FormData) {
-    setError(null)
-    setEnviando(true)
-    const resultado = await convertirEnOrden(null, datos)
-    setEnviando(false)
-
-    // Si sale bien, la acción redirige a la orden y este código ya no corre.
-    if (!resultado.ok) {
-      setError(resultado.error)
-      setAbriendoOrden(false)
-    }
-  }
+  // Al salir bien el cuadro del motivo se cierra. Si el servidor dijo que no,
+  // queda abierto con el porqué adentro, y lo escrito sigue ahí.
+  const cambio = useEnvio(cambiarEstadoCotizacion, () => setPidiendoMotivo(null))
+  // Si sale bien, la acción redirige a la orden y esta pantalla ya no vuelve.
+  const orden = useEnvio(convertirEnOrden, undefined, { refrescar: false })
 
   const puedeAbrirOrden =
     cotizacion.estado === 'APROBADA' && !ordenExistente && puede('ordenes.crear')
@@ -439,15 +421,18 @@ export function AccionesCotizacion({
               key={t.estado}
               variante={varianteDel(t)}
               tamano="sm"
-              onClick={() => setPidiendoMotivo(t)}
+              onClick={() => {
+                cambio.limpiar()
+                setPidiendoMotivo(t)
+              }}
             >
               {t.etiqueta}
             </Boton>
           ) : (
-            <form key={t.estado} action={cambiar}>
+            <form key={t.estado} onSubmit={cambio.alEnviar}>
               <input type="hidden" name="cotizacion_id" value={cotizacion.id} />
               <input type="hidden" name="estado" value={t.estado} />
-              <Boton type="submit" tamano="sm" cargando={enviando} variante={varianteDel(t)}>
+              <Boton type="submit" tamano="sm" cargando={cambio.enviando} variante={varianteDel(t)}>
                 {t.etiqueta}
               </Boton>
             </form>
@@ -484,9 +469,9 @@ export function AccionesCotizacion({
         </p>
       )}
 
-      {error && (
+      {(error ?? cambio.error) && (
         <p role="alert" className="max-w-md rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
-          {error}
+          {error ?? cambio.error}
         </p>
       )}
 
@@ -501,7 +486,7 @@ export function AccionesCotizacion({
           descripcion={AVISO_MOTIVO[pidiendoMotivo.estado]}
           ancho="sm"
         >
-          <form action={cambiar} className="space-y-3">
+          <form onSubmit={cambio.alEnviar} className="space-y-3">
             <input type="hidden" name="cotizacion_id" value={cotizacion.id} />
             <input type="hidden" name="estado" value={pidiendoMotivo.estado} />
 
@@ -529,7 +514,7 @@ export function AccionesCotizacion({
                 type="submit"
                 tamano="sm"
                 variante={pidiendoMotivo.peligro ? 'peligro' : 'primario'}
-                cargando={enviando}
+                cargando={cambio.enviando}
               >
                 {MOTIVOS[pidiendoMotivo.estado]?.confirmar ?? pidiendoMotivo.etiqueta}
               </Boton>
@@ -545,7 +530,7 @@ export function AccionesCotizacion({
         descripcion="Se creará una orden en borrador con el cliente, la unidad y el presupuesto de esta cotización."
         ancho="sm"
       >
-        <form action={abrirOrden} className="space-y-3">
+        <form onSubmit={orden.alEnviar} className="space-y-3">
           <input type="hidden" name="cotizacion_id" value={cotizacion.id} />
 
           <Campo etiqueta="Taller donde se ejecutará" htmlFor="sede_id" requerido>
@@ -558,11 +543,17 @@ export function AccionesCotizacion({
             </Seleccion>
           </Campo>
 
+          {orden.error && (
+            <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
+              {orden.error}
+            </p>
+          )}
+
           <div className="flex justify-end gap-2">
             <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbriendoOrden(false)}>
               Cancelar
             </Boton>
-            <Boton type="submit" tamano="sm" cargando={enviando}>
+            <Boton type="submit" tamano="sm" cargando={orden.enviando}>
               Abrir orden
             </Boton>
           </div>

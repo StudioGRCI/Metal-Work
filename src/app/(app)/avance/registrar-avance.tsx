@@ -1,13 +1,13 @@
 'use client'
 
 import { Camera } from 'lucide-react'
-import { useActionState, useState } from 'react'
+import { useState } from 'react'
 
 import { SelectorFotos, fotosParaEnviar, haySubiendo, type FotoLista } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import { cn } from '@/lib/utils'
+import { useEnvio } from '@/lib/envio'
 import { hoyLima } from '@/lib/format'
 
 import { registrarAvance } from './acciones'
@@ -31,19 +31,44 @@ export function RegistrarAvance({
   const [abierto, setAbierto] = useState(false)
   const [fotos, setFotos] = useState<FotoLista[]>([])
   const [etapaId, setEtapaId] = useState('')
-  const [resultado, accion, enviando] = useActionState(registrarAvance, null)
+  const [aviso, setAviso] = useState<string | null>(null)
+  // Al guardar, la ventana se cierra y la línea nueva aparece arriba del
+  // diario; el aviso queda al lado del botón para que nadie dude de si entró.
+  // Antes la ventana quedaba abierta con «Registrar» activo, y un segundo toque
+  // era un segundo avance.
+  const { alEnviar, enviando, error, limpiar } = useEnvio(registrarAvance, (r) => {
+    setAbierto(false)
+    setAviso(r.mensaje ?? 'Avance registrado.')
+  })
 
   // La fecha del taller, no la del reloj universal: pasadas las siete de la
   // noche en Lima el reloj universal ya está en el día siguiente.
   const hoy = hoyLima()
   const enCurso = etapas.filter((e) => !['TERMINADA', 'OMITIDA'].includes(e.estado))
 
+  // Cada vez que se abre empieza limpia: sin el error ni las fotos de la vez
+  // anterior. Es un evento, no un efecto.
+  function abrir() {
+    limpiar()
+    setAviso(null)
+    setFotos([])
+    setEtapaId('')
+    setAbierto(true)
+  }
+
   return (
     <>
-      <Boton tamano={compacto ? 'sm' : undefined} variante={compacto ? 'secundario' : undefined} onClick={() => setAbierto(true)}>
-        <Camera aria-hidden className={compacto ? 'size-3.5' : 'size-4'} />
-        Registrar avance
-      </Boton>
+      <span className="inline-flex flex-wrap items-center gap-2">
+        <Boton tamano={compacto ? 'sm' : undefined} variante={compacto ? 'secundario' : undefined} onClick={abrir}>
+          <Camera aria-hidden className={compacto ? 'size-3.5' : 'size-4'} />
+          Registrar avance
+        </Boton>
+        {aviso && (
+          <span role="status" className="text-xs font-medium text-exito">
+            {aviso}
+          </span>
+        )}
+      </span>
 
       <Ventana
         abierta={abierto}
@@ -53,10 +78,7 @@ export function RegistrarAvance({
         ancho="lg"
       >
         <form
-          action={(datos) => {
-            datos.set('fotos', JSON.stringify(fotosParaEnviar(fotos)))
-            return accion(datos)
-          }}
+          onSubmit={(e) => alEnviar(e, (datos) => datos.set('fotos', JSON.stringify(fotosParaEnviar(fotos))))}
           className="space-y-3"
         >
           <input type="hidden" name="orden_id" value={ordenId} />
@@ -125,23 +147,15 @@ export function RegistrarAvance({
               apoyan en esa convención para decidir quién puede ver la foto. */}
           <SelectorFotos fotos={fotos} alCambiar={setFotos} prefijoRuta={`ot/${ordenId}/avance`} />
 
-          {resultado && (
-            <p
-              role={resultado.ok === false ? 'alert' : 'status'}
-              className={cn(
-                'rounded-[var(--radius-base)] px-3 py-2 text-xs',
-                resultado.ok === false
-                  ? 'bg-peligro-suave text-peligro'
-                  : 'bg-exito-suave text-exito',
-              )}
-            >
-              {resultado.ok === false ? resultado.error : resultado.mensaje}
+          {error && (
+            <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
+              {error}
             </p>
           )}
 
           <div className="flex justify-end gap-2 pt-1">
             <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
-              {resultado?.ok ? 'Cerrar' : 'Cancelar'}
+              Cancelar
             </Boton>
             <Boton type="submit" cargando={enviando} disabled={haySubiendo(fotos)}>
               Registrar

@@ -1,42 +1,16 @@
 'use client'
 
 import { Camera, CheckCircle2, LogOut, Undo2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 
 import { SelectorFotos, fotosParaEnviar, haySubiendo, type FotoLista } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import type { ResultadoAccion } from '@/lib/acciones'
+import { useEnvio } from '@/lib/envio'
 import { hoyLima } from '@/lib/format'
 
 import { cambiarEstadoFlota, reportarFlota } from '../../acciones-flota'
-
-type Accion = (previo: unknown, datos: FormData) => Promise<ResultadoAccion>
-
-function useEnvio(accion: Accion, alTerminar?: () => void) {
-  const router = useRouter()
-  const [, iniciarTransicion] = useTransition()
-  const [enviando, setEnviando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function enviar(datos: FormData) {
-    if (enviando) return
-    setError(null)
-    setEnviando(true)
-    const resultado = await accion(null, datos)
-    setEnviando(false)
-    if (resultado.ok) {
-      alTerminar?.()
-      iniciarTransicion(() => router.refresh())
-      return
-    }
-    setError(resultado.error)
-  }
-
-  return { enviar, enviando, error, limpiar: () => setError(null) }
-}
 
 function Error_({ texto }: { texto: string | null }) {
   if (!texto) return null
@@ -96,13 +70,20 @@ function Reportar({
 }) {
   const [abierto, setAbierto] = useState(false)
   const [fotos, setFotos] = useState<FotoLista[]>([])
-  const { enviar, enviando, error, limpiar } = useEnvio(reportarFlota, () => setAbierto(false))
+  const [aviso, setAviso] = useState<string | null>(null)
+  // Al guardar, la ventana se cierra y el reporte aparece arriba de la lista;
+  // el aviso queda al lado del botón para que nadie dude de si entró.
+  const { alEnviar, enviando, error, limpiar } = useEnvio(reportarFlota, (r) => {
+    setAbierto(false)
+    setAviso(r.mensaje ?? 'Reporte registrado.')
+  })
 
   const hoy = hoyLima()
   const areaInicial = areas.some((a) => a.id === areaPropia) ? areaPropia : areas[0]?.id
 
   function abrir() {
     limpiar()
+    setAviso(null)
     setFotos([])
     setAbierto(true)
   }
@@ -113,6 +94,11 @@ function Reportar({
         <Camera aria-hidden className="size-4" />
         Reportar
       </Boton>
+      {aviso && (
+        <p role="status" className="text-xs font-medium text-exito">
+          {aviso}
+        </p>
+      )}
 
       <Ventana
         abierta={abierto}
@@ -122,10 +108,7 @@ function Reportar({
         ancho="lg"
       >
         <form
-          action={(datos) => {
-            datos.set('fotos', JSON.stringify(fotosParaEnviar(fotos)))
-            return enviar(datos)
-          }}
+          onSubmit={(e) => alEnviar(e, (datos) => datos.set('fotos', JSON.stringify(fotosParaEnviar(fotos))))}
           className="space-y-3"
         >
           <input type="hidden" name="flota_id" value={flotaId} />
@@ -213,10 +196,10 @@ function CambiarEstado({
   icono: typeof CheckCircle2
   texto: string
 }) {
-  const { enviar, enviando, error } = useEnvio(cambiarEstadoFlota)
+  const { alEnviar, enviando, error } = useEnvio(cambiarEstadoFlota)
 
   return (
-    <form action={enviar} className="contents">
+    <form onSubmit={alEnviar} className="contents">
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="estado" value={estado} />
       <Boton type="submit" variante="secundario" cargando={enviando}>
@@ -230,7 +213,7 @@ function CambiarEstado({
 
 function Salida({ id, nombre }: { id: string; nombre: string }) {
   const [abierto, setAbierto] = useState(false)
-  const { enviar, enviando, error, limpiar } = useEnvio(cambiarEstadoFlota, () => setAbierto(false))
+  const { alEnviar, enviando, error, limpiar } = useEnvio(cambiarEstadoFlota, () => setAbierto(false))
 
   function abrir() {
     limpiar()
@@ -251,7 +234,7 @@ function Salida({ id, nombre }: { id: string; nombre: string }) {
         descripcion="Queda con fecha y firma, y de aquí no se vuelve: si la unidad regresa, se registra otra vez."
         ancho="sm"
       >
-        <form action={enviar} className="space-y-3">
+        <form onSubmit={alEnviar} className="space-y-3">
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="estado" value="SALIO" />
 

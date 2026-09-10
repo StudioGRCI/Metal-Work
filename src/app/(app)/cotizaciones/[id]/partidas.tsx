@@ -13,6 +13,7 @@ import { ESTADO_COTIZACION, definir } from '@/lib/dominio/estados'
 import { cantidad, moneda, numero, porcentaje } from '@/lib/format'
 import type { CodigoMoneda } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { useEnvio } from '@/lib/envio'
 import type { Tablas } from '@/types/database'
 
 import { agregarPartida, editarPartida, eliminarPartida } from '../acciones'
@@ -75,7 +76,6 @@ export function Partidas({
   const [agregando, setAgregando] = useState(false)
   const [editando, setEditando] = useState<Partida | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [enviando, setEnviando] = useState(false)
   // La partida que se pidió quitar, esperando la confirmación. Se guarda la
   // fila entera y no el id: la pregunta tiene que nombrar lo que se va.
   const [porQuitar, setPorQuitar] = useState<Partida | null>(null)
@@ -91,32 +91,15 @@ export function Partidas({
   const hayMargen = hayPrecio && partidas.length > 0
   const seExcede = hayMargen && margen < 0
 
-  async function enviar(datos: FormData) {
+  const alta = useEnvio(agregarPartida, () => setAgregando(false))
+  const edicion = useEnvio(editarPartida, () => setEditando(null))
+  // Quitar una partida es un clic con confirmación, no un formulario: su error
+  // va por `error`. Los de agregar y corregir, por su gancho.
+  const errorVisible = error ?? alta.error ?? edicion.error
+  function limpiarErrores() {
     setError(null)
-    setEnviando(true)
-    const resultado = await agregarPartida(null, datos)
-    setEnviando(false)
-
-    if (resultado.ok) {
-      setAgregando(false)
-      iniciarTransicion(() => router.refresh())
-      return
-    }
-    setError(resultado.error)
-  }
-
-  async function guardarEdicion(datos: FormData) {
-    setError(null)
-    setEnviando(true)
-    const resultado = await editarPartida(null, datos)
-    setEnviando(false)
-
-    if (resultado.ok) {
-      setEditando(null)
-      iniciarTransicion(() => router.refresh())
-      return
-    }
-    setError(resultado.error)
+    alta.limpiar()
+    edicion.limpiar()
   }
 
   /**
@@ -355,7 +338,7 @@ export function Partidas({
                             <button
                               type="button"
                               onClick={() => {
-                                setError(null)
+                                limpiarErrores()
                                 setAgregando(false)
                                 setEditando(p)
                               }}
@@ -370,7 +353,7 @@ export function Partidas({
                             <button
                               type="button"
                               onClick={() => {
-                                setError(null)
+                                limpiarErrores()
                                 setPorQuitar(p)
                               }}
                               aria-label={`Eliminar partida ${p.descripcion}`}
@@ -390,17 +373,17 @@ export function Partidas({
           </table>
         </div>
 
-        {error && (
+        {errorVisible && (
           <p
             role="alert"
             className="border-t border-borde bg-peligro-suave px-3 py-2 text-xs text-peligro"
           >
-            {error}
+            {errorVisible}
           </p>
         )}
 
         {agregando && (
-          <form action={enviar} className="grid gap-3 border-t border-borde p-4 sm:grid-cols-6">
+          <form onSubmit={alta.alEnviar} className="grid gap-3 border-t border-borde p-4 sm:grid-cols-6">
             <input type="hidden" name="cotizacion_id" value={cotizacionId} />
             <CamposPartida clasificaciones={clasificaciones} />
 
@@ -413,7 +396,7 @@ export function Partidas({
               >
                 Cancelar
               </Boton>
-              <Boton type="submit" tamano="sm" cargando={enviando}>
+              <Boton type="submit" tamano="sm" cargando={alta.enviando}>
                 Agregar partida
               </Boton>
             </div>
@@ -423,7 +406,7 @@ export function Partidas({
         {editando && (
           <form
             key={editando.id}
-            action={guardarEdicion}
+            onSubmit={edicion.alEnviar}
             className="grid gap-3 border-t border-borde bg-superficie-2 p-4 sm:grid-cols-6"
           >
             <input type="hidden" name="cotizacion_id" value={cotizacionId} />
@@ -447,7 +430,7 @@ export function Partidas({
               </Boton>
               {/* En esta pantalla se guardan tres cosas distintas —el trabajo,
                   las medidas y la partida—: el botón dice cuál es la suya. */}
-              <Boton type="submit" tamano="sm" cargando={enviando}>
+              <Boton type="submit" tamano="sm" cargando={edicion.enviando}>
                 Guardar la partida
               </Boton>
             </div>

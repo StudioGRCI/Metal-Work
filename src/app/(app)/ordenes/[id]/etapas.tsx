@@ -1,7 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -10,6 +9,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_ETAPA, ORDEN_ESTADO_ETAPA, definir, opciones } from '@/lib/dominio/estados'
 import { cantidad, fecha } from '@/lib/format'
+import { useEnvio } from '@/lib/envio'
 import type { Vistas } from '@/types/database'
 
 import { actualizarEtapa } from '../acciones'
@@ -117,27 +117,13 @@ function FormularioEtapa({
   etapa: Etapa
   alTerminar: () => void
 }) {
-  const router = useRouter()
-  const [pendiente, iniciarTransicion] = useTransition()
   const [avance, setAvance] = useState(Number(etapa.avance_porcentaje ?? 0))
-  const [error, setError] = useState<string | null>(null)
+  // El formulario se cierra únicamente cuando el guardado fue correcto.
+  const { alEnviar, enviando, error } = useEnvio(actualizarEtapa, alTerminar)
 
-  // Manejador propio en lugar de useActionState: así el formulario se cierra
-  // únicamente cuando el guardado fue correcto.
-  async function enviar(datos: FormData) {
-    setError(null)
-    const resultado = await actualizarEtapa(null, datos)
-
-    if (resultado.ok) {
-      alTerminar()
-      iniciarTransicion(() => router.refresh())
-      return
-    }
-    setError(resultado.error)
-  }
 
   return (
-    <form action={enviar} className="mt-3 grid gap-3 border-t border-borde pt-3 sm:grid-cols-3">
+    <form onSubmit={alEnviar} className="mt-3 grid gap-3 border-t border-borde pt-3 sm:grid-cols-3">
       <input type="hidden" name="etapa_id" value={etapa.etapa_id ?? ''} />
       <input type="hidden" name="orden_id" value={ordenId} />
 
@@ -203,7 +189,7 @@ function FormularioEtapa({
         <Boton type="button" variante="fantasma" tamano="sm" onClick={alTerminar}>
           Cancelar
         </Boton>
-        <Boton type="submit" tamano="sm" cargando={pendiente}>
+        <Boton type="submit" tamano="sm" cargando={enviando}>
           Guardar avance
         </Boton>
       </div>

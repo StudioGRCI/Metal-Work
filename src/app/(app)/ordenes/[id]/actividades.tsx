@@ -1,21 +1,20 @@
 'use client'
 
 import { CalendarDays, Plus, Trash2, TrendingUp, Truck } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Progreso } from '@/components/ui/progreso'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import type { ResultadoAccion } from '@/lib/acciones'
 import type {
   ActividadArea,
   AvanceDeArea,
   ReporteDiario,
 } from '@/lib/datos/actividades'
 import { fecha as fmtFecha, hoyLima, numero } from '@/lib/format'
+import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 
 import {
@@ -25,30 +24,7 @@ import {
   reportarAvance,
 } from './acciones-actividades'
 
-type Accion = (previo: unknown, datos: FormData) => Promise<ResultadoAccion>
 
-function useEnvio(accion: Accion, alTerminar?: () => void) {
-  const router = useRouter()
-  const [, iniciarTransicion] = useTransition()
-  const [enviando, setEnviando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function enviar(datos: FormData) {
-    if (enviando) return
-    setError(null)
-    setEnviando(true)
-    const resultado = await accion(null, datos)
-    setEnviando(false)
-    if (resultado.ok) {
-      alTerminar?.()
-      iniciarTransicion(() => router.refresh())
-      return
-    }
-    setError(resultado.error)
-  }
-
-  return { enviar, enviando, error }
-}
 
 function Error_({ texto }: { texto: string | null }) {
   if (!texto) return null
@@ -279,7 +255,7 @@ function AccionesActividad({
 
   if (modo === 'reportar') {
     return (
-      <form action={reporte.enviar} className="flex flex-wrap items-end gap-2">
+      <form onSubmit={reporte.alEnviar} className="flex flex-wrap items-end gap-2">
         <input type="hidden" name="actividad_id" value={actividad.id} />
         <input type="hidden" name="orden_id" value={ordenId} />
         <Campo etiqueta="Día" htmlFor={`f-${actividad.id}`}>
@@ -317,7 +293,7 @@ function AccionesActividad({
 
   if (modo === 'peso') {
     return (
-      <form action={peso.enviar} className="flex items-end gap-1">
+      <form onSubmit={peso.alEnviar} className="flex items-end gap-1">
         <input type="hidden" name="id" value={actividad.id} />
         <input type="hidden" name="orden_id" value={ordenId} />
         <Entrada
@@ -355,7 +331,7 @@ function AccionesActividad({
           <Boton variante="fantasma" tamano="sm" onClick={() => setModo('peso')}>
             Peso
           </Boton>
-          <form action={quitar.enviar}>
+          <form onSubmit={quitar.alEnviar}>
             <input type="hidden" name="id" value={actividad.id} />
             <input type="hidden" name="orden_id" value={ordenId} />
             <Boton
@@ -386,7 +362,7 @@ function NuevaActividad({
   areaPropia: string | null
   alCerrar: () => void
 }) {
-  const { enviar, enviando, error } = useEnvio(agregarActividad, alCerrar)
+  const { alEnviar, enviando, error } = useEnvio(agregarActividad, alCerrar)
 
   return (
     <Tarjeta className="border-acento">
@@ -395,7 +371,7 @@ function NuevaActividad({
         descripcion="Qué trabajo es y cuánto pesa dentro del 100 % de su área. Para Maestranza, la pieza solicitada va en «referencia»."
       />
       <TarjetaCuerpo>
-        <form action={enviar} className="grid gap-3 sm:grid-cols-6">
+        <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
           <input type="hidden" name="orden_id" value={ordenId} />
 
           <Campo etiqueta="Área" htmlFor="na-area" requerido>

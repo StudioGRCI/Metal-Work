@@ -1,7 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 import { Pencil } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
@@ -9,6 +8,7 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cantidad as enCantidad, moneda as enMoneda } from '@/lib/format'
 import type { CodigoMoneda } from '@/lib/format'
+import { useEnvio } from '@/lib/envio'
 
 import { editarConcepto } from '../acciones'
 
@@ -40,29 +40,11 @@ export function ConceptoImpreso({
   sugerencia: string
   editable: boolean
 }) {
-  const router = useRouter()
-  const [, iniciarTransicion] = useTransition()
   const [editando, setEditando] = useState(false)
-  const [enviando, setEnviando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { alEnviar, enviando, error, limpiar } = useEnvio(editarConcepto, () => setEditando(false))
 
   const texto = concepto?.trim() || sugerencia
   const unitario = cantidad > 0 ? total / cantidad : total
-
-  async function enviar(datos: FormData) {
-    setError(null)
-    setEnviando(true)
-    const salida = await editarConcepto(null, datos)
-    setEnviando(false)
-
-    if (!salida.ok) {
-      setError(salida.error)
-      return
-    }
-
-    setEditando(false)
-    iniciarTransicion(() => router.refresh())
-  }
 
   return (
     <Tarjeta>
@@ -88,7 +70,7 @@ export function ConceptoImpreso({
 
       <TarjetaCuerpo className={editando ? '' : 'p-0'}>
         {editando ? (
-          <form action={enviar} className="space-y-4">
+          <form onSubmit={alEnviar} className="space-y-4">
             <input type="hidden" name="cotizacion_id" value={cotizacionId} />
 
             <Campo
@@ -142,7 +124,7 @@ export function ConceptoImpreso({
                 type="button"
                 variante="secundario"
                 onClick={() => {
-                  setError(null)
+                  limpiar()
                   setEditando(false)
                 }}
               >

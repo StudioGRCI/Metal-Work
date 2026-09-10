@@ -1,41 +1,31 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
+import { useEnvio } from '@/lib/envio'
 
 import { registrarUnidadSinOrden } from '../../acciones-flota'
 
 /**
- * Sin `useActionState`: al registrar, la pantalla se va a la unidad recién
- * creada, y el patrón de estado + transición es el que no deja resultados
- * viejos ni necesita efectos (ver `nuevo-proveedor.tsx`).
+ * Al registrar, la pantalla se va a la unidad recién creada: no hace falta
+ * repintar esta.
  */
 export function FormularioUnidad() {
   const router = useRouter()
-  const [, iniciarTransicion] = useTransition()
-  const [enviando, setEnviando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function enviar(datos: FormData) {
-    if (enviando) return
-    setError(null)
-    setEnviando(true)
-    const resultado = await registrarUnidadSinOrden(null, datos)
-    if (resultado.ok && resultado.datos) {
-      const id = resultado.datos.id
-      iniciarTransicion(() => router.push(`/avance/flota/${id}`))
-      return
-    }
-    setEnviando(false)
-    setError(resultado.ok ? 'La unidad se registró pero no se pudo abrir.' : resultado.error)
-  }
+  const { alEnviar, enviando, resultado, error } = useEnvio(
+    registrarUnidadSinOrden,
+    (r) => {
+      if (r.datos) router.push(`/avance/flota/${r.datos.id}`)
+    },
+    { refrescar: false },
+  )
+  const sinAbrir = resultado?.ok && !resultado.datos
 
   return (
-    <form action={enviar} className="space-y-4">
+    <form onSubmit={alEnviar} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <Campo
           etiqueta="Placa"
@@ -81,9 +71,9 @@ export function FormularioUnidad() {
         />
       </Campo>
 
-      {error && (
+      {(error || sinAbrir) && (
         <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
-          {error}
+          {error ?? 'La unidad se registró pero no se pudo abrir.'}
         </p>
       )}
 

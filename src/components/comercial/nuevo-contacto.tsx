@@ -7,6 +7,7 @@ import { crearContactoRapido } from '@/app/(app)/clientes/acciones'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
+import { useEnvio } from '@/lib/envio'
 
 export type ContactoElegible = { id: string; nombre: string; cargo: string | null }
 
@@ -28,33 +29,19 @@ export function NuevoContacto({
   onCreado?: (contacto: ContactoElegible) => void
 }) {
   const [abierto, setAbierto] = useState(false)
-  const [enviando, setEnviando] = useState(false)
-  const [resultado, setResultado] = useState<
-    { ok: true; mensaje?: string } | { ok: false; error: string } | null
-  >(null)
 
-  // Sin useActionState, como en `NuevoCliente`: hay que avisar a quien abrió la
-  // ventana en cuanto el contacto existe, y encadenarlo a un efecto dispara
-  // renderizados de más —y la regla del proyecto lo prohíbe—.
-  async function enviar(datos: FormData) {
-    // Un envío a la vez. El botón se deshabilita mientras se guarda, pero entre
-    // el clic y el repintado cabe un segundo clic —o un Enter en el campo
-    // seguido del clic—, y cada uno inserta su fila: así entraron dos «pepito»
-    // con un segundo de diferencia. La reja de verdad está en la base, que ya no
-    // acepta dos contactos con el mismo nombre en el mismo cliente; esto evita
-    // el viaje.
-    if (enviando) return
-
-    setEnviando(true)
-    const salida = await crearContactoRapido(null, datos)
-    setEnviando(false)
-    setResultado(salida)
-
-    if (salida.ok && salida.datos) {
-      onCreado?.(salida.datos)
+  // Hay que avisar a quien abrió la ventana en cuanto el contacto existe. Así
+  // entraron dos «pepito» con un segundo de diferencia: el botón no llegaba a
+  // desactivarse (ver `useEnvio`). La reja de verdad está en la base, que no
+  // acepta dos contactos con el mismo nombre en el mismo cliente.
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
+    crearContactoRapido,
+    (r) => {
+      if (r.datos) onCreado?.(r.datos)
       setAbierto(false)
-    }
-  }
+    },
+    { refrescar: false },
+  )
 
   return (
     <>
@@ -63,7 +50,7 @@ export function NuevoContacto({
         variante="contorno"
         tamano="sm"
         onClick={() => {
-          setResultado(null)
+          limpiar()
           setAbierto(true)
         }}
       >
@@ -77,7 +64,7 @@ export function NuevoContacto({
         titulo="Nuevo contacto"
         descripcion="La persona del cliente a la que se dirige la cotización. Su nombre, teléfono y correo salen impresos en el papel."
       >
-        <form action={enviar} className="space-y-3">
+        <form onSubmit={alEnviar} className="space-y-3">
           <input type="hidden" name="cliente_id" value={clienteId} />
 
           <Campo etiqueta="Nombre" htmlFor="ncto-nombre" requerido>
@@ -124,12 +111,12 @@ export function NuevoContacto({
             />
           </Campo>
 
-          {resultado?.ok === false && (
+          {error && (
             <p
               role="alert"
               className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro"
             >
-              {resultado.error}
+              {error}
             </p>
           )}
 

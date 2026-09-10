@@ -59,14 +59,31 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
 
 ## Formularios
 
-- Acción de servidor + `useActionState`; el resultado es
-  `ResultadoAccion<T>` de `src/lib/acciones.ts` y se muestra con un
-  componente `Aviso` local (rol `alert`/`status`).
+- **Un formulario que escribe se envía con `useEnvio`** (`src/lib/envio.ts`):
+  `<form onSubmit={alEnviar}>` y `<Boton type="submit" cargando={enviando}>`.
+  El resultado es `ResultadoAccion<T>` de `src/lib/acciones.ts`; el error va
+  en un `<p role="alert">` local, y lo que pasa al salir bien —cerrar la
+  ventana, avisar, navegar— en el `alTerminar`, que es un evento.
+- **Prohibido `<form action={fn}>` con un `useState` para «enviando».** La
+  función de un `<form action>` corre dentro de una transición, y React 19 no
+  pinta lo que cambia adentro hasta que la acción termina: el botón no se
+  desactiva, cada toque de más queda en cola y el registro entra dos o tres
+  veces. Pasó con dos contactos iguales y con un reporte de flota que entró tres
+  veces con un segundo de diferencia (2026-09-09). La primera vez se culpó al
+  tiempo entre el clic y el repintado, y el `if (enviando) return` que se puso
+  no sirvió de nada: diecinueve formularios tenían el mismo defecto. Tampoco
+  sirve el `isPending` de una transición que solo se prende para el refresco,
+  después de la acción. Y React vacía un `<form action>` al terminar aunque
+  haya fallado: lo escrito se perdía con el primer rechazo.
+- **Se comprueba tocando, no leyendo:** `herramientas/recorrido/doble-toque.mjs`
+  toca «Registrar» tres veces con un texto que el servidor rechaza, y tiene que
+  dar un envío, el botón desactivado y el texto todavía en el campo.
+- `useActionState` sí desactiva su botón a tiempo, pero también vacía el
+  formulario tras un rechazo. En formularios largos o del taller, `useEnvio`.
 - **Prohibido cerrar o resetear con `useEffect` sobre el resultado** — la
   regla `react-hooks/set-state-in-effect` lo rechaza y ya nos pasó tres
-  veces. Alternativas que usamos: mostrar «Cerrar» en lugar de «Cancelar»
-  tras el éxito, o llamar la acción directo con `useState` + `useTransition`
-  (ver `nuevo-proveedor.tsx`).
+  veces. Se cierra en el `alTerminar` de `useEnvio`, o se muestra «Cerrar» en
+  lugar de «Cancelar» tras el éxito.
 - Marcar de a uno (un check, un V°B°) es un `<form>` mínimo por casilla con
   campos ocultos — sin modal, sin recargar el formulario entero (ver
   `ficha-taller.tsx`).

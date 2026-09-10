@@ -1,13 +1,13 @@
 'use client'
 
 import { Plus } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 
 import { crearCarroceria } from '@/app/(app)/configuracion/acciones'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
+import { useEnvio } from '@/lib/envio'
 
 
 /**
@@ -22,29 +22,21 @@ export function NuevaCarroceria({
 }: {
   onCreada?: (carroceria: { id: string; nombre: string }) => void
 }) {
-  const router = useRouter()
-  const [, iniciarTransicion] = useTransition()
   const [abierto, setAbierto] = useState(false)
-  const [enviando, setEnviando] = useState(false)
   const [tipoUnidad, setTipoUnidad] = useState('')
-  const [resultado, setResultado] = useState<
-    { ok: true; mensaje?: string } | { ok: false; error: string } | null
-  >(null)
-
-  async function enviar(datos: FormData) {
-    setEnviando(true)
-    const salida = await crearCarroceria(null, datos)
-    setEnviando(false)
-    setResultado(salida)
-
-    if (salida.ok && salida.datos) {
-      onCreada?.(salida.datos)
-      if (!onCreada) iniciarTransicion(() => router.refresh())
-    }
-  }
+  // Tras el éxito la ventana queda abierta con «Cerrar» y sin el botón de
+  // registrar: no hay segundo envío posible. Si nadie espera la carrocería
+  // nueva, se repinta la pantalla para que aparezca en la lista.
+  const { alEnviar, enviando, resultado, limpiar } = useEnvio(
+    crearCarroceria,
+    (r) => {
+      if (r.datos) onCreada?.(r.datos)
+    },
+    { refrescar: !onCreada },
+  )
 
   function abrir() {
-    setResultado(null)
+    limpiar()
     setAbierto(true)
   }
 
@@ -69,7 +61,7 @@ export function NuevaCarroceria({
         titulo="Nuevo tipo de carrocería"
         descripcion="Para el pedido especial que el catálogo no tiene todavía."
       >
-        <form action={enviar} className="space-y-3">
+        <form onSubmit={alEnviar} className="space-y-3">
           {/* El tipo va PRIMERO y antes del nombre porque es lo que decide todo
               lo demás: la capacidad que se puede elegir, y el SR/CM del código
               de producto. Su propia hoja lo dice con una regla de una línea:
