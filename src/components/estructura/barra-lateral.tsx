@@ -3,9 +3,9 @@ import { NavegacionLista } from '@/components/estructura/navegacion-lista'
 /**
  * El menú de módulos del monitor, siempre a la vista.
  *
- * En el teléfono no se muestra: allí el mismo menú se abre desde el botón de la
- * barra superior (`MenuTelefono`). Los dos pintan la misma lista para que un
- * módulo nuevo no aparezca en uno y falte en el otro.
+ * En el teléfono no se muestra: allí el mismo menú se abre desde «Más», en la
+ * barra de pestañas de abajo (`BarraInferior`). Los dos pintan la misma lista
+ * para que un módulo nuevo no aparezca en uno y falte en el otro.
  */
 export function BarraLateral({ permisos, esAdmin }: { permisos: string[]; esAdmin: boolean }) {
   return (

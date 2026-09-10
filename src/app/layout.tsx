@@ -2,6 +2,7 @@ import { Arimo, Jost } from 'next/font/google'
 import type { Metadata, Viewport } from 'next'
 
 import { GuionEnLinea } from '@/components/estructura/guion-en-linea'
+import { RegistrarTrabajador } from '@/components/estructura/registrar-trabajador'
 
 import './globals.css'
 
@@ -12,20 +13,33 @@ const jost = Jost({ subsets: ['latin'], variable: '--fuente-titulos', display: '
 const arimo = Arimo({ subsets: ['latin'], variable: '--fuente-texto', display: 'swap' })
 
 export const metadata: Metadata = {
+  applicationName: 'Metal Work',
   title: {
     default: 'Metal-Work · Gestión de órdenes de trabajo',
     template: '%s · Metal-Work',
   },
   description:
-    'Control de órdenes de trabajo, trazabilidad documental, almacén y costos para fabricación de carrocerías.',
+    'Cotizaciones, órdenes de trabajo y el avance del taller, con foto, para fabricación de carrocerías.',
+  // Instalada en el iPhone, se abre como aplicación con su nombre y su ícono.
+  // El manifiesto (app/manifest.ts) hace lo mismo en Android.
+  appleWebApp: { capable: true, title: 'Metal Work', statusBarStyle: 'default' },
+  icons: { apple: '/iconos/apple-touch-icon.png' },
+  // Sin esto el iPhone convierte en llamada cualquier número largo: un RUC, el
+  // número de una orden.
+  formatDetection: { telephone: false },
 }
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // Deja pintar hasta el borde en los teléfonos con muesca; los márgenes los
+  // ponen la barra de arriba y la de abajo con `safe-area-inset`.
+  viewportFit: 'cover',
+  // El color de la barra de estado es el de la barra de arriba, para que en la
+  // aplicación instalada no se vea el corte entre el teléfono y el sistema.
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f6f7f9' },
-    { media: '(prefers-color-scheme: dark)', color: '#0d1117' },
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#151b23' },
   ],
 }
 
@@ -45,7 +59,10 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
       <head>
         <GuionEnLinea html={APLICAR_TEMA} />
       </head>
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full">
+        {children}
+        <RegistrarTrabajador />
+      </body>
     </html>
   )
 }

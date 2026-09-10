@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es-PE">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffffff" />
+    <title>Sin conexión · Metal Work</title>
+    <style>
+      :root {
+        --fondo: #f6f7f9;
+        --superficie: #ffffff;
+        --texto: #14181f;
+        --suave: #4e5766;
+        --acento: #13467f;
+        --borde: #e2e5ea;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fondo: #0d1117;
+          --superficie: #151b23;
+          --texto: #e6eaf0;
+          --suave: #a8b2c0;
+          --acento: #82abe0;
+          --borde: #2a3340;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: var(--fondo);
+        color: var(--texto);
+        font-family: Arimo, 'Liberation Sans', Arial, sans-serif;
+        line-height: 1.55;
+      }
+      main {
+        max-width: 26rem;
+        background: var(--superficie);
+        border: 1px solid var(--borde);
+        border-radius: 12px;
+        padding: 28px 24px;
+        display: grid;
+        gap: 14px;
+      }
+      img { width: 72px; height: 72px; border-radius: 16px; }
+      h1 { margin: 0; font-size: 1.35rem; line-height: 1.25; }
+      p { margin: 0; color: var(--suave); }
+      button {
+        justify-self: start;
+        margin-top: 4px;
+        min-height: 44px;
+        padding: 0 20px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--acento);
+        color: #ffffff;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      @media (prefers-color-scheme: dark) { button { color: #081627; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/iconos/icono-192.png" alt="" />
+      <h1>No hay señal en este momento</h1>
+      <p>
+        El celular no llega al sistema. Cuando vuelva la señal, la pantalla se abre sola. Lo que ya se
+        registró está guardado; lo que no se alcanzó a mandar, hay que volver a mandarlo.
+      </p>
+      <button type="button" onclick="location.reload()">Volver a intentar</button>
+    </main>
+    <script>
+      window.addEventListener('online', function () { location.reload() })
+    </script>
+  </body>
+</html>

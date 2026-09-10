@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-import { NAVEGACION } from '@/lib/navegacion'
+import { NAVEGACION, puedeVer, rutaActiva } from '@/lib/navegacion'
 import { cn } from '@/lib/utils'
 
 /**
@@ -27,36 +27,15 @@ export function NavegacionLista({
 }) {
   const ruta = usePathname()
 
-  /**
-   * Cuál de todos los módulos es el que se está mirando: gana el de ruta más
-   * larga que encaje.
-   *
-   * Antes cada módulo se marcaba por su cuenta con `ruta.startsWith(su ruta)`, y
-   * eso encendía dos a la vez: dentro de `/cotizaciones/trabajo/…` se marcaba
-   * también «Cotización de venta», porque la ruta empieza igual. Comparten el
-   * documento pero no la función —una la escribe Ventas y la otra Diseño, y la
-   * de trabajo lleva el costo que Ventas no ve—, así que el menú tiene que
-   * decir en cuál de las dos está parado uno.
-   *
-   * La comparación es por segmento (`/cotizaciones/trabajo` encaja, pero
-   * `/cotizaciones-viejas` no).
-   */
-  const encaja = (base: string) =>
-    base === '/' ? ruta === '/' : ruta === base || ruta.startsWith(`${base}/`)
-
-  const activa = NAVEGACION.flatMap((g) => g.items)
-    .map((i) => i.ruta)
-    .filter(encaja)
-    .sort((a, b) => b.length - a.length)[0]
+  // El mismo criterio que la barra de abajo del teléfono: los dos marcan igual.
+  const activa = rutaActiva(
+    ruta,
+    NAVEGACION.flatMap((g) => g.items).map((i) => i.ruta),
+  )
 
   const grupos = NAVEGACION.map((g) => ({
     ...g,
-    items: g.items.filter(
-      (i) =>
-        !i.permiso ||
-        esAdmin ||
-        (Array.isArray(i.permiso) ? i.permiso : [i.permiso]).some((p) => permisos.includes(p)),
-    ),
+    items: g.items.filter((i) => puedeVer(i, permisos, esAdmin)),
   })).filter((g) => g.items.length > 0)
 
   return (

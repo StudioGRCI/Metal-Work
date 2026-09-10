@@ -3,32 +3,21 @@ import { LogOut } from 'lucide-react'
 
 import { Campana } from '@/components/estructura/campana'
 import { CambiarTema } from '@/components/estructura/cambiar-tema'
-import { MenuTelefono } from '@/components/estructura/menu-telefono'
 import { LogoMetalWork } from '@/components/marca/logo-metal-work'
 import { avisosSinLeer, misNotificaciones } from '@/lib/datos/notificaciones'
 import { iniciales } from '@/lib/format'
 import type { PerfilSesion } from '@/lib/sesion'
 
-export async function BarraSuperior({
-  perfil,
-  permisos,
-  esAdmin,
-}: {
-  perfil: PerfilSesion
-  permisos: string[]
-  esAdmin: boolean
-}) {
+export async function BarraSuperior({ perfil }: { perfil: PerfilSesion }) {
   // Las dos consultas van juntas: la barra está en todas las pantallas y una
   // detrás de otra le sumaría su ida y vuelta a cada una.
   const [avisos, sinLeer] = await Promise.all([misNotificaciones(), avisosSinLeer()])
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-4 border-b border-borde bg-superficie px-4">
-      {/* El menú del teléfono vive acá y no flotando sobre la pantalla: un
-          botón fijo sobre contenido que se desplaza siempre termina encima de
-          algo, y en las capturas tapaba filas de lista y etiquetas de campo. */}
+    <header className="sticky top-0 z-30 flex min-h-14 items-center justify-between gap-4 border-b border-borde bg-superficie px-4 pt-[env(safe-area-inset-top)]">
+      {/* En el teléfono el menú está abajo, en «Más» (BarraInferior); acá
+          quedan el logo, los avisos, el tema y la salida. */}
       <div className="flex min-w-0 items-center gap-1">
-        <MenuTelefono permisos={permisos} esAdmin={esAdmin} />
         <Link href="/" aria-label="Ir al tablero" className="flex shrink-0 items-center">
           <LogoMetalWork className="h-7 w-auto lg:h-8" />
         </Link>

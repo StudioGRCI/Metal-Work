@@ -40,7 +40,16 @@ const nextConfig: NextConfig = {
   // Sin esto la respuesta anuncia «Next.js» a cualquiera que mire las cabeceras.
   poweredByHeader: false,
   async headers() {
-    return [{ source: '/(.*)', headers: CABECERAS }]
+    return [
+      { source: '/(.*)', headers: CABECERAS },
+      {
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Content-Type', value: 'application/javascript; charset=utf-8' },
+        ],
+      },
+    ]
   },
   // Las «unidades sin orden» pasaron a ser «trabajos sin orden» el 2026-09-10:
   // un enlace guardado o mandado por WhatsApp a la ruta vieja sigue llegando.

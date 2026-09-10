@@ -228,6 +228,7 @@
 body {
   background: var(--fondo);
   color: var(--texto);
+  -webkit-tap-highlight-color: transparent;
   font-family: var(--fuente-texto, "Liberation Sans"), "Liberation Sans", Arial, "Helvetica Neue", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }

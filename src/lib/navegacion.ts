@@ -178,3 +178,45 @@ export const NAVEGACION: GrupoNavegacion[] = [
     ],
   },
 ]
+
+/** Si una persona ve un módulo del menú: sin permiso declarado lo ve todo el mundo. */
+export function puedeVer(item: ItemNavegacion, permisos: string[], esAdmin: boolean) {
+  if (!item.permiso || esAdmin) return true
+  return (Array.isArray(item.permiso) ? item.permiso : [item.permiso]).some((p) => permisos.includes(p))
+}
+
+/**
+ * Cuál de los módulos es el que se está mirando: gana el de ruta más larga que
+ * encaje, comparando por segmento. Dentro de `/cotizaciones/trabajo/…` se
+ * marca «Cotización de trabajo» y no también la de venta; `/cotizaciones-viejas`
+ * no encaja en `/cotizaciones`.
+ */
+export function rutaActiva(ruta: string, rutas: string[]) {
+  const encaja = (base: string) =>
+    base === '/' ? ruta === '/' : ruta === base || ruta.startsWith(`${base}/`)
+  return rutas.filter(encaja).sort((a, b) => b.length - a.length)[0]
+}
+
+/**
+ * Las pestañas de abajo en el teléfono: las cuatro primeras de esta lista que
+ * la persona ve, y después «Más». El orden está pensado para que a cada puesto
+ * le queden las suyas sin escribir un rol a mano: al taller, Taller, Órdenes,
+ * El día y Plazos; a Diseño y Administración, sus dos cotizaciones primero; a
+ * Ventas, Cotizaciones, Clientes y el tablero. El nombre va corto porque la
+ * pestaña es angosta.
+ */
+export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
+  { ruta: '/cotizaciones/trabajo', corto: 'Trabajo' },
+  { ruta: '/cotizaciones', corto: 'Cotizaciones' },
+  { ruta: '/avance', corto: 'Taller' },
+  { ruta: '/ordenes', corto: 'Órdenes' },
+  { ruta: '/avance/diario', corto: 'El día' },
+  { ruta: '/plazos', corto: 'Plazos' },
+  { ruta: '/clientes', corto: 'Clientes' },
+  { ruta: '/', corto: 'Tablero' },
+  { ruta: '/unidades', corto: 'Unidades' },
+  { ruta: '/carrocerias', corto: 'Carrocerías' },
+  { ruta: '/materiales', corto: 'Materiales' },
+  { ruta: '/configuracion', corto: 'Ajustes' },
+  { ruta: '/personal', corto: 'Personal' },
+]
