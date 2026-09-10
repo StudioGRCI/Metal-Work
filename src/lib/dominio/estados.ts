@@ -48,16 +48,17 @@ export const ESTADOS_ACTIVOS_OT = [
 ] as const
 
 /**
- * Dónde está una unidad que entró sin orden de trabajo. No hay «entregada» a
- * propósito: en este sistema entregar es el acta de conformidad, y eso no pasa
- * cuando el supervisor la marca desde el celular. «Lista» existe para que entre
+ * En qué va un trabajo sin orden: una unidad que entró sin orden de trabajo o
+ * algo que el taller está implementando. No hay «entregado» a propósito: en este
+ * sistema entregar es el acta de conformidad, y eso no pasa cuando el
+ * supervisor lo marca desde el celular. «Terminado» existe para que entre
  * «terminé el jueves» y «el chofer la recogió el lunes» no cuente como sin
- * noticias.
+ * noticias. En la base siguen siendo EN_TALLER, LISTA y SALIO.
  */
 export const ESTADO_FLOTA: Record<string, Def> = {
-  EN_TALLER: { etiqueta: 'En taller', tono: 'acento', descripcion: 'Se está trabajando' },
-  LISTA: { etiqueta: 'Lista, esperando al cliente', tono: 'exito', descripcion: 'Terminada; falta que la recojan' },
-  SALIO: { etiqueta: 'Salió', tono: 'neutro', descripcion: 'Ya no está en el taller' },
+  EN_TALLER: { etiqueta: 'En curso', tono: 'acento', descripcion: 'Se está trabajando' },
+  LISTA: { etiqueta: 'Terminado', tono: 'exito', descripcion: 'Terminado; si es una unidad, falta que la recojan' },
+  SALIO: { etiqueta: 'Cerrado', tono: 'neutro', descripcion: 'Ya no se trabaja: salió del taller o se dio por cerrado' },
 }
 
 export const PRIORIDAD: Record<string, Def> = {

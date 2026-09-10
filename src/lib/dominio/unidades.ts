@@ -51,12 +51,11 @@ export function nombreDeUnidad(unidad: UnidadNombrable | null | undefined): stri
 }
 
 /**
- * El nombre de una unidad que entró sin orden. Tiene menos datos que una
- * unidad de cliente —placa o descripción, lo que el supervisor escribió en la
- * puerta— y la base garantiza que al menos uno de los dos existe.
+ * El nombre de un trabajo sin orden: la placa si es una unidad, y si no, qué
+ * es. La base garantiza que al menos uno de los dos existe.
  */
 export function nombreDeFlota(unidad: { placa?: string | null; descripcion?: string | null }): string {
-  return limpio(unidad.placa) ?? limpio(unidad.descripcion) ?? 'Unidad sin nombre'
+  return limpio(unidad.placa) ?? limpio(unidad.descripcion) ?? 'Trabajo sin nombre'
 }
 
 /**

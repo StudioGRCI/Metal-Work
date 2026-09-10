@@ -14,22 +14,22 @@ import { fechaHora, numero } from '@/lib/format'
 import { areasDeSuMano, exigirPermiso, puede } from '@/lib/sesion'
 import { esUuid } from '@/lib/utils'
 
-import { AccionesUnidad } from './acciones-unidad'
+import { AccionesTrabajo } from './acciones-trabajo'
 
-export const metadata = { title: 'Unidad sin orden' }
+export const metadata = { title: 'Trabajo sin orden' }
 
-export default async function PaginaUnidadSinOrden({ params }: PageProps<'/avance/flota/[id]'>) {
+export default async function PaginaTrabajoSinOrden({ params }: PageProps<'/avance/trabajos/[id]'>) {
   const perfil = await exigirPermiso('produccion.ver')
   const { id } = await params
   if (!esUuid(id)) notFound()
 
-  const [unidad, areas] = await Promise.all([obtenerFlota(id), areasDelTaller()])
-  if (!unidad) notFound()
+  const [trabajo, areas] = await Promise.all([obtenerFlota(id), areasDelTaller()])
+  if (!trabajo) notFound()
 
-  const estado = definir(ESTADO_FLOTA, unidad.estado)
-  const nombre = nombreDeFlota(unidad)
-  const dias = Number(unidad.dias_en_taller ?? 0)
-  const sinNoticias = Number(unidad.dias_sin_avance ?? 0)
+  const estado = definir(ESTADO_FLOTA, trabajo.estado)
+  const nombre = nombreDeFlota(trabajo)
+  const dias = Number(trabajo.dias_en_taller ?? 0)
+  const sinNoticias = Number(trabajo.dias_sin_avance ?? 0)
 
   return (
     <>
@@ -44,13 +44,13 @@ export default async function PaginaUnidadSinOrden({ params }: PageProps<'/avanc
       <EncabezadoPagina
         titulo={nombre}
         descripcion={
-          [unidad.placa ? unidad.descripcion : null, unidad.cliente, 'sin orden de trabajo']
+          [trabajo.placa ? trabajo.descripcion : null, trabajo.cliente, 'sin orden de trabajo']
             .filter(Boolean)
             .join(' · ')
         }
         acciones={
-          <AccionesUnidad
-            unidad={{ id: unidad.id, estado: unidad.estado, nombre }}
+          <AccionesTrabajo
+            trabajo={{ id: trabajo.id, estado: trabajo.estado, nombre, esUnidad: Boolean(trabajo.placa) }}
             areas={areasDeSuMano(perfil, areas)}
             areaPropia={perfil.area_id}
             puedeReportar={puede(perfil, 'produccion.registrar')}
@@ -64,64 +64,62 @@ export default async function PaginaUnidadSinOrden({ params }: PageProps<'/avanc
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
             <p className="text-xs text-texto-suave">
-              Entró el <span className="font-medium text-texto">{fechaHora(unidad.ingreso)}</span>
-              {unidad.estado !== 'SALIO' && (
+              Desde el <span className="font-medium text-texto">{fechaHora(trabajo.ingreso)}</span>
+              {trabajo.estado !== 'SALIO' && (
                 <span className={dias >= 5 ? 'ml-2 font-medium text-aviso' : 'ml-2'}>
-                  · lleva {dias} {dias === 1 ? 'día' : 'días'} en el taller
+                  · lleva {dias} {dias === 1 ? 'día' : 'días'}
                 </span>
               )}
             </p>
-            {unidad.estado === 'EN_TALLER' && sinNoticias >= 3 && (
-              <p className="text-xs font-medium text-aviso">
-                {sinNoticias} días sin reporte
-              </p>
+            {trabajo.estado === 'EN_TALLER' && sinNoticias >= 3 && (
+              <p className="text-xs font-medium text-aviso">{sinNoticias} días sin reporte</p>
             )}
           </div>
 
           <div className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
             <div>
-              <p className="text-xs text-texto-suave">A qué entró</p>
-              <p className="text-texto">{unidad.trabajo}</p>
+              <p className="text-xs text-texto-suave">Qué se va a hacer</p>
+              <p className="text-texto">{trabajo.trabajo}</p>
             </div>
             <div>
               <p className="text-xs text-texto-suave">Área actual</p>
               <p className="text-texto">
-                {unidad.area_actual ?? 'Todavía nadie la reportó'}
-                {unidad.avance_porcentaje !== null && (
-                  <span className="ml-2 text-texto-suave">va en ~{numero(unidad.avance_porcentaje, 0)} %</span>
+                {trabajo.area_actual ?? 'Todavía nadie lo reportó'}
+                {trabajo.avance_porcentaje !== null && (
+                  <span className="ml-2 text-texto-suave">va en ~{numero(trabajo.avance_porcentaje, 0)} %</span>
                 )}
               </p>
             </div>
-            {unidad.trajo && (
+            {trabajo.trajo && (
               <div>
                 <p className="text-xs text-texto-suave">Quién la trajo</p>
-                <p className="text-texto">{unidad.trajo}</p>
+                <p className="text-texto">{trabajo.trajo}</p>
               </div>
             )}
             <div>
-              <p className="text-xs text-texto-suave">La registró</p>
-              <p className="text-texto">{unidad.registrado_por_nombre ?? '—'}</p>
+              <p className="text-xs text-texto-suave">Lo registró</p>
+              <p className="text-texto">{trabajo.registrado_por_nombre ?? '—'}</p>
             </div>
-            {unidad.lista_en && (
+            {trabajo.lista_en && (
               <div>
-                <p className="text-xs text-texto-suave">Lista desde</p>
-                <p className="text-texto">{fechaHora(unidad.lista_en)}</p>
+                <p className="text-xs text-texto-suave">Terminado el</p>
+                <p className="text-texto">{fechaHora(trabajo.lista_en)}</p>
               </div>
             )}
-            {unidad.salio_en && (
+            {trabajo.salio_en && (
               <div>
-                <p className="text-xs text-texto-suave">Salió</p>
+                <p className="text-xs text-texto-suave">Cerrado el</p>
                 <p className="text-texto">
-                  {fechaHora(unidad.salio_en)}
-                  {unidad.retiro && <span className="text-texto-suave"> · la retiró {unidad.retiro}</span>}
+                  {fechaHora(trabajo.salio_en)}
+                  {trabajo.retiro && <span className="text-texto-suave"> · se la llevó {trabajo.retiro}</span>}
                 </p>
               </div>
             )}
           </div>
 
-          {unidad.impedimento && (
+          {trabajo.impedimento && (
             <p className="rounded-[var(--radius-base)] bg-peligro-suave px-2.5 py-1.5 text-xs text-peligro">
-              Trabada: {unidad.impedimento}
+              Trabado: {trabajo.impedimento}
             </p>
           )}
         </TarjetaCuerpo>

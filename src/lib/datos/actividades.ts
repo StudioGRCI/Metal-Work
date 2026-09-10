@@ -92,6 +92,7 @@ export type AvanceDelDia = {
   fecha: string
   avance_pct: number
   nota: string | null
+  creado_en: string
   actividad_id: string
   actividad: string
   referencia: string | null
@@ -135,7 +136,7 @@ export async function avancesDelDia(fecha: string): Promise<AvanceDelDia[]> {
   const { data, error } = await supabase
     .from('v_ot_avance_diario')
     .select(
-      'id, fecha, avance_pct, nota, actividad_id, actividad, referencia, peso_pct, area_id, area_codigo, area, orden_id, orden_numero, orden_estado, orden_descripcion, reportado_por_nombre, acumulado_pct',
+      'id, fecha, avance_pct, nota, creado_en, actividad_id, actividad, referencia, peso_pct, area_id, area_codigo, area, orden_id, orden_numero, orden_estado, orden_descripcion, reportado_por_nombre, acumulado_pct',
     )
     .eq('fecha', fecha)
     .order('area')

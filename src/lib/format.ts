@@ -91,6 +91,16 @@ export function fechaHora(valor: string | Date | null | undefined) {
   )
 }
 
+/** La hora de Lima, «13:39»: para decir a qué hora entró un reporte del día. */
+export function hora(valor: string | Date | null | undefined) {
+  if (!valor) return '—'
+  const d = typeof valor === 'string' ? new Date(valor) : valor
+  if (Number.isNaN(d.getTime())) return '—'
+  return espaciosNormales(
+    d.toLocaleTimeString('es-PE', { timeZone: ZONA, hour: '2-digit', minute: '2-digit', hour12: false }),
+  )
+}
+
 export function fechaLarga(valor: string | Date | null | undefined) {
   if (!valor) return '—'
   // Igual que en fecha(): un día del calendario se lee tal cual.

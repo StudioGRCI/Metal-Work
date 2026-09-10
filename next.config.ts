@@ -42,6 +42,14 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: '/(.*)', headers: CABECERAS }]
   },
+  // Las «unidades sin orden» pasaron a ser «trabajos sin orden» el 2026-09-10:
+  // un enlace guardado o mandado por WhatsApp a la ruta vieja sigue llegando.
+  async redirects() {
+    return [
+      { source: '/avance/flota', destination: '/avance/trabajos', permanent: true },
+      { source: '/avance/flota/:resto*', destination: '/avance/trabajos/:resto*', permanent: true },
+    ]
+  },
 };
 
 export default nextConfig;

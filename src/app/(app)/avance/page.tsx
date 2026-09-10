@@ -1,6 +1,7 @@
 import { AlertTriangle, Camera, Clock, Plus } from 'lucide-react'
 import Link from 'next/link'
 
+import { TarjetaTrabajo } from '@/components/avance/tarjeta-trabajo'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
@@ -11,9 +12,9 @@ import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { areasDelTaller } from '@/lib/datos/actividades'
 import { listarTablero, resumirTablero } from '@/lib/datos/avances'
 import { flotaEnTaller } from '@/lib/datos/flota'
-import { ESTADO_FLOTA, ESTADO_OT, PRIORIDAD, definir } from '@/lib/dominio/estados'
-import { nombreDeFlota, nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
-import { fecha as formatearFecha, numero } from '@/lib/format'
+import { ESTADO_OT, PRIORIDAD, definir } from '@/lib/dominio/estados'
+import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
+import { fecha as formatearFecha } from '@/lib/format'
 import { areasDeSuMano, exigirPermiso, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Avance en taller' }
@@ -35,7 +36,7 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
   ])
   const resumen = resumirTablero(filas)
 
-  // Las unidades sin orden cuentan en los mismos números: si no, el jefe lee
+  // Los trabajos sin orden cuentan en los mismos números: si no, el jefe lee
   // «4 en taller» cuando hay 11.
   const flotaVisible = soloTrabadas ? flota.filter((u) => u.impedimento) : flota
   const enTaller = resumen.total + flotaVisible.length
@@ -54,9 +55,9 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
         descripcion="Una tarjeta por unidad: dónde está, cuánto lleva, hace cuánto no se toca y qué la traba."
         acciones={
           puedeRegistrarFlota && (
-            <EnlaceBoton href="/avance/flota/nueva" variante="secundario">
+            <EnlaceBoton href="/avance/trabajos/nueva" variante="secundario">
               <Plus aria-hidden className="size-4" />
-              Llegó una unidad sin orden
+              Nuevo trabajo sin orden
             </EnlaceBoton>
           )
         }
@@ -65,7 +66,7 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
       {/* Dos por fila en el teléfono; las cuatro de siempre en el monitor. */}
       <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Indicador
-          titulo="Unidades en taller"
+          titulo="En el taller"
           valor={enTaller}
           pie={soloTrabadas ? 'Contando solo las trabadas' : `${flota.length} sin orden`}
         />
@@ -239,25 +240,26 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
         </div>
       )}
 
-      {/* Las unidades que entraron sin orden de trabajo. Van en su propia
-          sección y no mezcladas con las órdenes: son otra cosa —sin etapas,
-          sin plazo, sin cliente en el sistema— y se leen distinto. */}
+      {/* Los trabajos sin orden van en su propia sección y no mezclados con las
+          órdenes: son otra cosa —sin etapas, sin plazo, sin cliente en el
+          sistema— y se leen distinto. Pueden ser una unidad de un cliente o algo
+          que el taller está implementando. */}
       <section id="sin-orden" className="mt-8" aria-labelledby="titulo-sin-orden">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <div>
             <h2 id="titulo-sin-orden" className="text-base font-semibold text-texto">
-              Unidades sin orden
+              Trabajos sin orden
             </h2>
             <p className="text-sm text-texto-suave">
-              Entraron al taller antes de que saliera su orden de trabajo. Se reportan igual, para que
-              el jefe y la oficina sepan que están acá.
+              Unidades que entraron sin orden de trabajo, o lo que el propio taller está
+              implementando. Se reportan igual, para que el jefe y la oficina sepan cómo va.
             </p>
           </div>
           <Link
-            href="/avance/flota"
+            href="/avance/trabajos"
             className="inline-flex min-h-11 items-center text-sm text-acento hover:underline sm:min-h-0"
           >
-            Ver todas, incluidas las que salieron
+            Ver todos, también los cerrados
           </Link>
         </div>
 
@@ -265,96 +267,22 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
           <Tarjeta>
             <TarjetaCuerpo>
               <p className="text-sm font-medium text-texto">
-                {soloTrabadas ? 'Ninguna unidad sin orden está trabada' : 'Ninguna unidad sin orden en el taller'}
+                {soloTrabadas ? 'Ningún trabajo sin orden está trabado' : 'Ningún trabajo sin orden en curso'}
               </p>
               <p className="mt-1 text-sm text-texto-suave">
                 {soloTrabadas
-                  ? 'Las que están se pueden seguir trabajando.'
+                  ? 'Los que hay se pueden seguir trabajando.'
                   : puedeRegistrarFlota
-                    ? 'Cuando llegue una, regístrala con «Llegó una unidad sin orden», arriba.'
-                    : 'Las registra el supervisor de cada área.'}
+                    ? 'Cuando empiece uno, regístralo con «Nuevo trabajo sin orden», arriba.'
+                    : 'Los registra el supervisor de cada área.'}
               </p>
             </TarjetaCuerpo>
           </Tarjeta>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {flotaVisible.map((u) => {
-              const estado = definir(ESTADO_FLOTA, u.estado)
-              const dias = Number(u.dias_en_taller ?? 0)
-              const sinReporte = Number(u.dias_sin_avance ?? 0)
-
-              return (
-                <Tarjeta key={u.id} className="relative flex flex-col">
-                  <TarjetaCuerpo className="flex flex-1 flex-col gap-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <Link
-                          href={`/avance/flota/${u.id}`}
-                          className={`text-base font-semibold after:absolute after:inset-0 hover:underline ${
-                            u.placa ? 'text-acento' : 'text-texto-suave'
-                          }`}
-                        >
-                          {nombreDeFlota(u)}
-                        </Link>
-                        <p className="truncate text-xs text-texto-suave">
-                          {[u.placa ? u.descripcion : null, u.cliente].filter(Boolean).join(' · ') ||
-                            'sin más datos'}
-                        </p>
-                      </div>
-                      <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
-                    </div>
-
-                    <p className="line-clamp-2 text-sm text-texto">{u.trabajo}</p>
-
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-texto-suave">{u.area_actual ?? 'Sin reportes todavía'}</span>
-                      {u.avance_porcentaje !== null && (
-                        <span className="tabular text-texto-suave">va en ~{numero(u.avance_porcentaje, 0)} %</span>
-                      )}
-                    </div>
-
-                    {u.impedimento && (
-                      <p className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-peligro-suave px-2.5 py-1.5 text-xs text-peligro">
-                        <AlertTriangle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-                        <span className="line-clamp-2">{u.impedimento}</span>
-                      </p>
-                    )}
-
-                    <div className="mt-auto space-y-1.5 border-t border-borde pt-3 text-xs">
-                      <p className="flex items-center gap-1.5 text-texto-suave">
-                        <Clock aria-hidden className="size-3.5 shrink-0" />
-                        {u.estado === 'LISTA' ? (
-                          <span className="text-exito">Lista desde {formatearFecha(u.lista_en)}</span>
-                        ) : sinReporte === 0 ? (
-                          <span>Reporte de hoy</span>
-                        ) : (
-                          <span className={sinReporte >= 3 ? 'text-aviso' : undefined}>
-                            {sinReporte} {sinReporte === 1 ? 'día' : 'días'} sin reporte
-                          </span>
-                        )}
-                      </p>
-
-                      {u.ultimo_avance && (
-                        <p className="line-clamp-2 text-texto-suave">
-                          <span className="text-texto-tenue">{formatearFecha(u.ultimo_avance_fecha)}: </span>
-                          {u.ultimo_avance}
-                        </p>
-                      )}
-
-                      <div className="flex items-center justify-between pt-1 text-texto-tenue">
-                        <span className="flex items-center gap-1">
-                          <Camera aria-hidden className="size-3.5" />
-                          {u.fotos} {u.fotos === 1 ? 'foto' : 'fotos'}
-                        </span>
-                        <span className={dias >= 5 ? 'font-medium text-aviso' : undefined}>
-                          lleva {dias} {dias === 1 ? 'día' : 'días'} · sin orden
-                        </span>
-                      </div>
-                    </div>
-                  </TarjetaCuerpo>
-                </Tarjeta>
-              )
-            })}
+            {flotaVisible.map((t) => (
+              <TarjetaTrabajo key={t.id} trabajo={t} />
+            ))}
           </div>
         )}
       </section>

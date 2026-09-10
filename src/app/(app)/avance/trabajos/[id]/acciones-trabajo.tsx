@@ -1,6 +1,6 @@
 'use client'
 
-import { Camera, CheckCircle2, LogOut, Undo2 } from 'lucide-react'
+import { Camera, CheckCircle2, Lock, Undo2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { SelectorFotos, fotosParaEnviar, haySubiendo, type FotoLista } from '@/components/avance/selector-fotos'
@@ -22,39 +22,40 @@ function Error_({ texto }: { texto: string | null }) {
 }
 
 /**
- * Los tres gestos sobre una unidad sin orden: reportar el día (con foto),
- * marcarla lista o devolverla a trabajo, y registrar que salió. Cada ventana
- * limpia lo suyo al abrirse —es un evento, no un efecto—, así que la segunda
- * vez no arrastra ni el error ni las fotos de la anterior.
+ * Los gestos sobre un trabajo sin orden: reportar el día (con foto), darlo por
+ * terminado o retomarlo, y cerrarlo. Cada ventana limpia lo suyo al abrirse —es
+ * un evento, no un efecto—, así que la segunda vez no arrastra ni el error ni
+ * las fotos de la anterior.
  */
-export function AccionesUnidad({
-  unidad,
+export function AccionesTrabajo({
+  trabajo,
   areas,
   areaPropia,
   puedeReportar,
   puedeArmar,
 }: {
-  unidad: { id: string; estado: string; nombre: string }
+  /** `esUnidad`: si tiene placa, al cerrarlo se anota quién se la llevó. */
+  trabajo: { id: string; estado: string; nombre: string; esUnidad: boolean }
   /** Las áreas en las que esta persona puede reportar: la suya, o todas. */
   areas: { id: string; codigo: string; nombre: string }[]
   areaPropia: string | null
   puedeReportar: boolean
   puedeArmar: boolean
 }) {
-  const salio = unidad.estado === 'SALIO'
+  const cerrado = trabajo.estado === 'SALIO'
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {puedeReportar && !salio && areas.length > 0 && (
-        <Reportar flotaId={unidad.id} areas={areas} areaPropia={areaPropia} />
+      {puedeReportar && !cerrado && areas.length > 0 && (
+        <Reportar flotaId={trabajo.id} areas={areas} areaPropia={areaPropia} />
       )}
-      {puedeArmar && unidad.estado === 'EN_TALLER' && (
-        <CambiarEstado id={unidad.id} estado="LISTA" icono={CheckCircle2} texto="Marcar lista" />
+      {puedeArmar && trabajo.estado === 'EN_TALLER' && (
+        <CambiarEstado id={trabajo.id} estado="LISTA" icono={CheckCircle2} texto="Marcar terminado" />
       )}
-      {puedeArmar && unidad.estado === 'LISTA' && (
-        <CambiarEstado id={unidad.id} estado="EN_TALLER" icono={Undo2} texto="Volver a trabajo" />
+      {puedeArmar && trabajo.estado === 'LISTA' && (
+        <CambiarEstado id={trabajo.id} estado="EN_TALLER" icono={Undo2} texto="Retomar" />
       )}
-      {puedeArmar && !salio && <Salida id={unidad.id} nombre={unidad.nombre} />}
+      {puedeArmar && !cerrado && <Cerrar id={trabajo.id} nombre={trabajo.nombre} esUnidad={trabajo.esUnidad} />}
     </div>
   )
 }
@@ -103,8 +104,8 @@ function Reportar({
       <Ventana
         abierta={abierto}
         alCerrar={() => setAbierto(false)}
-        titulo="Qué se le hizo hoy"
-        descripcion="Lo del día, con la foto de cómo quedó. Si recién llegó, cuenta cómo vino: esa foto es la que vale después."
+        titulo="Qué se hizo hoy"
+        descripcion="Lo del día, con la foto de cómo quedó. Si recién empieza, cuenta cómo está: esa foto es la que vale después."
         ancho="lg"
       >
         <form
@@ -156,7 +157,7 @@ function Reportar({
               />
             </Campo>
             <Campo
-              etiqueta="¿Algo la traba?"
+              etiqueta="¿Algo lo traba?"
               htmlFor="rf-impedimento"
               ayuda="Material que falta, decisión del cliente, pieza en el proveedor"
             >
@@ -164,8 +165,8 @@ function Reportar({
             </Campo>
           </div>
 
-          {/* La ruta empieza por flota/{unidad}: la base comprueba que cada foto
-              cuelgue de esta unidad y las políticas de Storage la dejan ver a
+          {/* La ruta empieza por flota/{trabajo}: la base comprueba que cada foto
+              cuelgue de este trabajo y las políticas de Storage la dejan ver a
               quien ve el taller. */}
           <SelectorFotos fotos={fotos} alCambiar={setFotos} prefijoRuta={`flota/${flotaId}`} />
 
@@ -211,7 +212,7 @@ function CambiarEstado({
   )
 }
 
-function Salida({ id, nombre }: { id: string; nombre: string }) {
+function Cerrar({ id, nombre, esUnidad }: { id: string; nombre: string; esUnidad: boolean }) {
   const [abierto, setAbierto] = useState(false)
   const { alEnviar, enviando, error, limpiar } = useEnvio(cambiarEstadoFlota, () => setAbierto(false))
 
@@ -223,24 +224,26 @@ function Salida({ id, nombre }: { id: string; nombre: string }) {
   return (
     <>
       <Boton variante="contorno" onClick={abrir}>
-        <LogOut aria-hidden className="size-4" />
-        Salió del taller
+        <Lock aria-hidden className="size-4" />
+        Cerrar
       </Boton>
 
       <Ventana
         abierta={abierto}
         alCerrar={() => setAbierto(false)}
-        titulo={`${nombre} salió del taller`}
-        descripcion="Queda con fecha y firma, y de aquí no se vuelve: si la unidad regresa, se registra otra vez."
+        titulo={`Cerrar ${nombre}`}
+        descripcion="Queda con fecha y firma, y no se reabre: si vuelve o hay que retomarlo, se registra otra vez."
         ancho="sm"
       >
         <form onSubmit={alEnviar} className="space-y-3">
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="estado" value="SALIO" />
 
-          <Campo etiqueta="Quién la retiró" htmlFor="sf-retiro" ayuda="Nombre y documento, como lo apunta el vigilante">
-            <Entrada id="sf-retiro" name="retiro" autoComplete="off" maxLength={200} />
-          </Campo>
+          {esUnidad && (
+            <Campo etiqueta="Quién se la llevó" htmlFor="sf-retiro" ayuda="Nombre y documento, como lo apunta el vigilante">
+              <Entrada id="sf-retiro" name="retiro" autoComplete="off" maxLength={200} />
+            </Campo>
+          )}
 
           <Error_ texto={error} />
 
@@ -249,7 +252,7 @@ function Salida({ id, nombre }: { id: string; nombre: string }) {
               Cancelar
             </Boton>
             <Boton type="submit" cargando={enviando}>
-              Registrar la salida
+              Cerrar el trabajo
             </Boton>
           </div>
         </form>

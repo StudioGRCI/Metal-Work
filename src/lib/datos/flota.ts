@@ -2,9 +2,15 @@ import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
 
+/**
+ * Los trabajos sin orden: una unidad de un cliente que entró sin orden de
+ * trabajo, o algo que el propio taller está implementando. Viven en las tablas
+ * `flota_*`, de cuando esto era solo para unidades de flota; el nombre de las
+ * tablas se quedó, el de las cosas no.
+ */
 export type EstadoFlota = 'EN_TALLER' | 'LISTA' | 'SALIO'
 
-export type UnidadSinOrden = {
+export type TrabajoSinOrden = {
   id: string
   placa: string | null
   placa_clave: string | null
@@ -69,15 +75,16 @@ const COLUMNAS_REPORTE =
   'id, flota_id, fecha, descripcion, avance_porcentaje, impedimento, creado_en, area_id, area_codigo, area, placa, unidad, cliente, trabajo, estado, registrado_por, registrado_por_nombre, fotos'
 
 /**
- * Las unidades sin orden, la que más días lleva sin noticias primero.
+ * Los trabajos sin orden, el que más días lleva sin noticias primero.
  *
- * Sin filtro de estado trae las que siguen adentro (en taller o listas); con
- * `SALIO`, el historial. La búsqueda por placa compara contra la placa
- * normalizada, así que «abc 123» encuentra «ABC-123».
+ * Sin filtro de estado trae los que siguen abiertos (en curso o terminados);
+ * con `SALIO`, los cerrados. La búsqueda mira la placa normalizada —«abc 123»
+ * encuentra «ABC-123»— y también qué es y de quién es, porque un trabajo del
+ * propio taller no tiene placa.
  */
 export async function listarFlota(
-  filtros: { estado?: EstadoFlota | null; placa?: string; trabadas?: boolean } = {},
-): Promise<UnidadSinOrden[]> {
+  filtros: { estado?: EstadoFlota | null; buscar?: string; trabadas?: boolean } = {},
+): Promise<TrabajoSinOrden[]> {
   const supabase = await createClient()
 
   let consulta = supabase
@@ -93,20 +100,27 @@ export async function listarFlota(
 
   if (filtros.trabadas) consulta = consulta.not('impedimento', 'is', null)
 
-  const clave = filtros.placa?.toUpperCase().replace(/[^A-Z0-9]/g, '')
-  if (clave) consulta = consulta.ilike('placa_clave', `%${clave}%`)
+  // Lo escrito viaja dentro de un filtro `or` de PostgREST, donde la coma,
+  // los paréntesis y el comodín tienen significado: se quitan antes.
+  const texto = filtros.buscar?.replace(/[,()*%\\]/g, ' ').trim()
+  if (texto) {
+    const clave = texto.toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const ramas = [`descripcion.ilike.*${texto}*`, `cliente.ilike.*${texto}*`]
+    if (clave) ramas.unshift(`placa_clave.ilike.*${clave}*`)
+    consulta = consulta.or(ramas.join(','))
+  }
 
   const { data, error } = await consulta
-  if (error) throw new Error(`No se pudieron leer las unidades sin orden: ${error.message}`)
-  return (data ?? []) as unknown as UnidadSinOrden[]
+  if (error) throw new Error(`No se pudieron leer los trabajos sin orden: ${error.message}`)
+  return (data ?? []) as unknown as TrabajoSinOrden[]
 }
 
-/** Las que siguen adentro: para el tablero del taller y para «quién no reportó». */
+/** Los que siguen abiertos: para el tablero del taller y para «quién no reportó». */
 export function flotaEnTaller() {
   return listarFlota()
 }
 
-export async function obtenerFlota(id: string): Promise<UnidadSinOrden | null> {
+export async function obtenerFlota(id: string): Promise<TrabajoSinOrden | null> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('v_flota_unidades')
@@ -114,18 +128,18 @@ export async function obtenerFlota(id: string): Promise<UnidadSinOrden | null> {
     .eq('id', id)
     .maybeSingle()
 
-  if (error) throw new Error(`No se pudo leer la unidad: ${error.message}`)
-  return (data as unknown as UnidadSinOrden) ?? null
+  if (error) throw new Error(`No se pudo leer el trabajo: ${error.message}`)
+  return (data as unknown as TrabajoSinOrden) ?? null
 }
 
-/** El estado crudo de la unidad, para que una acción sepa si todavía admite reportes. */
+/** El estado crudo del trabajo, para que una acción sepa si todavía admite reportes. */
 export async function estadoDeFlota(id: string): Promise<EstadoFlota | null> {
   const supabase = await createClient()
   const { data } = await supabase.from('flota_unidades').select('estado').eq('id', id).maybeSingle()
   return (data?.estado as EstadoFlota | undefined) ?? null
 }
 
-/** Los reportes de una unidad, del más reciente al más viejo. */
+/** Los reportes de un trabajo, del más reciente al más viejo. */
 export async function reportesDeFlota(flotaId: string, limite = 60): Promise<ReporteDeFlota[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
