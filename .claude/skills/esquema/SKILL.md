@@ -135,3 +135,13 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   en su propio `alter table`; después el resto. Los índices y checks que nombran
   a la columna sí caen solos con ella. Le pasó a `materiales.codigo_almacen` en
   la `094`.
+
+- **Una segunda llave hacia la misma tabla rompe los embebidos que no la
+  nombran.** Un `select('…, reportado:usuarios(nombres)')` funciona mientras la
+  tabla tenga una sola llave hacia `usuarios`; al sumarle otra —`revisado_por`,
+  en la `097`— PostgREST ya no sabe cuál seguir y la consulta entera falla. Si
+  además el código no lanza ese error, la pantalla sale vacía y nadie se entera:
+  el diario de la pestaña «Actividades» se quedó en blanco en producción hasta
+  que se vio en la revisión. **Antes de sumar una llave foránea, buscar en
+  `src/` los embebidos hacia esa tabla** (`grep "usuarios("`) y nombrar la llave
+  (`usuarios!tabla_columna_fkey(…)`) o leer de una vista que ya traiga el nombre.

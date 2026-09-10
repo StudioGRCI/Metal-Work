@@ -1042,6 +1042,11 @@ export type Database = {
           registrado_por: string | null
           creado_en: string
           actualizado_en: string
+          revision: Database["public"]["Enums"]["estado_revision"]
+          revisado_por: string | null
+          revisado_en: string | null
+          observacion: string | null
+          corregido_en: string | null
         }
         Insert: {
           id?: string
@@ -1054,6 +1059,11 @@ export type Database = {
           registrado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          revision?: Database["public"]["Enums"]["estado_revision"]
+          revisado_por?: string | null
+          revisado_en?: string | null
+          observacion?: string | null
+          corregido_en?: string | null
         }
         Update: {
           id?: string
@@ -1066,6 +1076,11 @@ export type Database = {
           registrado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          revision?: Database["public"]["Enums"]["estado_revision"]
+          revisado_por?: string | null
+          revisado_en?: string | null
+          observacion?: string | null
+          corregido_en?: string | null
         }
         Relationships: [
           {
@@ -1085,6 +1100,13 @@ export type Database = {
           {
             foreignKeyName: "flota_avances_registrado_por_fkey"
             columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flota_avances_revisado_por_fkey"
+            columns: ["revisado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -1657,6 +1679,11 @@ export type Database = {
           reportado_por: string | null
           creado_en: string
           actualizado_en: string
+          revision: Database["public"]["Enums"]["estado_revision"]
+          revisado_por: string | null
+          revisado_en: string | null
+          observacion: string | null
+          corregido_en: string | null
         }
         Insert: {
           id?: string
@@ -1668,6 +1695,11 @@ export type Database = {
           reportado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          revision?: Database["public"]["Enums"]["estado_revision"]
+          revisado_por?: string | null
+          revisado_en?: string | null
+          observacion?: string | null
+          corregido_en?: string | null
         }
         Update: {
           id?: string
@@ -1679,6 +1711,11 @@ export type Database = {
           reportado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          revision?: Database["public"]["Enums"]["estado_revision"]
+          revisado_por?: string | null
+          revisado_en?: string | null
+          observacion?: string | null
+          corregido_en?: string | null
         }
         Relationships: [
           {
@@ -1691,6 +1728,13 @@ export type Database = {
           {
             foreignKeyName: "ot_actividad_avances_reportado_por_fkey"
             columns: ["reportado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_actividad_avances_revisado_por_fkey"
+            columns: ["revisado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -1820,6 +1864,11 @@ export type Database = {
           registrado_por: string | null
           creado_en: string
           actualizado_en: string
+          revision: Database["public"]["Enums"]["estado_revision"]
+          revisado_por: string | null
+          revisado_en: string | null
+          observacion: string | null
+          corregido_en: string | null
         }
         Insert: {
           id?: string
@@ -1832,6 +1881,11 @@ export type Database = {
           registrado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          revision?: Database["public"]["Enums"]["estado_revision"]
+          revisado_por?: string | null
+          revisado_en?: string | null
+          observacion?: string | null
+          corregido_en?: string | null
         }
         Update: {
           id?: string
@@ -1844,6 +1898,11 @@ export type Database = {
           registrado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          revision?: Database["public"]["Enums"]["estado_revision"]
+          revisado_por?: string | null
+          revisado_en?: string | null
+          observacion?: string | null
+          corregido_en?: string | null
         }
         Relationships: [
           {
@@ -1870,6 +1929,13 @@ export type Database = {
           {
             foreignKeyName: "ot_avances_registrado_por_fkey"
             columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_avances_revisado_por_fkey"
+            columns: ["revisado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -3277,6 +3343,11 @@ export type Database = {
           registrado_por_nombre: string | null
           creado_en: string | null
           fotos: number | null
+          revision: string | null
+          observacion: string | null
+          revisado_en: string | null
+          revisado_por_nombre: string | null
+          corregido_en: string | null
         }
         Relationships: []
       }
@@ -3520,6 +3591,11 @@ export type Database = {
           registrado_por: string | null
           registrado_por_nombre: string | null
           fotos: number | null
+          revision: string | null
+          observacion: string | null
+          revisado_en: string | null
+          revisado_por_nombre: string | null
+          corregido_en: string | null
         }
         Relationships: []
       }
@@ -3612,6 +3688,11 @@ export type Database = {
           reportado_por: string | null
           reportado_por_nombre: string | null
           acumulado_pct: number | null
+          revision: string | null
+          observacion: string | null
+          revisado_en: string | null
+          revisado_por_nombre: string | null
+          corregido_en: string | null
         }
         Relationships: []
       }
@@ -4123,6 +4204,7 @@ export type Database = {
       estado_flota: "EN_TALLER" | "LISTA" | "SALIO"
       estado_ot: "BORRADOR" | "APROBADA" | "PROGRAMADA" | "EN_PROCESO" | "PAUSADA" | "CONTROL_CALIDAD" | "TERMINADA" | "ENTREGADA" | "FACTURADA" | "ANULADA"
       estado_plazo: "VIGENTE" | "POR_VENCER" | "VENCIDO" | "CUMPLIDO" | "CUMPLIDO_TARDE"
+      estado_revision: "PENDIENTE" | "APROBADO" | "OBSERVADO"
       magnitud_medida: "UNIDAD" | "MASA" | "LONGITUD" | "AREA" | "VOLUMEN"
       medio_pago: "TRANSFERENCIA" | "DEPOSITO" | "CHEQUE" | "EFECTIVO" | "LETRA" | "OTRO"
       moneda: "PEN" | "USD"

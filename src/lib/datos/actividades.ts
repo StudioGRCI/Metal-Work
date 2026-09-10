@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
+import { ESTADOS_ACTIVOS_OT, type DatosRevision } from '@/lib/dominio/estados'
 import { createClient } from '@/lib/supabase/server'
 
 export type ActividadArea = {
@@ -31,19 +31,18 @@ export type AvanceDeArea = {
   ultimo_reporte: string | null
 }
 
-export type ReporteDiario = {
-  id: string
-  actividad_id: string
-  fecha: string
-  avance_pct: number
-  nota: string | null
-  actividad: { nombre: string; area_id: string } | null
-  reportado: { nombres: string; apellidos: string } | null
-}
+/** Un reporte de la hoja por área, con quién lo escribió y en qué va con el jefe. */
+export type ReporteDiario = AvanceDelDia
 
 /**
  * La hoja de cada área: sus actividades, cuánto lleva de lo suyo y el diario de
  * los últimos días.
+ *
+ * El diario sale de la vista `v_ot_avance_diario` y no de la tabla con un
+ * `usuarios(...)` embebido: desde la migración 097 la tabla tiene dos llaves
+ * hacia `usuarios` —quién reportó y quién revisó—, PostgREST no sabe cuál
+ * embeber y la consulta falla. Como ese error no se lanzaba, el diario salía
+ * vacío sin avisar.
  */
 export async function actividadesDeOrden(ordenId: string): Promise<{
   actividades: ActividadArea[]
@@ -67,17 +66,19 @@ export async function actividadesDeOrden(ordenId: string): Promise<{
       .select('area_id, area_codigo, area, actividades, terminadas, peso_repartido, avance_pct, ultimo_reporte')
       .eq('orden_id', ordenId),
     supabase
-      .from('ot_actividad_avances')
-      .select(
-        'id, actividad_id, fecha, avance_pct, nota, actividad:ot_actividades(nombre, area_id), reportado:usuarios(nombres, apellidos)',
-      )
+      .from('v_ot_avance_diario')
+      .select(COLUMNAS_DIARIO)
       .eq('orden_id', ordenId)
       .order('fecha', { ascending: false })
+      .order('creado_en', { ascending: false })
       .limit(40),
   ])
 
   if (actividades.error) {
     throw new Error(`No se pudieron leer las actividades: ${actividades.error.message}`)
+  }
+  if (diario.error) {
+    throw new Error(`No se pudo leer el diario de la unidad: ${diario.error.message}`)
   }
 
   return {
@@ -104,9 +105,13 @@ export type AvanceDelDia = {
   orden_numero: string
   orden_estado: string
   orden_descripcion: string
+  reportado_por: string | null
   reportado_por_nombre: string | null
   acumulado_pct: number | null
-}
+} & DatosRevision
+
+const COLUMNAS_DIARIO =
+  'id, fecha, avance_pct, nota, creado_en, actividad_id, actividad, referencia, peso_pct, area_id, area_codigo, area, orden_id, orden_numero, orden_estado, orden_descripcion, reportado_por, reportado_por_nombre, acumulado_pct, revision, observacion, revisado_en, revisado_por_nombre, corregido_en'
 
 export type HojaDeArea = {
   orden_id: string
@@ -135,9 +140,7 @@ export async function avancesDelDia(fecha: string): Promise<AvanceDelDia[]> {
 
   const { data, error } = await supabase
     .from('v_ot_avance_diario')
-    .select(
-      'id, fecha, avance_pct, nota, creado_en, actividad_id, actividad, referencia, peso_pct, area_id, area_codigo, area, orden_id, orden_numero, orden_estado, orden_descripcion, reportado_por_nombre, acumulado_pct',
-    )
+    .select(COLUMNAS_DIARIO)
     .eq('fecha', fecha)
     .order('area')
     .order('orden_numero')

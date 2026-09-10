@@ -1,5 +1,6 @@
 import 'server-only'
 
+import type { DatosRevision } from '@/lib/dominio/estados'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -58,7 +59,7 @@ export type ReporteDeFlota = {
   registrado_por: string | null
   registrado_por_nombre: string | null
   fotos: number
-}
+} & DatosRevision
 
 export type FotoDeFlota = {
   id: string
@@ -72,7 +73,7 @@ const COLUMNAS_UNIDAD =
   'id, placa, placa_clave, descripcion, cliente, trajo, trabajo, estado, ingreso, ingreso_fecha, lista_en, salio_en, retiro, sede_id, registrado_por, registrado_por_nombre, ultimo_avance_fecha, ultimo_avance, area_actual_id, area_actual, avance_porcentaje, dias_sin_avance, dias_en_taller, impedimento, fotos, reportes'
 
 const COLUMNAS_REPORTE =
-  'id, flota_id, fecha, descripcion, avance_porcentaje, impedimento, creado_en, area_id, area_codigo, area, placa, unidad, cliente, trabajo, estado, registrado_por, registrado_por_nombre, fotos'
+  'id, flota_id, fecha, descripcion, avance_porcentaje, impedimento, creado_en, area_id, area_codigo, area, placa, unidad, cliente, trabajo, estado, registrado_por, registrado_por_nombre, fotos, revision, observacion, revisado_en, revisado_por_nombre, corregido_en'
 
 /**
  * Los trabajos sin orden, el que más días lleva sin noticias primero.

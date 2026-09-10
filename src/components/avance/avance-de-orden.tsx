@@ -1,21 +1,26 @@
 import { AlertTriangle } from 'lucide-react'
 
 import { RegistrarAvance } from '@/app/(app)/avance/registrar-avance'
+import { CorregirReporte } from '@/components/avance/corregir-reporte'
+import { RevisarReporte } from '@/components/avance/revisar-reporte'
+import { FirmaRevision, InsigniaRevision, NotaRevision } from '@/components/avance/revision'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { enlacesDeFotos, etapasDeLaOrden, fotosDeAvances, listarAvances } from '@/lib/datos/avances'
-import { fecha as formatearFecha } from '@/lib/format'
+import { fecha as formatearFecha, hoyLima } from '@/lib/format'
+import { puede, puedeCorregirReporte, type PerfilSesion } from '@/lib/sesion'
 
 /**
  * La línea de avance de una unidad: qué se hizo cada día y la foto de cómo
  * quedó. Se usa igual en la pantalla del taller y en la pestaña de la orden.
+ * Cada avance dice en qué va con el jefe, que lo aprueba u observa desde acá.
  */
 export async function AvanceDeOrden({
   ordenId,
-  puedeRegistrar,
+  perfil,
   conCabecera = false,
 }: {
   ordenId: string
-  puedeRegistrar: boolean
+  perfil: PerfilSesion
   conCabecera?: boolean
 }) {
   const [avances, etapas] = await Promise.all([listarAvances(ordenId), etapasDeLaOrden(ordenId)])
@@ -26,6 +31,9 @@ export async function AvanceDeOrden({
       .flat()
       .map((f) => f.ruta_storage),
   )
+
+  const aprueba = puede(perfil, 'produccion.aprobar_reportes')
+  const hoy = hoyLima()
 
   const lista =
     avances.length === 0 ? (
@@ -42,15 +50,24 @@ export async function AvanceDeOrden({
       <ol className="space-y-4">
         {avances.map((a) => {
           const suyas = fotos[a.id] ?? []
+          const corrige = puedeCorregirReporte(
+            perfil,
+            { clase: 'orden', revision: a.revision, autor: a.registrado_por, fecha: a.fecha },
+            hoy,
+          )
+          const revisa = aprueba && a.revision !== 'APROBADO'
 
           return (
             <li key={a.id}>
               <Tarjeta>
                 <TarjetaCuerpo className="space-y-3">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <p className="text-sm font-medium text-texto">
-                      {formatearFecha(a.fecha)}
-                      {a.etapa && <span className="text-texto-suave"> · {a.etapa}</span>}
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-texto">
+                      <span>
+                        {formatearFecha(a.fecha)}
+                        {a.etapa && <span className="text-texto-suave"> · {a.etapa}</span>}
+                      </span>
+                      <InsigniaRevision revision={a.revision} />
                     </p>
                     <p className="text-xs text-texto-tenue">
                       {a.registrado_por_nombre ?? 'Sin registrar'}
@@ -97,6 +114,28 @@ export async function AvanceDeOrden({
                       })}
                     </div>
                   )}
+
+                  <NotaRevision r={a} />
+                  <FirmaRevision r={a} />
+
+                  {(revisa || corrige) && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {revisa && <RevisarReporte clase="orden" id={a.id} revision={a.revision} />}
+                      {corrige && (
+                        <CorregirReporte
+                          reporte={{
+                            clase: 'orden',
+                            id: a.id,
+                            fecha: a.fecha,
+                            descripcion: a.descripcion,
+                            impedimento: a.impedimento,
+                          }}
+                          observacion={a.revision === 'OBSERVADO' ? a.observacion : null}
+                          destacado={a.revision === 'OBSERVADO'}
+                        />
+                      )}
+                    </div>
+                  )}
                 </TarjetaCuerpo>
               </Tarjeta>
             </li>
@@ -114,7 +153,14 @@ export async function AvanceDeOrden({
           titulo="Avance de la unidad"
           descripcion="Lo que se hizo cada día, con foto. Es el registro que se le enseña al cliente."
           acciones={
-            puedeRegistrar && <RegistrarAvance ordenId={ordenId} etapas={etapas} compacto />
+            puede(perfil, 'produccion.registrar') && (
+              <RegistrarAvance
+                ordenId={ordenId}
+                etapas={etapas}
+                trabaActual={avances[0]?.impedimento ?? null}
+                compacto
+              />
+            )
           }
         />
       </Tarjeta>

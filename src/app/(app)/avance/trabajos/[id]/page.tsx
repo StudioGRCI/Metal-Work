@@ -50,7 +50,13 @@ export default async function PaginaTrabajoSinOrden({ params }: PageProps<'/avan
         }
         acciones={
           <AccionesTrabajo
-            trabajo={{ id: trabajo.id, estado: trabajo.estado, nombre, esUnidad: Boolean(trabajo.placa) }}
+            trabajo={{
+              id: trabajo.id,
+              estado: trabajo.estado,
+              nombre,
+              esUnidad: Boolean(trabajo.placa),
+              traba: trabajo.impedimento,
+            }}
             areas={areasDeSuMano(perfil, areas)}
             areaPropia={perfil.area_id}
             puedeReportar={puede(perfil, 'produccion.registrar')}
@@ -125,7 +131,7 @@ export default async function PaginaTrabajoSinOrden({ params }: PageProps<'/avan
         </TarjetaCuerpo>
       </Tarjeta>
 
-      <AvanceDeFlota flotaId={id} />
+      <AvanceDeFlota flotaId={id} perfil={perfil} />
     </>
   )
 }
