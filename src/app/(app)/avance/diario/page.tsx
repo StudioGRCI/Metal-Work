@@ -8,6 +8,7 @@ import {
 import Link from 'next/link'
 
 import { CorregirReporte, type ReporteACorregir } from '@/components/avance/corregir-reporte'
+import { EliminarReporte } from '@/components/avance/eliminar-reporte'
 import { Miniaturas } from '@/components/avance/miniaturas'
 import { AprobarElDia, RevisarReporte } from '@/components/avance/revisar-reporte'
 import { InsigniaRevision, NotaRevision } from '@/components/avance/revision'
@@ -24,7 +25,13 @@ import { flotaDelDia, flotaEnTaller, fotosDeReportesFlota } from '@/lib/datos/fl
 import { ESTADO_OT, definir, type DatosRevision } from '@/lib/dominio/estados'
 import { nombreDeFlota } from '@/lib/dominio/unidades'
 import { fecha as fmtFecha, hora, hoyLima, numero } from '@/lib/format'
-import { exigirPermiso, puede, puedeCorregirReporte, type ClaseReporte } from '@/lib/sesion'
+import {
+  exigirPermiso,
+  puede,
+  puedeCorregirReporte,
+  puedeEliminarReporte,
+  type ClaseReporte,
+} from '@/lib/sesion'
 
 export const metadata = { title: 'El día en el taller' }
 
@@ -64,17 +71,20 @@ function PieDeRevision({
   r,
   aprueba,
   corrige,
+  elimina = null,
 }: {
   clase: ClaseReporte
   r: DatosRevision & { id: string }
   aprueba: boolean
   corrige: ReporteACorregir | null
+  /** Si puede borrarlo, y si se lleva fotos. */
+  elimina?: { conFotos: boolean } | null
 }) {
   const revisa = aprueba && r.revision !== 'APROBADO'
   return (
     <>
       <NotaRevision r={r} />
-      {(revisa || corrige) && (
+      {(revisa || corrige || elimina) && (
         <div className="flex flex-wrap items-center gap-2">
           {revisa && <RevisarReporte clase={clase} id={r.id} revision={r.revision} />}
           {corrige && (
@@ -84,6 +94,7 @@ function PieDeRevision({
               destacado={r.revision === 'OBSERVADO'}
             />
           )}
+          {elimina && <EliminarReporte clase={clase} id={r.id} conFotos={elimina.conFotos} />}
         </div>
       )}
     </>
@@ -361,6 +372,11 @@ export default async function PaginaDiaEnElTaller({
                               }
                             : null
                         }
+                        elimina={
+                          puedeEliminarReporte(perfil, { revision: r.revision, autor: r.reportado_por })
+                            ? { conFotos: false }
+                            : null
+                        }
                       />
                     </li>
                   )
@@ -433,6 +449,15 @@ export default async function PaginaDiaEnElTaller({
                               }
                             : null
                         }
+                        elimina={
+                          puedeEliminarReporte(perfil, {
+                            revision: a.revision,
+                            autor: a.registrado_por,
+                            movioEtapa: Boolean(a.etapa_id) && a.avance_porcentaje !== null,
+                          })
+                            ? { conFotos: Number(a.fotos) > 0 }
+                            : null
+                        }
                       />
                     </li>
                   )
@@ -501,6 +526,11 @@ export default async function PaginaDiaEnElTaller({
                                 avance_porcentaje: r.avance_porcentaje === null ? null : Number(r.avance_porcentaje),
                                 impedimento: r.impedimento,
                               }
+                            : null
+                        }
+                        elimina={
+                          puedeEliminarReporte(perfil, { revision: r.revision, autor: r.registrado_por })
+                            ? { conFotos: Number(r.fotos) > 0 }
                             : null
                         }
                       />

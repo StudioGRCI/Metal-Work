@@ -1757,6 +1757,8 @@ export type Database = {
           creado_por: string | null
           creado_en: string
           actualizado_en: string
+          fecha_inicio_plan: string | null
+          fecha_fin_plan: string | null
         }
         Insert: {
           id?: string
@@ -1770,6 +1772,8 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          fecha_inicio_plan?: string | null
+          fecha_fin_plan?: string | null
         }
         Update: {
           id?: string
@@ -1783,6 +1787,8 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          fecha_inicio_plan?: string | null
+          fecha_fin_plan?: string | null
         }
         Relationships: [
           {
@@ -1804,6 +1810,60 @@ export type Database = {
             columns: ["orden_id"]
             isOneToOne: false
             referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_adjuntos: {
+        Row: {
+          id: string
+          orden_id: string
+          tipo: string
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type: string | null
+          tamano_bytes: number | null
+          subido_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          tipo?: string
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          subido_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          tipo?: string
+          nombre_archivo?: string
+          ruta_storage?: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          subido_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_adjuntos_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_adjuntos_subido_por_fkey"
+            columns: ["subido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -3653,6 +3713,11 @@ export type Database = {
           reportes: number | null
           creado_por: string | null
           creado_en: string | null
+          fecha_inicio_plan: string | null
+          fecha_fin_plan: string | null
+          orden_numero: string | null
+          orden_estado: string | null
+          abierta_en_taller: boolean | null
         }
         Relationships: []
       }
@@ -3860,6 +3925,13 @@ export type Database = {
           p_activo: boolean
         }
         Returns: string
+      }
+      cargar_cronograma: {
+        Args: {
+          p_orden: string
+          p_filas: Json
+        }
+        Returns: Json
       }
       cifrar_clave: {
         Args: {

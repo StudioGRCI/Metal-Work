@@ -158,6 +158,64 @@ export async function aprobarElDia(_previo: unknown, datos: FormData): Promise<R
   return { ok: true, mensaje: cuantos === 1 ? 'Reporte aprobado.' : `${cuantos} reportes aprobados.` }
 }
 
+// -------------------------------------------------------------------- eliminar
+const esquemaEliminar = z.object({
+  clase: z.enum(['hoja', 'orden', 'flota']),
+  id: z.string().uuid(),
+})
+
+/**
+ * Borrar un reporte (migración 099): el autor mientras no esté aprobado, el
+ * jefe cualquiera. Las filas de las fotos se van en cascada con la base; los
+ * archivos viven en Storage y se piden aparte, después, con las rutas que se
+ * leyeron antes de borrar. Si el archivo no se puede quitar, el reporte igual
+ * quedó borrado: se avisa, no se deshace.
+ */
+export async function eliminarReporte(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ['produccion.registrar', 'produccion.aprobar_reportes'])) {
+    return { ok: false, error: 'No tienes permiso para borrar reportes del taller.' }
+  }
+
+  const analisis = esquemaEliminar.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: 'No se pudo identificar el reporte.' }
+  const v = analisis.data
+
+  const supabase = await createClient()
+
+  let rutas: string[] = []
+  if (v.clase === 'orden') {
+    const { data } = await supabase.from('ot_avance_fotos').select('ruta_storage').eq('avance_id', v.id)
+    rutas = (data ?? []).map((f) => f.ruta_storage)
+  } else if (v.clase === 'flota') {
+    const { data } = await supabase.from('flota_avance_fotos').select('ruta_storage').eq('avance_id', v.id)
+    rutas = (data ?? []).map((f) => f.ruta_storage)
+  }
+
+  const tabla = await tablaDeReporte(v.clase)
+  const { data, error } = await tabla.delete().eq('id', v.id).select('id').maybeSingle()
+
+  // El disparador de la 099 dice por qué no se borra el que movió la etapa; ese
+  // mensaje ya viene redactado y pasa tal cual.
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) {
+    return {
+      ok: false,
+      error: 'No se pudo borrar: puede que ya lo hayan aprobado, o que no sea tuyo. Vuelve a cargar la pantalla.',
+    }
+  }
+
+  revalidarReportes()
+
+  if (rutas.length > 0) {
+    const { error: errorFotos } = await supabase.storage.from('fotos-avance').remove(rutas)
+    if (errorFotos) {
+      return { ok: true, mensaje: 'Reporte eliminado. Sus fotos quedaron guardadas: avísale al administrador.' }
+    }
+  }
+  return { ok: true, mensaje: 'Reporte eliminado.' }
+}
+
 // ------------------------------------------------------------------- corregir
 const nulo = (v: string | undefined) => (v && v.trim().length > 0 ? v.trim() : null)
 const id = z.string().uuid()

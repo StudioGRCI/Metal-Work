@@ -9,12 +9,13 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { areasDelTaller } from '@/lib/datos/actividades'
+import { LoQueTocaHoy } from '@/components/avance/lo-que-toca-hoy'
+import { areasDelTaller, cronogramaAbierto } from '@/lib/datos/actividades'
 import { listarTablero, resumirTablero } from '@/lib/datos/avances'
 import { flotaEnTaller } from '@/lib/datos/flota'
 import { PRIORIDAD, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
-import { fecha as formatearFecha } from '@/lib/format'
+import { fecha as formatearFecha, hoyLima } from '@/lib/format'
 import { areasDeSuMano, exigirPermiso, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Avance en taller' }
@@ -29,10 +30,19 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
   const params = await searchParams
   const soloTrabadas = params.trabadas === '1'
 
-  const [filas, flota, areas] = await Promise.all([
+  // Lo que toca reportar según el cronograma (099): el supervisor ve su área;
+  // el jefe, que responde por todo el taller, todas.
+  const hoy = hoyLima()
+  const todoElTaller = puede(perfil, 'produccion.cualquier_area')
+  const areasDelCronograma = todoElTaller ? null : perfil.area_id ? [perfil.area_id] : []
+  const mirarCronograma =
+    puede(perfil, 'produccion.registrar') && (areasDelCronograma === null || areasDelCronograma.length > 0)
+
+  const [filas, flota, areas, cronograma] = await Promise.all([
     listarTablero({ trabadas: soloTrabadas }),
     flotaEnTaller(),
     areasDelTaller(),
+    mirarCronograma ? cronogramaAbierto(hoy, areasDelCronograma) : Promise.resolve([]),
   ])
   const resumen = resumirTablero(filas)
 
@@ -107,6 +117,8 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
           </TarjetaCuerpo>
         </Tarjeta>
       )}
+
+      <LoQueTocaHoy actividades={cronograma} hoy={hoy} conArea={todoElTaller} />
 
       {/* Dos por fila en el teléfono; las cuatro de siempre en el monitor. */}
       <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">

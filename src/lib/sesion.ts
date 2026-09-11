@@ -147,6 +147,21 @@ export function puedeCorregirReporte(
   return esAutor && aTiempo
 }
 
+/**
+ * Si esta persona ve «Eliminar» en un reporte del día. Gemelo de las políticas
+ * de DELETE de la migración 099: el jefe borra cualquiera; el autor, mientras
+ * no esté aprobado. El avance con foto que movió una etapa no se borra —lo
+ * impide un disparador—, así que ni se ofrece.
+ */
+export function puedeEliminarReporte(
+  perfil: PerfilSesion | null,
+  r: { revision: string | null; autor: string | null; movioEtapa?: boolean },
+): boolean {
+  if (!perfil || r.movioEtapa) return false
+  if (puede(perfil, 'produccion.aprobar_reportes')) return true
+  return r.autor === perfil.id && r.revision !== 'APROBADO'
+}
+
 /** Las áreas cuya hoja puede escribir: la suya, o todas si tiene el permiso. */
 export function areasDeSuMano<T extends { id: string }>(
   perfil: PerfilSesion | null,

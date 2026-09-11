@@ -18,6 +18,7 @@ import {
   timelineDeOrden,
 } from '@/lib/datos/ordenes'
 import { actividadesDeOrden, areasDelTaller } from '@/lib/datos/actividades'
+import { adjuntosDeOrden } from '@/lib/datos/adjuntos'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
 import { cumplimientoDeOrden } from '@/lib/datos/cumplimiento'
 import {
@@ -26,10 +27,17 @@ import {
   repuestosDeOrden,
   verificacionesDeOrden,
 } from '@/lib/datos/ficha-ot'
-import { areasDeSuMano, exigirPermiso, puede, puedeCorregirReporte } from '@/lib/sesion'
+import {
+  areasDeSuMano,
+  exigirPermiso,
+  puede,
+  puedeCorregirReporte,
+  puedeEliminarReporte,
+} from '@/lib/sesion'
 import type { CodigoMoneda } from '@/lib/format'
 
 import { AccionesEstado } from './acciones-estado'
+import { ArchivosDeOrden, type AdjuntoEnPantalla } from './archivos-de-orden'
 import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
 
 import { Bitacora } from './bitacora'
@@ -108,6 +116,29 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const hojaAreas =
     vista === 'actividades'
       ? await Promise.all([actividadesDeOrden(id), areasDelTaller()])
+      : null
+
+  // Los archivos de la orden (099): en el resumen y junto a la hoja, que es
+  // donde el taller los busca. Quitarlos es de quien los subió, la oficina o
+  // el jefe: lo mismo que dice la política.
+  const puedeSubirArchivos = puede(perfil, [
+    'produccion.actividades',
+    'ordenes.editar',
+    'ordenes.crear',
+    'ordenes.abrir_taller',
+  ])
+  const quitaCualquiera = puede(perfil, ['ordenes.editar', 'produccion.cualquier_area'])
+  const archivos: AdjuntoEnPantalla[] | null =
+    vista === 'resumen' || vista === 'actividades'
+      ? (await adjuntosDeOrden(id)).map((a) => ({
+          id: a.id,
+          tipo: a.tipo,
+          nombre_archivo: a.nombre_archivo,
+          tamano_bytes: a.tamano_bytes,
+          creado_en: a.creado_en,
+          url: a.url,
+          quitable: quitaCualquiera || a.subido_por === perfil.id,
+        }))
       : null
 
   const estado = estadoDeOrden(orden.estado, orden.abierta_en_taller)
@@ -314,6 +345,12 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               )}
             </TarjetaCuerpo>
           </Tarjeta>
+
+          {archivos && (
+            <div className="lg:col-span-2">
+              <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos} puedeSubir={puedeSubirArchivos} />
+            </div>
+          )}
         </div>
       )}
 
@@ -401,7 +438,16 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               ),
             )
             .map((r) => r.id)}
+          eliminables={hojaAreas[0].diario
+            .filter((r) => puedeEliminarReporte(perfil, { revision: r.revision, autor: r.reportado_por }))
+            .map((r) => r.id)}
         />
+      )}
+
+      {vista === 'actividades' && archivos && (
+        <div className="mt-4">
+          <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos} puedeSubir={puedeSubirArchivos} />
+        </div>
       )}
 
       {vista === 'avance' && (

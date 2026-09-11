@@ -18,6 +18,9 @@ export type ActividadArea = {
   terminada: boolean
   ultimo_reporte: string | null
   reportes: number | null
+  /** Según el cronograma (migración 099). */
+  fecha_inicio_plan: string | null
+  fecha_fin_plan: string | null
 }
 
 export type AvanceDeArea = {
@@ -55,7 +58,7 @@ export async function actividadesDeOrden(ordenId: string): Promise<{
     supabase
       .from('v_ot_actividades')
       .select(
-        'id, orden_id, area_id, area_codigo, area, orden_secuencia, nombre, detalle, referencia, peso_pct, avance_pct, terminada, ultimo_reporte, reportes',
+        'id, orden_id, area_id, area_codigo, area, orden_secuencia, nombre, detalle, referencia, peso_pct, avance_pct, terminada, ultimo_reporte, reportes, fecha_inicio_plan, fecha_fin_plan',
       )
       .eq('orden_id', ordenId)
       .order('area')
@@ -172,6 +175,60 @@ export async function hojasAbiertas(): Promise<HojaDeArea[]> {
 
   if (error) throw new Error(`No se pudieron leer las hojas abiertas: ${error.message}`)
   return (data ?? []) as unknown as HojaDeArea[]
+}
+
+export type ActividadDelCronograma = {
+  id: string
+  orden_id: string
+  orden_numero: string
+  orden_estado: string
+  abierta_en_taller: boolean | null
+  area_id: string
+  area: string
+  nombre: string
+  referencia: string | null
+  avance_pct: number
+  ultimo_reporte: string | null
+  fecha_inicio_plan: string | null
+  fecha_fin_plan: string | null
+}
+
+/**
+ * Lo que el cronograma tiene en marcha o ya dejó atrás (migración 099): las
+ * actividades que empezaron —inicio en o antes de hoy— y no llegaron al 100 %,
+ * en órdenes vivas o por revisar. Con `areaIds` solo las de esas áreas: el
+ * supervisor ve lo suyo y el jefe, todo.
+ *
+ * `hoy` viene de fuera y es la fecha del taller (hoyLima): la de la base va en
+ * UTC y de noche ya está en el día siguiente.
+ */
+export async function cronogramaAbierto(
+  hoy: string,
+  areaIds: string[] | null,
+): Promise<ActividadDelCronograma[]> {
+  const supabase = await createClient()
+
+  let consulta = supabase
+    .from('v_ot_actividades')
+    .select(
+      'id, orden_id, orden_numero, orden_estado, abierta_en_taller, area_id, area, nombre, referencia, avance_pct, ultimo_reporte, fecha_inicio_plan, fecha_fin_plan',
+    )
+    .lte('fecha_inicio_plan', hoy)
+    .eq('terminada', false)
+    .in('orden_estado', [...ESTADOS_ACTIVOS_OT, 'BORRADOR'])
+    .order('fecha_fin_plan', { ascending: true, nullsFirst: false })
+    .limit(200)
+
+  if (areaIds) consulta = consulta.in('area_id', areaIds)
+
+  const { data, error } = await consulta
+  if (error) throw new Error(`No se pudo leer el cronograma: ${error.message}`)
+
+  // En borrador solo las que abrió el taller: esas ya se trabajan mientras las
+  // revisan; las de la oficina todavía no.
+  return ((data ?? []) as unknown as ActividadDelCronograma[]).filter(
+    (a) => a.orden_estado !== 'BORRADOR' || a.abierta_en_taller,
+  )
 }
 
 /** El área de una actividad, para no escribir en la hoja de otro. */
