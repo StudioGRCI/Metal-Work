@@ -1446,6 +1446,7 @@ export type Database = {
           caracteristicas_especiales: string | null
           encargado_produccion_id: string | null
           correo_contacto: string | null
+          abierta_en_taller: boolean
         }
         Insert: {
           id?: string
@@ -1492,6 +1493,7 @@ export type Database = {
           caracteristicas_especiales?: string | null
           encargado_produccion_id?: string | null
           correo_contacto?: string | null
+          abierta_en_taller?: boolean
         }
         Update: {
           id?: string
@@ -1538,6 +1540,7 @@ export type Database = {
           caracteristicas_especiales?: string | null
           encargado_produccion_id?: string | null
           correo_contacto?: string | null
+          abierta_en_taller?: boolean
         }
         Relationships: [
           {
@@ -3418,6 +3421,7 @@ export type Database = {
           numero_chasis: string | null
           marca: string | null
           modelo: string | null
+          abierta_en_taller: boolean | null
         }
         Relationships: []
       }
@@ -3474,6 +3478,7 @@ export type Database = {
           dias_sin_avance: number | null
           impedimento: string | null
           fotos: number | null
+          abierta_en_taller: boolean | null
         }
         Relationships: []
       }
@@ -3791,6 +3796,19 @@ export type Database = {
       }
     }
     Functions: {
+      abrir_orden_del_taller: {
+        Args: {
+          p_cliente: string
+          p_placa: string
+          p_tipo_vehiculo: Database["public"]["Enums"]["tipo_vehiculo"]
+          p_marca: string
+          p_modelo: string
+          p_trabajo: string
+          p_tipo_trabajo?: Database["public"]["Enums"]["tipo_trabajo_ot"]
+          p_prioridad?: Database["public"]["Enums"]["prioridad_ot"]
+        }
+        Returns: string
+      }
       activar_auditoria: {
         Args: {
           p_tabla: string
@@ -3848,6 +3866,13 @@ export type Database = {
           p_clave: string
         }
         Returns: string
+      }
+      clientes_para_el_taller: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string
+          razon_social: string
+        }[]
       }
       completar_cuenta_acceso: {
         Args: {

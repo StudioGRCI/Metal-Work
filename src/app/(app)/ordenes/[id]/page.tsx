@@ -7,7 +7,7 @@ import { Insignia, Punto } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { ESTADO_OT, PRIORIDAD, TIPO_TRABAJO, definir } from '@/lib/dominio/estados'
+import { PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { fecha, fechaHora, hoyLima, moneda, numero as fmtNumero } from '@/lib/format'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import {
@@ -110,7 +110,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       ? await Promise.all([actividadesDeOrden(id), areasDelTaller()])
       : null
 
-  const estado = definir(ESTADO_OT, orden.estado)
+  const estado = estadoDeOrden(orden.estado, orden.abierta_en_taller)
+  const porRevisar = orden.abierta_en_taller && orden.estado === 'BORRADOR'
   const prioridad = definir(PRIORIDAD, orden.prioridad)
   // Puede venir vacío: quien no tiene `clientes.ver` abre la orden igual, pero
   // sin los datos del cliente.
@@ -163,12 +164,32 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           </span>
         }
         descripcion={orden.descripcion}
-        acciones={<AccionesEstado orden={{ id: orden.id, estado: orden.estado }} permisos={perfil.permisos} esAdmin={perfil.rol.codigo === 'ADMIN'} />}
+        acciones={
+          <AccionesEstado
+            orden={{ id: orden.id, estado: orden.estado, abiertaEnTaller: orden.abierta_en_taller }}
+            permisos={perfil.permisos}
+            esAdmin={perfil.rol.codigo === 'ADMIN'}
+          />
+        }
       />
 
       {query.creada === '1' && (
         <p className="mb-4 rounded-[var(--radius-base)] bg-exito-suave px-3 py-2 text-sm text-exito">
           Orden registrada correctamente. Apruébala para generar sus etapas de producción.
+        </p>
+      )}
+
+      {/* La que abrió el taller: se dice quién la revisa y que el trabajo no
+          espera. Al abrirla se llega acá, a la pestaña de actividades. */}
+      {porRevisar && (
+        <p
+          role={query.abierta === '1' ? 'status' : undefined}
+          className="mb-4 rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso"
+        >
+          {query.abierta === '1' ? <strong>Orden abierta. </strong> : <strong>Por revisar. </strong>}
+          La abrió el taller y espera que el jefe de producción la apruebe o la rechace; ya se le
+          avisó. Mientras, se le puede armar la lista de actividades y reportar. Al aprobarla nacen
+          sus etapas y sus plazos.
         </p>
       )}
 

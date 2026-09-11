@@ -8,7 +8,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
 import { cabeceraDeAvance, etapasDeLaOrden, listarAvances } from '@/lib/datos/avances'
-import { ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { estadoDeOrden } from '@/lib/dominio/estados'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { fecha as formatearFecha } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -31,7 +31,7 @@ export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avanc
   // propone para que un reporte nuevo no la borre sin que nadie lo decida.
   const [etapas, [ultimo]] = await Promise.all([etapasDeLaOrden(id), listarAvances(id, 1)])
 
-  const estado = definir(ESTADO_OT, orden.estado as string)
+  const estado = estadoDeOrden(orden.estado as string, orden.abierta_en_taller)
   const registra = puede(perfil, 'produccion.registrar')
   const restantes =
     orden.dias_habiles_restantes === null || orden.dias_habiles_restantes === undefined

@@ -47,7 +47,8 @@ export function AccionesEstado({
   permisos,
   esAdmin,
 }: {
-  orden: { id: string; estado: string }
+  /** `abiertaEnTaller`: la abrió el taller; por revisar, la aprueba o rechaza el jefe de producción. */
+  orden: { id: string; estado: string; abiertaEnTaller?: boolean | null }
   permisos: string[]
   esAdmin: boolean
 }) {
@@ -56,9 +57,20 @@ export function AccionesEstado({
   const [pidiendoMotivo, setPidiendoMotivo] = useState<{ estado: string; etiqueta: string } | null>(null)
   const [entregando_, setEntregando] = useState(false)
 
-  const disponibles = (SIGUIENTES[orden.estado] ?? []).filter(
-    (t) => esAdmin || permisos.includes(t.permiso),
-  )
+  // Por revisar: el jefe de producción la aprueba o la rechaza con
+  // `ordenes.revisar_taller`, el mismo atajo que tiene la base (migración 098).
+  // Rechazarla es anularla con motivo, pero se dice como lo que es.
+  const porRevisar = Boolean(orden.abiertaEnTaller) && orden.estado === 'BORRADOR'
+  const revisa = porRevisar && permisos.includes('ordenes.revisar_taller')
+
+  const disponibles = (SIGUIENTES[orden.estado] ?? [])
+    .filter(
+      (t) =>
+        esAdmin ||
+        permisos.includes(t.permiso) ||
+        (revisa && (t.estado === 'APROBADA' || t.estado === 'ANULADA')),
+    )
+    .map((t) => (porRevisar && t.estado === 'ANULADA' ? { ...t, etiqueta: 'Rechazar' } : t))
 
   // La entrega solo tiene sentido con la orden terminada, y es la única acción
   // que no cambia el estado sino que registra un documento.

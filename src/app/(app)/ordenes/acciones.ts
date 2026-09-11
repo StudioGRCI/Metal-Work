@@ -94,7 +94,22 @@ export async function cambiarEstadoOrden(
     : estado === 'ENTREGADA' ? 'ordenes.entregar'
     : 'ordenes.cambiar_estado'
 
-  if (!puede(perfil, permisoNecesario)) {
+  const supabase = await createClient()
+
+  // La orden que abrió el taller y sigue por revisar la aprueba o la rechaza
+  // quien tiene `ordenes.revisar_taller`: es el mismo atajo que tiene el
+  // disparador fn_ot_permiso_por_estado (migración 098), y solo para esa.
+  let permitido = puede(perfil, permisoNecesario)
+  if (!permitido && (estado === 'APROBADA' || estado === 'ANULADA') && puede(perfil, 'ordenes.revisar_taller')) {
+    const { data: actual } = await supabase
+      .from('ordenes_trabajo')
+      .select('estado, abierta_en_taller')
+      .eq('id', orden_id)
+      .maybeSingle()
+    permitido = Boolean(actual?.abierta_en_taller && actual.estado === 'BORRADOR')
+  }
+
+  if (!permitido) {
     return { ok: false, error: 'No tienes permiso para realizar este cambio de estado.' }
   }
 
@@ -104,7 +119,6 @@ export async function cambiarEstadoOrden(
     return { ok: false, error: 'Indica el motivo para continuar.' }
   }
 
-  const supabase = await createClient()
   const { data, error } = await supabase
     .from('ordenes_trabajo')
     .update({
@@ -121,6 +135,7 @@ export async function cambiarEstadoOrden(
 
   revalidatePath(`/ordenes/${orden_id}`)
   revalidatePath('/ordenes')
+  revalidatePath('/avance')
   return { ok: true, mensaje: 'Estado actualizado.' }
 }
 

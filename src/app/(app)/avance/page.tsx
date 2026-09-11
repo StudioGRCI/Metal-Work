@@ -1,4 +1,4 @@
-import { AlertTriangle, Camera, Clock, Plus } from 'lucide-react'
+import { AlertTriangle, Camera, ClipboardCheck, Clock, Plus } from 'lucide-react'
 import Link from 'next/link'
 
 import { TarjetaTrabajo } from '@/components/avance/tarjeta-trabajo'
@@ -12,7 +12,7 @@ import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { areasDelTaller } from '@/lib/datos/actividades'
 import { listarTablero, resumirTablero } from '@/lib/datos/avances'
 import { flotaEnTaller } from '@/lib/datos/flota'
-import { ESTADO_OT, PRIORIDAD, definir } from '@/lib/dominio/estados'
+import { PRIORIDAD, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha as formatearFecha } from '@/lib/format'
 import { areasDeSuMano, exigirPermiso, puede } from '@/lib/sesion'
@@ -47,6 +47,13 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
 
   const puedeRegistrarFlota =
     puede(perfil, 'produccion.actividades') && areasDeSuMano(perfil, areas).length > 0
+  const puedeAbrirOrden = puede(perfil, 'ordenes.abrir_taller')
+
+  // Las que abrió el taller y esperan al jefe: a él se le dicen arriba, con
+  // enlace a cada una, para que no tenga que buscarlas entre las tarjetas.
+  const porRevisar = puede(perfil, 'ordenes.revisar_taller')
+    ? filas.filter((f) => f.orden_estado === 'BORRADOR' && f.abierta_en_taller)
+    : []
 
   return (
     <>
@@ -54,14 +61,52 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
         titulo="Avance en taller"
         descripcion="Una tarjeta por unidad: dónde está, cuánto lleva, hace cuánto no se toca y qué la traba."
         acciones={
-          puedeRegistrarFlota && (
-            <EnlaceBoton href="/avance/trabajos/nueva" variante="secundario">
-              <Plus aria-hidden className="size-4" />
-              Nuevo trabajo sin orden
-            </EnlaceBoton>
+          (puedeAbrirOrden || puedeRegistrarFlota) && (
+            <>
+              {puedeAbrirOrden && (
+                <EnlaceBoton href="/avance/abrir-orden">
+                  <Plus aria-hidden className="size-4" />
+                  Abrir OT por revisar
+                </EnlaceBoton>
+              )}
+              {puedeRegistrarFlota && (
+                <EnlaceBoton href="/avance/trabajos/nueva" variante="secundario">
+                  <Plus aria-hidden className="size-4" />
+                  Nuevo trabajo sin orden
+                </EnlaceBoton>
+              )}
+            </>
           )
         }
       />
+
+      {porRevisar.length > 0 && (
+        <Tarjeta className="mb-4 border-aviso">
+          <TarjetaCuerpo className="space-y-2">
+            <p className="flex items-center gap-2 text-sm font-medium text-texto">
+              <ClipboardCheck aria-hidden className="size-4 text-aviso" />
+              {porRevisar.length === 1
+                ? 'Una orden que abrió el taller espera tu revisión'
+                : `${porRevisar.length} órdenes que abrió el taller esperan tu revisión`}
+            </p>
+            <ul className="flex flex-wrap gap-x-4 gap-y-1">
+              {porRevisar.map((f) => (
+                <li key={f.orden_id}>
+                  <Link
+                    href={`/ordenes/${f.orden_id}`}
+                    className="inline-flex min-h-11 items-center text-sm text-acento hover:underline sm:min-h-0"
+                  >
+                    {f.orden_numero} · {nombreDeUnidad(f.unidad_id ? f : null)}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-texto-suave">
+              En la orden: «Aprobar orden» le da sus etapas y sus plazos; «Rechazar» la anula con el motivo.
+            </p>
+          </TarjetaCuerpo>
+        </Tarjeta>
+      )}
 
       {/* Dos por fila en el teléfono; las cuatro de siempre en el monitor. */}
       <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -132,7 +177,7 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filas.map((f) => {
-            const estado = definir(ESTADO_OT, f.orden_estado)
+            const estado = estadoDeOrden(f.orden_estado, f.abierta_en_taller)
             const prioridad = definir(PRIORIDAD, f.prioridad)
             // Una orden sin unidad y una unidad sin placa no son lo mismo, y la
             // tarjeta lo tiene que decir: sin `unidad_id` no hay nada que

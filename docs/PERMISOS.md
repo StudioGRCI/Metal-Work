@@ -34,9 +34,9 @@ del final: los datos cambian, este archivo no se edita a mano.
 | `ALMACENERO` | Almacenero | 50 | 0 | 2 |
 | `COMPRADOR` | Compras | 50 | 0 | 2 |
 | `CALIDAD` | Control de calidad | 55 | 0 | 3 |
-| `SUPERVISOR` | Supervisor | 60 | 3 | 6 |
-| `JEFE_PRODUCCION` | Jefe de producción | 65 | 1 | 9 |
-| `JEFE_TALLER` | Jefe de taller | 70 | 1 | 14 |
+| `SUPERVISOR` | Supervisor | 60 | 3 | 7 |
+| `JEFE_PRODUCCION` | Jefe de producción | 65 | 1 | 11 |
+| `JEFE_TALLER` | Jefe de taller | 70 | 1 | 16 |
 | `GERENTE` | Gerencia | 90 | 1 | 20 |
 | `ADMIN` | Administrador | 100 | 1 | 0 → por `es_admin()` |
 
@@ -95,23 +95,33 @@ afectará cero filas sin dar error.
 **`CALIDAD` — Control de calidad** (3)
 `ordenes.listar`, `ordenes.ver`, `produccion.ver`
 
-**`SUPERVISOR` — Supervisor** (6)
-`ordenes.cambiar_estado`, `ordenes.listar`, `ordenes.ver`,
-`produccion.actividades`, `produccion.registrar`, `produccion.ver`
-
-**`JEFE_PRODUCCION` — Jefe de producción** (9)
-`ordenes.cambiar_estado`, `ordenes.listar`, `ordenes.ver`,
-`produccion.actividades`, `produccion.aprobar_reportes`,
-`produccion.cualquier_area`, `produccion.planificar`, `produccion.registrar`,
+**`SUPERVISOR` — Supervisor** (7)
+`ordenes.abrir_taller`, `ordenes.cambiar_estado`, `ordenes.listar`,
+`ordenes.ver`, `produccion.actividades`, `produccion.registrar`,
 `produccion.ver`
 
-Es el supervisor más las tres áreas, programar y el visto bueno de los reportes
-del día (migración `097`). Sin `clientes.ver`, como el resto del taller: a él le
-llegan los avances, no los clientes.
+Abre órdenes desde el taller, que quedan por revisar (migración `098`). Para
+decir de quién es la unidad ve solo el nombre de los clientes, por la función
+`clientes_para_el_taller()`; sigue sin `clientes.ver`. Desde la misma migración
+todo el que tiene `produccion.ver` lee las unidades —placa, marca, chasis—, que
+antes pedían `clientes.ver` y dejaban las tarjetas del taller sin placa.
 
-**`JEFE_TALLER` — Jefe de taller** (14)
-`clientes.ver`, `cotizaciones.ver`, `ordenes.cambiar_estado`, `ordenes.crear`,
-`ordenes.editar`, `ordenes.entregar`, `ordenes.listar`, `ordenes.ver`,
+**`JEFE_PRODUCCION` — Jefe de producción** (11)
+`ordenes.abrir_taller`, `ordenes.cambiar_estado`, `ordenes.listar`,
+`ordenes.revisar_taller`, `ordenes.ver`, `produccion.actividades`,
+`produccion.aprobar_reportes`, `produccion.cualquier_area`,
+`produccion.planificar`, `produccion.registrar`, `produccion.ver`
+
+Es el supervisor más las tres áreas, programar, el visto bueno de los reportes
+del día (migración `097`) y la revisión de las órdenes que abre el taller
+(`098`): las aprueba o las rechaza él, no Gerencia; las de la oficina no. Sin
+`clientes.ver`, como el resto del taller: a él le llegan los avances, no los
+clientes.
+
+**`JEFE_TALLER` — Jefe de taller** (16)
+`clientes.ver`, `cotizaciones.ver`, `ordenes.abrir_taller`,
+`ordenes.cambiar_estado`, `ordenes.crear`, `ordenes.editar`, `ordenes.entregar`,
+`ordenes.listar`, `ordenes.revisar_taller`, `ordenes.ver`,
 `produccion.actividades`, `produccion.aprobar_reportes`,
 `produccion.cualquier_area`, `produccion.planificar`, `produccion.registrar`,
 `produccion.ver`
@@ -149,6 +159,7 @@ la política exige y se mira quién lo tiene de verdad.
 | Configuración | `usuarios.gestionar` | Crear usuarios y asignar roles | `GERENTE` |
 | Configuración | `usuarios.ver` | Ver usuarios | **(ninguno)** |
 | cotizaciones | `cotizaciones.anular` | Anular una cotización que el cliente ya aprobó | `GERENTE` |
+| Órdenes de trabajo | `ordenes.abrir_taller` | Abrir desde el taller una orden de trabajo, que queda por revisar | `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER` |
 | Órdenes de trabajo | `ordenes.anular` | Anular una orden de trabajo | `GERENTE` |
 | Órdenes de trabajo | `ordenes.aprobar` | Aprobar una orden y liberarla a producción | `GERENTE` |
 | Órdenes de trabajo | `ordenes.cambiar_estado` | Iniciar, pausar, reanudar o terminar una orden | `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER` |
@@ -156,6 +167,7 @@ la política exige y se mira quién lo tiene de verdad.
 | Órdenes de trabajo | `ordenes.editar` | Modificar datos de una orden de trabajo | `ADMINISTRACION`, `JEFE_TALLER` |
 | Órdenes de trabajo | `ordenes.entregar` | Registrar la entrega y el acta de conformidad | `JEFE_TALLER` |
 | Órdenes de trabajo | `ordenes.listar` | Entrar al módulo de órdenes de trabajo y al control de plazos | todos menos `ADMIN` y `VENDEDOR` (12 roles) |
+| Órdenes de trabajo | `ordenes.revisar_taller` | Aprobar o rechazar las órdenes que abrió el taller | `JEFE_PRODUCCION`, `JEFE_TALLER` |
 | Órdenes de trabajo | `ordenes.ver` | Ver órdenes de trabajo y su detalle | todos menos `ADMIN` (13 roles) |
 | Producción | `diseno.planos` | Armar la lista de planos y piezas de una orden y dar por entregado cada plano | `DISENO`, `GERENTE` |
 | Producción | `produccion.actividades` | Armar la lista de actividades de su área en una orden y ponerles su peso | `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |

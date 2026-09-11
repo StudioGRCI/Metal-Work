@@ -9,7 +9,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { cantidad, fecha, nombreCorto } from '@/lib/format'
-import { ESTADO_OT, PRIORIDAD, TIPO_TRABAJO, definir } from '@/lib/dominio/estados'
+import { PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import {
   ORDENES_POR_PAGINA,
@@ -47,6 +47,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
     filtros.busqueda || filtros.estado || filtros.prioridad || filtros.atrasadas,
   )
   const puedeCrear = puede(perfil, 'ordenes.crear')
+  const puedeAbrirEnTaller = puede(perfil, 'ordenes.abrir_taller')
 
   // Cero con filtros puestos y cero de verdad no son lo mismo: al que busca le
   // importa saber si el vacío lo produjo su propio filtro.
@@ -64,11 +65,23 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
             : `${total.toLocaleString('es-PE')} ${total === 1 ? 'orden' : 'órdenes'}${hayFiltros ? ' con los filtros aplicados' : ''}`
         }
         acciones={
-          puedeCrear && (
-            <EnlaceBoton href="/ordenes/nueva">
-              <Plus aria-hidden className="size-4" />
-              Nueva orden
-            </EnlaceBoton>
+          (puedeCrear || puedeAbrirEnTaller) && (
+            <>
+              {puedeCrear && (
+                <EnlaceBoton href="/ordenes/nueva">
+                  <Plus aria-hidden className="size-4" />
+                  Nueva orden
+                </EnlaceBoton>
+              )}
+              {/* La del taller queda por revisar y la aprueba el jefe de
+                  producción; la de la oficina, Gerencia. Son dos puertas. */}
+              {puedeAbrirEnTaller && (
+                <EnlaceBoton href="/avance/abrir-orden" variante={puedeCrear ? 'secundario' : 'primario'}>
+                  <Plus aria-hidden className="size-4" />
+                  Abrir OT por revisar
+                </EnlaceBoton>
+              )}
+            </>
           )
         }
       />
@@ -118,7 +131,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
               />
             ) : (
               ordenes.map((orden) => {
-                const estado = definir(ESTADO_OT, orden.estado)
+                const estado = estadoDeOrden(orden.estado, orden.abierta_en_taller)
                 const prioridad = definir(PRIORIDAD, orden.prioridad)
                 const atraso = orden.dias_atraso ?? 0
                 // Los días que el taller tiene por delante, ya descontados los
