@@ -35,14 +35,16 @@ const PRIORIDADES = [
 ] as const
 
 /**
- * Lo mínimo para que la orden exista: de quién es, qué unidad y qué hay que
- * hacer. Si la placa ya es de ese cliente, la orden se cuelga de esa unidad y
- * la marca y el modelo no hacen falta; si no, la unidad se registra con ellos.
+ * Lo mínimo para que la orden exista: qué unidad y qué hay que hacer. Sin
+ * cliente: el taller no lo ve ni lo maneja (migración 100). Si la placa ya
+ * está registrada, la orden se cuelga de esa unidad —y de su cliente, si lo
+ * tiene— y la marca y el modelo no hacen falta; si no, la unidad se registra
+ * con ellos y la oficina le pone el cliente después.
  *
  * Al abrirla la pantalla se va a la orden, a la pestaña de actividades: lo
  * siguiente es armar la lista del área, mientras el jefe la revisa.
  */
-export function FormularioOrdenTaller({ clientes }: { clientes: { id: string; razon_social: string }[] }) {
+export function FormularioOrdenTaller() {
   const router = useRouter()
   const { alEnviar, enviando, resultado, error } = useEnvio(
     abrirOrdenDelTaller,
@@ -55,28 +57,8 @@ export function FormularioOrdenTaller({ clientes }: { clientes: { id: string; ra
 
   return (
     <form onSubmit={alEnviar} className="space-y-4">
-      <Campo etiqueta="De quién es" htmlFor="ot-cliente" requerido>
-        <Seleccion
-          id="ot-cliente"
-          name="cliente_id"
-          required
-          defaultValue={clientes.length === 1 ? clientes[0].id : ''}
-        >
-          {clientes.length > 1 && (
-            <option value="" disabled>
-              Elige el cliente
-            </option>
-          )}
-          {clientes.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.razon_social}
-            </option>
-          ))}
-        </Seleccion>
-      </Campo>
-
       <div className="grid gap-4 sm:grid-cols-2">
-        <Campo etiqueta="Placa" htmlFor="ot-placa" ayuda="Como está en la tarjeta. Si ya es de este cliente, se usa esa unidad.">
+        <Campo etiqueta="Placa" htmlFor="ot-placa" ayuda="Como está en la tarjeta. Si ya está registrada, se usa esa unidad.">
           <Entrada
             id="ot-placa"
             name="placa"

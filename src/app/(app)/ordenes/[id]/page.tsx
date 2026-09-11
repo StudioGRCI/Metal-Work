@@ -11,6 +11,7 @@ import { PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/e
 import { fecha, fechaHora, hoyLima, moneda, numero as fmtNumero } from '@/lib/format'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import {
+  clientesParaElegir,
   estadoDeSalida,
   fechasClaveDeOrden,
   listarEtapas,
@@ -38,6 +39,7 @@ import type { CodigoMoneda } from '@/lib/format'
 
 import { AccionesEstado } from './acciones-estado'
 import { ArchivosDeOrden, type AdjuntoEnPantalla } from './archivos-de-orden'
+import { PonerCliente } from './poner-cliente'
 import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
 
 import { Bitacora } from './bitacora'
@@ -108,6 +110,17 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     verSalida ? estadoDeSalida(id) : Promise.resolve(null),
     vista === 'resumen' ? fechasClaveDeOrden(id) : Promise.resolve(null),
   ])
+
+  // La orden del taller sin cliente (100): la oficina, que ve los clientes y
+  // hace órdenes, se lo pone desde el resumen.
+  const clientesParaPoner =
+    vista === 'resumen' &&
+    orden.cliente_id === null &&
+    !['ENTREGADA', 'FACTURADA', 'ANULADA'].includes(orden.estado) &&
+    puede(perfil, 'ordenes.editar') &&
+    puede(perfil, 'clientes.ver')
+      ? await clientesParaElegir()
+      : null
 
   // La lista de Diseño y su catálogo.
   const listaMateriales = vista === 'materiales' ? await materialesParaPantalla(id) : null
@@ -265,7 +278,19 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           <Tarjeta>
             <TarjetaCabecera titulo="Cliente y unidad" />
             <TarjetaCuerpo className="space-y-0">
-              <Dato etiqueta="Cliente" valor={cliente?.razon_social ?? null} />
+              {/* Sin cliente solo puede estar la que abrió el taller (100): la
+                  oficina se lo pone acá; los demás leen que falta. */}
+              {orden.cliente_id === null && clientesParaPoner ? (
+                <PonerCliente ordenId={orden.id} clientes={clientesParaPoner} />
+              ) : (
+                <Dato
+                  etiqueta="Cliente"
+                  valor={
+                    cliente?.razon_social ??
+                    (orden.cliente_id === null ? 'Sin cliente todavía: lo pone la oficina' : null)
+                  }
+                />
+              )}
               <Dato etiqueta="Documento" valor={cliente?.numero_documento ?? null} />
               <Dato etiqueta="Teléfono" valor={cliente?.telefono ?? null} />
               {/* «Unidad» y no «Placa»: mientras no esté matriculada lo que

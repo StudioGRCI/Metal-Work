@@ -8,14 +8,14 @@ import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /**
- * Abrir una orden desde el taller (migración 098). Exige `ordenes.abrir_taller`,
- * el mismo permiso que pide la función de la base, que es quien hace el
- * trabajo: busca la unidad por su placa entre las del cliente o la registra,
- * abre la orden por revisar y le avisa al jefe de producción. Todo junto o
- * nada: no queda una unidad suelta si la orden no entra.
+ * Abrir una orden desde el taller (migraciones 098 y 100). Exige
+ * `ordenes.abrir_taller`, el mismo permiso que pide la función de la base, que
+ * es quien hace el trabajo: busca la unidad por su placa entre todas o la
+ * registra sin dueño, abre la orden por revisar —sin cliente si la unidad no
+ * lo tiene— y le avisa al jefe de producción. Todo junto o nada: no queda una
+ * unidad suelta si la orden no entra.
  */
 const esquema = z.object({
-  cliente_id: z.string().uuid('Elige de quién es la unidad'),
   placa: z.string().trim().max(20).optional(),
   tipo_vehiculo: z
     .enum(['VOLQUETE', 'TRACTO', 'SEMIRREMOLQUE', 'CAMION', 'REMOLQUE', 'FURGON', 'OTRO'])
@@ -50,7 +50,6 @@ export async function abrirOrdenDelTaller(
 
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('abrir_orden_del_taller', {
-    p_cliente: v.cliente_id,
     p_placa: v.placa ?? '',
     p_tipo_vehiculo: v.tipo_vehiculo,
     p_marca: v.marca ?? '',

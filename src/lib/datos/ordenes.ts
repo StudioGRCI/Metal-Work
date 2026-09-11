@@ -99,15 +99,15 @@ export async function listarOrdenes(filtros: FiltrosOrdenes) {
  * tienen permiso para verla. Ahora la orden se abre y lo que no se ve es el
  * nombre del cliente, que es exactamente lo que el permiso dice.
  */
-/**
- * Los clientes para abrir una orden desde el taller: solo el nombre. El taller
- * no tiene `clientes.ver`, y la función de la base le da justo lo que necesita
- * para decir de quién es la unidad (migración 098).
- */
-export async function clientesParaElTaller(): Promise<{ id: string; razon_social: string }[]> {
+/** Los clientes activos para ponerle cliente a una orden del taller (migración 100). */
+export async function clientesParaElegir(): Promise<{ id: string; razon_social: string }[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('clientes_para_el_taller')
-  if (error) throw new Error(`No se pudieron leer los clientes: ${error.message}`)
+  const { data } = await supabase
+    .from('clientes')
+    .select('id, razon_social')
+    .eq('activo', true)
+    .order('razon_social')
+    .limit(500)
   return data ?? []
 }
 
@@ -117,7 +117,7 @@ export async function obtenerOrden(id: string) {
   const { data, error } = await supabase
     .from('ordenes_trabajo')
     .select(
-      'id, numero, estado, abierta_en_taller, prioridad, tipo_trabajo, descripcion, especificaciones_tecnicas, datos_tecnicos, fecha_registro, fecha_inicio_programada, fecha_fin_programada, fecha_entrega_comprometida, fecha_inicio_real, fecha_fin_real, avance_porcentaje, horas_estimadas, horas_reales, moneda, monto_presupuestado, motivo_pausa, motivo_anulacion, observaciones, creado_en, largo_m, ancho_m, alto_m, capacidad_carga, ruedas, tipo_llantas, cantidad_ejes, tipo_suspension, colores, caracteristicas_especiales, correo_contacto, encargado_produccion_id, cliente:clientes(id, razon_social, numero_documento, telefono, correo), unidad:unidades(id, placa, marca, modelo, anio, tipo_vehiculo, numero_chasis, codigo_interno), sede:sedes!inner(id, nombre), tipo_carroceria:tipos_carroceria(id, nombre), responsable:usuarios!ordenes_trabajo_responsable_id_fkey(id, nombres, apellidos), supervisor:usuarios!ordenes_trabajo_supervisor_id_fkey(id, nombres, apellidos), cotizacion:cotizaciones(id, numero, total, moneda)',
+      'id, numero, estado, abierta_en_taller, cliente_id, prioridad, tipo_trabajo, descripcion, especificaciones_tecnicas, datos_tecnicos, fecha_registro, fecha_inicio_programada, fecha_fin_programada, fecha_entrega_comprometida, fecha_inicio_real, fecha_fin_real, avance_porcentaje, horas_estimadas, horas_reales, moneda, monto_presupuestado, motivo_pausa, motivo_anulacion, observaciones, creado_en, largo_m, ancho_m, alto_m, capacidad_carga, ruedas, tipo_llantas, cantidad_ejes, tipo_suspension, colores, caracteristicas_especiales, correo_contacto, encargado_produccion_id, cliente:clientes(id, razon_social, numero_documento, telefono, correo), unidad:unidades(id, placa, marca, modelo, anio, tipo_vehiculo, numero_chasis, codigo_interno), sede:sedes!inner(id, nombre), tipo_carroceria:tipos_carroceria(id, nombre), responsable:usuarios!ordenes_trabajo_responsable_id_fkey(id, nombres, apellidos), supervisor:usuarios!ordenes_trabajo_supervisor_id_fkey(id, nombres, apellidos), cotizacion:cotizaciones(id, numero, total, moneda)',
     )
     .eq('id', id)
     .maybeSingle()

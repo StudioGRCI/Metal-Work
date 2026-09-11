@@ -100,9 +100,10 @@ afectará cero filas sin dar error.
 `ordenes.ver`, `produccion.actividades`, `produccion.registrar`,
 `produccion.ver`
 
-Abre órdenes desde el taller, que quedan por revisar (migración `098`). Para
-decir de quién es la unidad ve solo el nombre de los clientes, por la función
-`clientes_para_el_taller()`; sigue sin `clientes.ver`. Desde la misma migración
+Abre órdenes desde el taller, que quedan por revisar (migración `098`). No
+elige cliente —sigue sin `clientes.ver`—: si la placa ya está registrada la
+orden toma su cliente, y si no, nace sin él y la oficina se lo pone con
+`ordenes.editar` (`poner_cliente_a_orden`, migración `100`). Desde la `098`
 todo el que tiene `produccion.ver` lee las unidades —placa, marca, chasis—, que
 antes pedían `clientes.ver` y dejaban las tarjetas del taller sin placa.
 

@@ -139,6 +139,43 @@ export async function cambiarEstadoOrden(
   return { ok: true, mensaje: 'Estado actualizado.' }
 }
 
+const esquemaPonerCliente = z.object({
+  orden_id: z.string().uuid(),
+  cliente_id: z.string().uuid('Elige el cliente'),
+})
+
+/**
+ * Ponerle cliente a una orden que abrió el taller sin él (migración 100). Lo
+ * hace la oficina, con `ordenes.editar`, el mismo permiso que exige la función
+ * de la base; ella se lo pone también a la unidad si no tenía dueño.
+ */
+export async function ponerClienteAOrden(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ordenes.editar')) {
+    return { ok: false, error: 'El cliente de la orden lo pone la oficina.' }
+  }
+
+  const analisis = esquemaPonerCliente.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Elige el cliente.' }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('poner_cliente_a_orden', {
+    p_orden: analisis.data.orden_id,
+    p_cliente: analisis.data.cliente_id,
+  })
+  if (error) {
+    // Los avisos de la función vienen redactados; los del motor se traducen.
+    const delMotor = /violates|duplicate key|permission denied/i.test(error.message)
+    return { ok: false, error: delMotor ? mensajeDeError(error) : error.message }
+  }
+
+  revalidatePath(`/ordenes/${analisis.data.orden_id}`)
+  revalidatePath('/ordenes')
+  return { ok: true, mensaje: 'Cliente puesto.' }
+}
+
 const esquemaAvanceEtapa = z.object({
   etapa_id: z.string().uuid(),
   orden_id: z.string().uuid(),

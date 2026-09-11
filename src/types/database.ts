@@ -1404,7 +1404,7 @@ export type Database = {
         Row: {
           id: string
           numero: string
-          cliente_id: string
+          cliente_id: string | null
           unidad_id: string | null
           cotizacion_id: string | null
           tipo_carroceria_id: string | null
@@ -1451,7 +1451,7 @@ export type Database = {
         Insert: {
           id?: string
           numero?: string
-          cliente_id: string
+          cliente_id?: string | null
           unidad_id?: string | null
           cotizacion_id?: string | null
           tipo_carroceria_id?: string | null
@@ -1498,7 +1498,7 @@ export type Database = {
         Update: {
           id?: string
           numero?: string
-          cliente_id?: string
+          cliente_id?: string | null
           unidad_id?: string | null
           cotizacion_id?: string | null
           tipo_carroceria_id?: string | null
@@ -3121,7 +3121,7 @@ export type Database = {
       unidades: {
         Row: {
           id: string
-          cliente_id: string
+          cliente_id: string | null
           placa: string | null
           tipo_vehiculo: Database["public"]["Enums"]["tipo_vehiculo"]
           marca: string | null
@@ -3142,7 +3142,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          cliente_id: string
+          cliente_id?: string | null
           placa?: string | null
           tipo_vehiculo?: Database["public"]["Enums"]["tipo_vehiculo"]
           marca?: string | null
@@ -3163,7 +3163,7 @@ export type Database = {
         }
         Update: {
           id?: string
-          cliente_id?: string
+          cliente_id?: string | null
           placa?: string | null
           tipo_vehiculo?: Database["public"]["Enums"]["tipo_vehiculo"]
           marca?: string | null
@@ -3863,7 +3863,6 @@ export type Database = {
     Functions: {
       abrir_orden_del_taller: {
         Args: {
-          p_cliente: string
           p_placa: string
           p_tipo_vehiculo: Database["public"]["Enums"]["tipo_vehiculo"]
           p_marca: string
@@ -3938,13 +3937,6 @@ export type Database = {
           p_clave: string
         }
         Returns: string
-      }
-      clientes_para_el_taller: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          id: string
-          razon_social: string
-        }[]
       }
       completar_cuenta_acceso: {
         Args: {
@@ -4172,6 +4164,13 @@ export type Database = {
       plantilla_de_la_carroceria: {
         Args: {
           p_tipo: string
+        }
+        Returns: string
+      }
+      poner_cliente_a_orden: {
+        Args: {
+          p_orden: string
+          p_cliente: string
         }
         Returns: string
       }
