@@ -157,6 +157,12 @@ begin
   if v_numero is null then
     raise exception 'No se encontró la orden.' using errcode = 'foreign_key_violation';
   end if;
+  -- Una orden que ya salió del taller, o que se anuló, no tiene qué planear.
+  if exists (select 1 from public.ordenes_trabajo o
+              where o.id = p_orden and o.estado in ('ENTREGADA', 'FACTURADA', 'ANULADA')) then
+    raise exception 'La orden % ya está cerrada: no se le carga cronograma.', v_numero
+      using errcode = 'check_violation';
+  end if;
 
   if jsonb_typeof(p_filas) is distinct from 'array' or jsonb_array_length(p_filas) = 0 then
     raise exception 'El cronograma llegó vacío.' using errcode = 'check_violation';
