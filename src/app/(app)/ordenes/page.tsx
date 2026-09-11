@@ -173,7 +173,14 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                     </TD>
 
                     <TD>
-                      <p className="max-w-52 truncate text-texto">{orden.cliente}</p>
+                      {/* Sin `cliente_id` es de verdad sin cliente: la abrió el
+                          taller (100). Con él y sin nombre, es que quien mira
+                          no tiene clientes.ver, y ahí no se dice nada. */}
+                      <p className="max-w-52 truncate text-texto">
+                        {orden.cliente ?? (orden.cliente_id === null ? (
+                          <span className="text-aviso">Sin cliente todavía</span>
+                        ) : null)}
+                      </p>
                       <p className="text-[11px] text-texto-suave">
                         {/* Sin placa el nombre lo pone el código de fábrica o
                             el chasis: va más tenue para que nadie lo lea de
