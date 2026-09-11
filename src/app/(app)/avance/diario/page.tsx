@@ -1,8 +1,18 @@
-import { AlertTriangle, CalendarDays, ClipboardList, Layers, MessageSquareDashed } from 'lucide-react'
+import {
+  AlertTriangle,
+  ClipboardCheck,
+  ClipboardList,
+  MessageSquareDashed,
+  MessageSquareWarning,
+} from 'lucide-react'
 import Link from 'next/link'
 
+import { CorregirReporte, type ReporteACorregir } from '@/components/avance/corregir-reporte'
 import { Miniaturas } from '@/components/avance/miniaturas'
+import { AprobarElDia, RevisarReporte } from '@/components/avance/revisar-reporte'
+import { InsigniaRevision, NotaRevision } from '@/components/avance/revision'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Entrada } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
@@ -11,14 +21,20 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { avancesDelDia, hojasAbiertas } from '@/lib/datos/actividades'
 import { avancesDeOrdenesDelDia, enlacesDeFotos, fotosDeAvances } from '@/lib/datos/avances'
 import { flotaDelDia, flotaEnTaller, fotosDeReportesFlota } from '@/lib/datos/flota'
-import { ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { ESTADO_OT, definir, type DatosRevision } from '@/lib/dominio/estados'
 import { nombreDeFlota } from '@/lib/dominio/unidades'
 import { fecha as fmtFecha, hora, hoyLima, numero } from '@/lib/format'
-import { exigirPermiso } from '@/lib/sesion'
+import { exigirPermiso, puede, puedeCorregirReporte, type ClaseReporte } from '@/lib/sesion'
 
 export const metadata = { title: 'El día en el taller' }
 
 const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/
+
+const FILTROS = [
+  { valor: null, etiqueta: 'Todo lo del día' },
+  { valor: 'por-aprobar', etiqueta: 'Solo lo por aprobar' },
+  { valor: 'observados', etiqueta: 'Observados' },
+]
 
 /** El renglón chico de quién y a qué hora, igual en los tres tipos de reporte. */
 function Firma({ quien, cuando }: { quien: string | null; cuando: string }) {
@@ -40,12 +56,48 @@ function Traba({ texto }: { texto: string | null }) {
 }
 
 /**
+ * Lo que va al pie de cada reporte: lo que dijo el jefe y, según quién mira,
+ * aprobar u observar, o corregir. Si no hay nada que hacer, no ocupa lugar.
+ */
+function PieDeRevision({
+  clase,
+  r,
+  aprueba,
+  corrige,
+}: {
+  clase: ClaseReporte
+  r: DatosRevision & { id: string }
+  aprueba: boolean
+  corrige: ReporteACorregir | null
+}) {
+  const revisa = aprueba && r.revision !== 'APROBADO'
+  return (
+    <>
+      <NotaRevision r={r} />
+      {(revisa || corrige) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {revisa && <RevisarReporte clase={clase} id={r.id} revision={r.revision} />}
+          {corrige && (
+            <CorregirReporte
+              reporte={corrige}
+              observacion={r.revision === 'OBSERVADO' ? r.observacion : null}
+              destacado={r.revision === 'OBSERVADO'}
+            />
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
+/**
  * El parte de la jornada, que es la pantalla del jefe de producción.
  *
  * Acá llega todo lo del día junto: las hojas por área de las órdenes, el avance
- * con foto de cada unidad y los trabajos sin orden. Y lo que ninguna lista de
- * reportes enseña: **quién no reportó**, que es la mitad por la que pregunta el
- * jefe cuando cierra el día.
+ * con foto de cada unidad y los trabajos sin orden. Cada reporte nace «por
+ * aprobar» y el jefe lo aprueba o lo observa desde acá mismo, de a uno o todo
+ * el día de una vez. Y lo que ninguna lista de reportes enseña: **quién no
+ * reportó**, que es la mitad por la que pregunta el jefe cuando cierra el día.
  *
  * Cada reporte es un renglón que se apila en el teléfono —nada que deslizar de
  * costado— y lleva sus fotos a la vista: el jefe mira desde el celular, y la
@@ -54,12 +106,14 @@ function Traba({ texto }: { texto: string | null }) {
 export default async function PaginaDiaEnElTaller({
   searchParams,
 }: PageProps<'/avance/diario'>) {
-  await exigirPermiso('produccion.ver')
+  const perfil = await exigirPermiso('produccion.ver')
 
   const params = await searchParams
   const pedida = typeof params.fecha === 'string' && ES_FECHA.test(params.fecha) ? params.fecha : null
+  const ver = params.ver === 'por-aprobar' || params.ver === 'observados' ? params.ver : null
   const hoy = hoyLima()
   const dia = pedida ?? hoy
+  const aprueba = puede(perfil, 'produccion.aprobar_reportes')
 
   const [reportes, hojas, flotaDia, flota, conFoto] = await Promise.all([
     avancesDelDia(dia),
@@ -94,15 +148,27 @@ export default async function PaginaDiaEnElTaller({
     ...conFoto.map((a) => a.orden_id),
     ...flotaDia.map((r) => r.flota_id),
   ])
-  const totalReportes = reportes.length + conFoto.length + flotaDia.length
+  const todos = [...reportes, ...conFoto, ...flotaDia]
+  const totalReportes = todos.length
+  const porAprobar = todos.filter((r) => r.revision === 'PENDIENTE').length
+  const observados = todos.filter((r) => r.revision === 'OBSERVADO').length
   const sinReportar = calladas.length + flotaCallada.length
 
+  // El filtro achica las listas, no los números de arriba: el jefe tiene que
+  // seguir viendo cuánto hubo en el día aunque mire solo lo que le falta.
+  const entra = (r: DatosRevision) =>
+    ver === 'por-aprobar' ? r.revision === 'PENDIENTE' : ver === 'observados' ? r.revision === 'OBSERVADO' : true
+  const hojasVisibles = reportes.filter(entra)
+  const conFotoVisible = conFoto.filter(entra)
+  const flotaVisible = flotaDia.filter(entra)
+  const visibles = hojasVisibles.length + conFotoVisible.length + flotaVisible.length
+
   // Un bloque por área, en el orden en que el taller las nombra.
-  const porArea = [...new Map(reportes.map((r) => [r.area_id, r])).values()].map((cabeza) => ({
+  const porArea = [...new Map(hojasVisibles.map((r) => [r.area_id, r])).values()].map((cabeza) => ({
     id: cabeza.area_id,
     nombre: cabeza.area,
     codigo: cabeza.area_codigo,
-    lista: reportes.filter((r) => r.area_id === cabeza.area_id),
+    lista: hojasVisibles.filter((r) => r.area_id === cabeza.area_id),
   }))
 
   const cuantos = (n: number) => `${n} ${n === 1 ? 'reporte' : 'reportes'}`
@@ -112,12 +178,18 @@ export default async function PaginaDiaEnElTaller({
       <EncabezadoPagina
         migas={[{ titulo: 'Avance en taller', ruta: '/avance' }, { titulo: 'El día' }]}
         titulo="El día en el taller"
-        descripcion="Todo lo que se reportó ese día: las hojas de cada área, el avance con foto de cada unidad y los trabajos sin orden. Y abajo, de qué no hubo noticias."
+        descripcion={
+          aprueba
+            ? 'Todo lo que se reportó ese día, para aprobarlo u observarlo. Y abajo, de qué no hubo noticias.'
+            : 'Todo lo que se reportó ese día: las hojas de cada área, el avance con foto de cada unidad y los trabajos sin orden. Y abajo, de qué no hubo noticias.'
+        }
+        acciones={aprueba && <AprobarElDia fecha={dia} cuantos={porAprobar} />}
       />
 
       {/* Un día es un día: se elige con el calendario y se conserva en la URL,
           para poder mandarle el enlace a alguien tal como se está mirando. */}
       <form method="get" className="mb-4 flex flex-wrap items-center gap-3">
+        {ver && <input type="hidden" name="ver" value={ver} />}
         <Entrada
           type="date"
           name="fecha"
@@ -144,23 +216,44 @@ export default async function PaginaDiaEnElTaller({
           titulo="Reportes del día"
           valor={totalReportes}
           icono={ClipboardList}
-          pie={fmtFecha(dia)}
+          pie={`${areas.size} ${areas.size === 1 ? 'área' : 'áreas'} · ${tocados.size} ${tocados.size === 1 ? 'trabajo' : 'trabajos'}`}
         />
-        <Indicador titulo="Áreas que reportaron" valor={areas.size} icono={Layers} />
         <Indicador
-          titulo="Trabajos tocados"
-          valor={tocados.size}
-          icono={CalendarDays}
-          pie="Órdenes y trabajos sin orden"
+          titulo="Por aprobar"
+          valor={porAprobar}
+          icono={ClipboardCheck}
+          tono={porAprobar > 0 ? 'aviso' : 'exito'}
+          pie="Esperan el visto del jefe"
+          href={ver === 'por-aprobar' || porAprobar === 0 ? undefined : `/avance/diario?fecha=${dia}&ver=por-aprobar`}
+        />
+        <Indicador
+          titulo="Observados"
+          valor={observados}
+          icono={MessageSquareWarning}
+          tono={observados > 0 ? 'peligro' : 'neutro'}
+          pie="Volvieron a quien los escribió"
+          href={ver === 'observados' || observados === 0 ? undefined : `/avance/diario?fecha=${dia}&ver=observados`}
         />
         <Indicador
           titulo="Sin reportar"
           valor={sinReportar}
           icono={MessageSquareDashed}
           tono={sinReportar > 0 ? 'aviso' : 'exito'}
-          pie="Hojas y trabajos abiertos sin noticias ese día"
+          pie="Hojas y trabajos abiertos sin noticias"
         />
       </div>
+
+      {totalReportes > 0 && (
+        <PastillaFiltro
+          ruta="/avance/diario"
+          clave="ver"
+          opciones={FILTROS}
+          params={params}
+          activo={ver}
+          etiqueta="Qué reportes mirar"
+          className="mb-4"
+        />
+      )}
 
       {totalReportes === 0 ? (
         <Tarjeta>
@@ -171,6 +264,22 @@ export default async function PaginaDiaEnElTaller({
               la tarjeta de la unidad, o con «Reportar» en el trabajo sin orden. Abajo está lo que
               sigue abierto y de lo que no hay noticias.
             </p>
+          </TarjetaCuerpo>
+        </Tarjeta>
+      ) : visibles === 0 ? (
+        <Tarjeta>
+          <TarjetaCuerpo>
+            <p className="text-sm font-medium text-texto">
+              {ver === 'por-aprobar' ? 'No queda nada por aprobar ese día' : 'Ningún reporte observado ese día'}
+            </p>
+            <p className="mt-1 text-sm text-texto-suave">
+              {ver === 'por-aprobar'
+                ? 'Todo lo que se reportó ya tiene el visto, o está observado esperando la corrección.'
+                : 'Lo que se reportó está aprobado o esperando el visto.'}
+            </p>
+            <Link href={`/avance/diario?fecha=${dia}`} className="mt-3 inline-flex min-h-11 items-center text-sm text-acento hover:underline sm:min-h-0">
+              Ver todo lo del día
+            </Link>
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (
@@ -192,6 +301,11 @@ export default async function PaginaDiaEnElTaller({
                 {area.lista.map((r) => {
                   const estado = definir(ESTADO_OT, r.orden_estado)
                   const acumulado = Number(r.acumulado_pct ?? 0)
+                  const corrige = puedeCorregirReporte(
+                    perfil,
+                    { clase: 'hoja', revision: r.revision, autor: r.reportado_por, fecha: r.fecha, areaId: r.area_id },
+                    hoy,
+                  )
                   return (
                     <li key={r.id} className="space-y-2 px-4 py-3">
                       <div className="flex items-start justify-between gap-3">
@@ -224,8 +338,30 @@ export default async function PaginaDiaEnElTaller({
                           <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
                           <span className="text-texto-tenue">pesa {numero(r.peso_pct, 0)} % de su área</span>
                         </span>
-                        <Firma quien={r.reportado_por_nombre} cuando={r.creado_en} />
+                        <span className="flex flex-wrap items-center gap-2">
+                          <InsigniaRevision revision={r.revision} />
+                          <Firma quien={r.reportado_por_nombre} cuando={r.creado_en} />
+                        </span>
                       </div>
+
+                      <PieDeRevision
+                        clase="hoja"
+                        r={r}
+                        aprueba={aprueba}
+                        corrige={
+                          corrige
+                            ? {
+                                clase: 'hoja',
+                                id: r.id,
+                                fecha: r.fecha,
+                                actividad: r.actividad,
+                                avance_pct: Number(r.avance_pct),
+                                nota: r.nota,
+                                tope: 100 - (acumulado - Number(r.avance_pct)),
+                              }
+                            : null
+                        }
+                      />
                     </li>
                   )
                 })}
@@ -235,92 +371,142 @@ export default async function PaginaDiaEnElTaller({
 
           {/* El avance con foto que el taller registra en la tarjeta de cada
               unidad. No lleva área: es lo que se hizo en la unidad ese día. */}
-          {conFoto.length > 0 && (
+          {conFotoVisible.length > 0 && (
             <Tarjeta>
               <TarjetaCabecera
                 titulo="Avance con foto de las órdenes"
                 descripcion="Lo que se registró ese día en la tarjeta de cada unidad, con sus fotos."
-                acciones={<Insignia tono="acento">{cuantos(conFoto.length)}</Insignia>}
+                acciones={<Insignia tono="acento">{cuantos(conFotoVisible.length)}</Insignia>}
               />
               <ul className="divide-y divide-borde">
-                {conFoto.map((a) => (
-                  <li key={a.id} className="space-y-2 px-4 py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                      <span className="flex flex-wrap items-center gap-2 text-sm">
-                        <Link
-                          href={`/avance/${a.orden_id}`}
-                          className="font-medium text-acento hover:underline"
-                        >
-                          {a.orden_numero}
-                        </Link>
-                        {a.placa && <span className="text-texto-suave">{a.placa}</span>}
-                        {a.etapa && <Insignia tono="neutro">{a.etapa}</Insignia>}
-                      </span>
-                      <Firma quien={a.registrado_por_nombre} cuando={a.creado_en} />
-                    </div>
+                {conFotoVisible.map((a) => {
+                  const corrige = puedeCorregirReporte(
+                    perfil,
+                    { clase: 'orden', revision: a.revision, autor: a.registrado_por, fecha: a.fecha },
+                    hoy,
+                  )
+                  return (
+                    <li key={a.id} className="space-y-2 px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                        <span className="flex flex-wrap items-center gap-2 text-sm">
+                          <Link
+                            href={`/avance/${a.orden_id}`}
+                            className="font-medium text-acento hover:underline"
+                          >
+                            {a.orden_numero}
+                          </Link>
+                          {a.placa && <span className="text-texto-suave">{a.placa}</span>}
+                          {a.etapa && <Insignia tono="neutro">{a.etapa}</Insignia>}
+                        </span>
+                        <span className="flex flex-wrap items-center gap-2">
+                          <InsigniaRevision revision={a.revision} />
+                          <Firma quien={a.registrado_por_nombre} cuando={a.creado_en} />
+                        </span>
+                      </div>
 
-                    <p className="text-sm text-texto">{a.descripcion}</p>
+                      <p className="text-sm text-texto">{a.descripcion}</p>
 
-                    {a.avance_porcentaje !== null && a.etapa && (
-                      <p className="text-xs font-medium text-texto-suave">
-                        {a.etapa} quedó al {numero(a.avance_porcentaje, 0)} %
-                      </p>
-                    )}
+                      {a.avance_porcentaje !== null && a.etapa && (
+                        <p className="text-xs font-medium text-texto-suave">
+                          {a.etapa} quedó al {numero(a.avance_porcentaje, 0)} %
+                        </p>
+                      )}
 
-                    <Traba texto={a.impedimento} />
-                    <Miniaturas
-                      fotos={fotosOrden[a.id] ?? []}
-                      enlaces={enlaces}
-                      alt={`Avance de la orden ${a.orden_numero}`}
-                    />
-                  </li>
-                ))}
+                      <Traba texto={a.impedimento} />
+                      <Miniaturas
+                        fotos={fotosOrden[a.id] ?? []}
+                        enlaces={enlaces}
+                        alt={`Avance de la orden ${a.orden_numero}`}
+                      />
+                      <PieDeRevision
+                        clase="orden"
+                        r={a}
+                        aprueba={aprueba}
+                        corrige={
+                          corrige
+                            ? {
+                                clase: 'orden',
+                                id: a.id,
+                                fecha: a.fecha,
+                                descripcion: a.descripcion,
+                                impedimento: a.impedimento,
+                              }
+                            : null
+                        }
+                      />
+                    </li>
+                  )
+                })}
               </ul>
             </Tarjeta>
           )}
 
           {/* Los trabajos sin orden: acá no hay peso ni acumulado, el porcentaje
               es a ojo y se lee como «va en», no como «avanzó». */}
-          {flotaDia.length > 0 && (
+          {flotaVisible.length > 0 && (
             <Tarjeta>
               <TarjetaCabecera
                 titulo="Trabajos sin orden"
                 descripcion="Lo que se hizo ese día en las unidades sin orden y en lo que el taller está implementando."
-                acciones={<Insignia tono="acento">{cuantos(flotaDia.length)}</Insignia>}
+                acciones={<Insignia tono="acento">{cuantos(flotaVisible.length)}</Insignia>}
               />
               <ul className="divide-y divide-borde">
-                {flotaDia.map((r) => (
-                  <li key={r.id} className="space-y-2 px-4 py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                      <span className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
-                        <Link
-                          href={`/avance/trabajos/${r.flota_id}`}
-                          className="font-medium text-acento hover:underline"
-                        >
-                          {nombreDeFlota({ placa: r.placa, descripcion: r.unidad })}
-                        </Link>
-                        <Insignia tono="neutro">{r.area}</Insignia>
-                      </span>
-                      <Firma quien={r.registrado_por_nombre} cuando={r.creado_en} />
-                    </div>
-                    {r.cliente && <p className="-mt-1 text-[11px] text-texto-suave">{r.cliente}</p>}
+                {flotaVisible.map((r) => {
+                  const nombre = nombreDeFlota({ placa: r.placa, descripcion: r.unidad })
+                  const corrige = puedeCorregirReporte(
+                    perfil,
+                    { clase: 'flota', revision: r.revision, autor: r.registrado_por, fecha: r.fecha, areaId: r.area_id },
+                    hoy,
+                  )
+                  return (
+                    <li key={r.id} className="space-y-2 px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                        <span className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+                          <Link
+                            href={`/avance/trabajos/${r.flota_id}`}
+                            className="font-medium text-acento hover:underline"
+                          >
+                            {nombre}
+                          </Link>
+                          <Insignia tono="neutro">{r.area}</Insignia>
+                        </span>
+                        <span className="flex flex-wrap items-center gap-2">
+                          <InsigniaRevision revision={r.revision} />
+                          <Firma quien={r.registrado_por_nombre} cuando={r.creado_en} />
+                        </span>
+                      </div>
+                      {r.cliente && <p className="-mt-1 text-[11px] text-texto-suave">{r.cliente}</p>}
 
-                    <p className="text-sm text-texto">{r.descripcion}</p>
+                      <p className="text-sm text-texto">{r.descripcion}</p>
 
-                    {r.avance_porcentaje !== null && (
-                      <p className="text-xs font-medium text-texto-suave">
-                        va en ~{numero(r.avance_porcentaje, 0)} %
-                      </p>
-                    )}
+                      {r.avance_porcentaje !== null && (
+                        <p className="text-xs font-medium text-texto-suave">
+                          va en ~{numero(r.avance_porcentaje, 0)} %
+                        </p>
+                      )}
 
-                    <Traba texto={r.impedimento} />
-                    <Miniaturas
-                      fotos={fotosFlota[r.id] ?? []}
-                      enlaces={enlaces}
-                      alt={`Reporte de ${nombreDeFlota({ placa: r.placa, descripcion: r.unidad })}`}
-                    />
-                  </li>
-                ))}
+                      <Traba texto={r.impedimento} />
+                      <Miniaturas fotos={fotosFlota[r.id] ?? []} enlaces={enlaces} alt={`Reporte de ${nombre}`} />
+                      <PieDeRevision
+                        clase="flota"
+                        r={r}
+                        aprueba={aprueba}
+                        corrige={
+                          corrige
+                            ? {
+                                clase: 'flota',
+                                id: r.id,
+                                fecha: r.fecha,
+                                descripcion: r.descripcion,
+                                avance_porcentaje: r.avance_porcentaje === null ? null : Number(r.avance_porcentaje),
+                                impedimento: r.impedimento,
+                              }
+                            : null
+                        }
+                      />
+                    </li>
+                  )
+                })}
               </ul>
             </Tarjeta>
           )}

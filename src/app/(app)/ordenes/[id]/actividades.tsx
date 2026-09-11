@@ -3,11 +3,16 @@
 import { CalendarDays, Plus, Trash2, TrendingUp, Truck } from 'lucide-react'
 import { useState } from 'react'
 
+import { CampoPorcentaje, FechaDelReporte } from '@/components/avance/campos-reporte'
+import { CorregirReporte } from '@/components/avance/corregir-reporte'
+import { RevisarReporte } from '@/components/avance/revisar-reporte'
+import { InsigniaRevision, NotaRevision } from '@/components/avance/revision'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Progreso } from '@/components/ui/progreso'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { Ventana } from '@/components/ui/ventana'
 import type {
   ActividadArea,
   AvanceDeArea,
@@ -23,8 +28,6 @@ import {
   quitarActividad,
   reportarAvance,
 } from './acciones-actividades'
-
-
 
 function Error_({ texto }: { texto: string | null }) {
   if (!texto) return null
@@ -52,6 +55,8 @@ export function ActividadesDeOrden({
   puedeArmar,
   puedeReportar,
   areaPropia,
+  aprueba,
+  corregibles,
 }: {
   ordenId: string
   actividades: ActividadArea[]
@@ -64,8 +69,14 @@ export function ActividadesDeOrden({
   puedeReportar: boolean
   /** El área de quien mira, para proponerla al armar la lista. */
   areaPropia: string | null
+  /** `produccion.aprobar_reportes`: el jefe de producción aprueba u observa. */
+  aprueba: boolean
+  /** Los reportes del diario que esta persona puede corregir, decidido en el servidor. */
+  corregibles: string[]
 }) {
   const [agregando, setAgregando] = useState(false)
+  const hoy = hoyLima()
+  const puedeCorregir = new Set(corregibles)
 
   const porArea = areasDisponibles
     .map((a) => ({
@@ -161,7 +172,9 @@ export function ActividadesDeOrden({
                 </TR>
               </TablaCabecera>
               <tbody>
-                {lista.map((act) => (
+                {lista.map((act) => {
+                  const deHoy = diario.find((r) => r.actividad_id === act.id && r.fecha === hoy)
+                  return (
                   <TR key={act.id}>
                     <TD className="text-xs text-texto-tenue">{act.orden_secuencia}</TD>
                     <TD>
@@ -196,11 +209,14 @@ export function ActividadesDeOrden({
                           ordenId={ordenId}
                           puedeArmar={puedeArmar}
                           puedeReportar={puedeReportar}
+                          deHoy={deHoy ?? null}
+                          corregibleHoy={deHoy ? puedeCorregir.has(deHoy.id) : false}
                         />
                       </TD>
                     )}
                   </TR>
-                ))}
+                  )
+                })}
               </tbody>
             </Tabla>
           </TarjetaCuerpo>
@@ -211,24 +227,52 @@ export function ActividadesDeOrden({
         <Tarjeta>
           <TarjetaCabecera
             titulo="Diario de la unidad"
-            descripcion="Lo reportado día por día, lo más reciente arriba."
+            descripcion="Lo reportado día por día, lo más reciente arriba, con el visto del jefe de producción."
           />
           <TarjetaCuerpo className="p-0">
             <ul className="divide-y divide-[var(--borde)]">
-              {diario.map((r) => (
-                <li key={r.id} className="flex flex-wrap items-baseline gap-2 px-4 py-2.5">
-                  <CalendarDays aria-hidden className="size-4 shrink-0 text-texto-tenue" />
-                  <span className="tabular text-xs text-texto-suave">{fmtFecha(r.fecha)}</span>
-                  <span className="text-sm font-medium text-texto">{r.actividad?.nombre}</span>
-                  <span className="tabular text-sm text-exito">+{numero(r.avance_pct, 0)} %</span>
-                  {r.nota && <span className="text-xs text-texto-suave">· {r.nota}</span>}
-                  {r.reportado && (
-                    <span className="ml-auto text-[11px] text-texto-tenue">
-                      {r.reportado.nombres} {r.reportado.apellidos}
-                    </span>
-                  )}
-                </li>
-              ))}
+              {diario.map((r) => {
+                const revisa = aprueba && r.revision !== 'APROBADO'
+                const corrige = puedeCorregir.has(r.id)
+                return (
+                  <li key={r.id} className="space-y-2 px-4 py-2.5">
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <CalendarDays aria-hidden className="size-4 shrink-0 text-texto-tenue" />
+                      <span className="tabular text-xs text-texto-suave">{fmtFecha(r.fecha)}</span>
+                      <span className="text-sm font-medium text-texto">{r.actividad}</span>
+                      <span className="tabular text-sm text-exito">+{numero(r.avance_pct, 0)} %</span>
+                      {r.nota && <span className="text-xs text-texto-suave">· {r.nota}</span>}
+                      <span className="ml-auto flex items-center gap-2">
+                        <InsigniaRevision revision={r.revision} />
+                        {r.reportado_por_nombre && (
+                          <span className="text-[11px] text-texto-tenue">{r.reportado_por_nombre}</span>
+                        )}
+                      </span>
+                    </div>
+                    <NotaRevision r={r} />
+                    {(revisa || corrige) && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {revisa && <RevisarReporte clase="hoja" id={r.id} revision={r.revision} />}
+                        {corrige && (
+                          <CorregirReporte
+                            reporte={{
+                              clase: 'hoja',
+                              id: r.id,
+                              fecha: r.fecha,
+                              actividad: r.actividad,
+                              avance_pct: Number(r.avance_pct),
+                              nota: r.nota,
+                              tope: 100 - (Number(r.acumulado_pct ?? 0) - Number(r.avance_pct)),
+                            }}
+                            observacion={r.revision === 'OBSERVADO' ? r.observacion : null}
+                            destacado={r.revision === 'OBSERVADO'}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           </TarjetaCuerpo>
         </Tarjeta>
@@ -237,59 +281,116 @@ export function ActividadesDeOrden({
   )
 }
 
+/**
+ * El reporte del día de una actividad, en una ventana: en el teléfono la tabla
+ * no deja lugar para un formulario en la celda. Lo del día con un toque —25,
+ * 50, 75, 100, hasta lo que le falta— y la fecha de hoy ya puesta.
+ */
+function ReportarDia({
+  actividad,
+  ordenId,
+  deOtroDia = false,
+}: {
+  actividad: ActividadArea
+  ordenId: string
+  /** Para el día que se olvidó, cuando el de hoy ya está. */
+  deOtroDia?: boolean
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const [aviso, setAviso] = useState<string | null>(null)
+  const { alEnviar, enviando, error, limpiar } = useEnvio(reportarAvance, (r) => {
+    setAbierto(false)
+    setAviso(r.mensaje ?? 'Avance del día reportado.')
+  })
+
+  const falta = Math.max(0, 100 - Number(actividad.avance_pct))
+  const prefijo = `${deOtroDia ? 'o' : 'r'}-${actividad.id.slice(0, 8)}`
+
+  return (
+    <>
+      <Boton
+        variante={deOtroDia ? 'fantasma' : 'secundario'}
+        tamano="sm"
+        onClick={() => {
+          limpiar()
+          setAviso(null)
+          setAbierto(true)
+        }}
+      >
+        {deOtroDia ? (
+          <CalendarDays aria-hidden className="size-3.5" />
+        ) : (
+          <TrendingUp aria-hidden className="size-3.5" />
+        )}
+        {deOtroDia ? 'Otro día' : 'Reportar día'}
+      </Boton>
+      {aviso && (
+        <span role="status" className="text-xs font-medium text-exito">
+          {aviso}
+        </span>
+      )}
+
+      <Ventana
+        abierta={abierto}
+        alCerrar={() => setAbierto(false)}
+        titulo={actividad.nombre}
+        descripcion={`Lo que avanzó ${deOtroDia ? 'ese día' : 'hoy'}, no el acumulado. Va en ${numero(actividad.avance_pct, 0)} %: le falta ${numero(falta, 0)} %.`}
+        ancho="md"
+      >
+        <form onSubmit={alEnviar} className="space-y-4">
+          <input type="hidden" name="actividad_id" value={actividad.id} />
+          <input type="hidden" name="orden_id" value={ordenId} />
+
+          <CampoPorcentaje
+            id={`${prefijo}-pct`}
+            name="avance_pct"
+            etiqueta="Avancé"
+            ayuda="Lo del día, del 100 % de la actividad."
+            max={falta}
+            requerido
+          />
+
+          <Campo etiqueta="Qué se hizo" htmlFor={`${prefijo}-nota`}>
+            <Entrada id={`${prefijo}-nota`} name="nota" placeholder="Opcional" maxLength={500} />
+          </Campo>
+
+          <FechaDelReporte id={`${prefijo}-fecha`} deOtroDia={deOtroDia} />
+
+          <Error_ texto={error} />
+
+          <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" tamano="lg" cargando={enviando} className="w-full sm:w-auto">
+              Reportar
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
+    </>
+  )
+}
+
 function AccionesActividad({
   actividad,
   ordenId,
   puedeArmar,
   puedeReportar,
+  deHoy,
+  corregibleHoy,
 }: {
   actividad: ActividadArea
   ordenId: string
   puedeArmar: boolean
   puedeReportar: boolean
+  /** El reporte de hoy de esta actividad, si ya lo hay: se corrige, no se repite. */
+  deHoy: ReporteDiario | null
+  corregibleHoy: boolean
 }) {
-  const [modo, setModo] = useState<'nada' | 'reportar' | 'peso'>('nada')
-  const reporte = useEnvio(reportarAvance, () => setModo('nada'))
+  const [modo, setModo] = useState<'nada' | 'peso'>('nada')
   const peso = useEnvio(cambiarPesoActividad, () => setModo('nada'))
   const quitar = useEnvio(quitarActividad)
-
-  if (modo === 'reportar') {
-    return (
-      <form onSubmit={reporte.alEnviar} className="flex flex-wrap items-end gap-2">
-        <input type="hidden" name="actividad_id" value={actividad.id} />
-        <input type="hidden" name="orden_id" value={ordenId} />
-        <Campo etiqueta="Día" htmlFor={`f-${actividad.id}`}>
-          <Entrada id={`f-${actividad.id}`} name="fecha" type="date" defaultValue={hoyLima()} />
-        </Campo>
-        <Campo etiqueta="Avancé" htmlFor={`a-${actividad.id}`} ayuda="% de hoy">
-          <Entrada
-            id={`a-${actividad.id}`}
-            name="avance_pct"
-            type="number"
-            inputMode="decimal"
-            min={1}
-            max={100 - Number(actividad.avance_pct)}
-            step="1"
-            required
-            autoFocus
-            className="tabular w-20 text-right"
-          />
-        </Campo>
-        <Campo etiqueta="Qué se hizo" htmlFor={`n-${actividad.id}`}>
-          <Entrada id={`n-${actividad.id}`} name="nota" placeholder="Opcional" />
-        </Campo>
-        <div className="flex gap-1">
-          <Boton type="submit" tamano="sm" cargando={reporte.enviando}>
-            Reportar
-          </Boton>
-          <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setModo('nada')}>
-            Cerrar
-          </Boton>
-        </div>
-        {reporte.error && <Error_ texto={reporte.error} />}
-      </form>
-    )
-  }
 
   if (modo === 'peso') {
     return (
@@ -320,11 +421,34 @@ function AccionesActividad({
 
   return (
     <div className="flex flex-wrap items-center gap-1">
-      {puedeReportar && !actividad.terminada && (
-        <Boton variante="secundario" tamano="sm" onClick={() => setModo('reportar')}>
-          <TrendingUp aria-hidden className="size-3.5" />
-          Reportar día
-        </Boton>
+      {/* Un solo reporte por actividad y día (uq_avance_del_dia): si el de hoy
+          ya está, el botón es para corregirlo, y el de reportar queda para el
+          día que se olvidó. */}
+      {puedeReportar && deHoy ? (
+        <>
+          {corregibleHoy ? (
+            <CorregirReporte
+              reporte={{
+                clase: 'hoja',
+                id: deHoy.id,
+                fecha: deHoy.fecha,
+                actividad: actividad.nombre,
+                avance_pct: Number(deHoy.avance_pct),
+                nota: deHoy.nota,
+                tope: 100 - (Number(actividad.avance_pct) - Number(deHoy.avance_pct)),
+              }}
+              observacion={deHoy.revision === 'OBSERVADO' ? deHoy.observacion : null}
+              etiqueta="Corregir el de hoy"
+              destacado={deHoy.revision === 'OBSERVADO'}
+            />
+          ) : (
+            <span className="px-1 text-xs text-texto-suave">Hoy ya reportado</span>
+          )}
+          {!actividad.terminada && <ReportarDia actividad={actividad} ordenId={ordenId} deOtroDia />}
+        </>
+      ) : (
+        puedeReportar &&
+        !actividad.terminada && <ReportarDia actividad={actividad} ordenId={ordenId} />
       )}
       {puedeArmar && (
         <>

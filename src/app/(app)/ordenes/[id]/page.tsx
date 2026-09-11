@@ -26,7 +26,7 @@ import {
   repuestosDeOrden,
   verificacionesDeOrden,
 } from '@/lib/datos/ficha-ot'
-import { areasDeSuMano, exigirPermiso, puede } from '@/lib/sesion'
+import { areasDeSuMano, exigirPermiso, puede, puedeCorregirReporte } from '@/lib/sesion'
 import type { CodigoMoneda } from '@/lib/format'
 
 import { AccionesEstado } from './acciones-estado'
@@ -347,7 +347,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           ordenId={orden.id}
           materiales={listaMateriales.materiales}
           catalogo={listaMateriales.catalogo}
-          puedeDisenar={puede(perfil, 'diseno.planos')}
+          puedeDisenar={puede(perfil, 'diseno.planos')}
           ordenViva={!['BORRADOR', ...ESTADOS_CERRADOS].includes(orden.estado)}
         />
       )}
@@ -368,15 +368,23 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           }
           puedeReportar={puede(perfil, 'produccion.registrar')}
           areaPropia={perfil.area_id}
+          aprueba={puede(perfil, 'produccion.aprobar_reportes')}
+          /* Quién corrige qué lo decide el gemelo de las políticas, acá en el
+             servidor: la hoja es un componente de cliente y el perfil no viaja. */
+          corregibles={hojaAreas[0].diario
+            .filter((r) =>
+              puedeCorregirReporte(
+                perfil,
+                { clase: 'hoja', revision: r.revision, autor: r.reportado_por, fecha: r.fecha, areaId: r.area_id },
+                hoyLima(),
+              ),
+            )
+            .map((r) => r.id)}
         />
       )}
 
       {vista === 'avance' && (
-        <AvanceDeOrden
-          ordenId={orden.id}
-          puedeRegistrar={puede(perfil, 'produccion.registrar')}
-          conCabecera
-        />
+        <AvanceDeOrden ordenId={orden.id} perfil={perfil} conCabecera />
       )}
 
       {vista === 'bitacora' && (

@@ -1,5 +1,6 @@
 import 'server-only'
 
+import type { DatosRevision } from '@/lib/dominio/estados'
 import { createClient } from '@/lib/supabase/server'
 
 export type FilaTablero = {
@@ -41,10 +42,11 @@ export type Avance = {
   descripcion: string
   avance_porcentaje: number | null
   impedimento: string | null
+  registrado_por: string | null
   registrado_por_nombre: string | null
   creado_en: string
   fotos: number
-}
+} & DatosRevision
 
 export type FotoDeAvance = {
   id: string
@@ -75,13 +77,16 @@ export async function listarTablero(filtros: { sede?: string; trabadas?: boolean
   return (data ?? []) as unknown as FilaTablero[]
 }
 
+const COLUMNAS_AVANCE =
+  'id, orden_id, orden_numero, cliente, placa, etapa_id, etapa, fecha, descripcion, avance_porcentaje, impedimento, registrado_por, registrado_por_nombre, creado_en, fotos, revision, observacion, revisado_en, revisado_por_nombre, corregido_en'
+
 /** El avance registrado en una orden, del más reciente al más viejo. */
 export async function listarAvances(ordenId: string, limite = 60) {
   const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('ot_avance_resumen')
-    .select('*')
+    .select(COLUMNAS_AVANCE)
     .eq('orden_id', ordenId)
     .order('fecha', { ascending: false })
     .order('creado_en', { ascending: false })
@@ -91,7 +96,6 @@ export async function listarAvances(ordenId: string, limite = 60) {
   return (data ?? []) as unknown as Avance[]
 }
 
-/** Las fotos de un puñado de avances, agrupadas por avance. */
 /**
  * Los avances con foto de todas las órdenes en un día: los que el taller
  * registra con «Registrar avance» en la tarjeta de la unidad. Van a «El día en
@@ -103,9 +107,7 @@ export async function avancesDeOrdenesDelDia(dia: string, limite = 300) {
 
   const { data, error } = await supabase
     .from('ot_avance_resumen')
-    .select(
-      'id, orden_id, orden_numero, cliente, placa, etapa_id, etapa, fecha, descripcion, avance_porcentaje, impedimento, registrado_por_nombre, creado_en, fotos',
-    )
+    .select(COLUMNAS_AVANCE)
     .eq('fecha', dia)
     .order('creado_en', { ascending: false })
     .limit(limite)
@@ -114,6 +116,7 @@ export async function avancesDeOrdenesDelDia(dia: string, limite = 300) {
   return (data ?? []) as unknown as Avance[]
 }
 
+/** Las fotos de un puñado de avances, agrupadas por avance. */
 export async function fotosDeAvances(avanceIds: string[]) {
   if (avanceIds.length === 0) return {} as Record<string, FotoDeAvance[]>
 

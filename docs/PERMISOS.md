@@ -18,7 +18,7 @@ Dos advertencias antes de leer la tabla:
   correcta, la tabla está llena y todo el mundo ve el vacío. Están listados al
   final; hoy queda uno, `usuarios.ver`, y está sin repartir a propósito.
 
-Foto de la base de producción del **2026-09-09**. Se regenera con las consultas
+Foto de la base de producción del **2026-09-10**. Se regenera con las consultas
 del final: los datos cambian, este archivo no se edita a mano.
 
 ## Los roles
@@ -35,8 +35,8 @@ del final: los datos cambian, este archivo no se edita a mano.
 | `COMPRADOR` | Compras | 50 | 0 | 2 |
 | `CALIDAD` | Control de calidad | 55 | 0 | 3 |
 | `SUPERVISOR` | Supervisor | 60 | 3 | 6 |
-| `JEFE_PRODUCCION` | Jefe de producción | 65 | 1 | 8 |
-| `JEFE_TALLER` | Jefe de taller | 70 | 1 | 13 |
+| `JEFE_PRODUCCION` | Jefe de producción | 65 | 1 | 9 |
+| `JEFE_TALLER` | Jefe de taller | 70 | 1 | 14 |
 | `GERENTE` | Gerencia | 90 | 1 | 20 |
 | `ADMIN` | Administrador | 100 | 1 | 0 → por `es_admin()` |
 
@@ -99,19 +99,22 @@ afectará cero filas sin dar error.
 `ordenes.cambiar_estado`, `ordenes.listar`, `ordenes.ver`,
 `produccion.actividades`, `produccion.registrar`, `produccion.ver`
 
-**`JEFE_PRODUCCION` — Jefe de producción** (8)
+**`JEFE_PRODUCCION` — Jefe de producción** (9)
 `ordenes.cambiar_estado`, `ordenes.listar`, `ordenes.ver`,
-`produccion.actividades`, `produccion.cualquier_area`, `produccion.planificar`,
-`produccion.registrar`, `produccion.ver`
+`produccion.actividades`, `produccion.aprobar_reportes`,
+`produccion.cualquier_area`, `produccion.planificar`, `produccion.registrar`,
+`produccion.ver`
 
-Es el supervisor más las tres áreas y programar. Sin `clientes.ver`, como el
-resto del taller: a él le llegan los avances, no los clientes.
+Es el supervisor más las tres áreas, programar y el visto bueno de los reportes
+del día (migración `097`). Sin `clientes.ver`, como el resto del taller: a él le
+llegan los avances, no los clientes.
 
-**`JEFE_TALLER` — Jefe de taller** (13)
+**`JEFE_TALLER` — Jefe de taller** (14)
 `clientes.ver`, `cotizaciones.ver`, `ordenes.cambiar_estado`, `ordenes.crear`,
 `ordenes.editar`, `ordenes.entregar`, `ordenes.listar`, `ordenes.ver`,
-`produccion.actividades`, `produccion.cualquier_area`, `produccion.planificar`,
-`produccion.registrar`, `produccion.ver`
+`produccion.actividades`, `produccion.aprobar_reportes`,
+`produccion.cualquier_area`, `produccion.planificar`, `produccion.registrar`,
+`produccion.ver`
 
 **`GERENTE` — Gerencia** (20)
 `auditoria.ver`, `clientes.ver`, `configuracion.editar`, `configuracion.ver`,
@@ -156,6 +159,7 @@ la política exige y se mira quién lo tiene de verdad.
 | Órdenes de trabajo | `ordenes.ver` | Ver órdenes de trabajo y su detalle | todos menos `ADMIN` (13 roles) |
 | Producción | `diseno.planos` | Armar la lista de planos y piezas de una orden y dar por entregado cada plano | `DISENO`, `GERENTE` |
 | Producción | `produccion.actividades` | Armar la lista de actividades de su área en una orden y ponerles su peso | `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
+| Producción | `produccion.aprobar_reportes` | Aprobar u observar los reportes del día del taller | `JEFE_PRODUCCION`, `JEFE_TALLER` |
 | Producción | `produccion.cualquier_area` | Armar y reportar la hoja de cualquier área, no solo la propia | `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
 | Producción | `produccion.planificar` | Programar las fechas de las etapas de una orden | `JEFE_PRODUCCION`, `JEFE_TALLER` |
 | Producción | `produccion.registrar` | Reportar el avance del día: etapas, actividades, unidades sin orden y sus fotos | `OPERARIO`, `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER` |

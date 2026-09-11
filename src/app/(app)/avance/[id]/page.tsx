@@ -7,7 +7,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
-import { cabeceraDeAvance, etapasDeLaOrden } from '@/lib/datos/avances'
+import { cabeceraDeAvance, etapasDeLaOrden, listarAvances } from '@/lib/datos/avances'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { fecha as formatearFecha } from '@/lib/format'
@@ -27,7 +27,9 @@ export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avanc
   const orden = await cabeceraDeAvance(id)
   if (!orden) notFound()
 
-  const etapas = await etapasDeLaOrden(id)
+  // El último avance trae la traba vigente (migración 097): el formulario la
+  // propone para que un reporte nuevo no la borre sin que nadie lo decida.
+  const [etapas, [ultimo]] = await Promise.all([etapasDeLaOrden(id), listarAvances(id, 1)])
 
   const estado = definir(ESTADO_OT, orden.estado as string)
   const registra = puede(perfil, 'produccion.registrar')
@@ -55,7 +57,11 @@ export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avanc
       <EncabezadoPagina
         titulo={nombreDeUnidad(orden)}
         descripcion={`${orden.numero} · ${orden.cliente} · ${orden.descripcion}`}
-        acciones={registra && <RegistrarAvance ordenId={id} etapas={etapas} />}
+        acciones={
+          registra && (
+            <RegistrarAvance ordenId={id} etapas={etapas} trabaActual={ultimo?.impedimento ?? null} />
+          )
+        }
       />
 
       <Tarjeta className="mb-4">
@@ -95,7 +101,7 @@ export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avanc
         </TarjetaCuerpo>
       </Tarjeta>
 
-      <AvanceDeOrden ordenId={id} puedeRegistrar={registra} />
+      <AvanceDeOrden ordenId={id} perfil={perfil} />
     </>
   )
 }

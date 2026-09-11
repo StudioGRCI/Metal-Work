@@ -106,6 +106,47 @@ export function puedeHojaDeArea(perfil: PerfilSesion | null, areaId: string | nu
   return areaId !== null && perfil.area_id === areaId
 }
 
+/** Los tres reportes del día: la hoja por área, el avance con foto y el trabajo sin orden. */
+export type ClaseReporte = 'hoja' | 'orden' | 'flota'
+
+function diaAnterior(dia: string) {
+  const d = new Date(`${dia}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Si esta persona ve «Corregir» en un reporte del día. Gemelo de las políticas
+ * de UPDATE de las tres tablas y del disparador de la migración 097:
+ *
+ *   · Aprobado queda firme.
+ *   · La hoja por área la corrige quien reporta en esa área.
+ *   · El avance con foto y el trabajo sin orden, su autor: hasta el día
+ *     siguiente, o cuando el jefe se lo observó, aunque sea de hace días.
+ *
+ * Y una regla que es solo de la pantalla: el jefe no reescribe lo ajeno, lo
+ * observa. La base lo dejaría, pero un «Corregir» al lado de «Aprobar» en cada
+ * reporte del taller es una tentación que borra lo que el supervisor escribió.
+ */
+export function puedeCorregirReporte(
+  perfil: PerfilSesion | null,
+  r: { clase: ClaseReporte; revision: string | null; autor: string | null; fecha: string; areaId?: string | null },
+  hoy: string,
+): boolean {
+  if (!perfil) return false
+  const aprueba = puede(perfil, 'produccion.aprobar_reportes')
+  const esAutor = r.autor === perfil.id
+  if (r.revision === 'APROBADO' && !aprueba) return false
+  if (aprueba && !esAutor) return false
+
+  if (r.clase === 'hoja') {
+    return puede(perfil, 'produccion.registrar') && puedeHojaDeArea(perfil, r.areaId ?? null)
+  }
+  const aTiempo = r.fecha >= diaAnterior(hoy) || r.revision === 'OBSERVADO'
+  if (r.clase === 'flota') return esAutor && aTiempo && puedeHojaDeArea(perfil, r.areaId ?? null)
+  return esAutor && aTiempo
+}
+
 /** Las áreas cuya hoja puede escribir: la suya, o todas si tiene el permiso. */
 export function areasDeSuMano<T extends { id: string }>(
   perfil: PerfilSesion | null,

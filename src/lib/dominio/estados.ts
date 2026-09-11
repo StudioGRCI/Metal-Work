@@ -1,6 +1,7 @@
 import type { Enums } from '@/types/database'
 
 type EstadoEtapa = Enums<'estado_etapa_ot'>
+type EstadoRevision = Enums<'estado_revision'>
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
 
@@ -59,6 +60,26 @@ export const ESTADO_FLOTA: Record<string, Def> = {
   EN_TALLER: { etiqueta: 'En curso', tono: 'acento', descripcion: 'Se está trabajando' },
   LISTA: { etiqueta: 'Terminado', tono: 'exito', descripcion: 'Terminado; si es una unidad, falta que la recojan' },
   SALIO: { etiqueta: 'Cerrado', tono: 'neutro', descripcion: 'Ya no se trabaja: salió del taller o se dio por cerrado' },
+}
+
+/**
+ * En qué va un reporte del día con el jefe de producción. «Por aprobar» no
+ * frena nada —el avance cuenta desde que se reporta—; «Observado» vuelve a
+ * quien lo escribió para que lo corrija.
+ */
+/** Lo que traen las tres vistas de reportes sobre su revisión (migración 097). */
+export type DatosRevision = {
+  revision: string | null
+  observacion: string | null
+  revisado_en: string | null
+  revisado_por_nombre: string | null
+  corregido_en: string | null
+}
+
+export const REVISION: Record<EstadoRevision, Def> = {
+  PENDIENTE: { etiqueta: 'Por aprobar', tono: 'aviso', descripcion: 'Esperando el visto bueno del jefe de producción' },
+  APROBADO: { etiqueta: 'Aprobado', tono: 'exito', descripcion: 'Con visto bueno: queda como está' },
+  OBSERVADO: { etiqueta: 'Observado', tono: 'peligro', descripcion: 'El jefe pidió corregirlo' },
 }
 
 export const PRIORIDAD: Record<string, Def> = {
