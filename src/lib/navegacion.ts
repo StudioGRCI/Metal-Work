@@ -4,6 +4,7 @@ import {
   CalendarClock,
   ClipboardList,
   FileSpreadsheet,
+  FileText,
   Layers,
   LayoutDashboard,
   Receipt,
@@ -87,12 +88,24 @@ export const NAVEGACION: GrupoNavegacion[] = [
   {
     titulo: 'Vendedor',
     items: [
+      // El camino corto y el que se usa: la cotización se arma en Excel y se
+      // manda en PDF, así que el sistema guarda ese papel con lo poco que
+      // necesita —cliente, qué se fabrica y su número— y le sigue el rastro
+      // hasta la orden. Va primero porque es por donde entra el trabajo.
+      {
+        titulo: 'Cotización en PDF',
+        ruta: '/cotizaciones/pdf',
+        icono: FileText,
+        permiso: 'cotizaciones.ver',
+        descripcion: 'El PDF que se le mandó al cliente, y su visto de Gerencia',
+        disponible: true,
+      },
       {
         titulo: 'Cotización de venta',
         ruta: '/cotizaciones',
         icono: Receipt,
         permiso: 'cotizaciones.ver',
-        descripcion: 'Lo que se le ofrece al cliente y a qué precio',
+        descripcion: 'La que se arma dentro del sistema, con sus partidas',
         disponible: true,
       },
     ],
@@ -206,6 +219,7 @@ export function rutaActiva(ruta: string, rutas: string[]) {
  * pestaña es angosta.
  */
 export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
+  { ruta: '/cotizaciones/pdf', corto: 'Cotizar' },
   { ruta: '/cotizaciones/trabajo', corto: 'Trabajo' },
   { ruta: '/cotizaciones', corto: 'Cotizaciones' },
   { ruta: '/avance', corto: 'Taller' },
