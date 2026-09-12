@@ -176,6 +176,7 @@ export function EmitirOrden({ cotizacionId, numero }: { cotizacionId: string; nu
       // carpeta antes de que la orden exista: así la base las crea juntas.
       const ordenId = crypto.randomUUID()
       const ruta = `ot/${ordenId}/${crypto.randomUUID()}.pdf`
+      let subido = false
       try {
         const { error: falla } = await supabase.storage
           .from('adjuntos-ot')
@@ -184,6 +185,7 @@ export function EmitirOrden({ cotizacionId, numero }: { cotizacionId: string; nu
           setError('No se pudo subir el PDF de la orden. Revisa la señal y vuelve a intentar.')
           return
         }
+        subido = true
 
         datos.set('cotizacion_id', cotizacionId)
         datos.set('orden_id', ordenId)
@@ -194,11 +196,18 @@ export function EmitirOrden({ cotizacionId, numero }: { cotizacionId: string; nu
         const r = await emitirOrdenDeCotizacion(null, datos)
         if (!r.ok) {
           await supabase.storage.from('adjuntos-ot').remove([ruta])
+          subido = false
           setError(r.error)
           return
         }
+        subido = false
         setAbierto(false)
         if (r.datos) router.push(`/ordenes/${r.datos.id}`)
+      } catch {
+        // La orden no se emitió: el PDF que ya viajó se quita, para que no
+        // quede un archivo que ninguna orden nombra.
+        if (subido) await supabase.storage.from('adjuntos-ot').remove([ruta])
+        setError('No se pudo emitir la orden. Vuelve a intentar.')
       } finally {
         enCurso.current = false
       }

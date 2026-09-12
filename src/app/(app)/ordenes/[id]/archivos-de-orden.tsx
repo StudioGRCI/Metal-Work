@@ -66,6 +66,8 @@ export function ArchivosDeOrden({
       }
       setAviso(r.mensaje ?? 'PDF guardado en la orden.')
       iniciar(() => router.refresh())
+    } catch {
+      setError('No se pudo guardar el archivo. Revisa la señal y vuelve a intentar.')
     } finally {
       enCurso.current = false
       setSubiendo(false)

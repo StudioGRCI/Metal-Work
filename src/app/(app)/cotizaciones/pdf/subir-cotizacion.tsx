@@ -67,6 +67,7 @@ export function SubirCotizacion({
       const supabase = createClient()
       const id = crypto.randomUUID()
       const ruta = `cot/${id}/${crypto.randomUUID()}.pdf`
+      let subido = false
       try {
         const { error: falla } = await supabase.storage
           .from('cotizaciones-pdf')
@@ -75,6 +76,7 @@ export function SubirCotizacion({
           setError('No se pudo subir el PDF. Revisa la señal y vuelve a intentar.')
           return
         }
+        subido = true
 
         datos.set('id', id)
         datos.set('ruta_storage', ruta)
@@ -84,12 +86,19 @@ export function SubirCotizacion({
         const r = await registrarCotizacionPdf(null, datos)
         if (!r.ok) {
           await supabase.storage.from('cotizaciones-pdf').remove([ruta])
+          subido = false
           setError(r.error)
           return
         }
+        subido = false
         setAviso(r.mensaje ?? 'Cotización subida.')
         setAbierto(false)
         iniciar(() => router.refresh())
+      } catch {
+        // Si la anotación se cae por el camino, el archivo se quita: uno que
+        // ninguna fila nombra no lo ve nadie y no lo borra nadie.
+        if (subido) await supabase.storage.from('cotizaciones-pdf').remove([ruta])
+        setError('No se pudo registrar la cotización. Vuelve a intentar.')
       } finally {
         enCurso.current = false
       }

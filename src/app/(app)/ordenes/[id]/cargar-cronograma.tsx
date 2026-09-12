@@ -100,10 +100,16 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
           return
         }
 
+        // El cronograma ya entró: lo del Excel es de más, y si falla se dice,
+        // pero no se pierde el aviso de lo que sí quedó.
         let mensaje = r.mensaje ?? 'Cronograma cargado.'
         if (guardarExcel && archivo) {
-          const guardado = await subirAdjunto(ordenId, archivo, 'CRONOGRAMA')
-          if (!guardado.ok) mensaje += ` El Excel no quedó guardado en la orden: ${guardado.error}`
+          try {
+            const guardado = await subirAdjunto(ordenId, archivo, 'CRONOGRAMA')
+            if (!guardado.ok) mensaje += ` El Excel no quedó guardado en la orden: ${guardado.error}`
+          } catch {
+            mensaje += ' El Excel no quedó guardado en la orden.'
+          }
         }
         setAviso(mensaje)
         setAbierto(false)
