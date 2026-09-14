@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, FileUp, MessageSquareWarning, Trash2, Truck } from 'lucide-react'
+import { AlertTriangle, Check, FileUp, MessageSquareWarning, RefreshCw, Trash2, Truck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useRef, useState, useTransition, type FormEvent } from 'react'
 
@@ -8,11 +8,13 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
+import { ACEPTA_COTIZACION, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
+import { normalizar } from '@/lib/cotizacion-pdf'
 import { useEnvio } from '@/lib/envio'
 import { hoyLima } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 
-import { emitirOrdenDeCotizacion, quitarCotizacionPdf, revisarCotizacionPdf } from './acciones'
+import { corregirCotizacionPdf, emitirOrdenDeCotizacion, quitarCotizacionPdf, revisarCotizacionPdf } from './acciones'
 
 function Falla({ texto }: { texto: string | null }) {
   if (!texto) return null
@@ -81,6 +83,180 @@ export function RevisarCotizacion({ id }: { id: string }) {
       </Boton>
       <Falla texto={aprobar.error} />
     </div>
+  )
+}
+
+/**
+ * El vendedor sube la corrección de la cotización que Gerencia rechazó
+ * (migración 103): el Word o el PDF corregido, en la misma cotización. Vuelve a
+ * «Por revisar» con una versión más, y lo rechazado queda en el historial con
+ * su observación.
+ *
+ * Antes de subir se lee el número del archivo: si dice otra cotización, se
+ * avisa. No se impide —el vendedor puede haber corregido justo el número—,
+ * pero equivocarse de Word en la carpeta es lo más fácil que hay.
+ */
+export function CorregirCotizacion({
+  id,
+  numero,
+  observacion,
+}: {
+  id: string
+  numero: string
+  observacion: string | null
+}) {
+  const router = useRouter()
+  const [abierto, setAbierto] = useState(false)
+  const [archivo, setArchivo] = useState<File | null>(null)
+  const [dice, setDice] = useState<string | null>(null)
+  const [leyendo, setLeyendo] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [enviando, iniciar] = useTransition()
+  const enCurso = useRef(false)
+
+  function abrir() {
+    setArchivo(null)
+    setDice(null)
+    setError(null)
+    setAbierto(true)
+  }
+
+  async function elegir(elegido: File | undefined) {
+    if (!elegido) return
+    setArchivo(elegido)
+    setDice(null)
+    setError(null)
+    if (!tipoDeCotizacion(elegido)) {
+      setError('La corrección se sube en PDF o en Word.')
+      return
+    }
+    setLeyendo(true)
+    try {
+      setDice((await leerCabeceraDeArchivo(elegido)).numero)
+    } finally {
+      setLeyendo(false)
+    }
+  }
+
+  const otroNumero = dice !== null && normalizar(dice) !== normalizar(numero)
+
+  function enviar(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault()
+    if (enCurso.current) return
+
+    const tipo = archivo ? tipoDeCotizacion(archivo) : null
+    if (!archivo || !tipo) {
+      setError(archivo ? 'La corrección se sube en PDF o en Word.' : 'Elige el archivo corregido.')
+      return
+    }
+    if (archivo.size > MAXIMO_ADJUNTO_MB * 1024 * 1024) {
+      setError(`El archivo pesa más de ${MAXIMO_ADJUNTO_MB} MB.`)
+      return
+    }
+
+    enCurso.current = true
+    setError(null)
+    iniciar(async () => {
+      const supabase = createClient()
+      const ruta = `cot/${id}/${crypto.randomUUID()}.${tipo.extension}`
+      let subido = false
+      try {
+        const { error: falla } = await supabase.storage
+          .from('cotizaciones-pdf')
+          .upload(ruta, archivo, { contentType: tipo.mime, upsert: false })
+        if (falla) {
+          setError(`No se pudo subir el ${tipo.etiqueta}. Revisa la señal y vuelve a intentar.`)
+          return
+        }
+        subido = true
+
+        const datos = new FormData()
+        datos.set('id', id)
+        datos.set('nombre_archivo', archivo.name.slice(0, 200))
+        datos.set('ruta_storage', ruta)
+        datos.set('mime_type', tipo.mime)
+        datos.set('tamano_bytes', String(archivo.size))
+
+        const r = await corregirCotizacionPdf(null, datos)
+        if (!r.ok) {
+          await supabase.storage.from('cotizaciones-pdf').remove([ruta])
+          subido = false
+          setError(r.error)
+          return
+        }
+        subido = false
+        setAbierto(false)
+        iniciar(() => router.refresh())
+      } catch {
+        // Si la anotación se cae, el archivo nuevo se quita: uno que ninguna
+        // fila nombra no lo ve nadie y no lo borra nadie.
+        if (subido) await supabase.storage.from('cotizaciones-pdf').remove([ruta])
+        setError('No se pudo subir la corrección. Vuelve a intentar.')
+      } finally {
+        enCurso.current = false
+      }
+    })
+  }
+
+  return (
+    <>
+      <Boton type="button" tamano="sm" onClick={abrir}>
+        <RefreshCw aria-hidden className="size-3.5" />
+        Subir corrección
+      </Boton>
+
+      <Ventana
+        abierta={abierto}
+        alCerrar={() => setAbierto(false)}
+        titulo={`Subir la corrección de la ${numero}`}
+        descripcion="El archivo corregido, en PDF o en Word. Vuelve a Gerencia con el mismo número; lo rechazado queda en el historial."
+        ancho="md"
+      >
+        <form onSubmit={enviar} className="space-y-4">
+          {observacion && (
+            <div className="flex items-start gap-2 rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-sm text-peligro">
+              <MessageSquareWarning aria-hidden className="mt-0.5 size-4 shrink-0" />
+              <p>
+                <span className="font-medium">Lo que observó Gerencia:</span> {observacion}
+              </p>
+            </div>
+          )}
+
+          <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2">
+            <FileUp aria-hidden className="size-6" />
+            <span className="font-medium text-texto">{archivo ? archivo.name : 'Elegir el archivo corregido'}</span>
+            <span className="text-xs">{leyendo ? 'Leyendo…' : `PDF o Word · hasta ${MAXIMO_ADJUNTO_MB} MB`}</span>
+            <input
+              type="file"
+              accept={ACEPTA_COTIZACION}
+              className="sr-only"
+              onChange={(e) => {
+                void elegir(e.target.files?.[0])
+                e.target.value = ''
+              }}
+            />
+          </label>
+
+          {otroNumero && (
+            <p role="status" className="flex items-start gap-2 rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-xs text-aviso">
+              <AlertTriangle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+              El archivo dice {dice} y esta cotización es la {numero}. Revisa que sea el archivo correcto antes de subirlo.
+            </p>
+          )}
+
+          <Falla texto={error} />
+
+          <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" tamano="lg" cargando={enviando} disabled={leyendo} className="w-full sm:w-auto">
+              Subir y mandar a Gerencia
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
+    </>
   )
 }
 

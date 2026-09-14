@@ -845,12 +845,16 @@ export type Database = {
           registrado_por: string | null
           creado_en: string
           actualizado_en: string
+          version: number
+          archivo_subido_en: string
         }
         Insert: {
           id?: string
           numero: string
           cliente_id: string
           tipo_carroceria_id: string
+          version?: number
+          archivo_subido_en?: string
           estado?: Database["public"]["Enums"]["estado_cotizacion_pdf"]
           observacion?: string | null
           revisado_por?: string | null
@@ -868,6 +872,8 @@ export type Database = {
           numero?: string
           cliente_id?: string
           tipo_carroceria_id?: string
+          version?: number
+          archivo_subido_en?: string
           estado?: Database["public"]["Enums"]["estado_cotizacion_pdf"]
           observacion?: string | null
           revisado_por?: string | null
@@ -910,6 +916,54 @@ export type Database = {
             referencedColumns: ["id"]
           }
         ]
+      }
+      cotizaciones_pdf_versiones: {
+        Row: {
+          id: string
+          cotizacion_id: string
+          version: number
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type: string | null
+          tamano_bytes: number | null
+          subido_en: string
+          observacion: string
+          rechazado_por: string | null
+          rechazado_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          cotizacion_id: string
+          version: number
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          subido_en: string
+          observacion: string
+          rechazado_por?: string | null
+          rechazado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          cotizacion_id?: string
+          version?: number
+          nombre_archivo?: string
+          ruta_storage?: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          subido_en?: string
+          observacion?: string
+          rechazado_por?: string | null
+          rechazado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: []
       }
       empresa: {
         Row: {
@@ -3657,6 +3711,25 @@ export type Database = {
           orden_numero: string | null
           orden_estado: string | null
           tuvo_orden: boolean | null
+          version: number | null
+          mime_type: string | null
+          archivo_subido_en: string | null
+        }
+        Relationships: []
+      }
+      v_cotizaciones_pdf_versiones: {
+        Row: {
+          id: string | null
+          cotizacion_id: string | null
+          version: number | null
+          nombre_archivo: string | null
+          ruta_storage: string | null
+          mime_type: string | null
+          tamano_bytes: number | null
+          subido_en: string | null
+          observacion: string | null
+          rechazado_en: string | null
+          rechazado_por_nombre: string | null
         }
         Relationships: []
       }

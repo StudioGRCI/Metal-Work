@@ -10,13 +10,11 @@ import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
+import { ACEPTA_COTIZACION, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
 import {
   buscarCliente,
-  leerNombreDeArchivo,
-  leerTextoDeCotizacion,
   nombreParaCatalogo,
   proponerCarroceria,
-  unirLecturas,
   type CabeceraCotizacion,
   type PropuestaCarroceria,
 } from '@/lib/cotizacion-pdf'
@@ -28,12 +26,11 @@ type Cliente = { id: string; razon_social: string; tipo_documento: string; numer
 type Carroceria = { id: string; nombre: string }
 type TipoDocumento = 'RUC' | 'DNI' | 'CE' | 'PASAPORTE'
 
-const SIN_LEER: CabeceraCotizacion = { numero: null, fecha: null, cliente: null, documento: null, producto: null }
-
 /**
- * Subir la cotización que se le mandó al cliente (migraciones 101 y 102).
+ * Subir la cotización que se le mandó al cliente (migraciones 101, 102 y 103),
+ * en PDF o en Word.
  *
- * Al elegir el PDF se lee su cabecera en el navegador —número, «Señores», RUC y
+ * Al elegir el archivo se lee su cabecera en el navegador —número, «Señores», RUC y
  * el título— y el formulario sale lleno: el cliente reconocido por su RUC, o
  * listo para registrarse si es nuevo; la carrocería del catálogo que nombra el
  * título, o una nueva con ese nombre. Todo se puede cambiar antes de subir.
@@ -123,32 +120,24 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     setArchivo(elegido)
     setError(null)
     setLectura(null)
-    if (elegido.type !== 'application/pdf' && !/\.pdf$/i.test(elegido.name)) {
-      setError('La cotización se sube en PDF.')
+    if (!tipoDeCotizacion(elegido)) {
+      setError('La cotización se sube en PDF o en Word.')
       return
     }
 
     setLeyendo(true)
-    let delTexto = SIN_LEER
     try {
-      // La librería solo hace falta aquí: se carga cuando se elige el archivo.
-      const { extractText, getDocumentProxy } = await import('unpdf')
-      const pdf = await getDocumentProxy(new Uint8Array(await elegido.arrayBuffer()))
-      const { text } = await extractText(pdf, { mergePages: false })
-      delTexto = leerTextoDeCotizacion(text[0] ?? '')
-    } catch {
-      // Escaneado o dañado: queda lo que diga el nombre del archivo.
+      aplicar(await leerCabeceraDeArchivo(elegido))
     } finally {
       setLeyendo(false)
     }
-    aplicar(unirLecturas(delTexto, leerNombreDeArchivo(elegido.name)))
   }
 
   function validar(): string | null {
-    if (!archivo) return 'Elige el PDF de la cotización.'
-    if (archivo.type !== 'application/pdf' && !/\.pdf$/i.test(archivo.name)) return 'La cotización se sube en PDF.'
-    if (archivo.size > MAXIMO_ADJUNTO_MB * 1024 * 1024) return `El PDF pesa más de ${MAXIMO_ADJUNTO_MB} MB.`
-    if (numero.trim().length < 3) return 'Escribe el número que dice el PDF.'
+    if (!archivo) return 'Elige el PDF o el Word de la cotización.'
+    if (!tipoDeCotizacion(archivo)) return 'La cotización se sube en PDF o en Word.'
+    if (archivo.size > MAXIMO_ADJUNTO_MB * 1024 * 1024) return `El archivo pesa más de ${MAXIMO_ADJUNTO_MB} MB.`
+    if (numero.trim().length < 3) return 'Escribe el número que dice la cotización.'
     if (clienteNuevo) {
       if (razonSocial.trim().length < 3) return 'Escribe el nombre o la razón social del cliente nuevo.'
       if (tipoDoc === 'RUC' && !/^\d{11}$/.test(numeroDoc.trim())) return 'El RUC del cliente tiene 11 dígitos.'
@@ -168,7 +157,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     if (enCurso.current) return
 
     const falta = validar()
-    if (falta || !archivo) {
+    const tipo = archivo ? tipoDeCotizacion(archivo) : null
+    if (falta || !archivo || !tipo) {
       setError(falta)
       return
     }
@@ -178,7 +168,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     iniciar(async () => {
       const supabase = createClient()
       const id = crypto.randomUUID()
-      const ruta = `cot/${id}/${crypto.randomUUID()}.pdf`
+      const ruta = `cot/${id}/${crypto.randomUUID()}.${tipo.extension}`
       let subido = false
       try {
         let cliente = clienteId
@@ -223,9 +213,9 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
 
         const { error: falla } = await supabase.storage
           .from('cotizaciones-pdf')
-          .upload(ruta, archivo, { contentType: 'application/pdf', upsert: false })
+          .upload(ruta, archivo, { contentType: tipo.mime, upsert: false })
         if (falla) {
-          setError('No se pudo subir el PDF. Revisa la señal y vuelve a intentar.')
+          setError(`No se pudo subir el ${tipo.etiqueta}. Revisa la señal y vuelve a intentar.`)
           return
         }
         subido = true
@@ -236,6 +226,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         datos.set('cliente_id', cliente)
         datos.set('tipo_carroceria_id', carroceria)
         datos.set('ruta_storage', ruta)
+        datos.set('mime_type', tipo.mime)
         datos.set('nombre_archivo', archivo.name.slice(0, 200))
         datos.set('tamano_bytes', String(archivo.size))
 
@@ -281,17 +272,17 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         abierta={abierto}
         alCerrar={() => setAbierto(false)}
         titulo="Subir la cotización"
-        descripcion="El PDF que se le mandó al cliente. Al elegirlo se leen su número, el cliente y qué se fabrica: revisa que esté bien y súbela."
+        descripcion="La que se le mandó al cliente, en PDF o en Word. Al elegirla se leen su número, el cliente y qué se fabrica: revisa que esté bien y súbela."
         ancho="md"
       >
         <form onSubmit={enviar} className="space-y-4">
           <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2">
             <FileUp aria-hidden className="size-6" />
-            <span className="font-medium text-texto">{archivo ? archivo.name : 'Elegir el PDF'}</span>
-            <span className="text-xs">Hasta {MAXIMO_ADJUNTO_MB} MB</span>
+            <span className="font-medium text-texto">{archivo ? archivo.name : 'Elegir el PDF o el Word'}</span>
+            <span className="text-xs">PDF o Word · hasta {MAXIMO_ADJUNTO_MB} MB</span>
             <input
               type="file"
-              accept="application/pdf,.pdf"
+              accept={ACEPTA_COTIZACION}
               className="sr-only"
               onChange={(e) => {
                 void elegirArchivo(e.target.files?.[0])
@@ -303,7 +294,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           {leyendo && (
             <p role="status" className="flex items-center gap-2 text-sm text-texto-suave">
               <FileSearch aria-hidden className="size-4" />
-              Leyendo el PDF…
+              Leyendo el archivo…
             </p>
           )}
 
@@ -311,7 +302,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
             <div role="status" className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-xs text-texto-suave">
               {leido ? (
                 <>
-                  <p className="font-medium text-texto">Leído del PDF</p>
+                  <p className="font-medium text-texto">Leído del archivo</p>
                   <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
                     {lectura.numero && (
                       <>
@@ -342,12 +333,12 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                   </dl>
                 </>
               ) : (
-                <p>No se encontró la cabecera de la cotización (¿es un escaneo?). Llena los datos a mano.</p>
+                <p>No se encontró la cabecera de la cotización (¿es un escaneo o un Word antiguo?). Llena los datos a mano.</p>
               )}
             </div>
           )}
 
-          <Campo etiqueta="Número de la cotización" htmlFor="cot-numero" ayuda="El que dice el PDF" requerido>
+          <Campo etiqueta="Número de la cotización" htmlFor="cot-numero" ayuda="El que dice la cotización" requerido>
             <Entrada
               id="cot-numero"
               value={numero}

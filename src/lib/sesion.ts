@@ -177,6 +177,19 @@ export function puedeQuitarCotizacion(
   return c.registrado_por === perfil.id || puede(perfil, 'cotizaciones.revisar')
 }
 
+/**
+ * Si esta persona ve «Subir corrección» en una cotización. Gemelo de la
+ * política de UPDATE y del disparador de la migración 103: la rechazada la
+ * corrige quien la subió. Gerencia no reescribe el papel del vendedor.
+ */
+export function puedeCorregirCotizacion(
+  perfil: PerfilSesion | null,
+  c: { estado: string | null; registrado_por: string | null },
+): boolean {
+  if (!perfil || c.estado !== 'RECHAZADA') return false
+  return c.registrado_por === perfil.id || perfil.rol.codigo === 'ADMIN'
+}
+
 /** Las áreas cuya hoja puede escribir: la suya, o todas si tiene el permiso. */
 export function areasDeSuMano<T extends { id: string }>(
   perfil: PerfilSesion | null,

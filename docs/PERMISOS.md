@@ -140,6 +140,11 @@ desde la `102`, también la quita —igual que quien la subió— mientras esté
 revisar o rechazada, con su PDF. La que tuvo orden, aunque se haya anulado, no
 la quita nadie: lo impide un disparador, y lo dice.
 
+La corrección de una rechazada (`103`) no la sube Gerencia aunque tenga
+`cotizaciones.revisar`: la sube solo quien subió la cotización. Gerencia observa
+el papel del vendedor, no lo reescribe. Las versiones rechazadas las escribe el
+sistema; nadie tiene permiso de escritura sobre `cotizaciones_pdf_versiones`.
+
 **`ADMIN` — Administrador** (0 en `roles_permisos`)
 Ninguno asignado. Pasa por `es_admin()`.
 
