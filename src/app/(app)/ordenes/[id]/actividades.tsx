@@ -5,10 +5,12 @@ import { useState } from 'react'
 
 import { CampoPorcentaje, FechaDelReporte } from '@/components/avance/campos-reporte'
 import { CorregirReporte } from '@/components/avance/corregir-reporte'
+import { EliminarReporte } from '@/components/avance/eliminar-reporte'
 import { RevisarReporte } from '@/components/avance/revisar-reporte'
 import { InsigniaRevision, NotaRevision } from '@/components/avance/revision'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -28,6 +30,7 @@ import {
   quitarActividad,
   reportarAvance,
 } from './acciones-actividades'
+import { CargarCronograma } from './cargar-cronograma'
 
 function Error_({ texto }: { texto: string | null }) {
   if (!texto) return null
@@ -57,6 +60,7 @@ export function ActividadesDeOrden({
   areaPropia,
   aprueba,
   corregibles,
+  eliminables,
 }: {
   ordenId: string
   actividades: ActividadArea[]
@@ -73,10 +77,13 @@ export function ActividadesDeOrden({
   aprueba: boolean
   /** Los reportes del diario que esta persona puede corregir, decidido en el servidor. */
   corregibles: string[]
+  /** Y los que puede borrar (migración 099), decidido igual. */
+  eliminables: string[]
 }) {
   const [agregando, setAgregando] = useState(false)
   const hoy = hoyLima()
   const puedeCorregir = new Set(corregibles)
+  const puedeEliminar = new Set(eliminables)
 
   const porArea = areasDisponibles
     .map((a) => ({
@@ -94,10 +101,13 @@ export function ActividadesDeOrden({
           descripcion="Cada área arma su lista y reporta lo que avanzó cada día. Producción por carrocería, Maestranza por pieza solicitada. Cada una tiene su propio 100 %."
           acciones={
             puedeArmar && !agregando ? (
-              <Boton variante="secundario" tamano="sm" onClick={() => setAgregando(true)}>
-                <Plus aria-hidden className="size-3.5" />
-                Nueva actividad
-              </Boton>
+              <span className="flex flex-wrap gap-2">
+                <CargarCronograma ordenId={ordenId} areasPropias={areasDisponibles} />
+                <Boton variante="secundario" tamano="sm" onClick={() => setAgregando(true)}>
+                  <Plus aria-hidden className="size-3.5" />
+                  Nueva actividad
+                </Boton>
+              </span>
             ) : null
           }
         />
@@ -184,6 +194,7 @@ export function ActividadesDeOrden({
                           {[act.referencia, act.detalle].filter(Boolean).join(' · ')}
                         </p>
                       )}
+                      <PlanDeActividad actividad={act} hoy={hoy} />
                     </TD>
                     <TD className="text-right tabular text-sm">{numero(act.peso_pct, 0)} %</TD>
                     <TD>
@@ -234,6 +245,7 @@ export function ActividadesDeOrden({
               {diario.map((r) => {
                 const revisa = aprueba && r.revision !== 'APROBADO'
                 const corrige = puedeCorregir.has(r.id)
+                const elimina = puedeEliminar.has(r.id)
                 return (
                   <li key={r.id} className="space-y-2 px-4 py-2.5">
                     <div className="flex flex-wrap items-baseline gap-2">
@@ -250,9 +262,10 @@ export function ActividadesDeOrden({
                       </span>
                     </div>
                     <NotaRevision r={r} />
-                    {(revisa || corrige) && (
+                    {(revisa || corrige || elimina) && (
                       <div className="flex flex-wrap items-center gap-2">
                         {revisa && <RevisarReporte clase="hoja" id={r.id} revision={r.revision} />}
+                        {elimina && <EliminarReporte clase="hoja" id={r.id} />}
                         {corrige && (
                           <CorregirReporte
                             reporte={{
@@ -278,6 +291,30 @@ export function ActividadesDeOrden({
         </Tarjeta>
       )}
     </div>
+  )
+}
+
+/**
+ * Desde cuándo y hasta cuándo, según el cronograma, y si ya se pasó. Las fechas
+ * son planas (YYYY-MM-DD) y se comparan como texto contra la fecha del taller.
+ */
+function PlanDeActividad({ actividad, hoy }: { actividad: ActividadArea; hoy: string }) {
+  const inicio = actividad.fecha_inicio_plan
+  const fin = actividad.fecha_fin_plan
+  if (!inicio && !fin) return null
+
+  const atrasada = !actividad.terminada && fin !== null && fin < hoy
+  const tocaAhora = !actividad.terminada && !atrasada && inicio !== null && inicio <= hoy
+
+  return (
+    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-texto-suave">
+      <CalendarDays aria-hidden className="size-3 shrink-0" />
+      <span className="tabular">
+        {inicio ? fmtFecha(inicio) : '—'} → {fin ? fmtFecha(fin) : '—'}
+      </span>
+      {atrasada && <Insignia tono="peligro">Atrasada</Insignia>}
+      {tocaAhora && <Insignia tono="aviso">Toca ahora</Insignia>}
+    </p>
   )
 }
 
@@ -556,6 +593,14 @@ function NuevaActividad({
 
           <Campo etiqueta="Detalle" htmlFor="na-detalle" className="sm:col-span-4">
             <AreaTexto id="na-detalle" name="detalle" rows={2} placeholder="Opcional" />
+          </Campo>
+
+          <Campo etiqueta="Desde" htmlFor="na-inicio" ayuda="Según el cronograma, si lo hay" className="sm:col-span-3">
+            <Entrada id="na-inicio" name="fecha_inicio_plan" type="date" />
+          </Campo>
+
+          <Campo etiqueta="Hasta" htmlFor="na-fin" className="sm:col-span-3">
+            <Entrada id="na-fin" name="fecha_fin_plan" type="date" />
           </Campo>
 
           {error && (

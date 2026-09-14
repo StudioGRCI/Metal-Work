@@ -51,6 +51,9 @@ next-env.d.ts
 /supabase/.temp/
 /supabase/.branches/
 
+# Conectores MCP locales (el de GitHub lee el token de la variable GITHUB_PAT)
+/.mcp.json
+
 # Registro local de correcciones del asistente (ver .claude/skills/aprender)
 /.claude/aprendizaje/
 /.claude/settings.local.json

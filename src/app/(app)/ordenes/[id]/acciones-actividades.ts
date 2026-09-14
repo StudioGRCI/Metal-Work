@@ -54,6 +54,9 @@ const esquemaActividad = z.object({
   detalle: z.string().trim().optional(),
   peso_pct: z.coerce.number().min(0).max(100).default(0),
   orden_secuencia: z.coerce.number().int().min(1).max(999).default(1),
+  // Según el cronograma, si lo hay (migración 099): desde y hasta cuándo.
+  fecha_inicio_plan: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/, 'La fecha de inicio no se entiende').optional(),
+  fecha_fin_plan: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/, 'La fecha de fin no se entiende').optional(),
 })
 
 export async function agregarActividad(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -73,6 +76,12 @@ export async function agregarActividad(_previo: unknown, datos: FormData): Promi
     return { ok: false, error: 'Esa hoja es de otra área: cada uno arma la suya.' }
   }
 
+  const inicio = nulo(v.fecha_inicio_plan)
+  const fin = nulo(v.fecha_fin_plan)
+  if (inicio && fin && fin < inicio) {
+    return { ok: false, error: 'La actividad no puede terminar antes de empezar.' }
+  }
+
   const supabase = await createClient()
 
   const { data, error } = await supabase
@@ -85,6 +94,8 @@ export async function agregarActividad(_previo: unknown, datos: FormData): Promi
       detalle: nulo(v.detalle),
       peso_pct: v.peso_pct,
       orden_secuencia: v.orden_secuencia,
+      fecha_inicio_plan: inicio,
+      fecha_fin_plan: fin,
       creado_por: perfil.id,
     })
     .select('id')
@@ -184,6 +195,65 @@ export async function quitarActividad(_previo: unknown, datos: FormData): Promis
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   return { ok: true, mensaje: 'Actividad quitada.' }
+}
+
+// ------------------------------------------------------------- el cronograma
+const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/
+
+const esquemaFilaCronograma = z.object({
+  area_id: z.string().uuid(),
+  nombre: z.string().trim().min(1).max(200),
+  referencia: z.string().trim().max(200).nullable().optional(),
+  peso_pct: z.number().min(0).max(100),
+  inicio: z.string().regex(ES_FECHA).nullable().optional(),
+  fin: z.string().regex(ES_FECHA).nullable().optional(),
+})
+
+/**
+ * Cargar el cronograma de un Excel, ya leído en el navegador (`leerCronograma`).
+ * La base vuelve a validarlo todo y lo carga de una vez o nada
+ * (`cargar_cronograma`, migración 099). Acá se comprueba lo mismo que el RLS
+ * —que cada fila sea de un área propia— para poder decir cuál no lo es.
+ */
+export async function cargarCronograma(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'produccion.actividades')) {
+    return { ok: false, error: 'El cronograma lo carga el supervisor del área o el jefe.' }
+  }
+
+  const orden = z.string().uuid().safeParse(datos.get('orden_id'))
+  if (!orden.success) return { ok: false, error: 'No se pudo identificar la orden.' }
+
+  let filas: z.infer<typeof esquemaFilaCronograma>[]
+  try {
+    const analisis = z.array(esquemaFilaCronograma).min(1).max(500).safeParse(JSON.parse(String(datos.get('filas') ?? '[]')))
+    if (!analisis.success) return { ok: false, error: 'El cronograma trae filas que no se entienden: revisa el archivo.' }
+    filas = analisis.data
+  } catch {
+    return { ok: false, error: 'El cronograma no se pudo leer: vuelve a elegir el archivo.' }
+  }
+
+  const ajena = filas.find((f) => !puedeHojaDeArea(perfil, f.area_id))
+  if (ajena) {
+    return { ok: false, error: `«${ajena.nombre}» es de la hoja de otra área: cada uno carga la suya.` }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('cargar_cronograma', { p_orden: orden.data, p_filas: filas })
+
+  if (error) return { ok: false, error: traducir(error) }
+  const r = data as { nuevas?: number; actualizadas?: number } | null
+  if (!r) return { ok: false, error: NO_TOCO_NADA }
+
+  revalidatePath(`/ordenes/${orden.data}`)
+  revalidatePath('/avance')
+
+  const nuevas = r.nuevas ?? 0
+  const actualizadas = r.actualizadas ?? 0
+  return {
+    ok: true,
+    mensaje: `Cronograma cargado: ${nuevas} ${nuevas === 1 ? 'actividad nueva' : 'actividades nuevas'} y ${actualizadas} ${actualizadas === 1 ? 'actualizada' : 'actualizadas'}.`,
+  }
 }
 
 const esquemaAvance = z.object({

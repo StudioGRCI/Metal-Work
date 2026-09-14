@@ -7,10 +7,11 @@ import { Insignia, Punto } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { ESTADO_OT, PRIORIDAD, TIPO_TRABAJO, definir } from '@/lib/dominio/estados'
+import { PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { fecha, fechaHora, hoyLima, moneda, numero as fmtNumero } from '@/lib/format'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import {
+  clientesParaElegir,
   estadoDeSalida,
   fechasClaveDeOrden,
   listarEtapas,
@@ -18,6 +19,7 @@ import {
   timelineDeOrden,
 } from '@/lib/datos/ordenes'
 import { actividadesDeOrden, areasDelTaller } from '@/lib/datos/actividades'
+import { adjuntosDeOrden } from '@/lib/datos/adjuntos'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
 import { cumplimientoDeOrden } from '@/lib/datos/cumplimiento'
 import {
@@ -26,10 +28,18 @@ import {
   repuestosDeOrden,
   verificacionesDeOrden,
 } from '@/lib/datos/ficha-ot'
-import { areasDeSuMano, exigirPermiso, puede, puedeCorregirReporte } from '@/lib/sesion'
+import {
+  areasDeSuMano,
+  exigirPermiso,
+  puede,
+  puedeCorregirReporte,
+  puedeEliminarReporte,
+} from '@/lib/sesion'
 import type { CodigoMoneda } from '@/lib/format'
 
 import { AccionesEstado } from './acciones-estado'
+import { ArchivosDeOrden, type AdjuntoEnPantalla } from './archivos-de-orden'
+import { PonerCliente } from './poner-cliente'
 import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
 
 import { Bitacora } from './bitacora'
@@ -101,6 +111,17 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     vista === 'resumen' ? fechasClaveDeOrden(id) : Promise.resolve(null),
   ])
 
+  // La orden del taller sin cliente (100): la oficina, que ve los clientes y
+  // hace órdenes, se lo pone desde el resumen.
+  const clientesParaPoner =
+    vista === 'resumen' &&
+    orden.cliente_id === null &&
+    !['ENTREGADA', 'FACTURADA', 'ANULADA'].includes(orden.estado) &&
+    puede(perfil, 'ordenes.editar') &&
+    puede(perfil, 'clientes.ver')
+      ? await clientesParaElegir()
+      : null
+
   // La lista de Diseño y su catálogo.
   const listaMateriales = vista === 'materiales' ? await materialesParaPantalla(id) : null
 
@@ -110,7 +131,31 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       ? await Promise.all([actividadesDeOrden(id), areasDelTaller()])
       : null
 
-  const estado = definir(ESTADO_OT, orden.estado)
+  // Los archivos de la orden (099): en el resumen y junto a la hoja, que es
+  // donde el taller los busca. Quitarlos es de quien los subió, la oficina o
+  // el jefe: lo mismo que dice la política.
+  const puedeSubirArchivos = puede(perfil, [
+    'produccion.actividades',
+    'ordenes.editar',
+    'ordenes.crear',
+    'ordenes.abrir_taller',
+  ])
+  const quitaCualquiera = puede(perfil, ['ordenes.editar', 'produccion.cualquier_area'])
+  const archivos: AdjuntoEnPantalla[] | null =
+    vista === 'resumen' || vista === 'actividades'
+      ? (await adjuntosDeOrden(id)).map((a) => ({
+          id: a.id,
+          tipo: a.tipo,
+          nombre_archivo: a.nombre_archivo,
+          tamano_bytes: a.tamano_bytes,
+          creado_en: a.creado_en,
+          url: a.url,
+          quitable: quitaCualquiera || a.subido_por === perfil.id,
+        }))
+      : null
+
+  const estado = estadoDeOrden(orden.estado, orden.abierta_en_taller)
+  const porRevisar = orden.abierta_en_taller && orden.estado === 'BORRADOR'
   const prioridad = definir(PRIORIDAD, orden.prioridad)
   // Puede venir vacío: quien no tiene `clientes.ver` abre la orden igual, pero
   // sin los datos del cliente.
@@ -163,12 +208,32 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           </span>
         }
         descripcion={orden.descripcion}
-        acciones={<AccionesEstado orden={{ id: orden.id, estado: orden.estado }} permisos={perfil.permisos} esAdmin={perfil.rol.codigo === 'ADMIN'} />}
+        acciones={
+          <AccionesEstado
+            orden={{ id: orden.id, estado: orden.estado, abiertaEnTaller: orden.abierta_en_taller }}
+            permisos={perfil.permisos}
+            esAdmin={perfil.rol.codigo === 'ADMIN'}
+          />
+        }
       />
 
       {query.creada === '1' && (
         <p className="mb-4 rounded-[var(--radius-base)] bg-exito-suave px-3 py-2 text-sm text-exito">
           Orden registrada correctamente. Apruébala para generar sus etapas de producción.
+        </p>
+      )}
+
+      {/* La que abrió el taller: se dice quién la revisa y que el trabajo no
+          espera. Al abrirla se llega acá, a la pestaña de actividades. */}
+      {porRevisar && (
+        <p
+          role={query.abierta === '1' ? 'status' : undefined}
+          className="mb-4 rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso"
+        >
+          {query.abierta === '1' ? <strong>Orden abierta. </strong> : <strong>Por revisar. </strong>}
+          La abrió el taller y espera que el jefe de producción la apruebe o la rechace; ya se le
+          avisó. Mientras, se le puede armar la lista de actividades y reportar. Al aprobarla nacen
+          sus etapas y sus plazos.
         </p>
       )}
 
@@ -213,7 +278,19 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           <Tarjeta>
             <TarjetaCabecera titulo="Cliente y unidad" />
             <TarjetaCuerpo className="space-y-0">
-              <Dato etiqueta="Cliente" valor={cliente?.razon_social ?? null} />
+              {/* Sin cliente solo puede estar la que abrió el taller (100): la
+                  oficina se lo pone acá; los demás leen que falta. */}
+              {orden.cliente_id === null && clientesParaPoner ? (
+                <PonerCliente ordenId={orden.id} clientes={clientesParaPoner} />
+              ) : (
+                <Dato
+                  etiqueta="Cliente"
+                  valor={
+                    cliente?.razon_social ??
+                    (orden.cliente_id === null ? 'Sin cliente todavía: lo pone la oficina' : null)
+                  }
+                />
+              )}
               <Dato etiqueta="Documento" valor={cliente?.numero_documento ?? null} />
               <Dato etiqueta="Teléfono" valor={cliente?.telefono ?? null} />
               {/* «Unidad» y no «Placa»: mientras no esté matriculada lo que
@@ -293,6 +370,12 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               )}
             </TarjetaCuerpo>
           </Tarjeta>
+
+          {archivos && (
+            <div className="lg:col-span-2">
+              <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos} puedeSubir={puedeSubirArchivos} />
+            </div>
+          )}
         </div>
       )}
 
@@ -380,7 +463,16 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               ),
             )
             .map((r) => r.id)}
+          eliminables={hojaAreas[0].diario
+            .filter((r) => puedeEliminarReporte(perfil, { revision: r.revision, autor: r.reportado_por }))
+            .map((r) => r.id)}
         />
+      )}
+
+      {vista === 'actividades' && archivos && (
+        <div className="mt-4">
+          <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos} puedeSubir={puedeSubirArchivos} />
+        </div>
       )}
 
       {vista === 'avance' && (

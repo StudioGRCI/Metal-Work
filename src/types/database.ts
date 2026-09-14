@@ -828,6 +828,89 @@ export type Database = {
           }
         ]
       }
+      cotizaciones_pdf: {
+        Row: {
+          id: string
+          numero: string
+          cliente_id: string
+          tipo_carroceria_id: string
+          estado: Database["public"]["Enums"]["estado_cotizacion_pdf"]
+          observacion: string | null
+          revisado_por: string | null
+          revisado_en: string | null
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type: string | null
+          tamano_bytes: number | null
+          registrado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          cliente_id: string
+          tipo_carroceria_id: string
+          estado?: Database["public"]["Enums"]["estado_cotizacion_pdf"]
+          observacion?: string | null
+          revisado_por?: string | null
+          revisado_en?: string | null
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          registrado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          cliente_id?: string
+          tipo_carroceria_id?: string
+          estado?: Database["public"]["Enums"]["estado_cotizacion_pdf"]
+          observacion?: string | null
+          revisado_por?: string | null
+          revisado_en?: string | null
+          nombre_archivo?: string
+          ruta_storage?: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          registrado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cotizaciones_pdf_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_pdf_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_pdf_revisado_por_fkey"
+            columns: ["revisado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_pdf_tipo_carroceria_id_fkey"
+            columns: ["tipo_carroceria_id"]
+            isOneToOne: false
+            referencedRelation: "tipos_carroceria"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       empresa: {
         Row: {
           id: string
@@ -1404,7 +1487,7 @@ export type Database = {
         Row: {
           id: string
           numero: string
-          cliente_id: string
+          cliente_id: string | null
           unidad_id: string | null
           cotizacion_id: string | null
           tipo_carroceria_id: string | null
@@ -1446,11 +1529,13 @@ export type Database = {
           caracteristicas_especiales: string | null
           encargado_produccion_id: string | null
           correo_contacto: string | null
+          abierta_en_taller: boolean
+          cotizacion_pdf_id: string | null
         }
         Insert: {
           id?: string
           numero?: string
-          cliente_id: string
+          cliente_id?: string | null
           unidad_id?: string | null
           cotizacion_id?: string | null
           tipo_carroceria_id?: string | null
@@ -1492,11 +1577,13 @@ export type Database = {
           caracteristicas_especiales?: string | null
           encargado_produccion_id?: string | null
           correo_contacto?: string | null
+          abierta_en_taller?: boolean
+          cotizacion_pdf_id?: string | null
         }
         Update: {
           id?: string
           numero?: string
-          cliente_id?: string
+          cliente_id?: string | null
           unidad_id?: string | null
           cotizacion_id?: string | null
           tipo_carroceria_id?: string | null
@@ -1538,6 +1625,8 @@ export type Database = {
           caracteristicas_especiales?: string | null
           encargado_produccion_id?: string | null
           correo_contacto?: string | null
+          abierta_en_taller?: boolean
+          cotizacion_pdf_id?: string | null
         }
         Relationships: [
           {
@@ -1754,6 +1843,8 @@ export type Database = {
           creado_por: string | null
           creado_en: string
           actualizado_en: string
+          fecha_inicio_plan: string | null
+          fecha_fin_plan: string | null
         }
         Insert: {
           id?: string
@@ -1767,6 +1858,8 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          fecha_inicio_plan?: string | null
+          fecha_fin_plan?: string | null
         }
         Update: {
           id?: string
@@ -1780,6 +1873,8 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          fecha_inicio_plan?: string | null
+          fecha_fin_plan?: string | null
         }
         Relationships: [
           {
@@ -1801,6 +1896,60 @@ export type Database = {
             columns: ["orden_id"]
             isOneToOne: false
             referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_adjuntos: {
+        Row: {
+          id: string
+          orden_id: string
+          tipo: string
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type: string | null
+          tamano_bytes: number | null
+          subido_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          tipo?: string
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          subido_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          tipo?: string
+          nombre_archivo?: string
+          ruta_storage?: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          subido_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_adjuntos_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_adjuntos_subido_por_fkey"
+            columns: ["subido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -3058,7 +3207,7 @@ export type Database = {
       unidades: {
         Row: {
           id: string
-          cliente_id: string
+          cliente_id: string | null
           placa: string | null
           tipo_vehiculo: Database["public"]["Enums"]["tipo_vehiculo"]
           marca: string | null
@@ -3079,7 +3228,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          cliente_id: string
+          cliente_id?: string | null
           placa?: string | null
           tipo_vehiculo?: Database["public"]["Enums"]["tipo_vehiculo"]
           marca?: string | null
@@ -3100,7 +3249,7 @@ export type Database = {
         }
         Update: {
           id?: string
-          cliente_id?: string
+          cliente_id?: string | null
           placa?: string | null
           tipo_vehiculo?: Database["public"]["Enums"]["tipo_vehiculo"]
           marca?: string | null
@@ -3418,6 +3567,7 @@ export type Database = {
           numero_chasis: string | null
           marca: string | null
           modelo: string | null
+          abierta_en_taller: boolean | null
         }
         Relationships: []
       }
@@ -3474,6 +3624,7 @@ export type Database = {
           dias_sin_avance: number | null
           impedimento: string | null
           fotos: number | null
+          abierta_en_taller: boolean | null
         }
         Relationships: []
       }
@@ -3481,6 +3632,31 @@ export type Database = {
         Row: {
           id: string | null
           nombre_completo: string | null
+        }
+        Relationships: []
+      }
+      v_cotizaciones_pdf: {
+        Row: {
+          id: string | null
+          numero: string | null
+          estado: string | null
+          observacion: string | null
+          cliente_id: string | null
+          cliente: string | null
+          tipo_carroceria_id: string | null
+          carroceria: string | null
+          nombre_archivo: string | null
+          ruta_storage: string | null
+          tamano_bytes: number | null
+          creado_en: string | null
+          registrado_por: string | null
+          registrado_por_nombre: string | null
+          revisado_en: string | null
+          revisado_por_nombre: string | null
+          orden_id: string | null
+          orden_numero: string | null
+          orden_estado: string | null
+          tuvo_orden: boolean | null
         }
         Relationships: []
       }
@@ -3648,6 +3824,11 @@ export type Database = {
           reportes: number | null
           creado_por: string | null
           creado_en: string | null
+          fecha_inicio_plan: string | null
+          fecha_fin_plan: string | null
+          orden_numero: string | null
+          orden_estado: string | null
+          abierta_en_taller: boolean | null
         }
         Relationships: []
       }
@@ -3791,6 +3972,18 @@ export type Database = {
       }
     }
     Functions: {
+      abrir_orden_del_taller: {
+        Args: {
+          p_placa: string
+          p_tipo_vehiculo: Database["public"]["Enums"]["tipo_vehiculo"]
+          p_marca: string
+          p_modelo: string
+          p_trabajo: string
+          p_tipo_trabajo?: Database["public"]["Enums"]["tipo_trabajo_ot"]
+          p_prioridad?: Database["public"]["Enums"]["prioridad_ot"]
+        }
+        Returns: string
+      }
       activar_auditoria: {
         Args: {
           p_tabla: string
@@ -3842,6 +4035,13 @@ export type Database = {
           p_activo: boolean
         }
         Returns: string
+      }
+      cargar_cronograma: {
+        Args: {
+          p_orden: string
+          p_filas: Json
+        }
+        Returns: Json
       }
       cifrar_clave: {
         Args: {
@@ -3927,6 +4127,21 @@ export type Database = {
           p_hasta: string
         }
         Returns: number
+      }
+      emitir_orden_de_cotizacion: {
+        Args: {
+          p_cotizacion: string
+          p_orden: string
+          p_placa: string
+          p_tipo_vehiculo: Database["public"]["Enums"]["tipo_vehiculo"]
+          p_marca: string
+          p_modelo: string
+          p_fecha_entrega: string
+          p_ruta_pdf: string
+          p_nombre_pdf: string
+          p_tamano_pdf?: number
+        }
+        Returns: string
       }
       flota_sigue_en_taller: {
         Args: {
@@ -4078,6 +4293,13 @@ export type Database = {
         }
         Returns: string
       }
+      poner_cliente_a_orden: {
+        Args: {
+          p_orden: string
+          p_cliente: string
+        }
+        Returns: string
+      }
       produccion_siguiente_numero: {
         Args: {
           p_tipo: Database["public"]["Enums"]["tipo_correlativo"]
@@ -4200,6 +4422,7 @@ export type Database = {
       accion_auditoria: "INSERT" | "UPDATE" | "DELETE"
       categoria_vehicular: "O3" | "O4" | "N1" | "N2" | "N3"
       estado_cotizacion: "BORRADOR" | "EN_COSTEO" | "EN_REVISION" | "OBSERVADA" | "REVISADA" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "VENCIDA" | "ANULADA"
+      estado_cotizacion_pdf: "POR_REVISAR" | "APROBADA" | "RECHAZADA"
       estado_etapa_ot: "PENDIENTE" | "EN_PROCESO" | "PAUSADA" | "TERMINADA" | "OMITIDA" | "REQUIERE_REVISION"
       estado_flota: "EN_TALLER" | "LISTA" | "SALIO"
       estado_ot: "BORRADOR" | "APROBADA" | "PROGRAMADA" | "EN_PROCESO" | "PAUSADA" | "CONTROL_CALIDAD" | "TERMINADA" | "ENTREGADA" | "FACTURADA" | "ANULADA"

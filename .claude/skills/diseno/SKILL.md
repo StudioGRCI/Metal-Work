@@ -106,6 +106,26 @@ Lo que sí funciona:
   archivo con `content-disposition: attachment`; una acción de servidor
   devuelve datos, no adjuntos (ver `cotizaciones/[id]/pdf/route.ts`).
 
+## Subidas
+
+El archivo va primero al almacenamiento y **después** una acción lo anota en su
+tabla. Entre las dos cosas hay un hueco: si la acción devuelve error, o levanta
+excepción, o el usuario pierde la señal, el archivo se queda donde ninguna fila
+lo nombra. Ahí **no lo ve nadie y no lo borra nadie**, porque las políticas de
+Storage deducen de la ruta a qué orden pertenece y ese archivo ya no pertenece a
+ninguna. Pasó con el Excel de un cronograma y hubo que sacarlo a mano, con la
+sesión del que lo subió.
+
+La forma correcta es la de `src/lib/adjuntos.ts`: `try`/`catch` alrededor de la
+anotación y `storage.remove([ruta])` en **las dos** salidas malas, la del `!ok` y
+la de la excepción. Un `if (!r.ok)` solo no basta: es la excepción la que deja el
+huérfano. Y si la subida es opcional —el Excel que acompaña a un cronograma ya
+cargado—, su fallo no puede tragarse el aviso de lo que sí entró.
+
+Para que el archivo pueda viajar a `ot/{orden}/…` antes de que la orden exista,
+el identificador se decide en el navegador con `crypto.randomUUID()` y la base
+crea las dos cosas en la misma transacción (ver `emitir_orden_de_cotizacion`).
+
 ## PDF de documentos de la empresa
 
 Se arman con `@react-pdf/renderer` en el servidor (`src/lib/pdf/`), con la

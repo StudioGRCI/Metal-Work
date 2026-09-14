@@ -28,6 +28,8 @@ export type FilaTablero = {
   dias_sin_avance: number | null
   impedimento: string | null
   fotos: number
+  /** La abrió el taller: en borrador está por revisar y ya entra al tablero (migración 098). */
+  abierta_en_taller: boolean | null
 }
 
 export type Avance = {
@@ -184,7 +186,7 @@ export async function cabeceraDeAvance(ordenId: string) {
 
   const { data, error } = await supabase
     .from('ot_resumen')
-    .select('id, numero, estado, cliente, placa, descripcion, avance_porcentaje, fecha_entrega_comprometida, dias_habiles_restantes')
+    .select('id, numero, estado, abierta_en_taller, cliente, placa, descripcion, avance_porcentaje, fecha_entrega_comprometida, dias_habiles_restantes')
     .eq('id', ordenId)
     .maybeSingle()
 

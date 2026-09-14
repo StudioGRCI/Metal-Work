@@ -185,6 +185,22 @@ export function definir(mapa: Record<string, Def>, valor: string | null | undefi
   return mapa[valor] ?? { etiqueta: valor.replaceAll('_', ' ').toLowerCase(), tono: 'neutro' }
 }
 
+/**
+ * El estado de una orden como se lee. Una que abrió el taller y sigue en
+ * borrador no es un borrador de oficina: está «por revisar», esperando que el
+ * jefe de producción la apruebe o la rechace (migración 098).
+ */
+export function estadoDeOrden(estado: string | null | undefined, abiertaEnTaller?: boolean | null): Def {
+  if (estado === 'BORRADOR' && abiertaEnTaller) {
+    return {
+      etiqueta: 'Por revisar',
+      tono: 'aviso',
+      descripcion: 'La abrió el taller: la aprueba o la rechaza el jefe de producción',
+    }
+  }
+  return definir(ESTADO_OT, estado)
+}
+
 /** Convierte un mapa en opciones para un <select>, respetando un orden dado. */
 export function opciones(mapa: Record<string, Def>, orden?: readonly string[]) {
   const claves = orden ?? Object.keys(mapa)

@@ -2,12 +2,13 @@ import { AlertTriangle } from 'lucide-react'
 
 import { RegistrarAvance } from '@/app/(app)/avance/registrar-avance'
 import { CorregirReporte } from '@/components/avance/corregir-reporte'
+import { EliminarReporte } from '@/components/avance/eliminar-reporte'
 import { RevisarReporte } from '@/components/avance/revisar-reporte'
 import { FirmaRevision, InsigniaRevision, NotaRevision } from '@/components/avance/revision'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { enlacesDeFotos, etapasDeLaOrden, fotosDeAvances, listarAvances } from '@/lib/datos/avances'
 import { fecha as formatearFecha, hoyLima } from '@/lib/format'
-import { puede, puedeCorregirReporte, type PerfilSesion } from '@/lib/sesion'
+import { puede, puedeCorregirReporte, puedeEliminarReporte, type PerfilSesion } from '@/lib/sesion'
 
 /**
  * La línea de avance de una unidad: qué se hizo cada día y la foto de cómo
@@ -56,6 +57,11 @@ export async function AvanceDeOrden({
             hoy,
           )
           const revisa = aprueba && a.revision !== 'APROBADO'
+          const elimina = puedeEliminarReporte(perfil, {
+            revision: a.revision,
+            autor: a.registrado_por,
+            movioEtapa: Boolean(a.etapa_id) && a.avance_porcentaje !== null,
+          })
 
           return (
             <li key={a.id}>
@@ -118,9 +124,10 @@ export async function AvanceDeOrden({
                   <NotaRevision r={a} />
                   <FirmaRevision r={a} />
 
-                  {(revisa || corrige) && (
+                  {(revisa || corrige || elimina) && (
                     <div className="flex flex-wrap items-center gap-2">
                       {revisa && <RevisarReporte clase="orden" id={a.id} revision={a.revision} />}
+                      {elimina && <EliminarReporte clase="orden" id={a.id} conFotos={suyas.length > 0} />}
                       {corrige && (
                         <CorregirReporte
                           reporte={{

@@ -1,6 +1,7 @@
 import { AlertTriangle } from 'lucide-react'
 
 import { CorregirReporte } from '@/components/avance/corregir-reporte'
+import { EliminarReporte } from '@/components/avance/eliminar-reporte'
 import { Miniaturas } from '@/components/avance/miniaturas'
 import { RevisarReporte } from '@/components/avance/revisar-reporte'
 import { FirmaRevision, InsigniaRevision, NotaRevision } from '@/components/avance/revision'
@@ -9,7 +10,7 @@ import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { enlacesDeFotos } from '@/lib/datos/avances'
 import { fotosDeReportesFlota, reportesDeFlota } from '@/lib/datos/flota'
 import { fecha as formatearFecha, hora, hoyLima, numero } from '@/lib/format'
-import { puede, puedeCorregirReporte, type PerfilSesion } from '@/lib/sesion'
+import { puede, puedeCorregirReporte, puedeEliminarReporte, type PerfilSesion } from '@/lib/sesion'
 
 /**
  * La línea de reportes de un trabajo sin orden: qué se hizo cada día, de qué
@@ -55,6 +56,7 @@ export async function AvanceDeFlota({ flotaId, perfil }: { flotaId: string; perf
           hoy,
         )
         const revisa = aprueba && r.revision !== 'APROBADO'
+        const elimina = puedeEliminarReporte(perfil, { revision: r.revision, autor: r.registrado_por })
 
         return (
           <li key={r.id}>
@@ -93,9 +95,10 @@ export async function AvanceDeFlota({ flotaId, perfil }: { flotaId: string; perf
                 <NotaRevision r={r} />
                 <FirmaRevision r={r} />
 
-                {(revisa || corrige) && (
+                {(revisa || corrige || elimina) && (
                   <div className="flex flex-wrap items-center gap-2">
                     {revisa && <RevisarReporte clase="flota" id={r.id} revision={r.revision} />}
+                    {elimina && <EliminarReporte clase="flota" id={r.id} conFotos={Number(r.fotos) > 0} />}
                     {corrige && (
                       <CorregirReporte
                         reporte={{
