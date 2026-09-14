@@ -29,10 +29,16 @@ raiz="${raiz%/}"
 plano="$(printf '%s' "$entrada" | tr '\n\r\t' '   ')"
 texto="$(printf '%s' "$plano" | tr '[:upper:]' '[:lower:]')"
 
+# Los avisos de tareas en segundo plano llegan como un prompt, pero no los
+# escribe el usuario: no son correcciones aunque su texto lo parezca.
+printf '%s' "$plano" | grep -qE '"prompt"[[:space:]]*:[[:space:]]*"<task-notification>' && exit 0
+
 # Marcas de corrección en segunda persona. Deliberadamente NO incluye "no
 # funciona" ni "hay un error": esos casi siempre hablan del código, no de una
-# equivocación del asistente, y llenarían el registro de ruido.
-patron='te equivocaste|te equivocas|estas equivocad|estás equivocad|equivocado|te lo dije|ya te dije|ya te lo|otra vez lo mismo|siempre haces|siempre lo mismo|no te pedi|no te pedí|no era eso|no era asi|no era así|no es asi|no es así|eso no es lo que|esta mal|está mal|estas mal|estás mal|mal hecho|fallaste|te fallo|te falló|no hagas|nunca hagas|deja de|no vuelvas a|te dije que|volviste a|de nuevo hiciste|me mentiste|no me hiciste caso'
+# equivocación del asistente, y llenarían el registro de ruido. Tampoco
+# "equivocado" suelto: «rol equivocado» o «dato equivocado» describen, no
+# corrigen, y un documento pegado con esa frase se anotó como corrección.
+patron='te equivocaste|te equivocas|estas equivocad|estás equivocad|te lo dije|ya te dije|ya te lo|otra vez lo mismo|siempre haces|siempre lo mismo|no te pedi|no te pedí|no era eso|no era asi|no era así|no es asi|no es así|eso no es lo que|esta mal|está mal|estas mal|estás mal|mal hecho|fallaste|te fallo|te falló|no hagas|nunca hagas|deja de|no vuelvas a|te dije que|volviste a|de nuevo hiciste|me mentiste|no me hiciste caso'
 
 printf '%s' "$texto" | grep -qE "$patron" || exit 0
 
