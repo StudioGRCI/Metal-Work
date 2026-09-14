@@ -67,7 +67,7 @@ export function ActividadesDeOrden({
   areas: AvanceDeArea[]
   diario: ReporteDiario[]
   areasDisponibles: { id: string; codigo: string; nombre: string }[]
-  /** `produccion.actividades`: el jefe de maestranza y el supervisor. */
+  /** Diseño para cualquier área; `produccion.actividades` para la suya (migración 106). */
   puedeArmar: boolean
   /** `produccion.registrar`: quien reporta el día. */
   puedeReportar: boolean
@@ -98,7 +98,7 @@ export function ActividadesDeOrden({
       <Tarjeta>
         <TarjetaCabecera
           titulo="Avance por área"
-          descripcion="Cada área arma su lista y reporta lo que avanzó cada día. Producción por carrocería, Maestranza por pieza solicitada. Cada una tiene su propio 100 %."
+          descripcion="Diseño arma la lista de cada área y cada una reporta lo que avanzó cada día. Producción por carrocería, Maestranza por pieza solicitada. Cada una tiene su propio 100 %."
           acciones={
             puedeArmar && !agregando ? (
               <span className="flex flex-wrap gap-2">
@@ -115,8 +115,8 @@ export function ActividadesDeOrden({
           {areas.length === 0 ? (
             <p className="text-sm text-texto-suave">
               {puedeArmar
-                ? 'Todavía no hay actividades. Arma la lista de tu área con el botón de arriba: cada actividad con lo que pesa, y después se reporta el avance de cada día.'
-                : 'El jefe del área todavía no armó su lista de actividades.'}
+                ? 'Todavía no hay actividades. Arma la lista con el botón de arriba: cada actividad con su área y lo que pesa, y después cada área reporta el avance de cada día.'
+                : 'Diseño todavía no armó la lista de actividades de esta orden.'}
             </p>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

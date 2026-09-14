@@ -5,15 +5,17 @@ import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
 import { areaDeActividad } from '@/lib/datos/actividades'
-import { exigirSesion, puede, puedeHojaDeArea } from '@/lib/sesion'
+import { exigirSesion, puede, puedeArmarHoja, puedeHojaDeArea } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /**
  * La hoja del área se escribe con dos manos y cada una tiene su permiso, que es
  * exactamente el que la base va a pedir:
  *
- *   · Armar la lista y ponerle el peso a cada actividad: `produccion.actividades`
- *     —el jefe de maestranza y el supervisor de producción—.
+ *   · Armar la lista y ponerle el peso a cada actividad: Diseño (`diseno.planos`),
+ *     que desglosa la unidad, para cualquier área; y `produccion.actividades`
+ *     —el jefe de maestranza y el supervisor de producción— para la suya
+ *     (migración 106, `puedeArmarHoja`).
  *   · Reportar el avance del día: `produccion.registrar`, el mismo con el que se
  *     carga el parte diario. El operario reporta pero no arma la lista.
  *
@@ -61,8 +63,8 @@ const esquemaActividad = z.object({
 
 export async function agregarActividad(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'produccion.actividades')) {
-    return { ok: false, error: 'La lista de actividades la arma el jefe del área.' }
+  if (!puede(perfil, ['produccion.actividades', 'diseno.planos'])) {
+    return { ok: false, error: 'La lista de actividades la arma Diseño o el jefe del área.' }
   }
 
   const analisis = esquemaActividad.safeParse(Object.fromEntries(datos))
@@ -72,7 +74,7 @@ export async function agregarActividad(_previo: unknown, datos: FormData): Promi
 
   const v = analisis.data
 
-  if (!puedeHojaDeArea(perfil, v.area_id)) {
+  if (!puedeArmarHoja(perfil, v.area_id)) {
     return { ok: false, error: 'Esa hoja es de otra área: cada uno arma la suya.' }
   }
 
@@ -119,8 +121,8 @@ export async function cambiarPesoActividad(
   datos: FormData,
 ): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'produccion.actividades')) {
-    return { ok: false, error: 'El peso lo pone el jefe del área.' }
+  if (!puede(perfil, ['produccion.actividades', 'diseno.planos'])) {
+    return { ok: false, error: 'El peso lo pone Diseño o el jefe del área.' }
   }
 
   const analisis = esquemaPeso.safeParse(Object.fromEntries(datos))
@@ -130,7 +132,7 @@ export async function cambiarPesoActividad(
 
   const v = analisis.data
 
-  if (!puedeHojaDeArea(perfil, await areaDeActividad(v.id))) {
+  if (!puedeArmarHoja(perfil, await areaDeActividad(v.id))) {
     return { ok: false, error: 'Ese peso es de la hoja de otra área.' }
   }
 
@@ -154,8 +156,8 @@ const esquemaQuitar = z.object({ id: z.string().uuid(), orden_id: z.string().uui
 
 export async function quitarActividad(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'produccion.actividades')) {
-    return { ok: false, error: 'La lista la arma el jefe del área.' }
+  if (!puede(perfil, ['produccion.actividades', 'diseno.planos'])) {
+    return { ok: false, error: 'La lista la arma Diseño o el jefe del área.' }
   }
 
   const analisis = esquemaQuitar.safeParse(Object.fromEntries(datos))
@@ -172,7 +174,7 @@ export async function quitarActividad(_previo: unknown, datos: FormData): Promis
     .eq('id', v.id)
     .maybeSingle()
 
-  if (!puedeHojaDeArea(perfil, reportada?.area_id ?? null)) {
+  if (!puedeArmarHoja(perfil, reportada?.area_id ?? null)) {
     return { ok: false, error: 'Esa actividad es de la hoja de otra área.' }
   }
 
@@ -217,8 +219,8 @@ const esquemaFilaCronograma = z.object({
  */
 export async function cargarCronograma(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'produccion.actividades')) {
-    return { ok: false, error: 'El cronograma lo carga el supervisor del área o el jefe.' }
+  if (!puede(perfil, ['produccion.actividades', 'diseno.planos'])) {
+    return { ok: false, error: 'El cronograma lo carga Diseño, el supervisor del área o el jefe.' }
   }
 
   const orden = z.string().uuid().safeParse(datos.get('orden_id'))
@@ -233,7 +235,7 @@ export async function cargarCronograma(_previo: unknown, datos: FormData): Promi
     return { ok: false, error: 'El cronograma no se pudo leer: vuelve a elegir el archivo.' }
   }
 
-  const ajena = filas.find((f) => !puedeHojaDeArea(perfil, f.area_id))
+  const ajena = filas.find((f) => !puedeArmarHoja(perfil, f.area_id))
   if (ajena) {
     return { ok: false, error: `«${ajena.nombre}» es de la hoja de otra área: cada uno carga la suya.` }
   }

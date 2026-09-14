@@ -2502,6 +2502,74 @@ export type Database = {
           }
         ]
       }
+      ot_observaciones: {
+        Row: {
+          id: string
+          orden_id: string
+          area_id: string
+          descripcion: string
+          registrado_por: string
+          resolucion: string | null
+          resuelta_por: string | null
+          resuelta_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          area_id: string
+          descripcion: string
+          registrado_por?: string
+          resolucion?: string | null
+          resuelta_por?: string | null
+          resuelta_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          area_id?: string
+          descripcion?: string
+          registrado_por?: string
+          resolucion?: string | null
+          resuelta_por?: string | null
+          resuelta_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_observaciones_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_observaciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_observaciones_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_observaciones_resuelta_por_fkey"
+            columns: ["resuelta_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_piezas: {
         Row: {
           id: string
@@ -3978,6 +4046,25 @@ export type Database = {
         }
         Relationships: []
       }
+      v_ot_observaciones: {
+        Row: {
+          id: string | null
+          orden_id: string | null
+          area_id: string | null
+          area_codigo: string | null
+          area: string | null
+          descripcion: string | null
+          registrado_por: string | null
+          registrado_por_nombre: string | null
+          creado_en: string | null
+          resolucion: string | null
+          resuelta_por: string | null
+          resuelta_por_nombre: string | null
+          resuelta_en: string | null
+          abierta: boolean | null
+        }
+        Relationships: []
+      }
       v_ot_timeline: {
         Row: {
           orden_id: string | null
@@ -4277,6 +4364,14 @@ export type Database = {
           por_estado: Json | null
         }[]
       }
+      levantar_observacion_ot: {
+        Args: {
+          p_orden: string
+          p_area: string
+          p_descripcion: string
+        }
+        Returns: string
+      }
       marcar_cotizaciones_vencidas: {
         Args: {
           p_fecha?: string
@@ -4392,6 +4487,12 @@ export type Database = {
         }
         Returns: number
       }
+      puede_armar_hoja_de_area: {
+        Args: {
+          p_area_id: string
+        }
+        Returns: boolean
+      }
       puede_hoja_de_actividad: {
         Args: {
           p_actividad_id: string
@@ -4422,6 +4523,13 @@ export type Database = {
           p_tipo_evento: Database["public"]["Enums"]["tipo_evento_ot"]
           p_descripcion: string
           p_datos?: Json
+        }
+        Returns: string
+      }
+      resolver_observacion_ot: {
+        Args: {
+          p_id: string
+          p_resolucion: string
         }
         Returns: string
       }

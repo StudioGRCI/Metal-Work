@@ -28,12 +28,14 @@ import {
   repuestosDeOrden,
   verificacionesDeOrden,
 } from '@/lib/datos/ficha-ot'
+import { observacionesDeOrden } from '@/lib/datos/observaciones'
 import {
-  areasDeSuMano,
+  areasParaArmar,
   exigirPermiso,
   puede,
   puedeCorregirReporte,
   puedeEliminarReporte,
+  puedeResolverObservacion,
 } from '@/lib/sesion'
 import type { CodigoMoneda } from '@/lib/format'
 
@@ -43,6 +45,7 @@ import { PonerCliente } from './poner-cliente'
 import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
 
 import { Bitacora } from './bitacora'
+import { Observaciones } from './observaciones'
 import { Cumplimiento } from './cumplimiento'
 import { ActividadesDeOrden } from './actividades'
 import { MaterialesDeOrden } from './materiales'
@@ -130,6 +133,12 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     vista === 'actividades'
       ? await Promise.all([actividadesDeOrden(id), areasDelTaller()])
       : null
+  // Diseño las arma todas (106); el jefe y el supervisor, las de su mano.
+  const areasArmables = hojaAreas ? areasParaArmar(perfil, hojaAreas[1]) : []
+
+  // Las observaciones van arriba del resumen, con las áreas a las que se dirigen.
+  const [observaciones, areasParaObservar] =
+    vista === 'resumen' ? await Promise.all([observacionesDeOrden(id), areasDelTaller()]) : [[], []]
 
   // Los archivos de la orden (099): en el resumen y junto a la hoja, que es
   // donde el taller los busca. Quitarlos es de quien los subió, la oficina o
@@ -275,6 +284,13 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
       {vista === 'resumen' && (
         <div className="grid gap-4 lg:grid-cols-2">
+          <Observaciones
+            ordenId={orden.id}
+            observaciones={observaciones.map((o) => ({ ...o, resoluble: puedeResolverObservacion(perfil, o) }))}
+            areas={areasParaObservar}
+            puedeAnotar={orden.estado !== 'ANULADA'}
+          />
+
           <Tarjeta>
             <TarjetaCabecera titulo="Cliente y unidad" />
             <TarjetaCuerpo className="space-y-0">
@@ -442,13 +458,11 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           areas={hojaAreas[0].areas}
           diario={hojaAreas[0].diario}
           /* Las áreas de la lista son las que esta persona puede escribir: la
-             suya, o todas si responde por el taller entero. Ofrecerle las que
-             el RLS le va a rechazar es prometerle un botón que no hace nada. */
-          areasDisponibles={areasDeSuMano(perfil, hojaAreas[1])}
-          puedeArmar={
-            puede(perfil, 'produccion.actividades') &&
-            areasDeSuMano(perfil, hojaAreas[1]).length > 0
-          }
+             suya, o todas si responde por el taller entero o es Diseño.
+             Ofrecerle las que el RLS le va a rechazar es prometerle un botón
+             que no hace nada. */
+          areasDisponibles={areasArmables}
+          puedeArmar={areasArmables.length > 0}
           puedeReportar={puede(perfil, 'produccion.registrar')}
           areaPropia={perfil.area_id}
           aprueba={puede(perfil, 'produccion.aprobar_reportes')}
