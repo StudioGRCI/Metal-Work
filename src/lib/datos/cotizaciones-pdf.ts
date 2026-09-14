@@ -10,7 +10,12 @@ import type { Vistas } from '@/types/database'
  * versión con la observación que le hizo.
  */
 export type VersionCotizacion = Vistas<'v_cotizaciones_pdf_versiones'> & { url: string | null }
-export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & { url: string | null; versiones: VersionCotizacion[] }
+export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & {
+  url: string | null
+  versiones: VersionCotizacion[]
+  /** Semirremolque o carrocería montada, si el catálogo lo sabe: lo propone al emitir la OT (migración 104). */
+  tipo_unidad: string | null
+}
 
 const PDF = 'application/pdf'
 
@@ -70,11 +75,19 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
     versiones = (r.data ?? []) as Vistas<'v_cotizaciones_pdf_versiones'>[]
   }
 
+  // El tipo de cada carrocería, para proponerlo al emitir la orden.
+  const carrocerias = [...new Set(filas.map((f) => f.tipo_carroceria_id).filter((id): id is string => Boolean(id)))]
+  const { data: tipos } = carrocerias.length
+    ? await supabase.from('tipos_carroceria').select('id, tipo_unidad').in('id', carrocerias)
+    : { data: [] }
+  const tipoDe = new Map((tipos ?? []).map((t) => [t.id, t.tipo_unidad as string | null]))
+
   // Sin enlaces la lista igual sirve: se ve qué hay aunque no se pueda abrir.
   const enlaces = await enlacesDe([...filas, ...versiones])
 
   return filas.map((f) => ({
     ...f,
+    tipo_unidad: (f.tipo_carroceria_id && tipoDe.get(f.tipo_carroceria_id)) ?? null,
     url: (f.ruta_storage && enlaces.get(f.ruta_storage)) ?? null,
     versiones: versiones
       .filter((v) => v.cotizacion_id === f.id)

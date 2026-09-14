@@ -243,10 +243,12 @@ export async function quitarCotizacionPdf(_previo: unknown, datos: FormData): Pr
 const esquemaEmitir = z.object({
   cotizacion_id: z.string().uuid(),
   orden_id: z.string().uuid(),
-  placa: z.string().trim().max(20).optional(),
-  tipo_vehiculo: z
-    .enum(['VOLQUETE', 'TRACTO', 'SEMIRREMOLQUE', 'CAMION', 'REMOLQUE', 'FURGON', 'OTRO'])
-    .default('SEMIRREMOLQUE'),
+  // Migración 104: lo que se fabrica es un semirremolque o una carrocería
+  // montada, y la unidad se reconoce por su número FMI, no por la placa.
+  numero_fmi: z.string().trim().max(40).optional(),
+  tipo_unidad: z.enum(['SEMIRREMOLQUE', 'CARROCERIA_MONTADA'], {
+    message: 'Elige si es un semirremolque o una carrocería montada.',
+  }),
   marca: z.string().trim().max(80).optional(),
   modelo: z.string().trim().max(80).optional(),
   fecha_entrega: z.string().regex(ES_FECHA, 'Falta la fecha de entrega'),
@@ -275,8 +277,8 @@ export async function emitirOrdenDeCotizacion(
   }
   const v = analisis.data
 
-  if (!v.placa && !v.marca && !v.modelo) {
-    return { ok: false, error: 'Escribe la placa, o la marca y el modelo si todavía no tiene.' }
+  if (!v.numero_fmi && !v.marca && !v.modelo) {
+    return { ok: false, error: 'Escribe el número FMI, o la marca y el modelo si todavía no tiene.' }
   }
   if (!v.ruta_pdf.startsWith(`ot/${v.orden_id}/`)) {
     return { ok: false, error: 'El PDF de la orden no llegó en su sitio: vuelve a elegirlo.' }
@@ -286,8 +288,8 @@ export async function emitirOrdenDeCotizacion(
   const { data, error } = await supabase.rpc('emitir_orden_de_cotizacion', {
     p_cotizacion: v.cotizacion_id,
     p_orden: v.orden_id,
-    p_placa: v.placa ?? '',
-    p_tipo_vehiculo: v.tipo_vehiculo,
+    p_numero_fmi: v.numero_fmi ?? '',
+    p_tipo_unidad: v.tipo_unidad,
     p_marca: v.marca ?? '',
     p_modelo: v.modelo ?? '',
     p_fecha_entrega: v.fecha_entrega,

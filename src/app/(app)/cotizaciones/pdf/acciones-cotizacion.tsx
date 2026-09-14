@@ -297,22 +297,29 @@ export function QuitarCotizacion({ id, numero }: { id: string; numero: string })
   )
 }
 
-const TIPOS_VEHICULO = [
+// Lo que se fabrica, y nada más (migración 104): la misma división que usan el
+// catálogo de carrocerías y las cotizaciones.
+const TIPOS_UNIDAD = [
   ['SEMIRREMOLQUE', 'Semirremolque'],
-  ['VOLQUETE', 'Volquete'],
-  ['TRACTO', 'Tracto'],
-  ['CAMION', 'Camión'],
-  ['REMOLQUE', 'Remolque'],
-  ['FURGON', 'Furgón'],
-  ['OTRO', 'Otro'],
+  ['CARROCERIA_MONTADA', 'Carrocería montada'],
 ] as const
 
 /**
- * Administración emite la orden desde la cotización aprobada: la unidad, la
- * fecha prometida y el PDF de la orden. La base la crea aprobada, con sus
- * etapas y con el PDF pegado; de ahí en adelante el taller ya trabaja.
+ * Administración emite la orden desde la cotización aprobada: si es un
+ * semirremolque o una carrocería montada, el número FMI de la unidad, la fecha
+ * prometida y el PDF de la orden. El tipo viene propuesto por la carrocería de
+ * la cotización cuando el catálogo lo sabe. La base crea la orden aprobada,
+ * con sus etapas y con el PDF pegado; de ahí en adelante el taller ya trabaja.
  */
-export function EmitirOrden({ cotizacionId, numero }: { cotizacionId: string; numero: string }) {
+export function EmitirOrden({
+  cotizacionId,
+  numero,
+  tipoUnidad,
+}: {
+  cotizacionId: string
+  numero: string
+  tipoUnidad?: string | null
+}) {
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
@@ -401,7 +408,7 @@ export function EmitirOrden({ cotizacionId, numero }: { cotizacionId: string; nu
         abierta={abierto}
         alCerrar={() => setAbierto(false)}
         titulo={`Emitir la orden de la ${numero}`}
-        descripcion="El cliente y lo que se fabrica salen de la cotización. Falta la unidad, la fecha prometida y el PDF de la orden. Al emitirla queda aprobada, con sus etapas, y el taller ya puede armar su lista."
+        descripcion="El cliente y la carrocería salen de la cotización. Falta si es semirremolque o carrocería montada, el número FMI, la fecha prometida y el PDF de la orden. Al emitirla queda aprobada, con sus etapas, y el taller ya puede armar su lista."
         ancho="md"
       >
         <form onSubmit={enviar} className="space-y-4">
@@ -422,17 +429,30 @@ export function EmitirOrden({ cotizacionId, numero }: { cotizacionId: string; nu
           </label>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Campo etiqueta="Placa" htmlFor="eo-placa" ayuda="Si todavía no tiene, marca y modelo le dan nombre">
-              <Entrada id="eo-placa" name="placa" autoComplete="off" autoCapitalize="characters" placeholder="ABC-123" maxLength={20} />
-            </Campo>
-            <Campo etiqueta="Tipo de vehículo" htmlFor="eo-tipo">
-              <Seleccion id="eo-tipo" name="tipo_vehiculo" defaultValue="SEMIRREMOLQUE">
-                {TIPOS_VEHICULO.map(([valor, etiqueta]) => (
+            <Campo
+              etiqueta="Tipo"
+              htmlFor="eo-tipo"
+              ayuda={tipoUnidad ? 'Propuesto por la carrocería de la cotización' : undefined}
+              requerido
+            >
+              <Seleccion
+                id="eo-tipo"
+                name="tipo_unidad"
+                required
+                defaultValue={TIPOS_UNIDAD.some(([valor]) => valor === tipoUnidad) ? (tipoUnidad as string) : ''}
+              >
+                <option value="" disabled>
+                  Elige el tipo
+                </option>
+                {TIPOS_UNIDAD.map(([valor, etiqueta]) => (
                   <option key={valor} value={valor}>
                     {etiqueta}
                   </option>
                 ))}
               </Seleccion>
+            </Campo>
+            <Campo etiqueta="Número FMI" htmlFor="eo-fmi" ayuda="Si todavía no tiene, marca y modelo le dan nombre">
+              <Entrada id="eo-fmi" name="numero_fmi" autoComplete="off" autoCapitalize="characters" maxLength={40} />
             </Campo>
           </div>
 

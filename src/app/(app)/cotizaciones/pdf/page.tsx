@@ -222,7 +222,7 @@ export default async function PaginaCotizacionesPdf() {
                       <div className="flex flex-wrap items-center gap-2">
                         {revisa && c.estado === 'POR_REVISAR' && c.id && <RevisarCotizacion id={c.id} />}
                         {emite && c.estado === 'APROBADA' && c.id && (
-                          <EmitirOrden cotizacionId={c.id} numero={c.numero ?? 'cotización'} />
+                          <EmitirOrden cotizacionId={c.id} numero={c.numero ?? 'cotización'} tipoUnidad={c.tipo_unidad} />
                         )}
                         {corrige && c.id && (
                           <CorregirCotizacion id={c.id} numero={c.numero ?? ''} observacion={c.observacion} />

@@ -1547,6 +1547,7 @@ export type Database = {
           tipo_carroceria_id: string | null
           sede_id: string
           tipo_trabajo: Database["public"]["Enums"]["tipo_trabajo_ot"]
+          tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           estado: Database["public"]["Enums"]["estado_ot"]
           prioridad: Database["public"]["Enums"]["prioridad_ot"]
           descripcion: string
@@ -1595,6 +1596,7 @@ export type Database = {
           tipo_carroceria_id?: string | null
           sede_id: string
           tipo_trabajo?: Database["public"]["Enums"]["tipo_trabajo_ot"]
+          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           estado?: Database["public"]["Enums"]["estado_ot"]
           prioridad?: Database["public"]["Enums"]["prioridad_ot"]
           descripcion: string
@@ -1643,6 +1645,7 @@ export type Database = {
           tipo_carroceria_id?: string | null
           sede_id?: string
           tipo_trabajo?: Database["public"]["Enums"]["tipo_trabajo_ot"]
+          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           estado?: Database["public"]["Enums"]["estado_ot"]
           prioridad?: Database["public"]["Enums"]["prioridad_ot"]
           descripcion?: string
@@ -3279,11 +3282,13 @@ export type Database = {
           actualizado_en: string
           creado_por: string | null
           codigo_interno: string | null
+          numero_fmi: string | null
         }
         Insert: {
           id?: string
           cliente_id?: string | null
           placa?: string | null
+          numero_fmi?: string | null
           tipo_vehiculo?: Database["public"]["Enums"]["tipo_vehiculo"]
           marca?: string | null
           modelo?: string | null
@@ -3305,6 +3310,7 @@ export type Database = {
           id?: string
           cliente_id?: string | null
           placa?: string | null
+          numero_fmi?: string | null
           tipo_vehiculo?: Database["public"]["Enums"]["tipo_vehiculo"]
           marca?: string | null
           modelo?: string | null
@@ -4205,8 +4211,8 @@ export type Database = {
         Args: {
           p_cotizacion: string
           p_orden: string
-          p_placa: string
-          p_tipo_vehiculo: Database["public"]["Enums"]["tipo_vehiculo"]
+          p_numero_fmi: string
+          p_tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"]
           p_marca: string
           p_modelo: string
           p_fecha_entrega: string
