@@ -84,7 +84,7 @@ export function RevisarCotizacion({ id }: { id: string }) {
   )
 }
 
-/** Quitar la que se subió mal, mientras Gerencia no la haya visto. */
+/** Quitar la que se subió mal o la que Gerencia rechazó, si nunca tuvo orden (migración 102). */
 export function QuitarCotizacion({ id, numero }: { id: string; numero: string }) {
   const [confirmando, setConfirmando] = useState(false)
   const { alEnviar, enviando, error, limpiar } = useEnvio(quitarCotizacionPdf)

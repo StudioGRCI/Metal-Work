@@ -135,6 +135,11 @@ clientes.
 `produccion.actividades`, `produccion.cualquier_area`, `produccion.ver`,
 `tesoreria.liberar`, `usuarios.gestionar`
 
+Con `cotizaciones.revisar` aprueba o rechaza la cotización en PDF (`101`) y,
+desde la `102`, también la quita —igual que quien la subió— mientras esté por
+revisar o rechazada, con su PDF. La que tuvo orden, aunque se haya anulado, no
+la quita nadie: lo impide un disparador, y lo dice.
+
 **`ADMIN` — Administrador** (0 en `roles_permisos`)
 Ninguno asignado. Pasa por `es_admin()`.
 

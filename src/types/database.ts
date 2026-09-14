@@ -3656,6 +3656,7 @@ export type Database = {
           orden_id: string | null
           orden_numero: string | null
           orden_estado: string | null
+          tuvo_orden: boolean | null
         }
         Relationships: []
       }

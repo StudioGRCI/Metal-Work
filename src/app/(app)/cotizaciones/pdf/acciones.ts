@@ -123,7 +123,13 @@ export async function revisarCotizacionPdf(_previo: unknown, datos: FormData): P
 
 const esquemaQuitar = z.object({ id: z.string().uuid() })
 
-/** Quitar la que se subió mal, mientras Gerencia no la haya visto. */
+/**
+ * Quitar una cotización (migración 102): quien la subió o Gerencia, mientras
+ * esté por revisar o rechazada, y nunca si de ella salió una orden —eso lo dice
+ * un disparador, con palabras—. Primero la fila y después el PDF: el
+ * almacenamiento solo deja borrar el archivo que ya no nombra ninguna
+ * cotización, y así no queda ni una cotización sin papel ni un papel suelto.
+ */
 export async function quitarCotizacionPdf(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   await exigirSesion()
 
@@ -138,14 +144,28 @@ export async function quitarCotizacionPdf(_previo: unknown, datos: FormData): Pr
     .select('ruta_storage')
     .maybeSingle()
 
-  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (error) {
+    const delMotor = /violates|duplicate key|permission denied/i.test(error.message)
+    return { ok: false, error: delMotor ? mensajeDeError(error) : error.message }
+  }
   if (!data) {
-    return { ok: false, error: 'No se pudo quitar: la quita quien la subió, y solo mientras Gerencia no la revise.' }
+    return {
+      ok: false,
+      error: 'No se pudo quitar: la quita quien la subió o Gerencia, y solo mientras esté por revisar o rechazada.',
+    }
   }
 
-  await supabase.storage.from('cotizaciones-pdf').remove([data.ruta_storage])
   revalidatePath('/cotizaciones/pdf')
-  return { ok: true, mensaje: 'Cotización quitada.' }
+
+  // Un archivo que la política no deja borrar vuelve sin error y sin nada
+  // borrado: por eso se mira qué volvió, no solo si hubo error.
+  const { data: borrados, error: falla } = await supabase.storage
+    .from('cotizaciones-pdf')
+    .remove([data.ruta_storage])
+  if (falla || !borrados?.length) {
+    return { ok: true, mensaje: 'Cotización quitada, pero el PDF no se pudo borrar. Avisa al administrador.' }
+  }
+  return { ok: true, mensaje: 'Cotización quitada, con su PDF.' }
 }
 
 const esquemaEmitir = z.object({

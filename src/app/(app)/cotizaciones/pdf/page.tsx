@@ -7,7 +7,7 @@ import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { catalogosDeCotizacion, listarCotizacionesPdf } from '@/lib/datos/cotizaciones-pdf'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { fecha as fmtFecha, hora } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { exigirPermiso, puede, puedeQuitarCotizacion } from '@/lib/sesion'
 
 import { EmitirOrden, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
 import { SubirCotizacion } from './subir-cotizacion'
@@ -82,7 +82,7 @@ export default async function PaginaCotizacionesPdf() {
         <ul className="space-y-3">
           {cotizaciones.map((c) => {
             const estado = ESTADOS[c.estado ?? ''] ?? { etiqueta: c.estado ?? '—', tono: 'neutro' as const }
-            const mia = c.registrado_por === perfil.id
+            const quitable = puedeQuitarCotizacion(perfil, c)
 
             return (
               <li key={c.id}>
@@ -147,9 +147,7 @@ export default async function PaginaCotizacionesPdf() {
                         {emite && c.estado === 'APROBADA' && c.id && (
                           <EmitirOrden cotizacionId={c.id} numero={c.numero ?? 'cotización'} />
                         )}
-                        {mia && c.estado === 'POR_REVISAR' && c.id && (
-                          <QuitarCotizacion id={c.id} numero={c.numero ?? ''} />
-                        )}
+                        {quitable && c.id && <QuitarCotizacion id={c.id} numero={c.numero ?? ''} />}
                       </div>
                     )}
                   </TarjetaCuerpo>
