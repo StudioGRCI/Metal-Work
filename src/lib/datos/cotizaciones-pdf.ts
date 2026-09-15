@@ -96,6 +96,32 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
 }
 
 /**
+ * La cotización en PDF de la que salió una orden, con su enlace para abrirla.
+ * `null` si la orden no salió de una, o si quien mira no ve cotizaciones: el
+ * taller trabaja con la orden y no con el precio que se le dio al cliente.
+ */
+export async function cotizacionPdfDeOrden(ordenId: string) {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('v_cotizaciones_pdf')
+    .select('id, numero, nombre_archivo, ruta_storage, mime_type')
+    .eq('orden_id', ordenId)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw new Error(`No se pudo leer la cotización de la orden: ${error.message}`)
+  if (!data) return null
+
+  const enlaces = await enlacesDe([data])
+  return {
+    numero: data.numero,
+    nombre_archivo: data.nombre_archivo,
+    mime_type: data.mime_type,
+    url: (data.ruta_storage && enlaces.get(data.ruta_storage)) ?? null,
+  }
+}
+
+/**
  * Lo que hay que elegir al subir una: de quién es y qué se fabrica. El
  * documento del cliente va porque es con él que se reconoce al de la
  * cotización (migración 102): el nombre se escribe de mil maneras, el RUC no.

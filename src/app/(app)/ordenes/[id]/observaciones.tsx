@@ -47,6 +47,30 @@ export function Observaciones({
   const [anotando, setAnotando] = useState(false)
   const abiertas = observaciones.filter((o) => o.abierta).length
 
+  // Sin ninguna, una sola línea: una tarjeta grande que dice «no hay nada»
+  // empujaba hacia abajo lo que sí se viene a mirar.
+  if (observaciones.length === 0 && !anotando) {
+    return (
+      <Tarjeta className="lg:col-span-2">
+        <TarjetaCuerpo className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3">
+          <p className="flex min-w-0 flex-1 basis-60 items-start gap-2 text-sm text-texto-suave">
+            <CheckCircle2 aria-hidden className="mt-0.5 size-4 shrink-0 text-exito" />
+            <span>
+              <span className="font-medium text-texto">Sin observaciones.</span>{' '}
+              {puedeAnotar && 'Si encuentras un error en la orden, anótalo y se le avisa al área.'}
+            </span>
+          </p>
+          {puedeAnotar && (
+            <Boton variante="secundario" tamano="sm" onClick={() => setAnotando(true)}>
+              <Plus aria-hidden className="size-3.5" />
+              Anotar observación
+            </Boton>
+          )}
+        </TarjetaCuerpo>
+      </Tarjeta>
+    )
+  }
+
   return (
     <Tarjeta className="lg:col-span-2">
       <TarjetaCabecera
@@ -64,15 +88,7 @@ export function Observaciones({
       <TarjetaCuerpo className="space-y-3">
         {anotando && <NuevaObservacion ordenId={ordenId} areas={areas} alCerrar={() => setAnotando(false)} />}
 
-        {observaciones.length === 0 ? (
-          !anotando && (
-            <p className="text-sm text-texto-suave">
-              {puedeAnotar
-                ? 'No hay observaciones. Si encuentras un error —un plano, una medida, una pieza—, anótalo con el botón de arriba y se le avisa al área.'
-                : 'No hay observaciones en esta orden.'}
-            </p>
-          )
-        ) : (
+        {observaciones.length > 0 && (
           <ul className="space-y-3">
             {observaciones.map((o) => (
               <li key={o.id}>
