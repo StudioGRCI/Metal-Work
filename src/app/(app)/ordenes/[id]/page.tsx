@@ -32,6 +32,7 @@ import {
 } from '@/lib/datos/ficha-ot'
 import { observacionesDeOrden } from '@/lib/datos/observaciones'
 import {
+  areasDeSuMano,
   areasParaArmar,
   exigirPermiso,
   puede,
@@ -142,6 +143,13 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       : null
   // Diseño las arma todas (106); el jefe y el supervisor, las de su mano.
   const areasArmables = hojaAreas ? areasParaArmar(perfil, hojaAreas[1]) : []
+  // Y las que ve: las que arma más las de su mano. Sin estas, el operario —que
+  // reporta pero no arma— se quedaba sin su hoja y sin «Reportar día».
+  const areasVisibles = hojaAreas
+    ? hojaAreas[1].filter(
+        (a) => areasArmables.some((x) => x.id === a.id) || areasDeSuMano(perfil, [a]).length > 0,
+      )
+    : []
 
   // Las observaciones van arriba del resumen, con las áreas a las que se dirigen.
   const [observaciones, areasParaObservar] =
@@ -533,6 +541,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
              Ofrecerle las que el RLS le va a rechazar es prometerle un botón
              que no hace nada. */
           areasDisponibles={areasArmables}
+          areasVisibles={areasVisibles}
           puedeArmar={areasArmables.length > 0}
           puedeReportar={puede(perfil, 'produccion.registrar')}
           areaPropia={perfil.area_id}

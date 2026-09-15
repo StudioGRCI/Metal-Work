@@ -55,6 +55,7 @@ export function ActividadesDeOrden({
   areas,
   diario,
   areasDisponibles,
+  areasVisibles,
   puedeArmar,
   puedeReportar,
   areaPropia,
@@ -66,7 +67,14 @@ export function ActividadesDeOrden({
   actividades: ActividadArea[]
   areas: AvanceDeArea[]
   diario: ReporteDiario[]
+  /** Las áreas cuya lista puede armar: las que se ofrecen al agregar o cargar el cronograma. */
   areasDisponibles: { id: string; codigo: string; nombre: string }[]
+  /**
+   * Las áreas cuya hoja ve con sus actividades: las que arma y las de su mano.
+   * No es lo mismo que `areasDisponibles`: el operario no arma la lista, pero
+   * tiene que ver la de su área para reportar el día.
+   */
+  areasVisibles: { id: string; codigo: string; nombre: string }[]
   /** Diseño para cualquier área; `produccion.actividades` para la suya (migración 106). */
   puedeArmar: boolean
   /** `produccion.registrar`: quien reporta el día. */
@@ -85,7 +93,7 @@ export function ActividadesDeOrden({
   const puedeCorregir = new Set(corregibles)
   const puedeEliminar = new Set(eliminables)
 
-  const porArea = areasDisponibles
+  const porArea = areasVisibles
     .map((a) => ({
       area: a,
       resumen: areas.find((r) => r.area_id === a.id) ?? null,
