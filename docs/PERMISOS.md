@@ -59,10 +59,10 @@ afectará cero filas sin dar error.
 
 ## Qué tiene cada rol
 
-**`ADMINISTRACION` — Administración** (10)
+**`ADMINISTRACION` — Administración** (11)
 `clientes.ver`, `cotizaciones.aprobar`, `cotizaciones.costear`,
 `cotizaciones.ver`, `ordenes.crear`, `ordenes.editar`, `ordenes.listar`,
-`ordenes.ver`, `pagos.registrar`, `pagos.ver`
+`ordenes.ver`, `pagos.registrar`, `pagos.ver`, `tesoreria.liberar`
 
 **`CONSULTA` — Solo consulta** (5)
 `clientes.ver`, `cotizaciones.ver`, `ordenes.listar`, `ordenes.ver`,
@@ -189,7 +189,7 @@ la política exige y se mira quién lo tiene de verdad.
 | Producción | `produccion.ver` | Ver etapas, avances y el día en el taller | `CONSULTA`, `OPERARIO`, `COSTOS`, `DISENO`, `CALIDAD`, `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
 | tesoreria | `pagos.registrar` | Registrar un pago del cliente y arrancar el plazo | `ADMINISTRACION`, `COSTOS` |
 | tesoreria | `pagos.ver` | Ver los pagos que hizo el cliente | `ADMINISTRACION`, `COSTOS`, `VENDEDOR`, `GERENTE` |
-| tesoreria | `tesoreria.liberar` | Confirmar que el cliente está al día y liberar la salida de su unidad | `COSTOS`, `GERENTE` |
+| tesoreria | `tesoreria.liberar` | Confirmar que el cliente está al día y liberar la salida de su unidad | `ADMINISTRACION`, `COSTOS`, `GERENTE` |
 
 ## Puertas tapiadas: las que había y la que queda
 
