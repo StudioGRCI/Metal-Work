@@ -189,6 +189,54 @@ export function ActividadesDeOrden({
             }
           />
           <TarjetaCuerpo className="p-0">
+            {/* En el teléfono, una tarjeta por actividad con sus botones a la
+                vista: la tabla obligaba a desplazarse de lado para llegar a
+                «Reportar día». En el monitor, la tabla de siempre. */}
+            <ul className="divide-y divide-borde sm:hidden">
+              {lista.map((act) => {
+                const deHoy = diario.find((r) => r.actividad_id === act.id && r.fecha === hoy)
+                return (
+                  <li key={act.id} className="space-y-2 px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-texto">
+                          <span className="tabular mr-1.5 text-xs text-texto-tenue">{act.orden_secuencia}</span>
+                          {act.nombre}
+                        </p>
+                        {(act.referencia || act.detalle) && (
+                          <p className="text-[11px] text-texto-suave">
+                            {[act.referencia, act.detalle].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
+                        <PlanDeActividad actividad={act} hoy={hoy} />
+                      </div>
+                      <span className="tabular shrink-0 text-xs text-texto-suave">pesa {numero(act.peso_pct, 0)} %</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Progreso valor={Number(act.avance_pct)} />
+                      <span className={cn('tabular text-xs', act.terminada ? 'text-exito' : 'text-texto-suave')}>
+                        {numero(act.avance_pct, 0)} %
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-texto-tenue">
+                      {act.ultimo_reporte ? `Último reporte: ${fmtFecha(act.ultimo_reporte)}` : 'Sin reportes'}
+                    </p>
+                    {(puedeReportar || puedeArmar) && (
+                      <AccionesActividad
+                        actividad={act}
+                        ordenId={ordenId}
+                        puedeArmar={puedeArmar}
+                        puedeReportar={puedeReportar}
+                        deHoy={deHoy ?? null}
+                        corregibleHoy={deHoy ? puedeCorregir.has(deHoy.id) : false}
+                      />
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+
+            <div className="hidden sm:block">
             <Tabla>
               <TablaCabecera>
                 <TR>
@@ -249,6 +297,7 @@ export function ActividadesDeOrden({
                 })}
               </tbody>
             </Tabla>
+            </div>
           </TarjetaCuerpo>
         </Tarjeta>
       ))}

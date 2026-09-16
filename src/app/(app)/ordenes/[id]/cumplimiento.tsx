@@ -615,7 +615,38 @@ function TablaPiezas({
 }) {
   const [abierta, setAbierta] = useState<{ id: string; bloque: 'mtz' | 'prd' | 'editar' | 'quitar' } | null>(null)
 
+  const alternarDe = (id: string) => (bloque: 'mtz' | 'prd' | 'editar' | 'quitar') =>
+    setAbierta(abierta?.id === id && abierta.bloque === bloque ? null : { id, bloque })
+  const cerrar = () => setAbierta(null)
+
   return (
+    <>
+      {/* En el teléfono, una tarjeta por pieza: trece columnas no caben y el
+          supervisor reporta de pie. En el monitor, la hoja tal como es. */}
+      <ul className="divide-y divide-borde sm:hidden">
+        {piezas.length === 0 ? (
+          <li className="px-4 py-6 text-center text-xs text-texto-suave">Este plano todavía no tiene piezas.</li>
+        ) : (
+          piezas.map((pieza) => {
+            const id = pieza.id ?? ''
+            return (
+              <TarjetaPieza
+                key={id}
+                ordenId={ordenId}
+                pieza={pieza}
+                abierta={abierta?.id === id ? abierta.bloque : null}
+                alternar={alternarDe(id)}
+                cerrar={cerrar}
+                planoEntregado={planoEntregado}
+                puedeDisenar={puedeDisenar}
+                puedeReportar={puedeReportar}
+              />
+            )
+          })
+        )}
+      </ul>
+
+      <div className="hidden sm:block">
     <Tabla className="text-xs">
       <TablaCabecera>
         <tr className="border-b border-borde">
@@ -656,18 +687,13 @@ function TablaPiezas({
         ) : (
           piezas.map((pieza) => {
             const id = pieza.id ?? ''
-            const abiertaAqui = abierta?.id === id ? abierta.bloque : null
-            const cerrar = () => setAbierta(null)
-            const alternar = (bloque: 'mtz' | 'prd' | 'editar' | 'quitar') =>
-              setAbierta(abiertaAqui === bloque ? null : { id, bloque })
-
             return (
               <FilaPieza
                 key={id}
                 ordenId={ordenId}
                 pieza={pieza}
-                abierta={abiertaAqui}
-                alternar={alternar}
+                abierta={abierta?.id === id ? abierta.bloque : null}
+                alternar={alternarDe(id)}
                 cerrar={cerrar}
                 planoEntregado={planoEntregado}
                 puedeDisenar={puedeDisenar}
@@ -678,6 +704,120 @@ function TablaPiezas({
         )}
       </tbody>
     </Tabla>
+      </div>
+    </>
+  )
+}
+
+type Bloque = 'mtz' | 'prd' | 'editar' | 'quitar'
+
+/** La pieza en el teléfono: qué es, por dónde va y los botones de cada mano. */
+function TarjetaPieza({
+  ordenId,
+  pieza,
+  abierta,
+  alternar,
+  cerrar,
+  planoEntregado,
+  puedeDisenar,
+  puedeReportar,
+}: {
+  ordenId: string
+  pieza: PiezaCumplimiento
+  abierta: Bloque | null
+  alternar: (bloque: Bloque) => void
+  cerrar: () => void
+  planoEntregado: boolean
+  puedeDisenar: boolean
+  puedeReportar: boolean
+}) {
+  const id = pieza.id ?? ''
+  const ensamble = Boolean(pieza.es_ensamble)
+  const pasos = ensamble
+    ? [
+        { etiqueta: 'Empezada', si: Boolean(pieza.prd_inicio), fecha: pieza.prd_inicio },
+        { etiqueta: 'Armada', si: Boolean(pieza.prd_armado), fecha: null },
+      ]
+    : [
+        { etiqueta: 'Habilitada', si: Boolean(pieza.mtz_habilitado), fecha: pieza.mtz_inicio },
+        { etiqueta: 'Entregada', si: Boolean(pieza.mtz_entregado), fecha: pieza.mtz_culminacion },
+        { etiqueta: 'Recibida', si: Boolean(pieza.prd_recibido), fecha: pieza.prd_recepcion },
+        { etiqueta: 'Armada', si: Boolean(pieza.prd_armado), fecha: pieza.prd_inicio },
+      ]
+
+  return (
+    <li className={cn('space-y-2 px-4 py-3', abierta && 'bg-superficie-2')}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-texto">
+            <span className="tabular mr-1.5 text-xs text-texto-tenue">{pieza.numero_pieza}</span>
+            {pieza.nombre}
+            {ensamble && <Insignia tono="info" className="ml-1.5">Ensamble</Insignia>}
+          </p>
+          <p className="text-[11px] text-texto-suave">
+            {fmtCantidad(pieza.cantidad)} unid.
+            {pieza.observacion ? ` · ${pieza.observacion}` : ''}
+          </p>
+        </div>
+        <span className="tabular shrink-0 text-sm font-medium text-texto">{numero(pieza.avance_pct, 0)} %</span>
+      </div>
+
+      <ul className="flex flex-wrap gap-1.5" aria-label="Por dónde va la pieza">
+        {pasos.map((p) => (
+          <li
+            key={p.etiqueta}
+            className={cn(
+              'rounded-full px-2 py-0.5 text-[11px]',
+              p.si ? 'bg-exito-suave text-exito' : 'bg-neutro-suave text-texto-tenue',
+            )}
+          >
+            {p.etiqueta}
+            {p.si && p.fecha ? ` · ${fecha(p.fecha)}` : ''}
+          </li>
+        ))}
+      </ul>
+
+      {(puedeReportar || puedeDisenar) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {puedeReportar && !ensamble && planoEntregado && (
+            <Boton variante={abierta === 'mtz' ? 'primario' : 'secundario'} tamano="sm" onClick={() => alternar('mtz')}>
+              Maestranza
+            </Boton>
+          )}
+          {puedeReportar && !ensamble && !planoEntregado && (
+            <span className="text-[11px] text-texto-tenue">Maestranza espera el plano</span>
+          )}
+          {puedeReportar && (
+            <Boton variante={abierta === 'prd' ? 'primario' : 'secundario'} tamano="sm" onClick={() => alternar('prd')}>
+              Producción
+            </Boton>
+          )}
+          {puedeDisenar && (
+            <>
+              <Boton variante="fantasma" tamano="sm" aria-label="Editar la pieza" onClick={() => alternar('editar')}>
+                <Pencil aria-hidden className="size-4" />
+              </Boton>
+              <Boton variante="fantasma" tamano="sm" aria-label="Quitar la pieza" onClick={() => alternar('quitar')}>
+                <Trash2 aria-hidden className="size-4 text-peligro" />
+              </Boton>
+            </>
+          )}
+        </div>
+      )}
+
+      {abierta === 'mtz' && <FormularioMaestranza ordenId={ordenId} pieza={pieza} alTerminar={cerrar} />}
+      {abierta === 'prd' && <FormularioProduccion ordenId={ordenId} pieza={pieza} alTerminar={cerrar} />}
+      {abierta === 'editar' && <FormularioPieza ordenId={ordenId} pieza={pieza} alTerminar={cerrar} />}
+      {abierta === 'quitar' && (
+        <ConfirmarQuitar
+          accion={quitarPieza}
+          id={id}
+          ordenId={ordenId}
+          texto={`¿Quitar la pieza «${pieza.nombre}»? Se pierde lo que el taller haya reportado de ella.`}
+          alTerminar={cerrar}
+        />
+      )}
+    </li>
   )
 }
 
