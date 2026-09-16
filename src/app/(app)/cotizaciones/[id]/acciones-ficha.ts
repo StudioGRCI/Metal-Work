@@ -242,15 +242,21 @@ export async function quitarLineaFicha(_previo: unknown, datos: FormData): Promi
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  // Con `.select('id')`: un DELETE que el RLS esconde borra cero filas sin
+  // error, y la línea seguía en la ficha con la pantalla diciendo que no.
+  const { data, error } = await supabase
     .from('cotizacion_especificaciones')
     .delete()
     .eq('id', analisis.data.id)
+    .eq('cotizacion_id', analisis.data.cotizacion_id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/cotizaciones/${analisis.data.cotizacion_id}`)
-  return { ok: true }
+  return { ok: true, mensaje: 'Línea quitada.' }
 }
 
 /** Agrega un accesorio al equipamiento ofrecido. */
