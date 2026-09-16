@@ -102,7 +102,7 @@ export async function reportesDeEtapa(etapaId: string) {
   const { data, error } = await supabase
     .from('ot_etapa_reportes')
     .select(
-      'id, texto, creado_en, verificado_en, autor:usuarios!ot_etapa_reportes_creado_por_fkey(nombres, apellidos), verificador:usuarios!ot_etapa_reportes_verificado_por_fkey(nombres, apellidos)',
+      'id, texto, creado_en, verificado_en, autor:usuarios!ot_etapa_reportes_creado_por_fkey(puesto), verificador:usuarios!ot_etapa_reportes_verificado_por_fkey(puesto)',
     )
     .eq('etapa_id', etapaId)
     .order('creado_en', { ascending: false })

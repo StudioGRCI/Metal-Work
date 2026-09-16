@@ -39,7 +39,7 @@ export default async function PaginaTablero() {
       return (
         <>
           <EncabezadoPagina
-            titulo={`Hola, ${perfil.nombres}`}
+            titulo={perfil.puesto}
             descripcion="Tus cotizaciones al día de hoy."
           />
           <TarjetasDeVentas resumen={comercial} />
@@ -49,7 +49,7 @@ export default async function PaginaTablero() {
 
     return (
       <EncabezadoPagina
-        titulo={`Hola, ${perfil.nombres}`}
+        titulo={perfil.puesto}
         // «El menú» y no «la barra lateral»: en el teléfono es el botón de
         // arriba, y a esta pantalla llega justamente quien todavía no sabe
         // dónde está lo suyo.
@@ -73,10 +73,9 @@ export default async function PaginaTablero() {
 
   return (
     <>
-      <EncabezadoPagina
-        titulo={`Hola, ${perfil.nombres}`}
-        descripcion="Estado del taller al día de hoy."
-      />
+      {/* El puesto y no el nombre (migración 109): la pantalla es del puesto,
+          quien lo ocupe hoy ya sabe cómo se llama. */}
+      <EncabezadoPagina titulo={perfil.puesto} descripcion="Estado del taller al día de hoy." />
 
       {comercial && <TarjetasDeVentas resumen={comercial} />}
 

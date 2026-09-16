@@ -14,7 +14,7 @@ import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
 
 import { NuevoCliente } from '@/components/comercial/nuevo-cliente'
 import { NuevoContacto, type ContactoElegible } from '@/components/comercial/nuevo-contacto'
-import { hoyLima } from '@/lib/format'
+import { etiquetasDePuesto, hoyLima } from '@/lib/format'
 
 import { crearCotizacion } from '../acciones'
 
@@ -23,7 +23,7 @@ type Catalogos = {
   sedes: { id: string; nombre: string }[]
   tiposCarroceria: { id: string; nombre: string }[]
   /** Quién puede figurar como vendedor: el personal que no es de taller. */
-  responsables: { id: string; nombres: string; apellidos: string }[]
+  responsables: { id: string; puesto: string | null; correo: string | null }[]
 }
 
 /**
@@ -305,9 +305,9 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
           >
             <Seleccion id="vendedor_id" name="vendedor_id" defaultValue="">
               <option value="">Sin vendedor asignado</option>
-              {catalogos.responsables.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.nombres} {r.apellidos}
+              {[...etiquetasDePuesto(catalogos.responsables)].map(([id, etiqueta]) => (
+                <option key={id} value={id}>
+                  {etiqueta}
                 </option>
               ))}
             </Seleccion>

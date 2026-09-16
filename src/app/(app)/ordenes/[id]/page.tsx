@@ -9,7 +9,7 @@ import { Indicador } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_ETAPA, PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
-import { fecha, fechaHora, hoyLima, moneda, numero as fmtNumero } from '@/lib/format'
+import { fecha, fechaHora, hoyLima, moneda, numero as fmtNumero, puesto } from '@/lib/format'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import {
   clientesParaElegir,
@@ -201,7 +201,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     numero_chasis: string | null
   } | null
   const sede = orden.sede as unknown as { nombre: string }
-  const responsable = orden.responsable as unknown as { nombres: string; apellidos: string } | null
+  const responsable = orden.responsable as unknown as { puesto: string | null } | null
   const tipoCarroceria = orden.tipo_carroceria as unknown as { nombre: string } | null
   const cotizacion = orden.cotizacion as unknown as { numero: string } | null
   // El monto es de quien arma o cobra la cotización, y solo cuando lo hay: la
@@ -394,7 +394,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               <Dato etiqueta="Taller" valor={sede.nombre} />
               <Dato
                 etiqueta="Responsable"
-                valor={responsable ? `${responsable.nombres} ${responsable.apellidos}` : null}
+                valor={responsable ? puesto(responsable) : null}
               />
               <Dato etiqueta="Registrada" valor={fecha(orden.fecha_registro)} />
               <Dato etiqueta="Inicio real" valor={fechaHora(orden.fecha_inicio_real)} />

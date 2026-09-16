@@ -9,6 +9,8 @@ export type PerfilSesion = {
   apellidos: string
   correo: string
   cargo: string | null
+  /** Con lo que se nombra la cuenta en pantalla: el cargo, o el rol si no lo tiene. */
+  puesto: string
   activo: boolean
   es_operario: boolean
   sede_id: string | null
@@ -54,6 +56,7 @@ export const obtenerSesion = cache(async (): Promise<PerfilSesion | null> => {
     apellidos: data.apellidos,
     correo: data.correo,
     cargo: data.cargo,
+    puesto: data.cargo?.trim() || rol.nombre,
     activo: data.activo,
     es_operario: data.es_operario,
     sede_id: data.sede_id,

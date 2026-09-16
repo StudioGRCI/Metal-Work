@@ -10,6 +10,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { createClient } from '@/lib/supabase/client'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
+import { etiquetasDePuesto } from '@/lib/format'
 import { NuevaUnidad } from '@/app/(app)/clientes/nueva-unidad'
 import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
 import { NuevoCliente } from '@/components/comercial/nuevo-cliente'
@@ -20,7 +21,7 @@ type Catalogos = {
   clientes: { id: string; razon_social: string; numero_documento: string }[]
   sedes: { id: string; nombre: string }[]
   tiposCarroceria: { id: string; nombre: string }[]
-  responsables: { id: string; nombres: string; apellidos: string }[]
+  responsables: { id: string; puesto: string | null; correo: string | null }[]
 }
 
 const TIPOS_TRABAJO = opciones(TIPO_TRABAJO)
@@ -277,10 +278,10 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
               valor={responsableId}
               onChange={setResponsableId}
               marcador="Sin asignar"
-              marcadorBusqueda="Nombre o apellido"
-              opciones={catalogos.responsables.map((r) => ({
-                valor: r.id,
-                etiqueta: `${r.nombres} ${r.apellidos}`,
+              marcadorBusqueda="Puesto"
+              opciones={[...etiquetasDePuesto(catalogos.responsables)].map(([valor, etiqueta]) => ({
+                valor,
+                etiqueta,
               }))}
             />
           </Campo>

@@ -4512,6 +4512,18 @@ export type Database = {
         }
         Returns: boolean
       }
+      puesto: {
+        Args: {
+          "": Database["public"]["Tables"]["usuarios"]["Row"]
+        }
+        Returns: string
+      }
+      puesto_de: {
+        Args: {
+          p_usuario: string
+        }
+        Returns: string
+      }
       recalcular_totales_cotizacion: {
         Args: {
           p_cotizacion: string

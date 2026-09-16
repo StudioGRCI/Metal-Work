@@ -10,7 +10,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
-import { fecha } from '@/lib/format'
+import { fecha, puesto } from '@/lib/format'
 import type { UnidadNombrable } from '@/lib/dominio/unidades'
 import {
   contactosDeCliente,
@@ -43,7 +43,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
     puede(perfil, 'clientes.crear') ? catalogosOrden() : Promise.resolve(null),
   ])
 
-  const vendedor = cliente.vendedor as unknown as { nombres: string; apellidos: string } | null
+  const vendedor = cliente.vendedor as unknown as { puesto: string | null } | null
 
   // El estado vacío de las órdenes solo ofrece abrir una a quien puede abrirla.
   const abreOrdenes = puede(perfil, 'ordenes.crear')
@@ -89,7 +89,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
             />
             <Dato
               etiqueta="Vendedor"
-              valor={vendedor ? `${vendedor.nombres} ${vendedor.apellidos}` : null}
+              valor={vendedor ? puesto(vendedor) : null}
             />
           </TarjetaCuerpo>
         </Tarjeta>

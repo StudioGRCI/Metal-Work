@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { TIPO_EVENTO_BITACORA, TIPO_TRABAJO, definir } from '@/lib/dominio/estados'
+import { puesto } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Enums, Vistas } from '@/types/database'
 
@@ -118,7 +119,7 @@ export async function obtenerOrden(id: string) {
   const { data, error } = await supabase
     .from('ordenes_trabajo')
     .select(
-      'id, numero, estado, abierta_en_taller, cliente_id, prioridad, tipo_trabajo, descripcion, especificaciones_tecnicas, datos_tecnicos, fecha_registro, fecha_inicio_programada, fecha_fin_programada, fecha_entrega_comprometida, fecha_inicio_real, fecha_fin_real, avance_porcentaje, horas_estimadas, horas_reales, moneda, monto_presupuestado, motivo_pausa, motivo_anulacion, observaciones, creado_en, largo_m, ancho_m, alto_m, capacidad_carga, ruedas, tipo_llantas, cantidad_ejes, tipo_suspension, colores, caracteristicas_especiales, correo_contacto, encargado_produccion_id, cliente:clientes(id, razon_social, numero_documento, telefono, correo), unidad:unidades(id, placa, numero_fmi, marca, modelo, anio, tipo_vehiculo, numero_chasis, codigo_interno), sede:sedes!inner(id, nombre), tipo_carroceria:tipos_carroceria(id, nombre), responsable:usuarios!ordenes_trabajo_responsable_id_fkey(id, nombres, apellidos), supervisor:usuarios!ordenes_trabajo_supervisor_id_fkey(id, nombres, apellidos), cotizacion:cotizaciones(id, numero, total, moneda)',
+      'id, numero, estado, abierta_en_taller, cliente_id, prioridad, tipo_trabajo, descripcion, especificaciones_tecnicas, datos_tecnicos, fecha_registro, fecha_inicio_programada, fecha_fin_programada, fecha_entrega_comprometida, fecha_inicio_real, fecha_fin_real, avance_porcentaje, horas_estimadas, horas_reales, moneda, monto_presupuestado, motivo_pausa, motivo_anulacion, observaciones, creado_en, largo_m, ancho_m, alto_m, capacidad_carga, ruedas, tipo_llantas, cantidad_ejes, tipo_suspension, colores, caracteristicas_especiales, correo_contacto, encargado_produccion_id, cliente:clientes(id, razon_social, numero_documento, telefono, correo), unidad:unidades(id, placa, numero_fmi, marca, modelo, anio, tipo_vehiculo, numero_chasis, codigo_interno), sede:sedes!inner(id, nombre), tipo_carroceria:tipos_carroceria(id, nombre), responsable:usuarios!ordenes_trabajo_responsable_id_fkey(id, puesto), supervisor:usuarios!ordenes_trabajo_supervisor_id_fkey(id, puesto), cotizacion:cotizaciones(id, numero, total, moneda)',
     )
     .eq('id', id)
     .maybeSingle()
@@ -162,14 +163,18 @@ export async function catalogosOrden() {
     supabase.from('clientes').select('id, razon_social, numero_documento').eq('activo', true).order('razon_social').limit(500),
     supabase.from('sedes').select('id, nombre').eq('activo', true).order('nombre'),
     supabase.from('tipos_carroceria').select('id, nombre').eq('activo', true).order('orden_secuencia'),
-    supabase.from('usuarios').select('id, nombres, apellidos').eq('activo', true).eq('es_operario', false).order('apellidos'),
+    // Se eligen por puesto (migración 109): `puesto` es la columna calculada y
+    // el correo distingue dos cuentas con el mismo.
+    supabase.from('usuarios').select('id, puesto, correo').eq('activo', true).eq('es_operario', false).order('cargo'),
   ])
 
   return {
     clientes: clientes.data ?? [],
     sedes: sedes.data ?? [],
     tiposCarroceria: tipos.data ?? [],
-    responsables: responsables.data ?? [],
+    // `puesto` es columna calculada: el tipador del cliente no la conoce
+    // sobre la tabla (sí en los embebidos), así que se declara a mano.
+    responsables: (responsables.data ?? []) as unknown as { id: string; puesto: string | null; correo: string | null }[],
   }
 }
 
@@ -272,12 +277,12 @@ export async function estadoDeSalida(ordenId: string) {
   const [liberacion, entrega] = await Promise.all([
     supabase
       .from('liberaciones_tesoreria')
-      .select('liberado_en, observacion, liberador:usuarios!liberaciones_tesoreria_liberado_por_fkey(nombres, apellidos)')
+      .select('liberado_en, observacion, liberador:usuarios!liberaciones_tesoreria_liberado_por_fkey(puesto)')
       .eq('orden_id', ordenId)
       .maybeSingle(),
     supabase
       .from('ot_entregas')
-      .select('id, fecha_entrega, salida_confirmada_en, confirmador:usuarios!ot_entregas_salida_confirmada_por_fkey(nombres, apellidos)')
+      .select('id, fecha_entrega, salida_confirmada_en, confirmador:usuarios!ot_entregas_salida_confirmada_por_fkey(puesto)')
       .eq('orden_id', ordenId)
       .maybeSingle(),
   ])
@@ -289,13 +294,13 @@ export async function estadoDeSalida(ordenId: string) {
     liberacion: liberacion.data as unknown as {
       liberado_en: string
       observacion: string | null
-      liberador: { nombres: string; apellidos: string } | null
+      liberador: { puesto: string | null } | null
     } | null,
     entrega: entrega.data as unknown as {
       id: string
       fecha_entrega: string
       salida_confirmada_en: string | null
-      confirmador: { nombres: string; apellidos: string } | null
+      confirmador: { puesto: string | null } | null
     } | null,
   }
 }
@@ -327,17 +332,20 @@ export async function timelineDeOrden(ordenId: string, limite = 200): Promise<Ev
 
   const filas = data ?? []
 
-  // La vista solo trae usuario_id; los nombres se resuelven en una sola consulta.
+  // La vista solo trae usuario_id; el puesto de cada cuenta se resuelve en una
+  // sola consulta.
   const ids = [...new Set(filas.map((f) => f.usuario_id).filter(Boolean))] as string[]
   const nombres = new Map<string, string>()
 
   if (ids.length > 0) {
     const { data: usuarios } = await supabase
       .from('usuarios')
-      .select('id, nombres, apellidos')
+      .select('id, puesto')
       .in('id', ids)
 
-    for (const u of usuarios ?? []) nombres.set(u.id, `${u.nombres} ${u.apellidos}`)
+    for (const u of (usuarios ?? []) as unknown as { id: string; puesto: string | null }[]) {
+      nombres.set(u.id, puesto(u))
+    }
   }
 
   return filas

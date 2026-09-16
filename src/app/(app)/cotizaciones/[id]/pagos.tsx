@@ -11,7 +11,7 @@ import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { PagoCliente, ResumenPagos } from '@/lib/datos/pagos'
 import { useEnvio } from '@/lib/envio'
-import { fecha as fmtFecha, hoyLima, moneda as fmtMoneda } from '@/lib/format'
+import { fecha as fmtFecha, hoyLima, moneda as fmtMoneda, puesto } from '@/lib/format'
 
 import { registrarPago } from './acciones-pagos'
 
@@ -229,7 +229,7 @@ export function PagosDelCliente({
                   <TD className="text-xs text-texto-suave">{p.referencia ?? '—'}</TD>
                   <TD className="text-right tabular text-sm font-medium">{money(p.monto)}</TD>
                   <TD className="text-xs text-texto-suave">
-                    {p.registrado ? `${p.registrado.nombres} ${p.registrado.apellidos}` : '—'}
+                    {puesto(p.registrado)}
                   </TD>
                 </TR>
               ))}

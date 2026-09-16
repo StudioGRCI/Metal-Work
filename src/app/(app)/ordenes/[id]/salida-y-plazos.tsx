@@ -6,7 +6,7 @@ import { useActionState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { fecha as formatearFecha, hoyLima } from '@/lib/format'
+import { fecha as formatearFecha, hoyLima, puesto } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { confirmarSalida, liberarTesoreria } from '../acciones'
@@ -14,14 +14,14 @@ import { confirmarSalida, liberarTesoreria } from '../acciones'
 type Liberacion = {
   liberado_en: string
   observacion: string | null
-  liberador: { nombres: string; apellidos: string } | null
+  liberador: { puesto: string | null } | null
 } | null
 
 type Entrega = {
   id: string
   fecha_entrega: string
   salida_confirmada_en: string | null
-  confirmador: { nombres: string; apellidos: string } | null
+  confirmador: { puesto: string | null } | null
 } | null
 
 function Aviso({ resultado }: { resultado: { ok?: boolean; error?: string; mensaje?: string } | null }) {
@@ -103,7 +103,7 @@ export function SalidaDeUnidad({
             liberacion ? (
               <>
                 {liberacion.liberador
-                  ? `${liberacion.liberador.nombres} ${liberacion.liberador.apellidos}`
+                  ? puesto(liberacion.liberador)
                   : 'Tesorería'}
                 {' · '}
                 {formatearFecha(liberacion.liberado_en)}
@@ -144,7 +144,7 @@ export function SalidaDeUnidad({
             entrega?.salida_confirmada_en ? (
               <>
                 {entrega.confirmador
-                  ? `${entrega.confirmador.nombres} ${entrega.confirmador.apellidos}`
+                  ? puesto(entrega.confirmador)
                   : 'Confirmada'}
                 {' · '}
                 {formatearFecha(entrega.salida_confirmada_en)}

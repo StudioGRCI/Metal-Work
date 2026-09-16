@@ -179,8 +179,43 @@ function diaUtcDe(d: Date): number | null {
   return Date.parse(`${enLima}T00:00:00Z`)
 }
 
-export function iniciales(nombres?: string | null, apellidos?: string | null) {
-  return `${nombres?.[0] ?? ''}${apellidos?.[0] ?? ''}`.toUpperCase() || '—'
+/** Las iniciales de un texto de hasta dos palabras: «Jefe de producción» → «JP». */
+export function iniciales(texto?: string | null) {
+  const partes = (texto ?? '').trim().split(/\s+/).filter((p) => p.length > 2 || /^[A-ZÁÉÍÓÚ]/.test(p))
+  return `${partes[0]?.[0] ?? ''}${partes[1]?.[0] ?? ''}`.toUpperCase() || '—'
+}
+
+/**
+ * El puesto con el que se muestra una cuenta —el cargo, o el rol si no lo
+ * tiene—, nunca el nombre de la persona (migración 109). Las cuentas son por
+ * puesto: cuando cambia quien la usa, «Aprobada por Gerencia» sigue siendo
+ * verdad. `puesto` es la columna calculada de `usuarios`; se pide en el
+ * `select` como cualquier otra.
+ */
+export function puesto(cuenta?: { puesto?: string | null } | null): string {
+  return cuenta?.puesto?.trim() || '—'
+}
+
+/**
+ * Las etiquetas de un desplegable de cuentas: el puesto y, solo cuando dos
+ * cuentas se llaman igual —hoy, dos soldadores—, el usuario del correo para
+ * distinguirlas: «Soldador estructural · soldador2».
+ */
+export function etiquetasDePuesto<T extends { id: string; puesto?: string | null; correo?: string | null }>(
+  cuentas: T[],
+): Map<string, string> {
+  const veces = new Map<string, number>()
+  for (const c of cuentas) {
+    const p = puesto(c)
+    veces.set(p, (veces.get(p) ?? 0) + 1)
+  }
+  return new Map(
+    cuentas.map((c) => {
+      const p = puesto(c)
+      const usuario = c.correo?.split('@')[0]
+      return [c.id, (veces.get(p) ?? 0) > 1 && usuario ? `${p} · ${usuario}` : p]
+    }),
+  )
 }
 
 /**
@@ -197,25 +232,3 @@ export function hoyLima(): string {
   }).format(new Date())
 }
 
-/**
- * Un nombre que entra en una columna: «Rosa Mercedes Quispe Huamán» sale como
- * «Rosa Quispe».
- *
- * En la lista de órdenes la columna de responsable mostraba «Administrador
- * Meta…» en las cinco filas: una columna entera repitiendo un texto cortado,
- * que ocupaba sitio y no decía a quién. Cortar con puntos suspensivos deja al
- * lector adivinando; quedarse con el primer nombre y el primer apellido dice
- * quién es y cabe.
- *
- * No se recorta a iniciales: en el taller hay gente que se llama por el nombre
- * y una «R. Q.» no le dice nada a nadie.
- */
-export function nombreCorto(completo?: string | null): string {
-  const partes = (completo ?? '').trim().split(/\s+/).filter(Boolean)
-  if (partes.length === 0) return '—'
-  if (partes.length <= 2) return partes.join(' ')
-
-  // Con tres partes es «nombre apellido apellido»: el paterno va segundo. Con
-  // cuatro o más son dos nombres y dos apellidos, y el paterno va tercero.
-  return `${partes[0]} ${partes[partes.length === 3 ? 1 : 2]}`
-}

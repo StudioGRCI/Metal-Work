@@ -11,7 +11,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { ConfirmarAccion } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import type { AccesorioOT, PasoVerificacion, RepuestoOT } from '@/lib/datos/ficha-ot'
-import { cantidad as formatearCantidad, fecha } from '@/lib/format'
+import { cantidad as formatearCantidad, etiquetasDePuesto, fecha, puesto } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import {
@@ -41,7 +41,7 @@ export type FichaFisica = {
   encargado_produccion_id: string | null
 }
 
-type Persona = { id: string; nombres: string; apellidos: string }
+type Persona = { id: string; puesto: string | null; correo: string | null }
 
 function Aviso({
   resultado,
@@ -184,7 +184,7 @@ function Medidas({
           <Dato titulo="Tipo de suspensión" valor={ficha.tipo_suspension} />
           <Dato
             titulo="Encargado de producción"
-            valor={encargado ? `${encargado.nombres} ${encargado.apellidos}` : null}
+            valor={encargado ? (etiquetasDePuesto(personal).get(encargado.id) ?? puesto(encargado)) : null}
           />
           <Dato titulo="Colores" valor={ficha.colores} />
           <Dato titulo="Correo de contacto" valor={ficha.correo_contacto} />
@@ -279,9 +279,9 @@ function Medidas({
                 defaultValue={ficha.encargado_produccion_id ?? ''}
               >
                 <option value="">Sin asignar</option>
-                {personal.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.apellidos}, {p.nombres}
+                {[...etiquetasDePuesto(personal)].map(([id, etiqueta]) => (
+                  <option key={id} value={id}>
+                    {etiqueta}
                   </option>
                 ))}
               </Seleccion>
@@ -394,9 +394,7 @@ function Verificacion({
                         {paso.descripcion}
                       </span>
                       {paso.responsable && (
-                        <p className="text-[11px] text-texto-suave sm:hidden">
-                          {paso.responsable.nombres} {paso.responsable.apellidos}
-                        </p>
+                        <p className="text-[11px] text-texto-suave sm:hidden">{puesto(paso.responsable)}</p>
                       )}
                       {paso.observaciones && (
                         <p className="mt-0.5 text-xs text-aviso">{paso.observaciones}</p>
@@ -433,9 +431,7 @@ function Verificacion({
                         ))}
                     </td>
                     <td className="hidden px-3 py-2 text-xs text-texto-suave sm:table-cell">
-                      {paso.responsable
-                        ? `${paso.responsable.nombres} ${paso.responsable.apellidos}`
-                        : '—'}
+                      {puesto(paso.responsable)}
                     </td>
                     <Casilla
                       ordenId={ordenId}
@@ -717,7 +713,7 @@ function Accesorios({
                   )}
                   {a.verificado && a.verificador && (
                     <span className="ml-2 text-[11px] text-texto-tenue">
-                      V°B° {a.verificador.nombres} {a.verificador.apellidos}
+                      V°B° {puesto(a.verificador)}
                       {a.verificado_en ? ` · ${fecha(a.verificado_en)}` : ''}
                     </span>
                   )}

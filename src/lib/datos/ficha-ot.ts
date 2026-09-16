@@ -12,7 +12,7 @@ export type AccesorioOT = {
   verificado: boolean
   verificado_en: string | null
   observacion: string | null
-  verificador: { nombres: string; apellidos: string } | null
+  verificador: { puesto: string | null } | null
 }
 
 export type RepuestoOT = {
@@ -34,7 +34,7 @@ export type PasoVerificacion = {
   avance_2: boolean
   avance_2_en: string | null
   observaciones: string | null
-  responsable: { nombres: string; apellidos: string } | null
+  responsable: { puesto: string | null } | null
 }
 
 /** Sección 6 del formato: el equipamiento a montar, con su visto bueno. */
@@ -44,7 +44,7 @@ export async function accesoriosDeOrden(ordenId: string): Promise<AccesorioOT[]>
   const { data, error } = await supabase
     .from('ot_accesorios')
     .select(
-      'id, orden, cantidad, unidad, descripcion, incluye_el_accesorio, verificado, verificado_en, observacion, verificador:usuarios!ot_accesorios_verificado_por_fkey(nombres, apellidos)',
+      'id, orden, cantidad, unidad, descripcion, incluye_el_accesorio, verificado, verificado_en, observacion, verificador:usuarios!ot_accesorios_verificado_por_fkey(puesto)',
     )
     .eq('orden_id', ordenId)
     .order('orden')
@@ -74,7 +74,7 @@ export async function verificacionesDeOrden(ordenId: string): Promise<PasoVerifi
   const { data, error } = await supabase
     .from('ot_verificaciones')
     .select(
-      'id, numero, descripcion, responsable_id, avance_1, avance_1_en, avance_2, avance_2_en, observaciones, responsable:usuarios!ot_verificaciones_responsable_id_fkey(nombres, apellidos)',
+      'id, numero, descripcion, responsable_id, avance_1, avance_1_en, avance_2, avance_2_en, observaciones, responsable:usuarios!ot_verificaciones_responsable_id_fkey(puesto)',
     )
     .eq('orden_id', ordenId)
     .order('numero')
@@ -110,10 +110,11 @@ export async function personalDelTaller() {
 
   const { data, error } = await supabase
     .from('usuarios')
-    .select('id, nombres, apellidos')
+    // Por puesto (migración 109); el correo distingue dos cuentas con el mismo.
+    .select('id, puesto, correo')
     .eq('activo', true)
-    .order('apellidos')
+    .order('cargo')
 
   if (error) throw new Error(`No se pudo leer el personal: ${error.message}`)
-  return (data ?? []) as unknown as { id: string; nombres: string; apellidos: string }[]
+  return (data ?? []) as unknown as { id: string; puesto: string | null; correo: string | null }[]
 }
