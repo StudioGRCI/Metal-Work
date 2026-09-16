@@ -11,6 +11,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { ConfirmarAccion } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import type { AccesorioOT, PasoVerificacion, RepuestoOT } from '@/lib/datos/ficha-ot'
+import { useEnvio } from '@/lib/envio'
 import { cantidad as formatearCantidad, etiquetasDePuesto, fecha, puesto } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -128,7 +129,7 @@ export function FichaTaller({
 }
 
 function ArmarFicha({ ordenId }: { ordenId: string }) {
-  const [resultado, accion, enviando] = useActionState(armarFicha, null)
+  const { alEnviar, enviando, resultado } = useEnvio(armarFicha)
 
   return (
     <Tarjeta className="border-acento">
@@ -140,7 +141,7 @@ function ArmarFicha({ ordenId }: { ordenId: string }) {
             En las órdenes nuevas se arma sola al aprobarlas.
           </p>
         </div>
-        <form action={accion}>
+        <form onSubmit={alEnviar}>
           <input type="hidden" name="orden_id" value={ordenId} />
           <Boton type="submit" cargando={enviando}>
             <Wand2 aria-hidden className="size-4" />
@@ -166,7 +167,9 @@ function Medidas({
   personal: Persona[]
   puedeEditar: boolean
 }) {
-  const [resultado, accion, enviando] = useActionState(guardarFichaFisica, null)
+  // Con `useEnvio` un rechazo de la base deja las medidas como se escribieron;
+  // antes el formulario volvía a los valores guardados y había que reescribir.
+  const { alEnviar, enviando, resultado } = useEnvio(guardarFichaFisica)
 
   if (!puedeEditar) {
     const encargado = personal.find((p) => p.id === ficha.encargado_produccion_id)
@@ -205,7 +208,7 @@ function Medidas({
         descripcion="Lo que el taller necesita tener a la vista para fabricar la unidad."
       />
       <TarjetaCuerpo>
-        <form action={accion} className="space-y-3">
+        <form onSubmit={alEnviar} className="space-y-3">
           <input type="hidden" name="orden_id" value={ordenId} />
 
           {/* Las medidas se toman en planta con el teléfono en la mano:
@@ -336,7 +339,6 @@ function Verificacion({
   puedeEditar: boolean
   sinArmar: boolean
 }) {
-  const [resultado, accionAnotar] = useActionState(anotarVerificacion, null)
   const [anotando, setAnotando] = useState<string | null>(null)
 
   const hechos = pasos.filter((p) => p.avance_2).length
@@ -401,23 +403,7 @@ function Verificacion({
                       )}
                       {puedeEditar &&
                         (anotando === paso.id ? (
-                          <form
-                            action={accionAnotar}
-                            className="mt-1 flex gap-2"
-                            onSubmit={() => setAnotando(null)}
-                          >
-                            <input type="hidden" name="id" value={paso.id} />
-                            <input type="hidden" name="orden_id" value={ordenId} />
-                            <Entrada
-                              name="observaciones"
-                              defaultValue={paso.observaciones ?? ''}
-                              placeholder="Qué quedó pendiente"
-                              className="text-xs"
-                            />
-                            <Boton type="submit" tamano="sm">
-                              Guardar nota
-                            </Boton>
-                          </form>
+                          <NotaPaso ordenId={ordenId} paso={paso} alCerrar={() => setAnotando(null)} />
                         ) : (
                           // Once píxeles de letra no son un blanco para el dedo:
                           // en el teléfono el enlace ocupa 44 px de alto.
@@ -457,10 +443,45 @@ function Verificacion({
             </table>
           </div>
         )}
-
-        <Aviso resultado={resultado} />
       </TarjetaCuerpo>
     </Tarjeta>
+  )
+}
+
+/**
+ * La nota de un paso, con su propio envío: se cierra cuando la base la guardó
+ * y, si la rechaza, el error sale en la misma fila y el texto se queda. Antes
+ * se cerraba al enviar y el error aparecía al pie de la tarjeta, sin decir de
+ * qué paso era.
+ */
+function NotaPaso({ ordenId, paso, alCerrar }: { ordenId: string; paso: PasoVerificacion; alCerrar: () => void }) {
+  const { alEnviar, enviando, error } = useEnvio(anotarVerificacion, alCerrar)
+
+  return (
+    <form onSubmit={alEnviar} className="mt-1 space-y-1">
+      <div className="flex gap-2">
+        <input type="hidden" name="id" value={paso.id} />
+        <input type="hidden" name="orden_id" value={ordenId} />
+        <Entrada
+          name="observaciones"
+          defaultValue={paso.observaciones ?? ''}
+          placeholder="Qué quedó pendiente"
+          autoFocus
+          className="text-xs"
+        />
+        <Boton type="submit" tamano="sm" cargando={enviando}>
+          Guardar nota
+        </Boton>
+        <Boton type="button" variante="fantasma" tamano="sm" onClick={alCerrar}>
+          Cerrar
+        </Boton>
+      </div>
+      {error && (
+        <p role="alert" className="text-xs text-peligro">
+          {error}
+        </p>
+      )}
+    </form>
   )
 }
 
@@ -591,8 +612,10 @@ function Accesorios({
   puedeArmar: boolean
 }) {
   const [abierto, setAbierto] = useState(false)
-  const [resultado, accion, enviando] = useActionState(agregarAccesorioOT, null)
-  const [, accionQuitar] = useActionState(quitarAccesorioOT, null)
+  const { alEnviar, enviando, resultado } = useEnvio(agregarAccesorioOT)
+  // El resultado de quitar se muestra: antes se descartaba y, si la base
+  // rechazaba, el accesorio seguía ahí sin que nadie supiera por qué.
+  const [resultadoQuitar, accionQuitar] = useActionState(quitarAccesorioOT, null)
   const [porQuitar, setPorQuitar] = useState<AccesorioOT | null>(null)
 
   const puestos = accesorios.filter((a) => a.verificado).length
@@ -636,7 +659,7 @@ function Accesorios({
       />
       <TarjetaCuerpo className="space-y-3">
         {abierto && puedeArmar && (
-          <form action={accion} className="rounded-[var(--radius-base)] bg-superficie-2 p-3">
+          <form onSubmit={alEnviar} className="rounded-[var(--radius-base)] bg-superficie-2 p-3">
             <input type="hidden" name="orden_id" value={ordenId} />
             <div className="grid gap-3 sm:grid-cols-5">
               <Campo etiqueta="Cantidad" htmlFor="cantidad" requerido>
@@ -737,6 +760,8 @@ function Accesorios({
           </ul>
         )}
 
+        {resultadoQuitar && !resultadoQuitar.ok && <Aviso resultado={resultadoQuitar} />}
+
         <ConfirmarAccion
           abierta={porQuitar !== null}
           alCerrar={() => setPorQuitar(null)}
@@ -767,8 +792,8 @@ function Repuestos({
   puedeEditar: boolean
 }) {
   const [abierto, setAbierto] = useState(false)
-  const [resultado, accion, enviando] = useActionState(agregarRepuesto, null)
-  const [, accionQuitar] = useActionState(quitarRepuesto, null)
+  const { alEnviar, enviando, resultado } = useEnvio(agregarRepuesto)
+  const [resultadoQuitar, accionQuitar] = useActionState(quitarRepuesto, null)
   const [porQuitar, setPorQuitar] = useState<RepuestoOT | null>(null)
 
   // Mismo caso que los accesorios: el borrado es definitivo y el icono es un
@@ -803,7 +828,7 @@ function Repuestos({
       />
       <TarjetaCuerpo className="space-y-3">
         {abierto && puedeEditar && (
-          <form action={accion} className="rounded-[var(--radius-base)] bg-superficie-2 p-3">
+          <form onSubmit={alEnviar} className="rounded-[var(--radius-base)] bg-superficie-2 p-3">
             <input type="hidden" name="orden_id" value={ordenId} />
             <div className="grid gap-3 sm:grid-cols-5">
               <Campo etiqueta="Cantidad" htmlFor="cantidad_repuesto" requerido>
@@ -872,6 +897,8 @@ function Repuestos({
             ))}
           </ul>
         )}
+
+        {resultadoQuitar && !resultadoQuitar.ok && <Aviso resultado={resultadoQuitar} />}
 
         <ConfirmarAccion
           abierta={porQuitar !== null}

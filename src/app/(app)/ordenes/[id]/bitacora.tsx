@@ -1,11 +1,12 @@
 'use client'
 
-import { useActionState, useEffect, useRef } from 'react'
+import { useRef } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { useEnvio } from '@/lib/envio'
 import { fechaHora, tiempoRelativo } from '@/lib/format'
 import type { EventoTimeline } from '@/lib/datos/ordenes'
 import type { Tono } from '@/components/ui/etiqueta-estado'
@@ -37,13 +38,10 @@ export function Bitacora({
   eventos: EventoTimeline[]
   puedeComentar: boolean
 }) {
-  const [resultado, ejecutar, pendiente] = useActionState(comentarOrden, null)
   const formulario = useRef<HTMLFormElement>(null)
-
-  // Vaciar el cuadro de texto una vez que el comentario se guardó.
-  useEffect(() => {
-    if (resultado?.ok) formulario.current?.reset()
-  }, [resultado])
+  // El cuadro se vacía cuando el comentario entró —en el evento, no en un
+  // efecto— y si la base lo rechaza, lo escrito se queda para corregirlo.
+  const { alEnviar, enviando, error } = useEnvio(comentarOrden, () => formulario.current?.reset())
 
   return (
     <Tarjeta>
@@ -54,22 +52,23 @@ export function Bitacora({
 
       {puedeComentar && (
         <div className="border-b border-borde p-4">
-          <form ref={formulario} action={ejecutar} className="space-y-2">
+          <form ref={formulario} onSubmit={alEnviar} className="space-y-2">
             <input type="hidden" name="orden_id" value={ordenId} />
             <AreaTexto
               name="descripcion"
               rows={2}
               required
+              minLength={3}
               placeholder="Anota una novedad, acuerdo con el cliente o incidencia del taller"
               aria-label="Nuevo comentario"
             />
-            {resultado && !resultado.ok && (
+            {error && (
               <p role="alert" className="text-xs text-peligro">
-                {resultado.error}
+                {error}
               </p>
             )}
             <div className="flex justify-end">
-              <Boton type="submit" tamano="sm" cargando={pendiente}>
+              <Boton type="submit" tamano="sm" cargando={enviando}>
                 Registrar comentario
               </Boton>
             </div>

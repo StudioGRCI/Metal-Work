@@ -258,7 +258,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
       {query.creada === '1' && (
         <p className="mb-4 rounded-[var(--radius-base)] bg-exito-suave px-3 py-2 text-sm text-exito">
-          Orden registrada correctamente. Apruébala para generar sus etapas de producción.
+          {/* A quien no aprueba no se le pide que apruebe: se le dice quién lo hace. */}
+          {puede(perfil, 'ordenes.aprobar')
+            ? 'Orden registrada. Apruébala para que nazcan sus etapas de producción.'
+            : 'Orden registrada. Gerencia tiene que aprobarla para que nazcan sus etapas de producción; ya se le avisó.'}
         </p>
       )}
 

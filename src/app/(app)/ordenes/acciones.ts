@@ -88,18 +88,22 @@ export async function cambiarEstadoOrden(
   if (!analisis.success) return { ok: false, error: 'Solicitud inválida.' }
   const { orden_id, estado, motivo } = analisis.data
 
-  const permisoNecesario =
-    estado === 'APROBADA' ? 'ordenes.aprobar'
-    : estado === 'ANULADA' ? 'ordenes.anular'
-    : estado === 'ENTREGADA' ? 'ordenes.entregar'
-    : 'ordenes.cambiar_estado'
+  // El mismo mapa que fn_ot_permiso_por_estado en la base; facturada la marca
+  // la oficina (`ordenes.editar`, migración 110) y el taller que ya cambiaba
+  // estados sigue pudiendo.
+  const permisosNecesarios =
+    estado === 'APROBADA' ? ['ordenes.aprobar']
+    : estado === 'ANULADA' ? ['ordenes.anular']
+    : estado === 'ENTREGADA' ? ['ordenes.entregar']
+    : estado === 'FACTURADA' ? ['ordenes.editar', 'ordenes.cambiar_estado']
+    : ['ordenes.cambiar_estado']
 
   const supabase = await createClient()
 
   // La orden que abrió el taller y sigue por revisar la aprueba o la rechaza
   // quien tiene `ordenes.revisar_taller`: es el mismo atajo que tiene el
   // disparador fn_ot_permiso_por_estado (migración 098), y solo para esa.
-  let permitido = puede(perfil, permisoNecesario)
+  let permitido = puede(perfil, permisosNecesarios)
   if (!permitido && (estado === 'APROBADA' || estado === 'ANULADA') && puede(perfil, 'ordenes.revisar_taller')) {
     const { data: actual } = await supabase
       .from('ordenes_trabajo')

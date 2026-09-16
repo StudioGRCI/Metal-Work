@@ -433,9 +433,31 @@ function AccionesActividad({
   deHoy: ReporteDiario | null
   corregibleHoy: boolean
 }) {
-  const [modo, setModo] = useState<'nada' | 'peso'>('nada')
+  const [modo, setModo] = useState<'nada' | 'peso' | 'quitar'>('nada')
   const peso = useEnvio(cambiarPesoActividad, () => setModo('nada'))
-  const quitar = useEnvio(quitarActividad)
+  const quitar = useEnvio(quitarActividad, () => setModo('nada'))
+
+  // Quitar pregunta antes: el icono va pegado a «Peso» y con guante se toca sin
+  // querer, y una actividad borrada hay que volver a escribirla.
+  if (modo === 'quitar') {
+    return (
+      <form
+        onSubmit={quitar.alEnviar}
+        className="flex flex-wrap items-center gap-2 rounded-[var(--radius-base)] bg-peligro-suave px-2 py-1"
+      >
+        <input type="hidden" name="id" value={actividad.id} />
+        <input type="hidden" name="orden_id" value={ordenId} />
+        <span className="text-xs text-peligro">¿Quitar «{actividad.nombre}»?</span>
+        <Boton type="submit" variante="peligro" tamano="sm" cargando={quitar.enviando}>
+          Sí, quitar
+        </Boton>
+        <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setModo('nada')}>
+          No
+        </Boton>
+        {quitar.error && <Error_ texto={quitar.error} />}
+      </form>
+    )
+  }
 
   if (modo === 'peso') {
     return (
@@ -500,22 +522,20 @@ function AccionesActividad({
           <Boton variante="fantasma" tamano="sm" onClick={() => setModo('peso')}>
             Peso
           </Boton>
-          <form onSubmit={quitar.alEnviar}>
-            <input type="hidden" name="id" value={actividad.id} />
-            <input type="hidden" name="orden_id" value={ordenId} />
-            <Boton
-              type="submit"
-              variante="fantasma"
-              tamano="sm"
-              cargando={quitar.enviando}
-              aria-label={`Quitar ${actividad.nombre}`}
-            >
-              <Trash2 aria-hidden className="size-4 text-peligro" />
-            </Boton>
-          </form>
+          <Boton
+            type="button"
+            variante="fantasma"
+            tamano="sm"
+            aria-label={`Quitar ${actividad.nombre}`}
+            onClick={() => {
+              quitar.limpiar()
+              setModo('quitar')
+            }}
+          >
+            <Trash2 aria-hidden className="size-4 text-peligro" />
+          </Boton>
         </>
       )}
-      {quitar.error && <Error_ texto={quitar.error} />}
     </div>
   )
 }

@@ -1,11 +1,11 @@
 'use client'
 
 import { Check, DoorOpen, Landmark } from 'lucide-react'
-import { useActionState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { useEnvio } from '@/lib/envio'
 import { fecha as formatearFecha, hoyLima, puesto } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -86,8 +86,10 @@ export function SalidaDeUnidad({
   puedeLiberar: boolean
   puedeConfirmar: boolean
 }) {
-  const [resultadoLiberar, liberar, liberando] = useActionState(liberarTesoreria, null)
-  const [resultadoSalida, confirmar, confirmando] = useActionState(confirmarSalida, null)
+  // Con `useEnvio` la constancia se queda escrita si tesorería no puede liberar
+  // todavía; antes el formulario se vaciaba con el rechazo.
+  const liberar = useEnvio(liberarTesoreria)
+  const confirmar = useEnvio(confirmarSalida)
 
   return (
     <Tarjeta>
@@ -118,7 +120,7 @@ export function SalidaDeUnidad({
         {!liberacion && puedeLiberar && (
           /* La sangría alinea el formulario con el texto de su compuerta; en el
              teléfono esos 32 px son casi un décimo del ancho y se sueltan. */
-          <form action={liberar} className="flex flex-wrap items-end gap-2 sm:ml-8">
+          <form onSubmit={liberar.alEnviar} className="flex flex-wrap items-end gap-2 sm:ml-8">
             <input type="hidden" name="orden_id" value={ordenId} />
             <Campo etiqueta="Constancia" htmlFor="observacion-liberacion" ayuda="Cómo se comprobó" className="min-w-64 flex-1">
               <Entrada
@@ -127,12 +129,12 @@ export function SalidaDeUnidad({
                 placeholder="Canceló el saldo con la factura F001-…"
               />
             </Campo>
-            <Boton type="submit" tamano="sm" cargando={liberando}>
+            <Boton type="submit" tamano="sm" cargando={liberar.enviando}>
               <Landmark aria-hidden className="size-3.5" />
               Liberar salida
             </Boton>
             <div className="w-full">
-              <Aviso resultado={resultadoLiberar} />
+              <Aviso resultado={liberar.resultado} />
             </div>
           </form>
         )}
@@ -158,15 +160,15 @@ export function SalidaDeUnidad({
         />
 
         {entrega && !entrega.salida_confirmada_en && puedeConfirmar && (
-          <form action={confirmar} className="sm:ml-8">
+          <form onSubmit={confirmar.alEnviar} className="sm:ml-8">
             <input type="hidden" name="entrega_id" value={entrega.id} />
             <input type="hidden" name="orden_id" value={ordenId} />
-            <Boton type="submit" tamano="sm" cargando={confirmando}>
+            <Boton type="submit" tamano="sm" cargando={confirmar.enviando}>
               <DoorOpen aria-hidden className="size-3.5" />
               Avisar a portería
             </Boton>
             <div className="mt-1">
-              <Aviso resultado={resultadoSalida} />
+              <Aviso resultado={confirmar.resultado} />
             </div>
           </form>
         )}

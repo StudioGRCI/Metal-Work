@@ -142,8 +142,31 @@ function Dato({ titulo, valor, pie }: { titulo: string; valor: string; pie: stri
 
 function AccionesLinea({ material, ordenId }: { material: MaterialDeOrden; ordenId: string }) {
   const [editando, setEditando] = useState(false)
+  const [confirmando, setConfirmando] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(cambiarCantidadMaterial, () => setEditando(false))
-  const quitar = useEnvio(quitarMaterial)
+  const quitar = useEnvio(quitarMaterial, () => setConfirmando(false))
+
+  // Quitar pregunta antes: el icono va pegado al lápiz y con guante se toca sin
+  // querer, y una línea borrada hay que volver a buscarla en el catálogo.
+  if (confirmando) {
+    return (
+      <form
+        onSubmit={quitar.alEnviar}
+        className="flex flex-wrap items-center gap-2 rounded-[var(--radius-base)] bg-peligro-suave px-2 py-1"
+      >
+        <input type="hidden" name="id" value={material.id} />
+        <input type="hidden" name="orden_id" value={ordenId} />
+        <span className="text-xs text-peligro">¿Quitar «{material.material}»?</span>
+        <Boton type="submit" variante="peligro" tamano="sm" cargando={quitar.enviando}>
+          Sí, quitar
+        </Boton>
+        <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setConfirmando(false)}>
+          No
+        </Boton>
+        {quitar.error && <Error_ texto={quitar.error} />}
+      </form>
+    )
+  }
 
   if (editando) {
     return (
@@ -183,20 +206,18 @@ function AccionesLinea({ material, ordenId }: { material: MaterialDeOrden; orden
       >
         <Pencil aria-hidden className="size-4" />
       </Boton>
-      <form onSubmit={quitar.alEnviar}>
-        <input type="hidden" name="id" value={material.id} />
-        <input type="hidden" name="orden_id" value={ordenId} />
-        <Boton
-          type="submit"
-          variante="fantasma"
-          tamano="sm"
-          cargando={quitar.enviando}
-          aria-label={`Quitar ${material.material} de la lista`}
-        >
-          <Trash2 aria-hidden className="size-4 text-peligro" />
-        </Boton>
-      </form>
-      {quitar.error && <Error_ texto={quitar.error} />}
+      <Boton
+        type="button"
+        variante="fantasma"
+        tamano="sm"
+        aria-label={`Quitar ${material.material} de la lista`}
+        onClick={() => {
+          quitar.limpiar()
+          setConfirmando(true)
+        }}
+      >
+        <Trash2 aria-hidden className="size-4 text-peligro" />
+      </Boton>
     </div>
   )
 }
