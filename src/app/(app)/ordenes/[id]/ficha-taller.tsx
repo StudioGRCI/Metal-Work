@@ -1,8 +1,7 @@
 'use client'
 
 import { Check, Minus, Plus, Trash2, Wand2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { startTransition, useActionState, useState, useTransition } from 'react'
+import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Progreso } from '@/components/ui/progreso'
@@ -11,7 +10,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { ConfirmarAccion } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import type { AccesorioOT, PasoVerificacion, RepuestoOT } from '@/lib/datos/ficha-ot'
-import { useEnvio } from '@/lib/envio'
+import { useAccion, useEnvio } from '@/lib/envio'
 import { cantidad as formatearCantidad, etiquetasDePuesto, fecha, puesto } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -512,13 +511,14 @@ function Casilla({
         puedeEditar={puedeEditar}
         etiqueta={etiqueta}
         className="mx-auto"
-        onCambiar={(marcar) => {
+        accion={marcarVerificacion}
+        datos={(marcar) => {
           const datos = new FormData()
           datos.set('id', pasoId)
           datos.set('orden_id', ordenId)
           datos.set('avance', avance)
           datos.set('valor', marcar ? 'si' : 'no')
-          return marcarVerificacion(null, datos)
+          return datos
         }}
       />
       {cuando && <p className="mt-0.5 text-[10px] text-texto-tenue">{fecha(cuando)}</p>}
@@ -540,41 +540,27 @@ function Visto({
   marcado,
   puedeEditar,
   etiqueta,
-  onCambiar,
+  accion,
+  datos,
   className,
 }: {
   marcado: boolean
   puedeEditar: boolean
   etiqueta: string
-  onCambiar: (marcar: boolean) => Promise<ResultadoAccion>
+  /** La acción que marca o desmarca, y los datos que le van según el sentido. */
+  accion: (previo: unknown, datos: FormData) => Promise<ResultadoAccion>
+  datos: (marcar: boolean) => FormData
   className?: string
 }) {
-  const router = useRouter()
-  const [, iniciarTransicion] = useTransition()
-  const [enviando, setEnviando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function alPulsar() {
-    if (enviando) return
-
-    setError(null)
-    setEnviando(true)
-    const salida = await onCambiar(!marcado)
-    setEnviando(false)
-
-    if (!salida.ok) {
-      setError(salida.error)
-      return
-    }
-
-    iniciarTransicion(() => router.refresh())
-  }
+  // useAccion: un toque en vuelo a la vez y el repintado al terminar, sin el
+  // par `useState(enviando)` + `router.refresh()` a mano que tenía antes.
+  const { ejecutar, enviando, error } = useAccion(accion)
 
   return (
     <>
       <button
         type="button"
-        onClick={alPulsar}
+        onClick={() => ejecutar(datos(!marcado))}
         disabled={!puedeEditar || enviando}
         aria-label={etiqueta}
         aria-pressed={marcado}
@@ -618,7 +604,7 @@ function Accesorios({
   const { alEnviar, enviando, resultado } = useEnvio(agregarAccesorioOT)
   // El resultado de quitar se muestra: antes se descartaba y, si la base
   // rechazaba, el accesorio seguía ahí sin que nadie supiera por qué.
-  const [resultadoQuitar, accionQuitar] = useActionState(quitarAccesorioOT, null)
+  const quitar = useAccion(quitarAccesorioOT)
   const [porQuitar, setPorQuitar] = useState<AccesorioOT | null>(null)
 
   const puestos = accesorios.filter((a) => a.verificado).length
@@ -632,9 +618,7 @@ function Accesorios({
     const datos = new FormData()
     datos.set('id', porQuitar.id)
     datos.set('orden_id', ordenId)
-    // Dentro de una transición: la acción es asíncrona y llamarla suelta deja
-    // el pendiente de useActionState sin actualizar (React avisa por consola).
-    startTransition(() => accionQuitar(datos))
+    quitar.ejecutar(datos)
     setPorQuitar(null)
   }
 
@@ -718,12 +702,13 @@ function Accesorios({
                     marcado={a.verificado}
                     puedeEditar={puedeEditar}
                     etiqueta={`Visto bueno de ${a.descripcion}`}
-                    onCambiar={(marcar) => {
+                    accion={marcarAccesorio}
+                    datos={(marcar) => {
                       const datos = new FormData()
                       datos.set('id', a.id)
                       datos.set('orden_id', ordenId)
                       datos.set('verificado', marcar ? 'si' : 'no')
-                      return marcarAccesorio(null, datos)
+                      return datos
                     }}
                   />
                 </div>
@@ -763,7 +748,7 @@ function Accesorios({
           </ul>
         )}
 
-        {resultadoQuitar && !resultadoQuitar.ok && <Aviso resultado={resultadoQuitar} />}
+        {quitar.error && <Aviso resultado={quitar.resultado} />}
 
         <ConfirmarAccion
           abierta={porQuitar !== null}
@@ -796,7 +781,7 @@ function Repuestos({
 }) {
   const [abierto, setAbierto] = useState(false)
   const { alEnviar, enviando, resultado } = useEnvio(agregarRepuesto)
-  const [resultadoQuitar, accionQuitar] = useActionState(quitarRepuesto, null)
+  const quitar = useAccion(quitarRepuesto)
   const [porQuitar, setPorQuitar] = useState<RepuestoOT | null>(null)
 
   // Mismo caso que los accesorios: el borrado es definitivo y el icono es un
@@ -807,7 +792,7 @@ function Repuestos({
     const datos = new FormData()
     datos.set('id', porQuitar.id)
     datos.set('orden_id', ordenId)
-    startTransition(() => accionQuitar(datos))
+    quitar.ejecutar(datos)
     setPorQuitar(null)
   }
 
@@ -901,7 +886,7 @@ function Repuestos({
           </ul>
         )}
 
-        {resultadoQuitar && !resultadoQuitar.ok && <Aviso resultado={resultadoQuitar} />}
+        {quitar.error && <Aviso resultado={quitar.resultado} />}
 
         <ConfirmarAccion
           abierta={porQuitar !== null}

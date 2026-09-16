@@ -5,6 +5,63 @@ import type { ResultadoAccion } from '@/lib/acciones'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
 
+type Opciones = {
+  /** Repintar la pantalla con lo recién guardado. No hace falta si `alTerminar` navega a otra. */
+  refrescar?: boolean
+}
+
+/**
+ * Llamar a una acción de servidor con datos ya armados: una llamada por toque,
+ * `enviando` pintado al instante y el resultado a la vista.
+ *
+ * Es la mitad de `useEnvio` que no necesita un formulario: el visto que se
+ * marca con un botón, el «quitar» que confirma una ventana. Antes cada uno de
+ * esos sitios llevaba su `useActionState` envuelto en `startTransition`, o su
+ * par `useState(enviando)` + `router.refresh()` a mano, con las mismas dos
+ * fallas que `useEnvio` explica abajo.
+ */
+export function useAccion<T = never>(
+  accion: (previo: unknown, datos: FormData) => Promise<ResultadoAccion<T>>,
+  alTerminar?: (resultado: Exito<T>) => void,
+  opciones: Opciones = {},
+) {
+  const { refrescar = true } = opciones
+  const router = useRouter()
+  const [enviando, iniciar] = useTransition()
+  const enCurso = useRef(false)
+  const [resultado, setResultado] = useState<ResultadoAccion<T> | null>(null)
+
+  function ejecutar(datos: FormData) {
+    if (enCurso.current) return
+    enCurso.current = true
+    setResultado(null)
+
+    iniciar(async () => {
+      try {
+        const salida = await accion(null, datos)
+        // Una acción que redirige (abrir la orden desde la cotización) no
+        // devuelve nada: Next ya está navegando a la pantalla nueva.
+        if (!salida) return
+        setResultado(salida)
+        if (!salida.ok) return
+
+        alTerminar?.(salida)
+        if (refrescar) iniciar(() => router.refresh())
+      } finally {
+        enCurso.current = false
+      }
+    })
+  }
+
+  return {
+    ejecutar,
+    enviando,
+    resultado,
+    error: resultado && !resultado.ok ? resultado.error : null,
+    limpiar: () => setResultado(null),
+  }
+}
+
 /**
  * Enviar un formulario a una acción de servidor: un envío por toque, el botón
  * desactivado desde el primer toque, y lo escrito a salvo si el servidor lo
@@ -41,48 +98,16 @@ type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
 export function useEnvio<T = never>(
   accion: (previo: unknown, datos: FormData) => Promise<ResultadoAccion<T>>,
   alTerminar?: (resultado: Exito<T>) => void,
-  opciones: {
-    /** Repintar la pantalla con lo recién guardado. No hace falta si `alTerminar` navega a otra. */
-    refrescar?: boolean
-  } = {},
+  opciones: Opciones = {},
 ) {
-  const { refrescar = true } = opciones
-  const router = useRouter()
-  const [enviando, iniciar] = useTransition()
-  const enCurso = useRef(false)
-  const [resultado, setResultado] = useState<ResultadoAccion<T> | null>(null)
+  const { ejecutar, ...resto } = useAccion(accion, alTerminar, opciones)
 
   function alEnviar(evento: FormEvent<HTMLFormElement>, preparar?: (datos: FormData) => void) {
     evento.preventDefault()
-    if (enCurso.current) return
-    enCurso.current = true
-
     const datos = new FormData(evento.currentTarget)
     preparar?.(datos)
-    setResultado(null)
-
-    iniciar(async () => {
-      try {
-        const salida = await accion(null, datos)
-        // Una acción que redirige (abrir la orden desde la cotización) no
-        // devuelve nada: Next ya está navegando a la pantalla nueva.
-        if (!salida) return
-        setResultado(salida)
-        if (!salida.ok) return
-
-        alTerminar?.(salida)
-        if (refrescar) iniciar(() => router.refresh())
-      } finally {
-        enCurso.current = false
-      }
-    })
+    ejecutar(datos)
   }
 
-  return {
-    alEnviar,
-    enviando,
-    resultado,
-    error: resultado && !resultado.ok ? resultado.error : null,
-    limpiar: () => setResultado(null),
-  }
+  return { alEnviar, ...resto }
 }
