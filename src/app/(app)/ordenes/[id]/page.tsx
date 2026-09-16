@@ -53,7 +53,7 @@ import { Observaciones } from './observaciones'
 import { Cumplimiento } from './cumplimiento'
 import { ActividadesDeOrden } from './actividades'
 import { MaterialesDeOrden } from './materiales'
-import { Etapas } from './etapas'
+import { Etapas, programaDeEtapa } from './etapas'
 import { FichaTaller } from './ficha-taller'
 import { FechasClave, SalidaDeUnidad } from './salida-y-plazos'
 import { Pestanas } from './pestanas'
@@ -475,12 +475,22 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                 <ol className="divide-y divide-borde">
                   {etapas.map((etapa) => {
                     const estadoEtapa = definir(ESTADO_ETAPA, etapa.estado)
+                    const programa = programaDeEtapa(etapa, hoyLima())
                     return (
                       <li key={etapa.etapa_id} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm text-texto">{etapa.etapa}</p>
-                          {etapa.estado !== 'PENDIENTE' && (
-                            <p className="text-[11px] text-texto-suave">{estadoEtapa.etiqueta}</p>
+                          <p className="flex flex-wrap items-center gap-2 text-sm text-texto">
+                            {etapa.etapa}
+                            {/* Lo que /plazos llama «Vencido», aquí con nombre de etapa. */}
+                            {programa.vencida && <Insignia tono="peligro">Vencida</Insignia>}
+                            {programa.tocaAhora && <Insignia tono="aviso">Toca ahora</Insignia>}
+                          </p>
+                          {(etapa.estado !== 'PENDIENTE' || programa.fin) && (
+                            <p className="text-[11px] text-texto-suave">
+                              {[etapa.estado !== 'PENDIENTE' ? estadoEtapa.etiqueta : null, programa.fin ? `hasta el ${fecha(programa.fin)}` : null]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </p>
                           )}
                         </div>
                         <Progreso valor={etapa.avance_porcentaje} alto="sm" className="w-20 shrink-0 sm:w-28" />
@@ -549,6 +559,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         <Etapas
           ordenId={orden.id}
           etapas={etapas}
+          hoy={hoyLima()}
+          puedePlanificar={puede(perfil, 'produccion.planificar')}
           puedeRegistrar={puede(perfil, 'produccion.registrar')}
         />
       )}

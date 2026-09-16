@@ -151,6 +151,15 @@ export function Campana({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: 
                 })}
               </ul>
             )}
+
+            {/* Los veinte últimos se caen de acá; en /avisos están todos. */}
+            <Link
+              href="/avisos"
+              onClick={() => setAbierta(false)}
+              className="flex min-h-11 items-center justify-center border-t border-borde text-xs text-acento hover:bg-superficie-2 sm:min-h-9"
+            >
+              Ver todos los avisos
+            </Link>
           </div>
         </>
       )}

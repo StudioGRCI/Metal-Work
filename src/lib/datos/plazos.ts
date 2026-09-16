@@ -23,7 +23,14 @@ function semaforoValido(valor?: string): Semaforo | undefined {
   return SEMAFOROS.includes(valor as Semaforo) ? (valor as Semaforo) : undefined
 }
 
-export async function plazosPorArea(filtros: { area?: string; plazo?: string } = {}) {
+/**
+ * Hasta dónde llega la lista. Catorce etapas por orden: con veinte órdenes
+ * vivas ya son 280 filas, y sin tope el corte de mil de PostgREST llegaba en
+ * silencio. La pantalla dice cuando se queda en el tope.
+ */
+export const TOPE_PLAZOS = 300
+
+export async function plazosPorArea(filtros: { area?: string; plazo?: string; busqueda?: string } = {}) {
   const supabase = await createClient()
 
   let consulta = supabase
@@ -33,11 +40,22 @@ export async function plazosPorArea(filtros: { area?: string; plazo?: string } =
     // fecha comprometida— al final, que no hay nada que reclamarles.
     .order('dias', { ascending: true, nullsFirst: false })
     .order('orden_numero')
+    .limit(TOPE_PLAZOS)
 
   if (filtros.area) consulta = consulta.eq('area_codigo', filtros.area)
 
   const plazo = semaforoValido(filtros.plazo)
   if (plazo) consulta = consulta.eq('plazo', plazo)
+
+  // «La 0045», la placa o el cliente: lo que se busca con la vista en el Excel.
+  // Se quitan los caracteres que PostgREST usa para separar el `or`.
+  const termino = filtros.busqueda?.trim().replace(/[,()%]/g, ' ').trim()
+  if (termino) {
+    const patron = `%${termino}%`
+    consulta = consulta.or(
+      `orden_numero.ilike.${patron},unidad.ilike.${patron},cliente.ilike.${patron},codigo_interno.ilike.${patron},placa.ilike.${patron}`,
+    )
+  }
 
   const { data, error } = await consulta
 

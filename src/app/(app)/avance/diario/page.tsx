@@ -13,6 +13,7 @@ import { Miniaturas } from '@/components/avance/miniaturas'
 import { AprobarElDia, RevisarReporte } from '@/components/avance/revisar-reporte'
 import { InsigniaRevision, NotaRevision } from '@/components/avance/revision'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { AvisoTope } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Entrada } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -642,6 +643,8 @@ export default async function PaginaDiaEnElTaller({
           </ul>
         </Tarjeta>
       )}
+
+      <AvisoTope mostradas={reportes.length} tope={500} />
     </>
   )
 }

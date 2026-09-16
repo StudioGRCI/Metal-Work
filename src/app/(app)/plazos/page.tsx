@@ -1,15 +1,17 @@
 import Link from 'next/link'
 import { AlertTriangle, CalendarClock, CircleCheck } from 'lucide-react'
 
+import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { AvisoTope } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Indicador } from '@/components/ui/indicador'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { ESTADO_PLAZO } from '@/lib/dominio/estados'
-import { fecha, moneda } from '@/lib/format'
-import { plazosPorArea, resumenDePlazos } from '@/lib/datos/plazos'
+import { fecha } from '@/lib/format'
+import { TOPE_PLAZOS, plazosPorArea, resumenDePlazos, type FilaPlazo } from '@/lib/datos/plazos'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { Reporte } from './reporte'
@@ -32,6 +34,10 @@ export const metadata = { title: 'Control de plazos' }
  * taller. De ahí `ordenes.listar`, que es entrar al módulo, en vez de
  * `ordenes.ver`, que es la llave de lectura que ventas sí necesita para sus
  * garantías.
+ *
+ * En el teléfono, una tarjeta por etapa (como /ordenes): la tabla de siete
+ * columnas obligaba a desplazarse de lado para leer el reporte, y es la
+ * pestaña de abajo del taller.
  */
 export default async function PaginaPlazos({ searchParams }: PageProps<'/plazos'>) {
   const perfil = await exigirPermiso(['ordenes.listar', 'produccion.ver'])
@@ -39,9 +45,10 @@ export default async function PaginaPlazos({ searchParams }: PageProps<'/plazos'
 
   const area = typeof params.area === 'string' ? params.area : undefined
   const plazo = typeof params.plazo === 'string' ? params.plazo : undefined
+  const busqueda = typeof params.q === 'string' ? params.q : undefined
 
   const [filas, resumen] = await Promise.all([
-    plazosPorArea({ area, plazo }),
+    plazosPorArea({ area, plazo, busqueda }),
     resumenDePlazos(),
   ])
 
@@ -73,6 +80,20 @@ export default async function PaginaPlazos({ searchParams }: PageProps<'/plazos'
       : []),
     ...(vigentes > 0 ? [{ valor: 'VIGENTE', etiqueta: `Vigente (${vigentes})`, clave: 'plazo' }] : []),
   ]
+
+  const vacio = (
+    <SinDatos
+      colSpan={7}
+      titulo={resumen.total === 0 ? 'Todavía no hay etapas que controlar' : 'Nada con ese filtro'}
+      descripcion={
+        resumen.total === 0
+          ? 'Cuando se apruebe una orden de trabajo, sus catorce etapas aparecen acá con la fecha que salió del tiempo por área de la cotización.'
+          : busqueda
+            ? 'Prueba con otro número de orden, otra placa u otro cliente.'
+            : 'Prueba con otra área o con otro plazo.'
+      }
+    />
+  )
 
   return (
     <>
@@ -109,6 +130,10 @@ export default async function PaginaPlazos({ searchParams }: PageProps<'/plazos'
         />
       </div>
 
+      <div className="mt-4">
+        <BuscadorSimple ruta="/plazos" etiqueta="Buscar por orden, unidad o cliente" marcador="N.º de orden, placa, código o cliente" />
+      </div>
+
       <PastillaFiltro
         ruta="/plazos"
         clave="area"
@@ -116,7 +141,7 @@ export default async function PaginaPlazos({ searchParams }: PageProps<'/plazos'
         params={params}
         activo={area ?? null}
         etiqueta="Filtrar por área"
-        className="mt-4"
+        className="mt-3"
       />
 
       <PastillaFiltro
@@ -129,7 +154,19 @@ export default async function PaginaPlazos({ searchParams }: PageProps<'/plazos'
         className="mt-2 mb-4"
       />
 
-      <Tarjeta className="overflow-hidden">
+      {/* El teléfono: una tarjeta por etapa, con el reporte a ancho completo. */}
+      {filas.length > 0 && (
+        <ul className="space-y-3 sm:hidden">
+          {filas.map((f) => (
+            <TarjetaEtapa key={f.etapa_id} fila={f} puedeReportar={puedeReportar} puedeVerificar={puedeVerificar} />
+          ))}
+        </ul>
+      )}
+
+      {/* La tabla se esconde en el teléfono solo cuando hay filas: sin ellas
+          es la que muestra el estado vacío, y ocultarla dejaba la pantalla en
+          blanco. */}
+      <Tarjeta className={filas.length > 0 ? 'hidden overflow-hidden sm:block' : 'overflow-hidden'}>
         <div className="overflow-x-auto">
           <Tabla>
             <TablaCabecera>
@@ -144,105 +181,160 @@ export default async function PaginaPlazos({ searchParams }: PageProps<'/plazos'
               </TR>
             </TablaCabecera>
             <tbody>
-              {filas.length === 0 ? (
-                <SinDatos
-                  colSpan={7}
-                  titulo={
-                    resumen.total === 0
-                      ? 'Todavía no hay etapas que controlar'
-                      : 'Nada con ese filtro'
-                  }
-                  descripcion={
-                    resumen.total === 0
-                      ? 'Cuando se apruebe una orden de trabajo, sus catorce etapas aparecen acá con la fecha que salió del tiempo por área de la cotización.'
-                      : 'Prueba con otra área o con otro plazo.'
-                  }
-                />
-              ) : (
-                filas.map((f) => {
-                  const semaforo = f.plazo ? ESTADO_PLAZO[f.plazo] : null
-                  const dias = f.dias
-                  const cerrada = f.plazo === 'CUMPLIDO' || f.plazo === 'CUMPLIDO_TARDE'
+              {filas.length === 0
+                ? vacio
+                : filas.map((f) => {
+                    const semaforo = f.plazo ? ESTADO_PLAZO[f.plazo] : null
+                    const dias = f.dias
+                    const cerrada = f.plazo === 'CUMPLIDO' || f.plazo === 'CUMPLIDO_TARDE'
 
-                  return (
-                    <TR key={f.etapa_id}>
-                      <TD>
-                        <Link
-                          href={`/ordenes/${f.orden_id}`}
-                          className="font-medium text-acento hover:underline"
-                        >
-                          {f.orden_numero}
-                        </Link>
-                        <p className="max-w-64 truncate text-[11px] text-texto-suave">
-                          {f.unidad}
-                        </p>
-                        {/* El código interno es como la empresa nombra la unidad
-                            en todas sus hojas; la placa muchas veces todavía no
-                            existe. */}
-                        <p className="text-[11px] text-texto-tenue">
-                          {f.codigo_interno ?? f.placa ?? f.cliente}
-                        </p>
-                      </TD>
-
-                      <TD className="hidden lg:table-cell">
-                        <span className="text-sm text-texto">{f.area_nombre ?? '—'}</span>
-                        {f.area_encargado && (
-                          <p className="text-[11px] text-texto-tenue">{f.area_encargado}</p>
-                        )}
-                      </TD>
-
-                      <TD className="max-w-44">
-                        <p className="text-sm text-texto-suave">{f.etapa_nombre}</p>
-                      </TD>
-
-                      <TD className="hidden text-xs whitespace-nowrap text-texto-suave sm:table-cell">
-                        {fecha(f.fecha_inicio_programada) ?? '—'}
-                        {' → '}
-                        {fecha(f.fecha_fin_programada) ?? '—'}
-                      </TD>
-
-                      <TD className="tabular text-right whitespace-nowrap">
-                        {cerrada || dias === null ? (
-                          <span className="text-texto-tenue">—</span>
-                        ) : (
-                          <span
-                            className={
-                              dias < 0 ? 'font-medium text-peligro' : dias < 7 ? 'text-aviso' : ''
-                            }
+                    return (
+                      <TR key={f.etapa_id}>
+                        <TD>
+                          <Link
+                            href={`/ordenes/${f.orden_id}?vista=etapas#etapa-${f.etapa_id}`}
+                            className="font-medium text-acento hover:underline"
                           >
-                            {dias < 0 ? `${dias}` : `+${dias}`}
-                          </span>
-                        )}
-                      </TD>
+                            {f.orden_numero}
+                          </Link>
+                          <p className="max-w-64 truncate text-[11px] text-texto-suave">
+                            {f.unidad}
+                          </p>
+                          {/* El código interno es como la empresa nombra la unidad
+                              en todas sus hojas; la placa muchas veces todavía no
+                              existe. */}
+                          <p className="text-[11px] text-texto-tenue">
+                            {f.codigo_interno ?? f.placa ?? f.cliente}
+                          </p>
+                        </TD>
 
-                      <TD>
-                        {semaforo ? (
-                          <Insignia tono={semaforo.tono}>{semaforo.etiqueta}</Insignia>
-                        ) : (
-                          <span className="text-[11px] text-texto-tenue">Sin fecha</span>
-                        )}
-                      </TD>
+                        <TD className="hidden lg:table-cell">
+                          <span className="text-sm text-texto">{f.area_nombre ?? '—'}</span>
+                          {f.area_encargado && (
+                            <p className="text-[11px] text-texto-tenue">{f.area_encargado}</p>
+                          )}
+                        </TD>
 
-                      <TD>
-                        <Reporte
-                          etapaId={f.etapa_id as string}
-                          ordenId={f.orden_id as string}
-                          ultimo={f.ultimo_reporte}
-                          reportadoEn={f.ultimo_reporte_en}
-                          verificadoEn={f.ultimo_reporte_verificado_en}
-                          reporteId={f.ultimo_reporte_id}
-                          puedeReportar={puedeReportar}
-                          puedeVerificar={puedeVerificar}
-                        />
-                      </TD>
-                    </TR>
-                  )
-                })
-              )}
+                        <TD className="max-w-44">
+                          <p className="text-sm text-texto-suave">{f.etapa_nombre}</p>
+                        </TD>
+
+                        <TD className="hidden text-xs whitespace-nowrap text-texto-suave sm:table-cell">
+                          {fecha(f.fecha_inicio_programada) ?? '—'}
+                          {' → '}
+                          {fecha(f.fecha_fin_programada) ?? '—'}
+                        </TD>
+
+                        <TD className="tabular text-right whitespace-nowrap">
+                          {cerrada || dias === null ? (
+                            <span className="text-texto-tenue">—</span>
+                          ) : (
+                            <span
+                              className={
+                                dias < 0 ? 'font-medium text-peligro' : dias < 7 ? 'text-aviso' : ''
+                              }
+                            >
+                              {dias < 0 ? `${dias}` : `+${dias}`}
+                            </span>
+                          )}
+                        </TD>
+
+                        <TD>
+                          {semaforo ? (
+                            <Insignia tono={semaforo.tono}>{semaforo.etiqueta}</Insignia>
+                          ) : (
+                            <span className="text-[11px] text-texto-tenue">Sin fecha</span>
+                          )}
+                        </TD>
+
+                        <TD>
+                          <Reporte
+                            etapaId={f.etapa_id as string}
+                            ordenId={f.orden_id as string}
+                            ultimo={f.ultimo_reporte}
+                            reportadoEn={f.ultimo_reporte_en}
+                            verificadoEn={f.ultimo_reporte_verificado_en}
+                            reporteId={f.ultimo_reporte_id}
+                            puedeReportar={puedeReportar}
+                            puedeVerificar={puedeVerificar}
+                          />
+                        </TD>
+                      </TR>
+                    )
+                  })}
             </tbody>
           </Tabla>
         </div>
       </Tarjeta>
+
+      <AvisoTope mostradas={filas.length} tope={TOPE_PLAZOS} />
     </>
+  )
+}
+
+/** La etapa en el teléfono: la orden, el semáforo con sus días y el reporte abajo. */
+function TarjetaEtapa({
+  fila: f,
+  puedeReportar,
+  puedeVerificar,
+}: {
+  fila: FilaPlazo
+  puedeReportar: boolean
+  puedeVerificar: boolean
+}) {
+  const semaforo = f.plazo ? ESTADO_PLAZO[f.plazo] : null
+  const dias = f.dias
+  const cerrada = f.plazo === 'CUMPLIDO' || f.plazo === 'CUMPLIDO_TARDE'
+
+  return (
+    <li>
+      <Tarjeta className="space-y-2 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <Link
+              href={`/ordenes/${f.orden_id}?vista=etapas#etapa-${f.etapa_id}`}
+              className="inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline"
+            >
+              {f.orden_numero}
+            </Link>
+            <p className="truncate text-[11px] text-texto-suave">{f.unidad}</p>
+            <p className="text-[11px] text-texto-tenue">{f.codigo_interno ?? f.placa ?? f.cliente}</p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            {semaforo ? (
+              <Insignia tono={semaforo.tono}>{semaforo.etiqueta}</Insignia>
+            ) : (
+              <span className="text-[11px] text-texto-tenue">Sin fecha</span>
+            )}
+            {!cerrada && dias !== null && (
+              <span className={`tabular text-xs ${dias < 0 ? 'font-medium text-peligro' : dias < 7 ? 'text-aviso' : 'text-texto-suave'}`}>
+                {dias < 0 ? `${dias} días` : `+${dias} días`}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <p className="text-sm text-texto">
+          {f.etapa_nombre}
+          {f.area_nombre && <span className="text-texto-suave"> · {f.area_nombre}</span>}
+        </p>
+        <p className="tabular text-[11px] text-texto-suave">
+          {fecha(f.fecha_inicio_programada) ?? '—'} → {fecha(f.fecha_fin_programada) ?? '—'}
+        </p>
+
+        <div className="border-t border-borde pt-2">
+          <Reporte
+            etapaId={f.etapa_id as string}
+            ordenId={f.orden_id as string}
+            ultimo={f.ultimo_reporte}
+            reportadoEn={f.ultimo_reporte_en}
+            verificadoEn={f.ultimo_reporte_verificado_en}
+            reporteId={f.ultimo_reporte_id}
+            puedeReportar={puedeReportar}
+            puedeVerificar={puedeVerificar}
+          />
+        </div>
+      </Tarjeta>
+    </li>
   )
 }

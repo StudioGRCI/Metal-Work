@@ -180,12 +180,17 @@ export async function ponerClienteAOrden(_previo: unknown, datos: FormData): Pro
   return { ok: true, mensaje: 'Cliente puesto.' }
 }
 
+const fechaPlana = z.string().trim().regex(/^(\d{4}-\d{2}-\d{2})?$/, 'La fecha no tiene forma de fecha').optional()
+
 const esquemaAvanceEtapa = z.object({
   etapa_id: z.string().uuid(),
   orden_id: z.string().uuid(),
   avance_porcentaje: z.coerce.number().min(0).max(100),
   estado: z.enum(['PENDIENTE', 'EN_PROCESO', 'PAUSADA', 'REQUIERE_REVISION', 'TERMINADA', 'OMITIDA']),
   observaciones: z.string().trim().optional(),
+  // El programa de la etapa: solo quien planifica las manda (abajo se comprueba).
+  fecha_inicio_programada: fechaPlana,
+  fecha_fin_programada: fechaPlana,
 })
 
 export async function actualizarEtapa(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -200,6 +205,21 @@ export async function actualizarEtapa(_previo: unknown, datos: FormData): Promis
   }
 
   const v = analisis.data
+
+  // Las fechas del programa las mueve quien tiene `produccion.planificar` (los
+  // jefes). La política de ot_etapas acepta a todo el que registra y no
+  // distingue columnas, así que la puerta es esta: un supervisor que mande la
+  // fecha en el formulario no la mueve.
+  const traeFechas = v.fecha_inicio_programada !== undefined || v.fecha_fin_programada !== undefined
+  if (traeFechas && !puede(perfil, 'produccion.planificar')) {
+    return { ok: false, error: 'Las fechas del programa las mueve el jefe de producción.' }
+  }
+  const inicio = v.fecha_inicio_programada || null
+  const fin = v.fecha_fin_programada || null
+  if (traeFechas && inicio && fin && fin < inicio) {
+    return { ok: false, error: 'La etapa no puede terminar antes de empezar.' }
+  }
+
   const supabase = await createClient()
 
   const { data, error } = await supabase
@@ -211,6 +231,7 @@ export async function actualizarEtapa(_previo: unknown, datos: FormData): Promis
       // `|| null`, así que cualquiera que moviera el porcentaje borraba en
       // silencio lo que había anotado el turno anterior.
       ...(v.observaciones !== undefined ? { observaciones: v.observaciones || null } : {}),
+      ...(traeFechas ? { fecha_inicio_programada: inicio, fecha_fin_programada: fin } : {}),
     })
     .eq('id', v.etapa_id)
     .select('id')
@@ -220,6 +241,7 @@ export async function actualizarEtapa(_previo: unknown, datos: FormData): Promis
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
+  if (traeFechas) revalidatePath('/plazos')
   return { ok: true, mensaje: 'Avance registrado.' }
 }
 

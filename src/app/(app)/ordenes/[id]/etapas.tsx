@@ -1,5 +1,6 @@
 'use client'
 
+import { CalendarDays } from 'lucide-react'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
@@ -18,14 +19,35 @@ type Etapa = Vistas<'ot_tablero_etapas'> & { observaciones: string | null }
 
 const ESTADOS = opciones(ESTADO_ETAPA, ORDEN_ESTADO_ETAPA)
 
+/**
+ * En qué va la etapa contra su programa: vencida si pasó su fecha de fin sin
+ * terminar, «toca ahora» si ya empezó según el programa. Es la misma cuenta que
+ * hace /plazos, y la que hacía falta acá: el jefe veía «Vencido» en el control
+ * de plazos y al abrir la orden no sabía a qué etapa correspondía.
+ */
+export function programaDeEtapa(etapa: Pick<Etapa, 'estado' | 'fecha_fin_real' | 'fecha_inicio_programada' | 'fecha_fin_programada'>, hoy: string) {
+  const cerrada = Boolean(etapa.fecha_fin_real) || etapa.estado === 'TERMINADA' || etapa.estado === 'OMITIDA'
+  const fin = etapa.fecha_fin_programada
+  const inicio = etapa.fecha_inicio_programada
+  const vencida = !cerrada && fin !== null && fin < hoy
+  const tocaAhora = !cerrada && !vencida && inicio !== null && inicio <= hoy
+  return { vencida, tocaAhora, inicio, fin }
+}
+
 export function Etapas({
   ordenId,
   etapas,
+  hoy,
   puedeRegistrar,
+  puedePlanificar,
 }: {
   ordenId: string
   etapas: Etapa[]
+  /** La fecha del taller (hoyLima), resuelta en el servidor. */
+  hoy: string
   puedeRegistrar: boolean
+  /** `produccion.planificar`: mover las fechas del programa. */
+  puedePlanificar: boolean
 }) {
   const [editando, setEditando] = useState<string | null>(null)
 
@@ -41,21 +63,26 @@ export function Etapas({
     )
   }
 
+  const vencidas = etapas.filter((e) => programaDeEtapa(e, hoy).vencida).length
+
   return (
     <Tarjeta>
       <TarjetaCabecera
         titulo="Etapas de producción"
-        descripcion="El avance de cada etapa alimenta el avance total de la orden, ponderado por sus horas."
+        descripcion="El avance de cada etapa alimenta el avance total de la orden, ponderado por sus horas. Las fechas son el programa: contra ellas corre el control de plazos."
+        acciones={vencidas > 0 ? <Insignia tono="peligro">{vencidas} {vencidas === 1 ? 'vencida' : 'vencidas'}</Insignia> : null}
       />
       <TarjetaCuerpo className="space-y-2 p-2">
         {etapas.map((etapa) => {
           const estado = definir(ESTADO_ETAPA, etapa.estado)
           const abierta = editando === etapa.etapa_id
+          const programa = programaDeEtapa(etapa, hoy)
 
           return (
             <div
               key={etapa.etapa_id}
-              className="rounded-[var(--radius-base)] border border-borde p-3"
+              id={`etapa-${etapa.etapa_id}`}
+              className="scroll-mt-20 rounded-[var(--radius-base)] border border-borde p-3"
             >
               <div className="flex flex-wrap items-center gap-3">
                 <span className="tabular w-6 shrink-0 text-xs text-texto-tenue">
@@ -70,6 +97,16 @@ export function Etapas({
                     {cantidad(etapa.horas_estimadas)} h estimadas
                     {etapa.fecha_fin_real && ` · terminada el ${fecha(etapa.fecha_fin_real)}`}
                   </p>
+                  {(programa.inicio || programa.fin) && (
+                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-texto-suave">
+                      <CalendarDays aria-hidden className="size-3 shrink-0" />
+                      <span className="tabular">
+                        {fecha(programa.inicio) ?? '—'} → {fecha(programa.fin) ?? '—'}
+                      </span>
+                      {programa.vencida && <Insignia tono="peligro">Vencida</Insignia>}
+                      {programa.tocaAhora && <Insignia tono="aviso">Toca ahora</Insignia>}
+                    </p>
+                  )}
                 </div>
 
                 {/* La barra ocupa la línea entera en el teléfono, donde si no
@@ -97,6 +134,7 @@ export function Etapas({
                 <FormularioEtapa
                   ordenId={ordenId}
                   etapa={etapa}
+                  puedePlanificar={puedePlanificar}
                   alTerminar={() => setEditando(null)}
                 />
               )}
@@ -111,16 +149,17 @@ export function Etapas({
 function FormularioEtapa({
   ordenId,
   etapa,
+  puedePlanificar,
   alTerminar,
 }: {
   ordenId: string
   etapa: Etapa
+  puedePlanificar: boolean
   alTerminar: () => void
 }) {
   const [avance, setAvance] = useState(Number(etapa.avance_porcentaje ?? 0))
   // El formulario se cierra únicamente cuando el guardado fue correcto.
   const { alEnviar, enviando, error } = useEnvio(actualizarEtapa, alTerminar)
-
 
   return (
     <form onSubmit={alEnviar} className="mt-3 grid gap-3 border-t border-borde pt-3 sm:grid-cols-3">
@@ -178,6 +217,30 @@ function FormularioEtapa({
           placeholder="Novedades del trabajo en esta etapa"
         />
       </Campo>
+
+      {/* El programa lo mueve quien planifica (`produccion.planificar`): los
+          jefes. Los campos solo se pintan con el permiso, y la acción los
+          rechaza sin él: ocultarlos no es una puerta. */}
+      {puedePlanificar && (
+        <>
+          <Campo etiqueta="Programada desde" htmlFor={`pi-${etapa.etapa_id}`} ayuda="Según el cronograma; vacío la deja sin fecha">
+            <Entrada
+              id={`pi-${etapa.etapa_id}`}
+              name="fecha_inicio_programada"
+              type="date"
+              defaultValue={etapa.fecha_inicio_programada ?? ''}
+            />
+          </Campo>
+          <Campo etiqueta="Programada hasta" htmlFor={`pf-${etapa.etapa_id}`} ayuda="Contra esta fecha corre el plazo">
+            <Entrada
+              id={`pf-${etapa.etapa_id}`}
+              name="fecha_fin_programada"
+              type="date"
+              defaultValue={etapa.fecha_fin_programada ?? ''}
+            />
+          </Campo>
+        </>
+      )}
 
       {error && (
         <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro sm:col-span-3">

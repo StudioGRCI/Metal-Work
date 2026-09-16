@@ -4,7 +4,7 @@ import { exigirPermiso } from '@/lib/sesion'
 
 import { FormularioOrden } from './formulario-orden'
 
-export const metadata = { title: 'Nueva orden de trabajo' }
+export const metadata = { title: 'Orden sin cotización' }
 
 export default async function PaginaNuevaOrden() {
   await exigirPermiso('ordenes.crear')
@@ -13,9 +13,9 @@ export default async function PaginaNuevaOrden() {
   return (
     <>
       <EncabezadoPagina
-        migas={[{ titulo: 'Órdenes de trabajo', ruta: '/ordenes' }, { titulo: 'Nueva' }]}
-        titulo="Nueva orden de trabajo"
-        descripcion="La orden nace en borrador. Al aprobarla se generan sus etapas de producción y queda liberada al taller."
+        migas={[{ titulo: 'Órdenes de trabajo', ruta: '/ordenes' }, { titulo: 'Sin cotización' }]}
+        titulo="Orden sin cotización"
+        descripcion="Para una reparación, una garantía o un trabajo que no salió de una cotización. Nace en borrador y Gerencia la aprueba; recién ahí se generan sus etapas. La orden de una cotización aprobada se emite desde «Cotizaciones» con el número de su papel."
       />
       <FormularioOrden catalogos={catalogos} />
     </>

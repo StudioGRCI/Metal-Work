@@ -3,6 +3,7 @@ import Link from 'next/link'
 
 import { TarjetaTrabajo } from '@/components/avance/tarjeta-trabajo'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { AvisoTope } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -348,6 +349,9 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
           </div>
         )}
       </section>
+
+      {/* El tablero trae hasta 200 unidades: si llegó justo, hay más detrás. */}
+      <AvisoTope mostradas={filas.length} tope={200} />
     </>
   )
 }

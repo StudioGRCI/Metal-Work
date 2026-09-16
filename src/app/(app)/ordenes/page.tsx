@@ -110,11 +110,22 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
         acciones={
           (puedeCrear || puedeAbrirEnTaller) && (
             <>
+              {/* El camino real es emitir desde la cotización aprobada: nace
+                  aprobada, con su número de papel, sus etapas y su PDF. La
+                  orden suelta —reparación, garantía— queda como segunda
+                  puerta, nace en borrador y la aprueba Gerencia. Con el botón
+                  primario en «Nueva orden», Administración creaba la OT por el
+                  camino equivocado y la dejaba trabada en borrador. */}
               {puedeCrear && (
-                <EnlaceBoton href="/ordenes/nueva">
-                  <Plus aria-hidden className="size-4" />
-                  Nueva orden
-                </EnlaceBoton>
+                <>
+                  <EnlaceBoton href="/cotizaciones/pdf?estado=APROBADA_SIN_OT">
+                    <Plus aria-hidden className="size-4" />
+                    Emitir OT desde cotización
+                  </EnlaceBoton>
+                  <EnlaceBoton href="/ordenes/nueva" variante="contorno">
+                    Orden sin cotización
+                  </EnlaceBoton>
+                </>
               )}
               {/* La del taller queda por revisar y la aprueba el jefe de
                   producción; la de la oficina, Gerencia. Son dos puertas. */}
@@ -210,9 +221,9 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                     </EnlaceBoton>
                   ) : (
                     puedeCrear && (
-                      <EnlaceBoton href="/ordenes/nueva" tamano="sm">
+                      <EnlaceBoton href="/cotizaciones/pdf?estado=APROBADA_SIN_OT" tamano="sm">
                         <Plus aria-hidden className="size-4" />
-                        Registrar la primera orden
+                        Emitir la primera orden desde una cotización
                       </EnlaceBoton>
                     )
                   )

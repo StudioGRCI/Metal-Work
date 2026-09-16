@@ -18,8 +18,8 @@ import {
   obtenerCliente,
   ordenesDeCliente,
 } from '@/lib/datos/comercial'
-import { catalogosOrden } from '@/lib/datos/ordenes'
 import { exigirPermiso, puede } from '@/lib/sesion'
+import { NuevoContacto } from '@/components/comercial/nuevo-contacto'
 
 import { NuevaUnidad } from '../nueva-unidad'
 
@@ -36,15 +36,20 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
   const cliente = await obtenerCliente(id)
   if (!cliente) notFound()
 
-  const [unidades, contactos, ordenes, catalogos] = await Promise.all([
+  const [unidades, contactos, ordenes] = await Promise.all([
     listarUnidades({ clienteId: id }),
     contactosDeCliente(id),
     ordenesDeCliente(id),
-    puede(perfil, 'clientes.crear') ? catalogosOrden() : Promise.resolve(null),
   ])
 
   const vendedor = cliente.vendedor as unknown as { puesto: string | null } | null
 
+  // Antes se traían cuatro catálogos (clientes, sedes, carrocerías, usuarios)
+  // solo para usarlos como «sí/no» de este botón. El permiso basta.
+  const registraUnidades = puede(perfil, 'clientes.crear')
+  // La persona del cliente se da de alta desde acá: antes solo desde la
+  // cotización nueva, y la ficha ni siquiera mostraba la tarjeta sin contactos.
+  const registraContactos = puede(perfil, ['clientes.crear', 'clientes.editar'])
   // El estado vacío de las órdenes solo ofrece abrir una a quien puede abrirla.
   const abreOrdenes = puede(perfil, 'ordenes.crear')
 
@@ -98,11 +103,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
           <TarjetaCabecera
             titulo="Unidades"
             descripcion={`${unidades.length} ${unidades.length === 1 ? 'vehículo' : 'vehículos'} registrados`}
-            acciones={
-              catalogos && (
-                <NuevaUnidad clienteId={id} />
-              )
-            }
+            acciones={registraUnidades && <NuevaUnidad clienteId={id} />}
           />
           <TarjetaCuerpo className="p-0">
             {unidades.length === 0 ? (
@@ -116,7 +117,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                 <p className="mt-1 text-xs text-texto-tenue">
                   Sin unidad no se le puede abrir una orden de trabajo.
                 </p>
-                {catalogos && (
+                {registraUnidades && (
                   <div className="mt-4 flex justify-center">
                     <NuevaUnidad clienteId={id} />
                   </div>
@@ -144,11 +145,20 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
           </TarjetaCuerpo>
         </Tarjeta>
 
-        {contactos.length > 0 && (
-          <Tarjeta>
-            <TarjetaCabecera titulo="Contactos" />
-            <TarjetaCuerpo className="space-y-3">
-              {contactos.map((c) => (
+        <Tarjeta>
+          <TarjetaCabecera
+            titulo="Contactos"
+            descripcion="A quién se le dirige la cotización: su nombre, teléfono y correo salen en el papel."
+            acciones={registraContactos && <NuevoContacto clienteId={id} refrescar />}
+          />
+          <TarjetaCuerpo className="space-y-3">
+            {contactos.length === 0 ? (
+              <p className="py-2 text-sm text-texto-suave">
+                Todavía no hay contactos.
+                {registraContactos && ' Agrega a quien recibe la cotización, para que el papel salga con su nombre.'}
+              </p>
+            ) : (
+              contactos.map((c) => (
                 <div key={c.id}>
                   <p className="flex items-center gap-2 text-sm font-medium text-texto">
                     {c.nombre}
@@ -158,12 +168,12 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                     {[c.cargo, c.telefono, c.correo].filter(Boolean).join(' · ')}
                   </p>
                 </div>
-              ))}
-            </TarjetaCuerpo>
-          </Tarjeta>
-        )}
+              ))
+            )}
+          </TarjetaCuerpo>
+        </Tarjeta>
 
-        <Tarjeta className={contactos.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+        <Tarjeta className="lg:col-span-2">
           <TarjetaCabecera
             titulo="Órdenes de trabajo"
             descripcion={`${ordenes.length} órdenes de este cliente`}
@@ -176,9 +186,9 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                 </p>
                 {abreOrdenes && (
                   <div className="mt-4 flex justify-center">
-                    <EnlaceBoton href="/ordenes/nueva" variante="contorno">
+                    <EnlaceBoton href="/cotizaciones/pdf?estado=APROBADA_SIN_OT" variante="contorno">
                       <Plus aria-hidden className="size-4" />
-                      Nueva orden de trabajo
+                      Emitir OT desde una cotización
                     </EnlaceBoton>
                   </div>
                 )}

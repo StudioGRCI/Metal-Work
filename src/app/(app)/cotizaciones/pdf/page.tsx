@@ -3,6 +3,7 @@ import Link from 'next/link'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { AvisoTope } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -295,6 +296,8 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
           })}
         </ul>
       )}
+
+      <AvisoTope mostradas={cotizaciones.length} tope={200} />
     </>
   )
 }

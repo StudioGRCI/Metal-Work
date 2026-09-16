@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { AvisoTope } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -311,6 +312,8 @@ export default async function PaginaCotizaciones({ searchParams }: PageProps<'/c
           </tbody>
         </Tabla>
       </Tarjeta>
+
+      <AvisoTope mostradas={cotizaciones.length} tope={200} />
     </>
   )
 }

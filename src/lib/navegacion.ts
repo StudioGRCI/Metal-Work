@@ -218,14 +218,19 @@ export function rutaActiva(ruta: string, rutas: string[]) {
  * Ventas, Cotizaciones, Clientes y el tablero. El nombre va corto porque la
  * pestaña es angosta.
  */
+// El orden decide qué cuatro le tocan a cada puesto (se toman las cuatro
+// primeras que puede ver): Gerencia y Diseño reciben Cotizar · Órdenes · Taller
+// · Trabajo, el taller Órdenes · Taller · El día · Plazos, Ventas Cotizar ·
+// Trabajo · Cotizaciones · Clientes. Antes las tres de cotizaciones iban
+// primero y a Gerencia le quedaban «Órdenes» y el Tablero escondidos en «Más».
 export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/cotizaciones/pdf', corto: 'Cotizar' },
-  { ruta: '/cotizaciones/trabajo', corto: 'Trabajo' },
-  { ruta: '/cotizaciones', corto: 'Cotizaciones' },
-  { ruta: '/avance', corto: 'Taller' },
   { ruta: '/ordenes', corto: 'Órdenes' },
+  { ruta: '/avance', corto: 'Taller' },
+  { ruta: '/cotizaciones/trabajo', corto: 'Trabajo' },
   { ruta: '/avance/diario', corto: 'El día' },
   { ruta: '/plazos', corto: 'Plazos' },
+  { ruta: '/cotizaciones', corto: 'Cotizaciones' },
   { ruta: '/clientes', corto: 'Clientes' },
   { ruta: '/', corto: 'Tablero' },
   { ruta: '/unidades', corto: 'Unidades' },
