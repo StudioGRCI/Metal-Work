@@ -1,11 +1,12 @@
 'use client'
 
 import { Pencil, Ruler } from 'lucide-react'
-import { useActionState, useState } from 'react'
+import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
+import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 
 import { guardarMedidasCarroceria } from './acciones'
@@ -53,7 +54,7 @@ export function MedidasCarroceria({
   puedeEditar: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
-  const [resultado, accion, guardando] = useActionState(guardarMedidasCarroceria, null)
+  const { alEnviar: accion, enviando: guardando, resultado } = useEnvio(guardarMedidasCarroceria)
 
   const dice = resumen(carroceria)
 
@@ -96,7 +97,7 @@ export function MedidasCarroceria({
         titulo={carroceria.nombre}
         descripcion="Lo que la cotización copia al elegir este tipo. Una vez copiado se corrige en la cotización, sin tocar el catálogo."
       >
-        <form action={accion} className="space-y-3">
+        <form onSubmit={accion} className="space-y-3">
           <input type="hidden" name="id" value={carroceria.id} />
 
           <div className="grid gap-3 sm:grid-cols-2">

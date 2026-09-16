@@ -21,7 +21,16 @@ import { cn } from '@/lib/utils'
  * abajo (`LayoutAplicacion`). El margen del borde inferior del iPhone lo pone
  * `safe-area-inset-bottom`.
  */
-export function BarraInferior({ permisos, esAdmin }: { permisos: string[]; esAdmin: boolean }) {
+export function BarraInferior({
+  permisos,
+  esAdmin,
+  pendientes = {},
+}: {
+  permisos: string[]
+  esAdmin: boolean
+  /** Cuántos pendientes cuelgan de cada módulo, por su ruta: el globo sobre el icono. */
+  pendientes?: Record<string, number>
+}) {
   const ruta = usePathname()
   const [abierto, setAbierto] = useState(false)
 
@@ -58,11 +67,24 @@ export function BarraInferior({ permisos, esAdmin }: { permisos: string[]; esAdm
           {pestanas.map((p) => {
             const Icono = p.icono
             const activo = p.ruta === activa
+            const n = pendientes[p.ruta] ?? 0
             return (
               <li key={p.ruta}>
-                <Link href={p.ruta} aria-current={activo ? 'page' : undefined} className={clasePestana(activo)}>
-                  <span className={claseIcono(activo)}>
+                <Link
+                  href={p.ruta}
+                  aria-current={activo ? 'page' : undefined}
+                  aria-label={n > 0 ? `${p.corto}, ${n} pendientes` : undefined}
+                  className={clasePestana(activo)}
+                >
+                  <span className={cn(claseIcono(activo), 'relative')}>
                     <Icono aria-hidden className="size-5" />
+                    {/* El mismo globo de la campana: lo que le toca a este
+                        puesto en ese módulo, sin tener que entrar a mirar. */}
+                    {n > 0 && (
+                      <span className="absolute -top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-peligro px-1 text-[10px] leading-4 font-semibold text-peligro-texto">
+                        {n > 9 ? '9+' : n}
+                      </span>
+                    )}
                   </span>
                   <span className="max-w-full truncate">{p.corto}</span>
                 </Link>

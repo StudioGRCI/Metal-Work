@@ -1,7 +1,7 @@
 'use client'
 
 import { KeyRound, Pencil, Plus, UserMinus, UserPlus } from 'lucide-react'
-import { useActionState, useState } from 'react'
+import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -9,6 +9,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { TD, TR } from '@/components/ui/tabla'
 import { Ventana } from '@/components/ui/ventana'
 import type { PersonaEnLista } from '@/lib/datos/personal'
+import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 
 import { cambiarClave, cambiarEstado, darDeAltaPersona, guardarPersona } from './acciones'
@@ -185,7 +186,7 @@ function CamposDePersona({
 
 export function AltaDePersona({ catalogos }: { catalogos: Catalogos }) {
   const [abierto, setAbierto] = useState(false)
-  const [resultado, accion, enviando] = useActionState(darDeAltaPersona, null)
+  const { alEnviar, enviando, resultado } = useEnvio(darDeAltaPersona)
 
   // Al dar de alta bien, se deja la ventana abierta para poder copiar la
   // contraseña: si se cerrara sola, se perdería y habría que cambiarla.
@@ -202,7 +203,7 @@ export function AltaDePersona({ catalogos }: { catalogos: Catalogos }) {
         titulo="Dar de alta a una persona"
         descripcion="Se crea su ficha y su acceso al sistema en un solo paso."
       >
-        <form action={accion} className="space-y-3">
+        <form onSubmit={alEnviar} className="space-y-3">
           <CamposDePersona catalogos={catalogos} />
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -246,9 +247,9 @@ export function FilaDePersona({
 }) {
   const [ventana, setVentana] = useState<'editar' | 'clave' | null>(null)
 
-  const [edicion, accionEditar, editando] = useActionState(guardarPersona, null)
-  const [claveHecha, accionClave, cambiandoClave] = useActionState(cambiarClave, null)
-  const [estadoHecho, accionEstado, cambiandoEstado] = useActionState(cambiarEstado, null)
+  const edicion = useEnvio(guardarPersona)
+  const clave = useEnvio(cambiarClave)
+  const estado = useEnvio(cambiarEstado)
 
   return (
     <>
@@ -317,12 +318,12 @@ export function FilaDePersona({
               {/* Dar de baja no pregunta: no se pierde nada —la ficha y sus
                   horas siguen ahí— y se deshace con el mismo botón, que pasa a
                   decir «Reactivar». */}
-              <form action={accionEstado} className="inline">
+              <form onSubmit={estado.alEnviar} className="inline">
                 <input type="hidden" name="id" value={persona.id} />
                 <input type="hidden" name="activo" value={persona.activo ? 'false' : 'true'} />
                 <button
                   type="submit"
-                  disabled={cambiandoEstado}
+                  disabled={estado.enviando}
                   title={persona.activo ? 'Dar de baja' : 'Reactivar'}
                   aria-label={persona.activo ? `Dar de baja a ${persona.nombres}` : `Reactivar a ${persona.nombres}`}
                   className={cn(BOTON_ICONO, 'disabled:opacity-50')}
@@ -335,10 +336,12 @@ export function FilaDePersona({
         )}
       </TR>
 
-      {(estadoHecho?.ok === false || claveHecha || edicion?.ok === false) && (
+      {(estado.resultado?.ok === false || clave.resultado || edicion.resultado?.ok === false) && (
         <TR>
           <TD colSpan={gestiona ? 7 : 6} className="py-1">
-            <Aviso resultado={estadoHecho?.ok === false ? estadoHecho : (claveHecha ?? edicion)} />
+            <Aviso
+              resultado={estado.resultado?.ok === false ? estado.resultado : (clave.resultado ?? edicion.resultado)}
+            />
           </TD>
         </TR>
       )}
@@ -349,15 +352,15 @@ export function FilaDePersona({
         titulo={`${persona.nombres} ${persona.apellidos}`}
         descripcion="Cambiar el puesto, el área o el alcance de esta persona."
       >
-        <form action={accionEditar} className="space-y-3">
+        <form onSubmit={edicion.alEnviar} className="space-y-3">
           <input type="hidden" name="id" value={persona.id} />
           <CamposDePersona catalogos={catalogos} persona={persona} />
-          <Aviso resultado={edicion} />
+          <Aviso resultado={edicion.resultado} />
           <div className="flex justify-end gap-2 pt-1">
             <Boton type="button" variante="contorno" onClick={() => setVentana(null)}>
               Cerrar
             </Boton>
-            <Boton type="submit" cargando={editando}>
+            <Boton type="submit" cargando={edicion.enviando}>
               Guardar la ficha
             </Boton>
           </div>
@@ -371,7 +374,7 @@ export function FilaDePersona({
         descripcion={`${persona.nombres} ${persona.apellidos} · ${persona.correo}`}
         ancho="sm"
       >
-        <form action={accionClave} className="space-y-3">
+        <form onSubmit={clave.alEnviar} className="space-y-3">
           <input type="hidden" name="id" value={persona.id} />
           <Campo
             etiqueta="Contraseña nueva"
@@ -388,12 +391,12 @@ export function FilaDePersona({
               autoComplete="off"
             />
           </Campo>
-          <Aviso resultado={claveHecha} />
+          <Aviso resultado={clave.resultado} />
           <div className="flex justify-end gap-2 pt-1">
             <Boton type="button" variante="contorno" onClick={() => setVentana(null)}>
-              {claveHecha?.ok ? 'Cerrar' : 'Cancelar'}
+              {clave.resultado?.ok ? 'Cerrar' : 'Cancelar'}
             </Boton>
-            <Boton type="submit" cargando={cambiandoClave}>
+            <Boton type="submit" cargando={clave.enviando}>
               Cambiar la contraseña
             </Boton>
           </div>

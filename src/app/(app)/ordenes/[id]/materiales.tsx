@@ -39,6 +39,7 @@ export function MaterialesDeOrden({
   catalogo,
   puedeDisenar,
   ordenViva,
+  motivoInactiva,
 }: {
   ordenId: string
   materiales: MaterialDeOrden[]
@@ -46,6 +47,8 @@ export function MaterialesDeOrden({
   /** `diseno.planos`: quien dibuja la unidad escribe qué lleva. */
   puedeDisenar: boolean
   ordenViva: boolean
+  /** Por qué no se toca la lista: en borrador falta la aprobación, cerrada ya no hay qué pedir. */
+  motivoInactiva?: string | null
 }) {
   const porPlano = new Set(materiales.filter((m) => m.plano_id).map((m) => m.plano_id)).size
 
@@ -76,9 +79,11 @@ export function MaterialesDeOrden({
           <TarjetaCuerpo>
             <p className="text-sm font-medium text-texto">La lista todavía está vacía</p>
             <p className="mt-1 text-sm text-texto-suave">
-              {puedeDisenar
-                ? 'Agrega el primer material con el botón de arriba: qué lleva la unidad y cuánto.'
-                : 'Diseño todavía no ha escrito qué material lleva esta unidad.'}
+              {!ordenViva
+                ? `${motivoInactiva ?? 'La orden no está en curso'}: mientras, la lista no se toca.`
+                : puedeDisenar
+                  ? 'Agrega el primer material con el botón de arriba: qué lleva la unidad y cuánto.'
+                  : 'Diseño todavía no ha escrito qué material lleva esta unidad.'}
             </p>
           </TarjetaCuerpo>
         </Tarjeta>
@@ -142,8 +147,31 @@ function Dato({ titulo, valor, pie }: { titulo: string; valor: string; pie: stri
 
 function AccionesLinea({ material, ordenId }: { material: MaterialDeOrden; ordenId: string }) {
   const [editando, setEditando] = useState(false)
+  const [confirmando, setConfirmando] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(cambiarCantidadMaterial, () => setEditando(false))
-  const quitar = useEnvio(quitarMaterial)
+  const quitar = useEnvio(quitarMaterial, () => setConfirmando(false))
+
+  // Quitar pregunta antes: el icono va pegado al lápiz y con guante se toca sin
+  // querer, y una línea borrada hay que volver a buscarla en el catálogo.
+  if (confirmando) {
+    return (
+      <form
+        onSubmit={quitar.alEnviar}
+        className="flex flex-wrap items-center gap-2 rounded-[var(--radius-base)] bg-peligro-suave px-2 py-1"
+      >
+        <input type="hidden" name="id" value={material.id} />
+        <input type="hidden" name="orden_id" value={ordenId} />
+        <span className="text-xs text-peligro">¿Quitar «{material.material}»?</span>
+        <Boton type="submit" variante="peligro" tamano="sm" cargando={quitar.enviando}>
+          Sí, quitar
+        </Boton>
+        <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setConfirmando(false)}>
+          No
+        </Boton>
+        {quitar.error && <Error_ texto={quitar.error} />}
+      </form>
+    )
+  }
 
   if (editando) {
     return (
@@ -183,20 +211,18 @@ function AccionesLinea({ material, ordenId }: { material: MaterialDeOrden; orden
       >
         <Pencil aria-hidden className="size-4" />
       </Boton>
-      <form onSubmit={quitar.alEnviar}>
-        <input type="hidden" name="id" value={material.id} />
-        <input type="hidden" name="orden_id" value={ordenId} />
-        <Boton
-          type="submit"
-          variante="fantasma"
-          tamano="sm"
-          cargando={quitar.enviando}
-          aria-label={`Quitar ${material.material} de la lista`}
-        >
-          <Trash2 aria-hidden className="size-4 text-peligro" />
-        </Boton>
-      </form>
-      {quitar.error && <Error_ texto={quitar.error} />}
+      <Boton
+        type="button"
+        variante="fantasma"
+        tamano="sm"
+        aria-label={`Quitar ${material.material} de la lista`}
+        onClick={() => {
+          quitar.limpiar()
+          setConfirmando(true)
+        }}
+      >
+        <Trash2 aria-hidden className="size-4 text-peligro" />
+      </Boton>
     </div>
   )
 }
@@ -212,9 +238,12 @@ function NuevoMaterial({
 }) {
   const [abierto, setAbierto] = useState(false)
   const [materialId, setMaterialId] = useState('')
+  // Se queda abierto después de guardar: la lista de materiales de una unidad
+  // son veinte líneas, y abrirlo cada vez eran veinte toques de más.
+  const [guardados, setGuardados] = useState(0)
   const { alEnviar, enviando, error } = useEnvio(agregarMaterial, () => {
-    setAbierto(false)
     setMaterialId('')
+    setGuardados((g) => g + 1)
   })
 
   if (!abierto) {
@@ -238,7 +267,7 @@ function NuevoMaterial({
         descripcion="Qué lleva la unidad y cuánto. El plano y la etapa son opcionales: hay material que es de la unidad entera. Si el material no está en el catálogo, se agrega en «Materiales» del menú."
       />
       <TarjetaCuerpo>
-        <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
+        <form key={guardados} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
           <input type="hidden" name="orden_id" value={ordenId} />
 
           <Campo etiqueta="Material" htmlFor="nm-material" requerido className="sm:col-span-3">
@@ -317,9 +346,14 @@ function NuevoMaterial({
             </div>
           )}
 
-          <div className="flex justify-end gap-2 sm:col-span-6">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:col-span-6">
+            {guardados > 0 && (
+              <span role="status" className="mr-auto text-xs font-medium text-exito">
+                {guardados === 1 ? 'Agregado 1 material.' : `Agregados ${guardados} materiales.`} Sigue con el próximo o cierra.
+              </span>
+            )}
             <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierto(false)}>
-              Cancelar
+              {guardados > 0 ? 'Listo' : 'Cancelar'}
             </Boton>
             <Boton type="submit" tamano="sm" cargando={enviando}>
               <PackagePlus aria-hidden className="size-4" />

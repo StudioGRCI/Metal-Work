@@ -24,9 +24,16 @@ export type ContactoElegible = { id: string; nombre: string; cargo: string | nul
 export function NuevoContacto({
   clienteId,
   onCreado,
+  refrescar = false,
 }: {
   clienteId: string
   onCreado?: (contacto: ContactoElegible) => void
+  /**
+   * Repintar la pantalla al guardar. En la cotización nueva no: el formulario
+   * se queda con lo escrito y el contacto entra por `onCreado`. En la ficha
+   * del cliente sí: la lista de contactos es del servidor.
+   */
+  refrescar?: boolean
 }) {
   const [abierto, setAbierto] = useState(false)
 
@@ -40,7 +47,7 @@ export function NuevoContacto({
       if (r.datos) onCreado?.(r.datos)
       setAbierto(false)
     },
-    { refrescar: false },
+    { refrescar },
   )
 
   return (

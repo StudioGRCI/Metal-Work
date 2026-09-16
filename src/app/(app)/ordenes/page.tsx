@@ -8,7 +8,7 @@ import { Insignia, Punto } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { cantidad, fecha, nombreCorto } from '@/lib/format'
+import { cantidad, fecha } from '@/lib/format'
 import { PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import {
@@ -55,6 +55,49 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
     ? 'Ninguna orden coincide con los filtros aplicados'
     : 'Ninguna orden registrada todavía'
 
+  // Lo que cada orden muestra se calcula una vez: la misma fila sale como
+  // tarjeta en el teléfono y como renglón de tabla en el monitor, y si cada una
+  // lo resolviera por su lado terminarían diciendo cosas distintas.
+  const filas = ordenes.map((orden) => {
+    const atraso = orden.dias_atraso ?? 0
+    // Los días que el taller tiene por delante, ya descontados los domingos y
+    // los feriados: es el número con el que se programa.
+    const habiles =
+      orden.dias_habiles_restantes === null || orden.dias_habiles_restantes === undefined
+        ? null
+        : Number(orden.dias_habiles_restantes)
+    // La unidad se nombra en un solo sitio. `unidad_id` distingue la orden que
+    // no tiene unidad —esa sí es «sin unidad asignada»— de la que la tiene y
+    // todavía no está matriculada.
+    const unidad = orden.unidad_id
+      ? {
+          placa: orden.placa,
+          codigo_interno: orden.codigo_interno,
+          numero_chasis: orden.numero_chasis,
+          marca: orden.marca,
+          modelo: orden.modelo,
+        }
+      : null
+    return {
+      orden,
+      estado: estadoDeOrden(orden.estado, orden.abierta_en_taller),
+      prioridad: definir(PRIORIDAD, orden.prioridad),
+      atraso,
+      habiles,
+      unidad,
+      sinPlaca: todaviaSinPlaca(unidad),
+      plazo:
+        atraso > 0
+          ? { texto: `${atraso} ${atraso === 1 ? 'día' : 'días'} de atraso`, clase: 'font-medium text-peligro' }
+          : habiles === null
+            ? null
+            : {
+                texto: habiles === 0 ? 'se entrega hoy' : `quedan ${habiles} ${habiles === 1 ? 'día' : 'días'} de taller`,
+                clase: habiles <= 3 ? 'font-medium text-aviso' : 'text-texto-suave',
+              },
+    }
+  })
+
   return (
     <>
       <EncabezadoPagina
@@ -67,11 +110,22 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
         acciones={
           (puedeCrear || puedeAbrirEnTaller) && (
             <>
+              {/* El camino real es emitir desde la cotización aprobada: nace
+                  aprobada, con su número de papel, sus etapas y su PDF. La
+                  orden suelta —reparación, garantía— queda como segunda
+                  puerta, nace en borrador y la aprueba Gerencia. Con el botón
+                  primario en «Nueva orden», Administración creaba la OT por el
+                  camino equivocado y la dejaba trabada en borrador. */}
               {puedeCrear && (
-                <EnlaceBoton href="/ordenes/nueva">
-                  <Plus aria-hidden className="size-4" />
-                  Nueva orden
-                </EnlaceBoton>
+                <>
+                  <EnlaceBoton href="/cotizaciones/pdf?estado=APROBADA_SIN_OT">
+                    <Plus aria-hidden className="size-4" />
+                    Emitir OT desde cotización
+                  </EnlaceBoton>
+                  <EnlaceBoton href="/ordenes/nueva" variante="contorno">
+                    Orden sin cotización
+                  </EnlaceBoton>
+                </>
               )}
               {/* La del taller queda por revisar y la aprueba el jefe de
                   producción; la de la oficina, Gerencia. Son dos puertas. */}
@@ -88,7 +142,53 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
 
       <FiltrosOrdenes />
 
-      <Tarjeta className="mt-4 overflow-hidden">
+      {/* En el teléfono, una tarjeta por orden que se toca entera: la tabla no
+          cabía y solo se leía el número y medio cliente. */}
+      {filas.length > 0 && (
+        <ul className="mt-4 space-y-3 sm:hidden">
+          {filas.map(({ orden, estado, prioridad, unidad, sinPlaca, plazo }) => (
+            <li key={orden.id}>
+              <Link
+                href={`/ordenes/${orden.id}`}
+                className="block rounded-[var(--radius-base)] border border-borde bg-superficie p-4 shadow-[var(--sombra)] active:bg-superficie-2"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold text-acento">{orden.numero}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="flex items-center gap-1 text-[11px] text-texto-suave">
+                      <Punto tono={prioridad.tono} />
+                      {prioridad.etiqueta}
+                    </span>
+                    <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+                  </span>
+                </div>
+                <p className="mt-2 text-sm font-medium text-texto">
+                  {orden.cliente ??
+                    (orden.cliente_id === null ? <span className="text-aviso">Sin cliente todavía</span> : null)}
+                </p>
+                <p className="text-xs text-texto-suave">
+                  <span className={sinPlaca ? 'text-texto-tenue' : undefined}>{nombreDeUnidad(unidad)}</span>
+                  {orden.tipo_carroceria ? ` · ${orden.tipo_carroceria}` : ''}
+                </p>
+                <div className="mt-3 flex items-end justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <Progreso valor={orden.avance_porcentaje} mostrarValor alto="sm" />
+                    <p className="mt-1 text-[11px] text-texto-suave">
+                      {orden.etapas_terminadas ?? 0} de {orden.etapas_total ?? 0} etapas
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-sm text-texto">{fecha(orden.fecha_entrega_comprometida)}</p>
+                    {plazo && <p className={`text-[11px] ${plazo.clase}`}>{plazo.texto}</p>}
+                  </div>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Tarjeta className={filas.length > 0 ? 'mt-4 hidden overflow-hidden sm:block' : 'mt-4 overflow-hidden'}>
         <Tabla>
           <TablaCabecera>
             <tr>
@@ -121,40 +221,16 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                     </EnlaceBoton>
                   ) : (
                     puedeCrear && (
-                      <EnlaceBoton href="/ordenes/nueva" tamano="sm">
+                      <EnlaceBoton href="/cotizaciones/pdf?estado=APROBADA_SIN_OT" tamano="sm">
                         <Plus aria-hidden className="size-4" />
-                        Registrar la primera orden
+                        Emitir la primera orden desde una cotización
                       </EnlaceBoton>
                     )
                   )
                 }
               />
             ) : (
-              ordenes.map((orden) => {
-                const estado = estadoDeOrden(orden.estado, orden.abierta_en_taller)
-                const prioridad = definir(PRIORIDAD, orden.prioridad)
-                const atraso = orden.dias_atraso ?? 0
-                // Los días que el taller tiene por delante, ya descontados los
-                // domingos y los feriados: es el número con el que se programa.
-                const habiles =
-                  orden.dias_habiles_restantes === null ||
-                  orden.dias_habiles_restantes === undefined
-                    ? null
-                    : Number(orden.dias_habiles_restantes)
-                // La unidad se nombra en un solo sitio. `unidad_id` distingue
-                // la orden que no tiene unidad —esa sí es «sin unidad
-                // asignada»— de la que la tiene y todavía no está matriculada.
-                const unidad = orden.unidad_id
-                  ? {
-                      placa: orden.placa,
-                      codigo_interno: orden.codigo_interno,
-                      numero_chasis: orden.numero_chasis,
-                      marca: orden.marca,
-                      modelo: orden.modelo,
-                    }
-                  : null
-                const sinPlaca = todaviaSinPlaca(unidad)
-
+              filas.map(({ orden, estado, prioridad, unidad, sinPlaca, plazo }) => {
                 return (
                   <TR key={orden.id}>
                     <TD className="whitespace-nowrap">
@@ -191,7 +267,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                         {/* El responsable no tiene columna propia en el
                             teléfono: viaja aquí, pegado a la unidad. */}
                         {orden.responsable && (
-                          <span className="sm:hidden"> · {nombreCorto(orden.responsable)}</span>
+                          <span className="sm:hidden"> · {orden.responsable}</span>
                         )}
                       </p>
                     </TD>
@@ -217,25 +293,11 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
 
                     <TD className="whitespace-nowrap">
                       {fecha(orden.fecha_entrega_comprometida)}
-                      {atraso > 0 ? (
-                        <p className="text-[11px] font-medium text-peligro">
-                          {atraso} {atraso === 1 ? 'día' : 'días'} de atraso
-                        </p>
-                      ) : (
-                        habiles !== null && (
-                          <p
-                            className={`text-[11px] ${habiles <= 3 ? 'font-medium text-aviso' : 'text-texto-suave'}`}
-                          >
-                            {habiles === 0
-                              ? 'se entrega hoy'
-                              : `quedan ${habiles} ${habiles === 1 ? 'día' : 'días'} de taller`}
-                          </p>
-                        )
-                      )}
+                      {plazo && <p className={`text-[11px] ${plazo.clase}`}>{plazo.texto}</p>}
                     </TD>
 
                     <TD className="hidden whitespace-nowrap text-texto-suave sm:table-cell">
-                      {nombreCorto(orden.responsable)}
+                      {orden.responsable ?? '—'}
                     </TD>
                   </TR>
                 )

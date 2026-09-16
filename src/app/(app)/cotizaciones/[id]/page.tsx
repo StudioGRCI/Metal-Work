@@ -9,7 +9,7 @@ import { Indicador } from '@/components/ui/indicador'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_COTIZACION, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
-import { fecha, fechaHora, moneda, numero, porcentaje } from '@/lib/format'
+import { fecha, fechaHora, moneda, numero, porcentaje, puesto } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { obtenerCotizacion, partidasDeCotizacion } from '@/lib/datos/comercial'
 import { catalogosOrden } from '@/lib/datos/ordenes'
@@ -73,8 +73,8 @@ export default async function PaginaCotizacion({
     | { id: string; placa: string | null; marca: string | null; modelo: string | null }
     | null
   const carroceria = cotizacion.tipo_carroceria as unknown as { nombre: string } | null
-  const vendedor = cotizacion.vendedor as unknown as { nombres: string; apellidos: string } | null
-  const anulador = cotizacion.anulador as unknown as { nombres: string; apellidos: string } | null
+  const vendedor = cotizacion.vendedor as unknown as { puesto: string | null } | null
+  const anulador = cotizacion.anulador as unknown as { puesto: string | null } | null
 
   /*
    * Una sola bandera «editable» metía en la misma mano dos trabajos distintos.
@@ -241,7 +241,7 @@ export default async function PaginaCotizacion({
       {cotizacion.estado === 'ANULADA' && (
         <p className="mb-4 rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-sm text-peligro">
           <strong>Anulada:</strong> {cotizacion.motivo_anulacion || 'sin motivo registrado'}
-          {anulador && ` · ${anulador.nombres} ${anulador.apellidos}`}
+          {anulador && ` · ${puesto(anulador)}`}
           {cotizacion.anulada_en && ` · ${fechaHora(cotizacion.anulada_en)}`}
         </p>
       )}
@@ -342,7 +342,7 @@ export default async function PaginaCotizacion({
             <Dato etiqueta="Forma de pago" valor={cotizacion.forma_pago} />
             <Dato
               etiqueta="Vendedor"
-              valor={vendedor ? `${vendedor.nombres} ${vendedor.apellidos}` : null}
+              valor={vendedor ? puesto(vendedor) : null}
             />
             {cotizacion.fecha_aprobacion && (
               <Dato etiqueta="Aprobada" valor={fecha(cotizacion.fecha_aprobacion)} />

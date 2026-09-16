@@ -24,9 +24,24 @@ export const Entrada = React.forwardRef<HTMLInputElement, React.InputHTMLAttribu
 export const AreaTexto = React.forwardRef<
   HTMLTextAreaElement,
   React.TextareaHTMLAttributes<HTMLTextAreaElement>
->(function AreaTexto({ className, ...props }, ref) {
+>(function AreaTexto({ className, onKeyDown, ...props }, ref) {
   // Sin alto fijo: crece con el texto y el `min-h` ya deja sitio para el dedo.
-  return <textarea ref={ref} className={cn(BASE_CONTROL, 'min-h-20 py-2', className)} {...props} />
+  // Ctrl+Enter (⌘+Enter en Mac) manda el formulario: en una nota corta, Enter
+  // solo hace un salto de línea y había que ir al botón con el ratón.
+  return (
+    <textarea
+      ref={ref}
+      className={cn(BASE_CONTROL, 'min-h-20 py-2', className)}
+      onKeyDown={(e) => {
+        onKeyDown?.(e)
+        if (!e.defaultPrevented && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault()
+          e.currentTarget.form?.requestSubmit()
+        }
+      }}
+      {...props}
+    />
+  )
 })
 
 export const Seleccion = React.forwardRef<

@@ -1,3 +1,4 @@
+import { FileText } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 
@@ -7,8 +8,8 @@ import { Insignia, Punto } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
-import { fecha, fechaHora, hoyLima, moneda, numero as fmtNumero } from '@/lib/format'
+import { ESTADO_ETAPA, PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
+import { fecha, fechaHora, hoyLima, moneda, numero as fmtNumero, puesto } from '@/lib/format'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import {
   clientesParaElegir,
@@ -20,6 +21,7 @@ import {
 } from '@/lib/datos/ordenes'
 import { actividadesDeOrden, areasDelTaller } from '@/lib/datos/actividades'
 import { adjuntosDeOrden } from '@/lib/datos/adjuntos'
+import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
 import { cumplimientoDeOrden } from '@/lib/datos/cumplimiento'
 import {
@@ -28,12 +30,16 @@ import {
   repuestosDeOrden,
   verificacionesDeOrden,
 } from '@/lib/datos/ficha-ot'
+import { observacionesDeOrden } from '@/lib/datos/observaciones'
+import { pendientesDeOrden } from '@/lib/datos/pendientes-ot'
 import {
   areasDeSuMano,
+  areasParaArmar,
   exigirPermiso,
   puede,
   puedeCorregirReporte,
   puedeEliminarReporte,
+  puedeResolverObservacion,
 } from '@/lib/sesion'
 import type { CodigoMoneda } from '@/lib/format'
 
@@ -43,13 +49,15 @@ import { PonerCliente } from './poner-cliente'
 import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
 
 import { Bitacora } from './bitacora'
+import { Observaciones } from './observaciones'
 import { Cumplimiento } from './cumplimiento'
 import { ActividadesDeOrden } from './actividades'
 import { MaterialesDeOrden } from './materiales'
-import { Etapas } from './etapas'
+import { Etapas, programaDeEtapa } from './etapas'
 import { FichaTaller } from './ficha-taller'
 import { FechasClave, SalidaDeUnidad } from './salida-y-plazos'
 import { Pestanas } from './pestanas'
+import { TeToca, queMeToca } from './te-toca'
 
 export async function generateMetadata({ params }: PageProps<'/ordenes/[id]'>): Promise<Metadata> {
   const { id } = await params
@@ -84,8 +92,27 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const { id } = await params
   const query = await searchParams
 
-  const orden = await obtenerOrden(id)
+  // La cotización de la que salió va en la cabecera de todas las pestañas; se
+  // pide junto con la orden y solo si quien mira ve cotizaciones.
+  const [orden, cotizacionPdf, pendientes] = await Promise.all([
+    obtenerOrden(id),
+    puede(perfil, 'cotizaciones.ver') ? cotizacionPdfDeOrden(id) : Promise.resolve(null),
+    // Lo pendiente se cuenta en todas las pestañas: es lo que las numera.
+    pendientesDeOrden(id),
+  ])
   if (!orden) notFound()
+
+  const toca = queMeToca(perfil, pendientes, orden)
+  // Por qué la hoja de Diseño no acepta planos: en borrador falta quien la
+  // apruebe; cerrada, ya no hay qué repartir.
+  const motivoInactiva =
+    orden.estado === 'BORRADOR'
+      ? orden.abierta_en_taller
+        ? 'Falta que el jefe de producción apruebe la orden'
+        : 'Falta que Gerencia apruebe la orden'
+      : ESTADOS_CERRADOS.includes(orden.estado)
+        ? 'La orden ya se cerró'
+        : null
 
   const vista: Vista = VISTAS.includes(query.vista as Vista) ? (query.vista as Vista) : 'resumen'
 
@@ -125,11 +152,32 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   // La lista de Diseño y su catálogo.
   const listaMateriales = vista === 'materiales' ? await materialesParaPantalla(id) : null
 
+  // De qué mano es quien mira la hoja de cumplimiento: el supervisor de
+  // Maestranza ve solo sus botones; el jefe (cualquier área) y la oficina, los dos.
+  const codigoDeSuArea =
+    vista === 'cumplimiento' && !puede(perfil, 'produccion.cualquier_area') && perfil.area_id
+      ? ((await areasDelTaller()).find((a) => a.id === perfil.area_id)?.codigo ?? null)
+      : null
+  const manoDelTaller = codigoDeSuArea === 'MTZ' || codigoDeSuArea === 'PRD' ? codigoDeSuArea : null
+
   // La hoja de avance de cada area, con sus actividades y el diario.
   const hojaAreas =
     vista === 'actividades'
       ? await Promise.all([actividadesDeOrden(id), areasDelTaller()])
       : null
+  // Diseño las arma todas (106); el jefe y el supervisor, las de su mano.
+  const areasArmables = hojaAreas ? areasParaArmar(perfil, hojaAreas[1]) : []
+  // Y las que ve: las que arma más las de su mano. Sin estas, el operario —que
+  // reporta pero no arma— se quedaba sin su hoja y sin «Reportar día».
+  const areasVisibles = hojaAreas
+    ? hojaAreas[1].filter(
+        (a) => areasArmables.some((x) => x.id === a.id) || areasDeSuMano(perfil, [a]).length > 0,
+      )
+    : []
+
+  // Las observaciones van arriba del resumen, con las áreas a las que se dirigen.
+  const [observaciones, areasParaObservar] =
+    vista === 'resumen' ? await Promise.all([observacionesDeOrden(id), areasDelTaller()]) : [[], []]
 
   // Los archivos de la orden (099): en el resumen y junto a la hoja, que es
   // donde el taller los busca. Quitarlos es de quien los subió, la oficina o
@@ -165,21 +213,24 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     telefono: string | null
   } | null
   // La placa dejó de ser obligatoria: la unidad existe desde el chasis y la
-  // matrícula llega meses después, con la tarjeta de propiedad.
-  // `codigo_interno` va opcional porque el select de `obtenerOrden` todavía no
-  // lo trae; en cuanto lo traiga, nombreDeUnidad lo usa sin tocar esta pantalla.
+  // matrícula llega meses después, con la tarjeta de propiedad. Mientras, la
+  // nombra su número FMI o su código de fábrica (`nombreDeUnidad`).
   const unidad = orden.unidad as unknown as {
     placa: string | null
-    codigo_interno?: string | null
+    numero_fmi: string | null
+    codigo_interno: string | null
     marca: string | null
     modelo: string | null
     anio: number | null
     numero_chasis: string | null
   } | null
   const sede = orden.sede as unknown as { nombre: string }
-  const responsable = orden.responsable as unknown as { nombres: string; apellidos: string } | null
+  const responsable = orden.responsable as unknown as { puesto: string | null } | null
   const tipoCarroceria = orden.tipo_carroceria as unknown as { nombre: string } | null
   const cotizacion = orden.cotizacion as unknown as { numero: string } | null
+  // El monto es de quien arma o cobra la cotización, y solo cuando lo hay: la
+  // orden que sale de la cotización en PDF no lo trae, y «S/ 0.00» mentía.
+  const verMonto = Number(orden.monto_presupuestado ?? 0) > 0 && puede(perfil, ['cotizaciones.costear', 'pagos.ver'])
 
   // Comparación de texto contra la fecha de hoy en el taller: son fechas planas
   // YYYY-MM-DD y `hoyLima()` da la del taller, no la de UTC, que de noche ya va
@@ -207,7 +258,19 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
             </span>
           </span>
         }
-        descripcion={orden.descripcion}
+        descripcion={
+          /* Quien abre una orden busca primero de quién es y qué unidad: el
+             número solo no lo dice. Van en <span> porque la descripción ya es
+             un <p>. */
+          <>
+            {cliente?.razon_social && (
+              <span className="block font-medium text-texto">{cliente.razon_social}</span>
+            )}
+            <span className="block">
+              {[unidad ? nombreDeUnidad(unidad) : null, orden.descripcion].filter(Boolean).join(' · ')}
+            </span>
+          </>
+        }
         acciones={
           <AccionesEstado
             orden={{ id: orden.id, estado: orden.estado, abiertaEnTaller: orden.abierta_en_taller }}
@@ -219,7 +282,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
       {query.creada === '1' && (
         <p className="mb-4 rounded-[var(--radius-base)] bg-exito-suave px-3 py-2 text-sm text-exito">
-          Orden registrada correctamente. Apruébala para generar sus etapas de producción.
+          {/* A quien no aprueba no se le pide que apruebe: se le dice quién lo hace. */}
+          {puede(perfil, 'ordenes.aprobar')
+            ? 'Orden registrada. Apruébala para que nazcan sus etapas de producción.'
+            : 'Orden registrada. Gerencia tiene que aprobarla para que nazcan sus etapas de producción; ya se le avisó.'}
         </p>
       )}
 
@@ -249,32 +315,86 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       )}
 
       {/* Dos por fila desde el teléfono: las tarjetas apiladas se comían la
-          pantalla entera antes de llegar a las pestañas. El avance lleva a su
-          pestaña; el presupuesto es el de la cotización que abrió la orden. */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+          pantalla entera antes de llegar a las pestañas. La tercera ocupa la
+          fila entera ahí. `min-w-0` deja que cada tarjeta se achique: sin él,
+          el contenido más ancho estiraba la columna fuera de la pantalla. */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 *:min-w-0">
         <Indicador
           titulo="Avance"
           valor={<Progreso valor={orden.avance_porcentaje} mostrarValor />}
           pie="Ponderado por las horas de cada etapa"
-          href={`/ordenes/${orden.id}?vista=avance`}
+          href={`/ordenes/${orden.id}?vista=etapas`}
         />
         <Indicador
-          titulo="Presupuesto"
-          valor={moneda(orden.monto_presupuestado, orden.moneda as CodigoMoneda)}
-          pie={cotizacion ? `Cotización ${cotizacion.numero}` : 'Sin cotización asociada'}
-        />
-        <Indicador
-          titulo="Entrega comprometida"
+          titulo="Entrega"
           valor={fecha(orden.fecha_entrega_comprometida)}
           tono={entregaVencida ? 'peligro' : 'neutro'}
           pie={pieDeEntrega(orden.fecha_fin_real, orden.fecha_entrega_comprometida, entregaVencida)}
         />
+        {/* Quien no ve cotizaciones —el taller— no sabría si la orden salió de
+            una o no: para él la tercera dice qué se fabrica. */}
+        {!verMonto && !puede(perfil, 'cotizaciones.ver') ? (
+          <Indicador
+            className="col-span-2 lg:col-span-1"
+            titulo="Carrocería"
+            valor={tipoCarroceria?.nombre ?? '—'}
+            pie={definir(TIPO_TRABAJO, orden.tipo_trabajo).etiqueta}
+          />
+        ) : (
+        <Indicador
+          className="col-span-2 lg:col-span-1"
+          titulo={verMonto ? 'Presupuesto' : 'Cotización'}
+          valor={
+            verMonto
+              ? moneda(orden.monto_presupuestado, orden.moneda as CodigoMoneda)
+              : (cotizacionPdf?.numero ?? cotizacion?.numero ?? '—')
+          }
+          pie={
+            cotizacionPdf?.url ? (
+              <a
+                href={cotizacionPdf.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex min-h-11 items-center gap-1 font-medium text-acento hover:underline sm:min-h-0"
+              >
+                <FileText aria-hidden className="size-3.5 shrink-0" />
+                {verMonto ? `Cotización ${cotizacionPdf.numero}` : 'Abrir la cotización'}
+              </a>
+            ) : cotizacion ? (
+              verMonto ? `Cotización ${cotizacion.numero}` : 'La cotización de venta que abrió la orden'
+            ) : cotizacionPdf ? (
+              'La cotización de la que salió la orden'
+            ) : (
+              'La orden no salió de una cotización'
+            )
+          }
+        />
+        )}
       </div>
 
-      <Pestanas ordenId={orden.id} activa={vista} />
+      <TeToca ordenId={orden.id} items={toca.items} />
+
+      <Pestanas ordenId={orden.id} activa={vista} contadores={toca.contadores} />
 
       {vista === 'resumen' && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2 *:min-w-0">
+          <Observaciones
+            ordenId={orden.id}
+            observaciones={observaciones.map((o) => ({ ...o, resoluble: puedeResolverObservacion(perfil, o) }))}
+            areas={areasParaObservar}
+            puedeAnotar={orden.estado !== 'ANULADA'}
+            /* «Observar» desde una pieza o una actividad llega con el área y el
+               encabezado en la URL; el texto se acota porque es de la URL. */
+            preseleccion={
+              typeof query.observar === 'string' && /^[A-Z]{2,5}$/.test(query.observar)
+                ? {
+                    areaCodigo: query.observar,
+                    texto: typeof query.sobre === 'string' ? query.sobre.slice(0, 300) : '',
+                  }
+                : null
+            }
+          />
+
           <Tarjeta>
             <TarjetaCabecera titulo="Cliente y unidad" />
             <TarjetaCuerpo className="space-y-0">
@@ -313,24 +433,12 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               <Dato etiqueta="Taller" valor={sede.nombre} />
               <Dato
                 etiqueta="Responsable"
-                valor={responsable ? `${responsable.nombres} ${responsable.apellidos}` : null}
+                valor={responsable ? puesto(responsable) : null}
               />
               <Dato etiqueta="Registrada" valor={fecha(orden.fecha_registro)} />
               <Dato etiqueta="Inicio real" valor={fechaHora(orden.fecha_inicio_real)} />
             </TarjetaCuerpo>
           </Tarjeta>
-
-          {fechasClave && <FechasClave fechas={fechasClave} />}
-
-          {salida && (
-            <SalidaDeUnidad
-              ordenId={orden.id}
-              liberacion={salida.liberacion}
-              entrega={salida.entrega}
-              puedeLiberar={puede(perfil, 'tesoreria.liberar')}
-              puedeConfirmar={puede(perfil, ['ordenes.entregar', 'produccion.actividades'])}
-            />
-          )}
 
           {orden.especificaciones_tecnicas && (
             <Tarjeta className="lg:col-span-2">
@@ -343,39 +451,80 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
             </Tarjeta>
           )}
 
-          <Tarjeta className="lg:col-span-2">
+          {/* Las etapas a la izquierda, a lo largo; lo demás apilado a la
+              derecha. Antes las fechas dejaban media fila en blanco y las
+              etapas ocupaban el ancho entero con el nombre cortado. */}
+          <Tarjeta>
             <TarjetaCabecera
               titulo="Etapas de producción"
               descripcion={`${etapas.filter((e) => e.estado === 'TERMINADA').length} de ${etapas.length} terminadas`}
+              acciones={
+                etapas.length > 0 && (
+                  <EnlaceBoton href={`/ordenes/${orden.id}?vista=etapas`} variante="fantasma" tamano="sm">
+                    Ver etapas
+                  </EnlaceBoton>
+                )
+              }
             />
-            <TarjetaCuerpo className="space-y-2">
+            <TarjetaCuerpo>
               {etapas.length === 0 ? (
                 <p className="py-4 text-center text-sm text-texto-suave">
                   Las etapas se generan al aprobar la orden.
                 </p>
               ) : (
-                etapas.map((etapa) => (
-                  <div key={etapa.etapa_id} className="flex items-center gap-3">
-                    {/* En el teléfono el nombre cede sitio a la barra, que es
-                        lo que se viene a mirar; en el monitor no se mueve. */}
-                    <span className="w-28 shrink-0 truncate text-sm text-texto sm:w-44">
-                      {etapa.etapa}
-                    </span>
-                    <Progreso valor={etapa.avance_porcentaje} alto="sm" />
-                    <span className="tabular w-12 shrink-0 text-right text-xs text-texto-suave">
-                      {fmtNumero(etapa.avance_porcentaje, 0)}%
-                    </span>
-                  </div>
-                ))
+                <ol className="divide-y divide-borde">
+                  {etapas.map((etapa) => {
+                    const estadoEtapa = definir(ESTADO_ETAPA, etapa.estado)
+                    const programa = programaDeEtapa(etapa, hoyLima())
+                    return (
+                      <li key={etapa.etapa_id} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
+                        <div className="min-w-0 flex-1">
+                          <p className="flex flex-wrap items-center gap-2 text-sm text-texto">
+                            {etapa.etapa}
+                            {/* Lo que /plazos llama «Vencido», aquí con nombre de etapa. */}
+                            {programa.vencida && <Insignia tono="peligro">Vencida</Insignia>}
+                            {programa.tocaAhora && <Insignia tono="aviso">Toca ahora</Insignia>}
+                          </p>
+                          {(etapa.estado !== 'PENDIENTE' || programa.fin) && (
+                            <p className="text-[11px] text-texto-suave">
+                              {[etapa.estado !== 'PENDIENTE' ? estadoEtapa.etiqueta : null, programa.fin ? `hasta el ${fecha(programa.fin)}` : null]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </p>
+                          )}
+                        </div>
+                        <Progreso valor={etapa.avance_porcentaje} alto="sm" className="w-20 shrink-0 sm:w-28" />
+                        <span className="tabular w-10 shrink-0 text-right text-xs text-texto-suave">
+                          {fmtNumero(etapa.avance_porcentaje, 0)}%
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ol>
               )}
             </TarjetaCuerpo>
           </Tarjeta>
 
-          {archivos && (
-            <div className="lg:col-span-2">
+          <div className="space-y-4">
+            {salida && (
+              <SalidaDeUnidad
+                ordenId={orden.id}
+                liberacion={salida.liberacion}
+                entrega={salida.entrega}
+                puedeLiberar={puede(perfil, 'tesoreria.liberar')}
+                puedeConfirmar={puede(perfil, ['ordenes.entregar', 'produccion.actividades'])}
+              />
+            )}
+            {fechasClave && (
+              <FechasClave
+                fechas={fechasClave}
+                disenoCumplida={pendientes.planos > 0 && pendientes.planosEntregados >= pendientes.planos}
+              />
+            )}
+            {archivos && (
               <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos} puedeSubir={puedeSubirArchivos} />
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
@@ -410,6 +559,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         <Etapas
           ordenId={orden.id}
           etapas={etapas}
+          hoy={hoyLima()}
+          puedePlanificar={puede(perfil, 'produccion.planificar')}
           puedeRegistrar={puede(perfil, 'produccion.registrar')}
         />
       )}
@@ -421,7 +572,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           planos={cumplimiento?.planos ?? []}
           puedeDisenar={puede(perfil, 'diseno.planos')}
           puedeReportar={puede(perfil, 'produccion.registrar')}
-          ordenViva={!['BORRADOR', ...ESTADOS_CERRADOS].includes(orden.estado)}
+          areaPropia={manoDelTaller}
+          puedeObservar={orden.estado !== 'ANULADA'}
+          ordenViva={motivoInactiva === null}
+          motivoInactiva={motivoInactiva}
         />
       )}
 
@@ -431,7 +585,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           materiales={listaMateriales.materiales}
           catalogo={listaMateriales.catalogo}
           puedeDisenar={puede(perfil, 'diseno.planos')}
-          ordenViva={!['BORRADOR', ...ESTADOS_CERRADOS].includes(orden.estado)}
+          ordenViva={motivoInactiva === null}
+          motivoInactiva={motivoInactiva}
         />
       )}
 
@@ -442,13 +597,12 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           areas={hojaAreas[0].areas}
           diario={hojaAreas[0].diario}
           /* Las áreas de la lista son las que esta persona puede escribir: la
-             suya, o todas si responde por el taller entero. Ofrecerle las que
-             el RLS le va a rechazar es prometerle un botón que no hace nada. */
-          areasDisponibles={areasDeSuMano(perfil, hojaAreas[1])}
-          puedeArmar={
-            puede(perfil, 'produccion.actividades') &&
-            areasDeSuMano(perfil, hojaAreas[1]).length > 0
-          }
+             suya, o todas si responde por el taller entero o es Diseño.
+             Ofrecerle las que el RLS le va a rechazar es prometerle un botón
+             que no hace nada. */
+          areasDisponibles={areasArmables}
+          areasVisibles={areasVisibles}
+          puedeArmar={areasArmables.length > 0}
           puedeReportar={puede(perfil, 'produccion.registrar')}
           areaPropia={perfil.area_id}
           aprueba={puede(perfil, 'produccion.aprobar_reportes')}
@@ -489,8 +643,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 function Dato({ etiqueta, valor }: { etiqueta: string; valor?: string | number | null }) {
   return (
     <div className="flex justify-between gap-4 border-b border-borde py-2 text-sm last:border-0">
-      <span className="text-texto-suave">{etiqueta}</span>
-      <span className="text-right font-medium text-texto">{valor || '—'}</span>
+      <span className="shrink-0 text-texto-suave">{etiqueta}</span>
+      <span className="min-w-0 text-right font-medium wrap-break-word text-texto">{valor || '—'}</span>
     </div>
   )
 }

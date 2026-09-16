@@ -7,6 +7,8 @@ export type Notificacion = {
   titulo: string
   cuerpo: string | null
   ruta: string | null
+  /** A qué fila se refiere: la campana la usa como ancla para aterrizar en ella. */
+  origen_id: string | null
   leida_en: string | null
   creado_en: string
 }
@@ -26,7 +28,7 @@ export async function misNotificaciones(limite = 20): Promise<Notificacion[]> {
 
   const { data, error } = await supabase
     .from('notificaciones')
-    .select('id, titulo, cuerpo, ruta, leida_en, creado_en')
+    .select('id, titulo, cuerpo, ruta, origen_id, leida_en, creado_en')
     .order('creado_en', { ascending: false })
     .limit(limite)
 

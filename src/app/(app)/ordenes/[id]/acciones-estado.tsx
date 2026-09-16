@@ -1,45 +1,103 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { AreaTexto, Campo } from '@/components/ui/campos'
-import { ESTADO_OT, definir } from '@/lib/dominio/estados'
-import { Entrada } from '@/components/ui/campos'
+import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
+import { ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { useEnvio } from '@/lib/envio'
+
 import { cambiarEstadoOrden, registrarEntrega } from '../acciones'
+
+type Transicion = {
+  estado: string
+  etiqueta: string
+  /** Basta con uno de estos, que es lo mismo que exige la base. */
+  permisos: string[]
+  /** Pide un motivo, que queda en la trazabilidad. */
+  motivo?: boolean
+  /** Pregunta antes, diciendo qué pasa: el cambio no se deshace con otro toque. */
+  confirmar?: string
+}
 
 /**
  * Transiciones que la interfaz ofrece desde cada estado. Es un espejo de
- * ot_transicion_valida en la base: aquí solo decide qué botones se ven, y la
- * base sigue siendo la que garantiza que el cambio es legítimo.
+ * ot_transicion_valida y de fn_ot_permiso_por_estado en la base: aquí solo
+ * decide qué botones se ven, y la base sigue siendo la que garantiza que el
+ * cambio es legítimo.
  */
-const SIGUIENTES: Record<string, { estado: string; etiqueta: string; permiso: string; motivo?: boolean }[]> = {
+const SIGUIENTES: Record<string, Transicion[]> = {
   BORRADOR: [
-    { estado: 'APROBADA', etiqueta: 'Aprobar orden', permiso: 'ordenes.aprobar' },
-    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'ordenes.anular', motivo: true },
+    {
+      estado: 'APROBADA',
+      etiqueta: 'Aprobar orden',
+      permisos: ['ordenes.aprobar'],
+      confirmar: 'Al aprobarla nacen sus etapas y sus plazos, y el taller ya puede trabajar en ella.',
+    },
+    { estado: 'ANULADA', etiqueta: 'Anular', permisos: ['ordenes.anular'], motivo: true },
   ],
   APROBADA: [
-    { estado: 'PROGRAMADA', etiqueta: 'Programar', permiso: 'ordenes.cambiar_estado' },
-    { estado: 'EN_PROCESO', etiqueta: 'Iniciar trabajo', permiso: 'ordenes.cambiar_estado' },
-    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'ordenes.anular', motivo: true },
+    { estado: 'PROGRAMADA', etiqueta: 'Programar', permisos: ['ordenes.cambiar_estado'] },
+    { estado: 'EN_PROCESO', etiqueta: 'Iniciar trabajo', permisos: ['ordenes.cambiar_estado'] },
+    { estado: 'ANULADA', etiqueta: 'Anular', permisos: ['ordenes.anular'], motivo: true },
   ],
   PROGRAMADA: [
-    { estado: 'EN_PROCESO', etiqueta: 'Iniciar trabajo', permiso: 'ordenes.cambiar_estado' },
-    { estado: 'ANULADA', etiqueta: 'Anular', permiso: 'ordenes.anular', motivo: true },
+    { estado: 'EN_PROCESO', etiqueta: 'Iniciar trabajo', permisos: ['ordenes.cambiar_estado'] },
+    { estado: 'ANULADA', etiqueta: 'Anular', permisos: ['ordenes.anular'], motivo: true },
   ],
   EN_PROCESO: [
-    { estado: 'PAUSADA', etiqueta: 'Pausar', permiso: 'ordenes.cambiar_estado', motivo: true },
-    { estado: 'TERMINADA', etiqueta: 'Terminar', permiso: 'ordenes.cambiar_estado' },
+    { estado: 'PAUSADA', etiqueta: 'Pausar', permisos: ['ordenes.cambiar_estado'], motivo: true },
+    {
+      estado: 'TERMINADA',
+      etiqueta: 'Terminar',
+      permisos: ['ordenes.cambiar_estado'],
+      confirmar: 'La orden queda terminada y deja de correr su plazo. Si después falta algo, se reabre como retrabajo.',
+    },
+    // Anular también en marcha: el cliente que desiste a mitad de obra es un
+    // caso real, y la base lo admite desde EN_PROCESO, PAUSADA y TERMINADA
+    // (ot_transicion_valida). Sin el botón, la orden quedaba viva para siempre.
+    { estado: 'ANULADA', etiqueta: 'Anular', permisos: ['ordenes.anular'], motivo: true },
   ],
-  PAUSADA: [{ estado: 'EN_PROCESO', etiqueta: 'Reanudar', permiso: 'ordenes.cambiar_estado' }],
+  PAUSADA: [
+    { estado: 'EN_PROCESO', etiqueta: 'Reanudar', permisos: ['ordenes.cambiar_estado'] },
+    { estado: 'ANULADA', etiqueta: 'Anular', permisos: ['ordenes.anular'], motivo: true },
+  ],
   // CONTROL_CALIDAD sigue en el enum de la base pero ya no se llega a él:
   // el módulo de calidad se retiró. Si una orden vieja lo tuviera, se termina.
-  CONTROL_CALIDAD: [{ estado: 'TERMINADA', etiqueta: 'Terminar', permiso: 'ordenes.cambiar_estado' }],
-  TERMINADA: [{ estado: 'EN_PROCESO', etiqueta: 'Reabrir para retrabajo', permiso: 'ordenes.cambiar_estado' }],
+  CONTROL_CALIDAD: [
+    {
+      estado: 'TERMINADA',
+      etiqueta: 'Terminar',
+      permisos: ['ordenes.cambiar_estado'],
+      confirmar: 'La orden queda terminada y deja de correr su plazo.',
+    },
+  ],
+  TERMINADA: [
+    { estado: 'EN_PROCESO', etiqueta: 'Reabrir para retrabajo', permisos: ['ordenes.cambiar_estado'] },
+    { estado: 'ANULADA', etiqueta: 'Anular', permisos: ['ordenes.anular'], motivo: true },
+  ],
   // ENTREGADA no figura como transición a propósito: no se alcanza cambiando el
   // estado -la base rechaza ese UPDATE- sino registrando el acta de conformidad.
-  ENTREGADA: [{ estado: 'FACTURADA', etiqueta: 'Marcar facturada', permiso: 'ordenes.cambiar_estado' }],
+  // Facturada la marca la oficina (migración 110); el taller que ya cambiaba
+  // estados sigue pudiendo.
+  ENTREGADA: [
+    {
+      estado: 'FACTURADA',
+      etiqueta: 'Marcar facturada',
+      permisos: ['ordenes.editar', 'ordenes.cambiar_estado'],
+      confirmar: 'Facturada es el último estado de la orden: no tiene vuelta atrás.',
+    },
+  ],
+}
+
+function Falla({ texto }: { texto: string | null }) {
+  if (!texto) return null
+  return (
+    <p role="alert" className="w-full rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
+      {texto}
+    </p>
+  )
 }
 
 export function AccionesEstado({
@@ -52,10 +110,11 @@ export function AccionesEstado({
   permisos: string[]
   esAdmin: boolean
 }) {
-  const [resultado, ejecutar, pendiente] = useActionState(cambiarEstadoOrden, null)
-  const [entrega, registrar, entregando] = useActionState(registrarEntrega, null)
-  const [pidiendoMotivo, setPidiendoMotivo] = useState<{ estado: string; etiqueta: string } | null>(null)
-  const [entregando_, setEntregando] = useState(false)
+  // Lo que pide motivo o confirmación se hace en una ventana. Cada apertura la
+  // monta de nuevo (`vez`): así no arrastra el error ni el texto de la anterior.
+  const [pendiente, setPendiente] = useState<Transicion | null>(null)
+  const [entregando, setEntregando] = useState(false)
+  const [vez, setVez] = useState(0)
 
   // Por revisar: el jefe de producción la aprueba o la rechaza con
   // `ordenes.revisar_taller`, el mismo atajo que tiene la base (migración 098).
@@ -67,171 +126,212 @@ export function AccionesEstado({
     .filter(
       (t) =>
         esAdmin ||
-        permisos.includes(t.permiso) ||
+        t.permisos.some((p) => permisos.includes(p)) ||
         (revisa && (t.estado === 'APROBADA' || t.estado === 'ANULADA')),
     )
     .map((t) => (porRevisar && t.estado === 'ANULADA' ? { ...t, etiqueta: 'Rechazar' } : t))
 
   // La entrega solo tiene sentido con la orden terminada, y es la única acción
   // que no cambia el estado sino que registra un documento.
-  const puedeEntregar =
-    orden.estado === 'TERMINADA' && (esAdmin || permisos.includes('ordenes.entregar'))
+  const puedeEntregar = orden.estado === 'TERMINADA' && (esAdmin || permisos.includes('ordenes.entregar'))
 
-  if (disponibles.length === 0 && !puedeEntregar && !resultado && !entrega) return null
+  if (disponibles.length === 0 && !puedeEntregar) return null
+
+  function abrir(t: Transicion) {
+    setVez((v) => v + 1)
+    setPendiente(t)
+  }
 
   return (
     <div className="flex flex-col items-end gap-2">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {disponibles.map((t) =>
-          t.motivo ? (
+          t.motivo || t.confirmar ? (
             <Boton
               key={t.estado}
-              variante={t.estado === 'ANULADA' ? 'peligro' : 'secundario'}
               tamano="sm"
-              onClick={() => setPidiendoMotivo({ estado: t.estado, etiqueta: t.etiqueta })}
+              variante={t.estado === 'ANULADA' ? 'peligro' : t.estado === 'APROBADA' ? 'primario' : 'secundario'}
+              onClick={() => abrir(t)}
             >
               {t.etiqueta}
             </Boton>
           ) : (
-            <form key={t.estado} action={ejecutar}>
-              <input type="hidden" name="orden_id" value={orden.id} />
-              <input type="hidden" name="estado" value={t.estado} />
-              <Boton
-                type="submit"
-                tamano="sm"
-                cargando={pendiente}
-                variante={t.estado === 'APROBADA' || t.estado === 'EN_PROCESO' ? 'primario' : 'secundario'}
-              >
-                {t.etiqueta}
-              </Boton>
-            </form>
+            <BotonDirecto key={t.estado} ordenId={orden.id} transicion={t} />
           ),
         )}
 
         {puedeEntregar && (
-          <Boton variante="primario" tamano="sm" onClick={() => setEntregando(true)}>
+          <Boton
+            variante="primario"
+            tamano="sm"
+            onClick={() => {
+              setVez((v) => v + 1)
+              setEntregando(true)
+            }}
+          >
             Registrar entrega
           </Boton>
         )}
       </div>
 
-      {entrega && !entrega.ok && (
-        <p role="alert" className="max-w-md rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
-          {entrega.error}
-        </p>
-      )}
+      <VentanaEntrega key={`entrega-${vez}`} ordenId={orden.id} abierta={entregando} alCerrar={() => setEntregando(false)} />
 
-      {resultado && !resultado.ok && (
-        <p role="alert" className="max-w-md rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
-          {resultado.error}
-        </p>
-      )}
+      <VentanaCambio
+        key={`cambio-${vez}`}
+        ordenId={orden.id}
+        estadoActual={orden.estado}
+        transicion={pendiente}
+        alCerrar={() => setPendiente(null)}
+      />
+    </div>
+  )
+}
 
-      <Ventana
-        abierta={entregando_}
-        alCerrar={() => setEntregando(false)}
-        titulo="Acta de conformidad"
-        descripcion="Al registrar el acta la orden queda entregada. Si falta documentación obligatoria o firmas, el sistema lo avisa y no la cierra."
-        ancho="sm"
-      >
-        <form
-          action={(datos) => {
-            registrar(datos)
-            setEntregando(false)
-          }}
-          className="space-y-3"
-        >
-          <input type="hidden" name="orden_id" value={orden.id} />
+/** Un cambio de estado de un toque, con su propio «enviando» y su propio error. */
+function BotonDirecto({ ordenId, transicion: t }: { ordenId: string; transicion: Transicion }) {
+  const { alEnviar, enviando, error } = useEnvio(cambiarEstadoOrden)
 
-          {/* `autoComplete="off"` en los tres: quien llena el acta es el
-              del taller, y el navegador le ofrece su propio nombre y su
-              propio DNI para el campo de quien retira la unidad. Ese dato
-              mal puesto queda firmado en el acta de conformidad. */}
-          <Campo etiqueta="Quién recibe" htmlFor="recibe_nombre" requerido>
-            <Entrada id="recibe_nombre" name="recibe_nombre" required
-                     autoComplete="off"
-                     placeholder="Nombre completo de quien retira la unidad" />
-          </Campo>
+  return (
+    <form onSubmit={alEnviar} className="contents">
+      <input type="hidden" name="orden_id" value={ordenId} />
+      <input type="hidden" name="estado" value={t.estado} />
+      <Boton type="submit" tamano="sm" cargando={enviando} variante={t.estado === 'EN_PROCESO' ? 'primario' : 'secundario'}>
+        {t.etiqueta}
+      </Boton>
+      <Falla texto={error} />
+    </form>
+  )
+}
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Campo etiqueta="Documento" htmlFor="recibe_documento">
-              <Entrada id="recibe_documento" name="recibe_documento" autoComplete="off"
-                       inputMode="numeric" placeholder="DNI" />
-            </Campo>
-            <Campo etiqueta="Cargo" htmlFor="recibe_cargo">
-              <Entrada id="recibe_cargo" name="recibe_cargo" autoComplete="off"
-                       placeholder="Ej.: jefe de flota" />
-            </Campo>
-          </div>
+/**
+ * El cambio que pide motivo o confirmación. La ventana se cierra solo cuando la
+ * base aceptó: si rechaza —una etapa sin terminar, un permiso que no alcanza—
+ * el error sale acá, junto al motivo, y el motivo se queda escrito.
+ */
+function VentanaCambio({
+  ordenId,
+  estadoActual,
+  transicion: t,
+  alCerrar,
+}: {
+  ordenId: string
+  estadoActual: string
+  transicion: Transicion | null
+  alCerrar: () => void
+}) {
+  const { alEnviar, enviando, error } = useEnvio(cambiarEstadoOrden, alCerrar)
 
-          <Campo etiqueta="Garantía (meses)" htmlFor="garantia_meses">
-            <Entrada id="garantia_meses" name="garantia_meses" type="number"
-                     inputMode="numeric" min={0} max={120} defaultValue={12} />
-          </Campo>
+  return (
+    <Ventana
+      abierta={t !== null}
+      alCerrar={alCerrar}
+      titulo={t ? `${t.etiqueta} · ${definir(ESTADO_OT, estadoActual).etiqueta}` : ''}
+      descripcion={
+        t?.motivo
+          ? 'Este cambio queda registrado en la trazabilidad de la orden. Indica el motivo.'
+          : (t?.confirmar ?? '')
+      }
+      ancho="sm"
+    >
+      <form onSubmit={alEnviar} className="space-y-3">
+        <input type="hidden" name="orden_id" value={ordenId} />
+        <input type="hidden" name="estado" value={t?.estado ?? ''} />
 
-          <Campo etiqueta="Observaciones" htmlFor="obs_entrega">
-            <AreaTexto id="obs_entrega" name="observaciones" rows={2}
-                       placeholder="Novedades de la entrega, si las hubo" />
-          </Campo>
-
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setEntregando(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" tamano="sm" variante="primario" cargando={entregando}>
-              Registrar entrega
-            </Boton>
-          </div>
-        </form>
-      </Ventana>
-
-      {/* La ventana no pinta nada cuando está cerrada, así que se le pasa
-          siempre y el estado solo decide si se abre. Con `pidiendoMotivo` en
-          nulo los valores de adentro no llegan a verse. */}
-      <Ventana
-        abierta={pidiendoMotivo !== null}
-        alCerrar={() => setPidiendoMotivo(null)}
-        titulo={
-          pidiendoMotivo
-            ? `${pidiendoMotivo.etiqueta} · ${definir(ESTADO_OT, orden.estado).etiqueta}`
-            : ''
-        }
-        descripcion="Este cambio queda registrado en la trazabilidad de la orden. Indica el motivo."
-        ancho="sm"
-      >
-        <form
-          action={(datos) => {
-            ejecutar(datos)
-            setPidiendoMotivo(null)
-          }}
-          className="space-y-3"
-        >
-          <input type="hidden" name="orden_id" value={orden.id} />
-          <input type="hidden" name="estado" value={pidiendoMotivo?.estado ?? ''} />
-
+        {t?.motivo && (
           <Campo etiqueta="Motivo" htmlFor="motivo" requerido>
             <AreaTexto
               id="motivo"
               name="motivo"
               required
+              minLength={3}
+              autoFocus
               placeholder="Ej.: falta plancha de 6 mm, se espera ingreso el lunes"
             />
           </Campo>
+        )}
 
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setPidiendoMotivo(null)}>
-              Cancelar
-            </Boton>
-            <Boton
-              type="submit"
-              tamano="sm"
-              variante={pidiendoMotivo?.estado === 'ANULADA' ? 'peligro' : 'primario'}
-            >
-              Confirmar
-            </Boton>
-          </div>
-        </form>
-      </Ventana>
-    </div>
+        <Falla texto={error} />
+
+        <div className="flex justify-end gap-2">
+          <Boton type="button" variante="fantasma" tamano="sm" onClick={alCerrar}>
+            Cancelar
+          </Boton>
+          <Boton
+            type="submit"
+            tamano="sm"
+            cargando={enviando}
+            variante={t?.estado === 'ANULADA' ? 'peligro' : 'primario'}
+          >
+            {t?.motivo ? 'Confirmar' : (t?.etiqueta ?? 'Confirmar')}
+          </Boton>
+        </div>
+      </form>
+    </Ventana>
+  )
+}
+
+/**
+ * El acta de conformidad. Igual que arriba: la ventana se cierra cuando la base
+ * aceptó el acta. Antes se cerraba al enviar, y si faltaba la liberación de
+ * tesorería se perdían el nombre, el documento y las observaciones de quien
+ * recibía, con el error lejos, en la cabecera.
+ */
+function VentanaEntrega({ ordenId, abierta, alCerrar }: { ordenId: string; abierta: boolean; alCerrar: () => void }) {
+  const { alEnviar, enviando, error } = useEnvio(registrarEntrega, alCerrar)
+
+  return (
+    <Ventana
+      abierta={abierta}
+      alCerrar={alCerrar}
+      titulo="Acta de conformidad"
+      descripcion="Al registrar el acta la orden queda entregada. Si falta documentación obligatoria o firmas, el sistema lo avisa y no la cierra."
+      ancho="sm"
+    >
+      <form onSubmit={alEnviar} className="space-y-3">
+        <input type="hidden" name="orden_id" value={ordenId} />
+
+        {/* `autoComplete="off"` en los tres: quien llena el acta es el
+            del taller, y el navegador le ofrece su propio nombre y su
+            propio DNI para el campo de quien retira la unidad. Ese dato
+            mal puesto queda firmado en el acta de conformidad. */}
+        <Campo etiqueta="Quién recibe" htmlFor="recibe_nombre" requerido>
+          <Entrada
+            id="recibe_nombre"
+            name="recibe_nombre"
+            required
+            autoComplete="off"
+            placeholder="Nombre completo de quien retira la unidad"
+          />
+        </Campo>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Campo etiqueta="Documento" htmlFor="recibe_documento">
+            <Entrada id="recibe_documento" name="recibe_documento" autoComplete="off" inputMode="numeric" placeholder="DNI" />
+          </Campo>
+          <Campo etiqueta="Cargo" htmlFor="recibe_cargo">
+            <Entrada id="recibe_cargo" name="recibe_cargo" autoComplete="off" placeholder="Ej.: jefe de flota" />
+          </Campo>
+        </div>
+
+        <Campo etiqueta="Garantía (meses)" htmlFor="garantia_meses">
+          <Entrada id="garantia_meses" name="garantia_meses" type="number" inputMode="numeric" min={0} max={120} defaultValue={12} />
+        </Campo>
+
+        <Campo etiqueta="Observaciones" htmlFor="obs_entrega">
+          <AreaTexto id="obs_entrega" name="observaciones" rows={2} placeholder="Novedades de la entrega, si las hubo" />
+        </Campo>
+
+        <Falla texto={error} />
+
+        <div className="flex justify-end gap-2">
+          <Boton type="button" variante="fantasma" tamano="sm" onClick={alCerrar}>
+            Cancelar
+          </Boton>
+          <Boton type="submit" tamano="sm" variante="primario" cargando={enviando}>
+            Registrar entrega
+          </Boton>
+        </div>
+      </form>
+    </Ventana>
   )
 }

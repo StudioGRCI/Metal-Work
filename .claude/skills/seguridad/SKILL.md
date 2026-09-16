@@ -33,6 +33,10 @@ En la misma migración que la crea, sin excepción:
    `actualizado_en`, porque el trigger se crea igual y revienta después si
    no está (nos pasó con `plantilla_ficha_lineas`).
 5. `perform public.activar_auditoria(tabla)` si guarda datos de negocio.
+6. `perform public.activar_registro_de_prueba(tabla)` si tiene `id uuid`
+   (migración `105`). Sin él, lo que un lote de prueba crea en esa tabla no
+   queda anotado y `pruebas_limpiar` no se lo lleva: queda suelto entre los
+   datos reales sin que nada avise.
 
 ## Toda función nueva
 

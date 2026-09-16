@@ -101,9 +101,42 @@ export function leerTextoDeCotizacion(texto: string): CabeceraCotizacion {
   return salida
 }
 
+const ENTIDADES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
+
+/**
+ * El texto de una parte de un .docx (migración 103). En las cotizaciones de la
+ * casa la cabecera vive en el encabezado de página (`word/header1.xml`) y el
+ * título en el cuerpo, así que se leen las dos, encabezado primero.
+ *
+ * Solo cuenta lo que está en `<w:t>`: el encabezado trae también la posición
+ * del logo en números («8636023241000») que, quitando etiquetas a lo bruto, se
+ * cuelan como si fueran texto. Y «Señores» y «RUC» van en el mismo párrafo
+ * separados por un salto manual (`<w:br/>`), que tiene que volverse línea o el
+ * RUC queda pegado a la razón social.
+ */
+export function textoDeWordXml(xml: string): string {
+  const salida: string[] = []
+  const marcas = /<w:p[\s>]|<\/w:p>|<w:br\b[^>]*\/>|<w:cr\b[^>]*\/>|<w:tab\b[^>]*\/>|<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g
+  let linea = ''
+  for (const m of xml.matchAll(marcas)) {
+    const marca = m[0]
+    if (m[1] !== undefined) {
+      linea += m[1].replace(/&(amp|lt|gt|quot|apos);/g, (_, e: string) => ENTIDADES[e])
+    } else if (marca.startsWith('<w:tab')) {
+      linea += ' '
+    } else {
+      // Empieza o termina un párrafo, o hay un salto manual: línea nueva.
+      if (linea.trim()) salida.push(linea)
+      linea = ''
+    }
+  }
+  if (linea.trim()) salida.push(linea)
+  return salida.join('\n')
+}
+
 /** «COT. N° 3522- FURGON CRUCERO DOBLE NIVEL - SULLON CARMEN JOSE  24-09-25.pdf» */
 export function leerNombreDeArchivo(nombre: string): CabeceraCotizacion {
-  const base = limpiar(nombre.replace(/\.pdf$/i, ''))
+  const base = limpiar(nombre.replace(/\.(pdf|docx?)$/i, ''))
   const m = base.match(/^COT(?:IZACI[OÓ]N)?\.?\s*N\s*[°º.]?\s*(\d{3,6})\s*-\s*(.+?)\s+-\s+(.+?)[\s-]+(\d{2})-(\d{2})-(\d{2})$/i)
   if (!m) {
     const solo = base.match(/^COT(?:IZACI[OÓ]N)?\.?\s*N\s*[°º.]?\s*(\d{3,6})\b/i)

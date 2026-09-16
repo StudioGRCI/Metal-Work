@@ -2,14 +2,14 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { Check, Minus, Pencil, Plus, Trash2, Wand2, X } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useActionState, useState, useTransition } from 'react'
+import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ConfirmarAccion } from '@/components/ui/ventana'
 import type { AccesorioCotizado, SeccionFicha } from '@/lib/datos/ficha'
+import { useAccion, useEnvio } from '@/lib/envio'
 import { cantidad as formatearCantidad } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -176,7 +176,7 @@ function GuardarComoPlantilla({
   /** Esta carrocería todavía no tiene ninguna ficha guardada. */
   sinPlantillas: boolean
 }) {
-  const [resultado, accion, enviando] = useActionState(guardarComoPlantilla, null)
+  const { alEnviar: accion, enviando, resultado } = useEnvio(guardarComoPlantilla)
 
   return (
     <Tarjeta className={sinPlantillas ? 'border-acento' : undefined}>
@@ -189,7 +189,7 @@ function GuardarComoPlantilla({
         }
       />
       <TarjetaCuerpo>
-        <form action={accion} className="flex flex-wrap items-end gap-3">
+        <form onSubmit={accion} className="flex flex-wrap items-end gap-3">
           <input type="hidden" name="cotizacion_id" value={cotizacionId} />
           <Campo
             etiqueta="Nombre de la plantilla"
@@ -238,12 +238,12 @@ function AplicarFicha({
   plantillas: Plantilla[]
   vacia: boolean
 }) {
-  const [resultado, accion, enviando] = useActionState(aplicarPlantilla, null)
+  const { alEnviar: accion, enviando, resultado } = useEnvio(aplicarPlantilla)
 
   return (
     <Tarjeta className={vacia ? 'border-acento' : undefined}>
       <TarjetaCuerpo>
-        <form action={accion} className="flex flex-wrap items-end gap-3">
+        <form onSubmit={accion} className="flex flex-wrap items-end gap-3">
           <input type="hidden" name="cotizacion_id" value={cotizacionId} />
 
           <Campo
@@ -290,7 +290,7 @@ function Medidas({
   cabecera: CabeceraTecnica
   puedeEditar: boolean
 }) {
-  const [resultado, accion, enviando] = useActionState(guardarCabeceraTecnica, null)
+  const { alEnviar: accion, enviando, resultado } = useEnvio(guardarCabeceraTecnica)
 
   if (!puedeEditar) {
     return (
@@ -345,7 +345,7 @@ function Medidas({
         descripcion="Lo que cambia en cada cotización de trabajo; la ficha de abajo trae el resto. De acá salen las medidas con las que se compra la plancha, y esto sí sale impreso en el papel del cliente."
       />
       <TarjetaCuerpo>
-        <form action={accion} className="space-y-3">
+        <form onSubmit={accion} className="space-y-3">
           <input type="hidden" name="cotizacion_id" value={cotizacionId} />
 
           {/* El peso subió de fila para quedar pegado a su tolerancia: en el
@@ -726,18 +726,15 @@ function Especificaciones({
   secciones: SeccionFicha[]
   puedeEditar: boolean
 }) {
-  const router = useRouter()
-  const [, iniciarTransicion] = useTransition()
   const [abierto, setAbierto] = useState(false)
-  const [resultado, accion, enviando] = useActionState(agregarLineaFicha, null)
-  const [, accionQuitar] = useActionState(quitarLineaFicha, null)
+  const { alEnviar: accion, enviando, resultado } = useEnvio(agregarLineaFicha)
+  // Quitar no tiene formulario: lo dispara la ventana de confirmación. Su
+  // resultado se muestra: si la base rechaza, la línea sigue ahí y hay que decir por qué.
+  const quitar = useAccion(quitarLineaFicha)
 
-  // La línea que se está corrigiendo. Se llama a la acción directamente para
-  // poder cerrar el formulario en cuanto guarda: con useActionState habría que
-  // encadenarlo a un efecto, y esa puerta está cerrada en este proyecto.
+  // La línea que se está corrigiendo: el formulario se cierra en cuanto guarda.
   const [editando, setEditando] = useState<string | null>(null)
-  const [guardando, setGuardando] = useState(false)
-  const [errorEdicion, setErrorEdicion] = useState<string | null>(null)
+  const edicion = useEnvio(editarLineaFicha, () => setEditando(null))
 
   // La línea que se pidió quitar, esperando la confirmación. Se guarda con qué
   // dice y de qué sección es: la pregunta tiene que nombrarla.
@@ -751,26 +748,8 @@ function Especificaciones({
     const datos = new FormData()
     datos.set('id', porQuitar.id)
     datos.set('cotizacion_id', cotizacionId)
-
-    // Dentro de la transición a propósito: React avisa por consola si la acción
-    // de `useActionState` se llama fuera de una, y el pendiente no se actualiza.
-    iniciarTransicion(() => accionQuitar(datos))
+    quitar.ejecutar(datos)
     setPorQuitar(null)
-  }
-
-  async function guardarLinea(datos: FormData) {
-    setErrorEdicion(null)
-    setGuardando(true)
-    const salida = await editarLineaFicha(null, datos)
-    setGuardando(false)
-
-    if (!salida.ok) {
-      setErrorEdicion(salida.error)
-      return
-    }
-
-    setEditando(null)
-    iniciarTransicion(() => router.refresh())
   }
 
   return (
@@ -789,7 +768,7 @@ function Especificaciones({
       />
       <TarjetaCuerpo className="space-y-4">
         {abierto && puedeEditar && (
-          <form action={accion} className="rounded-[var(--radius-base)] bg-superficie-2 p-3">
+          <form onSubmit={accion} className="rounded-[var(--radius-base)] bg-superficie-2 p-3">
             <input type="hidden" name="cotizacion_id" value={cotizacionId} />
             <div className="grid gap-3 sm:grid-cols-4">
               <Campo etiqueta="Sección" htmlFor="seccion" requerido>
@@ -853,7 +832,7 @@ function Especificaciones({
                   editando === linea.id ? (
                     <li key={linea.id}>
                       <form
-                        action={guardarLinea}
+                        onSubmit={edicion.alEnviar}
                         className="grid gap-2 rounded-[var(--radius-base)] bg-superficie-2 p-3 sm:grid-cols-4"
                       >
                         <input type="hidden" name="id" value={linea.id} />
@@ -883,9 +862,9 @@ function Especificaciones({
                         </Campo>
 
                         <div className="flex items-center justify-between gap-3 sm:col-span-4">
-                          {errorEdicion ? (
+                          {edicion.error ? (
                             <p role="alert" className="text-xs text-peligro">
-                              {errorEdicion}
+                              {edicion.error}
                             </p>
                           ) : (
                             <span />
@@ -896,13 +875,13 @@ function Especificaciones({
                               variante="fantasma"
                               tamano="sm"
                               onClick={() => {
-                                setErrorEdicion(null)
+                                edicion.limpiar()
                                 setEditando(null)
                               }}
                             >
                               Cancelar
                             </Boton>
-                            <Boton type="submit" tamano="sm" cargando={guardando}>
+                            <Boton type="submit" tamano="sm" cargando={edicion.enviando}>
                               Guardar la línea
                             </Boton>
                           </span>
@@ -923,7 +902,7 @@ function Especificaciones({
                           <button
                             type="button"
                             onClick={() => {
-                              setErrorEdicion(null)
+                              edicion.limpiar()
                               setEditando(linea.id)
                             }}
                             aria-label={`Editar ${linea.etiqueta ?? linea.detalle.slice(0, 30)}`}
@@ -960,6 +939,8 @@ function Especificaciones({
           ))
         )}
 
+        {quitar.error && <Aviso resultado={quitar.resultado} />}
+
         {/* Va dentro de la condición: la pregunta nombra la línea que se pidió
             quitar, y sin ella no hay nada que nombrar. */}
         {porQuitar && (
@@ -986,15 +967,12 @@ function Accesorios({
   accesorios: AccesorioCotizado[]
   puedeEditar: boolean
 }) {
-  const router = useRouter()
-  const [, iniciarTransicion] = useTransition()
   const [abierto, setAbierto] = useState(false)
-  const [resultado, accion, enviando] = useActionState(agregarAccesorio, null)
-  const [, accionQuitar] = useActionState(quitarAccesorio, null)
+  const { alEnviar: accion, enviando, resultado } = useEnvio(agregarAccesorio)
+  const quitar = useAccion(quitarAccesorio)
 
   const [editando, setEditando] = useState<string | null>(null)
-  const [guardando, setGuardando] = useState(false)
-  const [errorEdicion, setErrorEdicion] = useState<string | null>(null)
+  const edicion = useEnvio(editarAccesorio, () => setEditando(null))
 
   // El accesorio que se pidió quitar, esperando la confirmación: la pregunta
   // lo nombra con la cantidad, que es como figura en la ficha.
@@ -1006,26 +984,8 @@ function Accesorios({
     const datos = new FormData()
     datos.set('id', porQuitar.id)
     datos.set('cotizacion_id', cotizacionId)
-
-    // Dentro de la transición a propósito: React avisa por consola si la acción
-    // de `useActionState` se llama fuera de una, y el pendiente no se actualiza.
-    iniciarTransicion(() => accionQuitar(datos))
+    quitar.ejecutar(datos)
     setPorQuitar(null)
-  }
-
-  async function guardarAccesorio(datos: FormData) {
-    setErrorEdicion(null)
-    setGuardando(true)
-    const salida = await editarAccesorio(null, datos)
-    setGuardando(false)
-
-    if (!salida.ok) {
-      setErrorEdicion(salida.error)
-      return
-    }
-
-    setEditando(null)
-    iniciarTransicion(() => router.refresh())
   }
 
   return (
@@ -1044,7 +1004,7 @@ function Accesorios({
       />
       <TarjetaCuerpo className="space-y-3">
         {abierto && puedeEditar && (
-          <form action={accion} className="rounded-[var(--radius-base)] bg-superficie-2 p-3">
+          <form onSubmit={accion} className="rounded-[var(--radius-base)] bg-superficie-2 p-3">
             <input type="hidden" name="cotizacion_id" value={cotizacionId} />
             <div className="grid gap-3 sm:grid-cols-5">
               <Campo etiqueta="Cantidad" htmlFor="cantidad" requerido>
@@ -1107,7 +1067,7 @@ function Accesorios({
               editando === a.id ? (
                 <li key={a.id} className="py-2">
                   <form
-                    action={guardarAccesorio}
+                    onSubmit={edicion.alEnviar}
                     className="grid gap-2 rounded-[var(--radius-base)] bg-superficie-2 p-3 sm:grid-cols-5"
                   >
                     <input type="hidden" name="id" value={a.id} />
@@ -1170,9 +1130,9 @@ function Accesorios({
                     </label>
 
                     <div className="flex items-center justify-between gap-3 sm:col-span-5">
-                      {errorEdicion ? (
+                      {edicion.error ? (
                         <p role="alert" className="text-xs text-peligro">
-                          {errorEdicion}
+                          {edicion.error}
                         </p>
                       ) : (
                         <span />
@@ -1183,13 +1143,13 @@ function Accesorios({
                           variante="fantasma"
                           tamano="sm"
                           onClick={() => {
-                            setErrorEdicion(null)
+                            edicion.limpiar()
                             setEditando(null)
                           }}
                         >
                           Cancelar
                         </Boton>
-                        <Boton type="submit" tamano="sm" cargando={guardando}>
+                        <Boton type="submit" tamano="sm" cargando={edicion.enviando}>
                           Guardar el accesorio
                         </Boton>
                       </span>
@@ -1223,7 +1183,7 @@ function Accesorios({
                       <button
                         type="button"
                         onClick={() => {
-                          setErrorEdicion(null)
+                          edicion.limpiar()
                           setEditando(a.id)
                         }}
                         aria-label={`Editar ${a.descripcion}`}

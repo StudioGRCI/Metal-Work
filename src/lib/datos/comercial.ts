@@ -44,7 +44,7 @@ export async function obtenerCliente(id: string) {
 
   const { data, error } = await supabase
     .from('clientes')
-    .select('*, vendedor:usuarios!clientes_vendedor_id_fkey(id, nombres, apellidos)')
+    .select('*, vendedor:usuarios!clientes_vendedor_id_fkey(id, puesto)')
     .eq('id', id)
     .maybeSingle()
 
@@ -238,7 +238,7 @@ export async function obtenerCotizacion(id: string) {
 
   const { data, error } = await supabase
     .from('cotizaciones')
-    .select('*, cliente:clientes!inner(id, razon_social, numero_documento), unidad:unidades!cotizaciones_unidad_id_fkey(id, placa, marca, modelo, codigo_interno, numero_chasis), tipo_carroceria:tipos_carroceria(id, nombre), vendedor:usuarios!cotizaciones_vendedor_id_fkey(nombres, apellidos), anulador:usuarios!cotizaciones_anulada_por_fkey(nombres, apellidos)')
+    .select('*, cliente:clientes!inner(id, razon_social, numero_documento), unidad:unidades!cotizaciones_unidad_id_fkey(id, placa, marca, modelo, codigo_interno, numero_chasis), tipo_carroceria:tipos_carroceria(id, nombre), vendedor:usuarios!cotizaciones_vendedor_id_fkey(puesto), anulador:usuarios!cotizaciones_anulada_por_fkey(puesto)')
     .eq('id', id)
     .maybeSingle()
 

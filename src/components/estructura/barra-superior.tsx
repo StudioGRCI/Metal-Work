@@ -27,18 +27,18 @@ export async function BarraSuperior({ perfil }: { perfil: PerfilSesion }) {
         <Campana avisos={avisos} sinLeer={sinLeer} />
         <CambiarTema />
 
+        {/* Solo el puesto (migración 109): las cuentas son por puesto y el
+            nombre de quien la usa hoy no le dice nada a quien mira la pantalla. */}
         <div className="hidden text-right sm:block">
-          <p className="text-xs font-medium text-texto">
-            {perfil.nombres} {perfil.apellidos}
-          </p>
-          <p className="text-[11px] text-texto-suave">{perfil.cargo ?? perfil.rol.nombre}</p>
+          <p className="text-xs font-medium text-texto">{perfil.puesto}</p>
+          <p className="text-[11px] text-texto-suave">{perfil.rol.nombre}</p>
         </div>
 
         <span
           aria-hidden
           className="flex size-8 items-center justify-center rounded-full bg-superficie-2 text-xs font-semibold text-texto-suave"
         >
-          {iniciales(perfil.nombres, perfil.apellidos)}
+          {iniciales(perfil.puesto)}
         </span>
 
         <form action="/auth/salir" method="post">

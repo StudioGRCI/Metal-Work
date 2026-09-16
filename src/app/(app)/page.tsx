@@ -1,10 +1,10 @@
 import Link from 'next/link'
 import {
   AlertTriangle,
+  CalendarClock,
   CheckCircle2,
   ClipboardList,
   Factory,
-  FileText,
   HandCoins,
   PauseCircle,
   Plus,
@@ -23,6 +23,8 @@ import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha, moneda } from '@/lib/format'
 import { resumenComercial, type ResumenComercial } from '@/lib/datos/comercial'
 import { indicadoresTablero, listarOrdenes, ordenesAtrasadas } from '@/lib/datos/ordenes'
+import { pendientesGlobales, type PendienteGlobal } from '@/lib/datos/pendientes-globales'
+import { resumenDePlazos } from '@/lib/datos/plazos'
 import { exigirSesion, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Tablero' }
@@ -31,7 +33,11 @@ export default async function PaginaTablero() {
   const perfil = await exigirSesion()
 
   const veVentas = puede(perfil, 'cotizaciones.ver')
-  const comercial = veVentas ? await resumenComercial(perfil) : null
+  // Lo que le toca a este puesto va primero: es a lo que se entra a mirar.
+  const [comercial, pendientes] = await Promise.all([
+    veVentas ? resumenComercial(perfil) : Promise.resolve(null),
+    pendientesGlobales(perfil),
+  ])
 
   if (!puede(perfil, 'ordenes.listar')) {
     // Quien vende no tiene por qué ver órdenes de trabajo, pero sí lo suyo.
@@ -39,50 +45,61 @@ export default async function PaginaTablero() {
       return (
         <>
           <EncabezadoPagina
-            titulo={`Hola, ${perfil.nombres}`}
+            titulo={perfil.puesto}
             descripcion="Tus cotizaciones al día de hoy."
           />
+          <TeTocaHoy items={pendientes.items} />
           <TarjetasDeVentas resumen={comercial} />
         </>
       )
     }
 
     return (
-      <EncabezadoPagina
-        titulo={`Hola, ${perfil.nombres}`}
-        // «El menú» y no «la barra lateral»: en el teléfono es el botón de
-        // arriba, y a esta pantalla llega justamente quien todavía no sabe
-        // dónde está lo suyo.
-        descripcion="Abre el menú para entrar a los módulos habilitados para tu perfil."
-      />
+      <>
+        <EncabezadoPagina
+          titulo={perfil.puesto}
+          // «El menú» y no «la barra lateral»: en el teléfono es el botón de
+          // arriba, y a esta pantalla llega justamente quien todavía no sabe
+          // dónde está lo suyo.
+          descripcion="Abre el menú para entrar a los módulos habilitados para tu perfil."
+        />
+        <TeTocaHoy items={pendientes.items} />
+      </>
     )
   }
 
   // Las atrasadas se piden aparte y ordenadas por fecha comprometida: sacarlas
   // de la primera página de abiertas dejaba fuera una orden vieja y muy
   // atrasada, y la tarjeta llegaba a decir «ninguna» con el indicador en tres.
-  const [indicadores, { ordenes }, atrasadas] = await Promise.all([
+  // «Atrasadas» cuenta órdenes que pasaron su entrega; las etapas vencidas van
+  // aparte: una orden con la entrega a un mes puede llevar tres etapas
+  // vencidas, y el Tablero decía «buen trabajo» con quince vencidas en /plazos.
+  const [indicadores, { ordenes }, atrasadas, plazos] = await Promise.all([
     indicadoresTablero(),
     listarOrdenes({ estado: 'ABIERTAS', pagina: 1 }),
     ordenesAtrasadas(),
+    puede(perfil, ['produccion.ver', 'ordenes.listar']) ? resumenDePlazos() : Promise.resolve(null),
   ])
   const puedeCrear = puede(perfil, 'ordenes.crear')
+  const etapasVencidas = plazos?.porPlazo.VENCIDO ?? 0
+  const areasConVencidas = (plazos?.areas ?? []).filter((a) => a.vencidas > 0).slice(0, 3)
   // Para el pie de «Órdenes abiertas»: un número suelto no dice si son muchas
   // o pocas hasta que se ve contra el total registrado.
   const totalOrdenes = indicadores.total
 
   return (
     <>
-      <EncabezadoPagina
-        titulo={`Hola, ${perfil.nombres}`}
-        descripcion="Estado del taller al día de hoy."
-      />
+      {/* El puesto y no el nombre (migración 109): la pantalla es del puesto,
+          quien lo ocupe hoy ya sabe cómo se llama. */}
+      <EncabezadoPagina titulo={perfil.puesto} descripcion="Estado del taller al día de hoy." />
+
+      <TeTocaHoy items={pendientes.items} />
 
       {comercial && <TarjetasDeVentas resumen={comercial} />}
 
       {/* Dos columnas ya en el teléfono: cinco tarjetas apiladas ocupaban una
           pantalla entera antes de llegar a la lista de órdenes. */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+      <div className={`grid grid-cols-2 gap-3 sm:gap-4 ${plazos ? 'lg:grid-cols-6' : 'lg:grid-cols-5'}`}>
         <Indicador
           icono={ClipboardList}
           titulo="Órdenes abiertas"
@@ -114,6 +131,16 @@ export default async function PaginaTablero() {
           pie="pasaron la fecha comprometida"
           href="/ordenes?estado=ABIERTAS&atrasadas=1"
         />
+        {plazos && (
+          <Indicador
+            icono={CalendarClock}
+            titulo="Etapas vencidas"
+            valor={etapasVencidas}
+            tono={etapasVencidas > 0 ? 'peligro' : 'exito'}
+            pie={etapasVencidas > 0 ? 'pasaron su fecha en el programa' : 'todas las etapas en fecha'}
+            href="/plazos?plazo=VENCIDO"
+          />
+        )}
         <Indicador
           icono={Zap}
           titulo="Urgentes"
@@ -147,9 +174,11 @@ export default async function PaginaTablero() {
                 </p>
                 {puedeCrear && (
                   <div className="mt-4 flex justify-center">
-                    <EnlaceBoton href="/ordenes/nueva" tamano="sm">
+                    {/* El camino real: la orden sale de la cotización aprobada,
+                        con su número de papel y su PDF (migración 108). */}
+                    <EnlaceBoton href="/cotizaciones/pdf?estado=APROBADA_SIN_OT" tamano="sm">
                       <Plus aria-hidden className="size-3.5" />
-                      Nueva orden
+                      Emitir OT desde una cotización
                     </EnlaceBoton>
                   </div>
                 )}
@@ -241,12 +270,31 @@ export default async function PaginaTablero() {
           <Tarjeta>
             <TarjetaCabecera
               titulo="Requieren atención"
-              descripcion="Órdenes que pasaron su fecha de entrega comprometida"
+              descripcion="Órdenes que pasaron su fecha de entrega, y las áreas con etapas vencidas"
             />
             <TarjetaCuerpo className="space-y-2">
+              {areasConVencidas.length > 0 && (
+                <ul className="mb-2 space-y-1 border-b border-borde pb-2">
+                  {areasConVencidas.map((a) => (
+                    <li key={a.codigo}>
+                      <Link
+                        href={`/plazos?area=${a.codigo}&plazo=VENCIDO`}
+                        className="flex min-h-11 items-center justify-between gap-3 rounded-[var(--radius-base)] px-2 text-sm hover:bg-superficie-2 sm:min-h-0 sm:py-1.5"
+                      >
+                        <span className="text-texto">{a.nombre}</span>
+                        <span className="tabular text-xs font-medium text-peligro">
+                          {a.vencidas} {a.vencidas === 1 ? 'etapa vencida' : 'etapas vencidas'}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
               {atrasadas.length === 0 ? (
                 <p className="py-4 text-center text-sm text-exito">
-                  Ninguna orden atrasada. Buen trabajo.
+                  {areasConVencidas.length > 0
+                    ? 'Ninguna orden pasó su fecha de entrega.'
+                    : 'Ninguna orden atrasada. Buen trabajo.'}
                 </p>
               ) : (
                 atrasadas.slice(0, 6).map((orden) => (
@@ -272,8 +320,43 @@ export default async function PaginaTablero() {
 }
 
 /**
- * Lo comercial del tablero: qué me toca mover, qué está esperando al cliente y
- * cuánto se ofreció y se cerró este mes.
+ * Lo que le toca a este puesto, con el número y el enlace a donde se resuelve.
+ * Cada tarjeta existe solo para quien tiene el permiso que la resuelve; si no
+ * hay nada, se dice en una línea y no se ocupa media pantalla.
+ */
+function TeTocaHoy({ items }: { items: PendienteGlobal[] }) {
+  if (items.length === 0) {
+    return (
+      <p className="mb-4 flex items-center gap-2 text-sm text-texto-suave">
+        <CheckCircle2 aria-hidden className="size-4 text-exito" />
+        Nada pendiente para tu puesto ahora mismo.
+      </p>
+    )
+  }
+
+  return (
+    <section aria-label="Te toca" className="mb-4">
+      <p className="mb-2 text-[11px] font-medium tracking-wide text-texto-suave uppercase">Te toca</p>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        {items.map((i) => (
+          <Indicador
+            key={i.clave}
+            icono={ClipboardList}
+            titulo={i.texto.replace(/^\d+\s/, '')}
+            valor={i.cantidad}
+            tono={i.tono === 'neutro' ? 'neutro' : i.tono === 'exito' ? 'exito' : i.tono === 'info' ? 'acento' : i.tono}
+            href={i.ruta}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * Lo comercial del tablero: qué está esperando al cliente y cuánto se ofreció
+ * y se cerró este mes en la cotización de venta del sistema. Lo que le toca
+ * mover a cada mano ya lo dice «Te toca», que sí conoce la cotización en PDF.
  *
  * Todo en soles, convertido con el tipo de cambio que congeló cada cotización:
  * la casa cotiza en dólares y gasta en soles, y una cifra que mezcla las dos
@@ -281,15 +364,7 @@ export default async function PaginaTablero() {
  */
 function TarjetasDeVentas({ resumen }: { resumen: ResumenComercial }) {
   return (
-    <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-      <Indicador
-        icono={FileText}
-        titulo="Me toca mover"
-        valor={resumen.meTocan}
-        tono={resumen.meTocan > 0 ? 'acento' : 'neutro'}
-        pie={resumen.meTocan > 0 ? 'Cotizaciones paradas en tu mano' : 'Nada esperándote'}
-        href="/cotizaciones"
-      />
+    <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
       <Indicador
         icono={Send}
         titulo="Con el cliente"

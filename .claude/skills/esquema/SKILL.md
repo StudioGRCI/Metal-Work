@@ -145,3 +145,12 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   que se vio en la revisión. **Antes de sumar una llave foránea, buscar en
   `src/` los embebidos hacia esa tabla** (`grep "usuarios("`) y nombrar la llave
   (`usuarios!tabla_columna_fkey(…)`) o leer de una vista que ya traiga el nombre.
+
+- **`after update of columna` mira el SET, no lo que cambió.** Un disparador
+  `after update of corregido_en` no corre cuando esa columna la escribe otro
+  disparador BEFORE (`fn_reporte_revision` pone `corregido_en := now()`): la
+  lista de columnas se compara con el `SET` de la sentencia, y el UPDATE del
+  supervisor solo trae `avance_pct`. La migración `111` nació así y la prueba
+  con rol real dio cero avisos (2026-09-16). Cuando la columna la pone un
+  BEFORE, el disparador va `after update` a secas y decide adentro con
+  `new.x is distinct from old.x`.

@@ -6,7 +6,7 @@ import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
 import { exigirSesion, puede } from '@/lib/sesion'
-import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
 
 const esquemaCliente = z.object({
   id: z.string().uuid().optional().or(z.literal('')),
@@ -70,8 +70,16 @@ export async function guardarCliente(_previo: unknown, datos: FormData): Promise
   }
 
   if (editando) {
-    const { error } = await supabase.from('clientes').update(fila).eq('id', v.id!)
+    // Con `.select('id')`: un UPDATE que el RLS esconde afecta cero filas sin
+    // error, y la pantalla decía «actualizado» sin haber tocado nada.
+    const { data: tocado, error } = await supabase
+      .from('clientes')
+      .update(fila)
+      .eq('id', v.id!)
+      .select('id')
+      .maybeSingle()
     if (error) return { ok: false, error: mensajeDeError(error) }
+    if (!tocado) return { ok: false, error: NO_TOCO_NADA }
 
     revalidatePath(`/clientes/${v.id}`)
     revalidatePath('/clientes')

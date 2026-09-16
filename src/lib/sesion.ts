@@ -1,6 +1,7 @@
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
 
+import { sumarDias } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 
 export type PerfilSesion = {
@@ -9,6 +10,8 @@ export type PerfilSesion = {
   apellidos: string
   correo: string
   cargo: string | null
+  /** Con lo que se nombra la cuenta en pantalla: el cargo, o el rol si no lo tiene. */
+  puesto: string
   activo: boolean
   es_operario: boolean
   sede_id: string | null
@@ -54,6 +57,7 @@ export const obtenerSesion = cache(async (): Promise<PerfilSesion | null> => {
     apellidos: data.apellidos,
     correo: data.correo,
     cargo: data.cargo,
+    puesto: data.cargo?.trim() || rol.nombre,
     activo: data.activo,
     es_operario: data.es_operario,
     sede_id: data.sede_id,
@@ -109,11 +113,7 @@ export function puedeHojaDeArea(perfil: PerfilSesion | null, areaId: string | nu
 /** Los tres reportes del día: la hoja por área, el avance con foto y el trabajo sin orden. */
 export type ClaseReporte = 'hoja' | 'orden' | 'flota'
 
-function diaAnterior(dia: string) {
-  const d = new Date(`${dia}T12:00:00Z`)
-  d.setUTCDate(d.getUTCDate() - 1)
-  return d.toISOString().slice(0, 10)
-}
+const diaAnterior = (dia: string) => sumarDias(dia, -1)
 
 /**
  * Si esta persona ve «Corregir» en un reporte del día. Gemelo de las políticas
@@ -177,6 +177,19 @@ export function puedeQuitarCotizacion(
   return c.registrado_por === perfil.id || puede(perfil, 'cotizaciones.revisar')
 }
 
+/**
+ * Si esta persona ve «Subir corrección» en una cotización. Gemelo de la
+ * política de UPDATE y del disparador de la migración 103: la rechazada la
+ * corrige quien la subió. Gerencia no reescribe el papel del vendedor.
+ */
+export function puedeCorregirCotizacion(
+  perfil: PerfilSesion | null,
+  c: { estado: string | null; registrado_por: string | null },
+): boolean {
+  if (!perfil || c.estado !== 'RECHAZADA') return false
+  return c.registrado_por === perfil.id || perfil.rol.codigo === 'ADMIN'
+}
+
 /** Las áreas cuya hoja puede escribir: la suya, o todas si tiene el permiso. */
 export function areasDeSuMano<T extends { id: string }>(
   perfil: PerfilSesion | null,
@@ -185,6 +198,39 @@ export function areasDeSuMano<T extends { id: string }>(
   if (!perfil) return []
   if (puede(perfil, 'produccion.cualquier_area')) return areas
   return areas.filter((a) => a.id === perfil.area_id)
+}
+
+/**
+ * Si esta persona puede armar la lista de actividades de un área. Gemelo de
+ * `public.puede_armar_hoja_de_area` (migración 106): Diseño desglosa la unidad y
+ * arma la de cualquier área; el jefe y el supervisor, la de su mano.
+ */
+export function puedeArmarHoja(perfil: PerfilSesion | null, areaId: string | null): boolean {
+  if (!perfil) return false
+  if (puede(perfil, 'diseno.planos')) return true
+  return puede(perfil, 'produccion.actividades') && puedeHojaDeArea(perfil, areaId)
+}
+
+/** Las áreas cuya lista de actividades puede armar. */
+export function areasParaArmar<T extends { id: string }>(perfil: PerfilSesion | null, areas: T[]): T[] {
+  if (!perfil) return []
+  if (puede(perfil, 'diseno.planos')) return areas
+  if (!puede(perfil, 'produccion.actividades')) return []
+  return areasDeSuMano(perfil, areas)
+}
+
+/**
+ * Si esta persona ve «Resolver» en una observación de la orden. Gemelo de
+ * `resolver_observacion_ot` (migración 106): el área a la que va, quien la
+ * anotó o el jefe de producción, y solo mientras esté abierta.
+ */
+export function puedeResolverObservacion(
+  perfil: PerfilSesion | null,
+  o: { abierta: boolean; registrado_por: string; area_id: string },
+): boolean {
+  if (!perfil || !o.abierta) return false
+  if (puede(perfil, 'produccion.aprobar_reportes')) return true
+  return o.registrado_por === perfil.id || (perfil.area_id !== null && perfil.area_id === o.area_id)
 }
 
 /** Corta la petición con 403 si el usuario no tiene el permiso indicado. */

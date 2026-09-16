@@ -3,6 +3,7 @@ import Link from 'next/link'
 
 import { TarjetaTrabajo } from '@/components/avance/tarjeta-trabajo'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { AvisoTope } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -118,7 +119,12 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
         </Tarjeta>
       )}
 
-      <LoQueTocaHoy actividades={cronograma} hoy={hoy} conArea={todoElTaller} />
+      <LoQueTocaHoy
+        actividades={cronograma}
+        hoy={hoy}
+        conArea={todoElTaller}
+        puedeReportar={puede(perfil, 'produccion.registrar')}
+      />
 
       {/* Dos por fila en el teléfono; las cuatro de siempre en el monitor. */}
       <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -343,6 +349,9 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
           </div>
         )}
       </section>
+
+      {/* El tablero trae hasta 200 unidades: si llegó justo, hay más detrás. */}
+      <AvisoTope mostradas={filas.length} tope={200} />
     </>
   )
 }

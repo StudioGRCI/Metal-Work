@@ -12,6 +12,7 @@ import { Ventana } from '@/components/ui/ventana'
 import { createClient } from '@/lib/supabase/client'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { useEnvio } from '@/lib/envio'
+import { etiquetasDePuesto } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { editarCotizacion } from '../acciones'
@@ -20,7 +21,7 @@ export type CatalogosCotizacion = {
   clientes: { id: string; razon_social: string; numero_documento: string }[]
   sedes: { id: string; nombre: string }[]
   tiposCarroceria: { id: string; nombre: string }[]
-  responsables: { id: string; nombres: string; apellidos: string }[]
+  responsables: { id: string; puesto: string | null; correo: string | null }[]
 }
 
 export type CabeceraCotizacion = {
@@ -261,10 +262,10 @@ export function EditarCotizacion({
                 valor={vendedorId}
                 onChange={setVendedorId}
                 marcador="Sin vendedor asignado"
-                marcadorBusqueda="Nombre"
-                opciones={catalogos.responsables.map((r) => ({
-                  valor: r.id,
-                  etiqueta: `${r.nombres} ${r.apellidos}`,
+                marcadorBusqueda="Puesto"
+                opciones={[...etiquetasDePuesto(catalogos.responsables)].map(([valor, etiqueta]) => ({
+                  valor,
+                  etiqueta,
                 }))}
               />
             </Campo>

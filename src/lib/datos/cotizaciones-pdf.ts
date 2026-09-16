@@ -4,36 +4,121 @@ import { createClient } from '@/lib/supabase/server'
 import type { Vistas } from '@/types/database'
 
 /**
- * La cotización que la casa arma en Excel y manda en PDF (migración 101). El
- * sistema guarda lo poco que necesita y la traza: quién la subió, quién la
- * aprobó y qué orden salió de ella.
+ * La cotización que la casa arma en Word y manda en PDF (migraciones 101 a
+ * 103). El sistema guarda lo poco que necesita y la traza: quién la subió,
+ * quién la aprobó, qué orden salió de ella y, si Gerencia la rechazó, cada
+ * versión con la observación que le hizo.
  */
-export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & { url: string | null }
+export type VersionCotizacion = Vistas<'v_cotizaciones_pdf_versiones'> & { url: string | null }
+export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & {
+  url: string | null
+  versiones: VersionCotizacion[]
+  /** Semirremolque o carrocería montada, si el catálogo lo sabe: lo propone al emitir la OT (migración 104). */
+  tipo_unidad: string | null
+}
+
+const PDF = 'application/pdf'
+
+type ConArchivo = { ruta_storage: string | null; mime_type: string | null; nombre_archivo: string | null }
+
+/**
+ * Los enlaces firmados de una tanda de archivos. El PDF se abre en el
+ * navegador; el Word se descarga con su nombre, porque el navegador no lo
+ * muestra y abrirlo en otra pestaña deja una página en blanco.
+ */
+async function enlacesDe(filas: ConArchivo[]): Promise<Map<string, string>> {
+  const supabase = await createClient()
+  const enlaces = new Map<string, string>()
+
+  const pdfs = filas.filter((f) => f.ruta_storage && (f.mime_type ?? PDF) === PDF).map((f) => f.ruta_storage as string)
+  if (pdfs.length > 0) {
+    const { data } = await supabase.storage.from('cotizaciones-pdf').createSignedUrls(pdfs, 600)
+    for (const f of data ?? []) if (f.path && f.signedUrl) enlaces.set(f.path, f.signedUrl)
+  }
+
+  const words = filas.filter((f) => f.ruta_storage && (f.mime_type ?? PDF) !== PDF)
+  await Promise.all(
+    words.map(async (f) => {
+      const { data } = await supabase.storage
+        .from('cotizaciones-pdf')
+        .createSignedUrl(f.ruta_storage as string, 600, { download: f.nombre_archivo ?? true })
+      if (data?.signedUrl) enlaces.set(f.ruta_storage as string, data.signedUrl)
+    }),
+  )
+  return enlaces
+}
 
 export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('v_cotizaciones_pdf')
     .select(
-      'id, numero, estado, observacion, cliente_id, cliente, tipo_carroceria_id, carroceria, nombre_archivo, ruta_storage, tamano_bytes, creado_en, registrado_por, registrado_por_nombre, revisado_en, revisado_por_nombre, orden_id, orden_numero, orden_estado, tuvo_orden',
+      'id, numero, estado, observacion, cliente_id, cliente, tipo_carroceria_id, carroceria, nombre_archivo, ruta_storage, tamano_bytes, creado_en, registrado_por, registrado_por_nombre, revisado_en, revisado_por_nombre, orden_id, orden_numero, orden_estado, tuvo_orden, version, mime_type, archivo_subido_en',
     )
     .order('creado_en', { ascending: false })
     .limit(limite)
 
   if (error) throw new Error(`No se pudieron leer las cotizaciones: ${error.message}`)
-  const filas = (data ?? []) as CotizacionPdf[]
+  const filas = (data ?? []) as Vistas<'v_cotizaciones_pdf'>[]
   if (filas.length === 0) return []
 
-  // Sin enlaces la lista igual sirve: se ve qué hay aunque no se pueda abrir.
-  const { data: firmados } = await supabase.storage
-    .from('cotizaciones-pdf')
-    .createSignedUrls(
-      filas.map((f) => f.ruta_storage).filter((r): r is string => Boolean(r)),
-      600,
-    )
-  const enlaces = new Map((firmados ?? []).map((f) => [f.path, f.signedUrl]))
+  // Solo las que tuvieron más de una versión tienen historial que leer.
+  const conHistorial = filas.filter((f) => (f.version ?? 1) > 1 && f.id).map((f) => f.id as string)
+  let versiones: Vistas<'v_cotizaciones_pdf_versiones'>[] = []
+  if (conHistorial.length > 0) {
+    const r = await supabase
+      .from('v_cotizaciones_pdf_versiones')
+      .select('id, cotizacion_id, version, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_en, observacion, rechazado_en, rechazado_por_nombre')
+      .in('cotizacion_id', conHistorial)
+      .order('version', { ascending: false })
+    if (r.error) throw new Error(`No se pudo leer el historial de las cotizaciones: ${r.error.message}`)
+    versiones = (r.data ?? []) as Vistas<'v_cotizaciones_pdf_versiones'>[]
+  }
 
-  return filas.map((f) => ({ ...f, url: (f.ruta_storage && enlaces.get(f.ruta_storage)) ?? null }))
+  // El tipo de cada carrocería, para proponerlo al emitir la orden.
+  const carrocerias = [...new Set(filas.map((f) => f.tipo_carroceria_id).filter((id): id is string => Boolean(id)))]
+  const { data: tipos } = carrocerias.length
+    ? await supabase.from('tipos_carroceria').select('id, tipo_unidad').in('id', carrocerias)
+    : { data: [] }
+  const tipoDe = new Map((tipos ?? []).map((t) => [t.id, t.tipo_unidad as string | null]))
+
+  // Sin enlaces la lista igual sirve: se ve qué hay aunque no se pueda abrir.
+  const enlaces = await enlacesDe([...filas, ...versiones])
+
+  return filas.map((f) => ({
+    ...f,
+    tipo_unidad: (f.tipo_carroceria_id && tipoDe.get(f.tipo_carroceria_id)) ?? null,
+    url: (f.ruta_storage && enlaces.get(f.ruta_storage)) ?? null,
+    versiones: versiones
+      .filter((v) => v.cotizacion_id === f.id)
+      .map((v) => ({ ...v, url: (v.ruta_storage && enlaces.get(v.ruta_storage)) ?? null })),
+  }))
+}
+
+/**
+ * La cotización en PDF de la que salió una orden, con su enlace para abrirla.
+ * `null` si la orden no salió de una, o si quien mira no ve cotizaciones: el
+ * taller trabaja con la orden y no con el precio que se le dio al cliente.
+ */
+export async function cotizacionPdfDeOrden(ordenId: string) {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('v_cotizaciones_pdf')
+    .select('id, numero, nombre_archivo, ruta_storage, mime_type')
+    .eq('orden_id', ordenId)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw new Error(`No se pudo leer la cotización de la orden: ${error.message}`)
+  if (!data) return null
+
+  const enlaces = await enlacesDe([data])
+  return {
+    numero: data.numero,
+    nombre_archivo: data.nombre_archivo,
+    mime_type: data.mime_type,
+    url: (data.ruta_storage && enlaces.get(data.ruta_storage)) ?? null,
+  }
 }
 
 /**

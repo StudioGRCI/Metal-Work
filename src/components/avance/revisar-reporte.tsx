@@ -33,10 +33,23 @@ export function RevisarReporte({
   revision: string | null
 }) {
   const [observando, setObservando] = useState(false)
-  const aprobar = useEnvio(revisarReporte)
-  const observar = useEnvio(revisarReporte, () => setObservando(false))
+  // Lo decidido se pinta al instante: el repintado con las fotos del día tarda
+  // segundos y el jefe no sabía si el toque había entrado.
+  const [decision, setDecision] = useState<'APROBADO' | 'OBSERVADO' | null>(null)
+  const aprobar = useEnvio(revisarReporte, () => setDecision('APROBADO'))
+  const observar = useEnvio(revisarReporte, () => {
+    setObservando(false)
+    setDecision('OBSERVADO')
+  })
 
   if (revision === 'APROBADO') return null
+  if (decision) {
+    return (
+      <span role="status" className={`text-xs font-medium ${decision === 'APROBADO' ? 'text-exito' : 'text-peligro'}`}>
+        {decision === 'APROBADO' ? 'Aprobado' : 'Observación enviada'}
+      </span>
+    )
+  }
 
   if (observando) {
     return (

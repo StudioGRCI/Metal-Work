@@ -59,10 +59,10 @@ afectará cero filas sin dar error.
 
 ## Qué tiene cada rol
 
-**`ADMINISTRACION` — Administración** (10)
+**`ADMINISTRACION` — Administración** (11)
 `clientes.ver`, `cotizaciones.aprobar`, `cotizaciones.costear`,
 `cotizaciones.ver`, `ordenes.crear`, `ordenes.editar`, `ordenes.listar`,
-`ordenes.ver`, `pagos.registrar`, `pagos.ver`
+`ordenes.ver`, `pagos.registrar`, `pagos.ver`, `tesoreria.liberar`
 
 **`CONSULTA` — Solo consulta** (5)
 `clientes.ver`, `cotizaciones.ver`, `ordenes.listar`, `ordenes.ver`,
@@ -140,6 +140,11 @@ desde la `102`, también la quita —igual que quien la subió— mientras esté
 revisar o rechazada, con su PDF. La que tuvo orden, aunque se haya anulado, no
 la quita nadie: lo impide un disparador, y lo dice.
 
+La corrección de una rechazada (`103`) no la sube Gerencia aunque tenga
+`cotizaciones.revisar`: la sube solo quien subió la cotización. Gerencia observa
+el papel del vendedor, no lo reescribe. Las versiones rechazadas las escribe el
+sistema; nadie tiene permiso de escritura sobre `cotizaciones_pdf_versiones`.
+
 **`ADMIN` — Administrador** (0 en `roles_permisos`)
 Ninguno asignado. Pasa por `es_admin()`.
 
@@ -175,7 +180,7 @@ la política exige y se mira quién lo tiene de verdad.
 | Órdenes de trabajo | `ordenes.listar` | Entrar al módulo de órdenes de trabajo y al control de plazos | todos menos `ADMIN` y `VENDEDOR` (12 roles) |
 | Órdenes de trabajo | `ordenes.revisar_taller` | Aprobar o rechazar las órdenes que abrió el taller | `JEFE_PRODUCCION`, `JEFE_TALLER` |
 | Órdenes de trabajo | `ordenes.ver` | Ver órdenes de trabajo y su detalle | todos menos `ADMIN` (13 roles) |
-| Producción | `diseno.planos` | Armar la lista de planos y piezas de una orden y dar por entregado cada plano | `DISENO`, `GERENTE` |
+| Producción | `diseno.planos` | Armar la lista de planos y piezas de una orden, dar por entregado cada plano y armar las actividades de cada área | `DISENO`, `GERENTE` |
 | Producción | `produccion.actividades` | Armar la lista de actividades de su área en una orden y ponerles su peso | `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
 | Producción | `produccion.aprobar_reportes` | Aprobar u observar los reportes del día del taller | `JEFE_PRODUCCION`, `JEFE_TALLER` |
 | Producción | `produccion.cualquier_area` | Armar y reportar la hoja de cualquier área, no solo la propia | `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
@@ -184,7 +189,7 @@ la política exige y se mira quién lo tiene de verdad.
 | Producción | `produccion.ver` | Ver etapas, avances y el día en el taller | `CONSULTA`, `OPERARIO`, `COSTOS`, `DISENO`, `CALIDAD`, `SUPERVISOR`, `JEFE_PRODUCCION`, `JEFE_TALLER`, `GERENTE` |
 | tesoreria | `pagos.registrar` | Registrar un pago del cliente y arrancar el plazo | `ADMINISTRACION`, `COSTOS` |
 | tesoreria | `pagos.ver` | Ver los pagos que hizo el cliente | `ADMINISTRACION`, `COSTOS`, `VENDEDOR`, `GERENTE` |
-| tesoreria | `tesoreria.liberar` | Confirmar que el cliente está al día y liberar la salida de su unidad | `COSTOS`, `GERENTE` |
+| tesoreria | `tesoreria.liberar` | Confirmar que el cliente está al día y liberar la salida de su unidad | `ADMINISTRACION`, `COSTOS`, `GERENTE` |
 
 ## Puertas tapiadas: las que había y la que queda
 

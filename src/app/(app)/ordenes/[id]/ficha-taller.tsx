@@ -1,8 +1,7 @@
 'use client'
 
 import { Check, Minus, Plus, Trash2, Wand2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { startTransition, useActionState, useState, useTransition } from 'react'
+import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Progreso } from '@/components/ui/progreso'
@@ -11,7 +10,8 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { ConfirmarAccion } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import type { AccesorioOT, PasoVerificacion, RepuestoOT } from '@/lib/datos/ficha-ot'
-import { cantidad as formatearCantidad, fecha } from '@/lib/format'
+import { useAccion, useEnvio } from '@/lib/envio'
+import { cantidad as formatearCantidad, etiquetasDePuesto, fecha, puesto } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import {
@@ -41,7 +41,7 @@ export type FichaFisica = {
   encargado_produccion_id: string | null
 }
 
-type Persona = { id: string; nombres: string; apellidos: string }
+type Persona = { id: string; puesto: string | null; correo: string | null }
 
 function Aviso({
   resultado,
@@ -128,7 +128,7 @@ export function FichaTaller({
 }
 
 function ArmarFicha({ ordenId }: { ordenId: string }) {
-  const [resultado, accion, enviando] = useActionState(armarFicha, null)
+  const { alEnviar, enviando, resultado } = useEnvio(armarFicha)
 
   return (
     <Tarjeta className="border-acento">
@@ -140,7 +140,7 @@ function ArmarFicha({ ordenId }: { ordenId: string }) {
             En las órdenes nuevas se arma sola al aprobarlas.
           </p>
         </div>
-        <form action={accion}>
+        <form onSubmit={alEnviar}>
           <input type="hidden" name="orden_id" value={ordenId} />
           <Boton type="submit" cargando={enviando}>
             <Wand2 aria-hidden className="size-4" />
@@ -166,7 +166,9 @@ function Medidas({
   personal: Persona[]
   puedeEditar: boolean
 }) {
-  const [resultado, accion, enviando] = useActionState(guardarFichaFisica, null)
+  // Con `useEnvio` un rechazo de la base deja las medidas como se escribieron;
+  // antes el formulario volvía a los valores guardados y había que reescribir.
+  const { alEnviar, enviando, resultado } = useEnvio(guardarFichaFisica)
 
   if (!puedeEditar) {
     const encargado = personal.find((p) => p.id === ficha.encargado_produccion_id)
@@ -184,7 +186,7 @@ function Medidas({
           <Dato titulo="Tipo de suspensión" valor={ficha.tipo_suspension} />
           <Dato
             titulo="Encargado de producción"
-            valor={encargado ? `${encargado.nombres} ${encargado.apellidos}` : null}
+            valor={encargado ? (etiquetasDePuesto(personal).get(encargado.id) ?? puesto(encargado)) : null}
           />
           <Dato titulo="Colores" valor={ficha.colores} />
           <Dato titulo="Correo de contacto" valor={ficha.correo_contacto} />
@@ -205,7 +207,7 @@ function Medidas({
         descripcion="Lo que el taller necesita tener a la vista para fabricar la unidad."
       />
       <TarjetaCuerpo>
-        <form action={accion} className="space-y-3">
+        <form onSubmit={alEnviar} className="space-y-3">
           <input type="hidden" name="orden_id" value={ordenId} />
 
           {/* Las medidas se toman en planta con el teléfono en la mano:
@@ -279,9 +281,9 @@ function Medidas({
                 defaultValue={ficha.encargado_produccion_id ?? ''}
               >
                 <option value="">Sin asignar</option>
-                {personal.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.apellidos}, {p.nombres}
+                {[...etiquetasDePuesto(personal)].map(([id, etiqueta]) => (
+                  <option key={id} value={id}>
+                    {etiqueta}
                   </option>
                 ))}
               </Seleccion>
@@ -336,7 +338,6 @@ function Verificacion({
   puedeEditar: boolean
   sinArmar: boolean
 }) {
-  const [resultado, accionAnotar] = useActionState(anotarVerificacion, null)
   const [anotando, setAnotando] = useState<string | null>(null)
 
   const hechos = pasos.filter((p) => p.avance_2).length
@@ -394,32 +395,14 @@ function Verificacion({
                         {paso.descripcion}
                       </span>
                       {paso.responsable && (
-                        <p className="text-[11px] text-texto-suave sm:hidden">
-                          {paso.responsable.nombres} {paso.responsable.apellidos}
-                        </p>
+                        <p className="text-[11px] text-texto-suave sm:hidden">{puesto(paso.responsable)}</p>
                       )}
                       {paso.observaciones && (
                         <p className="mt-0.5 text-xs text-aviso">{paso.observaciones}</p>
                       )}
                       {puedeEditar &&
                         (anotando === paso.id ? (
-                          <form
-                            action={accionAnotar}
-                            className="mt-1 flex gap-2"
-                            onSubmit={() => setAnotando(null)}
-                          >
-                            <input type="hidden" name="id" value={paso.id} />
-                            <input type="hidden" name="orden_id" value={ordenId} />
-                            <Entrada
-                              name="observaciones"
-                              defaultValue={paso.observaciones ?? ''}
-                              placeholder="Qué quedó pendiente"
-                              className="text-xs"
-                            />
-                            <Boton type="submit" tamano="sm">
-                              Guardar nota
-                            </Boton>
-                          </form>
+                          <NotaPaso ordenId={ordenId} paso={paso} alCerrar={() => setAnotando(null)} />
                         ) : (
                           // Once píxeles de letra no son un blanco para el dedo:
                           // en el teléfono el enlace ocupa 44 px de alto.
@@ -433,9 +416,7 @@ function Verificacion({
                         ))}
                     </td>
                     <td className="hidden px-3 py-2 text-xs text-texto-suave sm:table-cell">
-                      {paso.responsable
-                        ? `${paso.responsable.nombres} ${paso.responsable.apellidos}`
-                        : '—'}
+                      {puesto(paso.responsable)}
                     </td>
                     <Casilla
                       ordenId={ordenId}
@@ -461,10 +442,48 @@ function Verificacion({
             </table>
           </div>
         )}
-
-        <Aviso resultado={resultado} />
       </TarjetaCuerpo>
     </Tarjeta>
+  )
+}
+
+/**
+ * La nota de un paso, con su propio envío: se cierra cuando la base la guardó
+ * y, si la rechaza, el error sale en la misma fila y el texto se queda. Antes
+ * se cerraba al enviar y el error aparecía al pie de la tarjeta, sin decir de
+ * qué paso era.
+ */
+function NotaPaso({ ordenId, paso, alCerrar }: { ordenId: string; paso: PasoVerificacion; alCerrar: () => void }) {
+  const { alEnviar, enviando, error } = useEnvio(anotarVerificacion, alCerrar)
+
+  return (
+    <form onSubmit={alEnviar} className="mt-1 space-y-1">
+      {/* Apilado en el teléfono: la celda mide unos 170 px y en una sola línea
+          la entrada se aplastaba. Y sin `text-xs` ahí: 12 px hacen que Safari
+          acerque la pantalla en cada foco. */}
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <input type="hidden" name="id" value={paso.id} />
+        <input type="hidden" name="orden_id" value={ordenId} />
+        <Entrada
+          name="observaciones"
+          defaultValue={paso.observaciones ?? ''}
+          placeholder="Qué quedó pendiente"
+          autoFocus
+          className="sm:text-xs"
+        />
+        <Boton type="submit" tamano="sm" cargando={enviando}>
+          Guardar nota
+        </Boton>
+        <Boton type="button" variante="fantasma" tamano="sm" onClick={alCerrar}>
+          Cerrar
+        </Boton>
+      </div>
+      {error && (
+        <p role="alert" className="text-xs text-peligro">
+          {error}
+        </p>
+      )}
+    </form>
   )
 }
 
@@ -492,13 +511,14 @@ function Casilla({
         puedeEditar={puedeEditar}
         etiqueta={etiqueta}
         className="mx-auto"
-        onCambiar={(marcar) => {
+        accion={marcarVerificacion}
+        datos={(marcar) => {
           const datos = new FormData()
           datos.set('id', pasoId)
           datos.set('orden_id', ordenId)
           datos.set('avance', avance)
           datos.set('valor', marcar ? 'si' : 'no')
-          return marcarVerificacion(null, datos)
+          return datos
         }}
       />
       {cuando && <p className="mt-0.5 text-[10px] text-texto-tenue">{fecha(cuando)}</p>}
@@ -520,41 +540,27 @@ function Visto({
   marcado,
   puedeEditar,
   etiqueta,
-  onCambiar,
+  accion,
+  datos,
   className,
 }: {
   marcado: boolean
   puedeEditar: boolean
   etiqueta: string
-  onCambiar: (marcar: boolean) => Promise<ResultadoAccion>
+  /** La acción que marca o desmarca, y los datos que le van según el sentido. */
+  accion: (previo: unknown, datos: FormData) => Promise<ResultadoAccion>
+  datos: (marcar: boolean) => FormData
   className?: string
 }) {
-  const router = useRouter()
-  const [, iniciarTransicion] = useTransition()
-  const [enviando, setEnviando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function alPulsar() {
-    if (enviando) return
-
-    setError(null)
-    setEnviando(true)
-    const salida = await onCambiar(!marcado)
-    setEnviando(false)
-
-    if (!salida.ok) {
-      setError(salida.error)
-      return
-    }
-
-    iniciarTransicion(() => router.refresh())
-  }
+  // useAccion: un toque en vuelo a la vez y el repintado al terminar, sin el
+  // par `useState(enviando)` + `router.refresh()` a mano que tenía antes.
+  const { ejecutar, enviando, error } = useAccion(accion)
 
   return (
     <>
       <button
         type="button"
-        onClick={alPulsar}
+        onClick={() => ejecutar(datos(!marcado))}
         disabled={!puedeEditar || enviando}
         aria-label={etiqueta}
         aria-pressed={marcado}
@@ -595,8 +601,10 @@ function Accesorios({
   puedeArmar: boolean
 }) {
   const [abierto, setAbierto] = useState(false)
-  const [resultado, accion, enviando] = useActionState(agregarAccesorioOT, null)
-  const [, accionQuitar] = useActionState(quitarAccesorioOT, null)
+  const { alEnviar, enviando, resultado } = useEnvio(agregarAccesorioOT)
+  // El resultado de quitar se muestra: antes se descartaba y, si la base
+  // rechazaba, el accesorio seguía ahí sin que nadie supiera por qué.
+  const quitar = useAccion(quitarAccesorioOT)
   const [porQuitar, setPorQuitar] = useState<AccesorioOT | null>(null)
 
   const puestos = accesorios.filter((a) => a.verificado).length
@@ -610,9 +618,7 @@ function Accesorios({
     const datos = new FormData()
     datos.set('id', porQuitar.id)
     datos.set('orden_id', ordenId)
-    // Dentro de una transición: la acción es asíncrona y llamarla suelta deja
-    // el pendiente de useActionState sin actualizar (React avisa por consola).
-    startTransition(() => accionQuitar(datos))
+    quitar.ejecutar(datos)
     setPorQuitar(null)
   }
 
@@ -640,7 +646,7 @@ function Accesorios({
       />
       <TarjetaCuerpo className="space-y-3">
         {abierto && puedeArmar && (
-          <form action={accion} className="rounded-[var(--radius-base)] bg-superficie-2 p-3">
+          <form onSubmit={alEnviar} className="rounded-[var(--radius-base)] bg-superficie-2 p-3">
             <input type="hidden" name="orden_id" value={ordenId} />
             <div className="grid gap-3 sm:grid-cols-5">
               <Campo etiqueta="Cantidad" htmlFor="cantidad" requerido>
@@ -696,12 +702,13 @@ function Accesorios({
                     marcado={a.verificado}
                     puedeEditar={puedeEditar}
                     etiqueta={`Visto bueno de ${a.descripcion}`}
-                    onCambiar={(marcar) => {
+                    accion={marcarAccesorio}
+                    datos={(marcar) => {
                       const datos = new FormData()
                       datos.set('id', a.id)
                       datos.set('orden_id', ordenId)
                       datos.set('verificado', marcar ? 'si' : 'no')
-                      return marcarAccesorio(null, datos)
+                      return datos
                     }}
                   />
                 </div>
@@ -717,7 +724,7 @@ function Accesorios({
                   )}
                   {a.verificado && a.verificador && (
                     <span className="ml-2 text-[11px] text-texto-tenue">
-                      V°B° {a.verificador.nombres} {a.verificador.apellidos}
+                      V°B° {puesto(a.verificador)}
                       {a.verificado_en ? ` · ${fecha(a.verificado_en)}` : ''}
                     </span>
                   )}
@@ -740,6 +747,8 @@ function Accesorios({
             ))}
           </ul>
         )}
+
+        {quitar.error && <Aviso resultado={quitar.resultado} />}
 
         <ConfirmarAccion
           abierta={porQuitar !== null}
@@ -771,8 +780,8 @@ function Repuestos({
   puedeEditar: boolean
 }) {
   const [abierto, setAbierto] = useState(false)
-  const [resultado, accion, enviando] = useActionState(agregarRepuesto, null)
-  const [, accionQuitar] = useActionState(quitarRepuesto, null)
+  const { alEnviar, enviando, resultado } = useEnvio(agregarRepuesto)
+  const quitar = useAccion(quitarRepuesto)
   const [porQuitar, setPorQuitar] = useState<RepuestoOT | null>(null)
 
   // Mismo caso que los accesorios: el borrado es definitivo y el icono es un
@@ -783,7 +792,7 @@ function Repuestos({
     const datos = new FormData()
     datos.set('id', porQuitar.id)
     datos.set('orden_id', ordenId)
-    startTransition(() => accionQuitar(datos))
+    quitar.ejecutar(datos)
     setPorQuitar(null)
   }
 
@@ -807,7 +816,7 @@ function Repuestos({
       />
       <TarjetaCuerpo className="space-y-3">
         {abierto && puedeEditar && (
-          <form action={accion} className="rounded-[var(--radius-base)] bg-superficie-2 p-3">
+          <form onSubmit={alEnviar} className="rounded-[var(--radius-base)] bg-superficie-2 p-3">
             <input type="hidden" name="orden_id" value={ordenId} />
             <div className="grid gap-3 sm:grid-cols-5">
               <Campo etiqueta="Cantidad" htmlFor="cantidad_repuesto" requerido>
@@ -876,6 +885,8 @@ function Repuestos({
             ))}
           </ul>
         )}
+
+        {quitar.error && <Aviso resultado={quitar.resultado} />}
 
         <ConfirmarAccion
           abierta={porQuitar !== null}

@@ -10,7 +10,7 @@ export type PagoCliente = {
   medio: string
   referencia: string | null
   observaciones: string | null
-  registrado: { nombres: string; apellidos: string } | null
+  registrado: { puesto: string | null } | null
 }
 
 export type ResumenPagos = {
@@ -42,7 +42,7 @@ export async function pagosDeCotizacion(cotizacionId: string): Promise<{
     supabase
       .from('pagos_cliente')
       .select(
-        'id, tipo, fecha, monto, medio, referencia, observaciones, registrado:usuarios(nombres, apellidos)',
+        'id, tipo, fecha, monto, medio, referencia, observaciones, registrado:usuarios(puesto)',
       )
       .eq('cotizacion_id', cotizacionId)
       .order('fecha')

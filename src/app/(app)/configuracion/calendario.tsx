@@ -1,12 +1,11 @@
 'use client'
 
 import { CalendarPlus, Hammer } from 'lucide-react'
-import { useActionState } from 'react'
-
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { Feriado } from '@/lib/datos/configuracion'
+import { useEnvio } from '@/lib/envio'
 import { fecha as formatearFecha } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -51,7 +50,7 @@ export function DiasLaborables({
   dias: number[]
   puedeEditar: boolean
 }) {
-  const [resultado, accion, enviando] = useActionState(guardarDiasLaborables, null)
+  const { alEnviar, enviando, resultado } = useEnvio(guardarDiasLaborables)
 
   return (
     <Tarjeta>
@@ -60,7 +59,7 @@ export function DiasLaborables({
         descripcion="Los plazos en días hábiles saltan los días apagados y los feriados."
       />
       <TarjetaCuerpo>
-        <form action={accion} className="space-y-3">
+        <form onSubmit={alEnviar} className="space-y-3">
           <div className="flex flex-wrap gap-x-4 gap-y-0 sm:gap-y-4">
             {DIAS.map((d) => (
               // La etiqueta entera es el blanco: una casilla de 16 px no se
@@ -109,9 +108,9 @@ export function Feriados({
   feriados: Feriado[]
   puedeEditar: boolean
 }) {
-  const [resultadoSiembra, sembrar, sembrando] = useActionState(sembrarFeriados, null)
-  const [resultadoAlta, agregar, agregando] = useActionState(agregarFeriado, null)
-  const [, alternar] = useActionState(alternarFeriadoLaborable, null)
+  const siembra = useEnvio(sembrarFeriados)
+  const alta = useEnvio(agregarFeriado)
+  const alternar = useEnvio(alternarFeriadoLaborable)
 
   return (
     <Tarjeta>
@@ -120,9 +119,9 @@ export function Feriados({
         descripcion="Los nacionales se cargan de una vez; los de la empresa se agregan a mano."
         acciones={
           puedeEditar && (
-            <form action={sembrar}>
+            <form onSubmit={siembra.alEnviar}>
               <input type="hidden" name="anio" value={anio} />
-              <Boton type="submit" variante="secundario" tamano="sm" cargando={sembrando}>
+              <Boton type="submit" variante="secundario" tamano="sm" cargando={siembra.enviando}>
                 <CalendarPlus aria-hidden className="size-3.5" />
                 Cargar nacionales {anio}
               </Boton>
@@ -131,10 +130,11 @@ export function Feriados({
         }
       />
       <TarjetaCuerpo className="space-y-3">
-        <Aviso resultado={resultadoSiembra} />
+        <Aviso resultado={siembra.resultado} />
+        {alternar.error && <Aviso resultado={alternar.resultado} />}
 
         {puedeEditar && (
-          <form action={agregar} className="flex flex-wrap items-end gap-2 rounded-[var(--radius-base)] bg-superficie-2 p-3">
+          <form onSubmit={alta.alEnviar} className="flex flex-wrap items-end gap-2 rounded-[var(--radius-base)] bg-superficie-2 p-3">
             <Campo etiqueta="Fecha" htmlFor="fecha-feriado" requerido className="min-w-36 flex-1 sm:flex-initial">
               <Entrada id="fecha-feriado" name="fecha" type="date" required />
             </Campo>
@@ -149,11 +149,11 @@ export function Feriados({
                 placeholder="Aniversario de la empresa"
               />
             </Campo>
-            <Boton type="submit" tamano="sm" cargando={agregando}>
+            <Boton type="submit" tamano="sm" cargando={alta.enviando}>
               Agregar feriado
             </Boton>
             <div className="w-full">
-              <Aviso resultado={resultadoAlta} />
+              <Aviso resultado={alta.resultado} />
             </div>
           </form>
         )}
@@ -191,13 +191,14 @@ export function Feriados({
                   </span>
                 </span>
                 {puedeEditar && (
-                  <form action={alternar}>
+                  <form onSubmit={alternar.alEnviar}>
                     <input type="hidden" name="fecha" value={f.fecha} />
                     <input type="hidden" name="laborable" value={f.laborable ? 'no' : 'si'} />
                     {/* El texto solo dice «Se trabaja»: con veinte filas
                         iguales, el lector de pantalla necesita saber de cuál. */}
                     <button
                       type="submit"
+                      disabled={alternar.enviando}
                       aria-label={
                         f.laborable
                           ? `Volver a marcar ${f.nombre} como feriado`

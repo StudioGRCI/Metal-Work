@@ -213,7 +213,10 @@ export async function cronogramaAbierto(
     .select(
       'id, orden_id, orden_numero, orden_estado, abierta_en_taller, area_id, area, nombre, referencia, avance_pct, ultimo_reporte, fecha_inicio_plan, fecha_fin_plan',
     )
-    .lte('fecha_inicio_plan', hoy)
+    // Sin fecha de inicio también cuenta: la hoja armada a mano —lo habitual,
+    // el cronograma viene de un Excel— dejaba al operario sin ninguna señal de
+    // qué le falta reportar hoy.
+    .or(`fecha_inicio_plan.is.null,fecha_inicio_plan.lte.${hoy}`)
     .eq('terminada', false)
     .in('orden_estado', [...ESTADOS_ACTIVOS_OT, 'BORRADOR'])
     .order('fecha_fin_plan', { ascending: true, nullsFirst: false })
@@ -242,13 +245,47 @@ export async function areaDeActividad(actividadId: string): Promise<string | nul
   return data?.area_id ?? null
 }
 
-/** Las áreas del taller, para elegir de quién es la lista que se arma. */
+/**
+ * Las áreas que tocan la unidad: las que arman una hoja de actividades o
+ * reciben una observación. El catálogo de áreas trae también Marketing,
+ * Recursos Humanos o Tesorería, y ofrecerlas en la hoja solo hacía más largo
+ * el desplegable.
+ */
+const AREAS_DEL_TALLER = ['DIS', 'MTZ', 'PRD', 'ACB', 'CAL', 'ALM']
+
 export async function areasDelTaller() {
   const supabase = await createClient()
   const { data } = await supabase
     .from('areas')
     .select('id, codigo, nombre')
     .eq('activo', true)
+    .in('codigo', AREAS_DEL_TALLER)
     .order('orden_secuencia')
   return data ?? []
+}
+
+export type PendientesFueraDelDia = { cuantos: number; masAntiguo: string | null }
+
+/**
+ * Lo que quedó por aprobar en otros días: el reporte de ayer sin visto, el de
+ * «otro día» cargado con fecha pasada, el corregido tras una observación. El
+ * parte del día los escondía y el jefe podía leer «no queda nada» con veinte
+ * pendientes acumulados. Un viaje por tabla: cuántos y la fecha del más viejo.
+ */
+export async function pendientesFueraDelDia(dia: string): Promise<PendientesFueraDelDia> {
+  const supabase = await createClient()
+  const lecturas = await Promise.all([
+    supabase.from('v_ot_avance_diario').select('fecha', { count: 'exact' }).eq('revision', 'PENDIENTE').neq('fecha', dia).order('fecha').limit(1),
+    supabase.from('ot_avance_resumen').select('fecha', { count: 'exact' }).eq('revision', 'PENDIENTE').neq('fecha', dia).order('fecha').limit(1),
+    supabase.from('v_flota_avance_diario').select('fecha', { count: 'exact' }).eq('revision', 'PENDIENTE').neq('fecha', dia).order('fecha').limit(1),
+  ])
+  let cuantos = 0
+  let masAntiguo: string | null = null
+  for (const l of lecturas) {
+    if (l.error) continue
+    cuantos += l.count ?? 0
+    const f = l.data?.[0]?.fecha
+    if (f && (masAntiguo === null || f < masAntiguo)) masAntiguo = f
+  }
+  return { cuantos, masAntiguo }
 }

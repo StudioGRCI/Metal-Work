@@ -1,6 +1,7 @@
 import { AlertTriangle, CalendarClock, CheckCircle2 } from 'lucide-react'
 import Link from 'next/link'
 
+import { ReportarDia } from '@/components/avance/reportar-dia'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { ActividadDelCronograma } from '@/lib/datos/actividades'
@@ -17,11 +18,14 @@ export function LoQueTocaHoy({
   actividades,
   hoy,
   conArea,
+  puedeReportar = false,
 }: {
   actividades: ActividadDelCronograma[]
   hoy: string
   /** El jefe ve todas las áreas y necesita saber de cuál es cada una. */
   conArea: boolean
+  /** Con `produccion.registrar` cada fila trae «Reportar día»: un toque, sin entrar a la orden. */
+  puedeReportar?: boolean
 }) {
   if (actividades.length === 0) return null
 
@@ -33,7 +37,7 @@ export function LoQueTocaHoy({
     <Tarjeta className="mb-4">
       <TarjetaCabecera
         titulo="Lo que toca reportar"
-        descripcion="Según el cronograma de cada orden: lo que está en marcha hoy y lo que ya pasó su fecha sin llegar al 100 %."
+        descripcion="Lo que está en marcha en tus órdenes y lo que ya pasó su fecha sin llegar al 100 %. Se reporta desde acá, sin entrar a la orden."
         acciones={
           faltanHoy > 0 ? (
             <Insignia tono="aviso">{faltanHoy} sin reporte de hoy</Insignia>
@@ -51,7 +55,7 @@ export function LoQueTocaHoy({
             </p>
             <ul className="divide-y divide-borde">
               {atrasadas.map((a) => (
-                <Fila key={a.id} a={a} hoy={hoy} conArea={conArea} atrasada />
+                <Fila key={a.id} a={a} hoy={hoy} conArea={conArea} puedeReportar={puedeReportar} atrasada />
               ))}
             </ul>
           </section>
@@ -65,7 +69,7 @@ export function LoQueTocaHoy({
             </p>
             <ul className="divide-y divide-borde">
               {enMarcha.map((a) => (
-                <Fila key={a.id} a={a} hoy={hoy} conArea={conArea} />
+                <Fila key={a.id} a={a} hoy={hoy} conArea={conArea} puedeReportar={puedeReportar} />
               ))}
             </ul>
           </section>
@@ -79,48 +83,52 @@ function Fila({
   a,
   hoy,
   conArea,
+  puedeReportar,
   atrasada = false,
 }: {
   a: ActividadDelCronograma
   hoy: string
   conArea: boolean
+  puedeReportar: boolean
   atrasada?: boolean
 }) {
   const reportadaHoy = a.ultimo_reporte === hoy
 
+  // El enlace es el nombre, no la fila entera: al lado va el botón de reportar,
+  // y un botón dentro de un enlace navega en vez de abrir la ventana.
   return (
-    <li>
-      <Link
-        href={`/ordenes/${a.orden_id}?vista=actividades`}
-        className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 hover:bg-superficie-2"
-      >
-        <span className="min-w-0">
-          <span className="block text-sm font-medium text-texto">
-            {a.nombre}
-            {a.referencia && <span className="font-normal text-texto-suave"> · {a.referencia}</span>}
-          </span>
-          <span className="block text-[11px] text-texto-suave">
-            {[a.orden_numero, conArea ? a.area : null, `va en ${numero(a.avance_pct, 0)} %`]
-              .filter(Boolean)
-              .join(' · ')}
-          </span>
+    <li className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2">
+      <span className="min-w-0">
+        <Link
+          href={`/ordenes/${a.orden_id}?vista=actividades#actividad-${a.id}`}
+          className="block text-sm font-medium text-texto hover:text-acento hover:underline"
+        >
+          {a.nombre}
+          {a.referencia && <span className="font-normal text-texto-suave"> · {a.referencia}</span>}
+        </Link>
+        <span className="block text-[11px] text-texto-suave">
+          {[a.orden_numero, conArea ? a.area : null, `va en ${numero(a.avance_pct, 0)} %`]
+            .filter(Boolean)
+            .join(' · ')}
         </span>
-        <span className="flex shrink-0 items-center gap-2 text-[11px]">
-          {atrasada ? (
-            <span className="font-medium text-peligro">debía terminar el {fmtFecha(a.fecha_fin_plan)}</span>
-          ) : (
-            a.fecha_fin_plan && <span className="text-texto-suave">hasta el {fmtFecha(a.fecha_fin_plan)}</span>
-          )}
-          {reportadaHoy ? (
-            <span className="flex items-center gap-1 text-exito">
-              <CheckCircle2 aria-hidden className="size-3.5" />
-              reportada hoy
-            </span>
-          ) : (
-            <Insignia tono={atrasada ? 'peligro' : 'aviso'}>falta el de hoy</Insignia>
-          )}
-        </span>
-      </Link>
+      </span>
+      <span className="flex shrink-0 flex-wrap items-center gap-2 text-[11px]">
+        {atrasada ? (
+          <span className="font-medium text-peligro">debía terminar el {fmtFecha(a.fecha_fin_plan)}</span>
+        ) : (
+          a.fecha_fin_plan && <span className="text-texto-suave">hasta el {fmtFecha(a.fecha_fin_plan)}</span>
+        )}
+        {reportadaHoy ? (
+          <span className="flex items-center gap-1 text-exito">
+            <CheckCircle2 aria-hidden className="size-3.5" />
+            reportada hoy
+          </span>
+        ) : puedeReportar ? (
+          <ReportarDia actividad={a} ordenId={a.orden_id} compacto />
+        ) : (
+          <Insignia tono={atrasada ? 'peligro' : 'aviso'}>falta el de hoy</Insignia>
+        )}
+      </span>
     </li>
   )
 }

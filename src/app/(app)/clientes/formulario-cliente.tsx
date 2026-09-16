@@ -1,11 +1,10 @@
 'use client'
 
-import { useActionState } from 'react'
-
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { useEnvio } from '@/lib/envio'
 import type { Tablas } from '@/types/database'
 
 import { guardarCliente } from './acciones'
@@ -17,11 +16,12 @@ const DEPARTAMENTOS = [
 ]
 
 export function FormularioCliente({ cliente }: { cliente?: Tablas<'clientes'> }) {
-  const [resultado, ejecutar, pendiente] = useActionState(guardarCliente, null)
+  // useEnvio: un envío por toque y lo escrito a salvo si el servidor lo rechaza.
+  const { alEnviar, enviando, resultado } = useEnvio(guardarCliente)
   const editando = Boolean(cliente)
 
   return (
-    <form action={ejecutar} className="max-w-3xl space-y-4">
+    <form onSubmit={alEnviar} className="max-w-3xl space-y-4">
       {cliente && <input type="hidden" name="id" value={cliente.id} />}
 
       <Tarjeta>
@@ -187,7 +187,7 @@ export function FormularioCliente({ cliente }: { cliente?: Tablas<'clientes'> })
         <EnlaceBoton href={cliente ? `/clientes/${cliente.id}` : '/clientes'} variante="fantasma">
           Cancelar
         </EnlaceBoton>
-        <Boton type="submit" cargando={pendiente}>
+        <Boton type="submit" cargando={enviando}>
           {editando ? 'Guardar cambios' : 'Registrar cliente'}
         </Boton>
       </div>

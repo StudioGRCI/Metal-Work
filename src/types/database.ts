@@ -845,12 +845,16 @@ export type Database = {
           registrado_por: string | null
           creado_en: string
           actualizado_en: string
+          version: number
+          archivo_subido_en: string
         }
         Insert: {
           id?: string
           numero: string
           cliente_id: string
           tipo_carroceria_id: string
+          version?: number
+          archivo_subido_en?: string
           estado?: Database["public"]["Enums"]["estado_cotizacion_pdf"]
           observacion?: string | null
           revisado_por?: string | null
@@ -868,6 +872,8 @@ export type Database = {
           numero?: string
           cliente_id?: string
           tipo_carroceria_id?: string
+          version?: number
+          archivo_subido_en?: string
           estado?: Database["public"]["Enums"]["estado_cotizacion_pdf"]
           observacion?: string | null
           revisado_por?: string | null
@@ -910,6 +916,54 @@ export type Database = {
             referencedColumns: ["id"]
           }
         ]
+      }
+      cotizaciones_pdf_versiones: {
+        Row: {
+          id: string
+          cotizacion_id: string
+          version: number
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type: string | null
+          tamano_bytes: number | null
+          subido_en: string
+          observacion: string
+          rechazado_por: string | null
+          rechazado_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          cotizacion_id: string
+          version: number
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          subido_en: string
+          observacion: string
+          rechazado_por?: string | null
+          rechazado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          cotizacion_id?: string
+          version?: number
+          nombre_archivo?: string
+          ruta_storage?: string
+          mime_type?: string | null
+          tamano_bytes?: number | null
+          subido_en?: string
+          observacion?: string
+          rechazado_por?: string | null
+          rechazado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: []
       }
       empresa: {
         Row: {
@@ -1493,6 +1547,7 @@ export type Database = {
           tipo_carroceria_id: string | null
           sede_id: string
           tipo_trabajo: Database["public"]["Enums"]["tipo_trabajo_ot"]
+          tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           estado: Database["public"]["Enums"]["estado_ot"]
           prioridad: Database["public"]["Enums"]["prioridad_ot"]
           descripcion: string
@@ -1541,6 +1596,7 @@ export type Database = {
           tipo_carroceria_id?: string | null
           sede_id: string
           tipo_trabajo?: Database["public"]["Enums"]["tipo_trabajo_ot"]
+          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           estado?: Database["public"]["Enums"]["estado_ot"]
           prioridad?: Database["public"]["Enums"]["prioridad_ot"]
           descripcion: string
@@ -1589,6 +1645,7 @@ export type Database = {
           tipo_carroceria_id?: string | null
           sede_id?: string
           tipo_trabajo?: Database["public"]["Enums"]["tipo_trabajo_ot"]
+          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           estado?: Database["public"]["Enums"]["estado_ot"]
           prioridad?: Database["public"]["Enums"]["prioridad_ot"]
           descripcion?: string
@@ -2445,6 +2502,74 @@ export type Database = {
           }
         ]
       }
+      ot_observaciones: {
+        Row: {
+          id: string
+          orden_id: string
+          area_id: string
+          descripcion: string
+          registrado_por: string
+          resolucion: string | null
+          resuelta_por: string | null
+          resuelta_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          area_id: string
+          descripcion: string
+          registrado_por?: string
+          resolucion?: string | null
+          resuelta_por?: string | null
+          resuelta_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          area_id?: string
+          descripcion?: string
+          registrado_por?: string
+          resolucion?: string | null
+          resuelta_por?: string | null
+          resuelta_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_observaciones_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_observaciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_observaciones_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_observaciones_resuelta_por_fkey"
+            columns: ["resuelta_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_piezas: {
         Row: {
           id: string
@@ -3225,11 +3350,13 @@ export type Database = {
           actualizado_en: string
           creado_por: string | null
           codigo_interno: string | null
+          numero_fmi: string | null
         }
         Insert: {
           id?: string
           cliente_id?: string | null
           placa?: string | null
+          numero_fmi?: string | null
           tipo_vehiculo?: Database["public"]["Enums"]["tipo_vehiculo"]
           marca?: string | null
           modelo?: string | null
@@ -3251,6 +3378,7 @@ export type Database = {
           id?: string
           cliente_id?: string | null
           placa?: string | null
+          numero_fmi?: string | null
           tipo_vehiculo?: Database["public"]["Enums"]["tipo_vehiculo"]
           marca?: string | null
           modelo?: string | null
@@ -3657,6 +3785,25 @@ export type Database = {
           orden_numero: string | null
           orden_estado: string | null
           tuvo_orden: boolean | null
+          version: number | null
+          mime_type: string | null
+          archivo_subido_en: string | null
+        }
+        Relationships: []
+      }
+      v_cotizaciones_pdf_versiones: {
+        Row: {
+          id: string | null
+          cotizacion_id: string | null
+          version: number | null
+          nombre_archivo: string | null
+          ruta_storage: string | null
+          mime_type: string | null
+          tamano_bytes: number | null
+          subido_en: string | null
+          observacion: string | null
+          rechazado_en: string | null
+          rechazado_por_nombre: string | null
         }
         Relationships: []
       }
@@ -3899,6 +4046,25 @@ export type Database = {
         }
         Relationships: []
       }
+      v_ot_observaciones: {
+        Row: {
+          id: string | null
+          orden_id: string | null
+          area_id: string | null
+          area_codigo: string | null
+          area: string | null
+          descripcion: string | null
+          registrado_por: string | null
+          registrado_por_nombre: string | null
+          creado_en: string | null
+          resolucion: string | null
+          resuelta_por: string | null
+          resuelta_por_nombre: string | null
+          resuelta_en: string | null
+          abierta: boolean | null
+        }
+        Relationships: []
+      }
       v_ot_timeline: {
         Row: {
           orden_id: string | null
@@ -4132,8 +4298,9 @@ export type Database = {
         Args: {
           p_cotizacion: string
           p_orden: string
-          p_placa: string
-          p_tipo_vehiculo: Database["public"]["Enums"]["tipo_vehiculo"]
+          p_numero: string
+          p_numero_fmi: string
+          p_tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"]
           p_marca: string
           p_modelo: string
           p_fecha_entrega: string
@@ -4197,6 +4364,14 @@ export type Database = {
           total: number | null
           por_estado: Json | null
         }[]
+      }
+      levantar_observacion_ot: {
+        Args: {
+          p_orden: string
+          p_area: string
+          p_descripcion: string
+        }
+        Returns: string
       }
       marcar_cotizaciones_vencidas: {
         Args: {
@@ -4313,6 +4488,12 @@ export type Database = {
         }
         Returns: number
       }
+      puede_armar_hoja_de_area: {
+        Args: {
+          p_area_id: string
+        }
+        Returns: boolean
+      }
       puede_hoja_de_actividad: {
         Args: {
           p_actividad_id: string
@@ -4331,6 +4512,18 @@ export type Database = {
         }
         Returns: boolean
       }
+      puesto: {
+        Args: {
+          "": Database["public"]["Tables"]["usuarios"]["Row"]
+        }
+        Returns: string
+      }
+      puesto_de: {
+        Args: {
+          p_usuario: string
+        }
+        Returns: string
+      }
       recalcular_totales_cotizacion: {
         Args: {
           p_cotizacion: string
@@ -4343,6 +4536,13 @@ export type Database = {
           p_tipo_evento: Database["public"]["Enums"]["tipo_evento_ot"]
           p_descripcion: string
           p_datos?: Json
+        }
+        Returns: string
+      }
+      resolver_observacion_ot: {
+        Args: {
+          p_id: string
+          p_resolucion: string
         }
         Returns: string
       }

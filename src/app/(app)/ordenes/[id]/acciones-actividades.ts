@@ -5,15 +5,17 @@ import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
 import { areaDeActividad } from '@/lib/datos/actividades'
-import { exigirSesion, puede, puedeHojaDeArea } from '@/lib/sesion'
+import { exigirSesion, puede, puedeArmarHoja, puedeHojaDeArea } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /**
  * La hoja del área se escribe con dos manos y cada una tiene su permiso, que es
  * exactamente el que la base va a pedir:
  *
- *   · Armar la lista y ponerle el peso a cada actividad: `produccion.actividades`
- *     —el jefe de maestranza y el supervisor de producción—.
+ *   · Armar la lista y ponerle el peso a cada actividad: Diseño (`diseno.planos`),
+ *     que desglosa la unidad, para cualquier área; y `produccion.actividades`
+ *     —el jefe de maestranza y el supervisor de producción— para la suya
+ *     (migración 106, `puedeArmarHoja`).
  *   · Reportar el avance del día: `produccion.registrar`, el mismo con el que se
  *     carga el parte diario. El operario reporta pero no arma la lista.
  *
@@ -61,8 +63,8 @@ const esquemaActividad = z.object({
 
 export async function agregarActividad(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'produccion.actividades')) {
-    return { ok: false, error: 'La lista de actividades la arma el jefe del área.' }
+  if (!puede(perfil, ['produccion.actividades', 'diseno.planos'])) {
+    return { ok: false, error: 'La lista de actividades la arma Diseño o el jefe del área.' }
   }
 
   const analisis = esquemaActividad.safeParse(Object.fromEntries(datos))
@@ -72,7 +74,7 @@ export async function agregarActividad(_previo: unknown, datos: FormData): Promi
 
   const v = analisis.data
 
-  if (!puedeHojaDeArea(perfil, v.area_id)) {
+  if (!puedeArmarHoja(perfil, v.area_id)) {
     return { ok: false, error: 'Esa hoja es de otra área: cada uno arma la suya.' }
   }
 
@@ -108,6 +110,69 @@ export async function agregarActividad(_previo: unknown, datos: FormData): Promi
   return { ok: true, mensaje: 'Actividad agregada.' }
 }
 
+const esquemaEditar = z.object({
+  id: z.string().uuid(),
+  orden_id: z.string().uuid(),
+  nombre: z.string().trim().min(3, 'Escribe qué actividad es'),
+  referencia: z.string().trim().optional(),
+  detalle: z.string().trim().optional(),
+  orden_secuencia: z.coerce.number().int().min(1).max(999).default(1),
+  fecha_inicio_plan: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/, 'La fecha de inicio no se entiende').optional(),
+  fecha_fin_plan: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/, 'La fecha de fin no se entiende').optional(),
+})
+
+/**
+ * Corregir una actividad ya cargada: el nombre, la referencia, el número y las
+ * fechas del cronograma. El peso tiene su propia acción porque cambia el 100 %
+ * del área y la base lo defiende aparte. Antes, un nombre mal escrito
+ * obligaba a quitar la actividad y volver a cargarla, con lo reportado perdido.
+ */
+export async function editarActividad(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ['produccion.actividades', 'diseno.planos'])) {
+    return { ok: false, error: 'La lista de actividades la corrige Diseño o el jefe del área.' }
+  }
+
+  const analisis = esquemaEditar.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los datos.' }
+  }
+  const v = analisis.data
+
+  if (!puedeArmarHoja(perfil, await areaDeActividad(v.id))) {
+    return { ok: false, error: 'Esa actividad es de la hoja de otra área.' }
+  }
+
+  const inicio = nulo(v.fecha_inicio_plan)
+  const fin = nulo(v.fecha_fin_plan)
+  if (inicio && fin && fin < inicio) {
+    return { ok: false, error: 'La actividad no puede terminar antes de empezar.' }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('ot_actividades')
+    .update({
+      nombre: v.nombre,
+      referencia: nulo(v.referencia),
+      detalle: nulo(v.detalle),
+      orden_secuencia: v.orden_secuencia,
+      fecha_inicio_plan: inicio,
+      fecha_fin_plan: fin,
+    })
+    .eq('id', v.id)
+    .eq('orden_id', v.orden_id)
+    .select('id')
+    .maybeSingle()
+
+  if (error) return { ok: false, error: traducir(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
+
+  revalidatePath(`/ordenes/${v.orden_id}`)
+  revalidatePath('/avance', 'layout')
+  return { ok: true, mensaje: 'Actividad corregida.' }
+}
+
 const esquemaPeso = z.object({
   id: z.string().uuid(),
   orden_id: z.string().uuid(),
@@ -119,8 +184,8 @@ export async function cambiarPesoActividad(
   datos: FormData,
 ): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'produccion.actividades')) {
-    return { ok: false, error: 'El peso lo pone el jefe del área.' }
+  if (!puede(perfil, ['produccion.actividades', 'diseno.planos'])) {
+    return { ok: false, error: 'El peso lo pone Diseño o el jefe del área.' }
   }
 
   const analisis = esquemaPeso.safeParse(Object.fromEntries(datos))
@@ -130,7 +195,7 @@ export async function cambiarPesoActividad(
 
   const v = analisis.data
 
-  if (!puedeHojaDeArea(perfil, await areaDeActividad(v.id))) {
+  if (!puedeArmarHoja(perfil, await areaDeActividad(v.id))) {
     return { ok: false, error: 'Ese peso es de la hoja de otra área.' }
   }
 
@@ -154,8 +219,8 @@ const esquemaQuitar = z.object({ id: z.string().uuid(), orden_id: z.string().uui
 
 export async function quitarActividad(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'produccion.actividades')) {
-    return { ok: false, error: 'La lista la arma el jefe del área.' }
+  if (!puede(perfil, ['produccion.actividades', 'diseno.planos'])) {
+    return { ok: false, error: 'La lista la arma Diseño o el jefe del área.' }
   }
 
   const analisis = esquemaQuitar.safeParse(Object.fromEntries(datos))
@@ -172,7 +237,7 @@ export async function quitarActividad(_previo: unknown, datos: FormData): Promis
     .eq('id', v.id)
     .maybeSingle()
 
-  if (!puedeHojaDeArea(perfil, reportada?.area_id ?? null)) {
+  if (!puedeArmarHoja(perfil, reportada?.area_id ?? null)) {
     return { ok: false, error: 'Esa actividad es de la hoja de otra área.' }
   }
 
@@ -217,8 +282,8 @@ const esquemaFilaCronograma = z.object({
  */
 export async function cargarCronograma(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'produccion.actividades')) {
-    return { ok: false, error: 'El cronograma lo carga el supervisor del área o el jefe.' }
+  if (!puede(perfil, ['produccion.actividades', 'diseno.planos'])) {
+    return { ok: false, error: 'El cronograma lo carga Diseño, el supervisor del área o el jefe.' }
   }
 
   const orden = z.string().uuid().safeParse(datos.get('orden_id'))
@@ -233,7 +298,7 @@ export async function cargarCronograma(_previo: unknown, datos: FormData): Promi
     return { ok: false, error: 'El cronograma no se pudo leer: vuelve a elegir el archivo.' }
   }
 
-  const ajena = filas.find((f) => !puedeHojaDeArea(perfil, f.area_id))
+  const ajena = filas.find((f) => !puedeArmarHoja(perfil, f.area_id))
   if (ajena) {
     return { ok: false, error: `«${ajena.nombre}» es de la hoja de otra área: cada uno carga la suya.` }
   }
@@ -301,5 +366,103 @@ export async function reportarAvance(_previo: unknown, datos: FormData): Promise
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
+  // También se reporta desde /avance y se lee en /avance/diario.
+  revalidatePath('/avance', 'layout')
   return { ok: true, mensaje: 'Avance del día reportado.' }
+}
+
+const esquemaHoja = z.object({ orden_id: z.string().uuid() })
+
+/**
+ * El jefe aprueba de una vez lo que queda por aprobar de esta orden. Es el
+ * gemelo de `aprobarElDia` de /avance/diario, pero por orden y no por fecha:
+ * desde la OT no había forma de aprobar sin ir reporte por reporte.
+ */
+export async function aprobarHojaDeOrden(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'produccion.aprobar_reportes')) {
+    return { ok: false, error: 'El visto bueno de los reportes lo da el jefe de producción.' }
+  }
+
+  const analisis = esquemaHoja.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: 'No se pudo identificar la orden.' }
+  const v = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('ot_actividad_avances')
+    .update({ revision: 'APROBADO' })
+    .eq('orden_id', v.orden_id)
+    .eq('revision', 'PENDIENTE')
+    .select('id')
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  const cuantos = data?.length ?? 0
+  if (cuantos === 0) return { ok: false, error: NO_TOCO_NADA }
+
+  revalidatePath(`/ordenes/${v.orden_id}`)
+  revalidatePath('/avance', 'layout')
+  return { ok: true, mensaje: cuantos === 1 ? 'Reporte aprobado.' : `${cuantos} reportes aprobados.` }
+}
+
+// ------------------------------------------------------ el día de un área
+const esquemaDiaDeArea = z.object({
+  orden_id: z.string().uuid(),
+  area_id: z.string().uuid(),
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Falta la fecha'),
+})
+
+/**
+ * El reporte del día de un área entera: una fila por actividad con lo que
+ * avanzó hoy. Llegan como `avance_<actividad>` y `nota_<actividad>`; las que
+ * vienen en blanco no se mandan. Un solo `insert` con todas las filas: la
+ * restricción `uq_avance_del_dia` y las políticas siguen valiendo fila por
+ * fila, y si una falla no entra ninguna y se dice cuál.
+ */
+export async function reportarDiaDeArea(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'produccion.registrar')) {
+    return { ok: false, error: 'No tienes permiso para reportar avance de producción.' }
+  }
+
+  const analisis = esquemaDiaDeArea.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el reporte.' }
+  }
+  const v = analisis.data
+
+  if (!puedeHojaDeArea(perfil, v.area_id)) {
+    return { ok: false, error: 'Esa hoja es de otra área: cada uno reporta lo suyo.' }
+  }
+
+  const filas: { actividad_id: string; orden_id: string; fecha: string; avance_pct: number; nota: string | null; reportado_por: string }[] = []
+  for (const [clave, valor] of datos.entries()) {
+    const m = /^avance_([0-9a-f-]{36})$/.exec(clave)
+    if (!m || typeof valor !== 'string' || valor.trim() === '') continue
+    const pct = Number(valor)
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+      return { ok: false, error: 'El avance del día tiene que estar entre 1 y 100.' }
+    }
+    const nota = datos.get(`nota_${m[1]}`)
+    filas.push({
+      actividad_id: m[1],
+      orden_id: v.orden_id,
+      fecha: v.fecha,
+      avance_pct: pct,
+      nota: typeof nota === 'string' && nota.trim() ? nota.trim() : null,
+      reportado_por: perfil.id,
+    })
+  }
+  if (filas.length === 0) return { ok: false, error: 'No marcaste ningún avance: pon el porcentaje de lo que se hizo hoy.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('ot_actividad_avances').insert(filas).select('id')
+
+  if (error) return { ok: false, error: traducir(error) }
+  const cuantas = data?.length ?? 0
+  if (cuantas === 0) return { ok: false, error: NO_TOCO_NADA }
+
+  revalidatePath(`/ordenes/${v.orden_id}`)
+  revalidatePath('/avance', 'layout')
+  return { ok: true, mensaje: cuantas === 1 ? 'Reportada 1 actividad.' : `Reportadas ${cuantas} actividades.` }
 }
