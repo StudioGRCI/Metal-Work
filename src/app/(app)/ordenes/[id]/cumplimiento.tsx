@@ -74,6 +74,7 @@ export function Cumplimiento({
   puedeDisenar,
   puedeReportar,
   ordenViva,
+  motivoInactiva,
 }: {
   ordenId: string
   resumen: ResumenCumplimiento | null
@@ -84,6 +85,8 @@ export function Cumplimiento({
   puedeReportar: boolean
   /** La orden acepta planos: aprobada y no entregada ni anulada. */
   ordenViva: boolean
+  /** Por qué no los acepta: en borrador falta la aprobación, cerrada ya no hay qué repartir. */
+  motivoInactiva?: string | null
 }) {
   const pesoTotal = Number(resumen?.peso_total ?? 0)
   const faltaPeso = Math.round((100 - pesoTotal) * 100) / 100
@@ -139,7 +142,7 @@ export function Cumplimiento({
 
       {!ordenViva && (
         <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-xs text-texto-suave">
-          La orden no está en curso: la hoja se consulta pero ya no se reparten planos.
+          {motivoInactiva ?? 'La orden no está en curso'}: la hoja se consulta, pero mientras no se reparten planos.
         </p>
       )}
 

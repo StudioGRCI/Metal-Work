@@ -305,3 +305,37 @@ export async function reportarAvance(_previo: unknown, datos: FormData): Promise
   revalidatePath(`/ordenes/${v.orden_id}`)
   return { ok: true, mensaje: 'Avance del día reportado.' }
 }
+
+const esquemaHoja = z.object({ orden_id: z.string().uuid() })
+
+/**
+ * El jefe aprueba de una vez lo que queda por aprobar de esta orden. Es el
+ * gemelo de `aprobarElDia` de /avance/diario, pero por orden y no por fecha:
+ * desde la OT no había forma de aprobar sin ir reporte por reporte.
+ */
+export async function aprobarHojaDeOrden(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'produccion.aprobar_reportes')) {
+    return { ok: false, error: 'El visto bueno de los reportes lo da el jefe de producción.' }
+  }
+
+  const analisis = esquemaHoja.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: 'No se pudo identificar la orden.' }
+  const v = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('ot_actividad_avances')
+    .update({ revision: 'APROBADO' })
+    .eq('orden_id', v.orden_id)
+    .eq('revision', 'PENDIENTE')
+    .select('id')
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  const cuantos = data?.length ?? 0
+  if (cuantos === 0) return { ok: false, error: NO_TOCO_NADA }
+
+  revalidatePath(`/ordenes/${v.orden_id}`)
+  revalidatePath('/avance', 'layout')
+  return { ok: true, mensaje: cuantos === 1 ? 'Reporte aprobado.' : `${cuantos} reportes aprobados.` }
+}

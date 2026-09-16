@@ -31,6 +31,7 @@ import {
   verificacionesDeOrden,
 } from '@/lib/datos/ficha-ot'
 import { observacionesDeOrden } from '@/lib/datos/observaciones'
+import { pendientesDeOrden } from '@/lib/datos/pendientes-ot'
 import {
   areasDeSuMano,
   areasParaArmar,
@@ -56,6 +57,7 @@ import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
 import { FechasClave, SalidaDeUnidad } from './salida-y-plazos'
 import { Pestanas } from './pestanas'
+import { TeToca, queMeToca } from './te-toca'
 
 export async function generateMetadata({ params }: PageProps<'/ordenes/[id]'>): Promise<Metadata> {
   const { id } = await params
@@ -92,11 +94,25 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
   // La cotización de la que salió va en la cabecera de todas las pestañas; se
   // pide junto con la orden y solo si quien mira ve cotizaciones.
-  const [orden, cotizacionPdf] = await Promise.all([
+  const [orden, cotizacionPdf, pendientes] = await Promise.all([
     obtenerOrden(id),
     puede(perfil, 'cotizaciones.ver') ? cotizacionPdfDeOrden(id) : Promise.resolve(null),
+    // Lo pendiente se cuenta en todas las pestañas: es lo que las numera.
+    pendientesDeOrden(id),
   ])
   if (!orden) notFound()
+
+  const toca = queMeToca(perfil, pendientes, orden)
+  // Por qué la hoja de Diseño no acepta planos: en borrador falta quien la
+  // apruebe; cerrada, ya no hay qué repartir.
+  const motivoInactiva =
+    orden.estado === 'BORRADOR'
+      ? orden.abierta_en_taller
+        ? 'Falta que el jefe de producción apruebe la orden'
+        : 'Falta que Gerencia apruebe la orden'
+      : ESTADOS_CERRADOS.includes(orden.estado)
+        ? 'La orden ya se cerró'
+        : null
 
   const vista: Vista = VISTAS.includes(query.vista as Vista) ? (query.vista as Vista) : 'resumen'
 
@@ -299,7 +315,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           titulo="Avance"
           valor={<Progreso valor={orden.avance_porcentaje} mostrarValor />}
           pie="Ponderado por las horas de cada etapa"
-          href={`/ordenes/${orden.id}?vista=avance`}
+          href={`/ordenes/${orden.id}?vista=etapas`}
         />
         <Indicador
           titulo="Entrega"
@@ -348,7 +364,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         )}
       </div>
 
-      <Pestanas ordenId={orden.id} activa={vista} />
+      <TeToca ordenId={orden.id} items={toca.items} />
+
+      <Pestanas ordenId={orden.id} activa={vista} contadores={toca.contadores} />
 
       {vista === 'resumen' && (
         <div className="grid gap-4 lg:grid-cols-2 *:min-w-0">
@@ -469,7 +487,12 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                 puedeConfirmar={puede(perfil, ['ordenes.entregar', 'produccion.actividades'])}
               />
             )}
-            {fechasClave && <FechasClave fechas={fechasClave} />}
+            {fechasClave && (
+              <FechasClave
+                fechas={fechasClave}
+                disenoCumplida={pendientes.planos > 0 && pendientes.planosEntregados >= pendientes.planos}
+              />
+            )}
             {archivos && (
               <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos} puedeSubir={puedeSubirArchivos} />
             )}
@@ -519,7 +542,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           planos={cumplimiento?.planos ?? []}
           puedeDisenar={puede(perfil, 'diseno.planos')}
           puedeReportar={puede(perfil, 'produccion.registrar')}
-          ordenViva={!['BORRADOR', ...ESTADOS_CERRADOS].includes(orden.estado)}
+          ordenViva={motivoInactiva === null}
+          motivoInactiva={motivoInactiva}
         />
       )}
 
@@ -529,7 +553,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           materiales={listaMateriales.materiales}
           catalogo={listaMateriales.catalogo}
           puedeDisenar={puede(perfil, 'diseno.planos')}
-          ordenViva={!['BORRADOR', ...ESTADOS_CERRADOS].includes(orden.estado)}
+          ordenViva={motivoInactiva === null}
+          motivoInactiva={motivoInactiva}
         />
       )}
 

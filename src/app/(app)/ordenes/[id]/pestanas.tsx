@@ -22,11 +22,21 @@ const PESTANAS = [
   { clave: 'bitacora', titulo: 'Trazabilidad' },
 ] as const
 
-export function Pestanas({ ordenId, activa }: { ordenId: string; activa: string }) {
+export function Pestanas({
+  ordenId,
+  activa,
+  contadores = {},
+}: {
+  ordenId: string
+  activa: string
+  /** Cuántos pendientes lleva cada pestaña para quien mira; cero no se pinta. */
+  contadores?: Record<string, number>
+}) {
   return (
     <nav className="my-5 flex gap-1 overflow-x-auto border-b border-borde" aria-label="Secciones de la orden">
       {PESTANAS.map((p) => {
         const esActiva = p.clave === activa
+        const n = contadores[p.clave] ?? 0
         return (
           <Link
             key={p.clave}
@@ -43,6 +53,14 @@ export function Pestanas({ ordenId, activa }: { ordenId: string; activa: string 
             )}
           >
             {p.titulo}
+            {n > 0 && (
+              <span
+                aria-label={`${n} pendientes`}
+                className="tabular ml-1.5 rounded-full bg-aviso-suave px-1.5 text-[11px] font-medium text-aviso"
+              >
+                {n}
+              </span>
+            )}
           </Link>
         )
       })}

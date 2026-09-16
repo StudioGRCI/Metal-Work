@@ -1,6 +1,6 @@
 'use client'
 
-import { CalendarDays, Plus, Trash2, TrendingUp, Truck } from 'lucide-react'
+import { CalendarDays, CheckCheck, Plus, Trash2, TrendingUp, Truck } from 'lucide-react'
 import { useState } from 'react'
 
 import { CampoPorcentaje, FechaDelReporte } from '@/components/avance/campos-reporte'
@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils'
 
 import {
   agregarActividad,
+  aprobarHojaDeOrden,
   cambiarPesoActividad,
   quitarActividad,
   reportarAvance,
@@ -247,6 +248,12 @@ export function ActividadesDeOrden({
           <TarjetaCabecera
             titulo="Diario de la unidad"
             descripcion="Lo reportado día por día, lo más reciente arriba, con el visto del jefe de producción."
+            acciones={
+              aprueba &&
+              diario.some((r) => r.revision === 'PENDIENTE') && (
+                <AprobarHoja ordenId={ordenId} cuantos={diario.filter((r) => r.revision === 'PENDIENTE').length} />
+              )
+            }
           />
           <TarjetaCuerpo className="p-0">
             <ul className="divide-y divide-[var(--borde)]">
@@ -299,6 +306,47 @@ export function ActividadesDeOrden({
         </Tarjeta>
       )}
     </div>
+  )
+}
+
+/**
+ * Aprobar de una vez lo que queda por aprobar de esta orden. Pregunta antes: es
+ * un gesto sobre varios reportes y el jefe tiene que haberlos mirado.
+ */
+function AprobarHoja({ ordenId, cuantos }: { ordenId: string; cuantos: number }) {
+  const [confirmando, setConfirmando] = useState(false)
+  const { alEnviar, enviando, error, limpiar } = useEnvio(aprobarHojaDeOrden, () => setConfirmando(false))
+
+  if (!confirmando) {
+    return (
+      <Boton
+        variante="secundario"
+        tamano="sm"
+        onClick={() => {
+          limpiar()
+          setConfirmando(true)
+        }}
+      >
+        <CheckCheck aria-hidden className="size-3.5" />
+        Aprobar los {cuantos} por aprobar
+      </Boton>
+    )
+  }
+
+  return (
+    <form onSubmit={alEnviar} className="flex flex-wrap items-center gap-2">
+      <input type="hidden" name="orden_id" value={ordenId} />
+      <span className="text-xs text-texto">
+        ¿Aprobar {cuantos === 1 ? 'el reporte' : `los ${cuantos} reportes`} de esta orden que {cuantos === 1 ? 'espera' : 'esperan'}?
+      </span>
+      <Boton type="submit" tamano="sm" cargando={enviando}>
+        Sí, aprobar
+      </Boton>
+      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setConfirmando(false)}>
+        No
+      </Boton>
+      {error && <Error_ texto={error} />}
+    </form>
   )
 }
 

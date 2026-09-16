@@ -39,6 +39,7 @@ export function MaterialesDeOrden({
   catalogo,
   puedeDisenar,
   ordenViva,
+  motivoInactiva,
 }: {
   ordenId: string
   materiales: MaterialDeOrden[]
@@ -46,6 +47,8 @@ export function MaterialesDeOrden({
   /** `diseno.planos`: quien dibuja la unidad escribe qué lleva. */
   puedeDisenar: boolean
   ordenViva: boolean
+  /** Por qué no se toca la lista: en borrador falta la aprobación, cerrada ya no hay qué pedir. */
+  motivoInactiva?: string | null
 }) {
   const porPlano = new Set(materiales.filter((m) => m.plano_id).map((m) => m.plano_id)).size
 
@@ -76,9 +79,11 @@ export function MaterialesDeOrden({
           <TarjetaCuerpo>
             <p className="text-sm font-medium text-texto">La lista todavía está vacía</p>
             <p className="mt-1 text-sm text-texto-suave">
-              {puedeDisenar
-                ? 'Agrega el primer material con el botón de arriba: qué lleva la unidad y cuánto.'
-                : 'Diseño todavía no ha escrito qué material lleva esta unidad.'}
+              {!ordenViva
+                ? `${motivoInactiva ?? 'La orden no está en curso'}: mientras, la lista no se toca.`
+                : puedeDisenar
+                  ? 'Agrega el primer material con el botón de arriba: qué lleva la unidad y cuánto.'
+                  : 'Diseño todavía no ha escrito qué material lleva esta unidad.'}
             </p>
           </TarjetaCuerpo>
         </Tarjeta>

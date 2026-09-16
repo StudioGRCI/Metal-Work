@@ -180,6 +180,7 @@ export function SalidaDeUnidad({
 /** Las fechas límite de las reglas de plazo, con su semáforo contra hoy. */
 export function FechasClave({
   fechas,
+  disenoCumplida,
 }: {
   fechas: {
     limite_os_produccion: string | null
@@ -190,37 +191,46 @@ export function FechasClave({
     primera_os: string | null
     fecha_entrega: string | null
   }
+  /** Diseño entregó todos los planos de la hoja de cumplimiento. */
+  disenoCumplida: boolean
 }) {
+  // `semaforo` en falso: el sistema no sabe si esa regla se cumplió —la OS de
+  // acabados y la tarjeta se tramitan fuera— y pintarla en rojo era mentir.
   const filas = [
     {
       titulo: 'OS de producción',
       regla: '3 días hábiles desde la emisión',
       limite: fechas.limite_os_produccion,
       cumplida: Boolean(fechas.primera_os),
+      semaforo: true,
     },
     {
       titulo: 'Diseño de la unidad',
       regla: '4 días hábiles desde la emisión',
       limite: fechas.limite_diseno,
-      cumplida: false,
+      cumplida: disenoCumplida,
+      semaforo: true,
     },
     {
       titulo: 'OS de acabados',
       regla: '1 día hábil antes del arenado',
       limite: fechas.limite_os_acabados,
       cumplida: false,
+      semaforo: false,
     },
     {
       titulo: 'Certificados',
       regla: '2 días hábiles desde el término',
       limite: fechas.limite_certificados,
       cumplida: Boolean(fechas.fecha_entrega),
+      semaforo: true,
     },
     {
       titulo: 'Tarjeta de propiedad y placas',
       regla: '15 días hábiles desde el término',
       limite: fechas.limite_tarjeta_placas,
       cumplida: false,
+      semaforo: false,
     },
   ]
 
@@ -232,11 +242,11 @@ export function FechasClave({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Fechas clave"
-        descripcion="Las reglas de plazo que la empresa tiene escritas, calculadas en días de taller."
+        descripcion="Las reglas de plazo que la empresa tiene escritas, calculadas en días de taller. La OS de acabados y la tarjeta se tramitan fuera: acá solo va su fecha límite."
       />
       <TarjetaCuerpo className="space-y-0">
         {filas.map((f) => {
-          const vencida = !f.cumplida && f.limite !== null && f.limite < hoy
+          const vencida = f.semaforo && !f.cumplida && f.limite !== null && f.limite < hoy
           return (
             <div
               key={f.titulo}
