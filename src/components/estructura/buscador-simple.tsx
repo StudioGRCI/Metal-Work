@@ -30,7 +30,9 @@ export function BuscadorSimple({
       if (busqueda) query.set('q', busqueda)
       else query.delete('q')
       query.delete('pagina')
-      iniciarTransicion(() => router.push(`${ruta}?${query}`))
+      // `replace`, no `push`: cada letra escrita era una entrada en el
+      // historial y «atrás» recorría la búsqueda letra por letra.
+      iniciarTransicion(() => router.replace(`${ruta}?${query}`))
     }, 350)
 
     return () => clearTimeout(temporizador)
@@ -74,7 +76,7 @@ export function BuscadorSimple({
           type="button"
           onClick={() => {
             setBusqueda('')
-            iniciarTransicion(() => router.push(ruta))
+            iniciarTransicion(() => router.replace(ruta))
           }}
           className="inline-flex h-11 items-center gap-1.5 rounded-[var(--radius-base)] px-3 text-sm text-texto-suave hover:bg-superficie-2 hover:text-texto sm:h-9"
         >
