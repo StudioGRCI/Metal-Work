@@ -19,11 +19,14 @@ export function NavegacionLista({
   permisos,
   esAdmin,
   alNavegar,
+  pendientes = {},
 }: {
   permisos: string[]
   esAdmin: boolean
   /** El cajón del teléfono se cierra al elegir; la barra del monitor no hace nada. */
   alNavegar?: () => void
+  /** Cuántos pendientes cuelgan de cada módulo, por su ruta: el número al lado del nombre. */
+  pendientes?: Record<string, number>
 }) {
   const ruta = usePathname()
 
@@ -67,12 +70,14 @@ export function NavegacionLista({
                 )
               }
 
+              const n = pendientes[item.ruta] ?? 0
               return (
                 <li key={item.ruta}>
                   <Link
                     href={item.ruta}
                     onClick={alNavegar}
                     aria-current={activo ? 'page' : undefined}
+                    aria-label={n > 0 ? `${item.titulo}, ${n} pendientes` : undefined}
                     className={cn(
                       'flex items-center gap-2.5 rounded-[var(--radius-base)] px-3 py-2 text-sm transition-colors',
                       activo
@@ -82,6 +87,13 @@ export function NavegacionLista({
                   >
                     <Icono aria-hidden className="size-4 shrink-0" />
                     <span className="truncate">{item.titulo}</span>
+                    {/* Lo que le toca a este puesto en ese módulo, a la vista
+                        sin entrar: el mismo globo de la campana. */}
+                    {n > 0 && (
+                      <span className="tabular ml-auto rounded-full bg-aviso-suave px-1.5 text-[11px] font-semibold text-aviso">
+                        {n > 99 ? '99+' : n}
+                      </span>
+                    )}
                   </Link>
                 </li>
               )

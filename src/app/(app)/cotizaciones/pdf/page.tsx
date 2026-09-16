@@ -1,7 +1,9 @@
 import { Download, FileText, History, Hourglass, MessageSquareWarning } from 'lucide-react'
 import Link from 'next/link'
 
+import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { etiquetaDeMime } from '@/lib/archivo-cotizacion'
@@ -51,8 +53,27 @@ function EnlaceArchivo({ url, mime, nombre }: { url: string; mime: string | null
  * veces lo mismo. Lo que el sistema sí guarda es la traza —quién la subió, qué
  * observó Gerencia en cada vuelta, quién la aprobó, qué orden salió— y el papel.
  */
-export default async function PaginaCotizacionesPdf() {
+const FILTROS_ESTADO = ['POR_REVISAR', 'APROBADA_SIN_OT', 'RECHAZADA', 'CON_OT'] as const
+type FiltroEstado = (typeof FILTROS_ESTADO)[number]
+
+function enFiltro(c: { estado: string | null; orden_id: string | null }, filtro: FiltroEstado | null) {
+  switch (filtro) {
+    case 'POR_REVISAR':
+      return c.estado === 'POR_REVISAR'
+    case 'APROBADA_SIN_OT':
+      return c.estado === 'APROBADA' && !c.orden_id
+    case 'RECHAZADA':
+      return c.estado === 'RECHAZADA'
+    case 'CON_OT':
+      return Boolean(c.orden_id)
+    default:
+      return true
+  }
+}
+
+export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<'/cotizaciones/pdf'>) {
   const perfil = await exigirPermiso('cotizaciones.ver')
+  const params = await searchParams
 
   const puedeSubir = puede(perfil, 'cotizaciones.crear')
   const revisa = puede(perfil, 'cotizaciones.revisar')
@@ -65,7 +86,35 @@ export default async function PaginaCotizacionesPdf() {
 
   const porRevisar = cotizaciones.filter((c) => c.estado === 'POR_REVISAR').length
   const sinOrden = cotizaciones.filter((c) => c.estado === 'APROBADA' && !c.orden_id).length
-  const paraCorregir = cotizaciones.filter((c) => puedeCorregirCotizacion(perfil, c)).length
+  const rechazadas = cotizaciones.filter((c) => c.estado === 'RECHAZADA').length
+  const conOrden = cotizaciones.filter((c) => Boolean(c.orden_id)).length
+
+  // Los filtros y la búsqueda se resuelven en memoria: la lista ya viene entera
+  // (hasta 200) y así los enlaces del Tablero y de la campana caen en lo suyo.
+  const filtro = (FILTROS_ESTADO as readonly string[]).includes(String(params.estado))
+    ? (params.estado as FiltroEstado)
+    : null
+  const busqueda = typeof params.q === 'string' ? params.q.trim().toLowerCase() : ''
+  const coincide = (c: (typeof cotizaciones)[number]) =>
+    !busqueda || [c.numero, c.cliente, c.carroceria].some((v) => (v ?? '').toLowerCase().includes(busqueda))
+  // Sin filtro, primero lo que quien mira puede mover: Gerencia ve arriba las
+  // que esperan su visto; Administración, las aprobadas sin orden; Ventas, las
+  // suyas rechazadas. El orden por fecha se conserva dentro de cada grupo.
+  const meToca = (c: (typeof cotizaciones)[number]) =>
+    (revisa && c.estado === 'POR_REVISAR') ||
+    (emite && c.estado === 'APROBADA' && !c.orden_id) ||
+    puedeCorregirCotizacion(perfil, c)
+  const visibles = cotizaciones
+    .filter((c) => enFiltro(c, filtro) && coincide(c))
+    .sort((a, b) => Number(meToca(b)) - Number(meToca(a)))
+
+  const opciones = [
+    { valor: null, etiqueta: `Todas (${cotizaciones.length})` },
+    { valor: 'POR_REVISAR', etiqueta: `Por revisar (${porRevisar})` },
+    { valor: 'APROBADA_SIN_OT', etiqueta: `Aprobadas sin OT (${sinOrden})` },
+    { valor: 'RECHAZADA', etiqueta: `Rechazadas (${rechazadas})` },
+    { valor: 'CON_OT', etiqueta: `Con OT (${conOrden})` },
+  ]
 
   return (
     <>
@@ -75,25 +124,33 @@ export default async function PaginaCotizacionesPdf() {
         acciones={puedeSubir && <SubirCotizacion clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />}
       />
 
-      {(porRevisar > 0 || sinOrden > 0 || paraCorregir > 0) && (
-        <p className="mb-4 flex flex-wrap gap-x-4 gap-y-1 text-sm text-texto-suave">
-          {paraCorregir > 0 && (
-            <span>
-              <span className="font-medium text-peligro">{paraCorregir}</span>{' '}
-              {paraCorregir === 1 ? 'rechazada por corregir' : 'rechazadas por corregir'}
-            </span>
-          )}
-          {porRevisar > 0 && (
-            <span>
-              <span className="font-medium text-aviso">{porRevisar}</span> esperando a Gerencia
-            </span>
-          )}
-          {sinOrden > 0 && (
-            <span>
-              <span className="font-medium text-acento">{sinOrden}</span> aprobadas sin orden de trabajo
-            </span>
-          )}
-        </p>
+      {cotizaciones.length > 0 && (
+        <>
+          <BuscadorSimple ruta="/cotizaciones/pdf" etiqueta="Buscar cotizaciones" marcador="Buscar por número, cliente o carrocería" />
+          <PastillaFiltro
+            ruta="/cotizaciones/pdf"
+            clave="estado"
+            opciones={opciones}
+            params={params}
+            activo={filtro}
+            etiqueta="Filtrar por estado"
+            className="mt-4 mb-4"
+          />
+        </>
+      )}
+
+      {cotizaciones.length > 0 && visibles.length === 0 && (
+        <Tarjeta>
+          <TarjetaCuerpo>
+            <p className="text-sm font-medium text-texto">Ninguna cotización con ese filtro</p>
+            <p className="mt-1 text-sm text-texto-suave">
+              Prueba con otro estado o quita la búsqueda.{' '}
+              <Link href="/cotizaciones/pdf" className="text-acento hover:underline">
+                Ver todas
+              </Link>
+            </p>
+          </TarjetaCuerpo>
+        </Tarjeta>
       )}
 
       {cotizaciones.length === 0 ? (
@@ -109,7 +166,7 @@ export default async function PaginaCotizacionesPdf() {
         </Tarjeta>
       ) : (
         <ul className="space-y-3">
-          {cotizaciones.map((c) => {
+          {visibles.map((c) => {
             const estado = ESTADOS[c.estado ?? ''] ?? { etiqueta: c.estado ?? '—', tono: 'neutro' as const }
             const quitable = puedeQuitarCotizacion(perfil, c)
             const corrige = puedeCorregirCotizacion(perfil, c)
@@ -117,7 +174,8 @@ export default async function PaginaCotizacionesPdf() {
             const ultimoRechazo = c.versiones[0]
 
             return (
-              <li key={c.id}>
+              // Con `id`: el aviso de la campana aterriza en esta fila (`#id`).
+              <li key={c.id} id={c.id ?? undefined} className="scroll-mt-20 target:[&>div]:border-acento">
                 <Tarjeta>
                   <TarjetaCuerpo className="space-y-2.5">
                     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">

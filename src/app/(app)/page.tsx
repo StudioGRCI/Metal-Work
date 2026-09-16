@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   ClipboardList,
   Factory,
-  FileText,
   HandCoins,
   PauseCircle,
   Plus,
@@ -23,6 +22,7 @@ import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha, moneda } from '@/lib/format'
 import { resumenComercial, type ResumenComercial } from '@/lib/datos/comercial'
 import { indicadoresTablero, listarOrdenes, ordenesAtrasadas } from '@/lib/datos/ordenes'
+import { pendientesGlobales, type PendienteGlobal } from '@/lib/datos/pendientes-globales'
 import { exigirSesion, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Tablero' }
@@ -31,7 +31,11 @@ export default async function PaginaTablero() {
   const perfil = await exigirSesion()
 
   const veVentas = puede(perfil, 'cotizaciones.ver')
-  const comercial = veVentas ? await resumenComercial(perfil) : null
+  // Lo que le toca a este puesto va primero: es a lo que se entra a mirar.
+  const [comercial, pendientes] = await Promise.all([
+    veVentas ? resumenComercial(perfil) : Promise.resolve(null),
+    pendientesGlobales(perfil),
+  ])
 
   if (!puede(perfil, 'ordenes.listar')) {
     // Quien vende no tiene por qué ver órdenes de trabajo, pero sí lo suyo.
@@ -42,19 +46,23 @@ export default async function PaginaTablero() {
             titulo={perfil.puesto}
             descripcion="Tus cotizaciones al día de hoy."
           />
+          <TeTocaHoy items={pendientes.items} />
           <TarjetasDeVentas resumen={comercial} />
         </>
       )
     }
 
     return (
-      <EncabezadoPagina
-        titulo={perfil.puesto}
-        // «El menú» y no «la barra lateral»: en el teléfono es el botón de
-        // arriba, y a esta pantalla llega justamente quien todavía no sabe
-        // dónde está lo suyo.
-        descripcion="Abre el menú para entrar a los módulos habilitados para tu perfil."
-      />
+      <>
+        <EncabezadoPagina
+          titulo={perfil.puesto}
+          // «El menú» y no «la barra lateral»: en el teléfono es el botón de
+          // arriba, y a esta pantalla llega justamente quien todavía no sabe
+          // dónde está lo suyo.
+          descripcion="Abre el menú para entrar a los módulos habilitados para tu perfil."
+        />
+        <TeTocaHoy items={pendientes.items} />
+      </>
     )
   }
 
@@ -76,6 +84,8 @@ export default async function PaginaTablero() {
       {/* El puesto y no el nombre (migración 109): la pantalla es del puesto,
           quien lo ocupe hoy ya sabe cómo se llama. */}
       <EncabezadoPagina titulo={perfil.puesto} descripcion="Estado del taller al día de hoy." />
+
+      <TeTocaHoy items={pendientes.items} />
 
       {comercial && <TarjetasDeVentas resumen={comercial} />}
 
@@ -271,8 +281,43 @@ export default async function PaginaTablero() {
 }
 
 /**
- * Lo comercial del tablero: qué me toca mover, qué está esperando al cliente y
- * cuánto se ofreció y se cerró este mes.
+ * Lo que le toca a este puesto, con el número y el enlace a donde se resuelve.
+ * Cada tarjeta existe solo para quien tiene el permiso que la resuelve; si no
+ * hay nada, se dice en una línea y no se ocupa media pantalla.
+ */
+function TeTocaHoy({ items }: { items: PendienteGlobal[] }) {
+  if (items.length === 0) {
+    return (
+      <p className="mb-4 flex items-center gap-2 text-sm text-texto-suave">
+        <CheckCircle2 aria-hidden className="size-4 text-exito" />
+        Nada pendiente para tu puesto ahora mismo.
+      </p>
+    )
+  }
+
+  return (
+    <section aria-label="Te toca" className="mb-4">
+      <p className="mb-2 text-[11px] font-medium tracking-wide text-texto-suave uppercase">Te toca</p>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        {items.map((i) => (
+          <Indicador
+            key={i.clave}
+            icono={ClipboardList}
+            titulo={i.texto.replace(/^\d+\s/, '')}
+            valor={i.cantidad}
+            tono={i.tono === 'neutro' ? 'neutro' : i.tono === 'exito' ? 'exito' : i.tono === 'info' ? 'acento' : i.tono}
+            href={i.ruta}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * Lo comercial del tablero: qué está esperando al cliente y cuánto se ofreció
+ * y se cerró este mes en la cotización de venta del sistema. Lo que le toca
+ * mover a cada mano ya lo dice «Te toca», que sí conoce la cotización en PDF.
  *
  * Todo en soles, convertido con el tipo de cambio que congeló cada cotización:
  * la casa cotiza en dólares y gasta en soles, y una cifra que mezcla las dos
@@ -280,15 +325,7 @@ export default async function PaginaTablero() {
  */
 function TarjetasDeVentas({ resumen }: { resumen: ResumenComercial }) {
   return (
-    <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-      <Indicador
-        icono={FileText}
-        titulo="Me toca mover"
-        valor={resumen.meTocan}
-        tono={resumen.meTocan > 0 ? 'acento' : 'neutro'}
-        pie={resumen.meTocan > 0 ? 'Cotizaciones paradas en tu mano' : 'Nada esperándote'}
-        href="/cotizaciones"
-      />
+    <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
       <Indicador
         icono={Send}
         titulo="Con el cliente"

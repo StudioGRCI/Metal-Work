@@ -34,6 +34,22 @@ export async function marcarAvisoLeido(id: string): Promise<ResultadoAccion> {
   return { ok: true }
 }
 
+/**
+ * Cuántos avisos sin leer tiene esta cuenta ahora mismo. Lo pregunta la
+ * pantalla cada minuto (`RefrescoAlVolver`) para saber si vale la pena
+ * repintar: es una cuenta de cabecera, no trae filas.
+ */
+export async function contarAvisosSinLeer(): Promise<number> {
+  await exigirSesion()
+  const supabase = await createClient()
+  const { count, error } = await supabase
+    .from('notificaciones')
+    .select('id', { count: 'exact', head: true })
+    .is('leida_en', null)
+  if (error) throw new Error(mensajeDeError(error))
+  return count ?? 0
+}
+
 /** Todos de una vez, que es lo que se hace después de mirarlos por encima. */
 export async function marcarTodosLeidos(): Promise<ResultadoAccion> {
   await exigirSesion()
