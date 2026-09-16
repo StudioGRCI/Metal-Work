@@ -243,6 +243,13 @@ export async function quitarCotizacionPdf(_previo: unknown, datos: FormData): Pr
 const esquemaEmitir = z.object({
   cotizacion_id: z.string().uuid(),
   orden_id: z.string().uuid(),
+  // Migración 108: el número lo trae el papel de la orden, como el de la
+  // cotización. Se acepta «2922» o «2922-2026»; la base normaliza y comprueba
+  // que no se repita.
+  numero: z
+    .string()
+    .trim()
+    .regex(/^\d{1,6}(-\d{4})?$/, 'El número de la orden es el que trae su papel: 2922 o 2922-2026'),
   // Migración 104: lo que se fabrica es un semirremolque o una carrocería
   // montada, y la unidad se reconoce por su número FMI, no por la placa.
   numero_fmi: z.string().trim().max(40).optional(),
@@ -288,6 +295,7 @@ export async function emitirOrdenDeCotizacion(
   const { data, error } = await supabase.rpc('emitir_orden_de_cotizacion', {
     p_cotizacion: v.cotizacion_id,
     p_orden: v.orden_id,
+    p_numero: v.numero,
     p_numero_fmi: v.numero_fmi ?? '',
     p_tipo_unidad: v.tipo_unidad,
     p_marca: v.marca ?? '',

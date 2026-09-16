@@ -408,7 +408,7 @@ export function EmitirOrden({
         abierta={abierto}
         alCerrar={() => setAbierto(false)}
         titulo={`Emitir la orden de la ${numero}`}
-        descripcion="El cliente y la carrocería salen de la cotización. Falta si es semirremolque o carrocería montada, el número FMI, la fecha prometida y el PDF de la orden. Al emitirla queda aprobada, con sus etapas, y el taller ya puede armar su lista."
+        descripcion="El cliente y la carrocería salen de la cotización. Falta el número de la orden —el de su papel—, si es semirremolque o carrocería montada, el número FMI, la fecha prometida y el PDF. Al emitirla queda aprobada, con sus etapas, y el taller ya puede armar su lista."
         ancho="md"
       >
         <form onSubmit={enviar} className="space-y-4">
@@ -427,6 +427,26 @@ export function EmitirOrden({
               }}
             />
           </label>
+
+          {/* El número lo trae el papel (migración 108): el sistema ya no le
+              pone otro, para que la OT en la mano y la de la pantalla sean la
+              misma. */}
+          <Campo
+            etiqueta="N.º de la orden"
+            htmlFor="eo-numero"
+            ayuda="El que trae su PDF: 2922, o 2922-2026 si quieres escribir el año"
+            requerido
+          >
+            <Entrada
+              id="eo-numero"
+              name="numero"
+              autoComplete="off"
+              inputMode="numeric"
+              required
+              maxLength={11}
+              placeholder="2922"
+            />
+          </Campo>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo

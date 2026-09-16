@@ -174,6 +174,16 @@ interacciones con botones (emitir, descargar, anular); interacción nueva de pes
 
 *(Sección viva: aquí se anota lo que salió mal al construir pantallas. Ver `aprender`.)*
 
+- **Una lista de «lo que puede escribir» no sirve para decidir «lo que ve».**
+  El 2026-09-14 la pestaña Actividades pasó a recibir solo las áreas cuya hoja
+  la persona puede *armar*, y el mismo arreglo decidía qué tablas se pintaban:
+  el operario, que reporta pero no arma, se quedó sin su hoja y sin «Reportar
+  día» un día entero, y la prueba —hecha solo con Diseño— salió llena. Al
+  cambiar qué calcula una prop de permisos, buscar **todos** sus usos en el
+  componente y separar en dos props lo que se muestra de lo que se ofrece
+  para escribir; y mirar la pantalla con cada rol que la usa, no solo con el
+  que motivó el cambio.
+
 - **Una columna nueva no aparece sola.** Aunque esté en la base y en los tipos,
   la pantalla la ignora hasta que se agrega al `select` explícito de
   `src/lib/datos/*`. El síntoma es un campo vacío sin ningún error.

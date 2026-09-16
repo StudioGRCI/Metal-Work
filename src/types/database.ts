@@ -4298,6 +4298,7 @@ export type Database = {
         Args: {
           p_cotizacion: string
           p_orden: string
+          p_numero: string
           p_numero_fmi: string
           p_tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"]
           p_marca: string
