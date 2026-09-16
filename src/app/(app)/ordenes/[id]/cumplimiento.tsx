@@ -4,7 +4,7 @@ import { Check, Minus, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
@@ -25,6 +25,7 @@ import {
   editarPieza,
   editarPlano,
   entregarPlano,
+  marcarPiezasDelPlano,
   quitarPieza,
   quitarPlano,
   reportarMaestranza,
@@ -357,6 +358,9 @@ function TarjetaPlano({
           puedeDisenar={puedeDisenar}
           puedeReportar={puedeReportar}
         />
+        {puedeReportar && plano.lista.length > 1 && (
+          <MarcarEnLote ordenId={ordenId} planoId={planoId} planoEntregado={entregado} />
+        )}
         {puedeDisenar && (
           <div className="border-t border-borde p-3">
             {modo === 'piezas' ? (
@@ -465,6 +469,50 @@ function FormularioPlano({
           Guardar el plano
         </Boton>
       </div>
+    </form>
+  )
+}
+
+/**
+ * El taller marca el lote entero: en la cancha se habilitan o se arman todas
+ * las piezas de un plano el mismo día, y reportarlas de a una eran diez
+ * formularios con la misma fecha. La base sigue validando pieza por pieza.
+ */
+function MarcarEnLote({ ordenId, planoId, planoEntregado }: { ordenId: string; planoId: string; planoEntregado: boolean }) {
+  const { alEnviar, enviando, error, resultado } = useEnvio(marcarPiezasDelPlano)
+
+  return (
+    <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-3 border-t border-borde bg-superficie-2 px-4 py-3">
+      <input type="hidden" name="orden_id" value={ordenId} />
+      <input type="hidden" name="plano_id" value={planoId} />
+      <Campo etiqueta="Marcar en todas las piezas" htmlFor={`lote-${planoId}`} ayuda="Solo las que faltan y ya pasaron el paso anterior">
+        <Seleccion id={`lote-${planoId}`} name="marca" required defaultValue={planoEntregado ? 'mtz_habilitado' : 'prd_armado'}>
+          <option value="mtz_habilitado" disabled={!planoEntregado}>
+            Habilitadas por Maestranza{planoEntregado ? '' : ' (falta la entrega del plano)'}
+          </option>
+          <option value="mtz_entregado" disabled={!planoEntregado}>
+            Entregadas a Producción
+          </option>
+          <option value="prd_recibido">Recibidas por Producción</option>
+          <option value="prd_armado">Armadas</option>
+        </Seleccion>
+      </Campo>
+      <Campo etiqueta="El día" htmlFor={`lote-fecha-${planoId}`}>
+        <Entrada id={`lote-fecha-${planoId}`} name="fecha" type="date" required defaultValue={hoyLima()} />
+      </Campo>
+      <Boton type="submit" tamano="sm" cargando={enviando}>
+        Marcar el lote
+      </Boton>
+      {resultado?.ok && resultado.mensaje && (
+        <p role="status" className="basis-full text-xs font-medium text-exito">
+          {resultado.mensaje}
+        </p>
+      )}
+      {error && (
+        <div className="basis-full">
+          <Error_ texto={error} />
+        </div>
+      )}
     </form>
   )
 }
@@ -698,16 +746,16 @@ function FilaPieza({
         <TD className="tabular border-l border-borde text-right font-medium">{numero(pieza.avance_pct, 0)}</TD>
         <TD className="whitespace-nowrap">
           <div className="flex items-center justify-end gap-2">
-            {puedeReportar && !ensamble && (
-              <button
-                type="button"
-                className={enlace}
-                disabled={!planoEntregado}
-                title={planoEntregado ? undefined : 'Diseño todavía no entregó el plano'}
-                onClick={() => alternar('mtz')}
-              >
+            {/* Sin el plano entregado, Maestranza no puede empezar: se dice con
+                texto y no con un botón apagado, que en el teléfono no explica
+                nada. */}
+            {puedeReportar && !ensamble && planoEntregado && (
+              <button type="button" className={enlace} onClick={() => alternar('mtz')}>
                 Maestranza
               </button>
+            )}
+            {puedeReportar && !ensamble && !planoEntregado && (
+              <span className="text-[11px] text-texto-tenue">Maestranza espera el plano</span>
             )}
             {puedeReportar && (
               <button type="button" className={enlace} onClick={() => alternar('prd')}>

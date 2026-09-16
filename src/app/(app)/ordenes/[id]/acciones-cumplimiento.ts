@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
+import type { Database } from '@/types/database'
 
 /**
  * El MW-FOR-ING-8 se escribe con tres manos y cada acción exige la suya,
@@ -482,4 +483,98 @@ export async function reportarProduccion(_previo: unknown, datos: FormData): Pro
   revalidatePath(`/ordenes/${v.orden_id}`)
   revalidatePath('/plazos')
   return { ok: true, mensaje: 'Producción reportó.' }
+}
+
+// ============================================================ marcar en lote
+type ActualizacionPieza = Database['public']['Tables']['ot_piezas']['Update']
+
+/**
+ * Cada marca del taller lleva su fecha y viene después de un paso. Solo se
+ * tocan las piezas que todavía no tienen la marca y ya pasaron el anterior; la
+ * fecha se pone únicamente donde falta, para no pisar la que ya se reportó.
+ */
+const PASOS = {
+  mtz_habilitado: { fecha: 'mtz_inicio', previo: null, ensambles: false, nombre: 'habilitadas' },
+  mtz_entregado: { fecha: 'mtz_culminacion', previo: 'mtz_habilitado', ensambles: false, nombre: 'entregadas' },
+  prd_recibido: { fecha: 'prd_recepcion', previo: 'mtz_entregado', ensambles: false, nombre: 'recibidas' },
+  prd_armado: { fecha: 'prd_inicio', previo: 'prd_recibido', ensambles: true, nombre: 'armadas' },
+} as const
+
+const esquemaLote = z.object({
+  plano_id: z.string().uuid(),
+  orden_id: z.string().uuid(),
+  marca: z.enum(['mtz_habilitado', 'mtz_entregado', 'prd_recibido', 'prd_armado'], { message: 'Elige qué marcar' }),
+  fecha: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elige la fecha'),
+})
+
+/**
+ * Marcar de una vez todas las piezas de un plano: en el taller se habilita o
+ * se arma el lote entero y reportarlo pieza por pieza eran diez formularios
+ * con la misma fecha.
+ */
+export async function marcarPiezasDelPlano(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const guarda = await exigirTaller()
+  if (!guarda.ok) return guarda
+
+  const analisis = esquemaLote.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el lote.' }
+  }
+  const v = analisis.data
+  const paso = PASOS[v.marca]
+  const supabase = await createClient()
+
+  let consulta = supabase
+    .from('ot_piezas')
+    .select('id, mtz_inicio, mtz_culminacion, prd_recepcion, prd_inicio')
+    .eq('plano_id', v.plano_id)
+    .eq('orden_id', v.orden_id)
+    .eq(v.marca, false)
+  if (!paso.ensambles) consulta = consulta.eq('es_ensamble', false)
+  if (paso.previo) {
+    // El armado también vale para los ensambles, que no pasan por Maestranza.
+    consulta = paso.ensambles
+      ? consulta.or(`${paso.previo}.eq.true,es_ensamble.eq.true`)
+      : consulta.eq(paso.previo, true)
+  }
+
+  const { data: piezas, error: fallaLectura } = await consulta
+  if (fallaLectura) return { ok: false, error: explicar(fallaLectura) }
+  if (!piezas || piezas.length === 0) {
+    return {
+      ok: false,
+      error: paso.previo
+        ? `No hay piezas que marcar: las que faltan todavía no pasaron el paso anterior.`
+        : 'No hay piezas que marcar en este plano.',
+    }
+  }
+
+  const ids = piezas.map((p) => p.id)
+  const sinFecha = piezas.filter((p) => !p[paso.fecha]).map((p) => p.id)
+
+  if (sinFecha.length > 0) {
+    const { error } = await supabase
+      .from('ot_piezas')
+      .update({ [paso.fecha]: v.fecha } as ActualizacionPieza)
+      .in('id', sinFecha)
+    if (error) return { ok: false, error: explicar(error) }
+  }
+
+  const { data, error } = await supabase
+    .from('ot_piezas')
+    .update({ [v.marca]: true } as ActualizacionPieza)
+    .in('id', ids)
+    .select('id')
+
+  if (error) return { ok: false, error: explicar(error) }
+  const cuantas = data?.length ?? 0
+  if (cuantas === 0) return { ok: false, error: NO_TOCO_NADA }
+
+  revalidatePath(`/ordenes/${v.orden_id}`)
+  revalidatePath('/plazos')
+  return {
+    ok: true,
+    mensaje:
+      cuantas === 1 ? `1 pieza marcada como ${paso.nombre.slice(0, -1)}.` : `${cuantas} piezas marcadas como ${paso.nombre}.`,
+  }
 }

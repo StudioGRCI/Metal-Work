@@ -242,13 +242,21 @@ export async function areaDeActividad(actividadId: string): Promise<string | nul
   return data?.area_id ?? null
 }
 
-/** Las áreas del taller, para elegir de quién es la lista que se arma. */
+/**
+ * Las áreas que tocan la unidad: las que arman una hoja de actividades o
+ * reciben una observación. El catálogo de áreas trae también Marketing,
+ * Recursos Humanos o Tesorería, y ofrecerlas en la hoja solo hacía más largo
+ * el desplegable.
+ */
+const AREAS_DEL_TALLER = ['DIS', 'MTZ', 'PRD', 'ACB', 'CAL', 'ALM']
+
 export async function areasDelTaller() {
   const supabase = await createClient()
   const { data } = await supabase
     .from('areas')
     .select('id, codigo, nombre')
     .eq('activo', true)
+    .in('codigo', AREAS_DEL_TALLER)
     .order('orden_secuencia')
   return data ?? []
 }

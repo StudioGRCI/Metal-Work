@@ -164,6 +164,16 @@ export function ActividadesDeOrden({
           ordenId={ordenId}
           areas={areasDisponibles}
           areaPropia={areaPropia}
+          /* Lo que la actividad nueva propone por área: el peso que falta para
+             llegar al 100 y el número que sigue. Antes nacía con 0 y 1 fijos y
+             había que volver a corregirla fila por fila. */
+          propuestas={Object.fromEntries(
+            areasDisponibles.map((a) => {
+              const resumen = areas.find((r) => r.area_id === a.id)
+              const ultima = Math.max(0, ...actividades.filter((x) => x.area_id === a.id).map((x) => x.orden_secuencia))
+              return [a.id, { peso: Math.max(0, 100 - Number(resumen?.peso_repartido ?? 0)), numero: ultima + 1 }]
+            }),
+          )}
           alCerrar={() => setAgregando(false)}
         />
       )}
@@ -592,14 +602,19 @@ function NuevaActividad({
   ordenId,
   areas,
   areaPropia,
+  propuestas,
   alCerrar,
 }: {
   ordenId: string
   areas: { id: string; codigo: string; nombre: string }[]
   areaPropia: string | null
+  /** Por área: el peso que falta repartir y el número que sigue. */
+  propuestas: Record<string, { peso: number; numero: number }>
   alCerrar: () => void
 }) {
   const { alEnviar, enviando, error } = useEnvio(agregarActividad, alCerrar)
+  const [area, setArea] = useState(areaPropia && areas.some((a) => a.id === areaPropia) ? areaPropia : (areas[0]?.id ?? ''))
+  const propuesta = propuestas[area] ?? { peso: 0, numero: 1 }
 
   return (
     <Tarjeta className="border-acento">
@@ -612,7 +627,7 @@ function NuevaActividad({
           <input type="hidden" name="orden_id" value={ordenId} />
 
           <Campo etiqueta="Área" htmlFor="na-area" requerido>
-            <Seleccion id="na-area" name="area_id" required defaultValue={areaPropia ?? ''}>
+            <Seleccion id="na-area" name="area_id" required value={area} onChange={(e) => setArea(e.target.value)}>
               <option value="" disabled>
                 Elige una
               </option>
@@ -633,27 +648,35 @@ function NuevaActividad({
             />
           </Campo>
 
-          <Campo etiqueta="Pesa" htmlFor="na-peso" ayuda="% de su área">
+          {/* `key` por área: al cambiar de área los dos campos vuelven a proponer
+              lo de esa área en vez de quedarse con lo de la anterior. */}
+          <Campo
+            etiqueta="Pesa"
+            htmlFor="na-peso"
+            ayuda={propuesta.peso > 0 ? `Quedan ${propuesta.peso} % por repartir en el área` : 'El área ya repartió su 100 %'}
+          >
             <Entrada
+              key={`peso-${area}`}
               id="na-peso"
               name="peso_pct"
               type="number"
               min={0}
               max={100}
               step="1"
-              defaultValue={0}
+              defaultValue={propuesta.peso}
               className="tabular"
             />
           </Campo>
 
           <Campo etiqueta="N.º" htmlFor="na-orden" ayuda="Orden">
             <Entrada
+              key={`orden-${area}`}
               id="na-orden"
               name="orden_secuencia"
               type="number"
               min={1}
               step="1"
-              defaultValue={1}
+              defaultValue={propuesta.numero}
               className="tabular"
             />
           </Campo>
