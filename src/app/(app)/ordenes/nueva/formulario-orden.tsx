@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -10,6 +10,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { createClient } from '@/lib/supabase/client'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
+import { useEnvio } from '@/lib/envio'
 import { etiquetasDePuesto } from '@/lib/format'
 import { NuevaUnidad } from '@/app/(app)/clientes/nueva-unidad'
 import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
@@ -28,7 +29,8 @@ const TIPOS_TRABAJO = opciones(TIPO_TRABAJO)
 const PRIORIDADES = opciones(PRIORIDAD)
 
 export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
-  const [resultado, ejecutar, pendiente] = useActionState(crearOrden, null)
+  // useEnvio: un envío por toque y lo escrito a salvo si el servidor lo rechaza.
+  const { alEnviar, enviando: pendiente, resultado } = useEnvio(crearOrden)
   const [clienteId, setClienteId] = useState('')
   const [unidadId, setUnidadId] = useState('')
   const [carroceriaId, setCarroceriaId] = useState('')
@@ -105,7 +107,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   }
 
   return (
-    <form action={ejecutar} className="max-w-4xl space-y-4">
+    <form onSubmit={alEnviar} className="max-w-4xl space-y-4">
       <Tarjeta>
         <TarjetaCabecera titulo="Cliente y unidad" />
         <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2">

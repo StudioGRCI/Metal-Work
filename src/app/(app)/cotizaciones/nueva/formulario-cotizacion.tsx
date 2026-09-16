@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -14,6 +14,7 @@ import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
 
 import { NuevoCliente } from '@/components/comercial/nuevo-cliente'
 import { NuevoContacto, type ContactoElegible } from '@/components/comercial/nuevo-contacto'
+import { useEnvio } from '@/lib/envio'
 import { etiquetasDePuesto, hoyLima } from '@/lib/format'
 
 import { crearCotizacion } from '../acciones'
@@ -43,7 +44,9 @@ const PLAZO_DESDE_USUALES = [
 ]
 
 export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
-  const [resultado, ejecutar, pendiente] = useActionState(crearCotizacion, null)
+  // useEnvio: un envío por toque y el formulario entero a salvo si el servidor
+  // lo rechaza. Con `<form action>` un rechazo borraba veinte campos.
+  const { alEnviar, enviando: pendiente, resultado } = useEnvio(crearCotizacion)
   const [clienteId, setClienteId] = useState('')
   const [unidadId, setUnidadId] = useState('')
   const [carroceriaId, setCarroceriaId] = useState('')
@@ -137,7 +140,7 @@ export function FormularioCotizacion({ catalogos }: { catalogos: Catalogos }) {
   const hoy = hoyLima()
 
   return (
-    <form action={ejecutar} className="max-w-3xl space-y-4">
+    <form onSubmit={alEnviar} className="max-w-3xl space-y-4">
       <Tarjeta>
         <TarjetaCabecera titulo="Cliente y trabajo" />
         {/* Más aire entre columnas: el botón de «Nuevo» de la izquierda queda

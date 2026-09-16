@@ -1,11 +1,10 @@
 'use client'
 
 import { PenLine } from 'lucide-react'
-import { useActionState } from 'react'
-
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 
 import { guardarQuienFirma } from './acciones'
@@ -32,7 +31,7 @@ export function QuienFirma({
   cargo: string | null
   puedeEditar: boolean
 }) {
-  const [resultado, accion, guardando] = useActionState(guardarQuienFirma, null)
+  const { alEnviar: accion, enviando: guardando, resultado } = useEnvio(guardarQuienFirma)
 
   return (
     <Tarjeta>
@@ -58,7 +57,7 @@ export function QuienFirma({
         )}
 
         {puedeEditar && (
-          <form action={accion} className="space-y-3">
+          <form onSubmit={accion} className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <Campo
                 etiqueta="Nombre"

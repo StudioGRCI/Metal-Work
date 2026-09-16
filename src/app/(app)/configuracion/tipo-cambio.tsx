@@ -1,12 +1,11 @@
 'use client'
 
 import { CircleDollarSign, Download } from 'lucide-react'
-import { useActionState } from 'react'
-
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { TipoCambio } from '@/lib/datos/configuracion'
+import { useEnvio } from '@/lib/envio'
 import { fecha as formatearFecha, numero } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -49,8 +48,8 @@ export function TipoDeCambio({
   cambios: TipoCambio[]
   puedeEditar: boolean
 }) {
-  const [resultado, accion, guardando] = useActionState(registrarTipoCambio, null)
-  const [resultadoSunat, accionSunat, trayendo] = useActionState(traerTipoCambioDeSunat, null)
+  const { alEnviar: accion, enviando: guardando, resultado } = useEnvio(registrarTipoCambio)
+  const { alEnviar: accionSunat, enviando: trayendo, resultado: resultadoSunat } = useEnvio(traerTipoCambioDeSunat)
 
   // La lista viene del más reciente al más antiguo: el primero es justo el que
   // `tipo_cambio_vigente()` está aplicando a todo lo que se emite hoy.
@@ -136,7 +135,7 @@ export function TipoDeCambio({
           // Traerlo es un formulario aparte del de escribirlo: comparten la
           // tarjeta pero no el estado, así que el aviso de uno no borra el del
           // otro y se ve cuál de los dos contestó.
-          <form action={accionSunat} className="flex flex-wrap items-center gap-2">
+          <form onSubmit={accionSunat} className="flex flex-wrap items-center gap-2">
             <input type="hidden" name="fecha" value={hoy} />
             <Boton type="submit" variante="secundario" tamano="sm" cargando={trayendo}>
               <Download aria-hidden className="size-3.5" />
@@ -152,7 +151,7 @@ export function TipoDeCambio({
         )}
 
         {puedeEditar && (
-          <form action={accion} className="flex flex-wrap items-end gap-2 rounded-[var(--radius-base)] bg-superficie-2 p-3">
+          <form onSubmit={accion} className="flex flex-wrap items-end gap-2 rounded-[var(--radius-base)] bg-superficie-2 p-3">
             <Campo etiqueta="Fecha" htmlFor="fecha-cambio" requerido className="min-w-36 flex-1 sm:flex-initial">
               {/* El día que rige, no el día que se carga: un cambio atrasado se
                   registra con su propia fecha y la base lo ordena solo. */}

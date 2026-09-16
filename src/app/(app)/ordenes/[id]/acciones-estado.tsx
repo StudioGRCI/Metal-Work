@@ -54,8 +54,15 @@ const SIGUIENTES: Record<string, Transicion[]> = {
       permisos: ['ordenes.cambiar_estado'],
       confirmar: 'La orden queda terminada y deja de correr su plazo. Si después falta algo, se reabre como retrabajo.',
     },
+    // Anular también en marcha: el cliente que desiste a mitad de obra es un
+    // caso real, y la base lo admite desde EN_PROCESO, PAUSADA y TERMINADA
+    // (ot_transicion_valida). Sin el botón, la orden quedaba viva para siempre.
+    { estado: 'ANULADA', etiqueta: 'Anular', permisos: ['ordenes.anular'], motivo: true },
   ],
-  PAUSADA: [{ estado: 'EN_PROCESO', etiqueta: 'Reanudar', permisos: ['ordenes.cambiar_estado'] }],
+  PAUSADA: [
+    { estado: 'EN_PROCESO', etiqueta: 'Reanudar', permisos: ['ordenes.cambiar_estado'] },
+    { estado: 'ANULADA', etiqueta: 'Anular', permisos: ['ordenes.anular'], motivo: true },
+  ],
   // CONTROL_CALIDAD sigue en el enum de la base pero ya no se llega a él:
   // el módulo de calidad se retiró. Si una orden vieja lo tuviera, se termina.
   CONTROL_CALIDAD: [
@@ -66,7 +73,10 @@ const SIGUIENTES: Record<string, Transicion[]> = {
       confirmar: 'La orden queda terminada y deja de correr su plazo.',
     },
   ],
-  TERMINADA: [{ estado: 'EN_PROCESO', etiqueta: 'Reabrir para retrabajo', permisos: ['ordenes.cambiar_estado'] }],
+  TERMINADA: [
+    { estado: 'EN_PROCESO', etiqueta: 'Reabrir para retrabajo', permisos: ['ordenes.cambiar_estado'] },
+    { estado: 'ANULADA', etiqueta: 'Anular', permisos: ['ordenes.anular'], motivo: true },
+  ],
   // ENTREGADA no figura como transición a propósito: no se alcanza cambiando el
   // estado -la base rechaza ese UPDATE- sino registrando el acta de conformidad.
   // Facturada la marca la oficina (migración 110); el taller que ya cambiaba
