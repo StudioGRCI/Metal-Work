@@ -301,6 +301,19 @@ h1, h2, h3 {
    deja ver la sombra; al llegar al final la tapa vuelve a cubrirla. Sin
    JavaScript y sin escuchar el desplazamiento.
    -------------------------------------------------------------------------- */
+/* La misma sombra de corte para lo que desplaza directamente sobre el fondo de
+   la página (las pestañas de la orden), con las tapas del color del fondo. */
+.pestanas-con-corte {
+  background:
+    linear-gradient(to right, var(--fondo) 30%, transparent) left center,
+    linear-gradient(to left,  var(--fondo) 30%, transparent) right center,
+    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.16), transparent) left center,
+    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.16), transparent) right center;
+  background-repeat: no-repeat;
+  background-size: 36px 100%, 36px 100%, 14px 100%, 14px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+
 .tabla-con-corte {
   background:
     linear-gradient(to right, var(--superficie) 30%, transparent) left center,

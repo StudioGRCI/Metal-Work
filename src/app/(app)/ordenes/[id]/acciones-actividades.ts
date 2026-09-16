@@ -303,6 +303,8 @@ export async function reportarAvance(_previo: unknown, datos: FormData): Promise
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
+  // También se reporta desde /avance y se lee en /avance/diario.
+  revalidatePath('/avance', 'layout')
   return { ok: true, mensaje: 'Avance del día reportado.' }
 }
 
@@ -338,4 +340,66 @@ export async function aprobarHojaDeOrden(_previo: unknown, datos: FormData): Pro
   revalidatePath(`/ordenes/${v.orden_id}`)
   revalidatePath('/avance', 'layout')
   return { ok: true, mensaje: cuantos === 1 ? 'Reporte aprobado.' : `${cuantos} reportes aprobados.` }
+}
+
+// ------------------------------------------------------ el día de un área
+const esquemaDiaDeArea = z.object({
+  orden_id: z.string().uuid(),
+  area_id: z.string().uuid(),
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Falta la fecha'),
+})
+
+/**
+ * El reporte del día de un área entera: una fila por actividad con lo que
+ * avanzó hoy. Llegan como `avance_<actividad>` y `nota_<actividad>`; las que
+ * vienen en blanco no se mandan. Un solo `insert` con todas las filas: la
+ * restricción `uq_avance_del_dia` y las políticas siguen valiendo fila por
+ * fila, y si una falla no entra ninguna y se dice cuál.
+ */
+export async function reportarDiaDeArea(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'produccion.registrar')) {
+    return { ok: false, error: 'No tienes permiso para reportar avance de producción.' }
+  }
+
+  const analisis = esquemaDiaDeArea.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el reporte.' }
+  }
+  const v = analisis.data
+
+  if (!puedeHojaDeArea(perfil, v.area_id)) {
+    return { ok: false, error: 'Esa hoja es de otra área: cada uno reporta lo suyo.' }
+  }
+
+  const filas: { actividad_id: string; orden_id: string; fecha: string; avance_pct: number; nota: string | null; reportado_por: string }[] = []
+  for (const [clave, valor] of datos.entries()) {
+    const m = /^avance_([0-9a-f-]{36})$/.exec(clave)
+    if (!m || typeof valor !== 'string' || valor.trim() === '') continue
+    const pct = Number(valor)
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+      return { ok: false, error: 'El avance del día tiene que estar entre 1 y 100.' }
+    }
+    const nota = datos.get(`nota_${m[1]}`)
+    filas.push({
+      actividad_id: m[1],
+      orden_id: v.orden_id,
+      fecha: v.fecha,
+      avance_pct: pct,
+      nota: typeof nota === 'string' && nota.trim() ? nota.trim() : null,
+      reportado_por: perfil.id,
+    })
+  }
+  if (filas.length === 0) return { ok: false, error: 'No marcaste ningún avance: pon el porcentaje de lo que se hizo hoy.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('ot_actividad_avances').insert(filas).select('id')
+
+  if (error) return { ok: false, error: traducir(error) }
+  const cuantas = data?.length ?? 0
+  if (cuantas === 0) return { ok: false, error: NO_TOCO_NADA }
+
+  revalidatePath(`/ordenes/${v.orden_id}`)
+  revalidatePath('/avance', 'layout')
+  return { ok: true, mensaje: cuantas === 1 ? 'Reportada 1 actividad.' : `Reportadas ${cuantas} actividades.` }
 }

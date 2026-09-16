@@ -40,19 +40,24 @@ export function CampoPorcentaje({
   requerido?: boolean
 }) {
   const [valor, setValor] = useState(defaultValue === null || defaultValue === undefined ? '' : String(defaultValue))
+  // Las marcas que caben en lo que falta, y «lo que falta» como última marca:
+  // una actividad que va en 80 % no ofrecía ningún toque y había que teclear.
+  const marcas = max >= 100 ? MARCAS : [...MARCAS.filter((m) => m < max), ...(max > 0 ? [max] : [])]
 
   return (
     <Campo etiqueta={etiqueta} htmlFor={id} ayuda={ayuda} requerido={requerido}>
       <div className="flex flex-wrap items-center gap-1.5">
-        {MARCAS.filter((m) => m <= max).map((m) => {
+        {marcas.map((m) => {
           const elegida = valor === String(m)
+          const loQueFalta = max < 100 && m === max
           return (
             <button
               key={m}
               type="button"
               disabled={disabled}
               aria-pressed={elegida}
-              aria-label={`${m} %`}
+              aria-label={loQueFalta ? `Todo lo que falta, ${m} %` : `${m} %`}
+              title={loQueFalta ? 'Todo lo que falta' : undefined}
               onClick={() => setValor(elegida ? '' : String(m))}
               className={cn(
                 'h-11 min-w-12 rounded-[var(--radius-base)] border px-2 text-sm font-medium tabular transition-colors disabled:opacity-50 sm:h-9',
@@ -61,7 +66,7 @@ export function CampoPorcentaje({
                   : 'border-borde bg-superficie text-texto hover:bg-superficie-2',
               )}
             >
-              {m}
+              {loQueFalta ? `${m} · falta` : m}
             </button>
           )
         })}

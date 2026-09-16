@@ -19,12 +19,12 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { avancesDelDia, hojasAbiertas } from '@/lib/datos/actividades'
+import { avancesDelDia, hojasAbiertas, pendientesFueraDelDia } from '@/lib/datos/actividades'
 import { avancesDeOrdenesDelDia, enlacesDeFotos, fotosDeAvances } from '@/lib/datos/avances'
 import { flotaDelDia, flotaEnTaller, fotosDeReportesFlota } from '@/lib/datos/flota'
 import { ESTADO_OT, definir, type DatosRevision } from '@/lib/dominio/estados'
 import { nombreDeFlota } from '@/lib/dominio/unidades'
-import { fecha as fmtFecha, hora, hoyLima, numero } from '@/lib/format'
+import { fecha as fmtFecha, hora, hoyLima, numero, sumarDias } from '@/lib/format'
 import {
   exigirPermiso,
   puede,
@@ -126,12 +126,14 @@ export default async function PaginaDiaEnElTaller({
   const dia = pedida ?? hoy
   const aprueba = puede(perfil, 'produccion.aprobar_reportes')
 
-  const [reportes, hojas, flotaDia, flota, conFoto] = await Promise.all([
+  const [reportes, hojas, flotaDia, flota, conFoto, deOtrosDias] = await Promise.all([
     avancesDelDia(dia),
     hojasAbiertas(),
     flotaDelDia(dia),
     flotaEnTaller(),
     avancesDeOrdenesDelDia(dia),
+    // Lo que quedó por aprobar en otros días solo le importa a quien aprueba.
+    aprueba ? pendientesFueraDelDia(dia) : Promise.resolve({ cuantos: 0, masAntiguo: null }),
   ])
 
   const [fotosFlota, fotosOrden] = await Promise.all([
@@ -145,11 +147,22 @@ export default async function PaginaDiaEnElTaller({
   // Un área que reportó otro día pero no este: es la pregunta del jefe, y no
   // sale de la lista de reportes sino de lo que falta en ella. Los trabajos sin
   // orden entran igual, salvo los terminados, que esperan al cliente.
-  const calladas = hojas.filter((h) => !h.ultimo_reporte || h.ultimo_reporte < dia)
+  //
+  // Se mira contra los reportes de ese día y no contra «último reporte»: al
+  // abrir un día pasado, una hoja que reportó ayer y hoy salía como callada.
+  // Y el supervisor ve solo las hojas de su área: las de las demás no son su
+  // pregunta y le tapaban las suyas.
+  const soloSuArea = !aprueba && !puede(perfil, 'produccion.cualquier_area') ? perfil.area_id : null
+  const calladas = hojas.filter(
+    (h) =>
+      (!soloSuArea || h.area_id === soloSuArea) &&
+      !reportes.some((r) => r.orden_id === h.orden_id && r.area_id === h.area_id),
+  )
   const flotaCallada = flota.filter(
     (u) =>
       u.estado === 'EN_TALLER' &&
       u.ingreso_fecha <= dia &&
+      (!soloSuArea || u.area_actual_id === soloSuArea) &&
       !flotaDia.some((r) => r.flota_id === u.id),
   )
 
@@ -201,6 +214,15 @@ export default async function PaginaDiaEnElTaller({
           para poder mandarle el enlace a alguien tal como se está mirando. */}
       <form method="get" className="mb-4 flex flex-wrap items-center gap-3">
         {ver && <input type="hidden" name="ver" value={ver} />}
+        {/* Ayer y mañana a un toque: cerrar la semana es ir día por día, y
+            abrir el calendario cada vez eran tres toques por día. */}
+        <Link
+          href={`/avance/diario?fecha=${sumarDias(dia, -1)}${ver ? `&ver=${ver}` : ''}`}
+          className="inline-flex min-h-11 items-center px-1 text-sm text-acento hover:underline sm:min-h-0"
+          aria-label="Día anterior"
+        >
+          ‹ Anterior
+        </Link>
         <Entrada
           type="date"
           name="fecha"
@@ -209,6 +231,17 @@ export default async function PaginaDiaEnElTaller({
           aria-label="Día que se está mirando"
           className="w-44"
         />
+        {dia < hoy ? (
+          <Link
+            href={`/avance/diario?fecha=${sumarDias(dia, 1)}${ver ? `&ver=${ver}` : ''}`}
+            className="inline-flex min-h-11 items-center px-1 text-sm text-acento hover:underline sm:min-h-0"
+            aria-label="Día siguiente"
+          >
+            Siguiente ›
+          </Link>
+        ) : (
+          <span className="inline-flex min-h-11 items-center px-1 text-sm text-texto-tenue sm:min-h-0">Siguiente ›</span>
+        )}
         <button
           type="submit"
           className="inline-flex min-h-11 items-center text-sm text-acento hover:underline sm:min-h-0"
@@ -216,7 +249,7 @@ export default async function PaginaDiaEnElTaller({
           Ver ese día
         </button>
         {dia !== hoy && (
-          <Link href="/avance/diario" className="text-sm text-texto-suave hover:underline">
+          <Link href="/avance/diario" className="inline-flex min-h-11 items-center text-sm text-texto-suave hover:underline sm:min-h-0">
             Volver a hoy
           </Link>
         )}
@@ -233,8 +266,16 @@ export default async function PaginaDiaEnElTaller({
           titulo="Por aprobar"
           valor={porAprobar}
           icono={ClipboardCheck}
-          tono={porAprobar > 0 ? 'aviso' : 'exito'}
-          pie="Esperan el visto del jefe"
+          tono={porAprobar > 0 || deOtrosDias.cuantos > 0 ? 'aviso' : 'exito'}
+          pie={
+            deOtrosDias.cuantos > 0 && deOtrosDias.masAntiguo ? (
+              <Link href={`/avance/diario?fecha=${deOtrosDias.masAntiguo}&ver=por-aprobar`} className="text-aviso hover:underline">
+                Y {deOtrosDias.cuantos} de otros días, desde el {fmtFecha(deOtrosDias.masAntiguo)}
+              </Link>
+            ) : (
+              'Esperan el visto del jefe'
+            )
+          }
           href={ver === 'por-aprobar' || porAprobar === 0 ? undefined : `/avance/diario?fecha=${dia}&ver=por-aprobar`}
         />
         <Indicador
@@ -342,7 +383,7 @@ export default async function PaginaDiaEnElTaller({
                         <span className="flex flex-wrap items-center gap-2 text-xs">
                           <Link
                             href={`/ordenes/${r.orden_id}?vista=actividades`}
-                            className="font-medium text-acento hover:underline"
+                            className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0"
                           >
                             {r.orden_numero}
                           </Link>
@@ -407,7 +448,7 @@ export default async function PaginaDiaEnElTaller({
                         <span className="flex flex-wrap items-center gap-2 text-sm">
                           <Link
                             href={`/avance/${a.orden_id}`}
-                            className="font-medium text-acento hover:underline"
+                            className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0"
                           >
                             {a.orden_numero}
                           </Link>
@@ -489,7 +530,7 @@ export default async function PaginaDiaEnElTaller({
                         <span className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
                           <Link
                             href={`/avance/trabajos/${r.flota_id}`}
-                            className="font-medium text-acento hover:underline"
+                            className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0"
                           >
                             {nombre}
                           </Link>
@@ -558,7 +599,7 @@ export default async function PaginaDiaEnElTaller({
                 <div className="min-w-0">
                   <Link
                     href={`/ordenes/${h.orden_id}?vista=actividades`}
-                    className="text-sm font-medium text-acento hover:underline"
+                    className="inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0"
                   >
                     {h.orden_numero}
                   </Link>
@@ -579,7 +620,7 @@ export default async function PaginaDiaEnElTaller({
                   <div className="min-w-0">
                     <Link
                       href={`/avance/trabajos/${u.id}`}
-                      className="text-sm font-medium text-acento hover:underline"
+                      className="inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0"
                     >
                       {nombreDeFlota(u)}
                     </Link>

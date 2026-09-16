@@ -20,10 +20,11 @@ export const VARIANTES: Record<Variante, string> = {
 }
 
 // El blanco crece en el teléfono, donde se marca con el dedo y a veces con
-// guante; en `sm:` vuelve la medida de escritorio de siempre, que ahí sobra
-// con el ratón. `lg` ya medía 44 px: no tiene a dónde crecer.
+// guante: los cuatro tamaños miden 44 px ahí, igual que Entrada, las pastillas
+// y las pestañas. En `sm:` vuelve la medida de escritorio de siempre, que ahí
+// sobra con el ratón.
 export const TAMANOS: Record<Tamano, string> = {
-  sm: 'h-10 sm:h-8 px-3 text-xs gap-1.5',
+  sm: 'h-11 sm:h-8 px-3 text-xs gap-1.5',
   md: 'h-11 sm:h-9 px-4 text-sm gap-2',
   lg: 'h-11 px-6 text-sm gap-2',
   icono: 'size-11 sm:size-9 justify-center',

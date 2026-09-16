@@ -1,7 +1,7 @@
 'use client'
 
 import { Check, Minus, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -74,6 +74,7 @@ export function Cumplimiento({
   planos,
   puedeDisenar,
   puedeReportar,
+  areaPropia = null,
   ordenViva,
   motivoInactiva,
 }: {
@@ -84,6 +85,11 @@ export function Cumplimiento({
   puedeDisenar: boolean
   /** `produccion.registrar`: Maestranza y Producción marcan lo suyo. */
   puedeReportar: boolean
+  /**
+   * De qué mano es quien mira, si es de una sola: el supervisor de Maestranza
+   * ve solo sus botones y su marca rápida; el jefe (cualquier área), los dos.
+   */
+  areaPropia?: ManoDelTaller | null
   /** La orden acepta planos: aprobada y no entregada ni anulada. */
   ordenViva: boolean
   /** Por qué no los acepta: en borrador falta la aprobación, cerrada ya no hay qué repartir. */
@@ -169,6 +175,7 @@ export function Cumplimiento({
             plano={plano}
             puedeDisenar={puedeDisenar && ordenViva}
             puedeReportar={puedeReportar}
+            areaPropia={areaPropia}
           />
         ))
       )}
@@ -264,11 +271,13 @@ function TarjetaPlano({
   plano,
   puedeDisenar,
   puedeReportar,
+  areaPropia,
 }: {
   ordenId: string
   plano: PlanoCumplimiento
   puedeDisenar: boolean
   puedeReportar: boolean
+  areaPropia: ManoDelTaller | null
 }) {
   const [modo, setModo] = useState<'ver' | 'editar' | 'entregar' | 'quitar' | 'piezas'>('ver')
   const entregado = Boolean(plano.fecha_entrega)
@@ -357,9 +366,10 @@ function TarjetaPlano({
           planoEntregado={entregado}
           puedeDisenar={puedeDisenar}
           puedeReportar={puedeReportar}
+          areaPropia={areaPropia}
         />
         {puedeReportar && plano.lista.length > 1 && (
-          <MarcarEnLote ordenId={ordenId} planoId={planoId} planoEntregado={entregado} />
+          <MarcarEnLote ordenId={ordenId} planoId={planoId} planoEntregado={entregado} areaPropia={areaPropia} />
         )}
         {puedeDisenar && (
           <div className="border-t border-borde p-3">
@@ -478,23 +488,45 @@ function FormularioPlano({
  * las piezas de un plano el mismo día, y reportarlas de a una eran diez
  * formularios con la misma fecha. La base sigue validando pieza por pieza.
  */
-function MarcarEnLote({ ordenId, planoId, planoEntregado }: { ordenId: string; planoId: string; planoEntregado: boolean }) {
+function MarcarEnLote({
+  ordenId,
+  planoId,
+  planoEntregado,
+  areaPropia,
+}: {
+  ordenId: string
+  planoId: string
+  planoEntregado: boolean
+  areaPropia: ManoDelTaller | null
+}) {
   const { alEnviar, enviando, error, resultado } = useEnvio(marcarPiezasDelPlano)
+  // Cada mano ve solo sus marcas, y la primera que le toca ya viene elegida.
+  const deMtz = areaPropia !== 'PRD'
+  const dePrd = areaPropia !== 'MTZ'
+  const propuesta = deMtz && planoEntregado ? 'mtz_habilitado' : dePrd ? 'prd_recibido' : 'mtz_habilitado'
 
   return (
     <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-3 border-t border-borde bg-superficie-2 px-4 py-3">
       <input type="hidden" name="orden_id" value={ordenId} />
       <input type="hidden" name="plano_id" value={planoId} />
       <Campo etiqueta="Marcar en todas las piezas" htmlFor={`lote-${planoId}`} ayuda="Solo las que faltan y ya pasaron el paso anterior">
-        <Seleccion id={`lote-${planoId}`} name="marca" required defaultValue={planoEntregado ? 'mtz_habilitado' : 'prd_armado'}>
-          <option value="mtz_habilitado" disabled={!planoEntregado}>
-            Habilitadas por Maestranza{planoEntregado ? '' : ' (falta la entrega del plano)'}
-          </option>
-          <option value="mtz_entregado" disabled={!planoEntregado}>
-            Entregadas a Producción
-          </option>
-          <option value="prd_recibido">Recibidas por Producción</option>
-          <option value="prd_armado">Armadas</option>
+        <Seleccion id={`lote-${planoId}`} name="marca" required defaultValue={propuesta}>
+          {deMtz && (
+            <>
+              <option value="mtz_habilitado" disabled={!planoEntregado}>
+                Habilitadas por Maestranza{planoEntregado ? '' : ' (falta la entrega del plano)'}
+              </option>
+              <option value="mtz_entregado" disabled={!planoEntregado}>
+                Entregadas a Producción
+              </option>
+            </>
+          )}
+          {dePrd && (
+            <>
+              <option value="prd_recibido">Recibidas por Producción</option>
+              <option value="prd_armado">Armadas</option>
+            </>
+          )}
         </Seleccion>
       </Campo>
       <Campo etiqueta="El día" htmlFor={`lote-fecha-${planoId}`}>
@@ -600,18 +632,74 @@ function FormularioPiezas({
 // ================================================================= las piezas
 const COLUMNAS = 13
 
+/** Las dos manos que marcan la hoja. */
+type ManoDelTaller = 'MTZ' | 'PRD'
+
+const MARCAS_RAPIDAS = {
+  mtz_habilitado: 'Habilitada hoy',
+  mtz_entregado: 'Entregada hoy',
+  prd_recibido: 'Recibida hoy',
+  prd_armado: 'Armada hoy',
+} as const
+type MarcaRapidaClave = keyof typeof MARCAS_RAPIDAS
+
+/**
+ * El siguiente paso que le toca a una mano con esta pieza, si hay uno: la
+ * marca rápida de la pieza es ese paso con la fecha de hoy. Los ensambles no
+ * pasan por Maestranza y Producción los empieza sin recibirlos.
+ */
+function siguientePaso(pieza: PiezaCumplimiento, mano: ManoDelTaller, planoEntregado: boolean): MarcaRapidaClave | null {
+  const ensamble = Boolean(pieza.es_ensamble)
+  if (mano === 'MTZ') {
+    if (ensamble || !planoEntregado) return null
+    if (!pieza.mtz_habilitado) return 'mtz_habilitado'
+    if (!pieza.mtz_entregado) return 'mtz_entregado'
+    return null
+  }
+  if (ensamble) return pieza.prd_armado ? null : 'prd_armado'
+  if (pieza.mtz_entregado && !pieza.prd_recibido) return 'prd_recibido'
+  if (pieza.prd_recibido && !pieza.prd_armado) return 'prd_armado'
+  return null
+}
+
+/**
+ * Un toque por pieza: «Habilitada hoy», «Armada hoy». Es el lote de una sola
+ * pieza —misma acción, misma regla en la base— para el caso de cada día, que
+ * es marcar el paso que sigue con la fecha de hoy. El formulario completo
+ * queda para las fechas de otro día y las observaciones.
+ */
+function MarcaRapida({ ordenId, pieza, marca }: { ordenId: string; pieza: PiezaCumplimiento; marca: MarcaRapidaClave }) {
+  const { alEnviar, enviando, error } = useEnvio(marcarPiezasDelPlano)
+  return (
+    <form onSubmit={alEnviar} className="contents">
+      <input type="hidden" name="orden_id" value={ordenId} />
+      <input type="hidden" name="plano_id" value={pieza.plano_id ?? ''} />
+      <input type="hidden" name="pieza_id" value={pieza.id ?? ''} />
+      <input type="hidden" name="marca" value={marca} />
+      <input type="hidden" name="fecha" value={hoyLima()} />
+      <Boton type="submit" tamano="sm" cargando={enviando}>
+        <Check aria-hidden className="size-3.5" />
+        {MARCAS_RAPIDAS[marca]}
+      </Boton>
+      {error && <Error_ texto={error} />}
+    </form>
+  )
+}
+
 function TablaPiezas({
   ordenId,
   piezas,
   planoEntregado,
   puedeDisenar,
   puedeReportar,
+  areaPropia,
 }: {
   ordenId: string
   piezas: PiezaCumplimiento[]
   planoEntregado: boolean
   puedeDisenar: boolean
   puedeReportar: boolean
+  areaPropia: ManoDelTaller | null
 }) {
   const [abierta, setAbierta] = useState<{ id: string; bloque: 'mtz' | 'prd' | 'editar' | 'quitar' } | null>(null)
 
@@ -640,6 +728,7 @@ function TablaPiezas({
                 planoEntregado={planoEntregado}
                 puedeDisenar={puedeDisenar}
                 puedeReportar={puedeReportar}
+                areaPropia={areaPropia}
               />
             )
           })
@@ -698,6 +787,7 @@ function TablaPiezas({
                 planoEntregado={planoEntregado}
                 puedeDisenar={puedeDisenar}
                 puedeReportar={puedeReportar}
+                areaPropia={areaPropia}
               />
             )
           })
@@ -721,6 +811,7 @@ function TarjetaPieza({
   planoEntregado,
   puedeDisenar,
   puedeReportar,
+  areaPropia,
 }: {
   ordenId: string
   pieza: PiezaCumplimiento
@@ -730,9 +821,11 @@ function TarjetaPieza({
   planoEntregado: boolean
   puedeDisenar: boolean
   puedeReportar: boolean
+  areaPropia: ManoDelTaller | null
 }) {
   const id = pieza.id ?? ''
   const ensamble = Boolean(pieza.es_ensamble)
+  const manos = manosDe(areaPropia)
   const pasos = ensamble
     ? [
         { etiqueta: 'Empezada', si: Boolean(pieza.prd_inicio), fecha: pieza.prd_inicio },
@@ -779,16 +872,23 @@ function TarjetaPieza({
 
       {(puedeReportar || puedeDisenar) && (
         <div className="flex flex-wrap items-center gap-2">
-          {puedeReportar && !ensamble && planoEntregado && (
-            <Boton variante={abierta === 'mtz' ? 'primario' : 'secundario'} tamano="sm" onClick={() => alternar('mtz')}>
+          {/* Primero la marca rápida de lo que sigue, después el formulario de
+              la mano —«Maestranza», «Producción»— para fechas de otro día. */}
+          {puedeReportar &&
+            manos.map((mano) => {
+              const paso = siguientePaso(pieza, mano, planoEntregado)
+              return paso ? <MarcaRapida key={mano} ordenId={ordenId} pieza={pieza} marca={paso} /> : null
+            })}
+          {puedeReportar && manos.includes('MTZ') && !ensamble && planoEntregado && (
+            <Boton variante={abierta === 'mtz' ? 'primario' : 'contorno'} tamano="sm" onClick={() => alternar('mtz')}>
               Maestranza
             </Boton>
           )}
-          {puedeReportar && !ensamble && !planoEntregado && (
+          {puedeReportar && manos.includes('MTZ') && !ensamble && !planoEntregado && (
             <span className="text-[11px] text-texto-tenue">Maestranza espera el plano</span>
           )}
-          {puedeReportar && (
-            <Boton variante={abierta === 'prd' ? 'primario' : 'secundario'} tamano="sm" onClick={() => alternar('prd')}>
+          {puedeReportar && manos.includes('PRD') && (
+            <Boton variante={abierta === 'prd' ? 'primario' : 'contorno'} tamano="sm" onClick={() => alternar('prd')}>
               Producción
             </Boton>
           )}
@@ -830,6 +930,7 @@ function FilaPieza({
   planoEntregado,
   puedeDisenar,
   puedeReportar,
+  areaPropia,
 }: {
   ordenId: string
   pieza: PiezaCumplimiento
@@ -839,9 +940,11 @@ function FilaPieza({
   planoEntregado: boolean
   puedeDisenar: boolean
   puedeReportar: boolean
+  areaPropia: ManoDelTaller | null
 }) {
   const id = pieza.id ?? ''
   const ensamble = Boolean(pieza.es_ensamble)
+  const manos = manosDe(areaPropia)
   const enlace = 'text-[11px] text-acento hover:underline disabled:cursor-not-allowed disabled:text-texto-tenue disabled:no-underline'
 
   return (
@@ -886,18 +989,23 @@ function FilaPieza({
         <TD className="tabular border-l border-borde text-right font-medium">{numero(pieza.avance_pct, 0)}</TD>
         <TD className="whitespace-nowrap">
           <div className="flex items-center justify-end gap-2">
+            {puedeReportar &&
+              manos.map((mano) => {
+                const paso = siguientePaso(pieza, mano, planoEntregado)
+                return paso ? <MarcaRapida key={mano} ordenId={ordenId} pieza={pieza} marca={paso} /> : null
+              })}
             {/* Sin el plano entregado, Maestranza no puede empezar: se dice con
                 texto y no con un botón apagado, que en el teléfono no explica
                 nada. */}
-            {puedeReportar && !ensamble && planoEntregado && (
+            {puedeReportar && manos.includes('MTZ') && !ensamble && planoEntregado && (
               <button type="button" className={enlace} onClick={() => alternar('mtz')}>
                 Maestranza
               </button>
             )}
-            {puedeReportar && !ensamble && !planoEntregado && (
+            {puedeReportar && manos.includes('MTZ') && !ensamble && !planoEntregado && (
               <span className="text-[11px] text-texto-tenue">Maestranza espera el plano</span>
             )}
-            {puedeReportar && (
+            {puedeReportar && manos.includes('PRD') && (
               <button type="button" className={enlace} onClick={() => alternar('prd')}>
                 Producción
               </button>
@@ -938,6 +1046,11 @@ function FilaPieza({
   )
 }
 
+/** Qué manos ve quien mira: la suya, o las dos si es de todo el taller. */
+function manosDe(areaPropia: ManoDelTaller | null): ManoDelTaller[] {
+  return areaPropia ? [areaPropia] : ['MTZ', 'PRD']
+}
+
 function Marca({ id, name, etiqueta, defaultChecked }: { id: string; name: string; etiqueta: string; defaultChecked: boolean }) {
   return (
     <label htmlFor={id} className="flex min-h-11 items-center gap-2 text-sm text-texto sm:min-h-0">
@@ -958,22 +1071,25 @@ function FormularioMaestranza({
 }) {
   const { alEnviar, enviando, error } = useEnvio(reportarMaestranza, alTerminar)
   const id = pieza.id ?? ''
+  // La misma pieza se pinta dos veces —tarjeta y fila— y los `id` con el uuid
+  // se repetían: la etiqueta enfocaba el campo escondido de la otra copia.
+  const uid = useId()
 
   return (
     <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-5">
       <input type="hidden" name="orden_id" value={ordenId} />
       <input type="hidden" name="pieza_id" value={id} />
       <p className="text-xs font-semibold text-texto sm:col-span-5">Maestranza reporta «{pieza.nombre}»</p>
-      <Campo etiqueta="Inicio del habilitado" htmlFor={`mi-${id}`}>
-        <Entrada id={`mi-${id}`} name="mtz_inicio" type="date" defaultValue={pieza.mtz_inicio ?? ''} />
+      <Campo etiqueta="Inicio del habilitado" htmlFor={`${uid}-mi`}>
+        <Entrada id={`${uid}-mi`} name="mtz_inicio" type="date" defaultValue={pieza.mtz_inicio ?? ''} />
       </Campo>
-      <Marca id={`mh-${id}`} name="mtz_habilitado" etiqueta="Habilitado" defaultChecked={Boolean(pieza.mtz_habilitado)} />
-      <Campo etiqueta="Culminación" htmlFor={`mc-${id}`}>
-        <Entrada id={`mc-${id}`} name="mtz_culminacion" type="date" defaultValue={pieza.mtz_culminacion ?? ''} />
+      <Marca id={`${uid}-mh`} name="mtz_habilitado" etiqueta="Habilitado" defaultChecked={Boolean(pieza.mtz_habilitado)} />
+      <Campo etiqueta="Culminación" htmlFor={`${uid}-mc`}>
+        <Entrada id={`${uid}-mc`} name="mtz_culminacion" type="date" defaultValue={pieza.mtz_culminacion ?? ''} />
       </Campo>
-      <Marca id={`me-${id}`} name="mtz_entregado" etiqueta="Entregado a Producción" defaultChecked={Boolean(pieza.mtz_entregado)} />
-      <Campo etiqueta="Observación" htmlFor={`mo-${id}`}>
-        <Entrada id={`mo-${id}`} name="mtz_observacion" defaultValue={pieza.mtz_observacion ?? ''} placeholder="Qué la trabó" />
+      <Marca id={`${uid}-me`} name="mtz_entregado" etiqueta="Entregado a Producción" defaultChecked={Boolean(pieza.mtz_entregado)} />
+      <Campo etiqueta="Observación" htmlFor={`${uid}-mo`}>
+        <Entrada id={`${uid}-mo`} name="mtz_observacion" defaultValue={pieza.mtz_observacion ?? ''} placeholder="Qué la trabó" />
       </Campo>
       {error && (
         <div className="sm:col-span-5">
@@ -1003,6 +1119,7 @@ function FormularioProduccion({
 }) {
   const { alEnviar, enviando, error } = useEnvio(reportarProduccion, alTerminar)
   const id = pieza.id ?? ''
+  const uid = useId()
   const ensamble = Boolean(pieza.es_ensamble)
 
   return (
@@ -1012,18 +1129,18 @@ function FormularioProduccion({
       <p className="text-xs font-semibold text-texto sm:col-span-5">Producción reporta «{pieza.nombre}»</p>
       {!ensamble && (
         <>
-          <Campo etiqueta="Recepción" htmlFor={`pr-${id}`}>
-            <Entrada id={`pr-${id}`} name="prd_recepcion" type="date" defaultValue={pieza.prd_recepcion ?? ''} />
+          <Campo etiqueta="Recepción" htmlFor={`${uid}-pr`}>
+            <Entrada id={`${uid}-pr`} name="prd_recepcion" type="date" defaultValue={pieza.prd_recepcion ?? ''} />
           </Campo>
-          <Marca id={`pc-${id}`} name="prd_recibido" etiqueta="Recibido" defaultChecked={Boolean(pieza.prd_recibido)} />
+          <Marca id={`${uid}-pc`} name="prd_recibido" etiqueta="Recibido" defaultChecked={Boolean(pieza.prd_recibido)} />
         </>
       )}
-      <Campo etiqueta={ensamble ? 'Inicio del ensamble' : 'Inicio del armado'} htmlFor={`pi-${id}`}>
-        <Entrada id={`pi-${id}`} name="prd_inicio" type="date" defaultValue={pieza.prd_inicio ?? ''} />
+      <Campo etiqueta={ensamble ? 'Inicio del ensamble' : 'Inicio del armado'} htmlFor={`${uid}-pi`}>
+        <Entrada id={`${uid}-pi`} name="prd_inicio" type="date" defaultValue={pieza.prd_inicio ?? ''} />
       </Campo>
-      <Marca id={`pa-${id}`} name="prd_armado" etiqueta="Armado" defaultChecked={Boolean(pieza.prd_armado)} />
-      <Campo etiqueta="Observación" htmlFor={`po-${id}`}>
-        <Entrada id={`po-${id}`} name="prd_observacion" defaultValue={pieza.prd_observacion ?? ''} placeholder="Qué la trabó" />
+      <Marca id={`${uid}-pa`} name="prd_armado" etiqueta="Armado" defaultChecked={Boolean(pieza.prd_armado)} />
+      <Campo etiqueta="Observación" htmlFor={`${uid}-po`}>
+        <Entrada id={`${uid}-po`} name="prd_observacion" defaultValue={pieza.prd_observacion ?? ''} placeholder="Qué la trabó" />
       </Campo>
       {error && (
         <div className="sm:col-span-5">
@@ -1053,23 +1170,24 @@ function FormularioPieza({
 }) {
   const { alEnviar, enviando, error } = useEnvio(editarPieza, alTerminar)
   const id = pieza.id ?? ''
+  const uid = useId()
 
   return (
     <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-5">
       <input type="hidden" name="orden_id" value={ordenId} />
       <input type="hidden" name="pieza_id" value={id} />
-      <Campo etiqueta="N.º" htmlFor={`en-${id}`}>
-        <Entrada id={`en-${id}`} name="numero_pieza" required defaultValue={pieza.numero_pieza ?? ''} />
+      <Campo etiqueta="N.º" htmlFor={`${uid}-en`}>
+        <Entrada id={`${uid}-en`} name="numero_pieza" required defaultValue={pieza.numero_pieza ?? ''} />
       </Campo>
-      <Campo etiqueta="Nombre" htmlFor={`enm-${id}`} className="sm:col-span-2">
-        <Entrada id={`enm-${id}`} name="nombre" required defaultValue={pieza.nombre ?? ''} />
+      <Campo etiqueta="Nombre" htmlFor={`${uid}-enm`} className="sm:col-span-2">
+        <Entrada id={`${uid}-enm`} name="nombre" required defaultValue={pieza.nombre ?? ''} />
       </Campo>
-      <Campo etiqueta="Cantidad" htmlFor={`ec-${id}`}>
-        <Entrada id={`ec-${id}`} name="cantidad" type="number" inputMode="decimal" min={0.01} step="any" defaultValue={Number(pieza.cantidad ?? 1)} className="tabular" />
+      <Campo etiqueta="Cantidad" htmlFor={`${uid}-ec`}>
+        <Entrada id={`${uid}-ec`} name="cantidad" type="number" inputMode="decimal" min={0.01} step="any" defaultValue={Number(pieza.cantidad ?? 1)} className="tabular" />
       </Campo>
-      <Marca id={`ee-${id}`} name="es_ensamble" etiqueta="Es un ensamble" defaultChecked={Boolean(pieza.es_ensamble)} />
-      <Campo etiqueta="Observación" htmlFor={`eo-${id}`} className="sm:col-span-5">
-        <Entrada id={`eo-${id}`} name="observacion" defaultValue={pieza.observacion ?? ''} />
+      <Marca id={`${uid}-ee`} name="es_ensamble" etiqueta="Es un ensamble" defaultChecked={Boolean(pieza.es_ensamble)} />
+      <Campo etiqueta="Observación" htmlFor={`${uid}-eo`} className="sm:col-span-5">
+        <Entrada id={`${uid}-eo`} name="observacion" defaultValue={pieza.observacion ?? ''} />
       </Campo>
       {error && (
         <div className="sm:col-span-5">

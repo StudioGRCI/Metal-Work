@@ -152,6 +152,14 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   // La lista de Diseño y su catálogo.
   const listaMateriales = vista === 'materiales' ? await materialesParaPantalla(id) : null
 
+  // De qué mano es quien mira la hoja de cumplimiento: el supervisor de
+  // Maestranza ve solo sus botones; el jefe (cualquier área) y la oficina, los dos.
+  const codigoDeSuArea =
+    vista === 'cumplimiento' && !puede(perfil, 'produccion.cualquier_area') && perfil.area_id
+      ? ((await areasDelTaller()).find((a) => a.id === perfil.area_id)?.codigo ?? null)
+      : null
+  const manoDelTaller = codigoDeSuArea === 'MTZ' || codigoDeSuArea === 'PRD' ? codigoDeSuArea : null
+
   // La hoja de avance de cada area, con sus actividades y el diario.
   const hojaAreas =
     vista === 'actividades'
@@ -542,6 +550,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           planos={cumplimiento?.planos ?? []}
           puedeDisenar={puede(perfil, 'diseno.planos')}
           puedeReportar={puede(perfil, 'produccion.registrar')}
+          areaPropia={manoDelTaller}
           ordenViva={motivoInactiva === null}
           motivoInactiva={motivoInactiva}
         />

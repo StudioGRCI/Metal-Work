@@ -1,6 +1,7 @@
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
 
+import { sumarDias } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 
 export type PerfilSesion = {
@@ -112,11 +113,7 @@ export function puedeHojaDeArea(perfil: PerfilSesion | null, areaId: string | nu
 /** Los tres reportes del día: la hoja por área, el avance con foto y el trabajo sin orden. */
 export type ClaseReporte = 'hoja' | 'orden' | 'flota'
 
-function diaAnterior(dia: string) {
-  const d = new Date(`${dia}T12:00:00Z`)
-  d.setUTCDate(d.getUTCDate() - 1)
-  return d.toISOString().slice(0, 10)
-}
+const diaAnterior = (dia: string) => sumarDias(dia, -1)
 
 /**
  * Si esta persona ve «Corregir» en un reporte del día. Gemelo de las políticas

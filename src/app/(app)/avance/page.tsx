@@ -118,7 +118,12 @@ export default async function PaginaAvance({ searchParams }: PageProps<'/avance'
         </Tarjeta>
       )}
 
-      <LoQueTocaHoy actividades={cronograma} hoy={hoy} conArea={todoElTaller} />
+      <LoQueTocaHoy
+        actividades={cronograma}
+        hoy={hoy}
+        conArea={todoElTaller}
+        puedeReportar={puede(perfil, 'produccion.registrar')}
+      />
 
       {/* Dos por fila en el teléfono; las cuatro de siempre en el monitor. */}
       <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">

@@ -459,7 +459,10 @@ function NotaPaso({ ordenId, paso, alCerrar }: { ordenId: string; paso: PasoVeri
 
   return (
     <form onSubmit={alEnviar} className="mt-1 space-y-1">
-      <div className="flex gap-2">
+      {/* Apilado en el teléfono: la celda mide unos 170 px y en una sola línea
+          la entrada se aplastaba. Y sin `text-xs` ahí: 12 px hacen que Safari
+          acerque la pantalla en cada foco. */}
+      <div className="flex flex-col gap-2 sm:flex-row">
         <input type="hidden" name="id" value={paso.id} />
         <input type="hidden" name="orden_id" value={ordenId} />
         <Entrada
@@ -467,7 +470,7 @@ function NotaPaso({ ordenId, paso, alCerrar }: { ordenId: string; paso: PasoVeri
           defaultValue={paso.observaciones ?? ''}
           placeholder="Qué quedó pendiente"
           autoFocus
-          className="text-xs"
+          className="sm:text-xs"
         />
         <Boton type="submit" tamano="sm" cargando={enviando}>
           Guardar nota

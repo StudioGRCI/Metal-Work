@@ -503,6 +503,8 @@ const PASOS = {
 const esquemaLote = z.object({
   plano_id: z.string().uuid(),
   orden_id: z.string().uuid(),
+  /** Con pieza, el lote es de una: el botón «Habilitada hoy» de cada pieza. */
+  pieza_id: z.string().uuid().optional(),
   marca: z.enum(['mtz_habilitado', 'mtz_entregado', 'prd_recibido', 'prd_armado'], { message: 'Elige qué marcar' }),
   fecha: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elige la fecha'),
 })
@@ -530,6 +532,7 @@ export async function marcarPiezasDelPlano(_previo: unknown, datos: FormData): P
     .eq('plano_id', v.plano_id)
     .eq('orden_id', v.orden_id)
     .eq(v.marca, false)
+  if (v.pieza_id) consulta = consulta.eq('id', v.pieza_id)
   if (!paso.ensambles) consulta = consulta.eq('es_ensamble', false)
   if (paso.previo) {
     // El armado también vale para los ensambles, que no pasan por Maestranza.
@@ -543,9 +546,11 @@ export async function marcarPiezasDelPlano(_previo: unknown, datos: FormData): P
   if (!piezas || piezas.length === 0) {
     return {
       ok: false,
-      error: paso.previo
-        ? `No hay piezas que marcar: las que faltan todavía no pasaron el paso anterior.`
-        : 'No hay piezas que marcar en este plano.',
+      error: v.pieza_id
+        ? 'Esta pieza ya está marcada, o todavía no pasó el paso anterior.'
+        : paso.previo
+          ? `No hay piezas que marcar: las que faltan todavía no pasaron el paso anterior.`
+          : 'No hay piezas que marcar en este plano.',
     }
   }
 

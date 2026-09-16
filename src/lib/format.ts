@@ -186,6 +186,16 @@ export function iniciales(texto?: string | null) {
 }
 
 /**
+ * Una fecha plana (YYYY-MM-DD) más o menos días, como texto: se opera al
+ * mediodía UTC para que ninguna zona horaria la corra un día.
+ */
+export function sumarDias(dia: string, n: number): string {
+  const d = new Date(`${dia}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
  * El puesto con el que se muestra una cuenta —el cargo, o el rol si no lo
  * tiene—, nunca el nombre de la persona (migración 109). Las cuentas son por
  * puesto: cuando cambia quien la usa, «Aprobada por Gerencia» sigue siendo

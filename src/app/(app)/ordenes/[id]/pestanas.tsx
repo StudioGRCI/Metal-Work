@@ -33,7 +33,11 @@ export function Pestanas({
   contadores?: Record<string, number>
 }) {
   return (
-    <nav className="my-5 flex gap-1 overflow-x-auto border-b border-borde" aria-label="Secciones de la orden">
+    // `pestanas-con-corte`: en el teléfono caben cuatro de las ocho y la sombra
+    // en el borde dice que hay más hacia la derecha; sin ella «Actividades»,
+    // a la que llega el taller, quedaba fuera de pantalla sin que nada invitara
+    // a arrastrar.
+    <nav className="pestanas-con-corte my-5 flex gap-1 overflow-x-auto border-b border-borde" aria-label="Secciones de la orden">
       {PESTANAS.map((p) => {
         const esActiva = p.clave === activa
         const n = contadores[p.clave] ?? 0
