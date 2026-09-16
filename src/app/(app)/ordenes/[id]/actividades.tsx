@@ -1,6 +1,7 @@
 'use client'
 
-import { CalendarDays, CheckCheck, Plus, Trash2, Truck } from 'lucide-react'
+import { CalendarDays, CheckCheck, MessageSquareWarning, Pencil, Plus, Trash2, Truck } from 'lucide-react'
+import Link from 'next/link'
 import { useState } from 'react'
 
 import { CorregirReporte } from '@/components/avance/corregir-reporte'
@@ -28,8 +29,8 @@ import {
   agregarActividad,
   aprobarHojaDeOrden,
   cambiarPesoActividad,
+  editarActividad,
   quitarActividad,
-  reportarAvance,
 } from './acciones-actividades'
 import { CargarCronograma } from './cargar-cronograma'
 
@@ -499,9 +500,59 @@ function AccionesActividad({
   deHoy: ReporteDiario | null
   corregibleHoy: boolean
 }) {
-  const [modo, setModo] = useState<'nada' | 'peso' | 'quitar'>('nada')
+  const [modo, setModo] = useState<'nada' | 'peso' | 'editar' | 'quitar'>('nada')
   const peso = useEnvio(cambiarPesoActividad, () => setModo('nada'))
+  const editar = useEnvio(editarActividad, () => setModo('nada'))
   const quitar = useEnvio(quitarActividad, () => setModo('nada'))
+
+  if (modo === 'editar') {
+    return (
+      <form onSubmit={editar.alEnviar} className="grid w-full gap-2 sm:grid-cols-6">
+        <input type="hidden" name="id" value={actividad.id} />
+        <input type="hidden" name="orden_id" value={ordenId} />
+        <Campo etiqueta="Actividad" htmlFor={`ea-nombre-${actividad.id}`} requerido className="sm:col-span-3">
+          <Entrada id={`ea-nombre-${actividad.id}`} name="nombre" required defaultValue={actividad.nombre} autoFocus />
+        </Campo>
+        <Campo etiqueta="Referencia" htmlFor={`ea-ref-${actividad.id}`} className="sm:col-span-2">
+          <Entrada id={`ea-ref-${actividad.id}`} name="referencia" defaultValue={actividad.referencia ?? ''} />
+        </Campo>
+        <Campo etiqueta="N.º" htmlFor={`ea-orden-${actividad.id}`}>
+          <Entrada
+            id={`ea-orden-${actividad.id}`}
+            name="orden_secuencia"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            step="1"
+            defaultValue={actividad.orden_secuencia}
+            className="tabular"
+          />
+        </Campo>
+        <Campo etiqueta="Detalle" htmlFor={`ea-detalle-${actividad.id}`} className="sm:col-span-2">
+          <Entrada id={`ea-detalle-${actividad.id}`} name="detalle" defaultValue={actividad.detalle ?? ''} />
+        </Campo>
+        <Campo etiqueta="Desde" htmlFor={`ea-inicio-${actividad.id}`} className="sm:col-span-2">
+          <Entrada id={`ea-inicio-${actividad.id}`} name="fecha_inicio_plan" type="date" defaultValue={actividad.fecha_inicio_plan ?? ''} />
+        </Campo>
+        <Campo etiqueta="Hasta" htmlFor={`ea-fin-${actividad.id}`} className="sm:col-span-2">
+          <Entrada id={`ea-fin-${actividad.id}`} name="fecha_fin_plan" type="date" defaultValue={actividad.fecha_fin_plan ?? ''} />
+        </Campo>
+        {editar.error && (
+          <div className="sm:col-span-6">
+            <Error_ texto={editar.error} />
+          </div>
+        )}
+        <div className="flex justify-end gap-2 sm:col-span-6">
+          <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setModo('nada')}>
+            Cancelar
+          </Boton>
+          <Boton type="submit" tamano="sm" cargando={editar.enviando}>
+            Guardar
+          </Boton>
+        </div>
+      </form>
+    )
+  }
 
   // Quitar pregunta antes: el icono va pegado a «Peso» y con guante se toca sin
   // querer, y una actividad borrada hay que volver a escribirla.
@@ -593,6 +644,18 @@ function AccionesActividad({
             type="button"
             variante="fantasma"
             tamano="sm"
+            aria-label={`Editar ${actividad.nombre}`}
+            onClick={() => {
+              editar.limpiar()
+              setModo('editar')
+            }}
+          >
+            <Pencil aria-hidden className="size-4" />
+          </Boton>
+          <Boton
+            type="button"
+            variante="fantasma"
+            tamano="sm"
             aria-label={`Quitar ${actividad.nombre}`}
             onClick={() => {
               quitar.limpiar()
@@ -602,6 +665,18 @@ function AccionesActividad({
             <Trash2 aria-hidden className="size-4 text-peligro" />
           </Boton>
         </>
+      )}
+      {/* Un error en la actividad —mal el nombre, mal el peso, falta una— se
+          anota al área que la armó, con la actividad ya escrita en el texto. */}
+      {puedeReportar && !puedeArmar && (
+        <Link
+          href={`/ordenes/${ordenId}?vista=resumen&observar=DIS&sobre=${encodeURIComponent(`Actividad «${actividad.nombre}» (${actividad.area}): `)}#observaciones`}
+          className="inline-flex min-h-11 items-center gap-1 px-1 text-[11px] text-aviso hover:underline sm:min-h-0"
+          title="Anotar una observación a Diseño sobre esta actividad"
+        >
+          <MessageSquareWarning aria-hidden className="size-3.5" />
+          Observar
+        </Link>
       )}
     </div>
   )
@@ -621,7 +696,12 @@ function NuevaActividad({
   propuestas: Record<string, { peso: number; numero: number }>
   alCerrar: () => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(agregarActividad, alCerrar)
+  // El formulario se queda abierto después de guardar, limpio y con el área
+  // puesta: la hoja se arma de a diez actividades y abrirlo cada vez eran diez
+  // toques de más. `guardadas` es la llave que lo limpia, y el texto de al lado
+  // dice cuántas van.
+  const [guardadas, setGuardadas] = useState(0)
+  const { alEnviar, enviando, error } = useEnvio(agregarActividad, () => setGuardadas((g) => g + 1))
   const [area, setArea] = useState(areaPropia && areas.some((a) => a.id === areaPropia) ? areaPropia : (areas[0]?.id ?? ''))
   const propuesta = propuestas[area] ?? { peso: 0, numero: 1 }
 
@@ -632,7 +712,7 @@ function NuevaActividad({
         descripcion="Qué trabajo es y cuánto pesa dentro del 100 % de su área. Para Maestranza, la pieza solicitada va en «referencia»."
       />
       <TarjetaCuerpo>
-        <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
+        <form key={guardadas} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
           <input type="hidden" name="orden_id" value={ordenId} />
 
           <Campo etiqueta="Área" htmlFor="na-area" requerido>
@@ -719,9 +799,14 @@ function NuevaActividad({
             </div>
           )}
 
-          <div className="flex justify-end gap-2 sm:col-span-6">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:col-span-6">
+            {guardadas > 0 && (
+              <span role="status" className="mr-auto text-xs font-medium text-exito">
+                {guardadas === 1 ? 'Agregada 1 actividad.' : `Agregadas ${guardadas} actividades.`} Sigue con la próxima o cierra.
+              </span>
+            )}
             <Boton type="button" variante="fantasma" tamano="sm" onClick={alCerrar}>
-              Cancelar
+              {guardadas > 0 ? 'Listo' : 'Cancelar'}
             </Boton>
             <Boton type="submit" tamano="sm" cargando={enviando}>
               <Truck aria-hidden className="size-4" />

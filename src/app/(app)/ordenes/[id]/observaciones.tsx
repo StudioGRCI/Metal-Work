@@ -38,20 +38,27 @@ export function Observaciones({
   observaciones,
   areas,
   puedeAnotar,
+  preseleccion = null,
 }: {
   ordenId: string
   observaciones: ObservacionEnPantalla[]
-  areas: { id: string; nombre: string }[]
+  areas: { id: string; codigo?: string; nombre: string }[]
   puedeAnotar: boolean
+  /**
+   * Con qué llega quien viene de una pieza o una actividad («Observar»): el
+   * área ya elegida y el texto encabezado. El formulario se abre solo.
+   */
+  preseleccion?: { areaCodigo: string; texto: string } | null
 }) {
-  const [anotando, setAnotando] = useState(false)
+  const [anotando, setAnotando] = useState(Boolean(preseleccion && puedeAnotar))
   const abiertas = observaciones.filter((o) => o.abierta).length
+  const areaPreseleccionada = preseleccion ? (areas.find((a) => a.codigo === preseleccion.areaCodigo)?.id ?? '') : ''
 
   // Sin ninguna, una sola línea: una tarjeta grande que dice «no hay nada»
   // empujaba hacia abajo lo que sí se viene a mirar.
   if (observaciones.length === 0 && !anotando) {
     return (
-      <Tarjeta className="lg:col-span-2">
+      <Tarjeta className="lg:col-span-2" id="observaciones">
         <TarjetaCuerpo className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3">
           <p className="flex min-w-0 flex-1 basis-60 items-start gap-2 text-sm text-texto-suave">
             <CheckCircle2 aria-hidden className="mt-0.5 size-4 shrink-0 text-exito" />
@@ -72,7 +79,7 @@ export function Observaciones({
   }
 
   return (
-    <Tarjeta className="lg:col-span-2">
+    <Tarjeta className="scroll-mt-20 lg:col-span-2" id="observaciones">
       <TarjetaCabecera
         titulo={abiertas > 0 ? `Observaciones · ${abiertas} ${abiertas === 1 ? 'abierta' : 'abiertas'}` : 'Observaciones'}
         descripcion="Un error o un pendiente que alguien encontró en la orden. Va a un área, les avisa a esa área y al jefe de producción, y queda abierto hasta que se resuelve."
@@ -86,7 +93,15 @@ export function Observaciones({
         }
       />
       <TarjetaCuerpo className="space-y-3">
-        {anotando && <NuevaObservacion ordenId={ordenId} areas={areas} alCerrar={() => setAnotando(false)} />}
+        {anotando && (
+          <NuevaObservacion
+            ordenId={ordenId}
+            areas={areas}
+            areaInicial={areaPreseleccionada}
+            textoInicial={preseleccion?.texto ?? ''}
+            alCerrar={() => setAnotando(false)}
+          />
+        )}
 
         {observaciones.length > 0 && (
           <ul className="space-y-3">
@@ -105,10 +120,14 @@ export function Observaciones({
 function NuevaObservacion({
   ordenId,
   areas,
+  areaInicial = '',
+  textoInicial = '',
   alCerrar,
 }: {
   ordenId: string
   areas: { id: string; nombre: string }[]
+  areaInicial?: string
+  textoInicial?: string
   alCerrar: () => void
 }) {
   const { alEnviar, enviando, error } = useEnvio(levantarObservacion, alCerrar)
@@ -117,7 +136,7 @@ function NuevaObservacion({
     <form onSubmit={alEnviar} className="space-y-3 rounded-[var(--radius-base)] border border-borde p-3">
       <input type="hidden" name="orden_id" value={ordenId} />
       <Campo etiqueta="Para qué área" htmlFor="obs-area" requerido>
-        <Seleccion id="obs-area" name="area_id" required defaultValue="">
+        <Seleccion id="obs-area" name="area_id" required defaultValue={areaInicial}>
           <option value="" disabled>
             Elige el área que tiene que corregir
           </option>
@@ -136,6 +155,8 @@ function NuevaObservacion({
           required
           minLength={3}
           maxLength={2000}
+          defaultValue={textoInicial}
+          autoFocus={Boolean(textoInicial)}
           placeholder="El plano 3 del lateral viene con la cota de 2.40 y la unidad pide 2.60…"
         />
       </Campo>

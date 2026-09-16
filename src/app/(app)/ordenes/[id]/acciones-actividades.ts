@@ -110,6 +110,69 @@ export async function agregarActividad(_previo: unknown, datos: FormData): Promi
   return { ok: true, mensaje: 'Actividad agregada.' }
 }
 
+const esquemaEditar = z.object({
+  id: z.string().uuid(),
+  orden_id: z.string().uuid(),
+  nombre: z.string().trim().min(3, 'Escribe qué actividad es'),
+  referencia: z.string().trim().optional(),
+  detalle: z.string().trim().optional(),
+  orden_secuencia: z.coerce.number().int().min(1).max(999).default(1),
+  fecha_inicio_plan: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/, 'La fecha de inicio no se entiende').optional(),
+  fecha_fin_plan: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/, 'La fecha de fin no se entiende').optional(),
+})
+
+/**
+ * Corregir una actividad ya cargada: el nombre, la referencia, el número y las
+ * fechas del cronograma. El peso tiene su propia acción porque cambia el 100 %
+ * del área y la base lo defiende aparte. Antes, un nombre mal escrito
+ * obligaba a quitar la actividad y volver a cargarla, con lo reportado perdido.
+ */
+export async function editarActividad(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ['produccion.actividades', 'diseno.planos'])) {
+    return { ok: false, error: 'La lista de actividades la corrige Diseño o el jefe del área.' }
+  }
+
+  const analisis = esquemaEditar.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los datos.' }
+  }
+  const v = analisis.data
+
+  if (!puedeArmarHoja(perfil, await areaDeActividad(v.id))) {
+    return { ok: false, error: 'Esa actividad es de la hoja de otra área.' }
+  }
+
+  const inicio = nulo(v.fecha_inicio_plan)
+  const fin = nulo(v.fecha_fin_plan)
+  if (inicio && fin && fin < inicio) {
+    return { ok: false, error: 'La actividad no puede terminar antes de empezar.' }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('ot_actividades')
+    .update({
+      nombre: v.nombre,
+      referencia: nulo(v.referencia),
+      detalle: nulo(v.detalle),
+      orden_secuencia: v.orden_secuencia,
+      fecha_inicio_plan: inicio,
+      fecha_fin_plan: fin,
+    })
+    .eq('id', v.id)
+    .eq('orden_id', v.orden_id)
+    .select('id')
+    .maybeSingle()
+
+  if (error) return { ok: false, error: traducir(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
+
+  revalidatePath(`/ordenes/${v.orden_id}`)
+  revalidatePath('/avance', 'layout')
+  return { ok: true, mensaje: 'Actividad corregida.' }
+}
+
 const esquemaPeso = z.object({
   id: z.string().uuid(),
   orden_id: z.string().uuid(),

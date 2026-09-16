@@ -86,7 +86,12 @@ const esquemaPlano = z.object({
   observacion: z.string().trim().max(500).optional(),
 })
 
-/** Diseño agrega un plano: un grupo de piezas con su peso en la unidad. */
+/**
+ * Diseño agrega un plano: un grupo de piezas con su peso en la unidad. Si
+ * vienen las piezas en el mismo formulario (`lista`, una por línea), entran
+ * con el plano: antes era agregar el plano, buscarlo en la lista y abrir
+ * «Agregar piezas», tres pasos para lo que en la hoja es una sola fila.
+ */
 export async function agregarPlano(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const guarda = await exigirDiseno()
   if (!guarda.ok) return guarda
@@ -97,6 +102,12 @@ export async function agregarPlano(_previo: unknown, datos: FormData): Promise<R
   }
 
   const v = analisis.data
+  // Las piezas se leen antes de insertar el plano: una línea mal escrita se
+  // corrige sin dejar un plano vacío atrás.
+  const textoPiezas = datos.get('lista')
+  const leidas = typeof textoPiezas === 'string' && textoPiezas.trim() ? leerPiezas(textoPiezas) : null
+  if (leidas && 'error' in leidas) return { ok: false, error: leidas.error }
+
   const supabase = await createClient()
 
   // Al final de la lista; el orden se corrige después si hace falta.
@@ -122,8 +133,113 @@ export async function agregarPlano(_previo: unknown, datos: FormData): Promise<R
   if (error) return { ok: false, error: explicar(error) }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
+  if (leidas) {
+    const piezas = await supabase
+      .from('ot_piezas')
+      .insert(
+        leidas.piezas.map((p, i) => ({
+          plano_id: data.id,
+          orden_id: v.orden_id,
+          orden_secuencia: i + 1,
+          numero_pieza: p.numero_pieza,
+          nombre: p.nombre,
+          cantidad: p.cantidad,
+          es_ensamble: p.es_ensamble,
+        })),
+      )
+      .select('id')
+    revalidatePath(`/ordenes/${v.orden_id}`)
+    if (piezas.error) {
+      return { ok: false, error: `El plano ${v.numero_plano} entró, pero las piezas no: ${explicar(piezas.error)}` }
+    }
+    const n = piezas.data?.length ?? 0
+    return { ok: true, mensaje: `Plano ${v.numero_plano} agregado con ${n} pieza${n === 1 ? '' : 's'}.` }
+  }
+
   revalidatePath(`/ordenes/${v.orden_id}`)
   return { ok: true, mensaje: `Plano ${v.numero_plano} agregado.` }
+}
+
+const esquemaEntregaEnLote = z.object({
+  orden_id: z.string().uuid(),
+  fecha_entrega: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elige la fecha de entrega'),
+})
+
+/**
+ * Dar por entregados todos los planos que faltan, con la misma fecha: Diseño
+ * suele entregar la carpeta entera y eran cinco veces «Entregar» + fecha.
+ */
+export async function entregarPlanosPendientes(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const guarda = await exigirDiseno()
+  if (!guarda.ok) return guarda
+
+  const analisis = esquemaEntregaEnLote.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Elige la fecha.' }
+  }
+
+  const v = analisis.data
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('ot_planos')
+    .update({ fecha_entrega: v.fecha_entrega })
+    .eq('orden_id', v.orden_id)
+    .is('fecha_entrega', null)
+    .select('id')
+
+  if (error) return { ok: false, error: explicar(error) }
+  const n = data?.length ?? 0
+  if (n === 0) return { ok: false, error: 'No queda ningún plano sin entregar en esta orden.' }
+
+  revalidatePath(`/ordenes/${v.orden_id}`)
+  return { ok: true, mensaje: `${n} plano${n === 1 ? '' : 's'} entregado${n === 1 ? '' : 's'} al taller.` }
+}
+
+const esquemaRepartir = z.object({ orden_id: z.string().uuid() })
+
+/**
+ * Repartir el 100 % en partes iguales entre los planos de la orden. Es lo que
+ * Diseño hace a mano cuando ningún plano pesa más que otro, y lo que dejaba
+ * la suma en 99 o en 101 por el redondeo: acá el resto va al último.
+ */
+export async function repartirPesoDePlanos(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const guarda = await exigirDiseno()
+  if (!guarda.ok) return guarda
+
+  const analisis = esquemaRepartir.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: 'Solicitud inválida.' }
+  const v = analisis.data
+  const supabase = await createClient()
+
+  const { data: planos, error } = await supabase
+    .from('ot_planos')
+    .select('id')
+    .eq('orden_id', v.orden_id)
+    .order('orden_secuencia')
+  if (error) return { ok: false, error: explicar(error) }
+  if (!planos || planos.length === 0) return { ok: false, error: 'La orden todavía no tiene planos.' }
+
+  const parte = Math.floor((100 / planos.length) * 100) / 100
+  const ultimo = Math.round((100 - parte * (planos.length - 1)) * 100) / 100
+
+  const resultados = await Promise.all(
+    planos.map((p, i) =>
+      supabase
+        .from('ot_planos')
+        .update({ peso_pct: i === planos.length - 1 ? ultimo : parte })
+        .eq('id', p.id)
+        .eq('orden_id', v.orden_id)
+        .select('id')
+        .maybeSingle(),
+    ),
+  )
+  const falla = resultados.find((r) => r.error)
+  if (falla?.error) return { ok: false, error: explicar(falla.error) }
+  if (resultados.some((r) => !r.data)) return { ok: false, error: NO_TOCO_NADA }
+
+  revalidatePath(`/ordenes/${v.orden_id}`)
+  return { ok: true, mensaje: `Peso repartido: ${parte} % a cada uno de los ${planos.length} planos.` }
 }
 
 const esquemaEditarPlano = esquemaPlano.extend({ plano_id: z.string().uuid() })

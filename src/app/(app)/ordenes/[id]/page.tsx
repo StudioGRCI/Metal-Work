@@ -383,6 +383,16 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
             observaciones={observaciones.map((o) => ({ ...o, resoluble: puedeResolverObservacion(perfil, o) }))}
             areas={areasParaObservar}
             puedeAnotar={orden.estado !== 'ANULADA'}
+            /* «Observar» desde una pieza o una actividad llega con el área y el
+               encabezado en la URL; el texto se acota porque es de la URL. */
+            preseleccion={
+              typeof query.observar === 'string' && /^[A-Z]{2,5}$/.test(query.observar)
+                ? {
+                    areaCodigo: query.observar,
+                    texto: typeof query.sobre === 'string' ? query.sobre.slice(0, 300) : '',
+                  }
+                : null
+            }
           />
 
           <Tarjeta>
@@ -551,6 +561,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           puedeDisenar={puede(perfil, 'diseno.planos')}
           puedeReportar={puede(perfil, 'produccion.registrar')}
           areaPropia={manoDelTaller}
+          puedeObservar={orden.estado !== 'ANULADA'}
           ordenViva={motivoInactiva === null}
           motivoInactiva={motivoInactiva}
         />

@@ -238,9 +238,12 @@ function NuevoMaterial({
 }) {
   const [abierto, setAbierto] = useState(false)
   const [materialId, setMaterialId] = useState('')
+  // Se queda abierto después de guardar: la lista de materiales de una unidad
+  // son veinte líneas, y abrirlo cada vez eran veinte toques de más.
+  const [guardados, setGuardados] = useState(0)
   const { alEnviar, enviando, error } = useEnvio(agregarMaterial, () => {
-    setAbierto(false)
     setMaterialId('')
+    setGuardados((g) => g + 1)
   })
 
   if (!abierto) {
@@ -264,7 +267,7 @@ function NuevoMaterial({
         descripcion="Qué lleva la unidad y cuánto. El plano y la etapa son opcionales: hay material que es de la unidad entera. Si el material no está en el catálogo, se agrega en «Materiales» del menú."
       />
       <TarjetaCuerpo>
-        <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
+        <form key={guardados} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
           <input type="hidden" name="orden_id" value={ordenId} />
 
           <Campo etiqueta="Material" htmlFor="nm-material" requerido className="sm:col-span-3">
@@ -343,9 +346,14 @@ function NuevoMaterial({
             </div>
           )}
 
-          <div className="flex justify-end gap-2 sm:col-span-6">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:col-span-6">
+            {guardados > 0 && (
+              <span role="status" className="mr-auto text-xs font-medium text-exito">
+                {guardados === 1 ? 'Agregado 1 material.' : `Agregados ${guardados} materiales.`} Sigue con el próximo o cierra.
+              </span>
+            )}
             <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierto(false)}>
-              Cancelar
+              {guardados > 0 ? 'Listo' : 'Cancelar'}
             </Boton>
             <Boton type="submit" tamano="sm" cargando={enviando}>
               <PackagePlus aria-hidden className="size-4" />

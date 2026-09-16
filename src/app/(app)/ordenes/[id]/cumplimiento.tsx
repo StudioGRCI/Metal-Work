@@ -1,6 +1,7 @@
 'use client'
 
-import { Check, Minus, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Check, MessageSquareWarning, Minus, Pencil, Plus, Trash2 } from 'lucide-react'
+import Link from 'next/link'
 import { useId, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
@@ -25,9 +26,11 @@ import {
   editarPieza,
   editarPlano,
   entregarPlano,
+  entregarPlanosPendientes,
   marcarPiezasDelPlano,
   quitarPieza,
   quitarPlano,
+  repartirPesoDePlanos,
   reportarMaestranza,
   reportarProduccion,
 } from './acciones-cumplimiento'
@@ -75,6 +78,7 @@ export function Cumplimiento({
   puedeDisenar,
   puedeReportar,
   areaPropia = null,
+  puedeObservar = false,
   ordenViva,
   motivoInactiva,
 }: {
@@ -90,6 +94,8 @@ export function Cumplimiento({
    * ve solo sus botones y su marca rápida; el jefe (cualquier área), los dos.
    */
   areaPropia?: ManoDelTaller | null
+  /** Quien puede anotar una observación desde una pieza (la orden no está anulada). */
+  puedeObservar?: boolean
   /** La orden acepta planos: aprobada y no entregada ni anulada. */
   ordenViva: boolean
   /** Por qué no los acepta: en borrador falta la aprobación, cerrada ya no hay qué repartir. */
@@ -97,6 +103,10 @@ export function Cumplimiento({
 }) {
   const pesoTotal = Number(resumen?.peso_total ?? 0)
   const faltaPeso = Math.round((100 - pesoTotal) * 100) / 100
+  const sinEntregar = planos.filter((p) => !p.fecha_entrega).length
+  // El número que sigue: el mayor de los que ya son número, más uno.
+  const numeros = planos.map((p) => Number.parseInt(p.numero_plano ?? '', 10)).filter((n) => Number.isFinite(n))
+  const numeroPropuesto = String(Math.max(0, ...numeros) + 1)
 
   return (
     <div className="space-y-4">
@@ -153,7 +163,16 @@ export function Cumplimiento({
         </p>
       )}
 
-      {puedeDisenar && ordenViva && <NuevoPlano ordenId={ordenId} pesoLibre={Math.max(0, faltaPeso)} />}
+      {puedeDisenar && ordenViva && planos.length > 1 && (pesoTotal !== 100 || sinEntregar > 1) && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {pesoTotal !== 100 && <RepartirPeso ordenId={ordenId} cuantos={planos.length} />}
+          {sinEntregar > 1 && <EntregarPendientes ordenId={ordenId} cuantos={sinEntregar} />}
+        </div>
+      )}
+
+      {puedeDisenar && ordenViva && (
+        <NuevoPlano ordenId={ordenId} pesoLibre={Math.max(0, faltaPeso)} numeroPropuesto={numeroPropuesto} />
+      )}
 
       {planos.length === 0 ? (
         <Tarjeta>
@@ -176,6 +195,7 @@ export function Cumplimiento({
             puedeDisenar={puedeDisenar && ordenViva}
             puedeReportar={puedeReportar}
             areaPropia={areaPropia}
+            puedeObservar={puedeObservar}
           />
         ))
       )}
@@ -198,14 +218,116 @@ function Cifra({ titulo, children }: { titulo: string; children: React.ReactNode
 }
 
 // ================================================================= los planos
-function NuevoPlano({ ordenId, pesoLibre }: { ordenId: string; pesoLibre: number }) {
+
+/** Repartir el 100 % en partes iguales entre los planos; pregunta antes porque pisa los pesos puestos. */
+function RepartirPeso({ ordenId, cuantos }: { ordenId: string; cuantos: number }) {
+  const [confirmando, setConfirmando] = useState(false)
+  const { alEnviar, enviando, error, limpiar } = useEnvio(repartirPesoDePlanos, () => setConfirmando(false))
+
+  if (!confirmando) {
+    return (
+      <Boton
+        variante="contorno"
+        tamano="sm"
+        onClick={() => {
+          limpiar()
+          setConfirmando(true)
+        }}
+      >
+        Repartir el peso en partes iguales
+      </Boton>
+    )
+  }
+  return (
+    <form onSubmit={alEnviar} className="flex flex-wrap items-center gap-2 rounded-[var(--radius-base)] bg-aviso-suave px-2 py-1">
+      <input type="hidden" name="orden_id" value={ordenId} />
+      <span className="text-xs text-texto">
+        ¿Poner {Math.floor((100 / cuantos) * 100) / 100} % a cada uno de los {cuantos} planos? Se pierden los pesos de ahora.
+      </span>
+      <Boton type="submit" tamano="sm" cargando={enviando}>
+        Sí, repartir
+      </Boton>
+      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setConfirmando(false)}>
+        No
+      </Boton>
+      {error && <Error_ texto={error} />}
+    </form>
+  )
+}
+
+/** Entregar de una vez todos los planos que faltan, con la misma fecha. */
+function EntregarPendientes({ ordenId, cuantos }: { ordenId: string; cuantos: number }) {
   const [abierto, setAbierto] = useState(false)
-  const { alEnviar, enviando, error } = useEnvio(agregarPlano, () => setAbierto(false))
+  const { alEnviar, enviando, error, limpiar } = useEnvio(entregarPlanosPendientes, () => setAbierto(false))
 
   if (!abierto) {
     return (
-      <div className="flex justify-end">
-        <Boton variante="secundario" tamano="sm" onClick={() => setAbierto(true)}>
+      <Boton
+        variante="secundario"
+        tamano="sm"
+        onClick={() => {
+          limpiar()
+          setAbierto(true)
+        }}
+      >
+        Entregar los {cuantos} planos que faltan
+      </Boton>
+    )
+  }
+  return (
+    <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-2 rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2">
+      <input type="hidden" name="orden_id" value={ordenId} />
+      <Campo etiqueta={`Los ${cuantos} planos, entregados el`} htmlFor="entrega-lote">
+        <Entrada id="entrega-lote" name="fecha_entrega" type="date" required defaultValue={hoyLima()} />
+      </Campo>
+      <Boton type="submit" tamano="sm" cargando={enviando}>
+        Dar por entregados
+      </Boton>
+      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierto(false)}>
+        Cancelar
+      </Boton>
+      {error && (
+        <div className="basis-full">
+          <Error_ texto={error} />
+        </div>
+      )}
+    </form>
+  )
+}
+
+function NuevoPlano({
+  ordenId,
+  pesoLibre,
+  numeroPropuesto,
+}: {
+  ordenId: string
+  pesoLibre: number
+  /** El número que sigue al último plano, para no tener que mirarlo. */
+  numeroPropuesto: string
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const [aviso, setAviso] = useState<string | null>(null)
+  const { alEnviar, enviando, error } = useEnvio(agregarPlano, (r) => {
+    setAbierto(false)
+    setAviso(r.mensaje ?? 'Plano agregado.')
+  })
+
+  if (!abierto) {
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {aviso && (
+          <span role="status" className="text-xs font-medium text-exito">
+            {aviso}
+          </span>
+        )}
+        <Boton
+          variante="secundario"
+          tamano="sm"
+          onClick={() => {
+            setAviso(null)
+            setAbierto(true)
+          }}
+        >
           <Plus aria-hidden className="size-4" />
           Nuevo plano
         </Boton>
@@ -217,13 +339,13 @@ function NuevoPlano({ ordenId, pesoLibre }: { ordenId: string; pesoLibre: number
     <Tarjeta className="border-acento">
       <TarjetaCabecera
         titulo="Nuevo plano"
-        descripcion="Como la fila de cabecera de su hoja: el número del plano, qué agrupa y cuánto pesa."
+        descripcion="Como la fila de cabecera de su hoja: el número del plano, qué agrupa y cuánto pesa. Y abajo sus piezas, si ya se tienen, para no volver a abrir el plano."
       />
       <TarjetaCuerpo>
         <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
           <input type="hidden" name="orden_id" value={ordenId} />
           <Campo etiqueta="N.º plano" htmlFor="np-numero">
-            <Entrada id="np-numero" name="numero_plano" required autoFocus placeholder="1" />
+            <Entrada id="np-numero" name="numero_plano" required autoFocus defaultValue={numeroPropuesto} />
           </Campo>
           <Campo etiqueta="Nombre" htmlFor="np-nombre" className="sm:col-span-2">
             <Entrada id="np-nombre" name="nombre" required placeholder="HABILITADO · ESTRUCTURA CAJÓN" />
@@ -246,6 +368,20 @@ function NuevoPlano({ ordenId, pesoLibre }: { ordenId: string; pesoLibre: number
           </Campo>
           <Campo etiqueta="Observación" htmlFor="np-obs" className="sm:col-span-6">
             <Entrada id="np-obs" name="observacion" placeholder="Opcional" />
+          </Campo>
+          <Campo
+            etiqueta="Sus piezas, una por línea"
+            htmlFor="np-piezas"
+            ayuda="Opcional. número | nombre | cantidad, como en la hoja; «ENS» como número marca un ensamble."
+            className="sm:col-span-6"
+          >
+            <AreaTexto
+              id="np-piezas"
+              name="lista"
+              rows={4}
+              placeholder={'1 | Durmiente lateral | 2\n2-5 | Postes | 4\nENS | Ensamble de estructura | 1'}
+              className="font-mono text-xs"
+            />
           </Campo>
           {error && (
             <div className="sm:col-span-6">
@@ -272,12 +408,14 @@ function TarjetaPlano({
   puedeDisenar,
   puedeReportar,
   areaPropia,
+  puedeObservar = false,
 }: {
   ordenId: string
   plano: PlanoCumplimiento
   puedeDisenar: boolean
   puedeReportar: boolean
   areaPropia: ManoDelTaller | null
+  puedeObservar?: boolean
 }) {
   const [modo, setModo] = useState<'ver' | 'editar' | 'entregar' | 'quitar' | 'piezas'>('ver')
   const entregado = Boolean(plano.fecha_entrega)
@@ -367,6 +505,7 @@ function TarjetaPlano({
           puedeDisenar={puedeDisenar}
           puedeReportar={puedeReportar}
           areaPropia={areaPropia}
+          observar={puedeObservar && !puedeDisenar ? { numeroPlano: plano.numero_plano ?? '' } : null}
         />
         {puedeReportar && plano.lista.length > 1 && (
           <MarcarEnLote ordenId={ordenId} planoId={planoId} planoEntregado={entregado} areaPropia={areaPropia} />
@@ -686,6 +825,25 @@ function MarcaRapida({ ordenId, pieza, marca }: { ordenId: string; pieza: PiezaC
   )
 }
 
+/**
+ * El enlace «Observar» de una pieza: lleva al resumen con la observación ya
+ * dirigida a Diseño y encabezada con el plano y la pieza. Lo usa el taller
+ * cuando la pieza viene mal del plano; Diseño no se observa a sí mismo.
+ */
+function ObservarPieza({ ordenId, numeroPlano, pieza }: { ordenId: string; numeroPlano: string; pieza: PiezaCumplimiento }) {
+  const sobre = `Plano ${numeroPlano} · pieza ${pieza.numero_pieza ?? ''} ${pieza.nombre ?? ''}: `
+  return (
+    <Link
+      href={`/ordenes/${ordenId}?vista=resumen&observar=DIS&sobre=${encodeURIComponent(sobre)}#observaciones`}
+      className="inline-flex min-h-11 items-center gap-1 text-[11px] text-aviso hover:underline sm:min-h-0"
+      title="Anotar una observación a Diseño sobre esta pieza"
+    >
+      <MessageSquareWarning aria-hidden className="size-3.5" />
+      Observar
+    </Link>
+  )
+}
+
 function TablaPiezas({
   ordenId,
   piezas,
@@ -693,6 +851,7 @@ function TablaPiezas({
   puedeDisenar,
   puedeReportar,
   areaPropia,
+  observar,
 }: {
   ordenId: string
   piezas: PiezaCumplimiento[]
@@ -700,6 +859,8 @@ function TablaPiezas({
   puedeDisenar: boolean
   puedeReportar: boolean
   areaPropia: ManoDelTaller | null
+  /** Con qué plano se encabeza la observación, o nada si quien mira no observa desde acá. */
+  observar: { numeroPlano: string } | null
 }) {
   const [abierta, setAbierta] = useState<{ id: string; bloque: 'mtz' | 'prd' | 'editar' | 'quitar' } | null>(null)
 
@@ -729,6 +890,7 @@ function TablaPiezas({
                 puedeDisenar={puedeDisenar}
                 puedeReportar={puedeReportar}
                 areaPropia={areaPropia}
+                observar={observar}
               />
             )
           })
@@ -788,6 +950,7 @@ function TablaPiezas({
                 puedeDisenar={puedeDisenar}
                 puedeReportar={puedeReportar}
                 areaPropia={areaPropia}
+                observar={observar}
               />
             )
           })
@@ -812,6 +975,7 @@ function TarjetaPieza({
   puedeDisenar,
   puedeReportar,
   areaPropia,
+  observar,
 }: {
   ordenId: string
   pieza: PiezaCumplimiento
@@ -822,6 +986,7 @@ function TarjetaPieza({
   puedeDisenar: boolean
   puedeReportar: boolean
   areaPropia: ManoDelTaller | null
+  observar: { numeroPlano: string } | null
 }) {
   const id = pieza.id ?? ''
   const ensamble = Boolean(pieza.es_ensamble)
@@ -870,7 +1035,7 @@ function TarjetaPieza({
         ))}
       </ul>
 
-      {(puedeReportar || puedeDisenar) && (
+      {(puedeReportar || puedeDisenar || observar) && (
         <div className="flex flex-wrap items-center gap-2">
           {/* Primero la marca rápida de lo que sigue, después el formulario de
               la mano —«Maestranza», «Producción»— para fechas de otro día. */}
@@ -902,6 +1067,7 @@ function TarjetaPieza({
               </Boton>
             </>
           )}
+          {observar && <ObservarPieza ordenId={ordenId} numeroPlano={observar.numeroPlano} pieza={pieza} />}
         </div>
       )}
 
@@ -931,6 +1097,7 @@ function FilaPieza({
   puedeDisenar,
   puedeReportar,
   areaPropia,
+  observar,
 }: {
   ordenId: string
   pieza: PiezaCumplimiento
@@ -941,6 +1108,7 @@ function FilaPieza({
   puedeDisenar: boolean
   puedeReportar: boolean
   areaPropia: ManoDelTaller | null
+  observar: { numeroPlano: string } | null
 }) {
   const id = pieza.id ?? ''
   const ensamble = Boolean(pieza.es_ensamble)
@@ -1020,6 +1188,7 @@ function FilaPieza({
                 </button>
               </>
             )}
+            {observar && <ObservarPieza ordenId={ordenId} numeroPlano={observar.numeroPlano} pieza={pieza} />}
           </div>
         </TD>
       </TR>
