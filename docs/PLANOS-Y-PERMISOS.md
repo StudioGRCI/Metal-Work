@@ -65,6 +65,7 @@ PRD. Advisors revisados: las nuevas funciones definer son intencionales y tienen
 guardas internas. Las FK de autor/revisor/receptor no llevan índices adicionales:
 no hay consultas por esas columnas ni borrado de usuarios en este circuito.
 
-Límite: el ensayo SQL no prueba el transporte de un PDF real ni una revisión de
-ingeniería. La verificación visual con datos ficticios comprueba presentación,
-no certifica cotas, materiales ni seguridad estructural del diseño.
+El transporte se comprobó después con un PDF ficticio: carga, revisión y
+recepción en la interfaz; descarga HTTP con hash idéntico y rechazo a otra
+área. Ver `OPERACION-PLANOS-Y-SALIDA.md`. Estas pruebas no certifican cotas,
+materiales ni seguridad estructural del diseño.

@@ -51,6 +51,10 @@ Facturar no sustituye esta constancia.
   Los avisos de advisors se revisaron; las funciones definer nuevas verifican
   permisos. No se añadieron índices de autor sin una consulta que los necesite.
 - PDF ficticio cargado por la interfaz y revisado desde otra cuenta.
+  Maestranza confirmó recepción desde la vista previa. El responsable de
+  entrega registró la salida física desde la pantalla: 4 de 4 pasos completos,
+  también consultados en Vercel. Se retiraron las 51 filas del lote y el PDF
+  mediante la API de Storage, sin tocar documentos reales.
   Descarga HTTP contra el mismo código local conectado a Supabase real:
   200, application/pdf, private/no-store y hash idéntico al original;
   otra área recibe 404. El dominio preview requiere además sesión de Vercel.

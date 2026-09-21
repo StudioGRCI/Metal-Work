@@ -15,9 +15,11 @@
 7. Quien coordina la entrega registra el aviso a portería. La factura es un
    estado administrativo y no sustituye el aviso.
 
-El aviso a portería autoriza la salida. **No hay un registro separado de la
-salida física del vehículo.** Se consultó al usuario si desea incorporarlo;
-no se infiere ese hecho de una factura o del aviso.
+El aviso a portería autoriza la salida. La migración 116 agrega una constancia
+separada de salida física, registrada por el responsable de entrega. No se
+infiere ese hecho de una factura o del aviso. La ampliación y sus pruebas están
+en `OPERACION-PLANOS-Y-SALIDA.md`; la evidencia de abajo corresponde al recorrido
+inicial anterior a esa ampliación.
 
 ## Fallo reproducido y corrección
 
