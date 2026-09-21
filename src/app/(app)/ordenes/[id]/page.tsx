@@ -12,6 +12,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { ESTADO_ETAPA, PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { fecha, fechaHora, hoyLima, moneda, numero as fmtNumero, puesto } from '@/lib/format'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
+import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
 import {
   clientesParaElegir,
   estadoDeSalida,
@@ -54,7 +55,7 @@ import { Observaciones } from './observaciones'
 import { Cumplimiento } from './cumplimiento'
 import { ActividadesDeOrden } from './actividades'
 import { MaterialesDeOrden } from './materiales'
-import { Etapas, programaDeEtapa } from './etapas'
+import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
 import { FechasClave, SalidaDeUnidad } from './salida-y-plazos'
 import { Pestanas } from './pestanas'

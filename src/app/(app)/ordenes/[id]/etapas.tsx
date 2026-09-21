@@ -9,6 +9,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_ETAPA, ORDEN_ESTADO_ETAPA, definir, opciones } from '@/lib/dominio/estados'
+import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
 import { cantidad, fecha } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import type { Vistas } from '@/types/database'
@@ -18,21 +19,6 @@ import { actualizarEtapa } from '../acciones'
 type Etapa = Vistas<'ot_tablero_etapas'> & { observaciones: string | null }
 
 const ESTADOS = opciones(ESTADO_ETAPA, ORDEN_ESTADO_ETAPA)
-
-/**
- * En qué va la etapa contra su programa: vencida si pasó su fecha de fin sin
- * terminar, «toca ahora» si ya empezó según el programa. Es la misma cuenta que
- * hace /plazos, y la que hacía falta acá: el jefe veía «Vencido» en el control
- * de plazos y al abrir la orden no sabía a qué etapa correspondía.
- */
-export function programaDeEtapa(etapa: Pick<Etapa, 'estado' | 'fecha_fin_real' | 'fecha_inicio_programada' | 'fecha_fin_programada'>, hoy: string) {
-  const cerrada = Boolean(etapa.fecha_fin_real) || etapa.estado === 'TERMINADA' || etapa.estado === 'OMITIDA'
-  const fin = etapa.fecha_fin_programada
-  const inicio = etapa.fecha_inicio_programada
-  const vencida = !cerrada && fin !== null && fin < hoy
-  const tocaAhora = !cerrada && !vencida && inicio !== null && inicio <= hoy
-  return { vencida, tocaAhora, inicio, fin }
-}
 
 export function Etapas({
   ordenId,
