@@ -110,6 +110,10 @@ export function Cumplimiento({
 
   return (
     <div className="space-y-4">
+      <p className="rounded-[var(--radius-base)] border border-borde bg-superficie p-3 text-sm text-texto-suave">
+        Antes de reportar piezas, el responsable del área debe confirmar la recepción del PDF aprobado en{' '}
+        <Link className="font-medium text-acento underline" href={`/ordenes/${ordenId}/planos`}>Planos y revisiones</Link>.
+      </p>
       <Tarjeta>
         <TarjetaCabecera
           titulo="Cumplimiento de tiempos por área"

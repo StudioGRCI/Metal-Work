@@ -377,7 +377,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
       <TeToca ordenId={orden.id} items={toca.items} />
 
-      <Pestanas ordenId={orden.id} activa={vista} contadores={toca.contadores} />
+      <Pestanas ordenId={orden.id} activa={vista} contadores={toca.contadores} verPlanos={puede(perfil, ['diseno.planos', 'diseno.revisar', 'produccion.registrar', 'produccion.cualquier_area']) || ['ALMACENERO', 'COMPRADOR', 'CALIDAD'].includes(perfil.rol.codigo)} />
 
       {vista === 'resumen' && (
         <div className="grid gap-4 lg:grid-cols-2 *:min-w-0">

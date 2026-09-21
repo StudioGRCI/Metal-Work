@@ -581,7 +581,6 @@ export type Database = {
           revisada_por: string | null
           motivo_observacion: string | null
           plazo_desde: string | null
-          plazo_arranca_en: string | null
           garantia_texto: string | null
           peso_tolerancia: string | null
           no_incluye: string | null
@@ -593,6 +592,7 @@ export type Database = {
           dias_programados: number
           tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           categoria_vehicular: Database["public"]["Enums"]["categoria_vehicular"] | null
+          plazo_arranca_en: string | null
         }
         Insert: {
           id?: string
@@ -651,7 +651,6 @@ export type Database = {
           revisada_por?: string | null
           motivo_observacion?: string | null
           plazo_desde?: string | null
-          plazo_arranca_en?: string | null
           garantia_texto?: string | null
           peso_tolerancia?: string | null
           no_incluye?: string | null
@@ -663,6 +662,7 @@ export type Database = {
           dias_programados?: number
           tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           categoria_vehicular?: Database["public"]["Enums"]["categoria_vehicular"] | null
+          plazo_arranca_en?: string | null
         }
         Update: {
           id?: string
@@ -721,7 +721,6 @@ export type Database = {
           revisada_por?: string | null
           motivo_observacion?: string | null
           plazo_desde?: string | null
-          plazo_arranca_en?: string | null
           garantia_texto?: string | null
           peso_tolerancia?: string | null
           no_incluye?: string | null
@@ -733,6 +732,7 @@ export type Database = {
           dias_programados?: number
           tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           categoria_vehicular?: Database["public"]["Enums"]["categoria_vehicular"] | null
+          plazo_arranca_en?: string | null
         }
         Relationships: [
           {
@@ -853,8 +853,6 @@ export type Database = {
           numero: string
           cliente_id: string
           tipo_carroceria_id: string
-          version?: number
-          archivo_subido_en?: string
           estado?: Database["public"]["Enums"]["estado_cotizacion_pdf"]
           observacion?: string | null
           revisado_por?: string | null
@@ -866,14 +864,14 @@ export type Database = {
           registrado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          version?: number
+          archivo_subido_en?: string
         }
         Update: {
           id?: string
           numero?: string
           cliente_id?: string
           tipo_carroceria_id?: string
-          version?: number
-          archivo_subido_en?: string
           estado?: Database["public"]["Enums"]["estado_cotizacion_pdf"]
           observacion?: string | null
           revisado_por?: string | null
@@ -885,6 +883,8 @@ export type Database = {
           registrado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          version?: number
+          archivo_subido_en?: string
         }
         Relationships: [
           {
@@ -963,7 +963,22 @@ export type Database = {
           creado_en?: string
           actualizado_en?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cotizaciones_pdf_versiones_cotizacion_id_fkey"
+            columns: ["cotizacion_id"]
+            isOneToOne: false
+            referencedRelation: "cotizaciones_pdf"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_pdf_versiones_rechazado_por_fkey"
+            columns: ["rechazado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       empresa: {
         Row: {
@@ -1547,7 +1562,6 @@ export type Database = {
           tipo_carroceria_id: string | null
           sede_id: string
           tipo_trabajo: Database["public"]["Enums"]["tipo_trabajo_ot"]
-          tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           estado: Database["public"]["Enums"]["estado_ot"]
           prioridad: Database["public"]["Enums"]["prioridad_ot"]
           descripcion: string
@@ -1586,6 +1600,7 @@ export type Database = {
           correo_contacto: string | null
           abierta_en_taller: boolean
           cotizacion_pdf_id: string | null
+          tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
         }
         Insert: {
           id?: string
@@ -1596,7 +1611,6 @@ export type Database = {
           tipo_carroceria_id?: string | null
           sede_id: string
           tipo_trabajo?: Database["public"]["Enums"]["tipo_trabajo_ot"]
-          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           estado?: Database["public"]["Enums"]["estado_ot"]
           prioridad?: Database["public"]["Enums"]["prioridad_ot"]
           descripcion: string
@@ -1635,6 +1649,7 @@ export type Database = {
           correo_contacto?: string | null
           abierta_en_taller?: boolean
           cotizacion_pdf_id?: string | null
+          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
         }
         Update: {
           id?: string
@@ -1645,7 +1660,6 @@ export type Database = {
           tipo_carroceria_id?: string | null
           sede_id?: string
           tipo_trabajo?: Database["public"]["Enums"]["tipo_trabajo_ot"]
-          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           estado?: Database["public"]["Enums"]["estado_ot"]
           prioridad?: Database["public"]["Enums"]["prioridad_ot"]
           descripcion?: string
@@ -1684,6 +1698,7 @@ export type Database = {
           correo_contacto?: string | null
           abierta_en_taller?: boolean
           cotizacion_pdf_id?: string | null
+          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
         }
         Relationships: [
           {
@@ -1698,6 +1713,13 @@ export type Database = {
             columns: ["cotizacion_id"]
             isOneToOne: false
             referencedRelation: "cotizaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_trabajo_cotizacion_pdf_id_fkey"
+            columns: ["cotizacion_pdf_id"]
+            isOneToOne: true
+            referencedRelation: "cotizaciones_pdf"
             referencedColumns: ["id"]
           },
           {
@@ -2277,7 +2299,7 @@ export type Database = {
           {
             foreignKeyName: "ot_entregas_orden_id_fkey"
             columns: ["orden_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "ordenes_trabajo"
             referencedColumns: ["id"]
           },
@@ -2647,6 +2669,99 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "ot_planos"
             referencedColumns: ["id", "orden_id"]
+          }
+        ]
+      }
+      ot_plano_versiones: {
+        Row: {
+          id: string
+          plano_id: string
+          area_id: string
+          revision: number
+          nombre_archivo: string
+          ruta_storage: string
+          estado: string
+          vigente: boolean
+          observacion: string | null
+          creado_por: string
+          revisado_por: string | null
+          revisado_en: string | null
+          recibido_por: string | null
+          recibido_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id: string
+          plano_id: string
+          area_id: string
+          revision: number
+          nombre_archivo: string
+          ruta_storage: string
+          estado?: string
+          vigente?: boolean
+          observacion?: string | null
+          creado_por: string
+          revisado_por?: string | null
+          revisado_en?: string | null
+          recibido_por?: string | null
+          recibido_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          plano_id?: string
+          area_id?: string
+          revision?: number
+          nombre_archivo?: string
+          ruta_storage?: string
+          estado?: string
+          vigente?: boolean
+          observacion?: string | null
+          creado_por?: string
+          revisado_por?: string | null
+          revisado_en?: string | null
+          recibido_por?: string | null
+          recibido_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_plano_versiones_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_plano_versiones_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_plano_versiones_plano_id_fkey"
+            columns: ["plano_id"]
+            isOneToOne: false
+            referencedRelation: "ot_planos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_plano_versiones_recibido_por_fkey"
+            columns: ["recibido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_plano_versiones_revisado_por_fkey"
+            columns: ["revisado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
           }
         ]
       }
@@ -3069,6 +3184,106 @@ export type Database = {
           }
         ]
       }
+      pruebas_cuentas: {
+        Row: {
+          usuario_id: string
+          motivo: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          usuario_id: string
+          motivo: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          usuario_id?: string
+          motivo?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pruebas_cuentas_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: true
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      pruebas_filas: {
+        Row: {
+          orden: number
+          lote_id: string
+          tabla: string
+          fila_id: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          orden?: number
+          lote_id: string
+          tabla: string
+          fila_id: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          orden?: number
+          lote_id?: string
+          tabla?: string
+          fila_id?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pruebas_filas_lote_id_fkey"
+            columns: ["lote_id"]
+            isOneToOne: false
+            referencedRelation: "pruebas_lotes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      pruebas_lotes: {
+        Row: {
+          id: string
+          motivo: string
+          cuentas: string[]
+          abierto_en: string
+          limpiado_en: string | null
+          filas_borradas: number | null
+          archivos_pendientes: Json | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          motivo: string
+          cuentas?: string[]
+          abierto_en?: string
+          limpiado_en?: string | null
+          filas_borradas?: number | null
+          archivos_pendientes?: Json | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          motivo?: string
+          cuentas?: string[]
+          abierto_en?: string
+          limpiado_en?: string | null
+          filas_borradas?: number | null
+          archivos_pendientes?: Json | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: []
+      }
       roles: {
         Row: {
           id: string
@@ -3356,7 +3571,6 @@ export type Database = {
           id?: string
           cliente_id?: string | null
           placa?: string | null
-          numero_fmi?: string | null
           tipo_vehiculo?: Database["public"]["Enums"]["tipo_vehiculo"]
           marca?: string | null
           modelo?: string | null
@@ -3373,12 +3587,12 @@ export type Database = {
           actualizado_en?: string
           creado_por?: string | null
           codigo_interno?: string | null
+          numero_fmi?: string | null
         }
         Update: {
           id?: string
           cliente_id?: string | null
           placa?: string | null
-          numero_fmi?: string | null
           tipo_vehiculo?: Database["public"]["Enums"]["tipo_vehiculo"]
           marca?: string | null
           modelo?: string | null
@@ -3395,6 +3609,7 @@ export type Database = {
           actualizado_en?: string
           creado_por?: string | null
           codigo_interno?: string | null
+          numero_fmi?: string | null
         }
         Relationships: [
           {
@@ -4156,6 +4371,12 @@ export type Database = {
         }
         Returns: string
       }
+      activar_registro_de_prueba: {
+        Args: {
+          p_tabla: string
+        }
+        Returns: string
+      }
       activar_timestamps: {
         Args: {
           p_tabla: string
@@ -4168,6 +4389,12 @@ export type Database = {
           p_plantilla: string
         }
         Returns: number
+      }
+      archivo_plano_vinculado: {
+        Args: {
+          p_ruta: string
+        }
+        Returns: boolean
       }
       armar_ficha_ot: {
         Args: {
@@ -4310,12 +4537,6 @@ export type Database = {
         }
         Returns: string
       }
-      flota_sigue_en_taller: {
-        Args: {
-          p_flota: string
-        }
-        Returns: boolean
-      }
       es_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -4342,6 +4563,12 @@ export type Database = {
           p_permiso: string
         }
         Returns: string
+      }
+      flota_sigue_en_taller: {
+        Args: {
+          p_flota: string
+        }
+        Returns: boolean
       }
       guardar_cotizacion_como_plantilla: {
         Args: {
@@ -4371,6 +4598,10 @@ export type Database = {
           p_area: string
           p_descripcion: string
         }
+        Returns: string
+      }
+      lote_de_prueba: {
+        Args: Record<PropertyKey, never>
         Returns: string
       }
       marcar_cotizaciones_vencidas: {
@@ -4488,6 +4719,19 @@ export type Database = {
         }
         Returns: number
       }
+      pruebas_abrir: {
+        Args: {
+          p_motivo: string
+          p_cuentas?: string[]
+        }
+        Returns: string
+      }
+      pruebas_limpiar: {
+        Args: {
+          p_lote: string
+        }
+        Returns: Json
+      }
       puede_armar_hoja_de_area: {
         Args: {
           p_area_id: string
@@ -4512,9 +4756,21 @@ export type Database = {
         }
         Returns: boolean
       }
+      puede_ver_plano_tecnico: {
+        Args: {
+          p_id: string
+        }
+        Returns: boolean
+      }
+      puede_ver_version_plano: {
+        Args: {
+          p_id: string
+        }
+        Returns: boolean
+      }
       puesto: {
         Args: {
-          "": Database["public"]["Tables"]["usuarios"]["Row"]
+          u: string
         }
         Returns: string
       }
@@ -4530,12 +4786,27 @@ export type Database = {
         }
         Returns: string
       }
+      recibir_version_plano: {
+        Args: {
+          p_id: string
+        }
+        Returns: string
+      }
       registrar_evento_ot: {
         Args: {
           p_orden_id: string
           p_tipo_evento: Database["public"]["Enums"]["tipo_evento_ot"]
           p_descripcion: string
           p_datos?: Json
+        }
+        Returns: string
+      }
+      registrar_version_plano: {
+        Args: {
+          p_id: string
+          p_plano: string
+          p_area: string
+          p_nombre: string
         }
         Returns: string
       }
@@ -4550,6 +4821,14 @@ export type Database = {
         Args: {
           p_desde: string
           p_dias: number
+        }
+        Returns: string
+      }
+      revisar_version_plano: {
+        Args: {
+          p_id: string
+          p_aprobar: boolean
+          p_observacion?: string
         }
         Returns: string
       }
