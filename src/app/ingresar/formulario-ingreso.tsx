@@ -111,7 +111,7 @@ export function FormularioIngreso({ redirigir }: { redirigir: string }) {
             onClick={() => setVerClave((v) => !v)}
             aria-label={verClave ? 'Ocultar la contraseña' : 'Ver la contraseña'}
             aria-pressed={verClave}
-            className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-texto-tenue hover:text-texto"
+            className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-[var(--radius-base)] text-texto-tenue hover:text-texto aria-pressed:bg-acento-suave aria-pressed:text-acento"
           >
             {verClave ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
           </button>

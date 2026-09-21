@@ -264,8 +264,8 @@ h1, h2, h3 {
 }
 
 ::selection {
-  background: var(--acento-suave);
-  color: var(--texto);
+  background: var(--acento);
+  color: var(--acento-texto);
 }
 
 /* -----------------------------------------------------------------------------

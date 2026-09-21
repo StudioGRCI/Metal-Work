@@ -81,7 +81,7 @@ export function NavegacionLista({
                     className={cn(
                       'flex items-center gap-2.5 rounded-[var(--radius-base)] px-3 py-2 text-sm transition-colors',
                       activo
-                        ? 'bg-acento-suave font-medium text-acento'
+                        ? 'bg-acento font-semibold text-acento-texto underline underline-offset-4'
                         : 'text-texto-suave hover:bg-superficie-2 hover:text-texto',
                     )}
                   >

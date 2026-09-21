@@ -44,7 +44,7 @@ export default async function PaginaIngreso({ searchParams }: PageProps<'/ingres
               recuadro blanco recortaba el logotipo del resto de la pantalla. */}
           <LogoMetalWork
             variante="claro"
-            className="h-12 w-auto drop-shadow-lg lg:h-16"
+            className="mx-auto h-12 w-auto drop-shadow-lg lg:mx-0 lg:h-16"
           />
           <h1 className="mt-8 max-w-md text-2xl font-semibold text-white lg:text-4xl">
             Control de órdenes de trabajo, taller y costos
