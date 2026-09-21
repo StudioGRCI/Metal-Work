@@ -460,7 +460,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           <Tarjeta>
             <TarjetaCabecera
               titulo="Etapas de producción"
-              descripcion={`${etapas.filter((e) => e.estado === 'TERMINADA').length} de ${etapas.length} terminadas`}
+              descripcion={etapas.length > 0 ? `${etapas.filter((e) => e.estado === 'TERMINADA').length} de ${etapas.length} terminadas` : undefined}
               acciones={
                 etapas.length > 0 && (
                   <EnlaceBoton href={`/ordenes/${orden.id}?vista=etapas`} variante="fantasma" tamano="sm">
@@ -472,7 +472,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
             <TarjetaCuerpo>
               {etapas.length === 0 ? (
                 <p className="py-4 text-center text-sm text-texto-suave">
-                  Las etapas se generan al aprobar la orden.
+                  {orden.estado === 'BORRADOR'
+                    ? 'Las etapas se generan al aprobar la orden.'
+                    : 'No hay etapas visibles en esta vista. Consulta la trazabilidad de la orden para revisar su historial.'}
                 </p>
               ) : (
                 <ol className="divide-y divide-borde">
