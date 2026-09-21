@@ -1,11 +1,8 @@
 'use client'
 
 import { Check } from 'lucide-react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
 
-import { marcarAvisoLeido, marcarTodosLeidos } from '@/app/(app)/acciones-avisos'
+import { useAvisos } from '@/components/estructura/use-avisos'
 import { Boton } from '@/components/ui/boton'
 import type { Notificacion } from '@/lib/datos/notificaciones'
 import { fechaHora } from '@/lib/format'
@@ -17,40 +14,19 @@ import { cn } from '@/lib/utils'
  * el refresco lo confirma.
  */
 export function ListaAvisos({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: number }) {
-  const router = useRouter()
-  const [marcando, iniciarTransicion] = useTransition()
-  const [leidos, setLeidos] = useState<Set<string> | 'todos'>(new Set())
-
-  const estaLeido = (a: Notificacion) => Boolean(a.leida_en) || leidos === 'todos' || leidos.has(a.id)
-  const quedan = leidos === 'todos' ? 0 : Math.max(0, sinLeer - leidos.size)
-
-  function alTocar(aviso: Notificacion) {
-    if (aviso.leida_en) return
-    setLeidos((s) => (s === 'todos' ? s : new Set(s).add(aviso.id)))
-    iniciarTransicion(async () => {
-      await marcarAvisoLeido(aviso.id)
-      router.refresh()
-    })
-  }
-
-  const destino = (a: Notificacion) =>
-    a.ruta && a.origen_id && !a.ruta.includes('#') ? `${a.ruta}#${a.origen_id}` : (a.ruta ?? '')
+  const { abrir, marcarTodos, marcando, error } = useAvisos()
+  const quedan = sinLeer
 
   return (
     <div>
+      {error && <p role="alert" className="m-4 rounded-xl bg-peligro-suave p-3 text-sm text-peligro">{error}</p>}
       {quedan > 0 && (
         <div className="flex justify-end border-b border-borde px-4 py-2">
           <Boton
             variante="fantasma"
             tamano="sm"
             cargando={marcando}
-            onClick={() => {
-              setLeidos('todos')
-              iniciarTransicion(async () => {
-                await marcarTodosLeidos()
-                router.refresh()
-              })
-            }}
+            onClick={marcarTodos}
           >
             <Check aria-hidden className="size-3.5" />
             Marcar los {quedan} como leídos
@@ -65,7 +41,7 @@ export function ListaAvisos({ avisos, sinLeer }: { avisos: Notificacion[]; sinLe
       ) : (
         <ul className="divide-y divide-borde">
           {avisos.map((a) => {
-            const leido = estaLeido(a)
+            const leido = Boolean(a.leida_en)
             const contenido = (
               <>
                 <p className={cn('text-sm', leido ? 'text-texto-suave' : 'font-semibold text-texto')}>{a.titulo}</p>
@@ -76,15 +52,9 @@ export function ListaAvisos({ avisos, sinLeer }: { avisos: Notificacion[]; sinLe
             const clase = cn('block w-full px-4 py-3 text-left hover:bg-superficie-2', !leido && 'bg-acento-suave/40')
             return (
               <li key={a.id}>
-                {a.ruta ? (
-                  <Link href={destino(a)} onClick={() => alTocar(a)} className={clase}>
-                    {contenido}
-                  </Link>
-                ) : (
-                  <button type="button" onClick={() => alTocar(a)} className={clase}>
+                  <button type="button" disabled={marcando} onClick={() => abrir(a)} className={clase}>
                     {contenido}
                   </button>
-                )}
               </li>
             )
           })}

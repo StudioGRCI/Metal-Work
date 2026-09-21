@@ -2,7 +2,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { AvisoTope } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { misNotificaciones } from '@/lib/datos/notificaciones'
+import { avisosSinLeer, misNotificaciones } from '@/lib/datos/notificaciones'
 import { exigirSesion } from '@/lib/sesion'
 
 import { ListaAvisos } from './lista-avisos'
@@ -23,9 +23,7 @@ export default async function PaginaAvisos({ searchParams }: PageProps<'/avisos'
   const params = await searchParams
   const ver = params.ver === 'sin-leer' ? 'sin-leer' : null
 
-  const avisos = await misNotificaciones(TOPE)
-  const sinLeer = avisos.filter((a) => !a.leida_en)
-  const lista = ver === 'sin-leer' ? sinLeer : avisos
+  const [avisos, sinLeer] = await Promise.all([misNotificaciones(TOPE, ver === 'sin-leer'), avisosSinLeer()])
 
   return (
     <>
@@ -39,8 +37,8 @@ export default async function PaginaAvisos({ searchParams }: PageProps<'/avisos'
         ruta="/avisos"
         clave="ver"
         opciones={[
-          { valor: null, etiqueta: `Todos (${avisos.length})` },
-          { valor: 'sin-leer', etiqueta: `Sin leer (${sinLeer.length})` },
+          { valor: null, etiqueta: 'Todos' },
+          { valor: 'sin-leer', etiqueta: `Sin leer (${sinLeer})` },
         ]}
         params={params}
         activo={ver}
@@ -49,7 +47,7 @@ export default async function PaginaAvisos({ searchParams }: PageProps<'/avisos'
       />
 
       <Tarjeta className="overflow-hidden">
-        <ListaAvisos avisos={lista} sinLeer={sinLeer.length} />
+        <ListaAvisos avisos={avisos} sinLeer={sinLeer} />
       </Tarjeta>
 
       <AvisoTope mostradas={avisos.length} tope={TOPE} />

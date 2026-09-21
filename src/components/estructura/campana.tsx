@@ -1,11 +1,10 @@
 'use client'
 
-import { Bell, Check } from 'lucide-react'
+import { Bell, Check, X } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useState, useRef } from 'react'
 
-import { marcarAvisoLeido, marcarTodosLeidos } from '@/app/(app)/acciones-avisos'
+import { useAvisos } from './use-avisos'
 import type { Notificacion } from '@/lib/datos/notificaciones'
 import { fechaHora } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -22,43 +21,23 @@ import { cn } from '@/lib/utils'
  */
 export function Campana({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: number }) {
   const [abierta, setAbierta] = useState(false)
-  const [marcando, iniciarTransicion] = useTransition()
-  // Lo que ya se tocó se pinta leído al instante; el refresco lo confirma.
-  const [leidos, setLeidos] = useState<Set<string> | 'todos'>(new Set())
-  const router = useRouter()
-
-  const estaLeido = (a: Notificacion) => Boolean(a.leida_en) || leidos === 'todos' || leidos.has(a.id)
-  const sinLeerAhora = leidos === 'todos' ? 0 : Math.max(0, sinLeer - leidos.size)
-
-  function alTocar(aviso: Notificacion) {
-    setAbierta(false)
-    if (!aviso.leida_en) {
-      setLeidos((s) => (s === 'todos' ? s : new Set(s).add(aviso.id)))
-      iniciarTransicion(async () => {
-        await marcarAvisoLeido(aviso.id)
-        router.refresh()
-      })
-    }
-  }
-
-  /**
-   * A dónde lleva el aviso: su ruta y, si nombra una fila, el ancla para
-   * aterrizar en ella y no arriba de la lista. La ruta viene de la base sin
-   * filtro a propósito: el aviso se lee horas después y el estado ya se movió.
-   */
-  const destino = (a: Notificacion) =>
-    a.ruta && a.origen_id && !a.ruta.includes('#') ? `${a.ruta}#${a.origen_id}` : (a.ruta ?? '')
+  const boton = useRef<HTMLButtonElement>(null)
+  const cerrar = () => { setAbierta(false); boton.current?.focus() }
+  const { abrir, marcarTodos, marcando, error } = useAvisos(cerrar)
+  const sinLeerAhora = sinLeer
 
   return (
-    <div className="relative">
+    <div className="relative" onKeyDown={e => { if (e.key === 'Escape') cerrar() }}>
       <button
         type="button"
+        ref={boton}
         onClick={() => setAbierta((v) => !v)}
         aria-label={sinLeerAhora > 0 ? `Avisos, ${sinLeerAhora} sin leer` : 'Avisos'}
         aria-expanded={abierta}
-        className="relative flex size-11 items-center justify-center rounded-[var(--radius-base)] text-texto-suave hover:bg-superficie-2 hover:text-texto sm:size-9"
+        aria-controls={abierta ? 'panel-avisos' : undefined}
+        className={cn('relative flex size-11 items-center justify-center rounded-full border border-borde transition-colors focus-visible:outline-2 focus-visible:outline-acento', abierta ? 'bg-acento text-acento-texto' : 'bg-superficie text-texto-suave hover:bg-superficie-2')}
       >
-        <Bell aria-hidden className="size-4" />
+        <Bell aria-hidden className="size-5" />
         {sinLeerAhora > 0 && (
           // El número va sobre el icono y no al lado: en el teléfono no hay
           // sitio, y lo que importa es que se vea que hay algo.
@@ -79,27 +58,23 @@ export function Campana({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: 
             className="fixed inset-0 z-40 cursor-default"
           />
 
-          <div className="absolute right-0 z-50 mt-1 max-h-[70vh] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-[var(--radius-base)] border border-borde bg-superficie shadow-xl">
+          <section id="panel-avisos" aria-label="Notificaciones" aria-busy={marcando} className="fixed inset-x-3 z-50 mt-2 max-h-[70dvh] overflow-y-auto rounded-2xl border border-borde bg-superficie shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:w-96">
             <div className="flex items-center justify-between border-b border-borde px-3 py-2">
-              <span className="text-xs font-semibold text-texto">Avisos</span>
+              <span className="text-sm font-semibold text-texto">Notificaciones</span>
               {sinLeerAhora > 0 && (
                 <button
                   type="button"
                   disabled={marcando}
-                  onClick={() => {
-                    setLeidos('todos')
-                    iniciarTransicion(async () => {
-                      await marcarTodosLeidos()
-                      router.refresh()
-                    })
-                  }}
+                  onClick={marcarTodos}
                   className="inline-flex min-h-11 items-center gap-1 px-2 text-xs text-acento hover:underline disabled:opacity-60 sm:min-h-0"
                 >
                   <Check aria-hidden className="size-3.5" />
                   {marcando ? 'Marcando…' : 'Marcar todos leídos'}
                 </button>
               )}
+              <button type="button" onClick={cerrar} aria-label="Cerrar notificaciones" className="flex size-11 shrink-0 items-center justify-center rounded-full text-texto-suave hover:bg-superficie-2"><X aria-hidden className="size-4" /></button>
             </div>
+            {error && <p role="alert" className="m-3 rounded-xl bg-peligro-suave p-3 text-sm text-peligro">{error}</p>}
 
             {avisos.length === 0 ? (
               <p className="px-3 py-6 text-center text-xs text-texto-suave">
@@ -108,7 +83,7 @@ export function Campana({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: 
             ) : (
               <ul>
                 {avisos.map((a) => {
-                  const leido = estaLeido(a)
+                  const leido = Boolean(a.leida_en)
                   const contenido = (
                     <>
                       <p className={cn('text-xs', leido ? 'text-texto-suave' : 'font-semibold text-texto')}>
@@ -123,29 +98,17 @@ export function Campana({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: 
 
                   return (
                     <li key={a.id} className="border-b border-borde last:border-0">
-                      {a.ruta ? (
-                        <Link
-                          href={destino(a)}
-                          onClick={() => alTocar(a)}
-                          className={cn(
-                            'block px-3 py-2 hover:bg-superficie-2',
-                            !leido && 'bg-acento-suave/40',
-                          )}
-                        >
-                          {contenido}
-                        </Link>
-                      ) : (
                         <button
                           type="button"
-                          onClick={() => alTocar(a)}
+                          disabled={marcando}
+                          onClick={() => abrir(a)}
                           className={cn(
-                            'block w-full px-3 py-2 text-left hover:bg-superficie-2',
+                            'block w-full px-4 py-3 text-left hover:bg-superficie-2 disabled:opacity-60',
                             !leido && 'bg-acento-suave/40',
                           )}
                         >
                           {contenido}
                         </button>
-                      )}
                     </li>
                   )
                 })}
@@ -160,7 +123,7 @@ export function Campana({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: 
             >
               Ver todos los avisos
             </Link>
-          </div>
+          </section>
         </>
       )}
     </div>

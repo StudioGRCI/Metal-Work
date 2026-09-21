@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { exigirSesion } from '@/lib/sesion'
@@ -16,6 +17,7 @@ import { createClient } from '@/lib/supabase/server'
  */
 export async function marcarAvisoLeido(id: string): Promise<ResultadoAccion> {
   await exigirSesion()
+  if (!z.string().uuid().safeParse(id).success) return { ok: false, error: 'El aviso no es válido.' }
   const supabase = await createClient()
 
   const { data, error } = await supabase
@@ -28,7 +30,11 @@ export async function marcarAvisoLeido(id: string): Promise<ResultadoAccion> {
 
   if (error) return { ok: false, error: mensajeDeError(error) }
   // Sin fila puede ser que ya estuviera leído, que no es un fallo.
-  if (!data) return { ok: true }
+  if (!data) {
+    const { data: existente, error: consultaError } = await supabase.from('notificaciones').select('id, leida_en').eq('id', id).maybeSingle()
+    if (consultaError) return { ok: false, error: mensajeDeError(consultaError) }
+    if (!existente?.leida_en) return { ok: false, error: 'Este aviso ya no está disponible para tu cuenta.' }
+  }
 
   revalidatePath('/', 'layout')
   return { ok: true }

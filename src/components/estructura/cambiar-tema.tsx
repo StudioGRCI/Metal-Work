@@ -20,7 +20,7 @@ type Tema = 'claro' | 'oscuro' | 'sistema'
 const OPCIONES: { valor: Tema; etiqueta: string; Icono: typeof Sun }[] = [
   { valor: 'claro', etiqueta: 'Claro', Icono: Sun },
   { valor: 'oscuro', etiqueta: 'Oscuro', Icono: Moon },
-  { valor: 'sistema', etiqueta: 'El del sistema', Icono: Monitor },
+  { valor: 'sistema', etiqueta: 'Sistema', Icono: Monitor },
 ]
 
 // El valor vive en el navegador, no en React: se lee de ahí y se avisa a quien
@@ -81,7 +81,7 @@ export function CambiarTema() {
     <div
       role="group"
       aria-label="Tema de la pantalla"
-      className="flex items-center rounded-[var(--radius-base)] bg-superficie-2 p-0.5"
+      className="flex items-center gap-1 rounded-full border border-borde bg-superficie-2 p-1"
     >
       {OPCIONES.map(({ valor, etiqueta, Icono }) => (
         <button
@@ -92,12 +92,12 @@ export function CambiarTema() {
           aria-label={etiqueta}
           aria-pressed={tema === valor}
           className={cn(
-            'flex size-7 items-center justify-center rounded-[calc(var(--radius-base)-2px)] text-texto-tenue transition-colors',
-            'hover:text-texto',
-            tema === valor && 'bg-superficie text-texto shadow-[var(--sombra)]',
+            'flex min-h-9 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento',
+            tema === valor ? 'bg-acento text-acento-texto shadow-[var(--sombra)]' : 'text-texto-suave hover:bg-superficie hover:text-texto',
           )}
         >
-          <Icono className="size-3.5" />
+          <Icono aria-hidden className="size-4" />
+          <span>{etiqueta}</span>
         </button>
       ))}
     </div>

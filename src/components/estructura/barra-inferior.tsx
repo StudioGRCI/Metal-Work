@@ -3,7 +3,7 @@
 import { LayoutGrid, X } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import { InstalarApp } from '@/components/estructura/instalar-app'
 import { NavegacionLista } from '@/components/estructura/navegacion-lista'
@@ -25,11 +25,13 @@ export function BarraInferior({
   permisos,
   esAdmin,
   pendientes = {},
+  children,
 }: {
   permisos: string[]
   esAdmin: boolean
   /** Cuántos pendientes cuelgan de cada módulo, por su ruta: el globo sobre el icono. */
   pendientes?: Record<string, number>
+  children: ReactNode
 }) {
   const ruta = usePathname()
   const [abierto, setAbierto] = useState(false)
@@ -135,6 +137,7 @@ export function BarraInferior({
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               <NavegacionLista permisos={permisos} esAdmin={esAdmin} pendientes={pendientes} alNavegar={() => setAbierto(false)} />
+              {children}
               <div className="border-t border-borde px-6 py-4">
                 <InstalarApp />
               </div>

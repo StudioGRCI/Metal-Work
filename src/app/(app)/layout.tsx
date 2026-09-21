@@ -1,6 +1,7 @@
 import { BarraInferior } from '@/components/estructura/barra-inferior'
 import { BarraLateral } from '@/components/estructura/barra-lateral'
 import { BarraSuperior } from '@/components/estructura/barra-superior'
+import { PerfilMenu } from '@/components/estructura/perfil-menu'
 import { AvisoInstalar } from '@/components/estructura/instalar-app'
 import { RefrescoAlVolver } from '@/components/estructura/refresco-al-volver'
 import { avisosSinLeer } from '@/lib/datos/notificaciones'
@@ -19,11 +20,13 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <BarraSuperior perfil={perfil} />
+      <BarraSuperior />
       <AvisoInstalar />
       <RefrescoAlVolver sinLeer={sinLeer} contar={contarAvisosSinLeer} />
       <div className="flex flex-1">
-        <BarraLateral permisos={perfil.permisos} esAdmin={esAdmin} pendientes={pendientes.porRuta} />
+        <BarraLateral permisos={perfil.permisos} esAdmin={esAdmin} pendientes={pendientes.porRuta}>
+          <PerfilMenu puesto={perfil.puesto} rol={perfil.rol.nombre} />
+        </BarraLateral>
         {/* En el teléfono el contenido deja abajo el alto de la barra de
             pestañas, más el borde del iPhone: así la última fila de una lista
             nunca queda debajo de la barra. */}
@@ -31,7 +34,9 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
           {children}
         </main>
       </div>
-      <BarraInferior permisos={perfil.permisos} esAdmin={esAdmin} pendientes={pendientes.porRuta} />
+      <BarraInferior permisos={perfil.permisos} esAdmin={esAdmin} pendientes={pendientes.porRuta}>
+        <PerfilMenu puesto={perfil.puesto} rol={perfil.rol.nombre} />
+      </BarraInferior>
     </div>
   )
 }

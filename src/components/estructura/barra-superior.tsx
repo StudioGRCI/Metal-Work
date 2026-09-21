@@ -1,56 +1,19 @@
 import Link from 'next/link'
-import { LogOut } from 'lucide-react'
-
 import { Campana } from '@/components/estructura/campana'
 import { CambiarTema } from '@/components/estructura/cambiar-tema'
 import { LogoMetalWork } from '@/components/marca/logo-metal-work'
 import { avisosSinLeer, misNotificaciones } from '@/lib/datos/notificaciones'
-import { iniciales } from '@/lib/format'
-import type { PerfilSesion } from '@/lib/sesion'
 
-export async function BarraSuperior({ perfil }: { perfil: PerfilSesion }) {
-  // Las dos consultas van juntas: la barra está en todas las pantallas y una
-  // detrás de otra le sumaría su ida y vuelta a cada una.
+export async function BarraSuperior() {
   const [avisos, sinLeer] = await Promise.all([misNotificaciones(), avisosSinLeer()])
-
   return (
     <header className="sticky top-0 z-30 flex min-h-14 flex-wrap items-center justify-center gap-x-4 gap-y-1 border-b border-borde bg-superficie px-4 pt-[env(safe-area-inset-top)] lg:flex-nowrap lg:justify-between">
-      {/* En el teléfono el menú está abajo, en «Más» (BarraInferior); acá
-          quedan el logo, los avisos, el tema y la salida. */}
-      <div className="flex w-full min-w-0 items-center justify-center py-2 lg:w-auto lg:justify-start lg:py-0">
-        <Link href="/" aria-label="Ir al tablero" className="flex shrink-0 items-center">
-          <LogoMetalWork className="h-7 w-auto lg:h-8" />
-        </Link>
-      </div>
-
-      <div className="flex w-full items-center justify-between gap-3 pb-1 lg:w-auto lg:justify-end lg:pb-0">
-        <Campana avisos={avisos} sinLeer={sinLeer} />
+      <Link href="/" aria-label="Ir al tablero" className="flex w-full justify-center py-2 lg:w-auto lg:justify-start lg:py-0">
+        <LogoMetalWork className="h-7 w-auto lg:h-8" />
+      </Link>
+      <div className="flex w-full items-center justify-between gap-2 pb-1 lg:w-auto lg:justify-end lg:pb-0">
         <CambiarTema />
-
-        {/* Solo el puesto (migración 109): las cuentas son por puesto y el
-            nombre de quien la usa hoy no le dice nada a quien mira la pantalla. */}
-        <div className="hidden text-right sm:block">
-          <p className="text-xs font-medium text-texto">{perfil.puesto}</p>
-          <p className="text-[11px] text-texto-suave">{perfil.rol.nombre}</p>
-        </div>
-
-        <span
-          aria-hidden
-          className="flex size-8 items-center justify-center rounded-full bg-superficie-2 text-xs font-semibold text-texto-suave"
-        >
-          {iniciales(perfil.puesto)}
-        </span>
-
-        <form action="/auth/salir" method="post">
-          <button
-            type="submit"
-            title="Cerrar sesión"
-            aria-label="Cerrar sesión"
-            className="flex size-11 items-center justify-center rounded-[var(--radius-base)] text-texto-suave hover:bg-superficie-2 hover:text-texto sm:size-9"
-          >
-            <LogOut className="size-4" />
-          </button>
-        </form>
+        <Campana avisos={avisos} sinLeer={sinLeer} />
       </div>
     </header>
   )

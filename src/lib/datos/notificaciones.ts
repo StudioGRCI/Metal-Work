@@ -23,14 +23,16 @@ export type Notificacion = {
  * Se traen las últimas veinte y no todas: la campana es para enterarse de lo que
  * pasó, no un archivo histórico. Lo viejo ya se leyó o ya no importa.
  */
-export async function misNotificaciones(limite = 20): Promise<Notificacion[]> {
+export async function misNotificaciones(limite = 20, soloSinLeer = false): Promise<Notificacion[]> {
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  let consulta = supabase
     .from('notificaciones')
     .select('id, titulo, cuerpo, ruta, origen_id, leida_en, creado_en')
     .order('creado_en', { ascending: false })
     .limit(limite)
+  if (soloSinLeer) consulta = consulta.is('leida_en', null)
+  const { data, error } = await consulta
 
   if (error) throw new Error(`No se pudieron leer los avisos: ${error.message}`)
   return (data ?? []) as Notificacion[]
