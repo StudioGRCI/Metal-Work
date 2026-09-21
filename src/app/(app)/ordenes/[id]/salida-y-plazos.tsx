@@ -9,7 +9,8 @@ import { useEnvio } from '@/lib/envio'
 import { fecha as formatearFecha, fechaHora, hoyLima, puesto } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import { confirmarSalida, liberarTesoreria } from '../acciones'
+import { confirmarSalida, liberarTesoreria, registrarSalidaFisica } from '../acciones'
+import type { estadoDeSalida } from '@/lib/datos/ordenes'
 
 type Liberacion = {
   liberado_en: string
@@ -76,6 +77,8 @@ export function SalidaDeUnidad({
   ordenId,
   liberacion,
   entrega,
+  fisica,
+  puedeRegistrarSalida,
   puedeLiberar,
   puedeConfirmar,
   puedeRegistrarEntrega,
@@ -83,6 +86,8 @@ export function SalidaDeUnidad({
   ordenId: string
   liberacion: Liberacion
   entrega: Entrega
+  fisica: Awaited<ReturnType<typeof estadoDeSalida>>['fisica']
+  puedeRegistrarSalida: boolean
   puedeLiberar: boolean
   puedeConfirmar: boolean
   puedeRegistrarEntrega: boolean
@@ -91,22 +96,24 @@ export function SalidaDeUnidad({
   // todavía; antes el formulario se vaciaba con el rechazo.
   const liberar = useEnvio(liberarTesoreria)
   const confirmar = useEnvio(confirmarSalida)
-  const completados = Number(Boolean(liberacion)) + Number(Boolean(entrega)) + Number(Boolean(entrega?.salida_confirmada_en))
+  const salidaFisica = useEnvio(registrarSalidaFisica)
+  const completados = Number(Boolean(liberacion)) + Number(Boolean(entrega)) + Number(Boolean(entrega?.salida_confirmada_en)) + Number(Boolean(fisica))
 
   return (
     <Tarjeta>
       <TarjetaCabecera
         titulo="Salida de la unidad"
-        descripcion="Completa la liberación, registra el acta y avisa a portería."
+        descripcion="Liberación, acta, aviso y constancia de salida física."
       />
       <TarjetaCuerpo className="space-y-4">
         <div className="rounded-[var(--radius-base)] bg-acento-suave px-3 py-2 text-sm text-acento">
-          <p className="font-semibold">{completados} de 3 pasos registrados</p>
+          <p className="font-semibold">{completados} de 4 pasos registrados</p>
           <p className="mt-0.5 text-xs">
             {!liberacion ? 'Siguiente: Administración o Gerencia confirma la liberación de tesorería.'
               : !entrega ? 'Siguiente: el responsable de entrega registra el acta de conformidad.'
                 : !entrega.salida_confirmada_en ? 'Siguiente: quien coordina la entrega avisa a portería.'
-                  : 'Liberación, acta y aviso registrados. El aviso autoriza la salida; no registra el cruce físico del vehículo.'}
+                  : !fisica ? 'Siguiente: el responsable de entrega registra la salida física cuando el vehículo haya salido.'
+                    : 'Salida física registrada. El circuito de entrega está completo.'}
           </p>
         </div>
         <Compuerta
@@ -195,6 +202,19 @@ export function SalidaDeUnidad({
             </div>
           </form>
         )}
+        <Compuerta cumplida={Boolean(fisica)} titulo="Salida física del vehículo"
+          detalle={fisica ? <>{fechaHora(fisica.creado_en)} · {fisica.responsable?.cargo || 'Responsable de entrega'}<span className="block">{fisica.constancia}</span></>
+            : 'El aviso a portería no sustituye la constancia de que el vehículo salió.'} />
+        {entrega?.salida_confirmada_en && !fisica && puedeRegistrarSalida && <form onSubmit={salidaFisica.alEnviar} className="space-y-3 sm:ml-8">
+          <input type="hidden" name="entrega_id" value={entrega.id} />
+          <input type="hidden" name="orden_id" value={ordenId} />
+          <Campo etiqueta="Constancia de salida" htmlFor="constancia-salida" requerido ayuda="Quién retiró la unidad y cómo se verificó la salida; 10 a 500 caracteres.">
+            <Entrada id="constancia-salida" name="constancia" required minLength={10} maxLength={500} />
+          </Campo>
+          <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="confirmada" required className="mt-1 accent-acento" />Confirmo que observé la salida del vehículo de esta orden.</label>
+          <Boton type="submit" tamano="sm" cargando={salidaFisica.enviando}>Registrar salida física</Boton>
+          <Aviso resultado={salidaFisica.resultado} />
+        </form>}
       </TarjetaCuerpo>
     </Tarjeta>
   )

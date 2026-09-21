@@ -2866,6 +2866,48 @@ export type Database = {
           }
         ]
       }
+      ot_salidas: {
+        Row: {
+          id: string
+          entrega_id: string
+          registrado_por: string
+          constancia: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          entrega_id: string
+          registrado_por: string
+          constancia: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          entrega_id?: string
+          registrado_por?: string
+          constancia?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_salidas_entrega_id_fkey"
+            columns: ["entrega_id"]
+            isOneToOne: true
+            referencedRelation: "ot_entregas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_salidas_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_verificaciones: {
         Row: {
           id: string
@@ -4750,6 +4792,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      puede_ver_hoja_de_area: {
+        Args: {
+          p_area: string
+        }
+        Returns: boolean
+      }
       puede_ver_orden: {
         Args: {
           p_orden_id: string
@@ -4798,6 +4846,13 @@ export type Database = {
           p_tipo_evento: Database["public"]["Enums"]["tipo_evento_ot"]
           p_descripcion: string
           p_datos?: Json
+        }
+        Returns: string
+      }
+      registrar_salida_fisica: {
+        Args: {
+          p_entrega: string
+          p_constancia: string
         }
         Returns: string
       }

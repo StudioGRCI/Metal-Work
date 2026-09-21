@@ -16,6 +16,7 @@ export function GuiaDelProceso() {
           ['Preparar y fabricar', 'Diseño y Taller', 'Organizan planos, piezas, materiales, actividades y plazos. Cada área reporta sus avances; el responsable revisa y termina el trabajo.'],
           ['Liberar y entregar', 'Administración y responsable de entrega', 'Tesorería libera la salida. Después se registra el acta con la persona que recibe la unidad.'],
           ['Avisar a portería', 'Quien coordina la entrega', 'Con el acta registrada, confirma el aviso a portería. Marcar la orden facturada no sustituye este paso.'],
+          ['Registrar salida física', 'Responsable de entrega', 'Cuando el vehículo haya salido, deja la constancia. El sistema registra quién confirmó y cuándo.'],
         ].map(([titulo, responsable, detalle], indice) => (
           <li key={titulo} className="flex min-w-0 gap-3">
             <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full bg-acento-suave text-sm font-semibold text-acento">{indice + 1}</span>

@@ -375,7 +375,24 @@ export async function liberarTesoreria(_previo: unknown, datos: FormData): Promi
   return { ok: true, mensaje: 'Salida liberada: el cliente está al día.' }
 }
 
-/** El último sello del flujo: avisar a portería que la unidad puede cruzar. */
+export async function registrarSalidaFisica(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ordenes.entregar')) return { ok: false, error: 'La salida física la registra el responsable de entrega.' }
+  const analisis = z.object({ entrega_id: z.string().uuid(), orden_id: z.string().uuid(),
+    constancia: z.string().trim().min(10).max(500), confirmada: z.literal('on'),
+  }).safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: 'Describe la salida (10 a 500 caracteres) y confirma que observaste salir el vehículo.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('registrar_salida_fisica', {
+    p_entrega: analisis.data.entrega_id, p_constancia: analisis.data.constancia,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: 'No se confirmó la salida. Recarga antes de volver a intentar.' }
+  revalidatePath(`/ordenes/${analisis.data.orden_id}`)
+  return { ok: true, mensaje: 'Salida física registrada.' }
+}
+
+/** Avisar a portería que la unidad puede cruzar. */
 export async function confirmarSalida(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['ordenes.entregar', 'produccion.actividades'])) {

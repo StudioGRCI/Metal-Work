@@ -516,6 +516,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                 ordenId={orden.id}
                 liberacion={salida.liberacion}
                 entrega={salida.entrega}
+                fisica={salida.fisica}
+                puedeRegistrarSalida={puede(perfil, 'ordenes.entregar')}
                 puedeLiberar={puede(perfil, 'tesoreria.liberar')}
                 puedeConfirmar={puede(perfil, ['ordenes.entregar', 'produccion.actividades'])}
                 puedeRegistrarEntrega={orden.estado === 'TERMINADA' && puede(perfil, 'ordenes.entregar')}
