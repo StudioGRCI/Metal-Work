@@ -279,11 +279,13 @@ export async function registrarEntrega(_previo: unknown, datos: FormData): Promi
 
   // La regla del flujograma: la unidad no sale si el cliente tiene deuda.
   // Tesorería libera; recién entonces entra el acta.
-  const { data: liberacion } = await supabase
+  const { data: liberacion, error: errorLiberacion } = await supabase
     .from('liberaciones_tesoreria')
     .select('id')
     .eq('orden_id', v.orden_id)
     .maybeSingle()
+
+  if (errorLiberacion) return { ok: false, error: mensajeDeError(errorLiberacion) }
 
   if (!liberacion) {
     return {
@@ -293,7 +295,7 @@ export async function registrarEntrega(_previo: unknown, datos: FormData): Promi
     }
   }
 
-  const { error } = await supabase.from('ot_entregas').insert({
+  const { data: acta, error } = await supabase.from('ot_entregas').insert({
     orden_id: v.orden_id,
     recibe_nombre: v.recibe_nombre,
     recibe_documento: v.recibe_documento || null,
@@ -301,13 +303,18 @@ export async function registrarEntrega(_previo: unknown, datos: FormData): Promi
     garantia_meses: v.garantia_meses,
     conforme: v.conforme,
     observaciones: v.observaciones || null,
-  })
+  }).select('id, numero').maybeSingle()
 
-  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (error) {
+    return { ok: false, error: error.code === '23505' && error.message.includes('uq_ot_entregas_orden')
+      ? 'Esta orden ya tiene un acta de entrega. Recarga el resumen para consultar la entrega registrada.'
+      : mensajeDeError(error) }
+  }
+  if (!acta) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   revalidatePath('/ordenes')
-  return { ok: true, mensaje: 'Acta registrada. La orden quedó entregada.' }
+  return { ok: true, mensaje: `Acta ${acta.numero} registrada. La orden quedó entregada.` }
 }
 
 const esquemaComentario = z.object({
@@ -368,7 +375,24 @@ export async function liberarTesoreria(_previo: unknown, datos: FormData): Promi
   return { ok: true, mensaje: 'Salida liberada: el cliente está al día.' }
 }
 
-/** El último sello del flujo: avisar a portería que la unidad puede cruzar. */
+export async function registrarSalidaFisica(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ordenes.entregar')) return { ok: false, error: 'La salida física la registra el responsable de entrega.' }
+  const analisis = z.object({ entrega_id: z.string().uuid(), orden_id: z.string().uuid(),
+    constancia: z.string().trim().min(10).max(500), confirmada: z.literal('on'),
+  }).safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: 'Describe la salida (10 a 500 caracteres) y confirma que observaste salir el vehículo.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('registrar_salida_fisica', {
+    p_entrega: analisis.data.entrega_id, p_constancia: analisis.data.constancia,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: 'No se confirmó la salida. Recarga antes de volver a intentar.' }
+  revalidatePath(`/ordenes/${analisis.data.orden_id}`)
+  return { ok: true, mensaje: 'Salida física registrada.' }
+}
+
+/** Avisar a portería que la unidad puede cruzar. */
 export async function confirmarSalida(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['ordenes.entregar', 'produccion.actividades'])) {

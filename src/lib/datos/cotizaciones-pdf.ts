@@ -77,9 +77,10 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
 
   // El tipo de cada carrocería, para proponerlo al emitir la orden.
   const carrocerias = [...new Set(filas.map((f) => f.tipo_carroceria_id).filter((id): id is string => Boolean(id)))]
-  const { data: tipos } = carrocerias.length
+  const { data: tipos, error: errorTipos } = carrocerias.length
     ? await supabase.from('tipos_carroceria').select('id, tipo_unidad').in('id', carrocerias)
-    : { data: [] }
+    : { data: [], error: null }
+  if (errorTipos) throw new Error('No se pudo cargar el tipo de carrocería. Recarga la página para volver a intentar.')
   const tipoDe = new Map((tipos ?? []).map((t) => [t.id, t.tipo_unidad as string | null]))
 
   // Sin enlaces la lista igual sirve: se ve qué hay aunque no se pueda abrir.
@@ -137,5 +138,7 @@ export async function catalogosDeCotizacion() {
       .limit(2000),
     supabase.from('tipos_carroceria').select('id, nombre').eq('activo', true).order('orden_secuencia').limit(200),
   ])
+  if (clientes.error) throw new Error('No se pudo cargar la lista de clientes. Recarga la página para volver a intentar.')
+  if (carrocerias.error) throw new Error('No se pudo cargar el catálogo de carrocerías. Recarga la página para volver a intentar.')
   return { clientes: clientes.data ?? [], carrocerias: carrocerias.data ?? [] }
 }

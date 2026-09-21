@@ -76,8 +76,8 @@ export function EsqueletoDetalle() {
       <EsqueletoEncabezado conMigas />
 
       <div className="mb-4 flex gap-2 border-b border-borde pb-2">
-        {['w-24', 'w-20', 'w-28', 'w-24'].map((ancho) => (
-          <Esqueleto key={ancho} className={cn('h-7', ancho)} />
+        {['w-24', 'w-20', 'w-28', 'w-24'].map((ancho, posicion) => (
+          <Esqueleto key={posicion} className={cn('h-7', ancho)} />
         ))}
       </div>
 

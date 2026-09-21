@@ -55,8 +55,8 @@ export type PropsPastillaFiltro = ConEnlaces | ConBotones
 const PASTILLA =
   'inline-flex min-h-11 items-center justify-center rounded-[var(--radius-base)] px-3 text-sm whitespace-nowrap transition-colors sm:h-8 sm:min-h-0'
 
-// Sin borde: la que está puesta se reconoce por el fondo, no por el contorno.
-const ACTIVA = 'bg-acento-suave font-medium text-acento'
+// El relleno sólido y el subrayado distinguen la selección incluso sin color.
+const ACTIVA = 'bg-acento font-semibold text-acento-texto underline underline-offset-4'
 const INACTIVA = 'text-texto-suave hover:bg-superficie-2 hover:text-texto'
 
 /** Vacío, `null` y ausente son la misma cosa: no hay filtro puesto. */

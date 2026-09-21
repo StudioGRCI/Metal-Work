@@ -274,7 +274,7 @@ export async function fechasClaveDeOrden(ordenId: string) {
 export async function estadoDeSalida(ordenId: string) {
   const supabase = await createClient()
 
-  const [liberacion, entrega] = await Promise.all([
+  const [liberacion, entrega, fisica] = await Promise.all([
     supabase
       .from('liberaciones_tesoreria')
       .select('liberado_en, observacion, liberador:usuarios!liberaciones_tesoreria_liberado_por_fkey(puesto)')
@@ -285,12 +285,17 @@ export async function estadoDeSalida(ordenId: string) {
       .select('id, fecha_entrega, salida_confirmada_en, confirmador:usuarios!ot_entregas_salida_confirmada_por_fkey(puesto)')
       .eq('orden_id', ordenId)
       .maybeSingle(),
+    supabase.from('ot_salidas')
+      .select('id, creado_en, constancia, responsable:usuarios!ot_salidas_registrado_por_fkey(cargo), entrega:ot_entregas!inner(orden_id)')
+      .eq('entrega.orden_id', ordenId).maybeSingle(),
   ])
 
   if (liberacion.error) throw new Error(`No se pudo leer la liberación: ${liberacion.error.message}`)
   if (entrega.error) throw new Error(`No se pudo leer la entrega: ${entrega.error.message}`)
+  if (fisica.error) throw new Error('No se pudo comprobar la salida física. Vuelve a intentar.')
 
   return {
+    fisica: fisica.data,
     liberacion: liberacion.data as unknown as {
       liberado_en: string
       observacion: string | null

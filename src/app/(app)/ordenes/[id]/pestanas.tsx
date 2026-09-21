@@ -10,6 +10,7 @@ const PESTANAS = [
   { clave: 'etapas', titulo: 'Etapas' },
   // La hoja de Diseño: planos y piezas.
   { clave: 'cumplimiento', titulo: 'Cumplimiento' },
+  { clave: 'planos', titulo: 'Planos y revisiones' },
   // Los materiales van pegados al cumplimiento porque son la otra mitad de lo
   // mismo: en la hoja de Diseño está qué hay que hacer, y acá qué hace falta
   // para hacerlo.
@@ -26,11 +27,13 @@ export function Pestanas({
   ordenId,
   activa,
   contadores = {},
+  verPlanos = false,
 }: {
   ordenId: string
   activa: string
   /** Cuántos pendientes lleva cada pestaña para quien mira; cero no se pinta. */
   contadores?: Record<string, number>
+  verPlanos?: boolean
 }) {
   return (
     // `pestanas-con-corte`: en el teléfono caben cuatro de las ocho y la sombra
@@ -38,13 +41,13 @@ export function Pestanas({
     // a la que llega el taller, quedaba fuera de pantalla sin que nada invitara
     // a arrastrar.
     <nav className="pestanas-con-corte my-5 flex gap-1 overflow-x-auto border-b border-borde" aria-label="Secciones de la orden">
-      {PESTANAS.map((p) => {
+      {PESTANAS.filter(p => verPlanos || (p.clave !== 'planos' && p.clave !== 'cumplimiento')).map((p) => {
         const esActiva = p.clave === activa
         const n = contadores[p.clave] ?? 0
         return (
           <Link
             key={p.clave}
-            href={`/ordenes/${ordenId}?vista=${p.clave}`}
+            href={p.clave === 'planos' ? `/ordenes/${ordenId}/planos` : `/ordenes/${ordenId}?vista=${p.clave}`}
             aria-current={esActiva ? 'page' : undefined}
             className={cn(
               // 44 px de alto en el teléfono —ocho pestañas seguidas y el dedo
@@ -52,7 +55,7 @@ export function Pestanas({
               // gana a `py`, por eso hay que soltarlo en el monitor.
               '-mb-px inline-flex min-h-11 items-center border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors sm:min-h-0',
               esActiva
-                ? 'border-acento font-medium text-acento'
+                ? 'border-acento bg-acento-suave font-semibold text-acento'
                 : 'border-transparent text-texto-suave hover:border-borde-fuerte hover:text-texto',
             )}
           >

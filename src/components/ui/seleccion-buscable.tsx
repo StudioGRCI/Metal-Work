@@ -47,6 +47,8 @@ export function SeleccionBuscable({
   etiquetaAccesible,
   className,
   permiteVaciar = true,
+  'aria-describedby': descripcion,
+  'aria-invalid': invalido,
 }: {
   name?: string
   opciones: OpcionBuscable[]
@@ -60,6 +62,8 @@ export function SeleccionBuscable({
   etiquetaAccesible?: string
   className?: string
   permiteVaciar?: boolean
+  'aria-describedby'?: string
+  'aria-invalid'?: boolean | 'true' | 'false'
 }) {
   const generado = useId()
   const idCampo = id ?? generado
@@ -180,6 +184,8 @@ export function SeleccionBuscable({
         aria-haspopup="listbox"
         aria-label={etiquetaAccesible}
         aria-required={requerido}
+        aria-describedby={descripcion}
+        aria-invalid={invalido}
         disabled={deshabilitado}
         onClick={() => (abierto ? cerrar(false) : abrir())}
         onKeyDown={(e) => {
@@ -189,11 +195,12 @@ export function SeleccionBuscable({
           }
         }}
         className={cn(
-          'flex h-9 w-full items-center rounded-[var(--radius-base)] border border-borde bg-superficie pr-14 pl-3 text-left text-sm',
+          'flex h-11 w-full items-center gap-2 rounded-[var(--radius-base)] border pr-14 pl-3 text-left text-base transition-colors sm:h-9 sm:text-sm',
           'disabled:cursor-not-allowed disabled:opacity-60',
-          elegida ? 'text-texto' : 'text-texto-tenue',
+          elegida ? 'border-acento bg-acento-suave font-medium text-acento' : 'border-borde-fuerte bg-superficie text-texto-tenue',
         )}
       >
+        {elegida && <Check aria-hidden className="size-4 shrink-0" />}
         <span className="min-w-0 flex-1 truncate">{elegida ? elegida.etiqueta : marcador}</span>
       </button>
 
@@ -252,8 +259,8 @@ export function SeleccionBuscable({
                   onMouseEnter={() => setResaltado(i)}
                   onClick={() => elegir(o)}
                   className={cn(
-                    'flex w-full items-start gap-2 px-3 py-1.5 text-left text-sm',
-                    i === resaltado ? 'bg-superficie-2' : '',
+                    'flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm sm:min-h-0',
+                    o.valor === valor ? 'bg-acento-suave font-medium text-acento' : i === resaltado ? 'bg-superficie-2 text-texto' : 'text-texto',
                   )}
                 >
                   <Check
@@ -264,7 +271,7 @@ export function SeleccionBuscable({
                     )}
                   />
                   <span className="min-w-0">
-                    <span className="block truncate text-texto">{o.etiqueta}</span>
+                    <span className="block truncate">{o.etiqueta}</span>
                     {o.detalle && (
                       <span className="block truncate text-[11px] text-texto-suave">
                         {o.detalle}

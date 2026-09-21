@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 // vuelve a los 14 px de siempre.
 const BASE_CONTROL =
   'w-full rounded-[var(--radius-base)] border border-borde bg-superficie px-3 text-base sm:text-sm text-texto ' +
-  'placeholder:text-texto-tenue disabled:cursor-not-allowed disabled:opacity-60'
+  'placeholder:text-texto-tenue focus:border-acento focus:ring-2 focus:ring-acento/25 disabled:cursor-not-allowed disabled:opacity-60'
 
 // 44 px de alto en el teléfono, que es lo que ocupa un dedo —y con guante
 // puesto, más—; a partir de `sm` vuelven los 36 px del escritorio, que ahí se

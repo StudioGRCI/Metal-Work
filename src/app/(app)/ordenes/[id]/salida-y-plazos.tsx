@@ -6,10 +6,11 @@ import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { useEnvio } from '@/lib/envio'
-import { fecha as formatearFecha, hoyLima, puesto } from '@/lib/format'
+import { fecha as formatearFecha, fechaHora, hoyLima, puesto } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import { confirmarSalida, liberarTesoreria } from '../acciones'
+import { confirmarSalida, liberarTesoreria, registrarSalidaFisica } from '../acciones'
+import type { estadoDeSalida } from '@/lib/datos/ordenes'
 
 type Liberacion = {
   liberado_en: string
@@ -61,7 +62,7 @@ function Compuerta({
         <Check className="size-3.5" />
       </span>
       <div className="min-w-0">
-        <p className="text-sm font-medium text-texto">{titulo}</p>
+        <p className="text-sm font-medium text-texto">{titulo}<span className="sr-only">{cumplida ? ': completado' : ': pendiente'}</span></p>
         <div className="text-xs text-texto-suave">{detalle}</div>
       </div>
     </div>
@@ -69,35 +70,52 @@ function Compuerta({
 }
 
 /**
- * Las dos compuertas antes de que la unidad cruce portería: tesorería confirma
- * que el cliente está al día, y el aviso final a portería. En ese orden, porque
- * así está escrito el procedimiento.
+ * Tesorería, acta y aviso a portería. Los sellos reales determinan qué falta;
+ * el estado FACTURADA por sí solo no demuestra que se haya avisado la salida.
  */
 export function SalidaDeUnidad({
   ordenId,
   liberacion,
   entrega,
+  fisica,
+  puedeRegistrarSalida,
   puedeLiberar,
   puedeConfirmar,
+  puedeRegistrarEntrega,
 }: {
   ordenId: string
   liberacion: Liberacion
   entrega: Entrega
+  fisica: Awaited<ReturnType<typeof estadoDeSalida>>['fisica']
+  puedeRegistrarSalida: boolean
   puedeLiberar: boolean
   puedeConfirmar: boolean
+  puedeRegistrarEntrega: boolean
 }) {
   // Con `useEnvio` la constancia se queda escrita si tesorería no puede liberar
   // todavía; antes el formulario se vaciaba con el rechazo.
   const liberar = useEnvio(liberarTesoreria)
   const confirmar = useEnvio(confirmarSalida)
+  const salidaFisica = useEnvio(registrarSalidaFisica)
+  const completados = Number(Boolean(liberacion)) + Number(Boolean(entrega)) + Number(Boolean(entrega?.salida_confirmada_en)) + Number(Boolean(fisica))
 
   return (
     <Tarjeta>
       <TarjetaCabecera
         titulo="Salida de la unidad"
-        descripcion="Tesorería y portería: las dos compuertas del procedimiento, en su orden."
+        descripcion="Liberación, acta, aviso y constancia de salida física."
       />
       <TarjetaCuerpo className="space-y-4">
+        <div className="rounded-[var(--radius-base)] bg-acento-suave px-3 py-2 text-sm text-acento">
+          <p className="font-semibold">{completados} de 4 pasos registrados</p>
+          <p className="mt-0.5 text-xs">
+            {!liberacion ? 'Siguiente: Administración o Gerencia confirma la liberación de tesorería.'
+              : !entrega ? 'Siguiente: el responsable de entrega registra el acta de conformidad.'
+                : !entrega.salida_confirmada_en ? 'Siguiente: quien coordina la entrega avisa a portería.'
+                  : !fisica ? 'Siguiente: el responsable de entrega registra la salida física cuando el vehículo haya salido.'
+                    : 'Salida física registrada. El circuito de entrega está completo.'}
+          </p>
+        </div>
         <Compuerta
           cumplida={Boolean(liberacion)}
           titulo="Liberación de tesorería"
@@ -108,7 +126,7 @@ export function SalidaDeUnidad({
                   ? puesto(liberacion.liberador)
                   : 'Tesorería'}
                 {' · '}
-                {formatearFecha(liberacion.liberado_en)}
+                {fechaHora(liberacion.liberado_en)}
                 {liberacion.observacion && <span className="block">{liberacion.observacion}</span>}
               </>
             ) : (
@@ -140,6 +158,18 @@ export function SalidaDeUnidad({
         )}
 
         <Compuerta
+          cumplida={Boolean(entrega)}
+          titulo="Acta de entrega"
+          detalle={entrega
+            ? `Registrada el ${formatearFecha(entrega.fecha_entrega)}`
+            : liberacion
+              ? puedeRegistrarEntrega
+                ? 'Salida liberada. Usa «Registrar entrega» en la cabecera para guardar la conformidad del cliente.'
+                : 'Salida liberada. Falta que el responsable de la entrega registre el acta de conformidad del cliente.'
+              : 'Primero se necesita la liberación de tesorería.'}
+        />
+
+        <Compuerta
           cumplida={Boolean(entrega?.salida_confirmada_en)}
           titulo="Aviso a portería"
           detalle={
@@ -149,7 +179,7 @@ export function SalidaDeUnidad({
                   ? puesto(entrega.confirmador)
                   : 'Confirmada'}
                 {' · '}
-                {formatearFecha(entrega.salida_confirmada_en)}
+                {fechaHora(entrega.salida_confirmada_en)}
               </>
             ) : entrega ? (
               'El acta está registrada; falta avisar a portería que la unidad puede cruzar.'
@@ -172,6 +202,19 @@ export function SalidaDeUnidad({
             </div>
           </form>
         )}
+        <Compuerta cumplida={Boolean(fisica)} titulo="Salida física del vehículo"
+          detalle={fisica ? <>{fechaHora(fisica.creado_en)} · {fisica.responsable?.cargo || 'Responsable de entrega'}<span className="block">{fisica.constancia}</span></>
+            : 'El aviso a portería no sustituye la constancia de que el vehículo salió.'} />
+        {entrega?.salida_confirmada_en && !fisica && puedeRegistrarSalida && <form onSubmit={salidaFisica.alEnviar} className="space-y-3 sm:ml-8">
+          <input type="hidden" name="entrega_id" value={entrega.id} />
+          <input type="hidden" name="orden_id" value={ordenId} />
+          <Campo etiqueta="Constancia de salida" htmlFor="constancia-salida" requerido ayuda="Quién retiró la unidad y cómo se verificó la salida; 10 a 500 caracteres.">
+            <Entrada id="constancia-salida" name="constancia" required minLength={10} maxLength={500} />
+          </Campo>
+          <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="confirmada" required className="mt-1 accent-acento" />Confirmo que observé la salida del vehículo de esta orden.</label>
+          <Boton type="submit" tamano="sm" cargando={salidaFisica.enviando}>Registrar salida física</Boton>
+          <Aviso resultado={salidaFisica.resultado} />
+        </form>}
       </TarjetaCuerpo>
     </Tarjeta>
   )

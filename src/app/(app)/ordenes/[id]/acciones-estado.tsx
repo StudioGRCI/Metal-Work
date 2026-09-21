@@ -284,7 +284,7 @@ function VentanaEntrega({ ordenId, abierta, alCerrar }: { ordenId: string; abier
       abierta={abierta}
       alCerrar={alCerrar}
       titulo="Acta de conformidad"
-      descripcion="Al registrar el acta la orden queda entregada. Si falta documentación obligatoria o firmas, el sistema lo avisa y no la cierra."
+      descripcion="La orden debe estar terminada y liberada por tesorería. Al guardar el acta queda entregada; después falta avisar a portería desde el resumen."
       ancho="sm"
     >
       <form onSubmit={alEnviar} className="space-y-3">

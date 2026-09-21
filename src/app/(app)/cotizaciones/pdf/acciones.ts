@@ -205,10 +205,12 @@ export async function quitarCotizacionPdf(_previo: unknown, datos: FormData): Pr
   const supabase = await createClient()
   // Los archivos de las versiones se leen antes: al borrar la cotización, sus
   // versiones se van en cascada y ya no habría de dónde sacar las rutas.
-  const { data: versiones } = await supabase
+  const { data: versiones, error: errorVersiones } = await supabase
     .from('cotizaciones_pdf_versiones')
     .select('ruta_storage')
     .eq('cotizacion_id', analisis.data.id)
+
+  if (errorVersiones) return { ok: false, error: 'No se pudo leer el historial. Vuelve a intentar; la cotización no se ha quitado.' }
 
   const { data, error } = await supabase
     .from('cotizaciones_pdf')

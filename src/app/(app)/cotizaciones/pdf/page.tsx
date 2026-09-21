@@ -3,6 +3,7 @@ import Link from 'next/link'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { GuiaDelProceso } from '@/components/estructura/guia-del-proceso'
 import { AvisoTope } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -125,6 +126,8 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
         acciones={puedeSubir && <SubirCotizacion clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />}
       />
 
+      <GuiaDelProceso />
+
       {cotizaciones.length > 0 && (
         <>
           <BuscadorSimple ruta="/cotizaciones/pdf" etiqueta="Buscar cotizaciones" marcador="Buscar por número, cliente o carrocería" />
@@ -197,7 +200,9 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       {c.carroceria && <span className="text-texto-suave"> · {c.carroceria}</span>}
                     </p>
 
-                    {c.url && <EnlaceArchivo url={c.url} mime={c.mime_type} nombre={c.nombre_archivo} />}
+                    {c.url ? <EnlaceArchivo url={c.url} mime={c.mime_type} nombre={c.nombre_archivo} /> : (
+                      <p role="alert" className="text-sm text-aviso">No se pudo abrir el archivo de esta cotización. Recarga la página; si continúa, avisa al administrador.</p>
+                    )}
 
                     {c.estado === 'RECHAZADA' && c.observacion && (
                       <div className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-peligro-suave px-2.5 py-2 text-sm text-peligro">
@@ -249,7 +254,9 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                                 </span>
                               </p>
                               <p className="text-peligro">«{v.observacion}»</p>
-                              {v.url && <EnlaceArchivo url={v.url} mime={v.mime_type} nombre={v.nombre_archivo} />}
+                              {v.url ? <EnlaceArchivo url={v.url} mime={v.mime_type} nombre={v.nombre_archivo} /> : (
+                                <p className="text-aviso">Archivo no disponible. Recarga la página o avisa al administrador.</p>
+                              )}
                             </li>
                           ))}
                         </ol>

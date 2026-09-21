@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { GuiaDelProceso } from '@/components/estructura/guia-del-proceso'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia, Punto } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
@@ -120,7 +121,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   // cientos de eventos y no tiene sentido traerlos para ver el resumen.
   const verFicha = vista === 'ficha'
   // La salida importa cuando la orden se acerca a la puerta.
-  const verSalida = vista === 'resumen' && ['TERMINADA', 'CONTROL_CALIDAD', 'ENTREGADA'].includes(orden.estado)
+  const verSalida = vista === 'resumen' && ['TERMINADA', 'CONTROL_CALIDAD', 'ENTREGADA', 'FACTURADA'].includes(orden.estado)
 
   const [etapas, timeline, accesorios, repuestos, verificaciones, personal, cumplimiento] =
     await Promise.all([
@@ -280,7 +281,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         }
       />
 
-      {query.creada === '1' && (
+      {vista === 'resumen' && <GuiaDelProceso />}
+
+      {query.creada === '1' && orden.estado === 'BORRADOR' && (
         <p className="mb-4 rounded-[var(--radius-base)] bg-exito-suave px-3 py-2 text-sm text-exito">
           {/* A quien no aprueba no se le pide que apruebe: se le dice quién lo hace. */}
           {puede(perfil, 'ordenes.aprobar')
@@ -374,7 +377,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
       <TeToca ordenId={orden.id} items={toca.items} />
 
-      <Pestanas ordenId={orden.id} activa={vista} contadores={toca.contadores} />
+      <Pestanas ordenId={orden.id} activa={vista} contadores={toca.contadores} verPlanos={puede(perfil, ['diseno.planos', 'diseno.revisar', 'produccion.registrar', 'produccion.cualquier_area']) || ['ALMACENERO', 'COMPRADOR', 'CALIDAD'].includes(perfil.rol.codigo)} />
 
       {vista === 'resumen' && (
         <div className="grid gap-4 lg:grid-cols-2 *:min-w-0">
@@ -457,7 +460,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           <Tarjeta>
             <TarjetaCabecera
               titulo="Etapas de producción"
-              descripcion={`${etapas.filter((e) => e.estado === 'TERMINADA').length} de ${etapas.length} terminadas`}
+              descripcion={etapas.length > 0 ? `${etapas.filter((e) => e.estado === 'TERMINADA').length} de ${etapas.length} terminadas` : undefined}
               acciones={
                 etapas.length > 0 && (
                   <EnlaceBoton href={`/ordenes/${orden.id}?vista=etapas`} variante="fantasma" tamano="sm">
@@ -469,7 +472,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
             <TarjetaCuerpo>
               {etapas.length === 0 ? (
                 <p className="py-4 text-center text-sm text-texto-suave">
-                  Las etapas se generan al aprobar la orden.
+                  {orden.estado === 'BORRADOR'
+                    ? 'Las etapas se generan al aprobar la orden.'
+                    : 'No hay etapas visibles en esta vista. Consulta la trazabilidad de la orden para revisar su historial.'}
                 </p>
               ) : (
                 <ol className="divide-y divide-borde">
@@ -511,8 +516,11 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                 ordenId={orden.id}
                 liberacion={salida.liberacion}
                 entrega={salida.entrega}
+                fisica={salida.fisica}
+                puedeRegistrarSalida={puede(perfil, 'ordenes.entregar')}
                 puedeLiberar={puede(perfil, 'tesoreria.liberar')}
                 puedeConfirmar={puede(perfil, ['ordenes.entregar', 'produccion.actividades'])}
+                puedeRegistrarEntrega={orden.estado === 'TERMINADA' && puede(perfil, 'ordenes.entregar')}
               />
             )}
             {fechasClave && (
@@ -603,6 +611,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           areasDisponibles={areasArmables}
           areasVisibles={areasVisibles}
           puedeArmar={areasArmables.length > 0}
+          puedeCargarCronograma={!['ENTREGADA', 'FACTURADA', 'ANULADA'].includes(orden.estado)}
           puedeReportar={puede(perfil, 'produccion.registrar')}
           areaPropia={perfil.area_id}
           aprueba={puede(perfil, 'produccion.aprobar_reportes')}
