@@ -609,6 +609,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           areasDisponibles={areasArmables}
           areasVisibles={areasVisibles}
           puedeArmar={areasArmables.length > 0}
+          puedeCargarCronograma={!['ENTREGADA', 'FACTURADA', 'ANULADA'].includes(orden.estado)}
           puedeReportar={puede(perfil, 'produccion.registrar')}
           areaPropia={perfil.area_id}
           aprueba={puede(perfil, 'produccion.aprobar_reportes')}

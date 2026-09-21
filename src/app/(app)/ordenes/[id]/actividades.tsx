@@ -59,6 +59,7 @@ export function ActividadesDeOrden({
   areasDisponibles,
   areasVisibles,
   puedeArmar,
+  puedeCargarCronograma,
   puedeReportar,
   areaPropia,
   aprueba,
@@ -79,6 +80,8 @@ export function ActividadesDeOrden({
   areasVisibles: { id: string; codigo: string; nombre: string }[]
   /** Diseño para cualquier área; `produccion.actividades` para la suya (migración 106). */
   puedeArmar: boolean
+  /** La base rechaza cargar cronogramas en órdenes entregadas, facturadas o anuladas. */
+  puedeCargarCronograma: boolean
   /** `produccion.registrar`: quien reporta el día. */
   puedeReportar: boolean
   /** El área de quien mira, para proponerla al armar la lista. */
@@ -116,7 +119,9 @@ export function ActividadesDeOrden({
           acciones={
             puedeArmar && !agregando ? (
               <span className="flex flex-wrap gap-2">
-                <CargarCronograma ordenId={ordenId} areasPropias={areasDisponibles} />
+                {puedeCargarCronograma && (
+                  <CargarCronograma ordenId={ordenId} areasPropias={areasDisponibles} />
+                )}
                 <Boton variante="secundario" tamano="sm" onClick={() => setAgregando(true)}>
                   <Plus aria-hidden className="size-3.5" />
                   Nueva actividad
@@ -126,6 +131,11 @@ export function ActividadesDeOrden({
           }
         />
         <TarjetaCuerpo>
+          {puedeArmar && !puedeCargarCronograma && (
+            <p className="mb-3 text-sm text-texto-suave">
+              La orden está cerrada: puedes consultar su avance, pero ya no cargar un cronograma.
+            </p>
+          )}
           {areas.length === 0 ? (
             <p className="text-sm text-texto-suave">
               {puedeArmar

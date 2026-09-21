@@ -58,6 +58,8 @@ garantía de integridad para ese caso.
   y oscuro, sin desbordamiento horizontal ni errores de consola.
 - Se corrige el vacío de etapas en órdenes cerradas: el tablero excluye esas
   órdenes, por lo que no corresponde mostrar «0 de 0» ni pedir aprobarlas.
+- La carga de cronogramas se oculta en órdenes entregadas, facturadas o anuladas,
+  con una explicación visible, de acuerdo con el rechazo existente en la base.
 - No se emitió la cotización real ni se subieron documentos ficticios a
   producción. Falta el recorrido de escritura con archivos en un entorno de
   prueba aislado, y la comprobación de todas las pantallas con cada rol.
