@@ -36,7 +36,7 @@ export type GrupoNavegacion = { titulo: string; items: ItemNavegacion[] }
  */
 export const NAVEGACION: GrupoNavegacion[] = [
   {
-    titulo: 'Operación',
+    titulo: 'Seguimiento',
     items: [
       {
         titulo: 'Tablero',
@@ -86,7 +86,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
   // Cada grupo se muestra solo a quien tiene su permiso, así que el vendedor no
   // ve «Administrador» y a quien costea no le aparece «Vendedor» si no vende.
   {
-    titulo: 'Vendedor',
+    titulo: 'Cotizaciones',
     items: [
       // El camino corto y el que se usa: la cotización se arma en Excel y se
       // manda en PDF, así que el sistema guarda ese papel con lo poco que
@@ -115,7 +115,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
   // ve para quien costea, sea de Diseño o de Administración, que conserva el
   // permiso porque sigue emitiendo la orden.
   {
-    titulo: 'Diseño e ingeniería',
+    titulo: 'Preparación técnica',
     items: [
       {
         titulo: 'Cotización de trabajo',
@@ -146,7 +146,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
     ],
   },
   {
-    titulo: 'Administrador',
+    titulo: 'Órdenes',
     items: [
       // La orden la emite Administración —lo dice su propio flujograma: «Gerencia
       // aprueba → Administración emite la orden de trabajo»— así que vive con lo
@@ -163,14 +163,14 @@ export const NAVEGACION: GrupoNavegacion[] = [
     ],
   },
   {
-    titulo: 'Comercial',
+    titulo: 'Clientes y unidades',
     items: [
       { titulo: 'Clientes', ruta: '/clientes', icono: Users, permiso: 'clientes.ver', disponible: true },
       { titulo: 'Unidades', ruta: '/unidades', icono: Truck, permiso: 'clientes.ver', disponible: true },
     ],
   },
   {
-    titulo: 'Gestión',
+    titulo: 'Administración del sistema',
     items: [
       {
         titulo: 'Personal',

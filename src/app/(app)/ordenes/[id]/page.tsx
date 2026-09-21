@@ -1,5 +1,6 @@
 import { FileText } from 'lucide-react'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
+import { seccionesDeOrden } from '@/lib/dominio/acceso-orden'
 import type { Metadata } from 'next'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -93,6 +94,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const perfil = await exigirPermiso('ordenes.ver')
   const { id } = await params
   const query = await searchParams
+  const secciones = seccionesDeOrden(perfil)
+  const vista: Vista = VISTAS.includes(query.vista as Vista) ? (query.vista as Vista) : 'resumen'
+  if (!secciones.includes(vista)) redirect('/sin-permiso')
 
   // La cotización de la que salió va en la cabecera de todas las pestañas; se
   // pide junto con la orden y solo si quien mira ve cotizaciones.
@@ -116,7 +120,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         ? 'La orden ya se cerró'
         : null
 
-  const vista: Vista = VISTAS.includes(query.vista as Vista) ? (query.vista as Vista) : 'resumen'
 
   // Cada pestaña carga solo lo suyo: la bitácora de una OT larga puede tener
   // cientos de eventos y no tiene sentido traerlos para ver el resumen.
@@ -378,7 +381,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
       <TeToca ordenId={orden.id} items={toca.items} />
 
-      <Pestanas ordenId={orden.id} activa={vista} contadores={toca.contadores} verPlanos={puede(perfil, ['diseno.planos', 'diseno.revisar', 'produccion.registrar', 'produccion.cualquier_area']) || ['ALMACENERO', 'COMPRADOR', 'CALIDAD'].includes(perfil.rol.codigo)} />
+      <Pestanas ordenId={orden.id} activa={vista} contadores={toca.contadores} visibles={secciones} />
 
       {vista === 'resumen' && (
         <div className="grid gap-4 lg:grid-cols-2 *:min-w-0">

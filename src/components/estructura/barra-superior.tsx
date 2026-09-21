@@ -14,16 +14,16 @@ export async function BarraSuperior({ perfil }: { perfil: PerfilSesion }) {
   const [avisos, sinLeer] = await Promise.all([misNotificaciones(), avisosSinLeer()])
 
   return (
-    <header className="sticky top-0 z-30 flex min-h-14 items-center justify-between gap-4 border-b border-borde bg-superficie px-4 pt-[env(safe-area-inset-top)]">
+    <header className="sticky top-0 z-30 flex min-h-14 flex-wrap items-center justify-center gap-x-4 gap-y-1 border-b border-borde bg-superficie px-4 pt-[env(safe-area-inset-top)] lg:flex-nowrap lg:justify-between">
       {/* En el teléfono el menú está abajo, en «Más» (BarraInferior); acá
           quedan el logo, los avisos, el tema y la salida. */}
-      <div className="flex min-w-0 items-center gap-1">
+      <div className="flex w-full min-w-0 items-center justify-center py-2 lg:w-auto lg:justify-start lg:py-0">
         <Link href="/" aria-label="Ir al tablero" className="flex shrink-0 items-center">
           <LogoMetalWork className="h-7 w-auto lg:h-8" />
         </Link>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex w-full items-center justify-between gap-3 pb-1 lg:w-auto lg:justify-end lg:pb-0">
         <Campana avisos={avisos} sinLeer={sinLeer} />
         <CambiarTema />
 

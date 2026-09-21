@@ -27,13 +27,13 @@ export function Pestanas({
   ordenId,
   activa,
   contadores = {},
-  verPlanos = false,
+  visibles,
 }: {
   ordenId: string
   activa: string
   /** Cuántos pendientes lleva cada pestaña para quien mira; cero no se pinta. */
   contadores?: Record<string, number>
-  verPlanos?: boolean
+  visibles: string[]
 }) {
   return (
     // `pestanas-con-corte`: en el teléfono caben cuatro de las ocho y la sombra
@@ -41,7 +41,7 @@ export function Pestanas({
     // a la que llega el taller, quedaba fuera de pantalla sin que nada invitara
     // a arrastrar.
     <nav className="pestanas-con-corte my-5 flex gap-1 overflow-x-auto border-b border-borde" aria-label="Secciones de la orden">
-      {PESTANAS.filter(p => verPlanos || (p.clave !== 'planos' && p.clave !== 'cumplimiento')).map((p) => {
+      {PESTANAS.filter(p => visibles.includes(p.clave)).map((p) => {
         const esActiva = p.clave === activa
         const n = contadores[p.clave] ?? 0
         return (

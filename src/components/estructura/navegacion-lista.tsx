@@ -38,14 +38,14 @@ export function NavegacionLista({
 
   const grupos = NAVEGACION.map((g) => ({
     ...g,
-    items: g.items.filter((i) => puedeVer(i, permisos, esAdmin)),
+    items: g.items.filter((i) => i.disponible && puedeVer(i, permisos, esAdmin)),
   })).filter((g) => g.items.length > 0)
 
   return (
-    <nav className="flex h-full flex-col gap-6 overflow-y-auto px-3 py-4">
+    <nav aria-label="Menú principal" className="flex h-full flex-col gap-5 overflow-y-auto px-3 py-5">
       {grupos.map((grupo) => (
         <div key={grupo.titulo}>
-          <p className="px-3 pb-2 text-[10px] font-semibold tracking-wider text-texto-tenue uppercase">
+          <p className="px-3 pb-2 text-[11px] font-semibold tracking-wide text-texto-suave">
             {grupo.titulo}
           </p>
           <ul className="space-y-0.5">
@@ -79,14 +79,15 @@ export function NavegacionLista({
                     aria-current={activo ? 'page' : undefined}
                     aria-label={n > 0 ? `${item.titulo}, ${n} pendientes` : undefined}
                     className={cn(
-                      'flex items-center gap-2.5 rounded-[var(--radius-base)] px-3 py-2 text-sm transition-colors',
+                      'flex min-h-11 items-center gap-3 rounded-xl border px-3 py-2.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento',
                       activo
-                        ? 'bg-acento font-semibold text-acento-texto underline underline-offset-4'
-                        : 'text-texto-suave hover:bg-superficie-2 hover:text-texto',
+                        ? 'border-acento bg-acento font-semibold text-acento-texto'
+                        : 'border-transparent text-texto-suave hover:border-borde hover:bg-superficie-2 hover:text-texto',
                     )}
                   >
                     <Icono aria-hidden className="size-4 shrink-0" />
-                    <span className="truncate">{item.titulo}</span>
+                    <span className="min-w-0 flex-1">{item.titulo}</span>
+                    {activo && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-current" />}
                     {/* Lo que le toca a este puesto en ese módulo, a la vista
                         sin entrar: el mismo globo de la campana. */}
                     {n > 0 && (

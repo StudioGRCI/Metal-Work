@@ -17,7 +17,7 @@ export function BarraLateral({
   pendientes?: Record<string, number>
 }) {
   return (
-    <aside className="hidden w-56 shrink-0 border-r border-borde bg-superficie lg:block">
+    <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-64 shrink-0 self-start border-r border-borde bg-superficie lg:block">
       <NavegacionLista permisos={permisos} esAdmin={esAdmin} pendientes={pendientes} />
     </aside>
   )

@@ -34,7 +34,7 @@ export function BarraInferior({
   const ruta = usePathname()
   const [abierto, setAbierto] = useState(false)
 
-  const visibles = NAVEGACION.flatMap((g) => g.items).filter((i) => puedeVer(i, permisos, esAdmin))
+  const visibles = NAVEGACION.flatMap((g) => g.items).filter((i) => i.disponible && puedeVer(i, permisos, esAdmin))
   const pestanas = PESTANAS_TELEFONO.flatMap((p) => {
     const item = visibles.find((i) => i.ruta === p.ruta && i.disponible !== false)
     return item ? [{ ...p, icono: item.icono }] : []
@@ -44,7 +44,7 @@ export function BarraInferior({
     ruta,
     visibles.map((i) => i.ruta),
   )
-  const enMas = !pestanas.some((p) => p.ruta === activa)
+  const enMas = activa !== undefined && !pestanas.some((p) => p.ruta === activa)
 
   const clasePestana = (activo: boolean) =>
     cn(
@@ -52,7 +52,7 @@ export function BarraInferior({
       activo ? 'text-acento' : 'text-texto-suave hover:text-texto',
     )
   const claseIcono = (activo: boolean) =>
-    cn('flex h-7 w-12 items-center justify-center rounded-full transition-colors', activo && 'bg-acento-suave')
+    cn('flex h-7 w-12 items-center justify-center rounded-full transition-colors', activo && 'bg-acento text-acento-texto')
 
   return (
     <>
@@ -123,7 +123,7 @@ export function BarraInferior({
             className="absolute inset-x-0 bottom-0 flex max-h-[85dvh] flex-col rounded-t-2xl bg-superficie pb-[env(safe-area-inset-bottom)] shadow-xl"
           >
             <div className="flex items-center justify-between border-b border-borde px-4 py-2">
-              <span className="text-sm font-semibold text-texto">Todas las secciones</span>
+              <span className="text-sm font-semibold text-texto">Tus secciones</span>
               <button
                 type="button"
                 onClick={() => setAbierto(false)}
@@ -134,7 +134,7 @@ export function BarraInferior({
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <NavegacionLista permisos={permisos} esAdmin={esAdmin} alNavegar={() => setAbierto(false)} />
+              <NavegacionLista permisos={permisos} esAdmin={esAdmin} pendientes={pendientes} alNavegar={() => setAbierto(false)} />
               <div className="border-t border-borde px-6 py-4">
                 <InstalarApp />
               </div>
