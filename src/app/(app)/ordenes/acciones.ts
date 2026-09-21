@@ -295,7 +295,7 @@ export async function registrarEntrega(_previo: unknown, datos: FormData): Promi
     }
   }
 
-  const { error } = await supabase.from('ot_entregas').insert({
+  const { data: acta, error } = await supabase.from('ot_entregas').insert({
     orden_id: v.orden_id,
     recibe_nombre: v.recibe_nombre,
     recibe_documento: v.recibe_documento || null,
@@ -303,13 +303,18 @@ export async function registrarEntrega(_previo: unknown, datos: FormData): Promi
     garantia_meses: v.garantia_meses,
     conforme: v.conforme,
     observaciones: v.observaciones || null,
-  })
+  }).select('id, numero').maybeSingle()
 
-  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (error) {
+    return { ok: false, error: error.code === '23505' && error.message.includes('uq_ot_entregas_orden')
+      ? 'Esta orden ya tiene un acta de entrega. Recarga el resumen para consultar la entrega registrada.'
+      : mensajeDeError(error) }
+  }
+  if (!acta) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   revalidatePath('/ordenes')
-  return { ok: true, mensaje: 'Acta registrada. La orden quedó entregada.' }
+  return { ok: true, mensaje: `Acta ${acta.numero} registrada. La orden quedó entregada.` }
 }
 
 const esquemaComentario = z.object({

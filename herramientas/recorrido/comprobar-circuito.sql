@@ -73,6 +73,12 @@ begin
       update public.ordenes_trabajo set estado='EN_PROCESO' where id=v_ot;
       get diagnostics v_filas = row_count;
       if v_filas<>1 then raise exception 'FALLO: Producción no inició la OT'; end if;
+      v_negado := false;
+      begin
+        update public.ordenes_trabajo set estado='TERMINADA' where id=v_ot;
+      exception when check_violation then v_negado := true;
+      end;
+      if not v_negado then raise exception 'FALLO: se terminó una OT con etapas pendientes'; end if;
       update public.ot_etapas set avance_porcentaje=100,estado='TERMINADA'
        where orden_id=v_ot and estado<>'OMITIDA';
       get diagnostics v_filas = row_count;
@@ -97,11 +103,23 @@ begin
     when 7 then
       insert into public.liberaciones_tesoreria(orden_id,observacion) values(v_ot,'ENSAYO EN ROLLBACK');
     when 8 then
+      v_negado := false;
+      begin
+        update public.ordenes_trabajo set estado='ENTREGADA' where id=v_ot;
+      exception when check_violation then v_negado := true;
+      end;
+      if not v_negado then raise exception 'FALLO: se entregó cambiando estado sin acta'; end if;
       insert into public.ot_entregas(orden_id,recibe_nombre,garantia_meses)
         values(v_ot,'RECEPTOR DE ENSAYO',12) returning id into v_acta;
       if not exists(select 1 from public.ordenes_trabajo where id=v_ot and estado='ENTREGADA') then
         raise exception 'FALLO: el acta no entregó la OT';
       end if;
+      v_negado := false;
+      begin
+        insert into public.ot_entregas(orden_id,recibe_nombre) values(v_ot,'ACTA DUPLICADA');
+      exception when unique_violation then v_negado := true;
+      end;
+      if not v_negado then raise exception 'FALLO: la OT aceptó dos actas'; end if;
     when 9 then
       update public.ordenes_trabajo set estado='FACTURADA' where id=v_ot;
       get diagnostics v_filas = row_count;
@@ -111,6 +129,12 @@ begin
       if not exists(select 1 from public.ot_entregas where id=v_acta and salida_confirmada_en is not null) then
         raise exception 'FALLO: no quedó confirmado el aviso a portería';
       end if;
+      v_negado := false;
+      begin
+        update public.ordenes_trabajo set estado='EN_PROCESO' where id=v_ot;
+      exception when check_violation then v_negado := true;
+      end;
+      if not v_negado then raise exception 'FALLO: una OT facturada volvió a producción'; end if;
     end case;
     reset role;
   end loop;

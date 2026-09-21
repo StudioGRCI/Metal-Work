@@ -6,7 +6,7 @@ import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { useEnvio } from '@/lib/envio'
-import { fecha as formatearFecha, hoyLima, puesto } from '@/lib/format'
+import { fecha as formatearFecha, fechaHora, hoyLima, puesto } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { confirmarSalida, liberarTesoreria } from '../acciones'
@@ -61,7 +61,7 @@ function Compuerta({
         <Check className="size-3.5" />
       </span>
       <div className="min-w-0">
-        <p className="text-sm font-medium text-texto">{titulo}</p>
+        <p className="text-sm font-medium text-texto">{titulo}<span className="sr-only">{cumplida ? ': completado' : ': pendiente'}</span></p>
         <div className="text-xs text-texto-suave">{detalle}</div>
       </div>
     </div>
@@ -69,9 +69,8 @@ function Compuerta({
 }
 
 /**
- * Las dos compuertas antes de que la unidad cruce portería: tesorería confirma
- * que el cliente está al día, y el aviso final a portería. En ese orden, porque
- * así está escrito el procedimiento.
+ * Tesorería, acta y aviso a portería. Los sellos reales determinan qué falta;
+ * el estado FACTURADA por sí solo no demuestra que se haya avisado la salida.
  */
 export function SalidaDeUnidad({
   ordenId,
@@ -92,6 +91,7 @@ export function SalidaDeUnidad({
   // todavía; antes el formulario se vaciaba con el rechazo.
   const liberar = useEnvio(liberarTesoreria)
   const confirmar = useEnvio(confirmarSalida)
+  const completados = Number(Boolean(liberacion)) + Number(Boolean(entrega)) + Number(Boolean(entrega?.salida_confirmada_en))
 
   return (
     <Tarjeta>
@@ -100,6 +100,15 @@ export function SalidaDeUnidad({
         descripcion="Completa la liberación, registra el acta y avisa a portería."
       />
       <TarjetaCuerpo className="space-y-4">
+        <div className="rounded-[var(--radius-base)] bg-acento-suave px-3 py-2 text-sm text-acento">
+          <p className="font-semibold">{completados} de 3 pasos registrados</p>
+          <p className="mt-0.5 text-xs">
+            {!liberacion ? 'Siguiente: Administración o Gerencia confirma la liberación de tesorería.'
+              : !entrega ? 'Siguiente: el responsable de entrega registra el acta de conformidad.'
+                : !entrega.salida_confirmada_en ? 'Siguiente: quien coordina la entrega avisa a portería.'
+                  : 'Liberación, acta y aviso registrados. El aviso autoriza la salida; no registra el cruce físico del vehículo.'}
+          </p>
+        </div>
         <Compuerta
           cumplida={Boolean(liberacion)}
           titulo="Liberación de tesorería"
@@ -110,7 +119,7 @@ export function SalidaDeUnidad({
                   ? puesto(liberacion.liberador)
                   : 'Tesorería'}
                 {' · '}
-                {formatearFecha(liberacion.liberado_en)}
+                {fechaHora(liberacion.liberado_en)}
                 {liberacion.observacion && <span className="block">{liberacion.observacion}</span>}
               </>
             ) : (
@@ -163,7 +172,7 @@ export function SalidaDeUnidad({
                   ? puesto(entrega.confirmador)
                   : 'Confirmada'}
                 {' · '}
-                {formatearFecha(entrega.salida_confirmada_en)}
+                {fechaHora(entrega.salida_confirmada_en)}
               </>
             ) : entrega ? (
               'El acta está registrada; falta avisar a portería que la unidad puede cruzar.'

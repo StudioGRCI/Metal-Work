@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { GuiaDelProceso } from '@/components/estructura/guia-del-proceso'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia, Punto } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
@@ -280,7 +281,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         }
       />
 
-      {query.creada === '1' && (
+      {vista === 'resumen' && <GuiaDelProceso />}
+
+      {query.creada === '1' && orden.estado === 'BORRADOR' && (
         <p className="mb-4 rounded-[var(--radius-base)] bg-exito-suave px-3 py-2 text-sm text-exito">
           {/* A quien no aprueba no se le pide que apruebe: se le dice quién lo hace. */}
           {puede(perfil, 'ordenes.aprobar')
