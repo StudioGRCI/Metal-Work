@@ -120,7 +120,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   // cientos de eventos y no tiene sentido traerlos para ver el resumen.
   const verFicha = vista === 'ficha'
   // La salida importa cuando la orden se acerca a la puerta.
-  const verSalida = vista === 'resumen' && ['TERMINADA', 'CONTROL_CALIDAD', 'ENTREGADA'].includes(orden.estado)
+  const verSalida = vista === 'resumen' && ['TERMINADA', 'CONTROL_CALIDAD', 'ENTREGADA', 'FACTURADA'].includes(orden.estado)
 
   const [etapas, timeline, accesorios, repuestos, verificaciones, personal, cumplimiento] =
     await Promise.all([
@@ -513,6 +513,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                 entrega={salida.entrega}
                 puedeLiberar={puede(perfil, 'tesoreria.liberar')}
                 puedeConfirmar={puede(perfil, ['ordenes.entregar', 'produccion.actividades'])}
+                puedeRegistrarEntrega={orden.estado === 'TERMINADA' && puede(perfil, 'ordenes.entregar')}
               />
             )}
             {fechasClave && (

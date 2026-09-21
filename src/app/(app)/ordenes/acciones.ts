@@ -279,11 +279,13 @@ export async function registrarEntrega(_previo: unknown, datos: FormData): Promi
 
   // La regla del flujograma: la unidad no sale si el cliente tiene deuda.
   // Tesorería libera; recién entonces entra el acta.
-  const { data: liberacion } = await supabase
+  const { data: liberacion, error: errorLiberacion } = await supabase
     .from('liberaciones_tesoreria')
     .select('id')
     .eq('orden_id', v.orden_id)
     .maybeSingle()
+
+  if (errorLiberacion) return { ok: false, error: mensajeDeError(errorLiberacion) }
 
   if (!liberacion) {
     return {

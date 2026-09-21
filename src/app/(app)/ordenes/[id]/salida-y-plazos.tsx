@@ -79,12 +79,14 @@ export function SalidaDeUnidad({
   entrega,
   puedeLiberar,
   puedeConfirmar,
+  puedeRegistrarEntrega,
 }: {
   ordenId: string
   liberacion: Liberacion
   entrega: Entrega
   puedeLiberar: boolean
   puedeConfirmar: boolean
+  puedeRegistrarEntrega: boolean
 }) {
   // Con `useEnvio` la constancia se queda escrita si tesorería no puede liberar
   // todavía; antes el formulario se vaciaba con el rechazo.
@@ -95,7 +97,7 @@ export function SalidaDeUnidad({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Salida de la unidad"
-        descripcion="Tesorería y portería: las dos compuertas del procedimiento, en su orden."
+        descripcion="Completa la liberación, registra el acta y avisa a portería."
       />
       <TarjetaCuerpo className="space-y-4">
         <Compuerta
@@ -138,6 +140,18 @@ export function SalidaDeUnidad({
             </div>
           </form>
         )}
+
+        <Compuerta
+          cumplida={Boolean(entrega)}
+          titulo="Acta de entrega"
+          detalle={entrega
+            ? `Registrada el ${formatearFecha(entrega.fecha_entrega)}`
+            : liberacion
+              ? puedeRegistrarEntrega
+                ? 'Salida liberada. Usa «Registrar entrega» en la cabecera para guardar la conformidad del cliente.'
+                : 'Salida liberada. Falta que el responsable de la entrega registre el acta de conformidad del cliente.'
+              : 'Primero se necesita la liberación de tesorería.'}
+        />
 
         <Compuerta
           cumplida={Boolean(entrega?.salida_confirmada_en)}
