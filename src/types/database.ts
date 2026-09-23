@@ -1478,6 +1478,71 @@ export type Database = {
           }
         ]
       }
+      movimientos_materiales: {
+        Row: {
+          id: string
+          tipo: string
+          requerimiento_detalle_id: string
+          orden_compra_detalle_id: string | null
+          cantidad: number
+          documento_referencia: string | null
+          responsable_id: string | null
+          registrado_por: string
+          registrado_en: string
+        }
+        Insert: {
+          id: string
+          tipo: string
+          requerimiento_detalle_id: string
+          orden_compra_detalle_id?: string | null
+          cantidad: number
+          documento_referencia?: string | null
+          responsable_id?: string | null
+          registrado_por?: string
+          registrado_en?: string
+        }
+        Update: {
+          id?: string
+          tipo?: string
+          requerimiento_detalle_id?: string
+          orden_compra_detalle_id?: string | null
+          cantidad?: number
+          documento_referencia?: string | null
+          responsable_id?: string | null
+          registrado_por?: string
+          registrado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_mov_material_oc"
+            columns: ["orden_compra_detalle_id", "requerimiento_detalle_id"]
+            isOneToOne: false
+            referencedRelation: "orden_compra_material_detalles"
+            referencedColumns: ["id", "requerimiento_detalle_id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_requerimiento_detalle_id_fkey"
+            columns: ["requerimiento_detalle_id"]
+            isOneToOne: false
+            referencedRelation: "requerimiento_material_detalles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_responsable_id_fkey"
+            columns: ["responsable_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       notas_cotizacion: {
         Row: {
           id: string
@@ -1548,6 +1613,114 @@ export type Database = {
             columns: ["usuario_id"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      orden_compra_material_detalles: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          requerimiento_id: string
+          requerimiento_detalle_id: string
+          cantidad: number
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id: string
+          requerimiento_id: string
+          requerimiento_detalle_id: string
+          cantidad: number
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          requerimiento_id?: string
+          requerimiento_detalle_id?: string
+          cantidad?: number
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_oc_material_header_req"
+            columns: ["orden_compra_id", "requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id", "requerimiento_id"]
+          },
+          {
+            foreignKeyName: "fk_oc_material_req_linea"
+            columns: ["requerimiento_detalle_id", "requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "requerimiento_material_detalles"
+            referencedColumns: ["id", "requerimiento_id"]
+          },
+          {
+            foreignKeyName: "orden_compra_material_detalles_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orden_compra_material_detalles_requerimiento_detalle_id_fkey"
+            columns: ["requerimiento_detalle_id"]
+            isOneToOne: false
+            referencedRelation: "requerimiento_material_detalles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orden_compra_material_detalles_requerimiento_id_fkey"
+            columns: ["requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "requerimientos_materiales"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ordenes_compra_materiales: {
+        Row: {
+          id: string
+          requerimiento_id: string
+          proveedor: string
+          referencia: string
+          fecha_estimada: string | null
+          creado_por: string
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          requerimiento_id: string
+          proveedor: string
+          referencia: string
+          fecha_estimada?: string | null
+          creado_por?: string
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          requerimiento_id?: string
+          proveedor?: string
+          referencia?: string
+          fecha_estimada?: string | null
+          creado_por?: string
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ordenes_compra_materiales_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_materiales_requerimiento_id_fkey"
+            columns: ["requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "requerimientos_materiales"
             referencedColumns: ["id"]
           }
         ]
@@ -2461,6 +2634,7 @@ export type Database = {
           creado_por: string | null
           creado_en: string
           actualizado_en: string
+          area_destino: string
         }
         Insert: {
           id?: string
@@ -2473,6 +2647,7 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          area_destino?: string
         }
         Update: {
           id?: string
@@ -2485,6 +2660,7 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          area_destino?: string
         }
         Relationships: [
           {
@@ -3326,6 +3502,87 @@ export type Database = {
         }
         Relationships: []
       }
+      requerimiento_material_detalles: {
+        Row: {
+          id: string
+          requerimiento_id: string
+          ot_material_id: string
+          cantidad_solicitada: number
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          requerimiento_id: string
+          ot_material_id: string
+          cantidad_solicitada: number
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          requerimiento_id?: string
+          ot_material_id?: string
+          cantidad_solicitada?: number
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requerimiento_material_detalles_ot_material_id_fkey"
+            columns: ["ot_material_id"]
+            isOneToOne: true
+            referencedRelation: "ot_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_material_detalles_requerimiento_id_fkey"
+            columns: ["requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "requerimientos_materiales"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      requerimientos_materiales: {
+        Row: {
+          id: string
+          orden_id: string
+          area_destino: string
+          solicitado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          area_destino: string
+          solicitado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          area_destino?: string
+          solicitado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimientos_materiales_solicitado_por_fkey"
+            columns: ["solicitado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       roles: {
         Row: {
           id: string
@@ -4020,6 +4277,31 @@ export type Database = {
         }
         Relationships: []
       }
+      v_atencion_materiales: {
+        Row: {
+          requerimiento_id: string | null
+          detalle_id: string | null
+          orden_id: string | null
+          numero_ot: string | null
+          area_destino: string | null
+          ot_material_id: string | null
+          numero_plano: string | null
+          plano: string | null
+          material_id: string | null
+          material_codigo: string | null
+          material: string | null
+          unidad: string | null
+          cantidad_solicitada: number | null
+          cantidad_comprada: number | null
+          cantidad_recibida: number | null
+          cantidad_despachada: number | null
+          estado: string | null
+          responsables: string | null
+          solicitado_por: string | null
+          creado_en: string | null
+        }
+        Relationships: []
+      }
       v_cotizaciones_pdf: {
         Row: {
           id: string | null
@@ -4151,6 +4433,16 @@ export type Database = {
         }
         Relationships: []
       }
+      v_existencias_materiales: {
+        Row: {
+          material_id: string | null
+          codigo: string | null
+          descripcion: string | null
+          unidad: string | null
+          existencia: number | null
+        }
+        Relationships: []
+      }
       v_flota_avance_diario: {
         Row: {
           id: string | null
@@ -4207,6 +4499,20 @@ export type Database = {
           impedimento: string | null
           fotos: number | null
           reportes: number | null
+        }
+        Relationships: []
+      }
+      v_orden_compra_material_pendiente: {
+        Row: {
+          id: string | null
+          requerimiento_id: string | null
+          requerimiento_detalle_id: string | null
+          proveedor: string | null
+          referencia: string | null
+          fecha_estimada: string | null
+          cantidad_comprada: number | null
+          cantidad_recibida: number | null
+          cantidad_pendiente: number | null
         }
         Relationships: []
       }
@@ -4300,6 +4606,7 @@ export type Database = {
           observacion: string | null
           creado_por: string | null
           creado_en: string | null
+          area_destino: string | null
         }
         Relationships: []
       }
@@ -4515,6 +4822,17 @@ export type Database = {
         }
         Returns: number
       }
+      crear_orden_compra_material: {
+        Args: {
+          p_id: string
+          p_requerimiento_id: string
+          p_proveedor: string
+          p_referencia: string
+          p_detalles: Json
+          p_fecha_estimada?: string
+        }
+        Returns: string
+      }
       crear_personal: {
         Args: {
           p_nombres: string
@@ -4529,6 +4847,14 @@ export type Database = {
           p_telefono?: string
           p_es_operario?: boolean
           p_costo_hora?: number
+        }
+        Returns: string
+      }
+      crear_requerimiento_material: {
+        Args: {
+          p_orden_id: string
+          p_area_destino: string
+          p_materiales: string[]
         }
         Returns: string
       }
@@ -4548,6 +4874,15 @@ export type Database = {
           gerente_general: string | null
           gerente_general_cargo: string | null
         }[]
+      }
+      despachar_material: {
+        Args: {
+          p_id: string
+          p_requerimiento_detalle_id: string
+          p_cantidad: number
+          p_responsable_id: string
+        }
+        Returns: string
       }
       dias_de_taller: {
         Args: {
@@ -4792,6 +5127,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      puede_ver_area_material: {
+        Args: {
+          p_area: string
+        }
+        Returns: boolean
+      }
       puede_ver_hoja_de_area: {
         Args: {
           p_area: string
@@ -4846,6 +5187,15 @@ export type Database = {
           p_tipo_evento: Database["public"]["Enums"]["tipo_evento_ot"]
           p_descripcion: string
           p_datos?: Json
+        }
+        Returns: string
+      }
+      registrar_recepcion_material: {
+        Args: {
+          p_id: string
+          p_orden_compra_detalle_id: string
+          p_cantidad: number
+          p_documento_referencia: string
         }
         Returns: string
       }
