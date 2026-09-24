@@ -189,7 +189,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
         titulo: 'Personal',
         ruta: '/personal',
         icono: UserCog,
-        permiso: 'usuarios.ver',
+        permiso: ['usuarios.gestionar', 'usuarios.ver'],
         descripcion: 'Altas, puestos y accesos',
         disponible: true,
       },
