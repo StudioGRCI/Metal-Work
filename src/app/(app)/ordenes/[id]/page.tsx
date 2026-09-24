@@ -49,6 +49,8 @@ import type { CodigoMoneda } from '@/lib/format'
 import { AccionesEstado } from './acciones-estado'
 import { ArchivosDeOrden, type AdjuntoEnPantalla } from './archivos-de-orden'
 import { PonerCliente } from './poner-cliente'
+import { EditarOrden } from './editar-orden'
+import { cotizacionesParaCambio } from '@/lib/datos/edicion-ot'
 import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
 
 import { Bitacora } from './bitacora'
@@ -153,6 +155,11 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     puede(perfil, 'clientes.ver')
       ? await clientesParaElegir()
       : null
+
+  const puedeEditarDatos = vista === 'resumen' && puede(perfil, 'ordenes.editar')
+    && !['ENTREGADA', 'FACTURADA', 'ANULADA'].includes(orden.estado)
+  const nuevasCotizaciones = puedeEditarDatos
+    ? await cotizacionesParaCambio(orden.cliente_id, orden.tipo_carroceria?.id ?? null) : []
 
   // La lista de Diseño y su catálogo.
   const listaMateriales =
@@ -420,7 +427,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           />
 
           <Tarjeta>
-            <TarjetaCabecera titulo="Cliente y unidad" />
+            <TarjetaCabecera titulo="Cliente y unidad"
+              acciones={puedeEditarDatos ? <EditarOrden orden={orden} cotizaciones={nuevasCotizaciones} /> : undefined} />
             <TarjetaCuerpo className="space-y-0">
               {/* Sin cliente solo puede estar la que abrió el taller (100): la
                   oficina se lo pone acá; los demás leen que falta. */}
@@ -578,9 +586,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           repuestos={repuestos}
           verificaciones={verificaciones}
           personal={personal}
-          puedeEditar={puede(perfil, ['ordenes.editar', 'produccion.registrar'])}
-          puedeEscribirOrden={puede(perfil, ['ordenes.editar', 'ordenes.cambiar_estado'])}
-          puedeArmar={puede(perfil, ['ordenes.editar', 'produccion.registrar'])}
+          puedeEditar={puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
+          puedeEscribirOrden={puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
+          puedeArmar={puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
         />
       )}
 

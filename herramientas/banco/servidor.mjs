@@ -421,9 +421,28 @@ async function manejarArchivos(req, res, url) {
     return responder(res, 200, { Key: camino, Id: randomUUID() })
   }
 
-  // Enlace firmado: POST /object/sign/<cubeta>/<camino>
+  // Enlaces firmados por lote: POST /object/sign/<cubeta> con { paths }.
+  // Supabase Storage devuelve una fila por cada ruta; la lista de cotizaciones
+  // usa este endpoint para no pedir un enlace por documento.
   if (req.method === 'POST' && ruta.startsWith('/object/sign/')) {
     const camino = ruta.replace('/object/sign/', '')
+    if (!camino.includes('/')) {
+      const cuerpo = JSON.parse((await leerCuerpo(req)).toString() || '{}')
+      if (!Array.isArray(cuerpo.paths)) {
+        return responder(res, 400, { message: 'La solicitud de enlaces necesita una lista de rutas.' })
+      }
+      const data = cuerpo.paths.map((archivo) => {
+        const ficha = firmar({ camino: `${camino}/${archivo}`, exp: Math.floor(Date.now() / 1000) + 3600 })
+        return {
+          error: null,
+          path: archivo,
+          signedURL: `/object/sign/${camino}/${archivo}?token=${ficha}`,
+        }
+      })
+      return responder(res, 200, data)
+    }
+
+  // Enlace firmado individual: POST /object/sign/<cubeta>/<camino>
     const ficha = firmar({ camino, exp: Math.floor(Date.now() / 1000) + 3600 })
     return responder(res, 200, { signedURL: `/storage/v1/object/sign/${camino}?token=${ficha}` })
   }

@@ -117,7 +117,7 @@ export function Bitacora({
                     </div>
                     <p className="mt-1 text-sm text-texto">{evento.titulo}</p>
                     {evento.detalle && evento.detalle !== evento.titulo && (
-                      <p className="mt-0.5 text-xs text-texto-suave">{evento.detalle}</p>
+                      <p className="mt-0.5 whitespace-pre-wrap text-xs text-texto-suave">{evento.detalle}</p>
                     )}
                   </div>
                 </li>

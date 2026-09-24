@@ -252,9 +252,9 @@ const esquemaEmitir = z.object({
     .string()
     .trim()
     .regex(/^\d{1,6}(-\d{4})?$/, 'El número de la orden es el que trae su papel: 2922 o 2922-2026'),
-  // Migración 104: lo que se fabrica es un semirremolque o una carrocería
-  // montada, y la unidad se reconoce por su número FMI, no por la placa.
-  numero_fmi: z.string().trim().max(40).optional(),
+  // La unidad se identifica con el código interno del taller. Se conserva el
+  // nombre del argumento RPC por compatibilidad con la función ya instalada.
+  codigo_interno: z.string().trim().max(40).optional(),
   tipo_unidad: z.enum(['SEMIRREMOLQUE', 'CARROCERIA_MONTADA'], {
     message: 'Elige si es un semirremolque o una carrocería montada.',
   }),
@@ -286,8 +286,8 @@ export async function emitirOrdenDeCotizacion(
   }
   const v = analisis.data
 
-  if (!v.numero_fmi && !v.marca && !v.modelo) {
-    return { ok: false, error: 'Escribe el número FMI, o la marca y el modelo si todavía no tiene.' }
+  if (!v.codigo_interno && !v.marca && !v.modelo) {
+    return { ok: false, error: 'Escribe el código interno o los datos del chasis si todavía no tiene código.' }
   }
   if (!v.ruta_pdf.startsWith(`ot/${v.orden_id}/`)) {
     return { ok: false, error: 'El PDF de la orden no llegó en su sitio: vuelve a elegirlo.' }
@@ -298,7 +298,7 @@ export async function emitirOrdenDeCotizacion(
     p_cotizacion: v.cotizacion_id,
     p_orden: v.orden_id,
     p_numero: v.numero,
-    p_numero_fmi: v.numero_fmi ?? '',
+    p_numero_fmi: v.codigo_interno ?? '',
     p_tipo_unidad: v.tipo_unidad,
     p_marca: v.marca ?? '',
     p_modelo: v.modelo ?? '',

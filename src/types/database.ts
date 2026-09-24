@@ -4702,6 +4702,14 @@ export type Database = {
       }
     }
     Functions: {
+      editar_ot_con_historial: {
+        Args: { p_orden: string; p_version: string; p_datos: Json; p_motivo: string }
+        Returns: string
+      }
+      guardar_ficha_diseno: {
+        Args: { p_orden: string; p_datos: Json }
+        Returns: string
+      }
       abrir_orden_del_taller: {
         Args: {
           p_placa: string

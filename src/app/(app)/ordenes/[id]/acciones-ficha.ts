@@ -30,8 +30,8 @@ type Guarda =
 
 async function exigirTaller(): Promise<Guarda> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['ordenes.editar', 'produccion.registrar'])) {
-    return { ok: false, error: 'No tienes permiso para llenar la ficha de la orden.' }
+  if (!puede(perfil, 'diseno.planos')) {
+    return { ok: false, error: 'La ficha de taller la completa Diseño.' }
   }
   return { ok: true, perfil }
 }
@@ -48,10 +48,10 @@ async function exigirTaller(): Promise<Guarda> {
  */
 async function exigirEscribirOrden(): Promise<Guarda> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['ordenes.editar', 'ordenes.cambiar_estado'])) {
+  if (!puede(perfil, 'diseno.planos')) {
     return {
       ok: false,
-      error: 'Los datos de la unidad los llena el jefe de taller o el supervisor.',
+      error: 'Los datos de la ficha los completa Diseño.',
     }
   }
   return { ok: true, perfil }
@@ -64,10 +64,10 @@ async function exigirEscribirOrden(): Promise<Guarda> {
  */
 async function exigirArmarFicha(): Promise<Guarda> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['ordenes.editar', 'produccion.registrar'])) {
+  if (!puede(perfil, 'diseno.planos')) {
     return {
       ok: false,
-      error: 'Las líneas de la ficha las arma el taller.',
+      error: 'Los accesorios y repuestos los completa Diseño.',
     }
   }
   return { ok: true, perfil }
@@ -110,9 +110,9 @@ export async function guardarFichaFisica(
   }
 
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('ordenes_trabajo')
-    .update({
+  const { data, error } = await supabase.rpc('guardar_ficha_diseno', {
+    p_orden: v.orden_id,
+    p_datos: {
       largo_m: numero(v.largo_m),
       ancho_m: numero(v.ancho_m),
       alto_m: numero(v.alto_m),
@@ -125,10 +125,8 @@ export async function guardarFichaFisica(
       caracteristicas_especiales: nulo(v.caracteristicas_especiales),
       correo_contacto: nulo(v.correo_contacto),
       encargado_produccion_id: nulo(v.encargado_produccion_id),
-    })
-    .eq('id', v.orden_id)
-    .select('id')
-    .maybeSingle()
+    },
+  })
 
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: NO_TOCO_NADA }

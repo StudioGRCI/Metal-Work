@@ -306,7 +306,7 @@ const TIPOS_UNIDAD = [
 
 /**
  * Administración emite la orden desde la cotización aprobada: si es un
- * semirremolque o una carrocería montada, el número FMI de la unidad, la fecha
+ * semirremolque o una carrocería montada, el código interno de la unidad, la fecha
  * prometida y el PDF de la orden. El tipo viene propuesto por la carrocería de
  * la cotización cuando el catálogo lo sabe. La base crea la orden aprobada,
  * con sus etapas y con el PDF pegado; de ahí en adelante el taller ya trabaja.
@@ -408,7 +408,7 @@ export function EmitirOrden({
         abierta={abierto}
         alCerrar={() => setAbierto(false)}
         titulo={`Emitir la orden de la ${numero}`}
-        descripcion="El cliente y la carrocería salen de la cotización. Falta el número de la orden —el de su papel—, si es semirremolque o carrocería montada, el número FMI, la fecha prometida y el PDF. Al emitirla queda aprobada, con sus etapas, y el taller ya puede armar su lista."
+        descripcion="El cliente y la carrocería salen de la cotización. Falta el número de la orden —el de su papel—, si es semirremolque o carrocería montada, el código interno, la fecha prometida y el PDF. Al emitirla queda aprobada, con sus etapas, y el taller ya puede armar su lista."
         ancho="md"
       >
         <form onSubmit={enviar} className="space-y-4">
@@ -471,12 +471,13 @@ export function EmitirOrden({
                 ))}
               </Seleccion>
             </Campo>
-            <Campo etiqueta="Número FMI" htmlFor="eo-fmi" ayuda="Si todavía no tiene, marca y modelo le dan nombre">
-              <Entrada id="eo-fmi" name="numero_fmi" autoComplete="off" autoCapitalize="characters" maxLength={40} />
+            <Campo etiqueta="Código interno" htmlFor="eo-codigo-interno" ayuda="Identifica la unidad dentro del taller">
+              <Entrada id="eo-codigo-interno" name="codigo_interno" autoComplete="off" autoCapitalize="characters" maxLength={40} />
             </Campo>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
+            <h3 className="text-sm font-medium sm:col-span-2">Datos del chasis</h3>
             <Campo etiqueta="Marca" htmlFor="eo-marca">
               <Entrada id="eo-marca" name="marca" autoComplete="off" placeholder="Volvo" maxLength={80} />
             </Campo>

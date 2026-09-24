@@ -9,10 +9,9 @@
  * El orden no es caprichoso, es el de lo que identifica de verdad:
  *
  *   1. La placa, cuando la tiene: es como la llama todo el mundo.
- *   2. El número FMI, con el que la OT emitida desde la cotización reconoce la
- *      unidad (migración 104).
- *   3. El código interno de fabricación (VSC_SR_O4_6_26/30), que es como la
- *      llama el taller mientras se construye.
+ *   2. El código interno de fabricación, que es como la llama el taller
+ *      mientras se construye.
+ *   3. El FMI histórico, para las unidades registradas antes del cambio.
  *   4. El número de chasis, que es lo único que trae un camión recién comprado.
  *   5. La marca y el modelo, que al menos dicen qué camión es.
  *
@@ -41,11 +40,11 @@ export function nombreDeUnidad(unidad: UnidadNombrable | null | undefined): stri
   const placa = limpio(unidad.placa)
   if (placa) return placa
 
-  const fmi = limpio(unidad.numero_fmi)
-  if (fmi) return `FMI ${fmi}`
-
   const codigo = limpio(unidad.codigo_interno)
   if (codigo) return codigo
+
+  const fmi = limpio(unidad.numero_fmi)
+  if (fmi) return fmi
 
   const chasis = limpio(unidad.numero_chasis)
   if (chasis) return `Chasis ${chasis}`
