@@ -179,6 +179,16 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         (a) => areasArmables.some((x) => x.id === a.id) || areasDeSuMano(perfil, [a]).length > 0,
       )
     : []
+  const idsAreasVisibles = new Set(areasVisibles.map((area) => area.id))
+  const actividadesVisibles = hojaAreas
+    ? hojaAreas[0].actividades.filter((actividad) => idsAreasVisibles.has(actividad.area_id))
+    : []
+  const avancesVisibles = hojaAreas
+    ? hojaAreas[0].areas.filter((area) => idsAreasVisibles.has(area.area_id))
+    : []
+  const diarioVisible = hojaAreas
+    ? hojaAreas[0].diario.filter((reporte) => idsAreasVisibles.has(reporte.area_id))
+    : []
 
   // Las observaciones van arriba del resumen, con las áreas a las que se dirigen.
   const [observaciones, areasParaObservar] =
@@ -605,9 +615,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       {vista === 'actividades' && hojaAreas && (
         <ActividadesDeOrden
           ordenId={orden.id}
-          actividades={hojaAreas[0].actividades}
-          areas={hojaAreas[0].areas}
-          diario={hojaAreas[0].diario}
+          avanceGeneral={orden.avance_porcentaje}
+          actividades={actividadesVisibles}
+          areas={avancesVisibles}
+          diario={diarioVisible}
           /* Las áreas de la lista son las que esta persona puede escribir: la
              suya, o todas si responde por el taller entero o es Diseño.
              Ofrecerle las que el RLS le va a rechazar es prometerle un botón
@@ -621,7 +632,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           aprueba={puede(perfil, 'produccion.aprobar_reportes')}
           /* Quién corrige qué lo decide el gemelo de las políticas, acá en el
              servidor: la hoja es un componente de cliente y el perfil no viaja. */
-          corregibles={hojaAreas[0].diario
+          corregibles={diarioVisible
             .filter((r) =>
               puedeCorregirReporte(
                 perfil,
@@ -630,7 +641,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               ),
             )
             .map((r) => r.id)}
-          eliminables={hojaAreas[0].diario
+          eliminables={diarioVisible
             .filter((r) => puedeEliminarReporte(perfil, { revision: r.revision, autor: r.reportado_por }))
             .map((r) => r.id)}
         />

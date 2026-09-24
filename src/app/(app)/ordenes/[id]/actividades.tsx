@@ -53,6 +53,7 @@ function Error_({ texto }: { texto: string | null }) {
  */
 export function ActividadesDeOrden({
   ordenId,
+  avanceGeneral,
   actividades,
   areas,
   diario,
@@ -67,6 +68,7 @@ export function ActividadesDeOrden({
   eliminables,
 }: {
   ordenId: string
+  avanceGeneral: number
   actividades: ActividadArea[]
   areas: AvanceDeArea[]
   diario: ReporteDiario[]
@@ -131,6 +133,19 @@ export function ActividadesDeOrden({
           }
         />
         <TarjetaCuerpo>
+          <div className="mb-5 rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-3 sm:p-4">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-texto-suave">Avance general de la OT</p>
+                <p className="mt-1 text-xs text-texto-tenue">Se calcula con las etapas de producción y sus horas.</p>
+              </div>
+              <span className="tabular text-lg font-semibold text-texto">{numero(avanceGeneral, 1)} %</span>
+            </div>
+            <Progreso valor={avanceGeneral} className="mt-2" />
+            <p className="mt-2 text-xs text-texto-suave">
+              Los porcentajes de las áreas y sus partes diarios se muestran abajo por separado; aprobar un parte no cambia por sí solo este avance general.
+            </p>
+          </div>
           {puedeArmar && !puedeCargarCronograma && (
             <p className="mb-3 text-sm text-texto-suave">
               La orden está cerrada: puedes consultar su avance, pero ya no cargar un cronograma.
