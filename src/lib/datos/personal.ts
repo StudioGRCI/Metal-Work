@@ -27,7 +27,8 @@ export async function listarPersonal(filtros: { busqueda?: string; estado?: stri
     .from('usuarios')
     .select(
       'id, codigo, nombres, apellidos, correo, cargo, telefono, documento, es_operario, costo_hora, activo,' +
-        ' rol:roles!inner(id, codigo, nombre), area:areas(id, codigo, nombre), sede:sedes(id, nombre)',
+        ' rol:roles!inner(id, codigo, nombre),' +
+        ' area:areas!usuarios_area_id_fkey(id, codigo, nombre), sede:sedes(id, nombre)',
     )
     .order('apellidos')
 
