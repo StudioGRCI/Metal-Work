@@ -11,6 +11,7 @@ export type MaterialDeOrden = {
   etapa_id: string | null
   etapa: string | null
   area: string | null
+  area_destino: 'MTZ' | 'PRD' | 'ACB'
   material_id: string
   material_codigo: string
   material: string
@@ -18,6 +19,7 @@ export type MaterialDeOrden = {
   unidad: string | null
   cantidad: number
   observacion: string | null
+  requerimiento_estado: string | null
 }
 
 /** La lista de materiales que Diseño escribió para la orden. */
@@ -27,7 +29,7 @@ export async function listaDeMateriales(ordenId: string): Promise<MaterialDeOrde
   const { data, error } = await supabase
     .from('v_ot_materiales')
     .select(
-      'id, orden_id, plano_id, numero_plano, plano_nombre, etapa_id, etapa, area, material_id, material_codigo, material, especificacion_tecnica, unidad, cantidad, observacion',
+      'id, orden_id, plano_id, numero_plano, plano_nombre, etapa_id, etapa, area, area_destino, material_id, material_codigo, material, especificacion_tecnica, unidad, cantidad, observacion',
     )
     .eq('orden_id', ordenId)
     .order('numero_plano', { nullsFirst: false })
@@ -39,12 +41,32 @@ export async function listaDeMateriales(ordenId: string): Promise<MaterialDeOrde
 }
 
 /** Lo que la pestaña carga de una vez: la lista y el catálogo para armarla. */
-export async function materialesParaPantalla(ordenId: string) {
-  const [materiales, catalogo] = await Promise.all([
+export async function materialesParaPantalla(ordenId: string, puedeVerAtencion: boolean) {
+  const [materiales, catalogo, atencion] = await Promise.all([
     listaDeMateriales(ordenId),
     catalogoDeMateriales(ordenId),
+    puedeVerAtencion ? estadoDeAtencion(ordenId) : Promise.resolve([]),
   ])
-  return { materiales, catalogo }
+  const porLinea = new Map(atencion.map((linea) => [linea.ot_material_id, linea.estado]))
+  return {
+    materiales: materiales.map((material) => ({
+      ...material,
+      requerimiento_estado: porLinea.get(material.id) ?? null,
+    })),
+    catalogo,
+  }
+}
+
+async function estadoDeAtencion(ordenId: string) {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('v_atencion_materiales')
+    .select('ot_material_id, estado')
+    .eq('orden_id', ordenId)
+    .limit(500)
+
+  if (error) throw new Error(`No se pudo leer el estado de los requerimientos: ${error.message}`)
+  return data ?? []
 }
 
 export type OpcionMaterial = {

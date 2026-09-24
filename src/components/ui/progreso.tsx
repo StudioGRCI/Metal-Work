@@ -6,11 +6,13 @@ export function Progreso({
   className,
   mostrarValor = false,
   alto = 'md',
+  etiqueta = 'Avance',
 }: {
   valor: number | string | null | undefined
   className?: string
   mostrarValor?: boolean
   alto?: 'sm' | 'md'
+  etiqueta?: string
 }) {
   const pct = Math.min(100, Math.max(0, Number(valor ?? 0)))
   const color = pct >= 100 ? 'bg-exito' : pct >= 50 ? 'bg-acento' : 'bg-info'
@@ -19,6 +21,7 @@ export function Progreso({
     <div className={cn('flex items-center gap-2', className)}>
       <div
         role="progressbar"
+        aria-label={etiqueta}
         aria-valuenow={Math.round(pct)}
         aria-valuemin={0}
         aria-valuemax={100}

@@ -155,7 +155,14 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       : null
 
   // La lista de Diseño y su catálogo.
-  const listaMateriales = vista === 'materiales' ? await materialesParaPantalla(id) : null
+  const listaMateriales =
+    vista === 'materiales'
+      ? await materialesParaPantalla(id, puede(perfil, 'requerimientos.ver'))
+      : null
+  const areaPropiaMaterial =
+    vista === 'materiales' && perfil.area_id && !puede(perfil, 'diseno.planos')
+      ? ((await areasDelTaller()).find((a) => a.id === perfil.area_id)?.codigo ?? null)
+      : null
 
   // De qué mano es quien mira la hoja de cumplimiento: el supervisor de
   // Maestranza ve solo sus botones; el jefe (cualquier área) y la oficina, los dos.
@@ -607,6 +614,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           materiales={listaMateriales.materiales}
           catalogo={listaMateriales.catalogo}
           puedeDisenar={puede(perfil, 'diseno.planos')}
+          puedeSolicitar={puede(perfil, 'requerimientos.crear')}
+          areaPropia={areaPropiaMaterial}
           ordenViva={motivoInactiva === null}
           motivoInactiva={motivoInactiva}
         />

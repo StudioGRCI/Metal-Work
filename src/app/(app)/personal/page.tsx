@@ -20,7 +20,10 @@ const FILTROS = [
 ]
 
 export default async function PaginaPersonal({ searchParams }: PageProps<'/personal'>) {
-  const perfil = await exigirPermiso('usuarios.ver')
+  // `usuarios.ver` se conserva para perfiles de solo lectura, pero hoy no está
+  // asignado a ningún rol. Gerencia entra por el permiso que sí administra el
+  // personal, igual que las acciones de alta, edición y activación.
+  const perfil = await exigirPermiso(['usuarios.ver', 'usuarios.gestionar'])
   const params = await searchParams
 
   const busqueda = typeof params.q === 'string' ? params.q : undefined

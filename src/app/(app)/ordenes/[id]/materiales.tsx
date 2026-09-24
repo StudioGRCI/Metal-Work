@@ -1,10 +1,11 @@
 'use client'
 
-import { PackagePlus, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowUpRight, PackagePlus, Pencil, Plus, ShoppingCart, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -12,7 +13,12 @@ import type { CatalogoMateriales, MaterialDeOrden } from '@/lib/datos/materiales
 import { cantidad as fmtCantidad } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 
-import { agregarMaterial, cambiarCantidadMaterial, quitarMaterial } from './acciones-materiales'
+import {
+  agregarMaterial,
+  cambiarCantidadMaterial,
+  crearRequerimiento,
+  quitarMaterial,
+} from './acciones-materiales'
 
 
 
@@ -38,6 +44,8 @@ export function MaterialesDeOrden({
   materiales,
   catalogo,
   puedeDisenar,
+  puedeSolicitar,
+  areaPropia,
   ordenViva,
   motivoInactiva,
 }: {
@@ -46,6 +54,8 @@ export function MaterialesDeOrden({
   catalogo: CatalogoMateriales
   /** `diseno.planos`: quien dibuja la unidad escribe qué lleva. */
   puedeDisenar: boolean
+  puedeSolicitar: boolean
+  areaPropia: string | null
   ordenViva: boolean
   /** Por qué no se toca la lista: en borrador falta la aprobación, cerrada ya no hay qué pedir. */
   motivoInactiva?: string | null
@@ -57,7 +67,7 @@ export function MaterialesDeOrden({
       <Tarjeta>
         <TarjetaCabecera
           titulo="Materiales de la orden"
-          descripcion="Lo que Diseño dice que lleva la unidad: cada material con su cantidad, y a qué plano o etapa va."
+          descripcion="Lo que lleva la unidad, con plano y área destino. Desde aquí Diseño envía los materiales a Requerimientos."
         />
         <TarjetaCuerpo className="grid gap-3 sm:grid-cols-3">
           <Dato titulo="Líneas" valor={String(materiales.length)} pie="materiales distintos" />
@@ -72,6 +82,14 @@ export function MaterialesDeOrden({
 
       {puedeDisenar && ordenViva && (
         <NuevoMaterial ordenId={ordenId} catalogo={catalogo} yaEnLista={materiales} />
+      )}
+
+      {puedeSolicitar && ordenViva && materiales.length > 0 && (
+        <SolicitudesPorArea
+          ordenId={ordenId}
+          materiales={materiales}
+          areaPropia={puedeDisenar ? null : areaPropia}
+        />
       )}
 
       {materiales.length === 0 ? (
@@ -95,7 +113,7 @@ export function MaterialesDeOrden({
                 <TR>
                   <TH>Plano</TH>
                   <TH>Material</TH>
-                  <TH>Destino</TH>
+                  <TH>Área destino</TH>
                   <TH className="text-right">Lleva</TH>
                   {puedeDisenar && ordenViva && <TH className="w-20" />}
                 </TR>
@@ -114,14 +132,19 @@ export function MaterialesDeOrden({
                       </p>
                     </TD>
                     <TD className="text-xs text-texto-suave">
-                      {m.area ?? m.etapa ?? <span className="text-texto-tenue">sin repartir</span>}
+                      <span className="font-medium text-texto">{AREAS[m.area_destino]}</span>
+                      {m.etapa && <p className="mt-0.5 text-[11px] text-texto-suave">Etapa: {m.etapa}</p>}
                     </TD>
                     <TD className="text-right tabular text-sm">
                       {fmtCantidad(m.cantidad)} {m.unidad}
                     </TD>
                     {puedeDisenar && ordenViva && (
                       <TD>
-                        <AccionesLinea material={m} ordenId={ordenId} />
+                        {m.requerimiento_estado ? (
+                          <Insignia tono={m.requerimiento_estado === 'ATENDIDO' ? 'exito' : 'aviso'}>
+                            {ETIQUETAS_ESTADO[m.requerimiento_estado] ?? 'Solicitado'}
+                          </Insignia>
+                        ) : <AccionesLinea material={m} ordenId={ordenId} />}
                       </TD>
                     )}
                   </TR>
@@ -132,6 +155,86 @@ export function MaterialesDeOrden({
         </Tarjeta>
       )}
     </div>
+  )
+}
+
+const AREAS: Record<'MTZ' | 'PRD' | 'ACB', string> = {
+  MTZ: 'Maestranza',
+  PRD: 'Producción',
+  ACB: 'Acabados',
+}
+
+const ETIQUETAS_ESTADO: Record<string, string> = {
+  SOLICITADO: 'Solicitado',
+  EN_COMPRA: 'En compra',
+  EN_ALMACEN: 'En almacén',
+  ATENDIDO: 'Entregado',
+}
+
+function SolicitudesPorArea({
+  ordenId,
+  materiales,
+  areaPropia,
+}: {
+  ordenId: string
+  materiales: MaterialDeOrden[]
+  areaPropia: string | null
+}) {
+  const grupos = (Object.keys(AREAS) as (keyof typeof AREAS)[])
+    .filter((area) => areaPropia === null || areaPropia === area)
+    .map((area) => ({
+      area,
+      lineas: materiales.filter((m) => m.area_destino === area && !m.requerimiento_estado),
+    }))
+    .filter((grupo) => grupo.lineas.length > 0)
+
+  if (grupos.length === 0) return null
+
+  return (
+    <div className="grid gap-3 lg:grid-cols-3">
+      {grupos.map(({ area, lineas }) => (
+        <SolicitarGrupo key={area} ordenId={ordenId} area={area} lineas={lineas} />
+      ))}
+    </div>
+  )
+}
+
+function SolicitarGrupo({
+  ordenId,
+  area,
+  lineas,
+}: {
+  ordenId: string
+  area: keyof typeof AREAS
+  lineas: MaterialDeOrden[]
+}) {
+  const { alEnviar, enviando, error } = useEnvio(crearRequerimiento)
+  return (
+    <Tarjeta>
+      <TarjetaCuerpo className="space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-texto">{AREAS[area]}</p>
+            <p className="mt-1 text-xs text-texto-suave">
+              {lineas.length} {lineas.length === 1 ? 'material listo' : 'materiales listos'} para solicitar
+            </p>
+          </div>
+          <span className="rounded-full bg-acento-suave p-2 text-acento">
+            <ShoppingCart aria-hidden className="size-4" />
+          </span>
+        </div>
+        <form onSubmit={alEnviar} className="space-y-2">
+          <input type="hidden" name="orden_id" value={ordenId} />
+          <input type="hidden" name="area_destino" value={area} />
+          {lineas.map((linea) => <input key={linea.id} type="hidden" name="material_id" value={linea.id} />)}
+          {error && <Error_ texto={error} />}
+          <Boton type="submit" tamano="sm" cargando={enviando} className="w-full">
+            <ArrowUpRight aria-hidden className="size-4" />
+            Enviar a Requerimientos
+          </Boton>
+        </form>
+      </TarjetaCuerpo>
+    </Tarjeta>
   )
 }
 
@@ -189,6 +292,9 @@ function AccionesLinea({ material, ordenId }: { material: MaterialDeOrden; orden
           autoFocus
           className="tabular w-20 text-right"
         />
+        <Seleccion aria-label={`Área destino de ${material.material}`} name="area_destino" defaultValue={material.area_destino}>
+          {Object.entries(AREAS).map(([valor, etiqueta]) => <option key={valor} value={valor}>{etiqueta}</option>)}
+        </Seleccion>
         <Boton type="submit" tamano="sm" cargando={enviando}>
           Guardar
         </Boton>
@@ -318,14 +424,20 @@ function NuevoMaterial({
           </Campo>
 
           <Campo etiqueta="Para la etapa" htmlFor="nm-etapa" ayuda="Opcional">
-            <Seleccion id="nm-etapa" name="etapa_id" defaultValue="">
-              <option value="">Sin repartir</option>
+              <Seleccion id="nm-etapa" name="etapa_id" defaultValue="">
+              <option value="">Sin etapa específica</option>
               {catalogo.etapas.map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.nombre}
                   {e.area ? ` · ${e.area}` : ''}
                 </option>
               ))}
+            </Seleccion>
+          </Campo>
+
+          <Campo etiqueta="Área que recibirá el material" htmlFor="nm-area" requerido className="sm:col-span-2">
+            <Seleccion id="nm-area" name="area_destino" defaultValue="PRD" required>
+              {Object.entries(AREAS).map(([valor, etiqueta]) => <option key={valor} value={valor}>{etiqueta}</option>)}
             </Seleccion>
           </Campo>
 

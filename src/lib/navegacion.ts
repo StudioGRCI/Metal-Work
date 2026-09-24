@@ -163,6 +163,19 @@ export const NAVEGACION: GrupoNavegacion[] = [
     ],
   },
   {
+    titulo: 'Abastecimiento',
+    items: [
+      {
+        titulo: 'Atención de materiales',
+        ruta: '/materiales/atencion',
+        icono: Boxes,
+        permiso: ['requerimientos.ver', 'compras.ver', 'almacen.ver', 'almacen.recibir', 'almacen.despachar'],
+        descripcion: 'Solicitudes, compras, recepción y entrega por área',
+        disponible: true,
+      },
+    ],
+  },
+  {
     titulo: 'Clientes y unidades',
     items: [
       { titulo: 'Clientes', ruta: '/clientes', icono: Users, permiso: 'clientes.ver', disponible: true },
@@ -176,7 +189,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
         titulo: 'Personal',
         ruta: '/personal',
         icono: UserCog,
-        permiso: 'usuarios.ver',
+        permiso: ['usuarios.gestionar', 'usuarios.ver'],
         descripcion: 'Altas, puestos y accesos',
         disponible: true,
       },
@@ -226,6 +239,7 @@ export function rutaActiva(ruta: string, rutas: string[]) {
 export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/cotizaciones/pdf', corto: 'Cotizar' },
   { ruta: '/ordenes', corto: 'Órdenes' },
+  { ruta: '/materiales/atencion', corto: 'Materiales' },
   { ruta: '/avance', corto: 'Taller' },
   { ruta: '/cotizaciones/trabajo', corto: 'Trabajo' },
   { ruta: '/avance/diario', corto: 'El día' },
