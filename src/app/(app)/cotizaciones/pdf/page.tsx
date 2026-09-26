@@ -15,6 +15,7 @@ import { fecha as fmtFecha, hora } from '@/lib/format'
 import { exigirPermiso, puede, puedeCorregirCotizacion, puedeQuitarCotizacion } from '@/lib/sesion'
 
 import { CorregirCotizacion, EmitirOrden, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
+import { LiberarATesoreria } from './liberar-a-tesoreria'
 import { SubirCotizacion } from './subir-cotizacion'
 
 export const metadata = { title: 'Cotización en PDF' }
@@ -74,12 +75,13 @@ function enFiltro(c: { estado: string | null; orden_id: string | null }, filtro:
 }
 
 export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<'/cotizaciones/pdf'>) {
-  const perfil = await exigirPermiso('cotizaciones.ver')
+  const perfil = await exigirPermiso(['cotizaciones.ver_pdf_comercial', 'cotizaciones.liberar_tesoreria', 'tesoreria.ver_documentos'])
   const params = await searchParams
 
   const puedeSubir = puede(perfil, 'cotizaciones.crear')
   const revisa = puede(perfil, 'cotizaciones.revisar')
   const emite = puede(perfil, 'ordenes.crear')
+  const liberaTesoreria = puede(perfil, 'cotizaciones.liberar_tesoreria')
 
   const [cotizaciones, catalogos] = await Promise.all([
     listarCotizacionesPdf(),
@@ -105,6 +107,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const meToca = (c: (typeof cotizaciones)[number]) =>
     (revisa && c.estado === 'POR_REVISAR') ||
     (emite && c.estado === 'APROBADA' && !c.orden_id) ||
+    (liberaTesoreria && c.estado === 'APROBADA' && !c.liberacionTesoreria) ||
     puedeCorregirCotizacion(perfil, c)
   const visibles = cotizaciones
     .filter((c) => enFiltro(c, filtro) && coincide(c))
@@ -122,7 +125,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Cotización en PDF"
-        descripcion="La cotización que se le mandó al cliente, en PDF o en Word. Gerencia la aprueba o la rechaza con su observación, y con ella aprobada Administración emite la orden de trabajo."
+        descripcion="Gerencia aprueba el documento; Administración emite la OT y puede liberar la cotización aceptada a Tesorería para revisión financiera."
         acciones={puedeSubir && <SubirCotizacion clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />}
       />
 
@@ -233,6 +236,8 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       <p className="text-[11px] text-texto-tenue">
                         Aprobada por {c.revisado_por_nombre ?? 'Gerencia'}
                         {c.revisado_en ? ` el ${fmtFecha(c.revisado_en)}` : ''}
+                        {c.liberacionTesoreria && <> · Liberada a Tesorería el {fmtFecha(c.liberacionTesoreria.liberado_en)}</>}
+                        {c.observacionesTesoreria.length > 0 && <> · {c.observacionesTesoreria.length} observaciones de Tesorería</>}
                       </p>
                     )}
 
@@ -289,6 +294,9 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         {revisa && c.estado === 'POR_REVISAR' && c.id && <RevisarCotizacion id={c.id} />}
                         {emite && c.estado === 'APROBADA' && c.id && (
                           <EmitirOrden cotizacionId={c.id} numero={c.numero ?? 'cotización'} tipoUnidad={c.tipo_unidad} />
+                        )}
+                        {liberaTesoreria && c.estado === 'APROBADA' && c.id && !c.liberacionTesoreria && (
+                          <LiberarATesoreria cotizacionId={c.id} />
                         )}
                         {corrige && c.id && (
                           <CorregirCotizacion id={c.id} numero={c.numero ?? ''} observacion={c.observacion} />

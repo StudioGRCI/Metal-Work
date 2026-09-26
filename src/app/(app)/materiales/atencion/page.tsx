@@ -11,13 +11,13 @@ export const metadata = { title: 'Atención de materiales' }
 
 export default async function PaginaAtencionMateriales() {
   const perfil = await exigirPermiso([
-    'requerimientos.ver', 'compras.ver', 'almacen.ver', 'almacen.recibir', 'almacen.despachar',
+    'requerimientos.ver', 'compras.ver', 'compras.crear', 'almacen.ver', 'almacen.recibir', 'almacen.despachar',
   ])
   const permisos = {
     verRequerimientos: puede(perfil, 'requerimientos.ver'),
     verExistencias: puede(perfil, 'almacen.ver'),
-    crearCompra: puede(perfil, 'compras.crear'),
     verCompras: puede(perfil, 'compras.ver'),
+    crearCompra: puede(perfil, 'compras.crear'),
     recibir: puede(perfil, 'almacen.recibir'),
     despachar: puede(perfil, 'almacen.despachar'),
   }
@@ -28,6 +28,8 @@ export default async function PaginaAtencionMateriales() {
   )
   const clavesRecepcion = Object.fromEntries(datos.compras.map((compra) => [compra.id ?? '', crypto.randomUUID()]))
   const clavesDespacho = Object.fromEntries(datos.lineas.map((linea) => [linea.detalle_id ?? '', crypto.randomUUID()]))
+  const idsCompras = [...new Set(datos.compras.map((compra) => compra.orden_compra_id).filter((id): id is string => Boolean(id)))]
+  const clavesDocumento = Object.fromEntries(idsCompras.map((id) => [id, crypto.randomUUID()]))
 
   return (
     <>
@@ -61,12 +63,14 @@ export default async function PaginaAtencionMateriales() {
           areas={datos.areas}
           responsables={datos.responsables}
           puedeCrearCompra={permisos.crearCompra}
+          puedeAdjuntarDocumentos={permisos.crearCompra}
           puedeVerCompras={permisos.verCompras}
           puedeRecibir={permisos.recibir}
           puedeDespachar={permisos.despachar}
           clavesCompra={clavesCompra}
           clavesRecepcion={clavesRecepcion}
           clavesDespacho={clavesDespacho}
+          clavesDocumento={clavesDocumento}
         />
       )}
     </>

@@ -36,6 +36,7 @@ begin
     when 'numeric' then 'number'
     when 'json' then 'Json'
     when 'jsonb' then 'Json'
+    when 'void' then 'null'
     else 'string'
   end;
 end;

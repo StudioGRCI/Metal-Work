@@ -917,6 +917,87 @@ export type Database = {
           }
         ]
       }
+      cotizaciones_pdf_liberaciones_tesoreria: {
+        Row: {
+          id: string
+          cotizacion_pdf_id: string
+          liberado_por: string
+          liberado_en: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          cotizacion_pdf_id: string
+          liberado_por?: string
+          liberado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          cotizacion_pdf_id?: string
+          liberado_por?: string
+          liberado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cotizaciones_pdf_liberaciones_tesoreria_cotizacion_pdf_id_fkey"
+            columns: ["cotizacion_pdf_id"]
+            isOneToOne: true
+            referencedRelation: "cotizaciones_pdf"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_pdf_liberaciones_tesoreria_liberado_por_fkey"
+            columns: ["liberado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      cotizaciones_pdf_observaciones_tesoreria: {
+        Row: {
+          id: string
+          cotizacion_pdf_id: string
+          observacion: string
+          registrado_por: string
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          cotizacion_pdf_id: string
+          observacion: string
+          registrado_por?: string
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          cotizacion_pdf_id?: string
+          observacion?: string
+          registrado_por?: string
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cotizaciones_pdf_observaciones_tesoreria_cotizacion_pdf_id_fkey"
+            columns: ["cotizacion_pdf_id"]
+            isOneToOne: false
+            referencedRelation: "cotizaciones_pdf"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_pdf_observaciones_tesoreria_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       cotizaciones_pdf_versiones: {
         Row: {
           id: string
@@ -974,6 +1055,60 @@ export type Database = {
           {
             foreignKeyName: "cotizaciones_pdf_versiones_rechazado_por_fkey"
             columns: ["rechazado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      documentos_compra_material: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          tipo: string
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type: string
+          tamano_bytes: number
+          subido_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id: string
+          tipo: string
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type: string
+          tamano_bytes: number
+          subido_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          tipo?: string
+          nombre_archivo?: string
+          ruta_storage?: string
+          mime_type?: string
+          tamano_bytes?: number
+          subido_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documentos_compra_material_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documentos_compra_material_subido_por_fkey"
+            columns: ["subido_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -1774,6 +1909,7 @@ export type Database = {
           abierta_en_taller: boolean
           cotizacion_pdf_id: string | null
           tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          diseno_lider_id: string | null
         }
         Insert: {
           id?: string
@@ -1823,6 +1959,7 @@ export type Database = {
           abierta_en_taller?: boolean
           cotizacion_pdf_id?: string | null
           tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          diseno_lider_id?: string | null
         }
         Update: {
           id?: string
@@ -1872,6 +2009,7 @@ export type Database = {
           abierta_en_taller?: boolean
           cotizacion_pdf_id?: string | null
           tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          diseno_lider_id?: string | null
         }
         Relationships: [
           {
@@ -1898,6 +2036,13 @@ export type Database = {
           {
             foreignKeyName: "ordenes_trabajo_creado_por_fkey"
             columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_trabajo_diseno_lider_id_fkey"
+            columns: ["diseno_lider_id"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -2954,6 +3099,7 @@ export type Database = {
           creado_por: string | null
           creado_en: string
           actualizado_en: string
+          responsable_diseno_id: string | null
         }
         Insert: {
           id?: string
@@ -2967,6 +3113,7 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          responsable_diseno_id?: string | null
         }
         Update: {
           id?: string
@@ -2980,6 +3127,7 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          responsable_diseno_id?: string | null
         }
         Relationships: [
           {
@@ -2994,6 +3142,13 @@ export type Database = {
             columns: ["orden_id"]
             isOneToOne: false
             referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_planos_responsable_diseno_id_fkey"
+            columns: ["responsable_diseno_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -3080,6 +3235,78 @@ export type Database = {
             columns: ["registrado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_ventas_anteriores: {
+        Row: {
+          id: string
+          orden_id: string
+          cliente_id: string | null
+          cotizacion_id: string | null
+          cotizacion_pdf_id: string | null
+          datos: Json
+          creado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          cliente_id?: string | null
+          cotizacion_id?: string | null
+          cotizacion_pdf_id?: string | null
+          datos: Json
+          creado_por: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          cliente_id?: string | null
+          cotizacion_id?: string | null
+          cotizacion_pdf_id?: string | null
+          datos?: Json
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_ventas_anteriores_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_ventas_anteriores_cotizacion_id_fkey"
+            columns: ["cotizacion_id"]
+            isOneToOne: false
+            referencedRelation: "cotizaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_ventas_anteriores_cotizacion_pdf_id_fkey"
+            columns: ["cotizacion_pdf_id"]
+            isOneToOne: false
+            referencedRelation: "cotizaciones_pdf"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_ventas_anteriores_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_ventas_anteriores_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
             referencedColumns: ["id"]
           }
         ]
@@ -4433,6 +4660,39 @@ export type Database = {
         }
         Relationships: []
       }
+      v_documentos_compra_tesoreria: {
+        Row: {
+          id: string | null
+          orden_compra_id: string | null
+          tipo: string | null
+          nombre_archivo: string | null
+          ruta_storage: string | null
+          mime_type: string | null
+          tamano_bytes: number | null
+          subido_por: string | null
+          creado_en: string | null
+          proveedor: string | null
+          referencia: string | null
+          fecha_estimada: string | null
+          orden_id: string | null
+          numero_ot: string | null
+          area_destino: string | null
+        }
+        Relationships: []
+      }
+      v_equipo_diseno_ot: {
+        Row: {
+          orden_id: string | null
+          diseno_lider_id: string | null
+          lider_nombre: string | null
+          plano_id: string | null
+          numero_plano: string | null
+          plano_nombre: string | null
+          responsable_diseno_id: string | null
+          responsable_nombre: string | null
+        }
+        Relationships: []
+      }
       v_existencias_materiales: {
         Row: {
           material_id: string | null
@@ -4513,6 +4773,7 @@ export type Database = {
           cantidad_comprada: number | null
           cantidad_recibida: number | null
           cantidad_pendiente: number | null
+          orden_compra_id: string | null
         }
         Relationships: []
       }
@@ -4702,14 +4963,6 @@ export type Database = {
       }
     }
     Functions: {
-      editar_ot_con_historial: {
-        Args: { p_orden: string; p_version: string; p_datos: Json; p_motivo: string }
-        Returns: string
-      }
-      guardar_ficha_diseno: {
-        Args: { p_orden: string; p_datos: Json }
-        Returns: string
-      }
       abrir_orden_del_taller: {
         Args: {
           p_placa: string
@@ -4726,19 +4979,19 @@ export type Database = {
         Args: {
           p_tabla: string
         }
-        Returns: string
+        Returns: null
       }
       activar_registro_de_prueba: {
         Args: {
           p_tabla: string
         }
-        Returns: string
+        Returns: null
       }
       activar_timestamps: {
         Args: {
           p_tabla: string
         }
-        Returns: string
+        Returns: null
       }
       aplicar_plantilla_ficha: {
         Args: {
@@ -4757,14 +5010,22 @@ export type Database = {
         Args: {
           p_orden: string
         }
-        Returns: string
+        Returns: null
       }
       arrancar_plazo_de_cotizacion: {
         Args: {
           p_cotizacion: string
           p_fecha: string
         }
-        Returns: string
+        Returns: null
+      }
+      asignar_equipo_diseno: {
+        Args: {
+          p_orden: string
+          p_lider: string
+          p_responsables: Json
+        }
+        Returns: null
       }
       asignar_responsables_ot: {
         Args: {
@@ -4777,14 +5038,14 @@ export type Database = {
           p_usuario: string
           p_clave: string
         }
-        Returns: string
+        Returns: null
       }
       cambiar_estado_personal: {
         Args: {
           p_usuario: string
           p_activo: boolean
         }
-        Returns: string
+        Returns: null
       }
       cargar_cronograma: {
         Args: {
@@ -4803,13 +5064,13 @@ export type Database = {
         Args: {
           p_cuenta: string
         }
-        Returns: string
+        Returns: null
       }
       confirmar_salida_porteria: {
         Args: {
           p_entrega: string
         }
-        Returns: string
+        Returns: null
       }
       cotizacion_sembrar_etapas: {
         Args: {
@@ -4906,6 +5167,15 @@ export type Database = {
         }
         Returns: number
       }
+      editar_ot_con_historial: {
+        Args: {
+          p_orden: string
+          p_version: string
+          p_datos: Json
+          p_motivo: string
+        }
+        Returns: string
+      }
       emitir_orden_de_cotizacion: {
         Args: {
           p_cotizacion: string
@@ -4947,7 +5217,7 @@ export type Database = {
         Args: {
           p_permiso: string
         }
-        Returns: string
+        Returns: null
       }
       flota_sigue_en_taller: {
         Args: {
@@ -4960,6 +5230,13 @@ export type Database = {
           p_cotizacion: string
           p_nombre: string
           p_predeterminada?: boolean
+        }
+        Returns: string
+      }
+      guardar_ficha_diseno: {
+        Args: {
+          p_orden: string
+          p_datos: Json
         }
         Returns: string
       }
@@ -4982,6 +5259,12 @@ export type Database = {
           p_orden: string
           p_area: string
           p_descripcion: string
+        }
+        Returns: string
+      }
+      liberar_cotizacion_a_tesoreria: {
+        Args: {
+          p_cotizacion: string
         }
         Returns: string
       }
@@ -5031,6 +5314,12 @@ export type Database = {
         }
         Returns: number
       }
+      orden_compra_de_ruta: {
+        Args: {
+          p_ruta: string
+        }
+        Returns: string
+      }
       orden_de_ruta: {
         Args: {
           p_ruta: string
@@ -5041,7 +5330,7 @@ export type Database = {
         Args: {
           p_orden_id: string
         }
-        Returns: string
+        Returns: null
       }
       ot_registrar_evento: {
         Args: {
@@ -5089,7 +5378,7 @@ export type Database = {
           p_orden: string
           p_cliente: string
         }
-        Returns: string
+        Returns: null
       }
       produccion_siguiente_numero: {
         Args: {
@@ -5181,7 +5470,7 @@ export type Database = {
         Args: {
           p_cotizacion: string
         }
-        Returns: string
+        Returns: null
       }
       recibir_version_plano: {
         Args: {
@@ -5308,6 +5597,14 @@ export type Database = {
       usuario_actual: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      usuarios_diseno_asignables: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          nombre: string | null
+          rol: string | null
+        }[]
       }
     }
     Enums: {

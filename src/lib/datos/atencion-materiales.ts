@@ -12,6 +12,8 @@ export type AreaMaterial = Pick<Tablas<'areas'>, 'id' | 'codigo' | 'nombre'>
 export async function cargarAtencionMateriales(permisos: {
   verRequerimientos: boolean
   verExistencias: boolean
+  verCompras: boolean
+  crearCompra: boolean
   recibir: boolean
   despachar: boolean
 }) {
@@ -31,11 +33,10 @@ export async function cargarAtencionMateriales(permisos: {
           .order('descripcion')
           .limit(500)
       : Promise.resolve({ data: [], error: null }),
-    permisos.recibir
+    permisos.verCompras || permisos.recibir || permisos.crearCompra
       ? supabase
           .from('v_orden_compra_material_pendiente')
-          .select('id, requerimiento_id, requerimiento_detalle_id, proveedor, referencia, fecha_estimada, cantidad_comprada, cantidad_recibida, cantidad_pendiente')
-          .gt('cantidad_pendiente', 0)
+          .select('id, requerimiento_id, requerimiento_detalle_id, proveedor, referencia, fecha_estimada, cantidad_comprada, cantidad_recibida, cantidad_pendiente, orden_compra_id')
           .order('fecha_estimada', { nullsFirst: false })
           .limit(300)
       : Promise.resolve({ data: [], error: null }),
