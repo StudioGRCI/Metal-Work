@@ -280,7 +280,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       </p>
                     )}
 
-                    {c.orden_id ? (
+                    {c.orden_id && (
                       <p className="flex flex-wrap items-center gap-2 text-sm">
                         <Link href={`/ordenes/${c.orden_id}`} className="font-medium text-acento hover:underline">
                           Orden {c.orden_numero}
@@ -289,19 +289,20 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                           {definir(ESTADO_OT, c.orden_estado).etiqueta}
                         </Insignia>
                       </p>
-                    ) : (
+                    )}
+                    {(!c.orden_id || (liberaTesoreria && c.estado === 'APROBADA' && !c.liberacionTesoreria)) && (
                       <div className="flex flex-wrap items-center gap-2">
-                        {revisa && c.estado === 'POR_REVISAR' && c.id && <RevisarCotizacion id={c.id} />}
-                        {emite && c.estado === 'APROBADA' && c.id && (
+                        {!c.orden_id && revisa && c.estado === 'POR_REVISAR' && c.id && <RevisarCotizacion id={c.id} />}
+                        {!c.orden_id && emite && c.estado === 'APROBADA' && c.id && (
                           <EmitirOrden cotizacionId={c.id} numero={c.numero ?? 'cotización'} tipoUnidad={c.tipo_unidad} />
                         )}
                         {liberaTesoreria && c.estado === 'APROBADA' && c.id && !c.liberacionTesoreria && (
                           <LiberarATesoreria cotizacionId={c.id} />
                         )}
-                        {corrige && c.id && (
+                        {!c.orden_id && corrige && c.id && (
                           <CorregirCotizacion id={c.id} numero={c.numero ?? ''} observacion={c.observacion} />
                         )}
-                        {quitable && c.id && <QuitarCotizacion id={c.id} numero={c.numero ?? ''} />}
+                        {!c.orden_id && quitable && c.id && <QuitarCotizacion id={c.id} numero={c.numero ?? ''} />}
                       </div>
                     )}
                   </TarjetaCuerpo>
