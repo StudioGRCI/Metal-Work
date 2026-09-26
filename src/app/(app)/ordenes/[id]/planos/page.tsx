@@ -16,14 +16,17 @@ export default async function PaginaPlanos({ params }: { params: Promise<{ id: s
   const { id } = await params
   const [orden, versiones, catalogos] = await Promise.all([
     obtenerOrden(id), versionesDePlanos(id),
-    puede(perfil, 'diseno.planos') ? catalogosDePlanos(id) : Promise.resolve({ planos: [], areas: [] }),
+    puede(perfil, 'diseno.planos')
+      ? catalogosDePlanos(id)
+      : Promise.resolve({ planos: [], areas: [], liderId: null, equipo: [], usuarios: [] }),
   ])
   if (!orden) notFound()
   const abierta = !['BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA'].includes(orden.estado)
   return <>
     <EncabezadoPagina titulo={`Planos · ${orden.numero}`} descripcion="Versiones revisadas, destinatarios y recepción del taller. Cada área consulta los archivos que le corresponden." />
     <Pestanas ordenId={id} activa="planos" visibles={secciones} />
-    <PanelPlanos ordenId={id} abierta={abierta} puedeCargar={puede(perfil, 'diseno.planos')} catalogos={catalogos}
+    <PanelPlanos ordenId={id} abierta={abierta} puedeCargar={puede(perfil, 'diseno.planos')}
+      puedeAsignar={puede(perfil, 'diseno.asignar')} verEquipo={puede(perfil, 'diseno.planos')} catalogos={catalogos}
       versiones={versiones.map(v => ({ ...v,
         puedeRevisar: abierta && v.estado === 'POR_REVISAR' && v.creado_por !== perfil.id && puede(perfil, 'diseno.revisar'),
         puedeRecibir: v.vigente && v.estado === 'APROBADO' && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, ['produccion.actividades', 'produccion.cualquier_area']),

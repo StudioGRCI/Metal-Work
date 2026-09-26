@@ -29,6 +29,7 @@ export async function registrarVersionPlano(_previo: unknown, datos: FormData): 
     p_id: v.id, p_plano: v.plano_id, p_area: v.area_id, p_nombre: v.nombre_archivo,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: 'No se confirmó la asignación del equipo. Recarga la página antes de volver a intentar.' }
   if (!data) return { ok: false, error: 'No se confirmó la versión. Recarga antes de volver a intentar.' }
   revalidatePath('/ordenes', 'layout')
   return { ok: true, mensaje: 'Versión enviada a revisión. El área la verá cuando sea aprobada.' }
@@ -53,4 +54,37 @@ export async function resolverVersionPlano(_previo: unknown, datos: FormData): P
   if (!data) return { ok: false, error: 'No se confirmó el cambio. Recarga la pantalla.' }
   revalidatePath('/ordenes', 'layout')
   return { ok: true, mensaje: v.accion === 'recibir' ? 'Recepción registrada.' : v.accion === 'aprobar' ? 'Versión aprobada y disponible para el área.' : 'Observación registrada. Diseño debe cargar una nueva versión.' }
+}
+
+export async function asignarEquipoDiseno(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'diseno.asignar')) return { ok: false, error: 'La asignación de Diseño corresponde al líder del área.' }
+
+  const ordenId = z.string().uuid().safeParse(formulario.get('orden_id'))
+  const lider = z.union([z.string().uuid(), z.literal('')]).safeParse(formulario.get('lider_id'))
+  const ids = formulario.getAll('plano_id')
+  if (!ordenId.success || !lider.success || ids.length > 100 || ids.some((id) => typeof id !== 'string')) {
+    return { ok: false, error: 'La orden o la lista de planos no es válida.' }
+  }
+  const asignaciones = z.array(z.object({
+    plano_id: z.string().uuid(),
+    usuario_id: z.union([z.string().uuid(), z.literal('')]),
+  })).max(100).safeParse(ids.map((id) => ({
+    plano_id: String(id),
+    usuario_id: formulario.get(`responsable_${String(id)}`),
+  })))
+  if (!asignaciones.success) return { ok: false, error: 'Revisa los responsables seleccionados para cada plano.' }
+
+  const responsables = Object.fromEntries(asignaciones.data.map((a) => [a.plano_id, a.usuario_id]))
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('asignar_equipo_diseno', {
+    p_orden: ordenId.data,
+    p_lider: lider.data,
+    p_responsables: responsables,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+
+  revalidatePath(`/ordenes/${ordenId.data}/planos`)
+  revalidatePath(`/ordenes/${ordenId.data}`)
+  return { ok: true, mensaje: 'Líder y responsables de planos actualizados.' }
 }

@@ -12,14 +12,14 @@ import { fechaHora } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 import type { ResultadoAccion } from '@/lib/acciones'
 import type { VersionPlano, catalogosDePlanos } from '@/lib/datos/versiones-planos'
-import { registrarVersionPlano, resolverVersionPlano } from './acciones'
+import { asignarEquipoDiseno, registrarVersionPlano, resolverVersionPlano } from './acciones'
 
 type VersionEnPantalla = VersionPlano & { puedeRevisar: boolean; puedeRecibir: boolean }
 type Catalogos = Awaited<ReturnType<typeof catalogosDePlanos>>
 const ESTADOS: Record<string, string> = { POR_REVISAR: 'Por revisar', OBSERVADO: 'Requiere corrección', APROBADO: 'Aprobado · pendiente de recepción', RECIBIDO: 'Recibido por el área' }
 
-export function PanelPlanos({ ordenId, abierta, puedeCargar, catalogos, versiones }: {
-  ordenId: string; abierta: boolean; puedeCargar: boolean; catalogos: Catalogos; versiones: VersionEnPantalla[]
+export function PanelPlanos({ ordenId, abierta, puedeCargar, puedeAsignar, verEquipo, catalogos, versiones }: {
+  ordenId: string; abierta: boolean; puedeCargar: boolean; puedeAsignar: boolean; verEquipo: boolean; catalogos: Catalogos; versiones: VersionEnPantalla[]
 }) {
   const [historial, setHistorial] = useState(false)
   const actuales = versiones.filter(v => v.vigente || v.estado === 'POR_REVISAR' || v.estado === 'OBSERVADO')
@@ -30,6 +30,7 @@ export function PanelPlanos({ ordenId, abierta, puedeCargar, catalogos, versione
       <p className="mt-1 text-texto-suave">Una corrección se carga como nueva versión. El plano aprobado sigue vigente hasta que se apruebe su reemplazo para esa área.</p>
     </div>
     {!abierta && <p role="status" className="text-sm text-texto-suave">La orden no está abierta: la carga y revisión de versiones están deshabilitadas.</p>}
+    {verEquipo && <EquipoDiseno ordenId={ordenId} abierta={abierta} puedeAsignar={puedeAsignar} catalogos={catalogos} />}
     {puedeCargar && abierta && <CargarVersion catalogos={catalogos} ordenId={ordenId} />}
     <Tarjeta>
       <TarjetaCabecera titulo="Planos de tu ámbito" descripcion="PDF privados. La revisión no confirma que el área haya recibido el plano; esa recepción queda registrada por separado."
@@ -45,6 +46,76 @@ export function PanelPlanos({ ordenId, abierta, puedeCargar, catalogos, versione
       </TarjetaCuerpo>
     </Tarjeta>
   </div>
+}
+
+function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
+  ordenId: string
+  abierta: boolean
+  puedeAsignar: boolean
+  catalogos: Catalogos
+}) {
+  const [mensaje, setMensaje] = useState<string | null>(null)
+  const { alEnviar, enviando, error } = useEnvio(asignarEquipoDiseno, (r) => {
+    setMensaje(r.mensaje ?? 'Equipo de Diseño actualizado.')
+  })
+  if (!puedeAsignar) return <Tarjeta>
+    <TarjetaCabecera titulo="Equipo de Diseño" descripcion="Responsables que coordinan y preparan los planos de esta OT." />
+    <TarjetaCuerpo className="space-y-3">
+      <p className="text-sm text-texto">Líder: <span className="font-medium">{catalogos.equipo[0]?.lider_nombre ?? 'Sin asignar'}</span></p>
+      {catalogos.planos.map((plano) => (
+        <p key={plano.id} className="rounded-md border border-borde p-3 text-sm text-texto">
+          <span className="font-medium">{plano.numero_plano} · {plano.nombre}</span>
+          <span className="block text-xs text-texto-suave">Responsable: {catalogos.equipo.find((e) => e.plano_id === plano.id)?.responsable_nombre ?? 'Sin asignar'}</span>
+        </p>
+      ))}
+    </TarjetaCuerpo>
+  </Tarjeta>
+  const lideres = catalogos.usuarios.filter((usuario) => usuario.rol === 'DISENO_LIDER')
+  const responsables = catalogos.usuarios.filter((usuario) => usuario.rol === 'DISENO' || usuario.rol === 'DISENO_LIDER')
+
+  return <Tarjeta>
+    <TarjetaCabecera titulo="Equipo de Diseño" descripcion="Asigna una persona líder a la OT y responsables a cada plano. Cada cambio queda validado por el sistema." />
+    <TarjetaCuerpo>
+      <form onSubmit={alEnviar} className="space-y-4">
+        <input type="hidden" name="orden_id" value={ordenId} />
+        <Campo etiqueta="Líder de Diseño" htmlFor={`lider-diseno-${ordenId}`} ayuda="Una persona activa con el puesto Líder de Diseño coordina la OT.">
+          <Seleccion id={`lider-diseno-${ordenId}`} name="lider_id" value={catalogos.liderId ?? undefined} disabled={!abierta || enviando}>
+            <option value="">Sin asignar</option>
+            {lideres.map((persona) => persona.id && persona.nombre && <option key={persona.id} value={persona.id}>{persona.nombre}</option>)}
+          </Seleccion>
+          {lideres.length === 0 && <p className="mt-1 text-xs text-aviso">Primero asigna el puesto «Líder de Diseño» a la persona correspondiente en Personal.</p>}
+        </Campo>
+
+        {catalogos.planos.length === 0 ? (
+          <p className="rounded-md bg-superficie-2 p-3 text-sm text-texto-suave">Crea los planos de esta OT en Cumplimiento y luego asígnales responsables.</p>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-texto">Responsables por plano</p>
+            {catalogos.planos.map((plano) => (
+              <div key={plano.id} className="grid gap-2 rounded-md border border-borde p-3 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,1fr)] sm:items-center">
+                <div className="min-w-0">
+                  <p className="font-medium text-texto">{plano.numero_plano} · {plano.nombre}</p>
+                  <p className="text-xs text-texto-suave">{catalogos.equipo.find((e) => e.plano_id === plano.id)?.responsable_nombre ?? 'Sin responsable asignado'}</p>
+                </div>
+                <Campo etiqueta="Responsable" htmlFor={`responsable-${plano.id}`}>
+                  <input type="hidden" name="plano_id" value={plano.id} />
+                  <Seleccion id={`responsable-${plano.id}`} name={`responsable_${plano.id}`} value={plano.responsable_diseno_id ?? undefined} disabled={!abierta || enviando}>
+                    <option value="">Sin asignar</option>
+                    {responsables.map((persona) => persona.id && persona.nombre && <option key={persona.id} value={persona.id}>{persona.nombre}</option>)}
+                  </Seleccion>
+                </Campo>
+              </div>
+            ))}
+          </div>
+        )}
+        {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
+        {mensaje && <p role="status" className="text-sm text-exito">{mensaje}</p>}
+        <Boton type="submit" variante="secundario" tamano="sm" cargando={enviando} disabled={!abierta}>
+          Guardar equipo de Diseño
+        </Boton>
+      </form>
+    </TarjetaCuerpo>
+  </Tarjeta>
 }
 
 function CargarVersion({ catalogos, ordenId }: { catalogos: Catalogos; ordenId: string }) {

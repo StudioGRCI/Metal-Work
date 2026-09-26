@@ -19,6 +19,7 @@ import type {
 } from '@/lib/datos/atencion-materiales'
 
 import { crearOrdenCompra, despacharMaterial, registrarRecepcion } from './acciones'
+import { SubirDocumentoCompra } from './subir-documento-compra'
 
 const NOMBRE_AREA: Record<string, string> = {
   MTZ: 'Maestranza',
@@ -49,12 +50,14 @@ export function TableroMateriales({
   areas,
   responsables,
   puedeCrearCompra,
+  puedeAdjuntarDocumentos,
   puedeVerCompras,
   puedeRecibir,
   puedeDespachar,
   clavesCompra,
   clavesRecepcion,
   clavesDespacho,
+  clavesDocumento,
 }: {
   lineas: LineaAtencionMaterial[]
   existencias: ExistenciaMaterial[]
@@ -62,12 +65,14 @@ export function TableroMateriales({
   areas: AreaMaterial[]
   responsables: ResponsableMaterial[]
   puedeCrearCompra: boolean
+  puedeAdjuntarDocumentos: boolean
   puedeVerCompras: boolean
   puedeRecibir: boolean
   puedeDespachar: boolean
   clavesCompra: Record<string, string>
   clavesRecepcion: Record<string, string>
   clavesDespacho: Record<string, string>
+  clavesDocumento: Record<string, string>
 }) {
   const [filtro, setFiltro] = useState<Filtro>('TODOS')
   const agrupados = useMemo(() => {
@@ -137,6 +142,10 @@ export function TableroMateriales({
           Number(linea.cantidad_solicitada ?? 0) > Number(linea.cantidad_comprada ?? 0),
         )
         const comprasReq = compras.filter((compra) => compra.requerimiento_id === cabecera.requerimiento_id)
+        const comprasPendientes = comprasReq.filter((compra) => Number(compra.cantidad_pendiente ?? 0) > 0)
+        const comprasUnicas = [...new Map(comprasReq
+          .filter((compra) => compra.orden_compra_id)
+          .map((compra) => [compra.orden_compra_id, compra])).values()]
 
         return (
           <Tarjeta key={id}>
@@ -166,14 +175,30 @@ export function TableroMateriales({
                   clave={clavesCompra[cabecera.requerimiento_id ?? '']}
                 />
               )}
-              {comprasReq.length > 0 && (puedeVerCompras || puedeRecibir) && (
-                <div className="border-t border-borde pt-3">
-                  <p className="mb-2 text-xs font-semibold text-texto">Llegadas pendientes</p>
-                  <div className="grid gap-2 lg:grid-cols-2">
-                    {comprasReq.map((compra) => (
-                      <FormularioRecepcion key={compra.id} compra={compra} clave={clavesRecepcion[compra.id ?? '']} />
-                    ))}
-                  </div>
+              {comprasReq.length > 0 && (puedeVerCompras || puedeRecibir || puedeAdjuntarDocumentos) && (
+                <div className="space-y-3 border-t border-borde pt-3">
+                  {puedeRecibir && comprasPendientes.length > 0 && (
+                    <div>
+                      <p className="mb-2 text-xs font-semibold text-texto">Llegadas pendientes</p>
+                      <div className="grid gap-2 lg:grid-cols-2">
+                        {comprasPendientes.map((compra) => (
+                          <FormularioRecepcion key={compra.id} compra={compra} clave={clavesRecepcion[compra.id ?? '']} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {puedeAdjuntarDocumentos && comprasUnicas.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-texto">Documentos para Tesorería</p>
+                      {comprasUnicas.map((compra) => compra.orden_compra_id && (
+                        <SubirDocumentoCompra
+                          key={compra.orden_compra_id}
+                          ordenCompraId={compra.orden_compra_id}
+                          solicitudId={clavesDocumento[compra.orden_compra_id] ?? ''}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </TarjetaCuerpo>
