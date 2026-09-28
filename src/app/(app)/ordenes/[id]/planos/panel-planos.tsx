@@ -11,7 +11,7 @@ import { fechaHora } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 import type { ResultadoAccion } from '@/lib/acciones'
 import type { VersionPlano, catalogosDePlanos } from '@/lib/datos/versiones-planos'
-import { asignarEquipoDiseno, registrarVersionPlano, resolverVersionPlano } from './acciones'
+import { asignarEquipoDiseno, guardarLiderEntregaPlanos, registrarVersionPlano, resolverVersionPlano } from './acciones'
 
 export type VersionEnPantalla = VersionPlano & { puedeRevisar: boolean; puedeRecibir: boolean }
 export type Catalogos = Awaited<ReturnType<typeof catalogosDePlanos>>
@@ -27,10 +27,20 @@ export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
   const { alEnviar, enviando, error } = useEnvio(asignarEquipoDiseno, (r) => {
     setMensaje(r.mensaje ?? 'Equipo de Diseño actualizado.')
   })
+  const lider = useEnvio(guardarLiderEntregaPlanos)
+  const nombreLider = <form onSubmit={lider.alEnviar} className="space-y-3">
+    <input type="hidden" name="orden_id" value={ordenId} />
+    <Campo etiqueta="Quien lidera la entrega de planos" htmlFor={`lider-entrega-${ordenId}`} ayuda="Escribe el nombre completo de la persona que coordina esta OT.">
+      <Entrada id={`lider-entrega-${ordenId}`} name="nombre" defaultValue={catalogos.liderEntregaNombre ?? ''} required minLength={2} maxLength={120} disabled={!abierta || lider.enviando} />
+    </Campo>
+    {lider.error && <p role="alert" className="text-sm text-peligro">{lider.error}</p>}
+    {lider.resultado?.ok && <p role="status" className="text-sm text-exito">{lider.resultado.mensaje}</p>}
+    <Boton type="submit" variante="secundario" tamano="sm" cargando={lider.enviando} disabled={!abierta}>Guardar líder de entrega</Boton>
+  </form>
   if (!puedeAsignar) return <Tarjeta>
     <TarjetaCabecera titulo="Equipo de Diseño" descripcion="Responsables que coordinan y preparan los planos de esta OT." />
     <TarjetaCuerpo className="space-y-3">
-      <p className="text-sm text-texto">Líder: <span className="font-medium">{catalogos.equipo[0]?.lider_nombre ?? 'Sin asignar'}</span></p>
+      {nombreLider}
       {catalogos.planos.map((plano) => (
         <p key={plano.id} className="rounded-md border border-borde p-3 text-sm text-texto">
           <span className="font-medium">{plano.numero_plano} · {plano.nombre}</span>
@@ -45,6 +55,7 @@ export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
   return <Tarjeta>
     <TarjetaCabecera titulo="Equipo de Diseño" descripcion="Asigna una persona líder a la OT y responsables a cada plano. Cada cambio queda validado por el sistema." />
     <TarjetaCuerpo>
+      {nombreLider}
       <form onSubmit={alEnviar} className="space-y-4">
         <input type="hidden" name="orden_id" value={ordenId} />
         <Campo etiqueta="Líder de Diseño" htmlFor={`lider-diseno-${ordenId}`} ayuda="Una persona activa con el puesto Líder de Diseño coordina la OT.">

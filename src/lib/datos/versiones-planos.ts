@@ -19,7 +19,7 @@ export async function catalogosDePlanos(ordenId: string) {
   const [planos, areas, orden, equipo, asignables] = await Promise.all([
     supabase.from('ot_planos').select('id, numero_plano, nombre, responsable_diseno_id').eq('orden_id', ordenId).order('orden_secuencia'),
     supabase.from('areas').select('id, nombre').in('codigo', ['MTZ', 'PRD', 'ACB']).eq('activo', true).order('nombre'),
-    supabase.from('ordenes_trabajo').select('diseno_lider_id').eq('id', ordenId).maybeSingle(),
+    supabase.from('ordenes_trabajo').select('diseno_lider_id, diseno_lider_entrega_nombre').eq('id', ordenId).maybeSingle(),
     supabase.from('v_equipo_diseno_ot').select('plano_id, lider_nombre, responsable_nombre').eq('orden_id', ordenId),
     supabase.rpc('usuarios_diseno_asignables'),
   ])
@@ -29,6 +29,7 @@ export async function catalogosDePlanos(ordenId: string) {
     planos: planos.data ?? [],
     areas: areas.data ?? [],
     liderId: orden.data?.diseno_lider_id ?? null,
+    liderEntregaNombre: orden.data?.diseno_lider_entrega_nombre ?? null,
     equipo: equipo.data ?? [],
     usuarios: asignables.data ?? [],
   }

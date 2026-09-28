@@ -1350,6 +1350,7 @@ export type Database = {
           cotizacion_pdf_id: string | null
           tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           diseno_lider_id: string | null
+          diseno_lider_entrega_nombre: string | null
           plan_etapas_manual: boolean
         }
         Insert: {
@@ -1398,6 +1399,7 @@ export type Database = {
           cotizacion_pdf_id?: string | null
           tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           diseno_lider_id?: string | null
+          diseno_lider_entrega_nombre?: string | null
           plan_etapas_manual?: boolean
         }
         Update: {
@@ -1446,6 +1448,7 @@ export type Database = {
           cotizacion_pdf_id?: string | null
           tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           diseno_lider_id?: string | null
+          diseno_lider_entrega_nombre?: string | null
           plan_etapas_manual?: boolean
         }
         Relationships: [
@@ -4394,6 +4397,10 @@ export type Database = {
           p_lider: string
           p_responsables: Json
         }
+        Returns: string
+      }
+      guardar_lider_entrega_planos: {
+        Args: { p_nombre: string; p_orden: string }
         Returns: string
       }
       asignar_responsables_ot: {
