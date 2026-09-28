@@ -7,7 +7,7 @@ import { createServerClient } from '@supabase/ssr'
  * Se lista cada ruta pública una por una —no `/api`— para que una ruta futura
  * no herede el permiso de estar sin sesión por descuido.
  */
-const RUTAS_PUBLICAS = ['/ingresar', '/auth', '/api/health']
+const RUTAS_PUBLICAS = ['/ingresar', '/restablecer-clave', '/auth', '/api/health']
 
 /**
  * Refresca el token de Supabase en cada navegación y redirige a /ingresar

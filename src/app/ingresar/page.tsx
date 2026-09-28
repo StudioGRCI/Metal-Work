@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Image from 'next/image'
+import Link from 'next/link'
 
 import { LogoMetalWork } from '@/components/marca/logo-metal-work'
 
@@ -68,6 +69,11 @@ export default async function PaginaIngreso({ searchParams }: PageProps<'/ingres
             <div className="mt-5">
               <FormularioIngreso redirigir={redirigir} />
             </div>
+            <p className="mt-3 text-center text-xs">
+              <Link href="/restablecer-clave" className="text-acento underline underline-offset-2">
+                Restablecer contraseña
+              </Link>
+            </p>
 
             {motivo && (
               // Formulario y no enlace: /auth/salir solo acepta POST —un cierre
