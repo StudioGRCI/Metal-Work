@@ -34,13 +34,21 @@ export type GrupoNavegacion = { titulo: string; items: ItemNavegacion[] }
  */
 export const NAVEGACION: GrupoNavegacion[] = [
   {
-    titulo: 'Seguimiento',
+    titulo: 'Principal',
     items: [
       {
         titulo: 'Tablero',
         ruta: '/',
         icono: LayoutDashboard,
         descripcion: 'Estado general del taller',
+        disponible: true,
+      },
+      {
+        titulo: 'Órdenes de trabajo',
+        ruta: '/ordenes',
+        icono: FileSpreadsheet,
+        permiso: 'ordenes.listar',
+        descripcion: 'Todas las OT y su avance',
         disponible: true,
       },
       // El control de plazos es de todas las áreas del taller y lo mira
@@ -82,23 +90,6 @@ export const NAVEGACION: GrupoNavegacion[] = [
         icono: Boxes,
         permiso: 'diseno.planos',
         descripcion: 'El catálogo del que Diseño arma el desglose',
-        disponible: true,
-      },
-    ],
-  },
-  {
-    titulo: 'Órdenes',
-    items: [
-      // La orden la emite Administración —lo dice su propio flujograma: «Gerencia
-      // aprueba → Administración emite la orden de trabajo»— así que vive con lo
-      // suyo y no en Operación, donde quedaba suelta entre el tablero y el
-      // avance de taller.
-      {
-        titulo: 'Órdenes de trabajo',
-        ruta: '/ordenes',
-        icono: FileSpreadsheet,
-        permiso: 'ordenes.listar',
-        descripcion: 'Todas las OT y su avance',
         disponible: true,
       },
     ],

@@ -32,9 +32,18 @@ export async function definirEtapas(_previo: unknown, datos: FormData): Promise<
     return { ok: false, error: 'Los pesos de las etapas deben sumar 100 %.' }
   }
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('definir_etapas_ponderadas', {
-    p_orden_id: orden.data, p_config: configuracion,
-  })
+  const conversion = datos.get('conversion') === '1'
+  const etapaActividad = uuid.safeParse(datos.get('etapa_actividad'))
+  if (conversion && (!etapaActividad.success || !seleccion.some((id) => id.success && id.data === etapaActividad.data))) {
+    return { ok: false, error: 'Elige la etapa de la actividad que ya existe en esta OT.' }
+  }
+  const { data, error } = conversion && etapaActividad.success
+    ? await supabase.rpc('reemplazar_etapas_historicas', {
+        p_orden_id: orden.data, p_config: configuracion, p_etapa_actividad: etapaActividad.data,
+      })
+    : await supabase.rpc('definir_etapas_ponderadas', {
+        p_orden_id: orden.data, p_config: configuracion,
+      })
   if (error) return { ok: false, error: mensajeDeError(error) }
   revalidatePath(`/ordenes/${orden.data}`)
   revalidatePath('/plazos')

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { FileCheck2, FileDown, Upload } from 'lucide-react'
+import { FileDown, Upload } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -13,41 +13,11 @@ import type { ResultadoAccion } from '@/lib/acciones'
 import type { VersionPlano, catalogosDePlanos } from '@/lib/datos/versiones-planos'
 import { asignarEquipoDiseno, registrarVersionPlano, resolverVersionPlano } from './acciones'
 
-type VersionEnPantalla = VersionPlano & { puedeRevisar: boolean; puedeRecibir: boolean }
-type Catalogos = Awaited<ReturnType<typeof catalogosDePlanos>>
+export type VersionEnPantalla = VersionPlano & { puedeRevisar: boolean; puedeRecibir: boolean }
+export type Catalogos = Awaited<ReturnType<typeof catalogosDePlanos>>
 const ESTADOS: Record<string, string> = { POR_REVISAR: 'Por revisar', OBSERVADO: 'Requiere corrección', APROBADO: 'Aprobado · pendiente de recepción', RECIBIDO: 'Recibido por el área' }
 
-export function PanelPlanos({ ordenId, abierta, puedeCargar, puedeAsignar, verEquipo, catalogos, versiones, planoSeleccionado }: {
-  ordenId: string; abierta: boolean; puedeCargar: boolean; puedeAsignar: boolean; verEquipo: boolean; catalogos: Catalogos; versiones: VersionEnPantalla[]; planoSeleccionado?: string
-}) {
-  const [historial, setHistorial] = useState(false)
-  const actuales = versiones.filter(v => v.vigente || v.estado === 'POR_REVISAR' || v.estado === 'OBSERVADO')
-  const visibles = historial ? versiones : actuales
-  return <div className="space-y-5">
-    <div className="rounded-[var(--radius-base)] border border-acento/30 bg-acento-suave p-4 text-sm text-texto">
-      <p className="font-semibold">Preparar → Revisar → Entregar al área → Confirmar recepción</p>
-      <p className="mt-1 text-texto-suave">Una corrección se carga como nueva versión. El plano aprobado sigue vigente hasta que se apruebe su reemplazo para esa área.</p>
-    </div>
-    {!abierta && <p role="status" className="text-sm text-texto-suave">La orden no está abierta: la carga y revisión de versiones están deshabilitadas.</p>}
-    {verEquipo && <EquipoDiseno ordenId={ordenId} abierta={abierta} puedeAsignar={puedeAsignar} catalogos={catalogos} />}
-    {puedeCargar && abierta && <CargarVersion key={planoSeleccionado} catalogos={catalogos} ordenId={ordenId} planoSeleccionado={planoSeleccionado} />}
-    <Tarjeta>
-      <TarjetaCabecera titulo="Planos de tu ámbito" descripcion="PDF privados. La revisión no confirma que el área haya recibido el plano; esa recepción queda registrada por separado."
-        acciones={<Boton variante="secundario" tamano="sm" aria-pressed={historial} onClick={() => setHistorial(!historial)}>{historial ? 'Ver vigentes y pendientes' : 'Incluir versiones anteriores'}</Boton>} />
-      <TarjetaCuerpo className="space-y-4">
-        {visibles.length === 0 && <div className="py-6 text-center">
-          <FileCheck2 aria-hidden className="mx-auto mb-3 size-8 text-texto-tenue" />
-          <p className="font-medium text-texto">Todavía no tienes planos disponibles</p>
-          <p className="mt-1 text-sm text-texto-suave">{puedeCargar ? 'Crea el plano arriba y carga aquí el PDF para revisión.' : 'Los planos aparecerán cuando se aprueben para tu área.'}</p>
-        </div>}
-        {visibles.map(v => <Version key={v.id} version={v} ordenId={ordenId} />)}
-        {versiones.length === 200 && <p className="text-sm text-aviso">Se muestran las 200 versiones más recientes de esta orden.</p>}
-      </TarjetaCuerpo>
-    </Tarjeta>
-  </div>
-}
-
-function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
+export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
   ordenId: string
   abierta: boolean
   puedeAsignar: boolean
@@ -117,7 +87,7 @@ function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
   </Tarjeta>
 }
 
-function CargarVersion({ catalogos, ordenId, planoSeleccionado }: { catalogos: Catalogos; ordenId: string; planoSeleccionado?: string }) {
+export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Catalogos; ordenId: string; planoId: string }) {
   const [solicitud, setSolicitud] = useState(() => crypto.randomUUID())
   const [aviso, setAviso] = useState<string | null>(null)
   async function cargar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -154,13 +124,11 @@ function CargarVersion({ catalogos, ordenId, planoSeleccionado }: { catalogos: C
   }
   const { alEnviar, enviando, error } = useEnvio(cargar, r => setAviso(r.mensaje ?? 'Versión registrada.'))
   return <Tarjeta>
-    <div id="revision-plano" />
-    <TarjetaCabecera titulo="Adjuntar PDF o nueva revisión" descripcion="Elige el plano y cuál de las tres áreas debe revisarlo. Cada corrección se adjunta como una nueva versión." />
+    <TarjetaCabecera titulo="Adjuntar PDF o nueva revisión" descripcion="Elige el área que debe revisarlo. Cada corrección se adjunta como una nueva versión de este plano." />
     <TarjetaCuerpo>
-      {catalogos.planos.length === 0 ? <p className="text-sm text-texto-suave">Primero crea el plano y sus piezas arriba.</p> :
         <form onSubmit={alEnviar} className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Campo etiqueta="Plano" htmlFor="version-plano"><Seleccion id="version-plano" name="plano_id" required disabled={enviando} defaultValue={catalogos.planos.some(p => p.id === planoSeleccionado) ? planoSeleccionado : ''}><option value="" disabled>Elige un plano</option>{catalogos.planos.map(p => <option key={p.id} value={p.id}>{p.numero_plano} · {p.nombre}</option>)}</Seleccion></Campo>
+          <input type="hidden" name="plano_id" value={planoId} />
+          <div>
             <Campo etiqueta="Área destinataria" htmlFor="version-area"><Seleccion id="version-area" name="area_id" required disabled={enviando} defaultValue=""><option value="" disabled>Elige un área</option>{catalogos.areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</Seleccion></Campo>
           </div>
           <Campo etiqueta="Observación para la revisión" htmlFor="version-nota" ayuda="Indica qué cambió o qué debe revisar el área destinataria.">
@@ -172,12 +140,12 @@ function CargarVersion({ catalogos, ordenId, planoSeleccionado }: { catalogos: C
           {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
           {aviso && <p role="status" className="text-sm text-exito">{aviso}</p>}
           <Boton type="submit" cargando={enviando}><Upload aria-hidden className="size-4" />Enviar a revisión</Boton>
-        </form>}
+        </form>
     </TarjetaCuerpo>
   </Tarjeta>
 }
 
-function Version({ version: v, ordenId }: { version: VersionEnPantalla; ordenId: string }) {
+export function Version({ version: v, ordenId }: { version: VersionEnPantalla; ordenId: string }) {
   const [aviso, setAviso] = useState<string | null>(null)
   const { alEnviar, enviando, error } = useEnvio(resolverVersionPlano, r => setAviso(r.mensaje ?? 'Cambio registrado.'))
   return <article className="rounded-[var(--radius-base)] border border-borde p-4">

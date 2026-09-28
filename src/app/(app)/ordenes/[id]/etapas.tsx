@@ -18,13 +18,15 @@ import { definirEtapas, programarEtapa } from './acciones-etapas'
 
 type Etapa = Vistas<'ot_tablero_etapas'> & { observaciones: string | null; etapa_catalogo_id: string | null; area_id: string | null; peso_pct: number | null }
 type EtapaCatalogo = { id: string; nombre: string; orden_secuencia: number; area_id: string | null }
-type Area = { id: string; nombre: string }
+type Area = { id: string; nombre: string; codigo: string }
+type ActividadPorVincular = { id: string; nombre: string; area_id: string }
 
 export function Etapas({
   ordenId,
   etapas,
   catalogo,
   areas,
+  actividadesPorVincular,
   hoy,
   esNueva,
   puedeDefinir,
@@ -34,6 +36,7 @@ export function Etapas({
   etapas: Etapa[]
   catalogo: EtapaCatalogo[]
   areas: Area[]
+  actividadesPorVincular: ActividadPorVincular[]
   /** La fecha del taller (hoyLima), resuelta en el servidor. */
   hoy: string
   esNueva: boolean
@@ -62,11 +65,20 @@ export function Etapas({
         titulo="Etapas de producción"
         descripcion={esNueva
           ? 'Cada etapa aporta según su peso. El avance sale de los reportes de tareas y revisiones de planos; las fechas controlan los plazos.'
-          : 'Esta OT conserva su plan histórico: el avance se pondera por las horas estimadas de cada etapa. Las fechas controlan los plazos.'}
+          : puedeDefinir
+            ? 'Las etapas automáticas se reemplazarán cuando Diseño guarde el nuevo plan. El plano, su PDF y la actividad se conservarán.'
+            : 'Esta OT conserva su plan histórico: el avance se pondera por las horas estimadas de cada etapa. Las fechas controlan los plazos.'}
         acciones={vencidas > 0 ? <Insignia tono="peligro">{vencidas} {vencidas === 1 ? 'vencida' : 'vencidas'}</Insignia> : null}
       />
       <TarjetaCuerpo className="space-y-2 p-2">
-        {puedeDefinir && <FormularioDefinicion ordenId={ordenId} catalogo={catalogo} areas={areas} etapas={etapas} />}
+        {puedeDefinir && <details className="rounded-[var(--radius-base)] border border-borde p-3">
+          <summary className="cursor-pointer text-sm font-medium text-texto">
+            {esNueva ? 'Crear o editar etapas' : 'Reemplazar etapas automáticas'}
+          </summary>
+          <FormularioDefinicion ordenId={ordenId} catalogo={catalogo} areas={areas}
+            etapas={esNueva ? etapas : []} conversion={!esNueva}
+            actividadesPorVincular={actividadesPorVincular} />
+        </details>}
         {etapas.length === 0 && (
           <p className="py-6 text-center text-sm text-texto-suave">Diseño todavía no ha definido las etapas de esta orden.</p>
         )}
@@ -136,17 +148,20 @@ export function Etapas({
     </Tarjeta>
   )
 }
-function FormularioDefinicion({ ordenId, catalogo, areas, etapas }: {
+function FormularioDefinicion({ ordenId, catalogo, areas, etapas, conversion, actividadesPorVincular }: {
   ordenId: string
   catalogo: EtapaCatalogo[]
   areas: Area[]
   etapas: Etapa[]
+  conversion: boolean
+  actividadesPorVincular: ActividadPorVincular[]
 }) {
   const { alEnviar, enviando, error } = useEnvio(definirEtapas)
   const [seleccion, setSeleccion] = useState(() => etapas
     .filter((e) => e.etapa_catalogo_id !== null)
     .map((e) => ({ id: e.etapa_catalogo_id!, area: e.area_id ?? catalogo.find((c) => c.id === e.etapa_catalogo_id)?.area_id ?? areas[0]?.id ?? '', peso: e.peso_pct ?? 0 })))
   const [porAgregar, setPorAgregar] = useState('')
+  const [etapaActividad, setEtapaActividad] = useState('')
   const existentes = new Set(etapas.map((e) => e.etapa_catalogo_id))
   const disponibles = catalogo.filter((item) => !seleccion.some((e) => e.id === item.id))
   const total = seleccion.reduce((suma, item) => suma + Number(item.peso || 0), 0)
@@ -157,8 +172,9 @@ function FormularioDefinicion({ ordenId, catalogo, areas, etapas }: {
     setSeleccion(copia)
   }
   return (
-    <form onSubmit={alEnviar} className="space-y-3 rounded-[var(--radius-base)] border border-borde p-3">
+    <form onSubmit={alEnviar} className="mt-3 space-y-3 border-t border-borde pt-3">
       <input type="hidden" name="orden_id" value={ordenId} />
+      {conversion && <input type="hidden" name="conversion" value="1" />}
       <p className="text-sm font-medium text-texto">Diseño: etapas de la OT</p>
       <p className="text-xs text-texto-suave">Agrega las etapas necesarias, asigna su área y reparte el 100 % del trabajo.</p>
       <div className="flex flex-wrap items-end gap-2">
@@ -202,8 +218,27 @@ function FormularioDefinicion({ ordenId, catalogo, areas, etapas }: {
         })}
       </div>
       <p className={`text-sm tabular ${total === 100 ? 'text-exito' : 'text-peligro'}`} role="status">Peso total: {total} % de 100 %</p>
+      {conversion && actividadesPorVincular.map((actividad) => (
+        <Campo key={actividad.id} etiqueta={`Vincular actividad «${actividad.nombre}» a la etapa`} htmlFor="etapa-actividad" requerido>
+          <Seleccion id="etapa-actividad" name="etapa_actividad" required value={etapaActividad}
+            onChange={(e) => setEtapaActividad(e.target.value)}>
+            <option value="">Elige una etapa de su área</option>
+            {seleccion.filter((item) => item.area === actividad.area_id).map((item) => (
+              <option key={item.id} value={item.id}>{catalogo.find((c) => c.id === item.id)?.nombre}</option>
+            ))}
+          </Seleccion>
+        </Campo>
+      ))}
+      {conversion && <p className="text-xs text-texto-suave">Incluye una sola etapa de Diseño para conservar el plano y una de Producción para la actividad. Administración programará sus fechas después.</p>}
       {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
-      <Boton type="submit" tamano="sm" cargando={enviando} disabled={seleccion.length === 0 || total !== 100}>Guardar etapas</Boton>
+      <Boton type="submit" tamano="sm" cargando={enviando}
+        disabled={seleccion.length === 0 || total !== 100 || (conversion && (
+          actividadesPorVincular.length !== 1
+          || seleccion.find((item) => item.id === etapaActividad)?.area !== actividadesPorVincular[0]?.area_id
+          || seleccion.filter((item) => areas.find((area) => area.id === item.area)?.codigo === 'DIS').length !== 1
+        ))}>
+        {conversion ? 'Reemplazar 14 etapas y conservar vínculos' : 'Guardar etapas'}
+      </Boton>
     </form>
   )
 }

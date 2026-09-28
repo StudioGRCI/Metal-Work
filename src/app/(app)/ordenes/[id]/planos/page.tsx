@@ -8,7 +8,7 @@ import { listarEtapas, obtenerOrden } from '@/lib/datos/ordenes'
 import { exigirPermiso, puede, puedeHojaDeArea } from '@/lib/sesion'
 import { Pestanas } from '../pestanas'
 import { Cumplimiento } from '../cumplimiento'
-import { PanelPlanos } from './panel-planos'
+import { EquipoDiseno } from './panel-planos'
 
 export const metadata = { title: 'Planos' }
 
@@ -41,16 +41,18 @@ export default async function PaginaPlanos({ params, searchParams }: {
     <EncabezadoPagina titulo={`Planos · ${orden.numero}`} descripcion="Planos, PDF y revisiones por área. Los materiales se definen en su pestaña." />
     <Pestanas ordenId={id} activa="planos" visibles={secciones} />
     <Cumplimiento ordenId={id} resumen={cumplimiento?.resumen ?? null} planos={cumplimiento?.planos ?? []}
+      versiones={versiones.map(v => ({ ...v,
+        puedeRevisar: abierta && v.estado === 'POR_REVISAR' && v.creado_por !== perfil.id && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, 'produccion.actividades'),
+        puedeRecibir: v.vigente && v.estado === 'APROBADO' && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, ['produccion.actividades', 'produccion.cualquier_area']),
+      }))}
+      catalogos={catalogos} planoSeleccionado={query.plano}
       etapas={etapas.filter(e => e.etapa_id && e.etapa === 'Diseño').map(e => ({ id: e.etapa_id!, nombre: e.etapa ?? 'Diseño' }))}
       puedeDisenar={puede(perfil, 'diseno.planos')}
       areaPropia={manoDelTaller}
       ordenViva={abierta} motivoInactiva={motivoInactiva} />
-    <PanelPlanos ordenId={id} abierta={abierta} puedeCargar={puede(perfil, 'diseno.planos')}
-      puedeAsignar={puede(perfil, 'diseno.asignar')} verEquipo={puede(perfil, 'diseno.planos')} catalogos={catalogos}
-      planoSeleccionado={query.plano}
-      versiones={versiones.map(v => ({ ...v,
-        puedeRevisar: abierta && v.estado === 'POR_REVISAR' && v.creado_por !== perfil.id && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, 'produccion.actividades'),
-        puedeRecibir: v.vigente && v.estado === 'APROBADO' && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, ['produccion.actividades', 'produccion.cualquier_area']),
-      }))} />
+    {puede(perfil, 'diseno.planos') && <details className="rounded-[var(--radius-base)] border border-borde bg-superficie p-4">
+      <summary className="cursor-pointer text-sm font-medium text-texto">Equipo de Diseño</summary>
+      <div className="mt-4"><EquipoDiseno ordenId={id} abierta={abierta} puedeAsignar={puede(perfil, 'diseno.asignar')} catalogos={catalogos} /></div>
+    </details>}
   </>
 }

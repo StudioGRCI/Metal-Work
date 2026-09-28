@@ -15,6 +15,7 @@ import { fecha, fechaHora, hoyLima, numero as fmtNumero, puesto } from '@/lib/fo
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
 import {
+  actividadParaConvertirEtapas,
   clientesParaElegir,
   areasParaEtapas,
   catalogoEtapasParaOrden,
@@ -139,9 +140,11 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       verFicha ? verificacionesDeOrden(id) : Promise.resolve([]),
       verFicha ? personalDelTaller() : Promise.resolve([]),
     ])
-  const [catalogoEtapas, areasEtapas] = await Promise.all([
+  const [catalogoEtapas, areasEtapas, actividadesPorVincular] = await Promise.all([
     vista === 'etapas' && puede(perfil, 'diseno.planos') ? catalogoEtapasParaOrden() : Promise.resolve([]),
     vista === 'etapas' ? areasParaEtapas() : Promise.resolve([]),
+    vista === 'etapas' && !orden.plan_etapas_manual && orden.id === '78c95158-bddc-4398-b7b5-afa45cd0d8d0'
+      && puede(perfil, 'diseno.planos') ? actividadParaConvertirEtapas(id) : Promise.resolve([]),
   ])
 
   const [salida, fechasClave] = await Promise.all([
@@ -584,9 +587,11 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           etapas={etapas}
           catalogo={catalogoEtapas}
           areas={areasEtapas}
+          actividadesPorVincular={actividadesPorVincular}
           hoy={hoyLima()}
           esNueva={orden.plan_etapas_manual}
-          puedeDefinir={orden.plan_etapas_manual && puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
+          puedeDefinir={(orden.plan_etapas_manual || orden.id === '78c95158-bddc-4398-b7b5-afa45cd0d8d0')
+            && puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
           puedeProgramar={puede(perfil, 'ordenes.editar') && !ESTADOS_CERRADOS.includes(orden.estado)}
         />
       )}
