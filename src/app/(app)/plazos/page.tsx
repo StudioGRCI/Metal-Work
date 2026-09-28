@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { AlertTriangle, CalendarClock, CircleCheck } from 'lucide-react'
+import { AlertTriangle, CalendarClock, CircleCheck, Factory, Search, Workflow } from 'lucide-react'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -62,13 +62,13 @@ export default async function PaginaPlazos({ searchParams }: PageProps<'/plazos'
   const porVencer = resumen.porPlazo.POR_VENCER ?? 0
   const vigentes = resumen.porPlazo.VIGENTE ?? 0
 
-  const filtrosArea = [
-    { valor: null, etiqueta: resumen.total > 0 ? `Todas (${resumen.total})` : 'Todas' },
+  const filtrosAreasAcceso = [
+    { valor: null, nombre: 'Todas las áreas', pendientes: resumen.total, total: resumen.total },
     ...resumen.areas.map((a) => ({
       valor: a.codigo,
-      // La cuenta de vencidas va delante del total porque es lo que decide a
-      // cuál entrar: «Maestranza 15/15» se lee de un vistazo.
-      etiqueta: a.vencidas > 0 ? `${a.nombre} ${a.vencidas}/${a.total}` : `${a.nombre} (${a.total})`,
+      nombre: a.nombre,
+      pendientes: a.vencidas,
+      total: a.total,
     })),
   ]
 
@@ -99,11 +99,11 @@ export default async function PaginaPlazos({ searchParams }: PageProps<'/plazos'
     <>
       <EncabezadoPagina
         migas={[{ titulo: 'Control de plazos' }]}
-        titulo="Control de plazos"
-        descripcion="En qué va cada área y qué la trabó. El plazo se cuenta contra la fecha de culminación de la etapa: vigente si faltan siete días o más, por vencer entre uno y seis, vencido si ya pasó."
+        titulo="Avance del taller"
+        descripcion="Revisa qué necesita atención, entra al área y deja el reporte o seguimiento desde la misma lista."
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <section aria-label="Resumen de plazos" className="grid gap-3 sm:grid-cols-3">
         <Indicador
           titulo="Vencidas"
           valor={vencidas}
@@ -128,31 +128,72 @@ export default async function PaginaPlazos({ searchParams }: PageProps<'/plazos'
           pie="Con siete días o más"
           href="/plazos?plazo=VIGENTE"
         />
-      </div>
+      </section>
 
-      <div className="mt-4">
-        <BuscadorSimple ruta="/plazos" etiqueta="Buscar por orden, unidad o cliente" marcador="N.º de orden, placa, código o cliente" />
-      </div>
+      <section className="mt-6 rounded-[var(--radius-base)] border border-borde bg-superficie p-4 shadow-[var(--sombra)] sm:p-5" aria-labelledby="areas-plazos-titulo">
+        <div className="mb-3 flex items-start gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-acento-suave text-acento">
+            <Factory aria-hidden className="size-5" />
+          </span>
+          <div>
+            <h2 id="areas-plazos-titulo" className="text-sm font-semibold text-texto">¿Qué área quieres revisar?</h2>
+            <p className="mt-0.5 text-xs text-texto-suave">Entra directamente a sus etapas. El número rojo indica pendientes vencidos.</p>
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {filtrosAreasAcceso.map((item) => {
+            const activa = (area ?? null) === item.valor
+            const href = item.valor ? `/plazos?area=${encodeURIComponent(item.valor)}` : '/plazos'
+            return (
+              <Link
+                key={item.valor ?? 'todas'}
+                href={href}
+                aria-current={activa ? 'page' : undefined}
+                className={`flex min-h-16 items-center justify-between gap-3 rounded-[var(--radius-base)] border px-3 py-2.5 transition-colors ${activa ? 'border-acento bg-acento-suave ring-1 ring-acento' : 'border-borde bg-superficie hover:border-borde-fuerte hover:bg-superficie-2'}`}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-texto">{item.nombre}</span>
+                  <span className="text-xs text-texto-suave">{item.total} {item.total === 1 ? 'etapa' : 'etapas'}</span>
+                </span>
+                {item.pendientes > 0 ? (
+                  <span className="tabular inline-flex min-w-8 items-center justify-center rounded-full bg-peligro-suave px-2 py-1 text-xs font-semibold text-peligro" aria-label={`${item.pendientes} vencidas`}>
+                    {item.pendientes}
+                  </span>
+                ) : (
+                  <CircleCheck aria-label="Sin vencidas" className="size-4 shrink-0 text-exito" />
+                )}
+              </Link>
+            )
+          })}
+        </div>
+      </section>
 
-      <PastillaFiltro
-        ruta="/plazos"
-        clave="area"
-        opciones={filtrosArea}
-        params={params}
-        activo={area ?? null}
-        etiqueta="Filtrar por área"
-        className="mt-3"
-      />
+      <section className="mt-5 rounded-[var(--radius-base)] border border-borde bg-superficie p-4 shadow-[var(--sombra)] sm:p-5" aria-labelledby="seguimiento-titulo">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Workflow aria-hidden className="size-4 text-acento" />
+            <h2 id="seguimiento-titulo" className="text-sm font-semibold text-texto">Etapas y reportes</h2>
+          </div>
+          <span className="text-xs text-texto-suave">{filas.length} {filas.length === 1 ? 'etapa en esta vista' : 'etapas en esta vista'}</span>
+        </div>
+        <div className="mb-4 max-w-xl">
+          <BuscadorSimple ruta="/plazos" etiqueta="Buscar una orden, unidad o cliente" marcador="N.º de orden, placa, código o cliente" />
+        </div>
 
-      <PastillaFiltro
-        ruta="/plazos"
-        clave="plazo"
-        opciones={filtrosPlazo}
-        params={params}
-        activo={plazo ?? null}
-        etiqueta="Filtrar por plazo"
-        className="mt-2 mb-4"
-      />
+        <div className="mb-2 flex items-center gap-2 text-xs font-medium text-texto-suave">
+          <Search aria-hidden className="size-3.5" />
+          <span>Filtra también por plazo</span>
+        </div>
+        <PastillaFiltro
+          ruta="/plazos"
+          clave="plazo"
+          opciones={filtrosPlazo}
+          params={params}
+          activo={plazo ?? null}
+          etiqueta="Filtrar por plazo"
+          className="mb-4"
+        />
+      </section>
 
       {/* El teléfono: una tarjeta por etapa, con el reporte a ancho completo. */}
       {filas.length > 0 && (

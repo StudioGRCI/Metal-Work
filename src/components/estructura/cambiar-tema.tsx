@@ -1,7 +1,7 @@
 'use client'
 
-import { Monitor, Moon, Sun } from 'lucide-react'
-import { useLayoutEffect, useSyncExternalStore } from 'react'
+import { Check, Monitor, Moon, Sun } from 'lucide-react'
+import { useLayoutEffect, useState, useSyncExternalStore } from 'react'
 
 import { cn } from '@/lib/utils'
 
@@ -51,6 +51,8 @@ const temaEnElServidor = (): Tema => 'sistema'
 
 export function CambiarTema() {
   const tema = useSyncExternalStore(suscribir, temaGuardado, temaEnElServidor)
+  const [abierto, setAbierto] = useState(false)
+  const opcionActiva = OPCIONES.find((opcion) => opcion.valor === tema) ?? OPCIONES[2]
 
   // En desarrollo React vuelve a montar una vez para sacar errores a la luz, y
   // en ese remontaje limpia los atributos de <html> que no vienen del JSX,
@@ -75,31 +77,42 @@ export function CambiarTema() {
       // Navegador con el almacenamiento bloqueado: vale para esta sesión.
     }
     avisos.forEach((avisar) => avisar())
+    setAbierto(false)
   }
 
   return (
-    <div
-      role="group"
-      aria-label="Tema de la pantalla"
-      className="flex items-center gap-1 rounded-full border border-borde bg-superficie-2 p-1"
-    >
-      {OPCIONES.map(({ valor, etiqueta, Icono }) => (
-        <button
-          key={valor}
-          type="button"
-          onClick={() => elegir(valor)}
-          title={etiqueta}
-          aria-label={etiqueta}
-          aria-pressed={tema === valor}
-          className={cn(
-            'flex min-h-9 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento',
-            tema === valor ? 'bg-acento text-acento-texto shadow-[var(--sombra)]' : 'text-texto-suave hover:bg-superficie hover:text-texto',
-          )}
-        >
-          <Icono aria-hidden className="size-4" />
-          <span>{etiqueta}</span>
-        </button>
-      ))}
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setAbierto((valor) => !valor)}
+        aria-label={`Tema: ${opcionActiva.etiqueta}. Cambiar tema`}
+        aria-expanded={abierto}
+        aria-haspopup="menu"
+        className="flex size-10 items-center justify-center rounded-full border border-borde bg-superficie text-texto-suave transition-colors hover:bg-superficie-2 hover:text-texto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento"
+      >
+        <opcionActiva.Icono aria-hidden className="size-5" />
+      </button>
+      {abierto && (
+        <div role="menu" aria-label="Tema de la pantalla" className="absolute left-0 top-full z-50 mt-2 w-48 rounded-[var(--radius-base)] border border-borde bg-superficie p-1.5 shadow-[var(--sombra)]">
+          {OPCIONES.map(({ valor, etiqueta, Icono }) => (
+            <button
+              key={valor}
+              type="button"
+              role="menuitemradio"
+              aria-checked={tema === valor}
+              onClick={() => elegir(valor)}
+              className={cn(
+                'flex min-h-10 w-full items-center gap-2 rounded-[var(--radius-base)] px-2.5 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-acento',
+                tema === valor ? 'bg-acento-suave font-medium text-texto' : 'text-texto-suave hover:bg-superficie-2 hover:text-texto',
+              )}
+            >
+              <Icono aria-hidden className="size-4" />
+              <span className="flex-1">{etiqueta}</span>
+              {tema === valor && <Check aria-hidden className="size-4 text-acento" />}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
