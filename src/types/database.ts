@@ -4442,6 +4442,14 @@ export type Database = {
         }
         Returns: number
       }
+      reemplazar_etapas_historicas: {
+        Args: {
+          p_orden_id: string
+          p_config: Json
+          p_etapa_actividad: string
+        }
+        Returns: number
+      }
       programar_etapa_administracion: {
         Args: {
           p_etapa_id: string

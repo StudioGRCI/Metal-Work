@@ -19,6 +19,7 @@ import type {
 import { cantidad as fmtCantidad, fecha, hoyLima, numero } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
+import { CargarVersion, Version, type Catalogos, type VersionEnPantalla } from './planos/panel-planos'
 
 import {
   agregarPlano,
@@ -75,6 +76,9 @@ export function Cumplimiento({
   etapas,
   resumen,
   planos,
+  versiones,
+  catalogos,
+  planoSeleccionado,
   puedeDisenar,
   areaPropia = null,
   ordenViva,
@@ -84,6 +88,9 @@ export function Cumplimiento({
   etapas: { id: string; nombre: string }[]
   resumen: ResumenCumplimiento | null
   planos: PlanoCumplimiento[]
+  versiones: VersionEnPantalla[]
+  catalogos: Catalogos
+  planoSeleccionado?: string
   /** `diseno.planos`: arma planos y piezas, y entrega el plano. */
   puedeDisenar: boolean
   /**
@@ -190,11 +197,16 @@ export function Cumplimiento({
             ordenId={ordenId}
             etapas={etapas}
             plano={plano}
+            versiones={versiones.filter(v => v.plano_id === plano.plano_id)}
+            catalogos={catalogos}
+            seleccionado={planoSeleccionado === plano.plano_id}
             puedeDisenar={puedeDisenar && ordenViva}
             areaPropia={areaPropia}
           />
         ))
       )}
+
+      {versiones.length === 200 && <p className="text-sm text-aviso">Se muestran las 200 revisiones más recientes de esta orden.</p>}
 
       {planos.some(p => p.lista.length > 0) && <p className="text-[11px] text-texto-suave">
         Cómo avanza una pieza: habilitada 25 % · entregada por Maestranza 50 % · recibida por
@@ -400,21 +412,29 @@ function TarjetaPlano({
   ordenId,
   etapas,
   plano,
+  versiones,
+  catalogos,
+  seleccionado,
   puedeDisenar,
   areaPropia,
 }: {
   ordenId: string
   etapas: { id: string; nombre: string }[]
   plano: PlanoCumplimiento
+  versiones: VersionEnPantalla[]
+  catalogos: Catalogos
+  seleccionado: boolean
   puedeDisenar: boolean
   areaPropia: ManoDelTaller | null
 }) {
   const [modo, setModo] = useState<'ver' | 'editar' | 'entregar' | 'quitar'>('ver')
+  const [mostrarPdf, setMostrarPdf] = useState(seleccionado)
+  const [historial, setHistorial] = useState(false)
   const entregado = Boolean(plano.fecha_entrega)
   const planoId = plano.plano_id ?? ''
 
   return (
-    <Tarjeta>
+    <Tarjeta id={`plano-${planoId}`}>
       <TarjetaCabecera
         titulo={
           <span className="flex flex-wrap items-center gap-2">
@@ -442,9 +462,9 @@ function TarjetaPlano({
         }
         acciones={
           <div className="flex items-center gap-2">
-            <Link className="text-xs font-medium text-acento underline" href={`/ordenes/${ordenId}/planos?plano=${planoId}#revision-plano`}>
-              {puedeDisenar ? 'Adjuntar PDF o revisión' : 'Ver PDF y revisiones'}
-            </Link>
+            <Boton variante="secundario" tamano="sm" aria-expanded={mostrarPdf} onClick={() => setMostrarPdf(!mostrarPdf)}>
+              PDF y revisiones ({versiones.length})
+            </Boton>
             <div className="w-32">
               <Progreso valor={plano.avance_pct} mostrarValor alto="sm" />
             </div>
@@ -492,6 +512,19 @@ function TarjetaPlano({
           alTerminar={() => setModo('ver')}
         />
       )}
+
+      {mostrarPdf && <TarjetaCuerpo className="space-y-4 border-t border-borde">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-texto-suave">Cada área revisa su PDF. Una corrección se adjunta como nueva versión del mismo plano.</p>
+          {versiones.length > 0 && <Boton variante="fantasma" tamano="sm" aria-pressed={historial} onClick={() => setHistorial(!historial)}>
+            {historial ? 'Ocultar anteriores' : 'Ver versiones anteriores'}
+          </Boton>}
+        </div>
+        {puedeDisenar && <CargarVersion catalogos={catalogos} ordenId={ordenId} planoId={planoId} />}
+        {versiones.filter(v => historial || v.vigente || v.estado === 'POR_REVISAR' || v.estado === 'OBSERVADO').map(v =>
+          <Version key={v.id} version={v} ordenId={ordenId} />)}
+        {versiones.length === 0 && <p className="text-sm text-texto-suave">Este plano aún no tiene PDF. Diseño puede adjuntarlo aquí.</p>}
+      </TarjetaCuerpo>}
 
       {plano.lista.length > 0 && <TarjetaCuerpo className="p-0">
         <TablaPiezas

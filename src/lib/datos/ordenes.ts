@@ -162,6 +162,15 @@ export async function listarEtapas(ordenId: string) {
   }))
 }
 
+/** Trabajo anterior que Diseño debe vincular al convertir la OT 2898. */
+export async function actividadParaConvertirEtapas(ordenId: string) {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('ot_actividades')
+    .select('id, nombre, area_id').eq('orden_id', ordenId).is('etapa_id', null)
+  if (error) throw new Error(`No se pudo cargar la actividad de la OT: ${error.message}`)
+  return data ?? []
+}
+
 /** Etapas que Diseño puede incluir en una OT, en el orden sugerido del catálogo. */
 export async function catalogoEtapasParaOrden() {
   const supabase = await createClient()
@@ -178,7 +187,7 @@ export async function areasParaEtapas() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('areas')
-    .select('id, nombre')
+    .select('id, nombre, codigo')
     .eq('activo', true)
     .order('nombre')
   if (error) throw new Error(`No se pudieron cargar las áreas: ${error.message}`)

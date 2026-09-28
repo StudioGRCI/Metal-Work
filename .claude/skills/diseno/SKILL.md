@@ -174,6 +174,12 @@ interacciones con botones (emitir, descargar, anular); interacción nueva de pes
 
 *(Sección viva: aquí se anota lo que salió mal al construir pantallas. Ver `aprender`.)*
 
+- **Una función nueva debe tener salida para las OT existentes.** Antes de
+  ocultar edición con un indicador introducido por migración, consultar cuántas
+  OT activas conservan el valor histórico y si tienen trabajo vinculado. Si una
+  necesita el flujo nuevo, ofrecer conversión comprobada en la pantalla; de lo
+  contrario la función parece terminada, pero el usuario no puede usarla en su OT.
+
 - **El PDF extraído no es todavía una vista previa.** Un `iframe` con una URL
   local puede quedar blanco en el navegador integrado aunque la lectura del
   archivo y el formulario funcionen. Para PDF elegido por la persona, reutilizar
