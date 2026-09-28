@@ -179,10 +179,14 @@ export const NAVEGACION: GrupoNavegacion[] = [
   },
 ]
 
-/** Si una persona ve un módulo del menú: sin permiso declarado lo ve todo el mundo. */
+/** Permisos amplios permiten consultar detalles; el menú prioriza cada puesto. */
+const RUTAS_POR_PUESTO: Record<string, readonly string[]> = {
+  GERENTE: ['/', '/cotizaciones/pdf', '/ordenes'],
+  TESORERIA: ['/', '/ordenes', '/tesoreria'],
+}
+
 export function puedeVer(item: ItemNavegacion, permisos: string[], esAdmin: boolean, rolCodigo: string) {
-  // Gerencia consulta el detalle desde sus OT, pero su menú se centra en decidir y seguir.
-  if (rolCodigo === 'GERENTE' && !['/', '/cotizaciones/pdf', '/ordenes'].includes(item.ruta)) return false
+  if (RUTAS_POR_PUESTO[rolCodigo] && !RUTAS_POR_PUESTO[rolCodigo].includes(item.ruta)) return false
   if (!item.permiso || esAdmin) return true
   return (Array.isArray(item.permiso) ? item.permiso : [item.permiso]).some((p) => permisos.includes(p))
 }
