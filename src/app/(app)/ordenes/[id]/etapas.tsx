@@ -47,7 +47,7 @@ export function Etapas({
       <Tarjeta>
         <TarjetaCuerpo>
           <p className="py-10 text-center text-sm text-texto-suave">
-            Esta orden todavía no tiene etapas. Diseño debe elegirlas.
+            Esta orden todavía no tiene etapas. Diseño debe crearlas para programar el trabajo.
           </p>
         </TarjetaCuerpo>
       </Tarjeta>
@@ -60,25 +60,24 @@ export function Etapas({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Etapas de producción"
-        descripcion={esNueva
-          ? 'Cada etapa aporta según su peso. El avance sale de los reportes de tareas y revisiones de planos; las fechas controlan los plazos.'
-          : puedeDefinir
-            ? 'Las etapas automáticas se reemplazarán cuando Diseño guarde el nuevo plan. El plano, su PDF y la actividad se conservarán.'
-            : 'Esta OT conserva su plan histórico: el avance se pondera por las horas estimadas de cada etapa. Las fechas controlan los plazos.'}
+        descripcion={etapas.length === 0
+          ? 'Diseño define las etapas y sus porcentajes. Administración programa las fechas después.'
+          : esNueva
+            ? 'El avance sale de los reportes de tareas y revisiones de planos; las fechas controlan los plazos.'
+            : 'Esta OT conserva su plan histórico: el avance se pondera por las horas estimadas de cada etapa.'}
         acciones={vencidas > 0 ? <Insignia tono="peligro">{vencidas} {vencidas === 1 ? 'vencida' : 'vencidas'}</Insignia> : null}
       />
       <TarjetaCuerpo className="space-y-2 p-2">
-        {puedeDefinir && <details className="rounded-[var(--radius-base)] border border-borde p-3">
-          <summary className="cursor-pointer text-sm font-medium text-texto">
-            {esNueva ? 'Crear o editar etapas' : 'Reemplazar etapas automáticas'}
-          </summary>
-          <FormularioDefinicion ordenId={ordenId} areas={areas}
-            etapas={esNueva ? etapas : []} conversion={!esNueva}
-            actividadesPorVincular={actividadesPorVincular} />
-        </details>}
-        {etapas.length === 0 && (
-          <p className="py-6 text-center text-sm text-texto-suave">Diseño todavía no ha definido las etapas de esta orden.</p>
-        )}
+        {puedeDefinir && (etapas.length === 0
+          ? <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-4 sm:p-5">
+              <FormularioDefinicion ordenId={ordenId} areas={areas} etapas={[]} conversion={!esNueva}
+                actividadesPorVincular={actividadesPorVincular} />
+            </div>
+          : <details className="rounded-[var(--radius-base)] border border-borde p-3">
+              <summary className="cursor-pointer text-sm font-medium text-texto">Editar etapas de la OT</summary>
+              <FormularioDefinicion ordenId={ordenId} areas={areas}
+                etapas={etapas} conversion={false} actividadesPorVincular={[]} />
+            </details>)}
         {etapas.map((etapa) => {
           const estado = definir(ESTADO_ETAPA, etapa.estado)
           const programa = programaDeEtapa(etapa, hoy)
@@ -156,7 +155,7 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
   const [seleccion, setSeleccion] = useState(() => etapas
     .filter((e) => e.etapa_id !== null)
     .map((e) => ({ id: e.etapa_id!, nombre: e.etapa ?? '', area: e.area_id ?? '', peso: e.peso_pct ?? 0,
-      guardada: true, avance: e.avance_porcentaje ?? 0,
+      avance: e.avance_porcentaje ?? 0,
       iniciada: e.fecha_inicio_real !== null || e.fecha_fin_real !== null || (e.horas_reales ?? 0) > 0 })))
   const [etapaActividad, setEtapaActividad] = useState('')
   const total = seleccion.reduce((suma, item) => suma + Number(item.peso || 0), 0)
@@ -167,59 +166,68 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
     setSeleccion(copia)
   }
   return (
-    <form onSubmit={alEnviar} className="mt-3 space-y-3 border-t border-borde pt-3">
+    <form onSubmit={alEnviar} className="max-w-5xl space-y-5">
       <input type="hidden" name="orden_id" value={ordenId} />
       {conversion && <input type="hidden" name="conversion" value="1" />}
-      <p className="text-sm font-medium text-texto">Diseño: etapas de la OT</p>
-      <p className="text-xs text-texto-suave">Escribe el nombre y área de cada etapa; reparte el 100 % entre ellas. Administración pondrá las fechas.</p>
-      <Boton type="button" variante="secundario" tamano="sm" onClick={() => setSeleccion((actual) => [
-        ...actual, { id: crypto.randomUUID(), nombre: '', area: '', peso: 0,
-          guardada: false, avance: 0, iniciada: false },
-      ])}>Agregar etapa</Boton>
-      {seleccion.length === 0 && <p className="text-sm text-texto-suave">Agrega la primera etapa para empezar.</p>}
+      <div>
+        <h3 className="text-base font-semibold text-texto">Definir etapas de esta OT</h3>
+        <p className="mt-1 text-sm text-texto-suave">Crea cada etapa con su área responsable y reparte el 100 % del avance. Administración añadirá las fechas.</p>
+      </div>
+      {seleccion.length === 0 && <div className="rounded-[var(--radius-base)] border border-dashed border-borde-fuerte bg-superficie px-4 py-6 text-center">
+        <p className="text-sm font-medium text-texto">Aún no hay etapas</p>
+        <p className="mt-1 text-xs text-texto-suave">Agrega la primera para organizar el trabajo de esta orden.</p>
+      </div>}
       <div className="space-y-2">
         {seleccion.map((item, indice) => {
           const etiqueta = item.nombre.trim() || `Etapa ${indice + 1}`
-          return <div key={item.id} className="grid gap-2 rounded-[var(--radius-base)] border border-borde p-2 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,1fr)_7rem_auto] sm:items-end">
+          return <div key={item.id} className="rounded-[var(--radius-base)] border border-borde bg-superficie p-3">
             <input type="hidden" name="etapa_id" value={item.id} />
-            <div>
-              <Campo etiqueta={`Nombre de la etapa ${indice + 1}`} htmlFor={`nombre-${item.id}`} requerido>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm font-medium text-texto">Etapa {indice + 1}</span>
+              <div className="flex items-center gap-1">
+                <Boton type="button" variante="fantasma" tamano="sm" disabled={indice === 0} onClick={() => mover(indice, -1)} aria-label={`Subir ${etiqueta}`}>↑</Boton>
+                <Boton type="button" variante="fantasma" tamano="sm" disabled={indice === seleccion.length - 1} onClick={() => mover(indice, 1)} aria-label={`Bajar ${etiqueta}`}>↓</Boton>
+                <Boton type="button" variante="fantasma" tamano="sm" disabled={item.avance > 0 || item.iniciada}
+                  onClick={() => setSeleccion((actual) => actual.filter((fila) => fila.id !== item.id))}
+                  aria-label={`Quitar ${etiqueta}`} title={item.avance > 0 || item.iniciada ? 'La etapa ya tiene avance' : undefined}>Quitar</Boton>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(9rem,1fr)_7rem] sm:items-end">
+              <Campo etiqueta="Nombre" htmlFor={`nombre-${item.id}`} requerido>
                 <Entrada id={`nombre-${item.id}`} name={`nombre_${item.id}`} value={item.nombre} minLength={2} maxLength={120} required
                   onChange={(e) => setSeleccion((actual) => actual.map((fila) => fila.id === item.id ? { ...fila, nombre: e.target.value } : fila))} />
               </Campo>
-              <div className="mt-1 flex gap-1">
-                <Boton type="button" variante="fantasma" tamano="sm" disabled={indice === 0} onClick={() => mover(indice, -1)} aria-label={`Subir ${etiqueta}`}>↑</Boton>
-                <Boton type="button" variante="fantasma" tamano="sm" disabled={indice === seleccion.length - 1} onClick={() => mover(indice, 1)} aria-label={`Bajar ${etiqueta}`}>↓</Boton>
-              </div>
+              <Campo etiqueta="Área responsable" htmlFor={`area-${item.id}`} requerido>
+                <Seleccion id={`area-${item.id}`} name={`area_${item.id}`} required value={item.area} onChange={(e) => setSeleccion((actual) => actual.map((fila) => fila.id === item.id ? { ...fila, area: e.target.value } : fila))}>
+                  <option value="">Elige el área</option>
+                  {areas.map((area) => <option key={area.id} value={area.id}>{area.nombre}</option>)}
+                </Seleccion>
+              </Campo>
+              <Campo etiqueta="Peso (%)" htmlFor={`peso-${item.id}`} requerido>
+                <Entrada id={`peso-${item.id}`} name={`peso_${item.id}`} type="number" min={1} max={100} step={1} required value={item.peso || ''} onChange={(e) => setSeleccion((actual) => actual.map((fila) => fila.id === item.id ? { ...fila, peso: Number(e.target.value) } : fila))} className="tabular text-right" />
+              </Campo>
             </div>
-            <Campo etiqueta="Área responsable" htmlFor={`area-${item.id}`} requerido>
-              <Seleccion id={`area-${item.id}`} name={`area_${item.id}`} required value={item.area} onChange={(e) => setSeleccion((actual) => actual.map((fila) => fila.id === item.id ? { ...fila, area: e.target.value } : fila))}>
-                <option value="">Elige el área</option>
-                {areas.map((area) => <option key={area.id} value={area.id}>{area.nombre}</option>)}
-              </Seleccion>
-            </Campo>
-            <Campo etiqueta="Peso (%)" htmlFor={`peso-${item.id}`} requerido>
-              <Entrada id={`peso-${item.id}`} name={`peso_${item.id}`} type="number" min={1} max={100} step={1} required value={item.peso || ''} onChange={(e) => setSeleccion((actual) => actual.map((fila) => fila.id === item.id ? { ...fila, peso: Number(e.target.value) } : fila))} className="tabular text-right" />
-            </Campo>
-            <Boton type="button" variante="fantasma" tamano="sm" disabled={item.avance > 0 || item.iniciada}
-              onClick={() => setSeleccion((actual) => actual.filter((fila) => fila.id !== item.id))}
-              aria-label={`Quitar ${etiqueta}`} title={item.avance > 0 || item.iniciada ? 'La etapa ya tiene avance' : undefined}>Quitar</Boton>
           </div>
         })}
       </div>
-      <p className={`text-sm tabular ${total === 100 ? 'text-exito' : 'text-peligro'}`} role="status">Peso total: {total} % de 100 %</p>
-      {conversion && actividadesPorVincular.map((actividad) => (
-        <Campo key={actividad.id} etiqueta={`Vincular actividad «${actividad.nombre}» a la etapa`} htmlFor="etapa-actividad" requerido>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Boton type="button" variante={seleccion.length === 0 ? 'primario' : 'secundario'} tamano="sm" onClick={() => setSeleccion((actual) => [
+          ...actual, { id: crypto.randomUUID(), nombre: '', area: '', peso: 0, avance: 0, iniciada: false },
+        ])}>+ Agregar etapa</Boton>
+        {seleccion.length > 0 && <p className={`text-sm font-medium tabular ${total === 100 ? 'text-exito' : total > 100 ? 'text-peligro' : 'text-texto-suave'}`} role="status">Porcentaje asignado: {total} % de 100 %</p>}
+      </div>
+      {conversion && seleccion.length > 0 && actividadesPorVincular.map((actividad) => (
+        <Campo key={actividad.id} etiqueta={`Actividad existente: ${actividad.nombre}`} htmlFor="etapa-actividad" requerido>
           <Seleccion id="etapa-actividad" name="etapa_actividad" required value={etapaActividad}
             onChange={(e) => setEtapaActividad(e.target.value)}>
-            <option value="">Elige una etapa de su área</option>
+            <option value="">Elige la etapa de su área</option>
             {seleccion.filter((item) => item.area === actividad.area_id).map((item) => (
               <option key={item.id} value={item.id}>{item.nombre || 'Etapa sin nombre'}</option>
             ))}
           </Seleccion>
         </Campo>
       ))}
-      {conversion && <p className="text-xs text-texto-suave">Incluye una sola etapa de Diseño para conservar el plano y una de Producción para la actividad. Administración programará sus fechas después.</p>}
+      {conversion && <p className="text-xs text-texto-suave">Esta OT ya tiene un plano y una actividad. Incluye una etapa de Diseño y otra del área de la actividad para vincularlos al guardar.</p>}
       {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
       <Boton type="submit" tamano="sm" cargando={enviando}
         disabled={seleccion.length === 0 || total !== 100 || (conversion && (
@@ -227,7 +235,7 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
           || seleccion.find((item) => item.id === etapaActividad)?.area !== actividadesPorVincular[0]?.area_id
           || seleccion.filter((item) => areas.find((area) => area.id === item.area)?.codigo === 'DIS').length !== 1
         ))}>
-        {conversion ? 'Guardar etapas y conservar vínculos' : 'Guardar etapas'}
+        Guardar etapas
       </Boton>
     </form>
   )
