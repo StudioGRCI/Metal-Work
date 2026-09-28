@@ -115,7 +115,7 @@ export function Cumplimiento({
       </p>
       <Tarjeta>
         <TarjetaCabecera
-          titulo="Cumplimiento de tiempos por área"
+          titulo="Piezas y avance de los planos"
           descripcion="Diseño reparte los planos con su peso; Maestranza reporta el habilitado y Producción el armado. El porcentaje sale de los vistos, no se escribe."
         />
         <TarjetaCuerpo>
