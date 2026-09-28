@@ -124,9 +124,8 @@ que ya exista.
 
 ```bash
 npm run dev          # http://localhost:3000
+npm run verificar    # tipos de Next, TypeScript y ESLint; funciona en Windows sin WSL
 npm run build        # compilación de producción
-npx eslint .         # análisis estático
-npx tsc --noEmit     # comprobación de tipos
 ```
 
 ## Despliegue en Vercel
