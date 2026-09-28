@@ -16,15 +16,13 @@ import type { Vistas } from '@/types/database'
 
 import { definirEtapas, programarEtapa } from './acciones-etapas'
 
-type Etapa = Vistas<'ot_tablero_etapas'> & { observaciones: string | null; etapa_catalogo_id: string | null; area_id: string | null; peso_pct: number | null }
-type EtapaCatalogo = { id: string; nombre: string; orden_secuencia: number; area_id: string | null }
+type Etapa = Vistas<'ot_tablero_etapas'> & { observaciones: string | null; area_id: string | null; peso_pct: number | null; horas_reales: number | null }
 type Area = { id: string; nombre: string; codigo: string }
 type ActividadPorVincular = { id: string; nombre: string; area_id: string }
 
 export function Etapas({
   ordenId,
   etapas,
-  catalogo,
   areas,
   actividadesPorVincular,
   hoy,
@@ -34,7 +32,6 @@ export function Etapas({
 }: {
   ordenId: string
   etapas: Etapa[]
-  catalogo: EtapaCatalogo[]
   areas: Area[]
   actividadesPorVincular: ActividadPorVincular[]
   /** La fecha del taller (hoyLima), resuelta en el servidor. */
@@ -75,7 +72,7 @@ export function Etapas({
           <summary className="cursor-pointer text-sm font-medium text-texto">
             {esNueva ? 'Crear o editar etapas' : 'Reemplazar etapas automáticas'}
           </summary>
-          <FormularioDefinicion ordenId={ordenId} catalogo={catalogo} areas={areas}
+          <FormularioDefinicion ordenId={ordenId} areas={areas}
             etapas={esNueva ? etapas : []} conversion={!esNueva}
             actividadesPorVincular={actividadesPorVincular} />
         </details>}
@@ -148,9 +145,8 @@ export function Etapas({
     </Tarjeta>
   )
 }
-function FormularioDefinicion({ ordenId, catalogo, areas, etapas, conversion, actividadesPorVincular }: {
+function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesPorVincular }: {
   ordenId: string
-  catalogo: EtapaCatalogo[]
   areas: Area[]
   etapas: Etapa[]
   conversion: boolean
@@ -158,12 +154,11 @@ function FormularioDefinicion({ ordenId, catalogo, areas, etapas, conversion, ac
 }) {
   const { alEnviar, enviando, error } = useEnvio(definirEtapas)
   const [seleccion, setSeleccion] = useState(() => etapas
-    .filter((e) => e.etapa_catalogo_id !== null)
-    .map((e) => ({ id: e.etapa_catalogo_id!, area: e.area_id ?? catalogo.find((c) => c.id === e.etapa_catalogo_id)?.area_id ?? areas[0]?.id ?? '', peso: e.peso_pct ?? 0 })))
-  const [porAgregar, setPorAgregar] = useState('')
+    .filter((e) => e.etapa_id !== null)
+    .map((e) => ({ id: e.etapa_id!, nombre: e.etapa ?? '', area: e.area_id ?? '', peso: e.peso_pct ?? 0,
+      guardada: true, avance: e.avance_porcentaje ?? 0,
+      iniciada: e.fecha_inicio_real !== null || e.fecha_fin_real !== null || (e.horas_reales ?? 0) > 0 })))
   const [etapaActividad, setEtapaActividad] = useState('')
-  const existentes = new Set(etapas.map((e) => e.etapa_catalogo_id))
-  const disponibles = catalogo.filter((item) => !seleccion.some((e) => e.id === item.id))
   const total = seleccion.reduce((suma, item) => suma + Number(item.peso || 0), 0)
   function mover(indice: number, cambio: number) {
     const copia = [...seleccion]
@@ -176,32 +171,25 @@ function FormularioDefinicion({ ordenId, catalogo, areas, etapas, conversion, ac
       <input type="hidden" name="orden_id" value={ordenId} />
       {conversion && <input type="hidden" name="conversion" value="1" />}
       <p className="text-sm font-medium text-texto">Diseño: etapas de la OT</p>
-      <p className="text-xs text-texto-suave">Agrega las etapas necesarias, asigna su área y reparte el 100 % del trabajo.</p>
-      <div className="flex flex-wrap items-end gap-2">
-        <Campo etiqueta="Etapa para agregar" htmlFor="etapa-para-agregar" className="min-w-56 flex-1">
-          <Seleccion id="etapa-para-agregar" value={porAgregar} onChange={(e) => setPorAgregar(e.target.value)}>
-            <option value="">Selecciona una etapa</option>
-            {disponibles.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}
-          </Seleccion>
-        </Campo>
-        <Boton type="button" variante="secundario" tamano="sm" disabled={!porAgregar} onClick={() => {
-          const item = catalogo.find((c) => c.id === porAgregar)
-          if (!item) return
-          setSeleccion((actual) => [...actual, { id: item.id, area: item.area_id ?? areas[0]?.id ?? '', peso: 0 }])
-          setPorAgregar('')
-        }}>Agregar etapa</Boton>
-      </div>
-      {seleccion.length === 0 && <p className="text-sm text-texto-suave">Selecciona una etapa para empezar.</p>}
+      <p className="text-xs text-texto-suave">Escribe el nombre y área de cada etapa; reparte el 100 % entre ellas. Administración pondrá las fechas.</p>
+      <Boton type="button" variante="secundario" tamano="sm" onClick={() => setSeleccion((actual) => [
+        ...actual, { id: crypto.randomUUID(), nombre: '', area: '', peso: 0,
+          guardada: false, avance: 0, iniciada: false },
+      ])}>Agregar etapa</Boton>
+      {seleccion.length === 0 && <p className="text-sm text-texto-suave">Agrega la primera etapa para empezar.</p>}
       <div className="space-y-2">
         {seleccion.map((item, indice) => {
-          const nombre = catalogo.find((c) => c.id === item.id)?.nombre ?? 'Etapa'
+          const etiqueta = item.nombre.trim() || `Etapa ${indice + 1}`
           return <div key={item.id} className="grid gap-2 rounded-[var(--radius-base)] border border-borde p-2 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,1fr)_7rem_auto] sm:items-end">
             <input type="hidden" name="etapa_id" value={item.id} />
             <div>
-              <p className="text-sm font-medium text-texto">{indice + 1}. {nombre}</p>
+              <Campo etiqueta={`Nombre de la etapa ${indice + 1}`} htmlFor={`nombre-${item.id}`} requerido>
+                <Entrada id={`nombre-${item.id}`} name={`nombre_${item.id}`} value={item.nombre} minLength={2} maxLength={120} required
+                  onChange={(e) => setSeleccion((actual) => actual.map((fila) => fila.id === item.id ? { ...fila, nombre: e.target.value } : fila))} />
+              </Campo>
               <div className="mt-1 flex gap-1">
-                <Boton type="button" variante="fantasma" tamano="sm" disabled={indice === 0} onClick={() => mover(indice, -1)} aria-label={`Subir ${nombre}`}>↑</Boton>
-                <Boton type="button" variante="fantasma" tamano="sm" disabled={indice === seleccion.length - 1} onClick={() => mover(indice, 1)} aria-label={`Bajar ${nombre}`}>↓</Boton>
+                <Boton type="button" variante="fantasma" tamano="sm" disabled={indice === 0} onClick={() => mover(indice, -1)} aria-label={`Subir ${etiqueta}`}>↑</Boton>
+                <Boton type="button" variante="fantasma" tamano="sm" disabled={indice === seleccion.length - 1} onClick={() => mover(indice, 1)} aria-label={`Bajar ${etiqueta}`}>↓</Boton>
               </div>
             </div>
             <Campo etiqueta="Área responsable" htmlFor={`area-${item.id}`} requerido>
@@ -213,7 +201,9 @@ function FormularioDefinicion({ ordenId, catalogo, areas, etapas, conversion, ac
             <Campo etiqueta="Peso (%)" htmlFor={`peso-${item.id}`} requerido>
               <Entrada id={`peso-${item.id}`} name={`peso_${item.id}`} type="number" min={1} max={100} step={1} required value={item.peso || ''} onChange={(e) => setSeleccion((actual) => actual.map((fila) => fila.id === item.id ? { ...fila, peso: Number(e.target.value) } : fila))} className="tabular text-right" />
             </Campo>
-            <Boton type="button" variante="fantasma" tamano="sm" disabled={existentes.has(item.id)} onClick={() => setSeleccion((actual) => actual.filter((fila) => fila.id !== item.id))} aria-label={`Quitar ${nombre}`} title={existentes.has(item.id) ? 'Una etapa ya guardada conserva su historial' : undefined}>Quitar</Boton>
+            <Boton type="button" variante="fantasma" tamano="sm" disabled={item.avance > 0 || item.iniciada}
+              onClick={() => setSeleccion((actual) => actual.filter((fila) => fila.id !== item.id))}
+              aria-label={`Quitar ${etiqueta}`} title={item.avance > 0 || item.iniciada ? 'La etapa ya tiene avance' : undefined}>Quitar</Boton>
           </div>
         })}
       </div>
@@ -224,7 +214,7 @@ function FormularioDefinicion({ ordenId, catalogo, areas, etapas, conversion, ac
             onChange={(e) => setEtapaActividad(e.target.value)}>
             <option value="">Elige una etapa de su área</option>
             {seleccion.filter((item) => item.area === actividad.area_id).map((item) => (
-              <option key={item.id} value={item.id}>{catalogo.find((c) => c.id === item.id)?.nombre}</option>
+              <option key={item.id} value={item.id}>{item.nombre || 'Etapa sin nombre'}</option>
             ))}
           </Seleccion>
         </Campo>
@@ -237,7 +227,7 @@ function FormularioDefinicion({ ordenId, catalogo, areas, etapas, conversion, ac
           || seleccion.find((item) => item.id === etapaActividad)?.area !== actividadesPorVincular[0]?.area_id
           || seleccion.filter((item) => areas.find((area) => area.id === item.area)?.codigo === 'DIS').length !== 1
         ))}>
-        {conversion ? 'Reemplazar 14 etapas y conservar vínculos' : 'Guardar etapas'}
+        {conversion ? 'Guardar etapas y conservar vínculos' : 'Guardar etapas'}
       </Boton>
     </form>
   )

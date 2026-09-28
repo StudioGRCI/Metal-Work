@@ -2119,7 +2119,8 @@ export type Database = {
         Row: {
           id: string
           orden_id: string
-          etapa_catalogo_id: string
+          etapa_catalogo_id: string | null
+          nombre: string | null
           area_id: string | null
           peso_pct: number | null
           estado: Database["public"]["Enums"]["estado_etapa_ot"]
@@ -2140,7 +2141,8 @@ export type Database = {
         Insert: {
           id?: string
           orden_id: string
-          etapa_catalogo_id: string
+          etapa_catalogo_id?: string | null
+          nombre?: string | null
           area_id?: string | null
           peso_pct?: number | null
           estado?: Database["public"]["Enums"]["estado_etapa_ot"]
@@ -2161,7 +2163,8 @@ export type Database = {
         Update: {
           id?: string
           orden_id?: string
-          etapa_catalogo_id?: string
+          etapa_catalogo_id?: string | null
+          nombre?: string | null
           area_id?: string | null
           peso_pct?: number | null
           estado?: Database["public"]["Enums"]["estado_etapa_ot"]
@@ -4439,6 +4442,14 @@ export type Database = {
         Args: {
           p_orden_id: string
           p_config: Json
+        }
+        Returns: number
+      }
+      guardar_etapas_libres: {
+        Args: {
+          p_orden_id: string
+          p_config: Json
+          p_etapa_actividad?: string | null
         }
         Returns: number
       }

@@ -105,7 +105,7 @@ export async function catalogoDeMateriales(ordenId: string): Promise<CatalogoMat
       .order('orden_secuencia'),
     supabase
       .from('ot_etapas')
-      .select('id, orden_secuencia, etapa:etapas_catalogo(nombre, area:areas(nombre))')
+      .select('id, orden_secuencia, nombre, area_id, etapa:etapas_catalogo(nombre, area:areas(nombre))')
       .eq('orden_id', ordenId)
       .order('orden_secuencia'),
   ])
@@ -126,7 +126,7 @@ export async function catalogoDeMateriales(ordenId: string): Promise<CatalogoMat
       const etapa = e.etapa as { nombre: string; area: { nombre: string } | null } | null
       return {
         id: e.id,
-        nombre: etapa?.nombre ?? `Etapa ${e.orden_secuencia}`,
+        nombre: e.nombre ?? etapa?.nombre ?? `Etapa ${e.orden_secuencia}`,
         area: etapa?.area?.nombre ?? null,
       }
     }),
