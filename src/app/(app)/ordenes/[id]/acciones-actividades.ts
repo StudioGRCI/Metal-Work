@@ -50,6 +50,7 @@ const nulo = (v: string | undefined) => (v && v.trim().length > 0 ? v.trim() : n
 
 const esquemaActividad = z.object({
   orden_id: z.string().uuid(),
+  etapa_id: z.union([z.string().uuid(), z.literal('')]).optional(),
   area_id: z.string().uuid('Elige el área'),
   nombre: z.string().trim().min(3, 'Escribe qué actividad es'),
   referencia: z.string().trim().optional(),
@@ -63,7 +64,7 @@ const esquemaActividad = z.object({
 
 export async function agregarActividad(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['produccion.actividades', 'diseno.planos'])) {
+  if (!puede(perfil, ['produccion.actividades', 'diseno.planos', 'produccion.registrar'])) {
     return { ok: false, error: 'La lista de actividades la arma Diseño o el jefe del área.' }
   }
 
@@ -74,7 +75,7 @@ export async function agregarActividad(_previo: unknown, datos: FormData): Promi
 
   const v = analisis.data
 
-  if (!puedeArmarHoja(perfil, v.area_id)) {
+  if (!puedeArmarHoja(perfil, v.area_id) && !puedeHojaDeArea(perfil, v.area_id)) {
     return { ok: false, error: 'Esa hoja es de otra área: cada uno arma la suya.' }
   }
 
@@ -85,12 +86,23 @@ export async function agregarActividad(_previo: unknown, datos: FormData): Promi
   }
 
   const supabase = await createClient()
+  if (!puedeArmarHoja(perfil, v.area_id)) {
+    const { data: orden, error: errorOrden } = await supabase.from('ordenes_trabajo')
+      .select('plan_etapas_manual').eq('id', v.orden_id).maybeSingle()
+    if (errorOrden || !orden?.plan_etapas_manual) return { ok: false, error: 'Solo el jefe del área puede crear actividades en esta orden.' }
+  }
+  if (v.etapa_id) {
+    const { data: etapa, error: errorEtapa } = await supabase.from('ot_etapas')
+      .select('id').eq('id', v.etapa_id).eq('orden_id', v.orden_id).maybeSingle()
+    if (errorEtapa || !etapa) return { ok: false, error: 'Elige una etapa de esta orden.' }
+  }
 
   const { data, error } = await supabase
     .from('ot_actividades')
     .insert({
       orden_id: v.orden_id,
       area_id: v.area_id,
+      etapa_id: nulo(v.etapa_id),
       nombre: v.nombre,
       referencia: nulo(v.referencia),
       detalle: nulo(v.detalle),
@@ -113,6 +125,7 @@ export async function agregarActividad(_previo: unknown, datos: FormData): Promi
 const esquemaEditar = z.object({
   id: z.string().uuid(),
   orden_id: z.string().uuid(),
+  etapa_id: z.union([z.string().uuid(), z.literal('')]).optional(),
   nombre: z.string().trim().min(3, 'Escribe qué actividad es'),
   referencia: z.string().trim().optional(),
   detalle: z.string().trim().optional(),
@@ -150,10 +163,16 @@ export async function editarActividad(_previo: unknown, datos: FormData): Promis
   }
 
   const supabase = await createClient()
+  if (v.etapa_id) {
+    const { data: etapa, error: errorEtapa } = await supabase.from('ot_etapas')
+      .select('id').eq('id', v.etapa_id).eq('orden_id', v.orden_id).maybeSingle()
+    if (errorEtapa || !etapa) return { ok: false, error: 'Elige una etapa de esta orden.' }
+  }
   const { data, error } = await supabase
     .from('ot_actividades')
     .update({
       nombre: v.nombre,
+      etapa_id: nulo(v.etapa_id),
       referencia: nulo(v.referencia),
       detalle: nulo(v.detalle),
       orden_secuencia: v.orden_secuencia,
@@ -327,14 +346,13 @@ const esquemaAvance = z.object({
   fecha: z.string().min(1, 'Falta la fecha'),
   avance_pct: z.coerce.number().min(0.01, 'El avance del día tiene que ser mayor que cero').max(100),
   nota: z.string().trim().optional(),
+  foto_ruta: z.string().trim().optional(),
+  materiales_usados: z.string().optional(),
 })
 
 /** El reporte del día: lo que se avanzó hoy, no el acumulado. */
 export async function reportarAvance(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'produccion.registrar')) {
-    return { ok: false, error: 'No tienes permiso para reportar avance de producción.' }
-  }
 
   const analisis = esquemaAvance.safeParse(Object.fromEntries(datos))
   if (!analisis.success) {
@@ -342,12 +360,28 @@ export async function reportarAvance(_previo: unknown, datos: FormData): Promise
   }
 
   const v = analisis.data
+  const supabase = await createClient()
+  const { data: orden, error: errorOrden } = await supabase.from('ordenes_trabajo')
+    .select('plan_etapas_manual').eq('id', v.orden_id).maybeSingle()
+  if (errorOrden || !orden) return { ok: false, error: 'No se pudo comprobar la orden.' }
+  if (!puede(perfil, orden.plan_etapas_manual ? 'produccion.reportar_tarea' : 'produccion.registrar')) {
+    return { ok: false, error: 'El reporte de esta tarea lo registra el supervisor del área.' }
+  }
 
   if (!puedeHojaDeArea(perfil, await areaDeActividad(v.actividad_id))) {
     return { ok: false, error: 'Ese avance es de otra área: cada uno reporta lo suyo.' }
   }
 
-  const supabase = await createClient()
+  const materiales = z.array(z.object({ movimiento_id: z.string().uuid(), cantidad: z.number().positive() })).max(30)
+  let usados: z.infer<typeof materiales> = []
+  try {
+    usados = materiales.parse(JSON.parse(v.materiales_usados || '[]'))
+  } catch {
+    return { ok: false, error: 'Revisa los materiales usados.' }
+  }
+  if (orden.plan_etapas_manual && (!v.foto_ruta || !v.foto_ruta.startsWith(`ot/${v.orden_id}/taller/`))) {
+    return { ok: false, error: 'Adjunta una foto de la tarea antes de reportarla.' }
+  }
 
   const { data, error } = await supabase
     .from('ot_actividad_avances')
@@ -357,6 +391,8 @@ export async function reportarAvance(_previo: unknown, datos: FormData): Promise
       fecha: v.fecha,
       avance_pct: v.avance_pct,
       nota: nulo(v.nota),
+      foto_ruta: nulo(v.foto_ruta),
+      materiales_usados: usados,
       reportado_por: perfil.id,
     })
     .select('id')

@@ -4,43 +4,40 @@ import { CalendarDays } from 'lucide-react'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { ESTADO_ETAPA, ORDEN_ESTADO_ETAPA, definir, opciones } from '@/lib/dominio/estados'
+import { ESTADO_ETAPA, definir } from '@/lib/dominio/estados'
 import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
 import { cantidad, fecha } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import type { Vistas } from '@/types/database'
 
-import { actualizarEtapa } from '../acciones'
 import { definirEtapas, programarEtapa } from './acciones-etapas'
 
-type Etapa = Vistas<'ot_tablero_etapas'> & { observaciones: string | null; etapa_catalogo_id: string | null }
-type EtapaCatalogo = { id: string; nombre: string; orden_secuencia: number }
-
-const ESTADOS = opciones(ESTADO_ETAPA, ORDEN_ESTADO_ETAPA)
+type Etapa = Vistas<'ot_tablero_etapas'> & { observaciones: string | null; etapa_catalogo_id: string | null; area_id: string | null; peso_pct: number | null }
+type EtapaCatalogo = { id: string; nombre: string; orden_secuencia: number; area_id: string | null }
+type Area = { id: string; nombre: string }
 
 export function Etapas({
   ordenId,
   etapas,
   catalogo,
+  areas,
   hoy,
-  puedeRegistrar,
   puedeDefinir,
   puedeProgramar,
 }: {
   ordenId: string
   etapas: Etapa[]
   catalogo: EtapaCatalogo[]
+  areas: Area[]
   /** La fecha del taller (hoyLima), resuelta en el servidor. */
   hoy: string
-  puedeRegistrar: boolean
   puedeDefinir: boolean
   puedeProgramar: boolean
 }) {
-  const [editando, setEditando] = useState<string | null>(null)
   const [programando, setProgramando] = useState<string | null>(null)
 
   if (etapas.length === 0 && !puedeDefinir) {
@@ -61,17 +58,16 @@ export function Etapas({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Etapas de producción"
-        descripcion="El avance de cada etapa alimenta el avance total de la orden, ponderado por sus horas. Las fechas son el programa: contra ellas corre el control de plazos."
+        descripcion="Cada etapa aporta al avance de la orden según su peso. Su avance sale de los reportes de actividades vinculadas. Las fechas permiten controlar los plazos."
         acciones={vencidas > 0 ? <Insignia tono="peligro">{vencidas} {vencidas === 1 ? 'vencida' : 'vencidas'}</Insignia> : null}
       />
       <TarjetaCuerpo className="space-y-2 p-2">
-        {puedeDefinir && <FormularioDefinicion ordenId={ordenId} catalogo={catalogo} etapas={etapas} />}
+        {puedeDefinir && <FormularioDefinicion ordenId={ordenId} catalogo={catalogo} areas={areas} etapas={etapas} />}
         {etapas.length === 0 && (
           <p className="py-6 text-center text-sm text-texto-suave">Diseño todavía no ha definido las etapas de esta orden.</p>
         )}
         {etapas.map((etapa) => {
           const estado = definir(ESTADO_ETAPA, etapa.estado)
-          const abierta = editando === etapa.etapa_id
           const programa = programaDeEtapa(etapa, hoy)
 
           return (
@@ -91,6 +87,8 @@ export function Etapas({
                   </p>
                   <p className="text-[11px] text-texto-suave">
                     {cantidad(etapa.horas_estimadas)} h estimadas
+                    {etapa.area_id && ` · ${areas.find((a) => a.id === etapa.area_id)?.nombre ?? 'Área asignada'}`}
+                    {etapa.peso_pct !== null && ` · peso ${cantidad(etapa.peso_pct)} %`}
                     {etapa.fecha_fin_real && ` · terminada el ${fecha(etapa.fecha_fin_real)}`}
                   </p>
                   {(programa.inicio || programa.fin) && (
@@ -114,16 +112,6 @@ export function Etapas({
 
                 <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
 
-                {puedeRegistrar && (
-                  <Boton
-                    variante="fantasma"
-                    tamano="sm"
-                    onClick={() => setEditando(abierta ? null : etapa.etapa_id!)}
-                    aria-expanded={abierta}
-                  >
-                    {abierta ? 'Cerrar' : 'Registrar'}
-                  </Boton>
-                )}
                 {puedeProgramar && (
                   <Boton variante="fantasma" tamano="sm"
                     onClick={() => setProgramando(programando === etapa.etapa_id ? null : etapa.etapa_id)}
@@ -133,13 +121,6 @@ export function Etapas({
                 )}
               </div>
 
-              {abierta && (
-                <FormularioEtapa
-                  ordenId={ordenId}
-                  etapa={etapa}
-                  alTerminar={() => setEditando(null)}
-                />
-              )}
               {programando === etapa.etapa_id && (
                 <FormularioProgramacion ordenId={ordenId} etapa={etapa}
                   alTerminar={() => setProgramando(null)} />
@@ -151,122 +132,74 @@ export function Etapas({
     </Tarjeta>
   )
 }
-
-function FormularioEtapa({
-  ordenId,
-  etapa,
-  alTerminar,
-}: {
-  ordenId: string
-  etapa: Etapa
-  alTerminar: () => void
-}) {
-  const [avance, setAvance] = useState(Number(etapa.avance_porcentaje ?? 0))
-  // El formulario se cierra únicamente cuando el guardado fue correcto.
-  const { alEnviar, enviando, error } = useEnvio(actualizarEtapa, alTerminar)
-
-  return (
-    <form onSubmit={alEnviar} className="mt-3 grid gap-3 border-t border-borde pt-3 sm:grid-cols-3">
-      <input type="hidden" name="etapa_id" value={etapa.etapa_id ?? ''} />
-      <input type="hidden" name="orden_id" value={ordenId} />
-
-      <Campo etiqueta="Avance" htmlFor={`avance-${etapa.etapa_id}`}>
-        <div className="flex items-center gap-2">
-          <input
-            id={`avance-${etapa.etapa_id}`}
-            name="avance_porcentaje"
-            type="range"
-            min={0}
-            max={100}
-            step={5}
-            value={avance}
-            onChange={(e) => setAvance(Number(e.target.value))}
-            // El riel mide 4 px; el blanco para agarrarlo, 44 en el teléfono.
-            // En el monitor vuelve al alto natural del control.
-            className="h-11 w-full accent-[var(--acento)] sm:h-auto"
-          />
-          <Entrada
-            aria-label="Avance en porcentaje"
-            type="number"
-            inputMode="numeric"
-            min={0}
-            max={100}
-            value={avance}
-            onChange={(e) => setAvance(Number(e.target.value))}
-            className="tabular w-16 text-right"
-          />
-        </div>
-      </Campo>
-
-      <Campo etiqueta="Estado" htmlFor={`estado-${etapa.etapa_id}`}>
-        <Seleccion
-          id={`estado-${etapa.etapa_id}`}
-          name="estado"
-          defaultValue={etapa.estado ?? 'PENDIENTE'}
-        >
-          {ESTADOS.map((o) => (
-            <option key={o.valor} value={o.valor}>
-              {o.etiqueta}
-            </option>
-          ))}
-        </Seleccion>
-      </Campo>
-
-      <Campo etiqueta="Observaciones" htmlFor={`obs-${etapa.etapa_id}`}>
-        <AreaTexto
-          id={`obs-${etapa.etapa_id}`}
-          name="observaciones"
-          rows={2}
-          defaultValue={etapa.observaciones ?? ''}
-          placeholder="Novedades del trabajo en esta etapa"
-        />
-      </Campo>
-
-      {error && (
-        <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro sm:col-span-3">
-          {error}
-        </p>
-      )}
-
-      <div className="flex justify-end gap-2 sm:col-span-3">
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={alTerminar}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" tamano="sm" cargando={enviando}>
-          Guardar avance
-        </Boton>
-      </div>
-    </form>
-  )
-}
-
-function FormularioDefinicion({ ordenId, catalogo, etapas }: {
+function FormularioDefinicion({ ordenId, catalogo, areas, etapas }: {
   ordenId: string
   catalogo: EtapaCatalogo[]
+  areas: Area[]
   etapas: Etapa[]
 }) {
   const { alEnviar, enviando, error } = useEnvio(definirEtapas)
-  const existentes = new Map(etapas.map((e) => [e.etapa_catalogo_id, e.orden_secuencia]))
+  const [seleccion, setSeleccion] = useState(() => etapas
+    .filter((e) => e.etapa_catalogo_id !== null)
+    .map((e) => ({ id: e.etapa_catalogo_id!, area: e.area_id ?? catalogo.find((c) => c.id === e.etapa_catalogo_id)?.area_id ?? areas[0]?.id ?? '', peso: e.peso_pct ?? 0 })))
+  const [porAgregar, setPorAgregar] = useState('')
+  const existentes = new Set(etapas.map((e) => e.etapa_catalogo_id))
+  const disponibles = catalogo.filter((item) => !seleccion.some((e) => e.id === item.id))
+  const total = seleccion.reduce((suma, item) => suma + Number(item.peso || 0), 0)
+  function mover(indice: number, cambio: number) {
+    const copia = [...seleccion]
+    const [item] = copia.splice(indice, 1)
+    copia.splice(indice + cambio, 0, item)
+    setSeleccion(copia)
+  }
   return (
     <form onSubmit={alEnviar} className="space-y-3 rounded-[var(--radius-base)] border border-borde p-3">
       <input type="hidden" name="orden_id" value={ordenId} />
-      <p className="text-sm font-medium text-texto">Diseño: elige y ordena las etapas</p>
-      <p className="text-xs text-texto-suave">Las etapas ya registradas deben permanecer seleccionadas para conservar sus reportes.</p>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {catalogo.map((item) => (
-          <div key={item.id} className="flex items-center gap-2 rounded-[var(--radius-base)] border border-borde p-2">
-            <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-texto">
-              <input type="checkbox" name="etapa_id" value={item.id} defaultChecked={existentes.has(item.id)} />
-              <span>{item.nombre}</span>
-            </label>
-            <Entrada type="number" min={1} max={100} name={`posicion_${item.id}`}
-              aria-label={`Posición de ${item.nombre}`} defaultValue={existentes.get(item.id) ?? item.orden_secuencia}
-              className="w-16 tabular text-right" />
-          </div>
-        ))}
+      <p className="text-sm font-medium text-texto">Diseño: etapas de la OT</p>
+      <p className="text-xs text-texto-suave">Agrega las etapas necesarias, asigna su área y reparte el 100 % del trabajo.</p>
+      <div className="flex flex-wrap items-end gap-2">
+        <Campo etiqueta="Etapa para agregar" htmlFor="etapa-para-agregar" className="min-w-56 flex-1">
+          <Seleccion id="etapa-para-agregar" value={porAgregar} onChange={(e) => setPorAgregar(e.target.value)}>
+            <option value="">Selecciona una etapa</option>
+            {disponibles.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}
+          </Seleccion>
+        </Campo>
+        <Boton type="button" variante="secundario" tamano="sm" disabled={!porAgregar} onClick={() => {
+          const item = catalogo.find((c) => c.id === porAgregar)
+          if (!item) return
+          setSeleccion((actual) => [...actual, { id: item.id, area: item.area_id ?? areas[0]?.id ?? '', peso: 0 }])
+          setPorAgregar('')
+        }}>Agregar etapa</Boton>
       </div>
+      {seleccion.length === 0 && <p className="text-sm text-texto-suave">Selecciona una etapa para empezar.</p>}
+      <div className="space-y-2">
+        {seleccion.map((item, indice) => {
+          const nombre = catalogo.find((c) => c.id === item.id)?.nombre ?? 'Etapa'
+          return <div key={item.id} className="grid gap-2 rounded-[var(--radius-base)] border border-borde p-2 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,1fr)_7rem_auto] sm:items-end">
+            <input type="hidden" name="etapa_id" value={item.id} />
+            <div>
+              <p className="text-sm font-medium text-texto">{indice + 1}. {nombre}</p>
+              <div className="mt-1 flex gap-1">
+                <Boton type="button" variante="fantasma" tamano="sm" disabled={indice === 0} onClick={() => mover(indice, -1)} aria-label={`Subir ${nombre}`}>↑</Boton>
+                <Boton type="button" variante="fantasma" tamano="sm" disabled={indice === seleccion.length - 1} onClick={() => mover(indice, 1)} aria-label={`Bajar ${nombre}`}>↓</Boton>
+              </div>
+            </div>
+            <Campo etiqueta="Área responsable" htmlFor={`area-${item.id}`} requerido>
+              <Seleccion id={`area-${item.id}`} name={`area_${item.id}`} required value={item.area} onChange={(e) => setSeleccion((actual) => actual.map((fila) => fila.id === item.id ? { ...fila, area: e.target.value } : fila))}>
+                <option value="">Elige el área</option>
+                {areas.map((area) => <option key={area.id} value={area.id}>{area.nombre}</option>)}
+              </Seleccion>
+            </Campo>
+            <Campo etiqueta="Peso (%)" htmlFor={`peso-${item.id}`} requerido>
+              <Entrada id={`peso-${item.id}`} name={`peso_${item.id}`} type="number" min={1} max={100} step={1} required value={item.peso || ''} onChange={(e) => setSeleccion((actual) => actual.map((fila) => fila.id === item.id ? { ...fila, peso: Number(e.target.value) } : fila))} className="tabular text-right" />
+            </Campo>
+            <Boton type="button" variante="fantasma" tamano="sm" disabled={existentes.has(item.id)} onClick={() => setSeleccion((actual) => actual.filter((fila) => fila.id !== item.id))} aria-label={`Quitar ${nombre}`} title={existentes.has(item.id) ? 'Una etapa ya guardada conserva su historial' : undefined}>Quitar</Boton>
+          </div>
+        })}
+      </div>
+      <p className={`text-sm tabular ${total === 100 ? 'text-exito' : 'text-peligro'}`} role="status">Peso total: {total} % de 100 %</p>
       {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
-      <Boton type="submit" tamano="sm" cargando={enviando}>Guardar etapas</Boton>
+      <Boton type="submit" tamano="sm" cargando={enviando} disabled={seleccion.length === 0 || total !== 100}>Guardar etapas</Boton>
     </form>
   )
 }

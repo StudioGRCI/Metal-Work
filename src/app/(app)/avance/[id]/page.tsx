@@ -1,6 +1,6 @@
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -12,6 +12,7 @@ import { estadoDeOrden } from '@/lib/dominio/estados'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { fecha as formatearFecha } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
+import { createClient } from '@/lib/supabase/server'
 import { esUuid } from '@/lib/utils'
 
 import { RegistrarAvance } from '../registrar-avance'
@@ -26,6 +27,11 @@ export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avanc
 
   const orden = await cabeceraDeAvance(id)
   if (!orden) notFound()
+  const supabase = await createClient()
+  const { data: plan, error: errorPlan } = await supabase.from('ordenes_trabajo')
+    .select('plan_etapas_manual').eq('id', id).single()
+  if (errorPlan) throw new Error('No se pudo comprobar el plan de avance de la OT.')
+  if (plan.plan_etapas_manual) redirect(`/ordenes/${id}?vista=actividades`)
 
   // El último avance trae la traba vigente (migración 097): el formulario la
   // propone para que un reporte nuevo no la borre sin que nadie lo decida.

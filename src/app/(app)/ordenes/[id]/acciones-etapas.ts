@@ -15,22 +15,25 @@ export async function definirEtapas(_previo: unknown, datos: FormData): Promise<
   if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'Solo Diseño define las etapas.' }
   const orden = uuid.safeParse(datos.get('orden_id'))
   const seleccion = datos.getAll('etapa_id').map((valor) => uuid.safeParse(valor))
-  if (!orden.success || seleccion.length === 0 || seleccion.some((id) => !id.success)) {
+  if (!orden.success || seleccion.length === 0 || seleccion.some((id) => !id.success) ||
+      new Set(seleccion.filter((id) => id.success).map((id) => id.data)).size !== seleccion.length) {
     return { ok: false, error: 'Seleccione al menos una etapa válida.' }
   }
-  const ordenadas = seleccion.map((id) => {
+  const configuracion = seleccion.map((id) => {
     if (!id.success) throw new Error('Etapa inválida')
-    const posicion = z.coerce.number().int().min(1).max(100).safeParse(datos.get(`posicion_${id.data}`))
-    return { id: id.data, posicion: posicion.success ? posicion.data : null }
+    const area = uuid.safeParse(datos.get(`area_${id.data}`))
+    const peso = z.coerce.number().int().min(1).max(100).safeParse(datos.get(`peso_${id.data}`))
+    return { catalogo_id: id.data, area_id: area.success ? area.data : null, peso_pct: peso.success ? peso.data : null }
   })
-  if (ordenadas.some((e) => e.posicion === null) ||
-      new Set(ordenadas.map((e) => e.posicion)).size !== ordenadas.length) {
-    return { ok: false, error: 'Cada etapa necesita una posición distinta.' }
+  if (configuracion.some((e) => e.area_id === null || e.peso_pct === null)) {
+    return { ok: false, error: 'Cada etapa necesita un área y un peso entre 1 y 100 %.' }
   }
-  ordenadas.sort((a, b) => (a.posicion ?? 0) - (b.posicion ?? 0))
+  if (configuracion.reduce((total, e) => total + (e.peso_pct ?? 0), 0) !== 100) {
+    return { ok: false, error: 'Los pesos de las etapas deben sumar 100 %.' }
+  }
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('definir_etapas_diseno', {
-    p_orden_id: orden.data, p_etapas: ordenadas.map((e) => e.id),
+  const { data, error } = await supabase.rpc('definir_etapas_ponderadas', {
+    p_orden_id: orden.data, p_config: configuracion,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   revalidatePath(`/ordenes/${orden.data}`)

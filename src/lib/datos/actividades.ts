@@ -1,12 +1,14 @@
 import 'server-only'
 
 import { ESTADOS_ACTIVOS_OT, type DatosRevision } from '@/lib/dominio/estados'
+import { enlacesDeFotos } from '@/lib/datos/avances'
 import { createClient } from '@/lib/supabase/server'
 
 export type ActividadArea = {
   id: string
   orden_id: string
   area_id: string
+  etapa_id: string | null
   area_codigo: string
   area: string
   orden_secuencia: number
@@ -35,7 +37,29 @@ export type AvanceDeArea = {
 }
 
 /** Un reporte de la hoja por área, con quién lo escribió y en qué va con el jefe. */
-export type ReporteDiario = AvanceDelDia
+export type ReporteDiario = AvanceDelDia & {
+  foto_url: string | null
+  materiales_usados: { movimiento_id: string; cantidad: number }[]
+}
+
+/** Despachos de la OT que el supervisor puede declarar como usados en un reporte. */
+export async function despachosParaReporte(ordenId: string) {
+  const supabase = await createClient()
+  const lineas = await supabase.from('v_atencion_materiales')
+    .select('detalle_id, material, unidad, area_destino')
+    .eq('orden_id', ordenId).gt('cantidad_despachada', 0).limit(200)
+  if (lineas.error) throw new Error('No se pudieron leer los materiales despachados de la OT.')
+  const porDetalle = new Map((lineas.data ?? []).filter(l => l.detalle_id).map(l => [l.detalle_id!, l]))
+  if (porDetalle.size === 0) return []
+  const movimientos = await supabase.from('movimientos_materiales')
+    .select('id, requerimiento_detalle_id, cantidad')
+    .eq('tipo', 'DESPACHO').in('requerimiento_detalle_id', [...porDetalle.keys()]).limit(300)
+  if (movimientos.error) throw new Error('No se pudieron leer los despachos de la OT.')
+  return (movimientos.data ?? []).map(m => {
+    const linea = porDetalle.get(m.requerimiento_detalle_id)
+    return { id: m.id, nombre: linea?.material ?? 'Material', unidad: linea?.unidad ?? '', area: linea?.area_destino ?? '', cantidad: m.cantidad }
+  })
+}
 
 /**
  * La hoja de cada área: sus actividades, cuánto lleva de lo suyo y el diario de
@@ -58,7 +82,7 @@ export async function actividadesDeOrden(ordenId: string): Promise<{
     supabase
       .from('v_ot_actividades')
       .select(
-        'id, orden_id, area_id, area_codigo, area, orden_secuencia, nombre, detalle, referencia, peso_pct, avance_pct, terminada, ultimo_reporte, reportes, fecha_inicio_plan, fecha_fin_plan',
+        'id, orden_id, area_id, etapa_id, area_codigo, area, orden_secuencia, nombre, detalle, referencia, peso_pct, avance_pct, terminada, ultimo_reporte, reportes, fecha_inicio_plan, fecha_fin_plan',
       )
       .eq('orden_id', ordenId)
       .order('area')
@@ -83,11 +107,27 @@ export async function actividadesDeOrden(ordenId: string): Promise<{
   if (diario.error) {
     throw new Error(`No se pudo leer el diario de la unidad: ${diario.error.message}`)
   }
+  const idsReportes = (diario.data ?? []).map(r => r.id).filter((id): id is string => id !== null)
+  const evidencias = idsReportes.length > 0
+    ? await supabase.from('ot_actividad_avances').select('id, foto_ruta, materiales_usados').in('id', idsReportes)
+    : { data: [], error: null }
+  if (evidencias.error) throw new Error('No se pudieron leer las evidencias de los reportes.')
+  const rutas = (evidencias.data ?? []).map(e => e.foto_ruta).filter((ruta): ruta is string => ruta !== null)
+  const enlaces = await enlacesDeFotos(rutas)
+  const porReporte = new Map((evidencias.data ?? []).map(e => [e.id, e]))
 
   return {
     actividades: (actividades.data ?? []) as unknown as ActividadArea[],
     areas: (areas.data ?? []) as unknown as AvanceDeArea[],
-    diario: (diario.data ?? []) as unknown as ReporteDiario[],
+    diario: (diario.data ?? []).map(r => {
+      const evidencia = r.id ? porReporte.get(r.id) : null
+      const usados = evidencia?.materiales_usados
+      return {
+        ...r,
+        foto_url: evidencia?.foto_ruta ? (enlaces[evidencia.foto_ruta] ?? null) : null,
+        materiales_usados: Array.isArray(usados) ? usados : [],
+      }
+    }) as unknown as ReporteDiario[],
   }
 }
 
@@ -180,6 +220,7 @@ export async function hojasAbiertas(): Promise<HojaDeArea[]> {
 export type ActividadDelCronograma = {
   id: string
   orden_id: string
+  plan_etapas_manual: boolean
   orden_numero: string
   orden_estado: string
   abierta_en_taller: boolean | null
@@ -226,12 +267,18 @@ export async function cronogramaAbierto(
 
   const { data, error } = await consulta
   if (error) throw new Error(`No se pudo leer el cronograma: ${error.message}`)
+  const ids = [...new Set((data ?? []).map(a => a.orden_id).filter((id): id is string => id !== null))]
+  const ordenes = ids.length > 0
+    ? await supabase.from('ordenes_trabajo').select('id, plan_etapas_manual').in('id', ids)
+    : { data: [], error: null }
+  if (ordenes.error) throw new Error('No se pudo identificar el plan de las órdenes del taller.')
+  const manualPorOrden = new Map((ordenes.data ?? []).map(o => [o.id, o.plan_etapas_manual]))
 
   // En borrador solo las que abrió el taller: esas ya se trabajan mientras las
   // revisan; las de la oficina todavía no.
-  return ((data ?? []) as unknown as ActividadDelCronograma[]).filter(
+  return ((data ?? []) as Omit<ActividadDelCronograma, 'plan_etapas_manual'>[]).filter(
     (a) => a.orden_estado !== 'BORRADOR' || a.abierta_en_taller,
-  )
+  ).map(a => ({ ...a, plan_etapas_manual: manualPorOrden.get(a.orden_id) ?? false }))
 }
 
 /** El área de una actividad, para no escribir en la hoja de otro. */

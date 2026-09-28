@@ -123,7 +123,7 @@ export async function obtenerOrden(id: string) {
   const { data, error } = await supabase
     .from('ordenes_trabajo')
     .select(
-      'id, numero, estado, abierta_en_taller, cliente_id, prioridad, tipo_trabajo, descripcion, especificaciones_tecnicas, datos_tecnicos, fecha_registro, fecha_inicio_programada, fecha_fin_programada, fecha_entrega_comprometida, fecha_inicio_real, fecha_fin_real, avance_porcentaje, horas_estimadas, horas_reales, motivo_pausa, motivo_anulacion, observaciones, creado_en, actualizado_en, largo_m, ancho_m, alto_m, capacidad_carga, ruedas, tipo_llantas, cantidad_ejes, tipo_suspension, colores, caracteristicas_especiales, correo_contacto, encargado_produccion_id, cliente:clientes(id, razon_social, numero_documento, telefono, correo), unidad:unidades(id, placa, numero_fmi, marca, modelo, anio, tipo_vehiculo, numero_chasis, codigo_interno, actualizado_en), sede:sedes!inner(id, nombre), tipo_carroceria:tipos_carroceria(id, nombre), responsable:usuarios!ordenes_trabajo_responsable_id_fkey(id, puesto), supervisor:usuarios!ordenes_trabajo_supervisor_id_fkey(id, puesto)',
+      'id, numero, estado, plan_etapas_manual, abierta_en_taller, cliente_id, prioridad, tipo_trabajo, descripcion, especificaciones_tecnicas, datos_tecnicos, fecha_registro, fecha_inicio_programada, fecha_fin_programada, fecha_entrega_comprometida, fecha_inicio_real, fecha_fin_real, avance_porcentaje, horas_estimadas, horas_reales, motivo_pausa, motivo_anulacion, observaciones, creado_en, actualizado_en, largo_m, ancho_m, alto_m, capacidad_carga, ruedas, tipo_llantas, cantidad_ejes, tipo_suspension, colores, caracteristicas_especiales, correo_contacto, encargado_produccion_id, cliente:clientes(id, razon_social, numero_documento, telefono, correo), unidad:unidades(id, placa, numero_fmi, marca, modelo, anio, tipo_vehiculo, numero_chasis, codigo_interno, actualizado_en), sede:sedes!inner(id, nombre), tipo_carroceria:tipos_carroceria(id, nombre), responsable:usuarios!ordenes_trabajo_responsable_id_fkey(id, puesto), supervisor:usuarios!ordenes_trabajo_supervisor_id_fkey(id, puesto)',
     )
     .eq('id', id)
     .maybeSingle()
@@ -146,7 +146,7 @@ export async function listarEtapas(ordenId: string) {
       .order('orden_secuencia'),
     supabase
       .from('ot_etapas')
-      .select('id, observaciones, etapa_catalogo_id')
+      .select('id, observaciones, etapa_catalogo_id, area_id, peso_pct')
       .eq('orden_id', ordenId),
   ])
 
@@ -157,6 +157,8 @@ export async function listarEtapas(ordenId: string) {
     ...e,
     observaciones: e.etapa_id ? (porEtapa.get(e.etapa_id)?.observaciones ?? null) : null,
     etapa_catalogo_id: e.etapa_id ? (porEtapa.get(e.etapa_id)?.etapa_catalogo_id ?? null) : null,
+    area_id: e.etapa_id ? (porEtapa.get(e.etapa_id)?.area_id ?? null) : null,
+    peso_pct: e.etapa_id ? (porEtapa.get(e.etapa_id)?.peso_pct ?? null) : null,
   }))
 }
 
@@ -165,10 +167,21 @@ export async function catalogoEtapasParaOrden() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('etapas_catalogo')
-    .select('id, nombre, orden_secuencia')
+    .select('id, nombre, orden_secuencia, area_id')
     .eq('activo', true)
     .order('orden_secuencia')
   if (error) throw new Error(`No se pudieron cargar las etapas disponibles: ${error.message}`)
+  return data ?? []
+}
+
+export async function areasParaEtapas() {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('areas')
+    .select('id, nombre')
+    .eq('activo', true)
+    .order('nombre')
+  if (error) throw new Error(`No se pudieron cargar las áreas: ${error.message}`)
   return data ?? []
 }
 

@@ -53,6 +53,9 @@ function Error_({ texto }: { texto: string | null }) {
  */
 export function ActividadesDeOrden({
   ordenId,
+  esNueva,
+  despachos,
+  etapas,
   avanceGeneral,
   actividades,
   areas,
@@ -60,6 +63,7 @@ export function ActividadesDeOrden({
   areasDisponibles,
   areasVisibles,
   puedeArmar,
+  puedeCrear,
   puedeCargarCronograma,
   puedeReportar,
   areaPropia,
@@ -68,6 +72,9 @@ export function ActividadesDeOrden({
   eliminables,
 }: {
   ordenId: string
+  esNueva: boolean
+  despachos: { id: string; nombre: string; unidad: string; area: string; cantidad: number }[]
+  etapas: { id: string; nombre: string; area_id: string | null }[]
   avanceGeneral: number
   actividades: ActividadArea[]
   areas: AvanceDeArea[]
@@ -82,6 +89,7 @@ export function ActividadesDeOrden({
   areasVisibles: { id: string; codigo: string; nombre: string }[]
   /** Diseño para cualquier área; `produccion.actividades` para la suya (migración 106). */
   puedeArmar: boolean
+  puedeCrear: boolean
   /** La base rechaza cargar cronogramas en órdenes entregadas, facturadas o anuladas. */
   puedeCargarCronograma: boolean
   /** `produccion.registrar`: quien reporta el día. */
@@ -117,9 +125,9 @@ export function ActividadesDeOrden({
       <Tarjeta>
         <TarjetaCabecera
           titulo="Avance por área"
-          descripcion="Diseño arma la lista de cada área y cada una reporta lo que avanzó cada día. Producción por carrocería, Maestranza por pieza solicitada. Cada una tiene su propio 100 %."
+          descripcion={esNueva ? 'El taller registra las tareas realizadas. El supervisor reporta su avance con foto y materiales usados.' : 'Diseño arma la lista de cada área y cada una reporta lo que avanzó cada día. Producción por carrocería, Maestranza por pieza solicitada. Cada una tiene su propio 100 %.'}
           acciones={
-            puedeArmar && !agregando ? (
+            puedeCrear && !agregando ? (
               <span className="flex flex-wrap gap-2">
                 {puedeCargarCronograma && (
                   <CargarCronograma ordenId={ordenId} areasPropias={areasDisponibles} />
@@ -137,25 +145,25 @@ export function ActividadesDeOrden({
             <div className="flex flex-wrap items-end justify-between gap-2">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-texto-suave">Avance general de la OT</p>
-                <p className="mt-1 text-xs text-texto-tenue">Se calcula con las etapas de producción y sus horas.</p>
+                <p className="mt-1 text-xs text-texto-tenue">{esNueva ? 'Se calcula con el peso y el avance reportado de las etapas.' : 'Se calcula con las etapas de producción y sus horas.'}</p>
               </div>
               <span className="tabular text-lg font-semibold text-texto">{numero(avanceGeneral, 1)} %</span>
             </div>
             <Progreso valor={avanceGeneral} className="mt-2" />
             <p className="mt-2 text-xs text-texto-suave">
-              Los porcentajes de las áreas y sus partes diarios se muestran abajo por separado; aprobar un parte no cambia por sí solo este avance general.
+              {esNueva ? 'Los reportes del supervisor actualizan el avance de la etapa vinculada y, con su peso, el de la OT.' : 'Los porcentajes de las áreas y sus partes diarios se muestran abajo por separado; aprobar un parte no cambia por sí solo este avance general.'}
             </p>
           </div>
           {puedeArmar && !puedeCargarCronograma && (
             <p className="mb-3 text-sm text-texto-suave">
-              La orden está cerrada: puedes consultar su avance, pero ya no cargar un cronograma.
+              {esNueva ? 'La orden está cerrada: puedes consultar sus tareas y reportes.' : 'La orden está cerrada: puedes consultar su avance, pero ya no cargar un cronograma.'}
             </p>
           )}
           {areas.length === 0 ? (
             <p className="text-sm text-texto-suave">
-              {puedeArmar
-                ? 'Todavía no hay actividades. Arma la lista con el botón de arriba: cada actividad con su área y lo que pesa, y después cada área reporta el avance de cada día.'
-                : 'Diseño todavía no armó la lista de actividades de esta orden.'}
+              {puedeCrear
+                ? (esNueva ? 'Todavía no hay tareas. Registra la primera con el botón de arriba.' : 'Todavía no hay actividades. Arma la lista con el botón de arriba: cada actividad con su área y lo que pesa, y después cada área reporta el avance de cada día.')
+                : (esNueva ? 'El taller todavía no registró tareas de esta orden.' : 'Diseño todavía no armó la lista de actividades de esta orden.')}
             </p>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -189,9 +197,11 @@ export function ActividadesDeOrden({
         </TarjetaCuerpo>
       </Tarjeta>
 
-      {agregando && puedeArmar && (
+      {agregando && puedeCrear && (
         <NuevaActividad
           ordenId={ordenId}
+          esNueva={esNueva}
+          etapas={etapas}
           areas={areasDisponibles}
           areaPropia={areaPropia}
           /* Lo que la actividad nueva propone por área: el peso que falta para
@@ -230,7 +240,7 @@ export function ActividadesDeOrden({
                   ) : (
                     <Insignia tono="exito">Todo reportado hoy</Insignia>
                   )}
-                  {puedeReportar && (
+                  {puedeReportar && !esNueva && (
                     <ReportarArea
                       ordenId={ordenId}
                       area={area}
@@ -266,6 +276,7 @@ export function ActividadesDeOrden({
                             {[act.referencia, act.detalle].filter(Boolean).join(' · ')}
                           </p>
                         )}
+                        {act.etapa_id && <p className="text-[11px] text-texto-suave">Etapa: {etapas.find(e => e.id === act.etapa_id)?.nombre ?? 'Sin nombre'}</p>}
                         <PlanDeActividad actividad={act} hoy={hoy} />
                       </div>
                       <span className="tabular shrink-0 text-xs text-texto-suave">pesa {numero(act.peso_pct, 0)} %</span>
@@ -282,6 +293,9 @@ export function ActividadesDeOrden({
                     {(puedeReportar || puedeArmar) && (
                       <AccionesActividad
                         actividad={act}
+                        esNueva={esNueva}
+                        despachos={despachos}
+                        etapas={etapas.filter((e) => e.area_id === act.area_id)}
                         ordenId={ordenId}
                         puedeArmar={puedeArmar}
                         puedeReportar={puedeReportar}
@@ -319,6 +333,7 @@ export function ActividadesDeOrden({
                           {[act.referencia, act.detalle].filter(Boolean).join(' · ')}
                         </p>
                       )}
+                      {act.etapa_id && <p className="text-[11px] text-texto-suave">Etapa: {etapas.find(e => e.id === act.etapa_id)?.nombre ?? 'Sin nombre'}</p>}
                       <PlanDeActividad actividad={act} hoy={hoy} />
                     </TD>
                     <TD className="text-right tabular text-sm">{numero(act.peso_pct, 0)} %</TD>
@@ -342,6 +357,9 @@ export function ActividadesDeOrden({
                       <TD>
                         <AccionesActividad
                           actividad={act}
+                          esNueva={esNueva}
+                          despachos={despachos}
+                          etapas={etapas.filter((e) => e.area_id === act.area_id)}
                           ordenId={ordenId}
                           puedeArmar={puedeArmar}
                           puedeReportar={puedeReportar}
@@ -412,6 +430,15 @@ export function ActividadesDeOrden({
                       </span>
                     </div>
                     <NotaRevision r={r} />
+                    {r.foto_url && <a href={r.foto_url} target="_blank" rel="noopener noreferrer" className="inline-flex text-xs font-medium text-acento hover:underline">
+                      Ver foto del reporte
+                    </a>}
+                    {r.materiales_usados.length > 0 && <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-texto-suave" aria-label="Materiales usados">
+                      {r.materiales_usados.map(m => {
+                        const material = despachos.find(d => d.id === m.movimiento_id)
+                        return <li key={m.movimiento_id}>{material?.nombre ?? 'Material despachado'}: {numero(m.cantidad, 2)} {material?.unidad ?? ''}</li>
+                      })}
+                    </ul>}
                     {(revisa || corrige || elimina) && (
                       <div className="flex flex-wrap items-center gap-2">
                         {revisa && <RevisarReporte clase="hoja" id={r.id} revision={r.revision} />}
@@ -511,6 +538,9 @@ function PlanDeActividad({ actividad, hoy }: { actividad: ActividadArea; hoy: st
 
 function AccionesActividad({
   actividad,
+  esNueva,
+  despachos,
+  etapas,
   ordenId,
   puedeArmar,
   puedeReportar,
@@ -518,6 +548,9 @@ function AccionesActividad({
   corregibleHoy,
 }: {
   actividad: ActividadArea
+  esNueva: boolean
+  despachos: { id: string; nombre: string; unidad: string; area: string; cantidad: number }[]
+  etapas: { id: string; nombre: string }[]
   ordenId: string
   puedeArmar: boolean
   puedeReportar: boolean
@@ -555,6 +588,12 @@ function AccionesActividad({
         </Campo>
         <Campo etiqueta="Detalle" htmlFor={`ea-detalle-${actividad.id}`} className="sm:col-span-2">
           <Entrada id={`ea-detalle-${actividad.id}`} name="detalle" defaultValue={actividad.detalle ?? ''} />
+        </Campo>
+        <Campo etiqueta="Etapa de la OT" htmlFor={`ea-etapa-${actividad.id}`} className="sm:col-span-2">
+          <Seleccion id={`ea-etapa-${actividad.id}`} name="etapa_id" defaultValue={actividad.etapa_id ?? ''}>
+            <option value="">Sin vincular</option>
+            {etapas.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+          </Seleccion>
         </Campo>
         <Campo etiqueta="Desde" htmlFor={`ea-inicio-${actividad.id}`} className="sm:col-span-2">
           <Entrada id={`ea-inicio-${actividad.id}`} name="fecha_inicio_plan" type="date" defaultValue={actividad.fecha_inicio_plan ?? ''} />
@@ -654,11 +693,11 @@ function AccionesActividad({
           ) : (
             <span className="px-1 text-xs text-exito">Reportado hoy: +{numero(deHoy.avance_pct, 0)} %</span>
           )}
-          {!actividad.terminada && <ReportarDia actividad={actividad} ordenId={ordenId} deOtroDia />}
+          {!actividad.terminada && <ReportarDia actividad={actividad} ordenId={ordenId} deOtroDia esNueva={esNueva} despachos={despachos.filter(d => d.area === actividad.area_codigo)} />}
         </>
       ) : (
         puedeReportar &&
-        !actividad.terminada && <ReportarDia actividad={actividad} ordenId={ordenId} />
+        !actividad.terminada && <ReportarDia actividad={actividad} ordenId={ordenId} esNueva={esNueva} despachos={despachos.filter(d => d.area === actividad.area_codigo)} />
       )}
       {puedeArmar && (
         <>
@@ -709,12 +748,16 @@ function AccionesActividad({
 
 function NuevaActividad({
   ordenId,
+  esNueva,
+  etapas,
   areas,
   areaPropia,
   propuestas,
   alCerrar,
 }: {
   ordenId: string
+  esNueva: boolean
+  etapas: { id: string; nombre: string; area_id: string | null }[]
   areas: { id: string; codigo: string; nombre: string }[]
   areaPropia: string | null
   /** Por área: el peso que falta repartir y el número que sigue. */
@@ -733,8 +776,8 @@ function NuevaActividad({
   return (
     <Tarjeta className="border-acento">
       <TarjetaCabecera
-        titulo="Nueva actividad"
-        descripcion="Qué trabajo es y cuánto pesa dentro del 100 % de su área. Para Maestranza, la pieza solicitada va en «referencia»."
+        titulo={esNueva ? 'Nueva tarea del taller' : 'Nueva actividad'}
+        descripcion={esNueva ? 'Anota el trabajo de hoy y la etapa de la OT. El supervisor registrará su avance con una foto.' : 'Qué trabajo es y cuánto pesa dentro del 100 % de su área. Para Maestranza, la pieza solicitada va en «referencia».'}
       />
       <TarjetaCuerpo>
         <form key={guardadas} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
@@ -753,7 +796,7 @@ function NuevaActividad({
             </Seleccion>
           </Campo>
 
-          <Campo etiqueta="Actividad" htmlFor="na-nombre" requerido className="sm:col-span-3">
+          <Campo etiqueta={esNueva ? 'Tarea' : 'Actividad'} htmlFor="na-nombre" requerido className="sm:col-span-3">
             <Entrada
               id="na-nombre"
               name="nombre"
@@ -761,10 +804,16 @@ function NuevaActividad({
               placeholder="Armado de estructura del cajón"
             />
           </Campo>
+          <Campo etiqueta="Etapa de la OT" htmlFor="na-etapa" className="sm:col-span-2">
+            <Seleccion key={`etapa-${area}`} id="na-etapa" name="etapa_id" required={esNueva} defaultValue="">
+              <option value="">{esNueva ? 'Elige la etapa' : 'Sin vincular'}</option>
+              {etapas.filter((e) => e.area_id === area).map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+            </Seleccion>
+          </Campo>
 
           {/* `key` por área: al cambiar de área los dos campos vuelven a proponer
               lo de esa área en vez de quedarse con lo de la anterior. */}
-          <Campo
+          {!esNueva && <Campo
             etiqueta="Pesa"
             htmlFor="na-peso"
             ayuda={propuesta.peso > 0 ? `Quedan ${propuesta.peso} % por repartir en el área` : 'El área ya repartió su 100 %'}
@@ -781,7 +830,8 @@ function NuevaActividad({
               defaultValue={propuesta.peso}
               className="tabular"
             />
-          </Campo>
+          </Campo>}
+          {esNueva && <input type="hidden" name="peso_pct" value="0" />}
 
           <Campo etiqueta="N.º" htmlFor="na-orden" ayuda="Orden">
             <Entrada
@@ -835,7 +885,7 @@ function NuevaActividad({
             </Boton>
             <Boton type="submit" tamano="sm" cargando={enviando}>
               <Truck aria-hidden className="size-4" />
-              Agregar a la lista
+              {esNueva ? 'Crear tarea' : 'Agregar a la lista'}
             </Boton>
           </div>
         </form>

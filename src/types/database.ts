@@ -1584,6 +1584,8 @@ export type Database = {
           revisado_en: string | null
           observacion: string | null
           corregido_en: string | null
+          foto_ruta: string | null
+          materiales_usados: Json
         }
         Insert: {
           id?: string
@@ -1600,6 +1602,8 @@ export type Database = {
           revisado_en?: string | null
           observacion?: string | null
           corregido_en?: string | null
+          foto_ruta?: string | null
+          materiales_usados?: Json
         }
         Update: {
           id?: string
@@ -1616,6 +1620,8 @@ export type Database = {
           revisado_en?: string | null
           observacion?: string | null
           corregido_en?: string | null
+          foto_ruta?: string | null
+          materiales_usados?: Json
         }
         Relationships: [
           {
@@ -1646,6 +1652,7 @@ export type Database = {
           id: string
           orden_id: string
           area_id: string
+          etapa_id: string | null
           orden_secuencia: number
           nombre: string
           detalle: string | null
@@ -1661,6 +1668,7 @@ export type Database = {
           id?: string
           orden_id: string
           area_id: string
+          etapa_id?: string | null
           orden_secuencia?: number
           nombre: string
           detalle?: string | null
@@ -1676,6 +1684,7 @@ export type Database = {
           id?: string
           orden_id?: string
           area_id?: string
+          etapa_id?: string | null
           orden_secuencia?: number
           nombre?: string
           detalle?: string | null
@@ -1688,6 +1697,13 @@ export type Database = {
           fecha_fin_plan?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_ot_actividad_etapa_orden"
+            columns: ["etapa_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id", "orden_id"]
+          },
           {
             foreignKeyName: "ot_actividades_area_id_fkey"
             columns: ["area_id"]
@@ -2104,6 +2120,8 @@ export type Database = {
           id: string
           orden_id: string
           etapa_catalogo_id: string
+          area_id: string | null
+          peso_pct: number | null
           estado: Database["public"]["Enums"]["estado_etapa_ot"]
           orden_secuencia: number
           avance_porcentaje: number
@@ -2123,6 +2141,8 @@ export type Database = {
           id?: string
           orden_id: string
           etapa_catalogo_id: string
+          area_id?: string | null
+          peso_pct?: number | null
           estado?: Database["public"]["Enums"]["estado_etapa_ot"]
           orden_secuencia: number
           avance_porcentaje?: number
@@ -2142,6 +2162,8 @@ export type Database = {
           id?: string
           orden_id?: string
           etapa_catalogo_id?: string
+          area_id?: string | null
+          peso_pct?: number | null
           estado?: Database["public"]["Enums"]["estado_etapa_ot"]
           orden_secuencia?: number
           avance_porcentaje?: number
@@ -2158,6 +2180,13 @@ export type Database = {
           actualizado_en?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "ot_etapas_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ot_etapas_etapa_catalogo_id_fkey"
             columns: ["etapa_catalogo_id"]
@@ -2507,6 +2536,7 @@ export type Database = {
         Row: {
           id: string
           orden_id: string
+          etapa_id: string | null
           orden_secuencia: number
           numero_plano: string
           nombre: string
@@ -2521,6 +2551,7 @@ export type Database = {
         Insert: {
           id?: string
           orden_id: string
+          etapa_id?: string | null
           orden_secuencia?: number
           numero_plano: string
           nombre: string
@@ -2535,6 +2566,7 @@ export type Database = {
         Update: {
           id?: string
           orden_id?: string
+          etapa_id?: string | null
           orden_secuencia?: number
           numero_plano?: string
           nombre?: string
@@ -2547,6 +2579,13 @@ export type Database = {
           responsable_diseno_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_ot_plano_etapa_orden"
+            columns: ["etapa_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_etapas"
+            referencedColumns: ["id", "orden_id"]
+          },
           {
             foreignKeyName: "ot_planos_creado_por_fkey"
             columns: ["creado_por"]
@@ -4393,6 +4432,13 @@ export type Database = {
         Args: {
           p_orden_id: string
           p_etapas: string[]
+        }
+        Returns: number
+      }
+      definir_etapas_ponderadas: {
+        Args: {
+          p_orden_id: string
+          p_config: Json
         }
         Returns: number
       }

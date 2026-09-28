@@ -4,7 +4,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { catalogosDePlanos, versionesDePlanos } from '@/lib/datos/versiones-planos'
 import { cumplimientoDeOrden } from '@/lib/datos/cumplimiento'
 import { areasDelTaller } from '@/lib/datos/actividades'
-import { obtenerOrden } from '@/lib/datos/ordenes'
+import { listarEtapas, obtenerOrden } from '@/lib/datos/ordenes'
 import { exigirPermiso, puede, puedeHojaDeArea } from '@/lib/sesion'
 import { Pestanas } from '../pestanas'
 import { Cumplimiento } from '../cumplimiento'
@@ -21,13 +21,14 @@ export default async function PaginaPlanos({ params, searchParams }: {
   if (!secciones.includes('planos')) redirect('/sin-permiso')
   const { id } = await params
   const query = await searchParams
-  const [orden, versiones, catalogos, cumplimiento, areas] = await Promise.all([
+  const [orden, versiones, catalogos, cumplimiento, areas, etapas] = await Promise.all([
     obtenerOrden(id), versionesDePlanos(id),
     puede(perfil, 'diseno.planos')
       ? catalogosDePlanos(id)
       : Promise.resolve({ planos: [], areas: [], liderId: null, equipo: [], usuarios: [] }),
     cumplimientoDeOrden(id),
     perfil.area_id ? areasDelTaller() : Promise.resolve([]),
+    listarEtapas(id),
   ])
   if (!orden) notFound()
   const abierta = !['BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA'].includes(orden.estado)
@@ -37,11 +38,12 @@ export default async function PaginaPlanos({ params, searchParams }: {
     ? 'La orden aún no está aprobada'
     : abierta ? null : 'La orden ya se cerró'
   return <>
-    <EncabezadoPagina titulo={`Planos · ${orden.numero}`} descripcion="Planos, piezas, avance, PDF y revisiones por área." />
+    <EncabezadoPagina titulo={`Planos · ${orden.numero}`} descripcion="Planos, PDF y revisiones por área. Los materiales se definen en su pestaña." />
     <Pestanas ordenId={id} activa="planos" visibles={secciones} />
     <Cumplimiento ordenId={id} resumen={cumplimiento?.resumen ?? null} planos={cumplimiento?.planos ?? []}
-      puedeDisenar={puede(perfil, 'diseno.planos')} puedeReportar={puede(perfil, 'produccion.registrar')}
-      areaPropia={manoDelTaller} puedeObservar={orden.estado !== 'ANULADA'}
+      etapas={etapas.filter(e => e.etapa_id && e.etapa === 'Diseño').map(e => ({ id: e.etapa_id!, nombre: e.etapa ?? 'Diseño' }))}
+      puedeDisenar={puede(perfil, 'diseno.planos')}
+      areaPropia={manoDelTaller}
       ordenViva={abierta} motivoInactiva={motivoInactiva} />
     <PanelPlanos ordenId={id} abierta={abierta} puedeCargar={puede(perfil, 'diseno.planos')}
       puedeAsignar={puede(perfil, 'diseno.asignar')} verEquipo={puede(perfil, 'diseno.planos')} catalogos={catalogos}
