@@ -12,7 +12,7 @@ import type { Vistas } from '@/types/database'
  * no vuelve a sumar nada, porque la regla de cuánto vale un visto vive allá.
  */
 export type PiezaCumplimiento = Vistas<'v_cumplimiento_piezas'>
-export type PlanoCumplimiento = Vistas<'v_cumplimiento_planos'> & { lista: PiezaCumplimiento[] }
+export type PlanoCumplimiento = Vistas<'v_cumplimiento_planos'> & { etapa_id: string | null; lista: PiezaCumplimiento[] }
 export type ResumenCumplimiento = Vistas<'v_cumplimiento_ot'>
 
 export async function cumplimientoDeOrden(ordenId: string): Promise<{
@@ -21,7 +21,7 @@ export async function cumplimientoDeOrden(ordenId: string): Promise<{
 }> {
   const supabase = await createClient()
 
-  const [planos, piezas, resumen] = await Promise.all([
+  const [planos, piezas, resumen, vinculos] = await Promise.all([
     supabase
       .from('v_cumplimiento_planos')
       .select(
@@ -45,13 +45,16 @@ export async function cumplimientoDeOrden(ordenId: string): Promise<{
       )
       .eq('orden_id', ordenId)
       .maybeSingle(),
+    supabase.from('ot_planos').select('id, etapa_id').eq('orden_id', ordenId),
   ])
 
   if (planos.error) throw new Error(`No se pudieron leer los planos: ${planos.error.message}`)
   if (piezas.error) throw new Error(`No se pudieron leer las piezas: ${piezas.error.message}`)
   if (resumen.error) throw new Error(`No se pudo leer el cumplimiento: ${resumen.error.message}`)
+  if (vinculos.error) throw new Error(`No se pudo leer la etapa de los planos: ${vinculos.error.message}`)
 
   const porPlano = new Map<string, PiezaCumplimiento[]>()
+  const etapaPorPlano = new Map((vinculos.data ?? []).map(p => [p.id, p.etapa_id]))
   for (const pieza of (piezas.data ?? []) as PiezaCumplimiento[]) {
     if (!pieza.plano_id) continue
     const lista = porPlano.get(pieza.plano_id) ?? []
@@ -63,6 +66,7 @@ export async function cumplimientoDeOrden(ordenId: string): Promise<{
     resumen: (resumen.data ?? null) as ResumenCumplimiento | null,
     planos: ((planos.data ?? []) as Vistas<'v_cumplimiento_planos'>[]).map((p) => ({
       ...p,
+      etapa_id: p.plano_id ? (etapaPorPlano.get(p.plano_id) ?? null) : null,
       lista: p.plano_id ? (porPlano.get(p.plano_id) ?? []) : [],
     })),
   }

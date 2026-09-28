@@ -46,7 +46,9 @@ begin
   end if;
   perform test.como_usuario(current_setting('prueba.etapas.diseno')::uuid);
   set local role authenticated;
-  perform public.definir_etapas_diseno(v_orden,array[v_segunda,v_primera]);
+  perform public.definir_etapas_ponderadas(v_orden,jsonb_build_array(
+    jsonb_build_object('catalogo_id',v_segunda,'area_id',(select id from public.areas where codigo='DIS'),'peso_pct',60),
+    jsonb_build_object('catalogo_id',v_primera,'area_id',(select id from public.areas where codigo='PRD'),'peso_pct',40)));
   if (select count(*) from public.ot_etapas where orden_id=v_orden) <> 2 then
     raise exception 'FALLO: Diseño no pudo elegir las dos etapas';
   end if;
@@ -54,7 +56,12 @@ begin
        where orden_id=v_orden and etapa_catalogo_id=v_segunda) <> 1 then
     raise exception 'FALLO: no respetó el orden de Diseño';
   end if;
-  perform public.definir_etapas_diseno(v_orden,array[v_segunda,v_primera]);
+  if (select sum(peso_pct) from public.ot_etapas where orden_id=v_orden) <> 100 then
+    raise exception 'FALLO: las etapas no pesan 100 por ciento';
+  end if;
+  perform public.definir_etapas_ponderadas(v_orden,jsonb_build_array(
+    jsonb_build_object('catalogo_id',v_segunda,'area_id',(select id from public.areas where codigo='DIS'),'peso_pct',60),
+    jsonb_build_object('catalogo_id',v_primera,'area_id',(select id from public.areas where codigo='PRD'),'peso_pct',40)));
   if (select count(*) from public.ot_etapas where orden_id=v_orden) <> 2 then
     raise exception 'FALLO: el reintento duplicó etapas';
   end if;
@@ -76,7 +83,9 @@ begin
   end if;
   v_fallo := false;
   begin
-    perform public.definir_etapas_diseno(v_orden,array[v_primera,v_segunda]);
+    perform public.definir_etapas_ponderadas(v_orden,jsonb_build_array(
+      jsonb_build_object('catalogo_id',v_primera,'area_id',(select id from public.areas where codigo='DIS'),'peso_pct',60),
+      jsonb_build_object('catalogo_id',v_segunda,'area_id',(select id from public.areas where codigo='PRD'),'peso_pct',40)));
   exception when others then v_fallo := true;
   end;
   if not v_fallo then raise exception 'FALLO: Administración reordenó Diseño'; end if;

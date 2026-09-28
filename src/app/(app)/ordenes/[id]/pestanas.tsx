@@ -17,7 +17,7 @@ const PESTANAS = [
   // La hoja de cada area: sus actividades y el reporte de cada dia. Va antes de
   // «Avance», que son las fotos del taller: primero cuanto se lleva, despues
   // como se ve.
-  { clave: 'actividades', titulo: 'Actividades' },
+  { clave: 'actividades', titulo: 'Avance de Taller' },
   { clave: 'avance', titulo: 'Avance' },
   { clave: 'bitacora', titulo: 'Trazabilidad' },
 ] as const

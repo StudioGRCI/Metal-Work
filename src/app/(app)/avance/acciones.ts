@@ -61,6 +61,13 @@ export async function registrarAvance(
 
   const supabase = await createClient()
 
+  const { data: orden, error: errorOrden } = await supabase.from('ordenes_trabajo')
+    .select('plan_etapas_manual').eq('id', v.orden_id).single()
+  if (errorOrden || !orden) return { ok: false, error: 'No se pudo comprobar la OT.' }
+  if (orden.plan_etapas_manual) {
+    return { ok: false, error: 'El avance de esta OT se reporta en Avance de Taller, con la tarea y su foto.' }
+  }
+
   const { data: avance, error } = await supabase
     .from('ot_avances')
     .insert({

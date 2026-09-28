@@ -178,50 +178,6 @@ export async function ponerClienteAOrden(_previo: unknown, datos: FormData): Pro
   return { ok: true, mensaje: 'Cliente puesto.' }
 }
 
-const esquemaAvanceEtapa = z.object({
-  etapa_id: z.string().uuid(),
-  orden_id: z.string().uuid(),
-  avance_porcentaje: z.coerce.number().min(0).max(100),
-  estado: z.enum(['PENDIENTE', 'EN_PROCESO', 'PAUSADA', 'REQUIERE_REVISION', 'TERMINADA', 'OMITIDA']),
-  observaciones: z.string().trim().optional(),
-})
-
-export async function actualizarEtapa(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
-  const perfil = await exigirSesion()
-  if (!puede(perfil, 'produccion.registrar')) {
-    return { ok: false, error: 'No tienes permiso para registrar avance de producción.' }
-  }
-
-  const analisis = esquemaAvanceEtapa.safeParse(Object.fromEntries(datos))
-  if (!analisis.success) {
-    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los datos.' }
-  }
-
-  const v = analisis.data
-
-  const supabase = await createClient()
-
-  const { data, error } = await supabase
-    .from('ot_etapas')
-    .update({
-      avance_porcentaje: v.avance_porcentaje,
-      estado: v.estado,
-      // Solo se toca cuando el formulario mandó algo. Antes se escribía
-      // `|| null`, así que cualquiera que moviera el porcentaje borraba en
-      // silencio lo que había anotado el turno anterior.
-      ...(v.observaciones !== undefined ? { observaciones: v.observaciones || null } : {}),
-    })
-    .eq('id', v.etapa_id)
-    .select('id')
-    .maybeSingle()
-
-  if (error) return { ok: false, error: mensajeDeError(error) }
-  if (!data) return { ok: false, error: NO_TOCO_NADA }
-
-  revalidatePath(`/ordenes/${v.orden_id}`)
-  return { ok: true, mensaje: 'Avance registrado.' }
-}
-
 const esquemaEntrega = z.object({
   orden_id: z.string().uuid(),
   recibe_nombre: z.string().trim().min(3, 'Escribe quién recibe la unidad'),

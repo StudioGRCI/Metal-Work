@@ -16,6 +16,7 @@ import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
 import {
   clientesParaElegir,
+  areasParaEtapas,
   catalogoEtapasParaOrden,
   estadoDeSalida,
   fechasClaveDeOrden,
@@ -23,7 +24,7 @@ import {
   obtenerOrden,
   timelineDeOrden,
 } from '@/lib/datos/ordenes'
-import { actividadesDeOrden, areasDelTaller } from '@/lib/datos/actividades'
+import { actividadesDeOrden, areasDelTaller, despachosParaReporte } from '@/lib/datos/actividades'
 import { adjuntosDeOrden } from '@/lib/datos/adjuntos'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
@@ -131,15 +132,17 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
   const [etapas, timeline, accesorios, repuestos, verificaciones, personal] =
     await Promise.all([
-      vista === 'etapas' || vista === 'resumen' ? listarEtapas(id) : Promise.resolve([]),
+      vista === 'etapas' || vista === 'resumen' || vista === 'actividades' ? listarEtapas(id) : Promise.resolve([]),
       vista === 'bitacora' ? timelineDeOrden(id) : Promise.resolve([]),
       verFicha ? accesoriosDeOrden(id) : Promise.resolve([]),
       verFicha ? repuestosDeOrden(id) : Promise.resolve([]),
       verFicha ? verificacionesDeOrden(id) : Promise.resolve([]),
       verFicha ? personalDelTaller() : Promise.resolve([]),
     ])
-  const catalogoEtapas = vista === 'etapas' && puede(perfil, 'diseno.planos')
-    ? await catalogoEtapasParaOrden() : []
+  const [catalogoEtapas, areasEtapas] = await Promise.all([
+    vista === 'etapas' && puede(perfil, 'diseno.planos') ? catalogoEtapasParaOrden() : Promise.resolve([]),
+    vista === 'etapas' ? areasParaEtapas() : Promise.resolve([]),
+  ])
 
   const [salida, fechasClave] = await Promise.all([
     verSalida ? estadoDeSalida(id) : Promise.resolve(null),
@@ -186,6 +189,11 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         (a) => areasArmables.some((x) => x.id === a.id) || areasDeSuMano(perfil, [a]).length > 0,
       )
     : []
+  const areasParaCrearTarea = orden.plan_etapas_manual && puede(perfil, 'produccion.registrar')
+    ? areasVisibles
+    : areasArmables
+  const despachosTaller = vista === 'actividades' && orden.plan_etapas_manual && puede(perfil, 'produccion.reportar_tarea')
+    ? await despachosParaReporte(id) : []
   const idsAreasVisibles = new Set(areasVisibles.map((area) => area.id))
   const actividadesVisibles = hojaAreas
     ? hojaAreas[0].actividades.filter((actividad) => idsAreasVisibles.has(actividad.area_id))
@@ -575,10 +583,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           ordenId={orden.id}
           etapas={etapas}
           catalogo={catalogoEtapas}
+          areas={areasEtapas}
           hoy={hoyLima()}
           puedeDefinir={puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
           puedeProgramar={puede(perfil, 'ordenes.editar') && !ESTADOS_CERRADOS.includes(orden.estado)}
-          puedeRegistrar={puede(perfil, 'produccion.registrar')}
         />
       )}
 
@@ -598,6 +606,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       {vista === 'actividades' && hojaAreas && (
         <ActividadesDeOrden
           ordenId={orden.id}
+          esNueva={orden.plan_etapas_manual}
+          despachos={despachosTaller}
+          etapas={etapas.filter((e) => e.etapa_id).map((e) => ({ id: e.etapa_id!, nombre: e.etapa ?? 'Etapa', area_id: e.area_id }))}
           avanceGeneral={orden.avance_porcentaje}
           actividades={actividadesVisibles}
           areas={avancesVisibles}
@@ -606,11 +617,12 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
              suya, o todas si responde por el taller entero o es Diseño.
              Ofrecerle las que el RLS le va a rechazar es prometerle un botón
              que no hace nada. */
-          areasDisponibles={areasArmables}
+          areasDisponibles={areasParaCrearTarea}
           areasVisibles={areasVisibles}
           puedeArmar={areasArmables.length > 0}
+          puedeCrear={areasParaCrearTarea.length > 0}
           puedeCargarCronograma={!['ENTREGADA', 'FACTURADA', 'ANULADA'].includes(orden.estado)}
-          puedeReportar={puede(perfil, 'produccion.registrar')}
+          puedeReportar={puede(perfil, orden.plan_etapas_manual ? 'produccion.reportar_tarea' : 'produccion.registrar')}
           areaPropia={perfil.area_id}
           aprueba={puede(perfil, 'produccion.aprobar_reportes')}
           /* Quién corrige qué lo decide el gemelo de las políticas, acá en el

@@ -73,10 +73,12 @@ export function SelectorFotos({
   fotos,
   alCambiar,
   prefijoRuta,
+  maximo,
 }: {
   fotos: FotoLista[]
   alCambiar: Dispatch<SetStateAction<FotoLista[]>>
   prefijoRuta: string
+  maximo?: number
 }) {
   async function subir(foto: FotoLista) {
     const supabase = createClient()
@@ -104,7 +106,8 @@ export function SelectorFotos({
   async function agregar(lista: FileList | null) {
     if (!lista) return
 
-    for (const archivo of Array.from(lista)) {
+    const disponibles = Math.max(0, (maximo ?? Number.POSITIVE_INFINITY) - fotos.length)
+    for (const archivo of Array.from(lista).slice(0, disponibles)) {
       if (!TIPOS.includes(archivo.type)) {
         alCambiar((f) => [...f, { archivo, vistaPrevia: '', subiendo: false, error: `Solo fotos ${TIPOS_TEXTO}.` }])
         continue
@@ -192,7 +195,7 @@ export function SelectorFotos({
           </div>
         ))}
 
-        <label className="flex size-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde text-texto-suave hover:bg-superficie-2 hover:text-texto">
+        {(maximo === undefined || fotos.length < maximo) && <label className="flex size-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde text-texto-suave hover:bg-superficie-2 hover:text-texto">
           <Camera aria-hidden className="size-5" />
           <span className="text-[11px]">Tomar foto</span>
           <input
@@ -205,22 +208,22 @@ export function SelectorFotos({
               e.target.value = ''
             }}
           />
-        </label>
+        </label>}
 
-        <label className="flex size-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde text-texto-suave hover:bg-superficie-2 hover:text-texto">
+        {(maximo === undefined || fotos.length < maximo) && <label className="flex size-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde text-texto-suave hover:bg-superficie-2 hover:text-texto">
           <Images aria-hidden className="size-5" />
           <span className="text-[11px]">De la galería</span>
           <input
             type="file"
             accept="image/*"
-            multiple
+            multiple={maximo !== 1}
             className="sr-only"
             onChange={(e) => {
               void agregar(e.target.files)
               e.target.value = ''
             }}
           />
-        </label>
+        </label>}
       </div>
 
       {fallidas.length > 0 && (
@@ -234,7 +237,7 @@ export function SelectorFotos({
       )}
 
       <p className="mt-1 text-[11px] text-texto-tenue">
-        Varias a la vez desde la galería. Hasta {MAXIMO_MB} MB por foto, en {TIPOS_TEXTO}.
+        {maximo === 1 ? 'Una foto' : 'Varias a la vez desde la galería'}. Hasta {MAXIMO_MB} MB por foto, en {TIPOS_TEXTO}.
       </p>
     </div>
   )

@@ -123,6 +123,10 @@ function Fila({
             <CheckCircle2 aria-hidden className="size-3.5" />
             reportada hoy
           </span>
+        ) : a.plan_etapas_manual ? (
+          <Link href={`/ordenes/${a.orden_id}?vista=actividades#actividad-${a.id}`} className="text-xs font-medium text-acento hover:underline">
+            {puedeReportar ? 'Ir al reporte con foto' : 'Ver tarea en Avance de Taller'}
+          </Link>
         ) : puedeReportar ? (
           <ReportarDia actividad={a} ordenId={a.orden_id} compacto />
         ) : (

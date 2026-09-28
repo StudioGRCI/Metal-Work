@@ -80,6 +80,7 @@ async function exigirTaller() {
 // ============================================================== los planos
 const esquemaPlano = z.object({
   orden_id: z.string().uuid(),
+  etapa_id: z.union([z.string().uuid(), z.literal('')]).optional(),
   numero_plano: z.string().trim().min(1, 'Ponle número al plano').max(20, 'El número del plano es demasiado largo'),
   nombre: z.string().trim().min(2, 'Ponle nombre al plano').max(120),
   peso_pct: z.coerce.number().min(0, 'El peso no puede ser negativo').max(100, 'Ningún plano pesa más de 100'),
@@ -103,13 +104,14 @@ export async function agregarPlano(_previo: unknown, datos: FormData): Promise<R
   }
 
   const v = analisis.data
-  // Las piezas se leen antes de insertar el plano: una línea mal escrita se
-  // corrige sin dejar un plano vacío atrás.
-  const textoPiezas = datos.get('lista')
-  const leidas = typeof textoPiezas === 'string' && textoPiezas.trim() ? leerPiezas(textoPiezas) : null
-  if (leidas && 'error' in leidas) return { ok: false, error: leidas.error }
+  if (datos.has('lista')) return { ok: false, error: 'Los planos ya no reciben piezas. Define sus materiales en la pestaña Materiales.' }
 
   const supabase = await createClient()
+  if (v.etapa_id) {
+    const { data: etapa, error: errorEtapa } = await supabase.from('ot_etapas')
+      .select('id').eq('id', v.etapa_id).eq('orden_id', v.orden_id).maybeSingle()
+    if (errorEtapa || !etapa) return { ok: false, error: 'Elige una etapa de Diseño de esta orden.' }
+  }
 
   // Al final de la lista; el orden se corrige después si hace falta.
   const { data: previos } = await supabase
@@ -121,6 +123,7 @@ export async function agregarPlano(_previo: unknown, datos: FormData): Promise<R
     .from('ot_planos')
     .insert({
       orden_id: v.orden_id,
+      etapa_id: nulo(v.etapa_id),
       orden_secuencia: Math.max(0, ...(previos ?? []).map((p) => p.orden_secuencia)) + 1,
       numero_plano: v.numero_plano,
       nombre: v.nombre,
@@ -133,29 +136,6 @@ export async function agregarPlano(_previo: unknown, datos: FormData): Promise<R
 
   if (error) return { ok: false, error: explicar(error) }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
-
-  if (leidas) {
-    const piezas = await supabase
-      .from('ot_piezas')
-      .insert(
-        leidas.piezas.map((p, i) => ({
-          plano_id: data.id,
-          orden_id: v.orden_id,
-          orden_secuencia: i + 1,
-          numero_pieza: p.numero_pieza,
-          nombre: p.nombre,
-          cantidad: p.cantidad,
-          es_ensamble: p.es_ensamble,
-        })),
-      )
-      .select('id')
-    revalidatePath(`/ordenes/${v.orden_id}`)
-    if (piezas.error) {
-      return { ok: false, error: `El plano ${v.numero_plano} entró, pero las piezas no: ${explicar(piezas.error)}` }
-    }
-    const n = piezas.data?.length ?? 0
-    return { ok: true, mensaje: `Plano ${v.numero_plano} agregado con ${n} pieza${n === 1 ? '' : 's'}.` }
-  }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   return { ok: true, mensaje: `Plano ${v.numero_plano} agregado.` }
@@ -257,9 +237,16 @@ export async function editarPlano(_previo: unknown, datos: FormData): Promise<Re
   const v = analisis.data
   const supabase = await createClient()
 
+  if (v.etapa_id) {
+    const { data: etapa, error: errorEtapa } = await supabase.from('ot_etapas')
+      .select('id').eq('id', v.etapa_id).eq('orden_id', v.orden_id).maybeSingle()
+    if (errorEtapa || !etapa) return { ok: false, error: 'Elige una etapa de Diseño de esta orden.' }
+  }
+
   const { data, error } = await supabase
     .from('ot_planos')
     .update({
+      etapa_id: nulo(v.etapa_id),
       numero_plano: v.numero_plano,
       nombre: v.nombre,
       peso_pct: v.peso_pct,

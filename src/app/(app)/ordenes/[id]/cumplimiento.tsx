@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useId, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
@@ -21,7 +21,6 @@ import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 
 import {
-  agregarPiezas,
   agregarPlano,
   editarPieza,
   editarPlano,
@@ -73,29 +72,25 @@ function Fecha({ valor }: { valor: string | null | undefined }) {
  */
 export function Cumplimiento({
   ordenId,
+  etapas,
   resumen,
   planos,
   puedeDisenar,
-  puedeReportar,
   areaPropia = null,
-  puedeObservar = false,
   ordenViva,
   motivoInactiva,
 }: {
   ordenId: string
+  etapas: { id: string; nombre: string }[]
   resumen: ResumenCumplimiento | null
   planos: PlanoCumplimiento[]
   /** `diseno.planos`: arma planos y piezas, y entrega el plano. */
   puedeDisenar: boolean
-  /** `produccion.registrar`: Maestranza y Producción marcan lo suyo. */
-  puedeReportar: boolean
   /**
    * De qué mano es quien mira, si es de una sola: el supervisor de Maestranza
    * ve solo sus botones y su marca rápida; el jefe (cualquier área), los dos.
    */
   areaPropia?: ManoDelTaller | null
-  /** Quien puede anotar una observación desde una pieza (la orden no está anulada). */
-  puedeObservar?: boolean
   /** La orden acepta planos: aprobada y no entregada ni anulada. */
   ordenViva: boolean
   /** Por qué no los acepta: en borrador falta la aprobación, cerrada ya no hay qué repartir. */
@@ -111,12 +106,12 @@ export function Cumplimiento({
   return (
     <div className="space-y-4">
       <p className="rounded-[var(--radius-base)] border border-borde bg-superficie p-3 text-sm text-texto-suave">
-        Antes de reportar piezas, el responsable del área confirma más abajo la recepción del PDF aprobado.
+        El responsable del área confirma más abajo la recepción del PDF aprobado.
       </p>
       <Tarjeta>
         <TarjetaCabecera
-          titulo="Piezas y avance de los planos"
-          descripcion="Diseño reparte los planos con su peso; Maestranza reporta el habilitado y Producción el armado. El porcentaje sale de los vistos, no se escribe."
+          titulo={planos.some(p => p.lista.length > 0) ? 'Planos y avance histórico de piezas' : 'Planos de la OT'}
+          descripcion={planos.some(p => p.lista.length > 0) ? 'Diseño repartió los planos con su peso. Las piezas históricas se muestran para consulta.' : 'Diseño agrega los planos y los vincula con su etapa. Los materiales se definen en la pestaña Materiales.'}
         />
         <TarjetaCuerpo>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -133,7 +128,7 @@ export function Cumplimiento({
                 {resumen?.ultimo_plano ? `Último el ${fecha(resumen.ultimo_plano)}` : 'Diseño todavía no entregó ninguno'}
               </span>
             </Cifra>
-            <Cifra titulo="Piezas armadas">
+            {planos.some(p => p.lista.length > 0) && <Cifra titulo="Piezas armadas">
               <span className="tabular text-lg font-semibold text-texto">
                 {resumen?.piezas_armadas ?? 0}
                 <span className="text-sm font-normal text-texto-suave"> / {resumen?.piezas ?? 0}</span>
@@ -141,7 +136,7 @@ export function Cumplimiento({
               <span className="text-[11px] text-texto-suave">
                 {resumen?.piezas_entregadas ?? 0} entregadas por Maestranza
               </span>
-            </Cifra>
+            </Cifra>}
             <Cifra titulo="Peso repartido">
               <span className={cn('tabular text-lg font-semibold', pesoTotal === 100 ? 'text-texto' : 'text-aviso')}>
                 {numero(pesoTotal, 0)}%
@@ -174,7 +169,7 @@ export function Cumplimiento({
       )}
 
       {puedeDisenar && ordenViva && (
-        <NuevoPlano ordenId={ordenId} pesoLibre={Math.max(0, faltaPeso)} numeroPropuesto={numeroPropuesto} />
+        <NuevoPlano ordenId={ordenId} etapas={etapas} pesoLibre={Math.max(0, faltaPeso)} numeroPropuesto={numeroPropuesto} />
       )}
 
       {planos.length === 0 ? (
@@ -183,8 +178,7 @@ export function Cumplimiento({
             <div className="py-8 text-center">
               <p className="text-sm font-medium text-texto">Esta orden todavía no tiene planos</p>
               <p className="mx-auto mt-1 max-w-md text-xs text-texto-suave">
-                Diseño arma la lista como en su hoja: un plano por grupo de piezas, con el peso que
-                tiene en la unidad. Recién entonces Maestranza y Producción pueden reportar.
+                Diseño agrega cada plano con su etapa y peso. Los materiales se definen en la pestaña Materiales.
               </p>
             </div>
           </TarjetaCuerpo>
@@ -194,19 +188,18 @@ export function Cumplimiento({
           <TarjetaPlano
             key={plano.plano_id}
             ordenId={ordenId}
+            etapas={etapas}
             plano={plano}
             puedeDisenar={puedeDisenar && ordenViva}
-            puedeReportar={puedeReportar}
             areaPropia={areaPropia}
-            puedeObservar={puedeObservar}
           />
         ))
       )}
 
-      <p className="text-[11px] text-texto-suave">
+      {planos.some(p => p.lista.length > 0) && <p className="text-[11px] text-texto-suave">
         Cómo avanza una pieza: habilitada 25 % · entregada por Maestranza 50 % · recibida por
         Producción 75 % · armada 100 %. Un ensamble: empezado 50 % · armado 100 %.
-      </p>
+      </p>}
     </div>
   )
 }
@@ -298,10 +291,12 @@ function EntregarPendientes({ ordenId, cuantos }: { ordenId: string; cuantos: nu
 
 function NuevoPlano({
   ordenId,
+  etapas,
   pesoLibre,
   numeroPropuesto,
 }: {
   ordenId: string
+  etapas: { id: string; nombre: string }[]
   pesoLibre: number
   /** El número que sigue al último plano, para no tener que mirarlo. */
   numeroPropuesto: string
@@ -340,7 +335,7 @@ function NuevoPlano({
     <Tarjeta className="border-acento">
       <TarjetaCabecera
         titulo="Nuevo plano"
-        descripcion="Como la fila de cabecera de su hoja: el número del plano, qué agrupa y cuánto pesa. Y abajo sus piezas, si ya se tienen, para no volver a abrir el plano."
+        descripcion="Número, nombre, peso y etapa de Diseño. Los materiales se definen en la pestaña Materiales."
       />
       <TarjetaCuerpo>
         <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
@@ -351,6 +346,17 @@ function NuevoPlano({
           <Campo etiqueta="Nombre" htmlFor="np-nombre" className="sm:col-span-2">
             <Entrada id="np-nombre" name="nombre" required placeholder="HABILITADO · ESTRUCTURA CAJÓN" />
           </Campo>
+          <Campo etiqueta="Etapa de la OT" htmlFor="np-etapa" className="sm:col-span-2">
+            <Seleccion id="np-etapa" name="etapa_id" required defaultValue="">
+              <option value="" disabled>Elige Diseño</option>
+              {etapas.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+            </Seleccion>
+          </Campo>
+          {etapas.length === 0 && (
+            <p role="alert" className="text-xs text-aviso sm:col-span-6">
+              Primero agrega la etapa Diseño en la pestaña Etapas de la OT.
+            </p>
+          )}
           <Campo etiqueta="Peso %" htmlFor="np-peso" ayuda={`Quedan ${numero(pesoLibre, 0)} por repartir`}>
             <Entrada
               id="np-peso"
@@ -371,20 +377,6 @@ function NuevoPlano({
           <Campo etiqueta="Observación" htmlFor="np-obs" className="sm:col-span-6">
             <Entrada id="np-obs" name="observacion" placeholder="Opcional" />
           </Campo>
-          <Campo
-            etiqueta="Sus piezas, una por línea"
-            htmlFor="np-piezas"
-            ayuda="Opcional. número | nombre | cantidad, como en la hoja; «ENS» como número marca un ensamble."
-            className="sm:col-span-6"
-          >
-            <AreaTexto
-              id="np-piezas"
-              name="lista"
-              rows={4}
-              placeholder={'1 | Durmiente lateral | 2\n2-5 | Postes | 4\nENS | Ensamble de estructura | 1'}
-              className="font-mono text-xs"
-            />
-          </Campo>
           {error && (
             <div className="sm:col-span-6">
               <Error_ texto={error} />
@@ -394,7 +386,7 @@ function NuevoPlano({
             <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierto(false)}>
               Cancelar
             </Boton>
-            <Boton type="submit" tamano="sm" cargando={enviando}>
+            <Boton type="submit" tamano="sm" cargando={enviando} disabled={etapas.length === 0}>
               Agregar el plano
             </Boton>
           </div>
@@ -406,20 +398,18 @@ function NuevoPlano({
 
 function TarjetaPlano({
   ordenId,
+  etapas,
   plano,
   puedeDisenar,
-  puedeReportar,
   areaPropia,
-  puedeObservar = false,
 }: {
   ordenId: string
+  etapas: { id: string; nombre: string }[]
   plano: PlanoCumplimiento
   puedeDisenar: boolean
-  puedeReportar: boolean
   areaPropia: ManoDelTaller | null
-  puedeObservar?: boolean
 }) {
-  const [modo, setModo] = useState<'ver' | 'editar' | 'entregar' | 'quitar' | 'piezas'>('ver')
+  const [modo, setModo] = useState<'ver' | 'editar' | 'entregar' | 'quitar'>('ver')
   const entregado = Boolean(plano.fecha_entrega)
   const planoId = plano.plano_id ?? ''
 
@@ -433,6 +423,7 @@ function TarjetaPlano({
             </span>
             {plano.nombre}
             <Insignia tono="neutro">{numero(plano.peso_pct, 0)} %</Insignia>
+            {plano.etapa_id && <span className="text-xs text-texto-suave">Etapa: {etapas.find(e => e.id === plano.etapa_id)?.nombre ?? 'Diseño'}</span>}
             {entregado ? (
               <span className="text-xs text-exito">Entregado el {fecha(plano.fecha_entrega)}</span>
             ) : (
@@ -442,10 +433,10 @@ function TarjetaPlano({
         }
         descripcion={
           <span className="flex flex-wrap items-center gap-x-3">
-            <span>
+            {plano.lista.length > 0 && <span>
               {plano.piezas ?? 0} pieza{plano.piezas === 1 ? '' : 's'} · {plano.piezas_entregadas ?? 0} entregadas ·{' '}
               {plano.piezas_armadas ?? 0} armadas
-            </span>
+            </span>}
             {plano.observacion && <span className="text-texto-suave">{plano.observacion}</span>}
           </span>
         }
@@ -490,7 +481,7 @@ function TarjetaPlano({
         <FormularioEntrega ordenId={ordenId} planoId={planoId} alTerminar={() => setModo('ver')} />
       )}
       {modo === 'editar' && (
-        <FormularioPlano ordenId={ordenId} plano={plano} alTerminar={() => setModo('ver')} />
+        <FormularioPlano ordenId={ordenId} plano={plano} etapas={etapas} alTerminar={() => setModo('ver')} />
       )}
       {modo === 'quitar' && (
         <ConfirmarQuitar
@@ -502,36 +493,17 @@ function TarjetaPlano({
         />
       )}
 
-      <TarjetaCuerpo className="p-0">
+      {plano.lista.length > 0 && <TarjetaCuerpo className="p-0">
         <TablaPiezas
           ordenId={ordenId}
           piezas={plano.lista}
           planoEntregado={entregado}
-          puedeDisenar={puedeDisenar}
-          puedeReportar={puedeReportar}
+          puedeDisenar={false}
+          puedeReportar={false}
           areaPropia={areaPropia}
-          observar={puedeObservar && !puedeDisenar ? { numeroPlano: plano.numero_plano ?? '' } : null}
+          observar={null}
         />
-        {puedeReportar && plano.lista.length > 1 && (
-          <MarcarEnLote ordenId={ordenId} planoId={planoId} planoEntregado={entregado} areaPropia={areaPropia} />
-        )}
-        {puedeDisenar && (
-          <div className="border-t border-borde p-3">
-            {modo === 'piezas' ? (
-              <FormularioPiezas ordenId={ordenId} planoId={planoId} alTerminar={() => setModo('ver')} />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setModo('piezas')}
-                className="inline-flex items-center gap-1 text-xs text-acento hover:underline"
-              >
-                <Plus aria-hidden className="size-3.5" />
-                Agregar piezas a este plano
-              </button>
-            )}
-          </div>
-        )}
-      </TarjetaCuerpo>
+      </TarjetaCuerpo>}
     </Tarjeta>
   )
 }
@@ -570,10 +542,12 @@ function FormularioEntrega({
 function FormularioPlano({
   ordenId,
   plano,
+  etapas,
   alTerminar,
 }: {
   ordenId: string
   plano: PlanoCumplimiento
+  etapas: { id: string; nombre: string }[]
   alTerminar: () => void
 }) {
   const { alEnviar, enviando, error } = useEnvio(editarPlano, alTerminar)
@@ -588,6 +562,12 @@ function FormularioPlano({
       </Campo>
       <Campo etiqueta="Nombre" htmlFor={`ep-nombre-${id}`} className="sm:col-span-2">
         <Entrada id={`ep-nombre-${id}`} name="nombre" required defaultValue={plano.nombre ?? ''} />
+      </Campo>
+      <Campo etiqueta="Etapa de la OT" htmlFor={`ep-etapa-${id}`} className="sm:col-span-2">
+        <Seleccion id={`ep-etapa-${id}`} name="etapa_id" defaultValue={plano.etapa_id ?? ''}>
+          <option value="">Sin vincular</option>
+          {etapas.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+        </Seleccion>
       </Campo>
       <Campo etiqueta="Peso %" htmlFor={`ep-peso-${id}`}>
         <Entrada
@@ -619,72 +599,6 @@ function FormularioPlano({
           Guardar el plano
         </Boton>
       </div>
-    </form>
-  )
-}
-
-/**
- * El taller marca el lote entero: en la cancha se habilitan o se arman todas
- * las piezas de un plano el mismo día, y reportarlas de a una eran diez
- * formularios con la misma fecha. La base sigue validando pieza por pieza.
- */
-function MarcarEnLote({
-  ordenId,
-  planoId,
-  planoEntregado,
-  areaPropia,
-}: {
-  ordenId: string
-  planoId: string
-  planoEntregado: boolean
-  areaPropia: ManoDelTaller | null
-}) {
-  const { alEnviar, enviando, error, resultado } = useEnvio(marcarPiezasDelPlano)
-  // Cada mano ve solo sus marcas, y la primera que le toca ya viene elegida.
-  const deMtz = areaPropia !== 'PRD'
-  const dePrd = areaPropia !== 'MTZ'
-  const propuesta = deMtz && planoEntregado ? 'mtz_habilitado' : dePrd ? 'prd_recibido' : 'mtz_habilitado'
-
-  return (
-    <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-3 border-t border-borde bg-superficie-2 px-4 py-3">
-      <input type="hidden" name="orden_id" value={ordenId} />
-      <input type="hidden" name="plano_id" value={planoId} />
-      <Campo etiqueta="Marcar en todas las piezas" htmlFor={`lote-${planoId}`} ayuda="Solo las que faltan y ya pasaron el paso anterior">
-        <Seleccion id={`lote-${planoId}`} name="marca" required defaultValue={propuesta}>
-          {deMtz && (
-            <>
-              <option value="mtz_habilitado" disabled={!planoEntregado}>
-                Habilitadas por Maestranza{planoEntregado ? '' : ' (falta la entrega del plano)'}
-              </option>
-              <option value="mtz_entregado" disabled={!planoEntregado}>
-                Entregadas a Producción
-              </option>
-            </>
-          )}
-          {dePrd && (
-            <>
-              <option value="prd_recibido">Recibidas por Producción</option>
-              <option value="prd_armado">Armadas</option>
-            </>
-          )}
-        </Seleccion>
-      </Campo>
-      <Campo etiqueta="El día" htmlFor={`lote-fecha-${planoId}`}>
-        <Entrada id={`lote-fecha-${planoId}`} name="fecha" type="date" required defaultValue={hoyLima()} />
-      </Campo>
-      <Boton type="submit" tamano="sm" cargando={enviando}>
-        Marcar el lote
-      </Boton>
-      {resultado?.ok && resultado.mensaje && (
-        <p role="status" className="basis-full text-xs font-medium text-exito">
-          {resultado.mensaje}
-        </p>
-      )}
-      {error && (
-        <div className="basis-full">
-          <Error_ texto={error} />
-        </div>
-      )}
     </form>
   )
 }
@@ -722,49 +636,6 @@ function ConfirmarQuitar({
           <Error_ texto={error} />
         </div>
       )}
-    </form>
-  )
-}
-
-function FormularioPiezas({
-  ordenId,
-  planoId,
-  alTerminar,
-}: {
-  ordenId: string
-  planoId: string
-  alTerminar: () => void
-}) {
-  const { alEnviar, enviando, error } = useEnvio(agregarPiezas, alTerminar)
-
-  return (
-    <form onSubmit={alEnviar} className="space-y-2">
-      <input type="hidden" name="orden_id" value={ordenId} />
-      <input type="hidden" name="plano_id" value={planoId} />
-      <Campo
-        etiqueta="Piezas, una por línea"
-        htmlFor={`piezas-${planoId}`}
-        ayuda="número | nombre | cantidad — como en la hoja. «ENS» como número marca un ensamble."
-      >
-        <AreaTexto
-          id={`piezas-${planoId}`}
-          name="lista"
-          rows={5}
-          required
-          autoFocus
-          placeholder={'1 | Durmiente lateral | 2\n2-5 | Postes | 4\nENS | Ensamble de estructura | 1'}
-          className="font-mono text-xs"
-        />
-      </Campo>
-      <Error_ texto={error} />
-      <div className="flex justify-end gap-2">
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={alTerminar}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" tamano="sm" cargando={enviando}>
-          Agregar las piezas
-        </Boton>
-      </div>
     </form>
   )
 }
