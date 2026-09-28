@@ -51,7 +51,7 @@ export async function definirEtapas(_previo: unknown, datos: FormData): Promise<
 
 export async function programarEtapa(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'ordenes.editar')) return { ok: false, error: 'Solo Administración programa las etapas.' }
+  if (perfil.rol.codigo !== 'ADMINISTRACION') return { ok: false, error: 'Solo Administración programa las etapas.' }
   const orden = uuid.safeParse(datos.get('orden_id'))
   const etapa = uuid.safeParse(datos.get('etapa_id'))
   const inicio = fecha.safeParse(datos.get('inicio'))
