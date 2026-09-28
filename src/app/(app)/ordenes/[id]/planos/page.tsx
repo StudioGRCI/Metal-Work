@@ -4,7 +4,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { catalogosDePlanos, versionesDePlanos } from '@/lib/datos/versiones-planos'
 import { cumplimientoDeOrden } from '@/lib/datos/cumplimiento'
 import { areasDelTaller } from '@/lib/datos/actividades'
-import { listarEtapas, obtenerOrden } from '@/lib/datos/ordenes'
+import { areasParaEtapas, listarEtapas, obtenerOrden } from '@/lib/datos/ordenes'
 import { exigirPermiso, puede, puedeHojaDeArea } from '@/lib/sesion'
 import { Pestanas } from '../pestanas'
 import { Cumplimiento } from '../cumplimiento'
@@ -21,7 +21,7 @@ export default async function PaginaPlanos({ params, searchParams }: {
   if (!secciones.includes('planos')) redirect('/sin-permiso')
   const { id } = await params
   const query = await searchParams
-  const [orden, versiones, catalogos, cumplimiento, areas, etapas] = await Promise.all([
+  const [orden, versiones, catalogos, cumplimiento, areas, etapas, areasEtapas] = await Promise.all([
     obtenerOrden(id), versionesDePlanos(id),
     puede(perfil, 'diseno.planos')
       ? catalogosDePlanos(id)
@@ -29,6 +29,7 @@ export default async function PaginaPlanos({ params, searchParams }: {
     cumplimientoDeOrden(id),
     perfil.area_id ? areasDelTaller() : Promise.resolve([]),
     listarEtapas(id),
+    areasParaEtapas(),
   ])
   if (!orden) notFound()
   const abierta = !['BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA'].includes(orden.estado)
@@ -46,7 +47,7 @@ export default async function PaginaPlanos({ params, searchParams }: {
         puedeRecibir: v.vigente && v.estado === 'APROBADO' && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, ['produccion.actividades', 'produccion.cualquier_area']),
       }))}
       catalogos={catalogos} planoSeleccionado={query.plano}
-      etapas={etapas.filter(e => e.etapa_id && e.etapa === 'Diseño').map(e => ({ id: e.etapa_id!, nombre: e.etapa ?? 'Diseño' }))}
+      etapas={etapas.filter(e => e.etapa_id && e.area_id === areasEtapas.find(a => a.codigo === 'DIS')?.id).map(e => ({ id: e.etapa_id!, nombre: e.etapa ?? 'Diseño' }))}
       puedeDisenar={puede(perfil, 'diseno.planos')}
       areaPropia={manoDelTaller}
       ordenViva={abierta} motivoInactiva={motivoInactiva} />

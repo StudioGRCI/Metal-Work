@@ -166,7 +166,7 @@ export async function etapasDeLaOrden(ordenId: string) {
 
   const { data, error } = await supabase
     .from('ot_etapas')
-    .select('id, estado, avance_porcentaje, orden_secuencia, etapa:etapas_catalogo!inner(nombre)')
+    .select('id, estado, avance_porcentaje, orden_secuencia, nombre, etapa:etapas_catalogo(nombre)')
     .eq('orden_id', ordenId)
     .order('orden_secuencia')
 
@@ -176,7 +176,7 @@ export async function etapasDeLaOrden(ordenId: string) {
     id: e.id,
     estado: e.estado as string,
     avance: Number(e.avance_porcentaje ?? 0),
-    nombre: (e.etapa as unknown as { nombre: string }).nombre,
+    nombre: e.nombre ?? (e.etapa as { nombre: string } | null)?.nombre ?? `Etapa ${e.orden_secuencia}`,
   }))
 }
 

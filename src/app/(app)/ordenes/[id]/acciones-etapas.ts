@@ -21,12 +21,14 @@ export async function definirEtapas(_previo: unknown, datos: FormData): Promise<
   }
   const configuracion = seleccion.map((id) => {
     if (!id.success) throw new Error('Etapa inválida')
+    const nombre = z.string().trim().min(2).max(120).safeParse(datos.get(`nombre_${id.data}`))
     const area = uuid.safeParse(datos.get(`area_${id.data}`))
     const peso = z.coerce.number().int().min(1).max(100).safeParse(datos.get(`peso_${id.data}`))
-    return { catalogo_id: id.data, area_id: area.success ? area.data : null, peso_pct: peso.success ? peso.data : null }
+    return { id: id.data, nombre: nombre.success ? nombre.data : null,
+      area_id: area.success ? area.data : null, peso_pct: peso.success ? peso.data : null }
   })
-  if (configuracion.some((e) => e.area_id === null || e.peso_pct === null)) {
-    return { ok: false, error: 'Cada etapa necesita un área y un peso entre 1 y 100 %.' }
+  if (configuracion.some((e) => e.nombre === null || e.area_id === null || e.peso_pct === null)) {
+    return { ok: false, error: 'Cada etapa necesita nombre, área y un porcentaje entre 1 y 100 %.' }
   }
   if (configuracion.reduce((total, e) => total + (e.peso_pct ?? 0), 0) !== 100) {
     return { ok: false, error: 'Los pesos de las etapas deben sumar 100 %.' }
@@ -37,13 +39,10 @@ export async function definirEtapas(_previo: unknown, datos: FormData): Promise<
   if (conversion && (!etapaActividad.success || !seleccion.some((id) => id.success && id.data === etapaActividad.data))) {
     return { ok: false, error: 'Elige la etapa de la actividad que ya existe en esta OT.' }
   }
-  const { data, error } = conversion && etapaActividad.success
-    ? await supabase.rpc('reemplazar_etapas_historicas', {
-        p_orden_id: orden.data, p_config: configuracion, p_etapa_actividad: etapaActividad.data,
-      })
-    : await supabase.rpc('definir_etapas_ponderadas', {
-        p_orden_id: orden.data, p_config: configuracion,
-      })
+  const { data, error } = await supabase.rpc('guardar_etapas_libres', {
+    p_orden_id: orden.data, p_config: configuracion,
+    p_etapa_actividad: conversion && etapaActividad.success ? etapaActividad.data : null,
+  })
   if (error) return { ok: false, error: mensajeDeError(error) }
   revalidatePath(`/ordenes/${orden.data}`)
   revalidatePath('/plazos')
