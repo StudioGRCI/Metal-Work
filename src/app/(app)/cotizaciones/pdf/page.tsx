@@ -24,6 +24,7 @@ const ESTADOS: Record<string, { etiqueta: string; tono: 'aviso' | 'exito' | 'pel
   POR_REVISAR: { etiqueta: 'Por revisar', tono: 'aviso' },
   APROBADA: { etiqueta: 'Aprobada', tono: 'exito' },
   RECHAZADA: { etiqueta: 'Rechazada', tono: 'peligro' },
+  ANULADA: { etiqueta: 'Anulada', tono: 'peligro' },
 }
 
 /** «Abrir el PDF» se ve en el navegador; el Word se baja. */
@@ -56,7 +57,7 @@ function EnlaceArchivo({ url, mime, nombre }: { url: string; mime: string | null
  * veces lo mismo. Lo que el sistema sí guarda es la traza —quién la subió, qué
  * observó Gerencia en cada vuelta, quién la aprobó, qué orden salió— y el papel.
  */
-const FILTROS_ESTADO = ['POR_REVISAR', 'APROBADA_SIN_OT', 'RECHAZADA', 'CON_OT'] as const
+const FILTROS_ESTADO = ['POR_REVISAR', 'APROBADA_SIN_OT', 'RECHAZADA', 'CON_OT', 'ANULADA'] as const
 type FiltroEstado = (typeof FILTROS_ESTADO)[number]
 
 function enFiltro(c: { estado: string | null; orden_id: string | null }, filtro: FiltroEstado | null) {
@@ -69,8 +70,10 @@ function enFiltro(c: { estado: string | null; orden_id: string | null }, filtro:
       return c.estado === 'RECHAZADA'
     case 'CON_OT':
       return Boolean(c.orden_id)
+    case 'ANULADA':
+      return c.estado === 'ANULADA'
     default:
-      return true
+      return c.estado !== 'ANULADA'
   }
 }
 
@@ -92,6 +95,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const sinOrden = cotizaciones.filter((c) => c.estado === 'APROBADA' && !c.orden_id).length
   const rechazadas = cotizaciones.filter((c) => c.estado === 'RECHAZADA').length
   const conOrden = cotizaciones.filter((c) => Boolean(c.orden_id)).length
+  const anuladas = cotizaciones.filter((c) => c.estado === 'ANULADA').length
 
   // Los filtros y la búsqueda se resuelven en memoria: la lista ya viene entera
   // (hasta 200) y así los enlaces del Tablero y de la campana caen en lo suyo.
@@ -114,11 +118,12 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     .sort((a, b) => Number(meToca(b)) - Number(meToca(a)))
 
   const opciones = [
-    { valor: null, etiqueta: `Todas (${cotizaciones.length})` },
+    { valor: null, etiqueta: `Vigentes (${cotizaciones.length - anuladas})` },
     { valor: 'POR_REVISAR', etiqueta: `Por revisar (${porRevisar})` },
     { valor: 'APROBADA_SIN_OT', etiqueta: `Aprobadas sin OT (${sinOrden})` },
     { valor: 'RECHAZADA', etiqueta: `Rechazadas (${rechazadas})` },
     { valor: 'CON_OT', etiqueta: `Con OT (${conOrden})` },
+    { valor: 'ANULADA', etiqueta: `Anuladas (${anuladas})` },
   ]
 
   return (
@@ -226,6 +231,12 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                           )}
                         </div>
                       </div>
+                    )}
+
+                    {c.estado === 'ANULADA' && (
+                      <p className="rounded-[var(--radius-base)] bg-peligro-suave px-2.5 py-2 text-sm text-peligro">
+                        Anulada: {c.observacion || 'Consulta el motivo con Gerencia.'} El número y el archivo se conservan en el historial.
+                      </p>
                     )}
 
                     {c.estado === 'POR_REVISAR' && ultimoRechazo && (

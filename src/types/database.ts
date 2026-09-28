@@ -278,6 +278,9 @@ export type Database = {
       }
       cotizaciones_pdf: {
         Row: {
+          anulado_en: string | null
+          anulado_por: string | null
+          motivo_anulacion: string | null
           id: string
           numero: string
           cliente_id: string
@@ -299,6 +302,9 @@ export type Database = {
           moneda: Database["public"]["Enums"]["moneda"] | null
         }
         Insert: {
+          anulado_en?: string | null
+          anulado_por?: string | null
+          motivo_anulacion?: string | null
           id?: string
           numero: string
           cliente_id: string
@@ -320,6 +326,9 @@ export type Database = {
           moneda?: Database["public"]["Enums"]["moneda"] | null
         }
         Update: {
+          anulado_en?: string | null
+          anulado_por?: string | null
+          motivo_anulacion?: string | null
           id?: string
           numero?: string
           cliente_id?: string
@@ -341,6 +350,13 @@ export type Database = {
           moneda?: Database["public"]["Enums"]["moneda"] | null
         }
         Relationships: [
+          {
+            foreignKeyName: "cotizaciones_pdf_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cotizaciones_pdf_cliente_id_fkey"
             columns: ["cliente_id"]
@@ -4966,7 +4982,7 @@ export type Database = {
     Enums: {
       accion_auditoria: "INSERT" | "UPDATE" | "DELETE"
       categoria_vehicular: "O3" | "O4" | "N1" | "N2" | "N3"
-      estado_cotizacion_pdf: "POR_REVISAR" | "APROBADA" | "RECHAZADA"
+      estado_cotizacion_pdf: "POR_REVISAR" | "APROBADA" | "RECHAZADA" | "ANULADA"
       estado_etapa_ot: "PENDIENTE" | "EN_PROCESO" | "PAUSADA" | "TERMINADA" | "OMITIDA" | "REQUIERE_REVISION"
       estado_flota: "EN_TALLER" | "LISTA" | "SALIO"
       estado_ot: "BORRADOR" | "APROBADA" | "PROGRAMADA" | "EN_PROCESO" | "PAUSADA" | "CONTROL_CALIDAD" | "TERMINADA" | "ENTREGADA" | "FACTURADA" | "ANULADA"
