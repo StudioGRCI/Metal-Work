@@ -100,7 +100,7 @@ export async function proponerMaterial(_previo: unknown, datos: FormData): Promi
 
 export async function crearRequerimiento(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'requerimientos.crear')) {
+  if (!puede(perfil, 'requerimientos.crear') || puede(perfil, 'diseno.planos') || !perfil.area_id) {
     return { ok: false, error: 'Tu perfil no puede solicitar materiales.' }
   }
 
@@ -117,6 +117,10 @@ export async function crearRequerimiento(_previo: unknown, datos: FormData): Pro
   }
 
   const supabase = await createClient()
+  const { data: area, error: errorArea } = await supabase.from('areas').select('codigo').eq('id', perfil.area_id).maybeSingle()
+  if (errorArea || area?.codigo !== analisis.data.area_destino) {
+    return { ok: false, error: 'Solo el área que utilizará el material puede solicitarlo.' }
+  }
   const { data, error } = await supabase.rpc('crear_requerimiento_material', {
     p_orden_id: analisis.data.orden_id,
     p_area_destino: analisis.data.area_destino,

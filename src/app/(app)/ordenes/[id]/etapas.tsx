@@ -270,15 +270,15 @@ function FormularioProgramacion({ ordenId, etapa, alTerminar }: {
 }) {
   const { alEnviar, enviando, error } = useEnvio(programarEtapa, alTerminar)
   return (
-    <form onSubmit={alEnviar} className="mt-3 grid gap-3 border-t border-borde pt-3 sm:grid-cols-3">
+    <form onSubmit={alEnviar} className="mt-3 grid min-w-0 gap-3 border-t border-borde pt-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
       <input type="hidden" name="orden_id" value={ordenId} />
       <input type="hidden" name="etapa_id" value={etapa.etapa_id ?? ''} />
-      <Campo etiqueta="Inicio programado" htmlFor={`inicio-${etapa.etapa_id}`}>
-        <Entrada id={`inicio-${etapa.etapa_id}`} name="inicio" type="date"
+      <Campo etiqueta="Inicio programado" htmlFor={`inicio-${etapa.etapa_id}`} className="min-w-0">
+        <Entrada id={`inicio-${etapa.etapa_id}`} name="inicio" type="date" className="min-w-0 max-w-full"
           defaultValue={etapa.fecha_inicio_programada ?? ''} required />
       </Campo>
-      <Campo etiqueta="Fin programado" htmlFor={`fin-${etapa.etapa_id}`}>
-        <Entrada id={`fin-${etapa.etapa_id}`} name="fin" type="date"
+      <Campo etiqueta="Fin programado" htmlFor={`fin-${etapa.etapa_id}`} className="min-w-0">
+        <Entrada id={`fin-${etapa.etapa_id}`} name="fin" type="date" className="min-w-0 max-w-full"
           defaultValue={etapa.fecha_fin_programada ?? ''} required />
       </Campo>
       {error && <p role="alert" className="text-sm text-peligro sm:col-span-3">{error}</p>}

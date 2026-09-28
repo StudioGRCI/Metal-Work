@@ -383,9 +383,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
       <TeToca ordenId={orden.id} items={toca.items} />
 
-      <div className="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start lg:gap-5">
       <Pestanas ordenId={orden.id} activa={vista} contadores={toca.contadores} visibles={secciones} />
-      <div className="min-w-0">
 
       {vista === 'resumen' && (
         <div className="grid gap-4 lg:grid-cols-2 *:min-w-0">
@@ -598,7 +596,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           materiales={listaMateriales.materiales}
           catalogo={listaMateriales.catalogo}
           puedeDisenar={puede(perfil, 'diseno.planos')}
-          puedeSolicitar={puede(perfil, 'requerimientos.crear')}
+          puedeSolicitar={puede(perfil, 'requerimientos.crear') && !puede(perfil, 'diseno.planos') && ['MTZ', 'PRD', 'ACB'].includes(areaPropiaMaterial ?? '')}
           areaPropia={areaPropiaMaterial}
           ordenViva={motivoInactiva === null}
           motivoInactiva={motivoInactiva}
@@ -650,8 +648,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       {vista === 'bitacora' && (
         <Bitacora ordenId={orden.id} eventos={timeline} puedeComentar={puede(perfil, 'ordenes.ver')} />
       )}
-      </div>
-      </div>
     </>
   )
 }
