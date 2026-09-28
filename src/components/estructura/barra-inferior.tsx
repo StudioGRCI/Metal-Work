@@ -24,11 +24,13 @@ import { cn } from '@/lib/utils'
 export function BarraInferior({
   permisos,
   esAdmin,
+  rolCodigo,
   pendientes = {},
   children,
 }: {
   permisos: string[]
   esAdmin: boolean
+  rolCodigo: string
   /** Cuántos pendientes cuelgan de cada módulo, por su ruta: el globo sobre el icono. */
   pendientes?: Record<string, number>
   children: ReactNode
@@ -36,7 +38,7 @@ export function BarraInferior({
   const ruta = usePathname()
   const [abierto, setAbierto] = useState(false)
 
-  const visibles = NAVEGACION.flatMap((g) => g.items).filter((i) => i.disponible && puedeVer(i, permisos, esAdmin))
+  const visibles = NAVEGACION.flatMap((g) => g.items).filter((i) => i.disponible && puedeVer(i, permisos, esAdmin, rolCodigo))
   const pestanas = PESTANAS_TELEFONO.flatMap((p) => {
     const item = visibles.find((i) => i.ruta === p.ruta && i.disponible !== false)
     return item ? [{ ...p, icono: item.icono }] : []
@@ -136,7 +138,7 @@ export function BarraInferior({
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <NavegacionLista permisos={permisos} esAdmin={esAdmin} pendientes={pendientes} alNavegar={() => setAbierto(false)} />
+              <NavegacionLista permisos={permisos} esAdmin={esAdmin} rolCodigo={rolCodigo} pendientes={pendientes} alNavegar={() => setAbierto(false)} />
               {children}
               <div className="border-t border-borde px-6 py-4">
                 <InstalarApp />

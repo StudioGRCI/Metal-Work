@@ -11,17 +11,19 @@ import type { ReactNode } from 'react'
 export function BarraLateral({
   permisos,
   esAdmin,
+  rolCodigo,
   pendientes,
   children,
 }: {
   permisos: string[]
   esAdmin: boolean
+  rolCodigo: string
   pendientes?: Record<string, number>
   children: ReactNode
 }) {
   return (
     <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-64 shrink-0 flex-col self-start border-r border-borde bg-superficie lg:flex">
-      <div className="min-h-0 flex-1"><NavegacionLista permisos={permisos} esAdmin={esAdmin} pendientes={pendientes} /></div>
+      <div className="min-h-0 flex-1"><NavegacionLista permisos={permisos} esAdmin={esAdmin} rolCodigo={rolCodigo} pendientes={pendientes} /></div>
       {children}
     </aside>
   )
