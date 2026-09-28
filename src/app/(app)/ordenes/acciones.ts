@@ -21,7 +21,6 @@ const esquemaNuevaOrden = z.object({
   fecha_fin_programada: z.string().optional(),
   fecha_entrega_comprometida: z.string().optional(),
   responsable_id: z.string().uuid().optional().or(z.literal('')),
-  monto_presupuestado: z.coerce.number().min(0).default(0),
   observaciones: z.string().trim().optional(),
 })
 
@@ -57,7 +56,6 @@ export async function crearOrden(_previo: unknown, datos: FormData): Promise<Res
       fecha_fin_programada: opcional(v.fecha_fin_programada ?? null),
       fecha_entrega_comprometida: opcional(v.fecha_entrega_comprometida ?? null),
       responsable_id: opcional(v.responsable_id ?? null),
-      monto_presupuestado: v.monto_presupuestado,
       observaciones: opcional(v.observaciones ?? null),
     })
     .select('id, numero')

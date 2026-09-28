@@ -133,50 +133,6 @@ export type Database = {
           }
         ]
       }
-      clasificaciones_costeo: {
-        Row: {
-          id: string
-          codigo: string
-          nombre: string
-          etapa_catalogo_id: string | null
-          tipo_costo: Database["public"]["Enums"]["tipo_costo_partida"]
-          orden: number
-          activo: boolean
-          creado_en: string
-          actualizado_en: string
-        }
-        Insert: {
-          id?: string
-          codigo: string
-          nombre: string
-          etapa_catalogo_id?: string | null
-          tipo_costo?: Database["public"]["Enums"]["tipo_costo_partida"]
-          orden?: number
-          activo?: boolean
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Update: {
-          id?: string
-          codigo?: string
-          nombre?: string
-          etapa_catalogo_id?: string | null
-          tipo_costo?: Database["public"]["Enums"]["tipo_costo_partida"]
-          orden?: number
-          activo?: boolean
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "clasificaciones_costeo_etapa_catalogo_id_fkey"
-            columns: ["etapa_catalogo_id"]
-            isOneToOne: false
-            referencedRelation: "etapas_catalogo"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
       clientes: {
         Row: {
           id: string
@@ -320,514 +276,6 @@ export type Database = {
           }
         ]
       }
-      cotizacion_accesorios: {
-        Row: {
-          id: string
-          cotizacion_id: string
-          orden: number
-          cantidad: number
-          unidad: string
-          descripcion: string
-          incluye_el_accesorio: boolean
-          observacion: string | null
-          creado_en: string
-          actualizado_en: string
-        }
-        Insert: {
-          id?: string
-          cotizacion_id: string
-          orden?: number
-          cantidad?: number
-          unidad?: string
-          descripcion: string
-          incluye_el_accesorio?: boolean
-          observacion?: string | null
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Update: {
-          id?: string
-          cotizacion_id?: string
-          orden?: number
-          cantidad?: number
-          unidad?: string
-          descripcion?: string
-          incluye_el_accesorio?: boolean
-          observacion?: string | null
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cotizacion_accesorios_cotizacion_id_fkey"
-            columns: ["cotizacion_id"]
-            isOneToOne: false
-            referencedRelation: "cotizaciones"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      cotizacion_especificaciones: {
-        Row: {
-          id: string
-          cotizacion_id: string
-          seccion: string
-          orden_seccion: number
-          orden_linea: number
-          etiqueta: string | null
-          detalle: string
-          creado_en: string
-          actualizado_en: string
-        }
-        Insert: {
-          id?: string
-          cotizacion_id: string
-          seccion: string
-          orden_seccion?: number
-          orden_linea?: number
-          etiqueta?: string | null
-          detalle: string
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Update: {
-          id?: string
-          cotizacion_id?: string
-          seccion?: string
-          orden_seccion?: number
-          orden_linea?: number
-          etiqueta?: string | null
-          detalle?: string
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cotizacion_especificaciones_cotizacion_id_fkey"
-            columns: ["cotizacion_id"]
-            isOneToOne: false
-            referencedRelation: "cotizaciones"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      cotizacion_etapas: {
-        Row: {
-          id: string
-          cotizacion_id: string
-          etapa_catalogo_id: string
-          orden_secuencia: number
-          dias: number
-          creado_en: string
-          actualizado_en: string
-        }
-        Insert: {
-          id?: string
-          cotizacion_id: string
-          etapa_catalogo_id: string
-          orden_secuencia: number
-          dias?: number
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Update: {
-          id?: string
-          cotizacion_id?: string
-          etapa_catalogo_id?: string
-          orden_secuencia?: number
-          dias?: number
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cotizacion_etapas_cotizacion_id_fkey"
-            columns: ["cotizacion_id"]
-            isOneToOne: false
-            referencedRelation: "cotizaciones"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizacion_etapas_etapa_catalogo_id_fkey"
-            columns: ["etapa_catalogo_id"]
-            isOneToOne: false
-            referencedRelation: "etapas_catalogo"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      cotizacion_partidas: {
-        Row: {
-          id: string
-          cotizacion_id: string
-          orden_secuencia: number
-          descripcion: string
-          detalle: string | null
-          unidad_medida: string
-          cantidad: number
-          precio_unitario: number
-          descuento_porcentaje: number
-          subtotal: number
-          tipo_costo: Database["public"]["Enums"]["tipo_costo_partida"]
-          creado_en: string
-          actualizado_en: string
-          clasificacion_id: string | null
-        }
-        Insert: {
-          id?: string
-          cotizacion_id: string
-          orden_secuencia: number
-          descripcion: string
-          detalle?: string | null
-          unidad_medida?: string
-          cantidad: number
-          precio_unitario: number
-          descuento_porcentaje?: number
-          subtotal?: number
-          tipo_costo?: Database["public"]["Enums"]["tipo_costo_partida"]
-          creado_en?: string
-          actualizado_en?: string
-          clasificacion_id?: string | null
-        }
-        Update: {
-          id?: string
-          cotizacion_id?: string
-          orden_secuencia?: number
-          descripcion?: string
-          detalle?: string | null
-          unidad_medida?: string
-          cantidad?: number
-          precio_unitario?: number
-          descuento_porcentaje?: number
-          subtotal?: number
-          tipo_costo?: Database["public"]["Enums"]["tipo_costo_partida"]
-          creado_en?: string
-          actualizado_en?: string
-          clasificacion_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cotizacion_partidas_clasificacion_id_fkey"
-            columns: ["clasificacion_id"]
-            isOneToOne: false
-            referencedRelation: "clasificaciones_costeo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizacion_partidas_cotizacion_id_fkey"
-            columns: ["cotizacion_id"]
-            isOneToOne: false
-            referencedRelation: "cotizaciones"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      cotizaciones: {
-        Row: {
-          id: string
-          numero: string
-          cliente_id: string
-          unidad_id: string | null
-          tipo_carroceria_id: string | null
-          contacto_id: string | null
-          sede_id: string | null
-          fecha_emision: string
-          validez_dias: number
-          fecha_vencimiento: string | null
-          moneda: Database["public"]["Enums"]["moneda"]
-          tipo_cambio: number | null
-          estado: Database["public"]["Enums"]["estado_cotizacion"]
-          subtotal: number
-          descuento: number
-          igv_porcentaje: number | null
-          igv: number
-          total: number
-          plazo_entrega_dias: number | null
-          forma_pago: string | null
-          condiciones: string | null
-          observaciones: string | null
-          motivo_rechazo: string | null
-          fecha_aprobacion: string | null
-          aprobada_por: string | null
-          vendedor_id: string | null
-          creado_en: string
-          actualizado_en: string
-          creado_por: string | null
-          marca: string | null
-          modelo: string | null
-          tipo: string | null
-          largo_m: number | null
-          ancho_m: number | null
-          alto_m: number | null
-          capacidad: string | null
-          peso_neto_tn: number | null
-          garantia_meses: number
-          incluye_igv: boolean
-          plazo_en_habiles: boolean
-          nota: string | null
-          motivo_anulacion: string | null
-          anulada_por: string | null
-          anulada_en: string | null
-          concepto: string | null
-          concepto_cantidad: number
-          concepto_unidad: string
-          precio_venta: number | null
-          costo_estimado: number
-          costeo_pedido_en: string | null
-          costeo_pedido_por: string | null
-          costeo_listo_en: string | null
-          costeo_listo_por: string | null
-          revisada_en: string | null
-          revisada_por: string | null
-          motivo_observacion: string | null
-          plazo_desde: string | null
-          garantia_texto: string | null
-          peso_tolerancia: string | null
-          no_incluye: string | null
-          anio_fabricacion: number | null
-          carroceria_texto: string | null
-          largo_util_m: number | null
-          ejes: string | null
-          normas: string | null
-          dias_programados: number
-          tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
-          categoria_vehicular: Database["public"]["Enums"]["categoria_vehicular"] | null
-          plazo_arranca_en: string | null
-        }
-        Insert: {
-          id?: string
-          numero?: string
-          cliente_id: string
-          unidad_id?: string | null
-          tipo_carroceria_id?: string | null
-          contacto_id?: string | null
-          sede_id?: string | null
-          fecha_emision?: string
-          validez_dias?: number
-          moneda?: Database["public"]["Enums"]["moneda"]
-          tipo_cambio?: number | null
-          estado?: Database["public"]["Enums"]["estado_cotizacion"]
-          subtotal?: number
-          descuento?: number
-          igv_porcentaje?: number | null
-          igv?: number
-          total?: number
-          plazo_entrega_dias?: number | null
-          forma_pago?: string | null
-          condiciones?: string | null
-          observaciones?: string | null
-          motivo_rechazo?: string | null
-          fecha_aprobacion?: string | null
-          aprobada_por?: string | null
-          vendedor_id?: string | null
-          creado_en?: string
-          actualizado_en?: string
-          creado_por?: string | null
-          marca?: string | null
-          modelo?: string | null
-          tipo?: string | null
-          largo_m?: number | null
-          ancho_m?: number | null
-          alto_m?: number | null
-          capacidad?: string | null
-          peso_neto_tn?: number | null
-          garantia_meses?: number
-          incluye_igv?: boolean
-          plazo_en_habiles?: boolean
-          nota?: string | null
-          motivo_anulacion?: string | null
-          anulada_por?: string | null
-          anulada_en?: string | null
-          concepto?: string | null
-          concepto_cantidad?: number
-          concepto_unidad?: string
-          precio_venta?: number | null
-          costo_estimado?: number
-          costeo_pedido_en?: string | null
-          costeo_pedido_por?: string | null
-          costeo_listo_en?: string | null
-          costeo_listo_por?: string | null
-          revisada_en?: string | null
-          revisada_por?: string | null
-          motivo_observacion?: string | null
-          plazo_desde?: string | null
-          garantia_texto?: string | null
-          peso_tolerancia?: string | null
-          no_incluye?: string | null
-          anio_fabricacion?: number | null
-          carroceria_texto?: string | null
-          largo_util_m?: number | null
-          ejes?: string | null
-          normas?: string | null
-          dias_programados?: number
-          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
-          categoria_vehicular?: Database["public"]["Enums"]["categoria_vehicular"] | null
-          plazo_arranca_en?: string | null
-        }
-        Update: {
-          id?: string
-          numero?: string
-          cliente_id?: string
-          unidad_id?: string | null
-          tipo_carroceria_id?: string | null
-          contacto_id?: string | null
-          sede_id?: string | null
-          fecha_emision?: string
-          validez_dias?: number
-          moneda?: Database["public"]["Enums"]["moneda"]
-          tipo_cambio?: number | null
-          estado?: Database["public"]["Enums"]["estado_cotizacion"]
-          subtotal?: number
-          descuento?: number
-          igv_porcentaje?: number | null
-          igv?: number
-          total?: number
-          plazo_entrega_dias?: number | null
-          forma_pago?: string | null
-          condiciones?: string | null
-          observaciones?: string | null
-          motivo_rechazo?: string | null
-          fecha_aprobacion?: string | null
-          aprobada_por?: string | null
-          vendedor_id?: string | null
-          creado_en?: string
-          actualizado_en?: string
-          creado_por?: string | null
-          marca?: string | null
-          modelo?: string | null
-          tipo?: string | null
-          largo_m?: number | null
-          ancho_m?: number | null
-          alto_m?: number | null
-          capacidad?: string | null
-          peso_neto_tn?: number | null
-          garantia_meses?: number
-          incluye_igv?: boolean
-          plazo_en_habiles?: boolean
-          nota?: string | null
-          motivo_anulacion?: string | null
-          anulada_por?: string | null
-          anulada_en?: string | null
-          concepto?: string | null
-          concepto_cantidad?: number
-          concepto_unidad?: string
-          precio_venta?: number | null
-          costo_estimado?: number
-          costeo_pedido_en?: string | null
-          costeo_pedido_por?: string | null
-          costeo_listo_en?: string | null
-          costeo_listo_por?: string | null
-          revisada_en?: string | null
-          revisada_por?: string | null
-          motivo_observacion?: string | null
-          plazo_desde?: string | null
-          garantia_texto?: string | null
-          peso_tolerancia?: string | null
-          no_incluye?: string | null
-          anio_fabricacion?: number | null
-          carroceria_texto?: string | null
-          largo_util_m?: number | null
-          ejes?: string | null
-          normas?: string | null
-          dias_programados?: number
-          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
-          categoria_vehicular?: Database["public"]["Enums"]["categoria_vehicular"] | null
-          plazo_arranca_en?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cotizaciones_anulada_por_fkey"
-            columns: ["anulada_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_aprobada_por_fkey"
-            columns: ["aprobada_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_cliente_id_fkey"
-            columns: ["cliente_id"]
-            isOneToOne: false
-            referencedRelation: "clientes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_contacto_id_fkey"
-            columns: ["contacto_id"]
-            isOneToOne: false
-            referencedRelation: "contactos_cliente"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_costeo_listo_por_fkey"
-            columns: ["costeo_listo_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_costeo_pedido_por_fkey"
-            columns: ["costeo_pedido_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_creado_por_fkey"
-            columns: ["creado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_revisada_por_fkey"
-            columns: ["revisada_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_sede_id_fkey"
-            columns: ["sede_id"]
-            isOneToOne: false
-            referencedRelation: "sedes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_tipo_carroceria_id_fkey"
-            columns: ["tipo_carroceria_id"]
-            isOneToOne: false
-            referencedRelation: "tipos_carroceria"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_unidad_id_fkey"
-            columns: ["unidad_id"]
-            isOneToOne: false
-            referencedRelation: "unidades"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_vendedor_id_fkey"
-            columns: ["vendedor_id"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_cotizaciones_unidad_del_cliente"
-            columns: ["unidad_id", "cliente_id"]
-            isOneToOne: false
-            referencedRelation: "unidades"
-            referencedColumns: ["id", "cliente_id"]
-          }
-        ]
-      }
       cotizaciones_pdf: {
         Row: {
           id: string
@@ -847,6 +295,8 @@ export type Database = {
           actualizado_en: string
           version: number
           archivo_subido_en: string
+          monto_venta: number | null
+          moneda: Database["public"]["Enums"]["moneda"] | null
         }
         Insert: {
           id?: string
@@ -866,6 +316,8 @@ export type Database = {
           actualizado_en?: string
           version?: number
           archivo_subido_en?: string
+          monto_venta?: number | null
+          moneda?: Database["public"]["Enums"]["moneda"] | null
         }
         Update: {
           id?: string
@@ -885,6 +337,8 @@ export type Database = {
           actualizado_en?: string
           version?: number
           archivo_subido_en?: string
+          monto_venta?: number | null
+          moneda?: Database["public"]["Enums"]["moneda"] | null
         }
         Relationships: [
           {
@@ -1129,13 +583,9 @@ export type Database = {
           correo: string | null
           web: string | null
           logo_url: string | null
-          moneda_base: Database["public"]["Enums"]["moneda"]
-          igv_porcentaje: number
           creado_en: string
           actualizado_en: string
           dias_laborables: number[]
-          firma_nombre: string | null
-          firma_cargo: string | null
         }
         Insert: {
           id?: string
@@ -1150,13 +600,9 @@ export type Database = {
           correo?: string | null
           web?: string | null
           logo_url?: string | null
-          moneda_base?: Database["public"]["Enums"]["moneda"]
-          igv_porcentaje?: number
           creado_en?: string
           actualizado_en?: string
           dias_laborables?: number[]
-          firma_nombre?: string | null
-          firma_cargo?: string | null
         }
         Update: {
           id?: string
@@ -1171,13 +617,9 @@ export type Database = {
           correo?: string | null
           web?: string | null
           logo_url?: string | null
-          moneda_base?: Database["public"]["Enums"]["moneda"]
-          igv_porcentaje?: number
           creado_en?: string
           actualizado_en?: string
           dias_laborables?: number[]
-          firma_nombre?: string | null
-          firma_cargo?: string | null
         }
         Relationships: []
       }
@@ -1678,36 +1120,6 @@ export type Database = {
           }
         ]
       }
-      notas_cotizacion: {
-        Row: {
-          id: string
-          codigo: string
-          texto: string
-          orden: number
-          activo: boolean
-          creado_en: string
-          actualizado_en: string
-        }
-        Insert: {
-          id?: string
-          codigo: string
-          texto: string
-          orden?: number
-          activo?: boolean
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Update: {
-          id?: string
-          codigo?: string
-          texto?: string
-          orden?: number
-          activo?: boolean
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Relationships: []
-      }
       notificaciones: {
         Row: {
           id: string
@@ -1866,7 +1278,6 @@ export type Database = {
           numero: string
           cliente_id: string | null
           unidad_id: string | null
-          cotizacion_id: string | null
           tipo_carroceria_id: string | null
           sede_id: string
           tipo_trabajo: Database["public"]["Enums"]["tipo_trabajo_ot"]
@@ -1883,8 +1294,6 @@ export type Database = {
           fecha_fin_real: string | null
           responsable_id: string | null
           supervisor_id: string | null
-          moneda: Database["public"]["Enums"]["moneda"]
-          monto_presupuestado: number
           avance_porcentaje: number
           horas_estimadas: number
           horas_reales: number
@@ -1916,7 +1325,6 @@ export type Database = {
           numero?: string
           cliente_id?: string | null
           unidad_id?: string | null
-          cotizacion_id?: string | null
           tipo_carroceria_id?: string | null
           sede_id: string
           tipo_trabajo?: Database["public"]["Enums"]["tipo_trabajo_ot"]
@@ -1933,8 +1341,6 @@ export type Database = {
           fecha_fin_real?: string | null
           responsable_id?: string | null
           supervisor_id?: string | null
-          moneda?: Database["public"]["Enums"]["moneda"]
-          monto_presupuestado?: number
           avance_porcentaje?: number
           horas_estimadas?: number
           horas_reales?: number
@@ -1966,7 +1372,6 @@ export type Database = {
           numero?: string
           cliente_id?: string | null
           unidad_id?: string | null
-          cotizacion_id?: string | null
           tipo_carroceria_id?: string | null
           sede_id?: string
           tipo_trabajo?: Database["public"]["Enums"]["tipo_trabajo_ot"]
@@ -1983,8 +1388,6 @@ export type Database = {
           fecha_fin_real?: string | null
           responsable_id?: string | null
           supervisor_id?: string | null
-          moneda?: Database["public"]["Enums"]["moneda"]
-          monto_presupuestado?: number
           avance_porcentaje?: number
           horas_estimadas?: number
           horas_reales?: number
@@ -2017,13 +1420,6 @@ export type Database = {
             columns: ["cliente_id"]
             isOneToOne: false
             referencedRelation: "clientes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ordenes_trabajo_cotizacion_id_fkey"
-            columns: ["cotizacion_id"]
-            isOneToOne: false
-            referencedRelation: "cotizaciones"
             referencedColumns: ["id"]
           },
           {
@@ -3244,7 +2640,6 @@ export type Database = {
           id: string
           orden_id: string
           cliente_id: string | null
-          cotizacion_id: string | null
           cotizacion_pdf_id: string | null
           datos: Json
           creado_por: string
@@ -3255,7 +2650,6 @@ export type Database = {
           id?: string
           orden_id: string
           cliente_id?: string | null
-          cotizacion_id?: string | null
           cotizacion_pdf_id?: string | null
           datos: Json
           creado_por: string
@@ -3266,7 +2660,6 @@ export type Database = {
           id?: string
           orden_id?: string
           cliente_id?: string | null
-          cotizacion_id?: string | null
           cotizacion_pdf_id?: string | null
           datos?: Json
           creado_por?: string
@@ -3279,13 +2672,6 @@ export type Database = {
             columns: ["cliente_id"]
             isOneToOne: false
             referencedRelation: "clientes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_ventas_anteriores_cotizacion_id_fkey"
-            columns: ["cotizacion_id"]
-            isOneToOne: false
-            referencedRelation: "cotizaciones"
             referencedColumns: ["id"]
           },
           {
@@ -3365,73 +2751,6 @@ export type Database = {
           {
             foreignKeyName: "ot_verificaciones_responsable_id_fkey"
             columns: ["responsable_id"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      pagos_cliente: {
-        Row: {
-          id: string
-          cotizacion_id: string
-          orden_id: string | null
-          tipo: Database["public"]["Enums"]["tipo_pago_cliente"]
-          fecha: string
-          monto: number
-          medio: Database["public"]["Enums"]["medio_pago"]
-          referencia: string | null
-          observaciones: string | null
-          registrado_por: string | null
-          creado_en: string
-          actualizado_en: string
-        }
-        Insert: {
-          id?: string
-          cotizacion_id: string
-          orden_id?: string | null
-          tipo?: Database["public"]["Enums"]["tipo_pago_cliente"]
-          fecha?: string
-          monto: number
-          medio?: Database["public"]["Enums"]["medio_pago"]
-          referencia?: string | null
-          observaciones?: string | null
-          registrado_por?: string | null
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Update: {
-          id?: string
-          cotizacion_id?: string
-          orden_id?: string | null
-          tipo?: Database["public"]["Enums"]["tipo_pago_cliente"]
-          fecha?: string
-          monto?: number
-          medio?: Database["public"]["Enums"]["medio_pago"]
-          referencia?: string | null
-          observaciones?: string | null
-          registrado_por?: string | null
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "pagos_cliente_cotizacion_id_fkey"
-            columns: ["cotizacion_id"]
-            isOneToOne: false
-            referencedRelation: "cotizaciones"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pagos_cliente_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ordenes_trabajo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pagos_cliente_registrado_por_fkey"
-            columns: ["registrado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -3962,30 +3281,6 @@ export type Database = {
           }
         ]
       }
-      tipos_cambio: {
-        Row: {
-          fecha: string
-          compra: number
-          venta: number
-          creado_en: string
-          fuente: string
-        }
-        Insert: {
-          fecha: string
-          compra: number
-          venta: number
-          creado_en?: string
-          fuente?: string
-        }
-        Update: {
-          fecha?: string
-          compra?: number
-          venta?: number
-          creado_en?: string
-          fuente?: string
-        }
-        Relationships: []
-      }
       tipos_carroceria: {
         Row: {
           id: string
@@ -4302,47 +3597,6 @@ export type Database = {
       }
     }
     Views: {
-      cotizacion_ficha: {
-        Row: {
-          cotizacion_id: string | null
-          numero: string | null
-          seccion: string | null
-          orden_seccion: number | null
-          orden_linea: number | null
-          etiqueta: string | null
-          detalle: string | null
-        }
-        Relationships: []
-      }
-      cotizaciones_detalle: {
-        Row: {
-          id: string | null
-          numero: string | null
-          estado: Database["public"]["Enums"]["estado_cotizacion"] | null
-          fecha_emision: string | null
-          fecha_vencimiento: string | null
-          dias_para_vencer: number | null
-          moneda: Database["public"]["Enums"]["moneda"] | null
-          subtotal: number | null
-          descuento: number | null
-          igv: number | null
-          total: number | null
-          total_pen: number | null
-          cliente_id: string | null
-          razon_social: string | null
-          numero_documento: string | null
-          unidad_id: string | null
-          placa: string | null
-          tipo_vehiculo: Database["public"]["Enums"]["tipo_vehiculo"] | null
-          tipo_carroceria_id: string | null
-          tipo_carroceria_codigo: string | null
-          tipo_carroceria_nombre: string | null
-          vendedor_id: string | null
-          sede_id: string | null
-          partidas: number | null
-        }
-        Relationships: []
-      }
       ot_avance_resumen: {
         Row: {
           id: string | null
@@ -4423,8 +3677,6 @@ export type Database = {
           horas_estimadas: number | null
           horas_reales: number | null
           desviacion_horas: number | null
-          moneda: Database["public"]["Enums"]["moneda"] | null
-          monto_presupuestado: number | null
           responsable_id: string | null
           responsable: string | null
           etapas_total: number | null
@@ -4554,6 +3806,8 @@ export type Database = {
           version: number | null
           mime_type: string | null
           archivo_subido_en: string | null
+          monto_venta: number | null
+          moneda: 'PEN' | 'USD' | null
         }
         Relationships: []
       }
@@ -4905,21 +4159,6 @@ export type Database = {
         }
         Relationships: []
       }
-      v_pagos_cotizacion: {
-        Row: {
-          cotizacion_id: string | null
-          numero: string | null
-          moneda: Database["public"]["Enums"]["moneda"] | null
-          precio_venta: number | null
-          plazo_arranca_en: string | null
-          pagado: number | null
-          saldo: number | null
-          pagado_pct: number | null
-          pagos: number | null
-          primer_pago: string | null
-        }
-        Relationships: []
-      }
       v_plazos_por_area: {
         Row: {
           etapa_id: string | null
@@ -4963,6 +4202,10 @@ export type Database = {
       }
     }
     Functions: {
+      editar_carroceria_ventas: {
+        Args: { p_id: string; p_nombre: string; p_descripcion: string; p_activo: boolean }
+        Returns: string
+      }
       abrir_orden_del_taller: {
         Args: {
           p_placa: string
@@ -4979,26 +4222,19 @@ export type Database = {
         Args: {
           p_tabla: string
         }
-        Returns: null
+        Returns: string
       }
       activar_registro_de_prueba: {
         Args: {
           p_tabla: string
         }
-        Returns: null
+        Returns: string
       }
       activar_timestamps: {
         Args: {
           p_tabla: string
         }
-        Returns: null
-      }
-      aplicar_plantilla_ficha: {
-        Args: {
-          p_cotizacion: string
-          p_plantilla: string
-        }
-        Returns: number
+        Returns: string
       }
       archivo_plano_vinculado: {
         Args: {
@@ -5010,14 +4246,7 @@ export type Database = {
         Args: {
           p_orden: string
         }
-        Returns: null
-      }
-      arrancar_plazo_de_cotizacion: {
-        Args: {
-          p_cotizacion: string
-          p_fecha: string
-        }
-        Returns: null
+        Returns: string
       }
       asignar_equipo_diseno: {
         Args: {
@@ -5025,7 +4254,7 @@ export type Database = {
           p_lider: string
           p_responsables: Json
         }
-        Returns: null
+        Returns: string
       }
       asignar_responsables_ot: {
         Args: {
@@ -5038,14 +4267,14 @@ export type Database = {
           p_usuario: string
           p_clave: string
         }
-        Returns: null
+        Returns: string
       }
       cambiar_estado_personal: {
         Args: {
           p_usuario: string
           p_activo: boolean
         }
-        Returns: null
+        Returns: string
       }
       cargar_cronograma: {
         Args: {
@@ -5064,26 +4293,13 @@ export type Database = {
         Args: {
           p_cuenta: string
         }
-        Returns: null
+        Returns: string
       }
       confirmar_salida_porteria: {
         Args: {
           p_entrega: string
         }
-        Returns: null
-      }
-      cotizacion_sembrar_etapas: {
-        Args: {
-          p_cotizacion_id: string
-        }
-        Returns: number
-      }
-      cotizaciones_por_estado: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          estado: string | null
-          cantidad: number | null
-        }[]
+        Returns: string
       }
       crear_etapas_ot: {
         Args: {
@@ -5217,21 +4433,13 @@ export type Database = {
         Args: {
           p_permiso: string
         }
-        Returns: null
+        Returns: string
       }
       flota_sigue_en_taller: {
         Args: {
           p_flota: string
         }
         Returns: boolean
-      }
-      guardar_cotizacion_como_plantilla: {
-        Args: {
-          p_cotizacion: string
-          p_nombre: string
-          p_predeterminada?: boolean
-        }
-        Returns: string
       }
       guardar_ficha_diseno: {
         Args: {
@@ -5271,12 +4479,6 @@ export type Database = {
       lote_de_prueba: {
         Args: Record<PropertyKey, never>
         Returns: string
-      }
-      marcar_cotizaciones_vencidas: {
-        Args: {
-          p_fecha?: string
-        }
-        Returns: number
       }
       mi_rol: {
         Args: Record<PropertyKey, never>
@@ -5330,7 +4532,7 @@ export type Database = {
         Args: {
           p_orden_id: string
         }
-        Returns: null
+        Returns: string
       }
       ot_registrar_evento: {
         Args: {
@@ -5378,7 +4580,7 @@ export type Database = {
           p_orden: string
           p_cliente: string
         }
-        Returns: null
+        Returns: string
       }
       produccion_siguiente_numero: {
         Args: {
@@ -5465,12 +4667,6 @@ export type Database = {
           p_usuario: string
         }
         Returns: string
-      }
-      recalcular_totales_cotizacion: {
-        Args: {
-          p_cotizacion: string
-        }
-        Returns: null
       }
       recibir_version_plano: {
         Args: {
@@ -5582,18 +4778,6 @@ export type Database = {
         }
         Returns: boolean
       }
-      tipo_cambio_exigido: {
-        Args: {
-          p_fecha?: string
-        }
-        Returns: number
-      }
-      tipo_cambio_vigente: {
-        Args: {
-          p_fecha?: string
-        }
-        Returns: number
-      }
       usuario_actual: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -5610,7 +4794,6 @@ export type Database = {
     Enums: {
       accion_auditoria: "INSERT" | "UPDATE" | "DELETE"
       categoria_vehicular: "O3" | "O4" | "N1" | "N2" | "N3"
-      estado_cotizacion: "BORRADOR" | "EN_COSTEO" | "EN_REVISION" | "OBSERVADA" | "REVISADA" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "VENCIDA" | "ANULADA"
       estado_cotizacion_pdf: "POR_REVISAR" | "APROBADA" | "RECHAZADA"
       estado_etapa_ot: "PENDIENTE" | "EN_PROCESO" | "PAUSADA" | "TERMINADA" | "OMITIDA" | "REQUIERE_REVISION"
       estado_flota: "EN_TALLER" | "LISTA" | "SALIO"
@@ -5618,14 +4801,11 @@ export type Database = {
       estado_plazo: "VIGENTE" | "POR_VENCER" | "VENCIDO" | "CUMPLIDO" | "CUMPLIDO_TARDE"
       estado_revision: "PENDIENTE" | "APROBADO" | "OBSERVADO"
       magnitud_medida: "UNIDAD" | "MASA" | "LONGITUD" | "AREA" | "VOLUMEN"
-      medio_pago: "TRANSFERENCIA" | "DEPOSITO" | "CHEQUE" | "EFECTIVO" | "LETRA" | "OTRO"
       moneda: "PEN" | "USD"
       prioridad_ot: "BAJA" | "NORMAL" | "ALTA" | "URGENTE"
-      tipo_correlativo: "COTIZACION" | "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO"
-      tipo_costo_partida: "MATERIAL" | "MANO_OBRA" | "SERVICIO" | "OTRO"
+      tipo_correlativo: "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO"
       tipo_documento_cliente: "RUC" | "DNI" | "CE" | "PASAPORTE"
       tipo_evento_ot: "CREACION" | "CAMBIO_ESTADO" | "AVANCE" | "MATERIAL" | "DOCUMENTO" | "INSPECCION" | "PAUSA" | "REANUDACION" | "COMENTARIO" | "ENTREGA"
-      tipo_pago_cliente: "ADELANTO" | "PARCIAL" | "SALDO"
       tipo_trabajo_ot: "FABRICACION" | "REPARACION" | "REPOTENCIACION" | "MANTENIMIENTO" | "GARANTIA"
       tipo_unidad_carroceria: "SEMIRREMOLQUE" | "CARROCERIA_MONTADA"
       tipo_vehiculo: "VOLQUETE" | "TRACTO" | "SEMIRREMOLQUE" | "CAMION" | "REMOLQUE" | "FURGON" | "OTRO"

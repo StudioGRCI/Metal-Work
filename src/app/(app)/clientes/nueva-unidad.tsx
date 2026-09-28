@@ -7,6 +7,7 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { useEnvio } from '@/lib/envio'
+import type { Tablas } from '@/types/database'
 
 import { guardarUnidad } from './acciones'
 
@@ -20,12 +21,16 @@ const TIPOS_VEHICULO = [
   ['OTRO', 'Otro'],
 ] as const
 
+type UnidadEditable = Pick<Tablas<'unidades'>, 'id' | 'cliente_id' | 'tipo_vehiculo' | 'marca' | 'modelo' | 'anio' | 'placa' | 'numero_chasis' | 'numero_motor' | 'color' | 'capacidad_m3' | 'capacidad_toneladas' | 'observaciones'>
+
 export function NuevaUnidad({
   clienteId,
+  unidad,
   onCreada,
   compacta = false,
 }: {
   clienteId: string
+  unidad?: UnidadEditable
   /** Para los formularios que quieren quedarse con la unidad recién creada. */
   // La placa puede faltar: quien reciba la unidad recién creada la nombra con
   // nombreDeUnidad(), no dando por hecho que hay matrícula.
@@ -76,12 +81,13 @@ export function NuevaUnidad({
       <Ventana
         abierta={abierto}
         alCerrar={() => setAbierto(false)}
-        titulo="Nueva unidad"
-        descripcion="El vehículo del cliente sobre el que se ejecutará el trabajo."
+        titulo={unidad ? `Editar ${unidad.marca} ${unidad.modelo}` : 'Nueva unidad'}
+        descripcion="Los datos del vehículo sobre el que se ejecutará el trabajo."
         ancho="lg"
       >
         <form onSubmit={alEnviar} className="grid items-start gap-4 sm:grid-cols-3">
           <input type="hidden" name="cliente_id" value={clienteId} />
+          {unidad && <input type="hidden" name="id" value={unidad.id} />}
 
           {/* Esta ficha describe el chasis que trae el cliente y nada más. La
               carrocería NO va acá: es lo que Metal Work va a fabricar y se
@@ -102,7 +108,7 @@ export function NuevaUnidad({
             <Seleccion
               id="nu-tipo_vehiculo"
               name="tipo_vehiculo"
-              defaultValue="VOLQUETE"
+              defaultValue={unidad?.tipo_vehiculo ?? 'VOLQUETE'}
               autoFocus
               required
             >
@@ -118,7 +124,7 @@ export function NuevaUnidad({
               puede estar en el catálogo. Sin ellos la ficha de la cotización
               sale con rayas y el taller no sabe sobre qué chasis fabrica. */}
           <Campo etiqueta="Marca" htmlFor="nu-marca" requerido>
-            <Entrada id="nu-marca" name="marca" autoComplete="off" placeholder="VOLVO" required />
+            <Entrada id="nu-marca" name="marca" autoComplete="off" placeholder="VOLVO" defaultValue={unidad?.marca ?? ''} required />
           </Campo>
 
           <Campo etiqueta="Modelo" htmlFor="nu-modelo" requerido>
@@ -127,6 +133,7 @@ export function NuevaUnidad({
               name="modelo"
               autoComplete="off"
               placeholder="FMX 440"
+              defaultValue={unidad?.modelo ?? ''}
               required
             />
           </Campo>
@@ -140,6 +147,7 @@ export function NuevaUnidad({
               min={1950}
               max={2100}
               placeholder="2024"
+              defaultValue={unidad?.anio ?? undefined}
               className="tabular"
               required
             />
@@ -162,12 +170,23 @@ export function NuevaUnidad({
               autoCorrect="off"
               spellCheck={false}
               placeholder="V2G-841"
+              defaultValue={unidad?.placa ?? ''}
               className="tabular uppercase"
             />
           </Campo>
 
           <Campo etiqueta="Color" htmlFor="nu-color">
-            <Entrada id="nu-color" name="color" autoComplete="off" placeholder="Blanco" />
+            <Entrada id="nu-color" name="color" autoComplete="off" placeholder="Blanco" defaultValue={unidad?.color ?? ''} />
+          </Campo>
+
+          <Campo etiqueta="N.º de motor" htmlFor="nu-numero_motor">
+            <Entrada id="nu-numero_motor" name="numero_motor" autoComplete="off" defaultValue={unidad?.numero_motor ?? ''} />
+          </Campo>
+          <Campo etiqueta="Capacidad (m³)" htmlFor="nu-capacidad_m3">
+            <Entrada id="nu-capacidad_m3" name="capacidad_m3" inputMode="decimal" defaultValue={unidad?.capacidad_m3 ?? ''} />
+          </Campo>
+          <Campo etiqueta="Capacidad (t)" htmlFor="nu-capacidad_toneladas">
+            <Entrada id="nu-capacidad_toneladas" name="capacidad_toneladas" inputMode="decimal" defaultValue={unidad?.capacidad_toneladas ?? ''} />
           </Campo>
 
           {/* Los dos largos, uno por fila y de lado a lado. El chasis es el dato
@@ -183,12 +202,13 @@ export function NuevaUnidad({
               autoCorrect="off"
               spellCheck={false}
               placeholder="9BM958344MB123456"
+              defaultValue={unidad?.numero_chasis ?? ''}
               className="font-mono text-xs uppercase"
             />
           </Campo>
 
           <Campo etiqueta="Observaciones" htmlFor="nu-observaciones" className="sm:col-span-3">
-            <AreaTexto id="nu-observaciones" name="observaciones" rows={2} />
+            <AreaTexto id="nu-observaciones" name="observaciones" rows={2} defaultValue={unidad?.observaciones ?? ''} />
           </Campo>
 
           {error && (
@@ -202,7 +222,7 @@ export function NuevaUnidad({
               Cancelar
             </Boton>
             <Boton type="submit" tamano="sm" cargando={enviando}>
-              Registrar unidad
+              {unidad ? 'Guardar cambios' : 'Registrar unidad'}
             </Boton>
           </div>
         </form>

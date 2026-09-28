@@ -25,7 +25,7 @@ export type CarroceriaConMedidas = {
   peso_neto_tn: number | null
 }
 
-/** Lo que la cotización va a copiar, resumido en un renglón. */
+/** Resumen técnico del catálogo, en un renglón. */
 function resumen(c: CarroceriaConMedidas): string | null {
   const medidas = [c.largo_m, c.ancho_m, c.alto_m].filter((m) => m !== null)
   const partes = [
@@ -40,11 +40,8 @@ function resumen(c: CarroceriaConMedidas): string | null {
 /**
  * Las medidas con las que la casa fabrica cada carrocería.
  *
- * No es un adorno del catálogo: es lo que la cotización copia al elegir el tipo.
- * Sin esto, la ficha del papel salía con rayas en Modelo, Medidas, Capacidad y
- * Peso neto, y había que escribirlas a mano en cada cotización —o no
- * escribirlas—. Copiadas, se corrigen en la cotización sin tocar este catálogo,
- * porque no todas terminan igual.
+ * Estas medidas orientan la ficha técnica de taller y pueden ajustarse para
+ * cada orden durante el trabajo de Diseño.
  */
 export function MedidasCarroceria({
   carroceria,
@@ -70,7 +67,7 @@ export function MedidasCarroceria({
         {/* Sin medidas se dice, y se dice qué se pierde: una lista de nombres no
             deja ver cuáles están a medio cargar. */}
         <p className={cn('text-xs', dice ? 'text-texto-suave' : 'text-texto-tenue')}>
-          {dice ?? 'Sin medidas: la cotización de este tipo saldrá con la ficha en blanco'}
+          {dice ?? 'Todavía no hay medidas técnicas de referencia'}
         </p>
       </div>
 
@@ -95,7 +92,7 @@ export function MedidasCarroceria({
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={carroceria.nombre}
-        descripcion="Lo que la cotización copia al elegir este tipo. Una vez copiado se corrige en la cotización, sin tocar el catálogo."
+        descripcion="Medidas técnicas de referencia para este tipo de carrocería."
       >
         <form onSubmit={accion} className="space-y-3">
           <input type="hidden" name="id" value={carroceria.id} />

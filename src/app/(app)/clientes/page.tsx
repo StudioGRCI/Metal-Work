@@ -11,6 +11,7 @@ import { CLIENTES_POR_PAGINA, listarClientes } from '@/lib/datos/comercial'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
+import { AccionesCatalogo } from '@/app/(app)/catalogos/acciones-catalogo'
 
 export const metadata = { title: 'Clientes' }
 
@@ -22,7 +23,9 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
   const { clientes, total, pagina, paginas } = await listarClientes({
     busqueda,
     pagina: Number(params.pagina) || 1,
+    incluirInactivos: params.estado === 'inactivas',
   })
+  const incluirInactivos = params.estado === 'inactivas'
 
   const crea = puede(perfil, 'clientes.crear')
 
@@ -51,12 +54,19 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
         titulo="Clientes"
         descripcion={total === 1 ? '1 cliente registrado' : `${total} clientes registrados`}
         acciones={
-          crea && (
-            <EnlaceBoton href="/clientes/nuevo">
-              <Plus aria-hidden className="size-4" />
-              Nuevo cliente
-            </EnlaceBoton>
-          )
+          <div className="flex flex-wrap items-center gap-3">
+            {crea && (
+              <EnlaceBoton href="/clientes/nuevo">
+                <Plus aria-hidden className="size-4" />
+                Nuevo cliente
+              </EnlaceBoton>
+            )}
+            {puede(perfil, 'clientes.editar') && (
+              <Link href={incluirInactivos ? '/clientes' : '/clientes?estado=inactivas'} className="text-sm text-acento hover:underline">
+                {incluirInactivos ? 'Ver activas' : 'Ver también desactivados'}
+              </Link>
+            )}
+          </div>
         }
       />
 
@@ -79,12 +89,13 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
               <TH className="hidden sm:table-cell">Ubicación</TH>
               <TH className="text-right">Unidades</TH>
               <TH className="text-right">Órdenes</TH>
+              {puede(perfil, 'clientes.editar') && <TH>Acciones</TH>}
             </tr>
           </TablaCabecera>
           <tbody>
             {clientes.length === 0 ? (
               <SinDatos
-                colSpan={6}
+                colSpan={puede(perfil, 'clientes.editar') ? 7 : 6}
                 titulo={busqueda ? 'Ningún cliente coincide' : 'Aún no hay clientes'}
                 descripcion={
                   busqueda
@@ -130,6 +141,11 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                     <TD className="hidden text-texto-suave sm:table-cell">{ubicacion || '—'}</TD>
                     <TD className="tabular text-right">{unidades}</TD>
                     <TD className="tabular text-right">{ordenes}</TD>
+                    {puede(perfil, 'clientes.editar') && (
+                      <TD>
+                        <AccionesCatalogo tipo="cliente" id={c.id} nombre={c.razon_social} activo={c.activo} puedeEditar esAdmin={perfil.rol.codigo === 'ADMIN'} />
+                      </TD>
+                    )}
                   </TR>
                 )
               })

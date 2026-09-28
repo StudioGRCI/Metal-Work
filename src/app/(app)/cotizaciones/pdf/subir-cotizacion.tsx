@@ -14,6 +14,7 @@ import { ACEPTA_COTIZACION, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/li
 import {
   buscarCliente,
   nombreParaCatalogo,
+  type TotalCotizacion,
   proponerCarroceria,
   type CabeceraCotizacion,
   type PropuestaCarroceria,
@@ -48,6 +49,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [archivo, setArchivo] = useState<File | null>(null)
   const [leyendo, setLeyendo] = useState(false)
   const [lectura, setLectura] = useState<CabeceraCotizacion | null>(null)
+  const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
+  const [progreso, setProgreso] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
@@ -72,6 +75,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   function abrir() {
     setArchivo(null)
     setLectura(null)
+    setTotal({ monto: null, moneda: null })
+    setProgreso('')
     setError(null)
     setAviso(null)
     setNumero('')
@@ -127,7 +132,9 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
 
     setLeyendo(true)
     try {
-      aplicar(await leerCabeceraDeArchivo(elegido))
+      const resultado = await leerCabeceraDeArchivo(elegido, setProgreso)
+      aplicar(resultado.cabecera)
+      setTotal(resultado.total)
     } finally {
       setLeyendo(false)
     }
@@ -138,6 +145,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     if (!tipoDeCotizacion(archivo)) return 'La cotización se sube en PDF o en Word.'
     if (archivo.size > MAXIMO_ADJUNTO_MB * 1024 * 1024) return `El archivo pesa más de ${MAXIMO_ADJUNTO_MB} MB.`
     if (numero.trim().length < 3) return 'Escribe el número que dice la cotización.'
+    if (!total.monto || !Number.isFinite(Number(total.monto)) || Number(total.monto) <= 0) return 'Escribe el monto total de venta de la cotización.'
+    if (!total.moneda) return 'Confirma si el total está en soles o dólares.'
     if (clienteNuevo) {
       if (razonSocial.trim().length < 3) return 'Escribe el nombre o la razón social del cliente nuevo.'
       if (tipoDoc === 'RUC' && !/^\d{11}$/.test(numeroDoc.trim())) return 'El RUC del cliente tiene 11 dígitos.'
@@ -229,6 +238,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         datos.set('mime_type', tipo.mime)
         datos.set('nombre_archivo', archivo.name.slice(0, 200))
         datos.set('tamano_bytes', String(archivo.size))
+        datos.set('monto_venta', total.monto ?? '')
+        datos.set('moneda', total.moneda ?? '')
 
         const r = await registrarCotizacionPdf(null, datos)
         if (!r.ok) {
@@ -294,7 +305,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           {leyendo && (
             <p role="status" className="flex items-center gap-2 text-sm text-texto-suave">
               <FileSearch aria-hidden className="size-4" />
-              Leyendo el archivo…
+              {progreso || 'Leyendo el archivo…'}
             </p>
           )}
 
@@ -349,6 +360,19 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
               autoComplete="off"
             />
           </Campo>
+
+          <div className="grid gap-3 sm:grid-cols-[1fr_9rem]">
+            <Campo etiqueta="Monto total de venta" htmlFor="cot-monto" ayuda={total.monto ? 'Detectado en el documento; confirma o corrige el total final.' : 'No se encontró el total automáticamente; escríbelo como aparece en la cotización.'} requerido>
+              <Entrada id="cot-monto" value={total.monto ?? ''} onChange={(e) => setTotal((v) => ({ ...v, monto: e.target.value }))} inputMode="decimal" placeholder="0.00" required />
+            </Campo>
+            <Campo etiqueta="Moneda" htmlFor="cot-moneda" requerido>
+              <Seleccion id="cot-moneda" value={total.moneda ?? ''} onChange={(e) => setTotal((v) => ({ ...v, moneda: e.target.value === 'PEN' || e.target.value === 'USD' ? e.target.value : null }))} required>
+                <option value="" disabled>Confirma</option>
+                <option value="PEN">Soles (S/)</option>
+                <option value="USD">Dólares (US$)</option>
+              </Seleccion>
+            </Campo>
+          </div>
 
           {/* ------------------------------------------------------ cliente */}
           {clienteNuevo ? (

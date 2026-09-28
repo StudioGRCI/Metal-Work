@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import { AccionesCatalogo } from '@/app/(app)/catalogos/acciones-catalogo'
+import { NuevaUnidad } from '@/app/(app)/clientes/nueva-unidad'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -8,16 +10,17 @@ import { Tarjeta } from '@/components/ui/tarjeta'
 import { numero } from '@/lib/format'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { listarUnidades } from '@/lib/datos/comercial'
-import { exigirPermiso } from '@/lib/sesion'
+import { exigirPermiso, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Unidades' }
 
 export default async function PaginaUnidades({ searchParams }: PageProps<'/unidades'>) {
-  await exigirPermiso('clientes.ver')
+  const perfil = await exigirPermiso(['clientes.ver', 'produccion.ver'])
   const params = await searchParams
 
   const busqueda = typeof params.q === 'string' ? params.q : undefined
-  const unidades = await listarUnidades({ busqueda })
+  const incluirInactivas = params.estado === 'inactivas'
+  const unidades = await listarUnidades({ busqueda, incluirInactivas })
 
   return (
     <>
@@ -31,6 +34,11 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
         etiqueta="Buscar unidades"
         marcador="Buscar por placa, marca, modelo o número de chasis"
       />
+      <div className="mt-3 flex justify-end">
+        <Link href={incluirInactivas ? '/unidades' : '/unidades?estado=inactivas'} className="text-sm text-acento hover:underline">
+          {incluirInactivas ? 'Ver solo activas' : 'Ver también desactivadas'}
+        </Link>
+      </div>
 
       <Tarjeta className="mt-4 overflow-hidden">
         <Tabla>
@@ -49,12 +57,13 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
               <TH className="hidden sm:table-cell">Carrocería</TH>
               <TH className="hidden text-right sm:table-cell">Capacidad</TH>
               <TH className="hidden sm:table-cell">N.º de chasis</TH>
+              {puede(perfil, 'clientes.editar') && <TH>Acciones</TH>}
             </tr>
           </TablaCabecera>
           <tbody>
             {unidades.length === 0 ? (
               <SinDatos
-                colSpan={7}
+                colSpan={puede(perfil, 'clientes.editar') ? 8 : 7}
                 titulo={busqueda ? 'Ninguna unidad coincide' : 'Aún no hay unidades'}
                 descripcion={
                   busqueda
@@ -144,6 +153,14 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                     <TD className="hidden font-mono text-xs text-texto-suave sm:table-cell">
                       {u.numero_chasis ?? '—'}
                     </TD>
+                    {puede(perfil, 'clientes.editar') && (
+                      <TD>
+                        <div className="space-y-2">
+                          <NuevaUnidad clienteId={cliente.id} unidad={u} compacta />
+                          <AccionesCatalogo tipo="unidad" id={u.id} nombre={nombre} activo={u.activo} puedeEditar esAdmin={perfil.rol.codigo === 'ADMIN'} />
+                        </div>
+                      </TD>
+                    )}
                   </TR>
                 )
               })

@@ -11,14 +11,14 @@ import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { etiquetaDeMime } from '@/lib/archivo-cotizacion'
 import { catalogosDeCotizacion, listarCotizacionesPdf } from '@/lib/datos/cotizaciones-pdf'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
-import { fecha as fmtFecha, hora } from '@/lib/format'
+import { fecha as fmtFecha, hora, moneda as formatoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, puedeCorregirCotizacion, puedeQuitarCotizacion } from '@/lib/sesion'
 
 import { CorregirCotizacion, EmitirOrden, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
 import { LiberarATesoreria } from './liberar-a-tesoreria'
 import { SubirCotizacion } from './subir-cotizacion'
 
-export const metadata = { title: 'Cotización en PDF' }
+export const metadata = { title: 'Cotización' }
 
 const ESTADOS: Record<string, { etiqueta: string; tono: 'aviso' | 'exito' | 'peligro' }> = {
   POR_REVISAR: { etiqueta: 'Por revisar', tono: 'aviso' },
@@ -124,8 +124,8 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   return (
     <>
       <EncabezadoPagina
-        titulo="Cotización en PDF"
-        descripcion="Gerencia aprueba el documento; Administración emite la OT y puede liberar la cotización aceptada a Tesorería para revisión financiera."
+        titulo="Cotización"
+        descripcion="Gerencia aprueba el documento; Administración emite la OT y puede liberar la cotización aceptada a Tesorería."
         acciones={puedeSubir && <SubirCotizacion clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />}
       />
 
@@ -201,6 +201,12 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                     <p className="text-sm text-texto">
                       {c.cliente ?? 'Cliente reservado'}
                       {c.carroceria && <span className="text-texto-suave"> · {c.carroceria}</span>}
+                    </p>
+
+                    <p className="text-sm font-semibold tabular text-texto">
+                      {c.monto_venta !== null && c.monto_venta !== undefined
+                        ? `Total de venta: ${formatoMoneda(c.monto_venta, c.moneda ?? 'PEN')}`
+                        : 'Monto total pendiente de confirmar'}
                     </p>
 
                     {c.url ? <EnlaceArchivo url={c.url} mime={c.mime_type} nombre={c.nombre_archivo} /> : (

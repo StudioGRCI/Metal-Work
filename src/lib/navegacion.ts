@@ -28,11 +28,10 @@ export type ItemNavegacion = {
 export type GrupoNavegacion = { titulo: string; items: ItemNavegacion[] }
 
 /**
- * El menú es el circuito de la empresa y nada más: cotización de venta →
- * cotización de trabajo → Gerencia aprueba → Administración abre la orden →
- * Diseño desglosa → el taller reporta. Lo que no está en ese circuito (almacén,
- * servicios, partes diarios, costos, calidad, documentos, garantías, informes)
- * se retiró el 2026-09-09 porque no se iba a usar y costaba entender.
+ * El menú es el circuito de la empresa y nada más: cotización PDF →
+ * Gerencia aprueba → Administración carga la orden →
+ * Diseño desglosa → almacén y logística atienden → el taller reporta.
+ * Cada grupo aparece solo a quien tiene el permiso correspondiente.
  */
 export const NAVEGACION: GrupoNavegacion[] = [
   {
@@ -78,68 +77,29 @@ export const NAVEGACION: GrupoNavegacion[] = [
       },
     ],
   },
-  // Cotizar son dos actos de dos áreas y por eso son dos grupos, no dos
-  // entradas seguidas dentro de «Comercial»: puestas una debajo de la otra con
-  // nombres parecidos, cualquiera entraba a la que no era. El menú dice de quién
-  // es cada cosa antes de decir cómo se llama.
-  //
-  // Cada grupo se muestra solo a quien tiene su permiso, así que el vendedor no
-  // ve «Administrador» y a quien costea no le aparece «Vendedor» si no vende.
   {
-    titulo: 'Cotizaciones',
+    titulo: 'Agente de Ventas',
     items: [
-      // El camino corto y el que se usa: la cotización se arma en Excel y se
-      // manda en PDF, así que el sistema guarda ese papel con lo poco que
-      // necesita —cliente, qué se fabrica y su número— y le sigue el rastro
-      // hasta la orden. Va primero porque es por donde entra el trabajo.
       {
-        titulo: 'Cotización en PDF',
+        titulo: 'Cotización',
         ruta: '/cotizaciones/pdf',
         icono: FileText,
         permiso: ['cotizaciones.ver_pdf_comercial', 'cotizaciones.liberar_tesoreria', 'tesoreria.ver_documentos'],
         descripcion: 'El PDF que se le mandó al cliente, y su visto de Gerencia',
         disponible: true,
       },
-      {
-        titulo: 'Cotización de venta',
-        ruta: '/cotizaciones',
-        icono: Receipt,
-        permiso: 'cotizaciones.ver',
-        descripcion: 'La que se arma dentro del sistema, con sus partidas',
-        disponible: true,
-      },
     ],
   },
-  // Las partidas pasaron a Diseño: Administración no crea partidas —lo dijo
-  // Gerencia— y quien sabe qué lleva la unidad es quien la dibuja. El grupo se
-  // ve para quien costea, sea de Diseño o de Administración, que conserva el
-  // permiso porque sigue emitiendo la orden.
   {
     titulo: 'Preparación técnica',
     items: [
-      {
-        titulo: 'Cotización de trabajo',
-        ruta: '/cotizaciones/trabajo',
-        icono: ClipboardList,
-        permiso: 'cotizaciones.costear',
-        descripcion: 'Las partidas, la ficha técnica y el tiempo por área',
-        disponible: true,
-      },
-      {
-        titulo: 'Carrocerías',
-        ruta: '/carrocerias',
-        icono: Layers,
-        permiso: ['cotizaciones.costear', 'cotizaciones.ver', 'configuracion.ver'],
-        descripcion: 'Lo que la casa ya fabricó, con su ficha técnica lista',
-        disponible: true,
-      },
       // El catálogo chico del que Diseño elige al desglosar los materiales de
       // la orden: nombre, unidad y especificación. Sin stock ni almacén.
       {
         titulo: 'Materiales',
         ruta: '/materiales',
         icono: Boxes,
-        permiso: ['diseno.planos', 'cotizaciones.costear'],
+        permiso: 'diseno.planos',
         descripcion: 'El catálogo del que Diseño arma el desglose',
         disponible: true,
       },
@@ -189,10 +149,11 @@ export const NAVEGACION: GrupoNavegacion[] = [
     ],
   },
   {
-    titulo: 'Clientes y unidades',
+    titulo: 'Ventas',
     items: [
       { titulo: 'Clientes', ruta: '/clientes', icono: Users, permiso: 'clientes.ver', disponible: true },
       { titulo: 'Unidades', ruta: '/unidades', icono: Truck, permiso: 'clientes.ver', disponible: true },
+      { titulo: 'Carrocerías', ruta: '/carrocerias', icono: Layers, permiso: ['diseno.planos', 'configuracion.ver', 'cotizaciones.crear'], disponible: true },
     ],
   },
   {
@@ -226,9 +187,8 @@ export function puedeVer(item: ItemNavegacion, permisos: string[], esAdmin: bool
 
 /**
  * Cuál de los módulos es el que se está mirando: gana el de ruta más larga que
- * encaje, comparando por segmento. Dentro de `/cotizaciones/trabajo/…` se
- * marca «Cotización de trabajo» y no también la de venta; `/cotizaciones-viejas`
- * no encaja en `/cotizaciones`.
+ * encaje y comparando por segmento, así `/cotizaciones-viejas` no encaja en
+ * `/cotizaciones`.
  */
 export function rutaActiva(ruta: string, rutas: string[]) {
   const encaja = (base: string) =>
@@ -240,25 +200,19 @@ export function rutaActiva(ruta: string, rutas: string[]) {
  * Las pestañas de abajo en el teléfono: las cuatro primeras de esta lista que
  * la persona ve, y después «Más». El orden está pensado para que a cada puesto
  * le queden las suyas sin escribir un rol a mano: al taller, Taller, Órdenes,
- * El día y Plazos; a Diseño y Administración, sus dos cotizaciones primero; a
+ * El día y Plazos; a Diseño y Administración, su entrada de cotizaciones primero; a
  * Ventas, Cotizaciones, Clientes y el tablero. El nombre va corto porque la
  * pestaña es angosta.
  */
-// El orden decide qué cuatro le tocan a cada puesto (se toman las cuatro
-// primeras que puede ver): Gerencia y Diseño reciben Cotizar · Órdenes · Taller
-// · Trabajo, el taller Órdenes · Taller · El día · Plazos, Ventas Cotizar ·
-// Trabajo · Cotizaciones · Clientes. Antes las tres de cotizaciones iban
-// primero y a Gerencia le quedaban «Órdenes» y el Tablero escondidos en «Más».
+// El orden deja primero el flujo PDF para Ventas, Gerencia y Administración.
 export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/cotizaciones/pdf', corto: 'Cotizar' },
   { ruta: '/ordenes', corto: 'Órdenes' },
   { ruta: '/materiales/atencion', corto: 'Materiales' },
   { ruta: '/tesoreria', corto: 'Tesorería' },
   { ruta: '/avance', corto: 'Taller' },
-  { ruta: '/cotizaciones/trabajo', corto: 'Trabajo' },
   { ruta: '/avance/diario', corto: 'El día' },
   { ruta: '/plazos', corto: 'Plazos' },
-  { ruta: '/cotizaciones', corto: 'Cotizaciones' },
   { ruta: '/clientes', corto: 'Clientes' },
   { ruta: '/', corto: 'Tablero' },
   { ruta: '/unidades', corto: 'Unidades' },

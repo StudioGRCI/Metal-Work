@@ -17,18 +17,14 @@ select set_config('prueba.admin',  :'admin_id',  false);
 select set_config('prueba.diseno', :'diseno_id', false);
 select set_config('prueba.jefe',   :'jefe_id',   false);
 
--- ------------------------------------------------- el rol de Diseño existe y costea
+-- ------------------------------------------------- el rol de Diseño prepara los planos
 do $$
 begin
   perform test.afirmar(
     exists (select 1 from public.roles r join public.roles_permisos rp on rp.rol_id = r.id
-             where r.codigo = 'DISENO' and rp.permiso_codigo = 'cotizaciones.costear'),
-    'Diseño arma las partidas: tiene cotizaciones.costear');
-  perform test.afirmar(
-    exists (select 1 from public.roles r join public.roles_permisos rp on rp.rol_id = r.id
              where r.codigo = 'DISENO' and rp.permiso_codigo = 'diseno.planos'),
     'Diseño reparte los planos: tiene diseno.planos');
-  raise notice '  ok · Diseño costea y reparte planos';
+  raise notice '  ok · Diseño prepara y reparte planos';
 end $$;
 
 -- ------------------------------------------------- la hoja se arma y se reporta

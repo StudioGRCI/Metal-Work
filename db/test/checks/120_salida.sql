@@ -18,17 +18,11 @@ insert into public.unidades (cliente_id, placa, tipo_vehiculo, marca, modelo)
 
 select test.como_usuario(:'admin_id');
 
--- Una cotización con garantía de 12 meses, que es lo que se le prometió.
-insert into public.cotizaciones (cliente_id, unidad_id, fecha_emision, garantia_meses)
-  select c.id, u.id, current_date, 12
-    from public.clientes c join public.unidades u on u.cliente_id = c.id limit 1;
-
 insert into public.ordenes_trabajo
-  (cliente_id, unidad_id, sede_id, cotizacion_id, descripcion, tipo_trabajo, estado)
-  select c.id, u.id, s.id, q.id, 'Tolva de 15 m3 con compuerta hidráulica', 'FABRICACION', 'APROBADA'
+  (cliente_id, unidad_id, sede_id, descripcion, tipo_trabajo, estado)
+  select c.id, u.id, s.id, 'Tolva de 15 m3 con compuerta hidráulica', 'FABRICACION', 'APROBADA'
     from public.clientes c
     join public.unidades u on u.cliente_id = c.id
-    join public.cotizaciones q on q.cliente_id = c.id
     cross join public.sedes s
    limit 1;
 
@@ -91,26 +85,6 @@ begin
   perform test.afirmar(
     (select estado from public.ordenes_trabajo where id = v_id) = 'ENTREGADA',
     'y la orden queda entregada');
-end $$;
-
--- Con la unidad ya entregada, la cotización que la originó todavía se puede
--- anular: la guarda solo debe frenar a las órdenes que siguen en curso. Una
--- ENTREGADA no se puede anular por diseño, así que exigirlo primero dejaba a
--- toda cotización antigua sin salida, con un mensaje que mandaba a una puerta
--- tapiada.
-do $$
-declare v_cot uuid;
-begin
-  select cotizacion_id into v_cot
-    from public.ordenes_trabajo where id = current_setting('prueba.ot')::uuid;
-
-  update public.cotizaciones
-     set estado = 'ANULADA', motivo_anulacion = 'Se emitió por duplicado; la unidad salió con la otra'
-   where id = v_cot;
-
-  perform test.afirmar(
-    (select estado = 'ANULADA' from public.cotizaciones where id = v_cot),
-    'una cotización cuya orden ya se entregó sí se puede anular');
 end $$;
 
 -- La confirmación a portería queda sellada con quién y cuándo, o no queda.

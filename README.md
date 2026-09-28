@@ -4,11 +4,11 @@ Sistema de gestión para una empresa de fabricación y reparación de carrocerí
 tolvas de volquete, plataformas, furgones, cisternas, camas bajas y
 repotenciaciones.
 
-Cubre el circuito que la empresa presentó y usa: la cotización de venta, la
-cotización de trabajo, la aprobación de Gerencia, la orden con el desglose de
-Diseño —actividades y materiales— y el avance del taller, con foto, unidad por
-unidad. Lo que no era de ese circuito (almacén, servicios, partes diarios,
-costos, calidad, documentos, garantías, informes) se retiró el 2026-09-09.
+Cubre el flujo vigente: Ventas registra el PDF que se envió al cliente,
+Gerencia lo revisa, Administración carga la orden de trabajo en PDF y Diseño
+prepara la ficha, los planos y el desglose de materiales. El taller reporta el
+avance por unidad. La cotización comercial se prepara fuera del sistema; sus
+importes no se copian a la orden ni se muestran a los trabajadores.
 
 ## Qué resuelve
 
@@ -30,7 +30,7 @@ Next.js 16 (App Router, Server Components)
         │                    │
         └── @supabase/ssr ───┤
                              ▼
-                    Supabase (Postgres 16)
+                    Supabase (Postgres 17)
                     ├── RLS por rol y permiso
                     ├── Reglas de negocio en triggers y funciones
                     ├── Auth
@@ -69,7 +69,6 @@ Las claves están en el panel de Supabase, en **Project Settings → API**:
 | `NEXT_PUBLIC_SUPABASE_URL` | Navegador y servidor |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Navegador y servidor |
 | `SUPABASE_SERVICE_ROLE_KEY` | Solo servidor: alta de usuarios y tareas de administración |
-| `CRON_SECRET` | Solo servidor: la eliges tú y la manda Vercel al llamar `/api/tipo-cambio` (ver `vercel.json`) |
 
 `SUPABASE_SERVICE_ROLE_KEY` ignora RLS. Nunca debe llegar al navegador ni
 subirse al repositorio.
@@ -100,8 +99,8 @@ select '<uuid-de-auth-users>', 'Nombre', 'Apellido', 'correo@empresa.com.pe', id
 Y registra los datos de la empresa:
 
 ```sql
-insert into public.empresa (ruc, razon_social, igv_porcentaje)
-values ('20xxxxxxxxx', 'RAZÓN SOCIAL S.A.C.', 18);
+insert into public.empresa (ruc, razon_social)
+values ('20xxxxxxxxx', 'RAZÓN SOCIAL S.A.C.');
 
 insert into public.sedes (codigo, nombre) values ('PRIN', 'Planta principal');
 ```
@@ -133,9 +132,7 @@ npx tsc --noEmit     # comprobación de tipos
 ## Despliegue en Vercel
 
 1. Importa el repositorio en Vercel.
-2. Define las tres variables de entorno de Supabase y `CRON_SECRET`, la que Vercel
-   manda al llamar `/api/tipo-cambio`. Sin ella el cron contesta 401 y el tipo de
-   cambio deja de actualizarse solo, sin avisar a nadie.
+2. Define las variables de entorno de Supabase.
 3. Añade el dominio de Vercel en **Authentication → URL Configuration** de
    Supabase, tanto en *Site URL* como en *Redirect URLs*.
 
@@ -149,10 +146,9 @@ Las migraciones están en `supabase/migrations/` y se aplican en orden:
 | Migración | Contenido |
 | --- | --- |
 | `0001_nucleo` | Empresa, sedes, usuarios, roles, permisos, correlativos, auditoría |
-| `0002_comercial` | Clientes, unidades, tipos de carrocería, cotizaciones |
+| `0002_comercial` | Clientes, unidades y tipos de carrocería |
 | `0003_ordenes_trabajo` | Órdenes, etapas, partes diarios, calidad, entregas, bitácora |
 | `0004_almacen` | Materiales, kardex valorizado, requerimientos, compras |
-| `0005_costos` | Presupuesto, tarifas, servicios, indirectos, vistas de costeo |
 | `0006_documentos` | Repositorio documental versionado y línea de tiempo |
 | `0007_rls` | Políticas de seguridad a nivel de fila |
 | `0008_seed_base` | Roles, permisos, series, catálogos del rubro |
@@ -171,9 +167,9 @@ pg_ctl -D /var/lib/pgtest -o "-p 5433 -k /tmp" start
 ```
 
 El script recrea la base, aplica el shim de Supabase, todas las migraciones y
-después las comprobaciones de `db/test/checks/`. Cubren el ciclo de vida de una
-orden, el costeo por promedio ponderado del almacén, el costeo de una OT y las
-políticas de seguridad ejecutando con el rol `authenticated` real.
+después las comprobaciones de `db/test/checks/`. Cubren el ciclo de vida de las
+órdenes, la ficha y los planos, la salida de la unidad y las políticas de
+seguridad con el rol `authenticated` real.
 
 ### Tipos de TypeScript
 
@@ -190,13 +186,13 @@ Docker, a diferencia de `supabase gen types`.
 | Rol | Qué puede hacer |
 | --- | --- |
 | Administrador | Todo, incluida la configuración y el historial de auditoría |
-| Gerencia | Consulta total; aprueba cotizaciones, órdenes y compras |
+| Gerencia | Revisa cotizaciones PDF y consulta el avance de las órdenes |
 | Jefe de taller | Planifica, libera y controla la ejecución de las órdenes |
 | Jefe de producción | Recibe el avance diario de las tres áreas, arma sus listas y programa |
 | Supervisor | Arma la lista de actividades de su área y reporta su avance; hay uno por área |
-| Diseño e ingeniería | Cotización de trabajo, ficha técnica, planos y desglose de materiales |
-| Administración | Emite la orden de trabajo y registra los pagos |
-| Comercial | Clientes, unidades y cotizaciones de venta |
+| Diseño e ingeniería | Ficha técnica, planos y desglose de materiales |
+| Administración | Emite la orden de trabajo y libera documentos a Tesorería |
+| Comercial | Clientes, unidades y subida de cotizaciones PDF |
 | Operario | Reporta el avance de su área |
 | Solo consulta | Lectura sin poder modificar nada |
 
@@ -210,15 +206,14 @@ Los permisos se editan por rol en `roles_permisos`, sin tocar código.
 | Módulo | Qué permite hacer |
 | --- | --- |
 | **Tablero** | Estado del taller: órdenes abiertas, en proceso, pausadas, atrasadas y urgentes |
-| **Cotización de venta** | Lo que se le ofrece al cliente y a qué precio; el circuito hasta la aprobación de Gerencia |
-| **Cotización de trabajo** | Las partidas, la ficha técnica y el tiempo por área, que arma Diseño |
+| **Cotización en PDF** | Carga del documento comercial, revisión de Gerencia y vínculo con su orden de trabajo |
 | **Carrocerías y materiales** | Lo que la casa ya fabricó con su ficha lista, y el catálogo del que Diseño arma el desglose |
-| **Órdenes de trabajo** | Alta desde la cotización, ficha de taller, etapas y plazos por área, hoja de Diseño, materiales, actividades por área, avance y trazabilidad |
+| **Órdenes de trabajo** | Registro desde el PDF de la OT, ficha de taller, etapas y plazos por área, hoja de Diseño, materiales, actividades por área, avance y trazabilidad |
 | **Control de plazos** | En qué va cada área y qué la trabó |
 | **Avance en taller** | Una tarjeta por unidad: dónde está, hace cuánto no se toca, qué la traba y las fotos del día; y las unidades que entraron sin orden |
 | **El día en el taller** | Lo que reportó cada área ese día, y quién no reportó |
 | **Clientes y unidades** | Ficha del cliente con su flota, contactos e historial de órdenes |
-| **Personal** | Altas con su acceso, puestos, áreas y costo hora |
+| **Personal** | Altas con su acceso, puestos y áreas |
 | **Configuración** | Días de taller, feriados con siembra nacional, y los catálogos a la vista |
 
 ## Estructura del proyecto
@@ -231,7 +226,7 @@ src/
 │   │   ├── ordenes/        Órdenes de trabajo
 │   │   ├── plazos/         Control de plazos por área
 │   │   ├── clientes/       Clientes y sus unidades
-│   │   ├── cotizaciones/   Cotización de venta y de trabajo, conversión a orden
+│   │   ├── cotizaciones/   Registro, revisión y emisión de OT desde PDF
 │   │   ├── carrocerias/    Las carrocerías de la casa con su ficha
 │   │   ├── materiales/     El catálogo chico de Diseño
 │   │   ├── avance/         Tablero por unidad, el día en el taller, unidades sin orden
@@ -259,19 +254,17 @@ scripts/                    Utilidades de desarrollo
 
 - El esquema y la interfaz están en español, igual que el vocabulario del
   taller: una tolva es una tolva y una OT es una OT.
-- Los importes usan el dominio `monto` (2 decimales) y las cantidades de almacén
-  el dominio `cantidad` (4 decimales), porque una plancha se pesa en kilos con
-  fracción.
+- Las cantidades usan el dominio `cantidad` (4 decimales), porque una plancha
+  se pesa en kilos con fracción.
 - Los documentos no se borran: se anulan, dejando constancia del motivo.
-- La cotización impresa dice **qué se va a hacer y cuánto cuesta**: una sola
-  línea con el concepto, la cantidad, la unidad y el precio. El desglose por
-  partida —acero, mano de obra, servicios— es la cocina del taller, sirve para
-  el presupuesto de la OT y las compras, y no sale en el papel del cliente.
+- La cotización y la orden llegan como documentos PDF. El sistema conserva su
+  archivo, las revisiones y el vínculo entre ambos; no calcula un precio de
+  venta dentro de la aplicación.
 - Toda tabla nueva debe declarar sus políticas RLS; la migración `0007` falla si
   alguna queda sin protección, y también si alguna queda con RLS activo pero sin
   políticas, que la volvería inaccesible sin avisar.
-- Los campos que rellena un trigger (correlativos, tipo de cambio, número de
-  versión) se declaran anulables con un `CHECK` que los exige. Postgres evalúa
+- Los campos que rellena un trigger (correlativos, número de versión) se
+  declaran anulables con un `CHECK` que los exige. Postgres evalúa
   los `CHECK` después de los triggers `BEFORE`, así que la garantía se mantiene
   y la aplicación no tiene que inventar valores.
 - Los archivos se suben directo del navegador a Storage. Un documento colgado de

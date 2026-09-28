@@ -4,9 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
-import { fecha as fechaDelDia, hoyLima, numero } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
-import { traerDeSunat } from '@/lib/tipo-cambio/sunat'
 import { createClient } from '@/lib/supabase/server'
 
 async function exigirEdicion() {
@@ -144,7 +142,7 @@ const esquemaCarroceria = z
   })
 
 /**
- * Alta de un tipo de carrocería desde donde se cotiza.
+ * Alta de un tipo de carrocería desde configuración.
  *
  * El catálogo no puede frenar una venta: si el cliente pide algo que no
  * está, el vendedor lo da de alta con su nombre y sigue. El código se arma
@@ -156,7 +154,7 @@ export async function crearCarroceria(
   datos: FormData,
 ): Promise<ResultadoAccion<{ id: string; nombre: string }>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['cotizaciones.crear', 'ordenes.crear', 'configuracion.editar'])) {
+  if (!puede(perfil, ['ordenes.crear', 'configuracion.editar', 'cotizaciones.crear'])) {
     return { ok: false, error: 'No tienes permiso para agregar tipos de carrocería.' }
   }
 
@@ -177,8 +175,7 @@ export async function crearCarroceria(
     .replace(/^_+|_+$/g, '')
     .slice(0, 40)
 
-  // Si ya existe uno con ese nombre se devuelve el que estaba: la meta es
-  // seguir cotizando, no duplicar el catálogo.
+  // Si ya existe uno con ese nombre se devuelve el que estaba para no duplicar el catálogo.
   const { data: existente } = await supabase
     .from('tipos_carroceria')
     .select('id, nombre')
@@ -212,147 +209,31 @@ export async function crearCarroceria(
   return { ok: true, mensaje: 'Tipo de carrocería agregado. Administración le pondrá sus horas de referencia.', datos: data }
 }
 
-const esquemaTipoCambio = z.object({
-  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elige la fecha del tipo de cambio.'),
-  compra: z.string().trim().min(1, 'Falta el tipo de cambio compra.'),
-  venta: z.string().trim().min(1, 'Falta el tipo de cambio venta.'),
+const esquemaEditarCarroceria = z.object({
+  id: z.string().uuid(),
+  nombre: z.string().trim().min(3).max(120),
+  descripcion: z.string().trim().max(1000).optional(),
+  activo: z.enum(['true', 'false']).transform((v) => v === 'true'),
 })
 
-/**
- * Un tipo de cambio escrito a mano.
- *
- * La coma decimal es la que está a mano en el teclado y hay navegadores que la
- * mandan tal cual: sin cambiarla por punto, Number() devuelve NaN y se rechaza
- * un número que estaba bien escrito. La columna es numeric(10,4), así que se
- * redondea a cuatro decimales acá y no se descubre el recorte al releerlo.
- */
-function cifraDeCambio(texto: string): number | null {
-  const n = Number(texto.replace(',', '.'))
-  if (!Number.isFinite(n) || n <= 0) return null
-  return Math.round(n * 10000) / 10000
-}
-
-/**
- * El tipo de cambio del día: es lo que le falta a la base para poder costear en
- * dólares. Mientras la tabla está vacía, `tipo_cambio_vigente()` devuelve 1 y
- * cada cotización en dólares se congela con el dólar a un sol.
- *
- * La fecha es la clave primaria: cargar dos veces el mismo día corrige, no
- * duplica. Corregirlo tampoco reescribe la historia —cada documento congela su
- * tipo de cambio al emitirse—, así que lo ya emitido se queda con el que tenía.
- */
-export async function registrarTipoCambio(
-  _previo: unknown,
-  datos: FormData,
-): Promise<ResultadoAccion> {
-  const problema = await exigirEdicion()
-  if (problema) return { ok: false, error: problema }
-
-  const analisis = esquemaTipoCambio.safeParse(Object.fromEntries(datos))
-  if (!analisis.success) {
-    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el tipo de cambio.' }
+export async function editarCarroceria(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  const analisis = esquemaEditarCarroceria.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los datos.' }
+  const v = analisis.data
+  if (!puede(perfil, ['configuracion.editar', 'cotizaciones.crear'])) {
+    return { ok: false, error: 'No tienes permiso para editar el catálogo.' }
   }
-
-  const compra = cifraDeCambio(analisis.data.compra)
-  const venta = cifraDeCambio(analisis.data.venta)
-  if (compra === null || venta === null) {
-    return { ok: false, error: 'La compra y la venta van en soles por dólar y mayores que cero: 3.62 y 3.65.' }
-  }
-
-  // Un cambio de tres cifras es siempre el punto decimal que se quedó en el
-  // camino (365 en vez de 3.65). Congelado, multiplica por cien el presupuesto
-  // de la orden y nadie lo vuelve a mirar.
-  if (compra > 100 || venta > 100) {
-    return { ok: false, error: 'El tipo de cambio va en soles por dólar: 3.65, no 365.' }
-  }
-
-  // Ningún banco vende más barato de lo que compra: cuando pasa, las dos cifras
-  // entraron cambiadas de sitio. Y la que congelan los documentos es la venta,
-  // así que dejarla pasar mete el error en todo lo que se emita después.
-  if (venta < compra) {
-    return { ok: false, error: 'La venta no puede ser menor que la compra: parece que están cambiadas de sitio.' }
-  }
-
   const supabase = await createClient()
-  const { error } = await supabase
-    .from('tipos_cambio')
-    .upsert(
-      { fecha: analisis.data.fecha, compra, venta, fuente: 'MANUAL' },
-      { onConflict: 'fecha' },
-    )
-
-  if (error) return { ok: false, error: mensajeDeError(error) }
-
+  const resultado = puede(perfil, 'configuracion.editar')
+    ? await supabase.from('tipos_carroceria').update({ nombre: v.nombre, descripcion: nuloSiVacio(v.descripcion) }).eq('id', v.id).select('id').maybeSingle()
+    : await supabase.rpc('editar_carroceria_ventas', { p_id: v.id, p_nombre: v.nombre, p_descripcion: v.descripcion ?? '', p_activo: v.activo })
+  if (resultado.error) return { ok: false, error: mensajeDeError(resultado.error) }
+  if (!resultado.data) return { ok: false, error: NO_TOCO_NADA }
+  revalidatePath('/carrocerias')
+  revalidatePath('/cotizaciones/pdf')
   revalidatePath('/configuracion')
-  return {
-    ok: true,
-    mensaje: `Tipo de cambio del ${fechaDelDia(analisis.data.fecha)} guardado, venta ${numero(venta, 3)}. Lo que se emita desde acá ya lo usa; lo ya emitido conserva el suyo.`,
-  }
-}
-
-/**
- * Traerlo de SUNAT en vez de escribirlo.
- *
- * Escribirlo a mano todos los días es una tarea que alguien deja de hacer un
- * martes cualquiera, y el sistema no se cae cuando eso pasa: sigue costeando
- * con el cambio de la última vez que alguien se acordó. Este botón —y el mismo
- * trabajo, una vez al día, desde el cron— es lo que hace que dejar de acordarse
- * no cueste plata.
- *
- * No pisa lo que ya está: si el día pedido ya tiene cambio, no consulta. El
- * servicio corta con 429 a la segunda consulta seguida, y además un valor
- * corregido a mano no se reemplaza por el automático a espaldas de quien lo
- * corrigió.
- */
-export async function traerTipoCambioDeSunat(
-  _previo: unknown,
-  datos: FormData,
-): Promise<ResultadoAccion> {
-  const problema = await exigirEdicion()
-  if (problema) return { ok: false, error: problema }
-
-  const pedida = String(datos.get('fecha') ?? '')
-  const fecha = /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : hoyLima()
-
-  const supabase = await createClient()
-
-  const { data: yaEsta } = await supabase
-    .from('tipos_cambio')
-    .select('fecha, venta, fuente')
-    .eq('fecha', fecha)
-    .maybeSingle()
-
-  if (yaEsta) {
-    return {
-      ok: true,
-      mensaje: `El ${fechaDelDia(fecha)} ya tenía cambio cargado (venta ${numero(yaEsta.venta, 3)}, ${yaEsta.fuente}). No se volvió a consultar.`,
-    }
-  }
-
-  const resultado = await traerDeSunat(fecha)
-  if (!resultado.ok) return { ok: false, error: resultado.error }
-
-  const { cambio } = resultado
-  const { error } = await supabase
-    .from('tipos_cambio')
-    .upsert(
-      { fecha: cambio.fecha, compra: cambio.compra, venta: cambio.venta, fuente: cambio.fuente },
-      { onConflict: 'fecha' },
-    )
-
-  if (error) return { ok: false, error: mensajeDeError(error) }
-
-  revalidatePath('/configuracion')
-
-  // SUNAT no publica sábados, domingos ni feriados: contesta con el último día
-  // hábil. Se dice, porque si no parece que el botón no hizo caso a la fecha.
-  const otroDia = cambio.fecha !== fecha
-  return {
-    ok: true,
-    mensaje: otroDia
-      ? `SUNAT no publicó el ${fechaDelDia(fecha)}; se guardó el del ${fechaDelDia(cambio.fecha)}, venta ${numero(cambio.venta, 3)}.`
-      : `Tipo de cambio del ${fechaDelDia(cambio.fecha)} traído de SUNAT, venta ${numero(cambio.venta, 3)}.`,
-  }
+  return { ok: true, mensaje: 'Carrocería actualizada.' }
 }
 
 const esquemaMedidasCarroceria = z.object({
@@ -382,12 +263,7 @@ function medidaOpcional(texto?: string): number | null {
 }
 
 /**
- * Las medidas de referencia de un tipo de carrocería.
- *
- * Son lo que la cotización copia al elegir el tipo: una tolva volquete de piso
- * circular mide lo que mide, y escribirlo en cada cotización terminaba en fichas
- * con rayas. Copiadas a la cotización se pueden corregir ahí —«a veces no todas
- * terminan igual»— sin que eso toque este catálogo.
+ * Medidas técnicas de referencia para el catálogo de carrocerías.
  */
 export async function guardarMedidasCarroceria(
   _previo: unknown,
@@ -432,62 +308,11 @@ export async function guardarMedidasCarroceria(
   revalidatePath('/configuracion')
   return {
     ok: true,
-    mensaje: 'Medidas guardadas. Las cotizaciones nuevas de este tipo las traen solas.',
+    mensaje: 'Medidas técnicas guardadas en el catálogo.',
   }
 }
 
 function nuloSiVacio(valor?: string) {
   const t = valor?.trim()
   return t ? t : null
-}
-
-/**
- * Quién firma las cotizaciones.
- *
- * Un nombre y un cargo escritos, no una cuenta del sistema: quien firma un
- * documento y quien usa el programa no son la misma lista, y atarlo a la tabla
- * de usuarios obligaba a darle acceso a alguien que a lo mejor nunca va a
- * entrar.
- *
- * Vacío es una opción válida —el papel cierra entonces con la razón social— así
- * que se guarda tal cual: «no hay nadie puesto» es una decisión, no un olvido, y
- * confundir las dos cosas dejaría el nombre viejo pegado para siempre.
- */
-export async function guardarQuienFirma(
-  _previo: unknown,
-  datos: FormData,
-): Promise<ResultadoAccion> {
-  const problema = await exigirEdicion()
-  if (problema) return { ok: false, error: problema }
-
-  const nombre = String(datos.get('firma_nombre') ?? '').trim()
-  const cargo = String(datos.get('firma_cargo') ?? '').trim()
-
-  // Un cargo sin nombre no firma nada: quedaría un «Gerente General» suelto
-  // debajo de «Atentamente», sin persona.
-  if (cargo && !nombre) {
-    return { ok: false, error: 'Escribe también el nombre de quien firma.' }
-  }
-
-  const supabase = await createClient()
-  const { data: empresa } = await supabase.from('empresa').select('id').limit(1).maybeSingle()
-  if (!empresa) return { ok: false, error: 'No se encontró la ficha de la empresa.' }
-
-  const { data, error } = await supabase
-    .from('empresa')
-    .update({ firma_nombre: nombre || null, firma_cargo: cargo || null })
-    .eq('id', empresa.id)
-    .select('id')
-    .maybeSingle()
-
-  if (error) return { ok: false, error: mensajeDeError(error) }
-  if (!data) return { ok: false, error: NO_TOCO_NADA }
-
-  revalidatePath('/configuracion')
-  return {
-    ok: true,
-    mensaje: nombre
-      ? `Guardado. Las cotizaciones que se impriman desde ahora cierran con ${nombre}.`
-      : 'Guardado. Las cotizaciones cierran con el nombre de la empresa.',
-  }
 }

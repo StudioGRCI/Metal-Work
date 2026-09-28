@@ -9,7 +9,7 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { ACEPTA_COTIZACION, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
-import { normalizar } from '@/lib/cotizacion-pdf'
+import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
 import { useEnvio } from '@/lib/envio'
 import { hoyLima } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
@@ -110,6 +110,8 @@ export function CorregirCotizacion({
   const [archivo, setArchivo] = useState<File | null>(null)
   const [dice, setDice] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
+  const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
+  const [progreso, setProgreso] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
@@ -118,6 +120,8 @@ export function CorregirCotizacion({
     setArchivo(null)
     setDice(null)
     setError(null)
+    setTotal({ monto: null, moneda: null })
+    setProgreso('')
     setAbierto(true)
   }
 
@@ -132,7 +136,9 @@ export function CorregirCotizacion({
     }
     setLeyendo(true)
     try {
-      setDice((await leerCabeceraDeArchivo(elegido)).numero)
+      const lectura = await leerCabeceraDeArchivo(elegido, setProgreso)
+      setDice(lectura.cabecera.numero)
+      setTotal(lectura.total)
     } finally {
       setLeyendo(false)
     }
@@ -147,6 +153,10 @@ export function CorregirCotizacion({
     const tipo = archivo ? tipoDeCotizacion(archivo) : null
     if (!archivo || !tipo) {
       setError(archivo ? 'La corrección se sube en PDF o en Word.' : 'Elige el archivo corregido.')
+      return
+    }
+    if (!total.monto || !Number.isFinite(Number(total.monto)) || Number(total.monto) <= 0 || !total.moneda) {
+      setError('Confirma el monto total de venta y su moneda antes de enviar la corrección.')
       return
     }
     if (archivo.size > MAXIMO_ADJUNTO_MB * 1024 * 1024) {
@@ -176,6 +186,8 @@ export function CorregirCotizacion({
         datos.set('ruta_storage', ruta)
         datos.set('mime_type', tipo.mime)
         datos.set('tamano_bytes', String(archivo.size))
+        datos.set('monto_venta', total.monto ?? '')
+        datos.set('moneda', total.moneda ?? '')
 
         const r = await corregirCotizacionPdf(null, datos)
         if (!r.ok) {
@@ -225,7 +237,7 @@ export function CorregirCotizacion({
           <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2">
             <FileUp aria-hidden className="size-6" />
             <span className="font-medium text-texto">{archivo ? archivo.name : 'Elegir el archivo corregido'}</span>
-            <span className="text-xs">{leyendo ? 'Leyendo…' : `PDF o Word · hasta ${MAXIMO_ADJUNTO_MB} MB`}</span>
+            <span className="text-xs">{leyendo ? progreso || 'Leyendo…' : `PDF o Word · hasta ${MAXIMO_ADJUNTO_MB} MB`}</span>
             <input
               type="file"
               accept={ACEPTA_COTIZACION}
@@ -236,6 +248,19 @@ export function CorregirCotizacion({
               }}
             />
           </label>
+
+          <div className="grid gap-3 sm:grid-cols-[1fr_9rem]">
+            <Campo etiqueta="Monto total de venta" htmlFor="corregir-monto" ayuda={total.monto ? 'Detectado en el documento; confirma o corrige el total final.' : 'No se encontró el total automáticamente; escríbelo como aparece en la cotización.'} requerido>
+              <Entrada id="corregir-monto" value={total.monto ?? ''} onChange={(e) => setTotal((v) => ({ ...v, monto: e.target.value }))} inputMode="decimal" required />
+            </Campo>
+            <Campo etiqueta="Moneda" htmlFor="corregir-moneda" requerido>
+              <Seleccion id="corregir-moneda" value={total.moneda ?? ''} onChange={(e) => setTotal((v) => ({ ...v, moneda: e.target.value === 'PEN' || e.target.value === 'USD' ? e.target.value : null }))} required>
+                <option value="" disabled>Confirma</option>
+                <option value="PEN">Soles (S/)</option>
+                <option value="USD">Dólares (US$)</option>
+              </Seleccion>
+            </Campo>
+          </div>
 
           {otroNumero && (
             <p role="status" className="flex items-start gap-2 rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-xs text-aviso">

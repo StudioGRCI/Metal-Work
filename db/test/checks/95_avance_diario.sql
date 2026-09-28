@@ -17,9 +17,9 @@ insert into public.unidades (cliente_id, placa, tipo_vehiculo)
   values ((select id from public.clientes limit 1), 'PQR-456', 'VOLQUETE');
 
 insert into public.ordenes_trabajo
-  (cliente_id, unidad_id, sede_id, tipo_carroceria_id, tipo_trabajo, descripcion, monto_presupuestado)
+  (cliente_id, unidad_id, sede_id, tipo_carroceria_id, tipo_trabajo, descripcion)
 select (select id from public.clientes limit 1), (select id from public.unidades limit 1),
-       (select id from public.sedes limit 1), tc.id, 'FABRICACION', 'Tolva de prueba', 40000
+       (select id from public.sedes limit 1), tc.id, 'FABRICACION', 'Tolva de prueba'
   from public.tipos_carroceria tc where tc.codigo = 'TOLVA_VOLQUETE';
 
 -- La aprobación dispara etapas y bitácora: monta la OT con ADMIN.
