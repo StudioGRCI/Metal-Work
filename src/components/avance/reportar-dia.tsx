@@ -11,6 +11,7 @@ import { Campo, Entrada } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { useEnvio } from '@/lib/envio'
 import { numero } from '@/lib/format'
+import { createClient } from '@/lib/supabase/client'
 
 function Error_({ texto }: { texto: string | null }) {
   if (!texto) return null
@@ -50,7 +51,33 @@ export function ReportarDia({
   const [abierto, setAbierto] = useState(false)
   const [fotos, setFotos] = useState<FotoLista[]>([])
   const [aviso, setAviso] = useState<string | null>(null)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(reportarAvance, (r) => {
+  async function limpiarFotoPendiente() {
+    const rutas = fotosParaEnviar(fotos).map(f => f.ruta_storage)
+    if (rutas.length > 0) {
+      const { error } = await createClient().storage.from('fotos-avance').remove(rutas)
+      if (error) {
+        setAviso('No se pudo retirar la foto pendiente. Intenta quitarla desde el selector.')
+        return
+      }
+    }
+    setFotos([])
+  }
+  async function enviarConLimpieza(previo: unknown, datos: FormData) {
+    try {
+      const resultado = await reportarAvance(previo, datos)
+      if (!resultado.ok && esNueva) await limpiarFotoPendiente()
+      return resultado
+    } catch (error) {
+      if (esNueva) await limpiarFotoPendiente()
+      throw error
+    }
+  }
+  function cancelar() {
+    void limpiarFotoPendiente()
+    setAbierto(false)
+  }
+  const { alEnviar, enviando, error, limpiar } = useEnvio(enviarConLimpieza, (r) => {
+    setFotos([])
     setAbierto(false)
     setAviso(r.mensaje ?? 'Avance del día reportado.')
   })
@@ -84,7 +111,7 @@ export function ReportarDia({
 
       <Ventana
         abierta={abierto}
-        alCerrar={() => setAbierto(false)}
+        alCerrar={cancelar}
         titulo={actividad.nombre}
         descripcion={`Lo que avanzó ${deOtroDia ? 'ese día' : 'hoy'}, no el acumulado. Va en ${numero(actividad.avance_pct, 0)} %: le falta ${numero(falta, 0)} %.`}
         ancho="md"
@@ -140,7 +167,7 @@ export function ReportarDia({
           <Error_ texto={error} />
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+            <Boton type="button" variante="contorno" onClick={cancelar}>
               Cancelar
             </Boton>
             <Boton type="submit" tamano="lg" cargando={enviando} disabled={esNueva && (fotosParaEnviar(fotos).length !== 1 || haySubiendo(fotos) || hayFallidas(fotos))} className="w-full sm:w-auto">

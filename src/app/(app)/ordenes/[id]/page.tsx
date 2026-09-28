@@ -585,7 +585,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           catalogo={catalogoEtapas}
           areas={areasEtapas}
           hoy={hoyLima()}
-          puedeDefinir={puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
+          esNueva={orden.plan_etapas_manual}
+          puedeDefinir={orden.plan_etapas_manual && puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
           puedeProgramar={puede(perfil, 'ordenes.editar') && !ESTADOS_CERRADOS.includes(orden.estado)}
         />
       )}

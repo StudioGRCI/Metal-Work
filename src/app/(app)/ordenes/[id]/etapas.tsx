@@ -26,6 +26,7 @@ export function Etapas({
   catalogo,
   areas,
   hoy,
+  esNueva,
   puedeDefinir,
   puedeProgramar,
 }: {
@@ -35,6 +36,7 @@ export function Etapas({
   areas: Area[]
   /** La fecha del taller (hoyLima), resuelta en el servidor. */
   hoy: string
+  esNueva: boolean
   puedeDefinir: boolean
   puedeProgramar: boolean
 }) {
@@ -58,7 +60,9 @@ export function Etapas({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Etapas de producción"
-        descripcion="Cada etapa aporta al avance de la orden según su peso. Su avance sale de los reportes de actividades vinculadas. Las fechas permiten controlar los plazos."
+        descripcion={esNueva
+          ? 'Cada etapa aporta según su peso. El avance sale de los reportes de tareas y revisiones de planos; las fechas controlan los plazos.'
+          : 'Esta OT conserva su plan histórico: el avance se pondera por las horas estimadas de cada etapa. Las fechas controlan los plazos.'}
         acciones={vencidas > 0 ? <Insignia tono="peligro">{vencidas} {vencidas === 1 ? 'vencida' : 'vencidas'}</Insignia> : null}
       />
       <TarjetaCuerpo className="space-y-2 p-2">
