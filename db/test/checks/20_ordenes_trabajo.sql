@@ -4,6 +4,8 @@ begin;
 
 insert into public.empresa (ruc, razon_social) values ('20100000002', 'PRUEBAS OT S.A.C.');
 insert into public.sedes (codigo, nombre) values ('T1', 'Taller principal');
+select test.crear_usuario('Ana', 'Prueba', 'admin-ot@demo.pe', 'ADMIN',
+         (select id from public.sedes limit 1)) as admin_id \gset
 select test.crear_usuario('Luis', 'Mamani', 'luis@demo.pe', 'OPERARIO',
          (select id from public.sedes limit 1), true, 12.50) \gset operario_
 select test.crear_usuario('Rosa', 'Yupanqui', 'rosa@demo.pe', 'JEFE_TALLER',
@@ -21,6 +23,10 @@ insert into public.ordenes_trabajo (cliente_id, unidad_id, sede_id, tipo_carroce
     cross join public.sedes s
     join public.tipos_carroceria tc on tc.codigo = 'TOLVA_VOLQUETE'
    limit 1;
+
+-- Los disparadores de la OT registran eventos con identidad; el armazón se
+-- monta con ADMIN y las pruebas de área viven en los checks de permisos.
+select test.como_usuario(:'admin_id');
 
 do $$
 declare v public.ordenes_trabajo;

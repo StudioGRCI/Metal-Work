@@ -133,7 +133,6 @@ set local role authenticated;
 do $$
 declare
   v_orden uuid := current_setting('prueba.orden')::uuid;
-  v_cot2  uuid;
   v_antes date;
 begin
   update public.ot_etapas
@@ -144,10 +143,11 @@ begin
   select min(fecha_inicio_programada) into v_antes
     from public.ot_etapas where orden_id = v_orden;
 
-  -- Otra cotización, otro pago, misma orden no: se prueba que la guarda existe
-  -- llamando directo a la función con la cotización de esta orden.
-  perform public.arrancar_plazo_de_cotizacion(current_setting('prueba.cotizacion')::uuid,
-                                              current_date + 60);
+  -- La función es interna: se comprueba su comportamiento por el mismo camino
+  -- que lo activa en producción, registrando un pago posterior.
+  insert into public.pagos_cliente (cotizacion_id, tipo, fecha, monto, medio, referencia)
+  values (current_setting('prueba.cotizacion')::uuid, 'PARCIAL', current_date + 60,
+          1000, 'TRANSFERENCIA', 'OP-99889');
 
   perform test.afirmar(
     (select min(fecha_inicio_programada) from public.ot_etapas where orden_id = v_orden) = v_antes,

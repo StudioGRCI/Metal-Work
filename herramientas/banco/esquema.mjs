@@ -79,6 +79,20 @@ export function resolverRelacion(esquema, origen, destino, pista) {
     (f) => f.origen === destino && f.destino === origen,
   )
 
+  // Una pista nombrada por PostgREST identifica una FK concreta, incluso si
+  // hay otra relación en sentido inverso entre las mismas tablas.
+  if (pista) {
+    const candidatas = [...haciaDestino, ...haciaOrigen].filter(
+      (f) => f.nombre === pista || f.columnas_origen.includes(pista),
+    )
+    if (candidatas.length === 1) {
+      const fk = candidatas[0]
+      return fk.origen === origen
+        ? { clase: 'una', columnasOrigen: fk.columnas_origen, columnasDestino: fk.columnas_destino }
+        : { clase: 'varias', columnasOrigen: fk.columnas_destino, columnasDestino: fk.columnas_origen }
+    }
+  }
+
   const filtrarPorPista = (candidatas) => {
     if (candidatas.length <= 1) return candidatas
     if (pista) {

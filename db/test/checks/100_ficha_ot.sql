@@ -76,23 +76,24 @@ insert into public.cotizaciones (cliente_id, unidad_id, tipo_carroceria_id, fech
     from public.clientes c
     join public.unidades u on u.cliente_id = c.id
     cross join public.tipos_carroceria t
-   where t.codigo = 'PLATAFORMA' limit 1;
+   where t.codigo = 'TOLVA_VOLQUETE' limit 1;
 
--- Se cotizó con la ficha de la empresa, que es de donde salen los accesorios.
+-- Se cotizó con una ficha vigente. La plantilla histórica de plataforma
+-- está dada de baja desde la migración 072; la tolva conserva la plantilla activa.
 select public.aplicar_plantilla_ficha(
   (select id from public.cotizaciones limit 1),
   (select p.id from public.plantillas_ficha p
      join public.tipos_carroceria t on t.id = p.tipo_carroceria_id
-    where t.codigo = 'PLATAFORMA' limit 1));
+    where t.codigo = 'TOLVA_VOLQUETE' and p.activa limit 1));
 
 insert into public.ordenes_trabajo
   (cliente_id, unidad_id, sede_id, tipo_carroceria_id, cotizacion_id, descripcion, tipo_trabajo)
   select c.id, u.id, s.id, t.id, q.id,
-         'Plataforma semirremolque de 3 ejes con suspensión neumática', 'FABRICACION'
+         'Tolva de volquete de acero estructural', 'FABRICACION'
     from public.clientes c
     join public.unidades u on u.cliente_id = c.id
     cross join public.sedes s
-    join public.tipos_carroceria t on t.codigo = 'PLATAFORMA'
+    join public.tipos_carroceria t on t.codigo = 'TOLVA_VOLQUETE'
     join public.cotizaciones q on q.cliente_id = c.id
    limit 1;
 

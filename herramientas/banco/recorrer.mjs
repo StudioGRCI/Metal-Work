@@ -40,28 +40,44 @@ const ordenId = await primero(
 const clienteId = await primero('select id from public.clientes order by razon_social limit 1')
 const cotizacionId = await primero('select id from public.cotizaciones limit 1')
 const flotaId = await primero('select id from public.flota_unidades order by ingreso desc limit 1')
+const plantillaId = await primero(
+  'select id from public.plantillas_ficha where activa order by nombre limit 1',
+)
 
 const RUTAS = [
   ['tablero', '/'],
+  ['avisos', '/avisos'],
   ['ordenes', '/ordenes'],
   ['orden-nueva', '/ordenes/nueva'],
   ordenId && ['orden-detalle', `/ordenes/${ordenId}`],
+  ordenId && ['orden-planos', `/ordenes/${ordenId}/planos`],
   ['clientes', '/clientes'],
   ['cliente-nuevo', '/clientes/nuevo'],
   clienteId && ['cliente-detalle', `/clientes/${clienteId}`],
   clienteId && ['cliente-editar', `/clientes/${clienteId}/editar`],
   ['unidades', '/unidades'],
+  ['carrocerias', '/carrocerias'],
+  plantillaId && ['carroceria-detalle', `/carrocerias/${plantillaId}`],
   ['cotizaciones', '/cotizaciones'],
   ['cotizacion-nueva', '/cotizaciones/nueva'],
   cotizacionId && ['cotizacion-detalle', `/cotizaciones/${cotizacionId}`],
+  ['cotizacion-pdf', '/cotizaciones/pdf'],
+  ['cotizacion-trabajo', '/cotizaciones/trabajo'],
   ['avance-taller', '/avance'],
+  ['avance-abrir-orden', '/avance/abrir-orden'],
   ordenId && ['avance-unidad', `/avance/${ordenId}`],
   ['avance-diario', '/avance/diario'],
   ['avance-trabajos', '/avance/trabajos'],
   ['avance-trabajos-nuevo', '/avance/trabajos/nueva'],
   flotaId && ['avance-trabajo', `/avance/trabajos/${flotaId}`],
+  ['plazos', '/plazos'],
+  ['materiales', '/materiales'],
+  ['materiales-vacio', '/materiales?buscar=MW-PRUEBA-SIN-RESULTADOS'],
+  ['atencion-materiales', '/materiales/atencion'],
+  ['tesoreria', '/tesoreria'],
   ordenId && ['orden-ficha', `/ordenes/${ordenId}?vista=ficha`],
   ordenId && ['orden-avance', `/ordenes/${ordenId}?vista=avance`],
+  ordenId && ['orden-actividades', `/ordenes/${ordenId}?vista=actividades`],
   ['configuracion', '/configuracion'],
   ['personal', '/personal'],
   ['sin-permiso', '/sin-permiso'],
@@ -118,7 +134,7 @@ for (const [nombre, ruta] of RUTAS) {
   const titulo = await pagina.locator('h1').first().innerText().catch(() => '(sin título)')
   const cuerpo = await pagina.locator('body').innerText()
   const falla =
-    /Ocurrió un error inesperado|Application error|Unhandled Runtime Error|no se pudo|No se pudieron/i.test(
+    /Ocurrió un error inesperado|Application error|Unhandled Runtime Error|no se pudo|No se pudieron|Página no encontrada/i.test(
       cuerpo,
     )
 
@@ -132,6 +148,66 @@ for (const [nombre, ruta] of RUTAS) {
   })
 
   await pagina.screenshot({ path: `${CAPTURAS}/${nombre}.png`, fullPage: true })
+}
+
+// La lista general corre como administración. El avance por área se vuelve a
+// abrir como cada supervisor para verificar su alcance y el botón de reporte.
+const supervisores = [
+  { clave: 'supervisor-prd', correo: 'supervisor.prd@metalwork.test', area: 'Producción', propia: 'Bastidor principal', ajena: 'Corte de planchas' },
+  { clave: 'supervisor-mtz', correo: 'supervisor.mtz@metalwork.test', area: 'Maestranza', propia: 'Corte de planchas', ajena: 'Preparar superficie' },
+  { clave: 'supervisor-acb', correo: 'supervisor.acb@metalwork.test', area: 'Acabados', propia: 'Preparar superficie', ajena: 'Bastidor principal' },
+]
+
+if (ordenId) {
+  for (const supervisor of supervisores) {
+    const contextoRol = await navegador.newContext({ viewport: { width: 1440, height: 1000 }, locale: 'es-PE' })
+    const paginaRol = await contextoRol.newPage()
+    const erroresRol = []
+    paginaRol.on('console', (mensaje) => {
+      if (mensaje.type() === 'error' && !mensaje.text().includes('_next/hmr') && !mensaje.text().includes('WebSocket')) {
+        erroresRol.push(mensaje.text().slice(0, 300))
+      }
+    })
+
+    await paginaRol.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
+    await paginaRol.fill('input[type="email"]', supervisor.correo)
+    await paginaRol.fill('input[type="password"]', CLAVE)
+    await Promise.all([
+      paginaRol.waitForURL((u) => !u.pathname.startsWith('/ingresar'), { timeout: 30000 }).catch(() => {}),
+      paginaRol.click('button[type="submit"]'),
+    ])
+
+    let estado = 0
+    let cuerpo = ''
+    let reportesDisponibles = 0
+    if (!paginaRol.url().includes('/ingresar')) {
+      const respuesta = await paginaRol.goto(`${BASE}/ordenes/${ordenId}?vista=actividades`, { waitUntil: 'networkidle' })
+      estado = respuesta?.status() ?? 0
+      await paginaRol.waitForTimeout(250)
+      cuerpo = await paginaRol.locator('body').innerText()
+      reportesDisponibles = await paginaRol.getByRole('button', { name: /reportar día/i }).count()
+    }
+
+    const ajenaVisible = cuerpo.includes(supervisor.ajena)
+    const falla =
+      paginaRol.url().includes('/ingresar') ||
+      !cuerpo.includes(supervisor.area) ||
+      !cuerpo.includes(supervisor.propia) ||
+      reportesDisponibles === 0 ||
+      ajenaVisible ||
+      /Ocurrió un error inesperado|Application error|Unhandled Runtime Error|No se pudieron/i.test(cuerpo)
+
+    resultados.push({
+      nombre: supervisor.clave,
+      ruta: `/ordenes/${ordenId}?vista=actividades`,
+      estado,
+      titulo: supervisor.area,
+      falla,
+      errores: [...erroresRol],
+    })
+    await paginaRol.screenshot({ path: `${CAPTURAS}/${supervisor.clave}.png`, fullPage: true })
+    await contextoRol.close()
+  }
 }
 
 await navegador.close()

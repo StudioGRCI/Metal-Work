@@ -36,6 +36,8 @@ insert into public.ordenes_trabajo (cliente_id, sede_id, descripcion)
   select c.id, s.id, 'Plataforma — orden ajena'
     from public.clientes c cross join public.sedes s limit 1;
 
+-- El evento de aprobación requiere identidad; el armazón se aprueba como ADMIN.
+select test.como_usuario(:'admin_id');
 update public.ordenes_trabajo set estado = 'APROBADA';
 
 -- --- el operario ve las órdenes como todos ----------------------------------

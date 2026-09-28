@@ -156,8 +156,8 @@ export default async function PaginaConfiguracion({
                     lista de control.
                   </p>
                 ) : (
-                  catalogos.verificaciones.map((v) => (
-                    <p key={v.nombre} className="text-sm text-texto">
+                    catalogos.verificaciones.map((v) => (
+                    <p key={v.id} className="text-sm text-texto">
                       {v.nombre} <span className="tabular text-texto-suave">· {v.pasos} pasos</span>
                     </p>
                   ))

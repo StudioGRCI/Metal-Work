@@ -23,16 +23,21 @@ select test.crear_usuario('Teo',  'Alva',   'teo@demo.pe',  'SUPERVISOR', (selec
 select test.crear_usuario('Aure', 'Ramirez','aure@demo.pe', 'JEFE_TALLER',(select id from public.sedes limit 1)) as jefe_id \gset
 select test.crear_usuario('Luis', 'Ochoa',  'luis@demo.pe', 'OPERARIO',   (select id from public.sedes limit 1)) as operario_id \gset
 select test.crear_usuario('Sam',  'Rojas',  'sam@demo.pe',  'SUPERVISOR', (select id from public.sedes limit 1)) as acabados_id \gset
+select test.crear_usuario('Mia',  'Soto',   'mia@demo.pe',  'SUPERVISOR', (select id from public.sedes limit 1)) as maestranza_id \gset
 
 -- El área no es un adorno del organigrama: desde la migración 091 es lo que
 -- decide de quién es cada hoja. `test.crear_usuario` no la pide, así que se
--- pone acá, antes de suplantar a nadie —esto corre como el dueño de la tabla—.
+-- pone acá con la identidad de ADMIN, que exige el trigger de personal.
+select test.como_usuario(:'admin_id');
+select set_config('prueba.admin', :'admin_id', false);
 update public.usuarios set area_id = (select id from public.areas where codigo = 'PRD')
  where id in (:'supervisor_id', :'operario_id');
 update public.usuarios set area_id = (select id from public.areas where codigo = 'MTZ')
  where id = :'jefe_id';
 update public.usuarios set area_id = (select id from public.areas where codigo = 'ACB')
  where id = :'acabados_id';
+update public.usuarios set area_id = (select id from public.areas where codigo = 'MTZ')
+ where id = :'maestranza_id';
 
 insert into public.clientes (tipo_documento, numero_documento, razon_social)
   values ('RUC', '20607761907', 'TRANSPORTES VEGA PIUNDO S.A.C');
@@ -170,6 +175,33 @@ end $$;
 
 reset role;
 
+-- -------------------- el supervisor de Maestranza reporta su propia hoja
+select test.como_usuario(:'maestranza_id');
+set local role authenticated;
+
+do $$
+declare
+  v_orden uuid := current_setting('prueba.orden')::uuid;
+  v_act   uuid := current_setting('prueba.actividad_mtz')::uuid;
+begin
+  insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct, nota)
+  values (v_act, v_orden, current_date - 1, 10, 'Supervisor de Maestranza reporta su avance');
+
+  perform test.afirmar(
+    (select avance_pct from public.v_ot_avance_areas
+      where orden_id = v_orden and area_id = current_setting('prueba.mtz')::uuid) = 60,
+    'el supervisor de Maestranza reporta el avance de su propia área');
+end $$;
+
+select test.debe_fallar(
+  format($sql$insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct)
+              values (%L, %L, current_date - 2, 1)$sql$,
+         current_setting('prueba.actividad'), current_setting('prueba.orden')),
+  'el supervisor de Maestranza no reporta avances de Producción',
+  'row-level security');
+
+reset role;
+
 -- --------------- Acabados arma la suya y no se mete en la de Maestranza
 -- Tiene el mismo rol y el mismo permiso que el supervisor de Producción: lo
 -- único que los separa es el área, que es justo lo que se está probando.
@@ -220,6 +252,9 @@ begin
   perform test.afirmar(v_n = 0,
     'cambiarle el peso a la hoja de otra área no toca ninguna fila');
 
+  -- La supervisora de Acabados tampoco puede leer la hoja de Maestranza;
+  -- usa ADMIN para verificar que la fila original siga intacta.
+  perform test.como_usuario(current_setting('prueba.admin')::uuid);
   perform test.afirmar(
     (select peso_pct from public.ot_actividades
       where id = current_setting('prueba.actividad_mtz')::uuid) = 100,

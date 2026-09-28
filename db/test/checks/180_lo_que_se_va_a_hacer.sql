@@ -1,5 +1,5 @@
--- La cotización que sale al cliente dice qué se le va a fabricar y cuánto
--- cuesta; el desglose por partida se queda adentro. Acá se comprueba que el
+-- La cotización que sale al cliente dice qué se le va a fabricar y el precio
+-- ofrecido; el desglose por partida calcula el costo interno. Acá se comprueba que el
 -- concepto se puede escribir, que no admite disparates, y que corregir una
 -- partida vuelve a cuadrar los totales.
 --
@@ -37,10 +37,16 @@ values
   (current_setting('prueba.cotizacion')::uuid, 1, 'Estructura y tolva en acero A36', 'GLB', 1, 78000),
   (current_setting('prueba.cotizacion')::uuid, 2, 'Sistema hidráulico y tiro',        'GLB', 1, 30000);
 
+-- Ventas fija el precio. Las partidas son el costo estimado, no el monto
+-- prometido al cliente.
+update public.cotizaciones set precio_venta = 150000, incluye_igv = false
+ where id = current_setting('prueba.cotizacion')::uuid;
+
 do $$
 declare
   v_id    uuid := current_setting('prueba.cotizacion')::uuid;
   v_total numeric;
+  v_costo numeric;
 begin
   -- ------------------------------------------------ el concepto se escribe
   update public.cotizaciones
@@ -67,7 +73,8 @@ begin
   select total into v_total from public.cotizaciones where id = v_id;
   perform test.afirmar(
     v_total > 0,
-    format('los totales salen de las partidas (total %s)', v_total));
+    format('el total parte del precio que fijó Ventas (total %s)', v_total));
+  select costo_estimado into v_costo from public.cotizaciones where id = v_id;
 
   update public.cotizacion_partidas
      set precio_unitario = 90000
@@ -79,8 +86,11 @@ begin
     'al corregir el precio de una partida, la base recalcula su subtotal');
 
   perform test.afirmar(
-    (select total from public.cotizaciones where id = v_id) > v_total,
-    'y el total de la cotización sube con ella, sin que la aplicación lo mande');
+    (select costo_estimado from public.cotizaciones where id = v_id) > v_costo,
+    'el costo estimado sube con la partida, sin que la aplicación lo mande');
+  perform test.afirmar(
+    (select total from public.cotizaciones where id = v_id) = v_total,
+    'el precio prometido al cliente no cambia cuando Administración corrige costos');
 end $$;
 
 reset role;

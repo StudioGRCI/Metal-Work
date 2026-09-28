@@ -62,11 +62,11 @@ export async function catalogosDelTaller() {
   if (primero?.error) throw new Error(`No se pudieron leer los catálogos: ${primero.error.message}`)
 
   // Los pasos de verificación se resumen por carrocería: cuántos tiene cada una.
-  const porTipo = new Map<string, { nombre: string; pasos: number }>()
+  const porTipo = new Map<string, { id: string; nombre: string; pasos: number }>()
   for (const v of verificaciones.data ?? []) {
     const clave = (v.tipo_carroceria_id as string | null) ?? 'generica'
     const nombre = (v.tipo as unknown as { nombre: string } | null)?.nombre ?? 'Lista genérica'
-    const actual = porTipo.get(clave) ?? { nombre, pasos: 0 }
+    const actual = porTipo.get(clave) ?? { id: clave, nombre, pasos: 0 }
     actual.pasos += 1
     porTipo.set(clave, actual)
   }

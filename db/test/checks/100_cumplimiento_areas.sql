@@ -42,6 +42,10 @@ declare
   v_a   uuid;
   v_e   uuid;
   v_c   uuid;
+  v_version_mtz uuid;
+  v_version_mtz_p2 uuid;
+  v_version_prd_p1 uuid;
+  v_version_prd_p2 uuid;
   v_pct numeric;
 begin
   insert into public.ordenes_trabajo (cliente_id, sede_id, descripcion)
@@ -106,6 +110,44 @@ begin
 
   -- El taller reporta lo suyo y no toca lo de Diseño.
   perform test.como_usuario(current_setting('prueba.jefe')::uuid);
+  -- La regla vigente exige recibir el PDF aprobado antes de informar piezas.
+  -- Diseño carga ambas versiones; el responsable del taller confirma recepción.
+  insert into public.ot_plano_versiones
+    (id, plano_id, area_id, revision, nombre_archivo, ruta_storage, estado, vigente,
+     creado_por, revisado_por, revisado_en)
+  values
+    (gen_random_uuid(), v_p1, (select id from public.areas where codigo = 'MTZ'), 1,
+     'HABILITADO-MTZ.pdf', 'pruebas/' || gen_random_uuid() || '.pdf', 'APROBADO', true,
+     current_setting('prueba.diseno')::uuid, current_setting('prueba.admin')::uuid, now())
+  returning id into v_version_mtz;
+  insert into public.ot_plano_versiones
+    (id, plano_id, area_id, revision, nombre_archivo, ruta_storage, estado, vigente,
+     creado_por, revisado_por, revisado_en)
+  values
+    (gen_random_uuid(), v_p2, (select id from public.areas where codigo = 'MTZ'), 1,
+     'COMPUERTA-MTZ.pdf', 'pruebas/' || gen_random_uuid() || '.pdf', 'APROBADO', true,
+     current_setting('prueba.diseno')::uuid, current_setting('prueba.admin')::uuid, now())
+  returning id into v_version_mtz_p2;
+  insert into public.ot_plano_versiones
+    (id, plano_id, area_id, revision, nombre_archivo, ruta_storage, estado, vigente,
+     creado_por, revisado_por, revisado_en)
+  values
+    (gen_random_uuid(), v_p2, (select id from public.areas where codigo = 'PRD'), 1,
+     'COMPUERTA-PRD.pdf', 'pruebas/' || gen_random_uuid() || '.pdf', 'APROBADO', true,
+     current_setting('prueba.diseno')::uuid, current_setting('prueba.admin')::uuid, now())
+  returning id into v_version_prd_p2;
+  insert into public.ot_plano_versiones
+    (id, plano_id, area_id, revision, nombre_archivo, ruta_storage, estado, vigente,
+     creado_por, revisado_por, revisado_en)
+  values
+    (gen_random_uuid(), v_p1, (select id from public.areas where codigo = 'PRD'), 1,
+     'HABILITADO-PRD.pdf', 'pruebas/' || gen_random_uuid() || '.pdf', 'APROBADO', true,
+     current_setting('prueba.diseno')::uuid, current_setting('prueba.admin')::uuid, now())
+  returning id into v_version_prd_p1;
+  perform public.recibir_version_plano(v_version_mtz);
+  perform public.recibir_version_plano(v_version_mtz_p2);
+  perform public.recibir_version_plano(v_version_prd_p1);
+  perform public.recibir_version_plano(v_version_prd_p2);
   update public.ot_piezas set mtz_inicio = current_date, mtz_habilitado = true where id = v_a;
   begin
     update public.ot_piezas set cantidad = 9 where id = v_a;

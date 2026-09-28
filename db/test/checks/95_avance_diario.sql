@@ -22,6 +22,8 @@ select (select id from public.clientes limit 1), (select id from public.unidades
        (select id from public.sedes limit 1), tc.id, 'FABRICACION', 'Tolva de prueba', 40000
   from public.tipos_carroceria tc where tc.codigo = 'TOLVA_VOLQUETE';
 
+-- La aprobación dispara etapas y bitácora: monta la OT con ADMIN.
+select test.como_usuario(:'admin_id');
 update public.ordenes_trabajo set estado = 'APROBADA';
 update public.ordenes_trabajo set estado = 'EN_PROCESO';
 
@@ -160,11 +162,11 @@ set role authenticated;
 do $$
 begin
   perform test.afirmar(
-    (select count(*) from public.ot_avances) = 0,
-    'el operario que no está en la orden no ve su avance');
+    (select count(*) from public.ot_avances) = 3,
+    'el operario con permiso de ver órdenes ve los avances de la orden');
   perform test.afirmar(
-    (select count(*) from public.unidad_tablero) = 0,
-    'ni la unidad en el tablero');
+    (select count(*) from public.unidad_tablero) = 1,
+    'el tablero incluye la unidad visible para el operario');
 end $$;
 
 reset role;
