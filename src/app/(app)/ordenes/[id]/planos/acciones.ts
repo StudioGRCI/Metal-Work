@@ -90,3 +90,20 @@ export async function asignarEquipoDiseno(_previo: unknown, formulario: FormData
   revalidatePath(`/ordenes/${ordenId.data}`)
   return { ok: true, mensaje: 'Líder y responsables de planos actualizados.' }
 }
+
+export async function guardarLiderEntregaPlanos(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'Solo Diseño puede indicar quién lidera la entrega de planos.' }
+  const analisis = z.object({ orden_id: z.string().uuid(), nombre: z.string().trim().min(2).max(120) })
+    .safeParse(Object.fromEntries(formulario))
+  if (!analisis.success) return { ok: false, error: 'Escribe el nombre completo del líder (entre 2 y 120 caracteres).' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('guardar_lider_entrega_planos', {
+    p_orden: analisis.data.orden_id,
+    p_nombre: analisis.data.nombre,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: 'No se confirmó el nombre. Recarga la página antes de volver a intentar.' }
+  revalidatePath(`/ordenes/${analisis.data.orden_id}/planos`)
+  return { ok: true, mensaje: `Líder de entrega registrado: ${data}.` }
+}

@@ -383,7 +383,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
       <TeToca ordenId={orden.id} items={toca.items} />
 
+      <div className="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start lg:gap-5">
       <Pestanas ordenId={orden.id} activa={vista} contadores={toca.contadores} visibles={secciones} />
+      <div className="min-w-0">
 
       {vista === 'resumen' && (
         <div className="grid gap-4 lg:grid-cols-2 *:min-w-0">
@@ -609,7 +611,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           esNueva={orden.plan_etapas_manual}
           despachos={despachosTaller}
           etapas={etapas.filter((e) => e.etapa_id).map((e) => ({ id: e.etapa_id!, nombre: e.etapa ?? 'Etapa', area_id: e.area_id }))}
-          avanceGeneral={orden.avance_porcentaje}
           actividades={actividadesVisibles}
           areas={avancesVisibles}
           diario={diarioVisible}
@@ -642,12 +643,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         />
       )}
 
-      {vista === 'actividades' && archivos && (
-        <div className="mt-4">
-          <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos} puedeSubir={puedeSubirArchivos} />
-        </div>
-      )}
-
       {vista === 'avance' && (
         <AvanceDeOrden ordenId={orden.id} perfil={perfil} conCabecera />
       )}
@@ -655,6 +650,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       {vista === 'bitacora' && (
         <Bitacora ordenId={orden.id} eventos={timeline} puedeComentar={puede(perfil, 'ordenes.ver')} />
       )}
+      </div>
+      </div>
     </>
   )
 }

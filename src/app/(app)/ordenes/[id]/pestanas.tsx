@@ -1,75 +1,49 @@
 import Link from 'next/link'
-
 import { cn } from '@/lib/utils'
 
-const PESTANAS = [
+const SECCIONES = [
   { clave: 'resumen', titulo: 'Resumen' },
   { clave: 'ficha', titulo: 'Ficha de taller' },
-  // Las etapas por área alimentan el control de plazos: son la manera de ver si
-  // cada área va a tiempo.
   { clave: 'etapas', titulo: 'Etapas' },
-  // Plano, piezas, avance y revisiones en una misma vista.
   { clave: 'planos', titulo: 'Planos' },
-  // Los materiales van pegados a los planos porque son la otra mitad de lo
-  // mismo: en la hoja de Diseño está qué hay que hacer, y acá qué hace falta
-  // para hacerlo.
   { clave: 'materiales', titulo: 'Materiales' },
-  // La hoja de cada area: sus actividades y el reporte de cada dia. Va antes de
-  // «Avance», que son las fotos del taller: primero cuanto se lleva, despues
-  // como se ve.
   { clave: 'actividades', titulo: 'Avance de Taller' },
-  { clave: 'avance', titulo: 'Avance' },
+  { clave: 'avance', titulo: 'Fotos del taller' },
   { clave: 'bitacora', titulo: 'Trazabilidad' },
 ] as const
 
-export function Pestanas({
-  ordenId,
-  activa,
-  contadores = {},
-  visibles,
-}: {
+export function Pestanas({ ordenId, activa, contadores = {}, visibles }: {
   ordenId: string
   activa: string
-  /** Cuántos pendientes lleva cada pestaña para quien mira; cero no se pinta. */
   contadores?: Record<string, number>
   visibles: string[]
 }) {
-  return (
-    // `pestanas-con-corte`: en el teléfono caben cuatro de las ocho y la sombra
-    // en el borde dice que hay más hacia la derecha; sin ella «Actividades»,
-    // a la que llega el taller, quedaba fuera de pantalla sin que nada invitara
-    // a arrastrar.
-    <nav className="pestanas-con-corte my-5 flex gap-1 overflow-x-auto border-b border-borde" aria-label="Secciones de la orden">
-      {PESTANAS.filter(p => visibles.includes(p.clave)).map((p) => {
-        const esActiva = p.clave === activa
-        const n = contadores[p.clave] ?? 0
-        return (
-          <Link
-            key={p.clave}
-            href={p.clave === 'planos' ? `/ordenes/${ordenId}/planos` : `/ordenes/${ordenId}?vista=${p.clave}`}
-            aria-current={esActiva ? 'page' : undefined}
-            className={cn(
-              // 44 px de alto en el teléfono —ocho pestañas seguidas y el dedo
-              // gordo con guante— y en `sm:` los 36 px de siempre. `min-h` le
-              // gana a `py`, por eso hay que soltarlo en el monitor.
-              '-mb-px inline-flex min-h-11 items-center border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors sm:min-h-0',
-              esActiva
-                ? 'border-acento bg-acento-suave font-semibold text-acento'
-                : 'border-transparent text-texto-suave hover:border-borde-fuerte hover:text-texto',
-            )}
-          >
-            {p.titulo}
-            {n > 0 && (
-              <span
-                aria-label={`${n} pendientes`}
-                className="tabular ml-1.5 rounded-full bg-aviso-suave px-1.5 text-[11px] font-medium text-aviso"
-              >
-                {n}
-              </span>
-            )}
-          </Link>
-        )
-      })}
+  const secciones = SECCIONES.filter((s) => visibles.includes(s.clave))
+  const actual = secciones.find((s) => s.clave === activa)?.titulo ?? 'Secciones'
+  function enlaces() {
+    return secciones.map((s) => {
+      const n = contadores[s.clave] ?? 0
+      const esActiva = s.clave === activa
+      return <Link
+        key={s.clave}
+        href={s.clave === 'planos' ? `/ordenes/${ordenId}/planos` : `/ordenes/${ordenId}?vista=${s.clave}`}
+        aria-current={esActiva ? 'page' : undefined}
+        className={cn('flex min-h-11 items-center justify-between gap-2 rounded-md px-3 py-2 text-sm transition-colors',
+          esActiva ? 'bg-acento-suave font-semibold text-acento' : 'text-texto-suave hover:bg-superficie-2 hover:text-texto')}
+      >
+        <span>{s.titulo}</span>
+        {n > 0 && <span aria-label={`${n} pendientes`} className="rounded-full bg-aviso-suave px-1.5 text-xs font-medium text-aviso">{n}</span>}
+      </Link>
+    })
+  }
+  return <>
+    <details className="mb-5 rounded-[var(--radius-base)] border border-borde bg-superficie lg:hidden">
+      <summary className="min-h-11 cursor-pointer px-4 py-3 font-medium text-texto">Sección de la OT: {actual}</summary>
+      <nav aria-label="Secciones de la orden" className="border-t border-borde p-2">{enlaces()}</nav>
+    </details>
+    <nav aria-label="Secciones de la orden" className="sticky top-20 hidden h-fit rounded-[var(--radius-base)] border border-borde bg-superficie p-2 lg:block">
+      <p className="px-3 pb-2 pt-1 text-xs font-semibold uppercase text-texto-suave">Orden de trabajo</p>
+      {enlaces()}
     </nav>
-  )
+  </>
 }
