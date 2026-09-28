@@ -1,6 +1,7 @@
 'use client'
 
 import { ArrowUpRight, PackagePlus, Pencil, Plus, ShoppingCart, Trash2 } from 'lucide-react'
+import Link from 'next/link'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
@@ -68,15 +69,15 @@ export function MaterialesDeOrden({
       <Tarjeta>
         <TarjetaCabecera
           titulo="Materiales de la orden"
-          descripcion="Lo que lleva la unidad, con plano y área destino. Desde aquí Diseño envía los materiales a Requerimientos."
+          descripcion="Diseño asigna cada material a un plano y a un área. El área solicita a Almacén; si no hay stock, Almacén deriva a Logística."
         />
         <TarjetaCuerpo className="grid gap-3 sm:grid-cols-3">
           <Dato titulo="Líneas" valor={String(materiales.length)} pie="materiales distintos" />
           <Dato titulo="Planos con material" valor={String(porPlano)} pie="de los que hay en la hoja" />
           <Dato
-            titulo="De la unidad entera"
+            titulo="Sin plano (histórico)"
             valor={String(materiales.filter((m) => !m.plano_id).length)}
-            pie="sin plano en particular"
+            pie="por vincular a un plano"
           />
         </TarjetaCuerpo>
       </Tarjeta>
@@ -103,6 +104,8 @@ export function MaterialesDeOrden({
             <p className="mt-1 text-sm text-texto-suave">
               {!ordenViva
                 ? `${motivoInactiva ?? 'La orden no está en curso'}: mientras, la lista no se toca.`
+                : catalogo.planos.length === 0
+                  ? 'Diseño debe crear primero un plano para esta orden.'
                 : puedeDisenar
                   ? 'Agrega el primer material con el botón de arriba: qué lleva la unidad y cuánto.'
                   : 'Diseño todavía no ha escrito qué material lleva esta unidad.'}
@@ -148,7 +151,7 @@ export function MaterialesDeOrden({
                           <Insignia tono={m.requerimiento_estado === 'ATENDIDO' ? 'exito' : 'aviso'}>
                             {ETIQUETAS_ESTADO[m.requerimiento_estado] ?? 'Solicitado'}
                           </Insignia>
-                        ) : <AccionesLinea material={m} ordenId={ordenId} />}
+                        ) : <AccionesLinea material={m} ordenId={ordenId} catalogo={catalogo} />}
                       </TD>
                     )}
                   </TR>
@@ -234,7 +237,7 @@ function SolicitarGrupo({
           {error && <Error_ texto={error} />}
           <Boton type="submit" tamano="sm" cargando={enviando} className="w-full">
             <ArrowUpRight aria-hidden className="size-4" />
-            Enviar a Requerimientos
+            Solicitar a Almacén
           </Boton>
         </form>
       </TarjetaCuerpo>
@@ -252,9 +255,10 @@ function Dato({ titulo, valor, pie }: { titulo: string; valor: string; pie: stri
   )
 }
 
-function AccionesLinea({ material, ordenId }: { material: MaterialDeOrden; ordenId: string }) {
+function AccionesLinea({ material, ordenId, catalogo }: { material: MaterialDeOrden; ordenId: string; catalogo: CatalogoMateriales }) {
   const [editando, setEditando] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
+  const [areaDestino, setAreaDestino] = useState(material.area_destino)
   const { alEnviar, enviando, error } = useEnvio(cambiarCantidadMaterial, () => setEditando(false))
   const quitar = useEnvio(quitarMaterial, () => setConfirmando(false))
 
@@ -282,7 +286,7 @@ function AccionesLinea({ material, ordenId }: { material: MaterialDeOrden; orden
 
   if (editando) {
     return (
-      <form onSubmit={alEnviar} className="flex items-center gap-1">
+      <form onSubmit={alEnviar} className="flex flex-wrap items-center gap-2">
         <input type="hidden" name="id" value={material.id} />
         <input type="hidden" name="orden_id" value={ordenId} />
         <Entrada
@@ -296,8 +300,17 @@ function AccionesLinea({ material, ordenId }: { material: MaterialDeOrden; orden
           autoFocus
           className="tabular w-20 text-right"
         />
-        <Seleccion aria-label={`Área destino de ${material.material}`} name="area_destino" defaultValue={material.area_destino}>
+        <Seleccion aria-label={`Área destino de ${material.material}`} name="area_destino" value={areaDestino} onChange={(e) => {
+          const area = e.target.value
+          if (area === 'PRD' || area === 'MTZ' || area === 'ACB') setAreaDestino(area)
+        }}>
           {Object.entries(AREAS).map(([valor, etiqueta]) => <option key={valor} value={valor}>{etiqueta}</option>)}
+        </Seleccion>
+        <Seleccion key={areaDestino} aria-label={`Etapa que usará ${material.material}`} name="etapa_id"
+          defaultValue={areaDestino === material.area_destino ? material.etapa_id ?? '' : ''}>
+          <option value="">Sin etapa específica</option>
+          {catalogo.etapas.filter((etapa) => etapa.areaCodigo === areaDestino).map((etapa) =>
+            <option key={etapa.id} value={etapa.id}>{etapa.nombre}</option>)}
         </Seleccion>
         <Boton type="submit" tamano="sm" cargando={enviando}>
           Guardar
@@ -350,6 +363,7 @@ function NuevoMaterial({
 }) {
   const [abierto, setAbierto] = useState(false)
   const [materialId, setMaterialId] = useState('')
+  const [areaDestino, setAreaDestino] = useState<'PRD' | 'MTZ' | 'ACB'>('PRD')
   // Se queda abierto después de guardar: la lista de materiales de una unidad
   // son veinte líneas, y abrirlo cada vez eran veinte toques de más.
   const [guardados, setGuardados] = useState(0)
@@ -359,6 +373,9 @@ function NuevoMaterial({
   })
 
   if (!abierto) {
+    if (catalogo.planos.length === 0) return <p className="text-sm text-texto-suave">
+      Primero, Diseño debe crear un plano en <Link href={`/ordenes/${ordenId}?vista=planos`} className="font-medium text-acento underline">Planos y revisiones</Link>. Después podrás agregarle materiales.
+    </p>
     return (
       <div className="flex justify-end">
         <Boton variante="secundario" tamano="sm" onClick={() => setAbierto(true)}>
@@ -429,10 +446,10 @@ function NuevoMaterial({
             </Seleccion>
           </Campo>
 
-          {!propuesta && <Campo etiqueta="Para la etapa" htmlFor="nm-etapa" ayuda="Opcional">
-              <Seleccion id="nm-etapa" name="etapa_id" defaultValue="">
+          {!propuesta && <Campo etiqueta="Etapa que usará el material" htmlFor="nm-etapa" ayuda="Opcional; solo se muestran etapas del área que lo recibirá.">
+              <Seleccion key={areaDestino} id="nm-etapa" name="etapa_id" defaultValue="">
               <option value="">Sin etapa específica</option>
-              {catalogo.etapas.map((e) => (
+              {catalogo.etapas.filter((e) => e.areaCodigo === areaDestino).map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.nombre}
                   {e.area ? ` · ${e.area}` : ''}
@@ -442,7 +459,10 @@ function NuevoMaterial({
           </Campo>}
 
           {!propuesta && <Campo etiqueta="Área que recibirá el material" htmlFor="nm-area" requerido className="sm:col-span-2">
-            <Seleccion id="nm-area" name="area_destino" defaultValue="PRD" required>
+            <Seleccion id="nm-area" name="area_destino" value={areaDestino} onChange={(e) => {
+              const area = e.target.value
+              if (area === 'PRD' || area === 'MTZ' || area === 'ACB') setAreaDestino(area)
+            }} required>
               {Object.entries(AREAS).map(([valor, etiqueta]) => <option key={valor} value={valor}>{etiqueta}</option>)}
             </Seleccion>
           </Campo>}

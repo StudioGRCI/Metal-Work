@@ -321,6 +321,11 @@ function NuevoPlano({
   })
 
   if (!abierto) {
+    if (etapas.length === 0) return (
+      <p className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
+        Para crear un plano, Diseño debe definir primero su etapa en <Link href={`/ordenes/${ordenId}?vista=etapas`} className="font-medium text-acento underline">Etapas de la OT</Link>.
+      </p>
+    )
     return (
       <div className="flex flex-wrap items-center justify-end gap-3">
         {aviso && (
@@ -597,8 +602,8 @@ function FormularioPlano({
         <Entrada id={`ep-nombre-${id}`} name="nombre" required defaultValue={plano.nombre ?? ''} />
       </Campo>
       <Campo etiqueta="Etapa de la OT" htmlFor={`ep-etapa-${id}`} className="sm:col-span-2">
-        <Seleccion id={`ep-etapa-${id}`} name="etapa_id" defaultValue={plano.etapa_id ?? ''}>
-          <option value="">Sin vincular</option>
+        <Seleccion id={`ep-etapa-${id}`} name="etapa_id" required defaultValue={plano.etapa_id ?? ''}>
+          <option value="" disabled>Elige Diseño</option>
           {etapas.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
         </Seleccion>
       </Campo>

@@ -1,6 +1,7 @@
 'use client'
 
 import { CalendarDays } from 'lucide-react'
+import Link from 'next/link'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
@@ -68,6 +69,12 @@ export function Etapas({
         acciones={vencidas > 0 ? <Insignia tono="peligro">{vencidas} {vencidas === 1 ? 'vencida' : 'vencidas'}</Insignia> : null}
       />
       <TarjetaCuerpo className="space-y-2 p-2">
+        {etapas.length > 0 && puedeDefinir && <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
+          Etapas definidas. Continúa en <Link href={`/ordenes/${ordenId}?vista=planos`} className="font-medium text-acento underline">Planos y revisiones</Link>; Administración pondrá las fechas.
+        </p>}
+        {etapas.length > 0 && puedeProgramar && <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
+          Programa el inicio y fin de cada etapa con su botón «Programar».
+        </p>}
         {puedeDefinir && (etapas.length === 0
           ? <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-4 sm:p-5">
               <FormularioDefinicion ordenId={ordenId} areas={areas} etapas={[]} conversion={!esNueva}
@@ -159,6 +166,21 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
       iniciada: e.fecha_inicio_real !== null || e.fecha_fin_real !== null || (e.horas_reales ?? 0) > 0 })))
   const [etapaActividad, setEtapaActividad] = useState('')
   const total = seleccion.reduce((suma, item) => suma + Number(item.peso || 0), 0)
+  const etapasDiseno = seleccion.filter((item) => areas.find((area) => area.id === item.area)?.codigo === 'DIS')
+  const actividadExistente = actividadesPorVincular[0]
+  const etapasDeActividad = seleccion.filter((item) => item.area === actividadExistente?.area_id)
+  const etapaActividadElegida = etapaActividad || (etapasDeActividad.length === 1 ? etapasDeActividad[0].id : '')
+  const areaActividad = areas.find((area) => area.id === actividadExistente?.area_id)?.nombre ?? 'Producción'
+  const bloqueos = [
+    seleccion.length === 0 ? 'Agrega al menos una etapa.' : null,
+    seleccion.length > 0 && total !== 100 ? `Reparte el 100 %; ahora suman ${total} %.` : null,
+    conversion && etapasDiseno.length !== 1 ? 'Incluye exactamente una etapa de Diseño para vincular el plano existente.' : null,
+    conversion && actividadesPorVincular.length !== 1 ? 'No se pudo identificar la actividad histórica; recarga la orden.' : null,
+    conversion && actividadExistente && etapasDeActividad.length === 0
+      ? `«${actividadExistente.nombre}» pertenece a ${areaActividad}. Agrega una etapa de esa área para conservarla.` : null,
+    conversion && etapasDeActividad.length > 0 && !etapasDeActividad.some((item) => item.id === etapaActividadElegida)
+      ? `Elige la etapa de ${areaActividad} para «${actividadExistente?.nombre}».` : null,
+  ].filter((mensaje): mensaje is string => typeof mensaje === 'string')
   function mover(indice: number, cambio: number) {
     const copia = [...seleccion]
     const [item] = copia.splice(indice, 1)
@@ -218,7 +240,7 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
       </div>
       {conversion && seleccion.length > 0 && actividadesPorVincular.map((actividad) => (
         <Campo key={actividad.id} etiqueta={`Actividad existente: ${actividad.nombre}`} htmlFor="etapa-actividad" requerido>
-          <Seleccion id="etapa-actividad" name="etapa_actividad" required value={etapaActividad}
+          <Seleccion id="etapa-actividad" name="etapa_actividad" required value={etapaActividadElegida}
             onChange={(e) => setEtapaActividad(e.target.value)}>
             <option value="">Elige la etapa de su área</option>
             {seleccion.filter((item) => item.area === actividad.area_id).map((item) => (
@@ -227,14 +249,14 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
           </Seleccion>
         </Campo>
       ))}
-      {conversion && <p className="text-xs text-texto-suave">Esta OT ya tiene un plano y una actividad. Incluye una etapa de Diseño y otra del área de la actividad para vincularlos al guardar.</p>}
+      {conversion && <p className="text-xs text-texto-suave">El plano y la actividad históricos se conservarán y quedarán vinculados a las etapas que elijas.</p>}
+      {bloqueos.length > 0 && <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2 text-sm text-texto" role="status">
+        <p className="font-medium">Para guardar falta:</p>
+        <ul className="mt-1 list-inside list-disc space-y-1">{bloqueos.map((bloqueo) => <li key={bloqueo}>{bloqueo}</li>)}</ul>
+      </div>}
       {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
       <Boton type="submit" tamano="sm" cargando={enviando}
-        disabled={seleccion.length === 0 || total !== 100 || (conversion && (
-          actividadesPorVincular.length !== 1
-          || seleccion.find((item) => item.id === etapaActividad)?.area !== actividadesPorVincular[0]?.area_id
-          || seleccion.filter((item) => areas.find((area) => area.id === item.area)?.codigo === 'DIS').length !== 1
-        ))}>
+        disabled={bloqueos.length > 0}>
         Guardar etapas
       </Boton>
     </form>
