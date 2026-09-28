@@ -6,10 +6,9 @@ por `public.es_admin()`; sus resultados no sirven para probar permisos de los
 roles de trabajo.
 
 La base de producción METAL WORK (`usnbwnemfqyjjkzdizgv`) se revisó el
-2026-09-28. La migración `20260928035412_retirar_cotizaciones_estructuradas`
-retira los permisos del costeo beta. El resumen siguiente refleja ese esquema
-en una transacción de prueba que se revirtió; aplicar la migración es el paso de
-despliegue pendiente.
+2026-09-27. La migración `20260927234131_retirar_cotizaciones_estructuradas`
+se aplicó después del despliegue del código y retiró los permisos del costeo
+beta. El esquema y los permisos siguientes se comprobaron en producción.
 
 ## Quién hace cada parte
 
@@ -41,14 +40,16 @@ despliegue pendiente.
 
 ## Verificación
 
-La comprobación sensible se ejecutó contra producción dentro de una transacción
-revertida, con `set role authenticated` y perfiles reales:
+La comprobación se ejecutó contra producción después de aplicar la migración,
+con `set role authenticated` y perfiles reales:
 
 - Ventas conservó `cotizaciones.crear` y lectura del expediente PDF.
 - Jefatura de taller no obtuvo `cotizaciones.ver_pdf_comercial` ni filas de
   `cotizaciones_pdf`.
-- La migración quitó las tablas y columnas estructuradas en la transacción de
-  prueba, preservó `cotizaciones_pdf` y dejó la numeración de OT disponible.
+- La migración quitó las tablas, columnas, tipos y permisos beta; preservó
+  `cotizaciones_pdf`, su vista, un registro PDF, y el vínculo PDF de la OT.
+- La tabla del bucket `cotizaciones-pdf` sigue disponible; los demás recursos
+  del circuito de prueba ya no existen.
 
 Después de aplicar una migración, repetir pruebas con los roles que realizan la
 acción. ADMIN no sustituye esa comprobación porque atraviesa RLS por una ruta

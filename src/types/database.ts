@@ -133,50 +133,6 @@ export type Database = {
           }
         ]
       }
-      clasificaciones_costeo: {
-        Row: {
-          id: string
-          codigo: string
-          nombre: string
-          etapa_catalogo_id: string | null
-          tipo_costo: Database["public"]["Enums"]["tipo_costo_partida"]
-          orden: number
-          activo: boolean
-          creado_en: string
-          actualizado_en: string
-        }
-        Insert: {
-          id?: string
-          codigo: string
-          nombre: string
-          etapa_catalogo_id?: string | null
-          tipo_costo?: Database["public"]["Enums"]["tipo_costo_partida"]
-          orden?: number
-          activo?: boolean
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Update: {
-          id?: string
-          codigo?: string
-          nombre?: string
-          etapa_catalogo_id?: string | null
-          tipo_costo?: Database["public"]["Enums"]["tipo_costo_partida"]
-          orden?: number
-          activo?: boolean
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "clasificaciones_costeo_etapa_catalogo_id_fkey"
-            columns: ["etapa_catalogo_id"]
-            isOneToOne: false
-            referencedRelation: "etapas_catalogo"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
       clientes: {
         Row: {
           id: string
@@ -320,514 +276,6 @@ export type Database = {
           }
         ]
       }
-      cotizacion_accesorios: {
-        Row: {
-          id: string
-          cotizacion_id: string
-          orden: number
-          cantidad: number
-          unidad: string
-          descripcion: string
-          incluye_el_accesorio: boolean
-          observacion: string | null
-          creado_en: string
-          actualizado_en: string
-        }
-        Insert: {
-          id?: string
-          cotizacion_id: string
-          orden?: number
-          cantidad?: number
-          unidad?: string
-          descripcion: string
-          incluye_el_accesorio?: boolean
-          observacion?: string | null
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Update: {
-          id?: string
-          cotizacion_id?: string
-          orden?: number
-          cantidad?: number
-          unidad?: string
-          descripcion?: string
-          incluye_el_accesorio?: boolean
-          observacion?: string | null
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cotizacion_accesorios_cotizacion_id_fkey"
-            columns: ["cotizacion_id"]
-            isOneToOne: false
-            referencedRelation: "cotizaciones"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      cotizacion_especificaciones: {
-        Row: {
-          id: string
-          cotizacion_id: string
-          seccion: string
-          orden_seccion: number
-          orden_linea: number
-          etiqueta: string | null
-          detalle: string
-          creado_en: string
-          actualizado_en: string
-        }
-        Insert: {
-          id?: string
-          cotizacion_id: string
-          seccion: string
-          orden_seccion?: number
-          orden_linea?: number
-          etiqueta?: string | null
-          detalle: string
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Update: {
-          id?: string
-          cotizacion_id?: string
-          seccion?: string
-          orden_seccion?: number
-          orden_linea?: number
-          etiqueta?: string | null
-          detalle?: string
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cotizacion_especificaciones_cotizacion_id_fkey"
-            columns: ["cotizacion_id"]
-            isOneToOne: false
-            referencedRelation: "cotizaciones"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      cotizacion_etapas: {
-        Row: {
-          id: string
-          cotizacion_id: string
-          etapa_catalogo_id: string
-          orden_secuencia: number
-          dias: number
-          creado_en: string
-          actualizado_en: string
-        }
-        Insert: {
-          id?: string
-          cotizacion_id: string
-          etapa_catalogo_id: string
-          orden_secuencia: number
-          dias?: number
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Update: {
-          id?: string
-          cotizacion_id?: string
-          etapa_catalogo_id?: string
-          orden_secuencia?: number
-          dias?: number
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cotizacion_etapas_cotizacion_id_fkey"
-            columns: ["cotizacion_id"]
-            isOneToOne: false
-            referencedRelation: "cotizaciones"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizacion_etapas_etapa_catalogo_id_fkey"
-            columns: ["etapa_catalogo_id"]
-            isOneToOne: false
-            referencedRelation: "etapas_catalogo"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      cotizacion_partidas: {
-        Row: {
-          id: string
-          cotizacion_id: string
-          orden_secuencia: number
-          descripcion: string
-          detalle: string | null
-          unidad_medida: string
-          cantidad: number
-          precio_unitario: number
-          descuento_porcentaje: number
-          subtotal: number
-          tipo_costo: Database["public"]["Enums"]["tipo_costo_partida"]
-          creado_en: string
-          actualizado_en: string
-          clasificacion_id: string | null
-        }
-        Insert: {
-          id?: string
-          cotizacion_id: string
-          orden_secuencia: number
-          descripcion: string
-          detalle?: string | null
-          unidad_medida?: string
-          cantidad: number
-          precio_unitario: number
-          descuento_porcentaje?: number
-          subtotal?: number
-          tipo_costo?: Database["public"]["Enums"]["tipo_costo_partida"]
-          creado_en?: string
-          actualizado_en?: string
-          clasificacion_id?: string | null
-        }
-        Update: {
-          id?: string
-          cotizacion_id?: string
-          orden_secuencia?: number
-          descripcion?: string
-          detalle?: string | null
-          unidad_medida?: string
-          cantidad?: number
-          precio_unitario?: number
-          descuento_porcentaje?: number
-          subtotal?: number
-          tipo_costo?: Database["public"]["Enums"]["tipo_costo_partida"]
-          creado_en?: string
-          actualizado_en?: string
-          clasificacion_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cotizacion_partidas_clasificacion_id_fkey"
-            columns: ["clasificacion_id"]
-            isOneToOne: false
-            referencedRelation: "clasificaciones_costeo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizacion_partidas_cotizacion_id_fkey"
-            columns: ["cotizacion_id"]
-            isOneToOne: false
-            referencedRelation: "cotizaciones"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      cotizaciones: {
-        Row: {
-          id: string
-          numero: string
-          cliente_id: string
-          unidad_id: string | null
-          tipo_carroceria_id: string | null
-          contacto_id: string | null
-          sede_id: string | null
-          fecha_emision: string
-          validez_dias: number
-          fecha_vencimiento: string | null
-          moneda: Database["public"]["Enums"]["moneda"]
-          tipo_cambio: number | null
-          estado: Database["public"]["Enums"]["estado_cotizacion"]
-          subtotal: number
-          descuento: number
-          igv_porcentaje: number | null
-          igv: number
-          total: number
-          plazo_entrega_dias: number | null
-          forma_pago: string | null
-          condiciones: string | null
-          observaciones: string | null
-          motivo_rechazo: string | null
-          fecha_aprobacion: string | null
-          aprobada_por: string | null
-          vendedor_id: string | null
-          creado_en: string
-          actualizado_en: string
-          creado_por: string | null
-          marca: string | null
-          modelo: string | null
-          tipo: string | null
-          largo_m: number | null
-          ancho_m: number | null
-          alto_m: number | null
-          capacidad: string | null
-          peso_neto_tn: number | null
-          garantia_meses: number
-          incluye_igv: boolean
-          plazo_en_habiles: boolean
-          nota: string | null
-          motivo_anulacion: string | null
-          anulada_por: string | null
-          anulada_en: string | null
-          concepto: string | null
-          concepto_cantidad: number
-          concepto_unidad: string
-          precio_venta: number | null
-          costo_estimado: number
-          costeo_pedido_en: string | null
-          costeo_pedido_por: string | null
-          costeo_listo_en: string | null
-          costeo_listo_por: string | null
-          revisada_en: string | null
-          revisada_por: string | null
-          motivo_observacion: string | null
-          plazo_desde: string | null
-          plazo_arranca_en: string | null
-          garantia_texto: string | null
-          peso_tolerancia: string | null
-          no_incluye: string | null
-          anio_fabricacion: number | null
-          carroceria_texto: string | null
-          largo_util_m: number | null
-          ejes: string | null
-          normas: string | null
-          dias_programados: number
-          tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
-          categoria_vehicular: Database["public"]["Enums"]["categoria_vehicular"] | null
-        }
-        Insert: {
-          id?: string
-          numero?: string
-          cliente_id: string
-          unidad_id?: string | null
-          tipo_carroceria_id?: string | null
-          contacto_id?: string | null
-          sede_id?: string | null
-          fecha_emision?: string
-          validez_dias?: number
-          moneda?: Database["public"]["Enums"]["moneda"]
-          tipo_cambio?: number | null
-          estado?: Database["public"]["Enums"]["estado_cotizacion"]
-          subtotal?: number
-          descuento?: number
-          igv_porcentaje?: number | null
-          igv?: number
-          total?: number
-          plazo_entrega_dias?: number | null
-          forma_pago?: string | null
-          condiciones?: string | null
-          observaciones?: string | null
-          motivo_rechazo?: string | null
-          fecha_aprobacion?: string | null
-          aprobada_por?: string | null
-          vendedor_id?: string | null
-          creado_en?: string
-          actualizado_en?: string
-          creado_por?: string | null
-          marca?: string | null
-          modelo?: string | null
-          tipo?: string | null
-          largo_m?: number | null
-          ancho_m?: number | null
-          alto_m?: number | null
-          capacidad?: string | null
-          peso_neto_tn?: number | null
-          garantia_meses?: number
-          incluye_igv?: boolean
-          plazo_en_habiles?: boolean
-          nota?: string | null
-          motivo_anulacion?: string | null
-          anulada_por?: string | null
-          anulada_en?: string | null
-          concepto?: string | null
-          concepto_cantidad?: number
-          concepto_unidad?: string
-          precio_venta?: number | null
-          costo_estimado?: number
-          costeo_pedido_en?: string | null
-          costeo_pedido_por?: string | null
-          costeo_listo_en?: string | null
-          costeo_listo_por?: string | null
-          revisada_en?: string | null
-          revisada_por?: string | null
-          motivo_observacion?: string | null
-          plazo_desde?: string | null
-          plazo_arranca_en?: string | null
-          garantia_texto?: string | null
-          peso_tolerancia?: string | null
-          no_incluye?: string | null
-          anio_fabricacion?: number | null
-          carroceria_texto?: string | null
-          largo_util_m?: number | null
-          ejes?: string | null
-          normas?: string | null
-          dias_programados?: number
-          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
-          categoria_vehicular?: Database["public"]["Enums"]["categoria_vehicular"] | null
-        }
-        Update: {
-          id?: string
-          numero?: string
-          cliente_id?: string
-          unidad_id?: string | null
-          tipo_carroceria_id?: string | null
-          contacto_id?: string | null
-          sede_id?: string | null
-          fecha_emision?: string
-          validez_dias?: number
-          moneda?: Database["public"]["Enums"]["moneda"]
-          tipo_cambio?: number | null
-          estado?: Database["public"]["Enums"]["estado_cotizacion"]
-          subtotal?: number
-          descuento?: number
-          igv_porcentaje?: number | null
-          igv?: number
-          total?: number
-          plazo_entrega_dias?: number | null
-          forma_pago?: string | null
-          condiciones?: string | null
-          observaciones?: string | null
-          motivo_rechazo?: string | null
-          fecha_aprobacion?: string | null
-          aprobada_por?: string | null
-          vendedor_id?: string | null
-          creado_en?: string
-          actualizado_en?: string
-          creado_por?: string | null
-          marca?: string | null
-          modelo?: string | null
-          tipo?: string | null
-          largo_m?: number | null
-          ancho_m?: number | null
-          alto_m?: number | null
-          capacidad?: string | null
-          peso_neto_tn?: number | null
-          garantia_meses?: number
-          incluye_igv?: boolean
-          plazo_en_habiles?: boolean
-          nota?: string | null
-          motivo_anulacion?: string | null
-          anulada_por?: string | null
-          anulada_en?: string | null
-          concepto?: string | null
-          concepto_cantidad?: number
-          concepto_unidad?: string
-          precio_venta?: number | null
-          costo_estimado?: number
-          costeo_pedido_en?: string | null
-          costeo_pedido_por?: string | null
-          costeo_listo_en?: string | null
-          costeo_listo_por?: string | null
-          revisada_en?: string | null
-          revisada_por?: string | null
-          motivo_observacion?: string | null
-          plazo_desde?: string | null
-          plazo_arranca_en?: string | null
-          garantia_texto?: string | null
-          peso_tolerancia?: string | null
-          no_incluye?: string | null
-          anio_fabricacion?: number | null
-          carroceria_texto?: string | null
-          largo_util_m?: number | null
-          ejes?: string | null
-          normas?: string | null
-          dias_programados?: number
-          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
-          categoria_vehicular?: Database["public"]["Enums"]["categoria_vehicular"] | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cotizaciones_anulada_por_fkey"
-            columns: ["anulada_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_aprobada_por_fkey"
-            columns: ["aprobada_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_cliente_id_fkey"
-            columns: ["cliente_id"]
-            isOneToOne: false
-            referencedRelation: "clientes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_contacto_id_fkey"
-            columns: ["contacto_id"]
-            isOneToOne: false
-            referencedRelation: "contactos_cliente"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_costeo_listo_por_fkey"
-            columns: ["costeo_listo_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_costeo_pedido_por_fkey"
-            columns: ["costeo_pedido_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_creado_por_fkey"
-            columns: ["creado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_revisada_por_fkey"
-            columns: ["revisada_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_sede_id_fkey"
-            columns: ["sede_id"]
-            isOneToOne: false
-            referencedRelation: "sedes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_tipo_carroceria_id_fkey"
-            columns: ["tipo_carroceria_id"]
-            isOneToOne: false
-            referencedRelation: "tipos_carroceria"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_unidad_id_fkey"
-            columns: ["unidad_id"]
-            isOneToOne: false
-            referencedRelation: "unidades"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_vendedor_id_fkey"
-            columns: ["vendedor_id"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_cotizaciones_unidad_del_cliente"
-            columns: ["unidad_id", "cliente_id"]
-            isOneToOne: false
-            referencedRelation: "unidades"
-            referencedColumns: ["id", "cliente_id"]
-          }
-        ]
-      }
       cotizaciones_pdf: {
         Row: {
           id: string
@@ -853,8 +301,6 @@ export type Database = {
           numero: string
           cliente_id: string
           tipo_carroceria_id: string
-          version?: number
-          archivo_subido_en?: string
           estado?: Database["public"]["Enums"]["estado_cotizacion_pdf"]
           observacion?: string | null
           revisado_por?: string | null
@@ -866,14 +312,14 @@ export type Database = {
           registrado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          version?: number
+          archivo_subido_en?: string
         }
         Update: {
           id?: string
           numero?: string
           cliente_id?: string
           tipo_carroceria_id?: string
-          version?: number
-          archivo_subido_en?: string
           estado?: Database["public"]["Enums"]["estado_cotizacion_pdf"]
           observacion?: string | null
           revisado_por?: string | null
@@ -885,6 +331,8 @@ export type Database = {
           registrado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          version?: number
+          archivo_subido_en?: string
         }
         Relationships: [
           {
@@ -913,6 +361,87 @@ export type Database = {
             columns: ["tipo_carroceria_id"]
             isOneToOne: false
             referencedRelation: "tipos_carroceria"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      cotizaciones_pdf_liberaciones_tesoreria: {
+        Row: {
+          id: string
+          cotizacion_pdf_id: string
+          liberado_por: string
+          liberado_en: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          cotizacion_pdf_id: string
+          liberado_por?: string
+          liberado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          cotizacion_pdf_id?: string
+          liberado_por?: string
+          liberado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cotizaciones_pdf_liberaciones_tesoreria_cotizacion_pdf_id_fkey"
+            columns: ["cotizacion_pdf_id"]
+            isOneToOne: true
+            referencedRelation: "cotizaciones_pdf"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_pdf_liberaciones_tesoreria_liberado_por_fkey"
+            columns: ["liberado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      cotizaciones_pdf_observaciones_tesoreria: {
+        Row: {
+          id: string
+          cotizacion_pdf_id: string
+          observacion: string
+          registrado_por: string
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          cotizacion_pdf_id: string
+          observacion: string
+          registrado_por?: string
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          cotizacion_pdf_id?: string
+          observacion?: string
+          registrado_por?: string
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cotizaciones_pdf_observaciones_tesoreria_cotizacion_pdf_id_fkey"
+            columns: ["cotizacion_pdf_id"]
+            isOneToOne: false
+            referencedRelation: "cotizaciones_pdf"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_pdf_observaciones_tesoreria_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -963,7 +492,76 @@ export type Database = {
           creado_en?: string
           actualizado_en?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cotizaciones_pdf_versiones_cotizacion_id_fkey"
+            columns: ["cotizacion_id"]
+            isOneToOne: false
+            referencedRelation: "cotizaciones_pdf"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_pdf_versiones_rechazado_por_fkey"
+            columns: ["rechazado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      documentos_compra_material: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          tipo: string
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type: string
+          tamano_bytes: number
+          subido_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id: string
+          tipo: string
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type: string
+          tamano_bytes: number
+          subido_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          tipo?: string
+          nombre_archivo?: string
+          ruta_storage?: string
+          mime_type?: string
+          tamano_bytes?: number
+          subido_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documentos_compra_material_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documentos_compra_material_subido_por_fkey"
+            columns: ["subido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       empresa: {
         Row: {
@@ -979,13 +577,9 @@ export type Database = {
           correo: string | null
           web: string | null
           logo_url: string | null
-          moneda_base: Database["public"]["Enums"]["moneda"]
-          igv_porcentaje: number
           creado_en: string
           actualizado_en: string
           dias_laborables: number[]
-          firma_nombre: string | null
-          firma_cargo: string | null
         }
         Insert: {
           id?: string
@@ -1000,13 +594,9 @@ export type Database = {
           correo?: string | null
           web?: string | null
           logo_url?: string | null
-          moneda_base?: Database["public"]["Enums"]["moneda"]
-          igv_porcentaje?: number
           creado_en?: string
           actualizado_en?: string
           dias_laborables?: number[]
-          firma_nombre?: string | null
-          firma_cargo?: string | null
         }
         Update: {
           id?: string
@@ -1021,13 +611,9 @@ export type Database = {
           correo?: string | null
           web?: string | null
           logo_url?: string | null
-          moneda_base?: Database["public"]["Enums"]["moneda"]
-          igv_porcentaje?: number
           creado_en?: string
           actualizado_en?: string
           dias_laborables?: number[]
-          firma_nombre?: string | null
-          firma_cargo?: string | null
         }
         Relationships: []
       }
@@ -1463,35 +1049,70 @@ export type Database = {
           }
         ]
       }
-      notas_cotizacion: {
+      movimientos_materiales: {
         Row: {
           id: string
-          codigo: string
-          texto: string
-          orden: number
-          activo: boolean
-          creado_en: string
-          actualizado_en: string
+          tipo: string
+          requerimiento_detalle_id: string
+          orden_compra_detalle_id: string | null
+          cantidad: number
+          documento_referencia: string | null
+          responsable_id: string | null
+          registrado_por: string
+          registrado_en: string
         }
         Insert: {
-          id?: string
-          codigo: string
-          texto: string
-          orden?: number
-          activo?: boolean
-          creado_en?: string
-          actualizado_en?: string
+          id: string
+          tipo: string
+          requerimiento_detalle_id: string
+          orden_compra_detalle_id?: string | null
+          cantidad: number
+          documento_referencia?: string | null
+          responsable_id?: string | null
+          registrado_por?: string
+          registrado_en?: string
         }
         Update: {
           id?: string
-          codigo?: string
-          texto?: string
-          orden?: number
-          activo?: boolean
-          creado_en?: string
-          actualizado_en?: string
+          tipo?: string
+          requerimiento_detalle_id?: string
+          orden_compra_detalle_id?: string | null
+          cantidad?: number
+          documento_referencia?: string | null
+          responsable_id?: string | null
+          registrado_por?: string
+          registrado_en?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_mov_material_oc"
+            columns: ["orden_compra_detalle_id", "requerimiento_detalle_id"]
+            isOneToOne: false
+            referencedRelation: "orden_compra_material_detalles"
+            referencedColumns: ["id", "requerimiento_detalle_id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_requerimiento_detalle_id_fkey"
+            columns: ["requerimiento_detalle_id"]
+            isOneToOne: false
+            referencedRelation: "requerimiento_material_detalles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_responsable_id_fkey"
+            columns: ["responsable_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       notificaciones: {
         Row: {
@@ -1537,17 +1158,123 @@ export type Database = {
           }
         ]
       }
+      orden_compra_material_detalles: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          requerimiento_id: string
+          requerimiento_detalle_id: string
+          cantidad: number
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id: string
+          requerimiento_id: string
+          requerimiento_detalle_id: string
+          cantidad: number
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          requerimiento_id?: string
+          requerimiento_detalle_id?: string
+          cantidad?: number
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_oc_material_header_req"
+            columns: ["orden_compra_id", "requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id", "requerimiento_id"]
+          },
+          {
+            foreignKeyName: "fk_oc_material_req_linea"
+            columns: ["requerimiento_detalle_id", "requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "requerimiento_material_detalles"
+            referencedColumns: ["id", "requerimiento_id"]
+          },
+          {
+            foreignKeyName: "orden_compra_material_detalles_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orden_compra_material_detalles_requerimiento_detalle_id_fkey"
+            columns: ["requerimiento_detalle_id"]
+            isOneToOne: false
+            referencedRelation: "requerimiento_material_detalles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orden_compra_material_detalles_requerimiento_id_fkey"
+            columns: ["requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "requerimientos_materiales"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ordenes_compra_materiales: {
+        Row: {
+          id: string
+          requerimiento_id: string
+          proveedor: string
+          referencia: string
+          fecha_estimada: string | null
+          creado_por: string
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          requerimiento_id: string
+          proveedor: string
+          referencia: string
+          fecha_estimada?: string | null
+          creado_por?: string
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          requerimiento_id?: string
+          proveedor?: string
+          referencia?: string
+          fecha_estimada?: string | null
+          creado_por?: string
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ordenes_compra_materiales_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_materiales_requerimiento_id_fkey"
+            columns: ["requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "requerimientos_materiales"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ordenes_trabajo: {
         Row: {
           id: string
           numero: string
           cliente_id: string | null
           unidad_id: string | null
-          cotizacion_id: string | null
           tipo_carroceria_id: string | null
           sede_id: string
           tipo_trabajo: Database["public"]["Enums"]["tipo_trabajo_ot"]
-          tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           estado: Database["public"]["Enums"]["estado_ot"]
           prioridad: Database["public"]["Enums"]["prioridad_ot"]
           descripcion: string
@@ -1561,8 +1288,6 @@ export type Database = {
           fecha_fin_real: string | null
           responsable_id: string | null
           supervisor_id: string | null
-          moneda: Database["public"]["Enums"]["moneda"]
-          monto_presupuestado: number
           avance_porcentaje: number
           horas_estimadas: number
           horas_reales: number
@@ -1586,17 +1311,17 @@ export type Database = {
           correo_contacto: string | null
           abierta_en_taller: boolean
           cotizacion_pdf_id: string | null
+          tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          diseno_lider_id: string | null
         }
         Insert: {
           id?: string
           numero?: string
           cliente_id?: string | null
           unidad_id?: string | null
-          cotizacion_id?: string | null
           tipo_carroceria_id?: string | null
           sede_id: string
           tipo_trabajo?: Database["public"]["Enums"]["tipo_trabajo_ot"]
-          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           estado?: Database["public"]["Enums"]["estado_ot"]
           prioridad?: Database["public"]["Enums"]["prioridad_ot"]
           descripcion: string
@@ -1610,8 +1335,6 @@ export type Database = {
           fecha_fin_real?: string | null
           responsable_id?: string | null
           supervisor_id?: string | null
-          moneda?: Database["public"]["Enums"]["moneda"]
-          monto_presupuestado?: number
           avance_porcentaje?: number
           horas_estimadas?: number
           horas_reales?: number
@@ -1635,17 +1358,17 @@ export type Database = {
           correo_contacto?: string | null
           abierta_en_taller?: boolean
           cotizacion_pdf_id?: string | null
+          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          diseno_lider_id?: string | null
         }
         Update: {
           id?: string
           numero?: string
           cliente_id?: string | null
           unidad_id?: string | null
-          cotizacion_id?: string | null
           tipo_carroceria_id?: string | null
           sede_id?: string
           tipo_trabajo?: Database["public"]["Enums"]["tipo_trabajo_ot"]
-          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           estado?: Database["public"]["Enums"]["estado_ot"]
           prioridad?: Database["public"]["Enums"]["prioridad_ot"]
           descripcion?: string
@@ -1659,8 +1382,6 @@ export type Database = {
           fecha_fin_real?: string | null
           responsable_id?: string | null
           supervisor_id?: string | null
-          moneda?: Database["public"]["Enums"]["moneda"]
-          monto_presupuestado?: number
           avance_porcentaje?: number
           horas_estimadas?: number
           horas_reales?: number
@@ -1684,6 +1405,8 @@ export type Database = {
           correo_contacto?: string | null
           abierta_en_taller?: boolean
           cotizacion_pdf_id?: string | null
+          tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          diseno_lider_id?: string | null
         }
         Relationships: [
           {
@@ -1694,15 +1417,22 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "ordenes_trabajo_cotizacion_id_fkey"
-            columns: ["cotizacion_id"]
-            isOneToOne: false
-            referencedRelation: "cotizaciones"
+            foreignKeyName: "ordenes_trabajo_cotizacion_pdf_id_fkey"
+            columns: ["cotizacion_pdf_id"]
+            isOneToOne: true
+            referencedRelation: "cotizaciones_pdf"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "ordenes_trabajo_creado_por_fkey"
             columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_trabajo_diseno_lider_id_fkey"
+            columns: ["diseno_lider_id"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -2277,7 +2007,7 @@ export type Database = {
           {
             foreignKeyName: "ot_entregas_orden_id_fkey"
             columns: ["orden_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "ordenes_trabajo"
             referencedColumns: ["id"]
           },
@@ -2439,6 +2169,7 @@ export type Database = {
           creado_por: string | null
           creado_en: string
           actualizado_en: string
+          area_destino: string
         }
         Insert: {
           id?: string
@@ -2451,6 +2182,7 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          area_destino?: string
         }
         Update: {
           id?: string
@@ -2463,6 +2195,7 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          area_destino?: string
         }
         Relationships: [
           {
@@ -2650,6 +2383,99 @@ export type Database = {
           }
         ]
       }
+      ot_plano_versiones: {
+        Row: {
+          id: string
+          plano_id: string
+          area_id: string
+          revision: number
+          nombre_archivo: string
+          ruta_storage: string
+          estado: string
+          vigente: boolean
+          observacion: string | null
+          creado_por: string
+          revisado_por: string | null
+          revisado_en: string | null
+          recibido_por: string | null
+          recibido_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id: string
+          plano_id: string
+          area_id: string
+          revision: number
+          nombre_archivo: string
+          ruta_storage: string
+          estado?: string
+          vigente?: boolean
+          observacion?: string | null
+          creado_por: string
+          revisado_por?: string | null
+          revisado_en?: string | null
+          recibido_por?: string | null
+          recibido_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          plano_id?: string
+          area_id?: string
+          revision?: number
+          nombre_archivo?: string
+          ruta_storage?: string
+          estado?: string
+          vigente?: boolean
+          observacion?: string | null
+          creado_por?: string
+          revisado_por?: string | null
+          revisado_en?: string | null
+          recibido_por?: string | null
+          recibido_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_plano_versiones_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_plano_versiones_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_plano_versiones_plano_id_fkey"
+            columns: ["plano_id"]
+            isOneToOne: false
+            referencedRelation: "ot_planos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_plano_versiones_recibido_por_fkey"
+            columns: ["recibido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_plano_versiones_revisado_por_fkey"
+            columns: ["revisado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_planos: {
         Row: {
           id: string
@@ -2663,6 +2489,7 @@ export type Database = {
           creado_por: string | null
           creado_en: string
           actualizado_en: string
+          responsable_diseno_id: string | null
         }
         Insert: {
           id?: string
@@ -2676,6 +2503,7 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          responsable_diseno_id?: string | null
         }
         Update: {
           id?: string
@@ -2689,6 +2517,7 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          responsable_diseno_id?: string | null
         }
         Relationships: [
           {
@@ -2703,6 +2532,13 @@ export type Database = {
             columns: ["orden_id"]
             isOneToOne: false
             referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_planos_responsable_diseno_id_fkey"
+            columns: ["responsable_diseno_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -2744,6 +2580,110 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "ot_repuestos_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_salidas: {
+        Row: {
+          id: string
+          entrega_id: string
+          registrado_por: string
+          constancia: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          entrega_id: string
+          registrado_por: string
+          constancia: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          entrega_id?: string
+          registrado_por?: string
+          constancia?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_salidas_entrega_id_fkey"
+            columns: ["entrega_id"]
+            isOneToOne: true
+            referencedRelation: "ot_entregas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_salidas_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_ventas_anteriores: {
+        Row: {
+          id: string
+          orden_id: string
+          cliente_id: string | null
+          cotizacion_pdf_id: string | null
+          datos: Json
+          creado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          cliente_id?: string | null
+          cotizacion_pdf_id?: string | null
+          datos: Json
+          creado_por: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          cliente_id?: string | null
+          cotizacion_pdf_id?: string | null
+          datos?: Json
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_ventas_anteriores_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_ventas_anteriores_cotizacion_pdf_id_fkey"
+            columns: ["cotizacion_pdf_id"]
+            isOneToOne: false
+            referencedRelation: "cotizaciones_pdf"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_ventas_anteriores_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_ventas_anteriores_orden_id_fkey"
             columns: ["orden_id"]
             isOneToOne: false
             referencedRelation: "ordenes_trabajo"
@@ -2805,73 +2745,6 @@ export type Database = {
           {
             foreignKeyName: "ot_verificaciones_responsable_id_fkey"
             columns: ["responsable_id"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      pagos_cliente: {
-        Row: {
-          id: string
-          cotizacion_id: string
-          orden_id: string | null
-          tipo: Database["public"]["Enums"]["tipo_pago_cliente"]
-          fecha: string
-          monto: number
-          medio: Database["public"]["Enums"]["medio_pago"]
-          referencia: string | null
-          observaciones: string | null
-          registrado_por: string | null
-          creado_en: string
-          actualizado_en: string
-        }
-        Insert: {
-          id?: string
-          cotizacion_id: string
-          orden_id?: string | null
-          tipo?: Database["public"]["Enums"]["tipo_pago_cliente"]
-          fecha?: string
-          monto: number
-          medio?: Database["public"]["Enums"]["medio_pago"]
-          referencia?: string | null
-          observaciones?: string | null
-          registrado_por?: string | null
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Update: {
-          id?: string
-          cotizacion_id?: string
-          orden_id?: string | null
-          tipo?: Database["public"]["Enums"]["tipo_pago_cliente"]
-          fecha?: string
-          monto?: number
-          medio?: Database["public"]["Enums"]["medio_pago"]
-          referencia?: string | null
-          observaciones?: string | null
-          registrado_por?: string | null
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "pagos_cliente_cotizacion_id_fkey"
-            columns: ["cotizacion_id"]
-            isOneToOne: false
-            referencedRelation: "cotizaciones"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pagos_cliente_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ordenes_trabajo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pagos_cliente_registrado_por_fkey"
-            columns: ["registrado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -3069,6 +2942,187 @@ export type Database = {
           }
         ]
       }
+      pruebas_cuentas: {
+        Row: {
+          usuario_id: string
+          motivo: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          usuario_id: string
+          motivo: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          usuario_id?: string
+          motivo?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pruebas_cuentas_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: true
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      pruebas_filas: {
+        Row: {
+          orden: number
+          lote_id: string
+          tabla: string
+          fila_id: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          orden?: number
+          lote_id: string
+          tabla: string
+          fila_id: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          orden?: number
+          lote_id?: string
+          tabla?: string
+          fila_id?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pruebas_filas_lote_id_fkey"
+            columns: ["lote_id"]
+            isOneToOne: false
+            referencedRelation: "pruebas_lotes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      pruebas_lotes: {
+        Row: {
+          id: string
+          motivo: string
+          cuentas: string[]
+          abierto_en: string
+          limpiado_en: string | null
+          filas_borradas: number | null
+          archivos_pendientes: Json | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          motivo: string
+          cuentas?: string[]
+          abierto_en?: string
+          limpiado_en?: string | null
+          filas_borradas?: number | null
+          archivos_pendientes?: Json | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          motivo?: string
+          cuentas?: string[]
+          abierto_en?: string
+          limpiado_en?: string | null
+          filas_borradas?: number | null
+          archivos_pendientes?: Json | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: []
+      }
+      requerimiento_material_detalles: {
+        Row: {
+          id: string
+          requerimiento_id: string
+          ot_material_id: string
+          cantidad_solicitada: number
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          requerimiento_id: string
+          ot_material_id: string
+          cantidad_solicitada: number
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          requerimiento_id?: string
+          ot_material_id?: string
+          cantidad_solicitada?: number
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requerimiento_material_detalles_ot_material_id_fkey"
+            columns: ["ot_material_id"]
+            isOneToOne: true
+            referencedRelation: "ot_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_material_detalles_requerimiento_id_fkey"
+            columns: ["requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "requerimientos_materiales"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      requerimientos_materiales: {
+        Row: {
+          id: string
+          orden_id: string
+          area_destino: string
+          solicitado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          area_destino: string
+          solicitado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          area_destino?: string
+          solicitado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimientos_materiales_solicitado_por_fkey"
+            columns: ["solicitado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       roles: {
         Row: {
           id: string
@@ -3221,30 +3275,6 @@ export type Database = {
           }
         ]
       }
-      tipos_cambio: {
-        Row: {
-          fecha: string
-          compra: number
-          venta: number
-          creado_en: string
-          fuente: string
-        }
-        Insert: {
-          fecha: string
-          compra: number
-          venta: number
-          creado_en?: string
-          fuente?: string
-        }
-        Update: {
-          fecha?: string
-          compra?: number
-          venta?: number
-          creado_en?: string
-          fuente?: string
-        }
-        Relationships: []
-      }
       tipos_carroceria: {
         Row: {
           id: string
@@ -3356,7 +3386,6 @@ export type Database = {
           id?: string
           cliente_id?: string | null
           placa?: string | null
-          numero_fmi?: string | null
           tipo_vehiculo?: Database["public"]["Enums"]["tipo_vehiculo"]
           marca?: string | null
           modelo?: string | null
@@ -3373,12 +3402,12 @@ export type Database = {
           actualizado_en?: string
           creado_por?: string | null
           codigo_interno?: string | null
+          numero_fmi?: string | null
         }
         Update: {
           id?: string
           cliente_id?: string | null
           placa?: string | null
-          numero_fmi?: string | null
           tipo_vehiculo?: Database["public"]["Enums"]["tipo_vehiculo"]
           marca?: string | null
           modelo?: string | null
@@ -3395,6 +3424,7 @@ export type Database = {
           actualizado_en?: string
           creado_por?: string | null
           codigo_interno?: string | null
+          numero_fmi?: string | null
         }
         Relationships: [
           {
@@ -3561,47 +3591,6 @@ export type Database = {
       }
     }
     Views: {
-      cotizacion_ficha: {
-        Row: {
-          cotizacion_id: string | null
-          numero: string | null
-          seccion: string | null
-          orden_seccion: number | null
-          orden_linea: number | null
-          etiqueta: string | null
-          detalle: string | null
-        }
-        Relationships: []
-      }
-      cotizaciones_detalle: {
-        Row: {
-          id: string | null
-          numero: string | null
-          estado: Database["public"]["Enums"]["estado_cotizacion"] | null
-          fecha_emision: string | null
-          fecha_vencimiento: string | null
-          dias_para_vencer: number | null
-          moneda: Database["public"]["Enums"]["moneda"] | null
-          subtotal: number | null
-          descuento: number | null
-          igv: number | null
-          total: number | null
-          total_pen: number | null
-          cliente_id: string | null
-          razon_social: string | null
-          numero_documento: string | null
-          unidad_id: string | null
-          placa: string | null
-          tipo_vehiculo: Database["public"]["Enums"]["tipo_vehiculo"] | null
-          tipo_carroceria_id: string | null
-          tipo_carroceria_codigo: string | null
-          tipo_carroceria_nombre: string | null
-          vendedor_id: string | null
-          sede_id: string | null
-          partidas: number | null
-        }
-        Relationships: []
-      }
       ot_avance_resumen: {
         Row: {
           id: string | null
@@ -3682,8 +3671,6 @@ export type Database = {
           horas_estimadas: number | null
           horas_reales: number | null
           desviacion_horas: number | null
-          moneda: Database["public"]["Enums"]["moneda"] | null
-          monto_presupuestado: number | null
           responsable_id: string | null
           responsable: string | null
           etapas_total: number | null
@@ -3760,6 +3747,31 @@ export type Database = {
         Row: {
           id: string | null
           nombre_completo: string | null
+        }
+        Relationships: []
+      }
+      v_atencion_materiales: {
+        Row: {
+          requerimiento_id: string | null
+          detalle_id: string | null
+          orden_id: string | null
+          numero_ot: string | null
+          area_destino: string | null
+          ot_material_id: string | null
+          numero_plano: string | null
+          plano: string | null
+          material_id: string | null
+          material_codigo: string | null
+          material: string | null
+          unidad: string | null
+          cantidad_solicitada: number | null
+          cantidad_comprada: number | null
+          cantidad_recibida: number | null
+          cantidad_despachada: number | null
+          estado: string | null
+          responsables: string | null
+          solicitado_por: string | null
+          creado_en: string | null
         }
         Relationships: []
       }
@@ -3894,6 +3906,49 @@ export type Database = {
         }
         Relationships: []
       }
+      v_documentos_compra_tesoreria: {
+        Row: {
+          id: string | null
+          orden_compra_id: string | null
+          tipo: string | null
+          nombre_archivo: string | null
+          ruta_storage: string | null
+          mime_type: string | null
+          tamano_bytes: number | null
+          subido_por: string | null
+          creado_en: string | null
+          proveedor: string | null
+          referencia: string | null
+          fecha_estimada: string | null
+          orden_id: string | null
+          numero_ot: string | null
+          area_destino: string | null
+        }
+        Relationships: []
+      }
+      v_equipo_diseno_ot: {
+        Row: {
+          orden_id: string | null
+          diseno_lider_id: string | null
+          lider_nombre: string | null
+          plano_id: string | null
+          numero_plano: string | null
+          plano_nombre: string | null
+          responsable_diseno_id: string | null
+          responsable_nombre: string | null
+        }
+        Relationships: []
+      }
+      v_existencias_materiales: {
+        Row: {
+          material_id: string | null
+          codigo: string | null
+          descripcion: string | null
+          unidad: string | null
+          existencia: number | null
+        }
+        Relationships: []
+      }
       v_flota_avance_diario: {
         Row: {
           id: string | null
@@ -3950,6 +4005,21 @@ export type Database = {
           impedimento: string | null
           fotos: number | null
           reportes: number | null
+        }
+        Relationships: []
+      }
+      v_orden_compra_material_pendiente: {
+        Row: {
+          id: string | null
+          requerimiento_id: string | null
+          requerimiento_detalle_id: string | null
+          proveedor: string | null
+          referencia: string | null
+          fecha_estimada: string | null
+          cantidad_comprada: number | null
+          cantidad_recibida: number | null
+          cantidad_pendiente: number | null
+          orden_compra_id: string | null
         }
         Relationships: []
       }
@@ -4043,6 +4113,7 @@ export type Database = {
           observacion: string | null
           creado_por: string | null
           creado_en: string | null
+          area_destino: string | null
         }
         Relationships: []
       }
@@ -4077,21 +4148,6 @@ export type Database = {
           referencia_id: string | null
           referencia_clave: string | null
           datos: Json | null
-        }
-        Relationships: []
-      }
-      v_pagos_cotizacion: {
-        Row: {
-          cotizacion_id: string | null
-          numero: string | null
-          moneda: Database["public"]["Enums"]["moneda"] | null
-          precio_venta: number | null
-          plazo_arranca_en: string | null
-          pagado: number | null
-          saldo: number | null
-          pagado_pct: number | null
-          pagos: number | null
-          primer_pago: string | null
         }
         Relationships: []
       }
@@ -4156,18 +4212,23 @@ export type Database = {
         }
         Returns: string
       }
+      activar_registro_de_prueba: {
+        Args: {
+          p_tabla: string
+        }
+        Returns: string
+      }
       activar_timestamps: {
         Args: {
           p_tabla: string
         }
         Returns: string
       }
-      aplicar_plantilla_ficha: {
+      archivo_plano_vinculado: {
         Args: {
-          p_cotizacion: string
-          p_plantilla: string
+          p_ruta: string
         }
-        Returns: number
+        Returns: boolean
       }
       armar_ficha_ot: {
         Args: {
@@ -4175,10 +4236,11 @@ export type Database = {
         }
         Returns: string
       }
-      arrancar_plazo_de_cotizacion: {
+      asignar_equipo_diseno: {
         Args: {
-          p_cotizacion: string
-          p_fecha: string
+          p_orden: string
+          p_lider: string
+          p_responsables: Json
         }
         Returns: string
       }
@@ -4227,24 +4289,22 @@ export type Database = {
         }
         Returns: string
       }
-      cotizacion_sembrar_etapas: {
-        Args: {
-          p_cotizacion_id: string
-        }
-        Returns: number
-      }
-      cotizaciones_por_estado: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          estado: string | null
-          cantidad: number | null
-        }[]
-      }
       crear_etapas_ot: {
         Args: {
           p_orden_id: string
         }
         Returns: number
+      }
+      crear_orden_compra_material: {
+        Args: {
+          p_id: string
+          p_requerimiento_id: string
+          p_proveedor: string
+          p_referencia: string
+          p_detalles: Json
+          p_fecha_estimada?: string
+        }
+        Returns: string
       }
       crear_personal: {
         Args: {
@@ -4260,6 +4320,14 @@ export type Database = {
           p_telefono?: string
           p_es_operario?: boolean
           p_costo_hora?: number
+        }
+        Returns: string
+      }
+      crear_requerimiento_material: {
+        Args: {
+          p_orden_id: string
+          p_area_destino: string
+          p_materiales: string[]
         }
         Returns: string
       }
@@ -4280,6 +4348,15 @@ export type Database = {
           gerente_general_cargo: string | null
         }[]
       }
+      despachar_material: {
+        Args: {
+          p_id: string
+          p_requerimiento_detalle_id: string
+          p_cantidad: number
+          p_responsable_id: string
+        }
+        Returns: string
+      }
       dias_de_taller: {
         Args: {
           p_desde: string
@@ -4293,6 +4370,15 @@ export type Database = {
           p_hasta: string
         }
         Returns: number
+      }
+      editar_ot_con_historial: {
+        Args: {
+          p_orden: string
+          p_version: string
+          p_datos: Json
+          p_motivo: string
+        }
+        Returns: string
       }
       emitir_orden_de_cotizacion: {
         Args: {
@@ -4309,12 +4395,6 @@ export type Database = {
           p_tamano_pdf?: number
         }
         Returns: string
-      }
-      flota_sigue_en_taller: {
-        Args: {
-          p_flota: string
-        }
-        Returns: boolean
       }
       es_admin: {
         Args: Record<PropertyKey, never>
@@ -4343,11 +4423,16 @@ export type Database = {
         }
         Returns: string
       }
-      guardar_cotizacion_como_plantilla: {
+      flota_sigue_en_taller: {
         Args: {
-          p_cotizacion: string
-          p_nombre: string
-          p_predeterminada?: boolean
+          p_flota: string
+        }
+        Returns: boolean
+      }
+      guardar_ficha_diseno: {
+        Args: {
+          p_orden: string
+          p_datos: Json
         }
         Returns: string
       }
@@ -4373,11 +4458,15 @@ export type Database = {
         }
         Returns: string
       }
-      marcar_cotizaciones_vencidas: {
+      liberar_cotizacion_a_tesoreria: {
         Args: {
-          p_fecha?: string
+          p_cotizacion: string
         }
-        Returns: number
+        Returns: string
+      }
+      lote_de_prueba: {
+        Args: Record<PropertyKey, never>
+        Returns: string
       }
       mi_rol: {
         Args: Record<PropertyKey, never>
@@ -4414,6 +4503,12 @@ export type Database = {
           p_excepto?: string
         }
         Returns: number
+      }
+      orden_compra_de_ruta: {
+        Args: {
+          p_ruta: string
+        }
+        Returns: string
       }
       orden_de_ruta: {
         Args: {
@@ -4488,6 +4583,19 @@ export type Database = {
         }
         Returns: number
       }
+      pruebas_abrir: {
+        Args: {
+          p_motivo: string
+          p_cuentas?: string[]
+        }
+        Returns: string
+      }
+      pruebas_limpiar: {
+        Args: {
+          p_lote: string
+        }
+        Returns: Json
+      }
       puede_armar_hoja_de_area: {
         Args: {
           p_area_id: string
@@ -4506,15 +4614,39 @@ export type Database = {
         }
         Returns: boolean
       }
+      puede_ver_area_material: {
+        Args: {
+          p_area: string
+        }
+        Returns: boolean
+      }
+      puede_ver_hoja_de_area: {
+        Args: {
+          p_area: string
+        }
+        Returns: boolean
+      }
       puede_ver_orden: {
         Args: {
           p_orden_id: string
         }
         Returns: boolean
       }
+      puede_ver_plano_tecnico: {
+        Args: {
+          p_id: string
+        }
+        Returns: boolean
+      }
+      puede_ver_version_plano: {
+        Args: {
+          p_id: string
+        }
+        Returns: boolean
+      }
       puesto: {
         Args: {
-          "": Database["public"]["Tables"]["usuarios"]["Row"]
+          u: string
         }
         Returns: string
       }
@@ -4524,9 +4656,9 @@ export type Database = {
         }
         Returns: string
       }
-      recalcular_totales_cotizacion: {
+      recibir_version_plano: {
         Args: {
-          p_cotizacion: string
+          p_id: string
         }
         Returns: string
       }
@@ -4536,6 +4668,31 @@ export type Database = {
           p_tipo_evento: Database["public"]["Enums"]["tipo_evento_ot"]
           p_descripcion: string
           p_datos?: Json
+        }
+        Returns: string
+      }
+      registrar_recepcion_material: {
+        Args: {
+          p_id: string
+          p_orden_compra_detalle_id: string
+          p_cantidad: number
+          p_documento_referencia: string
+        }
+        Returns: string
+      }
+      registrar_salida_fisica: {
+        Args: {
+          p_entrega: string
+          p_constancia: string
+        }
+        Returns: string
+      }
+      registrar_version_plano: {
+        Args: {
+          p_id: string
+          p_plano: string
+          p_area: string
+          p_nombre: string
         }
         Returns: string
       }
@@ -4550,6 +4707,14 @@ export type Database = {
         Args: {
           p_desde: string
           p_dias: number
+        }
+        Returns: string
+      }
+      revisar_version_plano: {
+        Args: {
+          p_id: string
+          p_aprobar: boolean
+          p_observacion?: string
         }
         Returns: string
       }
@@ -4601,27 +4766,22 @@ export type Database = {
         }
         Returns: boolean
       }
-      tipo_cambio_exigido: {
-        Args: {
-          p_fecha?: string
-        }
-        Returns: number
-      }
-      tipo_cambio_vigente: {
-        Args: {
-          p_fecha?: string
-        }
-        Returns: number
-      }
       usuario_actual: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      usuarios_diseno_asignables: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          nombre: string | null
+          rol: string | null
+        }[]
       }
     }
     Enums: {
       accion_auditoria: "INSERT" | "UPDATE" | "DELETE"
       categoria_vehicular: "O3" | "O4" | "N1" | "N2" | "N3"
-      estado_cotizacion: "BORRADOR" | "EN_COSTEO" | "EN_REVISION" | "OBSERVADA" | "REVISADA" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "VENCIDA" | "ANULADA"
       estado_cotizacion_pdf: "POR_REVISAR" | "APROBADA" | "RECHAZADA"
       estado_etapa_ot: "PENDIENTE" | "EN_PROCESO" | "PAUSADA" | "TERMINADA" | "OMITIDA" | "REQUIERE_REVISION"
       estado_flota: "EN_TALLER" | "LISTA" | "SALIO"
@@ -4629,14 +4789,11 @@ export type Database = {
       estado_plazo: "VIGENTE" | "POR_VENCER" | "VENCIDO" | "CUMPLIDO" | "CUMPLIDO_TARDE"
       estado_revision: "PENDIENTE" | "APROBADO" | "OBSERVADO"
       magnitud_medida: "UNIDAD" | "MASA" | "LONGITUD" | "AREA" | "VOLUMEN"
-      medio_pago: "TRANSFERENCIA" | "DEPOSITO" | "CHEQUE" | "EFECTIVO" | "LETRA" | "OTRO"
       moneda: "PEN" | "USD"
       prioridad_ot: "BAJA" | "NORMAL" | "ALTA" | "URGENTE"
-      tipo_correlativo: "COTIZACION" | "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO"
-      tipo_costo_partida: "MATERIAL" | "MANO_OBRA" | "SERVICIO" | "OTRO"
+      tipo_correlativo: "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO"
       tipo_documento_cliente: "RUC" | "DNI" | "CE" | "PASAPORTE"
       tipo_evento_ot: "CREACION" | "CAMBIO_ESTADO" | "AVANCE" | "MATERIAL" | "DOCUMENTO" | "INSPECCION" | "PAUSA" | "REANUDACION" | "COMENTARIO" | "ENTREGA"
-      tipo_pago_cliente: "ADELANTO" | "PARCIAL" | "SALDO"
       tipo_trabajo_ot: "FABRICACION" | "REPARACION" | "REPOTENCIACION" | "MANTENIMIENTO" | "GARANTIA"
       tipo_unidad_carroceria: "SEMIRREMOLQUE" | "CARROCERIA_MONTADA"
       tipo_vehiculo: "VOLQUETE" | "TRACTO" | "SEMIRREMOLQUE" | "CAMION" | "REMOLQUE" | "FURGON" | "OTRO"
