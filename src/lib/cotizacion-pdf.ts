@@ -47,10 +47,25 @@ export function leerTotalDeCotizacion(texto: string): TotalCotizacion {
   for (let i = 0; i < lineas.length; i++) {
     if (!etiqueta.test(lineas[i])) continue
     if (/\b(?:IGV|SUBTOTAL|ANTICIPO|A\s+CUENTA)\b/i.test(lineas[i])) continue
-    const contexto = [lineas[i], lineas[i + 1] ?? ''].join(' ')
-    const importe = contexto.match(/(?:(S\s*\/?\s*\.?|PEN|US\s*\$|USD|\$)\s*)?((?:\d{1,3}(?:[,. ]\d{3})+|\d+)(?:[,.]\d{1,2})?)(?:\s*(PEN|USD))?/i)
-    if (!importe) continue
-    const raw = importe[2].replace(/\s/g, '')
+    // Las tablas de la casa extraen «PRECIO / TOTAL / 02 / descripción /
+    // $ 34,000.00 / $ 68,000.00». El 02 es la cantidad, no el total.
+    const limite = /\bPRECIO\b/i.test(lineas[i]) ? 10 : 8
+    const siguientes = lineas.slice(i + 1, i + limite)
+    const finTabla = siguientes.findIndex((l) => /^PRECIO\s*:/i.test(l))
+    const tramo = finTabla < 0 ? siguientes : siguientes.slice(0, finTabla)
+    const contexto = [lineas[i], ...tramo].join(' ')
+    const patron = /(?:(S\s*\/?\s*\.?|PEN|US\s*\$|USD|\$)\s*)?((?:\d{1,3}(?:[,. ]\d{3})+|\d+)(?:[,.]\d{1,2})?)(?:\s*(PEN|USD))?/gi
+    const importes = [...contexto.matchAll(patron)]
+    const conMoneda = importes.filter((m) => m[1] || m[3])
+    // Sin símbolo, el importe debe estar junto al rótulo o ser una cifra
+    // completa en la línea siguiente. No se toma una cantidad aislada (02).
+    const enRotulo = importes.find((m) => m.index !== undefined && m.index < lineas[i].length)
+    const enLineaSiguiente = tramo[0] && /^\d{3,}(?:[,.]\d{1,2})?$/.test(tramo[0])
+      ? [...tramo[0].matchAll(patron)][0]
+      : undefined
+    const candidato = conMoneda.at(-1) ?? enRotulo ?? enLineaSiguiente
+    if (!candidato?.[2]) continue
+    const raw = candidato[2].replace(/\s/g, '')
     const ultimoPunto = raw.lastIndexOf('.')
     const ultimaComa = raw.lastIndexOf(',')
     let normalizado: string
@@ -62,8 +77,8 @@ export function leerTotalDeCotizacion(texto: string): TotalCotizacion {
       const partes = raw.split(separador)
       normalizado = partes.length === 2 && partes[1].length <= 2 ? `${partes[0]}.${partes[1].padEnd(2, '0')}` : partes.join('')
     } else normalizado = raw
-    const moneda = /US\s*\$|USD|\$/.test(`${importe[1] ?? ''} ${importe[3] ?? ''}`) ? 'USD'
-      : /S\s*\/?\s*\.?|PEN/i.test(`${importe[1] ?? ''} ${importe[3] ?? ''}`) ? 'PEN' : null
+    const moneda = /US\s*\$|USD|\$/.test(`${candidato[1] ?? ''} ${candidato[3] ?? ''}`) ? 'USD'
+      : /S\s*\/?\s*\.?|PEN/i.test(`${candidato[1] ?? ''} ${candidato[3] ?? ''}`) ? 'PEN' : null
     if (/^\d+(?:\.\d{1,2})?$/.test(normalizado) && Number(normalizado) > 0) return { monto: normalizado, moneda }
   }
   return { monto: null, moneda: null }
@@ -91,7 +106,7 @@ export function leerTextoDeCotizacion(texto: string): CabeceraCotizacion {
   const todo = lineas.join('\n')
   const salida: CabeceraCotizacion = { ...VACIA }
 
-  const numero = todo.match(/COTIZACI[OÓ]N\s*N\s*[°º.]?\s*(\d{3,6})\s*[-–—]\s*(\d{4})/i)
+  const numero = todo.match(/COTIZACI[OÓ]N\s*N\s*[°º.]?\s*(\d{3,6})(?:\s*\(\d{1,3}\))?\s*[-–—]\s*(\d{4})/i)
   if (numero) salida.numero = `${numero[1]}-${numero[2]}`
 
   const fecha = todo.match(/Fecha\s*:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i)
@@ -116,9 +131,20 @@ export function leerTextoDeCotizacion(texto: string): CabeceraCotizacion {
     }
   }
 
-  // El título es la primera línea con letras después de la cabecera, que no sea
-  // el comienzo de la ficha.
-  if (finCabecera >= 0) {
+  // Algunos PDF dibujan el título antes de la cabecera, aunque en la página
+  // aparezca debajo. La extracción de texto respeta el orden interno del PDF.
+  // En ese caso el título está al inicio, antes de las especificaciones.
+  const ficha = lineas.findIndex((l) => /^ESPECIFICACI[OÓ]N/i.test(l))
+  if (ficha > 0 && ficha <= 5) {
+    const titulo = lineas.slice(0, ficha).join(' ')
+    if (/\b(FURG[OÓ]N|TOLVA|CISTERNA|PLATAFORMA|CAMA\s+BAJA|CARROCER[IÍ]A)\b/i.test(titulo)) {
+      salida.producto = titulo
+    }
+  }
+
+  // En los PDF con orden normal, el título sigue a la cabecera. Nunca se
+  // reemplaza el título encontrado en la primera hoja por una pieza del cuerpo.
+  if (!salida.producto && finCabecera >= 0) {
     for (let i = finCabecera + 1; i < Math.min(lineas.length, finCabecera + 4); i++) {
       const l = lineas[i].replace(/^[−–—\-\s]+/, '')
       if (/^(ESPECIFICACI|MARCA\s*:|RUC\b|Fecha\s*:)/i.test(l)) break

@@ -2,7 +2,7 @@
 
 import { FileSearch, FileUp, Plus, Undo2, Upload } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useRef, useState, useTransition, type FormEvent } from 'react'
+import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 
 import { crearClienteRapido } from '@/app/(app)/clientes/acciones'
 import { crearCarroceria } from '@/app/(app)/configuracion/acciones'
@@ -47,6 +47,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
+  const [vistaPdf, setVistaPdf] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
   const [lectura, setLectura] = useState<CabeceraCotizacion | null>(null)
   const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
@@ -72,8 +73,13 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [propuesta, setPropuesta] = useState<PropuestaCarroceria | null>(null)
   const [nombreCarroceria, setNombreCarroceria] = useState('')
 
+  useEffect(() => {
+    return () => { if (vistaPdf) URL.revokeObjectURL(vistaPdf) }
+  }, [vistaPdf])
+
   function abrir() {
     setArchivo(null)
+    setVistaPdf(null)
     setLectura(null)
     setTotal({ monto: null, moneda: null })
     setProgreso('')
@@ -123,6 +129,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   async function elegirArchivo(elegido: File | undefined) {
     if (!elegido) return
     setArchivo(elegido)
+    setVistaPdf(tipoDeCotizacion(elegido)?.extension === 'pdf' ? URL.createObjectURL(elegido) : null)
     setError(null)
     setLectura(null)
     if (!tipoDeCotizacion(elegido)) {
@@ -224,7 +231,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           .from('cotizaciones-pdf')
           .upload(ruta, archivo, { contentType: tipo.mime, upsert: false })
         if (falla) {
-          setError(`No se pudo subir el ${tipo.etiqueta}. Revisa la señal y vuelve a intentar.`)
+          const motivo = falla.message || 'Error desconocido de almacenamiento.'
+          setError(`No se pudo subir el ${tipo.etiqueta}: ${motivo}. Comprueba el archivo y vuelve a intentar.`)
           return
         }
         subido = true
@@ -284,9 +292,10 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         alCerrar={() => setAbierto(false)}
         titulo="Subir la cotización"
         descripcion="La que se le mandó al cliente, en PDF o en Word. Al elegirla se leen su número, el cliente y qué se fabrica: revisa que esté bien y súbela."
-        ancho="md"
+        ancho="panoramico"
       >
-        <form onSubmit={enviar} className="space-y-4">
+        <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">
+          <div className="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-2">
           <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2">
             <FileUp aria-hidden className="size-6" />
             <span className="font-medium text-texto">{archivo ? archivo.name : 'Elegir el PDF o el Word'}</span>
@@ -525,6 +534,20 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
               Subir y mandar a Gerencia
             </Boton>
           </div>
+          </div>
+          <aside aria-label="Vista previa de la cotización" className="flex min-h-[22rem] flex-col overflow-hidden rounded-[var(--radius-base)] border border-borde bg-superficie-2 lg:min-h-0">
+            <div className="border-b border-borde px-4 py-3">
+              <p className="text-sm font-semibold text-texto">Vista previa de la cotización</p>
+              <p className="truncate text-xs text-texto-suave">{archivo?.name ?? 'Elige un PDF para comparar los datos'}</p>
+            </div>
+            {vistaPdf ? (
+              <iframe title="PDF de la cotización seleccionada" src={vistaPdf} className="min-h-[20rem] w-full flex-1 bg-white" />
+            ) : (
+              <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-texto-suave">
+                {archivo ? 'La vista previa integrada está disponible para PDF. Puedes revisar los datos a la izquierda.' : 'El PDF aparecerá aquí al seleccionarlo.'}
+              </div>
+            )}
+          </aside>
         </form>
       </Ventana>
     </>

@@ -25,6 +25,7 @@ const ANCHOS = {
   md: 'max-w-lg',
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
+  panoramico: 'max-w-[min(96vw,90rem)] h-[calc(100dvh-2rem)]',
 } as const
 
 export type AnchoVentana = keyof typeof ANCHOS
