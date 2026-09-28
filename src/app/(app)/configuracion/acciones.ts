@@ -154,7 +154,7 @@ export async function crearCarroceria(
   datos: FormData,
 ): Promise<ResultadoAccion<{ id: string; nombre: string }>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['ordenes.crear', 'configuracion.editar'])) {
+  if (!puede(perfil, ['ordenes.crear', 'configuracion.editar', 'cotizaciones.crear'])) {
     return { ok: false, error: 'No tienes permiso para agregar tipos de carrocería.' }
   }
 
@@ -207,6 +207,33 @@ export async function crearCarroceria(
 
   revalidatePath('/configuracion')
   return { ok: true, mensaje: 'Tipo de carrocería agregado. Administración le pondrá sus horas de referencia.', datos: data }
+}
+
+const esquemaEditarCarroceria = z.object({
+  id: z.string().uuid(),
+  nombre: z.string().trim().min(3).max(120),
+  descripcion: z.string().trim().max(1000).optional(),
+  activo: z.enum(['true', 'false']).transform((v) => v === 'true'),
+})
+
+export async function editarCarroceria(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  const analisis = esquemaEditarCarroceria.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los datos.' }
+  const v = analisis.data
+  if (!puede(perfil, ['configuracion.editar', 'cotizaciones.crear'])) {
+    return { ok: false, error: 'No tienes permiso para editar el catálogo.' }
+  }
+  const supabase = await createClient()
+  const resultado = puede(perfil, 'configuracion.editar')
+    ? await supabase.from('tipos_carroceria').update({ nombre: v.nombre, descripcion: nuloSiVacio(v.descripcion) }).eq('id', v.id).select('id').maybeSingle()
+    : await supabase.rpc('editar_carroceria_ventas', { p_id: v.id, p_nombre: v.nombre, p_descripcion: v.descripcion ?? '', p_activo: v.activo })
+  if (resultado.error) return { ok: false, error: mensajeDeError(resultado.error) }
+  if (!resultado.data) return { ok: false, error: NO_TOCO_NADA }
+  revalidatePath('/carrocerias')
+  revalidatePath('/cotizaciones/pdf')
+  revalidatePath('/configuracion')
+  return { ok: true, mensaje: 'Carrocería actualizada.' }
 }
 
 const esquemaMedidasCarroceria = z.object({

@@ -78,10 +78,10 @@ export const NAVEGACION: GrupoNavegacion[] = [
     ],
   },
   {
-    titulo: 'Vendedor',
+    titulo: 'Agente de Ventas',
     items: [
       {
-        titulo: 'Cotización en PDF',
+        titulo: 'Cotización',
         ruta: '/cotizaciones/pdf',
         icono: FileText,
         permiso: ['cotizaciones.ver_pdf_comercial', 'tesoreria.ver_documentos'],
@@ -93,14 +93,6 @@ export const NAVEGACION: GrupoNavegacion[] = [
   {
     titulo: 'Diseño e ingeniería',
     items: [
-      {
-        titulo: 'Carrocerías',
-        ruta: '/carrocerias',
-        icono: Layers,
-        permiso: ['diseno.planos', 'configuracion.ver'],
-        descripcion: 'Lo que la casa ya fabricó, con su ficha técnica lista',
-        disponible: true,
-      },
       // El catálogo chico del que Diseño elige al desglosar los materiales de
       // la orden: nombre, unidad y especificación. Sin stock ni almacén.
       {
@@ -131,10 +123,11 @@ export const NAVEGACION: GrupoNavegacion[] = [
     ],
   },
   {
-    titulo: 'Comercial',
+    titulo: 'Ventas',
     items: [
       { titulo: 'Clientes', ruta: '/clientes', icono: Users, permiso: 'clientes.ver', disponible: true },
       { titulo: 'Unidades', ruta: '/unidades', icono: Truck, permiso: 'clientes.ver', disponible: true },
+      { titulo: 'Carrocerías', ruta: '/carrocerias', icono: Layers, permiso: ['diseno.planos', 'configuracion.ver', 'cotizaciones.crear'], disponible: true },
     ],
   },
   {

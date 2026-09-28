@@ -53,7 +53,7 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
   const { data, error } = await supabase
     .from('v_cotizaciones_pdf')
     .select(
-      'id, numero, estado, observacion, cliente_id, cliente, tipo_carroceria_id, carroceria, nombre_archivo, ruta_storage, tamano_bytes, creado_en, registrado_por, registrado_por_nombre, revisado_en, revisado_por_nombre, orden_id, orden_numero, orden_estado, tuvo_orden, version, mime_type, archivo_subido_en',
+      'id, numero, estado, observacion, cliente_id, cliente, tipo_carroceria_id, carroceria, nombre_archivo, ruta_storage, tamano_bytes, creado_en, registrado_por, registrado_por_nombre, revisado_en, revisado_por_nombre, orden_id, orden_numero, orden_estado, tuvo_orden, version, mime_type, archivo_subido_en, monto_venta, moneda',
     )
     .order('creado_en', { ascending: false })
     .limit(limite)

@@ -295,6 +295,8 @@ export type Database = {
           actualizado_en: string
           version: number
           archivo_subido_en: string
+          monto_venta: number | null
+          moneda: Database["public"]["Enums"]["moneda"] | null
         }
         Insert: {
           id?: string
@@ -314,6 +316,8 @@ export type Database = {
           actualizado_en?: string
           version?: number
           archivo_subido_en?: string
+          monto_venta?: number | null
+          moneda?: Database["public"]["Enums"]["moneda"] | null
         }
         Update: {
           id?: string
@@ -333,6 +337,8 @@ export type Database = {
           actualizado_en?: string
           version?: number
           archivo_subido_en?: string
+          monto_venta?: number | null
+          moneda?: Database["public"]["Enums"]["moneda"] | null
         }
         Relationships: [
           {
@@ -3800,6 +3806,8 @@ export type Database = {
           version: number | null
           mime_type: string | null
           archivo_subido_en: string | null
+          monto_venta: number | null
+          moneda: 'PEN' | 'USD' | null
         }
         Relationships: []
       }
@@ -4194,6 +4202,10 @@ export type Database = {
       }
     }
     Functions: {
+      editar_carroceria_ventas: {
+        Args: { p_id: string; p_nombre: string; p_descripcion: string; p_activo: boolean }
+        Returns: string
+      }
       abrir_orden_del_taller: {
         Args: {
           p_placa: string

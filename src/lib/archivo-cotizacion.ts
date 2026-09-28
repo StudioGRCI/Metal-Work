@@ -1,9 +1,11 @@
 import {
   leerNombreDeArchivo,
+  leerTotalDeCotizacion,
   leerTextoDeCotizacion,
   textoDeWordXml,
   unirLecturas,
   type CabeceraCotizacion,
+  type TotalCotizacion,
 } from '@/lib/cotizacion-pdf'
 
 /**
@@ -42,21 +44,64 @@ export function etiquetaDeMime(mime: string | null | undefined): string {
 
 const VACIA: CabeceraCotizacion = { numero: null, fecha: null, cliente: null, documento: null, producto: null }
 
+export type LecturaArchivoCotizacion = { cabecera: CabeceraCotizacion; total: TotalCotizacion }
+
 /**
  * La cabecera de la cotización, leída del archivo. Del PDF, la primera hoja; del
  * Word, el encabezado de página y el cuerpo, en ese orden. Un .doc viejo, un
  * escaneo o un archivo dañado no se leen: queda lo que diga el nombre.
  * Las librerías se cargan solo cuando hacen falta.
  */
-export async function leerCabeceraDeArchivo(archivo: File): Promise<CabeceraCotizacion> {
+export async function leerCabeceraDeArchivo(
+  archivo: File,
+  progreso?: (mensaje: string) => void,
+): Promise<LecturaArchivoCotizacion> {
   const tipo = tipoDeCotizacion(archivo)
   let delTexto = VACIA
+  let texto = ''
   try {
     if (tipo?.extension === 'pdf') {
       const { extractText, getDocumentProxy } = await import('unpdf')
       const pdf = await getDocumentProxy(new Uint8Array(await archivo.arrayBuffer()))
       const { text } = await extractText(pdf, { mergePages: false })
-      delTexto = leerTextoDeCotizacion(text[0] ?? '')
+      texto = text.join('\n')
+      delTexto = leerTextoDeCotizacion(texto)
+      if (!leerTotalDeCotizacion(texto).monto) {
+        progreso?.('El PDF es un escaneo. Preparando lectura…')
+        const tesseract = await import('tesseract.js')
+        const worker = await tesseract.createWorker('spa+eng', undefined, {
+          logger: (m) => {
+            if (m.status === 'recognizing text') progreso?.(`Leyendo página ${m.userJobId || ''}…`)
+          },
+        })
+        const paginas: string[] = []
+        try {
+          const paginasLeidas = Math.min(pdf.numPages, 30)
+          for (let numero = 1; numero <= paginasLeidas; numero++) {
+            progreso?.(`Leyendo página ${numero} de ${paginasLeidas}…`)
+            const pagina = await pdf.getPage(numero)
+            const viewport = pagina.getViewport({ scale: 1.6 })
+            const canvas = document.createElement('canvas')
+            canvas.width = Math.ceil(viewport.width)
+            canvas.height = Math.ceil(viewport.height)
+            const contexto = canvas.getContext('2d')
+            if (!contexto) throw new Error('No se pudo preparar la página para leerla.')
+            await pagina.render({ canvas, canvasContext: contexto, viewport }).promise
+            paginas.push((await worker.recognize(canvas)).data.text)
+            canvas.width = 0
+            canvas.height = 0
+            pagina.cleanup()
+          }
+          if (paginasLeidas < pdf.numPages) progreso?.('Se revisaron las primeras 30 páginas; completa el monto manualmente si no apareció.')
+        } finally {
+          await worker.terminate()
+        }
+        const textoOcr = paginas.join('\n')
+        if (textoOcr.trim()) {
+          texto = `${texto}\n${textoOcr}`
+          delTexto = leerTextoDeCotizacion(texto)
+        }
+      }
     } else if (tipo?.extension === 'docx') {
       const { unzipSync, strFromU8 } = await import('fflate')
       const partes = unzipSync(new Uint8Array(await archivo.arrayBuffer()), {
@@ -65,10 +110,14 @@ export async function leerCabeceraDeArchivo(archivo: File): Promise<CabeceraCoti
       const orden = Object.keys(partes).sort(
         (a, b) => Number(!a.includes('header')) - Number(!b.includes('header')) || a.localeCompare(b),
       )
-      delTexto = leerTextoDeCotizacion(orden.map((k) => textoDeWordXml(strFromU8(partes[k]))).join('\n'))
+      texto = orden.map((k) => textoDeWordXml(strFromU8(partes[k]))).join('\n')
+      delTexto = leerTextoDeCotizacion(texto)
     }
   } catch {
     // Escaneado, dañado o protegido: queda lo que diga el nombre del archivo.
   }
-  return unirLecturas(delTexto, leerNombreDeArchivo(archivo.name))
+  return {
+    cabecera: unirLecturas(delTexto, leerNombreDeArchivo(archivo.name)),
+    total: leerTotalDeCotizacion(texto),
+  }
 }

@@ -94,6 +94,7 @@ export async function guardarCliente(_previo: unknown, datos: FormData): Promise
 }
 
 const esquemaUnidad = z.object({
+  id: z.string().uuid().optional().or(z.literal('')),
   cliente_id: z.string().uuid('Selecciona el cliente'),
   // Sin placa se puede registrar: la empresa fabrica sobre chasis que
   // todavía no están matriculados y la placa llega al final del trabajo. Si se
@@ -142,19 +143,19 @@ export async function guardarUnidad(
   datos: FormData,
 ): Promise<ResultadoAccion<{ id: string; placa: string | null }>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'clientes.crear')) {
-    return { ok: false, error: 'No tienes permiso para registrar unidades.' }
-  }
-
   const analisis = esquemaUnidad.safeParse(Object.fromEntries(datos))
   if (!analisis.success) {
     return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los datos de la unidad.' }
   }
 
   const v = analisis.data
-  const supabase = await createClient()
+  const editando = Boolean(v.id)
+  if (!puede(perfil, 'clientes.editar')) {
+    return { ok: false, error: editando ? 'No tienes permiso para editar unidades.' : 'No tienes permiso para registrar unidades.' }
+  }
 
-  const { data: creada, error } = await supabase.from('unidades').insert({
+  const supabase = await createClient()
+  const fila = {
     cliente_id: v.cliente_id,
     placa: nulo(v.placa),
     tipo_vehiculo: v.tipo_vehiculo,
@@ -166,17 +167,20 @@ export async function guardarUnidad(
     color: nulo(v.color),
     capacidad_m3: numeroOpcional(v.capacidad_m3),
     capacidad_toneladas: numeroOpcional(v.capacidad_toneladas),
-    tipo_carroceria_id: nulo(v.tipo_carroceria_id) as string | null,
+    ...(!editando || v.tipo_carroceria_id ? { tipo_carroceria_id: nulo(v.tipo_carroceria_id) } : {}),
     observaciones: nulo(v.observaciones),
-  })
-    .select('id, placa, codigo_interno, numero_chasis, marca, modelo')
-    .single()
+  }
+
+  const { data: creada, error } = editando
+    ? await supabase.from('unidades').update(fila).eq('id', v.id!).select('id, placa, codigo_interno, numero_chasis, marca, modelo').maybeSingle()
+    : await supabase.from('unidades').insert(fila).select('id, placa, codigo_interno, numero_chasis, marca, modelo').single()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!creada) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/clientes/${v.cliente_id}`)
   revalidatePath('/unidades')
-  return { ok: true, mensaje: 'Unidad registrada.', datos: creada }
+  return { ok: true, mensaje: editando ? 'Unidad actualizada.' : 'Unidad registrada.', datos: creada }
 }
 
 const esquemaClienteRapido = z.object({

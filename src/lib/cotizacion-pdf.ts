@@ -38,6 +38,37 @@ export type CabeceraCotizacion = {
   producto: string | null
 }
 
+export type TotalCotizacion = { monto: string | null; moneda: 'PEN' | 'USD' | null }
+
+/** Detecta únicamente importes rotulados como total/precio final, no IGV ni anticipos. */
+export function leerTotalDeCotizacion(texto: string): TotalCotizacion {
+  const lineas = texto.split(/\r?\n/).map(limpiar).filter(Boolean)
+  const etiqueta = /\b(?:TOTAL(?:\s+(?:A\s+PAGAR|GENERAL|COTIZACI[OÓ]N|VENTA))?|IMPORTE\s+TOTAL|MONTO\s+TOTAL|PRECIO\s+TOTAL)\b/i
+  for (let i = 0; i < lineas.length; i++) {
+    if (!etiqueta.test(lineas[i])) continue
+    if (/\b(?:IGV|SUBTOTAL|ANTICIPO|A\s+CUENTA)\b/i.test(lineas[i])) continue
+    const contexto = [lineas[i], lineas[i + 1] ?? ''].join(' ')
+    const importe = contexto.match(/(?:(S\s*\/?\s*\.?|PEN|US\s*\$|USD|\$)\s*)?((?:\d{1,3}(?:[,. ]\d{3})+|\d+)(?:[,.]\d{1,2})?)(?:\s*(PEN|USD))?/i)
+    if (!importe) continue
+    const raw = importe[2].replace(/\s/g, '')
+    const ultimoPunto = raw.lastIndexOf('.')
+    const ultimaComa = raw.lastIndexOf(',')
+    let normalizado: string
+    if (ultimoPunto >= 0 && ultimaComa >= 0) {
+      const decimal = ultimoPunto > ultimaComa ? '.' : ','
+      normalizado = raw.replace(decimal === '.' ? /,/g : /\./g, '').replace(decimal, '.')
+    } else if (ultimoPunto >= 0 || ultimaComa >= 0) {
+      const separador = ultimoPunto >= 0 ? '.' : ','
+      const partes = raw.split(separador)
+      normalizado = partes.length === 2 && partes[1].length <= 2 ? `${partes[0]}.${partes[1].padEnd(2, '0')}` : partes.join('')
+    } else normalizado = raw
+    const moneda = /US\s*\$|USD|\$/.test(`${importe[1] ?? ''} ${importe[3] ?? ''}`) ? 'USD'
+      : /S\s*\/?\s*\.?|PEN/i.test(`${importe[1] ?? ''} ${importe[3] ?? ''}`) ? 'PEN' : null
+    if (/^\d+(?:\.\d{1,2})?$/.test(normalizado) && Number(normalizado) > 0) return { monto: normalizado, moneda }
+  }
+  return { monto: null, moneda: null }
+}
+
 const VACIA: CabeceraCotizacion = { numero: null, fecha: null, cliente: null, documento: null, producto: null }
 
 const limpiar = (t: string) => t.replace(/\s+/g, ' ').trim()
