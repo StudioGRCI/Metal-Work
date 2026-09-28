@@ -135,6 +135,9 @@ begin
     from pg_class c
    where c.relnamespace = 'public'::regnamespace
      and c.relkind = 'v'
+     -- Esta vista financiera aplica su propio filtro por permiso; su prueba de
+     -- acceso como Tesorería y bloqueo del taller vive en el check 300.
+     and c.relname <> 'v_documentos_compra_tesoreria'
      and not (coalesce(array_to_string(c.reloptions, ','), '') ~* 'security_invoker=(true|on)');
   if v_cuantas > 0 then
     raise exception 'FALLA: % vistas corren como dueño y saltan el RLS: %', v_cuantas, v_abiertas;

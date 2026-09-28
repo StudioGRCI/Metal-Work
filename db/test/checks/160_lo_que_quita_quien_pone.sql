@@ -7,8 +7,8 @@ begin;
 insert into public.empresa (ruc, razon_social) values ('20100000020', 'PRUEBAS FICHA S.A.C.');
 insert into public.sedes (codigo, nombre) values ('T1', 'Taller principal');
 
-select test.crear_usuario('Rosa',  'Yupanqui', 'rosa@demo.pe',  'JEFE_TALLER', (select id from public.sedes limit 1)) as jefe_id \gset
 select test.crear_usuario('Ciro',  'Palacios', 'ciro@demo.pe',  'SUPERVISOR',  (select id from public.sedes limit 1)) as supervisor_id \gset
+select test.crear_usuario('Dina',  'Paredes',  'dina@demo.pe',  'DISENO',      (select id from public.sedes limit 1)) as diseno_id \gset
 
 insert into public.clientes (tipo_documento, numero_documento, razon_social)
   values ('RUC', '20607761907', 'TRANSPORTES VEGA PIUNDO S.A.C');
@@ -18,11 +18,10 @@ insert into public.ordenes_trabajo (cliente_id, sede_id, descripcion, tipo_traba
 
 select set_config('prueba.sede',   (select id::text from public.sedes limit 1), false);
 select set_config('prueba.orden',  (select id::text from public.ordenes_trabajo limit 1), false);
-select set_config('prueba.jefe',   :'jefe_id', false);
 
--- ------------------- el supervisor quita un accesorio que no corresponde
--- Ponerlo lo podía; quitarlo no, y el «Quitar» no decía nada. Quien pone quita.
-select test.como_usuario(:'supervisor_id');
+-- ---------------------- Diseño administra la ficha, incluso al corregirla
+-- Es Diseño quien puede editar accesorios y repuestos de la ficha de taller.
+select test.como_usuario(:'diseno_id');
 set local role authenticated;
 
 do $$
@@ -36,7 +35,7 @@ begin
 
   perform test.afirmar(
     not exists (select 1 from public.ot_accesorios where id = v_acc),
-    'el supervisor quita de verdad el accesorio que él mismo puso');
+    'Diseño quita de verdad el accesorio que agregó a la ficha');
 end $$;
 
 do $$
@@ -50,9 +49,18 @@ begin
 
   perform test.afirmar(
     not exists (select 1 from public.ot_repuestos where id = v_rep),
-    'y también el repuesto que no se llegó a montar');
+    'y también el repuesto que ya no se va a montar');
 end $$;
 
+reset role;
+
+-- Los supervisores reportan avance, pero no alteran la ficha que prepara Diseño.
+select test.como_usuario(:'supervisor_id');
+set local role authenticated;
+select test.debe_fallar(
+  format('insert into public.ot_accesorios (orden_id, orden, cantidad, unidad, descripcion) values (%L, 2, 1, %L, %L)',
+    current_setting('prueba.orden'), 'unid', 'Accesorio agregado fuera de Diseño'),
+  'el supervisor no edita accesorios de la ficha', 'row-level security');
 reset role;
 
 rollback;

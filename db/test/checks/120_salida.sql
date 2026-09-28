@@ -50,7 +50,7 @@ end $$;
 select test.debe_fallar($$
   insert into public.ot_entregas (orden_id, recibe_nombre)
   values (current_setting('prueba.ot')::uuid, 'Chofer de flota')
-$, 'sin liberación de tesorería no hay salida');
+$$, 'sin liberación de tesorería no hay salida');
 
 -- Un operario no puede liberar.
 select test.como_usuario(:'operario_id');

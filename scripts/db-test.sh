@@ -22,6 +22,12 @@ echo "→ shim supabase"
 run "$ROOT/db/test/00_shim_supabase.sql"
 
 for f in "$ROOT"/supabase/migrations/*.sql; do
+  # La cuenta inicial de Administración (migración 042) necesita una sede.
+  # El esquema es local y vacío; se crea aquí antes de que la migración la use.
+  if [[ "$(basename "$f")" == "20260101000042_la_cuenta_del_area_de_administracion.sql" ]]; then
+    psql -q -v ON_ERROR_STOP=1 -d "$DB" \
+      -c "insert into public.sedes (codigo, nombre) values ('QA', 'Taller local de pruebas') on conflict (codigo) do nothing;" >/dev/null
+  fi
   echo "→ $(basename "$f")"
   run "$f"
 done

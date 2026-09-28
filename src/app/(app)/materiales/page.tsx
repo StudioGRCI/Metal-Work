@@ -73,6 +73,7 @@ export default async function PaginaMateriales({ searchParams }: PageProps<'/mat
         <TarjetaCuerpo className="p-0">
           {materiales.length === 0 ? (
             <SinDatos
+              enTabla={false}
               titulo={busqueda ? `Ningún material con «${busqueda}»` : 'El catálogo está vacío'}
               descripcion={
                 puedeEditar

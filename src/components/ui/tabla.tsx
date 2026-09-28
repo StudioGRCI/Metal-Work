@@ -53,18 +53,28 @@ export function SinDatos({
   descripcion,
   accion,
   colSpan = 99,
+  enTabla = true,
 }: {
   titulo: string
   descripcion?: string
   accion?: React.ReactNode
   colSpan?: number
+  enTabla?: boolean
 }) {
+  const contenido = (
+    <>
+      <p className="text-sm font-medium text-texto">{titulo}</p>
+      {descripcion && <p className="mt-1 text-xs text-texto-suave">{descripcion}</p>}
+      {accion && <div className="mt-4 flex justify-center">{accion}</div>}
+    </>
+  )
+
+  if (!enTabla) return <div className="px-3 py-12 text-center">{contenido}</div>
+
   return (
     <tr>
       <td colSpan={colSpan} className="px-3 py-12 text-center">
-        <p className="text-sm font-medium text-texto">{titulo}</p>
-        {descripcion && <p className="mt-1 text-xs text-texto-suave">{descripcion}</p>}
-        {accion && <div className="mt-4 flex justify-center">{accion}</div>}
+        {contenido}
       </td>
     </tr>
   )

@@ -11,10 +11,23 @@ insert into public.clientes (tipo_documento, numero_documento, razon_social)
 insert into public.unidades (cliente_id, placa, tipo_vehiculo, marca)
   select id, 'V2G-841', 'VOLQUETE', 'VOLVO' from public.clientes limit 1;
 
+select test.crear_usuario('Ada', 'Prueba', 'admin-comercial@demo.pe', 'ADMIN',
+  (select id from public.sedes limit 1)) as admin_id \gset
+select test.como_usuario(:'admin_id');
+
 -- --- correlativo y cálculo de totales -------------------------------------
-insert into public.cotizaciones (cliente_id, unidad_id, fecha_emision)
-  select c.id, u.id, current_date
-    from public.clientes c join public.unidades u on u.cliente_id = c.id limit 1;
+insert into public.cotizaciones (cliente_id, unidad_id, tipo_carroceria_id, fecha_emision)
+  select c.id, u.id, t.id, current_date
+    from public.clientes c
+    join public.unidades u on u.cliente_id = c.id
+    cross join public.tipos_carroceria t
+   where t.codigo = 'TOLVA_VOLQUETE' limit 1;
+
+select public.aplicar_plantilla_ficha(
+  (select id from public.cotizaciones limit 1),
+  (select p.id from public.plantillas_ficha p
+    join public.tipos_carroceria t on t.id = p.tipo_carroceria_id
+   where t.codigo = 'TOLVA_VOLQUETE' and p.activa limit 1));
 
 do $$
 declare v public.cotizaciones;
@@ -31,11 +44,15 @@ insert into public.cotizacion_partidas (cotizacion_id, descripcion, cantidad, pr
 insert into public.cotizacion_partidas (cotizacion_id, descripcion, cantidad, precio_unitario, tipo_costo)
   select id, 'Instalación de sistema hidráulico', 1, 12000, 'SERVICIO' from public.cotizaciones limit 1;
 
+-- Las partidas son costo; Ventas registra el precio que ofrece al cliente.
+update public.cotizaciones set precio_venta = 50000, incluye_igv = false;
+
 do $$
 declare v public.cotizaciones;
 begin
   select * into v from public.cotizaciones limit 1;
-  perform test.afirmar(v.subtotal = 50000, 'el subtotal suma las partidas: ' || v.subtotal);
+  perform test.afirmar(v.costo_estimado = 50000, 'el costo estimado suma las partidas: ' || v.costo_estimado);
+  perform test.afirmar(v.subtotal = 50000, 'el subtotal refleja el precio ofrecido sin IGV: ' || v.subtotal);
   perform test.afirmar(v.igv = 9000, 'el IGV se calcula al 18%: ' || v.igv);
   perform test.afirmar(v.total = 59000, 'el total incluye IGV: ' || v.total);
 end $$;
@@ -49,6 +66,9 @@ begin
     format('update public.cotizaciones set estado = ''APROBADA'' where id = %L', v_id),
     'no se puede aprobar una cotización que nunca se envió');
 
+  update public.cotizaciones set estado = 'EN_COSTEO' where id = v_id;
+  update public.cotizaciones set estado = 'EN_REVISION' where id = v_id;
+  update public.cotizaciones set estado = 'REVISADA' where id = v_id;
   update public.cotizaciones set estado = 'ENVIADA' where id = v_id;
   update public.cotizaciones set estado = 'APROBADA' where id = v_id;
   perform test.afirmar(

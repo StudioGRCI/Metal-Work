@@ -85,6 +85,7 @@ export default async function PaginaTrabajos({ searchParams }: PageProps<'/avanc
         <Tarjeta>
           <TarjetaCuerpo className="p-0">
             <SinDatos
+              enTabla={false}
               titulo={
                 buscar
                   ? `Ningún trabajo con «${buscar}»`

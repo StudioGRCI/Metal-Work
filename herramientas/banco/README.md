@@ -35,11 +35,11 @@ Y para el recorrido automático de todas las pantallas:
 BANCO_CLAVE='la-que-quieras' node herramientas/banco/recorrer.mjs
 ```
 
-Entra con la cuenta de demostración, visita las 27 rutas —las de detalle con
-identificadores sacados de la propia base—, anota el estado y el título de cada
-una, recoge los errores de consola y guarda las capturas. Termina con código
-distinto de cero si alguna pantalla falló, así que sirve tal cual en una
-comprobación automática.
+Entra con la cuenta de demostración, visita las rutas principales de todos los
+módulos y los detalles disponibles en la propia base, comprueba un estado vacío,
+anota el estado y el título de cada pantalla, recoge los errores de consola y
+guarda las capturas. Termina con código distinto de cero si alguna pantalla
+falló, así que sirve tal cual en una comprobación automática.
 
 Y para lo que no se ve mirando pantallas —lo que pasa al apretar los botones—:
 
@@ -50,6 +50,12 @@ BANCO_CLAVE='la-que-quieras' node herramientas/banco/probar-cotizacion.mjs
 Emite una cotización, la descarga en PDF, comprueba que el borrador descargado
 queda marcado como enviado, intenta anularla sin motivo (no la deja), la anula
 con motivo y vuelve a descargarla ya anulada.
+
+La preparación local crea además tres accesos ficticios para comprobar el
+reporte por área: `supervisor.prd@metalwork.test`,
+`supervisor.mtz@metalwork.test` y `supervisor.acb@metalwork.test`. Los tres usan
+el valor local de `BANCO_CLAVE`; no son cuentas de la empresa ni se crean en
+Supabase.
 
 ## Qué hay dentro
 

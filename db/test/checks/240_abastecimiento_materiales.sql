@@ -8,12 +8,14 @@ insert into public.empresa (ruc, razon_social)
 values ('20100000019', 'PRUEBAS ABASTECIMIENTO S.A.C.');
 insert into public.sedes (codigo, nombre) values ('T1', 'Taller principal');
 
+select test.crear_usuario('Ana', 'Prueba', 'admin-abasto@demo.pe', 'ADMIN', (select id from public.sedes limit 1)) as admin_id \gset
 select test.crear_usuario('Dina', 'Rojas', 'dina@demo.pe', 'DISENO', (select id from public.sedes limit 1)) as diseno_id \gset
 select test.crear_usuario('Ciro', 'Luna', 'ciro@demo.pe', 'COMPRADOR', (select id from public.sedes limit 1)) as comprador_id \gset
 select test.crear_usuario('Alma', 'Vera', 'alma@demo.pe', 'ALMACENERO', (select id from public.sedes limit 1)) as almacen_id \gset
 select test.crear_usuario('Mario', 'Paz', 'mario@demo.pe', 'SUPERVISOR', (select id from public.sedes limit 1)) as mtz_id \gset
 select test.crear_usuario('Sonia', 'Rey', 'sonia@demo.pe', 'SUPERVISOR', (select id from public.sedes limit 1)) as acb_id \gset
 
+select test.como_usuario(:'admin_id');
 update public.usuarios set area_id = (select id from public.areas where codigo = 'MTZ') where id = :'mtz_id';
 update public.usuarios set area_id = (select id from public.areas where codigo = 'ACB') where id = :'acb_id';
 

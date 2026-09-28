@@ -49,8 +49,8 @@ begin
   perform set_config('prueba.linea', v_linea::text, false);
 
   perform test.afirmar(
-    (select cantidad_pendiente from public.v_ot_materiales where id = v_linea) = 500,
-    'recién escrita, la línea tiene los 500 kg pendientes');
+    (select cantidad from public.v_ot_materiales where id = v_linea) = 500,
+    'recién definida por Diseño, la línea conserva los 500 kg solicitados');
 end $$;
 
 reset role;
@@ -93,6 +93,9 @@ reset role;
 -- ------------------------------------------- el operario ve la lista, pero no la escribe
 select test.crear_usuario('Pedro', 'Silva', 'pedro@demo.pe', 'OPERARIO',
                           (select id from public.sedes limit 1)) as operario_id \gset
+select test.como_usuario(:'admin_id');
+update public.usuarios set area_id = (select id from public.areas where codigo='PRD')
+ where id = :'operario_id';
 select test.como_usuario(:'operario_id');
 set local role authenticated;
 

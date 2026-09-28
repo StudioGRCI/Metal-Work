@@ -24,6 +24,7 @@ select test.crear_usuario('Luis', 'Ochoa',  'luis@demo.pe', 'OPERARIO',        (
 select test.crear_usuario('Jefa', 'Prado',  'jefa@demo.pe', 'JEFE_PRODUCCION', (select id from public.sedes limit 1)) as jefe_id \gset
 
 -- El área decide de quién es cada reporte; test.crear_usuario no la pide.
+select test.como_usuario(:'admin_id');
 update public.usuarios set area_id = (select id from public.areas where codigo = 'ACB')
  where id = :'acabados_id';
 update public.usuarios set area_id = (select id from public.areas where codigo = 'PRD')
@@ -134,10 +135,15 @@ begin
   values (current_setting('prueba.unidad')::uuid, current_setting('prueba.prd')::uuid, 'Se soldó el refuerzo del piso');
 end $$;
 
-select test.debe_fallar(
-  format($sql$update public.flota_unidades set estado = 'LISTA' where id = %L$sql$,
-         current_setting('prueba.unidad')),
-  'el operario no marca la unidad como lista');
+do $$
+declare v_n integer;
+begin
+  update public.flota_unidades set estado = 'LISTA'
+   where id = current_setting('prueba.unidad')::uuid;
+  get diagnostics v_n = row_count;
+  perform test.afirmar(v_n = 0,
+    'el operario no marca la unidad como lista: el RLS le oculta la fila');
+end $$;
 
 reset role;
 
@@ -178,7 +184,7 @@ select test.debe_fallar(
   format($sql$update public.flota_unidades set estado = 'EN_TALLER' where id = %L$sql$,
          current_setting('prueba.unidad')),
   'de «salió» no se vuelve',
-  'regístrala de nuevo');
+  'regístralo de nuevo');
 
 select test.debe_fallar(
   format($sql$insert into public.flota_avances (flota_id, area_id, descripcion)

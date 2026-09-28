@@ -38,7 +38,7 @@ export default async function PaginaIngreso({ searchParams }: PageProps<'/ingres
       />
 
       <div className="relative mx-auto flex min-h-dvh w-full max-w-6xl flex-col justify-center gap-10 px-5 py-12 lg:flex-row lg:items-center lg:gap-16 lg:px-8">
-        {/* Presentación */}
+        {/* La marca identifica el sistema; los trabajadores solo necesitan ver el ingreso. */}
         <section className="lg:flex-1">
           {/* Sobre la foto va la versión de fondos oscuros, sin placa: el
               recuadro blanco recortaba el logotipo del resto de la pantalla. */}
@@ -46,13 +46,6 @@ export default async function PaginaIngreso({ searchParams }: PageProps<'/ingres
             variante="claro"
             className="mx-auto h-12 w-auto drop-shadow-lg lg:mx-0 lg:h-16"
           />
-          <h1 className="mt-8 max-w-md text-2xl font-semibold text-white lg:text-4xl">
-            Control de órdenes de trabajo, taller y costos
-          </h1>
-          <p className="mt-3 max-w-md text-sm text-white/70 lg:text-base">
-            De la cotización a la entrega de la unidad: cada etapa, cada material y cada hora
-            en un solo lugar.
-          </p>
         </section>
 
         {/* Ingreso */}

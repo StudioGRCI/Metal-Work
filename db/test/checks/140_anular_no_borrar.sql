@@ -11,6 +11,7 @@ insert into public.sedes (codigo, nombre) values ('T1', 'Taller principal');
 select test.crear_usuario('Vera',  'Sandoval', 'vera@demo.pe',  'VENDEDOR', (select id from public.sedes limit 1)) as vendedor_id \gset
 select test.crear_usuario('Elsa',  'Miranda',  'elsa@demo.pe',  'VENDEDOR', (select id from public.sedes limit 1)) as colega_id \gset
 select test.crear_usuario('Diego', 'Requena',  'diego@demo.pe', 'GERENTE',  (select id from public.sedes limit 1)) as gerente_id \gset
+select test.crear_usuario('Ana', 'Prueba', 'admin-anulacion@demo.pe', 'ADMIN', (select id from public.sedes limit 1)) as admin_id \gset
 
 insert into public.clientes (tipo_documento, numero_documento, razon_social)
   values ('RUC', '20607761907', 'TRANSPORTES VEGA PIUNDO S.A.C');
@@ -19,7 +20,7 @@ select set_config('prueba.cliente', (select id::text from public.clientes limit 
 select set_config('prueba.sede',    (select id::text from public.sedes limit 1), false);
 select set_config('prueba.colega',  :'colega_id', false);
 
--- ------------------------------------- el vendedor emite y luego quiere borrar
+-- ------------------------------------- el vendedor limpia un borrador
 select test.como_usuario(:'vendedor_id');
 set local role authenticated;
 
@@ -32,10 +33,15 @@ begin
 
   perform set_config('prueba.cotizacion', v_id::text, false);
 
-  -- Borrar no existe, ni siquiera en borrador: al usuario le falta el permiso.
-  perform test.debe_fallar(
-    format('delete from public.cotizaciones where id = %L', v_id),
-    'al usuario le está revocado el borrado de cotizaciones');
+  -- Un borrador nunca enviado sí se puede limpiar. Luego se crea otro para
+  -- comprobar las reglas de anulación y conservación del documento emitido.
+  delete from public.cotizaciones where id = v_id;
+  perform test.afirmar(not exists (select 1 from public.cotizaciones where id = v_id),
+    'Ventas puede limpiar su borrador antes de enviarlo');
+  insert into public.cotizaciones (cliente_id, fecha_emision)
+  values (current_setting('prueba.cliente')::uuid, current_date)
+  returning id into v_id;
+  perform set_config('prueba.cotizacion', v_id::text, false);
 
   -- Anular sin motivo no es anular.
   perform test.debe_fallar(
@@ -106,13 +112,22 @@ end $$;
 -- que GERENTE no tiene, así que el UPDATE afectaba cero filas, la pantalla
 -- decía «Estado actualizado» y la cotización se quedaba donde estaba. Un fallo
 -- mudo, el mismo que la numeración: por eso se prueba como usuario real.
+select test.como_usuario(:'admin_id');
 do $$
 declare v_cot uuid;
 begin
-  insert into public.cotizaciones (cliente_id, fecha_emision)
-  values (current_setting('prueba.cliente')::uuid, current_date)
+  insert into public.cotizaciones (cliente_id, tipo_carroceria_id, fecha_emision)
+  values (current_setting('prueba.cliente')::uuid,
+          (select id from public.tipos_carroceria where codigo='TOLVA_VOLQUETE'), current_date)
   returning id into v_cot;
 
+  perform public.aplicar_plantilla_ficha(v_cot,
+    (select p.id from public.plantillas_ficha p
+      join public.tipos_carroceria t on t.id=p.tipo_carroceria_id
+     where t.codigo='TOLVA_VOLQUETE' and p.activa limit 1));
+  update public.cotizaciones set estado = 'EN_COSTEO' where id = v_cot;
+  update public.cotizaciones set estado = 'EN_REVISION' where id = v_cot;
+  update public.cotizaciones set estado = 'REVISADA' where id = v_cot;
   update public.cotizaciones set estado = 'ENVIADA' where id = v_cot;
   perform set_config('prueba.aprobada', v_cot::text, false);
 end $$;
@@ -168,15 +183,24 @@ end $$;
 reset role;
 
 -- ------------------------------------- con una orden viva, primero la orden
+select test.como_usuario(:'admin_id');
 do $$
 declare
   v_cot uuid;
   v_ot  uuid;
 begin
-  insert into public.cotizaciones (cliente_id, fecha_emision)
-  values (current_setting('prueba.cliente')::uuid, current_date)
+  insert into public.cotizaciones (cliente_id, tipo_carroceria_id, fecha_emision)
+  values (current_setting('prueba.cliente')::uuid,
+          (select id from public.tipos_carroceria where codigo='TOLVA_VOLQUETE'), current_date)
   returning id into v_cot;
 
+  perform public.aplicar_plantilla_ficha(v_cot,
+    (select p.id from public.plantillas_ficha p
+      join public.tipos_carroceria t on t.id=p.tipo_carroceria_id
+     where t.codigo='TOLVA_VOLQUETE' and p.activa limit 1));
+  update public.cotizaciones set estado = 'EN_COSTEO' where id = v_cot;
+  update public.cotizaciones set estado = 'EN_REVISION' where id = v_cot;
+  update public.cotizaciones set estado = 'REVISADA' where id = v_cot;
   update public.cotizaciones set estado = 'ENVIADA'  where id = v_cot;
   update public.cotizaciones set estado = 'APROBADA' where id = v_cot;
 

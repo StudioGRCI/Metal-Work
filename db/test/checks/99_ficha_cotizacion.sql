@@ -44,10 +44,10 @@ begin
     from public.plantilla_ficha_accesorios a
     join public.plantillas_ficha p on p.id = a.plantilla_id
     join public.tipos_carroceria t on t.id = p.tipo_carroceria_id
-   where t.codigo = 'PLATAFORMA';
+   where t.codigo = 'PLA' and p.activa;
 
   if v_acc < 12 then
-    raise exception 'FALLA: la plataforma quedó con solo % accesorios', v_acc;
+    raise exception 'FALLA: la plantilla vigente de plataforma quedó con solo % accesorios', v_acc;
   end if;
   raise notice '  ok · la plataforma trae sus % accesorios', v_acc;
 
@@ -59,9 +59,17 @@ begin
     raise exception 'FALLA: se perdió la distinción entre el porta y lo que va adentro';
   end if;
   raise notice '  ok · el porta que no trae el accesorio queda marcado como tal';
+
+  perform test.afirmar(
+    exists (
+      select 1 from public.plantillas_ficha p
+      join public.tipos_carroceria t on t.id = p.tipo_carroceria_id
+      where t.codigo = 'PLA' and p.activa
+    ),
+    'la ficha actual de plataforma se ofrece como plantilla vigente');
 end $$;
 
--- ------------------------------------------------- aplicar la ficha a una cotización
+-- -------------------------------- aplicar una ficha vigente a una cotización
 do $$
 declare
   v_cot       uuid;
@@ -79,7 +87,7 @@ begin
   select p.id into v_plantilla
     from public.plantillas_ficha p
     join public.tipos_carroceria t on t.id = p.tipo_carroceria_id
-   where t.codigo = 'TOLVA_VOLQUETE' limit 1;
+   where t.codigo = 'TOLVA_VOLQUETE' and p.activa limit 1;
 
   v_copiadas := public.aplicar_plantilla_ficha(v_cot, v_plantilla);
 
@@ -94,12 +102,11 @@ begin
   end if;
   raise notice '  ok · y con sus accesorios';
 
-  -- Cambiar de carrocería tiene que dejar la ficha nueva, no las dos mezcladas.
+  -- Cambiar de carrocería reemplaza la ficha, no mezcla la información.
   select p.id into v_plantilla
     from public.plantillas_ficha p
     join public.tipos_carroceria t on t.id = p.tipo_carroceria_id
-   where t.codigo = 'PLATAFORMA' limit 1;
-
+   where t.codigo = 'PLA' and p.activa limit 1;
   perform public.aplicar_plantilla_ficha(v_cot, v_plantilla);
 
   if exists (
@@ -110,7 +117,7 @@ begin
   end if;
   if not exists (
     select 1 from public.cotizacion_especificaciones
-     where cotizacion_id = v_cot and seccion = 'KING PIN'
+     where cotizacion_id = v_cot and seccion = 'KING PING'
   ) then
     raise exception 'FALLA: no se aplicó la ficha de la plataforma';
   end if;

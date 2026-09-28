@@ -1,7 +1,6 @@
--- Una llave foránea cubierta solo por un índice PARCIAL parece atendida y no lo
--- está: el tablero de Supabase la da por buena y la comprobación de integridad
--- no puede usar ese índice, porque mira todas las filas y el índice solo guarda
--- unas. Es el único caso que no avisa nadie, así que lo vigilamos aquí.
+-- Un índice parcial `columna IS NOT NULL` sí sirve para la llave: las filas con
+-- NULL no participan en la integridad referencial. Un predicado adicional que
+-- deja fuera referencias vigentes no alcanza para SET NULL al borrar el padre.
 --
 -- También se comprueba que borrar una etapa anule la etapa del avance y no su
 -- orden: en una llave de dos columnas, `set null` sin lista las anula las dos.
@@ -23,19 +22,32 @@ begin
     from pg_constraint c
    where c.contype = 'f'
      and c.connamespace = 'public'::regnamespace
-     -- no hay ningún índice PLENO que empiece por la primera columna de la llave…
+     -- no hay un índice pleno ni un parcial que cubra todos los valores no nulos…
      and not exists (
        select 1 from pg_index i
         where i.indrelid = c.conrelid
           and i.indisvalid and i.indpred is null
           and (i.indkey::int2[])[0] = c.conkey[1]
      )
-     -- …pero sí hay uno PARCIAL, que es lo que engaña al tablero.
+     -- …ni uno parcial cuyo único filtro sea excluir llaves NULL.
+     and not exists (
+       select 1 from pg_index i
+        where i.indrelid = c.conrelid
+          and i.indisvalid and i.indpred is not null
+          and (i.indkey::int2[])[0] = c.conkey[1]
+          and regexp_replace(lower(pg_get_expr(i.indpred, i.indrelid)), '[()"]', '', 'g')
+              = format('%s is not null', lower((select a.attname from pg_attribute a
+                 where a.attrelid=c.conrelid and a.attnum=c.conkey[1])))
+     )
+     -- …pero sí uno parcial que deja fuera referencias existentes.
      and exists (
        select 1 from pg_index i
         where i.indrelid = c.conrelid
           and i.indisvalid and i.indpred is not null
           and (i.indkey::int2[])[0] = c.conkey[1]
+          and regexp_replace(lower(pg_get_expr(i.indpred, i.indrelid)), '[()"]', '', 'g')
+              <> format('%s is not null', lower((select a.attname from pg_attribute a
+                 where a.attrelid=c.conrelid and a.attnum=c.conkey[1])))
      );
 
   if v_cuantas > 0 then
@@ -44,6 +56,23 @@ begin
   end if;
 
   raise notice '  ok · ninguna llave foránea depende de un índice parcial';
+end $$;
+
+-- La cotización puede eliminarse después de anular sus OTs; SET NULL tiene que
+-- localizar también esas órdenes, que el índice único parcial excluye.
+do $$
+begin
+  if not exists (
+    select 1 from pg_index i
+    where i.indrelid='public.ordenes_trabajo'::regclass
+      and i.indisvalid and i.indpred is null
+      and (i.indkey::int2[])[0] = (
+        select attnum from pg_attribute
+         where attrelid='public.ordenes_trabajo'::regclass and attname='cotizacion_pdf_id')
+  ) then
+    raise exception 'FALLA: falta índice completo para anular el vínculo PDF de cualquier OT';
+  end if;
+  raise notice '  ok · borrar una cotización encuentra también las OTs anuladas';
 end $$;
 
 -- ------------------------------------- el avance pierde la etapa, no la orden

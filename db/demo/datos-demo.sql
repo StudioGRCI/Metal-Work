@@ -22,14 +22,27 @@ declare
   v_persona   record;
   v_cotizacion    uuid;
   v_jefe          uuid;
+  v_supervisor_prd uuid;
+  v_supervisor_mtz uuid;
+  v_supervisor_acb uuid;
   v_plantilla     uuid;
 begin
   select id into v_sede from public.sedes where activo order by creado_en limit 1;
-  select id into v_usuario from public.usuarios where activo order by creado_en limit 1;
+  select u.id into v_usuario
+    from public.usuarios u
+    join public.roles r on r.id = u.rol_id
+   where u.activo and r.codigo = 'ADMIN'
+   order by u.creado_en
+   limit 1;
 
   if v_sede is null or v_usuario is null then
     raise exception 'Antes de cargar la demostración hay que registrar la empresa, una sede y un usuario. Ver el README.';
   end if;
+
+  -- Los disparadores que anotan los cambios de orden necesitan una identidad
+  -- autorizada. La demostración corre con la cuenta local de ADMIN.
+  perform set_config('request.jwt.claim.sub', v_usuario::text, true);
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
 
   -- --------------------------------------------------------------- personal
   -- Se crean como fichas de personal, no como accesos: la cuenta queda sin
@@ -44,6 +57,9 @@ begin
         ('ventas@metalworkperusac.com',       'Karina',   'Bardales', 'VENDEDOR',    'GCO', false,  0.0, 'Ejecutiva comercial'),
         ('jefe.taller@metalworkperusac.com',  'Aurelio',  'Ramírez',  'JEFE_TALLER', 'MTZ', false, 22.0, 'Jefe de maestranza'),
         ('supervisor@metalworkperusac.com',   'Teodoro',  'Alva',     'SUPERVISOR',  'PRD', false, 18.0, 'Supervisor de producción'),
+        ('supervisor.prd@metalwork.test',     'Teodoro',  'Alva',     'SUPERVISOR',  'PRD', false,  0.0, 'Supervisor de producción · prueba'),
+        ('supervisor.mtz@metalwork.test',     'Mía',      'Soto',     'SUPERVISOR',  'MTZ', false,  0.0, 'Supervisora de maestranza · prueba'),
+        ('supervisor.acb@metalwork.test',     'Sam',      'Rojas',    'SUPERVISOR',  'ACB', false,  0.0, 'Supervisor de acabados · prueba'),
         ('soldador1@metalworkperusac.com',    'Elmer',    'Chávez',   'OPERARIO',    'PRD', true,  14.0, 'Soldador estructural'),
         ('soldador2@metalworkperusac.com',    'Máximo',   'Vargas',   'OPERARIO',    'PRD', true,  14.0, 'Soldador estructural'),
         ('almacen@metalworkperusac.com',      'Rosa',     'Yupanqui', 'ALMACENERO',  'ALM', false, 12.0, 'Almacenera'),
@@ -259,7 +275,9 @@ begin
       (cliente_id, unidad_id, tipo_carroceria_id, sede_id, fecha_emision, validez_dias,
        plazo_entrega_dias, forma_pago, condiciones, vendedor_id,
        concepto, concepto_cantidad, concepto_unidad)
-    select v_cliente, v_unidad, tc.id, v_sede, current_date - 30, 20,
+    -- La fecha coincide con el tipo de cambio de prueba sembrado por la
+    -- migración 050; así la cotización en dólares también puede calcularse.
+    select v_cliente, v_unidad, tc.id, v_sede, current_date - 29, 20,
            45, '50 % adelanto, saldo contra entrega',
            'Precios en soles, no incluyen traslado fuera de la ciudad.',
            v_usuario,
@@ -281,8 +299,11 @@ begin
             'UND', 1.0,  1900.0, 'SERVICIO')
       ) as v(secuencia, descripcion, unidad, cantidad, precio, tipo);
 
-    -- Las partidas solo se pueden cargar mientras la cotización está en
-    -- borrador; recién entonces se envía y se aprueba, como en la realidad.
+    -- Recorre el circuito actual; la base no permite saltar de BORRADOR a
+    -- ENVIADA sin costeo, revisión y visto bueno de Gerencia.
+    update public.cotizaciones set estado = 'EN_COSTEO' where id = v_cotizacion;
+    update public.cotizaciones set estado = 'EN_REVISION' where id = v_cotizacion;
+    update public.cotizaciones set estado = 'REVISADA' where id = v_cotizacion;
     update public.cotizaciones set estado = 'ENVIADA' where id = v_cotizacion;
     update public.cotizaciones
        set estado = 'APROBADA', fecha_aprobacion = current_date - 24, aprobada_por = v_usuario
@@ -349,7 +370,56 @@ begin
         v_jefe);
     end if;
 
-    perform set_config('request.jwt.claim.sub', '', true);
+    -- Restablece ADMIN tras sembrar reportes como jefe de taller: las siguientes
+    -- aprobaciones también pasan por el registro de eventos de la OT.
+    perform set_config('request.jwt.claim.sub', v_usuario::text, true);
+  end if;
+
+  -- ------------------------------------------------ avance diario por área
+  -- Las tres hojas tienen actividades y reportes previos para que el banco
+  -- local deje probar la vista y el permiso de cada supervisor.
+  select o.id into v_orden
+    from public.ordenes_trabajo o
+    join public.unidades u on u.id = o.unidad_id
+   where u.placa = 'V2G-841'
+   limit 1;
+
+  select id into v_supervisor_prd from public.usuarios where correo = 'supervisor.prd@metalwork.test';
+  select id into v_supervisor_mtz from public.usuarios where correo = 'supervisor.mtz@metalwork.test';
+  select id into v_supervisor_acb from public.usuarios where correo = 'supervisor.acb@metalwork.test';
+
+  if v_orden is not null and v_supervisor_prd is not null
+     and v_supervisor_mtz is not null and v_supervisor_acb is not null then
+    insert into public.ot_actividades
+      (orden_id, area_id, orden_secuencia, nombre, detalle, referencia, peso_pct, creado_por)
+    select v_orden, a.id, x.secuencia, x.nombre, x.detalle, x.referencia, x.peso, v_usuario
+      from (values
+        ('PRD', 1, 'Bastidor principal', 'Armado y escuadrado del bastidor según plano.', 'PL-001', 60::numeric),
+        ('PRD', 2, 'Montaje de laterales', 'Presentar y soldar los laterales de la tolva.', 'PL-002', 40::numeric),
+        ('MTZ', 1, 'Corte de planchas', 'Corte de piso y laterales con las medidas liberadas.', 'PZ-01', 55::numeric),
+        ('MTZ', 2, 'Preparación de refuerzos', 'Habilitar los refuerzos para entregar a Producción.', 'PZ-02', 45::numeric),
+        ('ACB', 1, 'Preparar superficie', 'Limpieza y preparación antes del sistema de pintura.', 'AC-01', 50::numeric),
+        ('ACB', 2, 'Aplicar acabado', 'Aplicación de imprimante y color final aprobado.', 'AC-02', 50::numeric)
+      ) as x(area, secuencia, nombre, detalle, referencia, peso)
+      join public.areas a on a.codigo = x.area
+    on conflict (orden_id, area_id, nombre) do nothing;
+
+    insert into public.ot_actividad_avances
+      (actividad_id, orden_id, fecha, avance_pct, nota, reportado_por)
+    select a.id, a.orden_id, x.fecha, x.avance, x.nota, u.id
+      from (values
+        ('PRD', 'Bastidor principal', current_date - 3, 25::numeric, 'Bastidor presentado y escuadrado.', 'supervisor.prd@metalwork.test'),
+        ('PRD', 'Montaje de laterales', current_date - 1, 15::numeric, 'Laterales punteados; falta soldadura final.', 'supervisor.prd@metalwork.test'),
+        ('MTZ', 'Corte de planchas', current_date - 2, 35::numeric, 'Piso y dos laterales cortados.', 'supervisor.mtz@metalwork.test'),
+        ('ACB', 'Preparar superficie', current_date - 1, 20::numeric, 'Unidad ingresó a limpieza y desengrase.', 'supervisor.acb@metalwork.test')
+      ) as x(area, nombre, fecha, avance, nota, correo)
+      join public.areas ar on ar.codigo = x.area
+      join public.ot_actividades a on a.orden_id = v_orden and a.area_id = ar.id and a.nombre = x.nombre
+      join public.usuarios u on u.correo = x.correo
+     where not exists (
+       select 1 from public.ot_actividad_avances existente
+        where existente.actividad_id = a.id and existente.fecha = x.fecha
+     );
   end if;
 
   -- ------------------------------------------------ la ficha de la cotización
@@ -397,7 +467,8 @@ begin
   -- ahora y se deja a medio llenar, que es como se ve una unidad en planta.
   if not exists (select 1 from public.ot_repuestos) then
     for v_orden in
-      select id from public.ordenes_trabajo where estado not in ('BORRADOR', 'ANULADA')
+      select id from public.ordenes_trabajo
+       where estado not in ('BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA')
     loop
       perform public.armar_ficha_ot(v_orden);
     end loop;
