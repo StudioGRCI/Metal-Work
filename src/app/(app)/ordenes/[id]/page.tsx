@@ -4,7 +4,6 @@ import { seccionesDeOrden } from '@/lib/dominio/acceso-orden'
 import type { Metadata } from 'next'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
-import { GuiaDelProceso } from '@/components/estructura/guia-del-proceso'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia, Punto } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
@@ -306,8 +305,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           />
         }
       />
-
-      {vista === 'resumen' && <GuiaDelProceso />}
 
       {query.creada === '1' && orden.estado === 'BORRADOR' && (
         <p className="mb-4 rounded-[var(--radius-base)] bg-exito-suave px-3 py-2 text-sm text-exito">

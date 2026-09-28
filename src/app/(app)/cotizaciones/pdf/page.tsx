@@ -3,7 +3,6 @@ import Link from 'next/link'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
-import { GuiaDelProceso } from '@/components/estructura/guia-del-proceso'
 import { AvisoTope } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -133,8 +132,6 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
         descripcion="Gerencia aprueba el documento; Administración emite la OT y puede liberar la cotización aceptada a Tesorería."
         acciones={puedeSubir && <SubirCotizacion clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />}
       />
-
-      <GuiaDelProceso />
 
       {cotizaciones.length > 0 && (
         <>
