@@ -80,7 +80,7 @@ export type OpcionMaterial = {
 export type CatalogoMateriales = {
   materiales: OpcionMaterial[]
   planos: { id: string; numero_plano: string; nombre: string }[]
-  etapas: { id: string; nombre: string; area: string | null }[]
+  etapas: { id: string; nombre: string; area: string | null; areaCodigo: string | null }[]
 }
 
 /**
@@ -91,7 +91,7 @@ export type CatalogoMateriales = {
 export async function catalogoDeMateriales(ordenId: string): Promise<CatalogoMateriales> {
   const supabase = await createClient()
 
-  const [materiales, planos, etapas] = await Promise.all([
+  const [materiales, planos, etapas, areas] = await Promise.all([
     supabase
       .from('materiales')
       .select('id, codigo, descripcion, especificacion_tecnica, unidad:unidades_medida(codigo)')
@@ -105,10 +105,16 @@ export async function catalogoDeMateriales(ordenId: string): Promise<CatalogoMat
       .order('orden_secuencia'),
     supabase
       .from('ot_etapas')
-      .select('id, orden_secuencia, nombre, area_id, etapa:etapas_catalogo(nombre, area:areas(nombre))')
+      .select('id, orden_secuencia, nombre, area_id, etapa:etapas_catalogo(nombre, area:areas(nombre,codigo))')
       .eq('orden_id', ordenId)
       .order('orden_secuencia'),
+    supabase.from('areas').select('id, nombre, codigo').in('codigo', ['PRD', 'MTZ', 'ACB']),
   ])
+
+  if (materiales.error || planos.error || etapas.error || areas.error) {
+    throw new Error('No se pudieron cargar los materiales, planos o etapas de esta orden.')
+  }
+  const areaPorId = new Map((areas.data ?? []).map((area) => [area.id, area]))
 
   return {
     materiales: (materiales.data ?? []).map((m) => {
@@ -123,11 +129,12 @@ export async function catalogoDeMateriales(ordenId: string): Promise<CatalogoMat
     }),
     planos: planos.data ?? [],
     etapas: (etapas.data ?? []).map((e) => {
-      const etapa = e.etapa as { nombre: string; area: { nombre: string } | null } | null
+      const etapa = e.etapa as { nombre: string; area: { nombre: string; codigo: string } | null } | null
       return {
         id: e.id,
         nombre: e.nombre ?? etapa?.nombre ?? `Etapa ${e.orden_secuencia}`,
-        area: etapa?.area?.nombre ?? null,
+        area: (e.area_id ? areaPorId.get(e.area_id)?.nombre : null) ?? etapa?.area?.nombre ?? null,
+        areaCodigo: (e.area_id ? areaPorId.get(e.area_id)?.codigo : null) ?? etapa?.area?.codigo ?? null,
       }
     }),
   }

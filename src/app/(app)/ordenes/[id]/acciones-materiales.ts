@@ -135,6 +135,7 @@ const esquemaCantidad = z.object({
   orden_id: z.string().uuid(),
   cantidad: z.coerce.number().positive('La cantidad tiene que ser mayor que cero'),
   area_destino: z.enum(['MTZ', 'PRD', 'ACB']),
+  etapa_id: z.union([z.string().uuid(), z.literal('')]),
 })
 
 export async function cambiarCantidadMaterial(
@@ -156,8 +157,9 @@ export async function cambiarCantidadMaterial(
 
   const { data, error } = await supabase
     .from('ot_materiales')
-    .update({ cantidad: v.cantidad, area_destino: v.area_destino })
+    .update({ cantidad: v.cantidad, area_destino: v.area_destino, etapa_id: nulo(v.etapa_id) })
     .eq('id', v.id)
+    .eq('orden_id', v.orden_id)
     .select('id')
     .maybeSingle()
 
@@ -189,6 +191,7 @@ export async function quitarMaterial(_previo: unknown, datos: FormData): Promise
     .from('ot_materiales')
     .delete()
     .eq('id', v.id)
+    .eq('orden_id', v.orden_id)
     .select('id')
     .maybeSingle()
 

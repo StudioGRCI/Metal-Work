@@ -190,6 +190,7 @@ export async function areasParaEtapas() {
     .from('areas')
     .select('id, nombre, codigo')
     .eq('activo', true)
+    .in('codigo', ['DIS', 'PRD', 'MTZ', 'ACB'])
     .order('nombre')
   if (error) throw new Error(`No se pudieron cargar las áreas: ${error.message}`)
   return data ?? []
