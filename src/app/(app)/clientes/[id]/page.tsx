@@ -20,6 +20,7 @@ import {
 } from '@/lib/datos/comercial'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { NuevoContacto } from '@/components/comercial/nuevo-contacto'
+import { AccionesCatalogo } from '@/app/(app)/catalogos/acciones-catalogo'
 
 import { NuevaUnidad } from '../nueva-unidad'
 
@@ -62,12 +63,15 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
           cliente.nombre_comercial ? ` · ${cliente.nombre_comercial}` : ''
         }`}
         acciones={
-          puede(perfil, 'clientes.editar') && (
-            <EnlaceBoton href={`/clientes/${id}/editar`} variante="contorno">
-              <Pencil aria-hidden className="size-4" />
-              Editar
-            </EnlaceBoton>
-          )
+          <div className="flex flex-wrap items-center gap-2">
+            {puede(perfil, 'clientes.editar') && (
+              <EnlaceBoton href={`/clientes/${id}/editar`} variante="contorno">
+                <Pencil aria-hidden className="size-4" />
+                Editar
+              </EnlaceBoton>
+            )}
+            <AccionesCatalogo tipo="cliente" id={id} nombre={cliente.razon_social} activo={cliente.activo} puedeEditar={puede(perfil, 'clientes.editar')} esAdmin={perfil.rol.codigo === 'ADMIN'} />
+          </div>
         }
       />
 
@@ -138,6 +142,12 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                         {u.capacidad_m3 ? ` · ${u.capacidad_m3} m³` : ''}
                       </p>
                     </div>
+                    {puede(perfil, 'clientes.editar') && (
+                      <div className="flex flex-wrap gap-2">
+                        <NuevaUnidad clienteId={id} unidad={u} compacta />
+                        <AccionesCatalogo tipo="unidad" id={u.id} nombre={nombreDeUnidad(u)} activo={u.activo} puedeEditar esAdmin={perfil.rol.codigo === 'ADMIN'} />
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

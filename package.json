@@ -10,7 +10,8 @@
     "banco:preparar": "./herramientas/banco/preparar.sh",
     "banco": "node herramientas/banco/servidor.mjs",
     "validar": "node herramientas/banco/recorrer.mjs",
-    "validar:cotizacion": "node herramientas/banco/probar-cotizacion.mjs"
+    "validar:cotizacion": "node herramientas/banco/probar-cotizacion.mjs",
+    "validar:total-cotizacion": "node --experimental-strip-types herramientas/banco/probar-total-cotizacion.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -28,6 +29,7 @@
     "read-excel-file": "^9.3.10",
     "server-only": "^0.0.1",
     "tailwind-merge": "^3.6.0",
+    "tesseract.js": "7.0.0",
     "unpdf": "^1.8.1",
     "zod": "^4.4.3"
   },
