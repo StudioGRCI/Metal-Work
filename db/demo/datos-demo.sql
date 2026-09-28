@@ -20,7 +20,6 @@ declare
   v_orden     uuid;
   v_cuenta    uuid;
   v_persona   record;
-  v_cotizacion    uuid;
   v_jefe          uuid;
   v_plantilla     uuid;
 begin
@@ -140,11 +139,11 @@ begin
     insert into public.ordenes_trabajo
       (cliente_id, unidad_id, sede_id, tipo_carroceria_id, tipo_trabajo, prioridad, descripcion,
        especificaciones_tecnicas, fecha_inicio_programada, fecha_fin_programada,
-       fecha_entrega_comprometida, responsable_id, monto_presupuestado)
+       fecha_entrega_comprometida, responsable_id)
     select v_cliente, v_unidad, v_sede, tc.id, 'FABRICACION', 'ALTA',
       'Fabricación de tolva de volquete de 18 m3 en acero A36 con piso Hardox',
       E'Largo 5.60 m, ancho 2.40 m, alto 1.55 m.\nPiso en Hardox 450 de 8 mm, laterales en A36 de 6 mm.\nCompuerta trasera con seguros hidráulicos.\nPistón telescópico de 5 etapas.\nPintura: base epóxica y acabado poliuretano color del cliente.',
-      current_date - 20, current_date + 10, current_date + 12, v_usuario, 52000
+      current_date - 20, current_date + 10, current_date + 12, v_usuario
       from public.tipos_carroceria tc where tc.codigo = 'TOLVA_VOLQUETE'
     returning id into v_orden;
 
@@ -168,10 +167,10 @@ begin
 
     insert into public.ordenes_trabajo
       (cliente_id, unidad_id, sede_id, tipo_carroceria_id, tipo_trabajo, prioridad, descripcion,
-       fecha_entrega_comprometida, responsable_id, monto_presupuestado)
+       fecha_entrega_comprometida, responsable_id)
     select v_cliente, v_unidad, v_sede, tc.id, 'REPOTENCIACION', 'NORMAL',
       'Repotenciación de tolva: cambio de piso y refuerzo de laterales',
-      current_date - 3, v_usuario, 18500
+      current_date - 3, v_usuario
       from public.tipos_carroceria tc where tc.codigo = 'REPOTENCIACION'
     returning id into v_orden;
 
@@ -190,10 +189,10 @@ begin
     insert into public.ordenes_trabajo
       (cliente_id, unidad_id, sede_id, tipo_carroceria_id, tipo_trabajo, prioridad, descripcion,
        fecha_inicio_programada, fecha_fin_programada, fecha_entrega_comprometida,
-       responsable_id, monto_presupuestado)
+       responsable_id)
     select v_cliente, v_unidad, v_sede, tc.id, 'FABRICACION', 'URGENTE',
       'Fabricación de furgón cerrado de 6.20 m con puerta lateral',
-      current_date + 2, current_date + 25, current_date + 28, v_usuario, 38000
+      current_date + 2, current_date + 25, current_date + 28, v_usuario
       from public.tipos_carroceria tc where tc.codigo = 'FURGON'
     returning id into v_orden;
 
@@ -207,10 +206,10 @@ begin
 
     insert into public.ordenes_trabajo
       (cliente_id, unidad_id, sede_id, tipo_carroceria_id, tipo_trabajo, descripcion,
-       fecha_entrega_comprometida, responsable_id, monto_presupuestado)
+       fecha_entrega_comprometida, responsable_id)
     select v_cliente, v_unidad, v_sede, tc.id, 'FABRICACION',
       'Fabricación de plataforma con barandas abatibles de 5.00 m',
-      current_date - 5, v_usuario, 26000
+      current_date - 5, v_usuario
       from public.tipos_carroceria tc where tc.codigo = 'BARANDA'
     returning id into v_orden;
 
@@ -239,60 +238,11 @@ begin
 
     insert into public.ordenes_trabajo
       (cliente_id, unidad_id, sede_id, tipo_carroceria_id, tipo_trabajo, prioridad, descripcion,
-       responsable_id, monto_presupuestado)
+       responsable_id)
     select v_cliente, v_unidad, v_sede, tc.id, 'REPARACION', 'BAJA',
       'Reparación de estructura y cambio de barandas del remolque',
-      v_usuario, 7800
+      v_usuario
       from public.tipos_carroceria tc where tc.codigo = 'BARANDA';
-  end if;
-
-  -- ------------------------------------------------------------ cotización
-  -- El recorrido de una carrocería empieza acá, no en la orden. Se deja una
-  -- cotización aprobada del mismo cliente y la misma unidad de la orden que
-  -- está en taller, para poder seguir el hilo completo.
-  if not exists (select 1 from public.cotizaciones) then
-    select c.id, u.id into v_cliente, v_unidad
-      from public.clientes c join public.unidades u on u.cliente_id = c.id
-     where c.numero_documento = '20512345671' and u.placa = 'V2G-841';
-
-    insert into public.cotizaciones
-      (cliente_id, unidad_id, tipo_carroceria_id, sede_id, fecha_emision, validez_dias,
-       plazo_entrega_dias, forma_pago, condiciones, vendedor_id,
-       concepto, concepto_cantidad, concepto_unidad)
-    select v_cliente, v_unidad, tc.id, v_sede, current_date - 30, 20,
-           45, '50 % adelanto, saldo contra entrega',
-           'Precios en soles, no incluyen traslado fuera de la ciudad.',
-           v_usuario,
-           -- Lo que sale impreso: el trabajo entero, sin abrir las partidas.
-           'Fabricación de tolva de volquete de 18 m3 en acero A36 con piso Hardox 450, sistema hidráulico y acabado',
-           1, 'UND'
-      from public.tipos_carroceria tc where tc.codigo = 'TOLVA_VOLQUETE'
-    returning id into v_cotizacion;
-
-    insert into public.cotizacion_partidas
-      (cotizacion_id, orden_secuencia, descripcion, unidad_medida, cantidad, precio_unitario, tipo_costo)
-    select v_cotizacion, v.secuencia, v.descripcion, v.unidad, v.cantidad, v.precio, v.tipo::public.tipo_costo_partida
-      from (values
-        (1, 'Fabricación de tolva de volquete de 18 m3 en acero A36 con piso Hardox 450',
-            'UND', 1.0, 42000.0, 'MATERIAL'),
-        (2, 'Sistema hidráulico: pistón telescópico de 5 etapas, bomba y mando',
-            'JGO', 1.0,  8600.0, 'MATERIAL'),
-        (3, 'Arenado y pintura: base epóxica y acabado poliuretano al color del cliente',
-            'UND', 1.0,  1900.0, 'SERVICIO')
-      ) as v(secuencia, descripcion, unidad, cantidad, precio, tipo);
-
-    -- Las partidas solo se pueden cargar mientras la cotización está en
-    -- borrador; recién entonces se envía y se aprueba, como en la realidad.
-    update public.cotizaciones set estado = 'ENVIADA' where id = v_cotizacion;
-    update public.cotizaciones
-       set estado = 'APROBADA', fecha_aprobacion = current_date - 24, aprobada_por = v_usuario
-     where id = v_cotizacion;
-
-    -- La orden en taller queda colgada de su cotización.
-    update public.ordenes_trabajo o
-       set cotizacion_id = v_cotizacion
-      from public.unidades u
-     where u.id = o.unidad_id and u.placa = 'V2G-841' and o.cotizacion_id is null;
   end if;
 
   -- ------------------------------------------------------------ avance diario
@@ -350,45 +300,6 @@ begin
     end if;
 
     perform set_config('request.jwt.claim.sub', '', true);
-  end if;
-
-  -- ------------------------------------------------ la ficha de la cotización
-  -- La cotización de esta empresa es una ficha técnica: declara espesores,
-  -- normas y accesorios. Se aplica la plantilla del producto para que la
-  -- pantalla muestre lo que el cliente realmente recibe.
-  if not exists (select 1 from public.cotizacion_especificaciones) then
-    select c.id into v_cotizacion
-      from public.cotizaciones c
-      join public.tipos_carroceria t on t.id = c.tipo_carroceria_id
-     where t.codigo = 'TOLVA_VOLQUETE'
-     limit 1;
-
-    select p.id into v_plantilla
-      from public.plantillas_ficha p
-      join public.tipos_carroceria t on t.id = p.tipo_carroceria_id
-     where t.codigo = 'TOLVA_VOLQUETE' and p.activa
-     limit 1;
-
-    if v_cotizacion is not null and v_plantilla is not null then
-      -- Se copia a mano y no con aplicar_plantilla_ficha() porque esa función
-      -- exige permiso y acá no hay sesión iniciada.
-      insert into public.cotizacion_especificaciones
-        (cotizacion_id, seccion, orden_seccion, orden_linea, etiqueta, detalle)
-      select v_cotizacion, l.seccion, l.orden_seccion, l.orden_linea, l.etiqueta, l.detalle
-        from public.plantilla_ficha_lineas l where l.plantilla_id = v_plantilla;
-
-      insert into public.cotizacion_accesorios
-        (cotizacion_id, orden, cantidad, unidad, descripcion, incluye_el_accesorio)
-      select v_cotizacion, a.orden, a.cantidad, a.unidad, a.descripcion, a.incluye_el_accesorio
-        from public.plantilla_ficha_accesorios a where a.plantilla_id = v_plantilla;
-
-      update public.cotizaciones
-         set modelo = 'VASCULANTE', tipo = 'TOLVA',
-             largo_m = 5.60, ancho_m = 2.40, alto_m = 1.55,
-             capacidad = '18 M3', garantia_meses = 12, incluye_igv = true,
-             nota = 'Incluye certificado de montaje y expediente para registros públicos.'
-       where id = v_cotizacion;
-    end if;
   end if;
 
   -- ------------------------------------------------ la ficha de taller de la OT

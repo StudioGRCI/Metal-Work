@@ -73,7 +73,7 @@ function enFiltro(c: { estado: string | null; orden_id: string | null }, filtro:
 }
 
 export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<'/cotizaciones/pdf'>) {
-  const perfil = await exigirPermiso('cotizaciones.ver')
+  const perfil = await exigirPermiso(['cotizaciones.ver_pdf_comercial', 'tesoreria.ver_documentos'])
   const params = await searchParams
 
   const puedeSubir = puede(perfil, 'cotizaciones.crear')

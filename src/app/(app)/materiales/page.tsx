@@ -20,7 +20,7 @@ const FILTROS = [
  * «plancha LAC 6 mm» de tres maneras distintas en el desglose de la orden.
  */
 export default async function PaginaMateriales({ searchParams }: PageProps<'/materiales'>) {
-  const perfil = await exigirPermiso(['diseno.planos', 'cotizaciones.costear'])
+  const perfil = await exigirPermiso('diseno.planos')
   const params = await searchParams
 
   const busqueda = typeof params.buscar === 'string' ? params.buscar : undefined

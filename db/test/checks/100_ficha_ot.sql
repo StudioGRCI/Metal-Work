@@ -71,70 +71,41 @@ begin
 end $$;
 
 -- ------------------------------------- la ficha se arma sola al aprobar la OT
-insert into public.cotizaciones (cliente_id, unidad_id, tipo_carroceria_id, fecha_emision)
-  select c.id, u.id, t.id, current_date
-    from public.clientes c
-    join public.unidades u on u.cliente_id = c.id
-    cross join public.tipos_carroceria t
-   where t.codigo = 'PLATAFORMA' limit 1;
-
--- Se cotizó con la ficha de la empresa, que es de donde salen los accesorios.
-select public.aplicar_plantilla_ficha(
-  (select id from public.cotizaciones limit 1),
-  (select p.id from public.plantillas_ficha p
-     join public.tipos_carroceria t on t.id = p.tipo_carroceria_id
-    where t.codigo = 'PLATAFORMA' limit 1));
 
 insert into public.ordenes_trabajo
-  (cliente_id, unidad_id, sede_id, tipo_carroceria_id, cotizacion_id, descripcion, tipo_trabajo)
-  select c.id, u.id, s.id, t.id, q.id,
+  (cliente_id, unidad_id, sede_id, tipo_carroceria_id, descripcion, tipo_trabajo)
+  select c.id, u.id, s.id, t.id,
          'Plataforma semirremolque de 3 ejes con suspensión neumática', 'FABRICACION'
     from public.clientes c
     join public.unidades u on u.cliente_id = c.id
     cross join public.sedes s
     join public.tipos_carroceria t on t.codigo = 'PLATAFORMA'
-    join public.cotizaciones q on q.cliente_id = c.id
    limit 1;
 
 do $$
 declare
   v_ot         uuid;
-  v_cot        uuid;
-  v_acc_cot    int;
   v_acc_ot     int;
   v_pasos      int;
 begin
-  select id, cotizacion_id into v_ot, v_cot from public.ordenes_trabajo limit 1;
+  select id into v_ot from public.ordenes_trabajo limit 1;
 
   perform test.afirmar(
     not exists (select 1 from public.ot_verificaciones where orden_id = v_ot),
     'una OT en borrador todavía no tiene ficha de taller');
-
-  select count(*) into v_acc_cot from public.cotizacion_accesorios where cotizacion_id = v_cot;
 
   update public.ordenes_trabajo set estado = 'APROBADA' where id = v_ot;
 
   select count(*) into v_acc_ot from public.ot_accesorios     where orden_id = v_ot;
   select count(*) into v_pasos  from public.ot_verificaciones where orden_id = v_ot;
 
-  -- Lo que se prometió en la cotización es lo que hay que montar: la lista de
-  -- accesorios de la OT no se vuelve a escribir a mano.
-  perform test.afirmar(v_acc_cot > 0, format('la cotización trajo sus accesorios: %s', v_acc_cot));
-  perform test.afirmar(v_acc_ot = v_acc_cot,
-    format('al aprobar, los accesorios cotizados bajan a la OT: %s de %s', v_acc_ot, v_acc_cot));
+  perform test.afirmar(v_acc_ot > 0,
+    format('al aprobar la orden, sus accesorios vienen de la plantilla técnica: %s', v_acc_ot));
   perform test.afirmar(v_pasos = 18,
     format('y los 18 pasos de verificación de su carrocería: %s', v_pasos));
   perform test.afirmar(
     not exists (select 1 from public.ot_accesorios where orden_id = v_ot and verificado),
     'ninguno nace con el visto bueno puesto');
-
-  -- El «no incluye el accesorio» de la cotización viaja con el accesorio: es
-  -- justo lo que evita el reclamo en la entrega.
-  perform test.afirmar(
-    (select count(*) from public.ot_accesorios where orden_id = v_ot and not incluye_el_accesorio)
-      = (select count(*) from public.cotizacion_accesorios
-          where cotizacion_id = v_cot and not incluye_el_accesorio),
-    'y el «no incluye el accesorio» viaja con ellos');
 
   -- Corregir la orden y volver a aprobarla no duplica la ficha ni borra lo ya
   -- verificado: el taller no vuelve a marcar lo que ya marcó.
@@ -178,7 +149,7 @@ end $$;
 do $$
 declare v_ot uuid;
 begin
-  select id into v_ot from public.ordenes_trabajo where cotizacion_id is not null limit 1;
+  select id into v_ot from public.ordenes_trabajo where estado = 'APROBADA' limit 1;
   perform set_config('prueba.ot', v_ot::text, true);
 end $$;
 
