@@ -174,6 +174,18 @@ interacciones con botones (emitir, descargar, anular); interacción nueva de pes
 
 *(Sección viva: aquí se anota lo que salió mal al construir pantallas. Ver `aprender`.)*
 
+- **El PDF extraído no es todavía una vista previa.** Un `iframe` con una URL
+  local puede quedar blanco en el navegador integrado aunque la lectura del
+  archivo y el formulario funcionen. Para PDF elegido por la persona, reutilizar
+  `VistaPreviaPdf` y comprobar visualmente al menos dos páginas en el despliegue.
+  Contar el elemento o verificar solo el texto extraído no prueba que se vea.
+
+- **El menú no es el límite de acceso.** Los permisos de lectura amplios de
+  Gerencia o Tesorería pueden llenar el menú de enlaces ajenos a su trabajo.
+  Verificar el menú por puesto en escritorio y móvil; comprobar aparte que
+  servidor y RLS rechacen una URL directa sin permiso. Ocultar el enlace no
+  sustituye esa protección.
+
 - **Una lista de «lo que puede escribir» no sirve para decidir «lo que ve».**
   El 2026-09-14 la pestaña Actividades pasó a recibir solo las áreas cuya hoja
   la persona puede *armar*, y el mismo arreglo decidía qué tablas se pintaban:
