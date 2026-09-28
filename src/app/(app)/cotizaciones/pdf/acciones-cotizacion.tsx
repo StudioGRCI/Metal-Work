@@ -1,17 +1,18 @@
 'use client'
 
-import { AlertTriangle, Check, FileUp, MessageSquareWarning, RefreshCw, Trash2, Truck } from 'lucide-react'
+import { AlertTriangle, Check, FileSearch, FileUp, MessageSquareWarning, RefreshCw, Trash2, Truck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useRef, useState, useTransition, type FormEvent } from 'react'
+import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
+import { leerArchivoOrden } from '@/lib/archivo-orden'
+import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
 import { useEnvio } from '@/lib/envio'
-import { hoyLima } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 
 import { corregirCotizacionPdf, emitirOrdenDeCotizacion, quitarCotizacionPdf, revisarCotizacionPdf } from './acciones'
@@ -348,14 +349,61 @@ export function EmitirOrden({
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
+  const [vistaPdf, setVistaPdf] = useState<string | null>(null)
+  const [leyendo, setLeyendo] = useState(false)
+  const [avisoLectura, setAvisoLectura] = useState('')
+  const [numeroOrden, setNumeroOrden] = useState('')
+  const [tipo, setTipo] = useState(tipoUnidad ?? '')
+  const [fechaEntrega, setFechaEntrega] = useState('')
+  const [datosLeidos, setDatosLeidos] = useState<DatosOrdenPdf | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
 
+  useEffect(() => () => { if (vistaPdf) URL.revokeObjectURL(vistaPdf) }, [vistaPdf])
+
   function abrir() {
     setArchivo(null)
+    setVistaPdf(null)
+    setAvisoLectura('')
+    setNumeroOrden('')
+    setTipo(tipoUnidad ?? '')
+    setFechaEntrega('')
+    setDatosLeidos(null)
     setError(null)
     setAbierto(true)
+  }
+
+  async function elegirArchivo(elegido: File | undefined) {
+    if (!elegido) return
+    setError(null)
+    setAvisoLectura('')
+    setDatosLeidos(null)
+    setArchivo(null)
+    setVistaPdf(null)
+    if (elegido.size > MAXIMO_ADJUNTO_MB * 1024 * 1024) {
+      setError(`El PDF pesa más de ${MAXIMO_ADJUNTO_MB} MB.`)
+      return
+    }
+    if (!/\.pdf$/i.test(elegido.name) || new TextDecoder().decode(await elegido.slice(0, 5).arrayBuffer()) !== '%PDF-') {
+      setError('El archivo debe ser un PDF válido.')
+      return
+    }
+    setArchivo(elegido)
+    setVistaPdf(URL.createObjectURL(elegido))
+    setLeyendo(true)
+    try {
+      const datos = await leerArchivoOrden(elegido, setAvisoLectura)
+      setDatosLeidos(datos)
+      if (datos.numero) setNumeroOrden(datos.numero)
+      if (datos.fechaEntrega) setFechaEntrega(datos.fechaEntrega)
+      if (datos.tipoUnidad) setTipo(datos.tipoUnidad)
+      setAvisoLectura(datos.numero || datos.fechaEntrega ? 'Datos leídos del PDF. Confírmalos antes de emitir.' : 'No se reconocieron los datos. Complétalos mirando el PDF.')
+    } catch {
+      setAvisoLectura('No se pudo leer el PDF. Completa los datos mirando la vista previa.')
+    } finally {
+      setLeyendo(false)
+    }
   }
 
   function enviar(evento: FormEvent<HTMLFormElement>) {
@@ -434,9 +482,10 @@ export function EmitirOrden({
         alCerrar={() => setAbierto(false)}
         titulo={`Emitir la orden de la ${numero}`}
         descripcion="El cliente y la carrocería salen de la cotización. Falta el número de la orden —el de su papel—, si es semirremolque o carrocería montada, el código interno, la fecha prometida y el PDF. Al emitirla queda aprobada, con sus etapas, y el taller ya puede armar su lista."
-        ancho="md"
+        ancho="panoramico"
       >
-        <form onSubmit={enviar} className="space-y-4">
+        <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">
+          <div className="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-2">
           <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2">
             <FileUp aria-hidden className="size-6" />
             <span className="font-medium text-texto">{archivo ? archivo.name : 'Elegir el PDF de la orden'}</span>
@@ -446,12 +495,18 @@ export function EmitirOrden({
               accept="application/pdf,.pdf"
               className="sr-only"
               onChange={(e) => {
-                setArchivo(e.target.files?.[0] ?? null)
-                setError(null)
+                void elegirArchivo(e.target.files?.[0])
                 e.target.value = ''
               }}
             />
           </label>
+
+          {leyendo && <p role="status" className="flex items-center gap-2 text-sm text-texto-suave"><FileSearch aria-hidden className="size-4" />{avisoLectura || 'Leyendo el PDF…'}</p>}
+          {!leyendo && avisoLectura && <p role="status" className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">{avisoLectura}</p>}
+          {datosLeidos && (datosLeidos.cliente || datosLeidos.producto) && <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-xs text-texto-suave">
+            {datosLeidos.cliente && <><dt>Cliente</dt><dd className="text-texto">{datosLeidos.cliente}</dd></>}
+            {datosLeidos.producto && <><dt>Producto</dt><dd className="text-texto">{datosLeidos.producto}</dd></>}
+          </dl>}
 
           {/* El número lo trae el papel (migración 108): el sistema ya no le
               pone otro, para que la OT en la mano y la de la pantalla sean la
@@ -469,6 +524,8 @@ export function EmitirOrden({
               inputMode="numeric"
               required
               maxLength={11}
+              value={numeroOrden}
+              onChange={(e) => setNumeroOrden(e.target.value)}
               placeholder="2922"
             />
           </Campo>
@@ -484,7 +541,8 @@ export function EmitirOrden({
                 id="eo-tipo"
                 name="tipo_unidad"
                 required
-                defaultValue={TIPOS_UNIDAD.some(([valor]) => valor === tipoUnidad) ? (tipoUnidad as string) : ''}
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value)}
               >
                 <option value="" disabled>
                   Elige el tipo
@@ -517,7 +575,7 @@ export function EmitirOrden({
             ayuda="La que se le dijo al cliente: es la que manda en Control de plazos"
             requerido
           >
-            <Entrada id="eo-fecha" name="fecha_entrega" type="date" required min={hoyLima()} />
+            <Entrada id="eo-fecha" name="fecha_entrega" type="date" required value={fechaEntrega} onChange={(e) => setFechaEntrega(e.target.value)} />
           </Campo>
 
           <Falla texto={error} />
@@ -526,10 +584,18 @@ export function EmitirOrden({
             <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
               Cancelar
             </Boton>
-            <Boton type="submit" tamano="lg" cargando={enviando} className="w-full sm:w-auto">
+            <Boton type="submit" tamano="lg" cargando={enviando} disabled={leyendo} className="w-full sm:w-auto">
               Emitir la orden
             </Boton>
           </div>
+          </div>
+          <aside aria-label="Vista previa de la orden de trabajo" className="flex min-h-[22rem] flex-col overflow-hidden rounded-[var(--radius-base)] border border-borde bg-superficie-2 lg:min-h-0">
+            <div className="border-b border-borde px-4 py-3">
+              <p className="text-sm font-semibold text-texto">Vista previa de la OT</p>
+              <p className="truncate text-xs text-texto-suave">{archivo?.name ?? 'Elige el PDF para comparar los datos'}</p>
+            </div>
+            {vistaPdf ? <iframe title="PDF de la orden de trabajo seleccionada" src={vistaPdf} className="min-h-[20rem] w-full flex-1 bg-white" /> : <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-texto-suave">El PDF aparecerá aquí al seleccionarlo.</div>}
+          </aside>
         </form>
       </Ventana>
     </>

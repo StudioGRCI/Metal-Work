@@ -18,11 +18,13 @@ import { cn } from '@/lib/utils'
 export function NavegacionLista({
   permisos,
   esAdmin,
+  rolCodigo,
   alNavegar,
   pendientes = {},
 }: {
   permisos: string[]
   esAdmin: boolean
+  rolCodigo: string
   /** El cajón del teléfono se cierra al elegir; la barra del monitor no hace nada. */
   alNavegar?: () => void
   /** Cuántos pendientes cuelgan de cada módulo, por su ruta: el número al lado del nombre. */
@@ -38,7 +40,7 @@ export function NavegacionLista({
 
   const grupos = NAVEGACION.map((g) => ({
     ...g,
-    items: g.items.filter((i) => i.disponible && puedeVer(i, permisos, esAdmin)),
+    items: g.items.filter((i) => i.disponible && puedeVer(i, permisos, esAdmin, rolCodigo)),
   })).filter((g) => g.items.length > 0)
 
   return (

@@ -24,7 +24,7 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
       <AvisoInstalar />
       <RefrescoAlVolver sinLeer={sinLeer} contar={contarAvisosSinLeer} />
       <div className="flex flex-1">
-        <BarraLateral permisos={perfil.permisos} esAdmin={esAdmin} pendientes={pendientes.porRuta}>
+        <BarraLateral permisos={perfil.permisos} esAdmin={esAdmin} rolCodigo={perfil.rol.codigo} pendientes={pendientes.porRuta}>
           <PerfilMenu puesto={perfil.puesto} rol={perfil.rol.nombre} />
         </BarraLateral>
         {/* En el teléfono el contenido deja abajo el alto de la barra de
@@ -34,7 +34,7 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
           {children}
         </main>
       </div>
-      <BarraInferior permisos={perfil.permisos} esAdmin={esAdmin} pendientes={pendientes.porRuta}>
+      <BarraInferior permisos={perfil.permisos} esAdmin={esAdmin} rolCodigo={perfil.rol.codigo} pendientes={pendientes.porRuta}>
         <PerfilMenu puesto={perfil.puesto} rol={perfil.rol.nombre} />
       </BarraInferior>
     </div>
