@@ -5,10 +5,8 @@ import {
   CheckCircle2,
   ClipboardList,
   Factory,
-  HandCoins,
   PauseCircle,
   Plus,
-  Send,
   Zap,
 } from 'lucide-react'
 
@@ -20,8 +18,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_OT, ORDEN_ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
-import { fecha, moneda } from '@/lib/format'
-import { resumenComercial, type ResumenComercial } from '@/lib/datos/comercial'
+import { fecha } from '@/lib/format'
 import { indicadoresTablero, listarOrdenes, ordenesAtrasadas } from '@/lib/datos/ordenes'
 import { pendientesGlobales, type PendienteGlobal } from '@/lib/datos/pendientes-globales'
 import { resumenDePlazos } from '@/lib/datos/plazos'
@@ -32,28 +29,9 @@ export const metadata = { title: 'Tablero' }
 export default async function PaginaTablero() {
   const perfil = await exigirSesion()
 
-  const veVentas = puede(perfil, 'cotizaciones.ver')
-  // Lo que le toca a este puesto va primero: es a lo que se entra a mirar.
-  const [comercial, pendientes] = await Promise.all([
-    veVentas ? resumenComercial(perfil) : Promise.resolve(null),
-    pendientesGlobales(perfil),
-  ])
+  const pendientes = await pendientesGlobales(perfil)
 
   if (!puede(perfil, 'ordenes.listar')) {
-    // Quien vende no tiene por qué ver órdenes de trabajo, pero sí lo suyo.
-    if (comercial) {
-      return (
-        <>
-          <EncabezadoPagina
-            titulo={perfil.puesto}
-            descripcion="Tus cotizaciones al día de hoy."
-          />
-          <TeTocaHoy items={pendientes.items} />
-          <TarjetasDeVentas resumen={comercial} />
-        </>
-      )
-    }
-
     return (
       <>
         <EncabezadoPagina
@@ -94,8 +72,6 @@ export default async function PaginaTablero() {
       <EncabezadoPagina titulo={perfil.puesto} descripcion="Estado del taller al día de hoy." />
 
       <TeTocaHoy items={pendientes.items} />
-
-      {comercial && <TarjetasDeVentas resumen={comercial} />}
 
       {/* Dos columnas ya en el teléfono: cinco tarjetas apiladas ocupaban una
           pantalla entera antes de llegar a la lista de órdenes. */}
@@ -174,8 +150,7 @@ export default async function PaginaTablero() {
                 </p>
                 {puedeCrear && (
                   <div className="mt-4 flex justify-center">
-                    {/* El camino real: la orden sale de la cotización aprobada,
-                        con su número de papel y su PDF (migración 108). */}
+                    {/* La orden sale de la cotización PDF aprobada. */}
                     <EnlaceBoton href="/cotizaciones/pdf?estado=APROBADA_SIN_OT" tamano="sm">
                       <Plus aria-hidden className="size-3.5" />
                       Emitir OT desde una cotización
@@ -353,42 +328,3 @@ function TeTocaHoy({ items }: { items: PendienteGlobal[] }) {
   )
 }
 
-/**
- * Lo comercial del tablero: qué está esperando al cliente y cuánto se ofreció
- * y se cerró este mes en la cotización de venta del sistema. Lo que le toca
- * mover a cada mano ya lo dice «Te toca», que sí conoce la cotización en PDF.
- *
- * Todo en soles, convertido con el tipo de cambio que congeló cada cotización:
- * la casa cotiza en dólares y gasta en soles, y una cifra que mezcla las dos
- * monedas no significa nada.
- */
-function TarjetasDeVentas({ resumen }: { resumen: ResumenComercial }) {
-  return (
-    <div className="mb-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
-      <Indicador
-        icono={Send}
-        titulo="Con el cliente"
-        valor={resumen.esperandoCliente}
-        pie={
-          resumen.listasParaEnviar > 0
-            ? `y ${resumen.listasParaEnviar} lista(s) para enviar`
-            : 'Enviadas y sin respuesta'
-        }
-        href="/cotizaciones?estado=ENVIADA"
-      />
-      <Indicador
-        icono={HandCoins}
-        titulo="Ofrecido este mes"
-        valor={moneda(resumen.ofrecidoDelMes, 'PEN')}
-        pie={`${resumen.cotizadasDelMes} cotización(es)`}
-      />
-      <Indicador
-        icono={CheckCircle2}
-        titulo="Cerrado este mes"
-        valor={moneda(resumen.cerradoDelMes, 'PEN')}
-        tono={resumen.cerradoDelMes > 0 ? 'exito' : 'neutro'}
-        pie={`${resumen.cerradasDelMes} aprobada(s) por el cliente`}
-      />
-    </div>
-  )
-}

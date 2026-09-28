@@ -20,12 +20,11 @@ export async function generateMetadata({ params }: PageProps<'/carrocerias/[id]'
 }
 
 /**
- * Una ficha técnica preescrita, tal como bajará a la cotización: la cabecera,
- * las secciones con sus líneas, los accesorios y los pasos de verificación
- * que el taller recorrerá con esa carrocería.
+ * Ficha técnica de una carrocería: la cabecera, sus secciones, los accesorios
+ * y los pasos de verificación que el taller recorrerá con esa carrocería.
  */
 export default async function PaginaPlantilla({ params }: PageProps<'/carrocerias/[id]'>) {
-  await exigirPermiso(['cotizaciones.costear', 'cotizaciones.ver', 'configuracion.ver'])
+  await exigirPermiso(['diseno.planos', 'configuracion.ver'])
   const { id } = await params
 
   const plantilla = await plantillaEntera(id)
@@ -88,7 +87,7 @@ export default async function PaginaPlantilla({ params }: PageProps<'/carroceria
         <Tarjeta className="lg:col-span-2">
           <TarjetaCabecera
             titulo="Ficha técnica"
-            descripcion="Sección por sección, en el orden en que la escribe la empresa. Las medidas y la capacidad no van acá: se llenan en cada cotización."
+            descripcion="Sección por sección, en el orden en que la escribe la empresa. Las medidas y la capacidad se mantienen en la ficha de cada orden."
           />
           <TarjetaCuerpo className="space-y-5">
             {plantilla.secciones.length === 0 ? (

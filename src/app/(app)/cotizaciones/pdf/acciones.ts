@@ -12,8 +12,7 @@ import { createClient } from '@/lib/supabase/server'
  *
  *   · El vendedor la sube (`cotizaciones.crear`). El archivo ya viajó del
  *     navegador a Storage; acá se anota con lo poco que el sistema necesita.
- *   · Gerencia la aprueba o la rechaza (`cotizaciones.revisar`), que es el
- *     mismo permiso con que da el visto a las de siempre.
+ *   · Gerencia la aprueba o la rechaza (`cotizaciones.revisar`).
  *   · Administración emite la orden (`ordenes.crear`): la base la crea
  *     aprobada, con sus etapas y con su PDF pegado, de una vez.
  *

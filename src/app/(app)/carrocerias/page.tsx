@@ -19,11 +19,11 @@ const TIPO_UNIDAD: Record<string, string> = {
  *
  * Cada fila es una carrocería del catálogo con las fichas técnicas que la casa
  * ya escribió para ella —transcritas de sus propias OT— y los pasos de
- * verificación que el taller recorre. Elegir la carrocería en una cotización
- * trae la ficha predeterminada puesta; acá se mira qué trae antes de elegir.
+ * verificación que el taller recorre. Acá se consulta qué ficha técnica y
+ * equipamiento corresponden a cada tipo de carrocería.
  */
 export default async function PaginaCarrocerias() {
-  await exigirPermiso(['cotizaciones.costear', 'cotizaciones.ver', 'configuracion.ver'])
+  await exigirPermiso(['diseno.planos', 'configuracion.ver'])
   const carrocerias = await carroceriasConFicha()
 
   const conFicha = carrocerias.filter((c) => c.plantillas.length > 0).length
@@ -33,7 +33,7 @@ export default async function PaginaCarrocerias() {
     <>
       <EncabezadoPagina
         titulo="Carrocerías"
-        descripcion={`${carrocerias.length} carrocerías en el catálogo · ${conFicha} con ficha técnica escrita · ${fichas} fichas en total. Al elegir una carrocería en la cotización, su ficha predeterminada baja sola.`}
+        descripcion={`${carrocerias.length} carrocerías en el catálogo · ${conFicha} con ficha técnica escrita · ${fichas} fichas en total.`}
       />
 
       <Tarjeta>
@@ -65,7 +65,7 @@ export default async function PaginaCarrocerias() {
                   <TD className="hidden text-texto-suave md:table-cell">{c.capacidad ?? '—'}</TD>
                   <TD>
                     {c.plantillas.length === 0 ? (
-                      <span className="text-xs text-texto-tenue">Sin ficha todavía: se escribe a mano al cotizar</span>
+                      <span className="text-xs text-texto-tenue">Sin ficha técnica registrada</span>
                     ) : (
                       <ul className="space-y-1">
                         {c.plantillas.map((p) => (
