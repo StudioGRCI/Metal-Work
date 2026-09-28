@@ -1,10 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["pdx1"],
-  "crons": [
-    {
-      "path": "/api/tipo-cambio",
-      "schedule": "30 13 * * 1-5"
-    }
-  ]
+  "regions": ["pdx1"]
 }

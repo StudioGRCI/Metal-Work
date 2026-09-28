@@ -12,8 +12,7 @@ import { createClient } from '@/lib/supabase/server'
  *
  *   · El vendedor la sube (`cotizaciones.crear`). El archivo ya viajó del
  *     navegador a Storage; acá se anota con lo poco que el sistema necesita.
- *   · Gerencia la aprueba o la rechaza (`cotizaciones.revisar`), que es el
- *     mismo permiso con que da el visto a las de siempre.
+ *   · Gerencia la aprueba o la rechaza (`cotizaciones.revisar`).
  *   · Administración emite la orden (`ordenes.crear`): la base la crea
  *     aprobada, con sus etapas y con su PDF pegado, de una vez.
  *
@@ -36,6 +35,8 @@ const esquemaSubir = z.object({
   numero: z.string().trim().min(3, 'Escribe el número que dice la cotización').max(40),
   cliente_id: z.string().uuid('Elige el cliente'),
   tipo_carroceria_id: z.string().uuid('Elige qué se fabrica'),
+  monto_venta: z.string().trim().regex(/^\d{1,12}(?:\.\d{1,2})?$/, 'Escribe un monto válido, con hasta dos decimales.'),
+  moneda: z.enum(['PEN', 'USD'], { message: 'Elige soles o dólares.' }),
   nombre_archivo: z.string().trim().min(1).max(200),
   ruta_storage: z.string().min(1),
   mime_type: mimeCotizacion.default('application/pdf'),
@@ -66,6 +67,8 @@ export async function registrarCotizacionPdf(_previo: unknown, datos: FormData):
       numero: v.numero,
       cliente_id: v.cliente_id,
       tipo_carroceria_id: v.tipo_carroceria_id,
+      monto_venta: Number(v.monto_venta),
+      moneda: v.moneda,
       nombre_archivo: v.nombre_archivo,
       ruta_storage: v.ruta_storage,
       mime_type: v.mime_type,
@@ -137,6 +140,8 @@ const esquemaCorregir = z.object({
   nombre_archivo: z.string().trim().min(1).max(200),
   ruta_storage: z.string().min(1),
   mime_type: mimeCotizacion,
+  monto_venta: z.string().trim().regex(/^\d{1,12}(?:\.\d{1,2})?$/, 'Escribe un monto válido, con hasta dos decimales.'),
+  moneda: z.enum(['PEN', 'USD'], { message: 'Elige soles o dólares.' }),
   tamano_bytes: z.coerce.number().int().min(0).optional(),
 })
 
@@ -168,6 +173,8 @@ export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): 
       ruta_storage: v.ruta_storage,
       mime_type: v.mime_type,
       tamano_bytes: v.tamano_bytes ?? null,
+      monto_venta: Number(v.monto_venta),
+      moneda: v.moneda,
     })
     .eq('id', v.id)
     .eq('estado', 'RECHAZADA')

@@ -22,20 +22,14 @@ select set_config('prueba.cliente', (select id::text from public.clientes limit 
 select set_config('prueba.unidad',  (select id::text from public.unidades limit 1), false);
 select set_config('prueba.sede',    (select id::text from public.sedes limit 1), false);
 
--- ------------------------------------- el vendedor emite una cotización
+-- ------------------------------------- el vendedor conserva acceso al PDF
 select test.como_usuario(:'vendedor_id');
 set local role authenticated;
 
 do $$
-declare v_numero text;
 begin
-  insert into public.cotizaciones (cliente_id, unidad_id, fecha_emision)
-  values (current_setting('prueba.cliente')::uuid,
-          current_setting('prueba.unidad')::uuid, current_date)
-  returning numero into v_numero;
-
-  perform test.afirmar(v_numero ~ '^\d+-\d{4}$',
-    format('el vendedor emite y el sistema numera: %s', v_numero));
+  perform test.afirmar(public.tiene_permiso('cotizaciones.crear'),
+    'el vendedor puede registrar su cotización en PDF');
 end $$;
 
 reset role;
@@ -60,14 +54,14 @@ end $$;
 
 reset role;
 
--- ------------------------------------- y el correlativo sigue cerrado a mano
+-- ------------------------------------- el correlativo sigue cerrado a mano
 select test.como_usuario(:'vendedor_id');
 set local role authenticated;
 
 do $$
 begin
   begin
-    perform public.siguiente_correlativo('COTIZACION', null);
+    perform public.siguiente_correlativo('ORDEN_TRABAJO', null);
     raise exception 'FALLA: el correlativo quedó abierto a la mano del usuario';
   exception when others then
     if sqlerrm like 'FALLA%' then raise; end if;

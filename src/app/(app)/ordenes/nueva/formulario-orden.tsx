@@ -288,21 +288,6 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
             />
           </Campo>
 
-          <Campo etiqueta="Monto presupuestado" htmlFor="monto_presupuestado">
-            {/* `inputMode` decimal: en el teléfono abre el teclado numérico con
-                punto, no el alfabético, que obliga a dos toques por cifra. */}
-            <Entrada
-              id="monto_presupuestado"
-              name="monto_presupuestado"
-              type="number"
-              inputMode="decimal"
-              min={0}
-              step="0.01"
-              defaultValue={0}
-              className="tabular text-right"
-            />
-          </Campo>
-
           <Campo etiqueta="Observaciones" htmlFor="observaciones" className="sm:col-span-2 lg:col-span-3">
             <AreaTexto id="observaciones" name="observaciones" rows={2} />
           </Campo>

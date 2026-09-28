@@ -11,7 +11,7 @@ import { Indicador } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_ETAPA, PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
-import { fecha, fechaHora, hoyLima, moneda, numero as fmtNumero, puesto } from '@/lib/format'
+import { fecha, fechaHora, hoyLima, numero as fmtNumero, puesto } from '@/lib/format'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
 import {
@@ -44,7 +44,6 @@ import {
   puedeEliminarReporte,
   puedeResolverObservacion,
 } from '@/lib/sesion'
-import type { CodigoMoneda } from '@/lib/format'
 
 import { AccionesEstado } from './acciones-estado'
 import { ArchivosDeOrden, type AdjuntoEnPantalla } from './archivos-de-orden'
@@ -100,11 +99,13 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const vista: Vista = VISTAS.includes(query.vista as Vista) ? (query.vista as Vista) : 'resumen'
   if (!secciones.includes(vista)) redirect('/sin-permiso')
 
-  // La cotización de la que salió va en la cabecera de todas las pestañas; se
-  // pide junto con la orden y solo si quien mira ve cotizaciones.
+  // La cotización PDF solo se carga para Ventas, Gerencia, Administración y
+  // Tesorería. Los equipos del taller reciben la OT sin el documento comercial.
   const [orden, cotizacionPdf, pendientes] = await Promise.all([
     obtenerOrden(id),
-    puede(perfil, 'cotizaciones.ver') ? cotizacionPdfDeOrden(id) : Promise.resolve(null),
+    puede(perfil, ['cotizaciones.ver_pdf_comercial', 'cotizaciones.liberar_tesoreria', 'tesoreria.ver_documentos'])
+      ? cotizacionPdfDeOrden(id)
+      : Promise.resolve(null),
     // Lo pendiente se cuenta en todas las pestañas: es lo que las numera.
     pendientesDeOrden(id),
   ])
@@ -256,10 +257,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const sede = orden.sede as unknown as { nombre: string }
   const responsable = orden.responsable as unknown as { puesto: string | null } | null
   const tipoCarroceria = orden.tipo_carroceria as unknown as { nombre: string } | null
-  const cotizacion = orden.cotizacion as unknown as { numero: string } | null
-  // El monto es de quien arma o cobra la cotización, y solo cuando lo hay: la
-  // orden que sale de la cotización en PDF no lo trae, y «S/ 0.00» mentía.
-  const verMonto = Number(orden.monto_presupuestado ?? 0) > 0 && puede(perfil, ['cotizaciones.costear', 'pagos.ver'])
 
   // Comparación de texto contra la fecha de hoy en el taller: son fechas planas
   // YYYY-MM-DD y `hoyLima()` da la del taller, no la de UTC, que de noche ya va
@@ -362,24 +359,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           tono={entregaVencida ? 'peligro' : 'neutro'}
           pie={pieDeEntrega(orden.fecha_fin_real, orden.fecha_entrega_comprometida, entregaVencida)}
         />
-        {/* Quien no ve cotizaciones —el taller— no sabría si la orden salió de
-            una o no: para él la tercera dice qué se fabrica. */}
-        {!verMonto && !puede(perfil, 'cotizaciones.ver') ? (
-          <Indicador
-            className="col-span-2 lg:col-span-1"
-            titulo="Carrocería"
-            valor={tipoCarroceria?.nombre ?? '—'}
-            pie={definir(TIPO_TRABAJO, orden.tipo_trabajo).etiqueta}
-          />
-        ) : (
         <Indicador
           className="col-span-2 lg:col-span-1"
-          titulo={verMonto ? 'Presupuesto' : 'Cotización'}
-          valor={
-            verMonto
-              ? moneda(orden.monto_presupuestado, orden.moneda as CodigoMoneda)
-              : (cotizacionPdf?.numero ?? cotizacion?.numero ?? '—')
-          }
+          titulo={cotizacionPdf ? 'Cotización PDF' : 'Carrocería'}
+          valor={cotizacionPdf?.numero ?? tipoCarroceria?.nombre ?? '—'}
           pie={
             cotizacionPdf?.url ? (
               <a
@@ -389,18 +372,15 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                 className="inline-flex min-h-11 items-center gap-1 font-medium text-acento hover:underline sm:min-h-0"
               >
                 <FileText aria-hidden className="size-3.5 shrink-0" />
-                {verMonto ? `Cotización ${cotizacionPdf.numero}` : 'Abrir la cotización'}
+                Abrir cotización
               </a>
-            ) : cotizacion ? (
-              verMonto ? `Cotización ${cotizacion.numero}` : 'La cotización de venta que abrió la orden'
             ) : cotizacionPdf ? (
               'La cotización de la que salió la orden'
             ) : (
-              'La orden no salió de una cotización'
+              definir(TIPO_TRABAJO, orden.tipo_trabajo).etiqueta
             )
           }
         />
-        )}
       </div>
 
       <TeToca ordenId={orden.id} items={toca.items} />

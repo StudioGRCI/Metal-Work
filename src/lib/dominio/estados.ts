@@ -133,37 +133,6 @@ export const ESTADO_PLAZO: Record<string, Def & { barra: string }> = {
   CUMPLIDO_TARDE: { etiqueta: 'Cumplido tarde', tono: 'neutro', barra: 'bg-aviso' },
 }
 
-/**
- * Las etiquetas dicen en qué mano está la cotización, no el nombre técnico del
- * estado: quien mira la lista quiere saber a quién le toca mover.
- */
-export const ESTADO_COTIZACION: Record<string, Def> = {
-  BORRADOR: { etiqueta: 'En ventas', tono: 'neutro' },
-  EN_COSTEO: { etiqueta: 'En costeo', tono: 'info' },
-  EN_REVISION: { etiqueta: 'Con Gerencia', tono: 'aviso' },
-  OBSERVADA: { etiqueta: 'Devuelta', tono: 'peligro' },
-  REVISADA: { etiqueta: 'Lista para enviar', tono: 'exito' },
-  ENVIADA: { etiqueta: 'Enviada al cliente', tono: 'info' },
-  APROBADA: { etiqueta: 'Aprobada', tono: 'exito' },
-  RECHAZADA: { etiqueta: 'Rechazada', tono: 'peligro' },
-  VENCIDA: { etiqueta: 'Vencida', tono: 'aviso' },
-  ANULADA: { etiqueta: 'Anulada', tono: 'peligro' },
-}
-
-/** El circuito en el orden en que ocurre, para los filtros y los listados. */
-export const ORDEN_ESTADO_COTIZACION = [
-  'BORRADOR',
-  'EN_COSTEO',
-  'EN_REVISION',
-  'OBSERVADA',
-  'REVISADA',
-  'ENVIADA',
-  'APROBADA',
-  'RECHAZADA',
-  'VENCIDA',
-  'ANULADA',
-] as const
-
 export const TIPO_EVENTO_BITACORA: Record<string, Def> = {
   CREACION: { etiqueta: 'Creación', tono: 'info' },
   CAMBIO_ESTADO: { etiqueta: 'Cambio de estado', tono: 'acento' },
@@ -205,70 +174,4 @@ export function estadoDeOrden(estado: string | null | undefined, abiertaEnTaller
 export function opciones(mapa: Record<string, Def>, orden?: readonly string[]) {
   const claves = orden ?? Object.keys(mapa)
   return claves.map((valor) => ({ valor, etiqueta: mapa[valor]?.etiqueta ?? valor }))
-}
-
-/**
- * Las etapas de una cotización en el idioma de Ventas.
- *
- * La lista de cotizaciones ofrecía una pastilla por cada estado del circuito
- * —diez— y con el nombre interno de cada uno: «En costeo», «Con Gerencia»,
- * «Devuelta». Eso describe el trámite por dentro, que es de Administración; el
- * vendedor no necesita saber en cuál de las tres manos está parada, necesita
- * saber si ya puede mandársela al cliente.
- *
- * Cada etapa agrupa los estados que para Ventas significan lo mismo. Las
- * cerradas siguen estando —una rechazada se retoma, y ese es justo el caso en
- * el que hay que ir a buscarla—.
- */
-export const ETAPA_VENTA = [
-  {
-    clave: 'realizada',
-    etiqueta: 'Cotización realizada',
-    estados: ['BORRADOR'],
-    pie: 'Escrita, sin mandar a costear',
-  },
-  {
-    clave: 'costeando',
-    etiqueta: 'En costeo',
-    estados: ['EN_COSTEO', 'EN_REVISION', 'OBSERVADA'],
-    pie: 'En manos de Administración o Gerencia',
-  },
-  {
-    clave: 'costeada',
-    etiqueta: 'Ya costeada',
-    estados: ['REVISADA'],
-    pie: 'Con el visto: lista para enviar al cliente',
-  },
-  {
-    clave: 'con-cliente',
-    etiqueta: 'Con el cliente',
-    estados: ['ENVIADA'],
-    pie: 'Enviada, sin respuesta todavía',
-  },
-  {
-    clave: 'aprobada',
-    etiqueta: 'Aprobada',
-    estados: ['APROBADA'],
-    pie: 'El cliente la aceptó',
-  },
-  {
-    clave: 'rechazada',
-    etiqueta: 'Rechazada',
-    estados: ['RECHAZADA', 'VENCIDA'],
-    pie: 'Se puede retomar y volver a ofrecer',
-  },
-  {
-    clave: 'anulada',
-    etiqueta: 'Anulada',
-    estados: ['ANULADA'],
-    pie: 'Anulada con su motivo, queda como evidencia',
-  },
-] as const
-
-export type EtapaVenta = (typeof ETAPA_VENTA)[number]
-
-/** Los estados que hay detrás de una etapa. Vacío si la clave no existe. */
-export function estadosDeEtapa(clave?: string | null): string[] {
-  if (!clave) return []
-  return [...(ETAPA_VENTA.find((e) => e.clave === clave)?.estados ?? [])]
 }

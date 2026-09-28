@@ -28,19 +28,27 @@ export type CarroceriaConFicha = {
   nombre: string
   tipo_unidad: string | null
   capacidad: string | null
+  descripcion: string | null
+  activo: boolean
   plantillas: PlantillaResumen[]
   pasos_verificacion: number
 }
 
-export async function carroceriasConFicha(): Promise<CarroceriaConFicha[]> {
+export async function carroceriasConFicha(incluirInactivas = false, incluirDetalleTecnico = true): Promise<CarroceriaConFicha[]> {
   const supabase = await createClient()
+  let consultaTipos = supabase
+    .from('tipos_carroceria')
+    .select('id, codigo, nombre, descripcion, tipo_unidad, capacidad, activo')
+  if (!incluirInactivas) consultaTipos = consultaTipos.eq('activo', true)
 
-  const [tipos, plantillas, pasos] = await Promise.all([
-    supabase
-      .from('tipos_carroceria')
-      .select('id, codigo, nombre, tipo_unidad, capacidad')
-      .eq('activo', true)
-      .order('nombre'),
+  const { data: tipos, error: errorTipos } = await consultaTipos.order('nombre')
+  if (errorTipos) throw new Error(`No se pudo leer el catálogo de carrocerías: ${errorTipos.message}`)
+  const base = tipos ?? []
+  if (!incluirDetalleTecnico) {
+    return base.map((t) => ({ ...t, plantillas: [], pasos_verificacion: 0 }))
+  }
+
+  const [plantillas, pasos] = await Promise.all([
     supabase
       .from('plantillas_ficha')
       .select(
@@ -52,7 +60,6 @@ export async function carroceriasConFicha(): Promise<CarroceriaConFicha[]> {
     supabase.from('plantillas_verificacion').select('tipo_carroceria_id'),
   ])
 
-  if (tipos.error) throw new Error(`No se pudo leer el catálogo de carrocerías: ${tipos.error.message}`)
   if (plantillas.error) throw new Error(`No se pudieron leer las fichas: ${plantillas.error.message}`)
   if (pasos.error) throw new Error(`No se pudo leer la verificación: ${pasos.error.message}`)
 
@@ -79,12 +86,14 @@ export async function carroceriasConFicha(): Promise<CarroceriaConFicha[]> {
     pasosPorTipo.set(clave, (pasosPorTipo.get(clave) ?? 0) + 1)
   }
 
-  return (tipos.data ?? []).map((t) => ({
+  return base.map((t) => ({
     id: t.id,
     codigo: t.codigo,
     nombre: t.nombre,
     tipo_unidad: t.tipo_unidad,
     capacidad: t.capacidad,
+    descripcion: t.descripcion,
+    activo: t.activo,
     plantillas: porTipo.get(t.id) ?? [],
     // Sin lista propia, la OT usa la genérica: se dice cuántos pasos tiene esa.
     pasos_verificacion: pasosPorTipo.get(t.id) ?? pasosPorTipo.get('GENERICA') ?? 0,
