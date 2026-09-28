@@ -36,7 +36,7 @@ const esquemaAlta = z.object({
   orden_id: z.string().uuid(),
   material_id: z.string().uuid('Elige el material'),
   cantidad: z.coerce.number().positive('La cantidad tiene que ser mayor que cero'),
-  plano_id: z.string().uuid().optional().or(z.literal('')),
+  plano_id: z.string().uuid('Elige el plano que necesita este material.'),
   etapa_id: z.string().uuid().optional().or(z.literal('')),
   area_destino: z.enum(['MTZ', 'PRD', 'ACB']),
   observacion: z.string().trim().optional(),
@@ -62,7 +62,7 @@ export async function agregarMaterial(_previo: unknown, datos: FormData): Promis
       orden_id: v.orden_id,
       material_id: v.material_id,
       cantidad: v.cantidad,
-      plano_id: nulo(v.plano_id),
+      plano_id: v.plano_id,
       etapa_id: nulo(v.etapa_id),
       area_destino: v.area_destino,
       observacion: nulo(v.observacion),
@@ -76,6 +76,26 @@ export async function agregarMaterial(_previo: unknown, datos: FormData): Promis
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   return { ok: true, mensaje: 'Material agregado a la lista.' }
+}
+
+export async function proponerMaterial(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'requerimientos.crear')) return { ok: false, error: 'Tu área no puede proponer materiales.' }
+  const v = z.object({
+    orden_id: z.string().uuid(), plano_id: z.string().uuid(), material_id: z.string().uuid(),
+    cantidad: z.coerce.number().positive(), observacion: z.string().trim().max(500).optional(),
+  }).safeParse(Object.fromEntries(datos))
+  if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? 'Revisa la propuesta.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('proponer_material_de_area', {
+    p_orden: v.data.orden_id, p_plano: v.data.plano_id, p_material: v.data.material_id,
+    p_cantidad: v.data.cantidad, p_observacion: v.data.observacion,
+  })
+  if (error) return { ok: false, error: traducir(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
+  revalidatePath(`/ordenes/${v.data.orden_id}`)
+  revalidatePath('/materiales/atencion')
+  return { ok: true, mensaje: 'Propuesta enviada a Diseño para aprobación.' }
 }
 
 export async function crearRequerimiento(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {

@@ -111,8 +111,7 @@ export function Cumplimiento({
   return (
     <div className="space-y-4">
       <p className="rounded-[var(--radius-base)] border border-borde bg-superficie p-3 text-sm text-texto-suave">
-        Antes de reportar piezas, el responsable del área debe confirmar la recepción del PDF aprobado en{' '}
-        <Link className="font-medium text-acento underline" href={`/ordenes/${ordenId}/planos`}>Planos y revisiones</Link>.
+        Antes de reportar piezas, el responsable del área confirma más abajo la recepción del PDF aprobado.
       </p>
       <Tarjeta>
         <TarjetaCabecera
@@ -281,9 +280,7 @@ function EntregarPendientes({ ordenId, cuantos }: { ordenId: string; cuantos: nu
   return (
     <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-2 rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2">
       <input type="hidden" name="orden_id" value={ordenId} />
-      <Campo etiqueta={`Los ${cuantos} planos, entregados el`} htmlFor="entrega-lote">
-        <Entrada id="entrega-lote" name="fecha_entrega" type="date" required defaultValue={hoyLima()} />
-      </Campo>
+      <p className="text-sm text-texto">Los {cuantos} planos se marcarán como entregados hoy.</p>
       <Boton type="submit" tamano="sm" cargando={enviando}>
         Dar por entregados
       </Boton>
@@ -367,9 +364,10 @@ function NuevoPlano({
               className="tabular"
             />
           </Campo>
-          <Campo etiqueta="Entregado el" htmlFor="np-fecha" ayuda="Vacío si todavía no se entrega">
-            <Entrada id="np-fecha" name="fecha_entrega" type="date" />
-          </Campo>
+          <label className="flex items-center gap-2 text-sm text-texto sm:col-span-2">
+            <input type="checkbox" name="entregar_hoy" className="size-4 accent-acento" />
+            Marcar entregado hoy
+          </label>
           <Campo etiqueta="Observación" htmlFor="np-obs" className="sm:col-span-6">
             <Entrada id="np-obs" name="observacion" placeholder="Opcional" />
           </Campo>
@@ -453,6 +451,9 @@ function TarjetaPlano({
         }
         acciones={
           <div className="flex items-center gap-2">
+            <Link className="text-xs font-medium text-acento underline" href={`/ordenes/${ordenId}/planos?plano=${planoId}#revision-plano`}>
+              {puedeDisenar ? 'Adjuntar PDF o revisión' : 'Ver PDF y revisiones'}
+            </Link>
             <div className="w-32">
               <Progreso valor={plano.avance_pct} mostrarValor alto="sm" />
             </div>
@@ -550,9 +551,7 @@ function FormularioEntrega({
     <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-3 border-t border-borde bg-superficie-2 px-4 py-3">
       <input type="hidden" name="orden_id" value={ordenId} />
       <input type="hidden" name="plano_id" value={planoId} />
-      <Campo etiqueta="Entregado el" htmlFor={`entrega-${planoId}`} ayuda="Desde ese día Maestranza puede empezar a habilitar">
-        <Entrada id={`entrega-${planoId}`} name="fecha_entrega" type="date" required defaultValue={hoyLima()} />
-      </Campo>
+      <p className="text-sm text-texto">Se registrará la entrega de hoy. Desde entonces Maestranza podrá empezar a habilitar.</p>
       <Boton type="submit" tamano="sm" cargando={enviando}>
         Dar por entregado
       </Boton>
@@ -603,9 +602,7 @@ function FormularioPlano({
           className="tabular"
         />
       </Campo>
-      <Campo etiqueta="Entregado el" htmlFor={`ep-fecha-${id}`}>
-        <Entrada id={`ep-fecha-${id}`} name="fecha_entrega" type="date" defaultValue={plano.fecha_entrega ?? ''} />
-      </Campo>
+      {plano.fecha_entrega && <p className="self-end text-sm text-texto-suave">Entregado el {fecha(plano.fecha_entrega)}</p>}
       <Campo etiqueta="Observación" htmlFor={`ep-obs-${id}`} className="sm:col-span-6">
         <Entrada id={`ep-obs-${id}`} name="observacion" defaultValue={plano.observacion ?? ''} />
       </Campo>

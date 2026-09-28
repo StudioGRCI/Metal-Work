@@ -1,6 +1,5 @@
 import {
   Boxes,
-  Camera,
   CalendarClock,
   ClipboardList,
   FileSpreadsheet,
@@ -55,24 +54,6 @@ export const NAVEGACION: GrupoNavegacion[] = [
         icono: CalendarClock,
         permiso: ['ordenes.listar', 'produccion.ver'],
         descripcion: 'En qué va cada área y qué la trabó',
-        disponible: true,
-      },
-      {
-        titulo: 'Avance en taller',
-        ruta: '/avance',
-        icono: Camera,
-        permiso: 'produccion.ver',
-        descripcion: 'Dónde está cada unidad y qué la traba',
-        disponible: true,
-      },
-      // El parte de la jornada del jefe de producción. Va pegado al avance de
-      // taller: es el mismo módulo, visto por día en vez de por unidad.
-      {
-        titulo: 'El día en el taller',
-        ruta: '/avance/diario',
-        icono: ClipboardList,
-        permiso: 'produccion.ver',
-        descripcion: 'Lo que reportó cada área hoy, y quién no reportó',
         disponible: true,
       },
     ],
@@ -186,6 +167,7 @@ const RUTAS_POR_PUESTO: Record<string, readonly string[]> = {
 }
 
 export function puedeVer(item: ItemNavegacion, permisos: string[], esAdmin: boolean, rolCodigo: string) {
+  if (rolCodigo === 'DISENO' && item.ruta === '/configuracion') return false
   if (RUTAS_POR_PUESTO[rolCodigo] && !RUTAS_POR_PUESTO[rolCodigo].includes(item.ruta)) return false
   if (!item.permiso || esAdmin) return true
   return (Array.isArray(item.permiso) ? item.permiso : [item.permiso]).some((p) => permisos.includes(p))
@@ -205,8 +187,8 @@ export function rutaActiva(ruta: string, rutas: string[]) {
 /**
  * Las pestañas de abajo en el teléfono: las cuatro primeras de esta lista que
  * la persona ve, y después «Más». El orden está pensado para que a cada puesto
- * le queden las suyas sin escribir un rol a mano: al taller, Taller, Órdenes,
- * El día y Plazos; a Diseño y Administración, su entrada de cotizaciones primero; a
+ * le queden las suyas sin escribir un rol a mano: al taller, Órdenes y Plazos;
+ * a Diseño y Administración, su entrada de cotizaciones primero; a
  * Ventas, Cotizaciones, Clientes y el tablero. El nombre va corto porque la
  * pestaña es angosta.
  */
@@ -216,8 +198,6 @@ export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/ordenes', corto: 'Órdenes' },
   { ruta: '/materiales/atencion', corto: 'Materiales' },
   { ruta: '/tesoreria', corto: 'Tesorería' },
-  { ruta: '/avance', corto: 'Taller' },
-  { ruta: '/avance/diario', corto: 'El día' },
   { ruta: '/plazos', corto: 'Plazos' },
   { ruta: '/clientes', corto: 'Clientes' },
   { ruta: '/', corto: 'Tablero' },

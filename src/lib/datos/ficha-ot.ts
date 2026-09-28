@@ -31,10 +31,14 @@ export type PasoVerificacion = {
   responsable_id: string | null
   avance_1: boolean
   avance_1_en: string | null
+  avance_1_por: string | null
   avance_2: boolean
   avance_2_en: string | null
+  avance_2_por: string | null
   observaciones: string | null
   responsable: { puesto: string | null } | null
+  jefe_produccion: { nombres: string; apellidos: string } | null
+  jefe_taller: { nombres: string; apellidos: string } | null
 }
 
 /** Sección 6 del formato: el equipamiento a montar, con su visto bueno. */
@@ -74,7 +78,7 @@ export async function verificacionesDeOrden(ordenId: string): Promise<PasoVerifi
   const { data, error } = await supabase
     .from('ot_verificaciones')
     .select(
-      'id, numero, descripcion, responsable_id, avance_1, avance_1_en, avance_2, avance_2_en, observaciones, responsable:usuarios!ot_verificaciones_responsable_id_fkey(puesto)',
+      'id, numero, descripcion, responsable_id, avance_1, avance_1_en, avance_1_por, avance_2, avance_2_en, avance_2_por, observaciones, responsable:usuarios!ot_verificaciones_responsable_id_fkey(puesto), jefe_produccion:usuarios!ot_verificaciones_avance_1_por_fkey(nombres,apellidos), jefe_taller:usuarios!ot_verificaciones_avance_2_por_fkey(nombres,apellidos)',
     )
     .eq('orden_id', ordenId)
     .order('numero')

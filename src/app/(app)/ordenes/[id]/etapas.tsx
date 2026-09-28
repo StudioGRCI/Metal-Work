@@ -15,34 +15,40 @@ import { useEnvio } from '@/lib/envio'
 import type { Vistas } from '@/types/database'
 
 import { actualizarEtapa } from '../acciones'
+import { definirEtapas, programarEtapa } from './acciones-etapas'
 
-type Etapa = Vistas<'ot_tablero_etapas'> & { observaciones: string | null }
+type Etapa = Vistas<'ot_tablero_etapas'> & { observaciones: string | null; etapa_catalogo_id: string | null }
+type EtapaCatalogo = { id: string; nombre: string; orden_secuencia: number }
 
 const ESTADOS = opciones(ESTADO_ETAPA, ORDEN_ESTADO_ETAPA)
 
 export function Etapas({
   ordenId,
   etapas,
+  catalogo,
   hoy,
   puedeRegistrar,
-  puedePlanificar,
+  puedeDefinir,
+  puedeProgramar,
 }: {
   ordenId: string
   etapas: Etapa[]
+  catalogo: EtapaCatalogo[]
   /** La fecha del taller (hoyLima), resuelta en el servidor. */
   hoy: string
   puedeRegistrar: boolean
-  /** `produccion.planificar`: mover las fechas del programa. */
-  puedePlanificar: boolean
+  puedeDefinir: boolean
+  puedeProgramar: boolean
 }) {
   const [editando, setEditando] = useState<string | null>(null)
+  const [programando, setProgramando] = useState<string | null>(null)
 
-  if (etapas.length === 0) {
+  if (etapas.length === 0 && !puedeDefinir) {
     return (
       <Tarjeta>
         <TarjetaCuerpo>
           <p className="py-10 text-center text-sm text-texto-suave">
-            Esta orden todavía no tiene etapas. Se generan automáticamente al aprobarla.
+            Esta orden todavía no tiene etapas. Diseño debe elegirlas.
           </p>
         </TarjetaCuerpo>
       </Tarjeta>
@@ -59,6 +65,10 @@ export function Etapas({
         acciones={vencidas > 0 ? <Insignia tono="peligro">{vencidas} {vencidas === 1 ? 'vencida' : 'vencidas'}</Insignia> : null}
       />
       <TarjetaCuerpo className="space-y-2 p-2">
+        {puedeDefinir && <FormularioDefinicion ordenId={ordenId} catalogo={catalogo} etapas={etapas} />}
+        {etapas.length === 0 && (
+          <p className="py-6 text-center text-sm text-texto-suave">Diseño todavía no ha definido las etapas de esta orden.</p>
+        )}
         {etapas.map((etapa) => {
           const estado = definir(ESTADO_ETAPA, etapa.estado)
           const abierta = editando === etapa.etapa_id
@@ -114,15 +124,25 @@ export function Etapas({
                     {abierta ? 'Cerrar' : 'Registrar'}
                   </Boton>
                 )}
+                {puedeProgramar && (
+                  <Boton variante="fantasma" tamano="sm"
+                    onClick={() => setProgramando(programando === etapa.etapa_id ? null : etapa.etapa_id)}
+                    aria-expanded={programando === etapa.etapa_id}>
+                    {programando === etapa.etapa_id ? 'Cerrar fechas' : 'Programar'}
+                  </Boton>
+                )}
               </div>
 
               {abierta && (
                 <FormularioEtapa
                   ordenId={ordenId}
                   etapa={etapa}
-                  puedePlanificar={puedePlanificar}
                   alTerminar={() => setEditando(null)}
                 />
+              )}
+              {programando === etapa.etapa_id && (
+                <FormularioProgramacion ordenId={ordenId} etapa={etapa}
+                  alTerminar={() => setProgramando(null)} />
               )}
             </div>
           )
@@ -135,12 +155,10 @@ export function Etapas({
 function FormularioEtapa({
   ordenId,
   etapa,
-  puedePlanificar,
   alTerminar,
 }: {
   ordenId: string
   etapa: Etapa
-  puedePlanificar: boolean
   alTerminar: () => void
 }) {
   const [avance, setAvance] = useState(Number(etapa.avance_porcentaje ?? 0))
@@ -204,30 +222,6 @@ function FormularioEtapa({
         />
       </Campo>
 
-      {/* El programa lo mueve quien planifica (`produccion.planificar`): los
-          jefes. Los campos solo se pintan con el permiso, y la acción los
-          rechaza sin él: ocultarlos no es una puerta. */}
-      {puedePlanificar && (
-        <>
-          <Campo etiqueta="Programada desde" htmlFor={`pi-${etapa.etapa_id}`} ayuda="Según el cronograma; vacío la deja sin fecha">
-            <Entrada
-              id={`pi-${etapa.etapa_id}`}
-              name="fecha_inicio_programada"
-              type="date"
-              defaultValue={etapa.fecha_inicio_programada ?? ''}
-            />
-          </Campo>
-          <Campo etiqueta="Programada hasta" htmlFor={`pf-${etapa.etapa_id}`} ayuda="Contra esta fecha corre el plazo">
-            <Entrada
-              id={`pf-${etapa.etapa_id}`}
-              name="fecha_fin_programada"
-              type="date"
-              defaultValue={etapa.fecha_fin_programada ?? ''}
-            />
-          </Campo>
-        </>
-      )}
-
       {error && (
         <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro sm:col-span-3">
           {error}
@@ -241,6 +235,64 @@ function FormularioEtapa({
         <Boton type="submit" tamano="sm" cargando={enviando}>
           Guardar avance
         </Boton>
+      </div>
+    </form>
+  )
+}
+
+function FormularioDefinicion({ ordenId, catalogo, etapas }: {
+  ordenId: string
+  catalogo: EtapaCatalogo[]
+  etapas: Etapa[]
+}) {
+  const { alEnviar, enviando, error } = useEnvio(definirEtapas)
+  const existentes = new Map(etapas.map((e) => [e.etapa_catalogo_id, e.orden_secuencia]))
+  return (
+    <form onSubmit={alEnviar} className="space-y-3 rounded-[var(--radius-base)] border border-borde p-3">
+      <input type="hidden" name="orden_id" value={ordenId} />
+      <p className="text-sm font-medium text-texto">Diseño: elige y ordena las etapas</p>
+      <p className="text-xs text-texto-suave">Las etapas ya registradas deben permanecer seleccionadas para conservar sus reportes.</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {catalogo.map((item) => (
+          <div key={item.id} className="flex items-center gap-2 rounded-[var(--radius-base)] border border-borde p-2">
+            <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-texto">
+              <input type="checkbox" name="etapa_id" value={item.id} defaultChecked={existentes.has(item.id)} />
+              <span>{item.nombre}</span>
+            </label>
+            <Entrada type="number" min={1} max={100} name={`posicion_${item.id}`}
+              aria-label={`Posición de ${item.nombre}`} defaultValue={existentes.get(item.id) ?? item.orden_secuencia}
+              className="w-16 tabular text-right" />
+          </div>
+        ))}
+      </div>
+      {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
+      <Boton type="submit" tamano="sm" cargando={enviando}>Guardar etapas</Boton>
+    </form>
+  )
+}
+
+function FormularioProgramacion({ ordenId, etapa, alTerminar }: {
+  ordenId: string
+  etapa: Etapa
+  alTerminar: () => void
+}) {
+  const { alEnviar, enviando, error } = useEnvio(programarEtapa, alTerminar)
+  return (
+    <form onSubmit={alEnviar} className="mt-3 grid gap-3 border-t border-borde pt-3 sm:grid-cols-3">
+      <input type="hidden" name="orden_id" value={ordenId} />
+      <input type="hidden" name="etapa_id" value={etapa.etapa_id ?? ''} />
+      <Campo etiqueta="Inicio programado" htmlFor={`inicio-${etapa.etapa_id}`}>
+        <Entrada id={`inicio-${etapa.etapa_id}`} name="inicio" type="date"
+          defaultValue={etapa.fecha_inicio_programada ?? ''} required />
+      </Campo>
+      <Campo etiqueta="Fin programado" htmlFor={`fin-${etapa.etapa_id}`}>
+        <Entrada id={`fin-${etapa.etapa_id}`} name="fin" type="date"
+          defaultValue={etapa.fecha_fin_programada ?? ''} required />
+      </Campo>
+      {error && <p role="alert" className="text-sm text-peligro sm:col-span-3">{error}</p>}
+      <div className="flex items-end justify-end gap-2">
+        <Boton type="button" variante="fantasma" tamano="sm" onClick={alTerminar}>Cancelar</Boton>
+        <Boton type="submit" tamano="sm" cargando={enviando}>Guardar fechas</Boton>
       </div>
     </form>
   )

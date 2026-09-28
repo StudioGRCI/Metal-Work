@@ -60,6 +60,10 @@ export async function listarOrdenes(filtros: FiltrosOrdenes) {
     consulta = consulta.in('estado', ESTADOS_ABIERTOS)
   } else if (filtros.estado) {
     consulta = consulta.eq('estado', filtros.estado)
+  } else {
+    // La lista operativa no muestra órdenes anuladas; siguen consultables
+    // mediante el filtro explícito de estado y su detalle conserva el historial.
+    consulta = consulta.neq('estado', 'ANULADA')
   }
 
   if (filtros.prioridad) consulta = consulta.eq('prioridad', filtros.prioridad)
@@ -142,17 +146,30 @@ export async function listarEtapas(ordenId: string) {
       .order('orden_secuencia'),
     supabase
       .from('ot_etapas')
-      .select('id, observaciones')
+      .select('id, observaciones, etapa_catalogo_id')
       .eq('orden_id', ordenId),
   ])
 
   if (tablero.error) throw new Error(`No se pudieron cargar las etapas: ${tablero.error.message}`)
 
-  const porEtapa = new Map((notas.data ?? []).map((n) => [n.id, n.observaciones]))
+  const porEtapa = new Map((notas.data ?? []).map((n) => [n.id, n]))
   return (tablero.data ?? []).map((e) => ({
     ...e,
-    observaciones: e.etapa_id ? (porEtapa.get(e.etapa_id) ?? null) : null,
+    observaciones: e.etapa_id ? (porEtapa.get(e.etapa_id)?.observaciones ?? null) : null,
+    etapa_catalogo_id: e.etapa_id ? (porEtapa.get(e.etapa_id)?.etapa_catalogo_id ?? null) : null,
   }))
+}
+
+/** Etapas que Diseño puede incluir en una OT, en el orden sugerido del catálogo. */
+export async function catalogoEtapasParaOrden() {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('etapas_catalogo')
+    .select('id, nombre, orden_secuencia')
+    .eq('activo', true)
+    .order('orden_secuencia')
+  if (error) throw new Error(`No se pudieron cargar las etapas disponibles: ${error.message}`)
+  return data ?? []
 }
 
 /** Catálogos que necesitan los formularios de alta y edición. */

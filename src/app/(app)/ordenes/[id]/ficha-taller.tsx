@@ -15,6 +15,7 @@ import { cantidad as formatearCantidad, etiquetasDePuesto, fecha, puesto } from 
 import { cn } from '@/lib/utils'
 
 import {
+  agregarVerificacion,
   agregarAccesorioOT,
   agregarRepuesto,
   anotarVerificacion,
@@ -83,6 +84,8 @@ export function FichaTaller({
   puedeEditar,
   puedeEscribirOrden,
   puedeArmar,
+  rolVerificacion,
+  puedeCrearVerificacion,
 }: {
   ordenId: string
   ficha: FichaFisica
@@ -96,6 +99,8 @@ export function FichaTaller({
   puedeEscribirOrden: boolean
   /** Poner y quitar líneas de la ficha: lo arma el taller. */
   puedeArmar: boolean
+  rolVerificacion: 'JEFE_PRODUCCION' | 'JEFE_TALLER' | null
+  puedeCrearVerificacion: boolean
 }) {
   const sinArmar = accesorios.length === 0 && verificaciones.length === 0
 
@@ -113,6 +118,8 @@ export function FichaTaller({
         pasos={verificaciones}
         puedeEditar={puedeEditar}
         sinArmar={sinArmar}
+        rolVerificacion={rolVerificacion}
+        puedeCrear={puedeCrearVerificacion}
       />
 
       <Accesorios
@@ -136,8 +143,7 @@ function ArmarFicha({ ordenId }: { ordenId: string }) {
         <div>
           <p className="text-sm font-medium text-texto">Esta orden todavía no tiene ficha de taller</p>
           <p className="text-xs text-texto-suave">
-            Se arma con los accesorios que se cotizaron y los pasos de verificación de su carrocería.
-            En las órdenes nuevas se arma sola al aprobarlas.
+            Puedes cargar los accesorios de la plantilla de carrocería. Diseño agrega los pasos de verificación más abajo.
           </p>
         </div>
         <form onSubmit={alEnviar}>
@@ -332,15 +338,20 @@ function Verificacion({
   pasos,
   puedeEditar,
   sinArmar,
+  rolVerificacion,
+  puedeCrear,
 }: {
   ordenId: string
   pasos: PasoVerificacion[]
   puedeEditar: boolean
   sinArmar: boolean
+  rolVerificacion: 'JEFE_PRODUCCION' | 'JEFE_TALLER' | null
+  puedeCrear: boolean
 }) {
   const [anotando, setAnotando] = useState<string | null>(null)
+  const { alEnviar, enviando, error: errorCrear } = useEnvio(agregarVerificacion)
 
-  const hechos = pasos.filter((p) => p.avance_2).length
+  const hechos = pasos.filter((p) => p.avance_1 && p.avance_2).length
   const avance = pasos.length ? Math.round((hechos / pasos.length) * 100) : 0
 
   return (
@@ -349,18 +360,29 @@ function Verificacion({
         titulo="Verificación y funcionamiento"
         descripcion={
           pasos.length
-            ? `${hechos} de ${pasos.length} pasos revisados. El avance 1 es la primera pasada; el 2, la revisión.`
-            : 'Los pasos se traen de la carrocería al aprobar la orden.'
+            ? `${hechos} de ${pasos.length} pasos con ambos vistos buenos.`
+            : 'Diseño crea los pasos de verificación de esta orden.'
         }
       />
       <TarjetaCuerpo className="space-y-3">
         {pasos.length > 0 && <Progreso valor={avance} mostrarValor />}
 
+        {puedeCrear && (
+          <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="orden_id" value={ordenId} />
+            <Campo etiqueta="Nuevo paso de verificación" htmlFor="nueva-verificacion" className="min-w-60 flex-1">
+              <Entrada id="nueva-verificacion" name="descripcion" required minLength={3} maxLength={300} placeholder="Qué deben verificar los jefes" />
+            </Campo>
+            <Boton type="submit" cargando={enviando}>Agregar paso</Boton>
+            {errorCrear && <p role="alert" className="w-full text-xs text-peligro">{errorCrear}</p>}
+          </form>
+        )}
+
         {pasos.length === 0 ? (
           <p className="py-6 text-center text-sm text-texto-suave">
             {sinArmar
-              ? 'Todavía no hay pasos que verificar en esta orden.'
-              : 'Esta carrocería no tiene pasos de verificación configurados.'}
+              ? 'Diseño todavía no agregó pasos a esta orden.'
+              : 'Diseño todavía no agregó pasos de verificación.'}
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -373,16 +395,11 @@ function Verificacion({
                   <th className="px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase">
                     Descripción
                   </th>
-                  {/* En el teléfono manda el paso y sus dos casillas: el
-                      responsable pierde su columna y baja a la descripción. */}
-                  <th className="hidden px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase sm:table-cell">
-                    Responsable
+                  <th className="w-20 px-2 py-2 text-center text-[11px] font-semibold text-texto-suave uppercase">
+                    Jefe de producción
                   </th>
                   <th className="w-20 px-2 py-2 text-center text-[11px] font-semibold text-texto-suave uppercase">
-                    Avance 1
-                  </th>
-                  <th className="w-20 px-2 py-2 text-center text-[11px] font-semibold text-texto-suave uppercase">
-                    Avance 2
+                    Jefe de taller
                   </th>
                 </tr>
               </thead>
@@ -394,9 +411,6 @@ function Verificacion({
                       <span className={cn('text-texto', paso.avance_2 && 'text-texto-suave line-through')}>
                         {paso.descripcion}
                       </span>
-                      {paso.responsable && (
-                        <p className="text-[11px] text-texto-suave sm:hidden">{puesto(paso.responsable)}</p>
-                      )}
                       {paso.observaciones && (
                         <p className="mt-0.5 text-xs text-aviso">{paso.observaciones}</p>
                       )}
@@ -415,17 +429,15 @@ function Verificacion({
                           </button>
                         ))}
                     </td>
-                    <td className="hidden px-3 py-2 text-xs text-texto-suave sm:table-cell">
-                      {puesto(paso.responsable)}
-                    </td>
                     <Casilla
                       ordenId={ordenId}
                       pasoId={paso.id}
                       avance="1"
                       marcado={paso.avance_1}
                       cuando={paso.avance_1_en}
-                      puedeEditar={puedeEditar}
-                      etiqueta={`Avance 1 del paso ${paso.numero}`}
+                      actor={paso.jefe_produccion}
+                      puedeEditar={rolVerificacion === 'JEFE_PRODUCCION' && (!paso.avance_1 || !!paso.avance_1_por)}
+                      etiqueta={`Visto bueno del jefe de producción, paso ${paso.numero}`}
                     />
                     <Casilla
                       ordenId={ordenId}
@@ -433,8 +445,9 @@ function Verificacion({
                       avance="2"
                       marcado={paso.avance_2}
                       cuando={paso.avance_2_en}
-                      puedeEditar={puedeEditar && paso.avance_1}
-                      etiqueta={`Avance 2 del paso ${paso.numero}`}
+                      actor={paso.jefe_taller}
+                      puedeEditar={rolVerificacion === 'JEFE_TALLER' && (!paso.avance_2 || !!paso.avance_2_por)}
+                      etiqueta={`Visto bueno del jefe de taller, paso ${paso.numero}`}
                     />
                   </tr>
                 ))}
@@ -493,6 +506,7 @@ function Casilla({
   avance,
   marcado,
   cuando,
+  actor,
   puedeEditar,
   etiqueta,
 }: {
@@ -501,6 +515,7 @@ function Casilla({
   avance: '1' | '2'
   marcado: boolean
   cuando: string | null
+  actor: { nombres: string; apellidos: string } | null
   puedeEditar: boolean
   etiqueta: string
 }) {
@@ -521,7 +536,13 @@ function Casilla({
           return datos
         }}
       />
-      {cuando && <p className="mt-0.5 text-[10px] text-texto-tenue">{fecha(cuando)}</p>}
+      {marcado && (
+        <p className="mt-0.5 text-[10px] text-texto-tenue">
+          {actor ? `${actor.nombres} ${actor.apellidos}` : 'Registro anterior · jefe sin identificar'}
+          {cuando ? ` · ${fecha(cuando)}` : ''}
+        </p>
+      )}
+      {!marcado && <p className="mt-0.5 text-[10px] text-texto-tenue">Pendiente</p>}
     </td>
   )
 }

@@ -43,14 +43,14 @@ export function queMeToca(
     })
   }
 
-  let cumplimiento = 0
+  let planos = 0
   let materiales = 0
   if (viva && disena) {
     if (p.planos === 0) {
-      items.push({ texto: 'Arma los planos y las piezas de la unidad', vista: 'cumplimiento', tono: 'acento' })
+      items.push({ texto: 'Arma los planos y las piezas de la unidad', vista: 'planos', tono: 'acento' })
     } else if (p.planos > p.planosEntregados) {
-      cumplimiento = p.planos - p.planosEntregados
-      items.push({ texto: plural(cumplimiento, 'plano sin entregar', 'planos sin entregar'), vista: 'cumplimiento', tono: 'aviso' })
+      planos = p.planos - p.planosEntregados
+      items.push({ texto: plural(planos, 'plano sin entregar', 'planos sin entregar'), vista: 'planos', tono: 'aviso' })
     }
     if (p.planos > 0 && p.materiales === 0) {
       materiales = 1
@@ -99,7 +99,7 @@ export function queMeToca(
     items.push({ texto: 'La orden no tiene cliente: pónselo', vista: 'resumen', tono: 'aviso' })
   }
 
-  return { items, contadores: { resumen: obs, cumplimiento, materiales, actividades } }
+  return { items, contadores: { resumen: obs, planos, materiales, actividades } }
 }
 
 /** La franja de arriba: lo que le toca hacer a quien mira, con el enlace a su pestaña. */
@@ -114,7 +114,7 @@ export function TeToca({ ordenId, items }: { ordenId: string; items: Pendiente[]
           {items.map((i) => (
             <li key={`${i.vista}-${i.texto}`}>
               <Link
-                href={`/ordenes/${ordenId}?vista=${i.vista}`}
+                href={i.vista === 'planos' ? `/ordenes/${ordenId}/planos` : `/ordenes/${ordenId}?vista=${i.vista}`}
                 className="inline-flex min-h-11 items-center gap-1.5 text-sm text-texto hover:text-acento hover:underline sm:min-h-0"
               >
                 <Punto tono={i.tono} />

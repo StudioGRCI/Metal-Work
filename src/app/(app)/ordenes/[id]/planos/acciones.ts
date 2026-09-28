@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/server'
 const esquema = z.object({
   id: z.string().uuid(), plano_id: z.string().uuid(), area_id: z.string().uuid(),
   nombre_archivo: z.string().trim().min(1).max(200),
+  nota_envio: z.string().trim().max(1000).optional(),
 })
 
 export async function registrarVersionPlano(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -25,8 +26,9 @@ export async function registrarVersionPlano(_previo: unknown, datos: FormData): 
   if (archivo.size > 20 * 1024 * 1024 || await archivo.slice(0, 5).text() !== '%PDF-') {
     return { ok: false, error: 'El archivo debe ser un PDF de hasta 20 MB.' }
   }
-  const { data, error } = await supabase.rpc('registrar_version_plano', {
+  const { data, error } = await supabase.rpc('registrar_version_plano_con_nota', {
     p_id: v.id, p_plano: v.plano_id, p_area: v.area_id, p_nombre: v.nombre_archivo,
+    p_nota: v.nota_envio ?? '',
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: 'No se confirmó la asignación del equipo. Recarga la página antes de volver a intentar.' }
@@ -43,7 +45,7 @@ export async function resolverVersionPlano(_previo: unknown, datos: FormData): P
   }).safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: 'Revisa la acción y la observación (máximo 1000 caracteres).' }
   const v = analisis.data
-  if (!puede(perfil, v.accion === 'recibir' ? ['produccion.actividades', 'produccion.cualquier_area'] : 'diseno.revisar')) {
+  if (!puede(perfil, ['produccion.actividades', 'produccion.cualquier_area'])) {
     return { ok: false, error: 'No tienes permiso para realizar esta acción.' }
   }
   const supabase = await createClient()

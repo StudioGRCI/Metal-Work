@@ -14,7 +14,8 @@ export default async function PaginaAtencionMateriales() {
     'requerimientos.ver', 'compras.ver', 'compras.crear', 'almacen.ver', 'almacen.recibir', 'almacen.despachar',
   ])
   const permisos = {
-    verRequerimientos: puede(perfil, 'requerimientos.ver'),
+    verRequerimientos: puede(perfil, ['requerimientos.ver', 'diseno.planos']),
+    aprobarDiseno: puede(perfil, 'diseno.planos'),
     verExistencias: puede(perfil, 'almacen.ver'),
     verCompras: puede(perfil, 'compras.ver'),
     crearCompra: puede(perfil, 'compras.crear'),
@@ -63,6 +64,8 @@ export default async function PaginaAtencionMateriales() {
           areas={datos.areas}
           responsables={datos.responsables}
           puedeCrearCompra={permisos.crearCompra}
+          puedeAprobarDiseno={permisos.aprobarDiseno}
+          puedeRevisarStock={permisos.verExistencias}
           puedeAdjuntarDocumentos={permisos.crearCompra}
           puedeVerCompras={permisos.verCompras}
           puedeRecibir={permisos.recibir}

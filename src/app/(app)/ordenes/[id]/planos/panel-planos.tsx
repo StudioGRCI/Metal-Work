@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useState } from 'react'
 import { FileCheck2, FileDown, Upload } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
@@ -18,8 +17,8 @@ type VersionEnPantalla = VersionPlano & { puedeRevisar: boolean; puedeRecibir: b
 type Catalogos = Awaited<ReturnType<typeof catalogosDePlanos>>
 const ESTADOS: Record<string, string> = { POR_REVISAR: 'Por revisar', OBSERVADO: 'Requiere corrección', APROBADO: 'Aprobado · pendiente de recepción', RECIBIDO: 'Recibido por el área' }
 
-export function PanelPlanos({ ordenId, abierta, puedeCargar, puedeAsignar, verEquipo, catalogos, versiones }: {
-  ordenId: string; abierta: boolean; puedeCargar: boolean; puedeAsignar: boolean; verEquipo: boolean; catalogos: Catalogos; versiones: VersionEnPantalla[]
+export function PanelPlanos({ ordenId, abierta, puedeCargar, puedeAsignar, verEquipo, catalogos, versiones, planoSeleccionado }: {
+  ordenId: string; abierta: boolean; puedeCargar: boolean; puedeAsignar: boolean; verEquipo: boolean; catalogos: Catalogos; versiones: VersionEnPantalla[]; planoSeleccionado?: string
 }) {
   const [historial, setHistorial] = useState(false)
   const actuales = versiones.filter(v => v.vigente || v.estado === 'POR_REVISAR' || v.estado === 'OBSERVADO')
@@ -31,7 +30,7 @@ export function PanelPlanos({ ordenId, abierta, puedeCargar, puedeAsignar, verEq
     </div>
     {!abierta && <p role="status" className="text-sm text-texto-suave">La orden no está abierta: la carga y revisión de versiones están deshabilitadas.</p>}
     {verEquipo && <EquipoDiseno ordenId={ordenId} abierta={abierta} puedeAsignar={puedeAsignar} catalogos={catalogos} />}
-    {puedeCargar && abierta && <CargarVersion catalogos={catalogos} ordenId={ordenId} />}
+    {puedeCargar && abierta && <CargarVersion key={planoSeleccionado} catalogos={catalogos} ordenId={ordenId} planoSeleccionado={planoSeleccionado} />}
     <Tarjeta>
       <TarjetaCabecera titulo="Planos de tu ámbito" descripcion="PDF privados. La revisión no confirma que el área haya recibido el plano; esa recepción queda registrada por separado."
         acciones={<Boton variante="secundario" tamano="sm" aria-pressed={historial} onClick={() => setHistorial(!historial)}>{historial ? 'Ver vigentes y pendientes' : 'Incluir versiones anteriores'}</Boton>} />
@@ -39,7 +38,7 @@ export function PanelPlanos({ ordenId, abierta, puedeCargar, puedeAsignar, verEq
         {visibles.length === 0 && <div className="py-6 text-center">
           <FileCheck2 aria-hidden className="mx-auto mb-3 size-8 text-texto-tenue" />
           <p className="font-medium text-texto">Todavía no tienes planos disponibles</p>
-          <p className="mt-1 text-sm text-texto-suave">{puedeCargar ? 'Crea el plano en Cumplimiento y carga aquí el PDF para revisión.' : 'Los planos aparecerán cuando se aprueben para tu área.'}</p>
+          <p className="mt-1 text-sm text-texto-suave">{puedeCargar ? 'Crea el plano arriba y carga aquí el PDF para revisión.' : 'Los planos aparecerán cuando se aprueben para tu área.'}</p>
         </div>}
         {visibles.map(v => <Version key={v.id} version={v} ordenId={ordenId} />)}
         {versiones.length === 200 && <p className="text-sm text-aviso">Se muestran las 200 versiones más recientes de esta orden.</p>}
@@ -87,7 +86,7 @@ function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
         </Campo>
 
         {catalogos.planos.length === 0 ? (
-          <p className="rounded-md bg-superficie-2 p-3 text-sm text-texto-suave">Crea los planos de esta OT en Cumplimiento y luego asígnales responsables.</p>
+          <p className="rounded-md bg-superficie-2 p-3 text-sm text-texto-suave">Crea los planos de esta OT en esta sección y luego asígnales responsables.</p>
         ) : (
           <div className="space-y-2">
             <p className="text-sm font-medium text-texto">Responsables por plano</p>
@@ -118,7 +117,7 @@ function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
   </Tarjeta>
 }
 
-function CargarVersion({ catalogos, ordenId }: { catalogos: Catalogos; ordenId: string }) {
+function CargarVersion({ catalogos, ordenId, planoSeleccionado }: { catalogos: Catalogos; ordenId: string; planoSeleccionado?: string }) {
   const [solicitud, setSolicitud] = useState(() => crypto.randomUUID())
   const [aviso, setAviso] = useState<string | null>(null)
   async function cargar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -140,6 +139,7 @@ function CargarVersion({ catalogos, ordenId }: { catalogos: Catalogos; ordenId: 
       formulario.set('plano_id', String(datos.get('plano_id') ?? ''))
       formulario.set('area_id', String(datos.get('area_id') ?? ''))
       formulario.set('nombre_archivo', archivo.name.slice(0, 200))
+      formulario.set('nota_envio', String(datos.get('nota_envio') ?? ''))
       const resultado = await registrarVersionPlano(null, formulario)
       if (!resultado.ok) {
         const { error: limpieza } = await supabase.storage.from('planos-privados').remove([ruta])
@@ -154,14 +154,18 @@ function CargarVersion({ catalogos, ordenId }: { catalogos: Catalogos; ordenId: 
   }
   const { alEnviar, enviando, error } = useEnvio(cargar, r => setAviso(r.mensaje ?? 'Versión registrada.'))
   return <Tarjeta>
-    <TarjetaCabecera titulo="Enviar plano a revisión" descripcion="Selecciona el plano y su área destinataria. Conserva el CAD original en Diseño y carga el PDF que debe usar el taller." />
+    <div id="revision-plano" />
+    <TarjetaCabecera titulo="Adjuntar PDF o nueva revisión" descripcion="Elige el plano y cuál de las tres áreas debe revisarlo. Cada corrección se adjunta como una nueva versión." />
     <TarjetaCuerpo>
-      {catalogos.planos.length === 0 ? <p className="text-sm text-texto-suave">Primero <Link className="text-acento underline" href={`/ordenes/${ordenId}?vista=cumplimiento`}>crea el plano y sus piezas en Cumplimiento</Link>.</p> :
+      {catalogos.planos.length === 0 ? <p className="text-sm text-texto-suave">Primero crea el plano y sus piezas arriba.</p> :
         <form onSubmit={alEnviar} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Campo etiqueta="Plano" htmlFor="version-plano"><Seleccion id="version-plano" name="plano_id" required disabled={enviando} defaultValue=""><option value="" disabled>Elige un plano</option>{catalogos.planos.map(p => <option key={p.id} value={p.id}>{p.numero_plano} · {p.nombre}</option>)}</Seleccion></Campo>
+            <Campo etiqueta="Plano" htmlFor="version-plano"><Seleccion id="version-plano" name="plano_id" required disabled={enviando} defaultValue={catalogos.planos.some(p => p.id === planoSeleccionado) ? planoSeleccionado : ''}><option value="" disabled>Elige un plano</option>{catalogos.planos.map(p => <option key={p.id} value={p.id}>{p.numero_plano} · {p.nombre}</option>)}</Seleccion></Campo>
             <Campo etiqueta="Área destinataria" htmlFor="version-area"><Seleccion id="version-area" name="area_id" required disabled={enviando} defaultValue=""><option value="" disabled>Elige un área</option>{catalogos.areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</Seleccion></Campo>
           </div>
+          <Campo etiqueta="Observación para la revisión" htmlFor="version-nota" ayuda="Indica qué cambió o qué debe revisar el área destinataria.">
+            <AreaTexto id="version-nota" name="nota_envio" maxLength={1000} disabled={enviando} />
+          </Campo>
           <Campo etiqueta="Plano en PDF" htmlFor="version-archivo" ayuda="Hasta 20 MB. Para otro archivo, selecciónalo de nuevo; se creará una nueva revisión.">
             <Entrada id="version-archivo" name="archivo" type="file" accept="application/pdf,.pdf" required disabled={enviando} onChange={() => { setSolicitud(crypto.randomUUID()); setAviso(null) }} />
           </Campo>
@@ -185,6 +189,7 @@ function Version({ version: v, ordenId }: { version: VersionEnPantalla; ordenId:
     <a className="mt-3 inline-flex min-h-11 items-center gap-2 break-all text-sm font-medium text-acento hover:underline" href={`/ordenes/${ordenId}/planos/${v.id}/archivo`}><FileDown aria-hidden className="size-4 shrink-0" />{v.nombre_archivo}</a>
     <p className="mt-2 text-xs text-texto-suave">Cargado: {fechaHora(v.creado_en)}{v.revisado_en ? ` · Revisado: ${fechaHora(v.revisado_en)}` : ''}{v.recibido_en ? ` · Recibido: ${fechaHora(v.recibido_en)}` : ''}</p>
     {v.observacion && <p className="mt-3 rounded-[var(--radius-base)] bg-aviso-suave p-3 text-sm text-texto whitespace-pre-wrap">{v.observacion}</p>}
+    {v.nota_envio && <p className="mt-3 rounded-[var(--radius-base)] bg-superficie-2 p-3 text-sm text-texto whitespace-pre-wrap">Diseño indicó: {v.nota_envio}</p>}
     {v.puedeRevisar && <form onSubmit={alEnviar} className="mt-4 space-y-3">
       <input type="hidden" name="id" value={v.id} />
       <Campo etiqueta="Decisión" htmlFor={`decision-${v.id}`}><Seleccion id={`decision-${v.id}`} name="accion" required disabled={enviando} defaultValue=""><option value="" disabled>Elige después de revisar el PDF</option><option value="aprobar">Aprobar para el área</option><option value="observar">Pedir corrección a Diseño</option></Seleccion></Campo>
