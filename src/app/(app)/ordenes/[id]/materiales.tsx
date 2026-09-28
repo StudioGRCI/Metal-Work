@@ -89,11 +89,11 @@ export function MaterialesDeOrden({
         <NuevoMaterial ordenId={ordenId} catalogo={catalogo} yaEnLista={materiales} propuesta />
       )}
 
-      {puedeSolicitar && ordenViva && materiales.length > 0 && (
+      {puedeSolicitar && !puedeDisenar && ordenViva && materiales.length > 0 && (
         <SolicitudesPorArea
           ordenId={ordenId}
           materiales={materiales}
-          areaPropia={puedeDisenar ? null : areaPropia}
+          areaPropia={areaPropia}
         />
       )}
 

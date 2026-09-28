@@ -399,7 +399,7 @@ function Verificacion({
                     Jefe de producción
                   </th>
                   <th className="w-20 px-2 py-2 text-center text-[11px] font-semibold text-texto-suave uppercase">
-                    Jefe de taller
+                    Jefe de maestranza
                   </th>
                 </tr>
               </thead>
@@ -447,7 +447,7 @@ function Verificacion({
                       cuando={paso.avance_2_en}
                       actor={paso.jefe_taller}
                       puedeEditar={rolVerificacion === 'JEFE_TALLER' && (!paso.avance_2 || !!paso.avance_2_por)}
-                      etiqueta={`Visto bueno del jefe de taller, paso ${paso.numero}`}
+                      etiqueta={`Visto bueno del jefe de maestranza, paso ${paso.numero}`}
                     />
                   </tr>
                 ))}

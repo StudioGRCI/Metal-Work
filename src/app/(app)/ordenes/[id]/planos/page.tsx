@@ -40,9 +40,7 @@ export default async function PaginaPlanos({ params, searchParams }: {
     : abierta ? null : 'La orden ya se cerró'
   return <>
     <EncabezadoPagina titulo={`Planos · ${orden.numero}`} descripcion="Planos, PDF y revisiones por área. Los materiales se definen en su pestaña." />
-    <div className="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start lg:gap-5">
     <Pestanas ordenId={id} activa="planos" visibles={secciones} />
-    <div className="min-w-0">
     <Cumplimiento ordenId={id} resumen={cumplimiento?.resumen ?? null} planos={cumplimiento?.planos ?? []}
       versiones={versiones.map(v => ({ ...v,
         puedeRevisar: abierta && v.estado === 'POR_REVISAR' && v.creado_por !== perfil.id && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, 'produccion.actividades'),
@@ -57,7 +55,5 @@ export default async function PaginaPlanos({ params, searchParams }: {
       <summary className="cursor-pointer text-sm font-medium text-texto">Equipo de Diseño</summary>
       <div className="mt-4"><EquipoDiseno ordenId={id} abierta={abierta} puedeAsignar={puede(perfil, 'diseno.asignar')} catalogos={catalogos} /></div>
     </details>}
-    </div>
-    </div>
   </>
 }
