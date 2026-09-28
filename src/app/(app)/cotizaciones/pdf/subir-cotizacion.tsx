@@ -2,13 +2,14 @@
 
 import { FileSearch, FileUp, Plus, Undo2, Upload } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
+import { useRef, useState, useTransition, type FormEvent } from 'react'
 
 import { crearClienteRapido } from '@/app/(app)/clientes/acciones'
 import { crearCarroceria } from '@/app/(app)/configuracion/acciones'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
+import { VistaPreviaPdf } from '@/components/ui/vista-previa-pdf'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { ACEPTA_COTIZACION, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
 import {
@@ -47,7 +48,6 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
-  const [vistaPdf, setVistaPdf] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
   const [lectura, setLectura] = useState<CabeceraCotizacion | null>(null)
   const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
@@ -73,13 +73,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [propuesta, setPropuesta] = useState<PropuestaCarroceria | null>(null)
   const [nombreCarroceria, setNombreCarroceria] = useState('')
 
-  useEffect(() => {
-    return () => { if (vistaPdf) URL.revokeObjectURL(vistaPdf) }
-  }, [vistaPdf])
-
   function abrir() {
     setArchivo(null)
-    setVistaPdf(null)
     setLectura(null)
     setTotal({ monto: null, moneda: null })
     setProgreso('')
@@ -129,7 +124,6 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   async function elegirArchivo(elegido: File | undefined) {
     if (!elegido) return
     setArchivo(elegido)
-    setVistaPdf(tipoDeCotizacion(elegido)?.extension === 'pdf' ? URL.createObjectURL(elegido) : null)
     setError(null)
     setLectura(null)
     if (!tipoDeCotizacion(elegido)) {
@@ -540,8 +534,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
               <p className="text-sm font-semibold text-texto">Vista previa de la cotización</p>
               <p className="truncate text-xs text-texto-suave">{archivo?.name ?? 'Elige un PDF para comparar los datos'}</p>
             </div>
-            {vistaPdf ? (
-              <iframe title="PDF de la cotización seleccionada" src={vistaPdf} className="min-h-[20rem] w-full flex-1 bg-white" />
+            {archivo && tipoDeCotizacion(archivo)?.extension === 'pdf' ? (
+              <VistaPreviaPdf key={`${archivo.name}-${archivo.lastModified}-${archivo.size}`} archivo={archivo} titulo="PDF de la cotización" />
             ) : (
               <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-texto-suave">
                 {archivo ? 'La vista previa integrada está disponible para PDF. Puedes revisar los datos a la izquierda.' : 'El PDF aparecerá aquí al seleccionarlo.'}

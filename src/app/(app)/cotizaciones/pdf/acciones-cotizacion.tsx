@@ -2,11 +2,12 @@
 
 import { AlertTriangle, Check, FileSearch, FileUp, MessageSquareWarning, RefreshCw, Trash2, Truck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
+import { useRef, useState, useTransition, type FormEvent } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
+import { VistaPreviaPdf } from '@/components/ui/vista-previa-pdf'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
@@ -349,7 +350,6 @@ export function EmitirOrden({
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
-  const [vistaPdf, setVistaPdf] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
   const [avisoLectura, setAvisoLectura] = useState('')
   const [numeroOrden, setNumeroOrden] = useState('')
@@ -360,11 +360,8 @@ export function EmitirOrden({
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
 
-  useEffect(() => () => { if (vistaPdf) URL.revokeObjectURL(vistaPdf) }, [vistaPdf])
-
   function abrir() {
     setArchivo(null)
-    setVistaPdf(null)
     setAvisoLectura('')
     setNumeroOrden('')
     setTipo(tipoUnidad ?? '')
@@ -380,7 +377,6 @@ export function EmitirOrden({
     setAvisoLectura('')
     setDatosLeidos(null)
     setArchivo(null)
-    setVistaPdf(null)
     if (elegido.size > MAXIMO_ADJUNTO_MB * 1024 * 1024) {
       setError(`El PDF pesa más de ${MAXIMO_ADJUNTO_MB} MB.`)
       return
@@ -390,7 +386,6 @@ export function EmitirOrden({
       return
     }
     setArchivo(elegido)
-    setVistaPdf(URL.createObjectURL(elegido))
     setLeyendo(true)
     try {
       const datos = await leerArchivoOrden(elegido, setAvisoLectura)
@@ -594,7 +589,7 @@ export function EmitirOrden({
               <p className="text-sm font-semibold text-texto">Vista previa de la OT</p>
               <p className="truncate text-xs text-texto-suave">{archivo?.name ?? 'Elige el PDF para comparar los datos'}</p>
             </div>
-            {vistaPdf ? <iframe title="PDF de la orden de trabajo seleccionada" src={vistaPdf} className="min-h-[20rem] w-full flex-1 bg-white" /> : <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-texto-suave">El PDF aparecerá aquí al seleccionarlo.</div>}
+            {archivo ? <VistaPreviaPdf key={`${archivo.name}-${archivo.lastModified}-${archivo.size}`} archivo={archivo} titulo="PDF de la orden de trabajo" /> : <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-texto-suave">El PDF aparecerá aquí al seleccionarlo.</div>}
           </aside>
         </form>
       </Ventana>
