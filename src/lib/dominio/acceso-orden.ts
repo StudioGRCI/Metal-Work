@@ -13,7 +13,7 @@ export function seccionesDeOrden(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>)
     'resumen',
     ...(tiene('ordenes.editar', 'produccion.ver', 'diseno.planos') ? ['ficha'] : []),
     ...(tiene('ordenes.listar', 'produccion.ver') ? ['etapas'] : []),
-    ...(tecnico ? ['cumplimiento', 'planos'] : []),
+    ...(tecnico ? ['planos'] : []),
     ...(tiene('diseno.planos', 'cotizaciones.costear', 'produccion.ver') || tecnico ? ['materiales'] : []),
     ...(tiene('produccion.ver', 'diseno.planos') ? ['actividades'] : []),
     ...(tiene('produccion.ver') ? ['avance'] : []),

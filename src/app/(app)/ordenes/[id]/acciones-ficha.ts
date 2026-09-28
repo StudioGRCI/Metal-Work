@@ -136,9 +136,8 @@ export async function guardarFichaFisica(
 }
 
 /**
- * Trae los accesorios de la cotización y los pasos de verificación de la
- * carrocería. Lo hace el disparador al aprobar, pero también a mano: una orden
- * aprobada antes de esta versión no los tiene.
+ * Trae los accesorios de la plantilla de carrocería. Los pasos de verificación
+ * los define Diseño directamente en la OT.
  */
 export async function armarFicha(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const guarda = await exigirTaller()
@@ -152,7 +151,7 @@ export async function armarFicha(_previo: unknown, datos: FormData): Promise<Res
   if (error) return { ok: false, error: mensajeDeError(error) }
 
   revalidatePath(`/ordenes/${analisis.data.orden_id}`)
-  return { ok: true, mensaje: 'Ficha armada con lo cotizado y los pasos de la carrocería.' }
+  return { ok: true, mensaje: 'Accesorios de la plantilla cargados.' }
 }
 
 /** Sección 6: agregar un accesorio que no venía de la cotización. */
@@ -331,16 +330,43 @@ export async function quitarRepuesto(_previo: unknown, datos: FormData): Promise
   return { ok: true }
 }
 
-/**
- * Sección 11: marcar un paso de verificación. Los dos avances son la primera
- * pasada y la revisión, y el esquema no deja marcar la segunda sin la primera.
- */
+/** Diseño escribe la lista de pasos de esta OT, sin traer una plantilla automática. */
+export async function agregarVerificacion(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (perfil.rol.codigo !== 'DISENO' || !puede(perfil, 'diseno.planos')) {
+    return { ok: false, error: 'Solo Diseño puede crear pasos.' }
+  }
+  const analisis = z.object({
+    orden_id: z.string().uuid(),
+    descripcion: z.string().trim().min(3).max(300),
+  }).safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: 'Describe el paso en 3 a 300 caracteres.' }
+
+  const supabase = await createClient()
+  const { data: ultimo, error: errorLista } = await supabase
+    .from('ot_verificaciones').select('numero')
+    .eq('orden_id', analisis.data.orden_id).order('numero', { ascending: false }).limit(1)
+  if (errorLista) return { ok: false, error: mensajeDeError(errorLista) }
+  const numeroPaso = (ultimo?.[0]?.numero ?? 0) + 1
+  if (numeroPaso > 40) return { ok: false, error: 'La OT admite hasta 40 pasos.' }
+  const { data, error } = await supabase.from('ot_verificaciones')
+    .insert({ orden_id: analisis.data.orden_id, numero: numeroPaso, descripcion: analisis.data.descripcion })
+    .select('id').maybeSingle()
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
+  revalidatePath(`/ordenes/${analisis.data.orden_id}`)
+  return { ok: true, mensaje: `Paso ${numeroPaso} agregado.` }
+}
+
+/** Cada jefe marca exclusivamente su propio visto bueno. */
 export async function marcarVerificacion(
   _previo: unknown,
   datos: FormData,
 ): Promise<ResultadoAccion> {
-  const guarda = await exigirTaller()
-  if (!guarda.ok) return { ok: false, error: guarda.error }
+  const perfil = await exigirSesion()
 
   const analisis = z
     .object({
@@ -354,21 +380,17 @@ export async function marcarVerificacion(
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
 
   const v = analisis.data
+  if ((v.avance === '1' && perfil.rol.codigo !== 'JEFE_PRODUCCION') ||
+      (v.avance === '2' && perfil.rol.codigo !== 'JEFE_TALLER')) {
+    return { ok: false, error: 'Solo el jefe correspondiente puede marcar este visto bueno.' }
+  }
   const pone = v.valor === 'si'
-  const ahora = pone ? new Date().toISOString() : null
-
-  // Quitar la primera pasada arrastra la segunda: sin la una la otra no existe.
-  const cambio =
-    v.avance === '1'
-      ? pone
-        ? { avance_1: true, avance_1_en: ahora }
-        : { avance_1: false, avance_1_en: null, avance_2: false, avance_2_en: null }
-      : { avance_2: pone, avance_2_en: ahora }
+  const cambio = v.avance === '1' ? { avance_1: pone } : { avance_2: pone }
 
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('ot_verificaciones')
-    .update({ ...cambio, responsable_id: guarda.perfil.id })
+    .update(cambio)
     .eq('id', v.id)
     .eq('orden_id', v.orden_id)
     .select('id')
@@ -386,8 +408,10 @@ export async function anotarVerificacion(
   _previo: unknown,
   datos: FormData,
 ): Promise<ResultadoAccion> {
-  const guarda = await exigirTaller()
-  if (!guarda.ok) return { ok: false, error: guarda.error }
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'diseno.planos')) {
+    return { ok: false, error: 'Solo Diseño puede anotar observaciones en los pasos.' }
+  }
 
   const analisis = z
     .object({

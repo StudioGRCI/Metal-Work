@@ -16,6 +16,7 @@ import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
 import {
   clientesParaElegir,
+  catalogoEtapasParaOrden,
   estadoDeSalida,
   fechasClaveDeOrden,
   listarEtapas,
@@ -26,7 +27,6 @@ import { actividadesDeOrden, areasDelTaller } from '@/lib/datos/actividades'
 import { adjuntosDeOrden } from '@/lib/datos/adjuntos'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
-import { cumplimientoDeOrden } from '@/lib/datos/cumplimiento'
 import {
   accesoriosDeOrden,
   personalDelTaller,
@@ -54,7 +54,6 @@ import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
 
 import { Bitacora } from './bitacora'
 import { Observaciones } from './observaciones'
-import { Cumplimiento } from './cumplimiento'
 import { ActividadesDeOrden } from './actividades'
 import { MaterialesDeOrden } from './materiales'
 import { Etapas } from './etapas'
@@ -73,7 +72,6 @@ const VISTAS = [
   'resumen',
   'ficha',
   'etapas',
-  'cumplimiento',
   'materiales',
   'actividades',
   'avance',
@@ -95,6 +93,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const perfil = await exigirPermiso('ordenes.ver')
   const { id } = await params
   const query = await searchParams
+  if (query.vista === 'cumplimiento') redirect(`/ordenes/${id}/planos`)
   const secciones = seccionesDeOrden(perfil)
   const vista: Vista = VISTAS.includes(query.vista as Vista) ? (query.vista as Vista) : 'resumen'
   if (!secciones.includes(vista)) redirect('/sin-permiso')
@@ -130,7 +129,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   // La salida importa cuando la orden se acerca a la puerta.
   const verSalida = vista === 'resumen' && ['TERMINADA', 'CONTROL_CALIDAD', 'ENTREGADA', 'FACTURADA'].includes(orden.estado)
 
-  const [etapas, timeline, accesorios, repuestos, verificaciones, personal, cumplimiento] =
+  const [etapas, timeline, accesorios, repuestos, verificaciones, personal] =
     await Promise.all([
       vista === 'etapas' || vista === 'resumen' ? listarEtapas(id) : Promise.resolve([]),
       vista === 'bitacora' ? timelineDeOrden(id) : Promise.resolve([]),
@@ -138,8 +137,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       verFicha ? repuestosDeOrden(id) : Promise.resolve([]),
       verFicha ? verificacionesDeOrden(id) : Promise.resolve([]),
       verFicha ? personalDelTaller() : Promise.resolve([]),
-      vista === 'cumplimiento' ? cumplimientoDeOrden(id) : Promise.resolve(null),
     ])
+  const catalogoEtapas = vista === 'etapas' && puede(perfil, 'diseno.planos')
+    ? await catalogoEtapasParaOrden() : []
 
   const [salida, fechasClave] = await Promise.all([
     verSalida ? estadoDeSalida(id) : Promise.resolve(null),
@@ -171,14 +171,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     vista === 'materiales' && perfil.area_id && !puede(perfil, 'diseno.planos')
       ? ((await areasDelTaller()).find((a) => a.id === perfil.area_id)?.codigo ?? null)
       : null
-
-  // De qué mano es quien mira la hoja de cumplimiento: el supervisor de
-  // Maestranza ve solo sus botones; el jefe (cualquier área) y la oficina, los dos.
-  const codigoDeSuArea =
-    vista === 'cumplimiento' && !puede(perfil, 'produccion.cualquier_area') && perfil.area_id
-      ? ((await areasDelTaller()).find((a) => a.id === perfil.area_id)?.codigo ?? null)
-      : null
-  const manoDelTaller = codigoDeSuArea === 'MTZ' || codigoDeSuArea === 'PRD' ? codigoDeSuArea : null
 
   // La hoja de avance de cada area, con sus actividades y el diario.
   const hojaAreas =
@@ -569,6 +561,12 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           puedeEditar={puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
           puedeEscribirOrden={puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
           puedeArmar={puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
+          rolVerificacion={
+            ESTADOS_CERRADOS.includes(orden.estado) ? null :
+            perfil.rol.codigo === 'JEFE_PRODUCCION' || perfil.rol.codigo === 'JEFE_TALLER'
+              ? perfil.rol.codigo : null
+          }
+          puedeCrearVerificacion={perfil.rol.codigo === 'DISENO' && !ESTADOS_CERRADOS.includes(orden.estado)}
         />
       )}
 
@@ -576,23 +574,11 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         <Etapas
           ordenId={orden.id}
           etapas={etapas}
+          catalogo={catalogoEtapas}
           hoy={hoyLima()}
-          puedePlanificar={puede(perfil, 'produccion.planificar')}
+          puedeDefinir={puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
+          puedeProgramar={puede(perfil, 'ordenes.editar') && !ESTADOS_CERRADOS.includes(orden.estado)}
           puedeRegistrar={puede(perfil, 'produccion.registrar')}
-        />
-      )}
-
-      {vista === 'cumplimiento' && (
-        <Cumplimiento
-          ordenId={orden.id}
-          resumen={cumplimiento?.resumen ?? null}
-          planos={cumplimiento?.planos ?? []}
-          puedeDisenar={puede(perfil, 'diseno.planos')}
-          puedeReportar={puede(perfil, 'produccion.registrar')}
-          areaPropia={manoDelTaller}
-          puedeObservar={orden.estado !== 'ANULADA'}
-          ordenViva={motivoInactiva === null}
-          motivoInactiva={motivoInactiva}
         />
       )}
 

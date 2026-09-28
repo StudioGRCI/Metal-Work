@@ -7,6 +7,7 @@ import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/accion
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import type { Database } from '@/types/database'
+import { hoyLima } from '@/lib/format'
 
 /**
  * El MW-FOR-ING-8 se escribe con tres manos y cada acción exige la suya,
@@ -50,7 +51,7 @@ function nulo(valor?: string | null) {
   return t ? t : null
 }
 
-/** Una fecha del formulario: vacía es nula, y lo demás lo valida la base. */
+/** Fechas opcionales de los reportes de piezas. */
 const fechaOpcional = z
   .string()
   .trim()
@@ -82,7 +83,7 @@ const esquemaPlano = z.object({
   numero_plano: z.string().trim().min(1, 'Ponle número al plano').max(20, 'El número del plano es demasiado largo'),
   nombre: z.string().trim().min(2, 'Ponle nombre al plano').max(120),
   peso_pct: z.coerce.number().min(0, 'El peso no puede ser negativo').max(100, 'Ningún plano pesa más de 100'),
-  fecha_entrega: fechaOpcional,
+  entregar_hoy: marcado,
   observacion: z.string().trim().max(500).optional(),
 })
 
@@ -124,7 +125,7 @@ export async function agregarPlano(_previo: unknown, datos: FormData): Promise<R
       numero_plano: v.numero_plano,
       nombre: v.nombre,
       peso_pct: v.peso_pct,
-      fecha_entrega: v.fecha_entrega,
+      fecha_entrega: v.entregar_hoy ? hoyLima() : null,
       observacion: nulo(v.observacion),
     })
     .select('id')
@@ -162,7 +163,6 @@ export async function agregarPlano(_previo: unknown, datos: FormData): Promise<R
 
 const esquemaEntregaEnLote = z.object({
   orden_id: z.string().uuid(),
-  fecha_entrega: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elige la fecha de entrega'),
 })
 
 /**
@@ -183,7 +183,7 @@ export async function entregarPlanosPendientes(_previo: unknown, datos: FormData
 
   const { data, error } = await supabase
     .from('ot_planos')
-    .update({ fecha_entrega: v.fecha_entrega })
+    .update({ fecha_entrega: hoyLima() })
     .eq('orden_id', v.orden_id)
     .is('fecha_entrega', null)
     .select('id')
@@ -244,7 +244,7 @@ export async function repartirPesoDePlanos(_previo: unknown, datos: FormData): P
 
 const esquemaEditarPlano = esquemaPlano.extend({ plano_id: z.string().uuid() })
 
-/** Corregir un plano: el nombre, el peso, la fecha en que se entregó. */
+/** Corregir los datos del plano sin alterar su fecha de entrega. */
 export async function editarPlano(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const guarda = await exigirDiseno()
   if (!guarda.ok) return guarda
@@ -263,7 +263,6 @@ export async function editarPlano(_previo: unknown, datos: FormData): Promise<Re
       numero_plano: v.numero_plano,
       nombre: v.nombre,
       peso_pct: v.peso_pct,
-      fecha_entrega: v.fecha_entrega,
       observacion: nulo(v.observacion),
     })
     .eq('id', v.plano_id)
@@ -281,7 +280,6 @@ export async function editarPlano(_previo: unknown, datos: FormData): Promise<Re
 const esquemaEntrega = z.object({
   plano_id: z.string().uuid(),
   orden_id: z.string().uuid(),
-  fecha_entrega: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elige la fecha de entrega'),
 })
 
 /**
@@ -302,9 +300,10 @@ export async function entregarPlano(_previo: unknown, datos: FormData): Promise<
 
   const { data, error } = await supabase
     .from('ot_planos')
-    .update({ fecha_entrega: v.fecha_entrega })
+    .update({ fecha_entrega: hoyLima() })
     .eq('id', v.plano_id)
     .eq('orden_id', v.orden_id)
+    .is('fecha_entrega', null)
     .select('id')
     .maybeSingle()
 

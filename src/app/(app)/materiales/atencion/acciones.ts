@@ -14,6 +14,9 @@ const errores: Record<string, string> = {
   'La recepción supera lo pendiente': 'La cantidad ingresada supera lo que falta recibir de la compra.',
   'La cantidad excede lo que falta comprar': 'La cantidad supera lo que todavía falta comprar.',
   'Solo puedes solicitar materiales': 'Solo puedes solicitar materiales para tu área.',
+  'Registra el precio unitario': 'Registra el precio unitario de cada insumo antes de entregar la compra.',
+  'Adjunta la factura': 'Adjunta la factura PDF para Tesorería antes de entregar la compra a Almacén.',
+  'Logística debe marcar la entrega': 'Logística debe confirmar la entrega antes de que Almacén registre la recepción.',
 }
 
 function errorDeMaterial(error: { message: string; code?: string }) {
@@ -24,6 +27,67 @@ function errorDeMaterial(error: { message: string; code?: string }) {
 function dato(formulario: FormData, nombre: string) {
   const valor = formulario.get(nombre)
   return typeof valor === 'string' ? valor : ''
+}
+
+export async function resolverPropuesta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'Diseño aprueba las propuestas de materiales.' }
+  const v = z.object({ detalle_id: z.string().uuid(), decision: z.enum(['aprobar', 'rechazar']) })
+    .safeParse(Object.fromEntries(formulario))
+  if (!v.success) return { ok: false, error: 'Elige una propuesta y una decisión válidas.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('resolver_propuesta_material', {
+    p_detalle: v.data.detalle_id, p_aprobar: v.data.decision === 'aprobar',
+  })
+  if (error) return { ok: false, error: errorDeMaterial(error) }
+  if (!data) return { ok: false, error: 'La propuesta no cambió. Recarga la pantalla.' }
+  revalidatePath('/materiales/atencion')
+  return { ok: true, mensaje: v.data.decision === 'aprobar' ? 'Material aprobado para Almacén.' : 'Propuesta rechazada.' }
+}
+
+export async function revisarStock(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'almacen.ver')) return { ok: false, error: 'Almacén revisa el stock.' }
+  const v = z.object({ detalle_id: z.string().uuid(), decision: z.enum(['STOCK', 'COMPRA']) })
+    .safeParse(Object.fromEntries(formulario))
+  if (!v.success) return { ok: false, error: 'Elige el material y la decisión de stock.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('revisar_stock_requerimiento', {
+    p_detalle: v.data.detalle_id, p_decision: v.data.decision,
+  })
+  if (error) return { ok: false, error: errorDeMaterial(error) }
+  if (!data) return { ok: false, error: 'La revisión no cambió. Recarga la pantalla.' }
+  revalidatePath('/materiales/atencion')
+  return { ok: true, mensaje: v.data.decision === 'STOCK' ? 'Stock reservado para despacho.' : 'Material derivado a Logística.' }
+}
+
+export async function registrarPrecioCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Logística registra el precio del insumo.' }
+  const v = z.object({ detalle_id: z.string().uuid(), precio: z.coerce.number().min(0) })
+    .safeParse(Object.fromEntries(formulario))
+  if (!v.success) return { ok: false, error: 'Indica un precio unitario válido.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('fijar_precio_compra_material', {
+    p_detalle: v.data.detalle_id, p_precio: v.data.precio,
+  })
+  if (error) return { ok: false, error: errorDeMaterial(error) }
+  if (!data) return { ok: false, error: 'El precio no quedó registrado. Recarga la pantalla.' }
+  revalidatePath('/materiales/atencion')
+  return { ok: true, mensaje: 'Precio unitario registrado.' }
+}
+
+export async function marcarEntregaCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Logística confirma la entrega al almacén.' }
+  const v = z.object({ compra_id: z.string().uuid() }).safeParse(Object.fromEntries(formulario))
+  if (!v.success) return { ok: false, error: 'La compra no es válida.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('marcar_compra_entregada_almacen', { p_compra: v.data.compra_id })
+  if (error) return { ok: false, error: errorDeMaterial(error) }
+  if (!data) return { ok: false, error: 'La entrega no quedó registrada. Recarga la pantalla.' }
+  revalidatePath('/materiales/atencion')
+  return { ok: true, mensaje: 'Entrega a Almacén confirmada.' }
 }
 
 export async function crearOrdenCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {

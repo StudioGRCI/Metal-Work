@@ -128,7 +128,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   if (puede(perfil, 'ordenes.revisar_taller')) {
     tareas.push({
       clave: 'ot_del_taller',
-      ruta: '/avance',
+      ruta: '/ordenes?estado=BORRADOR',
       tono: 'aviso',
       texto: (n) => plural(n, 'orden abierta por el taller por revisar', 'órdenes abiertas por el taller por revisar'),
       contar: () =>
@@ -145,7 +145,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   if (aprueba) {
     tareas.push({
       clave: 'reportes_por_aprobar',
-      ruta: '/avance/diario?ver=por-aprobar',
+      ruta: '/ordenes?estado=ABIERTAS',
       tono: 'aviso',
       texto: (n) => plural(n, 'reporte por aprobar', 'reportes por aprobar'),
       contar: async () => {
@@ -160,7 +160,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   } else if (puede(perfil, 'produccion.registrar')) {
     tareas.push({
       clave: 'mios_observados',
-      ruta: '/avance/diario?ver=observados',
+      ruta: '/ordenes?estado=ABIERTAS',
       tono: 'peligro',
       texto: (n) => plural(n, 'reporte tuyo observado por corregir', 'reportes tuyos observados por corregir'),
       contar: async () => {
@@ -196,7 +196,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     const area = perfil.area_id
     tareas.push({
       clave: 'hojas_sin_reporte',
-      ruta: '/avance',
+      ruta: '/ordenes?estado=ABIERTAS',
       tono: 'aviso',
       texto: (n) => plural(n, 'hoja de tu área sin reporte de hoy', 'hojas de tu área sin reporte de hoy'),
       contar: async () => {

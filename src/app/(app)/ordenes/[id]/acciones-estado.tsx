@@ -33,7 +33,7 @@ const SIGUIENTES: Record<string, Transicion[]> = {
       estado: 'APROBADA',
       etiqueta: 'Aprobar orden',
       permisos: ['ordenes.aprobar'],
-      confirmar: 'Al aprobarla nacen sus etapas y sus plazos, y el taller ya puede trabajar en ella.',
+      confirmar: 'Tras aprobarla, Diseño define las etapas y Administración programa sus fechas antes de iniciar el trabajo.',
     },
     { estado: 'ANULADA', etiqueta: 'Anular', permisos: ['ordenes.anular'], motivo: true },
   ],

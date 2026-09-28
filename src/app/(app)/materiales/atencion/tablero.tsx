@@ -18,7 +18,7 @@ import type {
   ResponsableMaterial,
 } from '@/lib/datos/atencion-materiales'
 
-import { crearOrdenCompra, despacharMaterial, registrarRecepcion } from './acciones'
+import { crearOrdenCompra, despacharMaterial, registrarRecepcion, resolverPropuesta, revisarStock, registrarPrecioCompra, marcarEntregaCompra } from './acciones'
 import { SubirDocumentoCompra } from './subir-documento-compra'
 
 const NOMBRE_AREA: Record<string, string> = {
@@ -50,6 +50,8 @@ export function TableroMateriales({
   areas,
   responsables,
   puedeCrearCompra,
+  puedeAprobarDiseno,
+  puedeRevisarStock,
   puedeAdjuntarDocumentos,
   puedeVerCompras,
   puedeRecibir,
@@ -65,6 +67,8 @@ export function TableroMateriales({
   areas: AreaMaterial[]
   responsables: ResponsableMaterial[]
   puedeCrearCompra: boolean
+  puedeAprobarDiseno: boolean
+  puedeRevisarStock: boolean
   puedeAdjuntarDocumentos: boolean
   puedeVerCompras: boolean
   puedeRecibir: boolean
@@ -139,6 +143,7 @@ export function TableroMateriales({
       {agrupados.length > 0 && agrupados.map(([id, grupo]) => {
         const cabecera = grupo[0]
         const porComprarReq = grupo.filter((linea) =>
+          linea.aprobacion_diseno === 'APROBADO' && linea.decision_almacen === 'COMPRA' &&
           Number(linea.cantidad_solicitada ?? 0) > Number(linea.cantidad_comprada ?? 0),
         )
         const comprasReq = compras.filter((compra) => compra.requerimiento_id === cabecera.requerimiento_id)
@@ -162,9 +167,12 @@ export function TableroMateriales({
                   responsables={responsables}
                   areas={areas}
                   compras={comprasReq.filter((compra) => compra.requerimiento_detalle_id === linea.detalle_id)}
+                  existencias={existencias}
                   puedeVerCompras={puedeVerCompras}
                   puedeRecibir={puedeRecibir}
                   puedeDespachar={puedeDespachar}
+                  puedeAprobarDiseno={puedeAprobarDiseno}
+                  puedeRevisarStock={puedeRevisarStock}
                   claveDespacho={clavesDespacho[linea.detalle_id ?? '']}
                 />
               ))}
@@ -177,11 +185,24 @@ export function TableroMateriales({
               )}
               {comprasReq.length > 0 && (puedeVerCompras || puedeRecibir || puedeAdjuntarDocumentos) && (
                 <div className="space-y-3 border-t border-borde pt-3">
+                  {puedeCrearCompra && comprasUnicas.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-texto">Compra y entrega a Almacén</p>
+                      {comprasUnicas.map((compra) => compra.orden_compra_id && <EntregaCompra
+                        key={compra.orden_compra_id} compra={compra} />)}
+                      {comprasReq.filter((compra) => compra.precio_unitario === null).map((compra) => (
+                        <PrecioCompra key={compra.id} compra={compra} />
+                      ))}
+                    </div>
+                  )}
                   {puedeRecibir && comprasPendientes.length > 0 && (
                     <div>
                       <p className="mb-2 text-xs font-semibold text-texto">Llegadas pendientes</p>
+                      {comprasPendientes.every((compra) => !compra.entregado_almacen_en) && (
+                        <p className="mb-2 text-xs text-texto-suave">Logística todavía no marcó la entrega de estas compras a Almacén.</p>
+                      )}
                       <div className="grid gap-2 lg:grid-cols-2">
-                        {comprasPendientes.map((compra) => (
+                        {comprasPendientes.filter((compra) => compra.entregado_almacen_en).map((compra) => (
                           <FormularioRecepcion key={compra.id} compra={compra} clave={clavesRecepcion[compra.id ?? '']} />
                         ))}
                       </div>
@@ -230,6 +251,31 @@ export function TableroMateriales({
   )
 }
 
+function PrecioCompra({ compra }: { compra: CompraMaterialPendiente }) {
+  const { alEnviar, enviando, error } = useEnvio(registrarPrecioCompra)
+  return <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-2 rounded-md border border-borde p-2">
+    <input type="hidden" name="detalle_id" value={compra.id ?? ''} />
+    <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.referencia}</span>
+    <Campo etiqueta="Precio unitario (S/)" htmlFor={`precio-${compra.id}`}>
+      <Entrada id={`precio-${compra.id}`} name="precio" type="number" inputMode="decimal" min={0} step="0.01" required className="tabular w-32" />
+    </Campo>
+    <Boton type="submit" tamano="sm" cargando={enviando}>Registrar precio</Boton>
+    {error && <p role="alert" className="basis-full text-xs text-peligro">{error}</p>}
+  </form>
+}
+
+function EntregaCompra({ compra }: { compra: CompraMaterialPendiente }) {
+  const { alEnviar, enviando, error } = useEnvio(marcarEntregaCompra)
+  if (compra.entregado_almacen_en) return <p className="text-xs text-exito">{compra.referencia}: entregada a Almacén</p>
+  return <form onSubmit={alEnviar} className="flex flex-wrap items-center gap-2">
+    <input type="hidden" name="compra_id" value={compra.orden_compra_id ?? ''} />
+    <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.referencia}</span>
+    <Boton type="submit" tamano="sm" cargando={enviando}>Marcar entrega a Almacén</Boton>
+    <p className="basis-full text-[11px] text-texto-suave">Antes de entregar, registra los precios y adjunta la factura PDF para Tesorería.</p>
+    {error && <p role="alert" className="basis-full text-xs text-peligro">{error}</p>}
+  </form>
+}
+
 function Indicador({
   icono: Icono,
   titulo,
@@ -260,25 +306,33 @@ function LineaMaterial({
   responsables,
   areas,
   compras,
+  existencias,
   puedeVerCompras,
   puedeRecibir,
   puedeDespachar,
+  puedeAprobarDiseno,
+  puedeRevisarStock,
   claveDespacho,
 }: {
   linea: LineaAtencionMaterial
   responsables: ResponsableMaterial[]
   areas: AreaMaterial[]
   compras: CompraMaterialPendiente[]
+  existencias: ExistenciaMaterial[]
   puedeVerCompras: boolean
   puedeRecibir: boolean
   puedeDespachar: boolean
+  puedeAprobarDiseno: boolean
+  puedeRevisarStock: boolean
   claveDespacho: string | undefined
 }) {
   const solicitado = Number(linea.cantidad_solicitada ?? 0)
   const comprado = Number(linea.cantidad_comprada ?? 0)
   const recibido = Number(linea.cantidad_recibida ?? 0)
   const despachado = Number(linea.cantidad_despachada ?? 0)
-  const disponible = Math.max(0, Math.min(recibido - despachado, solicitado - despachado))
+  const saldoGlobal = Number(existencias.find((item) => item.material_id === linea.material_id)?.existencia ?? 0)
+  const saldoDeCompra = linea.decision_almacen === 'COMPRA' ? recibido - despachado : saldoGlobal
+  const disponible = Math.max(0, Math.min(saldoGlobal, saldoDeCompra, solicitado - despachado))
   const porcentaje = solicitado > 0 ? Math.min(100, Math.round((despachado / solicitado) * 100)) : 0
   const areaId = areas.find((area) => area.codigo === linea.area_destino)?.id
   const candidatos = responsables.filter((persona) => persona.area_id === areaId)
@@ -310,13 +364,23 @@ function LineaMaterial({
         <CantidadMini nombre="Entregado" valor={despachado} unidad={linea.unidad} />
       </div>
 
+      {linea.aprobacion_diseno === 'PROPUESTO' && (
+        puedeAprobarDiseno ? <DecisionMaterial linea={linea} tipo="diseno" />
+          : <p className="mt-3 text-xs text-aviso">Pendiente de aprobación de Diseño.</p>
+      )}
+      {linea.aprobacion_diseno === 'RECHAZADO' && <p className="mt-3 text-xs text-peligro">Diseño rechazó esta propuesta.</p>}
+      {linea.aprobacion_diseno === 'APROBADO' && linea.decision_almacen === 'PENDIENTE' && (
+        puedeRevisarStock ? <DecisionMaterial linea={linea} tipo="almacen" />
+          : <p className="mt-3 text-xs text-aviso">Almacén revisará si hay stock.</p>
+      )}
+
       {linea.responsables && (
         <p className="mt-3 border-t border-borde pt-2 text-xs text-texto-suave">
           Recibió: <span className="font-medium text-texto">{linea.responsables}</span>
         </p>
       )}
 
-      {puedeDespachar && disponible > 0 && (
+      {puedeDespachar && linea.aprobacion_diseno === 'APROBADO' && linea.decision_almacen !== 'PENDIENTE' && disponible > 0 && (
         <FormularioDespacho
           linea={linea}
           candidatos={candidatos}
@@ -328,6 +392,22 @@ function LineaMaterial({
       {puedeRecibir && compras.length > 0 && !puedeVerCompras && <p className="mt-3 text-xs text-texto-suave">Hay compras esperando ingreso en almacén.</p>}
     </div>
   )
+}
+
+function DecisionMaterial({ linea, tipo }: { linea: LineaAtencionMaterial; tipo: 'diseno' | 'almacen' }) {
+  const { alEnviar, enviando, error } = useEnvio(tipo === 'diseno' ? resolverPropuesta : revisarStock)
+  return <form onSubmit={alEnviar} className="mt-3 flex flex-wrap items-end gap-2 border-t border-borde pt-3">
+    <input type="hidden" name="detalle_id" value={linea.detalle_id ?? ''} />
+    <Campo etiqueta={tipo === 'diseno' ? 'Decisión de Diseño' : 'Revisión de Almacén'} htmlFor={`decision-${tipo}-${linea.detalle_id}`}>
+      <Seleccion id={`decision-${tipo}-${linea.detalle_id}`} name="decision" required defaultValue="">
+        <option value="" disabled>Elige una opción</option>
+        {tipo === 'diseno' ? <><option value="aprobar">Aprobar</option><option value="rechazar">Rechazar</option></>
+          : <><option value="STOCK">Hay stock</option><option value="COMPRA">Derivar a Logística</option></>}
+      </Seleccion>
+    </Campo>
+    <Boton type="submit" tamano="sm" cargando={enviando}>Guardar decisión</Boton>
+    {error && <p role="alert" className="basis-full text-xs text-peligro">{error}</p>}
+  </form>
 }
 
 function CantidadMini({ nombre, valor, unidad }: { nombre: string; valor: number; unidad: string | null }) {

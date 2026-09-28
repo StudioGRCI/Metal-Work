@@ -8,10 +8,9 @@ const PESTANAS = [
   // Las etapas por área alimentan el control de plazos: son la manera de ver si
   // cada área va a tiempo.
   { clave: 'etapas', titulo: 'Etapas' },
-  // La hoja de Diseño: planos y piezas.
-  { clave: 'cumplimiento', titulo: 'Cumplimiento' },
-  { clave: 'planos', titulo: 'Planos y revisiones' },
-  // Los materiales van pegados al cumplimiento porque son la otra mitad de lo
+  // Plano, piezas, avance y revisiones en una misma vista.
+  { clave: 'planos', titulo: 'Planos' },
+  // Los materiales van pegados a los planos porque son la otra mitad de lo
   // mismo: en la hoja de Diseño está qué hay que hacer, y acá qué hace falta
   // para hacerlo.
   { clave: 'materiales', titulo: 'Materiales' },

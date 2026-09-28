@@ -36,12 +36,28 @@ select (select id from public.clientes where numero_documento = '20607761907'),
 select set_config('prueba.orden', (select id::text from public.ordenes_trabajo
   where descripcion = 'Tolva de prueba del circuito de abastecimiento' limit 1), true);
 select set_config('prueba.material', (select id::text from public.materiales where codigo = 'PL-6'), true);
+update public.ordenes_trabajo set estado = 'APROBADA'
+ where id = current_setting('prueba.orden')::uuid;
+insert into public.ot_planos (orden_id, numero_plano, nombre, peso_pct)
+values (current_setting('prueba.orden')::uuid, '1', 'ESTRUCTURA', 100);
+select set_config('prueba.plano', (select id::text from public.ot_planos
+ where orden_id = current_setting('prueba.orden')::uuid limit 1), true);
+
+do $$ declare v_fallo boolean := false;
+begin
+  begin
+    insert into public.ot_materiales (orden_id, material_id, cantidad, area_destino)
+    values (current_setting('prueba.orden')::uuid, current_setting('prueba.material')::uuid, 1, 'MTZ');
+  exception when check_violation then v_fallo := true; end;
+  perform test.afirmar(v_fallo, 'Una línea nueva no entra sin plano');
+end $$;
 
 -- Diseño registra la línea y la envía a Maestranza.
 select test.como_usuario(:'diseno_id');
 set local role authenticated;
-insert into public.ot_materiales (orden_id, material_id, cantidad, area_destino)
-values (current_setting('prueba.orden')::uuid, current_setting('prueba.material')::uuid, 10, 'MTZ');
+insert into public.ot_materiales (orden_id, plano_id, material_id, cantidad, area_destino)
+values (current_setting('prueba.orden')::uuid, current_setting('prueba.plano')::uuid,
+ current_setting('prueba.material')::uuid, 10, 'MTZ');
 select set_config('prueba.ot_material', (select id::text from public.ot_materiales
   where orden_id = current_setting('prueba.orden')::uuid), true);
 select set_config('prueba.requerimiento', public.crear_requerimiento_material(
@@ -49,6 +65,13 @@ select set_config('prueba.requerimiento', public.crear_requerimiento_material(
 reset role;
 select set_config('prueba.req_linea', (select id::text from public.requerimiento_material_detalles
   where requerimiento_id = current_setting('prueba.requerimiento')::uuid), true);
+select test.afirmar((select aprobacion_diseno = 'APROBADO' and decision_almacen = 'PENDIENTE'
+ from public.requerimiento_material_detalles where id = current_setting('prueba.req_linea')::uuid),
+ 'Diseño aprueba al solicitar; Almacén todavía debe revisar');
+select test.como_usuario(:'almacen_id');
+set local role authenticated;
+select public.revisar_stock_requerimiento(current_setting('prueba.req_linea')::uuid, 'COMPRA');
+reset role;
 select set_config('prueba.receptor', :'mtz_id', true);
 select set_config('prueba.receptor_otro_area', :'acb_id', true);
 
@@ -64,6 +87,15 @@ select set_config('prueba.compra', public.crear_orden_compra_material(
   'Proveedor de prueba', 'OC-PRUEBA-001',
   jsonb_build_array(jsonb_build_object('id', current_setting('prueba.req_linea')::uuid, 'cantidad', 10)),
   current_date + 7)::text, true);
+select public.fijar_precio_compra_material(
+  (select id from public.orden_compra_material_detalles
+   where orden_compra_id = current_setting('prueba.compra')::uuid), 12.50);
+insert into public.documentos_compra_material
+  (orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por)
+values (current_setting('prueba.compra')::uuid, 'FACTURA', 'factura-prueba.pdf',
+  'compra/' || current_setting('prueba.compra') || '/factura-prueba.pdf',
+  'application/pdf', 5, :'comprador_id');
+select public.marcar_compra_entregada_almacen(current_setting('prueba.compra')::uuid);
 
 do $$
 declare v_rechazado boolean := false;

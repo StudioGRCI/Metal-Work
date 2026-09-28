@@ -1166,6 +1166,8 @@ export type Database = {
       }
       orden_compra_material_detalles: {
         Row: {
+          actualizado_en: string
+          precio_unitario: number | null
           id: string
           orden_compra_id: string
           requerimiento_id: string
@@ -1174,6 +1176,8 @@ export type Database = {
           creado_en: string
         }
         Insert: {
+          actualizado_en?: string
+          precio_unitario?: number | null
           id?: string
           orden_compra_id: string
           requerimiento_id: string
@@ -1182,6 +1186,8 @@ export type Database = {
           creado_en?: string
         }
         Update: {
+          actualizado_en?: string
+          precio_unitario?: number | null
           id?: string
           orden_compra_id?: string
           requerimiento_id?: string
@@ -1229,6 +1235,9 @@ export type Database = {
       }
       ordenes_compra_materiales: {
         Row: {
+          actualizado_en: string
+          entregado_almacen_en: string | null
+          entregado_almacen_por: string | null
           id: string
           requerimiento_id: string
           proveedor: string
@@ -1238,6 +1247,9 @@ export type Database = {
           creado_en: string
         }
         Insert: {
+          actualizado_en?: string
+          entregado_almacen_en?: string | null
+          entregado_almacen_por?: string | null
           id?: string
           requerimiento_id: string
           proveedor: string
@@ -1247,6 +1259,9 @@ export type Database = {
           creado_en?: string
         }
         Update: {
+          actualizado_en?: string
+          entregado_almacen_en?: string | null
+          entregado_almacen_por?: string | null
           id?: string
           requerimiento_id?: string
           proveedor?: string
@@ -1319,6 +1334,7 @@ export type Database = {
           cotizacion_pdf_id: string | null
           tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           diseno_lider_id: string | null
+          plan_etapas_manual: boolean
         }
         Insert: {
           id?: string
@@ -1366,6 +1382,7 @@ export type Database = {
           cotizacion_pdf_id?: string | null
           tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           diseno_lider_id?: string | null
+          plan_etapas_manual?: boolean
         }
         Update: {
           id?: string
@@ -1413,6 +1430,7 @@ export type Database = {
           cotizacion_pdf_id?: string | null
           tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           diseno_lider_id?: string | null
+          plan_etapas_manual?: boolean
         }
         Relationships: [
           {
@@ -2400,6 +2418,7 @@ export type Database = {
           estado: string
           vigente: boolean
           observacion: string | null
+          nota_envio: string | null
           creado_por: string
           revisado_por: string | null
           revisado_en: string | null
@@ -2418,6 +2437,7 @@ export type Database = {
           estado?: string
           vigente?: boolean
           observacion?: string | null
+          nota_envio?: string | null
           creado_por: string
           revisado_por?: string | null
           revisado_en?: string | null
@@ -2436,6 +2456,7 @@ export type Database = {
           estado?: string
           vigente?: boolean
           observacion?: string | null
+          nota_envio?: string | null
           creado_por?: string
           revisado_por?: string | null
           revisado_en?: string | null
@@ -2706,8 +2727,10 @@ export type Database = {
           responsable_id: string | null
           avance_1: boolean
           avance_1_en: string | null
+          avance_1_por: string | null
           avance_2: boolean
           avance_2_en: string | null
+          avance_2_por: string | null
           observaciones: string | null
           creado_en: string
           actualizado_en: string
@@ -2720,8 +2743,10 @@ export type Database = {
           responsable_id?: string | null
           avance_1?: boolean
           avance_1_en?: string | null
+          avance_1_por?: string | null
           avance_2?: boolean
           avance_2_en?: string | null
+          avance_2_por?: string | null
           observaciones?: string | null
           creado_en?: string
           actualizado_en?: string
@@ -2734,13 +2759,29 @@ export type Database = {
           responsable_id?: string | null
           avance_1?: boolean
           avance_1_en?: string | null
+          avance_1_por?: string | null
           avance_2?: boolean
           avance_2_en?: string | null
+          avance_2_por?: string | null
           observaciones?: string | null
           creado_en?: string
           actualizado_en?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "ot_verificaciones_avance_1_por_fkey"
+            columns: ["avance_1_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_verificaciones_avance_2_por_fkey"
+            columns: ["avance_2_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ot_verificaciones_orden_id_fkey"
             columns: ["orden_id"]
@@ -3050,6 +3091,13 @@ export type Database = {
       }
       requerimiento_material_detalles: {
         Row: {
+          actualizado_en: string
+          aprobacion_diseno: string
+          aprobado_por: string | null
+          aprobado_en: string | null
+          decision_almacen: string
+          revisado_por: string | null
+          revisado_en: string | null
           id: string
           requerimiento_id: string
           ot_material_id: string
@@ -3057,6 +3105,13 @@ export type Database = {
           creado_en: string
         }
         Insert: {
+          actualizado_en?: string
+          aprobacion_diseno?: string
+          aprobado_por?: string | null
+          aprobado_en?: string | null
+          decision_almacen?: string
+          revisado_por?: string | null
+          revisado_en?: string | null
           id?: string
           requerimiento_id: string
           ot_material_id: string
@@ -3064,6 +3119,13 @@ export type Database = {
           creado_en?: string
         }
         Update: {
+          actualizado_en?: string
+          aprobacion_diseno?: string
+          aprobado_por?: string | null
+          aprobado_en?: string | null
+          decision_almacen?: string
+          revisado_por?: string | null
+          revisado_en?: string | null
           id?: string
           requerimiento_id?: string
           ot_material_id?: string
@@ -4202,6 +4264,26 @@ export type Database = {
       }
     }
     Functions: {
+      marcar_compra_entregada_almacen: {
+        Args: { p_compra: string }
+        Returns: string
+      }
+      proponer_material_de_area: {
+        Args: { p_orden: string; p_plano: string; p_material: string; p_cantidad: number; p_observacion?: string | null }
+        Returns: string
+      }
+      resolver_propuesta_material: {
+        Args: { p_detalle: string; p_aprobar: boolean }
+        Returns: string
+      }
+      revisar_stock_requerimiento: {
+        Args: { p_detalle: string; p_decision: string }
+        Returns: string
+      }
+      fijar_precio_compra_material: {
+        Args: { p_detalle: string; p_precio: number }
+        Returns: string
+      }
       editar_carroceria_ventas: {
         Args: { p_id: string; p_nombre: string; p_descripcion: string; p_activo: boolean }
         Returns: string
@@ -4306,6 +4388,21 @@ export type Database = {
           p_orden_id: string
         }
         Returns: number
+      }
+      definir_etapas_diseno: {
+        Args: {
+          p_orden_id: string
+          p_etapas: string[]
+        }
+        Returns: number
+      }
+      programar_etapa_administracion: {
+        Args: {
+          p_etapa_id: string
+          p_inicio: string
+          p_fin: string
+        }
+        Returns: string
       }
       crear_orden_compra_material: {
         Args: {
@@ -4705,6 +4802,16 @@ export type Database = {
           p_plano: string
           p_area: string
           p_nombre: string
+        }
+        Returns: string
+      }
+      registrar_version_plano_con_nota: {
+        Args: {
+          p_id: string
+          p_plano: string
+          p_area: string
+          p_nombre: string
+          p_nota: string
         }
         Returns: string
       }

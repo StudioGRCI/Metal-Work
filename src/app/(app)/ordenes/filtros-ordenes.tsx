@@ -77,7 +77,7 @@ export function FiltrosOrdenes() {
         value={params.get('estado') ?? ''}
         onChange={(e) => navegar({ estado: e.target.value || null })}
       >
-        <option value="">Todos los estados</option>
+        <option value="">Todos excepto anuladas</option>
         <option value="ABIERTAS">En taller (abiertas)</option>
         {ESTADOS.map((o) => (
           <option key={o.valor} value={o.valor}>

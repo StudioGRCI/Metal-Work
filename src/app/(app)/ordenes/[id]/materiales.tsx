@@ -15,6 +15,7 @@ import { useEnvio } from '@/lib/envio'
 
 import {
   agregarMaterial,
+  proponerMaterial,
   cambiarCantidadMaterial,
   crearRequerimiento,
   quitarMaterial,
@@ -82,6 +83,9 @@ export function MaterialesDeOrden({
 
       {puedeDisenar && ordenViva && (
         <NuevoMaterial ordenId={ordenId} catalogo={catalogo} yaEnLista={materiales} />
+      )}
+      {!puedeDisenar && puedeSolicitar && ordenViva && (areaPropia === 'MTZ' || areaPropia === 'ACB') && (
+        <NuevoMaterial ordenId={ordenId} catalogo={catalogo} yaEnLista={materiales} propuesta />
       )}
 
       {puedeSolicitar && ordenViva && materiales.length > 0 && (
@@ -337,17 +341,19 @@ function NuevoMaterial({
   ordenId,
   catalogo,
   yaEnLista,
+  propuesta = false,
 }: {
   ordenId: string
   catalogo: CatalogoMateriales
   yaEnLista: MaterialDeOrden[]
+  propuesta?: boolean
 }) {
   const [abierto, setAbierto] = useState(false)
   const [materialId, setMaterialId] = useState('')
   // Se queda abierto después de guardar: la lista de materiales de una unidad
   // son veinte líneas, y abrirlo cada vez eran veinte toques de más.
   const [guardados, setGuardados] = useState(0)
-  const { alEnviar, enviando, error } = useEnvio(agregarMaterial, () => {
+  const { alEnviar, enviando, error } = useEnvio(propuesta ? proponerMaterial : agregarMaterial, () => {
     setMaterialId('')
     setGuardados((g) => g + 1)
   })
@@ -357,7 +363,7 @@ function NuevoMaterial({
       <div className="flex justify-end">
         <Boton variante="secundario" tamano="sm" onClick={() => setAbierto(true)}>
           <Plus aria-hidden className="size-4" />
-          Agregar material
+          {propuesta ? 'Proponer material a Diseño' : 'Agregar material'}
         </Boton>
       </div>
     )
@@ -369,8 +375,8 @@ function NuevoMaterial({
   return (
     <Tarjeta className="border-acento">
       <TarjetaCabecera
-        titulo="Agregar material a la lista"
-        descripcion="Qué lleva la unidad y cuánto. El plano y la etapa son opcionales: hay material que es de la unidad entera. Si el material no está en el catálogo, se agrega en «Materiales» del menú."
+        titulo={propuesta ? 'Proponer material a Diseño' : 'Agregar material a la lista'}
+        descripcion={propuesta ? 'Elige el plano y la cantidad que necesita tu área. Diseño revisará la propuesta antes de enviarla a Almacén.' : 'Qué necesita cada plano y cuánto. Si el material no está en el catálogo, se agrega en «Materiales» del menú.'}
       />
       <TarjetaCuerpo>
         <form key={guardados} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
@@ -412,9 +418,9 @@ function NuevoMaterial({
             />
           </Campo>
 
-          <Campo etiqueta="Plano" htmlFor="nm-plano" ayuda="Opcional">
-            <Seleccion id="nm-plano" name="plano_id" defaultValue="">
-              <option value="">De la unidad</option>
+          <Campo etiqueta="Plano" htmlFor="nm-plano" requerido>
+            <Seleccion id="nm-plano" name="plano_id" defaultValue="" required>
+              <option value="" disabled>Elige el plano</option>
               {catalogo.planos.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.numero_plano} · {p.nombre}
@@ -423,7 +429,7 @@ function NuevoMaterial({
             </Seleccion>
           </Campo>
 
-          <Campo etiqueta="Para la etapa" htmlFor="nm-etapa" ayuda="Opcional">
+          {!propuesta && <Campo etiqueta="Para la etapa" htmlFor="nm-etapa" ayuda="Opcional">
               <Seleccion id="nm-etapa" name="etapa_id" defaultValue="">
               <option value="">Sin etapa específica</option>
               {catalogo.etapas.map((e) => (
@@ -433,13 +439,13 @@ function NuevoMaterial({
                 </option>
               ))}
             </Seleccion>
-          </Campo>
+          </Campo>}
 
-          <Campo etiqueta="Área que recibirá el material" htmlFor="nm-area" requerido className="sm:col-span-2">
+          {!propuesta && <Campo etiqueta="Área que recibirá el material" htmlFor="nm-area" requerido className="sm:col-span-2">
             <Seleccion id="nm-area" name="area_destino" defaultValue="PRD" required>
               {Object.entries(AREAS).map(([valor, etiqueta]) => <option key={valor} value={valor}>{etiqueta}</option>)}
             </Seleccion>
-          </Campo>
+          </Campo>}
 
           <Campo etiqueta="Observación" htmlFor="nm-obs" className="sm:col-span-6">
             <Entrada id="nm-obs" name="observacion" placeholder="Opcional: medida, corte, marca pedida" />

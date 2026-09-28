@@ -4,10 +4,8 @@ import type { MetadataRoute } from 'next'
  * Lo que el teléfono necesita para instalar el sistema como aplicación: nombre,
  * íconos y que se abra sin la barra del navegador (`standalone`).
  *
- * Arranca en el tablero y no en «Avance en taller»: el tablero lo ve todo el
- * mundo, y Ventas o Administración que abrieran la aplicación en una pantalla
- * del taller se encontrarían con «No tienes acceso». Los atajos —apretar el
- * ícono un rato— sí llevan directo a lo del taller.
+ * Arranca en el tablero, que lo ve todo el mundo. Los atajos del teléfono
+ * llevan a tareas concretas del taller.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -29,8 +27,6 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: '/iconos/icono-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
     shortcuts: [
-      { name: 'Avance en taller', url: '/avance', icons: [{ src: '/iconos/icono-192.png', sizes: '192x192' }] },
-      { name: 'El día en el taller', url: '/avance/diario', icons: [{ src: '/iconos/icono-192.png', sizes: '192x192' }] },
       {
         name: 'Nuevo trabajo sin orden',
         url: '/avance/trabajos/nueva',

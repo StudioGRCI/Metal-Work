@@ -3,8 +3,14 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import type { Tablas, Vistas } from '@/types/database'
 
-export type LineaAtencionMaterial = Vistas<'v_atencion_materiales'>
-export type CompraMaterialPendiente = Vistas<'v_orden_compra_material_pendiente'>
+export type LineaAtencionMaterial = Vistas<'v_atencion_materiales'> & {
+  aprobacion_diseno: string
+  decision_almacen: string
+}
+export type CompraMaterialPendiente = Vistas<'v_orden_compra_material_pendiente'> & {
+  entregado_almacen_en: string | null
+  precio_unitario: number | null
+}
 export type ExistenciaMaterial = Vistas<'v_existencias_materiales'>
 export type ResponsableMaterial = Pick<Tablas<'usuarios'>, 'id' | 'nombres' | 'apellidos' | 'area_id'>
 export type AreaMaterial = Pick<Tablas<'areas'>, 'id' | 'codigo' | 'nombre'>
@@ -63,10 +69,41 @@ export async function cargarAtencionMateriales(permisos: {
 
   if (personas.error) throw new Error(`No se pudieron cargar las personas que reciben materiales: ${personas.error.message}`)
 
+  const idsDetalle = (atencion.data ?? []).map((linea) => linea.detalle_id).filter((id): id is string => Boolean(id))
+  const decisiones = idsDetalle.length > 0
+    ? await supabase.from('requerimiento_material_detalles')
+        .select('id, aprobacion_diseno, decision_almacen').in('id', idsDetalle)
+    : { data: [], error: null }
+  if (decisiones.error) throw new Error(`No se pudieron leer las revisiones de materiales: ${decisiones.error.message}`)
+  const porDetalle = new Map((decisiones.data ?? []).map((d) => [d.id, d]))
+  if (idsDetalle.some((id) => !porDetalle.has(id))) {
+    throw new Error('Faltan revisiones de materiales. Recarga o consulta con Administración.')
+  }
+  const idsCompra = (compras.data ?? []).map((compra) => compra.orden_compra_id).filter((id): id is string => Boolean(id))
+  const idsLineaCompra = (compras.data ?? []).map((compra) => compra.id).filter((id): id is string => Boolean(id))
+  const [entregas, precios] = await Promise.all([
+    idsCompra.length > 0
+      ? supabase.from('ordenes_compra_materiales').select('id, entregado_almacen_en').in('id', idsCompra)
+      : Promise.resolve({ data: [], error: null }),
+    idsLineaCompra.length > 0
+      ? supabase.from('orden_compra_material_detalles').select('id, precio_unitario').in('id', idsLineaCompra)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  if (entregas.error || precios.error) throw new Error('No se pudieron leer la entrega o los precios de compra.')
+  const entregaPorCompra = new Map((entregas.data ?? []).map((entrega) => [entrega.id, entrega.entregado_almacen_en]))
+  const precioPorLinea = new Map((precios.data ?? []).map((precio) => [precio.id, precio.precio_unitario]))
   return {
-    lineas: atencion.data ?? [],
+    lineas: (atencion.data ?? []).map((linea) => ({
+      ...linea,
+      aprobacion_diseno: porDetalle.get(linea.detalle_id ?? '')?.aprobacion_diseno ?? 'PROPUESTO',
+      decision_almacen: porDetalle.get(linea.detalle_id ?? '')?.decision_almacen ?? 'PENDIENTE',
+    })),
     existencias: existencias.data ?? [],
-    compras: compras.data ?? [],
+    compras: (compras.data ?? []).map((compra) => ({
+      ...compra,
+      entregado_almacen_en: entregaPorCompra.get(compra.orden_compra_id ?? '') ?? null,
+      precio_unitario: precioPorLinea.get(compra.id ?? '') ?? null,
+    })),
     areas: areas.data ?? [],
     responsables: personas.data ?? [],
   }
