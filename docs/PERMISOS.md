@@ -6,7 +6,7 @@ por `public.es_admin()`; sus resultados no sirven para probar permisos de los
 roles de trabajo.
 
 La base de producción METAL WORK (`usnbwnemfqyjjkzdizgv`) se revisó el
-2026-09-28. La migración `20260928021551_administracion_gestiona_sistema_y_tesoreria`
+2026-09-29. La migración `20260928021551_administracion_gestiona_sistema_y_tesoreria`
 trasladó Personal y Configuración a Administración y creó el puesto de
 Tesorería. Los permisos siguientes se comprobaron en producción.
 
@@ -16,12 +16,10 @@ Tesorería. Los permisos siguientes se comprobaron en producción.
 | --- | --- | --- |
 | Vendedor | `cotizaciones.crear`, `cotizaciones.ver_pdf_comercial` | Registra el PDF enviado al cliente y consulta su seguimiento. |
 | Gerencia | `cotizaciones.revisar`, `cotizaciones.ver_pdf_comercial` | Aprueba o devuelve la cotización PDF con observaciones. Su menú muestra Tablero, Cotización y Órdenes de trabajo. |
-| Administración | `cotizaciones.ver_pdf_comercial`, `cotizaciones.liberar_tesoreria`, `ordenes.crear`, `ordenes.editar`, `usuarios.gestionar`, `configuracion.ver`, `configuracion.editar` | Carga la OT en PDF, la libera a Tesorería y administra Personal y Configuración. |
+| Administración | `cotizaciones.ver_pdf_comercial`, `cotizaciones.liberar_tesoreria`, `ordenes.crear`, `ordenes.editar`, `usuarios.gestionar`, `produccion.aprobar_reportes`, `ordenes.revisar_taller` | Carga la OT en PDF, la libera a Tesorería, administra Personal y revisa reportes y OT abiertas por el taller. |
 | Tesorería | `tesoreria.ver_documentos`, `tesoreria.liberar`, `ordenes.listar`, `ordenes.ver` | Consulta cotizaciones liberadas y documentos de compra; confirma la liberación financiera de una OT. Su menú muestra Tablero, Órdenes y Tesorería. |
 | Diseño e ingeniería | `diseno.planos`, `ordenes.listar`, `ordenes.ver` | Prepara la ficha técnica, guía de planos y desglose de materiales. No consulta importes ni PDF comerciales. |
-| Jefe de taller | `ordenes.crear`, `ordenes.editar`, `ordenes.listar`, `ordenes.ver`, `produccion.registrar` | Atiende las órdenes operativas; no ve la cotización comercial. |
-| Jefe de producción | `ordenes.listar`, `ordenes.ver`, `produccion.actividades`, `produccion.registrar` | Organiza y revisa el avance del taller. No ve la cotización comercial. |
-| Supervisor | `ordenes.listar`, `ordenes.ver`, `produccion.actividades`, `produccion.registrar` | Reporta el avance de su área, limitado por su área asignada. No ve la cotización comercial. |
+| Supervisión de Producción, Maestranza y Acabados | `ordenes.listar`, `ordenes.ver`, `produccion.actividades`, `produccion.reportar_tarea` | Cada cuenta crea las actividades y reporta fotos y avance de su área. Producción y Maestranza marcan sus respectivos vistos buenos en la ficha. No aprueban sus propios reportes. |
 | Operario | `ordenes.listar`, `ordenes.ver`, `produccion.registrar` | Registra el avance operativo autorizado. No ve la cotización comercial. |
 
 ## Visibilidad de documentos

@@ -368,7 +368,7 @@ export function ActividadesDeOrden({
         <Tarjeta>
           <TarjetaCabecera
             titulo="Diario de la unidad"
-            descripcion="Lo reportado día por día, lo más reciente arriba, con el visto del jefe de producción."
+            descripcion="Lo reportado día por día, lo más reciente arriba, con la revisión de Administración."
             acciones={
               aprueba &&
               diario.some((r) => r.revision === 'PENDIENTE') && (
@@ -380,7 +380,7 @@ export function ActividadesDeOrden({
             {observadosMios.length > 0 && (
               <div className="border-b border-borde bg-peligro-suave px-4 py-3" role="status">
                 <p className="text-xs font-semibold text-peligro">
-                  El jefe observó {observadosMios.length === 1 ? 'un reporte tuyo' : `${observadosMios.length} reportes tuyos`}: corrígelo{observadosMios.length === 1 ? '' : 's'} y vuelve{observadosMios.length === 1 ? '' : 'n'} a la cola.
+                  Administración observó {observadosMios.length === 1 ? 'un reporte tuyo' : `${observadosMios.length} reportes tuyos`}: corrígelo{observadosMios.length === 1 ? '' : 's'} y vuelve{observadosMios.length === 1 ? '' : 'n'} a la cola.
                 </p>
                 <ul className="mt-1 space-y-1">
                   {observadosMios.map((r) => (

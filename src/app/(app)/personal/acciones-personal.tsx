@@ -82,6 +82,9 @@ function CamposDePersona({
         <Campo etiqueta="Puesto" htmlFor="rol_id" requerido>
           <Seleccion id="rol_id" name="rol_id" required defaultValue={persona?.rol?.id ?? ''}>
             <option value="">Elegir…</option>
+            {persona?.rol && !catalogos.roles.some((r) => r.id === persona.rol?.id) && (
+              <option value={persona.rol.id} disabled>{persona.rol.nombre} (histórico)</option>
+            )}
             {catalogos.roles.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.nombre}
