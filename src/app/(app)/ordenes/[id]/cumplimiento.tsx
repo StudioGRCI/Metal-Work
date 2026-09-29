@@ -112,9 +112,6 @@ export function Cumplimiento({
 
   return (
     <div className="space-y-4">
-      <p className="rounded-[var(--radius-base)] border border-borde bg-superficie p-3 text-sm text-texto-suave">
-        El responsable del área confirma más abajo la recepción del PDF aprobado.
-      </p>
       <Tarjeta>
         <TarjetaCabecera
           titulo={planos.some(p => p.lista.length > 0) ? 'Planos y avance histórico de piezas' : 'Planos de la OT'}
@@ -330,7 +327,7 @@ function NuevoPlano({
       </p>
     )
     if (equipo.length === 0) return <p className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
-      Anota primero al responsable y a los colaboradores en «Personas que elaboran los planos», más abajo.
+      Anota primero al responsable y a los colaboradores en «Personas que elaboran los planos», arriba.
     </p>
     return (
       <div className="flex flex-wrap items-center justify-end gap-3">

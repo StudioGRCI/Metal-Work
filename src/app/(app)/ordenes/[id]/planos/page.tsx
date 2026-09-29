@@ -44,6 +44,8 @@ export default async function PaginaPlanos({ params, searchParams }: {
   return <>
     <EncabezadoPagina titulo={`Planos · ${orden.numero}`} descripcion="Planos, PDF y revisiones por área. Los materiales se definen en su pestaña." />
     <Pestanas ordenId={id} activa="planos" visibles={secciones} />
+    <EquipoDiseno ordenId={id} abierta={abierta} puedeAsignar={puede(perfil, 'diseno.planos')}
+      catalogos={catalogos} />
     <Cumplimiento ordenId={id} resumen={cumplimiento?.resumen ?? null} planos={cumplimiento?.planos ?? []}
       versiones={versiones.map(v => ({ ...v,
         puedeRevisar: abierta && v.estado === 'POR_REVISAR' && v.creado_por !== perfil.id && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, 'produccion.actividades'),
@@ -54,7 +56,5 @@ export default async function PaginaPlanos({ params, searchParams }: {
       puedeDisenar={puede(perfil, 'diseno.planos')}
       areaPropia={manoDelTaller}
       ordenViva={abierta} motivoInactiva={motivoInactiva} />
-    <EquipoDiseno ordenId={id} abierta={abierta} puedeAsignar={puede(perfil, 'diseno.planos')}
-      catalogos={catalogos} />
   </>
 }
