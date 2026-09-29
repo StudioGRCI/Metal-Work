@@ -3392,6 +3392,10 @@ export type Database = {
           vigente: boolean
           observacion: string | null
           nota_envio: string | null
+          revision_diseno: string
+          revision_diseno_por: string | null
+          revision_diseno_en: string | null
+          observacion_diseno: string | null
           creado_por: string
           revisado_por: string | null
           revisado_en: string | null
@@ -3411,6 +3415,10 @@ export type Database = {
           vigente?: boolean
           observacion?: string | null
           nota_envio?: string | null
+          revision_diseno?: string
+          revision_diseno_por?: string | null
+          revision_diseno_en?: string | null
+          observacion_diseno?: string | null
           creado_por: string
           revisado_por?: string | null
           revisado_en?: string | null
@@ -3430,6 +3438,10 @@ export type Database = {
           vigente?: boolean
           observacion?: string | null
           nota_envio?: string | null
+          revision_diseno?: string
+          revision_diseno_por?: string | null
+          revision_diseno_en?: string | null
+          observacion_diseno?: string | null
           creado_por?: string
           revisado_por?: string | null
           revisado_en?: string | null
@@ -3444,6 +3456,13 @@ export type Database = {
             columns: ["area_id"]
             isOneToOne: false
             referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_plano_versiones_revision_diseno_por_fkey"
+            columns: ["revision_diseno_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           },
           {
@@ -6276,6 +6295,14 @@ export type Database = {
         Args: {
           p_id: string
           p_resolucion: string
+        }
+        Returns: string
+      }
+      resolver_revision_diseno: {
+        Args: {
+          p_version: string
+          p_aprobar: boolean
+          p_observacion?: string
         }
         Returns: string
       }

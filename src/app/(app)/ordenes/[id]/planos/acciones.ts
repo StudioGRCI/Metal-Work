@@ -33,7 +33,33 @@ export async function registrarVersionPlano(_previo: unknown, datos: FormData): 
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: 'No se confirmó la versión. Recarga antes de volver a intentar.' }
   revalidatePath('/ordenes', 'layout')
-  return { ok: true, mensaje: 'Versión enviada a revisión. El área la verá cuando sea aprobada.' }
+  return { ok: true, mensaje: puede(perfil, 'diseno.planos')
+    ? 'Versión enviada al área para revisión.'
+    : 'PDF enviado a Jefatura de Diseño para aprobación.' }
+}
+
+export async function resolverRevisionDiseno(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'Solo Jefatura de Diseño revisa los PDF de colaboradores.' }
+  const entrada = z.object({
+    id: z.string().uuid(), accion: z.enum(['aprobar', 'observar']),
+    observacion: z.string().trim().max(1000).optional(),
+  }).safeParse(Object.fromEntries(datos))
+  if (!entrada.success) return { ok: false, error: 'Elige una decisión válida y escribe hasta 1000 caracteres.' }
+  const v = entrada.data
+  if (v.accion === 'observar' && !v.observacion) {
+    return { ok: false, error: 'Explica qué debe corregir el colaborador.' }
+  }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('resolver_revision_diseno', {
+    p_version: v.id, p_aprobar: v.accion === 'aprobar', p_observacion: v.observacion || undefined,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: 'La revisión no cambió. Recarga la pantalla.' }
+  revalidatePath('/ordenes', 'layout')
+  return { ok: true, mensaje: v.accion === 'aprobar'
+    ? 'PDF aprobado por Diseño y enviado al área para revisión.'
+    : 'PDF observado. El colaborador debe subir una nueva versión.' }
 }
 
 export async function resolverVersionPlano(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {

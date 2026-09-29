@@ -172,8 +172,8 @@ export function Cumplimiento({
 
       {puedeSubirPdf && ordenViva && <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
         {planosDeColaboradores.size === 0
-          ? 'Diseño todavía no asignó un plano a un colaborador. Cuando lo haga, podrás adjuntar su PDF en ese plano.'
-          : 'Abre «PDF y revisiones» en un plano asignado a un colaborador para adjuntar su PDF.'}
+          ? 'Diseño debe registrar tu nombre en «Personas que elaboran los planos» y asignarte a un plano. Después podrás adjuntar el PDF para aprobación de Jefatura de Diseño.'
+          : 'Adjunta el PDF en tu plano asignado. Jefatura de Diseño lo aprobará antes de enviarlo al área.'}
       </p>}
 
       {puedeDisenar && ordenViva && planos.length > 1 && (pesoTotal !== 100 || sinEntregar > 1) && (
@@ -456,7 +456,7 @@ function TarjetaPlano({
   areaPropia: ManoDelTaller | null
 }) {
   const [modo, setModo] = useState<'ver' | 'editar' | 'entregar' | 'quitar'>('ver')
-  const [mostrarPdf, setMostrarPdf] = useState(seleccionado)
+  const [mostrarPdf, setMostrarPdf] = useState(seleccionado || puedeSubirPdf)
   const [historial, setHistorial] = useState(false)
   const entregado = Boolean(plano.fecha_entrega)
   const planoId = plano.plano_id ?? ''
