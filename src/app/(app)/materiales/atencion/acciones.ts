@@ -61,6 +61,25 @@ export async function revisarStock(_previo: unknown, formulario: FormData): Prom
   return { ok: true, mensaje: v.data.decision === 'STOCK' ? 'Stock reservado para despacho.' : 'Material derivado a Logística.' }
 }
 
+export async function registrarConteo(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'almacen.ver')) return { ok: false, error: 'Solo Almacén registra el conteo físico.' }
+  const v = z.object({
+    operacion_id: z.string().uuid(), material_id: z.string().uuid(),
+    cantidad_fisica: z.coerce.number().min(0), motivo: z.string().trim().min(10).max(300),
+  }).safeParse(Object.fromEntries(formulario))
+  if (!v.success) return { ok: false, error: 'Indica el saldo físico y un motivo de 10 a 300 caracteres.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('registrar_conteo_almacen', {
+    p_id: v.data.operacion_id, p_material: v.data.material_id,
+    p_cantidad_fisica: v.data.cantidad_fisica, p_motivo: v.data.motivo,
+  })
+  if (error) return { ok: false, error: errorDeMaterial(error) }
+  if (!data) return { ok: false, error: 'El conteo no quedó registrado. Recarga la pantalla.' }
+  revalidatePath('/materiales/atencion')
+  return { ok: true, mensaje: 'Conteo físico registrado. Revisa de nuevo la decisión de stock.' }
+}
+
 export async function registrarPrecioCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Logística registra el precio del insumo.' }

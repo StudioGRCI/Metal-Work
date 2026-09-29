@@ -12,6 +12,7 @@ export type CompraMaterialPendiente = Vistas<'v_orden_compra_material_pendiente'
   precio_unitario: number | null
 }
 export type ExistenciaMaterial = Vistas<'v_existencias_materiales'>
+export type MaterialParaConteo = { id: string; descripcion: string; codigo: string; unidad: string | null }
 export type ResponsableMaterial = Pick<Tablas<'usuarios'>, 'id' | 'nombres' | 'apellidos' | 'area_id'>
 export type AreaMaterial = Pick<Tablas<'areas'>, 'id' | 'codigo' | 'nombre'>
 
@@ -24,7 +25,7 @@ export async function cargarAtencionMateriales(permisos: {
   despachar: boolean
 }) {
   const supabase = await createClient()
-  const [atencion, existencias, compras, areas] = await Promise.all([
+  const [atencion, existencias, compras, areas, catalogo] = await Promise.all([
     permisos.verRequerimientos
       ? supabase
           .from('v_atencion_materiales')
@@ -49,12 +50,17 @@ export async function cargarAtencionMateriales(permisos: {
     permisos.despachar
       ? supabase.from('areas').select('id, codigo, nombre').in('codigo', ['MTZ', 'PRD', 'ACB']).eq('activo', true)
       : Promise.resolve({ data: [], error: null }),
+    permisos.verExistencias
+      ? supabase.from('materiales').select('id, descripcion, codigo, unidad:unidades_medida(codigo)')
+          .eq('activo', true).order('descripcion').limit(500)
+      : Promise.resolve({ data: [], error: null }),
   ])
 
   if (atencion.error) throw new Error(`No se pudo cargar el avance de materiales: ${atencion.error.message}`)
   if (existencias.error) throw new Error(`No se pudieron cargar las existencias: ${existencias.error.message}`)
   if (compras.error) throw new Error(`No se pudieron cargar las compras pendientes: ${compras.error.message}`)
   if (areas.error) throw new Error(`No se pudieron cargar las áreas receptoras: ${areas.error.message}`)
+  if (catalogo.error) throw new Error(`No se pudo cargar el catálogo para el conteo: ${catalogo.error.message}`)
 
   const idsArea = (areas.data ?? []).map((area) => area.id)
   const personas = permisos.despachar && idsArea.length > 0
@@ -99,6 +105,10 @@ export async function cargarAtencionMateriales(permisos: {
       decision_almacen: porDetalle.get(linea.detalle_id ?? '')?.decision_almacen ?? 'PENDIENTE',
     })),
     existencias: existencias.data ?? [],
+    catalogoAlmacen: (catalogo.data ?? []).map((m) => ({
+      id: m.id, descripcion: m.descripcion, codigo: m.codigo,
+      unidad: Array.isArray(m.unidad) ? m.unidad[0]?.codigo ?? null : m.unidad?.codigo ?? null,
+    })),
     compras: (compras.data ?? []).map((compra) => ({
       ...compra,
       entregado_almacen_en: entregaPorCompra.get(compra.orden_compra_id ?? '') ?? null,

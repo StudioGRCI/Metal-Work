@@ -14,11 +14,12 @@ import type {
   AreaMaterial,
   CompraMaterialPendiente,
   ExistenciaMaterial,
+  MaterialParaConteo,
   LineaAtencionMaterial,
   ResponsableMaterial,
 } from '@/lib/datos/atencion-materiales'
 
-import { crearOrdenCompra, despacharMaterial, registrarRecepcion, resolverPropuesta, revisarStock, registrarPrecioCompra, marcarEntregaCompra } from './acciones'
+import { crearOrdenCompra, despacharMaterial, registrarConteo, registrarRecepcion, resolverPropuesta, revisarStock, registrarPrecioCompra, marcarEntregaCompra } from './acciones'
 import { SubirDocumentoCompra } from './subir-documento-compra'
 
 const NOMBRE_AREA: Record<string, string> = {
@@ -28,6 +29,10 @@ const NOMBRE_AREA: Record<string, string> = {
 }
 
 const NOMBRE_ESTADO: Record<string, string> = {
+  DISENO: 'Espera Diseño',
+  RECHAZADO: 'Rechazado',
+  ALMACEN: 'Revisar stock',
+  STOCK: 'Por despachar',
   SOLICITADO: 'Por comprar',
   EN_COMPRA: 'En compra',
   EN_ALMACEN: 'En almacén',
@@ -35,17 +40,27 @@ const NOMBRE_ESTADO: Record<string, string> = {
 }
 
 const TONO_ESTADO: Record<string, 'aviso' | 'info' | 'exito' | 'neutro'> = {
+  DISENO: 'aviso', RECHAZADO: 'neutro', ALMACEN: 'aviso', STOCK: 'info',
   SOLICITADO: 'aviso',
   EN_COMPRA: 'info',
   EN_ALMACEN: 'aviso',
   ATENDIDO: 'exito',
 }
 
-type Filtro = 'TODOS' | 'SOLICITADO' | 'EN_COMPRA' | 'EN_ALMACEN' | 'ATENDIDO'
+type Filtro = 'TODOS' | 'DISENO' | 'RECHAZADO' | 'ALMACEN' | 'STOCK' | 'SOLICITADO' | 'EN_COMPRA' | 'EN_ALMACEN' | 'ATENDIDO'
+
+function estadoOperativo(linea: LineaAtencionMaterial): string {
+  if (linea.aprobacion_diseno === 'PROPUESTO') return 'DISENO'
+  if (linea.aprobacion_diseno === 'RECHAZADO') return 'RECHAZADO'
+  if (linea.decision_almacen === 'PENDIENTE') return 'ALMACEN'
+  if (linea.estado === 'SOLICITADO' && linea.decision_almacen === 'STOCK') return 'STOCK'
+  return linea.estado ?? 'SOLICITADO'
+}
 
 export function TableroMateriales({
   lineas,
   existencias,
+  catalogoAlmacen,
   compras,
   areas,
   responsables,
@@ -63,6 +78,7 @@ export function TableroMateriales({
 }: {
   lineas: LineaAtencionMaterial[]
   existencias: ExistenciaMaterial[]
+  catalogoAlmacen: MaterialParaConteo[]
   compras: CompraMaterialPendiente[]
   areas: AreaMaterial[]
   responsables: ResponsableMaterial[]
@@ -82,7 +98,7 @@ export function TableroMateriales({
   const agrupados = useMemo(() => {
     const grupos = new Map<string, LineaAtencionMaterial[]>()
     for (const linea of lineas) {
-      if (filtro !== 'TODOS' && linea.estado !== filtro) continue
+      if (filtro !== 'TODOS' && estadoOperativo(linea) !== filtro) continue
       const grupo = grupos.get(linea.requerimiento_id ?? '') ?? []
       grupo.push(linea)
       grupos.set(linea.requerimiento_id ?? '', grupo)
@@ -91,7 +107,8 @@ export function TableroMateriales({
   }, [filtro, lineas])
 
   const completos = lineas.filter((linea) => linea.estado === 'ATENDIDO').length
-  const porComprar = lineas.filter((linea) => linea.estado === 'SOLICITADO').length
+  const porComprar = lineas.filter((linea) => estadoOperativo(linea) === 'SOLICITADO').length
+  const porRevisar = lineas.filter((linea) => estadoOperativo(linea) === 'ALMACEN').length
   const enAlmacen = lineas.filter((linea) => linea.estado === 'EN_ALMACEN').length
   const avanceLineas = lineas.length > 0 ? Math.round((completos / lineas.length) * 100) : 0
 
@@ -99,7 +116,7 @@ export function TableroMateriales({
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Indicador icono={ShoppingCart} titulo="Líneas solicitadas" valor={lineas.length} detalle="Desde planos y materiales de la OT" />
-        <Indicador icono={Boxes} titulo="Por atender en compra" valor={porComprar} detalle="Aún no cubiertas por una orden" />
+        <Indicador icono={Boxes} titulo="Por revisar en Almacén" valor={porRevisar} detalle="Aprobadas por Diseño, sin decisión de stock" />
         <Indicador icono={PackageCheck} titulo="Con saldo en almacén" valor={enAlmacen} detalle="Recibidas y pendientes de despacho" />
         <Indicador icono={Check} titulo="Líneas entregadas" valor={completos} detalle="Despacho registrado con responsable" />
       </div>
@@ -120,6 +137,10 @@ export function TableroMateriales({
             <div className="flex flex-wrap gap-1" aria-label="Filtrar materiales por estado">
               {([
                 ['TODOS', 'Todos'],
+                ['DISENO', 'Espera Diseño'],
+                ['RECHAZADO', 'Rechazado'],
+                ['ALMACEN', 'Revisar stock'],
+                ['STOCK', 'Por despachar'],
                 ['SOLICITADO', 'Por comprar'],
                 ['EN_COMPRA', 'En compra'],
                 ['EN_ALMACEN', 'En almacén'],
@@ -139,6 +160,8 @@ export function TableroMateriales({
           </TarjetaCuerpo>
         </Tarjeta>
       )}
+
+      {porComprar > 0 && <p className="text-xs text-texto-suave">{porComprar} {porComprar === 1 ? 'línea derivada' : 'líneas derivadas'} a Logística por Almacén, pendientes de compra.</p>}
 
       {agrupados.length > 0 && agrupados.map(([id, grupo]) => {
         const cabecera = grupo[0]
@@ -231,10 +254,13 @@ export function TableroMateriales({
         <Tarjeta><TarjetaCuerpo><p className="text-sm text-texto-suave">No hay materiales con este estado.</p></TarjetaCuerpo></Tarjeta>
       )}
 
-      {existencias.length > 0 && (
+      {puedeRevisarStock && (
         <Tarjeta>
-          <TarjetaCabecera titulo="Existencias de almacén" descripcion="Saldo recibido menos los despachos ya registrados." />
-          <TarjetaCuerpo className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          <TarjetaCabecera titulo="Control de existencias de Almacén" descripcion="Saldo registrado: ingresos de compras recibidas menos despachos. Comprueba aquí antes de decidir stock o derivar a Logística." />
+          <TarjetaCuerpo className="space-y-3">
+            <ConteoGeneral materiales={catalogoAlmacen} />
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {existencias.length === 0 && <p className="text-sm text-texto-suave sm:col-span-2 xl:col-span-3">Aún no hay ingresos registrados. Las solicitudes aprobadas pasan por revisión de Almacén; deriva a Logística solo si no hay existencias físicas registradas.</p>}
             {existencias.map((material) => (
               <div key={material.material_id} className="flex items-center justify-between gap-3 rounded-[var(--radius-base)] border border-borde p-3">
                 <div className="min-w-0">
@@ -244,11 +270,39 @@ export function TableroMateriales({
                 <p className="tabular whitespace-nowrap text-sm font-semibold text-texto">{cantidad(Number(material.existencia ?? 0))} {material.unidad}</p>
               </div>
             ))}
+            </div>
           </TarjetaCuerpo>
         </Tarjeta>
       )}
     </div>
   )
+}
+
+function ConteoGeneral({ materiales }: { materiales: MaterialParaConteo[] }) {
+  const [clave, setClave] = useState(() => crypto.randomUUID())
+  const { alEnviar, enviando, error } = useEnvio(registrarConteo, () => setClave(crypto.randomUUID()))
+  return <details className="rounded-[var(--radius-base)] border border-borde p-3">
+    <summary className="cursor-pointer text-sm font-medium text-acento">Registrar o corregir conteo físico</summary>
+    <p className="mt-2 text-xs text-texto-suave">Cuenta las unidades disponibles en el almacén. Se guardará el ajuste, el motivo y el usuario que lo registró.</p>
+    <form key={clave} onSubmit={alEnviar} className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_2fr_auto] xl:items-end">
+      <input type="hidden" name="operacion_id" value={clave} />
+      <Campo etiqueta="Material" htmlFor="conteo-general-material" requerido>
+        <Seleccion id="conteo-general-material" name="material_id" required defaultValue="">
+          <option value="" disabled>Elige el material</option>
+          {materiales.map((m) => <option key={m.id} value={m.id}>{m.descripcion} · {m.codigo} · {m.unidad ?? 's/u'}</option>)}
+        </Seleccion>
+      </Campo>
+      <Campo etiqueta="Cantidad física" htmlFor="conteo-general-cantidad" requerido>
+        <Entrada id="conteo-general-cantidad" name="cantidad_fisica" type="number" inputMode="decimal" min={0} step="0.001" required />
+      </Campo>
+      <Campo etiqueta="Motivo o acta" htmlFor="conteo-general-motivo" requerido>
+        <Entrada id="conteo-general-motivo" name="motivo" minLength={10} maxLength={300} required placeholder="Ej.: Conteo físico, acta 001" />
+      </Campo>
+      <Boton type="submit" tamano="sm" cargando={enviando} disabled={materiales.length === 0}>Guardar conteo</Boton>
+      {error && <p role="alert" className="text-xs text-peligro sm:col-span-2 xl:col-span-4">{error}</p>}
+    </form>
+    {materiales.length === 0 && <p className="mt-2 text-xs text-texto-suave">No hay materiales activos para contar.</p>}
+  </details>
 }
 
 function PrecioCompra({ compra }: { compra: CompraMaterialPendiente }) {
@@ -343,7 +397,7 @@ function LineaMaterial({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-semibold text-texto">{linea.material ?? 'Material'}</p>
-            <Insignia tono={TONO_ESTADO[linea.estado ?? ''] ?? 'neutro'}>{NOMBRE_ESTADO[linea.estado ?? ''] ?? 'Solicitado'}</Insignia>
+            <Insignia tono={TONO_ESTADO[estadoOperativo(linea)] ?? 'neutro'}>{NOMBRE_ESTADO[estadoOperativo(linea)] ?? 'Solicitado'}</Insignia>
           </div>
           <p className="mt-1 text-xs text-texto-suave">
             {linea.material_codigo ?? ''}{linea.numero_plano ? ` · Plano ${linea.numero_plano}` : ''}{linea.plano ? ` · ${linea.plano}` : ''}
@@ -364,6 +418,14 @@ function LineaMaterial({
         <CantidadMini nombre="Entregado" valor={despachado} unidad={linea.unidad} />
       </div>
 
+      {puedeRevisarStock && linea.aprobacion_diseno === 'APROBADO' && linea.decision_almacen === 'PENDIENTE' && (
+        <p className="mt-3 text-xs text-texto-suave">Saldo registrado de este material: <span className="font-semibold tabular text-texto">{cantidad(saldoGlobal)} {linea.unidad}</span>. Si existe físicamente pero no está registrado, verifica su ingreso antes de marcar «Hay stock».</p>
+      )}
+      {puedeRevisarStock && linea.aprobacion_diseno === 'APROBADO' &&
+        (linea.decision_almacen === 'PENDIENTE' || linea.decision_almacen === 'COMPRA') && (
+        <ConteoFisico linea={linea} saldo={saldoGlobal} />
+      )}
+
       {linea.aprobacion_diseno === 'PROPUESTO' && (
         puedeAprobarDiseno ? <DecisionMaterial linea={linea} tipo="diseno" />
           : <p className="mt-3 text-xs text-aviso">Pendiente de aprobación de Diseño.</p>
@@ -372,6 +434,10 @@ function LineaMaterial({
       {linea.aprobacion_diseno === 'APROBADO' && linea.decision_almacen === 'PENDIENTE' && (
         puedeRevisarStock ? <DecisionMaterial linea={linea} tipo="almacen" />
           : <p className="mt-3 text-xs text-aviso">Almacén revisará si hay stock.</p>
+      )}
+      {puedeRevisarStock && linea.aprobacion_diseno === 'APROBADO' &&
+        linea.decision_almacen === 'COMPRA' && compras.length === 0 && (
+        <ReconsiderarStock linea={linea} />
       )}
 
       {linea.responsables && (
@@ -392,6 +458,38 @@ function LineaMaterial({
       {puedeRecibir && compras.length > 0 && !puedeVerCompras && <p className="mt-3 text-xs text-texto-suave">Hay compras esperando ingreso en almacén.</p>}
     </div>
   )
+}
+
+function ConteoFisico({ linea, saldo }: { linea: LineaAtencionMaterial; saldo: number }) {
+  const [clave, setClave] = useState(() => crypto.randomUUID())
+  const { alEnviar, enviando, error } = useEnvio(registrarConteo, () => setClave(crypto.randomUUID()))
+  return <details className="mt-3 rounded-[var(--radius-base)] border border-borde p-3">
+    <summary className="cursor-pointer text-xs font-medium text-acento">Registrar conteo físico de este material</summary>
+    <p className="mt-2 text-xs text-texto-suave">Saldo registrado: {cantidad(saldo)} {linea.unidad}. Escribe la cantidad total que comprobaste físicamente; el sistema guardará la diferencia y quién la registró.</p>
+    <form key={clave} onSubmit={alEnviar} className="mt-3 grid gap-2 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
+      <input type="hidden" name="operacion_id" value={clave} />
+      <input type="hidden" name="material_id" value={linea.material_id ?? ''} />
+      <Campo etiqueta={`Cantidad física (${linea.unidad ?? 'unidad'})`} htmlFor={`conteo-${linea.detalle_id}`} requerido>
+        <Entrada id={`conteo-${linea.detalle_id}`} name="cantidad_fisica" type="number" inputMode="decimal" min={0} step="0.001" required />
+      </Campo>
+      <Campo etiqueta="Motivo o acta del conteo" htmlFor={`motivo-${linea.detalle_id}`} requerido>
+        <Entrada id={`motivo-${linea.detalle_id}`} name="motivo" minLength={10} maxLength={300} required placeholder="Ej.: Conteo físico del estante A, acta 001" />
+      </Campo>
+      <Boton type="submit" tamano="sm" cargando={enviando}>Guardar conteo</Boton>
+      {error && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
+    </form>
+  </details>
+}
+
+function ReconsiderarStock({ linea }: { linea: LineaAtencionMaterial }) {
+  const { alEnviar, enviando, error } = useEnvio(revisarStock)
+  return <form onSubmit={alEnviar} className="mt-3 flex flex-wrap items-center gap-2">
+    <input type="hidden" name="detalle_id" value={linea.detalle_id ?? ''} />
+    <input type="hidden" name="decision" value="STOCK" />
+    <Boton type="submit" variante="secundario" tamano="sm" cargando={enviando}>Cambiar a stock disponible</Boton>
+    <p className="text-xs text-texto-suave">Solo antes de registrar una compra y si el saldo libre alcanza.</p>
+    {error && <p role="alert" className="basis-full text-xs text-peligro">{error}</p>}
+  </form>
 }
 
 function DecisionMaterial({ linea, tipo }: { linea: LineaAtencionMaterial; tipo: 'diseno' | 'almacen' }) {
@@ -511,10 +609,10 @@ function FormularioDespacho({
 }
 
 function estadoGrupo(lineas: LineaAtencionMaterial[]): string {
-  const prioridades: Record<string, number> = { SOLICITADO: 0, EN_COMPRA: 1, EN_ALMACEN: 2, ATENDIDO: 3 }
+  const prioridades: Record<string, number> = { RECHAZADO: 0, DISENO: 1, ALMACEN: 2, STOCK: 3, SOLICITADO: 4, EN_COMPRA: 5, EN_ALMACEN: 6, ATENDIDO: 7 }
   return lineas.reduce((actual, linea) =>
-    (prioridades[linea.estado ?? 'SOLICITADO'] ?? 0) < (prioridades[actual] ?? 0)
-      ? linea.estado ?? 'SOLICITADO'
+    (prioridades[estadoOperativo(linea)] ?? 0) < (prioridades[actual] ?? 0)
+      ? estadoOperativo(linea)
       : actual,
   'ATENDIDO')
 }

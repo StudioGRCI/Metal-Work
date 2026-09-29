@@ -276,6 +276,51 @@ export type Database = {
           }
         ]
       }
+      conteos_inventario: {
+        Row: {
+          id: string
+          material_id: string
+          cantidad_fisica: number
+          ajuste: number
+          motivo: string
+          registrado_por: string
+          registrado_en: string
+        }
+        Insert: {
+          id: string
+          material_id: string
+          cantidad_fisica: number
+          ajuste: number
+          motivo: string
+          registrado_por: string
+          registrado_en?: string
+        }
+        Update: {
+          id?: string
+          material_id?: string
+          cantidad_fisica?: number
+          ajuste?: number
+          motivo?: string
+          registrado_por?: string
+          registrado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conteos_inventario_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conteos_inventario_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       cotizaciones_pdf: {
         Row: {
           motivo_correccion: string | null
@@ -989,6 +1034,7 @@ export type Database = {
       materiales: {
         Row: {
           id: string
+          creado_desde_ot: string | null
           codigo: string
           descripcion: string
           categoria_id: string
@@ -1010,6 +1056,7 @@ export type Database = {
         }
         Insert: {
           id?: string
+          creado_desde_ot?: string | null
           codigo: string
           descripcion: string
           categoria_id: string
@@ -1031,6 +1078,7 @@ export type Database = {
         }
         Update: {
           id?: string
+          creado_desde_ot?: string | null
           codigo?: string
           descripcion?: string
           categoria_id?: string
@@ -1056,6 +1104,13 @@ export type Database = {
             columns: ["categoria_id"]
             isOneToOne: false
             referencedRelation: "categorias_material"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "materiales_creado_desde_ot_fkey"
+            columns: ["creado_desde_ot"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
             referencedColumns: ["id"]
           },
           {
@@ -4654,6 +4709,10 @@ export type Database = {
         Args: { p_orden: string; p_plano: string; p_material: string; p_cantidad: number; p_observacion?: string | null }
         Returns: string
       }
+      proponer_material_nuevo_de_area: {
+        Args: { p_id: string; p_orden: string; p_plano: string; p_descripcion: string; p_categoria: string; p_unidad: string; p_cantidad: number; p_especificacion?: string | null }
+        Returns: string
+      }
       resolver_propuesta_material: {
         Args: { p_detalle: string; p_aprobar: boolean }
         Returns: string
@@ -4661,6 +4720,14 @@ export type Database = {
       revisar_stock_requerimiento: {
         Args: { p_detalle: string; p_decision: string }
         Returns: string
+      }
+      registrar_conteo_almacen: {
+        Args: { p_id: string; p_material: string; p_cantidad_fisica: number; p_motivo: string }
+        Returns: string
+      }
+      saldo_registrado_material: {
+        Args: { p_material: string }
+        Returns: number
       }
       fijar_precio_compra_material: {
         Args: { p_detalle: string; p_precio: number }

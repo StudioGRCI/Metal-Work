@@ -54,6 +54,10 @@ export async function catalogosDeMateriales() {
     supabase.from('unidades_medida').select('id, codigo, nombre').eq('activo', true).order('codigo'),
   ])
 
+  if (categorias.error || unidades.error) {
+    throw new Error('No se pudieron cargar las categorías o unidades de materiales.')
+  }
+
   return {
     categorias: categorias.data ?? [],
     unidades: unidades.data ?? [],

@@ -18,6 +18,7 @@ import { useEnvio } from '@/lib/envio'
 import {
   agregarMaterial,
   proponerMaterial,
+  proponerMaterialNuevo,
   cambiarCantidadMaterial,
   crearRequerimiento,
   quitarMaterial,
@@ -70,7 +71,7 @@ export function MaterialesDeOrden({
       <Tarjeta>
         <TarjetaCabecera
           titulo="Materiales de la orden"
-          descripcion="Diseño asigna cada material a un plano y a un área. El área solicita a Almacén; si no hay stock, Almacén deriva a Logística."
+          descripcion="Diseño asigna materiales a planos. El área puede proponer otros insumos, Diseño los aprueba y Almacén comprueba el stock antes de derivar a Logística."
         />
         <TarjetaCuerpo className="grid gap-3 sm:grid-cols-3">
           <Dato titulo="Líneas" valor={String(materiales.length)} pie="materiales distintos" />
@@ -86,8 +87,11 @@ export function MaterialesDeOrden({
       {puedeDisenar && ordenViva && (
         <NuevoMaterial ordenId={ordenId} catalogo={catalogo} yaEnLista={materiales} />
       )}
-      {!puedeDisenar && puedeSolicitar && ordenViva && (areaPropia === 'MTZ' || areaPropia === 'ACB') && (
-        <NuevoMaterial ordenId={ordenId} catalogo={catalogo} yaEnLista={materiales} propuesta />
+      {!puedeDisenar && puedeSolicitar && ordenViva && (areaPropia === 'MTZ' || areaPropia === 'PRD' || areaPropia === 'ACB') && (
+        <div className="space-y-3">
+          <NuevoMaterial ordenId={ordenId} catalogo={catalogo} yaEnLista={materiales} propuesta />
+          <MaterialFueraDeCatalogo ordenId={ordenId} catalogo={catalogo} />
+        </div>
       )}
 
       {puedeSolicitar && !puedeDisenar && ordenViva && materiales.length > 0 && (
@@ -109,7 +113,9 @@ export function MaterialesDeOrden({
                   ? 'Diseño debe crear primero un plano para esta orden.'
                 : puedeDisenar
                   ? 'Agrega el primer material con el botón de arriba: qué lleva la unidad y cuánto.'
-                  : 'Diseño todavía no ha escrito qué material lleva esta unidad.'}
+                  : puedeSolicitar
+                    ? 'Puedes proponer el material que necesita tu área, aunque no esté en el catálogo. Diseño lo revisará.'
+                    : 'Todavía no hay materiales vinculados a esta orden.'}
             </p>
           </TarjetaCuerpo>
         </Tarjeta>
@@ -164,6 +170,66 @@ export function MaterialesDeOrden({
       )}
     </div>
   )
+}
+
+function MaterialFueraDeCatalogo({ ordenId, catalogo }: { ordenId: string; catalogo: CatalogoMateriales }) {
+  const [abierto, setAbierto] = useState(false)
+  const [clave, setClave] = useState(() => crypto.randomUUID())
+  const [guardados, setGuardados] = useState(0)
+  const { alEnviar, enviando, error } = useEnvio(proponerMaterialNuevo, () => {
+    setClave(crypto.randomUUID())
+    setGuardados((n) => n + 1)
+  })
+  if (catalogo.planos.length === 0) return null
+  if (!abierto) return <div className="flex justify-end">
+    <Boton type="button" variante="secundario" tamano="sm" onClick={() => setAbierto(true)}>
+      <PackagePlus aria-hidden className="size-4" />Material que no está en catálogo
+    </Boton>
+  </div>
+  return <Tarjeta className="border-acento">
+    <TarjetaCabecera titulo="Solicitar un material nuevo"
+      descripcion="Indica qué necesita tu área y para qué plano. Se guarda en la OT; Diseño lo revisa antes de enviarlo a Almacén." />
+    <TarjetaCuerpo>
+      <form key={clave} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2">
+        <input type="hidden" name="orden_id" value={ordenId} />
+        <input type="hidden" name="solicitud_id" value={clave} />
+        <Campo etiqueta="Nombre del material" htmlFor="nuevo-material-nombre" requerido className="sm:col-span-2">
+          <Entrada id="nuevo-material-nombre" name="descripcion" minLength={3} maxLength={200} required placeholder="Ej.: Perfil de acero de 6 m" />
+        </Campo>
+        <Campo etiqueta="Categoría" htmlFor="nuevo-material-categoria" requerido>
+          <Seleccion id="nuevo-material-categoria" name="categoria_id" required defaultValue="">
+            <option value="" disabled>Elige la categoría</option>
+            {catalogo.categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </Seleccion>
+        </Campo>
+        <Campo etiqueta="Unidad" htmlFor="nuevo-material-unidad" requerido>
+          <Seleccion id="nuevo-material-unidad" name="unidad_id" required defaultValue="">
+            <option value="" disabled>Elige la unidad</option>
+            {catalogo.unidades.map((u) => <option key={u.id} value={u.id}>{u.codigo} · {u.nombre}</option>)}
+          </Seleccion>
+        </Campo>
+        <Campo etiqueta="Plano que necesita el material" htmlFor="nuevo-material-plano" requerido>
+          <Seleccion id="nuevo-material-plano" name="plano_id" required defaultValue="">
+            <option value="" disabled>Elige el plano</option>
+            {catalogo.planos.map((p) => <option key={p.id} value={p.id}>{p.numero_plano} · {p.nombre}</option>)}
+          </Seleccion>
+        </Campo>
+        <Campo etiqueta="Cantidad" htmlFor="nuevo-material-cantidad" requerido>
+          <Entrada id="nuevo-material-cantidad" name="cantidad" type="number" inputMode="decimal" min={0.001} step="0.001" required />
+        </Campo>
+        <Campo etiqueta="Especificación" htmlFor="nuevo-material-especificacion" className="sm:col-span-2"
+          ayuda="Medidas, calidad o características que Diseño debe comprobar.">
+          <Entrada id="nuevo-material-especificacion" name="especificacion" maxLength={300} placeholder="Opcional" />
+        </Campo>
+        {error && <div className="sm:col-span-2"><Error_ texto={error} /></div>}
+        {guardados > 0 && <p role="status" className="text-xs text-exito sm:col-span-2">{guardados} {guardados === 1 ? 'material guardado' : 'materiales guardados'} y pendiente de Diseño.</p>}
+        <div className="flex flex-wrap justify-end gap-2 sm:col-span-2">
+          <Boton type="button" variante="fantasma" disabled={enviando} onClick={() => setAbierto(false)}>Cerrar</Boton>
+          <Boton type="submit" cargando={enviando}>Guardar y enviar a Diseño</Boton>
+        </div>
+      </form>
+    </TarjetaCuerpo>
+  </Tarjeta>
 }
 
 const AREAS: Record<'MTZ' | 'PRD' | 'ACB', string> = {
