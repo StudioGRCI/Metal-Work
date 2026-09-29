@@ -6,6 +6,264 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Database = {
   public: {
     Tables: {
+      diseno_evaluaciones: {
+        Row: {
+          comentarios: string
+          creado_en: string
+          evaluado_nombre: string
+          evaluador_id: string
+          fecha_evaluacion: string
+          fecha_ingreso: string | null
+          id: string
+          puesto: string
+          respuestas: number[]
+        }
+        Insert: {
+          comentarios?: string
+          creado_en?: string
+          evaluado_nombre: string
+          evaluador_id?: string
+          fecha_evaluacion: string
+          fecha_ingreso?: string | null
+          id?: string
+          puesto: string
+          respuestas: number[]
+        }
+        Update: {
+          comentarios?: string
+          creado_en?: string
+          evaluado_nombre?: string
+          evaluador_id?: string
+          fecha_evaluacion?: string
+          fecha_ingreso?: string | null
+          id?: string
+          puesto?: string
+          respuestas?: number[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diseno_evaluaciones_evaluador_id_fkey"
+            columns: ["evaluador_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diseno_evaluaciones_evaluador_id_fkey"
+            columns: ["evaluador_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      diseno_informes: {
+        Row: {
+          acciones: string
+          actualizado_en: string
+          actualizado_por: string
+          conclusiones: string
+          creado_en: string
+          creado_por: string
+          id: string
+          incidencias: string
+          indicadores: string
+          no_conformidades: string
+          numero: number
+          plan_siguiente: string
+          responsable: string
+          resumen: string
+          semana_inicio: string
+        }
+        Insert: {
+          acciones?: string
+          actualizado_en?: string
+          actualizado_por?: string
+          conclusiones?: string
+          creado_en?: string
+          creado_por?: string
+          id?: string
+          incidencias?: string
+          indicadores?: string
+          no_conformidades?: string
+          numero?: number
+          plan_siguiente?: string
+          responsable: string
+          resumen?: string
+          semana_inicio: string
+        }
+        Update: {
+          acciones?: string
+          actualizado_en?: string
+          actualizado_por?: string
+          conclusiones?: string
+          creado_en?: string
+          creado_por?: string
+          id?: string
+          incidencias?: string
+          indicadores?: string
+          no_conformidades?: string
+          numero?: number
+          plan_siguiente?: string
+          responsable?: string
+          resumen?: string
+          semana_inicio?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diseno_informes_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diseno_informes_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diseno_informes_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diseno_informes_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      diseno_tareas: {
+        Row: {
+          componente: string
+          creado_en: string
+          creado_por: string
+          fecha_entrega: string
+          fecha_inicio: string
+          id: string
+          integrante_id: string
+          observacion: string
+          orden_id: string
+          tipo: string
+        }
+        Insert: {
+          componente: string
+          creado_en?: string
+          creado_por?: string
+          fecha_entrega: string
+          fecha_inicio: string
+          id?: string
+          integrante_id: string
+          observacion?: string
+          orden_id: string
+          tipo: string
+        }
+        Update: {
+          componente?: string
+          creado_en?: string
+          creado_por?: string
+          fecha_entrega?: string
+          fecha_inicio?: string
+          id?: string
+          integrante_id?: string
+          observacion?: string
+          orden_id?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diseno_tareas_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diseno_tareas_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diseno_tareas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diseno_tareas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_fechas_clave"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "diseno_tareas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_ficha_resumen"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "diseno_tareas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_resumen"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diseno_tareas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "unidad_tablero"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "diseno_tareas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cotizaciones_pdf"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "diseno_tareas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cumplimiento_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "diseno_tareas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_equipo_diseno_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "diseno_tareas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_ot_avance_diario"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "fk_diseno_tarea_integrante_orden"
+            columns: ["integrante_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_equipo_diseno"
+            referencedColumns: ["id", "orden_id"]
+          },
+        ]
+      }
       planilla_distribuciones: {
         Row: {
           creado_en: string
