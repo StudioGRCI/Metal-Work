@@ -101,7 +101,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
         titulo: 'Atención de materiales',
         ruta: '/materiales/atencion',
         icono: Boxes,
-        permiso: ['requerimientos.ver', 'compras.ver', 'compras.crear', 'almacen.ver', 'almacen.recibir', 'almacen.despachar'],
+        permiso: ['requerimientos.ver', 'diseno.planos', 'compras.ver', 'compras.crear', 'almacen.ver', 'almacen.recibir', 'almacen.despachar'],
         descripcion: 'Solicitudes, compras, recepción y entrega por área',
         disponible: true,
       },

@@ -11,7 +11,7 @@ export const metadata = { title: 'Atención de materiales' }
 
 export default async function PaginaAtencionMateriales() {
   const perfil = await exigirPermiso([
-    'requerimientos.ver', 'compras.ver', 'compras.crear', 'almacen.ver', 'almacen.recibir', 'almacen.despachar',
+    'requerimientos.ver', 'diseno.planos', 'compras.ver', 'compras.crear', 'almacen.ver', 'almacen.recibir', 'almacen.despachar',
   ])
   const permisos = {
     verRequerimientos: puede(perfil, ['requerimientos.ver', 'diseno.planos']),
