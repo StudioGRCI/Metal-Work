@@ -59,6 +59,7 @@ import { Bitacora } from './bitacora'
 import { Observaciones } from './observaciones'
 import { ActividadesDeOrden } from './actividades'
 import { MaterialesDeOrden } from './materiales'
+import { AtencionMaterialesDeOrden } from './atencion-materiales'
 import { CostosYControles } from './costos-y-controles'
 import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
@@ -604,7 +605,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       )}
 
       {vista === 'materiales' && listaMateriales && (
-        <MaterialesDeOrden
+        <div className="space-y-6"><MaterialesDeOrden
           ordenId={orden.id}
           materiales={listaMateriales.materiales}
           catalogo={listaMateriales.catalogo}
@@ -613,7 +614,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           areaPropia={areaPropiaMaterial}
           ordenViva={motivoInactiva === null}
           motivoInactiva={motivoInactiva}
-        />
+        /><AtencionMaterialesDeOrden ordenId={orden.id} perfil={perfil} /></div>
       )}
 
       {vista === 'costos' && datosCostos && (
