@@ -335,7 +335,7 @@ function NuevoPlano({
   if (!abierto) {
     if (etapas.length === 0) return (
       <p className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
-        Para crear un plano, Diseño debe definir primero su etapa en <Link href={`/ordenes/${ordenId}?vista=etapas`} className="font-medium text-acento underline">Etapas de la OT</Link>.
+        Para crear un plano debe existir al menos una etapa de la OT. Diseño puede vincular el plano a la etapa que lo utilizará; revisa <Link href={`/ordenes/${ordenId}?vista=etapas`} className="font-medium text-acento underline">Etapas de la OT</Link>.
       </p>
     )
     if (equipo.length === 0) return <p className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
@@ -367,7 +367,7 @@ function NuevoPlano({
     <Tarjeta className="border-acento">
       <TarjetaCabecera
         titulo="Nuevo plano"
-        descripcion="Número, nombre, peso y etapa de Diseño. Los materiales se definen en la pestaña Materiales."
+        descripcion="Diseño crea el plano y elige la etapa de la OT que lo utilizará. Los materiales se definen en su pestaña."
       />
       <TarjetaCuerpo>
         <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
@@ -392,7 +392,7 @@ function NuevoPlano({
           </Campo>
           {etapas.length === 0 && (
             <p role="alert" className="text-xs text-aviso sm:col-span-6">
-              Primero agrega la etapa Diseño en la pestaña Etapas de la OT.
+              Primero agrega una etapa en la pestaña Etapas de la OT.
             </p>
           )}
           <Campo etiqueta="Peso %" htmlFor="np-peso" ayuda={`Quedan ${numero(pesoLibre, 0)} por repartir`}>
@@ -471,7 +471,7 @@ function TarjetaPlano({
             </span>
             {plano.nombre}
             <Insignia tono="neutro">{numero(plano.peso_pct, 0)} %</Insignia>
-            {plano.etapa_id && <span className="text-xs text-texto-suave">Etapa: {etapas.find(e => e.id === plano.etapa_id)?.nombre ?? 'Diseño'}</span>}
+            {plano.etapa_id && <span className="text-xs text-texto-suave">Etapa: {etapas.find(e => e.id === plano.etapa_id)?.nombre ?? 'Sin nombre'}</span>}
             {entregado ? (
               <span className="text-xs text-exito">Entregado el {fecha(plano.fecha_entrega)}</span>
             ) : (

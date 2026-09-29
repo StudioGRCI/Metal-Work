@@ -59,6 +59,7 @@ import { Bitacora } from './bitacora'
 import { Observaciones } from './observaciones'
 import { ActividadesDeOrden } from './actividades'
 import { MaterialesDeOrden } from './materiales'
+import { AtencionMaterialesDeOrden } from './atencion-materiales'
 import { CostosYControles } from './costos-y-controles'
 import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
@@ -103,11 +104,13 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const vista: Vista = VISTAS.includes(query.vista as Vista) ? (query.vista as Vista) : 'resumen'
   if (!secciones.includes(vista)) redirect('/sin-permiso')
 
-  // La cotización PDF solo se carga para Ventas, Gerencia, Administración y
-  // Tesorería. Los equipos del taller reciben la OT sin el documento comercial.
+  // En la OT solo Gerencia, Administración y Tesorería consultan el documento
+  // comercial. Ventas conserva su propia pantalla de cotizaciones.
+  const puedeVerCotizacionEnOt = ['GERENTE', 'ADMINISTRACION', 'TESORERIA', 'ADMIN']
+    .includes(perfil.rol.codigo)
   const [orden, cotizacionPdf, pendientes] = await Promise.all([
     obtenerOrden(id),
-    puede(perfil, ['cotizaciones.ver_pdf_comercial', 'cotizaciones.liberar_tesoreria', 'tesoreria.ver_documentos'])
+    puedeVerCotizacionEnOt
       ? cotizacionPdfDeOrden(id)
       : Promise.resolve(null),
     // Lo pendiente se cuenta en todas las pestañas: es lo que las numera.
@@ -177,7 +180,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     vista === 'materiales'
       ? await materialesParaPantalla(id, puede(perfil, 'requerimientos.ver'))
       : null
-  const datosCostos = vista === 'costos' ? await controlesYSolicitudesDeOrden(id) : null
+  const datosCostos = vista === 'costos' ? await controlesYSolicitudesDeOrden(id, puede(perfil, 'costos.ver')) : null
   const areaPropiaMaterial =
     vista === 'materiales' && perfil.area_id && !puede(perfil, 'diseno.planos')
       ? ((await areasDelTaller()).find((a) => a.id === perfil.area_id)?.codigo ?? null)
@@ -220,7 +223,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   // Los archivos de la orden (099): en el resumen y junto a la hoja, que es
   // donde el taller los busca. Quitarlos es de quien los subió, la oficina o
   // el jefe: lo mismo que dice la política.
-  const puedeSubirArchivos = puede(perfil, [
+  const puedeSubirArchivos = perfil.rol.codigo === 'SUPERVISOR' && puede(perfil, [
     'produccion.actividades',
     'ordenes.editar',
     'ordenes.crear',
@@ -374,17 +377,20 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           valor={cotizacionPdf?.numero ?? tipoCarroceria?.nombre ?? '—'}
           pie={
             cotizacionPdf?.url ? (
-              <a
-                href={cotizacionPdf.url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex min-h-11 items-center gap-1 font-medium text-acento hover:underline sm:min-h-0"
-              >
-                <FileText aria-hidden className="size-3.5 shrink-0" />
-                Abrir cotización
-              </a>
+              <span className="flex flex-wrap items-center gap-x-2">
+                <span>OT {orden.numero}</span>
+                <a
+                  href={cotizacionPdf.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-11 items-center gap-1 font-medium text-acento hover:underline sm:min-h-0"
+                >
+                  <FileText aria-hidden className="size-3.5 shrink-0" />
+                  {cotizacionPdf.revisionPendiente ? 'Abrir PDF aprobado anterior' : 'Abrir cotización'}
+                </a>
+              </span>
             ) : cotizacionPdf ? (
-              'La cotización de la que salió la orden'
+              `OT ${orden.numero} · No se pudo preparar el enlace al PDF`
             ) : (
               definir(TIPO_TRABAJO, orden.tipo_trabajo).etiqueta
             )
@@ -550,7 +556,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                 disenoCumplida={pendientes.planos > 0 && pendientes.planosEntregados >= pendientes.planos}
               />
             )}
-            {archivos && (
+            {archivos && (archivos.length > 0 || puedeSubirArchivos) && (
               <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos} puedeSubir={puedeSubirArchivos} />
             )}
           </div>
@@ -604,7 +610,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       )}
 
       {vista === 'materiales' && listaMateriales && (
-        <MaterialesDeOrden
+        <div className="space-y-6"><MaterialesDeOrden
           ordenId={orden.id}
           materiales={listaMateriales.materiales}
           catalogo={listaMateriales.catalogo}
@@ -613,13 +619,16 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           areaPropia={areaPropiaMaterial}
           ordenViva={motivoInactiva === null}
           motivoInactiva={motivoInactiva}
-        />
+        /><AtencionMaterialesDeOrden ordenId={orden.id} perfil={perfil} /></div>
       )}
 
       {vista === 'costos' && datosCostos && (
         <CostosYControles ordenId={orden.id} datos={datosCostos}
           puedeControlar={puede(perfil, 'costos.controlar_ot')}
           puedeSolicitar={puede(perfil, 'costos.solicitar_pago')}
+          puedeRegistrarGasto={puede(perfil, 'costos.registrar_gasto')}
+          puedeRevisarGasto={puede(perfil, 'costos.revisar_gasto')}
+          puedeVerCosteo={puede(perfil, 'costos.ver')}
           ordenCerrada={ESTADOS_CERRADOS.includes(orden.estado)} />
       )}
 

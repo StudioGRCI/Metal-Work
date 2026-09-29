@@ -180,7 +180,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
             const quitable = puedeQuitarCotizacion(perfil, c)
             const corrige = puedeCorregirCotizacion(perfil, c)
             const version = c.version ?? 1
-            const ultimoRechazo = c.versiones[0]
+            const versionAnterior = c.versiones[0]
 
             return (
               // Con `id`: el aviso de la campana aterriza en esta fila (`#id`).
@@ -236,12 +236,12 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       </p>
                     )}
 
-                    {c.estado === 'POR_REVISAR' && ultimoRechazo && (
+                    {c.estado === 'POR_REVISAR' && versionAnterior && (
                       <p className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-aviso-suave px-2.5 py-1.5 text-xs text-aviso">
                         <History aria-hidden className="mt-0.5 size-3.5 shrink-0" />
                         <span>
-                          <span className="font-medium">Corregida {fmtFecha(c.archivo_subido_en)}.</span> Lo que se había observado:{' '}
-                          {ultimoRechazo.observacion}
+                          <span className="font-medium">Corregida {fmtFecha(c.archivo_subido_en)}.</span>{' '}
+                          La nueva versión espera a Gerencia. La anterior era {versionAnterior.estado_al_archivar === 'APROBADA' ? 'aprobada' : 'rechazada'}.
                         </span>
                       </p>
                     )}
@@ -259,13 +259,13 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       <details className="group rounded-[var(--radius-base)] border border-borde">
                         <summary className="flex min-h-11 cursor-pointer items-center gap-1.5 px-2.5 text-xs font-medium text-texto-suave sm:min-h-8">
                           <History aria-hidden className="size-3.5" />
-                          Historial: {c.versiones.length} {c.versiones.length === 1 ? 'versión rechazada' : 'versiones rechazadas'}
+                          Historial: {c.versiones.length} {c.versiones.length === 1 ? 'versión anterior' : 'versiones anteriores'}
                         </summary>
                         <ol className="space-y-2 border-t border-borde px-2.5 py-2">
                           {c.versiones.map((v) => (
                             <li key={v.id} className="space-y-0.5 text-xs">
                               <p className="text-texto">
-                                <span className="font-medium">Versión {v.version}</span>
+                                <span className="font-medium">Versión {v.version} · {v.estado_al_archivar === 'APROBADA' ? 'aprobada' : 'rechazada'}</span>
                                 <span className="text-texto-tenue">
                                   {' '}
                                   · subida {fmtFecha(v.subido_en)}
@@ -304,16 +304,16 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         </Insignia>
                       </p>
                     )}
-                    {(!c.orden_id || (liberaTesoreria && c.estado === 'APROBADA' && !c.liberacionTesoreria)) && (
+                    {(revisa && c.estado === 'POR_REVISAR' || emite && c.estado === 'APROBADA' && !c.orden_id || liberaTesoreria && c.estado === 'APROBADA' && !c.liberacionTesoreria || corrige || quitable) && (
                       <div className="flex flex-wrap items-center gap-2">
-                        {!c.orden_id && revisa && c.estado === 'POR_REVISAR' && c.id && <RevisarCotizacion id={c.id} />}
+                        {revisa && c.estado === 'POR_REVISAR' && c.id && <RevisarCotizacion id={c.id} />}
                         {!c.orden_id && emite && c.estado === 'APROBADA' && c.id && (
                           <EmitirOrden cotizacionId={c.id} numero={c.numero ?? 'cotización'} tipoUnidad={c.tipo_unidad} />
                         )}
                         {liberaTesoreria && c.estado === 'APROBADA' && c.id && !c.liberacionTesoreria && (
                           <LiberarATesoreria cotizacionId={c.id} />
                         )}
-                        {!c.orden_id && corrige && c.id && (
+                        {corrige && c.id && (
                           <CorregirCotizacion id={c.id} numero={c.numero ?? ''} observacion={c.observacion}
                             version={c.version ?? 1} clienteId={c.cliente_id ?? ''} carroceriaId={c.tipo_carroceria_id ?? ''}
                             clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />

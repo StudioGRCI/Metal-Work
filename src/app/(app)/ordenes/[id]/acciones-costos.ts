@@ -9,32 +9,6 @@ import { createClient } from '@/lib/supabase/server'
 
 const id = z.string().uuid()
 
-export async function guardarChecklist(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
-  const perfil = await exigirSesion()
-  if (!puede(perfil, 'costos.controlar_ot')) return { ok: false, error: 'Solo Costos y Materiales registra estas listas.' }
-  const entrada = z.object({
-    orden_id: id,
-    tipo: z.enum(['INGRESO', 'SALIDA']),
-    observacion: z.string().trim().max(2000),
-  }).safeParse(Object.fromEntries(datos))
-  if (!entrada.success) return { ok: false, error: entrada.error.issues[0]?.message ?? 'Revisa la lista.' }
-  const v = entrada.data
-  const supabase = await createClient()
-  const { data, error } = await supabase.from('ot_checklists').upsert({
-    orden_id: v.orden_id,
-    tipo: v.tipo,
-    identidad_verificada: datos.get('identidad_verificada') === 'on',
-    documentos_verificados: datos.get('documentos_verificados') === 'on',
-    materiales_verificados: datos.get('materiales_verificados') === 'on',
-    condicion_verificada: datos.get('condicion_verificada') === 'on',
-    observacion: v.observacion,
-  }, { onConflict: 'orden_id,tipo' }).select('id, completado_en').maybeSingle()
-  if (error) return { ok: false, error: mensajeDeError(error) }
-  if (!data) return { ok: false, error: NO_TOCO_NADA }
-  revalidatePath(`/ordenes/${v.orden_id}`)
-  return { ok: true, mensaje: data.completado_en ? 'Lista completada y guardada.' : 'Avance de la lista guardado.' }
-}
-
 export async function solicitarTesoreria(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'costos.solicitar_pago')) return { ok: false, error: 'Solo Costos y Materiales envía estas solicitudes.' }

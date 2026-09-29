@@ -178,13 +178,14 @@ export function puedeQuitarCotizacion(
 }
 
 /**
- * Ventas corrige el documento antes de que genere OT o llegue a Tesorería.
+ * Ventas puede subir una nueva versión; Gerencia la vuelve a revisar aunque
+ * la cotización ya tenga OT o se haya liberado a Tesorería.
  */
 export function puedeCorregirCotizacion(
   perfil: PerfilSesion | null,
-  c: { estado: string | null; registrado_por: string | null; orden_id?: string | null; liberacionTesoreria?: unknown },
+  c: { estado: string | null; registrado_por: string | null },
 ): boolean {
-  if (!perfil || !['POR_REVISAR', 'RECHAZADA', 'APROBADA'].includes(c.estado ?? '') || c.orden_id || c.liberacionTesoreria) return false
+  if (!perfil || !['POR_REVISAR', 'RECHAZADA', 'APROBADA'].includes(c.estado ?? '')) return false
   return puede(perfil, 'cotizaciones.crear') && (c.registrado_por === perfil.id || perfil.rol.codigo === 'ADMIN')
 }
 

@@ -149,8 +149,7 @@ const esquemaCorregir = z.object({
   tamano_bytes: z.coerce.number().int().min(0).optional(),
 })
 
-/** Una nueva versión conserva el número y vuelve a Gerencia. La base rechaza
- * cotizaciones que ya tienen OT o liberación financiera. */
+/** Una nueva versión conserva el número y vuelve a Gerencia. */
 export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'cotizaciones.crear')) return { ok: false, error: 'Solo Ventas corrige la cotización que registró.' }
@@ -190,7 +189,7 @@ export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): 
     return { ok: false, error: delMotor ? mensajeDeError(error) : error.message }
   }
   if (!data) {
-    return { ok: false, error: 'La cotización cambió o no tienes acceso. Recarga y comprueba que todavía no tenga OT ni liberación a Tesorería.' }
+    return { ok: false, error: 'La cotización cambió o no tienes acceso. Recarga la página y vuelve a intentar.' }
   }
 
   revalidatePath('/cotizaciones/pdf')

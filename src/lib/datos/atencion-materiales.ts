@@ -26,15 +26,17 @@ export async function cargarAtencionMateriales(permisos: {
   crearCompra: boolean
   recibir: boolean
   despachar: boolean
-}) {
+}, ordenId?: string) {
   const supabase = await createClient()
-  const [atencion, existencias, compras, areas, catalogo] = await Promise.all([
+  const consultaAtencion = supabase
+    .from('v_atencion_materiales')
+    .select('requerimiento_id, detalle_id, orden_id, numero_ot, area_destino, ot_material_id, numero_plano, plano, material_id, material_codigo, material, unidad, cantidad_solicitada, cantidad_comprada, cantidad_recibida, cantidad_despachada, estado, responsables, solicitado_por, creado_en')
+    .order('creado_en', { ascending: false })
+    .limit(300)
+  if (ordenId) consultaAtencion.eq('orden_id', ordenId)
+  const [atencion, existencias, areas, catalogo] = await Promise.all([
     permisos.verRequerimientos
-      ? supabase
-          .from('v_atencion_materiales')
-          .select('requerimiento_id, detalle_id, orden_id, numero_ot, area_destino, ot_material_id, numero_plano, plano, material_id, material_codigo, material, unidad, cantidad_solicitada, cantidad_comprada, cantidad_recibida, cantidad_despachada, estado, responsables, solicitado_por, creado_en')
-          .order('creado_en', { ascending: false })
-          .limit(300)
+      ? consultaAtencion
       : Promise.resolve({ data: [], error: null }),
     permisos.verExistencias
       ? supabase
@@ -43,17 +45,10 @@ export async function cargarAtencionMateriales(permisos: {
           .order('descripcion')
           .limit(1000)
       : Promise.resolve({ data: [], error: null }),
-    permisos.verCompras || permisos.recibir || permisos.crearCompra
-      ? supabase
-          .from('v_orden_compra_material_pendiente')
-          .select('id, requerimiento_id, requerimiento_detalle_id, proveedor, referencia, fecha_estimada, cantidad_comprada, cantidad_recibida, cantidad_pendiente, orden_compra_id')
-          .order('fecha_estimada', { nullsFirst: false })
-          .limit(300)
-      : Promise.resolve({ data: [], error: null }),
     permisos.despachar
       ? supabase.from('areas').select('id, codigo, nombre').in('codigo', ['MTZ', 'PRD', 'ACB']).eq('activo', true)
       : Promise.resolve({ data: [], error: null }),
-    permisos.verExistencias
+    permisos.verExistencias && !ordenId
       ? supabase.from('materiales').select('id, descripcion, codigo, unidad:unidades_medida(codigo)')
           .eq('activo', true).eq('unidad_pendiente', false).order('descripcion').limit(1000)
       : Promise.resolve({ data: [], error: null }),
@@ -61,6 +56,13 @@ export async function cargarAtencionMateriales(permisos: {
 
   if (atencion.error) throw new Error(`No se pudo cargar el avance de materiales: ${atencion.error.message}`)
   if (existencias.error) throw new Error(`No se pudieron cargar las existencias: ${existencias.error.message}`)
+  const idsRequerimiento = [...new Set((atencion.data ?? []).map((linea) => linea.requerimiento_id).filter((id): id is string => Boolean(id)))]
+  const consultaCompras = supabase.from('v_orden_compra_material_pendiente')
+    .select('id, requerimiento_id, requerimiento_detalle_id, proveedor, referencia, fecha_estimada, cantidad_comprada, cantidad_recibida, cantidad_pendiente, orden_compra_id')
+    .order('fecha_estimada', { nullsFirst: false }).limit(300)
+  if (ordenId && idsRequerimiento.length > 0) consultaCompras.in('requerimiento_id', idsRequerimiento)
+  const compras = (permisos.verCompras || permisos.recibir || permisos.crearCompra) && (!ordenId || idsRequerimiento.length > 0)
+    ? await consultaCompras : { data: [], error: null }
   if (compras.error) throw new Error(`No se pudieron cargar las compras pendientes: ${compras.error.message}`)
   if (areas.error) throw new Error(`No se pudieron cargar las áreas receptoras: ${areas.error.message}`)
   if (catalogo.error) throw new Error(`No se pudo cargar el catálogo para el conteo: ${catalogo.error.message}`)

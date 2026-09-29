@@ -31,7 +31,7 @@ export default async function PaginaTesoreria() {
     documentosDeCompraParaTesoreria(),
     solicitudesPendientesTesoreria(),
   ])
-  const aceptadas = cotizaciones.filter((c) => c.estado === 'APROBADA' && c.liberacionTesoreria)
+  const aceptadas = cotizaciones.filter((c) => c.liberacionTesoreria && c.urlAprobada)
 
   return <>
     <EncabezadoPagina
@@ -41,7 +41,7 @@ export default async function PaginaTesoreria() {
 
     <SolicitudesOT solicitudes={solicitudes} />
     <Tarjeta className="mb-5">
-      <TarjetaCabecera titulo="Cotizaciones liberadas" descripcion="Solo aparecen las aprobadas por Gerencia y enviadas aquí por Administración." />
+      <TarjetaCabecera titulo="Cotizaciones liberadas" descripcion="Muestra la última versión aprobada y enviada por Administración. Una corrección pendiente no reemplaza ese documento." />
       <TarjetaCuerpo className="space-y-3">
         {aceptadas.length === 0 ? (
           <EstadoVacio
@@ -55,19 +55,23 @@ export default async function PaginaTesoreria() {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="font-semibold text-texto">{cotizacion.numero}</h2>
-                  <Insignia tono="exito">Aprobada</Insignia>
+                  <Insignia tono={cotizacion.estado === 'APROBADA' ? 'exito' : 'aviso'}>
+                    {cotizacion.estado === 'APROBADA' ? 'Aprobada' : 'Nueva versión por revisar'}
+                  </Insignia>
                   <Insignia tono="info">En Tesorería</Insignia>
                 </div>
                 <p className="mt-1 text-sm text-texto-suave">
-                  {cotizacion.cliente ?? 'Cliente'}{cotizacion.carroceria ? ` · ${cotizacion.carroceria}` : ''}
+                  {cotizacion.estado === 'APROBADA'
+                    ? `${cotizacion.cliente ?? 'Cliente'}${cotizacion.carroceria ? ` · ${cotizacion.carroceria}` : ''}`
+                    : 'Los datos de la nueva versión esperan la aprobación de Gerencia. Consulta el PDF aprobado anterior.'}
                 </p>
                 <p className="mt-1 text-xs text-texto-tenue">
                   Liberada {cotizacion.liberacionTesoreria ? fmtFecha(cotizacion.liberacionTesoreria.liberado_en) : ''}
                 </p>
               </div>
-              {cotizacion.url ? (
-                <a href={cotizacion.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-acento hover:underline">
-                  <FileText aria-hidden className="size-4" />Abrir cotización
+              {cotizacion.urlAprobada ? (
+                <a href={cotizacion.urlAprobada} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-acento hover:underline">
+                  <FileText aria-hidden className="size-4" />Abrir PDF aprobado
                 </a>
               ) : (
                 <p role="alert" className="text-sm text-aviso">No se pudo preparar el enlace temporal al archivo. Recarga para volver a intentar.</p>

@@ -60,7 +60,6 @@ function estadoOperativo(linea: LineaAtencionMaterial): string {
 export function TableroMateriales({
   lineas,
   existencias,
-  catalogoAlmacen,
   compras,
   areas,
   responsables,
@@ -78,7 +77,6 @@ export function TableroMateriales({
 }: {
   lineas: LineaAtencionMaterial[]
   existencias: ExistenciaMaterial[]
-  catalogoAlmacen: MaterialParaConteo[]
   compras: CompraMaterialPendiente[]
   areas: AreaMaterial[]
   responsables: ResponsableMaterial[]
@@ -256,28 +254,32 @@ export function TableroMateriales({
         <Tarjeta><TarjetaCuerpo><p className="text-sm text-texto-suave">No hay materiales con este estado.</p></TarjetaCuerpo></Tarjeta>
       )}
 
-      {puedeRevisarStock && (
-        <Tarjeta>
-          <TarjetaCabecera titulo="Control de existencias de Almacén" descripcion="Saldo registrado: ingresos de compras recibidas menos despachos. Comprueba aquí antes de decidir stock o derivar a Logística." />
-          <TarjetaCuerpo className="space-y-3">
-            <ConteoGeneral materiales={catalogoAlmacen} />
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {existencias.length === 0 && <p className="text-sm text-texto-suave sm:col-span-2 xl:col-span-3">Aún no hay ingresos registrados. Las solicitudes aprobadas pasan por revisión de Almacén; deriva a Logística solo si no hay existencias físicas registradas.</p>}
-            {existencias.map((material) => (
-              <div key={material.material_id} className="flex items-center justify-between gap-3 rounded-[var(--radius-base)] border border-borde p-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-texto">{material.descripcion}</p>
-                  <p className="text-xs text-texto-suave">{material.codigo}</p>
-                </div>
-                <p className="tabular whitespace-nowrap text-sm font-semibold text-texto">{cantidad(Number(material.existencia ?? 0))} {material.unidad}</p>
-              </div>
-            ))}
-            </div>
-          </TarjetaCuerpo>
-        </Tarjeta>
-      )}
     </div>
   )
+}
+
+/** Existencias globales y conteo físico, fuera del circuito de una OT. */
+export function StockAlmacen({ existencias, catalogoAlmacen }: {
+  existencias: ExistenciaMaterial[]
+  catalogoAlmacen: MaterialParaConteo[]
+}) {
+  return <Tarjeta>
+    <TarjetaCabecera titulo="Stock de Almacén" descripcion="Saldo de ingresos, despachos y conteos físicos registrados." />
+    <TarjetaCuerpo className="space-y-4">
+      <ConteoGeneral materiales={catalogoAlmacen} />
+      {existencias.length === 0
+        ? <p className="text-sm text-texto-suave">Aún no hay existencias registradas. Registra el primer conteo físico para comenzar.</p>
+        : <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{existencias.map((material) => (
+          <div key={material.material_id} className="flex items-center justify-between gap-3 rounded-[var(--radius-base)] border border-borde p-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-texto">{material.descripcion}</p>
+              <p className="text-xs text-texto-suave">{material.codigo}</p>
+            </div>
+            <p className="tabular whitespace-nowrap text-sm font-semibold text-texto">{cantidad(Number(material.existencia ?? 0))} {material.unidad}</p>
+          </div>
+        ))}</div>}
+    </TarjetaCuerpo>
+  </Tarjeta>
 }
 
 function ConteoGeneral({ materiales }: { materiales: MaterialParaConteo[] }) {

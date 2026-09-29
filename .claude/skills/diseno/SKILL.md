@@ -174,6 +174,12 @@ interacciones con botones (emitir, descargar, anular); interacción nueva de pes
 
 *(Sección viva: aquí se anota lo que salió mal al construir pantallas. Ver `aprender`.)*
 
+- **Quien crea un plano y el área de la etapa son cosas distintas.** Diseño e
+  Ingeniería crea el plano, pero lo vincula a la etapa del área que lo utilizará
+  (por ejemplo Maestranza). Al mostrar etapas elegibles para un plano, filtrar
+  por la OT, no por el área Diseño; de lo contrario una OT con etapa válida
+  muestra «primero crea la etapa» y bloquea a la propia cuenta de Diseño.
+
 - **Una función nueva debe tener salida para las OT existentes.** Antes de
   ocultar edición con un indicador introducido por migración, consultar cuántas
   OT activas conservan el valor histórico y si tienen trabajo vinculado. Si una
