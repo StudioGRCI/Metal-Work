@@ -126,7 +126,7 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
 
       <p className="mt-3 text-xs text-texto-tenue">
         Quien está marcado como operario solo alcanza las órdenes donde está asignado o donde cargó
-        horas. Los jefes y supervisores no llevan esa marca, porque necesitan ver todo el taller.
+        horas. Las cuentas de Supervisión no llevan esa marca, porque necesitan ver todo el taller.
       </p>
     </>
   )

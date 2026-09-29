@@ -35,7 +35,7 @@ export async function abrirOrdenDelTaller(
 ): Promise<ResultadoAccion<{ id: string }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'ordenes.abrir_taller')) {
-    return { ok: false, error: 'Las órdenes del taller las abre el supervisor o el jefe de producción.' }
+    return { ok: false, error: 'Las órdenes del taller las abre Supervisión.' }
   }
 
   const analisis = esquema.safeParse(Object.fromEntries(datos))

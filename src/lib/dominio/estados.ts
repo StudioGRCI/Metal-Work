@@ -164,7 +164,7 @@ export function estadoDeOrden(estado: string | null | undefined, abiertaEnTaller
     return {
       etiqueta: 'Por revisar',
       tono: 'aviso',
-      descripcion: 'La abrió el taller: la aprueba o la rechaza el jefe de producción',
+      descripcion: 'La abrió el taller: la aprueba o la rechaza Administración',
     }
   }
   return definir(ESTADO_OT, estado)

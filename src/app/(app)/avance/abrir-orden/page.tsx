@@ -26,7 +26,7 @@ export default async function PaginaAbrirOrden() {
       <EncabezadoPagina
         migas={[{ titulo: 'Avance en taller', ruta: '/avance' }, { titulo: 'Abrir orden' }]}
         titulo="Abrir una orden por revisar"
-        descripcion="Para lo que llega al taller sin orden de la oficina: qué unidad y qué hay que hacer. Queda por revisar hasta que el jefe de producción la apruebe; mientras, ya se le arma la lista de actividades y se reporta."
+        descripcion="Para lo que llega al taller sin orden de la oficina: qué unidad y qué hay que hacer. Queda por revisar hasta que Administración la apruebe; mientras, Supervisión puede crear actividades y reportar."
       />
 
       <Tarjeta className="max-w-3xl">
