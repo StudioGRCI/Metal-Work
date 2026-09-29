@@ -551,7 +551,16 @@ function FormularioCompra({
       <Campo etiqueta="Entrega estimada" htmlFor={`fecha-${requerimientoId}`}>
         <Entrada id={`fecha-${requerimientoId}`} name="fecha_estimada" type="date" />
       </Campo>
-      <div className="flex items-end"><Boton type="submit" cargando={enviando} className="w-full"><ShoppingCart aria-hidden className="size-4" />Registrar compra</Boton></div>
+      <Campo etiqueta="Condición de pago" htmlFor={`pago-${requerimientoId}`} requerido>
+        <Seleccion id={`pago-${requerimientoId}`} name="condicion" required><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option></Seleccion>
+      </Campo>
+      <Campo etiqueta="Días de crédito (0 si contado)" htmlFor={`dias-compra-${requerimientoId}`} requerido>
+        <Entrada id={`dias-compra-${requerimientoId}`} name="dias" type="number" min={0} max={365} defaultValue={0} required />
+      </Campo>
+      <Campo etiqueta="Moneda" htmlFor={`moneda-compra-${requerimientoId}`} requerido>
+        <Seleccion id={`moneda-compra-${requerimientoId}`} name="moneda" required><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion>
+      </Campo>
+      <div className="flex items-end sm:col-span-2"><Boton type="submit" cargando={enviando} className="w-full"><ShoppingCart aria-hidden className="size-4" />Registrar compra</Boton></div>
       {lineas.map((linea) => {
         const faltante = Number(linea.cantidad_solicitada ?? 0) - Number(linea.cantidad_comprada ?? 0)
         return (

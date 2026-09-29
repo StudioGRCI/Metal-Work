@@ -5845,6 +5845,20 @@ export type Database = {
         }
         Returns: string
       }
+      crear_orden_compra_material_con_pago: {
+        Args: {
+          p_id: string
+          p_requerimiento_id: string
+          p_proveedor: string
+          p_referencia: string
+          p_detalles: Json
+          p_fecha_estimada: string | null
+          p_condicion: string
+          p_dias: number
+          p_moneda: string
+        }
+        Returns: string
+      }
       crear_personal: {
         Args: {
           p_nombres: string
