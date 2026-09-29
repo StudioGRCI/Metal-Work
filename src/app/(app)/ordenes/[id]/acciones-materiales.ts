@@ -98,6 +98,32 @@ export async function proponerMaterial(_previo: unknown, datos: FormData): Promi
   return { ok: true, mensaje: 'Propuesta enviada a Diseño para aprobación.' }
 }
 
+export async function proponerMaterialNuevo(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'requerimientos.crear') || puede(perfil, 'diseno.planos')) {
+    return { ok: false, error: 'Solo el área que utilizará el material puede proponerlo.' }
+  }
+  const v = z.object({
+    solicitud_id: z.string().uuid(), orden_id: z.string().uuid(), plano_id: z.string().uuid(),
+    descripcion: z.string().trim().min(3).max(200), categoria_id: z.string().uuid(),
+    unidad_id: z.string().uuid(), cantidad: z.coerce.number().positive(),
+    especificacion: z.string().trim().max(300).optional(),
+  }).safeParse(Object.fromEntries(datos))
+  if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? 'Revisa el nuevo material.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('proponer_material_nuevo_de_area', {
+    p_id: v.data.solicitud_id, p_orden: v.data.orden_id, p_plano: v.data.plano_id,
+    p_descripcion: v.data.descripcion, p_categoria: v.data.categoria_id,
+    p_unidad: v.data.unidad_id, p_cantidad: v.data.cantidad,
+    p_especificacion: v.data.especificacion,
+  })
+  if (error) return { ok: false, error: traducir(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
+  revalidatePath(`/ordenes/${v.data.orden_id}`)
+  revalidatePath('/materiales/atencion')
+  return { ok: true, mensaje: 'Material nuevo guardado en la OT y enviado a Diseño para aprobación.' }
+}
+
 export async function crearRequerimiento(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'requerimientos.crear') || puede(perfil, 'diseno.planos') || !perfil.area_id) {

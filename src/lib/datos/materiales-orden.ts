@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
+import { catalogosDeMateriales } from '@/lib/datos/materiales'
 
 export type MaterialDeOrden = {
   id: string
@@ -81,6 +82,8 @@ export type CatalogoMateriales = {
   materiales: OpcionMaterial[]
   planos: { id: string; numero_plano: string; nombre: string }[]
   etapas: { id: string; nombre: string; area: string | null; areaCodigo: string | null }[]
+  categorias: { id: string; codigo: string; nombre: string }[]
+  unidades: { id: string; codigo: string; nombre: string }[]
 }
 
 /**
@@ -91,7 +94,7 @@ export type CatalogoMateriales = {
 export async function catalogoDeMateriales(ordenId: string): Promise<CatalogoMateriales> {
   const supabase = await createClient()
 
-  const [materiales, planos, etapas, areas] = await Promise.all([
+  const [materiales, planos, etapas, areas, catalogos] = await Promise.all([
     supabase
       .from('materiales')
       .select('id, codigo, descripcion, especificacion_tecnica, unidad:unidades_medida(codigo)')
@@ -109,6 +112,7 @@ export async function catalogoDeMateriales(ordenId: string): Promise<CatalogoMat
       .eq('orden_id', ordenId)
       .order('orden_secuencia'),
     supabase.from('areas').select('id, nombre, codigo').in('codigo', ['PRD', 'MTZ', 'ACB']),
+    catalogosDeMateriales(),
   ])
 
   if (materiales.error || planos.error || etapas.error || areas.error) {
@@ -117,6 +121,8 @@ export async function catalogoDeMateriales(ordenId: string): Promise<CatalogoMat
   const areaPorId = new Map((areas.data ?? []).map((area) => [area.id, area]))
 
   return {
+    categorias: catalogos.categorias,
+    unidades: catalogos.unidades,
     materiales: (materiales.data ?? []).map((m) => {
       const unidad = m.unidad as { codigo: string } | null
       return {

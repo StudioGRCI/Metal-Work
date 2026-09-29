@@ -47,19 +47,11 @@ export default async function PaginaAtencionMateriales() {
             />
           </TarjetaCuerpo>
         </Tarjeta>
-      ) : datos.lineas.length === 0 && datos.existencias.length === 0 ? (
-        <Tarjeta>
-          <TarjetaCuerpo>
-            <EstadoVacio
-              titulo="El circuito aún no tiene movimientos"
-              descripcion="Los materiales solicitados aparecerán aquí. La primera recepción desde una compra registrada crea el saldo de Almacén."
-            />
-          </TarjetaCuerpo>
-        </Tarjeta>
       ) : (
         <TableroMateriales
           lineas={datos.lineas}
           existencias={datos.existencias}
+          catalogoAlmacen={datos.catalogoAlmacen}
           compras={datos.compras}
           areas={datos.areas}
           responsables={datos.responsables}
