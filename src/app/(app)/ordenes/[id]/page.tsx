@@ -28,6 +28,7 @@ import { actividadesDeOrden, areasDelTaller, despachosParaReporte } from '@/lib/
 import { adjuntosDeOrden } from '@/lib/datos/adjuntos'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
+import { controlesYSolicitudesDeOrden } from '@/lib/datos/costos-ot'
 import {
   accesoriosDeOrden,
   personalDelTaller,
@@ -58,6 +59,7 @@ import { Bitacora } from './bitacora'
 import { Observaciones } from './observaciones'
 import { ActividadesDeOrden } from './actividades'
 import { MaterialesDeOrden } from './materiales'
+import { CostosYControles } from './costos-y-controles'
 import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
 import { FechasClave, SalidaDeUnidad } from './salida-y-plazos'
@@ -75,6 +77,7 @@ const VISTAS = [
   'ficha',
   'etapas',
   'materiales',
+  'costos',
   'actividades',
   'avance',
   'bitacora',
@@ -174,6 +177,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     vista === 'materiales'
       ? await materialesParaPantalla(id, puede(perfil, 'requerimientos.ver'))
       : null
+  const datosCostos = vista === 'costos' ? await controlesYSolicitudesDeOrden(id) : null
   const areaPropiaMaterial =
     vista === 'materiales' && perfil.area_id && !puede(perfil, 'diseno.planos')
       ? ((await areasDelTaller()).find((a) => a.id === perfil.area_id)?.codigo ?? null)
@@ -189,7 +193,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   // Y las que ve: las que arma más las de su mano. Sin estas, el operario —que
   // reporta pero no arma— se quedaba sin su hoja y sin «Reportar día».
   const areasVisibles = hojaAreas
-    ? hojaAreas[1].filter(
+    ? puede(perfil, 'supervision.general') ? hojaAreas[1] : hojaAreas[1].filter(
         (a) => areasArmables.some((x) => x.id === a.id) || areasDeSuMano(perfil, [a]).length > 0,
       )
     : []
@@ -610,6 +614,13 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           ordenViva={motivoInactiva === null}
           motivoInactiva={motivoInactiva}
         />
+      )}
+
+      {vista === 'costos' && datosCostos && (
+        <CostosYControles ordenId={orden.id} datos={datosCostos}
+          puedeControlar={puede(perfil, 'costos.controlar_ot')}
+          puedeSolicitar={puede(perfil, 'costos.solicitar_pago')}
+          ordenCerrada={ESTADOS_CERRADOS.includes(orden.estado)} />
       )}
 
       {vista === 'actividades' && hojaAreas && (

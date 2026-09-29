@@ -4,11 +4,13 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { documentosDeCompraParaTesoreria } from '@/lib/datos/tesoreria'
+import { solicitudesPendientesTesoreria } from '@/lib/datos/costos-ot'
 import { listarCotizacionesPdf } from '@/lib/datos/cotizaciones-pdf'
 import { fecha as fmtFecha } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
 import { ObservacionCotizacion } from './observacion-cotizacion'
+import { SolicitudesOT } from './solicitudes-ot'
 
 export const metadata = { title: 'Tesorería' }
 
@@ -24,9 +26,10 @@ const AREA: Record<string, string> = { MTZ: 'Maestranza', PRD: 'Producción', AC
 
 export default async function PaginaTesoreria() {
   await exigirPermiso('tesoreria.ver_documentos')
-  const [cotizaciones, documentos] = await Promise.all([
+  const [cotizaciones, documentos, solicitudes] = await Promise.all([
     listarCotizacionesPdf(),
     documentosDeCompraParaTesoreria(),
+    solicitudesPendientesTesoreria(),
   ])
   const aceptadas = cotizaciones.filter((c) => c.estado === 'APROBADA' && c.liberacionTesoreria)
 
@@ -36,6 +39,7 @@ export default async function PaginaTesoreria() {
       descripcion="Revisa las cotizaciones que Administración liberó y consulta los comprobantes adjuntados por Logística."
     />
 
+    <SolicitudesOT solicitudes={solicitudes} />
     <Tarjeta className="mb-5">
       <TarjetaCabecera titulo="Cotizaciones liberadas" descripcion="Solo aparecen las aprobadas por Gerencia y enviadas aquí por Administración." />
       <TarjetaCuerpo className="space-y-3">

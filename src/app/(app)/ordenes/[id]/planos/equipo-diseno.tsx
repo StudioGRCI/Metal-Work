@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
-import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { useEnvio } from '@/lib/envio'
 import type { catalogosDePlanos } from '@/lib/datos/versiones-planos'
 import {
@@ -21,10 +21,15 @@ export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
   const equipo = catalogos.equipoNominal
   const responsable = equipo.find((persona) => persona.funcion === 'RESPONSABLE')
   const alta = useEnvio(agregarPersonaDiseno)
-  return <Tarjeta className="mt-4">
-    <TarjetaCabecera titulo="Personas que elaboran los planos"
-      descripcion="Diseño anota al responsable y a los colaboradores. En cada plano indica quién lo preparó." />
-    <TarjetaCuerpo className="space-y-5">
+  return <details className="group mt-4 rounded-[var(--radius-base)] border border-borde bg-superficie shadow-[var(--sombra)]">
+    <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-acento [&::-webkit-details-marker]:hidden">
+      <span className="min-w-0"><span className="block text-sm font-semibold text-texto">Personas que elaboran los planos</span>
+        <span className="mt-0.5 block text-xs text-texto-suave">{responsable?.nombre ?? 'Sin responsable'} · {equipo.filter(p => p.funcion === 'COLABORADOR').length} colaboradores · {catalogos.planos.length} planos</span>
+      </span>
+      <ChevronDown aria-hidden className="size-4 shrink-0 text-texto-suave transition-transform group-open:rotate-180" />
+    </summary>
+    <div className="space-y-5 border-t border-borde p-4">
+      <p className="text-xs text-texto-suave">Diseño anota al responsable y a los colaboradores. En cada plano indica quién lo preparó.</p>
       {equipo.length === 0 && <p className="rounded-[var(--radius-base)] bg-superficie-2 p-3 text-sm text-texto-suave">
         Aún no se han anotado personas para esta OT.
       </p>}
@@ -58,8 +63,8 @@ export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
             equipo={equipo} ordenId={ordenId} editable={puedeAsignar && abierta} />)}
         </div>
       </div>}
-    </TarjetaCuerpo>
-  </Tarjeta>
+    </div>
+  </details>
 }
 
 function Persona({ persona, ordenId, editable, vinculada, tieneResponsable }: {

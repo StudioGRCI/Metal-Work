@@ -268,11 +268,11 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                                 <span className="font-medium">Versión {v.version}</span>
                                 <span className="text-texto-tenue">
                                   {' '}
-                                  · subida {fmtFecha(v.subido_en)} · rechazada por {v.rechazado_por_nombre ?? 'Gerencia'}
-                                  {v.rechazado_en ? ` el ${fmtFecha(v.rechazado_en)}` : ''}
+                                  · subida {fmtFecha(v.subido_en)}
+                                  {v.rechazado_en ? ` · revisada por ${v.rechazado_por_nombre ?? 'Gerencia'} el ${fmtFecha(v.rechazado_en)}` : ''}
                                 </span>
                               </p>
-                              <p className="text-peligro">«{v.observacion}»</p>
+                              <p className="text-texto-suave">«{v.observacion}»</p>
                               {v.url ? <EnlaceArchivo url={v.url} mime={v.mime_type} nombre={v.nombre_archivo} /> : (
                                 <p className="text-aviso">Archivo no disponible. Recarga la página o avisa al administrador.</p>
                               )}
@@ -314,7 +314,9 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                           <LiberarATesoreria cotizacionId={c.id} />
                         )}
                         {!c.orden_id && corrige && c.id && (
-                          <CorregirCotizacion id={c.id} numero={c.numero ?? ''} observacion={c.observacion} />
+                          <CorregirCotizacion id={c.id} numero={c.numero ?? ''} observacion={c.observacion}
+                            version={c.version ?? 1} clienteId={c.cliente_id ?? ''} carroceriaId={c.tipo_carroceria_id ?? ''}
+                            clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />
                         )}
                         {!c.orden_id && quitable && c.id && <QuitarCotizacion id={c.id} numero={c.numero ?? ''} />}
                       </div>

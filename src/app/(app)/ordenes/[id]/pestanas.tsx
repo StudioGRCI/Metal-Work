@@ -10,6 +10,7 @@ const SECCIONES = [
   { clave: 'etapas', titulo: 'Etapas' },
   { clave: 'planos', titulo: 'Planos' },
   { clave: 'materiales', titulo: 'Materiales' },
+  { clave: 'costos', titulo: 'Costos y control' },
   { clave: 'actividades', titulo: 'Avance de Taller' },
   { clave: 'avance', titulo: 'Fotos del taller' },
   { clave: 'bitacora', titulo: 'Trazabilidad' },

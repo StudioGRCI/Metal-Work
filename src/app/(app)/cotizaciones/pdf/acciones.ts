@@ -137,6 +137,10 @@ export async function revisarCotizacionPdf(_previo: unknown, datos: FormData): P
 
 const esquemaCorregir = z.object({
   id: z.string().uuid(),
+  version: z.coerce.number().int().min(1),
+  cliente_id: z.string().uuid(),
+  tipo_carroceria_id: z.string().uuid(),
+  motivo_correccion: z.string().trim().min(5, 'Explica por qué corriges la cotización').max(500),
   nombre_archivo: z.string().trim().min(1).max(200),
   ruta_storage: z.string().min(1),
   mime_type: mimeCotizacion,
@@ -145,14 +149,11 @@ const esquemaCorregir = z.object({
   tamano_bytes: z.coerce.number().int().min(0).optional(),
 })
 
-/**
- * Subir la corrección de una cotización rechazada (migración 103). La sube
- * quien la subió —lo exigen la política y el disparador— con el archivo nuevo,
- * que ya viajó a Storage. Vuelve a «Por revisar» con una versión más, y el
- * archivo rechazado queda guardado con la observación de Gerencia.
- */
+/** Una nueva versión conserva el número y vuelve a Gerencia. La base rechaza
+ * cotizaciones que ya tienen OT o liberación financiera. */
 export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
-  await exigirSesion()
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'cotizaciones.crear')) return { ok: false, error: 'Solo Ventas corrige la cotización que registró.' }
 
   const analisis = esquemaCorregir.safeParse(Object.fromEntries(datos))
   if (!analisis.success) {
@@ -169,6 +170,9 @@ export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): 
     .from('cotizaciones_pdf')
     .update({
       estado: 'POR_REVISAR' as const,
+      cliente_id: v.cliente_id,
+      tipo_carroceria_id: v.tipo_carroceria_id,
+      motivo_correccion: v.motivo_correccion,
       nombre_archivo: v.nombre_archivo,
       ruta_storage: v.ruta_storage,
       mime_type: v.mime_type,
@@ -177,7 +181,7 @@ export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): 
       moneda: v.moneda,
     })
     .eq('id', v.id)
-    .eq('estado', 'RECHAZADA')
+    .eq('version', v.version)
     .select('numero, version')
     .maybeSingle()
 
@@ -186,7 +190,7 @@ export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): 
     return { ok: false, error: delMotor ? mensajeDeError(error) : error.message }
   }
   if (!data) {
-    return { ok: false, error: 'No se pudo subir la corrección: la sube quien subió la cotización, y solo si Gerencia la rechazó.' }
+    return { ok: false, error: 'La cotización cambió o no tienes acceso. Recarga y comprueba que todavía no tenga OT ni liberación a Tesorería.' }
   }
 
   revalidatePath('/cotizaciones/pdf')
