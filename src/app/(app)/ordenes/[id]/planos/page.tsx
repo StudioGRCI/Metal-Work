@@ -48,7 +48,8 @@ export default async function PaginaPlanos({ params, searchParams }: {
       catalogos={catalogos} />
     <Cumplimiento ordenId={id} resumen={cumplimiento?.resumen ?? null} planos={cumplimiento?.planos ?? []}
       versiones={versiones.map(v => ({ ...v,
-        puedeRevisar: abierta && v.estado === 'POR_REVISAR' && v.creado_por !== perfil.id && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, 'produccion.actividades'),
+        puedeRevisarDiseno: abierta && v.revision_diseno === 'PENDIENTE' && v.creado_por !== perfil.id && puede(perfil, 'diseno.planos'),
+        puedeRevisar: abierta && v.revision_diseno === 'APROBADO' && v.estado === 'POR_REVISAR' && v.creado_por !== perfil.id && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, 'produccion.actividades'),
         puedeRecibir: v.vigente && v.estado === 'APROBADO' && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, ['produccion.actividades', 'produccion.cualquier_area']),
       }))}
       catalogos={catalogos} planoSeleccionado={query.plano}

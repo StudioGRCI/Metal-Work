@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 export async function versionesDePlanos(ordenId: string) {
   const supabase = await createClient()
   const { data, error } = await supabase.from('ot_plano_versiones')
-    .select('id, plano_id, area_id, revision, nombre_archivo, estado, vigente, observacion, nota_envio, creado_por, revisado_por, revisado_en, recibido_por, recibido_en, creado_en, plano:ot_planos!inner(id, orden_id, numero_plano, nombre), area:areas!inner(nombre)')
+    .select('id, plano_id, area_id, revision, nombre_archivo, estado, vigente, observacion, nota_envio, revision_diseno, revision_diseno_por, revision_diseno_en, observacion_diseno, creado_por, revisado_por, revisado_en, recibido_por, recibido_en, creado_en, plano:ot_planos!inner(id, orden_id, numero_plano, nombre), area:areas!inner(nombre)')
     .eq('plano.orden_id', ordenId)
     .order('creado_en', { ascending: false }).limit(200)
   if (error) throw new Error('No se pudieron cargar las versiones de planos. Vuelve a intentar.')

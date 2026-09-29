@@ -11,9 +11,9 @@ import { fechaHora } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 import type { ResultadoAccion } from '@/lib/acciones'
 import type { VersionPlano, catalogosDePlanos } from '@/lib/datos/versiones-planos'
-import { asignarEquipoDiseno, guardarLiderEntregaPlanos, registrarVersionPlano, resolverVersionPlano } from './acciones'
+import { asignarEquipoDiseno, guardarLiderEntregaPlanos, registrarVersionPlano, resolverRevisionDiseno, resolverVersionPlano } from './acciones'
 
-export type VersionEnPantalla = VersionPlano & { puedeRevisar: boolean; puedeRecibir: boolean }
+export type VersionEnPantalla = VersionPlano & { puedeRevisarDiseno: boolean; puedeRevisar: boolean; puedeRecibir: boolean }
 export type Catalogos = Awaited<ReturnType<typeof catalogosDePlanos>>
 const ESTADOS: Record<string, string> = { POR_REVISAR: 'Por revisar', OBSERVADO: 'Requiere corrección', APROBADO: 'Aprobado · pendiente de recepción', RECIBIDO: 'Recibido por el área' }
 
@@ -135,7 +135,7 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
   }
   const { alEnviar, enviando, error } = useEnvio(cargar, r => setAviso(r.mensaje ?? 'Versión registrada.'))
   return <Tarjeta>
-    <TarjetaCabecera titulo="Adjuntar PDF o nueva revisión" descripcion="Elige el área que debe revisarlo. Cada corrección se adjunta como una nueva versión de este plano." />
+    <TarjetaCabecera titulo="Adjuntar PDF o nueva revisión" descripcion="Indica el área destinataria. Si lo sube un colaborador, Jefatura de Diseño lo revisa primero; cada corrección crea una versión nueva." />
     <TarjetaCuerpo>
         <form onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="plano_id" value={planoId} />
@@ -159,16 +159,37 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
 export function Version({ version: v, ordenId }: { version: VersionEnPantalla; ordenId: string }) {
   const [aviso, setAviso] = useState<string | null>(null)
   const { alEnviar, enviando, error } = useEnvio(resolverVersionPlano, r => setAviso(r.mensaje ?? 'Cambio registrado.'))
+  const revisionDiseno = useEnvio(resolverRevisionDiseno, r => setAviso(r.mensaje ?? 'Revisión de Diseño registrada.'))
+  const estadoDiseno = v.revision_diseno === 'PENDIENTE' ? 'Pendiente de Jefatura de Diseño'
+    : v.revision_diseno === 'OBSERVADO' ? 'Observado por Jefatura de Diseño'
+      : v.revision_diseno_por ? 'Aprobado por Jefatura de Diseño' : null
   return <article className="rounded-[var(--radius-base)] border border-borde p-4">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0"><h2 className="font-semibold wrap-break-word">Plano {v.plano.numero_plano} · {v.plano.nombre}</h2><p className="mt-1 text-sm text-texto-suave">{v.area.nombre} · Revisión {v.revision}</p></div>
-      <Insignia tono={v.vigente ? 'exito' : v.estado === 'OBSERVADO' ? 'peligro' : 'aviso'}>{v.vigente ? 'Vigente' : ['APROBADO', 'RECIBIDO'].includes(v.estado) ? 'Versión anterior' : ESTADOS[v.estado]}</Insignia>
+      <Insignia tono={v.vigente ? 'exito' : v.revision_diseno === 'OBSERVADO' || v.estado === 'OBSERVADO' ? 'peligro' : 'aviso'}>{estadoDiseno && v.revision_diseno !== 'APROBADO' ? estadoDiseno : v.vigente ? 'Vigente' : ['APROBADO', 'RECIBIDO'].includes(v.estado) ? 'Versión anterior' : ESTADOS[v.estado]}</Insignia>
     </div>
-    <p className="mt-2 text-sm">{ESTADOS[v.estado]}</p>
+    <p className="mt-2 text-sm">{estadoDiseno ?? ESTADOS[v.estado]}{v.revision_diseno === 'APROBADO' && v.revision_diseno_por ? ` · ${ESTADOS[v.estado]}` : ''}</p>
     <a className="mt-3 inline-flex min-h-11 items-center gap-2 break-all text-sm font-medium text-acento hover:underline" href={`/ordenes/${ordenId}/planos/${v.id}/archivo`} target="_blank" rel="noopener noreferrer"><FileText aria-hidden className="size-4 shrink-0" />Abrir PDF: {v.nombre_archivo}</a>
     <p className="mt-2 text-xs text-texto-suave">Cargado: {fechaHora(v.creado_en)}{v.revisado_en ? ` · Revisado: ${fechaHora(v.revisado_en)}` : ''}{v.recibido_en ? ` · Recibido: ${fechaHora(v.recibido_en)}` : ''}</p>
     {v.observacion && <p className="mt-3 rounded-[var(--radius-base)] bg-aviso-suave p-3 text-sm text-texto whitespace-pre-wrap">{v.observacion}</p>}
+    {v.observacion_diseno && <p className="mt-3 rounded-[var(--radius-base)] bg-aviso-suave p-3 text-sm text-texto whitespace-pre-wrap">Jefatura de Diseño observó: {v.observacion_diseno}</p>}
     {v.nota_envio && <p className="mt-3 rounded-[var(--radius-base)] bg-superficie-2 p-3 text-sm text-texto whitespace-pre-wrap">Diseño indicó: {v.nota_envio}</p>}
+    {v.puedeRevisarDiseno && <form onSubmit={revisionDiseno.alEnviar} className="mt-4 space-y-3 rounded-[var(--radius-base)] border border-acento/30 p-3">
+      <input type="hidden" name="id" value={v.id} />
+      <p className="text-sm font-semibold text-texto">Revisión de Jefatura de Diseño</p>
+      <Campo etiqueta="Decisión" htmlFor={`diseno-decision-${v.id}`}>
+        <Seleccion id={`diseno-decision-${v.id}`} name="accion" required disabled={revisionDiseno.enviando} defaultValue="">
+          <option value="" disabled>Revisa el PDF antes de decidir</option>
+          <option value="aprobar">Aprobar y enviar al área</option>
+          <option value="observar">Observar para corrección</option>
+        </Seleccion>
+      </Campo>
+      <Campo etiqueta="Observación" htmlFor={`diseno-nota-${v.id}`} ayuda="Obligatoria si solicitas corrección.">
+        <AreaTexto id={`diseno-nota-${v.id}`} name="observacion" maxLength={1000} disabled={revisionDiseno.enviando} />
+      </Campo>
+      <Boton type="submit" cargando={revisionDiseno.enviando}>Guardar revisión de Diseño</Boton>
+      {revisionDiseno.error && <p role="alert" className="text-sm text-peligro">{revisionDiseno.error}</p>}
+    </form>}
     {v.puedeRevisar && <form onSubmit={alEnviar} className="mt-4 space-y-3">
       <input type="hidden" name="id" value={v.id} />
       <Campo etiqueta="Decisión" htmlFor={`decision-${v.id}`}><Seleccion id={`decision-${v.id}`} name="accion" required disabled={enviando} defaultValue=""><option value="" disabled>Elige después de revisar el PDF</option><option value="aprobar">Aprobar para el área</option><option value="observar">Pedir corrección a Diseño</option></Seleccion></Campo>

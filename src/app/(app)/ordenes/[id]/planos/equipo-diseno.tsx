@@ -21,8 +21,10 @@ export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
   const equipo = catalogos.equipoNominal
   const responsable = equipo.find((persona) => persona.funcion === 'RESPONSABLE')
   const colaboradores = equipo.filter((persona) => persona.funcion === 'COLABORADOR').length
+  const [expandida, setExpandida] = useState(puedeAsignar && (equipo.length === 0 || catalogos.planos.some((plano) => !plano.integrante_diseno_id)))
   const alta = useEnvio(agregarPersonaDiseno)
-  return <details className="group mt-4 rounded-[var(--radius-base)] border border-borde bg-superficie shadow-[var(--sombra)]">
+  return <details open={expandida} onToggle={(evento) => setExpandida(evento.currentTarget.open)}
+    className="group mt-4 rounded-[var(--radius-base)] border border-borde bg-superficie shadow-[var(--sombra)]">
     <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-acento [&::-webkit-details-marker]:hidden">
       <span className="min-w-0"><span className="block text-sm font-semibold text-texto">Personas que elaboran los planos</span>
         <span className="mt-0.5 block text-xs text-texto-suave">{responsable?.nombre ?? 'Sin responsable'} · {colaboradores} {colaboradores === 1 ? 'colaborador' : 'colaboradores'} · {catalogos.planos.length} {catalogos.planos.length === 1 ? 'plano' : 'planos'}</span>
@@ -30,7 +32,7 @@ export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
       <ChevronDown aria-hidden className="size-4 shrink-0 text-texto-suave transition-transform group-open:rotate-180" />
     </summary>
     <div className="space-y-5 border-t border-borde p-4">
-      <p className="text-xs text-texto-suave">Diseño anota al responsable y a los colaboradores. En cada plano indica quién lo preparó.</p>
+      <p className="text-xs text-texto-suave">Para que el colaborador pueda subir el PDF, registra su nombre aquí y asígnalo en «Quién preparó cada plano». Después Jefatura de Diseño revisa el archivo.</p>
       {equipo.length === 0 && <p className="rounded-[var(--radius-base)] bg-superficie-2 p-3 text-sm text-texto-suave">
         Aún no se han anotado personas para esta OT.
       </p>}
