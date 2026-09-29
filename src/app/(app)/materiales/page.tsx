@@ -1,4 +1,5 @@
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import Link from 'next/link'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Entrada } from '@/components/ui/campos'
 import { SinDatos, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
@@ -25,18 +26,28 @@ export default async function PaginaMateriales({ searchParams }: PageProps<'/mat
 
   const busqueda = typeof params.buscar === 'string' ? params.buscar : undefined
   const inactivos = params.todos === '1'
+  const pagina = Math.max(1, Number.parseInt(typeof params.pagina === 'string' ? params.pagina : '1', 10) || 1)
 
-  const [materiales, catalogos] = await Promise.all([
-    listarCatalogoMateriales({ busqueda, inactivos }),
+  const [resultado, catalogos] = await Promise.all([
+    listarCatalogoMateriales({ busqueda, inactivos, pagina }),
     catalogosDeMateriales(),
   ])
+  const { materiales, total, tamanoPagina } = resultado
+  const paginas = Math.max(1, Math.ceil(total / tamanoPagina))
+  const enlacePagina = (numero: number) => {
+    const consulta = new URLSearchParams()
+    if (busqueda) consulta.set('buscar', busqueda)
+    if (inactivos) consulta.set('todos', '1')
+    consulta.set('pagina', String(numero))
+    return `/materiales?${consulta.toString()}`
+  }
   const puedeEditar = puede(perfil, 'diseno.planos')
 
   return (
     <>
       <EncabezadoPagina
         titulo="Materiales"
-        descripcion="El catálogo del que Diseño elige al desglosar qué lleva cada unidad: nombre, unidad y especificación. Sin stock ni almacén."
+        descripcion="Catálogo de Diseño y Almacén. Los materiales del Excel conservan su código original; Almacén debe confirmar las unidades provisionales."
         acciones={puedeEditar && <NuevoMaterial catalogos={catalogos} />}
       />
 
@@ -101,6 +112,13 @@ export default async function PaginaMateriales({ searchParams }: PageProps<'/mat
           )}
         </TarjetaCuerpo>
       </Tarjeta>
+      {total > 0 && <nav aria-label="Páginas del catálogo" className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-texto-suave">
+        <span>{total} materiales · página {pagina} de {paginas}</span>
+        <span className="flex gap-3">
+          {pagina > 1 && <Link href={enlacePagina(pagina - 1)} className="text-acento hover:underline">Anterior</Link>}
+          {pagina < paginas && <Link href={enlacePagina(pagina + 1)} className="text-acento hover:underline">Siguiente</Link>}
+        </span>
+      </nav>}
     </>
   )
 }
