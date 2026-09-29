@@ -82,7 +82,7 @@ export function Observaciones({
     <Tarjeta className="scroll-mt-20 lg:col-span-2" id="observaciones">
       <TarjetaCabecera
         titulo={abiertas > 0 ? `Observaciones · ${abiertas} ${abiertas === 1 ? 'abierta' : 'abiertas'}` : 'Observaciones'}
-        descripcion="Un error o un pendiente que alguien encontró en la orden. Va a un área, les avisa a esa área y al jefe de producción, y queda abierto hasta que se resuelve."
+        descripcion="Un error o un pendiente que alguien encontró en la orden. Va al área responsable y a Supervisión, y queda abierto hasta que se resuelve."
         acciones={
           puedeAnotar && !anotando ? (
             <Boton variante="secundario" tamano="sm" onClick={() => setAnotando(true)}>

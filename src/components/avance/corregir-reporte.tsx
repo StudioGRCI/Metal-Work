@@ -93,7 +93,7 @@ export function CorregirReporte({
             ? `${reporte.actividad}: el reporte del ${formatearFecha(reporte.fecha)}`
             : `El reporte del ${formatearFecha(reporte.fecha)}`
         }
-        descripcion="Corrige lo que haga falta. Si el jefe lo observó, vuelve a pedirle el visto."
+        descripcion="Corrige lo que haga falta. Si Administración lo observó, vuelve a pedirle el visto."
         ancho="lg"
       >
         <form onSubmit={alEnviar} className="space-y-3">
@@ -104,7 +104,7 @@ export function CorregirReporte({
             <p className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-sm text-peligro">
               <MessageSquareWarning aria-hidden className="mt-0.5 size-4 shrink-0" />
               <span>
-                <span className="font-medium">El jefe pidió:</span> {observacion}
+                <span className="font-medium">Administración pidió:</span> {observacion}
               </span>
             </p>
           )}

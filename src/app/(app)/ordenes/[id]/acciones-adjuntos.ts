@@ -84,7 +84,7 @@ export async function quitarAdjunto(_previo: unknown, datos: FormData): Promise<
     .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
-  if (!data) return { ok: false, error: 'No se pudo quitar: lo quita quien lo subió, la oficina o el jefe.' }
+  if (!data) return { ok: false, error: 'No se pudo quitar el archivo: verifica tus permisos y el estado de la orden.' }
 
   await supabase.storage.from('adjuntos-ot').remove([data.ruta_storage])
 

@@ -44,7 +44,7 @@ export async function levantarObservacion(_previo: unknown, datos: FormData): Pr
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
-  return { ok: true, mensaje: 'Observación anotada: se les avisó al área y al jefe de producción.' }
+  return { ok: true, mensaje: 'Observación anotada: se avisó al área y a Supervisión.' }
 }
 
 const esquemaResolver = z.object({

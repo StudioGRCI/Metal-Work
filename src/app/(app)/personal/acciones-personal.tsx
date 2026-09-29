@@ -159,8 +159,7 @@ function CamposDePersona({
           <span>
             Trabaja en el taller
             <span className="mt-0.5 block text-xs text-texto-suave">
-              Solo verá las órdenes donde esté asignado o donde cargue horas. Los jefes y
-              supervisores no llevan esta marca.
+              Solo verá las órdenes donde esté asignado o donde cargue horas. Supervisión no lleva esta marca.
             </span>
           </span>
         </label>

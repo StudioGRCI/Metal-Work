@@ -41,7 +41,7 @@ export default async function PaginaTrabajos({ searchParams }: PageProps<'/avanc
       <EncabezadoPagina
         migas={[{ titulo: 'Avance en taller', ruta: '/avance' }, { titulo: 'Trabajos sin orden' }]}
         titulo="Trabajos sin orden"
-        descripcion="Lo que se hace en el taller sin orden de trabajo: unidades de clientes que entraron sin orden, o lo que el propio taller está implementando. Se reportan igual, para que el jefe y la oficina sepan cómo va."
+        descripcion="Lo que se hace en el taller sin orden de trabajo: unidades de clientes que entraron sin orden, o lo que el propio taller está implementando. Se reportan igual, para que Supervisión y Administración sepan cómo va."
         acciones={
           puedeRegistrar && (
             <EnlaceBoton href="/avance/trabajos/nueva">

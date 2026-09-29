@@ -27,7 +27,7 @@ export function NotaRevision({ r }: { r: DatosRevision }) {
       <p className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-peligro-suave px-2.5 py-1.5 text-xs text-peligro">
         <MessageSquareWarning aria-hidden className="mt-0.5 size-3.5 shrink-0" />
         <span>
-          <span className="font-medium">{r.revisado_por_nombre ?? 'El jefe'} pidió corregir:</span>{' '}
+          <span className="font-medium">{r.revisado_por_nombre ?? 'Administración'} pidió corregir:</span>{' '}
           {r.observacion}
         </span>
       </p>
