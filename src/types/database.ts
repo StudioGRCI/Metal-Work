@@ -1429,6 +1429,7 @@ export type Database = {
       }
       cotizaciones_pdf_versiones: {
         Row: {
+          estado_al_archivar: string
           id: string
           cotizacion_id: string
           version: number
@@ -1444,6 +1445,7 @@ export type Database = {
           actualizado_en: string
         }
         Insert: {
+          estado_al_archivar?: string
           id?: string
           cotizacion_id: string
           version: number
@@ -1459,6 +1461,7 @@ export type Database = {
           actualizado_en?: string
         }
         Update: {
+          estado_al_archivar?: string
           id?: string
           cotizacion_id?: string
           version?: number
@@ -2949,6 +2952,206 @@ export type Database = {
           }
         ]
       }
+      control_vehicular_items: {
+        Row: {
+          actualizado_en: string
+          categoria: string
+          codigo: string
+          nombre: string
+          orden: number
+        }
+        Insert: {
+          actualizado_en?: string
+          categoria: string
+          codigo: string
+          nombre: string
+          orden: number
+        }
+        Update: {
+          actualizado_en?: string
+          categoria?: string
+          codigo?: string
+          nombre?: string
+          orden?: number
+        }
+        Relationships: []
+      }
+      ot_control_vehicular: {
+        Row: {
+          actualizado_en: string
+          actualizado_por: string | null
+          adicionales: string
+          combustible_ingreso: string
+          combustible_salida: string
+          conductor_ingreso: string
+          conductor_salida: string
+          creado_en: string
+          dni_ingreso: string
+          dni_salida: string
+          escaneo_nombre: string | null
+          escaneo_ruta: string | null
+          fecha_ingreso: string | null
+          fecha_salida: string | null
+          id: string
+          ingreso_cerrado_en: string | null
+          items: Json
+          marca: string
+          observacion_ingreso: string
+          observacion_salida: string
+          orden_id: string
+          placa: string
+          registrado_por: string
+          salida_cerrada_en: string | null
+          trabajos: string
+        }
+        Insert: {
+          actualizado_en?: string
+          actualizado_por?: string | null
+          adicionales?: string
+          combustible_ingreso?: string
+          combustible_salida?: string
+          conductor_ingreso?: string
+          conductor_salida?: string
+          creado_en?: string
+          dni_ingreso?: string
+          dni_salida?: string
+          escaneo_nombre?: string | null
+          escaneo_ruta?: string | null
+          fecha_ingreso?: string | null
+          fecha_salida?: string | null
+          id?: string
+          ingreso_cerrado_en?: string | null
+          items?: Json
+          marca?: string
+          observacion_ingreso?: string
+          observacion_salida?: string
+          orden_id: string
+          placa?: string
+          registrado_por?: string
+          salida_cerrada_en?: string | null
+          trabajos?: string
+        }
+        Update: {
+          actualizado_en?: string
+          actualizado_por?: string | null
+          adicionales?: string
+          combustible_ingreso?: string
+          combustible_salida?: string
+          conductor_ingreso?: string
+          conductor_salida?: string
+          creado_en?: string
+          dni_ingreso?: string
+          dni_salida?: string
+          escaneo_nombre?: string | null
+          escaneo_ruta?: string | null
+          fecha_ingreso?: string | null
+          fecha_salida?: string | null
+          id?: string
+          ingreso_cerrado_en?: string | null
+          items?: Json
+          marca?: string
+          observacion_ingreso?: string
+          observacion_salida?: string
+          orden_id?: string
+          placa?: string
+          registrado_por?: string
+          salida_cerrada_en?: string | null
+          trabajos?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_control_vehicular_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_control_vehicular_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "ot_fechas_clave"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "ot_ficha_resumen"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "ot_resumen"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "unidad_tablero"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "v_cotizaciones_pdf"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "v_cumplimiento_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "v_equipo_diseno_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "v_ot_avance_diario"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_control_vehicular_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_control_vehicular_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ot_checklists: {
         Row: {
           actualizado_en: string
@@ -3882,6 +4085,179 @@ export type Database = {
             referencedRelation: "ordenes_trabajo"
             referencedColumns: ["id"]
           }
+        ]
+      }
+      ot_gastos_areas: {
+        Row: {
+          actualizado_en: string
+          area_id: string
+          comprobante_nombre: string
+          comprobante_ruta: string
+          creado_en: string
+          descripcion: string
+          estado: string
+          fecha: string
+          id: string
+          moneda: string
+          monto: number
+          observacion_revision: string | null
+          orden_id: string
+          registrado_por: string
+          revisado_en: string | null
+          revisado_por: string | null
+          tipo: string
+        }
+        Insert: {
+          actualizado_en?: string
+          area_id: string
+          comprobante_nombre: string
+          comprobante_ruta: string
+          creado_en?: string
+          descripcion: string
+          estado?: string
+          fecha: string
+          id?: string
+          moneda: string
+          monto: number
+          observacion_revision?: string | null
+          orden_id: string
+          registrado_por?: string
+          revisado_en?: string | null
+          revisado_por?: string | null
+          tipo: string
+        }
+        Update: {
+          actualizado_en?: string
+          area_id?: string
+          comprobante_nombre?: string
+          comprobante_ruta?: string
+          creado_en?: string
+          descripcion?: string
+          estado?: string
+          fecha?: string
+          id?: string
+          moneda?: string
+          monto?: number
+          observacion_revision?: string | null
+          orden_id?: string
+          registrado_por?: string
+          revisado_en?: string | null
+          revisado_por?: string | null
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_gastos_areas_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "v_ot_avance_diario"
+            referencedColumns: ["area_id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "v_plazos_por_area"
+            referencedColumns: ["area_id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_fechas_clave"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_ficha_resumen"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_resumen"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "unidad_tablero"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cotizaciones_pdf"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cumplimiento_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_equipo_diseno_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_ot_avance_diario"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_revisado_por_fkey"
+            columns: ["revisado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_revisado_por_fkey"
+            columns: ["revisado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
         ]
       }
       ot_solicitudes_tesoreria: {
@@ -5522,6 +5898,7 @@ export type Database = {
       }
       v_cotizaciones_pdf_versiones: {
         Row: {
+          estado_al_archivar: string | null
           id: string | null
           cotizacion_id: string | null
           version: number | null
@@ -5911,6 +6288,15 @@ export type Database = {
       }
     }
     Functions: {
+      resumen_costeo_ot: {
+        Args: { p_orden: string }
+        Returns: {
+          fuente: string
+          moneda: string
+          monto: number
+          pendientes: number
+        }[]
+      }
       resumen_planilla_por_ot: {
         Args: never
         Returns: {

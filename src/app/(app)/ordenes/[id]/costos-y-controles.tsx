@@ -6,26 +6,23 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { controlesYSolicitudesDeOrden } from '@/lib/datos/costos-ot'
-import { cantidad, fechaHora, moneda } from '@/lib/format'
+import { cantidad, fecha, fechaHora, moneda } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
-import { guardarChecklist, solicitarTesoreria } from './acciones-costos'
+import { solicitarTesoreria } from './acciones-costos'
+import { adjuntarControlFirmado, guardarControlVehicular, registrarGastoArea, revisarGastoArea } from './acciones-control-y-gastos'
 
 type Datos = Awaited<ReturnType<typeof controlesYSolicitudesDeOrden>>
-type Control = Datos['controles'][number]
-
-const ETIQUETAS: Record<'INGRESO' | 'SALIDA', [string, string, string, string]> = {
-  INGRESO: ['Identidad de la unidad', 'Documentación recibida', 'Materiales y accesorios recibidos', 'Estado físico inicial'],
-  SALIDA: ['Identidad de la unidad que sale', 'Documentos de entrega', 'Materiales y accesorios entregados', 'Estado físico final'],
-}
-
-export function CostosYControles({ ordenId, datos, puedeControlar, puedeSolicitar, ordenCerrada }: {
+export function CostosYControles({ ordenId, datos, puedeControlar, puedeSolicitar, puedeRegistrarGasto, puedeRevisarGasto, puedeVerCosteo, ordenCerrada }: {
   ordenId: string
   datos: Datos
   puedeControlar: boolean
   puedeSolicitar: boolean
+  puedeRegistrarGasto: boolean
+  puedeRevisarGasto: boolean
+  puedeVerCosteo: boolean
   ordenCerrada: boolean
 }) {
-  const salidaCompleta = datos.controles.some(c => c.tipo === 'SALIDA' && c.completado_en)
+  const salidaCompleta = Boolean(datos.control?.salida_cerrada_en && datos.control.escaneo_ruta)
   return <div className="space-y-5">
     <Tarjeta>
       <TarjetaCabecera titulo="Materiales de la OT" descripcion="Resumen de lo asignado por Diseño a cada plano y área. Las solicitudes al almacén las hace el área que los utilizará." />
@@ -37,10 +34,9 @@ export function CostosYControles({ ordenId, datos, puedeControlar, puedeSolicita
           </table></div>}
       </TarjetaCuerpo>
     </Tarjeta>
-    <div className="grid gap-4 lg:grid-cols-2">
-      {(['INGRESO', 'SALIDA'] as const).map(tipo => <ListaControl key={tipo} ordenId={ordenId} tipo={tipo}
-        control={datos.controles.find(c => c.tipo === tipo) ?? null} editable={puedeControlar && !ordenCerrada} />)}
-    </div>
+    {puedeVerCosteo && <ResumenCosteo lineas={datos.costeo} />}
+    <GastosDeAreas ordenId={ordenId} datos={datos} puedeRegistrar={puedeRegistrarGasto && !ordenCerrada} puedeRevisar={puedeRevisarGasto} />
+    {(puedeControlar || puedeVerCosteo) && <FichaVehicular ordenId={ordenId} datos={datos} editable={puedeControlar && !ordenCerrada} />}
     <Tarjeta>
       <TarjetaCabecera titulo="Solicitudes a Tesorería" descripcion="Costos solicita la atención del pago de materiales o la revisión financiera previa a la salida. Tesorería responde; esta solicitud no equivale a un pago ni a una liberación." />
       <TarjetaCuerpo className="space-y-4">
@@ -58,23 +54,153 @@ export function CostosYControles({ ordenId, datos, puedeControlar, puedeSolicita
   </div>
 }
 
-function ListaControl({ ordenId, tipo, control, editable }: { ordenId: string; tipo: 'INGRESO' | 'SALIDA'; control: Control | null; editable: boolean }) {
-  const { alEnviar, enviando, resultado, error } = useEnvio(guardarChecklist)
-  const completada = Boolean(control?.completado_en)
-  const campos = ['identidad_verificada', 'documentos_verificados', 'materiales_verificados', 'condicion_verificada'] as const
+function ResumenCosteo({ lineas }: { lineas: Datos['costeo'] }) {
+  const pendientes = lineas.find(l => l.fuente === 'MATERIALES_SIN_PRECIO')?.pendientes ?? 0
+  const fuentes: Record<string, string> = { MATERIALES: 'Materiales despachados', PLANILLA: 'Planilla cerrada asignada', GASTOS_AREA: 'Gastos de áreas aprobados' }
+  const monedas = ['PEN', 'USD'] as const
   return <Tarjeta>
-    <TarjetaCabecera titulo={`Lista de ${tipo === 'INGRESO' ? 'ingreso' : 'salida'}`} descripcion={completada ? `Completada el ${fechaHora(control?.completado_en ?? '')}` : 'Marca lo comprobado; la lista se completa cuando los cuatro puntos estén verificados.'} />
-    <TarjetaCuerpo>
-      <form onSubmit={alEnviar} className="space-y-3">
-        <input type="hidden" name="orden_id" value={ordenId} /><input type="hidden" name="tipo" value={tipo} />
-        {campos.map((campo, i) => <label key={campo} className="flex min-h-11 items-center gap-3 text-sm text-texto"><input className="size-4 accent-acento" type="checkbox" name={campo} defaultChecked={Boolean(control?.[campo])} disabled={!editable || completada || enviando} />{ETIQUETAS[tipo][i]}</label>)}
-        <Campo etiqueta="Observaciones" htmlFor={`observacion-${tipo}`} ayuda="Registra faltantes o daños antes de completar.">
-          <AreaTexto id={`observacion-${tipo}`} name="observacion" rows={3} maxLength={2000} defaultValue={control?.observacion ?? ''} disabled={!editable || completada || enviando} />
-        </Campo>
+    <TarjetaCabecera titulo="Costo acumulado de la OT" descripcion="Suma despachos valorizados, planilla cerrada asignada y gastos aprobados. Las compras se cuentan al despacharse." />
+    <TarjetaCuerpo className="space-y-3">
+      {monedas.map(m => <div key={m} className="rounded-[var(--radius-base)] border border-borde p-3">
+        <strong className="text-sm">{m === 'PEN' ? 'Soles' : 'Dólares'}</strong>
+        {Object.entries(fuentes).map(([fuente, titulo]) => {
+          const valor = lineas.find(l => l.fuente === fuente && l.moneda === m)?.monto ?? 0
+          return <div key={fuente} className="flex justify-between gap-3 py-1 text-sm"><span>{titulo}</span><span className="tabular">{moneda(valor, m)}</span></div>
+        })}
+        <div className="flex justify-between gap-3 border-t border-borde pt-2 font-semibold"><span>Total {m}</span><span className="tabular">{moneda(lineas.filter(l => l.moneda === m).reduce((s, l) => s + l.monto, 0), m)}</span></div>
+      </div>)}
+      {pendientes > 0 && <p role="status" className="text-sm text-aviso">{pendientes} despacho(s) aún sin precio. El costo está incompleto hasta valorizarlos.</p>}
+      <p className="text-xs text-texto-suave">El precio de material es el último precio de compra disponible al momento del despacho; revisa la valorización antes de cerrar la OT.</p>
+    </TarjetaCuerpo>
+  </Tarjeta>
+}
+
+function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar }: {
+  ordenId: string; datos: Datos; puedeRegistrar: boolean; puedeRevisar: boolean
+}) {
+  const [id, setId] = useState(() => crypto.randomUUID())
+  const { alEnviar, enviando, resultado, error } = useEnvio(registrarGastoArea, () => setId(crypto.randomUUID()))
+  return <Tarjeta>
+    <TarjetaCabecera titulo="Gastos de las áreas" descripcion="Cada área adjunta el comprobante de su OT. Administración aprueba; solo entonces se suma al costo." />
+    <TarjetaCuerpo className="space-y-4">
+      {puedeRegistrar && <details className="rounded-[var(--radius-base)] border border-borde p-3">
+        <summary className="cursor-pointer font-medium">Registrar gasto de mi área</summary>
+        <form onSubmit={alEnviar} className="mt-4 grid gap-3 sm:grid-cols-2">
+          <input type="hidden" name="id" value={id} /><input type="hidden" name="orden_id" value={ordenId} />
+          <Campo etiqueta="Tipo" htmlFor="gasto-tipo" requerido><Seleccion id="gasto-tipo" name="tipo" defaultValue="SERVICIO"><option value="SERVICIO">Servicio</option><option value="TRANSPORTE">Transporte</option><option value="VIATICO">Viático</option><option value="SUBCONTRATO">Subcontrato</option><option value="OTRO">Otro</option></Seleccion></Campo>
+          <Campo etiqueta="Fecha" htmlFor="gasto-fecha" requerido><Entrada id="gasto-fecha" type="date" name="fecha" required /></Campo>
+          <Campo etiqueta="Importe" htmlFor="gasto-monto" requerido><Entrada id="gasto-monto" type="number" min="0.01" step="0.01" name="monto" required /></Campo>
+          <Campo etiqueta="Moneda" htmlFor="gasto-moneda" requerido><Seleccion id="gasto-moneda" name="moneda" defaultValue="PEN"><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion></Campo>
+          <div className="sm:col-span-2"><Campo etiqueta="Descripción y referencia" htmlFor="gasto-descripcion" requerido><AreaTexto id="gasto-descripcion" name="descripcion" minLength={10} maxLength={500} required rows={2} /></Campo></div>
+          <div className="sm:col-span-2"><Campo etiqueta="Comprobante PDF" htmlFor="gasto-pdf" requerido ayuda="Hasta 15 MB."><Entrada id="gasto-pdf" type="file" name="pdf" accept="application/pdf,.pdf" required /></Campo></div>
+          {error && <p role="alert" className="sm:col-span-2 text-sm text-peligro">{error}</p>}
+          {resultado?.ok && <p role="status" className="sm:col-span-2 text-sm text-exito">{resultado.mensaje}</p>}
+          <Boton type="submit" cargando={enviando}>Enviar para revisión</Boton>
+        </form>
+      </details>}
+      {datos.gastos.length === 0 ? <p className="text-sm text-texto-suave">Todavía no hay gastos registrados en esta OT.</p> :
+        <ol className="space-y-3">{datos.gastos.map(g => <li key={g.id} className="rounded-[var(--radius-base)] border border-borde p-3 text-sm">
+          <div className="flex flex-wrap justify-between gap-2"><strong>{g.descripcion}</strong><Insignia tono={g.estado === 'APROBADO' ? 'exito' : g.estado === 'OBSERVADO' ? 'peligro' : 'aviso'}>{g.estado}</Insignia></div>
+          <p className="mt-1 text-texto-suave">{g.area?.nombre ?? 'Área'} · {g.tipo} · {fecha(g.fecha)} · {moneda(g.monto, g.moneda === 'USD' ? 'USD' : 'PEN')}</p>
+          {g.url && <a className="text-acento underline" href={g.url} target="_blank" rel="noopener noreferrer">Ver comprobante</a>}
+          {g.observacion_revision && <p className="mt-2 text-peligro">Observación: {g.observacion_revision}</p>}
+          {puedeRevisar && g.estado === 'PENDIENTE' && <RevisionGasto id={g.id} ordenId={ordenId} />}
+        </li>)}</ol>}
+    </TarjetaCuerpo>
+  </Tarjeta>
+}
+
+function RevisionGasto({ id, ordenId }: { id: string; ordenId: string }) {
+  const { alEnviar, enviando, resultado, error } = useEnvio(revisarGastoArea)
+  return <form onSubmit={alEnviar} className="mt-3 space-y-2 border-t border-borde pt-3">
+    <input type="hidden" name="id" value={id} /><input type="hidden" name="orden_id" value={ordenId} />
+    <Campo etiqueta="Decisión de Administración" htmlFor={'decision-' + id}><Seleccion id={'decision-' + id} name="estado" defaultValue="APROBADO"><option value="APROBADO">Aprobar</option><option value="OBSERVADO">Observar</option></Seleccion></Campo>
+    <Campo etiqueta="Motivo si observas" htmlFor={'motivo-' + id}><Entrada id={'motivo-' + id} name="observacion_revision" maxLength={1000} /></Campo>
+    {error && <p role="alert" className="text-peligro">{error}</p>}{resultado?.ok && <p role="status" className="text-exito">{resultado.mensaje}</p>}
+    <Boton type="submit" tamano="sm" cargando={enviando}>Guardar revisión</Boton>
+  </form>
+}
+
+function estadoDeItem(valor: unknown, fase: 'ingreso' | 'salida'): string {
+  if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return ''
+  const dato = Reflect.get(valor, fase)
+  return typeof dato === 'string' ? dato : ''
+}
+
+function FichaVehicular({ ordenId, datos, editable }: { ordenId: string; datos: Datos; editable: boolean }) {
+  const c = datos.control
+  const ingresoCerrado = Boolean(c?.ingreso_cerrado_en)
+  const salidaCerrada = Boolean(c?.salida_cerrada_en)
+  const { alEnviar, enviando, resultado, error } = useEnvio(guardarControlVehicular)
+  const escaneo = useEnvio(adjuntarControlFirmado)
+  function enviar(evento: React.FormEvent<HTMLFormElement>) {
+    const boton = (evento.nativeEvent as SubmitEvent).submitter
+    const accion = boton instanceof HTMLButtonElement ? boton.value : 'GUARDAR'
+    if (accion !== 'GUARDAR' && !window.confirm(accion === 'CERRAR_INGRESO' ? '¿Cerrar el ingreso de esta OT? Sus datos quedarán fijos.' : '¿Cerrar la salida? Solo podrás adjuntar el escaneo firmado.')) {
+      evento.preventDefault(); return
+    }
+    alEnviar(evento, d => d.set('accion', accion))
+  }
+  return <Tarjeta>
+    <TarjetaCabecera titulo="Ficha única de ingreso y salida" descripcion="Usa el formato de inspección vehicular de Metal Work. Guarda avances, cierra cada etapa y descarga la misma ficha para firmarla." />
+    <TarjetaCuerpo className="space-y-4">
+      <div className="flex flex-wrap gap-3 text-sm">
+        <span>Ingreso: {ingresoCerrado ? fechaHora(c?.ingreso_cerrado_en ?? '') : 'pendiente'}</span>
+        <span>Salida: {salidaCerrada ? fechaHora(c?.salida_cerrada_en ?? '') : 'pendiente'}</span>
+        <a className="text-acento underline" href={'/ordenes/' + ordenId + '/control-vehicular/pdf'} target="_blank" rel="noopener noreferrer">Descargar ficha PDF</a>
+        {datos.escaneoUrl && <a className="text-acento underline" href={datos.escaneoUrl} target="_blank" rel="noopener noreferrer">Ver escaneo firmado</a>}
+      </div>
+      <form onSubmit={enviar} className="space-y-5">
+        <input type="hidden" name="orden_id" value={ordenId} />
+        <fieldset disabled={!editable || enviando || salidaCerrada} className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Campo etiqueta="Placa" htmlFor="cv-placa"><Entrada id="cv-placa" name="placa" maxLength={30} defaultValue={c?.placa ?? ''} readOnly={ingresoCerrado} /></Campo>
+            <Campo etiqueta="Marca" htmlFor="cv-marca"><Entrada id="cv-marca" name="marca" maxLength={80} defaultValue={c?.marca ?? ''} readOnly={ingresoCerrado} /></Campo>
+            <Campo etiqueta="Conductor al ingreso" htmlFor="cv-ci"><Entrada id="cv-ci" name="conductor_ingreso" maxLength={120} defaultValue={c?.conductor_ingreso ?? ''} readOnly={ingresoCerrado} /></Campo>
+            <Campo etiqueta="DNI al ingreso" htmlFor="cv-di"><Entrada id="cv-di" name="dni_ingreso" maxLength={20} defaultValue={c?.dni_ingreso ?? ''} readOnly={ingresoCerrado} /></Campo>
+            <Campo etiqueta="Fecha de ingreso" htmlFor="cv-fi"><Entrada id="cv-fi" name="fecha_ingreso" type="date" defaultValue={c?.fecha_ingreso ?? ''} readOnly={ingresoCerrado} /></Campo>
+            <Campo etiqueta="Combustible al ingreso" htmlFor="cv-combi"><Entrada id="cv-combi" name="combustible_ingreso" maxLength={40} defaultValue={c?.combustible_ingreso ?? ''} readOnly={ingresoCerrado} /></Campo>
+            <Campo etiqueta="Conductor a la salida" htmlFor="cv-cs"><Entrada id="cv-cs" name="conductor_salida" maxLength={120} defaultValue={c?.conductor_salida ?? ''} /></Campo>
+            <Campo etiqueta="DNI a la salida" htmlFor="cv-ds"><Entrada id="cv-ds" name="dni_salida" maxLength={20} defaultValue={c?.dni_salida ?? ''} /></Campo>
+            <Campo etiqueta="Fecha de salida" htmlFor="cv-fs"><Entrada id="cv-fs" name="fecha_salida" type="date" defaultValue={c?.fecha_salida ?? ''} /></Campo>
+            <Campo etiqueta="Combustible a la salida" htmlFor="cv-combs"><Entrada id="cv-combs" name="combustible_salida" maxLength={40} defaultValue={c?.combustible_salida ?? ''} /></Campo>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Campo etiqueta="Accesorios adicionales" htmlFor="cv-ad"><AreaTexto id="cv-ad" name="adicionales" rows={2} defaultValue={c?.adicionales ?? ''} /></Campo>
+            <Campo etiqueta="Trabajos realizados" htmlFor="cv-tr"><AreaTexto id="cv-tr" name="trabajos" rows={2} defaultValue={c?.trabajos ?? ''} /></Campo>
+            <Campo etiqueta="Observación de ingreso" htmlFor="cv-oi"><AreaTexto id="cv-oi" name="observacion_ingreso" rows={2} defaultValue={c?.observacion_ingreso ?? ''} readOnly={ingresoCerrado} /></Campo>
+            <Campo etiqueta="Observación de salida" htmlFor="cv-os"><AreaTexto id="cv-os" name="observacion_salida" rows={2} defaultValue={c?.observacion_salida ?? ''} /></Campo>
+          </div>
+          {['CABINA_EXTERIOR','ACCESORIOS','CABINA_INTERIOR','HERRAMIENTAS'].map(cat => <details key={cat} className="rounded-[var(--radius-base)] border border-borde p-3">
+            <summary className="cursor-pointer font-medium">{({ CABINA_EXTERIOR: 'Cabina exterior', ACCESORIOS: 'Accesorios', CABINA_INTERIOR: 'Cabina interior', HERRAMIENTAS: 'Herramientas' } as Record<string,string>)[cat]}</summary>
+            <div className="mt-3 space-y-3">{datos.items.filter(i => i.categoria === cat).map(i => {
+              const estados = c?.items && typeof c.items === 'object' && !Array.isArray(c.items) ? Reflect.get(c.items, i.codigo) : null
+              return <div key={i.codigo} className="grid gap-2 border-b border-borde pb-3 sm:grid-cols-[1fr_10rem_10rem]">
+                <span className="self-center text-sm">{i.nombre}</span>
+                {(['ingreso','salida'] as const).map(fase => <label key={fase} className="text-xs text-texto-suave">{fase === 'ingreso' ? 'Ingreso' : 'Salida'}
+                  <Seleccion aria-label={i.nombre + ' al ' + fase} name={fase + '_' + i.codigo} defaultValue={estadoDeItem(estados, fase)} disabled={fase === 'ingreso' && ingresoCerrado}>
+                    <option value="">Pendiente</option><option value="CONFORME">Conforme</option><option value="NO_TIENE">No tiene</option><option value="OBSERVADO">Observado</option>
+                  </Seleccion>
+                </label>)}
+              </div>
+            })}</div>
+          </details>)}
+        </fieldset>
         {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
         {resultado?.ok && <p role="status" className="text-sm text-exito">{resultado.mensaje}</p>}
-        {editable && !completada && <Boton type="submit" tamano="sm" cargando={enviando}>Guardar lista</Boton>}
+        {editable && !salidaCerrada && <div className="flex flex-wrap gap-2">
+          <Boton type="submit" value="GUARDAR" cargando={enviando} variante="secundario">Guardar avance</Boton>
+          {!ingresoCerrado && <Boton type="submit" value="CERRAR_INGRESO" cargando={enviando}>Cerrar ingreso</Boton>}
+          {ingresoCerrado && <Boton type="submit" value="CERRAR_SALIDA" cargando={enviando}>Cerrar salida</Boton>}
+        </div>}
       </form>
+      {editable && salidaCerrada && !c?.escaneo_ruta && <form onSubmit={escaneo.alEnviar} className="space-y-2 rounded-[var(--radius-base)] border border-borde p-3">
+        <input type="hidden" name="orden_id" value={ordenId} />
+        <Campo etiqueta="Escaneo firmado en PDF" htmlFor="cv-scan" requerido><Entrada id="cv-scan" name="pdf" type="file" accept="application/pdf,.pdf" required /></Campo>
+        {escaneo.error && <p role="alert" className="text-peligro">{escaneo.error}</p>}
+        {escaneo.resultado?.ok && <p role="status" className="text-exito">{escaneo.resultado.mensaje}</p>}
+        <Boton type="submit" cargando={escaneo.enviando}>Adjuntar escaneo firmado</Boton>
+      </form>}
     </TarjetaCuerpo>
   </Tarjeta>
 }

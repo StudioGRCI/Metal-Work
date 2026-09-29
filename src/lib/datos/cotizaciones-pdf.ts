@@ -13,6 +13,7 @@ import type { Tablas, Vistas } from '@/types/database'
 export type VersionCotizacion = Vistas<'v_cotizaciones_pdf_versiones'> & { url: string | null }
 export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & {
   url: string | null
+  urlAprobada: string | null
   versiones: VersionCotizacion[]
   liberacionTesoreria: Pick<Tablas<'cotizaciones_pdf_liberaciones_tesoreria'>, 'id' | 'liberado_en'> | null
   observacionesTesoreria: Pick<Tablas<'cotizaciones_pdf_observaciones_tesoreria'>, 'id' | 'observacion' | 'creado_en'>[]
@@ -84,7 +85,7 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
   if (conHistorial.length > 0) {
     const r = await supabase
       .from('v_cotizaciones_pdf_versiones')
-      .select('id, cotizacion_id, version, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_en, observacion, rechazado_en, rechazado_por_nombre')
+      .select('id, cotizacion_id, version, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_en, observacion, rechazado_en, rechazado_por_nombre, estado_al_archivar')
       .in('cotizacion_id', conHistorial)
       .order('version', { ascending: false })
     if (r.error) throw new Error(`No se pudo leer el historial de las cotizaciones: ${r.error.message}`)
@@ -104,6 +105,7 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
 
   return filas.map((f) => {
     const liberacion = liberaciones.data?.find((l) => l.cotizacion_pdf_id === f.id) ?? null
+    const ultimaAprobada = versiones.find((v) => v.cotizacion_id === f.id && v.estado_al_archivar === 'APROBADA')
     return {
       ...f,
       liberacionTesoreria: liberacion ? { id: liberacion.id, liberado_en: liberacion.liberado_en } : null,
@@ -112,6 +114,9 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
         .map((o) => ({ id: o.id, observacion: o.observacion, creado_en: o.creado_en })),
       tipo_unidad: (f.tipo_carroceria_id && tipoDe.get(f.tipo_carroceria_id)) ?? null,
       url: (f.ruta_storage && enlaces.get(f.ruta_storage)) ?? null,
+      urlAprobada: f.estado === 'APROBADA'
+        ? (f.ruta_storage && enlaces.get(f.ruta_storage)) ?? null
+        : (ultimaAprobada?.ruta_storage && enlaces.get(ultimaAprobada.ruta_storage)) ?? null,
       versiones: versiones
         .filter((v) => v.cotizacion_id === f.id)
         .map((v) => ({ ...v, url: (v.ruta_storage && enlaces.get(v.ruta_storage)) ?? null })),
@@ -128,20 +133,33 @@ export async function cotizacionPdfDeOrden(ordenId: string) {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('v_cotizaciones_pdf')
-    .select('id, numero, nombre_archivo, ruta_storage, mime_type')
+    .select('id, numero, estado, nombre_archivo, ruta_storage, mime_type')
     .eq('orden_id', ordenId)
     .limit(1)
     .maybeSingle()
 
   if (error) throw new Error(`No se pudo leer la cotización de la orden: ${error.message}`)
-  if (!data) return null
+  if (!data?.id) return null
 
-  const enlaces = await enlacesDe([data])
+  const aprobadaAnterior = data.estado !== 'APROBADA'
+    ? await supabase.from('v_cotizaciones_pdf_versiones')
+      .select('nombre_archivo, ruta_storage, mime_type')
+      .eq('cotizacion_id', data.id)
+      .eq('estado_al_archivar', 'APROBADA')
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    : null
+  if (aprobadaAnterior?.error) throw new Error(`No se pudo leer la versión aprobada: ${aprobadaAnterior.error.message}`)
+  const archivo = data.estado === 'APROBADA' ? data : aprobadaAnterior?.data
+  if (!archivo) return null
+  const enlaces = await enlacesDe([archivo])
   return {
     numero: data.numero,
-    nombre_archivo: data.nombre_archivo,
-    mime_type: data.mime_type,
-    url: (data.ruta_storage && enlaces.get(data.ruta_storage)) ?? null,
+    nombre_archivo: archivo.nombre_archivo,
+    mime_type: archivo.mime_type,
+    url: (archivo.ruta_storage && enlaces.get(archivo.ruta_storage)) ?? null,
+    revisionPendiente: data.estado !== 'APROBADA',
   }
 }
 

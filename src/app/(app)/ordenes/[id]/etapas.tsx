@@ -70,7 +70,7 @@ export function Etapas({
       />
       <TarjetaCuerpo className="space-y-3 p-3 sm:p-4">
         {etapas.length > 0 && puedeDefinir && <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
-          Etapas definidas. Continúa en <Link href={`/ordenes/${ordenId}?vista=planos`} className="font-medium text-acento underline">Planos y revisiones</Link>; Administración pondrá las fechas.
+          Etapas definidas. Diseño puede vincular cada plano a cualquiera de ellas en <Link href={`/ordenes/${ordenId}/planos`} className="font-medium text-acento underline">Planos y revisiones</Link>; Administración pondrá las fechas.
         </p>}
         {etapas.length > 0 && puedeProgramar && <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
           Programa el inicio y fin de cada etapa con su botón «Programar».

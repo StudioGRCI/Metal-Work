@@ -1,7 +1,10 @@
-const fs = require('node:fs')
-const vm = require('node:vm')
-const ts = require('typescript')
-const { unzipSync, strFromU8 } = require('fflate')
+import fs from 'node:fs'
+import vm from 'node:vm'
+import { createRequire } from 'node:module'
+import ts from 'typescript'
+import { unzipSync, strFromU8 } from 'fflate'
+
+const cargar = createRequire(import.meta.url)
 
 const fuente = fs.readFileSync('src/lib/documentos/informe-diseno.ts', 'utf8')
 const js = ts.transpileModule(fuente, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
@@ -9,7 +12,7 @@ const modulo = { exports: {} }
 const formato = { fecha: v => v ?? '—', fechaHora: v => v ?? '—' }
 vm.runInNewContext(js, {
   module: modulo, exports: modulo.exports, Buffer,
-  require: nombre => nombre === '@/lib/format' ? formato : require(nombre),
+  require: nombre => nombre === '@/lib/format' ? formato : cargar(nombre),
 })
 
 async function main() {

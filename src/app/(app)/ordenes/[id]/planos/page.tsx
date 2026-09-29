@@ -53,7 +53,10 @@ export default async function PaginaPlanos({ params, searchParams }: {
         puedeRecibir: v.vigente && v.estado === 'APROBADO' && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, ['produccion.actividades', 'produccion.cualquier_area']),
       }))}
       catalogos={catalogos} planoSeleccionado={query.plano}
-      etapas={etapas.filter(e => e.etapa_id && e.area_id === areasEtapas.find(a => a.codigo === 'DIS')?.id).map(e => ({ id: e.etapa_id!, nombre: e.etapa ?? 'Diseño' }))}
+      etapas={etapas.filter(e => e.etapa_id).map(e => ({
+        id: e.etapa_id!,
+        nombre: `${e.etapa ?? 'Etapa'} · ${areasEtapas.find(a => a.id === e.area_id)?.nombre ?? 'Área'}`,
+      }))}
       puedeDisenar={puede(perfil, 'diseno.planos')}
       puedeSubirPdf={puede(perfil, 'diseno.subir_pdf')}
       areaPropia={manoDelTaller}

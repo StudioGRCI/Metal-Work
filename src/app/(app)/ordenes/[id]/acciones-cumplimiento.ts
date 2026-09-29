@@ -80,7 +80,7 @@ async function exigirTaller() {
 // ============================================================== los planos
 const esquemaPlano = z.object({
   orden_id: z.string().uuid(),
-  etapa_id: z.string().uuid('Primero crea y elige una etapa de Diseño para este plano.'),
+  etapa_id: z.string().uuid('Primero crea y elige una etapa de esta OT para el plano.'),
   numero_plano: z.string().trim().min(1, 'Ponle número al plano').max(20, 'El número del plano es demasiado largo'),
   nombre: z.string().trim().min(2, 'Ponle nombre al plano').max(120),
   peso_pct: z.coerce.number().min(0, 'El peso no puede ser negativo').max(100, 'Ningún plano pesa más de 100'),
@@ -110,7 +110,7 @@ export async function agregarPlano(_previo: unknown, datos: FormData): Promise<R
   const supabase = await createClient()
   const { data: etapa, error: errorEtapa } = await supabase.from('ot_etapas')
     .select('id').eq('id', v.etapa_id).eq('orden_id', v.orden_id).maybeSingle()
-  if (errorEtapa || !etapa) return { ok: false, error: 'Elige una etapa de Diseño de esta orden.' }
+  if (errorEtapa || !etapa) return { ok: false, error: 'Elige una etapa de esta orden.' }
 
   // Al final de la lista; el orden se corrige después si hace falta.
   const { data: previos } = await supabase
@@ -239,7 +239,7 @@ export async function editarPlano(_previo: unknown, datos: FormData): Promise<Re
 
   const { data: etapa, error: errorEtapa } = await supabase.from('ot_etapas')
     .select('id').eq('id', v.etapa_id).eq('orden_id', v.orden_id).maybeSingle()
-  if (errorEtapa || !etapa) return { ok: false, error: 'Elige una etapa de Diseño de esta orden.' }
+  if (errorEtapa || !etapa) return { ok: false, error: 'Elige una etapa de esta orden.' }
 
   const { data, error } = await supabase
     .from('ot_planos')
