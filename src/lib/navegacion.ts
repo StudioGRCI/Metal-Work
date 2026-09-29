@@ -110,6 +110,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
   {
     titulo: 'Finanzas',
     items: [
+      { titulo: 'Adquisiciones', ruta: '/adquisiciones', icono: Receipt, permiso: 'adquisiciones.ver', descripcion: 'Facturas, recibos y documentos de compras', disponible: true },
       {
         titulo: 'Tesorería',
         ruta: '/tesoreria',
@@ -118,6 +119,8 @@ export const NAVEGACION: GrupoNavegacion[] = [
         descripcion: 'Cotizaciones liberadas y documentos de compras',
         disponible: true,
       },
+      { titulo: 'Cuentas de Tesorería', ruta: '/tesoreria/cuentas', icono: FileSpreadsheet, permiso: 'tesoreria.ver_documentos', descripcion: 'Cobros por OT y pagos de compras', disponible: true },
+      { titulo: 'Recursos Humanos', ruta: '/rrhh', icono: UserCog, permiso: 'rrhh.ver_planillas', descripcion: 'Planillas y distribución por unidad', disponible: true },
     ],
   },
   {
@@ -154,7 +157,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
 /** Permisos amplios permiten consultar detalles; el menú prioriza cada puesto. */
 const RUTAS_POR_PUESTO: Record<string, readonly string[]> = {
   GERENTE: ['/', '/cotizaciones/pdf', '/ordenes'],
-  TESORERIA: ['/', '/ordenes', '/tesoreria'],
+  TESORERIA: ['/', '/ordenes', '/tesoreria', '/tesoreria/cuentas', '/adquisiciones'],
 }
 
 export function puedeVer(item: ItemNavegacion, permisos: string[], esAdmin: boolean, rolCodigo: string) {
@@ -189,6 +192,9 @@ export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/ordenes', corto: 'Órdenes' },
   { ruta: '/materiales/atencion', corto: 'Materiales' },
   { ruta: '/tesoreria', corto: 'Tesorería' },
+  { ruta: '/tesoreria/cuentas', corto: 'Cuentas' },
+  { ruta: '/adquisiciones', corto: 'Facturas' },
+  { ruta: '/rrhh', corto: 'Planillas' },
   { ruta: '/plazos', corto: 'Plazos' },
   { ruta: '/clientes', corto: 'Clientes' },
   { ruta: '/', corto: 'Tablero' },

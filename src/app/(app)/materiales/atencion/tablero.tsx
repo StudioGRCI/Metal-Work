@@ -19,7 +19,7 @@ import type {
   ResponsableMaterial,
 } from '@/lib/datos/atencion-materiales'
 
-import { crearOrdenCompra, despacharMaterial, registrarConteo, registrarRecepcion, resolverPropuesta, revisarStock, registrarPrecioCompra, marcarEntregaCompra } from './acciones'
+import { crearOrdenCompra, despacharMaterial, registrarConteo, registrarRecepcion, resolverPropuesta, revisarStock, registrarPrecioCompra, marcarEntregaCompra, fijarCondicionCompra } from './acciones'
 import { SubirDocumentoCompra } from './subir-documento-compra'
 
 const NOMBRE_AREA: Record<string, string> = {
@@ -33,7 +33,7 @@ const NOMBRE_ESTADO: Record<string, string> = {
   RECHAZADO: 'Rechazado',
   ALMACEN: 'Revisar stock',
   STOCK: 'Por despachar',
-  SOLICITADO: 'Por comprar',
+  SOLICITADO: 'Derivado a Logística',
   EN_COMPRA: 'En compra',
   EN_ALMACEN: 'En almacén',
   ATENDIDO: 'Entregado',
@@ -141,7 +141,7 @@ export function TableroMateriales({
                 ['RECHAZADO', 'Rechazado'],
                 ['ALMACEN', 'Revisar stock'],
                 ['STOCK', 'Por despachar'],
-                ['SOLICITADO', 'Por comprar'],
+                ['SOLICITADO', 'Derivado a Logística'],
                 ['EN_COMPRA', 'En compra'],
                 ['EN_ALMACEN', 'En almacén'],
                 ['ATENDIDO', 'Entregados'],
@@ -211,6 +211,8 @@ export function TableroMateriales({
                   {puedeCrearCompra && comprasUnicas.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-xs font-semibold text-texto">Compra y entrega a Almacén</p>
+                      {comprasUnicas.map((compra) => compra.orden_compra_id && <CondicionCompra
+                        key={`condicion-${compra.orden_compra_id}`} compra={compra} />)}
                       {comprasUnicas.map((compra) => compra.orden_compra_id && <EntregaCompra
                         key={compra.orden_compra_id} compra={compra} />)}
                       {comprasReq.filter((compra) => compra.precio_unitario === null).map((compra) => (
@@ -327,6 +329,20 @@ function EntregaCompra({ compra }: { compra: CompraMaterialPendiente }) {
     <Boton type="submit" tamano="sm" cargando={enviando}>Marcar entrega a Almacén</Boton>
     <p className="basis-full text-[11px] text-texto-suave">Antes de entregar, registra los precios y adjunta la factura PDF para Tesorería.</p>
     {error && <p role="alert" className="basis-full text-xs text-peligro">{error}</p>}
+  </form>
+}
+
+function CondicionCompra({ compra }: { compra: CompraMaterialPendiente }) {
+  const { alEnviar, enviando, error, resultado } = useEnvio(fijarCondicionCompra)
+  if (compra.entregado_almacen_en) return <p className="text-xs text-texto-suave">Pago {compra.condicion_pago.toLowerCase()} · {compra.moneda}{compra.condicion_pago === 'CREDITO' ? ` · ${compra.dias_credito} días` : ''}</p>
+  return <form onSubmit={alEnviar} className="grid gap-2 rounded-lg border border-borde p-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
+    <input type="hidden" name="compra_id" value={compra.orden_compra_id ?? ''} />
+    <Campo etiqueta="Pago" htmlFor={`cond-${compra.orden_compra_id}`}><Seleccion id={`cond-${compra.orden_compra_id}`} name="condicion" defaultValue={compra.condicion_pago}><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option></Seleccion></Campo>
+    <Campo etiqueta="Días de crédito (0 si contado)" htmlFor={`dias-${compra.orden_compra_id}`}><Entrada id={`dias-${compra.orden_compra_id}`} name="dias" type="number" min={0} max={365} defaultValue={compra.dias_credito} required /></Campo>
+    <Campo etiqueta="Moneda" htmlFor={`mon-${compra.orden_compra_id}`}><Seleccion id={`mon-${compra.orden_compra_id}`} name="moneda" defaultValue={compra.moneda}><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion></Campo>
+    <Boton type="submit" tamano="sm" variante="secundario" cargando={enviando}>Guardar pago</Boton>
+    {error && <p role="alert" className="text-xs text-peligro sm:col-span-4">{error}</p>}
+    {resultado?.ok && <p role="status" className="text-xs text-exito sm:col-span-4">{resultado.mensaje}</p>}
   </form>
 }
 
@@ -535,7 +551,16 @@ function FormularioCompra({
       <Campo etiqueta="Entrega estimada" htmlFor={`fecha-${requerimientoId}`}>
         <Entrada id={`fecha-${requerimientoId}`} name="fecha_estimada" type="date" />
       </Campo>
-      <div className="flex items-end"><Boton type="submit" cargando={enviando} className="w-full"><ShoppingCart aria-hidden className="size-4" />Registrar compra</Boton></div>
+      <Campo etiqueta="Condición de pago" htmlFor={`pago-${requerimientoId}`} requerido>
+        <Seleccion id={`pago-${requerimientoId}`} name="condicion" required><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option></Seleccion>
+      </Campo>
+      <Campo etiqueta="Días de crédito (0 si contado)" htmlFor={`dias-compra-${requerimientoId}`} requerido>
+        <Entrada id={`dias-compra-${requerimientoId}`} name="dias" type="number" min={0} max={365} defaultValue={0} required />
+      </Campo>
+      <Campo etiqueta="Moneda" htmlFor={`moneda-compra-${requerimientoId}`} requerido>
+        <Seleccion id={`moneda-compra-${requerimientoId}`} name="moneda" required><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion>
+      </Campo>
+      <div className="flex items-end sm:col-span-2"><Boton type="submit" cargando={enviando} className="w-full"><ShoppingCart aria-hidden className="size-4" />Registrar compra</Boton></div>
       {lineas.map((linea) => {
         const faltante = Number(linea.cantidad_solicitada ?? 0) - Number(linea.cantidad_comprada ?? 0)
         return (

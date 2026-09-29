@@ -10,6 +10,9 @@ export type LineaAtencionMaterial = Vistas<'v_atencion_materiales'> & {
 export type CompraMaterialPendiente = Vistas<'v_orden_compra_material_pendiente'> & {
   entregado_almacen_en: string | null
   precio_unitario: number | null
+  condicion_pago: string
+  dias_credito: number
+  moneda: string
 }
 export type ExistenciaMaterial = Vistas<'v_existencias_materiales'>
 export type MaterialParaConteo = { id: string; descripcion: string; codigo: string; unidad: string | null }
@@ -52,7 +55,7 @@ export async function cargarAtencionMateriales(permisos: {
       : Promise.resolve({ data: [], error: null }),
     permisos.verExistencias
       ? supabase.from('materiales').select('id, descripcion, codigo, unidad:unidades_medida(codigo)')
-          .eq('activo', true).order('descripcion').limit(1000)
+          .eq('activo', true).eq('unidad_pendiente', false).order('descripcion').limit(1000)
       : Promise.resolve({ data: [], error: null }),
   ])
 
@@ -89,14 +92,14 @@ export async function cargarAtencionMateriales(permisos: {
   const idsLineaCompra = (compras.data ?? []).map((compra) => compra.id).filter((id): id is string => Boolean(id))
   const [entregas, precios] = await Promise.all([
     idsCompra.length > 0
-      ? supabase.from('ordenes_compra_materiales').select('id, entregado_almacen_en').in('id', idsCompra)
+      ? supabase.from('ordenes_compra_materiales').select('id, entregado_almacen_en, condicion_pago, dias_credito, moneda').in('id', idsCompra)
       : Promise.resolve({ data: [], error: null }),
     idsLineaCompra.length > 0
       ? supabase.from('orden_compra_material_detalles').select('id, precio_unitario').in('id', idsLineaCompra)
       : Promise.resolve({ data: [], error: null }),
   ])
   if (entregas.error || precios.error) throw new Error('No se pudieron leer la entrega o los precios de compra.')
-  const entregaPorCompra = new Map((entregas.data ?? []).map((entrega) => [entrega.id, entrega.entregado_almacen_en]))
+  const entregaPorCompra = new Map((entregas.data ?? []).map((entrega) => [entrega.id, entrega]))
   const precioPorLinea = new Map((precios.data ?? []).map((precio) => [precio.id, precio.precio_unitario]))
   return {
     lineas: (atencion.data ?? []).map((linea) => ({
@@ -111,7 +114,10 @@ export async function cargarAtencionMateriales(permisos: {
     })),
     compras: (compras.data ?? []).map((compra) => ({
       ...compra,
-      entregado_almacen_en: entregaPorCompra.get(compra.orden_compra_id ?? '') ?? null,
+      entregado_almacen_en: entregaPorCompra.get(compra.orden_compra_id ?? '')?.entregado_almacen_en ?? null,
+      condicion_pago: entregaPorCompra.get(compra.orden_compra_id ?? '')?.condicion_pago ?? 'CONTADO',
+      dias_credito: entregaPorCompra.get(compra.orden_compra_id ?? '')?.dias_credito ?? 0,
+      moneda: entregaPorCompra.get(compra.orden_compra_id ?? '')?.moneda ?? 'PEN',
       precio_unitario: precioPorLinea.get(compra.id ?? '') ?? null,
     })),
     areas: areas.data ?? [],

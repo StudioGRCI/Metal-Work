@@ -96,6 +96,26 @@ export async function registrarPrecioCompra(_previo: unknown, formulario: FormDa
   return { ok: true, mensaje: 'Precio unitario registrado.' }
 }
 
+export async function fijarCondicionCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Logística define la condición de pago.' }
+  const v = z.object({
+    compra_id: z.string().uuid(), condicion: z.enum(['CONTADO','CREDITO']),
+    dias: z.coerce.number().int().min(0).max(365), moneda: z.enum(['PEN','USD']),
+  }).safeParse(Object.fromEntries(formulario))
+  if (!v.success) return { ok: false, error: 'Indica condición, plazo y moneda válidos.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('fijar_condicion_pago_compra', {
+    p_compra: v.data.compra_id, p_condicion: v.data.condicion,
+    p_dias: v.data.dias, p_moneda: v.data.moneda,
+  })
+  if (error) return { ok: false, error: errorDeMaterial(error) }
+  if (data !== v.data.compra_id) return { ok: false, error: 'La condición no cambió. Recarga la compra.' }
+  revalidatePath('/materiales/atencion')
+  revalidatePath('/tesoreria/cuentas')
+  return { ok: true, mensaje: 'Condición de pago guardada para Tesorería.' }
+}
+
 export async function marcarEntregaCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Logística confirma la entrega al almacén.' }
@@ -119,12 +139,18 @@ export async function crearOrdenCompra(_previo: unknown, formulario: FormData): 
     proveedor: z.string().trim().min(2).max(160),
     referencia: z.string().trim().min(2).max(100),
     fecha_estimada: z.iso.date().optional(),
+    condicion: z.enum(['CONTADO','CREDITO']),
+    dias: z.coerce.number().int().min(0).max(365),
+    moneda: z.enum(['PEN','USD']),
   }).safeParse({
     operacion_id: dato(formulario, 'operacion_id'),
     requerimiento_id: dato(formulario, 'requerimiento_id'),
     proveedor: dato(formulario, 'proveedor'),
     referencia: dato(formulario, 'referencia'),
     fecha_estimada: dato(formulario, 'fecha_estimada') || undefined,
+    condicion: dato(formulario, 'condicion'),
+    dias: dato(formulario, 'dias'),
+    moneda: dato(formulario, 'moneda'),
   })
   const ids = formulario.getAll('detalle_id')
   const lineas = z.array(z.object({
@@ -135,22 +161,31 @@ export async function crearOrdenCompra(_previo: unknown, formulario: FormData): 
     cantidad: dato(formulario, `cantidad_${String(id)}`),
   })))
   if (!cabecera.success || !lineas.success) {
-    return { ok: false, error: 'Revisa proveedor, referencia, fecha y cantidades a comprar.' }
+    return { ok: false, error: 'Revisa proveedor, referencia, fecha, pago y cantidades a comprar.' }
+  }
+  if ((cabecera.data.condicion === 'CONTADO' && cabecera.data.dias !== 0) ||
+      (cabecera.data.condicion === 'CREDITO' && cabecera.data.dias === 0)) {
+    return { ok: false, error: 'Indica 0 días para contado o un plazo de 1 a 365 días para crédito.' }
   }
 
   const supabase = await createClient()
-  const { error } = await supabase.rpc('crear_orden_compra_material', {
+  const { data, error } = await supabase.rpc('crear_orden_compra_material_con_pago', {
     p_id: cabecera.data.operacion_id,
     p_requerimiento_id: cabecera.data.requerimiento_id,
     p_proveedor: cabecera.data.proveedor,
     p_referencia: cabecera.data.referencia,
-    p_fecha_estimada: cabecera.data.fecha_estimada,
+    p_fecha_estimada: cabecera.data.fecha_estimada ?? null,
     p_detalles: lineas.data,
+    p_condicion: cabecera.data.condicion,
+    p_dias: cabecera.data.dias,
+    p_moneda: cabecera.data.moneda,
   })
   if (error) return { ok: false, error: errorDeMaterial(error) }
+  if (data !== cabecera.data.operacion_id) return { ok: false, error: 'La compra no quedó registrada. Recarga la pantalla.' }
 
   revalidatePath('/materiales/atencion')
-  return { ok: true, mensaje: 'Compra registrada; Almacén ya puede esperar su recepción.' }
+  revalidatePath('/tesoreria/cuentas')
+  return { ok: true, mensaje: 'Compra y condición de pago registradas; Almacén ya puede esperar su recepción.' }
 }
 
 export async function registrarRecepcion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
