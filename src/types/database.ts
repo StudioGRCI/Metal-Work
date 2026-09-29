@@ -278,6 +278,7 @@ export type Database = {
       }
       cotizaciones_pdf: {
         Row: {
+          motivo_correccion: string | null
           anulado_en: string | null
           anulado_por: string | null
           motivo_anulacion: string | null
@@ -302,6 +303,7 @@ export type Database = {
           moneda: Database["public"]["Enums"]["moneda"] | null
         }
         Insert: {
+          motivo_correccion?: string | null
           anulado_en?: string | null
           anulado_por?: string | null
           motivo_anulacion?: string | null
@@ -326,6 +328,7 @@ export type Database = {
           moneda?: Database["public"]["Enums"]["moneda"] | null
         }
         Update: {
+          motivo_correccion?: string | null
           anulado_en?: string | null
           anulado_por?: string | null
           motivo_anulacion?: string | null
@@ -1937,6 +1940,129 @@ export type Database = {
           }
         ]
       }
+      ot_checklists: {
+        Row: {
+          actualizado_en: string
+          completado_en: string | null
+          condicion_verificada: boolean
+          creado_en: string
+          documentos_verificados: boolean
+          id: string
+          identidad_verificada: boolean
+          materiales_verificados: boolean
+          observacion: string
+          orden_id: string
+          registrado_por: string
+          tipo: string
+        }
+        Insert: {
+          actualizado_en?: string
+          completado_en?: string | null
+          condicion_verificada?: boolean
+          creado_en?: string
+          documentos_verificados?: boolean
+          id?: string
+          identidad_verificada?: boolean
+          materiales_verificados?: boolean
+          observacion?: string
+          orden_id: string
+          registrado_por?: string
+          tipo: string
+        }
+        Update: {
+          actualizado_en?: string
+          completado_en?: string | null
+          condicion_verificada?: boolean
+          creado_en?: string
+          documentos_verificados?: boolean
+          id?: string
+          identidad_verificada?: boolean
+          materiales_verificados?: boolean
+          observacion?: string
+          orden_id?: string
+          registrado_por?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_checklists_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_checklists_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_fechas_clave"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_checklists_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_ficha_resumen"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_checklists_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_resumen"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_checklists_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "unidad_tablero"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_checklists_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cotizaciones_pdf"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_checklists_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cumplimiento_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_checklists_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_equipo_diseno_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_checklists_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_ot_avance_diario"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_checklists_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_checklists_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ot_bitacora: {
         Row: {
           id: string
@@ -2728,6 +2854,146 @@ export type Database = {
             referencedRelation: "ordenes_trabajo"
             referencedColumns: ["id"]
           }
+        ]
+      }
+      ot_solicitudes_tesoreria: {
+        Row: {
+          actualizado_en: string
+          atendido_en: string | null
+          atendido_por: string | null
+          concepto: string
+          creado_en: string
+          estado: string
+          id: string
+          moneda: string | null
+          monto: number | null
+          orden_id: string
+          respuesta: string | null
+          solicitado_por: string
+          tipo: string
+        }
+        Insert: {
+          actualizado_en?: string
+          atendido_en?: string | null
+          atendido_por?: string | null
+          concepto: string
+          creado_en?: string
+          estado?: string
+          id?: string
+          moneda?: string | null
+          monto?: number | null
+          orden_id: string
+          respuesta?: string | null
+          solicitado_por?: string
+          tipo: string
+        }
+        Update: {
+          actualizado_en?: string
+          atendido_en?: string | null
+          atendido_por?: string | null
+          concepto?: string
+          creado_en?: string
+          estado?: string
+          id?: string
+          moneda?: string | null
+          monto?: number | null
+          orden_id?: string
+          respuesta?: string | null
+          solicitado_por?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_atendido_por_fkey"
+            columns: ["atendido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_atendido_por_fkey"
+            columns: ["atendido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_fechas_clave"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_ficha_resumen"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_resumen"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "unidad_tablero"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cotizaciones_pdf"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cumplimiento_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_equipo_diseno_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_ot_avance_diario"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_solicitado_por_fkey"
+            columns: ["solicitado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_solicitado_por_fkey"
+            columns: ["solicitado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
         ]
       }
       ot_salidas: {

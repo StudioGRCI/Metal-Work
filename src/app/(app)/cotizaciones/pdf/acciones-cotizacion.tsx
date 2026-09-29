@@ -89,10 +89,8 @@ export function RevisarCotizacion({ id }: { id: string }) {
 }
 
 /**
- * El vendedor sube la corrección de la cotización que Gerencia rechazó
- * (migración 103): el Word o el PDF corregido, en la misma cotización. Vuelve a
- * «Por revisar» con una versión más, y lo rechazado queda en el historial con
- * su observación.
+ * Ventas reemplaza el documento y corrige datos antes de emitir OT o liberar
+ * a Tesorería. La versión previa queda en el historial y Gerencia revisa otra vez.
  *
  * Antes de subir se lee el número del archivo: si dice otra cotización, se
  * avisa. No se impide —el vendedor puede haber corregido justo el número—,
@@ -102,10 +100,20 @@ export function CorregirCotizacion({
   id,
   numero,
   observacion,
+  version,
+  clienteId,
+  carroceriaId,
+  clientes,
+  carrocerias,
 }: {
   id: string
   numero: string
   observacion: string | null
+  version: number
+  clienteId: string
+  carroceriaId: string
+  clientes: { id: string; razon_social: string }[]
+  carrocerias: { id: string; nombre: string }[]
 }) {
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
@@ -113,6 +121,9 @@ export function CorregirCotizacion({
   const [dice, setDice] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
   const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
+  const [cliente, setCliente] = useState(clienteId)
+  const [carroceria, setCarroceria] = useState(carroceriaId)
+  const [motivo, setMotivo] = useState('')
   const [progreso, setProgreso] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
@@ -123,6 +134,9 @@ export function CorregirCotizacion({
     setDice(null)
     setError(null)
     setTotal({ monto: null, moneda: null })
+    setCliente(clienteId)
+    setCarroceria(carroceriaId)
+    setMotivo('')
     setProgreso('')
     setAbierto(true)
   }
@@ -165,6 +179,10 @@ export function CorregirCotizacion({
       setError(`El archivo pesa más de ${MAXIMO_ADJUNTO_MB} MB.`)
       return
     }
+    if (!cliente || !carroceria || motivo.trim().length < 5) {
+      setError('Elige cliente y carrocería, e indica por qué corriges la cotización.')
+      return
+    }
 
     enCurso.current = true
     setError(null)
@@ -184,6 +202,10 @@ export function CorregirCotizacion({
 
         const datos = new FormData()
         datos.set('id', id)
+        datos.set('version', String(version))
+        datos.set('cliente_id', cliente)
+        datos.set('tipo_carroceria_id', carroceria)
+        datos.set('motivo_correccion', motivo.trim())
         datos.set('nombre_archivo', archivo.name.slice(0, 200))
         datos.set('ruta_storage', ruta)
         datos.set('mime_type', tipo.mime)
@@ -216,14 +238,14 @@ export function CorregirCotizacion({
     <>
       <Boton type="button" tamano="sm" onClick={abrir}>
         <RefreshCw aria-hidden className="size-3.5" />
-        Subir corrección
+        Editar cotización
       </Boton>
 
       <Ventana
         abierta={abierto}
         alCerrar={() => setAbierto(false)}
-        titulo={`Subir la corrección de la ${numero}`}
-        descripcion="El archivo corregido, en PDF o en Word. Vuelve a Gerencia con el mismo número; lo rechazado queda en el historial."
+        titulo={`Corregir la cotización ${numero}`}
+        descripcion="Reemplaza el PDF o Word y corrige los datos. Conserva el número y el archivo anterior; Gerencia revisará esta versión."
         ancho="md"
       >
         <form onSubmit={enviar} className="space-y-4">
@@ -235,6 +257,24 @@ export function CorregirCotizacion({
               </p>
             </div>
           )}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Campo etiqueta="Cliente" htmlFor={`corregir-cliente-${id}`} requerido>
+              <Seleccion id={`corregir-cliente-${id}`} value={cliente} onChange={e => setCliente(e.target.value)} required>
+                <option value="" disabled>Elige el cliente</option>
+                {clientes.map(c => <option key={c.id} value={c.id}>{c.razon_social}</option>)}
+              </Seleccion>
+            </Campo>
+            <Campo etiqueta="Carrocería" htmlFor={`corregir-carroceria-${id}`} requerido>
+              <Seleccion id={`corregir-carroceria-${id}`} value={carroceria} onChange={e => setCarroceria(e.target.value)} required>
+                <option value="" disabled>Elige la carrocería</option>
+                {carrocerias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </Seleccion>
+            </Campo>
+          </div>
+          <Campo etiqueta="Motivo de la corrección" htmlFor={`corregir-motivo-${id}`} requerido>
+            <AreaTexto id={`corregir-motivo-${id}`} value={motivo} onChange={e => setMotivo(e.target.value)} rows={2} minLength={5} maxLength={500} required placeholder="Qué dato o documento se corrigió" />
+          </Campo>
 
           <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2">
             <FileUp aria-hidden className="size-6" />
@@ -278,7 +318,7 @@ export function CorregirCotizacion({
               Cancelar
             </Boton>
             <Boton type="submit" tamano="lg" cargando={enviando} disabled={leyendo} className="w-full sm:w-auto">
-              Subir y mandar a Gerencia
+              Guardar versión y enviar a Gerencia
             </Boton>
           </div>
         </form>

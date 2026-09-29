@@ -178,16 +178,14 @@ export function puedeQuitarCotizacion(
 }
 
 /**
- * Si esta persona ve «Subir corrección» en una cotización. Gemelo de la
- * política de UPDATE y del disparador de la migración 103: la rechazada la
- * corrige quien la subió. Gerencia no reescribe el papel del vendedor.
+ * Ventas corrige el documento antes de que genere OT o llegue a Tesorería.
  */
 export function puedeCorregirCotizacion(
   perfil: PerfilSesion | null,
-  c: { estado: string | null; registrado_por: string | null },
+  c: { estado: string | null; registrado_por: string | null; orden_id?: string | null; liberacionTesoreria?: unknown },
 ): boolean {
-  if (!perfil || c.estado !== 'RECHAZADA') return false
-  return c.registrado_por === perfil.id || perfil.rol.codigo === 'ADMIN'
+  if (!perfil || !['POR_REVISAR', 'RECHAZADA', 'APROBADA'].includes(c.estado ?? '') || c.orden_id || c.liberacionTesoreria) return false
+  return puede(perfil, 'cotizaciones.crear') && (c.registrado_por === perfil.id || perfil.rol.codigo === 'ADMIN')
 }
 
 /** Las áreas cuya hoja puede escribir: la suya, o todas si tiene el permiso. */

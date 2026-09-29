@@ -7,7 +7,7 @@ export function seccionesDeOrden(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>)
   const tiene = (...permisos: string[]) =>
     perfil.rol.codigo === 'ADMIN' || permisos.some(p => perfil.permisos.includes(p))
   if (!tiene('ordenes.ver')) return []
-  const tecnico = tiene('diseno.planos', 'diseno.revisar', 'diseno.subir_pdf', 'produccion.registrar', 'produccion.cualquier_area')
+  const tecnico = tiene('diseno.planos', 'diseno.revisar', 'diseno.subir_pdf', 'produccion.registrar', 'produccion.cualquier_area', 'supervision.general')
     || ['ALMACENERO', 'COMPRADOR', 'CALIDAD'].includes(perfil.rol.codigo)
   return [
     'resumen',
@@ -15,6 +15,7 @@ export function seccionesDeOrden(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>)
     ...(tiene('ordenes.listar', 'produccion.ver') ? ['etapas'] : []),
     ...(tecnico ? ['planos'] : []),
     ...(tiene('diseno.planos', 'cotizaciones.costear', 'produccion.ver') || tecnico ? ['materiales'] : []),
+    ...(tiene('costos.ver') ? ['costos'] : []),
     ...(tiene('produccion.ver', 'diseno.planos') ? ['actividades'] : []),
     ...(tiene('produccion.ver') ? ['avance'] : []),
     'bitacora',
