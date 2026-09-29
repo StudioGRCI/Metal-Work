@@ -36,14 +36,14 @@ export default async function PaginaAtencionMateriales() {
     <>
       <EncabezadoPagina
         titulo="Atención de materiales"
-        descripcion="Sigue cada material desde que Diseño lo solicita hasta que Almacén lo entrega a la persona del área."
+        descripcion="Sigue cada solicitud desde la aprobación de Diseño y la revisión de stock hasta la entrega al área."
       />
       {datos.lineas.length === 0 && !permisos.verExistencias ? (
         <Tarjeta>
           <TarjetaCuerpo>
             <EstadoVacio
               titulo="Todavía no hay requerimientos"
-              descripcion="Cuando Diseño o tu supervisor solicite materiales para una OT, aparecerán aquí con su área y avance."
+              descripcion="Cuando tu área solicite materiales para una OT activa, aparecerán aquí con su estado y avance."
             />
           </TarjetaCuerpo>
         </Tarjeta>

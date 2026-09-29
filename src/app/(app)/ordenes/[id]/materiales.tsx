@@ -110,7 +110,7 @@ export function MaterialesDeOrden({
               {!ordenViva
                 ? `${motivoInactiva ?? 'La orden no está en curso'}: mientras, la lista no se toca.`
                 : catalogo.planos.length === 0
-                  ? 'Diseño debe crear primero un plano para esta orden.'
+                  ? puedeDisenar ? 'Crea primero un plano para esta orden.' : 'Diseño debe liberar un plano a tu área antes de solicitar materiales.'
                 : puedeDisenar
                   ? 'Agrega el primer material con el botón de arriba: qué lleva la unidad y cuánto.'
                   : puedeSolicitar
@@ -438,7 +438,7 @@ function NuevoMaterial({
 
   if (!abierto) {
     if (catalogo.planos.length === 0) return <p className="text-sm text-texto-suave">
-      Primero, Diseño debe crear un plano en <Link href={`/ordenes/${ordenId}?vista=planos`} className="font-medium text-acento underline">Planos y revisiones</Link>. Después podrás agregarle materiales.
+      {propuesta ? 'Diseño debe aprobar y liberar un plano a tu área para solicitar materiales.' : 'Primero, Diseño debe crear un plano.'} Consulta <Link href={`/ordenes/${ordenId}?vista=planos`} className="font-medium text-acento underline">Planos</Link>.
     </p>
     return (
       <div className="flex justify-end">
