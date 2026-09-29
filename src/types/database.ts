@@ -2134,6 +2134,51 @@ export type Database = {
           }
         ]
       }
+      ot_equipo_diseno: {
+        Row: {
+          id: string
+          orden_id: string
+          nombre: string
+          funcion: string
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          nombre: string
+          funcion: string
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          nombre?: string
+          funcion?: string
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_equipo_diseno_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_equipo_diseno_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_etapas: {
         Row: {
           id: string
@@ -2559,6 +2604,7 @@ export type Database = {
           id: string
           orden_id: string
           etapa_id: string | null
+          integrante_diseno_id: string | null
           orden_secuencia: number
           numero_plano: string
           nombre: string
@@ -2574,6 +2620,7 @@ export type Database = {
           id?: string
           orden_id: string
           etapa_id?: string | null
+          integrante_diseno_id?: string | null
           orden_secuencia?: number
           numero_plano: string
           nombre: string
@@ -2589,6 +2636,7 @@ export type Database = {
           id?: string
           orden_id?: string
           etapa_id?: string | null
+          integrante_diseno_id?: string | null
           orden_secuencia?: number
           numero_plano?: string
           nombre?: string
@@ -2601,6 +2649,13 @@ export type Database = {
           responsable_diseno_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ot_planos_integrante_diseno_id_fkey"
+            columns: ["integrante_diseno_id"]
+            isOneToOne: false
+            referencedRelation: "ot_equipo_diseno"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "fk_ot_plano_etapa_orden"
             columns: ["etapa_id", "orden_id"]
@@ -4573,6 +4628,19 @@ export type Database = {
           p_orden: string
           p_version: string
           p_datos: Json
+          p_motivo: string
+        }
+        Returns: string
+      }
+      editar_resumen_ot_administracion: {
+        Args: {
+          p_orden: string
+          p_version: string
+          p_version_unidad: string
+          p_marca: string
+          p_modelo: string
+          p_anio: number | null
+          p_responsable: string | null
           p_motivo: string
         }
         Returns: string

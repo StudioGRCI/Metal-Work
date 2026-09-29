@@ -86,6 +86,7 @@ const esquemaPlano = z.object({
   peso_pct: z.coerce.number().min(0, 'El peso no puede ser negativo').max(100, 'Ningún plano pesa más de 100'),
   entregar_hoy: marcado,
   observacion: z.string().trim().max(500).optional(),
+  integrante_id: z.string().uuid('Elige quién elaboró el plano.'),
 })
 
 /**
@@ -128,6 +129,7 @@ export async function agregarPlano(_previo: unknown, datos: FormData): Promise<R
       peso_pct: v.peso_pct,
       fecha_entrega: v.entregar_hoy ? hoyLima() : null,
       observacion: nulo(v.observacion),
+      integrante_diseno_id: v.integrante_id,
     })
     .select('id')
     .maybeSingle()

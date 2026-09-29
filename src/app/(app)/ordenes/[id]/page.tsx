@@ -21,6 +21,7 @@ import {
   fechasClaveDeOrden,
   listarEtapas,
   obtenerOrden,
+  responsablesDeOrden,
   timelineDeOrden,
 } from '@/lib/datos/ordenes'
 import { actividadesDeOrden, areasDelTaller, despachosParaReporte } from '@/lib/datos/actividades'
@@ -49,6 +50,7 @@ import { AccionesEstado } from './acciones-estado'
 import { ArchivosDeOrden, type AdjuntoEnPantalla } from './archivos-de-orden'
 import { PonerCliente } from './poner-cliente'
 import { EditarOrden } from './editar-orden'
+import { EditarResumenAdministracion } from './editar-resumen-administracion'
 import { cotizacionesParaCambio } from '@/lib/datos/edicion-ot'
 import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
 
@@ -164,6 +166,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     && !['ENTREGADA', 'FACTURADA', 'ANULADA'].includes(orden.estado)
   const nuevasCotizaciones = puedeEditarDatos
     ? await cotizacionesParaCambio(orden.cliente_id, orden.tipo_carroceria?.id ?? null) : []
+  const responsablesDisponibles = vista === 'resumen' && perfil.rol.codigo === 'ADMINISTRACION'
+    && puedeEditarDatos ? await responsablesDeOrden() : []
 
   // La lista de Diseño y su catálogo.
   const listaMateriales =
@@ -436,7 +440,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           </Tarjeta>
 
           <Tarjeta>
-            <TarjetaCabecera titulo="Trabajo" />
+            <TarjetaCabecera titulo="Trabajo"
+              acciones={perfil.rol.codigo === 'ADMINISTRACION' && puedeEditarDatos
+                ? <EditarResumenAdministracion orden={orden} responsables={responsablesDisponibles} />
+                : undefined} />
             <TarjetaCuerpo className="space-y-0">
               <Dato etiqueta="Tipo de trabajo" valor={definir(TIPO_TRABAJO, orden.tipo_trabajo).etiqueta} />
               <Dato etiqueta="Tipo de carrocería" valor={tipoCarroceria?.nombre} />

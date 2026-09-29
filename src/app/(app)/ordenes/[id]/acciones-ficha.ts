@@ -135,25 +135,6 @@ export async function guardarFichaFisica(
   return { ok: true, mensaje: 'Ficha de la unidad actualizada.' }
 }
 
-/**
- * Trae los accesorios de la plantilla de carrocería. Los pasos de verificación
- * los define Diseño directamente en la OT.
- */
-export async function armarFicha(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
-  const guarda = await exigirTaller()
-  if (!guarda.ok) return { ok: false, error: guarda.error }
-
-  const analisis = z.object({ orden_id: z.string().uuid() }).safeParse(Object.fromEntries(datos))
-  if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
-
-  const supabase = await createClient()
-  const { error } = await supabase.rpc('armar_ficha_ot', { p_orden: analisis.data.orden_id })
-  if (error) return { ok: false, error: mensajeDeError(error) }
-
-  revalidatePath(`/ordenes/${analisis.data.orden_id}`)
-  return { ok: true, mensaje: 'Accesorios de la plantilla cargados.' }
-}
-
 /** Sección 6: agregar un accesorio que no venía de la cotización. */
 export async function agregarAccesorioOT(
   _previo: unknown,

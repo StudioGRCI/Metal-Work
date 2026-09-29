@@ -1,14 +1,14 @@
 import { notFound, redirect } from 'next/navigation'
 import { seccionesDeOrden } from '@/lib/dominio/acceso-orden'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
-import { catalogosDePlanos, versionesDePlanos } from '@/lib/datos/versiones-planos'
+import { catalogosDePlanos, equipoDisenoNominal, planosConAutor, versionesDePlanos } from '@/lib/datos/versiones-planos'
 import { cumplimientoDeOrden } from '@/lib/datos/cumplimiento'
 import { areasDelTaller } from '@/lib/datos/actividades'
 import { areasParaEtapas, listarEtapas, obtenerOrden } from '@/lib/datos/ordenes'
 import { exigirPermiso, puede, puedeHojaDeArea } from '@/lib/sesion'
 import { Pestanas } from '../pestanas'
 import { Cumplimiento } from '../cumplimiento'
-import { EquipoDiseno } from './panel-planos'
+import { EquipoDiseno } from './equipo-diseno'
 
 export const metadata = { title: 'Planos' }
 
@@ -25,7 +25,10 @@ export default async function PaginaPlanos({ params, searchParams }: {
     obtenerOrden(id), versionesDePlanos(id),
     puede(perfil, 'diseno.planos')
       ? catalogosDePlanos(id)
-      : Promise.resolve({ planos: [], areas: [], liderId: null, liderEntregaNombre: null, equipo: [], usuarios: [] }),
+      : Promise.all([equipoDisenoNominal(id), planosConAutor(id)]).then(([equipoNominal, planos]) => ({
+        planos, areas: [], liderId: null, liderEntregaNombre: null,
+        equipo: [], usuarios: [], equipoNominal,
+      })),
     cumplimientoDeOrden(id),
     perfil.area_id ? areasDelTaller() : Promise.resolve([]),
     listarEtapas(id),
@@ -51,9 +54,7 @@ export default async function PaginaPlanos({ params, searchParams }: {
       puedeDisenar={puede(perfil, 'diseno.planos')}
       areaPropia={manoDelTaller}
       ordenViva={abierta} motivoInactiva={motivoInactiva} />
-    {puede(perfil, 'diseno.planos') && <details className="rounded-[var(--radius-base)] border border-borde bg-superficie p-4">
-      <summary className="cursor-pointer text-sm font-medium text-texto">Equipo de Diseño</summary>
-      <div className="mt-4"><EquipoDiseno ordenId={id} abierta={abierta} puedeAsignar={puede(perfil, 'diseno.asignar')} catalogos={catalogos} /></div>
-    </details>}
+    <EquipoDiseno ordenId={id} abierta={abierta} puedeAsignar={puede(perfil, 'diseno.planos')}
+      catalogos={catalogos} />
   </>
 }

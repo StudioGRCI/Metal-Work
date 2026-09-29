@@ -176,7 +176,8 @@ export function Cumplimiento({
       )}
 
       {puedeDisenar && ordenViva && (
-        <NuevoPlano ordenId={ordenId} etapas={etapas} pesoLibre={Math.max(0, faltaPeso)} numeroPropuesto={numeroPropuesto} />
+        <NuevoPlano ordenId={ordenId} etapas={etapas} equipo={catalogos.equipoNominal}
+          pesoLibre={Math.max(0, faltaPeso)} numeroPropuesto={numeroPropuesto} />
       )}
 
       {planos.length === 0 ? (
@@ -304,11 +305,13 @@ function EntregarPendientes({ ordenId, cuantos }: { ordenId: string; cuantos: nu
 function NuevoPlano({
   ordenId,
   etapas,
+  equipo,
   pesoLibre,
   numeroPropuesto,
 }: {
   ordenId: string
   etapas: { id: string; nombre: string }[]
+  equipo: Catalogos['equipoNominal']
   pesoLibre: number
   /** El número que sigue al último plano, para no tener que mirarlo. */
   numeroPropuesto: string
@@ -326,6 +329,9 @@ function NuevoPlano({
         Para crear un plano, Diseño debe definir primero su etapa en <Link href={`/ordenes/${ordenId}?vista=etapas`} className="font-medium text-acento underline">Etapas de la OT</Link>.
       </p>
     )
+    if (equipo.length === 0) return <p className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
+      Anota primero al responsable y a los colaboradores en «Personas que elaboran los planos», más abajo.
+    </p>
     return (
       <div className="flex flex-wrap items-center justify-end gap-3">
         {aviso && (
@@ -367,6 +373,12 @@ function NuevoPlano({
             <Seleccion id="np-etapa" name="etapa_id" required defaultValue="">
               <option value="" disabled>Elige Diseño</option>
               {etapas.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+            </Seleccion>
+          </Campo>
+          <Campo etiqueta="Elaboró el plano" htmlFor="np-autor" className="sm:col-span-3" requerido>
+            <Seleccion id="np-autor" name="integrante_id" required defaultValue="">
+              <option value="" disabled>Elige una persona del equipo</option>
+              {equipo.map((persona) => <option key={persona.id} value={persona.id}>{persona.nombre}</option>)}
             </Seleccion>
           </Campo>
           {etapas.length === 0 && (
