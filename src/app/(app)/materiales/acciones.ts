@@ -20,6 +20,7 @@ const esquema = z.object({
   especificacion_tecnica: z.string().trim().max(300).optional(),
   categoria_id: z.string().uuid('Elige la categoría'),
   unidad_medida_id: z.string().uuid('Elige la unidad'),
+  confirmar_unidad: z.enum(['si']).optional(),
 })
 
 const nulo = (v: string | undefined) => (v && v.trim().length > 0 ? v.trim() : null)
@@ -47,6 +48,7 @@ export async function guardarMaterial(_previo: unknown, datos: FormData): Promis
         especificacion_tecnica: nulo(v.especificacion_tecnica),
         categoria_id: v.categoria_id,
         unidad_medida_id: v.unidad_medida_id,
+        ...(v.confirmar_unidad === 'si' ? { unidad_pendiente: false } : {}),
       })
       .eq('id', v.id)
       .select('id')

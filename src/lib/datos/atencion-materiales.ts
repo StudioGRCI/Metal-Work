@@ -38,7 +38,7 @@ export async function cargarAtencionMateriales(permisos: {
           .from('v_existencias_materiales')
           .select('material_id, codigo, descripcion, unidad, existencia')
           .order('descripcion')
-          .limit(500)
+          .limit(1000)
       : Promise.resolve({ data: [], error: null }),
     permisos.verCompras || permisos.recibir || permisos.crearCompra
       ? supabase
@@ -52,7 +52,7 @@ export async function cargarAtencionMateriales(permisos: {
       : Promise.resolve({ data: [], error: null }),
     permisos.verExistencias
       ? supabase.from('materiales').select('id, descripcion, codigo, unidad:unidades_medida(codigo)')
-          .eq('activo', true).order('descripcion').limit(500)
+          .eq('activo', true).order('descripcion').limit(1000)
       : Promise.resolve({ data: [], error: null }),
   ])
 

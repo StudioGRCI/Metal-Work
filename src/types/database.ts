@@ -1036,6 +1036,8 @@ export type Database = {
           id: string
           creado_desde_ot: string | null
           codigo: string
+          codigo_almacen_origen: string | null
+          unidad_pendiente: boolean
           descripcion: string
           categoria_id: string
           unidad_medida_id: string
@@ -1058,6 +1060,8 @@ export type Database = {
           id?: string
           creado_desde_ot?: string | null
           codigo: string
+          codigo_almacen_origen?: string | null
+          unidad_pendiente?: boolean
           descripcion: string
           categoria_id: string
           unidad_medida_id: string
@@ -1080,6 +1084,8 @@ export type Database = {
           id?: string
           creado_desde_ot?: string | null
           codigo?: string
+          codigo_almacen_origen?: string | null
+          unidad_pendiente?: boolean
           descripcion?: string
           categoria_id?: string
           unidad_medida_id?: string

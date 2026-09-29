@@ -83,6 +83,13 @@ function FormularioMaterial({
           </Campo>
         </div>
 
+        {material?.unidad_pendiente && (
+          <label className="flex items-start gap-2 rounded-[var(--radius-base)] bg-aviso-suave p-3 text-sm text-texto">
+            <input type="checkbox" name="confirmar_unidad" value="si" className="mt-1" />
+            <span>Confirmé que la unidad elegida corresponde a este material. El Excel no indica cómo se cuenta.</span>
+          </label>
+        )}
+
         <Campo etiqueta="Especificación" htmlFor="fm-espec" ayuda="Norma, medida, calidad del acero">
           <Entrada
             id="fm-espec"
@@ -146,7 +153,10 @@ export function FilaMaterial({
       <TD>
         <p className="text-sm font-medium text-texto">{material.descripcion}</p>
         <p className="text-[11px] text-texto-suave">
-          {material.codigo}
+          {material.codigo_almacen_origen ?? material.codigo}
+          {material.codigo_almacen_origen && material.codigo !== material.codigo_almacen_origen && (
+            <span className="ml-2">clave interna {material.codigo}</span>
+          )}
           {!material.activo && (
             <Insignia tono="neutro" className="ml-2">
               retirado
@@ -155,7 +165,10 @@ export function FilaMaterial({
         </p>
       </TD>
       <TD className="text-sm text-texto-suave">{material.categoria?.nombre ?? '—'}</TD>
-      <TD className="text-sm text-texto-suave">{material.unidad?.codigo ?? '—'}</TD>
+      <TD className="text-sm text-texto-suave">
+        {material.unidad?.codigo ?? '—'}
+        {material.unidad_pendiente && <Insignia tono="aviso" className="ml-2">Confirmar unidad</Insignia>}
+      </TD>
       <TD className="text-xs text-texto-suave">{material.especificacion_tecnica ?? '—'}</TD>
       {puedeEditar && (
         <TD>
