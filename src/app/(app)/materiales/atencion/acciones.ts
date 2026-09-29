@@ -96,6 +96,26 @@ export async function registrarPrecioCompra(_previo: unknown, formulario: FormDa
   return { ok: true, mensaje: 'Precio unitario registrado.' }
 }
 
+export async function fijarCondicionCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Logística define la condición de pago.' }
+  const v = z.object({
+    compra_id: z.string().uuid(), condicion: z.enum(['CONTADO','CREDITO']),
+    dias: z.coerce.number().int().min(0).max(365), moneda: z.enum(['PEN','USD']),
+  }).safeParse(Object.fromEntries(formulario))
+  if (!v.success) return { ok: false, error: 'Indica condición, plazo y moneda válidos.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('fijar_condicion_pago_compra', {
+    p_compra: v.data.compra_id, p_condicion: v.data.condicion,
+    p_dias: v.data.dias, p_moneda: v.data.moneda,
+  })
+  if (error) return { ok: false, error: errorDeMaterial(error) }
+  if (data !== v.data.compra_id) return { ok: false, error: 'La condición no cambió. Recarga la compra.' }
+  revalidatePath('/materiales/atencion')
+  revalidatePath('/tesoreria/cuentas')
+  return { ok: true, mensaje: 'Condición de pago guardada para Tesorería.' }
+}
+
 export async function marcarEntregaCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Logística confirma la entrega al almacén.' }

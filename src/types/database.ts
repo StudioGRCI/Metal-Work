@@ -6,6 +6,659 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Database = {
   public: {
     Tables: {
+      planilla_distribuciones: {
+        Row: {
+          creado_en: string
+          id: string
+          orden_id: string
+          persona_id: string
+          porcentaje: number
+          registrado_por: string
+        }
+        Insert: {
+          creado_en?: string
+          id?: string
+          orden_id: string
+          persona_id: string
+          porcentaje: number
+          registrado_por?: string
+        }
+        Update: {
+          creado_en?: string
+          id?: string
+          orden_id?: string
+          persona_id?: string
+          porcentaje?: number
+          registrado_por?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_fechas_clave"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_ficha_resumen"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_resumen"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "unidad_tablero"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cotizaciones_pdf"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cumplimiento_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_equipo_diseno_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_ot_avance_diario"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "planilla_distribuciones_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "planilla_personas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_distribuciones_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_distribuciones_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      planilla_personas: {
+        Row: {
+          creado_en: string
+          documento: string | null
+          id: string
+          monto: number
+          nombre: string
+          planilla_id: string
+          registrado_por: string
+        }
+        Insert: {
+          creado_en?: string
+          documento?: string | null
+          id?: string
+          monto: number
+          nombre: string
+          planilla_id: string
+          registrado_por?: string
+        }
+        Update: {
+          creado_en?: string
+          documento?: string | null
+          id?: string
+          monto?: number
+          nombre?: string
+          planilla_id?: string
+          registrado_por?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planilla_personas_planilla_id_fkey"
+            columns: ["planilla_id"]
+            isOneToOne: false
+            referencedRelation: "planillas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_personas_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_personas_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      planillas: {
+        Row: {
+          cerrado_en: string | null
+          cerrado_por: string | null
+          creado_en: string
+          estado: string
+          id: string
+          moneda: string
+          observacion: string
+          periodo: string
+          registrado_por: string
+          tipo: string
+        }
+        Insert: {
+          cerrado_en?: string | null
+          cerrado_por?: string | null
+          creado_en?: string
+          estado?: string
+          id?: string
+          moneda?: string
+          observacion?: string
+          periodo: string
+          registrado_por?: string
+          tipo: string
+        }
+        Update: {
+          cerrado_en?: string | null
+          cerrado_por?: string | null
+          creado_en?: string
+          estado?: string
+          id?: string
+          moneda?: string
+          observacion?: string
+          periodo?: string
+          registrado_por?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planillas_cerrado_por_fkey"
+            columns: ["cerrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planillas_cerrado_por_fkey"
+            columns: ["cerrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planillas_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planillas_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pagos_adquisicion: {
+        Row: {
+          adquisicion_id: string
+          creado_en: string
+          fecha: string
+          id: string
+          monto: number
+          referencia: string
+          registrado_por: string
+        }
+        Insert: {
+          adquisicion_id: string
+          creado_en?: string
+          fecha: string
+          id?: string
+          monto: number
+          referencia: string
+          registrado_por?: string
+        }
+        Update: {
+          adquisicion_id?: string
+          creado_en?: string
+          fecha?: string
+          id?: string
+          monto?: number
+          referencia?: string
+          registrado_por?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pagos_adquisicion_adquisicion_id_fkey"
+            columns: ["adquisicion_id"]
+            isOneToOne: false
+            referencedRelation: "adquisiciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_adquisicion_adquisicion_id_fkey"
+            columns: ["adquisicion_id"]
+            isOneToOne: false
+            referencedRelation: "v_cuentas_pagar"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_adquisicion_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_adquisicion_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cuentas_cobrar_ot: {
+        Row: {
+          creado_en: string
+          fecha_emision: string
+          fecha_vencimiento: string
+          id: string
+          moneda: string
+          numero_documento: string
+          observacion: string
+          orden_id: string
+          registrado_por: string
+          total: number
+        }
+        Insert: {
+          creado_en?: string
+          fecha_emision: string
+          fecha_vencimiento: string
+          id?: string
+          moneda: string
+          numero_documento: string
+          observacion?: string
+          orden_id: string
+          registrado_por?: string
+          total: number
+        }
+        Update: {
+          creado_en?: string
+          fecha_emision?: string
+          fecha_vencimiento?: string
+          id?: string
+          moneda?: string
+          numero_documento?: string
+          observacion?: string
+          orden_id?: string
+          registrado_por?: string
+          total?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_fechas_clave"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_ficha_resumen"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_resumen"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "unidad_tablero"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cotizaciones_pdf"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cumplimiento_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_equipo_diseno_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_ot_avance_diario"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cobros_ot: {
+        Row: {
+          creado_en: string
+          cuenta_id: string
+          fecha: string
+          id: string
+          monto: number
+          referencia: string
+          registrado_por: string
+        }
+        Insert: {
+          creado_en?: string
+          cuenta_id: string
+          fecha: string
+          id?: string
+          monto: number
+          referencia: string
+          registrado_por?: string
+        }
+        Update: {
+          creado_en?: string
+          cuenta_id?: string
+          fecha?: string
+          id?: string
+          monto?: number
+          referencia?: string
+          registrado_por?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cobros_ot_cuenta_id_fkey"
+            columns: ["cuenta_id"]
+            isOneToOne: false
+            referencedRelation: "cuentas_cobrar_ot"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cobros_ot_cuenta_id_fkey"
+            columns: ["cuenta_id"]
+            isOneToOne: false
+            referencedRelation: "v_cuentas_cobrar_ot"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cobros_ot_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cobros_ot_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      adquisiciones: {
+        Row: {
+          actualizado_en: string
+          condicion_pago: string
+          creado_en: string
+          documento_compra_id: string | null
+          estado: string
+          fecha_emision: string
+          fecha_vencimiento: string
+          id: string
+          moneda: string
+          numero_documento: string
+          observacion: string
+          orden_compra_id: string | null
+          orden_id: string | null
+          proveedor: string
+          registrado_por: string
+          ruta_storage: string | null
+          tipo: string
+          total: number
+          unidad_id: string | null
+        }
+        Insert: {
+          actualizado_en?: string
+          condicion_pago: string
+          creado_en?: string
+          documento_compra_id?: string | null
+          estado?: string
+          fecha_emision: string
+          fecha_vencimiento: string
+          id?: string
+          moneda: string
+          numero_documento: string
+          observacion?: string
+          orden_compra_id?: string | null
+          orden_id?: string | null
+          proveedor: string
+          registrado_por?: string
+          ruta_storage?: string | null
+          tipo: string
+          total: number
+          unidad_id?: string | null
+        }
+        Update: {
+          actualizado_en?: string
+          condicion_pago?: string
+          creado_en?: string
+          documento_compra_id?: string | null
+          estado?: string
+          fecha_emision?: string
+          fecha_vencimiento?: string
+          id?: string
+          moneda?: string
+          numero_documento?: string
+          observacion?: string
+          orden_compra_id?: string | null
+          orden_id?: string | null
+          proveedor?: string
+          registrado_por?: string
+          ruta_storage?: string | null
+          tipo?: string
+          total?: number
+          unidad_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "adquisiciones_documento_compra_id_fkey"
+            columns: ["documento_compra_id"]
+            isOneToOne: false
+            referencedRelation: "documentos_compra_material"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_documento_compra_id_fkey"
+            columns: ["documento_compra_id"]
+            isOneToOne: false
+            referencedRelation: "v_documentos_compra_tesoreria"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "v_compras_credito_sin_comprobante"
+            referencedColumns: ["orden_compra_id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "v_orden_compra_material_pendiente"
+            referencedColumns: ["orden_compra_id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_fechas_clave"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_ficha_resumen"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_resumen"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "unidad_tablero"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cotizaciones_pdf"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cumplimiento_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_equipo_diseno_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_ot_avance_diario"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_unidad_id_fkey"
+            columns: ["unidad_id"]
+            isOneToOne: false
+            referencedRelation: "unidades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       areas: {
         Row: {
           id: string
@@ -1316,39 +1969,48 @@ export type Database = {
       ordenes_compra_materiales: {
         Row: {
           actualizado_en: string
+          condicion_pago: string
+          creado_en: string
+          creado_por: string
+          dias_credito: number
           entregado_almacen_en: string | null
           entregado_almacen_por: string | null
+          fecha_estimada: string | null
           id: string
-          requerimiento_id: string
+          moneda: string
           proveedor: string
           referencia: string
-          fecha_estimada: string | null
-          creado_por: string
-          creado_en: string
+          requerimiento_id: string
         }
         Insert: {
           actualizado_en?: string
+          condicion_pago?: string
+          creado_en?: string
+          creado_por?: string
+          dias_credito?: number
           entregado_almacen_en?: string | null
           entregado_almacen_por?: string | null
+          fecha_estimada?: string | null
           id?: string
-          requerimiento_id: string
+          moneda?: string
           proveedor: string
           referencia: string
-          fecha_estimada?: string | null
-          creado_por?: string
-          creado_en?: string
+          requerimiento_id: string
         }
         Update: {
           actualizado_en?: string
+          condicion_pago?: string
+          creado_en?: string
+          creado_por?: string
+          dias_credito?: number
           entregado_almacen_en?: string | null
           entregado_almacen_por?: string | null
+          fecha_estimada?: string | null
           id?: string
-          requerimiento_id?: string
+          moneda?: string
           proveedor?: string
           referencia?: string
-          fecha_estimada?: string | null
-          creado_por?: string
-          creado_en?: string
+          requerimiento_id?: string
         }
         Relationships: [
           {
@@ -1359,12 +2021,40 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "ordenes_compra_materiales_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_materiales_entregado_almacen_por_fkey"
+            columns: ["entregado_almacen_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_materiales_entregado_almacen_por_fkey"
+            columns: ["entregado_almacen_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios_nombre_completo"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ordenes_compra_materiales_requerimiento_id_fkey"
             columns: ["requerimiento_id"]
             isOneToOne: false
             referencedRelation: "requerimientos_materiales"
             referencedColumns: ["id"]
-          }
+          },
+          {
+            foreignKeyName: "ordenes_compra_materiales_requerimiento_id_fkey"
+            columns: ["requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "v_atencion_materiales"
+            referencedColumns: ["requerimiento_id"]
+          },
         ]
       }
       ordenes_trabajo: {
@@ -4102,6 +4792,243 @@ export type Database = {
       }
     }
     Views: {
+      v_compras_credito_sin_comprobante: {
+        Row: {
+          fecha_compra: string | null
+          fecha_vencimiento: string | null
+          moneda: string | null
+          numero_ot: string | null
+          orden_compra_id: string | null
+          orden_id: string | null
+          proveedor: string | null
+          referencia: string | null
+          total_estimado: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_fechas_clave"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_ficha_resumen"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_resumen"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "unidad_tablero"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cotizaciones_pdf"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cumplimiento_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_equipo_diseno_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_ot_avance_diario"
+            referencedColumns: ["orden_id"]
+          },
+        ]
+      }
+      v_cuentas_cobrar_ot: {
+        Row: {
+          cobrado: number | null
+          fecha_emision: string | null
+          fecha_vencimiento: string | null
+          id: string | null
+          moneda: string | null
+          numero_documento: string | null
+          numero_ot: string | null
+          orden_id: string | null
+          saldo: number | null
+          total: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_fechas_clave"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_ficha_resumen"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_resumen"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "unidad_tablero"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cotizaciones_pdf"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cumplimiento_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_equipo_diseno_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_ot_avance_diario"
+            referencedColumns: ["orden_id"]
+          },
+        ]
+      }
+      v_cuentas_pagar: {
+        Row: {
+          fecha_emision: string | null
+          fecha_vencimiento: string | null
+          id: string | null
+          moneda: string | null
+          numero_documento: string | null
+          numero_ot: string | null
+          orden_id: string | null
+          pagado: number | null
+          proveedor: string | null
+          saldo: number | null
+          total: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_fechas_clave"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_ficha_resumen"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_resumen"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "unidad_tablero"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cotizaciones_pdf"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_cumplimiento_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_equipo_diseno_ot"
+            referencedColumns: ["orden_id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "v_ot_avance_diario"
+            referencedColumns: ["orden_id"]
+          },
+        ]
+      }
       ot_avance_resumen: {
         Row: {
           id: string | null
@@ -4707,6 +5634,27 @@ export type Database = {
       }
     }
     Functions: {
+      resumen_planilla_por_ot: {
+        Args: never
+        Returns: {
+          moneda: string
+          monto: number
+          numero_ot: string
+          orden_id: string
+          periodo: string
+          tipo: string
+        }[]
+      }
+      cerrar_planilla: { Args: { p_planilla: string }; Returns: string }
+      fijar_condicion_pago_compra: {
+        Args: {
+          p_compra: string
+          p_condicion: string
+          p_dias: number
+          p_moneda: string
+        }
+        Returns: string
+      }
       marcar_compra_entregada_almacen: {
         Args: { p_compra: string }
         Returns: string
