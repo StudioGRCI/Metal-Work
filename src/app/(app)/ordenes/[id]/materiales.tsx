@@ -84,6 +84,12 @@ export function MaterialesDeOrden({
         </TarjetaCuerpo>
       </Tarjeta>
 
+      {puedeDisenar && (
+        <Link href="/materiales/atencion" className="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-acento hover:underline">
+          Revisar propuestas de materiales de las áreas <ArrowUpRight aria-hidden className="size-4" />
+        </Link>
+      )}
+
       {puedeDisenar && ordenViva && (
         <NuevoMaterial ordenId={ordenId} catalogo={catalogo} yaEnLista={materiales} />
       )}
