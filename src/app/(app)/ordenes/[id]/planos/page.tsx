@@ -23,7 +23,7 @@ export default async function PaginaPlanos({ params, searchParams }: {
   const query = await searchParams
   const [orden, versiones, catalogos, cumplimiento, areas, etapas, areasEtapas] = await Promise.all([
     obtenerOrden(id), versionesDePlanos(id),
-    puede(perfil, 'diseno.planos')
+    puede(perfil, ['diseno.planos', 'diseno.subir_pdf'])
       ? catalogosDePlanos(id)
       : Promise.all([equipoDisenoNominal(id), planosConAutor(id)]).then(([equipoNominal, planos]) => ({
         planos, areas: [], liderId: null, liderEntregaNombre: null,
@@ -54,6 +54,7 @@ export default async function PaginaPlanos({ params, searchParams }: {
       catalogos={catalogos} planoSeleccionado={query.plano}
       etapas={etapas.filter(e => e.etapa_id && e.area_id === areasEtapas.find(a => a.codigo === 'DIS')?.id).map(e => ({ id: e.etapa_id!, nombre: e.etapa ?? 'Diseño' }))}
       puedeDisenar={puede(perfil, 'diseno.planos')}
+      puedeSubirPdf={puede(perfil, 'diseno.subir_pdf')}
       areaPropia={manoDelTaller}
       ordenViva={abierta} motivoInactiva={motivoInactiva} />
   </>
