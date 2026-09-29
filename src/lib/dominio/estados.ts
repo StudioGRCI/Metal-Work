@@ -77,9 +77,9 @@ export type DatosRevision = {
 }
 
 export const REVISION: Record<EstadoRevision, Def> = {
-  PENDIENTE: { etiqueta: 'Por aprobar', tono: 'aviso', descripcion: 'Esperando el visto bueno del jefe de producción' },
+  PENDIENTE: { etiqueta: 'Por aprobar', tono: 'aviso', descripcion: 'Esperando la revisión de Administración' },
   APROBADO: { etiqueta: 'Aprobado', tono: 'exito', descripcion: 'Con visto bueno: queda como está' },
-  OBSERVADO: { etiqueta: 'Observado', tono: 'peligro', descripcion: 'El jefe pidió corregirlo' },
+  OBSERVADO: { etiqueta: 'Observado', tono: 'peligro', descripcion: 'Administración pidió corregirlo' },
 }
 
 export const PRIORIDAD: Record<string, Def> = {

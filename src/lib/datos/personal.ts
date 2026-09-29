@@ -62,7 +62,7 @@ export async function catalogosDePersonal() {
   if (fallo) throw new Error(`No se pudieron cargar los catálogos: ${fallo.message}`)
 
   return {
-    roles: roles.data ?? [],
+    roles: (roles.data ?? []).filter((r) => !['JEFE_PRODUCCION', 'JEFE_TALLER'].includes(r.codigo)),
     areas: areas.data ?? [],
     sedes: sedes.data ?? [],
   }

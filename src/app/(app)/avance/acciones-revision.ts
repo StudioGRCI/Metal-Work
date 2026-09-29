@@ -58,7 +58,7 @@ const esquemaRevision = z.object({
 export async function revisarReporte(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'produccion.aprobar_reportes')) {
-    return { ok: false, error: 'El visto bueno de los reportes lo da el jefe de producción.' }
+    return { ok: false, error: 'Administración revisa los reportes de Supervisión.' }
   }
 
   const analisis = esquemaRevision.safeParse(Object.fromEntries(datos))
@@ -102,7 +102,7 @@ const esquemaDia = z.object({ fecha: z.string().regex(ES_FECHA, 'Falta el día')
 export async function aprobarElDia(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'produccion.aprobar_reportes')) {
-    return { ok: false, error: 'El visto bueno de los reportes lo da el jefe de producción.' }
+    return { ok: false, error: 'Administración revisa los reportes de Supervisión.' }
   }
 
   const analisis = esquemaDia.safeParse(Object.fromEntries(datos))

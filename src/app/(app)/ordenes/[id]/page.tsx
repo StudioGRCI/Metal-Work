@@ -118,7 +118,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const motivoInactiva =
     orden.estado === 'BORRADOR'
       ? orden.abierta_en_taller
-        ? 'Falta que el jefe de producción apruebe la orden'
+        ? 'Falta que Administración revise la orden'
         : 'Falta que Gerencia apruebe la orden'
       : ESTADOS_CERRADOS.includes(orden.estado)
         ? 'La orden ya se cerró'
@@ -273,6 +273,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       !ESTADOS_CERRADOS.includes(orden.estado) &&
       orden.fecha_entrega_comprometida < hoyLima(),
   )
+  const areaSupervisor = vista === 'ficha' && perfil.rol.codigo === 'SUPERVISOR' && perfil.area_id
+    ? (await areasDelTaller()).find((a) => a.id === perfil.area_id)?.codigo
+    : null
 
   return (
     <>
@@ -327,7 +330,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           className="mb-4 rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso"
         >
           {query.abierta === '1' ? <strong>Orden abierta. </strong> : <strong>Por revisar. </strong>}
-          La abrió el taller y espera que el jefe de producción la apruebe o la rechace; ya se le
+          La abrió el taller y espera que Administración la apruebe o la rechace; ya se le
           avisó. Mientras, se le puede armar la lista de actividades y reportar. Al aprobarla nacen
           sus etapas y sus plazos.
         </p>
@@ -576,8 +579,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           puedeArmar={puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
           rolVerificacion={
             ESTADOS_CERRADOS.includes(orden.estado) ? null :
-            perfil.rol.codigo === 'JEFE_PRODUCCION' || perfil.rol.codigo === 'JEFE_TALLER'
-              ? perfil.rol.codigo : null
+            areaSupervisor === 'PRD' || areaSupervisor === 'MTZ' ? areaSupervisor : null
           }
           puedeCrearVerificacion={perfil.rol.codigo === 'DISENO' && !ESTADOS_CERRADOS.includes(orden.estado)}
         />

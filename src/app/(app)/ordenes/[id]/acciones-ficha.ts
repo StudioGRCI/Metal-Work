@@ -342,7 +342,7 @@ export async function agregarVerificacion(
   return { ok: true, mensaje: `Paso ${numeroPaso} agregado.` }
 }
 
-/** Cada jefe marca exclusivamente su propio visto bueno. */
+/** Cada supervisor marca el visto bueno de su área. */
 export async function marcarVerificacion(
   _previo: unknown,
   datos: FormData,
@@ -361,14 +361,20 @@ export async function marcarVerificacion(
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
 
   const v = analisis.data
-  if ((v.avance === '1' && perfil.rol.codigo !== 'JEFE_PRODUCCION') ||
-      (v.avance === '2' && perfil.rol.codigo !== 'JEFE_TALLER')) {
-    return { ok: false, error: 'Solo el jefe correspondiente puede marcar este visto bueno.' }
+  if (perfil.rol.codigo !== 'SUPERVISOR') {
+    return { ok: false, error: 'Solo Supervisión del área correspondiente puede marcar este visto bueno.' }
+  }
+  const areaEsperada = v.avance === '1' ? 'PRD' : 'MTZ'
+  const supabase = await createClient()
+  const { data: area, error: errorArea } = await supabase
+    .from('areas').select('codigo').eq('id', perfil.area_id ?? '').maybeSingle()
+  if (errorArea) return { ok: false, error: mensajeDeError(errorArea) }
+  if (area?.codigo !== areaEsperada) {
+    return { ok: false, error: 'Solo Supervisión del área correspondiente puede marcar este visto bueno.' }
   }
   const pone = v.valor === 'si'
   const cambio = v.avance === '1' ? { avance_1: pone } : { avance_2: pone }
 
-  const supabase = await createClient()
   const { data, error } = await supabase
     .from('ot_verificaciones')
     .update(cambio)

@@ -98,7 +98,7 @@ export function FichaTaller({
   puedeEscribirOrden: boolean
   /** Poner y quitar líneas de la ficha: lo arma el taller. */
   puedeArmar: boolean
-  rolVerificacion: 'JEFE_PRODUCCION' | 'JEFE_TALLER' | null
+  rolVerificacion: 'PRD' | 'MTZ' | null
   puedeCrearVerificacion: boolean
 }) {
   const sinArmar = accesorios.length === 0 && verificaciones.length === 0
@@ -315,7 +315,7 @@ function Verificacion({
   pasos: PasoVerificacion[]
   puedeEditar: boolean
   sinArmar: boolean
-  rolVerificacion: 'JEFE_PRODUCCION' | 'JEFE_TALLER' | null
+  rolVerificacion: 'PRD' | 'MTZ' | null
   puedeCrear: boolean
 }) {
   const [anotando, setAnotando] = useState<string | null>(null)
@@ -341,7 +341,7 @@ function Verificacion({
           <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-2">
             <input type="hidden" name="orden_id" value={ordenId} />
             <Campo etiqueta="Nuevo paso de verificación" htmlFor="nueva-verificacion" className="min-w-60 flex-1">
-              <Entrada id="nueva-verificacion" name="descripcion" required minLength={3} maxLength={300} placeholder="Qué deben verificar los jefes" />
+              <Entrada id="nueva-verificacion" name="descripcion" required minLength={3} maxLength={300} placeholder="Qué debe verificar Supervisión" />
             </Campo>
             <Boton type="submit" cargando={enviando}>Agregar paso</Boton>
             {errorCrear && <p role="alert" className="w-full text-xs text-peligro">{errorCrear}</p>}
@@ -366,10 +366,10 @@ function Verificacion({
                     Descripción
                   </th>
                   <th className="w-20 px-2 py-2 text-center text-[11px] font-semibold text-texto-suave uppercase">
-                    Jefe de producción
+                    Supervisión de Producción
                   </th>
                   <th className="w-20 px-2 py-2 text-center text-[11px] font-semibold text-texto-suave uppercase">
-                    Jefe de maestranza
+                    Supervisión de Maestranza
                   </th>
                 </tr>
               </thead>
@@ -406,8 +406,8 @@ function Verificacion({
                       marcado={paso.avance_1}
                       cuando={paso.avance_1_en}
                       actor={paso.jefe_produccion}
-                      puedeEditar={rolVerificacion === 'JEFE_PRODUCCION' && (!paso.avance_1 || !!paso.avance_1_por)}
-                      etiqueta={`Visto bueno del jefe de producción, paso ${paso.numero}`}
+                      puedeEditar={rolVerificacion === 'PRD' && (!paso.avance_1 || !!paso.avance_1_por)}
+                      etiqueta={`Visto bueno de Supervisión de Producción, paso ${paso.numero}`}
                     />
                     <Casilla
                       ordenId={ordenId}
@@ -416,8 +416,8 @@ function Verificacion({
                       marcado={paso.avance_2}
                       cuando={paso.avance_2_en}
                       actor={paso.jefe_taller}
-                      puedeEditar={rolVerificacion === 'JEFE_TALLER' && (!paso.avance_2 || !!paso.avance_2_por)}
-                      etiqueta={`Visto bueno del jefe de maestranza, paso ${paso.numero}`}
+                      puedeEditar={rolVerificacion === 'MTZ' && (!paso.avance_2 || !!paso.avance_2_por)}
+                      etiqueta={`Visto bueno de Supervisión de Maestranza, paso ${paso.numero}`}
                     />
                   </tr>
                 ))}
@@ -508,7 +508,7 @@ function Casilla({
       />
       {marcado && (
         <p className="mt-0.5 text-[10px] text-texto-tenue">
-          {actor ? `${actor.nombres} ${actor.apellidos}` : 'Registro anterior · jefe sin identificar'}
+          {actor ? `${actor.nombres} ${actor.apellidos}` : 'Registro anterior · autor sin identificar'}
           {cuando ? ` · ${fecha(cuando)}` : ''}
         </p>
       )}
