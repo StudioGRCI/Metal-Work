@@ -10,6 +10,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { Ventana } from '@/components/ui/ventana'
 import type { CatalogoMateriales, MaterialDeOrden } from '@/lib/datos/materiales-orden'
 import { cantidad as fmtCantidad } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
@@ -284,45 +285,6 @@ function AccionesLinea({ material, ordenId, catalogo }: { material: MaterialDeOr
     )
   }
 
-  if (editando) {
-    return (
-      <form onSubmit={alEnviar} className="flex flex-wrap items-center gap-2">
-        <input type="hidden" name="id" value={material.id} />
-        <input type="hidden" name="orden_id" value={ordenId} />
-        <Entrada
-          aria-label={`Cantidad de ${material.material}`}
-          name="cantidad"
-          type="number"
-          inputMode="decimal"
-          min={0}
-          step="0.001"
-          defaultValue={material.cantidad}
-          autoFocus
-          className="tabular w-20 text-right"
-        />
-        <Seleccion aria-label={`Área destino de ${material.material}`} name="area_destino" value={areaDestino} onChange={(e) => {
-          const area = e.target.value
-          if (area === 'PRD' || area === 'MTZ' || area === 'ACB') setAreaDestino(area)
-        }}>
-          {Object.entries(AREAS).map(([valor, etiqueta]) => <option key={valor} value={valor}>{etiqueta}</option>)}
-        </Seleccion>
-        <Seleccion key={areaDestino} aria-label={`Etapa que usará ${material.material}`} name="etapa_id"
-          defaultValue={areaDestino === material.area_destino ? material.etapa_id ?? '' : ''}>
-          <option value="">Sin etapa específica</option>
-          {catalogo.etapas.filter((etapa) => etapa.areaCodigo === areaDestino).map((etapa) =>
-            <option key={etapa.id} value={etapa.id}>{etapa.nombre}</option>)}
-        </Seleccion>
-        <Boton type="submit" tamano="sm" cargando={enviando}>
-          Guardar
-        </Boton>
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setEditando(false)}>
-          Cerrar
-        </Boton>
-        {error && <Error_ texto={error} />}
-      </form>
-    )
-  }
-
   return (
     <div className="flex items-center gap-1">
       <Boton
@@ -334,6 +296,42 @@ function AccionesLinea({ material, ordenId, catalogo }: { material: MaterialDeOr
       >
         <Pencil aria-hidden className="size-4" />
       </Boton>
+      <Ventana abierta={editando} alCerrar={() => { if (!enviando) setEditando(false) }}
+        titulo={`Editar material · ${material.material}`}
+        descripcion={`Plano ${material.numero_plano ?? 'sin número'} · ${material.plano_nombre ?? 'sin nombre'}`}>
+        <form onSubmit={alEnviar} className="space-y-4">
+          <input type="hidden" name="id" value={material.id} />
+          <input type="hidden" name="orden_id" value={ordenId} />
+          <Campo etiqueta={`Cantidad (${material.unidad})`} htmlFor={`cantidad-${material.id}`} requerido>
+            <Entrada id={`cantidad-${material.id}`} name="cantidad" type="number" inputMode="decimal"
+              min={0.001} step="0.001" defaultValue={material.cantidad} required
+              className="tabular text-right" />
+          </Campo>
+          <Campo etiqueta="Área que utilizará el material" htmlFor={`area-${material.id}`} requerido>
+            <Seleccion id={`area-${material.id}`} name="area_destino" value={areaDestino} onChange={(e) => {
+              const area = e.target.value
+              if (area === 'PRD' || area === 'MTZ' || area === 'ACB') setAreaDestino(area)
+            }}>
+              {Object.entries(AREAS).map(([valor, etiqueta]) =>
+                <option key={valor} value={valor}>{etiqueta}</option>)}
+            </Seleccion>
+          </Campo>
+          <Campo etiqueta="Etapa vinculada" htmlFor={`etapa-${material.id}`}
+            ayuda="Elige una etapa de la misma área, si ya está definida.">
+            <Seleccion key={areaDestino} id={`etapa-${material.id}`} name="etapa_id"
+              defaultValue={areaDestino === material.area_destino ? material.etapa_id ?? '' : ''}>
+              <option value="">Sin etapa específica</option>
+              {catalogo.etapas.filter((etapa) => etapa.areaCodigo === areaDestino).map((etapa) =>
+                <option key={etapa.id} value={etapa.id}>{etapa.nombre}</option>)}
+            </Seleccion>
+          </Campo>
+          {error && <Error_ texto={error} />}
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="secundario" disabled={enviando} onClick={() => setEditando(false)}>Cancelar</Boton>
+            <Boton type="submit" cargando={enviando}>Guardar material</Boton>
+          </div>
+        </form>
+      </Ventana>
       <Boton
         type="button"
         variante="fantasma"

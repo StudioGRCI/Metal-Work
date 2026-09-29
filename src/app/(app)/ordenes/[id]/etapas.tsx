@@ -68,7 +68,7 @@ export function Etapas({
             : 'Esta OT conserva su plan histórico: el avance se pondera por las horas estimadas de cada etapa.'}
         acciones={vencidas > 0 ? <Insignia tono="peligro">{vencidas} {vencidas === 1 ? 'vencida' : 'vencidas'}</Insignia> : null}
       />
-      <TarjetaCuerpo className="space-y-2 p-2">
+      <TarjetaCuerpo className="space-y-3 p-3 sm:p-4">
         {etapas.length > 0 && puedeDefinir && <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
           Etapas definidas. Continúa en <Link href={`/ordenes/${ordenId}?vista=planos`} className="font-medium text-acento underline">Planos y revisiones</Link>; Administración pondrá las fechas.
         </p>}
@@ -80,7 +80,7 @@ export function Etapas({
               <FormularioDefinicion ordenId={ordenId} areas={areas} etapas={[]} conversion={!esNueva}
                 actividadesPorVincular={actividadesPorVincular} />
             </div>
-          : <details className="rounded-[var(--radius-base)] border border-borde p-3">
+          : <details className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-3 sm:p-4">
               <summary className="cursor-pointer text-sm font-medium text-texto">Editar etapas de la OT</summary>
               <FormularioDefinicion ordenId={ordenId} areas={areas}
                 etapas={etapas} conversion={false} actividadesPorVincular={[]} />
@@ -214,7 +214,7 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
                   aria-label={`Quitar ${etiqueta}`} title={item.avance > 0 || item.iniciada ? 'La etapa ya tiene avance' : undefined}>Quitar</Boton>
               </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(9rem,1fr)_7rem] sm:items-end">
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(12rem,1fr)_8rem] lg:items-end">
               <Campo etiqueta="Nombre" htmlFor={`nombre-${item.id}`} requerido>
                 <Entrada id={`nombre-${item.id}`} name={`nombre_${item.id}`} value={item.nombre} minLength={2} maxLength={120} required
                   onChange={(e) => setSeleccion((actual) => actual.map((fila) => fila.id === item.id ? { ...fila, nombre: e.target.value } : fila))} />

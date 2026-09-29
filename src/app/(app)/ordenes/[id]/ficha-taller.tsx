@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, Minus, Plus, Trash2, Wand2 } from 'lucide-react'
+import { Check, Minus, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
@@ -19,7 +19,6 @@ import {
   agregarAccesorioOT,
   agregarRepuesto,
   anotarVerificacion,
-  armarFicha,
   guardarFichaFisica,
   marcarAccesorio,
   marcarVerificacion,
@@ -106,8 +105,6 @@ export function FichaTaller({
 
   return (
     <div className="space-y-4">
-      {puedeEditar && sinArmar && <ArmarFicha ordenId={ordenId} />}
-
       {/* Cada sección con el permiso que su tabla honra de verdad: si la
           pantalla ofrece más de lo que la base acepta, el botón responde que
           sí y no guarda nada. */}
@@ -131,33 +128,6 @@ export function FichaTaller({
 
       <Repuestos ordenId={ordenId} repuestos={repuestos} puedeEditar={puedeArmar} />
     </div>
-  )
-}
-
-function ArmarFicha({ ordenId }: { ordenId: string }) {
-  const { alEnviar, enviando, resultado } = useEnvio(armarFicha)
-
-  return (
-    <Tarjeta className="border-acento">
-      <TarjetaCuerpo className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-texto">Esta orden todavía no tiene ficha de taller</p>
-          <p className="text-xs text-texto-suave">
-            Puedes cargar los accesorios de la plantilla de carrocería. Diseño agrega los pasos de verificación más abajo.
-          </p>
-        </div>
-        <form onSubmit={alEnviar}>
-          <input type="hidden" name="orden_id" value={ordenId} />
-          <Boton type="submit" cargando={enviando}>
-            <Wand2 aria-hidden className="size-4" />
-            Armar ficha
-          </Boton>
-        </form>
-        <div className="w-full">
-          <Aviso resultado={resultado} />
-        </div>
-      </TarjetaCuerpo>
-    </Tarjeta>
   )
 }
 

@@ -47,7 +47,7 @@ export function Bitacora({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Trazabilidad"
-        descripcion="Todo lo ocurrido con esta orden: cambios de estado, avances y comentarios. Es un registro inmutable."
+        descripcion="Cambios de la OT, etapas, planos, materiales, solicitudes y reportes, con fecha y persona que actuó."
       />
 
       {puedeComentar && (

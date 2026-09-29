@@ -39,3 +39,32 @@ export async function editarOrdenConHistorial(_previo: unknown, datos: FormData)
   for (const ruta of ['/ordenes', '/avance', '/cotizaciones/pdf', `/ordenes/${orden_id}`]) revalidatePath(ruta)
   return { ok: true, mensaje: 'OT actualizada. El cambio quedó en su historial.' }
 }
+
+export async function editarResumenAdministracion(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (perfil.rol.codigo !== 'ADMINISTRACION' || !puede(perfil, 'ordenes.editar')) {
+    return { ok: false, error: 'Solo Administración corrige vehículo y responsable.' }
+  }
+  const entrada = z.object({
+    orden_id: z.string().uuid(),
+    version: z.string().datetime({ offset: true }),
+    unidad_version: z.string().datetime({ offset: true }),
+    marca: z.string().trim().max(80),
+    modelo: z.string().trim().max(80),
+    anio: z.union([z.literal(''), z.coerce.number().int().min(1950).max(2100)]),
+    responsable_id: z.union([z.literal(''), z.string().uuid()]),
+    motivo: z.string().trim().min(5).max(500),
+  }).safeParse(Object.fromEntries(datos))
+  if (!entrada.success) return { ok: false, error: entrada.error.issues[0]?.message ?? 'Revisa los datos.' }
+  const v = entrada.data
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('editar_resumen_ot_administracion', {
+    p_orden: v.orden_id, p_version: v.version, p_version_unidad: v.unidad_version,
+    p_marca: v.marca, p_modelo: v.modelo, p_anio: v.anio === '' ? null : v.anio,
+    p_responsable: v.responsable_id || null, p_motivo: v.motivo,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== v.orden_id) return { ok: false, error: NO_TOCO_NADA }
+  revalidatePath(`/ordenes/${v.orden_id}`)
+  return { ok: true, mensaje: 'Vehículo y responsable actualizados con historial.' }
+}

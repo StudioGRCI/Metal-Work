@@ -123,7 +123,7 @@ export async function obtenerOrden(id: string) {
   const { data, error } = await supabase
     .from('ordenes_trabajo')
     .select(
-      'id, numero, estado, plan_etapas_manual, abierta_en_taller, cliente_id, prioridad, tipo_trabajo, descripcion, especificaciones_tecnicas, datos_tecnicos, fecha_registro, fecha_inicio_programada, fecha_fin_programada, fecha_entrega_comprometida, fecha_inicio_real, fecha_fin_real, avance_porcentaje, horas_estimadas, horas_reales, motivo_pausa, motivo_anulacion, observaciones, creado_en, actualizado_en, largo_m, ancho_m, alto_m, capacidad_carga, ruedas, tipo_llantas, cantidad_ejes, tipo_suspension, colores, caracteristicas_especiales, correo_contacto, encargado_produccion_id, cliente:clientes(id, razon_social, numero_documento, telefono, correo), unidad:unidades(id, placa, numero_fmi, marca, modelo, anio, tipo_vehiculo, numero_chasis, codigo_interno, actualizado_en), sede:sedes!inner(id, nombre), tipo_carroceria:tipos_carroceria(id, nombre), responsable:usuarios!ordenes_trabajo_responsable_id_fkey(id, puesto), supervisor:usuarios!ordenes_trabajo_supervisor_id_fkey(id, puesto)',
+      'id, numero, estado, plan_etapas_manual, abierta_en_taller, cliente_id, responsable_id, prioridad, tipo_trabajo, descripcion, especificaciones_tecnicas, datos_tecnicos, fecha_registro, fecha_inicio_programada, fecha_fin_programada, fecha_entrega_comprometida, fecha_inicio_real, fecha_fin_real, avance_porcentaje, horas_estimadas, horas_reales, motivo_pausa, motivo_anulacion, observaciones, creado_en, actualizado_en, largo_m, ancho_m, alto_m, capacidad_carga, ruedas, tipo_llantas, cantidad_ejes, tipo_suspension, colores, caracteristicas_especiales, correo_contacto, encargado_produccion_id, cliente:clientes(id, razon_social, numero_documento, telefono, correo), unidad:unidades(id, placa, numero_fmi, marca, modelo, anio, tipo_vehiculo, numero_chasis, codigo_interno, actualizado_en), sede:sedes!inner(id, nombre), tipo_carroceria:tipos_carroceria(id, nombre), responsable:usuarios!ordenes_trabajo_responsable_id_fkey(id, puesto), supervisor:usuarios!ordenes_trabajo_supervisor_id_fkey(id, puesto)',
     )
     .eq('id', id)
     .maybeSingle()
@@ -190,7 +190,7 @@ export async function areasParaEtapas() {
     .from('areas')
     .select('id, nombre, codigo')
     .eq('activo', true)
-    .in('codigo', ['DIS', 'PRD', 'MTZ', 'ACB'])
+    .in('codigo', ['ADM', 'DIS', 'PRD', 'MTZ', 'ACB'])
     .order('nombre')
   if (error) throw new Error(`No se pudieron cargar las áreas: ${error.message}`)
   return data ?? []
@@ -217,6 +217,18 @@ export async function catalogosOrden() {
     // sobre la tabla (sí en los embebidos), así que se declara a mano.
     responsables: (responsables.data ?? []) as unknown as { id: string; puesto: string | null; correo: string | null }[],
   }
+}
+
+/** Personas que Administración puede elegir como responsables de una OT. */
+export async function responsablesDeOrden() {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('usuarios')
+    .select('id, nombres, apellidos, cargo, correo')
+    .eq('activo', true)
+    .eq('es_operario', false)
+    .order('cargo')
+  if (error) throw new Error('No se pudieron cargar los responsables disponibles.')
+  return data ?? []
 }
 
 export async function unidadesDeCliente(clienteId: string) {
@@ -396,7 +408,14 @@ export async function timelineDeOrden(ordenId: string, limite = 200): Promise<Ev
 
   return filas
     .filter((f) => f.ocurrido_en)
-    .map((f, i) => ({
+    .map((f, i) => {
+      const esCambioDeTrabajo = f.categoria === 'BITACORA' && f.datos !== null
+        && typeof f.datos === 'object' && !Array.isArray(f.datos)
+        && 'tabla' in f.datos && typeof f.datos.tabla === 'string'
+      const tituloCambio = f.detalle?.split('. Campos:')[0] ?? 'Cambio de la OT'
+      const detalleCambio = f.detalle?.includes('. Campos:')
+        ? `Campos: ${f.detalle.split('. Campos:')[1]}` : null
+      return {
       // La vista es una unión sin clave propia; el índice basta para React.
       clave: `${f.referencia_tabla ?? 'evento'}-${f.referencia_id ?? i}-${i}`,
       ocurrido_en: f.ocurrido_en as string,
@@ -404,13 +423,14 @@ export async function timelineDeOrden(ordenId: string, limite = 200): Promise<Ev
       // La vista trae el tipo de la bitácora crudo («CAMBIO ESTADO») y los
       // disparadores escriben el tipo de trabajo entre paréntesis
       // («(FABRICACION)»): se muestran con su etiqueta, no como código.
-      titulo:
+      titulo: esCambioDeTrabajo ? tituloCambio :
         f.categoria === 'BITACORA' && f.titulo
           ? definir(TIPO_EVENTO_BITACORA, f.titulo.replaceAll(' ', '_')).etiqueta
           : (f.titulo ?? ''),
-      detalle: f.detalle?.replace(/\(([A-Z_]+)\)/g, (todo, codigo: string) =>
+      detalle: esCambioDeTrabajo ? detalleCambio : f.detalle?.replace(/\(([A-Z_]+)\)/g, (todo, codigo: string) =>
         TIPO_TRABAJO[codigo] ? `(${TIPO_TRABAJO[codigo].etiqueta})` : todo,
       ) ?? null,
       usuario: f.usuario_id ? (nombres.get(f.usuario_id) ?? null) : null,
-    }))
+      }
+    })
 }

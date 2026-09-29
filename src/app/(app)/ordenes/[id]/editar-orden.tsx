@@ -44,11 +44,8 @@ export function EditarOrden({ orden, cotizaciones }: {
         <Campo etiqueta="Código interno" htmlFor="editar-codigo">
           <Entrada id="editar-codigo" name="codigo_interno" maxLength={40} readOnly={!orden.unidad} defaultValue={orden.unidad?.codigo_interno ?? ''} />
         </Campo>
-        <fieldset className="grid gap-3 sm:grid-cols-2">
-          <legend className="mb-2 text-sm font-medium">Datos del chasis</legend>
-          <Campo etiqueta="Marca" htmlFor="editar-marca"><Entrada id="editar-marca" name="marca" maxLength={80} readOnly={!orden.unidad} defaultValue={orden.unidad?.marca ?? ''} /></Campo>
-          <Campo etiqueta="Modelo" htmlFor="editar-modelo"><Entrada id="editar-modelo" name="modelo" maxLength={80} readOnly={!orden.unidad} defaultValue={orden.unidad?.modelo ?? ''} /></Campo>
-        </fieldset>
+        <input type="hidden" name="marca" value={orden.unidad?.marca ?? ''} />
+        <input type="hidden" name="modelo" value={orden.unidad?.modelo ?? ''} />
         <Campo etiqueta="Cambio de cliente por nueva venta" htmlFor="editar-cotizacion" ayuda="Sube y aprueba primero la cotización del nuevo comprador para esta carrocería.">
           <Seleccion id="editar-cotizacion" name="cotizacion_nueva_id" value={nueva} onChange={e => elegir(e.target.value)}>
             <option value="">Conservar el cliente actual</option>
