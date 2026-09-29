@@ -14,7 +14,7 @@ const esquema = z.object({
 
 export async function registrarVersionPlano(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'Las versiones las carga Diseño.' }
+  if (!puede(perfil, ['diseno.planos', 'diseno.subir_pdf'])) return { ok: false, error: 'Las versiones las carga Diseño.' }
   const analisis = esquema.safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: 'Elige el plano, el área y un PDF válido.' }
   const v = analisis.data
@@ -31,7 +31,6 @@ export async function registrarVersionPlano(_previo: unknown, datos: FormData): 
     p_nota: v.nota_envio ?? '',
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
-  if (!data) return { ok: false, error: 'No se confirmó la asignación del equipo. Recarga la página antes de volver a intentar.' }
   if (!data) return { ok: false, error: 'No se confirmó la versión. Recarga antes de volver a intentar.' }
   revalidatePath('/ordenes', 'layout')
   return { ok: true, mensaje: 'Versión enviada a revisión. El área la verá cuando sea aprobada.' }

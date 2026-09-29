@@ -17,6 +17,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   return new Response(data, { headers: {
     'Content-Type': 'application/pdf', 'Cache-Control': 'private, no-store',
     'X-Content-Type-Options': 'nosniff',
-    'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(plano.nombre_archivo)}`,
+    'Content-Disposition': `${perfil.rol.codigo === 'DISENO_COLABORADOR' ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(plano.nombre_archivo)}`,
   } })
 }

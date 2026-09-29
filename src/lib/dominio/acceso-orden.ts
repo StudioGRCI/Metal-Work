@@ -7,7 +7,7 @@ export function seccionesDeOrden(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>)
   const tiene = (...permisos: string[]) =>
     perfil.rol.codigo === 'ADMIN' || permisos.some(p => perfil.permisos.includes(p))
   if (!tiene('ordenes.ver')) return []
-  const tecnico = tiene('diseno.planos', 'diseno.revisar', 'produccion.registrar', 'produccion.cualquier_area')
+  const tecnico = tiene('diseno.planos', 'diseno.revisar', 'diseno.subir_pdf', 'produccion.registrar', 'produccion.cualquier_area')
     || ['ALMACENERO', 'COMPRADOR', 'CALIDAD'].includes(perfil.rol.codigo)
   return [
     'resumen',

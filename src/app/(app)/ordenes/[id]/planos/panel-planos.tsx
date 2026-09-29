@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { FileDown, Upload } from 'lucide-react'
+import { FileText, Upload } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -165,7 +165,7 @@ export function Version({ version: v, ordenId }: { version: VersionEnPantalla; o
       <Insignia tono={v.vigente ? 'exito' : v.estado === 'OBSERVADO' ? 'peligro' : 'aviso'}>{v.vigente ? 'Vigente' : ['APROBADO', 'RECIBIDO'].includes(v.estado) ? 'Versión anterior' : ESTADOS[v.estado]}</Insignia>
     </div>
     <p className="mt-2 text-sm">{ESTADOS[v.estado]}</p>
-    <a className="mt-3 inline-flex min-h-11 items-center gap-2 break-all text-sm font-medium text-acento hover:underline" href={`/ordenes/${ordenId}/planos/${v.id}/archivo`}><FileDown aria-hidden className="size-4 shrink-0" />{v.nombre_archivo}</a>
+    <a className="mt-3 inline-flex min-h-11 items-center gap-2 break-all text-sm font-medium text-acento hover:underline" href={`/ordenes/${ordenId}/planos/${v.id}/archivo`} target="_blank" rel="noopener noreferrer"><FileText aria-hidden className="size-4 shrink-0" />Abrir PDF: {v.nombre_archivo}</a>
     <p className="mt-2 text-xs text-texto-suave">Cargado: {fechaHora(v.creado_en)}{v.revisado_en ? ` · Revisado: ${fechaHora(v.revisado_en)}` : ''}{v.recibido_en ? ` · Recibido: ${fechaHora(v.recibido_en)}` : ''}</p>
     {v.observacion && <p className="mt-3 rounded-[var(--radius-base)] bg-aviso-suave p-3 text-sm text-texto whitespace-pre-wrap">{v.observacion}</p>}
     {v.nota_envio && <p className="mt-3 rounded-[var(--radius-base)] bg-superficie-2 p-3 text-sm text-texto whitespace-pre-wrap">Diseño indicó: {v.nota_envio}</p>}

@@ -80,6 +80,7 @@ export function Cumplimiento({
   catalogos,
   planoSeleccionado,
   puedeDisenar,
+  puedeSubirPdf = false,
   areaPropia = null,
   ordenViva,
   motivoInactiva,
@@ -93,6 +94,7 @@ export function Cumplimiento({
   planoSeleccionado?: string
   /** `diseno.planos`: arma planos y piezas, y entrega el plano. */
   puedeDisenar: boolean
+  puedeSubirPdf?: boolean
   /**
    * De qué mano es quien mira, si es de una sola: el supervisor de Maestranza
    * ve solo sus botones y su marca rápida; el jefe (cualquier área), los dos.
@@ -109,6 +111,9 @@ export function Cumplimiento({
   // El número que sigue: el mayor de los que ya son número, más uno.
   const numeros = planos.map((p) => Number.parseInt(p.numero_plano ?? '', 10)).filter((n) => Number.isFinite(n))
   const numeroPropuesto = String(Math.max(0, ...numeros) + 1)
+  const colaboradores = new Set(catalogos.equipoNominal.filter(p => p.funcion === 'COLABORADOR').map(p => p.id))
+  const planosDeColaboradores = new Set(catalogos.planos.filter(p =>
+    p.integrante_diseno_id && colaboradores.has(p.integrante_diseno_id)).map(p => p.id))
 
   return (
     <div className="space-y-4">
@@ -165,6 +170,12 @@ export function Cumplimiento({
         </p>
       )}
 
+      {puedeSubirPdf && ordenViva && <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
+        {planosDeColaboradores.size === 0
+          ? 'Diseño todavía no asignó un plano a un colaborador. Cuando lo haga, podrás adjuntar su PDF en ese plano.'
+          : 'Abre «PDF y revisiones» en un plano asignado a un colaborador para adjuntar su PDF.'}
+      </p>}
+
       {puedeDisenar && ordenViva && planos.length > 1 && (pesoTotal !== 100 || sinEntregar > 1) && (
         <div className="flex flex-wrap items-center justify-end gap-2">
           {pesoTotal !== 100 && <RepartirPeso ordenId={ordenId} cuantos={planos.length} />}
@@ -199,6 +210,7 @@ export function Cumplimiento({
             catalogos={catalogos}
             seleccionado={planoSeleccionado === plano.plano_id}
             puedeDisenar={puedeDisenar && ordenViva}
+            puedeSubirPdf={puedeSubirPdf && ordenViva && planosDeColaboradores.has(plano.plano_id ?? '')}
             areaPropia={areaPropia}
           />
         ))
@@ -430,6 +442,7 @@ function TarjetaPlano({
   catalogos,
   seleccionado,
   puedeDisenar,
+  puedeSubirPdf,
   areaPropia,
 }: {
   ordenId: string
@@ -439,6 +452,7 @@ function TarjetaPlano({
   catalogos: Catalogos
   seleccionado: boolean
   puedeDisenar: boolean
+  puedeSubirPdf: boolean
   areaPropia: ManoDelTaller | null
 }) {
   const [modo, setModo] = useState<'ver' | 'editar' | 'entregar' | 'quitar'>('ver')
@@ -534,7 +548,7 @@ function TarjetaPlano({
             {historial ? 'Ocultar anteriores' : 'Ver versiones anteriores'}
           </Boton>}
         </div>
-        {puedeDisenar && <CargarVersion catalogos={catalogos} ordenId={ordenId} planoId={planoId} />}
+        {(puedeDisenar || puedeSubirPdf) && <CargarVersion catalogos={catalogos} ordenId={ordenId} planoId={planoId} />}
         {versiones.filter(v => historial || v.vigente || v.estado === 'POR_REVISAR' || v.estado === 'OBSERVADO').map(v =>
           <Version key={v.id} version={v} ordenId={ordenId} />)}
         {versiones.length === 0 && <p className="text-sm text-texto-suave">Este plano aún no tiene PDF. Diseño puede adjuntarlo aquí.</p>}
