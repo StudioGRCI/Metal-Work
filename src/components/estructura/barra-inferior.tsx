@@ -1,11 +1,13 @@
 'use client'
 
-import { LayoutGrid, X } from 'lucide-react'
+import { LayoutGrid } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
+import { useContextoOrden } from './contexto-orden'
 
 import { InstalarApp } from '@/components/estructura/instalar-app'
+import { Ventana } from '@/components/ui/ventana'
 import { NavegacionLista } from '@/components/estructura/navegacion-lista'
 import { NAVEGACION, PESTANAS_TELEFONO, puedeVer, rutaActiva } from '@/lib/navegacion'
 import { cn } from '@/lib/utils'
@@ -36,7 +38,7 @@ export function BarraInferior({
   children: ReactNode
 }) {
   const ruta = usePathname()
-  const [abierto, setAbierto] = useState(false)
+  const { abierto, abrir: setAbierto } = useContextoOrden()
 
   const visibles = NAVEGACION.flatMap((g) => g.items).filter((i) => i.disponible && puedeVer(i, permisos, esAdmin, rolCodigo))
   const pestanas = PESTANAS_TELEFONO.flatMap((p) => {
@@ -112,41 +114,11 @@ export function BarraInferior({
         </ul>
       </nav>
 
-      {abierto && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <button
-            type="button"
-            aria-label="Cerrar"
-            onClick={() => setAbierto(false)}
-            className="absolute inset-0 bg-black/40"
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Todas las secciones"
-            className="absolute inset-x-0 bottom-0 flex max-h-[85dvh] flex-col rounded-t-2xl bg-superficie pb-[env(safe-area-inset-bottom)] shadow-xl"
-          >
-            <div className="flex items-center justify-between border-b border-borde px-4 py-2">
-              <span className="text-sm font-semibold text-texto">Tus secciones</span>
-              <button
-                type="button"
-                onClick={() => setAbierto(false)}
-                aria-label="Cerrar"
-                className="flex size-11 items-center justify-center rounded-[var(--radius-base)] text-texto-suave hover:bg-superficie-2"
-              >
-                <X aria-hidden className="size-5" />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <NavegacionLista permisos={permisos} esAdmin={esAdmin} rolCodigo={rolCodigo} pendientes={pendientes} alNavegar={() => setAbierto(false)} />
-              {children}
-              <div className="border-t border-borde px-6 py-4">
-                <InstalarApp />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <Ventana abierta={abierto} alCerrar={()=>setAbierto(false)} titulo="Tus secciones" ancho="sm" cerrarAlTocarFuera>
+        <NavegacionLista permisos={permisos} esAdmin={esAdmin} rolCodigo={rolCodigo} pendientes={pendientes} alNavegar={()=>setAbierto(false)}/>
+        {children}
+        <div className="border-t border-borde px-3 py-4"><InstalarApp/></div>
+      </Ventana>
     </>
   )
 }

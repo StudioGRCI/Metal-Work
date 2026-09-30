@@ -19,14 +19,14 @@ export default async function PaginaStockAlmacen() {
       crearCompra: false, recibir: false, despachar: false,
     }),
     db.from('movimientos_materiales')
-      .select('id,tipo,cantidad,documento_referencia,registrado_en,requerimiento_detalle_id')
+      .select('id,tipo,cantidad,documento_referencia,registrado_en,requerimiento_detalle_id,material_id,origen,recibido_por_nombre,foto_ruta')
       .order('registrado_en', { ascending: false }).limit(80),
     db.from('conteos_inventario')
       .select('id,material_id,cantidad_fisica,ajuste,motivo,registrado_en')
       .order('registrado_en', { ascending: false }).limit(40),
   ])
   if (movimientos.error || conteos.error) throw new Error('No se pudo cargar el historial del almacén. Recarga la página.')
-  const idsDetalle = [...new Set((movimientos.data ?? []).map(m => m.requerimiento_detalle_id))]
+  const idsDetalle = [...new Set((movimientos.data ?? []).map(m => m.requerimiento_detalle_id).filter((id):id is string=>Boolean(id)))]
   const detalles = idsDetalle.length
     ? await db.from('requerimiento_material_detalles').select('id,ot_material_id').in('id', idsDetalle)
     : { data: [], error: null }
@@ -47,19 +47,21 @@ export default async function PaginaStockAlmacen() {
   const ordenPorId = new Map((ordenes.data ?? []).map(o => [o.id, o]))
   const eventos = [
     ...(movimientos.data ?? []).map(m => {
-      const otMaterial = otMaterialPorId.get(detallePorId.get(m.requerimiento_detalle_id)?.ot_material_id ?? '')
+      const otMaterial = otMaterialPorId.get(detallePorId.get(m.requerimiento_detalle_id??'')?.ot_material_id ?? '')
+      const materialId=m.material_id??otMaterial?.material_id??''
       return {
-        id: m.id, fecha: m.registrado_en, material: materialPorId.get(otMaterial?.material_id ?? '')?.descripcion ?? 'Material de la OT',
-        detalle: m.tipo === 'INGRESO' ? `Ingreso · ${m.documento_referencia ?? 'sin referencia'}` : 'Despacho al área',
+        id: m.id, fecha: m.registrado_en, material: materialPorId.get(materialId)?.descripcion ?? 'Material',
+        detalle: m.tipo === 'INGRESO' ? `Ingreso · ${m.documento_referencia ?? 'sin referencia'}` : `Entrega a ${m.recibido_por_nombre??'su área'}`,
+        foto: m.foto_ruta ? `/almacen/movimientos/${m.id}/evidencia` : null,
         cantidad: (m.tipo === 'INGRESO' ? 1 : -1) * Number(m.cantidad),
-        unidad: materialPorId.get(otMaterial?.material_id ?? '')?.unidad ?? '',
+        unidad: materialPorId.get(materialId)?.unidad ?? '',
         orden: otMaterial ? ordenPorId.get(otMaterial.orden_id) : null,
       }
     }),
     ...(conteos.data ?? []).map(c => ({
       id: c.id, fecha: c.registrado_en, material: materialPorId.get(c.material_id)?.descripcion ?? 'Material',
       detalle: `Conteo físico · ${c.motivo}`, cantidad: Number(c.ajuste),
-      unidad: materialPorId.get(c.material_id)?.unidad ?? '', orden: null,
+      unidad: materialPorId.get(c.material_id)?.unidad ?? '', orden: null, foto:null,
     })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 100)
 
@@ -67,7 +69,7 @@ export default async function PaginaStockAlmacen() {
     <EncabezadoPagina titulo="Stock de Almacén"
       descripcion="Consulta el saldo, registra conteos físicos y revisa los ingresos y salidas. Cada solicitud se atiende dentro de su OT." />
     <div className="space-y-5">
-      <StockAlmacen existencias={datos.existencias} catalogoAlmacen={datos.catalogoAlmacen} />
+      <StockAlmacen existencias={datos.existencias} catalogoAlmacen={datos.catalogoAlmacen} despachos={eventos.filter(e=>e.cantidad<0&&e.detalle.startsWith('Entrega')).map(e=>({id:e.id,etiqueta:`${e.material} · ${e.detalle} · ${cantidad(-e.cantidad)} ${e.unidad}`}))} />
       <Tarjeta>
         <TarjetaCabecera titulo="Ingresos, despachos y ajustes recientes"
           descripcion="Los movimientos de compra y despacho se registran desde Materiales de la OT." />
@@ -81,6 +83,7 @@ export default async function PaginaStockAlmacen() {
               </p>
             </div>
             <p className="tabular whitespace-nowrap text-sm font-semibold text-texto">
+              {e.foto&&<Link href={e.foto} target="_blank" className="mr-3 text-acento underline">Ver entrega</Link>}
               {e.cantidad > 0 ? '+' : ''}{cantidad(e.cantidad)} {e.unidad}
             </p>
           </div>)}

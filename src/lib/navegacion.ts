@@ -96,7 +96,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
         titulo: 'Informe semanal de Diseño',
         ruta: '/diseno/informe-semanal',
         icono: FileText,
-        permiso: ['diseno.planos', 'diseno.subir_pdf', 'supervision.general'],
+        permiso: ['diseno.planos', 'diseno.subir_pdf', 'supervision.general','administracion.recibir_informe'],
         descripcion: 'Tareas de colaboradores y planos aprobados en Word',
         disponible: true,
       },
@@ -113,6 +113,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
   {
     titulo: 'Abastecimiento',
     items: [
+      {titulo:'Compras',ruta:'/compras',icono:Receipt,permiso:'compras.crear',descripcion:'Órdenes de compra agrupadas, facturas y entregas',disponible:true},
       {
         titulo: 'Stock de Almacén',
         ruta: '/almacen/stock',

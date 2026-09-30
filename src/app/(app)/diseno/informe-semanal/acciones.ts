@@ -9,7 +9,7 @@ import { createClient } from '@/lib/supabase/server'
 
 async function exigirDiseno() {
   const perfil = await exigirSesion()
-  return puede(perfil, ['diseno.planos', 'diseno.subir_pdf']) ? perfil : null
+  return puede(perfil, 'diseno.preparar_informe') ? perfil : null
 }
 
 export async function registrarTareaDiseno(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -38,7 +38,8 @@ export async function registrarTareaDiseno(_previo: unknown, datos: FormData): P
 }
 
 export async function guardarInformeDiseno(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
-  const perfil = await exigirDiseno()
+  const sesion=await exigirSesion()
+  const perfil=puede(sesion,'diseno.preparar_informe')?sesion:null
   if (!perfil) return { ok: false, error: 'Solo Diseño prepara el informe semanal.' }
   const entrada = z.object({
     semana_inicio: z.iso.date(),
@@ -69,4 +70,17 @@ export async function guardarInformeDiseno(_previo: unknown, datos: FormData): P
   if (!resultado.data) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/diseno/informe-semanal')
   return { ok: true, mensaje: `Informe semanal N.º ${resultado.data.numero} guardado.` }
+}
+
+export async function transitarInforme(_previo:unknown,datos:FormData):Promise<ResultadoAccion> {
+ const perfil=await exigirSesion()
+ const v=z.object({informe_id:z.string().uuid(),estado:z.enum(['EN_REVISION','APROBADO','OBSERVADO','RECIBIDO']),observacion:z.string().trim().max(2000)}).safeParse(Object.fromEntries(datos))
+ if(!v.success)return {ok:false,error:'Revisa la decisión y la observación.'}
+ const permiso=v.data.estado==='EN_REVISION'?'diseno.preparar_informe':v.data.estado==='RECIBIDO'?'administracion.recibir_informe':'diseno.revisar_informe'
+ if(!puede(perfil,permiso))return {ok:false,error:'Tu usuario no puede realizar esta decisión.'}
+ const db=await createClient();const {data,error}=await db.rpc('transitar_informe_diseno',{p_informe:v.data.informe_id,p_estado:v.data.estado,p_observacion:v.data.observacion||null})
+ if(error)return {ok:false,error:mensajeDeError(error)}
+ if(data!==v.data.informe_id)return {ok:false,error:NO_TOCO_NADA}
+ revalidatePath('/diseno/informe-semanal')
+ return {ok:true,mensaje:v.data.estado==='EN_REVISION'?'Informe enviado a Diseño.':v.data.estado==='APROBADO'?'Informe aprobado y disponible para Administración.':v.data.estado==='RECIBIDO'?'Recepción confirmada.':'Observaciones enviadas al colaborador.'}
 }

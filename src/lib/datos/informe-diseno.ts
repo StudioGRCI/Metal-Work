@@ -2,13 +2,19 @@ import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
 import { finSemanaDiseno } from '@/lib/dominio/semana-diseno'
+import {z} from 'zod'
+
+const contenidoEnviado=z.object({
+ tareas:z.array(z.object({id:z.string(),orden_id:z.string(),integrante_id:z.string(),tipo:z.string(),componente:z.string(),fecha_inicio:z.string(),fecha_entrega:z.string(),observacion:z.string().nullable(),ot:z.string(),responsable:z.string()})),
+ planos:z.array(z.object({id:z.string(),ot:z.string(),numero:z.union([z.string(),z.number()]),nombre:z.string(),area:z.string(),responsable:z.string(),entregado_en:z.string(),estado:z.string()})),
+})
 
 export async function datosInformeDiseno(inicio: string) {
   const db = await createClient()
   const fin = finSemanaDiseno(inicio)
   const [informe, tareas, versiones] = await Promise.all([
     db.from('diseno_informes')
-      .select('id,numero,semana_inicio,responsable,resumen,incidencias,acciones,no_conformidades,indicadores,plan_siguiente,conclusiones')
+      .select('id,numero,semana_inicio,responsable,resumen,incidencias,acciones,no_conformidades,indicadores,plan_siguiente,conclusiones,estado,observacion_revision,enviado_en,revisado_en,recibido_en,contenido_enviado')
       .eq('semana_inicio', inicio).maybeSingle(),
     db.from('diseno_tareas')
       .select('id,orden_id,integrante_id,tipo,componente,fecha_inicio,fecha_entrega,observacion')
@@ -22,6 +28,11 @@ export async function datosInformeDiseno(inicio: string) {
       .order('revision_diseno_en').limit(300),
   ])
   if (informe.error || tareas.error || versiones.error) throw new Error('No se pudo cargar el informe semanal de Diseño.')
+  if(informe.data?.contenido_enviado && informe.data.estado!=='BORRADOR' && informe.data.estado!=='OBSERVADO') {
+    const copia=contenidoEnviado.safeParse(informe.data.contenido_enviado)
+    if(!copia.success)throw new Error('El contenido enviado no se pudo leer. Solicita revisión a Administración.')
+    return {informe:informe.data,inicio,fin,tareas:copia.data.tareas,planos:copia.data.planos}
+  }
   const idsPlano = [...new Set((versiones.data ?? []).map(v => v.plano_id))]
   const planos = idsPlano.length
     ? await db.from('ot_planos').select('id,orden_id,numero_plano,nombre,integrante_diseno_id').in('id', idsPlano)

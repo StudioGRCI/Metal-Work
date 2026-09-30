@@ -1,0 +1,25 @@
+begin;
+select set_config('prueba.informe',gen_random_uuid()::text,true);
+select set_config('request.jwt.claim.sub',(select u.id::text from public.usuarios u join public.roles r on r.id=u.rol_id where r.codigo='DISENO_COLABORADOR' and u.activo limit 1),true);
+select set_config('request.jwt.claims',jsonb_build_object('sub',current_setting('request.jwt.claim.sub'),'role','authenticated')::text,true);
+set local role authenticated;
+insert into public.diseno_informes(id,semana_inicio,responsable,resumen,creado_por,actualizado_por) values(current_setting('prueba.informe')::uuid,'2099-01-05','Persona de prueba','Resumen completo para ensayo reversible',public.usuario_actual(),public.usuario_actual());
+select public.transitar_informe_diseno(current_setting('prueba.informe')::uuid,'EN_REVISION');
+do $$ begin
+ begin perform public.transitar_informe_diseno(current_setting('prueba.informe')::uuid,'APROBADO');raise exception 'FAIL: colaborador aprobó';exception when insufficient_privilege then null;end;
+ begin update public.diseno_informes set resumen='Cambio no autorizado' where id=current_setting('prueba.informe')::uuid;raise exception 'FAIL: editó enviado';exception when others then if sqlerrm like 'FAIL:%' then raise;end if;if sqlerrm not like 'El informe enviado%' then raise;end if;end;
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub',(select u.id::text from public.usuarios u join public.roles r on r.id=u.rol_id where r.codigo='DISENO' and u.activo limit 1),true);
+select set_config('request.jwt.claims',jsonb_build_object('sub',current_setting('request.jwt.claim.sub'),'role','authenticated')::text,true);
+set local role authenticated;
+select public.transitar_informe_diseno(current_setting('prueba.informe')::uuid,'APROBADO');
+reset role;
+select set_config('request.jwt.claim.sub',(select u.id::text from public.usuarios u join public.roles r on r.id=u.rol_id where r.codigo='ADMINISTRACION' and u.activo limit 1),true);
+select set_config('request.jwt.claims',jsonb_build_object('sub',current_setting('request.jwt.claim.sub'),'role','authenticated')::text,true);
+set local role authenticated;
+do $$ begin if not exists(select 1 from public.diseno_informes where id=current_setting('prueba.informe')::uuid and contenido_enviado is not null) then raise exception 'FAIL: Administración no ve el aprobado';end if;end $$;
+select public.transitar_informe_diseno(current_setting('prueba.informe')::uuid,'RECIBIDO');
+reset role;
+select 'OK: colaborador envía; no se autoaprueba ni edita enviado; Diseño aprueba; Administración recibe el contenido sellado. Ensayo revertido.' comprobacion;
+rollback;

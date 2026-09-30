@@ -1,7 +1,13 @@
 'use client'
 
-import { ArrowDownToLine, ArrowUpFromLine, Boxes, Check, PackageCheck, ShoppingCart } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpFromLine, ShoppingCart } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
+import { Ventana } from '@/components/ui/ventana'
+import { subirArchivoPrivado } from '@/lib/subida-privada'
+import { createClient } from '@/lib/supabase/client'
+import { registrarIngresoGeneral } from './acciones'
+import {NuevoIngreso} from '../../almacen/stock/ingreso'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -47,7 +53,7 @@ const TONO_ESTADO: Record<string, 'aviso' | 'info' | 'exito' | 'neutro'> = {
   ATENDIDO: 'exito',
 }
 
-type Filtro = 'TODOS' | 'DISENO' | 'RECHAZADO' | 'ALMACEN' | 'STOCK' | 'SOLICITADO' | 'EN_COMPRA' | 'EN_ALMACEN' | 'ATENDIDO'
+type Filtro = string
 
 function estadoOperativo(linea: LineaAtencionMaterial): string {
   if (linea.aprobacion_diseno === 'PROPUESTO') return 'DISENO'
@@ -70,7 +76,6 @@ export function TableroMateriales({
   puedeVerCompras,
   puedeRecibir,
   puedeDespachar,
-  clavesCompra,
   clavesRecepcion,
   clavesDespacho,
   clavesDocumento,
@@ -87,11 +92,12 @@ export function TableroMateriales({
   puedeVerCompras: boolean
   puedeRecibir: boolean
   puedeDespachar: boolean
-  clavesCompra: Record<string, string>
+  clavesCompra?: Record<string,string>
   clavesRecepcion: Record<string, string>
   clavesDespacho: Record<string, string>
   clavesDocumento: Record<string, string>
 }) {
+  const [compraAbierta,setCompraAbierta]=useState(false)
   const [filtro, setFiltro] = useState<Filtro>('TODOS')
   const agrupados = useMemo(() => {
     const grupos = new Map<string, LineaAtencionMaterial[]>()
@@ -105,20 +111,21 @@ export function TableroMateriales({
   }, [filtro, lineas])
 
   const completos = lineas.filter((linea) => linea.estado === 'ATENDIDO').length
-  const porComprar = lineas.filter((linea) => estadoOperativo(linea) === 'SOLICITADO').length
+  const porComprar = lineas.filter(l=>l.aprobacion_diseno==='APROBADO'&&l.decision_almacen==='COMPRA'&&Number(l.cantidad_solicitada)-Number(l.cantidad_stock??0)>Number(l.cantidad_comprada)).length
   const porRevisar = lineas.filter((linea) => estadoOperativo(linea) === 'ALMACEN').length
   const enAlmacen = lineas.filter((linea) => linea.estado === 'EN_ALMACEN').length
   const avanceLineas = lineas.length > 0 ? Math.round((completos / lineas.length) * 100) : 0
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Indicador icono={ShoppingCart} titulo="Líneas solicitadas" valor={lineas.length} detalle="Desde planos y materiales de la OT" />
-        <Indicador icono={Boxes} titulo="Por revisar en Almacén" valor={porRevisar} detalle="Aprobadas por Diseño, sin decisión de stock" />
-        <Indicador icono={PackageCheck} titulo="Con saldo en almacén" valor={enAlmacen} detalle="Recibidas y pendientes de despacho" />
-        <Indicador icono={Check} titulo="Líneas entregadas" valor={completos} detalle="Despacho registrado con responsable" />
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div><h2 className="text-lg font-semibold text-texto">Solicitudes y entregas</h2>
+          <p className="mt-1 text-sm text-texto-suave">{porRevisar} por revisar · {porComprar} por comprar · {enAlmacen} por despachar · {completos} entregadas</p></div>
+        {puedeCrearCompra && <Boton onClick={()=>setCompraAbierta(true)} disabled={porComprar===0}><ShoppingCart aria-hidden className="size-4" />Nueva orden de compra</Boton>}
       </div>
-
+      <Ventana abierta={compraAbierta} alCerrar={()=>setCompraAbierta(false)} titulo="Orden de compra" descripcion="Selecciona los insumos, registra sus precios y define el pago. Cada línea conserva su OT." ancho="xl">
+        <FormularioCompra lineas={lineas.filter(l=>l.aprobacion_diseno==='APROBADO'&&l.decision_almacen==='COMPRA'&&Number(l.cantidad_solicitada)-Number(l.cantidad_stock??0)>Number(l.cantidad_comprada))} alTerminar={()=>setCompraAbierta(false)} />
+      </Ventana>
       {lineas.length > 0 && (
         <Tarjeta>
           <TarjetaCuerpo className="flex flex-wrap items-center gap-4">
@@ -132,29 +139,10 @@ export function TableroMateriales({
                 {completos} de {lineas.length} líneas entregadas por completo. Este porcentaje mide materiales, separado del avance de fabricación.
               </p>
             </div>
-            <div className="flex flex-wrap gap-1" aria-label="Filtrar materiales por estado">
-              {([
-                ['TODOS', 'Todos'],
-                ['DISENO', 'Espera Diseño'],
-                ['RECHAZADO', 'Rechazado'],
-                ['ALMACEN', 'Revisar stock'],
-                ['STOCK', 'Por despachar'],
-                ['SOLICITADO', 'Derivado a Logística'],
-                ['EN_COMPRA', 'En compra'],
-                ['EN_ALMACEN', 'En almacén'],
-                ['ATENDIDO', 'Entregados'],
-              ] as const).map(([valor, etiqueta]) => (
-                <button
-                  key={valor}
-                  type="button"
-                  aria-pressed={filtro === valor}
-                  onClick={() => setFiltro(valor)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento ${filtro === valor ? 'border-acento bg-acento-suave text-acento' : 'border-borde text-texto-suave hover:bg-superficie-2'}`}
-                >
-                  {etiqueta}
-                </button>
-              ))}
-            </div>
+            <Campo etiqueta="Estado" htmlFor="filtro-atencion"><Seleccion id="filtro-atencion" value={filtro} onChange={e=>{const v=e.target.value; if(v in NOMBRE_ESTADO||v==='TODOS')setFiltro(v)}}>
+              <option value="TODOS">Todos los materiales</option>{Object.entries(NOMBRE_ESTADO).map(([v,t])=><option key={v} value={v}>{t}</option>)}
+            </Seleccion></Campo>
+
           </TarjetaCuerpo>
         </Tarjeta>
       )}
@@ -163,15 +151,7 @@ export function TableroMateriales({
 
       {agrupados.length > 0 && agrupados.map(([id, grupo]) => {
         const cabecera = grupo[0]
-        const porComprarReq = grupo.filter((linea) =>
-          linea.aprobacion_diseno === 'APROBADO' && linea.decision_almacen === 'COMPRA' &&
-          Number(linea.cantidad_solicitada ?? 0) > Number(linea.cantidad_comprada ?? 0),
-        )
         const comprasReq = compras.filter((compra) => compra.requerimiento_id === cabecera.requerimiento_id)
-        const comprasPendientes = comprasReq.filter((compra) => Number(compra.cantidad_pendiente ?? 0) > 0)
-        const comprasUnicas = [...new Map(comprasReq
-          .filter((compra) => compra.orden_compra_id)
-          .map((compra) => [compra.orden_compra_id, compra])).values()]
 
         return (
           <Tarjeta key={id}>
@@ -197,44 +177,46 @@ export function TableroMateriales({
                   claveDespacho={clavesDespacho[linea.detalle_id ?? '']}
                 />
               ))}
-              {puedeCrearCompra && porComprarReq.length > 0 && (
-                <FormularioCompra
-                  requerimientoId={cabecera.requerimiento_id ?? ''}
-                  lineas={porComprarReq}
-                  clave={clavesCompra[cabecera.requerimiento_id ?? '']}
-                />
-              )}
-              {comprasReq.length > 0 && (puedeVerCompras || puedeRecibir || puedeAdjuntarDocumentos) && (
-                <div className="space-y-3 border-t border-borde pt-3">
-                  {puedeCrearCompra && comprasUnicas.length > 0 && (
+            </TarjetaCuerpo>
+          </Tarjeta>
+        )
+      })}
+
+      {(puedeVerCompras||puedeRecibir||puedeAdjuntarDocumentos)&&[...new Map(compras.filter(c=>c.orden_compra_id).map(c=>[c.orden_compra_id,c])).values()].map(compra=>{
+        const lineasCompra=compras.filter(c=>c.orden_compra_id===compra.orden_compra_id)
+        const pendientesCompra=lineasCompra.filter(c=>Number(c.cantidad_pendiente)>0)
+        return <Tarjeta key={compra.orden_compra_id}><TarjetaCabecera titulo={`${compra.referencia} · ${compra.proveedor}`} descripcion={`${lineasCompra.length} ${lineasCompra.length === 1 ? 'insumo' : 'insumos'} · ${compra.entregado_almacen_en?'Entrega comunicada a Almacén':'Pendiente de entregar a Almacén'}`}/><TarjetaCuerpo>
+          <div className="space-y-3 border-t border-borde pt-3">
+                  {puedeCrearCompra && [compra].length > 0 && (
                     <div className="space-y-2">
                       <p className="text-xs font-semibold text-texto">Compra y entrega a Almacén</p>
-                      {comprasUnicas.map((compra) => compra.orden_compra_id && <CondicionCompra
+                      {[compra].map((compra) => compra.orden_compra_id && <CondicionCompra
                         key={`condicion-${compra.orden_compra_id}`} compra={compra} />)}
-                      {comprasUnicas.map((compra) => compra.orden_compra_id && <EntregaCompra
+                      {[compra].map((compra) => compra.orden_compra_id && <EntregaCompra
                         key={compra.orden_compra_id} compra={compra} />)}
-                      {comprasReq.filter((compra) => compra.precio_unitario === null).map((compra) => (
+                      {[compra].map(c=><Link key={'pdf-'+c.orden_compra_id} href={`/compras/${c.orden_compra_id}/pdf`} className="inline-flex min-h-11 items-center text-sm font-medium text-acento underline">Descargar compra {c.referencia}</Link>)}
+                      {lineasCompra.filter((compra) => compra.precio_unitario === null).map((compra) => (
                         <PrecioCompra key={compra.id} compra={compra} />
                       ))}
                     </div>
                   )}
-                  {puedeRecibir && comprasPendientes.length > 0 && (
+                  {puedeRecibir && pendientesCompra.length > 0 && (
                     <div>
                       <p className="mb-2 text-xs font-semibold text-texto">Llegadas pendientes</p>
-                      {comprasPendientes.every((compra) => !compra.entregado_almacen_en) && (
+                      {pendientesCompra.every((compra) => !compra.entregado_almacen_en) && (
                         <p className="mb-2 text-xs text-texto-suave">Logística todavía no marcó la entrega de estas compras a Almacén.</p>
                       )}
                       <div className="grid gap-2 lg:grid-cols-2">
-                        {comprasPendientes.filter((compra) => compra.entregado_almacen_en).map((compra) => (
+                        {pendientesCompra.filter((compra) => compra.entregado_almacen_en).map((compra) => (
                           <FormularioRecepcion key={compra.id} compra={compra} clave={clavesRecepcion[compra.id ?? '']} />
                         ))}
                       </div>
                     </div>
                   )}
-                  {puedeAdjuntarDocumentos && comprasUnicas.length > 0 && (
+                  {puedeAdjuntarDocumentos && [compra].length > 0 && (
                     <div className="space-y-2">
                       <p className="text-xs font-semibold text-texto">Documentos para Tesorería</p>
-                      {comprasUnicas.map((compra) => compra.orden_compra_id && (
+                      {[compra].map((compra) => compra.orden_compra_id && (
                         <SubirDocumentoCompra
                           key={compra.orden_compra_id}
                           ordenCompraId={compra.orden_compra_id}
@@ -244,12 +226,8 @@ export function TableroMateriales({
                     </div>
                   )}
                 </div>
-              )}
-            </TarjetaCuerpo>
-          </Tarjeta>
-        )
+        </TarjetaCuerpo></Tarjeta>
       })}
-
       {lineas.length > 0 && agrupados.length === 0 && (
         <Tarjeta><TarjetaCuerpo><p className="text-sm text-texto-suave">No hay materiales con este estado.</p></TarjetaCuerpo></Tarjeta>
       )}
@@ -259,25 +237,34 @@ export function TableroMateriales({
 }
 
 /** Existencias globales y conteo físico, fuera del circuito de una OT. */
-export function StockAlmacen({ existencias, catalogoAlmacen }: {
+export function StockAlmacen({ existencias, catalogoAlmacen,despachos=[] }: {
   existencias: ExistenciaMaterial[]
   catalogoAlmacen: MaterialParaConteo[]
+  despachos?:{id:string;etiqueta:string}[]
 }) {
+  const [busqueda,setBusqueda]=useState('')
+  const visibles=existencias.filter(m=>(m.descripcion+' '+m.codigo).toLowerCase().includes(busqueda.toLowerCase()))
   return <Tarjeta>
-    <TarjetaCabecera titulo="Stock de Almacén" descripcion="Saldo de ingresos, despachos y conteos físicos registrados." />
+    <TarjetaCabecera titulo="Existencias" descripcion="El saldo físico incluye lo reservado. El disponible es lo que puedes asignar a otra OT." acciones={<NuevoIngreso materiales={catalogoAlmacen} despachos={despachos}/>} />
     <TarjetaCuerpo className="space-y-4">
-      <ConteoGeneral materiales={catalogoAlmacen} />
+      <Campo etiqueta="Buscar en stock" htmlFor="stock-buscar"><Entrada id="stock-buscar" value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="Código o descripción"/></Campo>
       {existencias.length === 0
-        ? <p className="text-sm text-texto-suave">Aún no hay existencias registradas. Registra el primer conteo físico para comenzar.</p>
-        : <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{existencias.map((material) => (
-          <div key={material.material_id} className="flex items-center justify-between gap-3 rounded-[var(--radius-base)] border border-borde p-3">
+        ? <p className="text-sm text-texto-suave">Registra el saldo inicial o el primer ingreso para comenzar.</p>
+        : <div className="divide-y divide-borde">{visibles.map((material) => (
+          <div key={material.material_id} className="grid items-center gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto]">
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-texto">{material.descripcion}</p>
+              <p className="text-sm font-medium text-texto">{material.descripcion}</p>
               <p className="text-xs text-texto-suave">{material.codigo}</p>
             </div>
-            <p className="tabular whitespace-nowrap text-sm font-semibold text-texto">{cantidad(Number(material.existencia ?? 0))} {material.unidad}</p>
+            <dl className="grid grid-cols-3 gap-5 text-right text-xs text-texto-suave">
+              <div><dt>Físico ({material.unidad})</dt><dd className="tabular mt-1 font-semibold text-texto">{cantidad(Number(material.existencia??0))}</dd></div>
+              <div><dt>Reservado</dt><dd className="tabular mt-1 font-semibold text-texto">{cantidad(Number(material.reservado??0))}</dd></div>
+              <div><dt>Disponible</dt><dd className="tabular mt-1 font-semibold text-acento">{cantidad(Number(material.disponible??0))}</dd></div>
+            </dl>
           </div>
         ))}</div>}
+      {existencias.length>0&&visibles.length===0&&<p className="text-sm text-texto-suave">No hay coincidencias. Prueba otro código o descripción.</p>}
+      <ConteoGeneral materiales={catalogoAlmacen} />
     </TarjetaCuerpo>
   </Tarjeta>
 }
@@ -314,7 +301,7 @@ function PrecioCompra({ compra }: { compra: CompraMaterialPendiente }) {
   return <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-2 rounded-md border border-borde p-2">
     <input type="hidden" name="detalle_id" value={compra.id ?? ''} />
     <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.referencia}</span>
-    <Campo etiqueta="Precio unitario (S/)" htmlFor={`precio-${compra.id}`}>
+    <Campo etiqueta={`Precio unitario (${compra.moneda})`} htmlFor={`precio-${compra.id}`}>
       <Entrada id={`precio-${compra.id}`} name="precio" type="number" inputMode="decimal" min={0} step="0.01" required className="tabular w-32" />
     </Campo>
     <Boton type="submit" tamano="sm" cargando={enviando}>Registrar precio</Boton>
@@ -328,8 +315,8 @@ function EntregaCompra({ compra }: { compra: CompraMaterialPendiente }) {
   return <form onSubmit={alEnviar} className="flex flex-wrap items-center gap-2">
     <input type="hidden" name="compra_id" value={compra.orden_compra_id ?? ''} />
     <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.referencia}</span>
-    <Boton type="submit" tamano="sm" cargando={enviando}>Marcar entrega a Almacén</Boton>
-    <p className="basis-full text-[11px] text-texto-suave">Antes de entregar, registra los precios y adjunta la factura PDF para Tesorería.</p>
+    <Boton type="submit" tamano="sm" cargando={enviando} disabled={!compra.tiene_factura||!compra.precios_completos}>Entregar compra a Almacén</Boton>
+    <p className="basis-full text-[11px] text-texto-suave">{!compra.precios_completos?'Faltan precios unitarios. ':''}{!compra.tiene_factura?'Adjunta la factura para continuar.':'Factura registrada; Tesorería podrá revisarla.'}</p>
     {error && <p role="alert" className="basis-full text-xs text-peligro">{error}</p>}
   </form>
 }
@@ -346,31 +333,6 @@ function CondicionCompra({ compra }: { compra: CompraMaterialPendiente }) {
     {error && <p role="alert" className="text-xs text-peligro sm:col-span-4">{error}</p>}
     {resultado?.ok && <p role="status" className="text-xs text-exito sm:col-span-4">{resultado.mensaje}</p>}
   </form>
-}
-
-function Indicador({
-  icono: Icono,
-  titulo,
-  valor,
-  detalle,
-}: {
-  icono: typeof Boxes
-  titulo: string
-  valor: number
-  detalle: string
-}) {
-  return (
-    <Tarjeta>
-      <TarjetaCuerpo className="flex items-start gap-3">
-        <span className="rounded-[var(--radius-base)] bg-acento-suave p-2 text-acento"><Icono aria-hidden className="size-4" /></span>
-        <div>
-          <p className="text-xs text-texto-suave">{titulo}</p>
-          <p className="tabular text-2xl font-semibold text-texto">{valor}</p>
-          <p className="text-[11px] text-texto-suave">{detalle}</p>
-        </div>
-      </TarjetaCuerpo>
-    </Tarjeta>
-  )
 }
 
 function LineaMaterial({
@@ -403,7 +365,8 @@ function LineaMaterial({
   const recibido = Number(linea.cantidad_recibida ?? 0)
   const despachado = Number(linea.cantidad_despachada ?? 0)
   const saldoGlobal = Number(existencias.find((item) => item.material_id === linea.material_id)?.existencia ?? 0)
-  const saldoDeCompra = linea.decision_almacen === 'COMPRA' ? recibido - despachado : saldoGlobal
+  const reserva = Number(linea.cantidad_stock ?? (linea.decision_almacen==='STOCK'?solicitado:0))
+  const saldoDeCompra = reserva + recibido - despachado
   const disponible = Math.max(0, Math.min(saldoGlobal, saldoDeCompra, solicitado - despachado))
   const porcentaje = solicitado > 0 ? Math.min(100, Math.round((despachado / solicitado) * 100)) : 0
   const areaId = areas.find((area) => area.codigo === linea.area_destino)?.id
@@ -440,8 +403,8 @@ function LineaMaterial({
         <p className="mt-3 text-xs text-texto-suave">Saldo registrado de este material: <span className="font-semibold tabular text-texto">{cantidad(saldoGlobal)} {linea.unidad}</span>. Si existe físicamente pero no está registrado, verifica su ingreso antes de marcar «Hay stock».</p>
       )}
       {puedeRevisarStock && linea.aprobacion_diseno === 'APROBADO' &&
-        (linea.decision_almacen === 'PENDIENTE' || linea.decision_almacen === 'COMPRA') && (
-        <ConteoFisico linea={linea} saldo={saldoGlobal} />
+        linea.decision_almacen === 'PENDIENTE' && (
+        <Link href="/almacen/stock" className="mt-2 inline-block text-sm text-acento underline">Consultar stock e ingresos de Almacén</Link>
       )}
 
       {linea.aprobacion_diseno === 'PROPUESTO' && (
@@ -478,27 +441,6 @@ function LineaMaterial({
   )
 }
 
-function ConteoFisico({ linea, saldo }: { linea: LineaAtencionMaterial; saldo: number }) {
-  const [clave, setClave] = useState(() => crypto.randomUUID())
-  const { alEnviar, enviando, error } = useEnvio(registrarConteo, () => setClave(crypto.randomUUID()))
-  return <details className="mt-3 rounded-[var(--radius-base)] border border-borde p-3">
-    <summary className="cursor-pointer text-xs font-medium text-acento">Registrar conteo físico de este material</summary>
-    <p className="mt-2 text-xs text-texto-suave">Saldo registrado: {cantidad(saldo)} {linea.unidad}. Escribe la cantidad total que comprobaste físicamente; el sistema guardará la diferencia y quién la registró.</p>
-    <form key={clave} onSubmit={alEnviar} className="mt-3 grid gap-2 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
-      <input type="hidden" name="operacion_id" value={clave} />
-      <input type="hidden" name="material_id" value={linea.material_id ?? ''} />
-      <Campo etiqueta={`Cantidad física (${linea.unidad ?? 'unidad'})`} htmlFor={`conteo-${linea.detalle_id}`} requerido>
-        <Entrada id={`conteo-${linea.detalle_id}`} name="cantidad_fisica" type="number" inputMode="decimal" min={0} step="0.001" required />
-      </Campo>
-      <Campo etiqueta="Motivo o acta del conteo" htmlFor={`motivo-${linea.detalle_id}`} requerido>
-        <Entrada id={`motivo-${linea.detalle_id}`} name="motivo" minLength={10} maxLength={300} required placeholder="Ej.: Conteo físico del estante A, acta 001" />
-      </Campo>
-      <Boton type="submit" tamano="sm" cargando={enviando}>Guardar conteo</Boton>
-      {error && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
-    </form>
-  </details>
-}
-
 function ReconsiderarStock({ linea }: { linea: LineaAtencionMaterial }) {
   const { alEnviar, enviando, error } = useEnvio(revisarStock)
   return <form onSubmit={alEnviar} className="mt-3 flex flex-wrap items-center gap-2">
@@ -530,53 +472,32 @@ function CantidadMini({ nombre, valor, unidad }: { nombre: string; valor: number
   return <div className="rounded-md bg-superficie-2 px-2 py-1.5"><p className="text-texto-suave">{nombre}</p><p className="tabular mt-0.5 font-semibold text-texto">{cantidad(valor)} {unidad}</p></div>
 }
 
-function FormularioCompra({
-  requerimientoId,
-  lineas,
-  clave,
-}: {
-  requerimientoId: string
-  lineas: LineaAtencionMaterial[]
-  clave: string | undefined
-}) {
-  const { alEnviar, enviando, error } = useEnvio(crearOrdenCompra)
-  return (
-    <form onSubmit={alEnviar} className="grid gap-3 rounded-[var(--radius-base)] border border-acento/30 bg-acento-suave/30 p-3 sm:grid-cols-2 lg:grid-cols-4">
-      <input type="hidden" name="operacion_id" value={clave ?? ''} />
-      <input type="hidden" name="requerimiento_id" value={requerimientoId} />
-      <Campo etiqueta="Proveedor" htmlFor={`proveedor-${requerimientoId}`} requerido>
-        <Entrada id={`proveedor-${requerimientoId}`} name="proveedor" required maxLength={160} placeholder="Nombre del proveedor" />
-      </Campo>
-      <Campo etiqueta="Referencia de compra" htmlFor={`referencia-${requerimientoId}`} requerido ayuda="OC o número del proveedor">
-        <Entrada id={`referencia-${requerimientoId}`} name="referencia" required maxLength={100} placeholder="OC-0001" />
-      </Campo>
-      <Campo etiqueta="Entrega estimada" htmlFor={`fecha-${requerimientoId}`}>
-        <Entrada id={`fecha-${requerimientoId}`} name="fecha_estimada" type="date" />
-      </Campo>
-      <Campo etiqueta="Condición de pago" htmlFor={`pago-${requerimientoId}`} requerido>
-        <Seleccion id={`pago-${requerimientoId}`} name="condicion" required><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option></Seleccion>
-      </Campo>
-      <Campo etiqueta="Días de crédito (0 si contado)" htmlFor={`dias-compra-${requerimientoId}`} requerido>
-        <Entrada id={`dias-compra-${requerimientoId}`} name="dias" type="number" min={0} max={365} defaultValue={0} required />
-      </Campo>
-      <Campo etiqueta="Moneda" htmlFor={`moneda-compra-${requerimientoId}`} requerido>
-        <Seleccion id={`moneda-compra-${requerimientoId}`} name="moneda" required><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion>
-      </Campo>
-      <div className="flex items-end sm:col-span-2"><Boton type="submit" cargando={enviando} className="w-full"><ShoppingCart aria-hidden className="size-4" />Registrar compra</Boton></div>
-      {lineas.map((linea) => {
-        const faltante = Number(linea.cantidad_solicitada ?? 0) - Number(linea.cantidad_comprada ?? 0)
-        return (
-          <div key={linea.detalle_id} className="flex items-center gap-2 rounded-md border border-borde bg-superficie px-3 py-2 sm:col-span-2 lg:col-span-4">
-            <input type="hidden" name="detalle_id" value={linea.detalle_id ?? ''} />
-            <span className="min-w-0 flex-1 truncate text-xs text-texto">{linea.material}</span>
-            <span className="whitespace-nowrap text-[11px] text-texto-suave">Falta {cantidad(faltante)} {linea.unidad}</span>
-            <Entrada aria-label={`Cantidad a comprar de ${linea.material}`} name={`cantidad_${linea.detalle_id}`} type="number" inputMode="decimal" min={0.001} max={faltante} step="0.001" defaultValue={faltante} required className="tabular w-28 text-right" />
-          </div>
-        )
-      })}
-      {error && <p role="alert" className="text-xs text-peligro sm:col-span-2 lg:col-span-4">{error}</p>}
-    </form>
-  )
+function FormularioCompra({lineas,alTerminar}:{lineas:LineaAtencionMaterial[];alTerminar:()=>void}) {
+ const [id]=useState(()=>crypto.randomUUID())
+ const [seleccionados,setSeleccionados]=useState<string[]>([])
+ const {alEnviar,enviando,error}=useEnvio(crearOrdenCompra,alTerminar)
+ return <form onSubmit={alEnviar} className="space-y-6">
+   <input type="hidden" name="operacion_id" value={id}/>
+   <div className="grid gap-4 sm:grid-cols-2">
+     <Campo etiqueta="Proveedor" htmlFor="oc-proveedor" requerido><Entrada id="oc-proveedor" name="proveedor" required minLength={2} maxLength={160}/></Campo>
+     <Campo etiqueta="Número de orden de compra" htmlFor="oc-numero" requerido><Entrada id="oc-numero" name="referencia" required minLength={2} maxLength={100}/></Campo>
+     <Campo etiqueta="Entrega estimada" htmlFor="oc-fecha"><Entrada id="oc-fecha" name="fecha_estimada" type="date"/></Campo>
+     <Campo etiqueta="Moneda" htmlFor="oc-moneda"><Seleccion id="oc-moneda" name="moneda"><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion></Campo>
+     <Campo etiqueta="Pago" htmlFor="oc-pago"><Seleccion id="oc-pago" name="condicion"><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option></Seleccion></Campo>
+     <Campo etiqueta="Días de crédito" ayuda="0 para contado" htmlFor="oc-dias"><Entrada id="oc-dias" name="dias" type="number" min={0} max={365} defaultValue={0}/></Campo>
+   </div>
+   <fieldset className="space-y-3"><legend className="mb-3 font-semibold text-texto">Insumos pendientes · {seleccionados.length} seleccionados</legend>
+     {lineas.map(l=>{const id=l.detalle_id??'';const seleccionado=seleccionados.includes(id);const faltante=Number(l.cantidad_solicitada)-Number(l.cantidad_stock??0)-Number(l.cantidad_comprada);return <div key={id} className="rounded-xl border border-borde p-4">
+       <label className="flex min-h-11 items-center gap-3 text-sm font-medium text-texto"><input type="checkbox" name="detalle_id" value={id} checked={seleccionado} onChange={e=>setSeleccionados(e.target.checked?[...seleccionados,id]:seleccionados.filter(x=>x!==id))} className="size-5 accent-acento"/>{l.material}</label>
+       <p className="ml-8 text-xs text-texto-suave">OT {l.numero_ot} · {NOMBRE_AREA[l.area_destino??'']} · Faltan {cantidad(faltante)} {l.unidad}</p>
+       {seleccionado&&<div className="mt-3 grid gap-3 sm:grid-cols-2"><Campo etiqueta="Cantidad a comprar" htmlFor={'oc-cant-'+id}><Entrada id={'oc-cant-'+id} name={'cantidad_'+id} type="number" min={0.001} max={faltante} step="0.001" defaultValue={faltante} required/></Campo>
+       <Campo etiqueta="Precio unitario" htmlFor={'oc-precio-'+id}><Entrada id={'oc-precio-'+id} name={'precio_'+id} type="number" min={0} step="0.01" required/></Campo></div>}
+     </div>})}
+     {lineas.length===0&&<p className="text-sm text-texto-suave">Almacén aún no derivó insumos pendientes de compra.</p>}
+   </fieldset>
+   {error&&<p role="alert" className="text-sm text-peligro">{error}</p>}
+   <Boton type="submit" cargando={enviando} disabled={!seleccionados.length}>Crear orden de compra</Boton>
+ </form>
 }
 
 function FormularioRecepcion({ compra, clave }: { compra: CompraMaterialPendiente; clave: string | undefined }) {
@@ -613,7 +534,16 @@ function FormularioDespacho({
   disponible: number
   clave: string | undefined
 }) {
-  const { alEnviar, enviando, error } = useEnvio(despacharMaterial)
+  const { alEnviar, enviando, error } = useEnvio(async (_previo,datos)=>{
+    const archivo=datos.get('foto')
+    if(!(archivo instanceof File)||archivo.size===0||archivo.size>10485760||!['image/jpeg','image/png','image/webp'].includes(archivo.type)) return {ok:false,error:'Selecciona una foto JPG, PNG o WebP de hasta 10 MB.'}
+    const db=createClient();const {data,error}=await db.auth.getUser()
+    if(error||!data.user)return {ok:false,error:'Tu sesión terminó. Ingresa de nuevo.'}
+    const extension=archivo.type==='image/jpeg'?'jpg':archivo.type==='image/png'?'png':'webp'
+    const ruta=data.user.id+'/'+String(datos.get('operacion_id'))+'.'+extension
+    datos.delete('foto');datos.set('foto_ruta',ruta)
+    return subirArchivoPrivado({bucket:'evidencias-almacen',ruta,archivo,contentType:archivo.type,registrar:()=>despacharMaterial(null,datos)})
+  })
   return (
     <form onSubmit={alEnviar} className="mt-3 grid gap-2 border-t border-borde pt-3 sm:grid-cols-[1fr_1fr_auto]">
       <input type="hidden" name="operacion_id" value={clave ?? ''} />
@@ -629,6 +559,8 @@ function FormularioDespacho({
         </Seleccion>
         {candidatos.length === 0 && <p className="mt-1 text-[11px] text-aviso">No hay personas activas registradas para {NOMBRE_AREA[linea.area_destino ?? ''] ?? 'esta área'}.</p>}
       </Campo>
+      <Campo etiqueta="Nombre de quien recibe físicamente" htmlFor={`sal-nombre-${linea.detalle_id}`} requerido><Entrada id={`sal-nombre-${linea.detalle_id}`} name="recibido_por_nombre" required minLength={3} maxLength={160}/></Campo>
+      <Campo etiqueta="Foto de la entrega" htmlFor={`sal-foto-${linea.detalle_id}`} ayuda="Hasta 10 MB; incluye el material entregado." requerido><Entrada id={`sal-foto-${linea.detalle_id}`} name="foto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required/></Campo>
       <div className="flex items-end"><Boton type="submit" tamano="sm" cargando={enviando} disabled={candidatos.length === 0} className="w-full"><ArrowUpFromLine aria-hidden className="size-4" />Despachar</Boton></div>
       {error && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
     </form>

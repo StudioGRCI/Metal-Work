@@ -43,8 +43,8 @@ export default async function PaginaPlanos({ params, searchParams }: {
     : abierta ? null : 'La orden ya se cerró'
   return <>
     <EncabezadoPagina titulo={`Planos · ${orden.numero}`} descripcion="Planos, PDF y revisiones por área. Los materiales se definen en su pestaña." />
-    <div className="mt-5 grid gap-5 lg:grid-cols-[14rem_minmax(0,1fr)] lg:items-start">
-      <Pestanas ordenId={id} activa="planos" visibles={secciones} />
+    <div className="mt-5 space-y-5">
+      <Pestanas ordenId={id} numero={orden.numero} activa="planos" visibles={secciones} />
       <div className="min-w-0 space-y-4">
         <EquipoDiseno ordenId={id} abierta={abierta} puedeAsignar={puede(perfil, 'diseno.planos')}
           catalogos={catalogos} />

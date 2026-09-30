@@ -1,18 +1,22 @@
 import 'server-only'
+import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
 import type { Vistas } from '@/types/database'
 
 export type DocumentoCompraTesoreria = Vistas<'v_documentos_compra_tesoreria'> & {
   url: string | null
+  ordenes: z.infer<typeof esquemaVinculos>
 }
+
+const esquemaVinculos = z.array(z.object({ orden_id: z.string().uuid(), numero_ot: z.string(), area_destino: z.string() }))
 
 /** Archivos de compra visibles para Tesorería y Logística, con enlaces temporales. */
 export async function documentosDeCompraParaTesoreria(): Promise<DocumentoCompraTesoreria[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('v_documentos_compra_tesoreria')
-    .select('id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, creado_en, proveedor, referencia, fecha_estimada, orden_id, numero_ot, area_destino')
+    .select('id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, creado_en, proveedor, referencia, fecha_estimada, orden_id, numero_ot, area_destino, vinculos_ot')
     .order('creado_en', { ascending: false })
     .limit(500)
 
@@ -29,5 +33,5 @@ export async function documentosDeCompraParaTesoreria(): Promise<DocumentoCompra
     }
   }
 
-  return documentos.map((d) => ({ ...d, url: d.ruta_storage ? urls.get(d.ruta_storage) ?? null : null }))
+  return documentos.map((d) => ({ ...d, ordenes: esquemaVinculos.parse(d.vinculos_ot ?? []), url: d.ruta_storage ? urls.get(d.ruta_storage) ?? null : null }))
 }
