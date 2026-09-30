@@ -34,7 +34,7 @@ export async function AtencionMaterialesDeOrden({ ordenId, perfil }: { ordenId: 
       <TarjetaCuerpo>
         <h2 id="atencion-materiales-titulo" className="sr-only">Atención de materiales de esta OT</h2>
         {datos.lineas.length === 0 && <p className="text-sm text-texto-suave">
-          Esta orden aún no tiene solicitudes de materiales. El área que utilizará el insumo puede solicitarlo arriba.
+          Esta orden aún no tiene solicitudes. El área que utilizará el insumo lo solicita en esta OT; aquí aparecerá su atención.
         </p>}
       </TarjetaCuerpo>
     </Tarjeta>
