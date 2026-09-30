@@ -1,4 +1,5 @@
 import { BarraInferior } from '@/components/estructura/barra-inferior'
+import { ContextoOrden } from '@/components/estructura/contexto-orden'
 import { BarraLateral } from '@/components/estructura/barra-lateral'
 import { BarraSuperior } from '@/components/estructura/barra-superior'
 import { PerfilMenu } from '@/components/estructura/perfil-menu'
@@ -19,7 +20,7 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
   const [pendientes, sinLeer] = await Promise.all([pendientesGlobales(perfil), avisosSinLeer()])
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <ContextoOrden><div className="flex min-h-dvh flex-col">
       <BarraSuperior />
       <AvisoInstalar />
       <RefrescoAlVolver sinLeer={sinLeer} contar={contarAvisosSinLeer} />
@@ -37,6 +38,6 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
       <BarraInferior permisos={perfil.permisos} esAdmin={esAdmin} rolCodigo={perfil.rol.codigo} pendientes={pendientes.porRuta}>
         <PerfilMenu puesto={perfil.puesto} rol={perfil.rol.nombre} />
       </BarraInferior>
-    </div>
+    </div></ContextoOrden>
   )
 }

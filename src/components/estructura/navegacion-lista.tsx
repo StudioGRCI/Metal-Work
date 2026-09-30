@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 
 import { NAVEGACION, puedeVer, rutaActiva } from '@/lib/navegacion'
 import { cn } from '@/lib/utils'
+import { useContextoOrden } from './contexto-orden'
 
 /**
  * El menú de módulos, uno solo para las dos formas en que se muestra: la barra
@@ -31,6 +32,8 @@ export function NavegacionLista({
   pendientes?: Record<string, number>
 }) {
   const ruta = usePathname()
+  const { orden } = useContextoOrden()
+  const ordenActual = orden && (ruta === `/ordenes/${orden.id}` || ruta.startsWith(`/ordenes/${orden.id}/`)) ? orden : null
 
   // El mismo criterio que la barra de abajo del teléfono: los dos marcan igual.
   const activa = rutaActiva(
@@ -98,6 +101,21 @@ export function NavegacionLista({
                       </span>
                     )}
                   </Link>
+                  {item.ruta === '/ordenes' && ordenActual && (
+                    <div className="ml-5 mt-2 border-l border-borde pl-3">
+                      <p className="px-3 py-2 text-xs font-semibold text-texto">OT {ordenActual.numero}</p>
+                      <ul className="space-y-0.5">
+                        {ordenActual.secciones.map(s => <li key={s.clave}>
+                          <Link href={s.href} onClick={alNavegar} aria-current={s.clave === ordenActual.activa ? 'page' : undefined}
+                            className={cn('flex min-h-11 items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-acento',
+                              s.clave === ordenActual.activa ? 'bg-acento-suave font-semibold text-acento' : 'text-texto-suave hover:bg-superficie-2 hover:text-texto')}>
+                            <span>{s.titulo}</span>
+                            {s.pendientes > 0 && <span className="rounded-full bg-aviso-suave px-2 text-xs text-aviso" aria-label={`${s.pendientes} pendientes`}>{s.pendientes}</span>}
+                          </Link>
+                        </li>)}
+                      </ul>
+                    </div>
+                  )}
                 </li>
               )
             })}
