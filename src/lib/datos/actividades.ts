@@ -56,7 +56,7 @@ export async function despachosParaReporte(ordenId: string) {
     .eq('tipo', 'DESPACHO').in('requerimiento_detalle_id', [...porDetalle.keys()]).limit(300)
   if (movimientos.error) throw new Error('No se pudieron leer los despachos de la OT.')
   return (movimientos.data ?? []).map(m => {
-    const linea = porDetalle.get(m.requerimiento_detalle_id)
+    const linea = porDetalle.get(m.requerimiento_detalle_id??'')
     return { id: m.id, nombre: linea?.material ?? 'Material', unidad: linea?.unidad ?? '', area: linea?.area_destino ?? '', cantidad: m.cantidad }
   })
 }

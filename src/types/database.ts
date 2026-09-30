@@ -6,794 +6,69 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Database = {
   public: {
     Tables: {
-      diseno_evaluaciones: {
-        Row: {
-          comentarios: string
-          creado_en: string
-          evaluado_nombre: string
-          evaluador_id: string
-          fecha_evaluacion: string
-          fecha_ingreso: string | null
-          id: string
-          puesto: string
-          respuestas: number[]
-        }
-        Insert: {
-          comentarios?: string
-          creado_en?: string
-          evaluado_nombre: string
-          evaluador_id?: string
-          fecha_evaluacion: string
-          fecha_ingreso?: string | null
-          id?: string
-          puesto: string
-          respuestas: number[]
-        }
-        Update: {
-          comentarios?: string
-          creado_en?: string
-          evaluado_nombre?: string
-          evaluador_id?: string
-          fecha_evaluacion?: string
-          fecha_ingreso?: string | null
-          id?: string
-          puesto?: string
-          respuestas?: number[]
-        }
-        Relationships: [
-          {
-            foreignKeyName: "diseno_evaluaciones_evaluador_id_fkey"
-            columns: ["evaluador_id"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "diseno_evaluaciones_evaluador_id_fkey"
-            columns: ["evaluador_id"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      diseno_informes: {
-        Row: {
-          acciones: string
-          actualizado_en: string
-          actualizado_por: string
-          conclusiones: string
-          creado_en: string
-          creado_por: string
-          id: string
-          incidencias: string
-          indicadores: string
-          no_conformidades: string
-          numero: number
-          plan_siguiente: string
-          responsable: string
-          resumen: string
-          semana_inicio: string
-        }
-        Insert: {
-          acciones?: string
-          actualizado_en?: string
-          actualizado_por?: string
-          conclusiones?: string
-          creado_en?: string
-          creado_por?: string
-          id?: string
-          incidencias?: string
-          indicadores?: string
-          no_conformidades?: string
-          numero?: number
-          plan_siguiente?: string
-          responsable: string
-          resumen?: string
-          semana_inicio: string
-        }
-        Update: {
-          acciones?: string
-          actualizado_en?: string
-          actualizado_por?: string
-          conclusiones?: string
-          creado_en?: string
-          creado_por?: string
-          id?: string
-          incidencias?: string
-          indicadores?: string
-          no_conformidades?: string
-          numero?: number
-          plan_siguiente?: string
-          responsable?: string
-          resumen?: string
-          semana_inicio?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "diseno_informes_actualizado_por_fkey"
-            columns: ["actualizado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "diseno_informes_actualizado_por_fkey"
-            columns: ["actualizado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "diseno_informes_creado_por_fkey"
-            columns: ["creado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "diseno_informes_creado_por_fkey"
-            columns: ["creado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      diseno_tareas: {
-        Row: {
-          componente: string
-          creado_en: string
-          creado_por: string
-          fecha_entrega: string
-          fecha_inicio: string
-          id: string
-          integrante_id: string
-          observacion: string
-          orden_id: string
-          tipo: string
-        }
-        Insert: {
-          componente: string
-          creado_en?: string
-          creado_por?: string
-          fecha_entrega: string
-          fecha_inicio: string
-          id?: string
-          integrante_id: string
-          observacion?: string
-          orden_id: string
-          tipo: string
-        }
-        Update: {
-          componente?: string
-          creado_en?: string
-          creado_por?: string
-          fecha_entrega?: string
-          fecha_inicio?: string
-          id?: string
-          integrante_id?: string
-          observacion?: string
-          orden_id?: string
-          tipo?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "diseno_tareas_creado_por_fkey"
-            columns: ["creado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "diseno_tareas_creado_por_fkey"
-            columns: ["creado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "diseno_tareas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ordenes_trabajo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "diseno_tareas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_fechas_clave"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "diseno_tareas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_ficha_resumen"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "diseno_tareas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_resumen"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "diseno_tareas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "unidad_tablero"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "diseno_tareas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cotizaciones_pdf"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "diseno_tareas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cumplimiento_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "diseno_tareas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_equipo_diseno_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "diseno_tareas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_ot_avance_diario"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "fk_diseno_tarea_integrante_orden"
-            columns: ["integrante_id", "orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_equipo_diseno"
-            referencedColumns: ["id", "orden_id"]
-          },
-        ]
-      }
-      planilla_distribuciones: {
-        Row: {
-          creado_en: string
-          id: string
-          orden_id: string
-          persona_id: string
-          porcentaje: number
-          registrado_por: string
-        }
-        Insert: {
-          creado_en?: string
-          id?: string
-          orden_id: string
-          persona_id: string
-          porcentaje: number
-          registrado_por?: string
-        }
-        Update: {
-          creado_en?: string
-          id?: string
-          orden_id?: string
-          persona_id?: string
-          porcentaje?: number
-          registrado_por?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ordenes_trabajo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_fechas_clave"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_ficha_resumen"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_resumen"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "unidad_tablero"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cotizaciones_pdf"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cumplimiento_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_equipo_diseno_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_ot_avance_diario"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "planilla_distribuciones_persona_id_fkey"
-            columns: ["persona_id"]
-            isOneToOne: false
-            referencedRelation: "planilla_personas"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "planilla_distribuciones_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "planilla_distribuciones_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      planilla_personas: {
-        Row: {
-          creado_en: string
-          documento: string | null
-          id: string
-          monto: number
-          nombre: string
-          planilla_id: string
-          registrado_por: string
-        }
-        Insert: {
-          creado_en?: string
-          documento?: string | null
-          id?: string
-          monto: number
-          nombre: string
-          planilla_id: string
-          registrado_por?: string
-        }
-        Update: {
-          creado_en?: string
-          documento?: string | null
-          id?: string
-          monto?: number
-          nombre?: string
-          planilla_id?: string
-          registrado_por?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "planilla_personas_planilla_id_fkey"
-            columns: ["planilla_id"]
-            isOneToOne: false
-            referencedRelation: "planillas"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "planilla_personas_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "planilla_personas_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      planillas: {
-        Row: {
-          cerrado_en: string | null
-          cerrado_por: string | null
-          creado_en: string
-          estado: string
-          id: string
-          moneda: string
-          observacion: string
-          periodo: string
-          registrado_por: string
-          tipo: string
-        }
-        Insert: {
-          cerrado_en?: string | null
-          cerrado_por?: string | null
-          creado_en?: string
-          estado?: string
-          id?: string
-          moneda?: string
-          observacion?: string
-          periodo: string
-          registrado_por?: string
-          tipo: string
-        }
-        Update: {
-          cerrado_en?: string | null
-          cerrado_por?: string | null
-          creado_en?: string
-          estado?: string
-          id?: string
-          moneda?: string
-          observacion?: string
-          periodo?: string
-          registrado_por?: string
-          tipo?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "planillas_cerrado_por_fkey"
-            columns: ["cerrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "planillas_cerrado_por_fkey"
-            columns: ["cerrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "planillas_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "planillas_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      pagos_adquisicion: {
-        Row: {
-          adquisicion_id: string
-          creado_en: string
-          fecha: string
-          id: string
-          monto: number
-          referencia: string
-          registrado_por: string
-        }
-        Insert: {
-          adquisicion_id: string
-          creado_en?: string
-          fecha: string
-          id?: string
-          monto: number
-          referencia: string
-          registrado_por?: string
-        }
-        Update: {
-          adquisicion_id?: string
-          creado_en?: string
-          fecha?: string
-          id?: string
-          monto?: number
-          referencia?: string
-          registrado_por?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "pagos_adquisicion_adquisicion_id_fkey"
-            columns: ["adquisicion_id"]
-            isOneToOne: false
-            referencedRelation: "adquisiciones"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pagos_adquisicion_adquisicion_id_fkey"
-            columns: ["adquisicion_id"]
-            isOneToOne: false
-            referencedRelation: "v_cuentas_pagar"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pagos_adquisicion_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pagos_adquisicion_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      cuentas_cobrar_ot: {
-        Row: {
-          creado_en: string
-          fecha_emision: string
-          fecha_vencimiento: string
-          id: string
-          moneda: string
-          numero_documento: string
-          observacion: string
-          orden_id: string
-          registrado_por: string
-          total: number
-        }
-        Insert: {
-          creado_en?: string
-          fecha_emision: string
-          fecha_vencimiento: string
-          id?: string
-          moneda: string
-          numero_documento: string
-          observacion?: string
-          orden_id: string
-          registrado_por?: string
-          total: number
-        }
-        Update: {
-          creado_en?: string
-          fecha_emision?: string
-          fecha_vencimiento?: string
-          id?: string
-          moneda?: string
-          numero_documento?: string
-          observacion?: string
-          orden_id?: string
-          registrado_por?: string
-          total?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ordenes_trabajo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_fechas_clave"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_ficha_resumen"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_resumen"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "unidad_tablero"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cotizaciones_pdf"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cumplimiento_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_equipo_diseno_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_ot_avance_diario"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      cobros_ot: {
-        Row: {
-          creado_en: string
-          cuenta_id: string
-          fecha: string
-          id: string
-          monto: number
-          referencia: string
-          registrado_por: string
-        }
-        Insert: {
-          creado_en?: string
-          cuenta_id: string
-          fecha: string
-          id?: string
-          monto: number
-          referencia: string
-          registrado_por?: string
-        }
-        Update: {
-          creado_en?: string
-          cuenta_id?: string
-          fecha?: string
-          id?: string
-          monto?: number
-          referencia?: string
-          registrado_por?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cobros_ot_cuenta_id_fkey"
-            columns: ["cuenta_id"]
-            isOneToOne: false
-            referencedRelation: "cuentas_cobrar_ot"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cobros_ot_cuenta_id_fkey"
-            columns: ["cuenta_id"]
-            isOneToOne: false
-            referencedRelation: "v_cuentas_cobrar_ot"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cobros_ot_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cobros_ot_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       adquisiciones: {
         Row: {
-          actualizado_en: string
-          condicion_pago: string
-          creado_en: string
-          documento_compra_id: string | null
-          estado: string
-          fecha_emision: string
-          fecha_vencimiento: string
           id: string
-          moneda: string
-          numero_documento: string
-          observacion: string
-          orden_compra_id: string | null
           orden_id: string | null
-          proveedor: string
-          registrado_por: string
+          orden_compra_id: string | null
+          documento_compra_id: string | null
+          unidad_id: string | null
           ruta_storage: string | null
           tipo: string
-          total: number
-          unidad_id: string | null
-        }
-        Insert: {
-          actualizado_en?: string
-          condicion_pago: string
-          creado_en?: string
-          documento_compra_id?: string | null
-          estado?: string
+          proveedor: string
+          numero_documento: string
           fecha_emision: string
           fecha_vencimiento: string
-          id?: string
           moneda: string
-          numero_documento: string
-          observacion?: string
-          orden_compra_id?: string | null
+          total: number
+          condicion_pago: string
+          estado: string
+          observacion: string
+          registrado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
           orden_id?: string | null
-          proveedor: string
-          registrado_por?: string
+          orden_compra_id?: string | null
+          documento_compra_id?: string | null
+          unidad_id?: string | null
           ruta_storage?: string | null
           tipo: string
+          proveedor: string
+          numero_documento: string
+          fecha_emision: string
+          fecha_vencimiento: string
+          moneda: string
           total: number
-          unidad_id?: string | null
+          condicion_pago: string
+          estado?: string
+          observacion?: string
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
         }
         Update: {
-          actualizado_en?: string
-          condicion_pago?: string
-          creado_en?: string
-          documento_compra_id?: string | null
-          estado?: string
-          fecha_emision?: string
-          fecha_vencimiento?: string
           id?: string
-          moneda?: string
-          numero_documento?: string
-          observacion?: string
-          orden_compra_id?: string | null
           orden_id?: string | null
-          proveedor?: string
-          registrado_por?: string
+          orden_compra_id?: string | null
+          documento_compra_id?: string | null
+          unidad_id?: string | null
           ruta_storage?: string | null
           tipo?: string
+          proveedor?: string
+          numero_documento?: string
+          fecha_emision?: string
+          fecha_vencimiento?: string
+          moneda?: string
           total?: number
-          unidad_id?: string | null
+          condicion_pago?: string
+          estado?: string
+          observacion?: string
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
         }
         Relationships: [
           {
@@ -804,32 +79,11 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "adquisiciones_documento_compra_id_fkey"
-            columns: ["documento_compra_id"]
-            isOneToOne: false
-            referencedRelation: "v_documentos_compra_tesoreria"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "adquisiciones_orden_compra_id_fkey"
             columns: ["orden_compra_id"]
             isOneToOne: false
             referencedRelation: "ordenes_compra_materiales"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_compra_id_fkey"
-            columns: ["orden_compra_id"]
-            isOneToOne: false
-            referencedRelation: "v_compras_credito_sin_comprobante"
-            referencedColumns: ["orden_compra_id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_compra_id_fkey"
-            columns: ["orden_compra_id"]
-            isOneToOne: false
-            referencedRelation: "v_orden_compra_material_pendiente"
-            referencedColumns: ["orden_compra_id"]
           },
           {
             foreignKeyName: "adquisiciones_orden_id_fkey"
@@ -839,73 +93,10 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_fechas_clave"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_ficha_resumen"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_resumen"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "unidad_tablero"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cotizaciones_pdf"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cumplimiento_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_equipo_diseno_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_ot_avance_diario"
-            referencedColumns: ["orden_id"]
-          },
-          {
             foreignKeyName: "adquisiciones_registrado_por_fkey"
             columns: ["registrado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
             referencedColumns: ["id"]
           },
           {
@@ -914,7 +105,7 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "unidades"
             referencedColumns: ["id"]
-          },
+          }
         ]
       }
       areas: {
@@ -996,6 +187,47 @@ export type Database = {
           creado_en?: string
         }
         Relationships: []
+      }
+      catalogo_almacen_fuente: {
+        Row: {
+          fila_excel: number
+          material_id: string
+          codigo_original: string
+          descripcion_original: string
+          familia_original: string
+          subfamilia_original: string | null
+          proveedor_original: string | null
+          creado_en: string
+        }
+        Insert: {
+          fila_excel: number
+          material_id: string
+          codigo_original: string
+          descripcion_original: string
+          familia_original: string
+          subfamilia_original?: string | null
+          proveedor_original?: string | null
+          creado_en?: string
+        }
+        Update: {
+          fila_excel?: number
+          material_id?: string
+          codigo_original?: string
+          descripcion_original?: string
+          familia_original?: string
+          subfamilia_original?: string | null
+          proveedor_original?: string | null
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalogo_almacen_fuente_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       categorias_material: {
         Row: {
@@ -1137,6 +369,51 @@ export type Database = {
           }
         ]
       }
+      cobros_ot: {
+        Row: {
+          id: string
+          cuenta_id: string
+          fecha: string
+          monto: number
+          referencia: string
+          registrado_por: string
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          cuenta_id: string
+          fecha: string
+          monto: number
+          referencia: string
+          registrado_por?: string
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          cuenta_id?: string
+          fecha?: string
+          monto?: number
+          referencia?: string
+          registrado_por?: string
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cobros_ot_cuenta_id_fkey"
+            columns: ["cuenta_id"]
+            isOneToOne: false
+            referencedRelation: "cuentas_cobrar_ot"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cobros_ot_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       contactos_cliente: {
         Row: {
           id: string
@@ -1232,12 +509,32 @@ export type Database = {
           }
         ]
       }
+      control_vehicular_items: {
+        Row: {
+          codigo: string
+          categoria: string
+          nombre: string
+          orden: number
+          actualizado_en: string
+        }
+        Insert: {
+          codigo: string
+          categoria: string
+          nombre: string
+          orden: number
+          actualizado_en?: string
+        }
+        Update: {
+          codigo?: string
+          categoria?: string
+          nombre?: string
+          orden?: number
+          actualizado_en?: string
+        }
+        Relationships: []
+      }
       cotizaciones_pdf: {
         Row: {
-          motivo_correccion: string | null
-          anulado_en: string | null
-          anulado_por: string | null
-          motivo_anulacion: string | null
           id: string
           numero: string
           cliente_id: string
@@ -1257,12 +554,12 @@ export type Database = {
           archivo_subido_en: string
           monto_venta: number | null
           moneda: Database["public"]["Enums"]["moneda"] | null
+          motivo_anulacion: string | null
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_correccion: string | null
         }
         Insert: {
-          motivo_correccion?: string | null
-          anulado_en?: string | null
-          anulado_por?: string | null
-          motivo_anulacion?: string | null
           id?: string
           numero: string
           cliente_id: string
@@ -1282,12 +579,12 @@ export type Database = {
           archivo_subido_en?: string
           monto_venta?: number | null
           moneda?: Database["public"]["Enums"]["moneda"] | null
+          motivo_anulacion?: string | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_correccion?: string | null
         }
         Update: {
-          motivo_correccion?: string | null
-          anulado_en?: string | null
-          anulado_por?: string | null
-          motivo_anulacion?: string | null
           id?: string
           numero?: string
           cliente_id?: string
@@ -1307,6 +604,10 @@ export type Database = {
           archivo_subido_en?: string
           monto_venta?: number | null
           moneda?: Database["public"]["Enums"]["moneda"] | null
+          motivo_anulacion?: string | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_correccion?: string | null
         }
         Relationships: [
           {
@@ -1429,7 +730,6 @@ export type Database = {
       }
       cotizaciones_pdf_versiones: {
         Row: {
-          estado_al_archivar: string
           id: string
           cotizacion_id: string
           version: number
@@ -1443,9 +743,9 @@ export type Database = {
           rechazado_en: string | null
           creado_en: string
           actualizado_en: string
+          estado_al_archivar: string
         }
         Insert: {
-          estado_al_archivar?: string
           id?: string
           cotizacion_id: string
           version: number
@@ -1459,9 +759,9 @@ export type Database = {
           rechazado_en?: string | null
           creado_en?: string
           actualizado_en?: string
+          estado_al_archivar?: string
         }
         Update: {
-          estado_al_archivar?: string
           id?: string
           cotizacion_id?: string
           version?: number
@@ -1475,6 +775,7 @@ export type Database = {
           rechazado_en?: string | null
           creado_en?: string
           actualizado_en?: string
+          estado_al_archivar?: string
         }
         Relationships: [
           {
@@ -1490,6 +791,272 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
+          }
+        ]
+      }
+      cuentas_cobrar_ot: {
+        Row: {
+          id: string
+          orden_id: string
+          numero_documento: string
+          fecha_emision: string
+          fecha_vencimiento: string
+          moneda: string
+          total: number
+          observacion: string
+          registrado_por: string
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          numero_documento: string
+          fecha_emision: string
+          fecha_vencimiento: string
+          moneda: string
+          total: number
+          observacion?: string
+          registrado_por?: string
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          numero_documento?: string
+          fecha_emision?: string
+          fecha_vencimiento?: string
+          moneda?: string
+          total?: number
+          observacion?: string
+          registrado_por?: string
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cuentas_cobrar_ot_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      diseno_evaluaciones: {
+        Row: {
+          id: string
+          evaluado_nombre: string
+          puesto: string
+          fecha_ingreso: string | null
+          fecha_evaluacion: string
+          respuestas: number[]
+          comentarios: string
+          evaluador_id: string
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          evaluado_nombre: string
+          puesto: string
+          fecha_ingreso?: string | null
+          fecha_evaluacion: string
+          respuestas: number[]
+          comentarios?: string
+          evaluador_id?: string
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          evaluado_nombre?: string
+          puesto?: string
+          fecha_ingreso?: string | null
+          fecha_evaluacion?: string
+          respuestas?: number[]
+          comentarios?: string
+          evaluador_id?: string
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diseno_evaluaciones_evaluador_id_fkey"
+            columns: ["evaluador_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      diseno_informes: {
+        Row: {
+          id: string
+          semana_inicio: string
+          responsable: string
+          resumen: string
+          incidencias: string
+          acciones: string
+          no_conformidades: string
+          indicadores: string
+          plan_siguiente: string
+          conclusiones: string
+          creado_por: string
+          actualizado_por: string
+          creado_en: string
+          actualizado_en: string
+          numero: number
+          estado: string
+          observacion_revision: string | null
+          enviado_en: string | null
+          revisado_por: string | null
+          revisado_en: string | null
+          recibido_por: string | null
+          recibido_en: string | null
+          contenido_enviado: Json | null
+        }
+        Insert: {
+          id?: string
+          semana_inicio: string
+          responsable: string
+          resumen?: string
+          incidencias?: string
+          acciones?: string
+          no_conformidades?: string
+          indicadores?: string
+          plan_siguiente?: string
+          conclusiones?: string
+          creado_por?: string
+          actualizado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+          numero?: number
+          estado?: string
+          observacion_revision?: string | null
+          enviado_en?: string | null
+          revisado_por?: string | null
+          revisado_en?: string | null
+          recibido_por?: string | null
+          recibido_en?: string | null
+          contenido_enviado?: Json | null
+        }
+        Update: {
+          id?: string
+          semana_inicio?: string
+          responsable?: string
+          resumen?: string
+          incidencias?: string
+          acciones?: string
+          no_conformidades?: string
+          indicadores?: string
+          plan_siguiente?: string
+          conclusiones?: string
+          creado_por?: string
+          actualizado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+          numero?: number
+          estado?: string
+          observacion_revision?: string | null
+          enviado_en?: string | null
+          revisado_por?: string | null
+          revisado_en?: string | null
+          recibido_por?: string | null
+          recibido_en?: string | null
+          contenido_enviado?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diseno_informes_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diseno_informes_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diseno_informes_recibido_por_fkey"
+            columns: ["recibido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diseno_informes_revisado_por_fkey"
+            columns: ["revisado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      diseno_tareas: {
+        Row: {
+          id: string
+          orden_id: string
+          integrante_id: string
+          tipo: string
+          componente: string
+          fecha_inicio: string
+          fecha_entrega: string
+          observacion: string
+          creado_por: string
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          integrante_id: string
+          tipo: string
+          componente: string
+          fecha_inicio: string
+          fecha_entrega: string
+          observacion?: string
+          creado_por?: string
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          integrante_id?: string
+          tipo?: string
+          componente?: string
+          fecha_inicio?: string
+          fecha_entrega?: string
+          observacion?: string
+          creado_por?: string
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diseno_tareas_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diseno_tareas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_diseno_tarea_integrante_orden"
+            columns: ["integrante_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_equipo_diseno"
+            referencedColumns: ["id", "orden_id"]
           }
         ]
       }
@@ -1948,10 +1515,7 @@ export type Database = {
       materiales: {
         Row: {
           id: string
-          creado_desde_ot: string | null
           codigo: string
-          codigo_almacen_origen: string | null
-          unidad_pendiente: boolean
           descripcion: string
           categoria_id: string
           unidad_medida_id: string
@@ -1969,13 +1533,13 @@ export type Database = {
           creado_por: string | null
           creado_en: string
           actualizado_en: string
+          creado_desde_ot: string | null
+          codigo_almacen_origen: string | null
+          unidad_pendiente: boolean
         }
         Insert: {
           id?: string
-          creado_desde_ot?: string | null
           codigo: string
-          codigo_almacen_origen?: string | null
-          unidad_pendiente?: boolean
           descripcion: string
           categoria_id: string
           unidad_medida_id: string
@@ -1993,13 +1557,13 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          creado_desde_ot?: string | null
+          codigo_almacen_origen?: string | null
+          unidad_pendiente?: boolean
         }
         Update: {
           id?: string
-          creado_desde_ot?: string | null
           codigo?: string
-          codigo_almacen_origen?: string | null
-          unidad_pendiente?: boolean
           descripcion?: string
           categoria_id?: string
           unidad_medida_id?: string
@@ -2017,6 +1581,9 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          creado_desde_ot?: string | null
+          codigo_almacen_origen?: string | null
+          unidad_pendiente?: boolean
         }
         Relationships: [
           {
@@ -2053,35 +1620,59 @@ export type Database = {
         Row: {
           id: string
           tipo: string
-          requerimiento_detalle_id: string
+          requerimiento_detalle_id: string | null
           orden_compra_detalle_id: string | null
           cantidad: number
           documento_referencia: string | null
           responsable_id: string | null
           registrado_por: string
           registrado_en: string
+          material_id: string | null
+          origen: string
+          foto_ruta: string | null
+          recibido_por_nombre: string | null
+          cantidad_de_stock: number
+          precio_unitario: number | null
+          moneda: string | null
+          devolucion_de: string | null
         }
         Insert: {
           id: string
           tipo: string
-          requerimiento_detalle_id: string
+          requerimiento_detalle_id?: string | null
           orden_compra_detalle_id?: string | null
           cantidad: number
           documento_referencia?: string | null
           responsable_id?: string | null
           registrado_por?: string
           registrado_en?: string
+          material_id?: string | null
+          origen?: string
+          foto_ruta?: string | null
+          recibido_por_nombre?: string | null
+          cantidad_de_stock?: number
+          precio_unitario?: number | null
+          moneda?: string | null
+          devolucion_de?: string | null
         }
         Update: {
           id?: string
           tipo?: string
-          requerimiento_detalle_id?: string
+          requerimiento_detalle_id?: string | null
           orden_compra_detalle_id?: string | null
           cantidad?: number
           documento_referencia?: string | null
           responsable_id?: string | null
           registrado_por?: string
           registrado_en?: string
+          material_id?: string | null
+          origen?: string
+          foto_ruta?: string | null
+          recibido_por_nombre?: string | null
+          cantidad_de_stock?: number
+          precio_unitario?: number | null
+          moneda?: string | null
+          devolucion_de?: string | null
         }
         Relationships: [
           {
@@ -2090,6 +1681,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "orden_compra_material_detalles"
             referencedColumns: ["id", "requerimiento_detalle_id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_devolucion_de_fkey"
+            columns: ["devolucion_de"]
+            isOneToOne: false
+            referencedRelation: "movimientos_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "movimientos_materiales_registrado_por_fkey"
@@ -2158,45 +1763,77 @@ export type Database = {
           }
         ]
       }
+      notificaciones_archivo_20260929: {
+        Row: {
+          id: string
+          usuario_id: string
+          titulo: string
+          cuerpo: string | null
+          ruta: string | null
+          origen_tabla: string | null
+          origen_id: string | null
+          leida_en: string | null
+          creado_en: string
+          archivado_en: string
+        }
+        Insert: {
+          id: string
+          usuario_id: string
+          titulo: string
+          cuerpo?: string | null
+          ruta?: string | null
+          origen_tabla?: string | null
+          origen_id?: string | null
+          leida_en?: string | null
+          creado_en: string
+          archivado_en?: string
+        }
+        Update: {
+          id?: string
+          usuario_id?: string
+          titulo?: string
+          cuerpo?: string | null
+          ruta?: string | null
+          origen_tabla?: string | null
+          origen_id?: string | null
+          leida_en?: string | null
+          creado_en?: string
+          archivado_en?: string
+        }
+        Relationships: []
+      }
       orden_compra_material_detalles: {
         Row: {
-          actualizado_en: string
-          precio_unitario: number | null
           id: string
           orden_compra_id: string
           requerimiento_id: string
           requerimiento_detalle_id: string
           cantidad: number
           creado_en: string
+          actualizado_en: string
+          precio_unitario: number | null
         }
         Insert: {
-          actualizado_en?: string
-          precio_unitario?: number | null
           id?: string
           orden_compra_id: string
           requerimiento_id: string
           requerimiento_detalle_id: string
           cantidad: number
           creado_en?: string
-        }
-        Update: {
           actualizado_en?: string
           precio_unitario?: number | null
+        }
+        Update: {
           id?: string
           orden_compra_id?: string
           requerimiento_id?: string
           requerimiento_detalle_id?: string
           cantidad?: number
           creado_en?: string
+          actualizado_en?: string
+          precio_unitario?: number | null
         }
         Relationships: [
-          {
-            foreignKeyName: "fk_oc_material_header_req"
-            columns: ["orden_compra_id", "requerimiento_id"]
-            isOneToOne: false
-            referencedRelation: "ordenes_compra_materiales"
-            referencedColumns: ["id", "requerimiento_id"]
-          },
           {
             foreignKeyName: "fk_oc_material_req_linea"
             columns: ["requerimiento_detalle_id", "requerimiento_id"]
@@ -2229,49 +1866,49 @@ export type Database = {
       }
       ordenes_compra_materiales: {
         Row: {
-          actualizado_en: string
-          condicion_pago: string
-          creado_en: string
+          id: string
+          requerimiento_id: string
+          proveedor: string
+          referencia: string
+          fecha_estimada: string | null
           creado_por: string
-          dias_credito: number
+          creado_en: string
+          actualizado_en: string
           entregado_almacen_en: string | null
           entregado_almacen_por: string | null
-          fecha_estimada: string | null
-          id: string
+          condicion_pago: string
+          dias_credito: number
           moneda: string
-          proveedor: string
-          referencia: string
-          requerimiento_id: string
         }
         Insert: {
-          actualizado_en?: string
-          condicion_pago?: string
-          creado_en?: string
-          creado_por?: string
-          dias_credito?: number
-          entregado_almacen_en?: string | null
-          entregado_almacen_por?: string | null
-          fecha_estimada?: string | null
           id?: string
-          moneda?: string
+          requerimiento_id: string
           proveedor: string
           referencia: string
-          requerimiento_id: string
-        }
-        Update: {
-          actualizado_en?: string
-          condicion_pago?: string
-          creado_en?: string
+          fecha_estimada?: string | null
           creado_por?: string
-          dias_credito?: number
+          creado_en?: string
+          actualizado_en?: string
           entregado_almacen_en?: string | null
           entregado_almacen_por?: string | null
-          fecha_estimada?: string | null
-          id?: string
+          condicion_pago?: string
+          dias_credito?: number
           moneda?: string
+        }
+        Update: {
+          id?: string
+          requerimiento_id?: string
           proveedor?: string
           referencia?: string
-          requerimiento_id?: string
+          fecha_estimada?: string | null
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+          entregado_almacen_en?: string | null
+          entregado_almacen_por?: string | null
+          condicion_pago?: string
+          dias_credito?: number
+          moneda?: string
         }
         Relationships: [
           {
@@ -2282,24 +1919,10 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "ordenes_compra_materiales_creado_por_fkey"
-            columns: ["creado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "ordenes_compra_materiales_entregado_almacen_por_fkey"
             columns: ["entregado_almacen_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ordenes_compra_materiales_entregado_almacen_por_fkey"
-            columns: ["entregado_almacen_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
             referencedColumns: ["id"]
           },
           {
@@ -2308,14 +1931,7 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "requerimientos_materiales"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ordenes_compra_materiales_requerimiento_id_fkey"
-            columns: ["requerimiento_id"]
-            isOneToOne: false
-            referencedRelation: "v_atencion_materiales"
-            referencedColumns: ["requerimiento_id"]
-          },
+          }
         ]
       }
       ordenes_trabajo: {
@@ -2365,8 +1981,8 @@ export type Database = {
           cotizacion_pdf_id: string | null
           tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           diseno_lider_id: string | null
-          diseno_lider_entrega_nombre: string | null
           plan_etapas_manual: boolean
+          diseno_lider_entrega_nombre: string | null
         }
         Insert: {
           id?: string
@@ -2414,8 +2030,8 @@ export type Database = {
           cotizacion_pdf_id?: string | null
           tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           diseno_lider_id?: string | null
-          diseno_lider_entrega_nombre?: string | null
           plan_etapas_manual?: boolean
+          diseno_lider_entrega_nombre?: string | null
         }
         Update: {
           id?: string
@@ -2463,8 +2079,8 @@ export type Database = {
           cotizacion_pdf_id?: string | null
           tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           diseno_lider_id?: string | null
-          diseno_lider_entrega_nombre?: string | null
           plan_etapas_manual?: boolean
+          diseno_lider_entrega_nombre?: string | null
         }
         Relationships: [
           {
@@ -2686,7 +2302,6 @@ export type Database = {
           id: string
           orden_id: string
           area_id: string
-          etapa_id: string | null
           orden_secuencia: number
           nombre: string
           detalle: string | null
@@ -2697,12 +2312,12 @@ export type Database = {
           actualizado_en: string
           fecha_inicio_plan: string | null
           fecha_fin_plan: string | null
+          etapa_id: string | null
         }
         Insert: {
           id?: string
           orden_id: string
           area_id: string
-          etapa_id?: string | null
           orden_secuencia?: number
           nombre: string
           detalle?: string | null
@@ -2713,12 +2328,12 @@ export type Database = {
           actualizado_en?: string
           fecha_inicio_plan?: string | null
           fecha_fin_plan?: string | null
+          etapa_id?: string | null
         }
         Update: {
           id?: string
           orden_id?: string
           area_id?: string
-          etapa_id?: string | null
           orden_secuencia?: number
           nombre?: string
           detalle?: string | null
@@ -2729,6 +2344,7 @@ export type Database = {
           actualizado_en?: string
           fecha_inicio_plan?: string | null
           fecha_fin_plan?: string | null
+          etapa_id?: string | null
         }
         Relationships: [
           {
@@ -2952,329 +2568,6 @@ export type Database = {
           }
         ]
       }
-      control_vehicular_items: {
-        Row: {
-          actualizado_en: string
-          categoria: string
-          codigo: string
-          nombre: string
-          orden: number
-        }
-        Insert: {
-          actualizado_en?: string
-          categoria: string
-          codigo: string
-          nombre: string
-          orden: number
-        }
-        Update: {
-          actualizado_en?: string
-          categoria?: string
-          codigo?: string
-          nombre?: string
-          orden?: number
-        }
-        Relationships: []
-      }
-      ot_control_vehicular: {
-        Row: {
-          actualizado_en: string
-          actualizado_por: string | null
-          adicionales: string
-          combustible_ingreso: string
-          combustible_salida: string
-          conductor_ingreso: string
-          conductor_salida: string
-          creado_en: string
-          dni_ingreso: string
-          dni_salida: string
-          escaneo_nombre: string | null
-          escaneo_ruta: string | null
-          fecha_ingreso: string | null
-          fecha_salida: string | null
-          id: string
-          ingreso_cerrado_en: string | null
-          items: Json
-          marca: string
-          observacion_ingreso: string
-          observacion_salida: string
-          orden_id: string
-          placa: string
-          registrado_por: string
-          salida_cerrada_en: string | null
-          trabajos: string
-        }
-        Insert: {
-          actualizado_en?: string
-          actualizado_por?: string | null
-          adicionales?: string
-          combustible_ingreso?: string
-          combustible_salida?: string
-          conductor_ingreso?: string
-          conductor_salida?: string
-          creado_en?: string
-          dni_ingreso?: string
-          dni_salida?: string
-          escaneo_nombre?: string | null
-          escaneo_ruta?: string | null
-          fecha_ingreso?: string | null
-          fecha_salida?: string | null
-          id?: string
-          ingreso_cerrado_en?: string | null
-          items?: Json
-          marca?: string
-          observacion_ingreso?: string
-          observacion_salida?: string
-          orden_id: string
-          placa?: string
-          registrado_por?: string
-          salida_cerrada_en?: string | null
-          trabajos?: string
-        }
-        Update: {
-          actualizado_en?: string
-          actualizado_por?: string | null
-          adicionales?: string
-          combustible_ingreso?: string
-          combustible_salida?: string
-          conductor_ingreso?: string
-          conductor_salida?: string
-          creado_en?: string
-          dni_ingreso?: string
-          dni_salida?: string
-          escaneo_nombre?: string | null
-          escaneo_ruta?: string | null
-          fecha_ingreso?: string | null
-          fecha_salida?: string | null
-          id?: string
-          ingreso_cerrado_en?: string | null
-          items?: Json
-          marca?: string
-          observacion_ingreso?: string
-          observacion_salida?: string
-          orden_id?: string
-          placa?: string
-          registrado_por?: string
-          salida_cerrada_en?: string | null
-          trabajos?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ot_control_vehicular_actualizado_por_fkey"
-            columns: ["actualizado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_control_vehicular_actualizado_por_fkey"
-            columns: ["actualizado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: true
-            referencedRelation: "ordenes_trabajo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: true
-            referencedRelation: "ot_fechas_clave"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: true
-            referencedRelation: "ot_ficha_resumen"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: true
-            referencedRelation: "ot_resumen"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: true
-            referencedRelation: "unidad_tablero"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: true
-            referencedRelation: "v_cotizaciones_pdf"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: true
-            referencedRelation: "v_cumplimiento_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: true
-            referencedRelation: "v_equipo_diseno_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: true
-            referencedRelation: "v_ot_avance_diario"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_control_vehicular_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_control_vehicular_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      ot_checklists: {
-        Row: {
-          actualizado_en: string
-          completado_en: string | null
-          condicion_verificada: boolean
-          creado_en: string
-          documentos_verificados: boolean
-          id: string
-          identidad_verificada: boolean
-          materiales_verificados: boolean
-          observacion: string
-          orden_id: string
-          registrado_por: string
-          tipo: string
-        }
-        Insert: {
-          actualizado_en?: string
-          completado_en?: string | null
-          condicion_verificada?: boolean
-          creado_en?: string
-          documentos_verificados?: boolean
-          id?: string
-          identidad_verificada?: boolean
-          materiales_verificados?: boolean
-          observacion?: string
-          orden_id: string
-          registrado_por?: string
-          tipo: string
-        }
-        Update: {
-          actualizado_en?: string
-          completado_en?: string | null
-          condicion_verificada?: boolean
-          creado_en?: string
-          documentos_verificados?: boolean
-          id?: string
-          identidad_verificada?: boolean
-          materiales_verificados?: boolean
-          observacion?: string
-          orden_id?: string
-          registrado_por?: string
-          tipo?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ot_checklists_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ordenes_trabajo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_checklists_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_fechas_clave"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_checklists_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_ficha_resumen"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_checklists_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_resumen"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_checklists_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "unidad_tablero"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_checklists_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cotizaciones_pdf"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_checklists_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cumplimiento_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_checklists_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_equipo_diseno_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_checklists_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_ot_avance_diario"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_checklists_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_checklists_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       ot_bitacora: {
         Row: {
           id: string
@@ -3324,6 +2617,172 @@ export type Database = {
           {
             foreignKeyName: "ot_bitacora_usuario_id_fkey"
             columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_checklists: {
+        Row: {
+          id: string
+          orden_id: string
+          tipo: string
+          identidad_verificada: boolean
+          documentos_verificados: boolean
+          materiales_verificados: boolean
+          condicion_verificada: boolean
+          observacion: string
+          registrado_por: string
+          completado_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          tipo: string
+          identidad_verificada?: boolean
+          documentos_verificados?: boolean
+          materiales_verificados?: boolean
+          condicion_verificada?: boolean
+          observacion?: string
+          registrado_por?: string
+          completado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          tipo?: string
+          identidad_verificada?: boolean
+          documentos_verificados?: boolean
+          materiales_verificados?: boolean
+          condicion_verificada?: boolean
+          observacion?: string
+          registrado_por?: string
+          completado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_checklists_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_checklists_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_control_vehicular: {
+        Row: {
+          id: string
+          orden_id: string
+          placa: string
+          marca: string
+          conductor_ingreso: string
+          dni_ingreso: string
+          fecha_ingreso: string | null
+          combustible_ingreso: string
+          conductor_salida: string
+          dni_salida: string
+          fecha_salida: string | null
+          combustible_salida: string
+          adicionales: string
+          trabajos: string
+          observacion_ingreso: string
+          observacion_salida: string
+          items: Json
+          ingreso_cerrado_en: string | null
+          salida_cerrada_en: string | null
+          escaneo_ruta: string | null
+          escaneo_nombre: string | null
+          registrado_por: string
+          actualizado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          placa?: string
+          marca?: string
+          conductor_ingreso?: string
+          dni_ingreso?: string
+          fecha_ingreso?: string | null
+          combustible_ingreso?: string
+          conductor_salida?: string
+          dni_salida?: string
+          fecha_salida?: string | null
+          combustible_salida?: string
+          adicionales?: string
+          trabajos?: string
+          observacion_ingreso?: string
+          observacion_salida?: string
+          items?: Json
+          ingreso_cerrado_en?: string | null
+          salida_cerrada_en?: string | null
+          escaneo_ruta?: string | null
+          escaneo_nombre?: string | null
+          registrado_por?: string
+          actualizado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          placa?: string
+          marca?: string
+          conductor_ingreso?: string
+          dni_ingreso?: string
+          fecha_ingreso?: string | null
+          combustible_ingreso?: string
+          conductor_salida?: string
+          dni_salida?: string
+          fecha_salida?: string | null
+          combustible_salida?: string
+          adicionales?: string
+          trabajos?: string
+          observacion_ingreso?: string
+          observacion_salida?: string
+          items?: Json
+          ingreso_cerrado_en?: string | null
+          salida_cerrada_en?: string | null
+          escaneo_ruta?: string | null
+          escaneo_nombre?: string | null
+          registrado_por?: string
+          actualizado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_control_vehicular_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_control_vehicular_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_control_vehicular_registrado_por_fkey"
+            columns: ["registrado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -3417,6 +2876,51 @@ export type Database = {
           }
         ]
       }
+      ot_equipo_diseno: {
+        Row: {
+          id: string
+          orden_id: string
+          nombre: string
+          funcion: string
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          nombre: string
+          funcion: string
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          nombre?: string
+          funcion?: string
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_equipo_diseno_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_equipo_diseno_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_etapa_reportes: {
         Row: {
           id: string
@@ -3472,59 +2976,11 @@ export type Database = {
           }
         ]
       }
-      ot_equipo_diseno: {
-        Row: {
-          id: string
-          orden_id: string
-          nombre: string
-          funcion: string
-          creado_por: string | null
-          creado_en: string
-          actualizado_en: string
-        }
-        Insert: {
-          id?: string
-          orden_id: string
-          nombre: string
-          funcion: string
-          creado_por?: string | null
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Update: {
-          id?: string
-          orden_id?: string
-          nombre?: string
-          funcion?: string
-          creado_por?: string | null
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ot_equipo_diseno_creado_por_fkey"
-            columns: ["creado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_equipo_diseno_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ordenes_trabajo"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
       ot_etapas: {
         Row: {
           id: string
           orden_id: string
           etapa_catalogo_id: string | null
-          nombre: string | null
-          area_id: string | null
-          peso_pct: number | null
           estado: Database["public"]["Enums"]["estado_etapa_ot"]
           orden_secuencia: number
           avance_porcentaje: number
@@ -3539,14 +2995,14 @@ export type Database = {
           observaciones: string | null
           creado_en: string
           actualizado_en: string
+          area_id: string | null
+          peso_pct: number | null
+          nombre: string | null
         }
         Insert: {
           id?: string
           orden_id: string
           etapa_catalogo_id?: string | null
-          nombre?: string | null
-          area_id?: string | null
-          peso_pct?: number | null
           estado?: Database["public"]["Enums"]["estado_etapa_ot"]
           orden_secuencia: number
           avance_porcentaje?: number
@@ -3561,14 +3017,14 @@ export type Database = {
           observaciones?: string | null
           creado_en?: string
           actualizado_en?: string
+          area_id?: string | null
+          peso_pct?: number | null
+          nombre?: string | null
         }
         Update: {
           id?: string
           orden_id?: string
           etapa_catalogo_id?: string | null
-          nombre?: string | null
-          area_id?: string | null
-          peso_pct?: number | null
           estado?: Database["public"]["Enums"]["estado_etapa_ot"]
           orden_secuencia?: number
           avance_porcentaje?: number
@@ -3583,6 +3039,9 @@ export type Database = {
           observaciones?: string | null
           creado_en?: string
           actualizado_en?: string
+          area_id?: string | null
+          peso_pct?: number | null
+          nombre?: string | null
         }
         Relationships: [
           {
@@ -3609,6 +3068,95 @@ export type Database = {
           {
             foreignKeyName: "ot_etapas_responsable_id_fkey"
             columns: ["responsable_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_gastos_areas: {
+        Row: {
+          id: string
+          orden_id: string
+          area_id: string
+          tipo: string
+          descripcion: string
+          fecha: string
+          monto: number
+          moneda: string
+          comprobante_ruta: string
+          comprobante_nombre: string
+          estado: string
+          observacion_revision: string | null
+          registrado_por: string
+          revisado_por: string | null
+          revisado_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          area_id: string
+          tipo: string
+          descripcion: string
+          fecha: string
+          monto: number
+          moneda: string
+          comprobante_ruta: string
+          comprobante_nombre: string
+          estado?: string
+          observacion_revision?: string | null
+          registrado_por?: string
+          revisado_por?: string | null
+          revisado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          area_id?: string
+          tipo?: string
+          descripcion?: string
+          fecha?: string
+          monto?: number
+          moneda?: string
+          comprobante_ruta?: string
+          comprobante_nombre?: string
+          estado?: string
+          observacion_revision?: string | null
+          registrado_por?: string
+          revisado_por?: string | null
+          revisado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_gastos_areas_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_gastos_areas_revisado_por_fkey"
+            columns: ["revisado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -3852,11 +3400,6 @@ export type Database = {
           estado: string
           vigente: boolean
           observacion: string | null
-          nota_envio: string | null
-          revision_diseno: string
-          revision_diseno_por: string | null
-          revision_diseno_en: string | null
-          observacion_diseno: string | null
           creado_por: string
           revisado_por: string | null
           revisado_en: string | null
@@ -3864,6 +3407,11 @@ export type Database = {
           recibido_en: string | null
           creado_en: string
           actualizado_en: string
+          nota_envio: string | null
+          revision_diseno: string
+          revision_diseno_por: string | null
+          revision_diseno_en: string | null
+          observacion_diseno: string | null
         }
         Insert: {
           id: string
@@ -3875,11 +3423,6 @@ export type Database = {
           estado?: string
           vigente?: boolean
           observacion?: string | null
-          nota_envio?: string | null
-          revision_diseno?: string
-          revision_diseno_por?: string | null
-          revision_diseno_en?: string | null
-          observacion_diseno?: string | null
           creado_por: string
           revisado_por?: string | null
           revisado_en?: string | null
@@ -3887,6 +3430,11 @@ export type Database = {
           recibido_en?: string | null
           creado_en?: string
           actualizado_en?: string
+          nota_envio?: string | null
+          revision_diseno?: string
+          revision_diseno_por?: string | null
+          revision_diseno_en?: string | null
+          observacion_diseno?: string | null
         }
         Update: {
           id?: string
@@ -3898,11 +3446,6 @@ export type Database = {
           estado?: string
           vigente?: boolean
           observacion?: string | null
-          nota_envio?: string | null
-          revision_diseno?: string
-          revision_diseno_por?: string | null
-          revision_diseno_en?: string | null
-          observacion_diseno?: string | null
           creado_por?: string
           revisado_por?: string | null
           revisado_en?: string | null
@@ -3910,6 +3453,11 @@ export type Database = {
           recibido_en?: string | null
           creado_en?: string
           actualizado_en?: string
+          nota_envio?: string | null
+          revision_diseno?: string
+          revision_diseno_por?: string | null
+          revision_diseno_en?: string | null
+          observacion_diseno?: string | null
         }
         Relationships: [
           {
@@ -3917,13 +3465,6 @@ export type Database = {
             columns: ["area_id"]
             isOneToOne: false
             referencedRelation: "areas"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_plano_versiones_revision_diseno_por_fkey"
-            columns: ["revision_diseno_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           },
           {
@@ -3953,6 +3494,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_plano_versiones_revision_diseno_por_fkey"
+            columns: ["revision_diseno_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
           }
         ]
       }
@@ -3960,8 +3508,6 @@ export type Database = {
         Row: {
           id: string
           orden_id: string
-          etapa_id: string | null
-          integrante_diseno_id: string | null
           orden_secuencia: number
           numero_plano: string
           nombre: string
@@ -3972,12 +3518,12 @@ export type Database = {
           creado_en: string
           actualizado_en: string
           responsable_diseno_id: string | null
+          etapa_id: string | null
+          integrante_diseno_id: string | null
         }
         Insert: {
           id?: string
           orden_id: string
-          etapa_id?: string | null
-          integrante_diseno_id?: string | null
           orden_secuencia?: number
           numero_plano: string
           nombre: string
@@ -3988,12 +3534,12 @@ export type Database = {
           creado_en?: string
           actualizado_en?: string
           responsable_diseno_id?: string | null
+          etapa_id?: string | null
+          integrante_diseno_id?: string | null
         }
         Update: {
           id?: string
           orden_id?: string
-          etapa_id?: string | null
-          integrante_diseno_id?: string | null
           orden_secuencia?: number
           numero_plano?: string
           nombre?: string
@@ -4004,15 +3550,10 @@ export type Database = {
           creado_en?: string
           actualizado_en?: string
           responsable_diseno_id?: string | null
+          etapa_id?: string | null
+          integrante_diseno_id?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "ot_planos_integrante_diseno_id_fkey"
-            columns: ["integrante_diseno_id"]
-            isOneToOne: false
-            referencedRelation: "ot_equipo_diseno"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "fk_ot_plano_etapa_orden"
             columns: ["etapa_id", "orden_id"]
@@ -4025,6 +3566,13 @@ export type Database = {
             columns: ["creado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_planos_integrante_diseno_id_fkey"
+            columns: ["integrante_diseno_id"]
+            isOneToOne: false
+            referencedRelation: "ot_equipo_diseno"
             referencedColumns: ["id"]
           },
           {
@@ -4087,319 +3635,6 @@ export type Database = {
           }
         ]
       }
-      ot_gastos_areas: {
-        Row: {
-          actualizado_en: string
-          area_id: string
-          comprobante_nombre: string
-          comprobante_ruta: string
-          creado_en: string
-          descripcion: string
-          estado: string
-          fecha: string
-          id: string
-          moneda: string
-          monto: number
-          observacion_revision: string | null
-          orden_id: string
-          registrado_por: string
-          revisado_en: string | null
-          revisado_por: string | null
-          tipo: string
-        }
-        Insert: {
-          actualizado_en?: string
-          area_id: string
-          comprobante_nombre: string
-          comprobante_ruta: string
-          creado_en?: string
-          descripcion: string
-          estado?: string
-          fecha: string
-          id?: string
-          moneda: string
-          monto: number
-          observacion_revision?: string | null
-          orden_id: string
-          registrado_por?: string
-          revisado_en?: string | null
-          revisado_por?: string | null
-          tipo: string
-        }
-        Update: {
-          actualizado_en?: string
-          area_id?: string
-          comprobante_nombre?: string
-          comprobante_ruta?: string
-          creado_en?: string
-          descripcion?: string
-          estado?: string
-          fecha?: string
-          id?: string
-          moneda?: string
-          monto?: number
-          observacion_revision?: string | null
-          orden_id?: string
-          registrado_por?: string
-          revisado_en?: string | null
-          revisado_por?: string | null
-          tipo?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ot_gastos_areas_area_id_fkey"
-            columns: ["area_id"]
-            isOneToOne: false
-            referencedRelation: "areas"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_gastos_areas_area_id_fkey"
-            columns: ["area_id"]
-            isOneToOne: false
-            referencedRelation: "v_ot_avance_diario"
-            referencedColumns: ["area_id"]
-          },
-          {
-            foreignKeyName: "ot_gastos_areas_area_id_fkey"
-            columns: ["area_id"]
-            isOneToOne: false
-            referencedRelation: "v_plazos_por_area"
-            referencedColumns: ["area_id"]
-          },
-          {
-            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ordenes_trabajo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_fechas_clave"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_ficha_resumen"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_resumen"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "unidad_tablero"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cotizaciones_pdf"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cumplimiento_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_equipo_diseno_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_gastos_areas_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_ot_avance_diario"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_gastos_areas_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_gastos_areas_registrado_por_fkey"
-            columns: ["registrado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_gastos_areas_revisado_por_fkey"
-            columns: ["revisado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_gastos_areas_revisado_por_fkey"
-            columns: ["revisado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      ot_solicitudes_tesoreria: {
-        Row: {
-          actualizado_en: string
-          atendido_en: string | null
-          atendido_por: string | null
-          concepto: string
-          creado_en: string
-          estado: string
-          id: string
-          moneda: string | null
-          monto: number | null
-          orden_id: string
-          respuesta: string | null
-          solicitado_por: string
-          tipo: string
-        }
-        Insert: {
-          actualizado_en?: string
-          atendido_en?: string | null
-          atendido_por?: string | null
-          concepto: string
-          creado_en?: string
-          estado?: string
-          id?: string
-          moneda?: string | null
-          monto?: number | null
-          orden_id: string
-          respuesta?: string | null
-          solicitado_por?: string
-          tipo: string
-        }
-        Update: {
-          actualizado_en?: string
-          atendido_en?: string | null
-          atendido_por?: string | null
-          concepto?: string
-          creado_en?: string
-          estado?: string
-          id?: string
-          moneda?: string | null
-          monto?: number | null
-          orden_id?: string
-          respuesta?: string | null
-          solicitado_por?: string
-          tipo?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ot_solicitudes_tesoreria_atendido_por_fkey"
-            columns: ["atendido_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_solicitudes_tesoreria_atendido_por_fkey"
-            columns: ["atendido_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ordenes_trabajo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_fechas_clave"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_ficha_resumen"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_resumen"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "unidad_tablero"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cotizaciones_pdf"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cumplimiento_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_equipo_diseno_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_ot_avance_diario"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "ot_solicitudes_tesoreria_solicitado_por_fkey"
-            columns: ["solicitado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ot_solicitudes_tesoreria_solicitado_por_fkey"
-            columns: ["solicitado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios_nombre_completo"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       ot_salidas: {
         Row: {
           id: string
@@ -4436,6 +3671,76 @@ export type Database = {
           {
             foreignKeyName: "ot_salidas_registrado_por_fkey"
             columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ot_solicitudes_tesoreria: {
+        Row: {
+          id: string
+          orden_id: string
+          tipo: string
+          concepto: string
+          monto: number | null
+          moneda: string | null
+          estado: string
+          respuesta: string | null
+          solicitado_por: string
+          atendido_por: string | null
+          atendido_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          tipo: string
+          concepto: string
+          monto?: number | null
+          moneda?: string | null
+          estado?: string
+          respuesta?: string | null
+          solicitado_por?: string
+          atendido_por?: string | null
+          atendido_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          tipo?: string
+          concepto?: string
+          monto?: number | null
+          moneda?: string | null
+          estado?: string
+          respuesta?: string | null
+          solicitado_por?: string
+          atendido_por?: string | null
+          atendido_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_atendido_por_fkey"
+            columns: ["atendido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_solicitudes_tesoreria_solicitado_por_fkey"
+            columns: ["solicitado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -4513,13 +3818,13 @@ export type Database = {
           responsable_id: string | null
           avance_1: boolean
           avance_1_en: string | null
-          avance_1_por: string | null
           avance_2: boolean
           avance_2_en: string | null
-          avance_2_por: string | null
           observaciones: string | null
           creado_en: string
           actualizado_en: string
+          avance_1_por: string | null
+          avance_2_por: string | null
         }
         Insert: {
           id?: string
@@ -4529,13 +3834,13 @@ export type Database = {
           responsable_id?: string | null
           avance_1?: boolean
           avance_1_en?: string | null
-          avance_1_por?: string | null
           avance_2?: boolean
           avance_2_en?: string | null
-          avance_2_por?: string | null
           observaciones?: string | null
           creado_en?: string
           actualizado_en?: string
+          avance_1_por?: string | null
+          avance_2_por?: string | null
         }
         Update: {
           id?: string
@@ -4545,13 +3850,13 @@ export type Database = {
           responsable_id?: string | null
           avance_1?: boolean
           avance_1_en?: string | null
-          avance_1_por?: string | null
           avance_2?: boolean
           avance_2_en?: string | null
-          avance_2_por?: string | null
           observaciones?: string | null
           creado_en?: string
           actualizado_en?: string
+          avance_1_por?: string | null
+          avance_2_por?: string | null
         }
         Relationships: [
           {
@@ -4584,6 +3889,51 @@ export type Database = {
           }
         ]
       }
+      pagos_adquisicion: {
+        Row: {
+          id: string
+          adquisicion_id: string
+          fecha: string
+          monto: number
+          referencia: string
+          registrado_por: string
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          adquisicion_id: string
+          fecha: string
+          monto: number
+          referencia: string
+          registrado_por?: string
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          adquisicion_id?: string
+          fecha?: string
+          monto?: number
+          referencia?: string
+          registrado_por?: string
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pagos_adquisicion_adquisicion_id_fkey"
+            columns: ["adquisicion_id"]
+            isOneToOne: false
+            referencedRelation: "adquisiciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_adquisicion_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       permisos: {
         Row: {
           codigo: string
@@ -4601,6 +3951,166 @@ export type Database = {
           descripcion?: string
         }
         Relationships: []
+      }
+      planilla_distribuciones: {
+        Row: {
+          id: string
+          persona_id: string
+          orden_id: string
+          porcentaje: number
+          registrado_por: string
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          persona_id: string
+          orden_id: string
+          porcentaje: number
+          registrado_por?: string
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          persona_id?: string
+          orden_id?: string
+          porcentaje?: number
+          registrado_por?: string
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planilla_distribuciones_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_distribuciones_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "planilla_personas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_distribuciones_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      planilla_personas: {
+        Row: {
+          id: string
+          planilla_id: string
+          nombre: string
+          documento: string | null
+          monto: number
+          registrado_por: string
+          creado_en: string
+          detalle: Json | null
+          origen_hoja: string | null
+          fila_origen: number | null
+          importacion_id: string | null
+        }
+        Insert: {
+          id?: string
+          planilla_id: string
+          nombre: string
+          documento?: string | null
+          monto: number
+          registrado_por?: string
+          creado_en?: string
+          detalle?: Json | null
+          origen_hoja?: string | null
+          fila_origen?: number | null
+          importacion_id?: string | null
+        }
+        Update: {
+          id?: string
+          planilla_id?: string
+          nombre?: string
+          documento?: string | null
+          monto?: number
+          registrado_por?: string
+          creado_en?: string
+          detalle?: Json | null
+          origen_hoja?: string | null
+          fila_origen?: number | null
+          importacion_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planilla_personas_planilla_id_fkey"
+            columns: ["planilla_id"]
+            isOneToOne: false
+            referencedRelation: "planillas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_personas_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      planillas: {
+        Row: {
+          id: string
+          tipo: string
+          periodo: string
+          moneda: string
+          estado: string
+          observacion: string
+          registrado_por: string
+          cerrado_por: string | null
+          cerrado_en: string | null
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          tipo: string
+          periodo: string
+          moneda?: string
+          estado?: string
+          observacion?: string
+          registrado_por?: string
+          cerrado_por?: string | null
+          cerrado_en?: string | null
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          tipo?: string
+          periodo?: string
+          moneda?: string
+          estado?: string
+          observacion?: string
+          registrado_por?: string
+          cerrado_por?: string | null
+          cerrado_en?: string | null
+          creado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planillas_cerrado_por_fkey"
+            columns: ["cerrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planillas_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       plantilla_ficha_accesorios: {
         Row: {
@@ -4877,6 +4387,11 @@ export type Database = {
       }
       requerimiento_material_detalles: {
         Row: {
+          id: string
+          requerimiento_id: string
+          ot_material_id: string
+          cantidad_solicitada: number
+          creado_en: string
           actualizado_en: string
           aprobacion_diseno: string
           aprobado_por: string | null
@@ -4884,27 +4399,14 @@ export type Database = {
           decision_almacen: string
           revisado_por: string | null
           revisado_en: string | null
-          id: string
-          requerimiento_id: string
-          ot_material_id: string
-          cantidad_solicitada: number
-          creado_en: string
+          cantidad_stock: number | null
         }
         Insert: {
-          actualizado_en?: string
-          aprobacion_diseno?: string
-          aprobado_por?: string | null
-          aprobado_en?: string | null
-          decision_almacen?: string
-          revisado_por?: string | null
-          revisado_en?: string | null
           id?: string
           requerimiento_id: string
           ot_material_id: string
           cantidad_solicitada: number
           creado_en?: string
-        }
-        Update: {
           actualizado_en?: string
           aprobacion_diseno?: string
           aprobado_por?: string | null
@@ -4912,13 +4414,31 @@ export type Database = {
           decision_almacen?: string
           revisado_por?: string | null
           revisado_en?: string | null
+          cantidad_stock?: number | null
+        }
+        Update: {
           id?: string
           requerimiento_id?: string
           ot_material_id?: string
           cantidad_solicitada?: number
           creado_en?: string
+          actualizado_en?: string
+          aprobacion_diseno?: string
+          aprobado_por?: string | null
+          aprobado_en?: string | null
+          decision_almacen?: string
+          revisado_por?: string | null
+          revisado_en?: string | null
+          cantidad_stock?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "requerimiento_material_detalles_aprobado_por_fkey"
+            columns: ["aprobado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "requerimiento_material_detalles_ot_material_id_fkey"
             columns: ["ot_material_id"]
@@ -4931,6 +4451,13 @@ export type Database = {
             columns: ["requerimiento_id"]
             isOneToOne: false
             referencedRelation: "requerimientos_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_material_detalles_revisado_por_fkey"
+            columns: ["revisado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -5445,243 +4972,6 @@ export type Database = {
       }
     }
     Views: {
-      v_compras_credito_sin_comprobante: {
-        Row: {
-          fecha_compra: string | null
-          fecha_vencimiento: string | null
-          moneda: string | null
-          numero_ot: string | null
-          orden_compra_id: string | null
-          orden_id: string | null
-          proveedor: string | null
-          referencia: string | null
-          total_estimado: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ordenes_trabajo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_fechas_clave"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_ficha_resumen"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_resumen"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "unidad_tablero"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cotizaciones_pdf"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cumplimiento_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_equipo_diseno_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "requerimientos_materiales_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_ot_avance_diario"
-            referencedColumns: ["orden_id"]
-          },
-        ]
-      }
-      v_cuentas_cobrar_ot: {
-        Row: {
-          cobrado: number | null
-          fecha_emision: string | null
-          fecha_vencimiento: string | null
-          id: string | null
-          moneda: string | null
-          numero_documento: string | null
-          numero_ot: string | null
-          orden_id: string | null
-          saldo: number | null
-          total: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ordenes_trabajo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_fechas_clave"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_ficha_resumen"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_resumen"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "unidad_tablero"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cotizaciones_pdf"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cumplimiento_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_equipo_diseno_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_ot_avance_diario"
-            referencedColumns: ["orden_id"]
-          },
-        ]
-      }
-      v_cuentas_pagar: {
-        Row: {
-          fecha_emision: string | null
-          fecha_vencimiento: string | null
-          id: string | null
-          moneda: string | null
-          numero_documento: string | null
-          numero_ot: string | null
-          orden_id: string | null
-          pagado: number | null
-          proveedor: string | null
-          saldo: number | null
-          total: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ordenes_trabajo"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_fechas_clave"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_ficha_resumen"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ot_resumen"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "unidad_tablero"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cotizaciones_pdf"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_cumplimiento_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_equipo_diseno_ot"
-            referencedColumns: ["orden_id"]
-          },
-          {
-            foreignKeyName: "adquisiciones_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "v_ot_avance_diario"
-            referencedColumns: ["orden_id"]
-          },
-        ]
-      }
       ot_avance_resumen: {
         Row: {
           id: string | null
@@ -5866,6 +5156,20 @@ export type Database = {
         }
         Relationships: []
       }
+      v_compras_credito_sin_comprobante: {
+        Row: {
+          orden_compra_id: string | null
+          orden_id: string | null
+          numero_ot: string | null
+          proveedor: string | null
+          referencia: string | null
+          fecha_compra: string | null
+          fecha_vencimiento: string | null
+          total_estimado: number | null
+          moneda: string | null
+        }
+        Relationships: []
+      }
       v_cotizaciones_pdf: {
         Row: {
           id: string | null
@@ -5892,13 +5196,12 @@ export type Database = {
           mime_type: string | null
           archivo_subido_en: string | null
           monto_venta: number | null
-          moneda: 'PEN' | 'USD' | null
+          moneda: Database["public"]["Enums"]["moneda"] | null
         }
         Relationships: []
       }
       v_cotizaciones_pdf_versiones: {
         Row: {
-          estado_al_archivar: string | null
           id: string | null
           cotizacion_id: string | null
           version: number | null
@@ -5910,6 +5213,7 @@ export type Database = {
           observacion: string | null
           rechazado_en: string | null
           rechazado_por_nombre: string | null
+          estado_al_archivar: string | null
         }
         Relationships: []
       }
@@ -5933,6 +5237,37 @@ export type Database = {
           plazo: Database["public"]["Enums"]["estado_plazo"] | null
           ultimo_reporte: string | null
           ultimo_reporte_en: string | null
+        }
+        Relationships: []
+      }
+      v_cuentas_cobrar_ot: {
+        Row: {
+          id: string | null
+          orden_id: string | null
+          numero_ot: string | null
+          numero_documento: string | null
+          fecha_emision: string | null
+          fecha_vencimiento: string | null
+          moneda: string | null
+          total: number | null
+          cobrado: number | null
+          saldo: number | null
+        }
+        Relationships: []
+      }
+      v_cuentas_pagar: {
+        Row: {
+          id: string | null
+          orden_id: string | null
+          numero_ot: string | null
+          proveedor: string | null
+          numero_documento: string | null
+          fecha_emision: string | null
+          fecha_vencimiento: string | null
+          moneda: string | null
+          total: number | null
+          pagado: number | null
+          saldo: number | null
         }
         Relationships: []
       }
@@ -6040,6 +5375,8 @@ export type Database = {
           descripcion: string | null
           unidad: string | null
           existencia: number | null
+          reservado: number | null
+          disponible: number | null
         }
         Relationships: []
       }
@@ -6140,6 +5477,7 @@ export type Database = {
           orden_numero: string | null
           orden_estado: string | null
           abierta_en_taller: boolean | null
+          etapa_id: string | null
         }
         Relationships: []
       }
@@ -6288,262 +5626,173 @@ export type Database = {
       }
     }
     Functions: {
-      resumen_costeo_ot: {
-        Args: { p_orden: string }
-        Returns: {
-          fuente: string
-          moneda: string
-          monto: number
-          pendientes: number
-        }[]
-      }
-      resumen_planilla_por_ot: {
-        Args: never
-        Returns: {
-          moneda: string
-          monto: number
-          numero_ot: string
-          orden_id: string
-          periodo: string
-          tipo: string
-        }[]
-      }
-      cerrar_planilla: { Args: { p_planilla: string }; Returns: string }
-      fijar_condicion_pago_compra: {
-        Args: {
-          p_compra: string
-          p_condicion: string
-          p_dias: number
-          p_moneda: string
-        }
-        Returns: string
-      }
-      marcar_compra_entregada_almacen: {
-        Args: { p_compra: string }
-        Returns: string
-      }
-      proponer_material_de_area: {
-        Args: { p_orden: string; p_plano: string; p_material: string; p_cantidad: number; p_observacion?: string | null }
-        Returns: string
-      }
-      proponer_material_nuevo_de_area: {
-        Args: { p_id: string; p_orden: string; p_plano: string; p_descripcion: string; p_categoria: string; p_unidad: string; p_cantidad: number; p_especificacion?: string | null }
-        Returns: string
-      }
-      resolver_propuesta_material: {
-        Args: { p_detalle: string; p_aprobar: boolean }
-        Returns: string
-      }
-      revisar_stock_requerimiento: {
-        Args: { p_detalle: string; p_decision: string }
-        Returns: string
-      }
-      registrar_conteo_almacen: {
-        Args: { p_id: string; p_material: string; p_cantidad_fisica: number; p_motivo: string }
-        Returns: string
-      }
-      saldo_registrado_material: {
-        Args: { p_material: string }
-        Returns: number
-      }
-      fijar_precio_compra_material: {
-        Args: { p_detalle: string; p_precio: number }
-        Returns: string
-      }
-      editar_carroceria_ventas: {
-        Args: { p_id: string; p_nombre: string; p_descripcion: string; p_activo: boolean }
-        Returns: string
-      }
       abrir_orden_del_taller: {
         Args: {
-          p_placa: string
-          p_tipo_vehiculo: Database["public"]["Enums"]["tipo_vehiculo"]
-          p_marca: string
-          p_modelo: string
-          p_trabajo: string
-          p_tipo_trabajo?: Database["public"]["Enums"]["tipo_trabajo_ot"]
-          p_prioridad?: Database["public"]["Enums"]["prioridad_ot"]
+          p_placa: string | null
+          p_tipo_vehiculo: Database["public"]["Enums"]["tipo_vehiculo"] | null
+          p_marca: string | null
+          p_modelo: string | null
+          p_trabajo: string | null
+          p_tipo_trabajo?: Database["public"]["Enums"]["tipo_trabajo_ot"] | null
+          p_prioridad?: Database["public"]["Enums"]["prioridad_ot"] | null
         }
         Returns: string
       }
       activar_auditoria: {
         Args: {
-          p_tabla: string
+          p_tabla: string | null
         }
-        Returns: string
+        Returns: null
       }
       activar_registro_de_prueba: {
         Args: {
-          p_tabla: string
+          p_tabla: string | null
         }
-        Returns: string
+        Returns: null
       }
       activar_timestamps: {
         Args: {
-          p_tabla: string
+          p_tabla: string | null
         }
-        Returns: string
+        Returns: null
       }
       archivo_plano_vinculado: {
         Args: {
-          p_ruta: string
+          p_ruta: string | null
         }
         Returns: boolean
       }
       armar_ficha_ot: {
         Args: {
-          p_orden: string
+          p_orden: string | null
         }
-        Returns: string
+        Returns: null
       }
       asignar_equipo_diseno: {
         Args: {
-          p_orden: string
-          p_lider: string
-          p_responsables: Json
+          p_orden: string | null
+          p_lider: string | null
+          p_responsables: Json | null
         }
-        Returns: string
-      }
-      guardar_lider_entrega_planos: {
-        Args: { p_nombre: string; p_orden: string }
-        Returns: string
+        Returns: null
       }
       asignar_responsables_ot: {
         Args: {
-          p_orden_id: string
+          p_orden_id: string | null
         }
         Returns: number
       }
       cambiar_clave_personal: {
         Args: {
-          p_usuario: string
-          p_clave: string
+          p_usuario: string | null
+          p_clave: string | null
         }
-        Returns: string
+        Returns: null
       }
       cambiar_estado_personal: {
         Args: {
-          p_usuario: string
-          p_activo: boolean
+          p_usuario: string | null
+          p_activo: boolean | null
         }
-        Returns: string
+        Returns: null
       }
       cargar_cronograma: {
         Args: {
-          p_orden: string
-          p_filas: Json
+          p_orden: string | null
+          p_filas: Json | null
         }
         Returns: Json
       }
+      cerrar_planilla: {
+        Args: {
+          p_planilla: string | null
+        }
+        Returns: string
+      }
       cifrar_clave: {
         Args: {
-          p_clave: string
+          p_clave: string | null
         }
         Returns: string
       }
       completar_cuenta_acceso: {
         Args: {
-          p_cuenta: string
+          p_cuenta: string | null
         }
-        Returns: string
+        Returns: null
       }
       confirmar_salida_porteria: {
         Args: {
-          p_entrega: string
+          p_entrega: string | null
+        }
+        Returns: null
+      }
+      crear_compra_agrupada: {
+        Args: {
+          p_id: string | null
+          p_proveedor: string | null
+          p_referencia: string | null
+          p_detalles: Json | null
+          p_fecha: string | null
+          p_condicion: string | null
+          p_dias: number | null
+          p_moneda: string | null
         }
         Returns: string
       }
       crear_etapas_ot: {
         Args: {
-          p_orden_id: string
+          p_orden_id: string | null
         }
         Returns: number
-      }
-      definir_etapas_diseno: {
-        Args: {
-          p_orden_id: string
-          p_etapas: string[]
-        }
-        Returns: number
-      }
-      definir_etapas_ponderadas: {
-        Args: {
-          p_orden_id: string
-          p_config: Json
-        }
-        Returns: number
-      }
-      guardar_etapas_libres: {
-        Args: {
-          p_orden_id: string
-          p_config: Json
-          p_etapa_actividad?: string | null
-        }
-        Returns: number
-      }
-      reemplazar_etapas_historicas: {
-        Args: {
-          p_orden_id: string
-          p_config: Json
-          p_etapa_actividad: string
-        }
-        Returns: number
-      }
-      programar_etapa_administracion: {
-        Args: {
-          p_etapa_id: string
-          p_inicio: string
-          p_fin: string
-        }
-        Returns: string
       }
       crear_orden_compra_material: {
         Args: {
-          p_id: string
-          p_requerimiento_id: string
-          p_proveedor: string
-          p_referencia: string
-          p_detalles: Json
-          p_fecha_estimada?: string
+          p_id: string | null
+          p_requerimiento_id: string | null
+          p_proveedor: string | null
+          p_referencia: string | null
+          p_detalles: Json | null
+          p_fecha_estimada?: string | null
         }
         Returns: string
       }
       crear_orden_compra_material_con_pago: {
         Args: {
-          p_id: string
-          p_requerimiento_id: string
-          p_proveedor: string
-          p_referencia: string
-          p_detalles: Json
+          p_id: string | null
+          p_requerimiento_id: string | null
+          p_proveedor: string | null
+          p_referencia: string | null
+          p_detalles: Json | null
           p_fecha_estimada: string | null
-          p_condicion: string
-          p_dias: number
-          p_moneda: string
+          p_condicion: string | null
+          p_dias: number | null
+          p_moneda: string | null
         }
         Returns: string
       }
       crear_personal: {
         Args: {
-          p_nombres: string
-          p_apellidos: string
-          p_correo: string
-          p_clave: string
-          p_rol_id: string
-          p_sede_id: string
-          p_area_id?: string
-          p_cargo?: string
-          p_documento?: string
-          p_telefono?: string
-          p_es_operario?: boolean
-          p_costo_hora?: number
+          p_nombres: string | null
+          p_apellidos: string | null
+          p_correo: string | null
+          p_clave: string | null
+          p_rol_id: string | null
+          p_sede_id: string | null
+          p_area_id?: string | null
+          p_cargo?: string | null
+          p_documento?: string | null
+          p_telefono?: string | null
+          p_es_operario?: boolean | null
+          p_costo_hora?: number | null
         }
         Returns: string
       }
       crear_requerimiento_material: {
         Args: {
-          p_orden_id: string
-          p_area_destino: string
-          p_materiales: string[]
+          p_orden_id: string | null
+          p_area_destino: string | null
+          p_materiales: string[] | null
         }
         Returns: string
       }
@@ -6564,64 +5813,107 @@ export type Database = {
           gerente_general_cargo: string | null
         }[]
       }
+      definir_etapas_diseno: {
+        Args: {
+          p_orden_id: string | null
+          p_etapas: string[] | null
+        }
+        Returns: number
+      }
+      definir_etapas_ponderadas: {
+        Args: {
+          p_orden_id: string | null
+          p_config: Json | null
+        }
+        Returns: number
+      }
       despachar_material: {
         Args: {
-          p_id: string
-          p_requerimiento_detalle_id: string
-          p_cantidad: number
-          p_responsable_id: string
+          p_id: string | null
+          p_requerimiento_detalle_id: string | null
+          p_cantidad: number | null
+          p_responsable_id: string | null
+        }
+        Returns: string
+      }
+      despachar_material_con_foto: {
+        Args: {
+          p_id: string | null
+          p_detalle: string | null
+          p_cantidad: number | null
+          p_responsable: string | null
+          p_recibe: string | null
+          p_foto: string | null
         }
         Returns: string
       }
       dias_de_taller: {
         Args: {
-          p_desde: string
-          p_hasta: string
+          p_desde: string | null
+          p_hasta: string | null
         }
         Returns: number
       }
       dias_habiles_entre: {
         Args: {
-          p_desde: string
-          p_hasta: string
+          p_desde: string | null
+          p_hasta: string | null
         }
         Returns: number
       }
+      editar_carroceria_ventas: {
+        Args: {
+          p_id: string | null
+          p_nombre: string | null
+          p_descripcion: string | null
+          p_activo: boolean | null
+        }
+        Returns: string
+      }
       editar_ot_con_historial: {
         Args: {
-          p_orden: string
-          p_version: string
-          p_datos: Json
-          p_motivo: string
+          p_orden: string | null
+          p_version: string | null
+          p_datos: Json | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      editar_ot_con_historial_base: {
+        Args: {
+          p_orden: string | null
+          p_version: string | null
+          p_datos: Json | null
+          p_motivo: string | null
         }
         Returns: string
       }
       editar_resumen_ot_administracion: {
         Args: {
-          p_orden: string
-          p_version: string
-          p_version_unidad: string
-          p_marca: string
-          p_modelo: string
+          p_orden: string | null
+          p_version: string | null
+          p_version_unidad: string | null
+          p_marca: string | null
+          p_modelo: string | null
           p_anio: number | null
           p_responsable: string | null
-          p_motivo: string
+          p_motivo: string | null
         }
         Returns: string
       }
       emitir_orden_de_cotizacion: {
         Args: {
-          p_cotizacion: string
-          p_orden: string
-          p_numero: string
-          p_numero_fmi: string
-          p_tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"]
-          p_marca: string
-          p_modelo: string
-          p_fecha_entrega: string
-          p_ruta_pdf: string
-          p_nombre_pdf: string
-          p_tamano_pdf?: number
+          p_cotizacion: string | null
+          p_orden: string | null
+          p_numero: string | null
+          p_numero_fmi: string | null
+          p_tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          p_marca: string | null
+          p_modelo: string | null
+          p_fecha_entrega: string | null
+          p_ruta_pdf: string | null
+          p_nombre_pdf: string | null
+          p_tamano_pdf?: number | null
         }
         Returns: string
       }
@@ -6631,7 +5923,7 @@ export type Database = {
       }
       es_laborable: {
         Args: {
-          p_fecha: string
+          p_fecha: string | null
         }
         Returns: boolean
       }
@@ -6641,33 +5933,73 @@ export type Database = {
       }
       estado_del_plazo: {
         Args: {
-          p_fin_programada: string
-          p_fin_real?: string
+          p_fin_programada: string | null
+          p_fin_real?: string | null
         }
         Returns: Database["public"]["Enums"]["estado_plazo"]
       }
       exigir_permiso: {
         Args: {
-          p_permiso: string
+          p_permiso: string | null
+        }
+        Returns: null
+      }
+      fijar_condicion_pago_compra: {
+        Args: {
+          p_compra: string | null
+          p_condicion: string | null
+          p_dias: number | null
+          p_moneda: string | null
+        }
+        Returns: string
+      }
+      fijar_precio_compra_material: {
+        Args: {
+          p_detalle: string | null
+          p_precio: number | null
         }
         Returns: string
       }
       flota_sigue_en_taller: {
         Args: {
-          p_flota: string
+          p_flota: string | null
         }
         Returns: boolean
       }
+      guardar_etapas_libres: {
+        Args: {
+          p_orden_id: string | null
+          p_config: Json | null
+          p_etapa_actividad?: string | null
+        }
+        Returns: number
+      }
       guardar_ficha_diseno: {
         Args: {
-          p_orden: string
-          p_datos: Json
+          p_orden: string | null
+          p_datos: Json | null
+        }
+        Returns: string
+      }
+      guardar_lider_entrega_planos: {
+        Args: {
+          p_orden: string | null
+          p_nombre: string | null
+        }
+        Returns: string
+      }
+      importar_detalle_planilla: {
+        Args: {
+          p_id: string | null
+          p_planilla: string | null
+          p_hoja: string | null
+          p_lineas: Json | null
         }
         Returns: string
       }
       indicadores_tablero: {
         Args: {
-          p_sede_id?: string
+          p_sede_id?: string | null
         }
         Returns: {
           abiertas: number | null
@@ -6681,20 +6013,26 @@ export type Database = {
       }
       levantar_observacion_ot: {
         Args: {
-          p_orden: string
-          p_area: string
-          p_descripcion: string
+          p_orden: string | null
+          p_area: string | null
+          p_descripcion: string | null
         }
         Returns: string
       }
       liberar_cotizacion_a_tesoreria: {
         Args: {
-          p_cotizacion: string
+          p_cotizacion: string | null
         }
         Returns: string
       }
       lote_de_prueba: {
         Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      marcar_compra_entregada_almacen: {
+        Args: {
+          p_compra: string | null
+        }
         Returns: string
       }
       mi_rol: {
@@ -6711,307 +6049,435 @@ export type Database = {
       }
       notificar_a_permiso: {
         Args: {
-          p_permiso: string
-          p_titulo: string
-          p_cuerpo: string
-          p_ruta: string
-          p_tabla: string
-          p_id: string
-          p_excepto?: string
+          p_permiso: string | null
+          p_titulo: string | null
+          p_cuerpo: string | null
+          p_ruta: string | null
+          p_tabla: string | null
+          p_id: string | null
+          p_excepto?: string | null
         }
         Returns: number
       }
       notificar_a_usuario: {
         Args: {
-          p_usuario: string
-          p_titulo: string
-          p_cuerpo: string
-          p_ruta: string
-          p_tabla: string
-          p_id: string
-          p_excepto?: string
+          p_usuario: string | null
+          p_titulo: string | null
+          p_cuerpo: string | null
+          p_ruta: string | null
+          p_tabla: string | null
+          p_id: string | null
+          p_excepto?: string | null
         }
         Returns: number
       }
       orden_compra_de_ruta: {
         Args: {
-          p_ruta: string
+          p_ruta: string | null
         }
         Returns: string
       }
       orden_de_ruta: {
         Args: {
-          p_ruta: string
+          p_ruta: string | null
         }
         Returns: string
       }
       ot_recalcular_avance: {
         Args: {
-          p_orden_id: string
+          p_orden_id: string | null
         }
-        Returns: string
+        Returns: null
       }
       ot_registrar_evento: {
         Args: {
-          p_orden_id: string
-          p_tipo: Database["public"]["Enums"]["tipo_evento_ot"]
-          p_descripcion?: string
-          p_datos?: Json
-          p_etapa_id?: string
-          p_usuario_id?: string
+          p_orden_id: string | null
+          p_tipo: Database["public"]["Enums"]["tipo_evento_ot"] | null
+          p_descripcion?: string | null
+          p_datos?: Json | null
+          p_etapa_id?: string | null
+          p_usuario_id?: string | null
         }
         Returns: string
       }
       ot_registrar_evento_interna: {
         Args: {
-          p_orden_id: string
-          p_tipo: Database["public"]["Enums"]["tipo_evento_ot"]
-          p_descripcion: string
-          p_datos?: Json
-          p_etapa_id?: string
-          p_usuario_id?: string
+          p_orden_id: string | null
+          p_tipo: Database["public"]["Enums"]["tipo_evento_ot"] | null
+          p_descripcion: string | null
+          p_datos?: Json | null
+          p_etapa_id?: string | null
+          p_usuario_id?: string | null
         }
         Returns: string
       }
       ot_transicion_valida: {
         Args: {
-          p_origen: Database["public"]["Enums"]["estado_ot"]
-          p_destino: Database["public"]["Enums"]["estado_ot"]
+          p_origen: Database["public"]["Enums"]["estado_ot"] | null
+          p_destino: Database["public"]["Enums"]["estado_ot"] | null
         }
         Returns: boolean
       }
       pascua: {
         Args: {
-          p_anio: number
+          p_anio: number | null
         }
         Returns: string
       }
       plantilla_de_la_carroceria: {
         Args: {
-          p_tipo: string
+          p_tipo: string | null
         }
         Returns: string
       }
       poner_cliente_a_orden: {
         Args: {
-          p_orden: string
-          p_cliente: string
+          p_orden: string | null
+          p_cliente: string | null
         }
-        Returns: string
+        Returns: null
       }
       produccion_siguiente_numero: {
         Args: {
-          p_tipo: Database["public"]["Enums"]["tipo_correlativo"]
-          p_sede: string
+          p_tipo: Database["public"]["Enums"]["tipo_correlativo"] | null
+          p_sede: string | null
+        }
+        Returns: string
+      }
+      programar_etapa_administracion: {
+        Args: {
+          p_etapa_id: string | null
+          p_inicio: string | null
+          p_fin: string | null
         }
         Returns: string
       }
       programar_etapas_ot: {
         Args: {
-          p_orden_id: string
+          p_orden_id: string | null
         }
         Returns: number
       }
+      proponer_material_de_area: {
+        Args: {
+          p_orden: string | null
+          p_plano: string | null
+          p_material: string | null
+          p_cantidad: number | null
+          p_observacion?: string | null
+        }
+        Returns: string
+      }
+      proponer_material_nuevo_de_area: {
+        Args: {
+          p_id: string | null
+          p_orden: string | null
+          p_plano: string | null
+          p_descripcion: string | null
+          p_categoria: string | null
+          p_unidad: string | null
+          p_cantidad: number | null
+          p_especificacion?: string | null
+        }
+        Returns: string
+      }
       pruebas_abrir: {
         Args: {
-          p_motivo: string
-          p_cuentas?: string[]
+          p_motivo: string | null
+          p_cuentas?: string[] | null
         }
         Returns: string
       }
       pruebas_limpiar: {
         Args: {
-          p_lote: string
+          p_lote: string | null
         }
         Returns: Json
       }
       puede_armar_hoja_de_area: {
         Args: {
-          p_area_id: string
+          p_area_id: string | null
+        }
+        Returns: boolean
+      }
+      puede_editar_tarea_ot: {
+        Args: {
+          p_orden_id: string | null
+          p_area_id: string | null
         }
         Returns: boolean
       }
       puede_hoja_de_actividad: {
         Args: {
-          p_actividad_id: string
+          p_actividad_id: string | null
         }
         Returns: boolean
       }
       puede_hoja_de_area: {
         Args: {
-          p_area_id: string
+          p_area_id: string | null
         }
         Returns: boolean
       }
       puede_ver_area_material: {
         Args: {
-          p_area: string
+          p_area: string | null
         }
         Returns: boolean
       }
       puede_ver_hoja_de_area: {
         Args: {
-          p_area: string
+          p_area: string | null
         }
         Returns: boolean
       }
       puede_ver_orden: {
         Args: {
-          p_orden_id: string
+          p_orden_id: string | null
         }
+        Returns: boolean
+      }
+      puede_ver_pdf_ot: {
+        Args: Record<PropertyKey, never>
         Returns: boolean
       }
       puede_ver_plano_tecnico: {
         Args: {
-          p_id: string
+          p_id: string | null
         }
         Returns: boolean
       }
       puede_ver_version_plano: {
         Args: {
-          p_id: string
+          p_id: string | null
         }
         Returns: boolean
       }
       puesto: {
         Args: {
-          u: string
+          u: string | null
         }
         Returns: string
       }
       puesto_de: {
         Args: {
-          p_usuario: string
+          p_usuario: string | null
         }
         Returns: string
       }
+      recalcular_etapa_desde_actividades: {
+        Args: {
+          p_etapa_id: string | null
+        }
+        Returns: null
+      }
       recibir_version_plano: {
         Args: {
-          p_id: string
+          p_id: string | null
+        }
+        Returns: string
+      }
+      reemplazar_etapas_historicas: {
+        Args: {
+          p_orden_id: string | null
+          p_config: Json | null
+          p_etapa_actividad: string | null
+        }
+        Returns: number
+      }
+      registrar_conteo_almacen: {
+        Args: {
+          p_id: string | null
+          p_material: string | null
+          p_cantidad_fisica: number | null
+          p_motivo: string | null
         }
         Returns: string
       }
       registrar_evento_ot: {
         Args: {
-          p_orden_id: string
-          p_tipo_evento: Database["public"]["Enums"]["tipo_evento_ot"]
-          p_descripcion: string
-          p_datos?: Json
+          p_orden_id: string | null
+          p_tipo_evento: Database["public"]["Enums"]["tipo_evento_ot"] | null
+          p_descripcion: string | null
+          p_datos?: Json | null
+        }
+        Returns: string
+      }
+      registrar_ingreso_almacen: {
+        Args: {
+          p_id: string | null
+          p_material: string | null
+          p_cantidad: number | null
+          p_origen: string | null
+          p_documento: string | null
+          p_precio: number | null
+          p_moneda: string | null
+          p_devolucion?: string | null
         }
         Returns: string
       }
       registrar_recepcion_material: {
         Args: {
-          p_id: string
-          p_orden_compra_detalle_id: string
-          p_cantidad: number
-          p_documento_referencia: string
+          p_id: string | null
+          p_orden_compra_detalle_id: string | null
+          p_cantidad: number | null
+          p_documento_referencia: string | null
         }
         Returns: string
       }
       registrar_salida_fisica: {
         Args: {
-          p_entrega: string
-          p_constancia: string
+          p_entrega: string | null
+          p_constancia: string | null
         }
         Returns: string
       }
       registrar_version_plano: {
         Args: {
-          p_id: string
-          p_plano: string
-          p_area: string
-          p_nombre: string
+          p_id: string | null
+          p_plano: string | null
+          p_area: string | null
+          p_nombre: string | null
         }
         Returns: string
       }
       registrar_version_plano_con_nota: {
         Args: {
-          p_id: string
-          p_plano: string
-          p_area: string
-          p_nombre: string
-          p_nota: string
+          p_id: string | null
+          p_plano: string | null
+          p_area: string | null
+          p_nombre: string | null
+          p_nota: string | null
         }
         Returns: string
       }
       resolver_observacion_ot: {
         Args: {
-          p_id: string
-          p_resolucion: string
+          p_id: string | null
+          p_resolucion: string | null
+        }
+        Returns: string
+      }
+      resolver_propuesta_material: {
+        Args: {
+          p_detalle: string | null
+          p_aprobar: boolean | null
         }
         Returns: string
       }
       resolver_revision_diseno: {
         Args: {
-          p_version: string
-          p_aprobar: boolean
-          p_observacion?: string
+          p_version: string | null
+          p_aprobar: boolean | null
+          p_observacion?: string | null
         }
         Returns: string
       }
       restar_dias_habiles: {
         Args: {
-          p_desde: string
-          p_dias: number
+          p_desde: string | null
+          p_dias: number | null
+        }
+        Returns: string
+      }
+      resumen_costeo_ot: {
+        Args: {
+          p_orden: string | null
+        }
+        Returns: {
+          fuente: string | null
+          moneda: string | null
+          monto: number | null
+          pendientes: number | null
+        }[]
+      }
+      resumen_planilla_por_ot: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          orden_id: string | null
+          numero_ot: string | null
+          tipo: string | null
+          periodo: string | null
+          moneda: string | null
+          monto: number | null
+        }[]
+      }
+      revisar_stock_requerimiento: {
+        Args: {
+          p_detalle: string | null
+          p_decision: string | null
         }
         Returns: string
       }
       revisar_version_plano: {
         Args: {
-          p_id: string
-          p_aprobar: boolean
-          p_observacion?: string
+          p_id: string | null
+          p_aprobar: boolean | null
+          p_observacion?: string | null
         }
         Returns: string
       }
+      saldo_registrado_material: {
+        Args: {
+          p_material: string | null
+        }
+        Returns: number
+      }
       sembrar_feriados: {
         Args: {
-          p_anio: number
+          p_anio: number | null
         }
         Returns: number
       }
       sembrar_plantilla_ficha: {
         Args: {
-          p_tipo_codigo: string
-          p_nombre: string
-          p_descripcion: string
-          p_lineas: Json
-          p_accesorios: Json
-          p_tipo_unidad?: string
-          p_capacidad?: string
-          p_fuentes?: string[]
-          p_predeterminada?: boolean
+          p_tipo_codigo: string | null
+          p_nombre: string | null
+          p_descripcion: string | null
+          p_lineas: Json | null
+          p_accesorios: Json | null
+          p_tipo_unidad?: string | null
+          p_capacidad?: string | null
+          p_fuentes?: string[] | null
+          p_predeterminada?: boolean | null
         }
         Returns: string
       }
       sembrar_verificacion: {
         Args: {
-          p_codigo: string
-          p_pasos: string[]
+          p_codigo: string | null
+          p_pasos: string[] | null
         }
         Returns: number
       }
       siguiente_correlativo: {
         Args: {
-          p_tipo: Database["public"]["Enums"]["tipo_correlativo"]
-          p_serie?: string
-          p_sede?: string
+          p_tipo: Database["public"]["Enums"]["tipo_correlativo"] | null
+          p_serie?: string | null
+          p_sede?: string | null
         }
         Returns: string
       }
       sumar_dias_habiles: {
         Args: {
-          p_desde: string
-          p_dias: number
+          p_desde: string | null
+          p_dias: number | null
         }
         Returns: string
       }
       tiene_permiso: {
         Args: {
-          p_codigo: string
+          p_codigo: string | null
         }
         Returns: boolean
+      }
+      transitar_informe_diseno: {
+        Args: {
+          p_informe: string | null
+          p_estado: string | null
+          p_observacion?: string | null
+        }
+        Returns: string
       }
       usuario_actual: {
         Args: Record<PropertyKey, never>

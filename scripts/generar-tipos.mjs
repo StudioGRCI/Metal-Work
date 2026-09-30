@@ -99,7 +99,7 @@ const bloqueFunciones = [...porNombre.values()]
   .map((f) => {
     const args = f.argumentos.length
       ? `{
-${f.argumentos.map((a) => `          ${a.nombre}${a.opcional ? '?' : ''}: ${tipo(a.tipo)}`).join('\n')}
+${f.argumentos.map((a) => `          ${a.nombre}${a.opcional ? '?' : ''}: ${tipo(a.tipo)} | null`).join('\n')}
         }`
       : 'Record<PropertyKey, never>'
     // Una función que devuelve una tabla devuelve filas con nombre; su tipo es

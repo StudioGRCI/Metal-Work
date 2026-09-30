@@ -88,7 +88,7 @@ function ResumenCosteo({ lineas }: { lineas: Datos['costeo'] }) {
           const valor = lineas.find(l => l.fuente === fuente && l.moneda === m)?.monto ?? 0
           return <div key={fuente} className="flex justify-between gap-3 py-1 text-sm"><span>{titulo}</span><span className="tabular">{moneda(valor, m)}</span></div>
         })}
-        <div className="flex justify-between gap-3 border-t border-borde pt-2 font-semibold"><span>Total {m}</span><span className="tabular">{moneda(lineas.filter(l => l.moneda === m).reduce((s, l) => s + l.monto, 0), m)}</span></div>
+        <div className="flex justify-between gap-3 border-t border-borde pt-2 font-semibold"><span>Total {m}</span><span className="tabular">{moneda(lineas.filter(l => l.moneda === m).reduce((s, l) => s + (l.monto??0), 0), m)}</span></div>
       </div>)}
       {pendientes > 0 && <p role="status" className="text-sm text-aviso">{pendientes} despacho(s) aún sin precio. El costo está incompleto hasta valorizarlos.</p>}
       <p className="text-xs text-texto-suave">El precio de material es el último precio de compra disponible al momento del despacho; revisa la valorización antes de cerrar la OT.</p>
