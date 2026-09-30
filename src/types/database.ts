@@ -5352,6 +5352,7 @@ export type Database = {
           orden_id: string | null
           numero_ot: string | null
           area_destino: string | null
+          vinculos_ot: Json | null
         }
         Relationships: []
       }

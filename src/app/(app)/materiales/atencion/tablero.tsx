@@ -185,7 +185,7 @@ export function TableroMateriales({
       {(puedeVerCompras||puedeRecibir||puedeAdjuntarDocumentos)&&[...new Map(compras.filter(c=>c.orden_compra_id).map(c=>[c.orden_compra_id,c])).values()].map(compra=>{
         const lineasCompra=compras.filter(c=>c.orden_compra_id===compra.orden_compra_id)
         const pendientesCompra=lineasCompra.filter(c=>Number(c.cantidad_pendiente)>0)
-        return <Tarjeta key={compra.orden_compra_id}><TarjetaCabecera titulo={`OC ${compra.referencia} · ${compra.proveedor}`} descripcion={`${lineasCompra.length} insumos · ${compra.entregado_almacen_en?'Entrega comunicada a Almacén':'Pendiente de entregar a Almacén'}`}/><TarjetaCuerpo>
+        return <Tarjeta key={compra.orden_compra_id}><TarjetaCabecera titulo={`${compra.referencia} · ${compra.proveedor}`} descripcion={`${lineasCompra.length} ${lineasCompra.length === 1 ? 'insumo' : 'insumos'} · ${compra.entregado_almacen_en?'Entrega comunicada a Almacén':'Pendiente de entregar a Almacén'}`}/><TarjetaCuerpo>
           <div className="space-y-3 border-t border-borde pt-3">
                   {puedeCrearCompra && [compra].length > 0 && (
                     <div className="space-y-2">
@@ -194,7 +194,7 @@ export function TableroMateriales({
                         key={`condicion-${compra.orden_compra_id}`} compra={compra} />)}
                       {[compra].map((compra) => compra.orden_compra_id && <EntregaCompra
                         key={compra.orden_compra_id} compra={compra} />)}
-                      {[compra].map(c=><Link key={'pdf-'+c.orden_compra_id} href={`/compras/${c.orden_compra_id}/pdf`} className="inline-flex min-h-11 items-center text-sm font-medium text-acento underline">Descargar OC {c.referencia}</Link>)}
+                      {[compra].map(c=><Link key={'pdf-'+c.orden_compra_id} href={`/compras/${c.orden_compra_id}/pdf`} className="inline-flex min-h-11 items-center text-sm font-medium text-acento underline">Descargar compra {c.referencia}</Link>)}
                       {lineasCompra.filter((compra) => compra.precio_unitario === null).map((compra) => (
                         <PrecioCompra key={compra.id} compra={compra} />
                       ))}

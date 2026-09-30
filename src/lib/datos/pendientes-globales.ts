@@ -87,6 +87,15 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
+  if (puede(perfil, 'compras.crear')) tareas.push({
+    clave: 'compras_por_entregar', ruta: '/compras', tono: 'aviso',
+    texto: n => plural(n, 'compra por documentar o entregar a Almacén', 'compras por documentar o entregar a Almacén'),
+    contar: () => cabeza(supabase.from('ordenes_compra_materiales')
+      .select('id,requerimientos_materiales!inner(ordenes_trabajo!inner(estado))', { count: 'exact', head: true })
+      .is('entregado_almacen_en', null)
+      .in('requerimientos_materiales.ordenes_trabajo.estado', [...ESTADOS_ACTIVOS_OT])),
+  })
+
   if (puede(perfil, 'cotizaciones.revisar')) {
     tareas.push({
       clave: 'pdf_por_revisar',
