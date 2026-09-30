@@ -206,7 +206,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       )
     : []
   const areasParaCrearTarea = orden.plan_etapas_manual
-    ? perfil.rol.codigo === 'SUPERVISOR' && puede(perfil, 'produccion.registrar')
+    ? !ESTADOS_CERRADOS.includes(orden.estado) && orden.estado !== 'BORRADOR'
+      && perfil.rol.codigo === 'SUPERVISOR' && puede(perfil, 'produccion.registrar')
       ? areasVisibles.filter((a) => a.id === perfil.area_id)
       : []
     : areasArmables

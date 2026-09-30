@@ -139,9 +139,9 @@ export function ActividadesDeOrden({
           }
         />
         <TarjetaCuerpo>
-          {puedeArmar && !puedeCargarCronograma && (
+          {!esNueva && puedeArmar && !puedeCargarCronograma && (
             <p className="mb-3 text-sm text-texto-suave">
-              {esNueva ? 'La orden está cerrada: puedes consultar sus tareas y reportes.' : 'La orden está cerrada: puedes consultar su avance, pero ya no cargar un cronograma.'}
+              La orden está cerrada: puedes consultar su avance, pero ya no cargar un cronograma.
             </p>
           )}
           {areas.length === 0 ? (

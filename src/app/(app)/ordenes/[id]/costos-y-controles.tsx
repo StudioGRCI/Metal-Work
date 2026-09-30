@@ -58,7 +58,10 @@ function SolicitudesTesoreria({ ordenId, datos, tipo, puedeSolicitar, salidaComp
       <TarjetaCabecera titulo={tipo === 'MATERIALES' ? 'Pagos solicitados a Tesorería' : 'Revisión financiera para la salida'}
         descripcion={tipo === 'MATERIALES' ? 'Registra la solicitud de pago de materiales. Tesorería confirma su atención.' : 'Se solicita después de cerrar la ficha de salida y adjuntar el escaneo firmado.'} />
       <TarjetaCuerpo className="space-y-4">
-        {puedeSolicitar && <NuevaSolicitud ordenId={ordenId} tipo={tipo} salidaCompleta={salidaCompleta} />}
+        {puedeSolicitar && (tipo === 'MATERIALES' || salidaCompleta) &&
+          <NuevaSolicitud ordenId={ordenId} tipo={tipo} salidaCompleta={salidaCompleta} />}
+        {puedeSolicitar && tipo === 'SALIDA_OT' && !salidaCompleta &&
+          <p className="text-sm text-texto-suave">Completa la ficha de salida y adjunta el escaneo firmado para solicitar la revisión a Tesorería.</p>}
         {solicitudes.length === 0 ? <p className="text-sm text-texto-suave">Todavía no hay solicitudes de este paso.</p> :
           <ol className="space-y-2">{solicitudes.map(s => <li key={s.id} className="rounded-[var(--radius-base)] border border-borde p-3 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2"><strong>{s.tipo === 'SALIDA_OT' ? 'Revisión para salida' : 'Pago de materiales'}</strong><Insignia tono={s.estado === 'ATENDIDA' ? 'exito' : s.estado === 'OBSERVADA' ? 'peligro' : 'aviso'}>{s.estado}</Insignia></div>
