@@ -35,12 +35,13 @@ export async function registrarDocumentoCompra(
   const ruta = `compra/${datos.data.orden_compra_id}/${datos.data.id}.pdf`
   const { data: existente, error: errorExistente } = await supabase
     .from('documentos_compra_material')
-    .select('id, orden_compra_id, subido_por')
+    .select('id, orden_compra_id, subido_por, tipo, nombre_archivo')
     .eq('id', datos.data.id)
     .maybeSingle()
   if (errorExistente) return { ok: false, error: mensajeDeError(errorExistente) }
   if (existente) {
-    if (existente.orden_compra_id !== datos.data.orden_compra_id || existente.subido_por !== perfil.id) {
+    if (existente.orden_compra_id !== datos.data.orden_compra_id || existente.subido_por !== perfil.id
+      || existente.tipo !== datos.data.tipo || existente.nombre_archivo !== datos.data.nombre_archivo) {
       return { ok: false, error: 'Ese identificador ya pertenece a otro documento. Recarga la compra antes de volver a intentar.' }
     }
     return { ok: true, mensaje: 'El documento ya estaba adjuntado a la compra.' }
@@ -66,6 +67,15 @@ export async function registrarDocumentoCompra(
     subido_por: perfil.id,
   }).select('id').maybeSingle()
   if (error) {
+    if (error.code === '23505') {
+      const repetido = await supabase.from('documentos_compra_material')
+        .select('orden_compra_id, subido_por, tipo, nombre_archivo').eq('id', datos.data.id).maybeSingle()
+      if (!repetido.error && repetido.data?.orden_compra_id === datos.data.orden_compra_id
+        && repetido.data.subido_por === perfil.id && repetido.data.tipo === datos.data.tipo
+        && repetido.data.nombre_archivo === datos.data.nombre_archivo) {
+        return { ok: true, mensaje: 'El documento ya estaba adjuntado a la compra.' }
+      }
+    }
     const { error: errorLimpieza } = await supabase.storage.from('documentos-compras').remove([ruta])
     if (errorLimpieza) {
       return { ok: false, error: `${mensajeDeError(error)} El PDF quedó sin registrar; avisa a Administración para retirarlo con seguridad.` }
