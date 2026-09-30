@@ -122,8 +122,8 @@ export function ActividadesDeOrden({
     <div className="space-y-4">
       <Tarjeta>
         <TarjetaCabecera
-          titulo="Avance por área"
-          descripcion={esNueva ? 'El taller registra las tareas realizadas. El supervisor reporta su avance con foto y materiales usados.' : 'Diseño arma la lista de cada área y cada una reporta lo que avanzó cada día. Producción por carrocería, Maestranza por pieza solicitada. Cada una tiene su propio 100 %.'}
+          titulo={esNueva ? 'Tareas y fotos del taller' : 'Avance por área'}
+          descripcion={esNueva ? 'Supervisión crea las tareas de su área y reporta el avance de cada una con foto y materiales usados.' : 'Diseño arma la lista de cada área y cada una reporta lo que avanzó cada día. Producción por carrocería, Maestranza por pieza solicitada. Cada una tiene su propio 100 %.'}
           acciones={
             puedeCrear && !agregando ? (
               <span className="flex flex-wrap gap-2">
@@ -132,7 +132,7 @@ export function ActividadesDeOrden({
                 )}
                 <Boton variante="secundario" tamano="sm" onClick={() => setAgregando(true)}>
                   <Plus aria-hidden className="size-3.5" />
-                  Nueva actividad
+                  Nueva tarea
                 </Boton>
               </span>
             ) : null

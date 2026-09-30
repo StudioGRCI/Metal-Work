@@ -60,7 +60,7 @@ import { Observaciones } from './observaciones'
 import { ActividadesDeOrden } from './actividades'
 import { MaterialesDeOrden } from './materiales'
 import { AtencionMaterialesDeOrden } from './atencion-materiales'
-import { CostosYControles } from './costos-y-controles'
+import { CostosYControles, ControlDeSalida } from './costos-y-controles'
 import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
 import { FechasClave, SalidaDeUnidad } from './salida-y-plazos'
@@ -79,6 +79,7 @@ const VISTAS = [
   'etapas',
   'materiales',
   'costos',
+  'entrega',
   'actividades',
   'avance',
   'bitacora',
@@ -117,8 +118,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     pendientesDeOrden(id),
   ])
   if (!orden) notFound()
+  if (orden.plan_etapas_manual && vista === 'avance') redirect(`/ordenes/${id}?vista=actividades`)
+  if (orden.plan_etapas_manual && vista === 'ficha') redirect(`/ordenes/${id}?vista=bitacora`)
 
-  const toca = queMeToca(perfil, pendientes, orden)
   // Por qué la hoja de Diseño no acepta planos: en borrador falta quien la
   // apruebe; cerrada, ya no hay qué repartir.
   const motivoInactiva =
@@ -135,7 +137,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   // cientos de eventos y no tiene sentido traerlos para ver el resumen.
   const verFicha = vista === 'ficha'
   // La salida importa cuando la orden se acerca a la puerta.
-  const verSalida = vista === 'resumen' && ['TERMINADA', 'CONTROL_CALIDAD', 'ENTREGADA', 'FACTURADA'].includes(orden.estado)
+  const verSalida = vista === 'entrega'
 
   const [etapas, timeline, accesorios, repuestos, verificaciones, personal] =
     await Promise.all([
@@ -146,6 +148,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       verFicha ? verificacionesDeOrden(id) : Promise.resolve([]),
       verFicha ? personalDelTaller() : Promise.resolve([]),
     ])
+  const toca = queMeToca(perfil, pendientes, orden, etapas.length)
   const [areasEtapas, actividadesPorVincular] = await Promise.all([
     vista === 'etapas' ? areasParaEtapas() : Promise.resolve([]),
     vista === 'etapas' && !orden.plan_etapas_manual && orden.id === '78c95158-bddc-4398-b7b5-afa45cd0d8d0'
@@ -180,7 +183,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     vista === 'materiales'
       ? await materialesParaPantalla(id, puede(perfil, 'requerimientos.ver'))
       : null
-  const datosCostos = vista === 'costos' ? await controlesYSolicitudesDeOrden(id, puede(perfil, 'costos.ver')) : null
+  const puedeVerControlEntrega = puede(perfil, 'costos.controlar_ot') || puede(perfil, 'costos.ver') || puede(perfil, 'costos.solicitar_pago')
+  const datosCostos = vista === 'costos' || (vista === 'entrega' && puedeVerControlEntrega)
+    ? await controlesYSolicitudesDeOrden(id, puede(perfil, 'costos.ver')) : null
   const areaPropiaMaterial =
     vista === 'materiales' && perfil.area_id && !puede(perfil, 'diseno.planos')
       ? ((await areasDelTaller()).find((a) => a.id === perfil.area_id)?.codigo ?? null)
@@ -200,8 +205,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         (a) => areasArmables.some((x) => x.id === a.id) || areasDeSuMano(perfil, [a]).length > 0,
       )
     : []
-  const areasParaCrearTarea = orden.plan_etapas_manual && puede(perfil, 'produccion.registrar')
-    ? areasVisibles
+  const areasParaCrearTarea = orden.plan_etapas_manual
+    ? perfil.rol.codigo === 'SUPERVISOR' && puede(perfil, 'produccion.registrar')
+      ? areasVisibles.filter((a) => a.id === perfil.area_id)
+      : []
     : areasArmables
   const despachosTaller = vista === 'actividades' && orden.plan_etapas_manual && puede(perfil, 'produccion.reportar_tarea')
     ? await despachosParaReporte(id) : []
@@ -362,7 +369,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         <Indicador
           titulo="Avance"
           valor={<Progreso valor={orden.avance_porcentaje} mostrarValor />}
-          pie="Ponderado por las horas de cada etapa"
+          pie={orden.plan_etapas_manual ? 'Ponderado por el peso de cada etapa' : 'Ponderado por las horas de cada etapa'}
           href={`/ordenes/${orden.id}?vista=etapas`}
         />
         <Indicador
@@ -398,9 +405,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         />
       </div>
 
-      <TeToca ordenId={orden.id} items={toca.items} />
-
-      <Pestanas ordenId={orden.id} activa={vista} contadores={toca.contadores} visibles={secciones} />
+      <div className="mt-5 grid gap-5 lg:grid-cols-[14rem_minmax(0,1fr)] lg:items-start">
+        <Pestanas ordenId={orden.id} activa={vista} contadores={toca.contadores} visibles={secciones} />
+        <div className="min-w-0 space-y-4">
+      {vista === 'resumen' && <TeToca ordenId={orden.id} items={toca.items} />}
 
       {vista === 'resumen' && (
         <div className="grid gap-4 lg:grid-cols-2 *:min-w-0">
@@ -500,8 +508,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               {etapas.length === 0 ? (
                 <p className="py-4 text-center text-sm text-texto-suave">
                   {orden.estado === 'BORRADOR'
-                    ? 'Las etapas se generan al aprobar la orden.'
-                    : 'No hay etapas visibles en esta vista. Consulta la trazabilidad de la orden para revisar su historial.'}
+                    ? 'Cuando la orden sea aprobada, Diseño definirá las etapas.'
+                    : 'Diseño aún no definió las etapas. Abre Etapas para ver el siguiente paso.'}
                 </p>
               ) : (
                 <ol className="divide-y divide-borde">
@@ -538,18 +546,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           </Tarjeta>
 
           <div className="space-y-4">
-            {salida && (
-              <SalidaDeUnidad
-                ordenId={orden.id}
-                liberacion={salida.liberacion}
-                entrega={salida.entrega}
-                fisica={salida.fisica}
-                puedeRegistrarSalida={puede(perfil, 'ordenes.entregar')}
-                puedeLiberar={puede(perfil, 'tesoreria.liberar')}
-                puedeConfirmar={puede(perfil, ['ordenes.entregar', 'produccion.actividades'])}
-                puedeRegistrarEntrega={orden.estado === 'TERMINADA' && puede(perfil, 'ordenes.entregar')}
-              />
-            )}
             {fechasClave && (
               <FechasClave
                 fechas={fechasClave}
@@ -624,12 +620,29 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
       {vista === 'costos' && datosCostos && (
         <CostosYControles ordenId={orden.id} datos={datosCostos}
-          puedeControlar={puede(perfil, 'costos.controlar_ot')}
           puedeSolicitar={puede(perfil, 'costos.solicitar_pago')}
           puedeRegistrarGasto={puede(perfil, 'costos.registrar_gasto')}
           puedeRevisarGasto={puede(perfil, 'costos.revisar_gasto')}
           puedeVerCosteo={puede(perfil, 'costos.ver')}
           ordenCerrada={ESTADOS_CERRADOS.includes(orden.estado)} />
+      )}
+
+      {vista === 'entrega' && (
+        <div className="space-y-4">
+          {datosCostos && (
+            <ControlDeSalida ordenId={orden.id} datos={datosCostos}
+              puedeControlar={puede(perfil, 'costos.controlar_ot')}
+              puedeVerCosteo={puede(perfil, 'costos.ver')}
+              puedeSolicitar={puede(perfil, 'costos.solicitar_pago')}
+              ordenCerrada={ESTADOS_CERRADOS.includes(orden.estado)} />
+          )}
+          {salida && <SalidaDeUnidad ordenId={orden.id}
+            liberacion={salida.liberacion} entrega={salida.entrega} fisica={salida.fisica}
+            puedeRegistrarSalida={puede(perfil, 'ordenes.entregar')}
+            puedeLiberar={puede(perfil, 'tesoreria.liberar')}
+            puedeConfirmar={puede(perfil, ['ordenes.entregar', 'produccion.actividades'])}
+            puedeRegistrarEntrega={orden.estado === 'TERMINADA' && puede(perfil, 'ordenes.entregar')} />}
+        </div>
       )}
 
       {vista === 'actividades' && hojaAreas && (
@@ -647,9 +660,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
              que no hace nada. */
           areasDisponibles={areasParaCrearTarea}
           areasVisibles={areasVisibles}
-          puedeArmar={areasArmables.length > 0}
+          puedeArmar={orden.plan_etapas_manual ? areasParaCrearTarea.length > 0 : areasArmables.length > 0}
           puedeCrear={areasParaCrearTarea.length > 0}
-          puedeCargarCronograma={!['ENTREGADA', 'FACTURADA', 'ANULADA'].includes(orden.estado)}
+          puedeCargarCronograma={!orden.plan_etapas_manual && !['ENTREGADA', 'FACTURADA', 'ANULADA'].includes(orden.estado)}
           puedeReportar={puede(perfil, orden.plan_etapas_manual ? 'produccion.reportar_tarea' : 'produccion.registrar')}
           areaPropia={perfil.area_id}
           aprueba={puede(perfil, 'produccion.aprobar_reportes')}
@@ -675,8 +688,21 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       )}
 
       {vista === 'bitacora' && (
-        <Bitacora ordenId={orden.id} eventos={timeline} puedeComentar={puede(perfil, 'ordenes.ver')} />
+        <div className="space-y-4">
+          {!orden.plan_etapas_manual && (secciones.includes('ficha') || secciones.includes('avance')) && (
+            <Tarjeta>
+              <TarjetaCabecera titulo="Registros del flujo anterior" descripcion="Estos documentos y reportes se conservan para consulta." />
+              <TarjetaCuerpo className="flex flex-wrap gap-2">
+                {secciones.includes('ficha') && <EnlaceBoton href={`/ordenes/${orden.id}?vista=ficha`} variante="secundario" tamano="sm">Ver ficha de taller</EnlaceBoton>}
+                {secciones.includes('avance') && <EnlaceBoton href={`/ordenes/${orden.id}?vista=avance`} variante="secundario" tamano="sm">Ver reportes anteriores</EnlaceBoton>}
+              </TarjetaCuerpo>
+            </Tarjeta>
+          )}
+          <Bitacora ordenId={orden.id} eventos={timeline} puedeComentar={puede(perfil, 'ordenes.ver')} />
+        </div>
       )}
+        </div>
+      </div>
     </>
   )
 }

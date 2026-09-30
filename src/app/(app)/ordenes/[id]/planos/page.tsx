@@ -43,23 +43,27 @@ export default async function PaginaPlanos({ params, searchParams }: {
     : abierta ? null : 'La orden ya se cerró'
   return <>
     <EncabezadoPagina titulo={`Planos · ${orden.numero}`} descripcion="Planos, PDF y revisiones por área. Los materiales se definen en su pestaña." />
-    <Pestanas ordenId={id} activa="planos" visibles={secciones} />
-    <EquipoDiseno ordenId={id} abierta={abierta} puedeAsignar={puede(perfil, 'diseno.planos')}
-      catalogos={catalogos} />
-    <Cumplimiento ordenId={id} resumen={cumplimiento?.resumen ?? null} planos={cumplimiento?.planos ?? []}
-      versiones={versiones.map(v => ({ ...v,
-        puedeRevisarDiseno: abierta && v.revision_diseno === 'PENDIENTE' && v.creado_por !== perfil.id && puede(perfil, 'diseno.planos'),
-        puedeRevisar: abierta && v.revision_diseno === 'APROBADO' && v.estado === 'POR_REVISAR' && v.creado_por !== perfil.id && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, 'produccion.actividades'),
-        puedeRecibir: v.vigente && v.estado === 'APROBADO' && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, ['produccion.actividades', 'produccion.cualquier_area']),
-      }))}
-      catalogos={catalogos} planoSeleccionado={query.plano}
-      etapas={etapas.filter(e => e.etapa_id).map(e => ({
-        id: e.etapa_id!,
-        nombre: `${e.etapa ?? 'Etapa'} · ${areasEtapas.find(a => a.id === e.area_id)?.nombre ?? 'Área'}`,
-      }))}
-      puedeDisenar={puede(perfil, 'diseno.planos')}
-      puedeSubirPdf={puede(perfil, 'diseno.subir_pdf')}
-      areaPropia={manoDelTaller}
-      ordenViva={abierta} motivoInactiva={motivoInactiva} />
+    <div className="mt-5 grid gap-5 lg:grid-cols-[14rem_minmax(0,1fr)] lg:items-start">
+      <Pestanas ordenId={id} activa="planos" visibles={secciones} />
+      <div className="min-w-0 space-y-4">
+        <EquipoDiseno ordenId={id} abierta={abierta} puedeAsignar={puede(perfil, 'diseno.planos')}
+          catalogos={catalogos} />
+        <Cumplimiento ordenId={id} resumen={cumplimiento?.resumen ?? null} planos={cumplimiento?.planos ?? []}
+          versiones={versiones.map(v => ({ ...v,
+            puedeRevisarDiseno: abierta && v.revision_diseno === 'PENDIENTE' && v.creado_por !== perfil.id && puede(perfil, 'diseno.planos'),
+            puedeRevisar: abierta && v.revision_diseno === 'APROBADO' && v.estado === 'POR_REVISAR' && v.creado_por !== perfil.id && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, 'produccion.actividades'),
+            puedeRecibir: v.vigente && v.estado === 'APROBADO' && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, ['produccion.actividades', 'produccion.cualquier_area']),
+          }))}
+          catalogos={catalogos} planoSeleccionado={query.plano}
+          etapas={etapas.filter(e => e.etapa_id).map(e => ({
+            id: e.etapa_id!,
+            nombre: `${e.etapa ?? 'Etapa'} · ${areasEtapas.find(a => a.id === e.area_id)?.nombre ?? 'Área'}`,
+          }))}
+          puedeDisenar={puede(perfil, 'diseno.planos')}
+          puedeSubirPdf={puede(perfil, 'diseno.subir_pdf')}
+          areaPropia={manoDelTaller}
+          ordenViva={abierta} motivoInactiva={motivoInactiva} />
+      </div>
+    </div>
   </>
 }

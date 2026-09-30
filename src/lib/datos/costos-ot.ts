@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function controlesYSolicitudesDeOrden(ordenId: string, verCosteo: boolean) {
   const supabase = await createClient()
-  const [control, items, solicitudes, materiales, gastos, costeo] = await Promise.all([
+  const [control, items, solicitudes, gastos, costeo] = await Promise.all([
     supabase.from('ot_control_vehicular')
       .select('id, orden_id, placa, marca, conductor_ingreso, dni_ingreso, fecha_ingreso, combustible_ingreso, conductor_salida, dni_salida, fecha_salida, combustible_salida, adicionales, trabajos, observacion_ingreso, observacion_salida, items, ingreso_cerrado_en, salida_cerrada_en, escaneo_ruta, escaneo_nombre')
       .eq('orden_id', ordenId).maybeSingle(),
@@ -13,9 +13,6 @@ export async function controlesYSolicitudesDeOrden(ordenId: string, verCosteo: b
     supabase.from('ot_solicitudes_tesoreria')
       .select('id, tipo, concepto, monto, moneda, estado, respuesta, creado_en, atendido_en, solicitante:usuarios!ot_solicitudes_tesoreria_solicitado_por_fkey(nombres, apellidos), atendedor:usuarios!ot_solicitudes_tesoreria_atendido_por_fkey(nombres, apellidos)')
       .eq('orden_id', ordenId).order('creado_en', { ascending: false }),
-    supabase.from('v_ot_materiales')
-      .select('id, numero_plano, material, material_codigo, unidad, cantidad, area_destino')
-      .eq('orden_id', ordenId).order('numero_plano', { nullsFirst: false }).limit(500),
     supabase.from('ot_gastos_areas')
       .select('id, area_id, tipo, descripcion, fecha, monto, moneda, comprobante_ruta, comprobante_nombre, estado, observacion_revision, creado_en, area:areas!ot_gastos_areas_area_id_fkey(nombre), registrador:usuarios!ot_gastos_areas_registrado_por_fkey(nombres, apellidos)')
       .eq('orden_id', ordenId).order('creado_en', { ascending: false }).limit(200),
@@ -24,7 +21,6 @@ export async function controlesYSolicitudesDeOrden(ordenId: string, verCosteo: b
   if (control.error) throw new Error(`No se pudo leer la ficha vehicular: ${control.error.message}`)
   if (items.error) throw new Error(`No se pudieron leer los puntos de control: ${items.error.message}`)
   if (solicitudes.error) throw new Error(`No se pudieron leer las solicitudes: ${solicitudes.error.message}`)
-  if (materiales.error) throw new Error(`No se pudo leer el reporte de materiales: ${materiales.error.message}`)
   if (gastos.error) throw new Error(`No se pudieron leer los gastos: ${gastos.error.message}`)
   if (costeo.error) throw new Error(`No se pudo calcular el costeo: ${costeo.error.message}`)
   const rutas = gastos.data?.map(g => g.comprobante_ruta) ?? []
@@ -40,7 +36,6 @@ export async function controlesYSolicitudesDeOrden(ordenId: string, verCosteo: b
     control: control.data,
     items: items.data ?? [],
     solicitudes: solicitudes.data ?? [],
-    materiales: materiales.data ?? [],
     gastos: (gastos.data ?? []).map((g, i) => ({ ...g, url: urlsGastos.data?.[i]?.signedUrl ?? null })),
     costeo: costeo.data ?? [],
     escaneoUrl: urlControl.data?.signedUrl ?? null,

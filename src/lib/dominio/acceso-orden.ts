@@ -17,6 +17,7 @@ export function seccionesDeOrden(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>)
     ...(tiene('diseno.planos', 'cotizaciones.costear', 'produccion.ver', 'requerimientos.ver') || tecnico ? ['materiales'] : []),
     ...(tiene('costos.ver', 'costos.registrar_gasto') ? ['costos'] : []),
     ...(tiene('produccion.ver', 'diseno.planos') ? ['actividades'] : []),
+    'entrega',
     ...(tiene('produccion.ver') ? ['avance'] : []),
     'bitacora',
   ]
