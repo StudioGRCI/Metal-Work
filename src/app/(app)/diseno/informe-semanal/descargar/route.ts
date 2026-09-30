@@ -6,7 +6,7 @@ import { inicioSemanaDiseno } from '@/lib/dominio/semana-diseno'
 import { exigirPermiso } from '@/lib/sesion'
 
 export async function GET(request: NextRequest) {
-  await exigirPermiso(['diseno.planos', 'diseno.subir_pdf', 'supervision.general'])
+  await exigirPermiso(['diseno.planos', 'diseno.subir_pdf', 'supervision.general','administracion.recibir_informe'])
   const parametro = request.nextUrl.searchParams.get('semana')
   if (!parametro) return NextResponse.json({ error: 'Indica la semana del informe.' }, { status: 400 })
   let inicio: string

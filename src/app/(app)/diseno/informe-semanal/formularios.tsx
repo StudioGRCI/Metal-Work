@@ -5,7 +5,7 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { useEnvio } from '@/lib/envio'
 import type { Tablas } from '@/types/database'
-import { guardarInformeDiseno, registrarTareaDiseno } from './acciones'
+import { guardarInformeDiseno, registrarTareaDiseno,transitarInforme } from './acciones'
 
 type Orden = Pick<Tablas<'ordenes_trabajo'>, 'id' | 'numero'>
 type Persona = Pick<Tablas<'ot_equipo_diseno'>, 'id' | 'orden_id' | 'nombre' | 'funcion'>
@@ -97,4 +97,14 @@ export function FormularioInformeDiseno({ inicio, informe }: { inicio: string; i
     {envio.resultado?.ok && <p role="status" className="text-sm text-exito">{envio.resultado.mensaje}</p>}
     <Boton type="submit" cargando={envio.enviando}>Guardar informe</Boton>
   </form>
+}
+
+export function DecisionInforme({id,estado}:{id:string;estado:'EN_REVISION'|'APROBADO'|'OBSERVADO'|'RECIBIDO'}) {
+ const envio=useEnvio(transitarInforme)
+ return <form onSubmit={envio.alEnviar} className="space-y-3">
+ <input type="hidden" name="informe_id" value={id}/><input type="hidden" name="estado" value={estado}/>
+ {estado==='OBSERVADO'?<Campo etiqueta="Qué debe corregir el colaborador" htmlFor="revision-inf" requerido><AreaTexto id="revision-inf" name="observacion" minLength={10} maxLength={2000} required/></Campo>:<input type="hidden" name="observacion" value=""/>}
+ <Boton type="submit" cargando={envio.enviando} variante={estado==='OBSERVADO'?'secundario':'primario'}>{estado==='EN_REVISION'?'Enviar a Diseño':estado==='APROBADO'?'Aprobar y enviar a Administración':estado==='OBSERVADO'?'Devolver con observaciones':'Confirmar recepción'}</Boton>
+ {envio.error&&<p role="alert" className="text-sm text-peligro">{envio.error}</p>}{envio.resultado?.ok&&<p role="status" className="text-sm text-exito">{envio.resultado.mensaje}</p>}
+ </form>
 }

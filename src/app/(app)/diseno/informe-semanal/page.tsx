@@ -7,20 +7,21 @@ import { inicioSemanaDiseno } from '@/lib/dominio/semana-diseno'
 import { fecha, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
-import { FormularioInformeDiseno, FormularioTareaDiseno } from './formularios'
+import { FormularioInformeDiseno, FormularioTareaDiseno,DecisionInforme } from './formularios'
 
 export const metadata = { title: 'Informe semanal · Diseño e Ingeniería' }
+const ESTADOS: Record<string,string>={BORRADOR:'Borrador del colaborador',EN_REVISION:'Pendiente de revisión de Diseño',OBSERVADO:'Devuelto para corregir',APROBADO:'Aprobado · pendiente de Administración',RECIBIDO:'Recibido por Administración'}
 
 export default async function PaginaInformeSemanalDiseno({ searchParams }: {
   searchParams: Promise<{ semana?: string }>
 }) {
-  const perfil = await exigirPermiso(['diseno.planos', 'diseno.subir_pdf', 'supervision.general'])
+  const perfil = await exigirPermiso(['diseno.planos', 'diseno.subir_pdf', 'supervision.general','administracion.recibir_informe'])
   const parametros = await searchParams
   let inicio = inicioSemanaDiseno(hoyLima())
   if (parametros.semana) {
     try { inicio = inicioSemanaDiseno(parametros.semana) } catch { /* Mostrar la semana actual si la URL no es válida. */ }
   }
-  const puedeEscribir = puede(perfil, ['diseno.planos', 'diseno.subir_pdf'])
+  const puedeEscribir = puede(perfil, 'diseno.preparar_informe')
   const db = await createClient()
   const [datos, ordenes, personas] = await Promise.all([
     datosInformeDiseno(inicio),
@@ -32,7 +33,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
 
   return <>
     <EncabezadoPagina titulo="Informe semanal de Diseño e Ingeniería"
-      descripcion="Registra el trabajo de los colaboradores y descarga el informe de Metal Work con tareas y planos aprobados." />
+      descripcion="El colaborador prepara el informe; Diseño revisa y Administración recibe la versión aprobada." />
     <div className="space-y-5">
       <Tarjeta>
         <TarjetaCabecera titulo="Semana del informe" descripcion="Elige cualquier día de la semana que quieres revisar." />
@@ -46,6 +47,13 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
             <button className="rounded-[var(--radius-base)] bg-acento px-4 py-2 font-medium text-white" type="submit">Ver semana</button>
           </form>
           <p className="mt-3 text-sm text-texto-suave">Del {fecha(inicio)} al {fecha(datos.fin)} · {datos.informe ? `Informe N.º ${datos.informe.numero}` : 'Informe aún no guardado'}</p>
+          {datos.informe&&<div className="mt-4 space-y-3 rounded-xl bg-superficie-2 p-4">
+           <p className="font-semibold text-texto">{ESTADOS[datos.informe.estado]??datos.informe.estado}</p>
+           {datos.informe.observacion_revision&&<p className="text-sm text-aviso">{datos.informe.observacion_revision}</p>}
+           {puedeEscribir&&['BORRADOR','OBSERVADO'].includes(datos.informe.estado)&&<DecisionInforme id={datos.informe.id} estado="EN_REVISION"/>}
+           {puede(perfil,'diseno.revisar_informe')&&datos.informe.estado==='EN_REVISION'&&<div className="space-y-4"><DecisionInforme id={datos.informe.id} estado="APROBADO"/><details><summary className="cursor-pointer py-2 text-sm font-medium text-acento">Devolver con observaciones</summary><DecisionInforme id={datos.informe.id} estado="OBSERVADO"/></details></div>}
+           {puede(perfil,'administracion.recibir_informe')&&datos.informe.estado==='APROBADO'&&<DecisionInforme id={datos.informe.id} estado="RECIBIDO"/>}
+          </div>}
         </TarjetaCuerpo>
       </Tarjeta>
 
@@ -88,8 +96,8 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
       <Tarjeta>
         <TarjetaCabecera titulo="Contenido del informe" descripcion="El responsable resume las incidencias y acuerdos. Las tablas de tareas y planos se incorporan automáticamente al Word." />
         <TarjetaCuerpo className="space-y-4">
-          {puedeEscribir ? <FormularioInformeDiseno inicio={inicio} informe={datos.informe} />
-            : <p className="text-sm text-texto-suave">Solo Diseño prepara y modifica el informe.</p>}
+          {puedeEscribir&&(!datos.informe||['BORRADOR','OBSERVADO'].includes(datos.informe.estado)) ? <FormularioInformeDiseno inicio={inicio} informe={datos.informe} />
+            : datos.informe&&<dl className="grid gap-5 sm:grid-cols-2">{([['resumen','Resumen'],['incidencias','Incidencias'],['acciones','Acciones correctivas'],['no_conformidades','Cambios'],['indicadores','Indicadores'],['plan_siguiente','Próxima semana'],['conclusiones','Conclusiones']] as const).map(([campo,titulo])=><div key={campo}><dt className="text-sm font-semibold text-texto">{titulo}</dt><dd className="mt-1 whitespace-pre-wrap text-sm text-texto-suave">{datos.informe?.[campo]||'Sin observaciones'}</dd></div>)}</dl>}
           {datos.informe && <Link href={`/diseno/informe-semanal/descargar?semana=${inicio}`}
             className="inline-flex rounded-[var(--radius-base)] border border-borde px-4 py-2 font-medium text-acento hover:bg-superficie-2">
             Descargar Word · Informe N.º {datos.informe.numero}
