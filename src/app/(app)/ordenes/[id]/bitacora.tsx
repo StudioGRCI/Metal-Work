@@ -46,7 +46,7 @@ export function Bitacora({
   return (
     <Tarjeta>
       <TarjetaCabecera
-        titulo="Trazabilidad"
+        titulo="Historial de la OT"
         descripcion="Cambios de la OT, etapas, planos, materiales, solicitudes y reportes, con fecha y persona que actuó."
       />
 
