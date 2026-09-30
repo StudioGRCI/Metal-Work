@@ -174,6 +174,12 @@ interacciones con botones (emitir, descargar, anular); interacción nueva de pes
 
 *(Sección viva: aquí se anota lo que salió mal al construir pantallas. Ver `aprender`.)*
 
+- **Una OT manual y una OT histórica comparten rutas, pero no responsables.**
+  En el flujo nuevo Diseño define etapas y planos; Supervisión crea las tareas
+  de su área y reporta cada avance con foto. Al reordenar la pantalla, revisar
+  `TeToca`, botones, acciones de servidor y políticas de `ot_actividades` con
+  los dos tipos de OT. Ocultar un botón no revoca la edición por URL o API.
+
 - **Quien crea un plano y el área de la etapa son cosas distintas.** Diseño e
   Ingeniería crea el plano, pero lo vincula a la etapa del área que lo utilizará
   (por ejemplo Maestranza). Al mostrar etapas elegibles para un plano, filtrar

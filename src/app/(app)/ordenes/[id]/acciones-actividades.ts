@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
 import { areaDeActividad } from '@/lib/datos/actividades'
-import { exigirSesion, puede, puedeArmarHoja, puedeHojaDeArea } from '@/lib/sesion'
+import { exigirSesion, puede, puedeArmarHoja, puedeHojaDeArea, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -48,6 +48,17 @@ function traducir(error: { message: string }) {
 
 const nulo = (v: string | undefined) => (v && v.trim().length > 0 ? v.trim() : null)
 
+async function puedeEditarTarea(perfil: PerfilSesion, ordenId: string, areaId: string | null) {
+  if (!areaId) return false
+  const supabase = await createClient()
+  const { data: orden, error } = await supabase.from('ordenes_trabajo')
+    .select('plan_etapas_manual').eq('id', ordenId).maybeSingle()
+  if (error || !orden) return false
+  return orden.plan_etapas_manual
+    ? perfil.rol.codigo === 'SUPERVISOR' && perfil.area_id === areaId && puede(perfil, 'produccion.registrar')
+    : puedeArmarHoja(perfil, areaId)
+}
+
 const esquemaActividad = z.object({
   orden_id: z.string().uuid(),
   etapa_id: z.union([z.string().uuid(), z.literal('')]).optional(),
@@ -75,7 +86,7 @@ export async function agregarActividad(_previo: unknown, datos: FormData): Promi
 
   const v = analisis.data
 
-  if (!puedeArmarHoja(perfil, v.area_id) && !puedeHojaDeArea(perfil, v.area_id)) {
+  if (!await puedeEditarTarea(perfil, v.orden_id, v.area_id)) {
     return { ok: false, error: 'Esa hoja es de otra área: cada uno arma la suya.' }
   }
 
@@ -86,11 +97,6 @@ export async function agregarActividad(_previo: unknown, datos: FormData): Promi
   }
 
   const supabase = await createClient()
-  if (!puedeArmarHoja(perfil, v.area_id)) {
-    const { data: orden, error: errorOrden } = await supabase.from('ordenes_trabajo')
-      .select('plan_etapas_manual').eq('id', v.orden_id).maybeSingle()
-    if (errorOrden || !orden?.plan_etapas_manual) return { ok: false, error: 'Solo Supervisión del área puede crear actividades en esta orden.' }
-  }
   if (v.etapa_id) {
     const { data: etapa, error: errorEtapa } = await supabase.from('ot_etapas')
       .select('id').eq('id', v.etapa_id).eq('orden_id', v.orden_id).maybeSingle()
@@ -152,7 +158,7 @@ export async function editarActividad(_previo: unknown, datos: FormData): Promis
   }
   const v = analisis.data
 
-  if (!puedeArmarHoja(perfil, await areaDeActividad(v.id))) {
+  if (!await puedeEditarTarea(perfil, v.orden_id, await areaDeActividad(v.id))) {
     return { ok: false, error: 'Esa actividad es de la hoja de otra área.' }
   }
 
@@ -214,7 +220,7 @@ export async function cambiarPesoActividad(
 
   const v = analisis.data
 
-  if (!puedeArmarHoja(perfil, await areaDeActividad(v.id))) {
+  if (!await puedeEditarTarea(perfil, v.orden_id, await areaDeActividad(v.id))) {
     return { ok: false, error: 'Ese peso es de la hoja de otra área.' }
   }
 
@@ -256,7 +262,7 @@ export async function quitarActividad(_previo: unknown, datos: FormData): Promis
     .eq('id', v.id)
     .maybeSingle()
 
-  if (!puedeArmarHoja(perfil, reportada?.area_id ?? null)) {
+  if (!await puedeEditarTarea(perfil, v.orden_id, reportada?.area_id ?? null)) {
     return { ok: false, error: 'Esa actividad es de la hoja de otra área.' }
   }
 

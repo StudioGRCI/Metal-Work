@@ -22,7 +22,8 @@ function plural(n: number, uno: string, varios: string) {
 export function queMeToca(
   perfil: PerfilSesion,
   p: PendientesOrden,
-  orden: { estado: string; abierta_en_taller: boolean | null; cliente_id: string | null },
+  orden: { estado: string; abierta_en_taller: boolean | null; cliente_id: string | null; plan_etapas_manual: boolean },
+  etapasDefinidas: number,
 ): { items: Pendiente[]; contadores: Record<string, number> } {
   const items: Pendiente[] = []
   const viva = orden.estado !== 'BORRADOR' && !CERRADOS.includes(orden.estado)
@@ -46,8 +47,10 @@ export function queMeToca(
   let planos = 0
   let materiales = 0
   if (viva && disena) {
-    if (p.planos === 0) {
-      items.push({ texto: 'Arma los planos y las piezas de la unidad', vista: 'planos', tono: 'acento' })
+    if (orden.plan_etapas_manual && etapasDefinidas === 0) {
+      items.push({ texto: 'Define las etapas de esta OT para poder crear planos', vista: 'etapas', tono: 'acento' })
+    } else if (p.planos === 0) {
+      items.push({ texto: 'Crea los planos vinculados a sus etapas', vista: 'planos', tono: 'acento' })
     } else if (p.planos > p.planosEntregados) {
       planos = p.planos - p.planosEntregados
       items.push({ texto: plural(planos, 'plano sin entregar', 'planos sin entregar'), vista: 'planos', tono: 'aviso' })
@@ -56,7 +59,7 @@ export function queMeToca(
       materiales = 1
       items.push({ texto: 'La lista de materiales está vacía', vista: 'materiales', tono: 'aviso' })
     }
-    if (p.areas.length === 0) {
+    if (!orden.plan_etapas_manual && p.areas.length === 0) {
       items.push({ texto: 'Arma las actividades de cada área', vista: 'actividades', tono: 'acento' })
     }
   }
@@ -80,11 +83,10 @@ export function queMeToca(
     }
   }
 
-  // El peso sin repartir lo arregla quien arma la hoja: Diseño, o el jefe de
-  // cada área sobre la suya.
-  if (viva && (disena || puede(perfil, 'produccion.actividades'))) {
+  // En las OT nuevas Supervisión arma y reporta las tareas de su área.
+  if (viva && (puede(perfil, 'produccion.actividades') || (!orden.plan_etapas_manual && disena))) {
     const sinRepartir = p.areas.filter(
-      (a) => a.peso_repartido < 100 && (disena || todoElTaller || a.area_id === perfil.area_id),
+      (a) => a.peso_repartido < 100 && ((!orden.plan_etapas_manual && disena) || todoElTaller || a.area_id === perfil.area_id),
     )
     for (const a of sinRepartir) {
       items.push({
@@ -93,6 +95,10 @@ export function queMeToca(
         tono: 'neutro',
       })
     }
+  }
+
+  if (viva && orden.plan_etapas_manual && reporta && etapasDefinidas > 0 && p.areas.length === 0) {
+    items.push({ texto: 'Crea la primera tarea de taller de tu área', vista: 'actividades', tono: 'acento' })
   }
 
   if (orden.cliente_id === null && puede(perfil, 'ordenes.editar') && puede(perfil, 'clientes.ver')) {
@@ -107,9 +113,9 @@ export function TeToca({ ordenId, items }: { ordenId: string; items: Pendiente[]
   if (items.length === 0) return null
 
   return (
-    <Tarjeta className="mb-4 border-acento/40">
+    <Tarjeta className="border-acento/40">
       <TarjetaCuerpo className="py-3">
-        <p className="text-[11px] font-medium tracking-wide text-texto-suave uppercase">Te toca</p>
+        <p className="text-[11px] font-medium tracking-wide text-texto-suave uppercase">Siguiente paso para ti</p>
         <ul className="mt-1 flex flex-wrap gap-x-5 gap-y-1">
           {items.map((i) => (
             <li key={`${i.vista}-${i.texto}`}>
