@@ -5583,6 +5583,19 @@ export type Database = {
         }
         Relationships: []
       }
+      v_pendientes_materiales: {
+        Row: {
+          detalle_id: string | null
+          orden_id: string | null
+          numero_ot: string | null
+          por_aprobar: boolean | null
+          por_revisar_stock: boolean | null
+          por_comprar: boolean | null
+          por_recibir: boolean | null
+          por_despachar: boolean | null
+        }
+        Relationships: []
+      }
       v_plazos_por_area: {
         Row: {
           etapa_id: string | null

@@ -11,8 +11,8 @@ import { createClient } from '@/lib/supabase/server'
  * del Tablero y los globos de la barra del teléfono. Cada cuenta se pide solo si
  * el puesto tiene el permiso que la resuelve —a quien no puede aprobar no se le
  * cuentan reportes por aprobar— y cada una es un `count` de cabecera sobre las
- * vistas que ya existen, que el RLS filtra solo. Una lectura que falle deja su
- * número en cero: son avisos, no datos de la orden.
+ * vistas que ya existen, que el RLS filtra solo. Una lectura que falle muestra
+ * un aviso: nunca se presenta como si no hubiera nada pendiente.
  */
 export type PendienteGlobal = {
   clave: string
@@ -38,7 +38,8 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
 
   const cabeza = async (consulta: PromiseLike<{ count: number | null; error: unknown }>) => {
     const { count, error } = await consulta
-    return error ? 0 : (count ?? 0)
+    if (error) throw new Error('No se pudo consultar el pendiente.')
+    return count ?? 0
   }
 
   // Las terminadas que esperan a tesorería o el acta se cruzan en memoria: son
@@ -62,6 +63,29 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   const todoElTaller = aprueba || puede(perfil, 'produccion.cualquier_area')
 
   const tareas: { clave: string; ruta: string; tono: Tono; texto: (n: number) => string; contar: Cuenta }[] = []
+
+  const tramitesMateriales = [
+    { permiso: 'diseno.planos', campo: 'por_aprobar', texto: 'materiales propuestos por revisar', ruta: '/ordenes?estado=ABIERTAS' },
+    { permiso: 'almacen.recibir', campo: 'por_revisar_stock', texto: 'solicitudes de materiales por revisar en Almacén', ruta: '/ordenes?estado=ABIERTAS' },
+    { permiso: 'compras.crear', campo: 'por_comprar', texto: 'insumos por comprar para las OT', ruta: '/compras' },
+    { permiso: 'almacen.recibir', campo: 'por_recibir', texto: 'insumos comprados por recibir', ruta: '/ordenes?estado=ABIERTAS' },
+    { permiso: 'almacen.despachar', campo: 'por_despachar', texto: 'materiales por despachar con foto', ruta: '/ordenes?estado=ABIERTAS' },
+  ]
+  for (const tramite of tramitesMateriales) {
+    if (puede(perfil, tramite.permiso)) tareas.push({
+      clave: tramite.campo, ruta: tramite.ruta, tono: 'aviso', texto: n => `${n} ${tramite.texto}`,
+      contar: () => cabeza(supabase.from('v_pendientes_materiales').select('detalle_id', { count: 'exact', head: true }).eq(tramite.campo, true)),
+    })
+  }
+  for (const tramite of [
+    { permiso: 'diseno.revisar_informe', estado: 'EN_REVISION', texto: 'informes semanales por revisar' },
+    { permiso: 'administracion.recibir_informe', estado: 'APROBADO', texto: 'informes semanales aprobados por recibir' },
+  ]) {
+    if (puede(perfil, tramite.permiso)) tareas.push({
+      clave: `informe_${tramite.estado}`, ruta: '/diseno/informe-semanal', tono: 'aviso', texto: n => `${n} ${tramite.texto}`,
+      contar: () => cabeza(supabase.from('diseno_informes').select('id', { count: 'exact', head: true }).eq('estado', tramite.estado)),
+    })
+  }
 
   if (puede(perfil, 'cotizaciones.revisar')) {
     tareas.push({
@@ -305,12 +329,16 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
-  const cantidades = await Promise.all(tareas.map((t) => t.contar().catch(() => 0)))
+  const cantidades = await Promise.all(tareas.map((t) => t.contar().catch(() => null)))
 
   const items: PendienteGlobal[] = []
   const porRuta: Record<string, number> = {}
   tareas.forEach((t, i) => {
     const n = cantidades[i]
+    if (n === null) {
+      items.push({ clave: `${t.clave}_error`, texto: 'No se pudo comprobar un pendiente. Abre el módulo o vuelve a cargar.', ruta: t.ruta, cantidad: 0, tono: 'aviso' })
+      return
+    }
     if (n <= 0) return
     items.push({ clave: t.clave, texto: t.texto(n), ruta: t.ruta, cantidad: n, tono: t.tono })
     const base = t.ruta.split('?')[0]

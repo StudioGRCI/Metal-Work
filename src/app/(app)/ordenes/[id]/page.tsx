@@ -8,6 +8,7 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia, Punto } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { ESTADO_ETAPA, PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { fecha, fechaHora, hoyLima, numero as fmtNumero, puesto } from '@/lib/format'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
@@ -156,7 +157,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
   const [salida, fechasClave] = await Promise.all([
     verSalida ? estadoDeSalida(id) : Promise.resolve(null),
-    vista === 'resumen' ? fechasClaveDeOrden(id) : Promise.resolve(null),
+    vista === 'resumen' && !orden.plan_etapas_manual ? fechasClaveDeOrden(id) : Promise.resolve(null),
   ])
 
   // La orden del taller sin cliente (100): la oficina, que ve los clientes y
@@ -360,6 +361,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         </p>
       )}
 
+      <div className="mb-4"><Pestanas ordenId={orden.id} numero={orden.numero} activa={vista} contadores={toca.contadores} visibles={secciones} /></div>
       <Tarjeta className={vista==='resumen'?'overflow-hidden border-acento/20':'border-borde shadow-none'}>
         <TarjetaCuerpo className={vista==='resumen'?'grid items-center gap-6 bg-gradient-to-r from-acento-suave/50 to-superficie p-5 sm:grid-cols-[minmax(0,1fr)_auto]':'flex flex-wrap items-center gap-x-6 gap-y-3 py-3'}>
           <div className={vista==='resumen'?'flex min-w-0 items-center gap-4':'flex min-w-44 flex-1 items-center gap-3'}>
@@ -388,7 +390,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       </Tarjeta>
 
       <div className="mt-5 space-y-5">
-        <Pestanas ordenId={orden.id} numero={orden.numero} activa={vista} contadores={toca.contadores} visibles={secciones} />
         <div className="min-w-0 space-y-4">
       {vista === 'resumen' && <TeToca ordenId={orden.id} items={toca.items} />}
 
@@ -411,7 +412,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
             }
           />
 
-          <Tarjeta>
+          <SeccionDesplegable titulo="Cliente y unidad" descripcion={cliente?.razon_social ?? 'Datos de identificación de esta OT'} abierta={puedeEditarDatos}>
             <TarjetaCabecera titulo="Cliente y unidad"
               acciones={puedeEditarDatos ? <EditarOrden orden={orden} cotizaciones={nuevasCotizaciones} /> : undefined} />
             <TarjetaCuerpo className="space-y-0">
@@ -440,9 +441,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               />
               <Dato etiqueta="N.º de chasis" valor={unidad?.numero_chasis} />
             </TarjetaCuerpo>
-          </Tarjeta>
+          </SeccionDesplegable>
 
-          <Tarjeta>
+          <SeccionDesplegable titulo="Datos del trabajo" descripcion={`${tipoCarroceria?.nombre ?? 'Carrocería'} · ${sede.nombre}`} abierta={puedeEditarDatos}>
             <TarjetaCabecera titulo="Trabajo"
               acciones={perfil.rol.codigo === 'ADMINISTRACION' && puedeEditarDatos
                 ? <EditarResumenAdministracion orden={orden} responsables={responsablesDisponibles} />
@@ -458,7 +459,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               <Dato etiqueta="Registrada" valor={fecha(orden.fecha_registro)} />
               <Dato etiqueta="Inicio real" valor={fechaHora(orden.fecha_inicio_real)} />
             </TarjetaCuerpo>
-          </Tarjeta>
+          </SeccionDesplegable>
 
           {orden.especificaciones_tecnicas && (
             <Tarjeta className="lg:col-span-2">

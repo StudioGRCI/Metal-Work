@@ -46,6 +46,19 @@ export function queMeToca(
 
   let planos = 0
   let materiales = 0
+  const tramites = [
+    { permiso: 'diseno.planos', cantidad: p.abastecimiento.aprobar, singular: 'material propuesto por revisar', plural: 'materiales propuestos por revisar' },
+    { permiso: 'almacen.recibir', cantidad: p.abastecimiento.stock, singular: 'solicitud por comprobar en stock', plural: 'solicitudes por comprobar en stock' },
+    { permiso: 'compras.crear', cantidad: p.abastecimiento.comprar, singular: 'insumo por incluir en una compra', plural: 'insumos por incluir en una compra' },
+    { permiso: 'almacen.recibir', cantidad: p.abastecimiento.recibir, singular: 'insumo comprado por recibir', plural: 'insumos comprados por recibir' },
+    { permiso: 'almacen.despachar', cantidad: p.abastecimiento.despachar, singular: 'material por entregar con foto', plural: 'materiales por entregar con foto' },
+  ]
+  for (const tramite of tramites) {
+    if (viva && tramite.cantidad > 0 && puede(perfil, tramite.permiso)) {
+      materiales += tramite.cantidad
+      items.push({ texto: plural(tramite.cantidad, tramite.singular, tramite.plural), vista: 'materiales', tono: 'acento' })
+    }
+  }
   if (viva && disena) {
     if (orden.plan_etapas_manual && etapasDefinidas === 0) {
       items.push({ texto: 'Define las etapas de esta OT para poder crear planos', vista: 'etapas', tono: 'acento' })

@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { Boton } from '@/components/ui/boton'
 import { datosInformeDiseno } from '@/lib/datos/informe-diseno'
 import { inicioSemanaDiseno } from '@/lib/dominio/semana-diseno'
 import { fecha, hoyLima } from '@/lib/format'
@@ -23,18 +24,31 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
   }
   const puedeEscribir = puede(perfil, 'diseno.preparar_informe')
   const db = await createClient()
-  const [datos, ordenes, personas] = await Promise.all([
+  const [datos, ordenes, personas, pendientes] = await Promise.all([
     datosInformeDiseno(inicio),
     puedeEscribir ? db.from('ordenes_trabajo').select('id,numero').neq('estado', 'ANULADA').order('creado_en', { ascending: false }).limit(200) : Promise.resolve({ data: [], error: null }),
     puedeEscribir ? db.from('ot_equipo_diseno').select('id,orden_id,nombre,funcion').order('nombre').limit(1000) : Promise.resolve({ data: [], error: null }),
+    puede(perfil, ['diseno.revisar_informe', 'administracion.recibir_informe'])
+      ? db.from('diseno_informes').select('id,numero,semana_inicio,estado')
+        .eq('estado', puede(perfil, 'diseno.revisar_informe') ? 'EN_REVISION' : 'APROBADO')
+        .order('semana_inicio').limit(100)
+      : Promise.resolve({ data: [], error: null }),
   ])
-  if (ordenes.error || personas.error) throw new Error('No se pudieron cargar las OT o el equipo de Diseño.')
+  if (ordenes.error || personas.error || pendientes.error) throw new Error('No se pudieron cargar las OT, el equipo o los informes pendientes de Diseño.')
   const ordenesConPersonas = (ordenes.data ?? []).filter(o => (personas.data ?? []).some(p => p.orden_id === o.id))
 
   return <>
     <EncabezadoPagina titulo="Informe semanal de Diseño e Ingeniería"
       descripcion="El colaborador prepara el informe; Diseño revisa y Administración recibe la versión aprobada." />
     <div className="space-y-5">
+      {(pendientes.data ?? []).length > 0 && <Tarjeta>
+        <TarjetaCabecera titulo={puede(perfil, 'diseno.revisar_informe') ? 'Informes por revisar' : 'Informes aprobados por recibir'} descripcion="Abre la semana correspondiente para completar tu revisión." />
+        <TarjetaCuerpo className="flex flex-wrap gap-3">{(pendientes.data ?? []).map(p =>
+          <Link key={p.id} href={`/diseno/informe-semanal?semana=${p.semana_inicio}`}
+            className="min-h-11 rounded-[var(--radius-base)] border border-borde px-4 py-3 text-sm font-medium text-acento hover:bg-acento-suave">
+            Informe {p.numero} · semana del {fecha(p.semana_inicio)}
+          </Link>)}</TarjetaCuerpo>
+      </Tarjeta>}
       <Tarjeta>
         <TarjetaCabecera titulo="Semana del informe" descripcion="Elige cualquier día de la semana que quieres revisar." />
         <TarjetaCuerpo>
@@ -44,7 +58,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
               <input id="semana-diseno" name="semana" type="date" defaultValue={inicio}
                 className="rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2 text-texto" />
             </label>
-            <button className="rounded-[var(--radius-base)] bg-acento px-4 py-2 font-medium text-white" type="submit">Ver semana</button>
+            <Boton type="submit">Ver semana</Boton>
           </form>
           <p className="mt-3 text-sm text-texto-suave">Del {fecha(inicio)} al {fecha(datos.fin)} · {datos.informe ? `Informe N.º ${datos.informe.numero}` : 'Informe aún no guardado'}</p>
           {datos.informe&&<div className="mt-4 space-y-3 rounded-xl bg-superficie-2 p-4">
