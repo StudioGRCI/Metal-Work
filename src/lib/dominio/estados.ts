@@ -116,23 +116,6 @@ export const ORDEN_ESTADO_ETAPA = [
   'PENDIENTE', 'EN_PROCESO', 'PAUSADA', 'REQUIERE_REVISION', 'TERMINADA', 'OMITIDA',
 ] as const satisfies readonly EstadoEtapa[]
 
-/**
- * El semáforo del plazo, tal como lo calcula `estado_del_plazo` en la base. Los
- * tres primeros son la fórmula de la empresa; los dos de cierre los agregó el
- * sistema porque su hoja no los tenía.
- *
- * `barra` es el color de la barra del cronograma; el resto de pantallas solo
- * usa etiqueta y tono. Estaba copiado en dos sitios y ya habían empezado a
- * discrepar: un enum tiene un solo mapa, y vive aquí.
- */
-export const ESTADO_PLAZO: Record<string, Def & { barra: string }> = {
-  VENCIDO: { etiqueta: 'Vencido', tono: 'peligro', barra: 'bg-peligro' },
-  POR_VENCER: { etiqueta: 'Por vencer', tono: 'aviso', barra: 'bg-aviso' },
-  VIGENTE: { etiqueta: 'Vigente', tono: 'exito', barra: 'bg-acento' },
-  CUMPLIDO: { etiqueta: 'Cumplido', tono: 'neutro', barra: 'bg-exito' },
-  CUMPLIDO_TARDE: { etiqueta: 'Cumplido tarde', tono: 'neutro', barra: 'bg-aviso' },
-}
-
 export const TIPO_EVENTO_BITACORA: Record<string, Def> = {
   CREACION: { etiqueta: 'Creación', tono: 'info' },
   CAMBIO_ESTADO: { etiqueta: 'Cambio de estado', tono: 'acento' },
@@ -182,6 +165,14 @@ export const TIPO_COMPROBANTE: Record<string, Def> = {
 export const ESTADO_COMPROBANTE: Record<string, Def> = {
   BORRADOR: { etiqueta: 'Borrador', tono: 'aviso', descripcion: 'Falta adjuntar el PDF o vincular la factura' },
   REGISTRADA: { etiqueta: 'Registrado', tono: 'exito' },
+}
+
+/** La evaluación de desempeño de Diseño, de su evaluador a Administración (migración 20261001190000). */
+export const ESTADO_EVALUACION_DISENO: Record<string, Def> = {
+  BORRADOR: { etiqueta: 'Borrador', tono: 'neutro', descripcion: 'La ve solo quien la hizo; todavía se corrige' },
+  ENVIADA: { etiqueta: 'Enviada a Administración', tono: 'info', descripcion: 'Cerrada; espera que Administración la reciba' },
+  OBSERVADA: { etiqueta: 'Devuelta para corregir', tono: 'aviso', descripcion: 'Administración la devolvió con una observación' },
+  RECIBIDA: { etiqueta: 'Recibida', tono: 'exito', descripcion: 'Administración la recibió' },
 }
 
 export const TIPO_PLANILLA: Record<string, Def> = {

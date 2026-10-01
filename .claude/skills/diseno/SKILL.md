@@ -158,7 +158,8 @@ Se arman con `@react-pdf/renderer` en el servidor (`src/lib/pdf/`), con la
 paleta del manual y el logo oficial leído del disco. Dos trampas ya pagadas:
 el `lineHeight` puesto en el estilo de `<Page>` lo heredan los elementos
 `fixed` y **el pie desaparece de la hoja sin avisar** —va en cada estilo de
-texto—; y un `fontSize` grande necesita su `lineHeight` explícito o pisa la
+texto, y nunca dentro del pie: ni en su caja ni en sus textos, que también lo
+borran (pasó con la evaluación de desempeño, 2026-10-01)—; y un `fontSize` grande necesita su `lineHeight` explícito o pisa la
 línea siguiente.
 
 ## Texto

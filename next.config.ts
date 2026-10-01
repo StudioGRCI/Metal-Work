@@ -38,6 +38,12 @@ const nextConfig: NextConfig = {
   // el empaquetador lo mete dentro del bundle del servidor, esos archivos ya no
   // están donde los busca y la cotización no se genera.
   serverExternalPackages: ['@react-pdf/renderer'],
+  // El PDF de la evaluación de desempeño lee el logo del disco al armarse; en
+  // el despliegue `public/` lo sirve la CDN y no viaja con la función si no se
+  // pide. Sin él el documento sale igual, con el nombre en texto.
+  outputFileTracingIncludes: {
+    '/diseno/evaluaciones/\\[id\\]/pdf': ['./public/marca/logo-metal-work.png'],
+  },
   // Sin esto la respuesta anuncia «Next.js» a cualquiera que mire las cabeceras.
   poweredByHeader: false,
   async headers() {

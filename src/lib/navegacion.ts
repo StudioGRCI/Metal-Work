@@ -90,12 +90,14 @@ export const NAVEGACION: GrupoNavegacion[] = [
         descripcion: 'Tareas de colaboradores y planos aprobados en Word',
         disponible: true,
       },
+      // La hace la jefatura de Diseño y la recibe Administración; nadie más la
+      // ve, ni Recursos Humanos (migración 20261001190000).
       {
-        titulo: 'Evaluación de Diseño',
+        titulo: 'Evaluación de desempeño',
         ruta: '/diseno/evaluaciones',
         icono: ClipboardList,
-        permiso: ['diseno.planos', 'rrhh.ver_planillas', 'supervision.general'],
-        descripcion: 'Evaluación general del equipo de Diseño e Ingeniería',
+        permiso: ['diseno.evaluar', 'administracion.recibir_evaluacion'],
+        descripcion: 'La evaluación del personal de Diseño e Ingeniería, enviada a Administración',
         disponible: true,
       },
     ],
@@ -211,7 +213,7 @@ export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/ordenes', corto: 'Órdenes' },
   { ruta: '/almacen/kardex', corto: 'Kardex' },
   { ruta: '/diseno/informe-semanal', corto: 'Informe' },
-  { ruta: '/diseno/evaluaciones', corto: 'Evaluar' },
+  { ruta: '/diseno/evaluaciones', corto: 'Evaluación' },
   { ruta: '/tesoreria', corto: 'Tesorería' },
   { ruta: '/tesoreria/cuentas', corto: 'Cuentas' },
   { ruta: '/adquisiciones', corto: 'Facturas' },

@@ -937,6 +937,17 @@ export type Database = {
           comentarios: string
           evaluador_id: string
           creado_en: string
+          area_servicio: string
+          evaluador_nombre: string | null
+          evaluador_cargo: string | null
+          estado: string
+          enviada_en: string | null
+          observacion: string | null
+          observada_por: string | null
+          observada_en: string | null
+          recibida_por: string | null
+          recibida_en: string | null
+          actualizado_en: string
         }
         Insert: {
           id?: string
@@ -948,6 +959,17 @@ export type Database = {
           comentarios?: string
           evaluador_id?: string
           creado_en?: string
+          area_servicio?: string
+          evaluador_nombre?: string | null
+          evaluador_cargo?: string | null
+          estado?: string
+          enviada_en?: string | null
+          observacion?: string | null
+          observada_por?: string | null
+          observada_en?: string | null
+          recibida_por?: string | null
+          recibida_en?: string | null
+          actualizado_en?: string
         }
         Update: {
           id?: string
@@ -959,11 +981,36 @@ export type Database = {
           comentarios?: string
           evaluador_id?: string
           creado_en?: string
+          area_servicio?: string
+          evaluador_nombre?: string | null
+          evaluador_cargo?: string | null
+          estado?: string
+          enviada_en?: string | null
+          observacion?: string | null
+          observada_por?: string | null
+          observada_en?: string | null
+          recibida_por?: string | null
+          recibida_en?: string | null
+          actualizado_en?: string
         }
         Relationships: [
           {
             foreignKeyName: "diseno_evaluaciones_evaluador_id_fkey"
             columns: ["evaluador_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diseno_evaluaciones_observada_por_fkey"
+            columns: ["observada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diseno_evaluaciones_recibida_por_fkey"
+            columns: ["recibida_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]

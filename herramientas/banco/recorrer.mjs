@@ -43,6 +43,7 @@ const flotaId = await primero('select id from public.flota_unidades order by ing
 const plantillaId = await primero(
   'select id from public.plantillas_ficha where activa order by nombre limit 1',
 )
+const evaluacionId = await primero('select id from public.diseno_evaluaciones order by creado_en desc limit 1')
 
 const RUTAS = [
   ['tablero', '/'],
@@ -73,6 +74,9 @@ const RUTAS = [
   ['materiales', '/materiales'],
   ['materiales-vacio', '/materiales?buscar=MW-PRUEBA-SIN-RESULTADOS'],
   ['atencion-materiales', '/materiales/atencion'],
+  ['evaluaciones', '/diseno/evaluaciones'],
+  ['evaluacion-nueva', '/diseno/evaluaciones/nueva'],
+  evaluacionId && ['evaluacion-detalle', `/diseno/evaluaciones/${evaluacionId}`],
   ['tesoreria', '/tesoreria'],
   ordenId && ['orden-ficha', `/ordenes/${ordenId}?vista=ficha`],
   ordenId && ['orden-avance', `/ordenes/${ordenId}?vista=avance`],
