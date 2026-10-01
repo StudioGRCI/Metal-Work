@@ -301,7 +301,7 @@ function PrecioCompra({ compra }: { compra: CompraMaterialPendiente }) {
   return <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-2 rounded-md border border-borde p-2">
     <input type="hidden" name="detalle_id" value={compra.id ?? ''} />
     <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.referencia}</span>
-    <Campo etiqueta={`Precio unitario (${compra.moneda})`} htmlFor={`precio-${compra.id}`}>
+    <Campo etiqueta={`Precio unitario (${compra.moneda})`} htmlFor={`precio-${compra.id}`} ayuda="Sin IGV. Si el proveedor lo da con IGV, divídelo entre 1.18.">
       <Entrada id={`precio-${compra.id}`} name="precio" type="number" inputMode="decimal" min={0} step="0.01" required className="tabular w-32" />
     </Campo>
     <Boton type="submit" tamano="sm" cargando={enviando}>Registrar precio</Boton>
@@ -491,7 +491,7 @@ function FormularioCompra({lineas,alTerminar}:{lineas:LineaAtencionMaterial[];al
        <label className="flex min-h-11 items-center gap-3 text-sm font-medium text-texto"><input type="checkbox" name="detalle_id" value={id} checked={seleccionado} onChange={e=>setSeleccionados(e.target.checked?[...seleccionados,id]:seleccionados.filter(x=>x!==id))} className="size-5 accent-acento"/>{l.material}</label>
        <p className="ml-8 text-xs text-texto-suave">OT {l.numero_ot} · {NOMBRE_AREA[l.area_destino??'']} · Faltan {cantidad(faltante)} {l.unidad}</p>
        {seleccionado&&<div className="mt-3 grid gap-3 sm:grid-cols-2"><Campo etiqueta="Cantidad a comprar" htmlFor={'oc-cant-'+id}><Entrada id={'oc-cant-'+id} name={'cantidad_'+id} type="number" min={0.001} max={faltante} step="0.001" defaultValue={faltante} required/></Campo>
-       <Campo etiqueta="Precio unitario" htmlFor={'oc-precio-'+id}><Entrada id={'oc-precio-'+id} name={'precio_'+id} type="number" min={0} step="0.01" required/></Campo></div>}
+       <Campo etiqueta="Precio unitario sin IGV" htmlFor={'oc-precio-'+id}><Entrada id={'oc-precio-'+id} name={'precio_'+id} type="number" min={0} step="0.01" required/></Campo></div>}
      </div>})}
      {lineas.length===0&&<p className="text-sm text-texto-suave">Almacén aún no derivó insumos pendientes de compra.</p>}
    </fieldset>

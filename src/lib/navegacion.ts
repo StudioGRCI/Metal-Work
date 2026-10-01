@@ -1,4 +1,5 @@
 import {
+  ArrowLeftRight,
   Boxes,
   CalendarClock,
   ClipboardList,
@@ -159,6 +160,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
       },
       { titulo: 'Cuentas de Tesorería', ruta: '/tesoreria/cuentas', icono: FileSpreadsheet, permiso: 'tesoreria.ver_documentos', descripcion: 'Cobros por OT y pagos de compras', disponible: true },
       { titulo: 'Gastos del mes', ruta: '/costos/gastos-generales', icono: Wallet, permiso: ['costos.gastos_generales', 'costos.ver'], descripcion: 'Servicios del local y gastos de operación', disponible: true },
+      { titulo: 'Tipo de cambio', ruta: '/tesoreria/tipo-de-cambio', icono: ArrowLeftRight, permiso: 'tesoreria.tipo_cambio', descripcion: 'El cambio del dólar de cada día, para el costo en soles', disponible: true },
       { titulo: 'Recursos Humanos', ruta: '/rrhh', icono: UserCog, permiso: 'rrhh.ver_planillas', descripcion: 'Planillas y distribución por unidad', disponible: true },
     ],
   },
@@ -196,7 +198,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
 /** Permisos amplios permiten consultar detalles; el menú prioriza cada puesto. */
 const RUTAS_POR_PUESTO: Record<string, readonly string[]> = {
   GERENTE: ['/', '/cotizaciones/pdf', '/ordenes'],
-  TESORERIA: ['/', '/ordenes', '/tesoreria', '/tesoreria/cuentas', '/adquisiciones'],
+  TESORERIA: ['/', '/ordenes', '/tesoreria', '/tesoreria/cuentas', '/tesoreria/tipo-de-cambio', '/adquisiciones'],
 }
 
 export function puedeVer(item: ItemNavegacion, permisos: string[], esAdmin: boolean, rolCodigo: string) {

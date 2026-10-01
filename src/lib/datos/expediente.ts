@@ -70,6 +70,39 @@ export type LineaCosto = {
   referencia: string | null
 }
 
+/** Una línea del costo pasada a soles con el cambio de su fecha. */
+export type LineaEnSoles = {
+  fuente: string
+  fecha: string | null
+  concepto: string | null
+  moneda: string | null
+  monto: number | null
+  tipo_cambio: number | null
+  monto_pen: number | null
+}
+
+/** Lo que devuelve `margen_ot`: lo que falte para calcularlo viene en null. */
+export type MargenExpediente = {
+  moneda_venta: string | null
+  precio_venta: number | null
+  incluye_igv: boolean | null
+  precio_neto: number | null
+  cambio_venta: number | null
+  precio_neto_pen: number | null
+  costo_pen: number
+  margen_pen: number | null
+  margen_pct: number | null
+  despachos_sin_precio: number
+  lineas_sin_cambio: number
+}
+
+export type CierreExpediente = {
+  costo_pen: number
+  cerrado_en: string
+  nota: string
+  cerrado_por: string | null
+}
+
 export type ActaExpediente = {
   numero: string | null
   fecha_entrega: string | null
@@ -83,10 +116,11 @@ export type ActaExpediente = {
 
 const TOPE_REPORTES = 500
 
-export async function expedienteDeOrden(ordenId: string, opciones: { verCosteo: boolean }) {
+export async function expedienteDeOrden(ordenId: string, opciones: { verCosteo: boolean; verMargen?: boolean }) {
   const supabase = await createClient()
+  const verMargen = opciones.verCosteo && Boolean(opciones.verMargen)
 
-  const [etapas, areas, diario, evidencias, acta, liberacion, salida, planos, materiales, resumen, detalle] =
+  const [etapas, areas, diario, evidencias, acta, liberacion, salida, planos, materiales, resumen, detalle, enSoles, cierre, margen, venta] =
     await Promise.all([
       supabase
         .from('ot_etapas')
@@ -142,12 +176,30 @@ export async function expedienteDeOrden(ordenId: string, opciones: { verCosteo: 
       opciones.verCosteo
         ? supabase.rpc('detalle_costeo_ot', { p_orden: ordenId })
         : Promise.resolve({ data: [], error: null }),
+      opciones.verCosteo
+        ? supabase.rpc('costeo_ot_en_soles', { p_orden: ordenId })
+        : Promise.resolve({ data: [], error: null }),
+      opciones.verCosteo
+        ? supabase
+            .from('ot_cierres_costo')
+            .select('costo_pen, cerrado_en, nota, quien:usuarios!ot_cierres_costo_cerrado_por_fkey(cargo, nombres, apellidos)')
+            .eq('orden_id', ordenId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      verMargen ? supabase.rpc('margen_ot', { p_orden: ordenId }).maybeSingle() : Promise.resolve({ data: null, error: null }),
+      // La cotización de la que salió la OT, para poder confirmar su IGV.
+      verMargen
+        ? supabase.from('ordenes_trabajo').select('cotizacion_pdf_id').eq('id', ordenId).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
     ])
 
   if (etapas.error) throw new Error(`No se pudieron leer las etapas: ${etapas.error.message}`)
   if (diario.error) throw new Error(`No se pudo leer el diario de la unidad: ${diario.error.message}`)
   if (resumen.error) throw new Error(`No se pudo calcular el costo: ${resumen.error.message}`)
   if (detalle.error) throw new Error(`No se pudo leer el detalle del costo: ${detalle.error.message}`)
+  if (enSoles.error) throw new Error(`No se pudo pasar el costo a soles: ${enSoles.error.message}`)
+  if (cierre.error) throw new Error(`No se pudo leer el cierre del costo: ${cierre.error.message}`)
+  if (margen.error) throw new Error(`No se pudo calcular el margen: ${margen.error.message}`)
 
   const rutas = (evidencias.data ?? []).map((e) => e.foto_ruta).filter((r): r is string => Boolean(r))
   const enlaces = await enlacesDeFotos(rutas, 3600)
@@ -197,9 +249,45 @@ export async function expedienteDeOrden(ordenId: string, opciones: { verCosteo: 
       ? {
           resumen: (resumen.data ?? []) as { fuente: string | null; moneda: string | null; monto: number | null; pendientes: number | null }[],
           lineas: (detalle.data ?? []) as LineaCosto[],
+          enSoles: ((enSoles.data ?? []) as LineaEnSoles[]).map((l) => ({
+            ...l,
+            monto: l.monto === null ? null : Number(l.monto),
+            tipo_cambio: l.tipo_cambio === null ? null : Number(l.tipo_cambio),
+            monto_pen: l.monto_pen === null ? null : Number(l.monto_pen),
+          })),
+          cierre: cierre.data
+            ? ({
+                costo_pen: Number(cierre.data.costo_pen),
+                cerrado_en: cierre.data.cerrado_en,
+                nota: cierre.data.nota,
+                cerrado_por: (() => {
+                  const q = cierre.data.quien as unknown as { cargo: string | null; nombres: string; apellidos: string } | null
+                  return q ? (q.cargo ?? `${q.nombres} ${q.apellidos}`) : null
+                })(),
+              } satisfies CierreExpediente)
+            : null,
         }
       : null,
+    margen: margen.data ? (normalizarMargen(margen.data as Record<string, unknown>) satisfies MargenExpediente) : null,
+    cotizacionId: (venta.data as { cotizacion_pdf_id: string | null } | null)?.cotizacion_pdf_id ?? null,
   }
 }
 
 export type Expediente = Awaited<ReturnType<typeof expedienteDeOrden>>
+
+function normalizarMargen(m: Record<string, unknown>): MargenExpediente {
+  const n = (v: unknown) => (v === null || v === undefined ? null : Number(v))
+  return {
+    moneda_venta: (m.moneda_venta as string | null) ?? null,
+    precio_venta: n(m.precio_venta),
+    incluye_igv: (m.incluye_igv as boolean | null) ?? null,
+    precio_neto: n(m.precio_neto),
+    cambio_venta: n(m.cambio_venta),
+    precio_neto_pen: n(m.precio_neto_pen),
+    costo_pen: Number(m.costo_pen ?? 0),
+    margen_pen: n(m.margen_pen),
+    margen_pct: n(m.margen_pct),
+    despachos_sin_precio: Number(m.despachos_sin_precio ?? 0),
+    lineas_sin_cambio: Number(m.lineas_sin_cambio ?? 0),
+  }
+}

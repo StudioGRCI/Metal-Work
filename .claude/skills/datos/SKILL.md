@@ -260,6 +260,12 @@ Cuando haga falta tocar datos —no esquema— de producción:
   `create or replace trigger`, la política dentro de un `do $$ … if not exists
   (select 1 from pg_policies …) then create policy …` y `alter policy` para
   cambiarla. Medido el 2026-10-01 con las migraciones `20261001100000` y `…110000`.
+  Lo mismo con un `UPDATE` suelto (`update supabase_migrations.schema_migrations
+  …` se colgó; dentro de un `do $$ begin update …; end $$` pasó). Si
+  `apply_migration` no entra, se aplica por partes con `execute_sql` y la
+  versión se anota a mano en `supabase_migrations.schema_migrations (version,
+  name, statements)`. Vale solo para lo que no borra datos: un borrado real se
+  le pregunta al usuario.
 
 ## Reglas de Postgres que no son de este proyecto
 

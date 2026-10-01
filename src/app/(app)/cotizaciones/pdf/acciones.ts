@@ -37,6 +37,7 @@ const esquemaSubir = z.object({
   tipo_carroceria_id: z.string().uuid('Elige qué se fabrica'),
   monto_venta: z.string().trim().regex(/^\d{1,12}(?:\.\d{1,2})?$/, 'Escribe un monto válido, con hasta dos decimales.'),
   moneda: z.enum(['PEN', 'USD'], { message: 'Elige soles o dólares.' }),
+  incluye_igv: z.enum(['si', 'no'], { message: 'Indica si el total incluye IGV.' }),
   nombre_archivo: z.string().trim().min(1).max(200),
   ruta_storage: z.string().min(1),
   mime_type: mimeCotizacion.default('application/pdf'),
@@ -88,8 +89,9 @@ export async function registrarCotizacionPdf(_previo: unknown, datos: FormData):
   }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
+  const igv = await anotarIgv(supabase, v.id, v.incluye_igv)
   revalidatePath('/cotizaciones/pdf')
-  return { ok: true, mensaje: 'Cotización subida. Gerencia ya la tiene para revisar.' }
+  return { ok: true, mensaje: `Cotización subida. Gerencia ya la tiene para revisar.${igv}` }
 }
 
 const esquemaRevisar = z.object({
@@ -146,6 +148,7 @@ const esquemaCorregir = z.object({
   mime_type: mimeCotizacion,
   monto_venta: z.string().trim().regex(/^\d{1,12}(?:\.\d{1,2})?$/, 'Escribe un monto válido, con hasta dos decimales.'),
   moneda: z.enum(['PEN', 'USD'], { message: 'Elige soles o dólares.' }),
+  incluye_igv: z.enum(['si', 'no'], { message: 'Indica si el total incluye IGV.' }),
   tamano_bytes: z.coerce.number().int().min(0).optional(),
 })
 
@@ -192,8 +195,9 @@ export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): 
     return { ok: false, error: 'La cotización cambió o no tienes acceso. Recarga la página y vuelve a intentar.' }
   }
 
+  const igv = await anotarIgv(supabase, v.id, v.incluye_igv)
   revalidatePath('/cotizaciones/pdf')
-  return { ok: true, mensaje: `Corrección subida: la ${data.numero} vuelve a Gerencia (versión ${data.version}).` }
+  return { ok: true, mensaje: `Corrección subida: la ${data.numero} vuelve a Gerencia (versión ${data.version}).${igv}` }
 }
 
 const esquemaQuitar = z.object({ id: z.string().uuid() })
@@ -328,4 +332,18 @@ export async function emitirOrdenDeCotizacion(
   revalidatePath('/ordenes')
   revalidatePath('/avance')
   return { ok: true, mensaje: 'Orden emitida.', datos: { id: data as string } }
+}
+
+/**
+ * Anota si el total trae IGV para la versión que acaba de entrar. La cotización
+ * ya quedó registrada: si esto falla no se deshace, se avisa para confirmarlo
+ * después desde el expediente de la OT.
+ */
+async function anotarIgv(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  cotizacion: string,
+  incluye: 'si' | 'no',
+): Promise<string> {
+  const { error } = await supabase.rpc('confirmar_igv_cotizacion', { p_cotizacion: cotizacion, p_incluye_igv: incluye === 'si' })
+  return error ? ' No se pudo anotar si incluye IGV: confírmalo luego en el expediente de la OT.' : ''
 }

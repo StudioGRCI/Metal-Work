@@ -20,7 +20,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { ESTADO_OT, ORDEN_ESTADO_OT, PRIORIDAD, definir } from '@/lib/dominio/estados'
 import { situacionDeEntrega } from '@/lib/dominio/expediente'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
-import { fecha, fechaLarga, hoyLima, moneda } from '@/lib/format'
+import { fecha, fechaLarga, hoyLima, moneda, porcentaje } from '@/lib/format'
 import { costoDeOrdenes } from '@/lib/datos/costos-ot'
 import { indicadoresTablero, ordenesAtrasadas, ordenesPorEntrega } from '@/lib/datos/ordenes'
 import { pendientesGlobales, type PendienteGlobal } from '@/lib/datos/pendientes-globales'
@@ -60,7 +60,14 @@ export default async function PaginaTablero() {
     puede(perfil, ['produccion.ver', 'ordenes.listar']) ? resumenDePlazos() : Promise.resolve(null),
   ])
   // El costo de cada unidad solo se calcula para quien puede verlo.
-  const costos = verCosteo ? await costoDeOrdenes(enTaller.ordenes.map((o) => o.id)) : null
+  // El margen se ve solo con el precio de venta a la vista: la misma llave que `margen_ot`.
+  const verMargen = verCosteo && puede(perfil, 'cotizaciones.ver_pdf_comercial')
+  const costos = verCosteo
+    ? await costoDeOrdenes(
+        enTaller.ordenes.map((o) => o.id),
+        { conMargen: verMargen },
+      )
+    : null
   const puedeCrear = puede(perfil, 'ordenes.crear')
   const etapasVencidas = plazos?.porPlazo.VENCIDO ?? 0
   const areasConVencidas = (plazos?.areas ?? []).filter((a) => a.vencidas > 0).slice(0, 3)
@@ -245,23 +252,21 @@ export default async function PaginaTablero() {
                               <span className="text-texto-tenue" title="No se pudo calcular el costo de esta orden">—</span>
                             ) : (
                               <>
-                                {/* Soles y dólares no se suman: no hay tipo de cambio en el sistema. */}
-                                {(costo.PEN > 0 || costo.USD === 0) && (
-                                  <span className={cn('sm:block', costo.PEN > 0 ? 'font-medium text-texto' : 'text-texto-tenue')}>
-                                    {moneda(costo.PEN)}
-                                  </span>
-                                )}
-                                {costo.USD > 0 && (
-                                  <span className="font-medium text-texto sm:block">
-                                    {costo.PEN > 0 && <span className="sm:hidden"> + </span>}
-                                    {moneda(costo.USD, 'USD')}
+                                {/* Todo en soles: lo comprado en dólares entra al cambio de su fecha. */}
+                                <span className={cn('sm:block', costo.pen > 0 ? 'font-medium text-texto' : 'text-texto-tenue')}>
+                                  {moneda(costo.pen)}
+                                </span>
+                                {costo.margenPct !== null && (
+                                  <span className={cn('block', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
+                                    Margen {porcentaje(costo.margenPct, 1)}
                                   </span>
                                 )}
                                 {costo.sinPrecio > 0 && (
                                   <span className="block text-aviso">
-                                    {costo.sinPrecio} {costo.sinPrecio === 1 ? 'material' : 'materiales'} sin precio
+                                    {costo.sinPrecio} {costo.sinPrecio === 1 ? 'despacho' : 'despachos'} sin precio
                                   </span>
                                 )}
+                                {costo.sinCambio > 0 && <span className="block text-aviso">Falta tipo de cambio</span>}
                               </>
                             )}
                           </p>

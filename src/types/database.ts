@@ -677,6 +677,54 @@ export type Database = {
           }
         ]
       }
+      cotizaciones_pdf_igv: {
+        Row: {
+          id: string
+          cotizacion_id: string
+          version: number
+          incluye_igv: boolean
+          confirmado_por: string
+          confirmado_en: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          cotizacion_id: string
+          version: number
+          incluye_igv: boolean
+          confirmado_por?: string
+          confirmado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          cotizacion_id?: string
+          version?: number
+          incluye_igv?: boolean
+          confirmado_por?: string
+          confirmado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cotizaciones_pdf_igv_confirmado_por_fkey"
+            columns: ["confirmado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_pdf_igv_cotizacion_id_fkey"
+            columns: ["cotizacion_id"]
+            isOneToOne: true
+            referencedRelation: "cotizaciones_pdf"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       cotizaciones_pdf_liberaciones_tesoreria: {
         Row: {
           id: string
@@ -2812,6 +2860,57 @@ export type Database = {
           }
         ]
       }
+      ot_cierres_costo: {
+        Row: {
+          id: string
+          orden_id: string
+          costo_pen: number
+          lineas: Json
+          nota: string
+          cerrado_por: string
+          cerrado_en: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          costo_pen: number
+          lineas: Json
+          nota?: string
+          cerrado_por?: string
+          cerrado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          costo_pen?: number
+          lineas?: Json
+          nota?: string
+          cerrado_por?: string
+          cerrado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_cierres_costo_cerrado_por_fkey"
+            columns: ["cerrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_cierres_costo_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_control_vehicular: {
         Row: {
           id: string
@@ -4917,6 +5016,47 @@ export type Database = {
         }
         Relationships: []
       }
+      tipos_de_cambio: {
+        Row: {
+          id: string
+          fecha: string
+          compra: number
+          venta: number
+          fuente: string
+          registrado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          fecha: string
+          compra: number
+          venta: number
+          fuente?: string
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          fecha?: string
+          compra?: number
+          venta?: number
+          fuente?: string
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tipos_de_cambio_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       unidades: {
         Row: {
           id: string
@@ -5973,12 +6113,26 @@ export type Database = {
         }
         Returns: null
       }
+      cambio_del_dia: {
+        Args: {
+          p_fecha: string | null
+          p_operacion?: string | null
+        }
+        Returns: number
+      }
       cargar_cronograma: {
         Args: {
           p_orden: string | null
           p_filas: Json | null
         }
         Returns: Json
+      }
+      cerrar_costo_ot: {
+        Args: {
+          p_orden: string | null
+          p_nota?: string | null
+        }
+        Returns: string
       }
       cerrar_planilla: {
         Args: {
@@ -5998,11 +6152,32 @@ export type Database = {
         }
         Returns: null
       }
+      confirmar_igv_cotizacion: {
+        Args: {
+          p_cotizacion: string | null
+          p_incluye_igv: boolean | null
+        }
+        Returns: null
+      }
       confirmar_salida_porteria: {
         Args: {
           p_entrega: string | null
         }
         Returns: null
+      }
+      costeo_ot_en_soles: {
+        Args: {
+          p_orden: string | null
+        }
+        Returns: {
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          moneda: string | null
+          monto: number | null
+          tipo_cambio: number | null
+          monto_pen: number | null
+        }[]
       }
       crear_compra_agrupada: {
         Args: {
@@ -6336,6 +6511,24 @@ export type Database = {
           p_compra: string | null
         }
         Returns: string
+      }
+      margen_ot: {
+        Args: {
+          p_orden: string | null
+        }
+        Returns: {
+          moneda_venta: string | null
+          precio_venta: number | null
+          incluye_igv: boolean | null
+          precio_neto: number | null
+          cambio_venta: number | null
+          precio_neto_pen: number | null
+          costo_pen: number | null
+          margen_pen: number | null
+          margen_pct: number | null
+          despachos_sin_precio: number | null
+          lineas_sin_cambio: number | null
+        }[]
       }
       materiales_para_valorizar: {
         Args: Record<PropertyKey, never>

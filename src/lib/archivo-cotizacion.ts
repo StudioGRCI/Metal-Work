@@ -1,4 +1,5 @@
 import {
+  leerIgvDeCotizacion,
   leerNombreDeArchivo,
   leerTotalDeCotizacion,
   leerTextoDeCotizacion,
@@ -44,7 +45,12 @@ export function etiquetaDeMime(mime: string | null | undefined): string {
 
 const VACIA: CabeceraCotizacion = { numero: null, fecha: null, cliente: null, documento: null, producto: null }
 
-export type LecturaArchivoCotizacion = { cabecera: CabeceraCotizacion; total: TotalCotizacion }
+export type LecturaArchivoCotizacion = {
+  cabecera: CabeceraCotizacion
+  total: TotalCotizacion
+  /** Si el papel dice que el total trae IGV; null si no lo dice. */
+  incluyeIgv: boolean | null
+}
 
 /**
  * La cabecera de la cotización, leída del archivo. Del PDF, la primera hoja; del
@@ -119,5 +125,6 @@ export async function leerCabeceraDeArchivo(
   return {
     cabecera: unirLecturas(delTexto, leerNombreDeArchivo(archivo.name)),
     total: leerTotalDeCotizacion(texto),
+    incluyeIgv: leerIgvDeCotizacion(texto),
   }
 }

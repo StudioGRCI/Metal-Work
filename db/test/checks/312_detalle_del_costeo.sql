@@ -72,9 +72,10 @@ begin
 
   -- A: 100 kg a 5.10 congelado, menos 10 devueltos = 90 × 5.10 = 459.00.
   -- B: 2 und sin precio congelado: vale el de la compra, 2 × 300 = 600.00.
-  insert into public.movimientos_materiales (id, tipo, requerimiento_detalle_id, cantidad, responsable_id, registrado_por, registrado_en, material_id, origen, cantidad_de_stock, precio_unitario, moneda, documento_referencia)
-  values (v_desp_a, 'DESPACHO', v_det_a, 100, v_quien, v_quien, now() - interval '1 day', v_mat_a, 'COMPRA', 0, 5.10, 'PEN', 'VS-QA-1'),
-         (gen_random_uuid(), 'DESPACHO', v_det_b, 2, v_quien, v_quien, now() - interval '1 day', v_mat_b, 'COMPRA', 0, null, null, 'VS-QA-2');
+  -- Toda salida dice a qué unidad fue (20261001100000_kardex_y_salidas_por_unidad).
+  insert into public.movimientos_materiales (id, tipo, requerimiento_detalle_id, cantidad, responsable_id, registrado_por, registrado_en, material_id, origen, cantidad_de_stock, precio_unitario, moneda, documento_referencia, codigo_unidad)
+  values (v_desp_a, 'DESPACHO', v_det_a, 100, v_quien, v_quien, now() - interval '1 day', v_mat_a, 'COMPRA', 0, 5.10, 'PEN', 'VS-QA-1', 'QA-312'),
+         (gen_random_uuid(), 'DESPACHO', v_det_b, 2, v_quien, v_quien, now() - interval '1 day', v_mat_b, 'COMPRA', 0, null, null, 'VS-QA-2', 'QA-312');
   insert into public.movimientos_materiales (id, tipo, cantidad, registrado_por, material_id, origen, documento_referencia, cantidad_de_stock, precio_unitario, moneda, devolucion_de)
   values (gen_random_uuid(), 'INGRESO', 10, v_quien, v_mat_a, 'DEVOLUCION', 'DEV-QA-1', 0, 5.10, 'PEN', v_desp_a);
 

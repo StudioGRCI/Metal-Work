@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils'
 
 import { Pestanas } from '../pestanas'
 import { queMeToca } from '../te-toca'
+import { CerrarCosto, ConfirmarIgv } from './acciones-costo'
 import { BotonImprimir } from './imprimir'
 
 export async function generateMetadata({ params }: PageProps<'/ordenes/[id]/expediente'>): Promise<Metadata> {
@@ -77,6 +78,11 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   if (!secciones.includes('expediente')) redirect('/sin-permiso')
 
   const verCosteo = puede(perfil, 'costos.ver')
+  // El margen se arma con el precio de venta: lo ve quien ve el costo y además
+  // el documento comercial (la misma llave que exige `margen_ot`).
+  const verMargen = verCosteo && puede(perfil, 'cotizaciones.ver_pdf_comercial')
+  const puedeConfirmarIgv = puede(perfil, ['cotizaciones.crear', 'cotizaciones.revisar', 'cotizaciones.liberar_tesoreria'])
+  const puedeCerrarCosto = puede(perfil, ['costos.controlar_ot', 'ordenes.editar'])
   // La misma regla que el resumen de la OT: el documento comercial solo lo
   // abren Gerencia, Administración y Tesorería.
   const verCotizacion = ['GERENTE', 'ADMINISTRACION', 'TESORERIA', 'ADMIN'].includes(perfil.rol.codigo)
@@ -84,7 +90,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   const [orden, pendientes, expediente, eventos, observaciones, cotizacion] = await Promise.all([
     obtenerOrden(id),
     pendientesDeOrden(id),
-    expedienteDeOrden(id, { verCosteo }),
+    expedienteDeOrden(id, { verCosteo, verMargen }),
     timelineDeOrden(id, 300),
     observacionesDeOrden(id),
     verCotizacion ? cotizacionPdfDeOrden(id) : Promise.resolve(null),
@@ -113,6 +119,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   const entrega = situacionDeEntrega(orden.fecha_entrega_comprometida, entregaReal, hoy)
   const taller = tiempoEnTaller(orden.fecha_inicio_real, orden.fecha_fin_real ?? entregaReal, hoy)
   const composicion = expediente.costo ? composicionDelCosto(expediente.costo.resumen) : null
+  const enSoles = enSolesDe(expediente)
   const conFoto = expediente.reportes.filter((r) => r.foto_url)
 
   const medidas = [orden.largo_m, orden.ancho_m, orden.alto_m].every((m) => m !== null)
@@ -209,17 +216,19 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
             <Indicador
               titulo="Costo acumulado"
               icono={Coins}
-              valor={
-                composicion.monedas.length === 0
-                  ? moneda(0)
-                  : composicion.monedas.map((m) => moneda(m.total, m.moneda)).join(' + ')
-              }
+              valor={moneda(enSoles.total)}
               pie={
                 composicion.sinPrecio > 0
                   ? `${composicion.sinPrecio} despacho(s) sin precio: el costo está incompleto`
-                  : 'Material despachado, planilla cerrada y gastos aprobados'
+                  : enSoles.sinCambio > 0
+                    ? `${enSoles.sinCambio} línea(s) en dólares sin tipo de cambio`
+                    : expediente.margen?.margen_pct != null
+                      ? `Margen ${porcentaje(expediente.margen.margen_pct, 1)} sobre la venta sin IGV`
+                      : enSoles.totalUsd > 0
+                        ? `Incluye ${moneda(enSoles.totalUsd, 'USD')} al cambio de su fecha`
+                        : 'Material despachado, planilla cerrada y gastos aprobados'
               }
-              tono={composicion.sinPrecio > 0 ? 'aviso' : 'neutro'}
+              tono={composicion.sinPrecio > 0 || enSoles.sinCambio > 0 ? 'aviso' : 'neutro'}
             />
           ) : (
             <Indicador
@@ -386,6 +395,12 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                   compra: el costo de material está incompleto hasta que Logística registre el precio.
                 </p>
               )}
+              {enSoles.sinCambio > 0 && (
+                <p role="status" className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso">
+                  {enSoles.sinCambio === 1 ? 'Una línea en dólares no tiene' : `${enSoles.sinCambio} líneas en dólares no tienen`}{' '}
+                  tipo de cambio de su fecha: Tesorería lo registra en Tipo de cambio, y hasta entonces no suma al total en soles.
+                </p>
+              )}
               {composicion.monedas.length === 0 ? (
                 <p className="text-sm text-texto-suave">
                   Todavía no hay costo cargado: aparece cuando Almacén despacha material, se cierra la planilla del mes o
@@ -398,6 +413,28 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                   ))}
                 </div>
               )}
+              {enSoles.totalUsd > 0 && (
+                <p className="text-sm text-texto-suave">
+                  Todo en soles: <strong className="tabular text-texto">{moneda(enSoles.total)}</strong>, con{' '}
+                  {moneda(enSoles.totalUsd, 'USD')} pasados al cambio de venta de la fecha de cada línea.
+                </p>
+              )}
+              {expediente.margen && (
+                <MargenDeLaCarroceria
+                  margen={expediente.margen}
+                  cotizacionId={expediente.cotizacionId}
+                  ordenId={orden.id}
+                  puedeConfirmar={puedeConfirmarIgv}
+                />
+              )}
+              <CierreDelCosto
+                cierre={expediente.costo.cierre}
+                costoVivo={enSoles.total}
+                estado={orden.estado}
+                ordenId={orden.id}
+                puedeCerrar={puedeCerrarCosto}
+                pendientes={composicion.sinPrecio + enSoles.sinCambio}
+              />
               {expediente.costo.lineas.length > 0 && <DetalleDelCosto lineas={expediente.costo.lineas} />}
             </TarjetaCuerpo>
           </Tarjeta>
@@ -774,4 +811,160 @@ function DetalleDelCosto({ lineas }: { lineas: LineaCosto[] }) {
       </p>
     </div>
   )
+}
+
+/** El costo en soles: el total, cuánto vino en dólares y cuántas líneas no tienen cambio. */
+function enSolesDe(expediente: Expediente) {
+  const lineas = expediente.costo?.enSoles ?? []
+  const usd = lineas.filter((l) => l.moneda === 'USD')
+  return {
+    total: lineas.reduce((suma, l) => suma + (l.monto_pen ?? 0), 0),
+    totalUsd: usd.reduce((suma, l) => suma + (l.monto ?? 0), 0),
+    sinCambio: usd.filter((l) => l.monto_pen === null).length,
+  }
+}
+
+/**
+ * Precio de venta sin IGV contra el costo. Se muestra solo cuando se puede
+ * decir con verdad: sin saber si el monto de la cotización trae IGV, la cifra
+ * podría estar inflada en el 18 % de la venta, y entonces se pide confirmarlo.
+ */
+function MargenDeLaCarroceria({
+  margen,
+  cotizacionId,
+  ordenId,
+  puedeConfirmar,
+}: {
+  margen: NonNullable<Expediente['margen']>
+  cotizacionId: string | null
+  ordenId: string
+  puedeConfirmar: boolean
+}) {
+  const venta = margen.moneda_venta === 'USD' ? 'USD' : 'PEN'
+  if (margen.precio_venta === null) {
+    return (
+      <section aria-label="Margen" className="no-partir rounded-[var(--radius-base)] border border-borde p-4">
+        <h3 className="text-sm font-semibold text-texto">Margen</h3>
+        <p className="mt-1 text-sm text-texto-suave">
+          La OT no tiene una cotización con monto de venta: no hay contra qué medir el costo.
+        </p>
+      </section>
+    )
+  }
+  return (
+    <section aria-label="Margen" className="no-partir space-y-3 rounded-[var(--radius-base)] border border-borde p-4">
+      <h3 className="text-sm font-semibold text-texto">Margen</h3>
+      {margen.incluye_igv === null ? (
+        <div className="space-y-2">
+          <p className="text-sm text-texto-suave">
+            Precio de venta según la cotización:{' '}
+            <strong className="tabular text-texto">{moneda(margen.precio_venta, venta)}</strong>. Para calcular el margen
+            hay que saber si ese monto incluye IGV.
+          </p>
+          {puedeConfirmar && cotizacionId ? (
+            <ConfirmarIgv cotizacionId={cotizacionId} ordenId={ordenId} />
+          ) : (
+            <p className="text-sm text-aviso">Falta que Ventas, Gerencia o Administración lo confirmen.</p>
+          )}
+        </div>
+      ) : (
+        <>
+          <dl className="grid gap-3 sm:grid-cols-4">
+            <CifraMargen
+              etiqueta="Precio de venta"
+              valor={moneda(margen.precio_venta, venta)}
+              pie={margen.incluye_igv ? 'Con IGV, según la cotización' : 'Sin IGV, según la cotización'}
+            />
+            <CifraMargen
+              etiqueta="Venta sin IGV"
+              valor={margen.precio_neto_pen === null ? '—' : moneda(margen.precio_neto_pen)}
+              pie={
+                venta === 'USD'
+                  ? margen.cambio_venta === null
+                    ? 'Falta el tipo de cambio del día de la OT'
+                    : `${moneda(margen.precio_neto, 'USD')} al cambio de ${numero(margen.cambio_venta, 3)}`
+                  : 'En soles'
+              }
+            />
+            <CifraMargen etiqueta="Costo a la fecha" valor={moneda(margen.costo_pen)} pie="Material, planilla y gastos" />
+            {margen.costo_pen <= 0 ? (
+              // Sin costo cargado, el margen saldría 100 %: una cifra que parece buena y no dice nada.
+              <CifraMargen etiqueta="Margen" valor="—" pie="Todavía no hay costo cargado" />
+            ) : (
+              <CifraMargen
+                etiqueta="Margen"
+                valor={margen.margen_pen === null ? '—' : moneda(margen.margen_pen)}
+                pie={margen.margen_pct === null ? 'Sin calcular' : `${porcentaje(margen.margen_pct, 1)} de la venta sin IGV`}
+                tono={margen.margen_pen !== null && margen.margen_pen < 0 ? 'peligro' : undefined}
+              />
+            )}
+          </dl>
+          {(margen.despachos_sin_precio > 0 || margen.lineas_sin_cambio > 0) && (
+            <p className="text-xs text-aviso">
+              El costo todavía está incompleto: el margen real puede ser menor que este.
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
+function CifraMargen({ etiqueta, valor, pie, tono }: { etiqueta: string; valor: string; pie: string; tono?: 'peligro' }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-texto-suave">{etiqueta}</dt>
+      <dd className={cn('tabular text-lg font-semibold', tono === 'peligro' ? 'text-peligro' : 'text-texto')}>{valor}</dd>
+      <dd className="text-xs text-texto-tenue">{pie}</dd>
+    </div>
+  )
+}
+
+/**
+ * El cierre del costo: si está cerrado, con qué cifra, quién y cuándo, y cuánto
+ * entró después; si no, el botón para cerrarlo cuando el trabajo terminó.
+ */
+function CierreDelCosto({
+  cierre,
+  costoVivo,
+  estado,
+  ordenId,
+  puedeCerrar,
+  pendientes,
+}: {
+  cierre: NonNullable<Expediente['costo']>['cierre']
+  costoVivo: number
+  estado: string
+  ordenId: string
+  puedeCerrar: boolean
+  pendientes: number
+}) {
+  if (cierre) {
+    const diferencia = Math.round((costoVivo - cierre.costo_pen) * 100) / 100
+    return (
+      <section aria-label="Cierre del costo" className="no-partir rounded-[var(--radius-base)] bg-superficie-2 p-4 text-sm">
+        <p className="text-texto">
+          <strong>Costo cerrado en {moneda(cierre.costo_pen)}</strong> el {fechaHora(cierre.cerrado_en)}
+          {cierre.cerrado_por && ` por ${cierre.cerrado_por}`}.
+        </p>
+        {cierre.nota && <p className="mt-1 text-texto-suave">{cierre.nota}</p>}
+        {diferencia !== 0 && (
+          <p className="mt-1 text-aviso">
+            Desde el cierre {diferencia > 0 ? 'entraron' : 'salieron'} {moneda(Math.abs(diferencia))}: el costo de hoy es{' '}
+            {moneda(costoVivo)}. El cierre no cambia; la diferencia queda a la vista.
+          </p>
+        )}
+      </section>
+    )
+  }
+  const termino = ['TERMINADA', 'ENTREGADA', 'FACTURADA'].includes(estado)
+  if (!termino || !puedeCerrar) return null
+  if (pendientes > 0) {
+    return (
+      <p className="text-sm text-texto-suave print:hidden">
+        El costo se podrá cerrar cuando no queden despachos sin precio ni líneas en dólares sin tipo de cambio.
+      </p>
+    )
+  }
+  return <CerrarCosto ordenId={ordenId} />
 }

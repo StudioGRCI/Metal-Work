@@ -84,6 +84,26 @@ export function leerTotalDeCotizacion(texto: string): TotalCotizacion {
   return { monto: null, moneda: null }
 }
 
+/**
+ * Si el total de la cotización trae IGV, según lo que dice el papel: «incluye
+ * IGV» (COT 3588), «precio sin IGV» (COT 3659), «más IGV». Si el documento
+ * desglosa una línea de IGV con importe, el total que toma el lector es el de
+ * después del IGV. Null cuando el papel no lo dice: lo confirma quien la sube.
+ */
+export function leerIgvDeCotizacion(texto: string): boolean | null {
+  const t = limpiar(texto).toUpperCase()
+  const igv = 'I\\.?G\\.?V\\.?'
+  const no = new RegExp(`NO\\s+INCLUYEN?\\s+(?:EL\\s+)?${igv}|SIN\\s+(?:EL\\s+)?${igv}|M[AÁ]S\\s+(?:EL\\s+)?${igv}|\\+\\s*${igv}`)
+  if (no.test(t)) return false
+  const si = new RegExp(`INCLUYEN?\\s+(?:EL\\s+)?${igv}|INC\\.?\\s+${igv}|${igv}\\s+INCLUIDO|CON\\s+${igv}`)
+  if (si.test(t)) return true
+  // Una línea de IGV con su importe («IGV S/ 4,200»), no solo la tasa («IGV 18 %»).
+  const lineaDeIgv = new RegExp(`\\b${igv}`)
+  const importe = /\d{1,3}(?:[,.]\d{3})+(?:[,.]\d{1,2})?|\d{3,}(?:[,.]\d{1,2})?/
+  if (texto.toUpperCase().split(/\r?\n/).some((l) => lineaDeIgv.test(l) && importe.test(l))) return true
+  return null
+}
+
 const VACIA: CabeceraCotizacion = { numero: null, fecha: null, cliente: null, documento: null, producto: null }
 
 const limpiar = (t: string) => t.replace(/\s+/g, ' ').trim()

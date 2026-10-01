@@ -52,22 +52,30 @@ export async function solicitudesPendientesTesoreria() {
 }
 
 /**
- * Lo que lleva costado cada orden, para ponerlo al lado de su avance en el
- * tablero. Una llamada por orden a la misma función de la pestaña Costos —son
- * pocas, las que caben en el tablero—; si una falla, esa orden sale sin cifra
- * en vez de tumbar la pantalla. Solo se llama con `costos.ver`.
+ * Lo que lleva costado cada orden, en soles, para ponerlo al lado de su avance
+ * en el tablero: lo comprado en dólares entra al cambio de su fecha. Una llamada
+ * por orden —son pocas, las que caben en el tablero—; si una falla, esa orden
+ * sale sin cifra en vez de tumbar la pantalla. Solo se llama con `costos.ver`;
+ * el margen, además, solo con el precio a la vista (`conMargen`).
  */
-export async function costoDeOrdenes(ids: string[]) {
+export async function costoDeOrdenes(ids: string[], opciones: { conMargen?: boolean } = {}) {
   const supabase = await createClient()
   const filas = await Promise.all(
     ids.map(async (id) => {
-      const { data, error } = await supabase.rpc('resumen_costeo_ot', { p_orden: id })
-      if (error || !data) return [id, null] as const
-      const total = { PEN: 0, USD: 0, sinPrecio: 0 }
-      for (const l of data) {
-        if (l.fuente === 'MATERIALES_SIN_PRECIO') total.sinPrecio += Number(l.pendientes ?? 0)
-        else if (l.moneda === 'PEN' || l.moneda === 'USD') total[l.moneda] += Number(l.monto ?? 0)
+      const [costo, margen] = await Promise.all([
+        supabase.rpc('costeo_ot_en_soles', { p_orden: id }),
+        opciones.conMargen ? supabase.rpc('margen_ot', { p_orden: id }).maybeSingle() : Promise.resolve({ data: null, error: null }),
+      ])
+      if (costo.error || !costo.data) return [id, null] as const
+      const total = { pen: 0, sinPrecio: 0, sinCambio: 0, margenPct: null as number | null }
+      for (const l of costo.data) {
+        if (l.fuente === 'MATERIALES_SIN_PRECIO') total.sinPrecio += 1
+        else if (l.monto_pen === null && l.moneda === 'USD') total.sinCambio += 1
+        else total.pen += Number(l.monto_pen ?? 0)
       }
+      // Sin costo cargado el margen saldría 100 %: no se muestra hasta que haya costo.
+      const pct = (margen.data as { margen_pct: number | null } | null)?.margen_pct
+      total.margenPct = pct === null || pct === undefined || total.pen <= 0 ? null : Number(pct)
       return [id, total] as const
     }),
   )

@@ -333,6 +333,31 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
+  // Una OT terminada con el costo abierto sigue cambiando con cada factura que
+  // llega: Costos lo cierra para que quede la cifra con la que se entregó.
+  if (puede(perfil, 'costos.controlar_ot')) {
+    tareas.push({
+      clave: 'costo_por_cerrar',
+      ruta: '/ordenes?estado=TERMINADA',
+      tono: 'aviso',
+      texto: (n) => plural(n, 'orden terminada con el costo sin cerrar', 'órdenes terminadas con el costo sin cerrar'),
+      contar: async () => {
+        const { data: ordenes, error } = await supabase
+          .from('ordenes_trabajo')
+          .select('id')
+          .in('estado', ['TERMINADA', 'ENTREGADA', 'FACTURADA'])
+          .limit(500)
+        if (error) throw new Error('No se pudieron leer las órdenes.')
+        const ids = (ordenes ?? []).map((o) => o.id)
+        if (ids.length === 0) return 0
+        const { data: cerradas, error: errorCierres } = await supabase.from('ot_cierres_costo').select('orden_id').in('orden_id', ids)
+        if (errorCierres) throw new Error('No se pudieron leer los cierres de costo.')
+        const conCierre = new Set((cerradas ?? []).map((c) => c.orden_id))
+        return ids.filter((id) => !conCierre.has(id)).length
+      },
+    })
+  }
+
   // La mano de obra de cada carrocería entra cuando RR. HH. cierra la planilla
   // del mes y la reparte: mientras tanto, el costo de todas las OT sale corto.
   if (puede(perfil, 'rrhh.gestionar_planillas')) {
