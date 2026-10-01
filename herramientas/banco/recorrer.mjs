@@ -70,7 +70,6 @@ const RUTAS = [
   ['avance-trabajos', '/avance/trabajos'],
   ['avance-trabajos-nuevo', '/avance/trabajos/nueva'],
   flotaId && ['avance-trabajo', `/avance/trabajos/${flotaId}`],
-  ['plazos', '/plazos'],
   ['materiales', '/materiales'],
   ['materiales-vacio', '/materiales?buscar=MW-PRUEBA-SIN-RESULTADOS'],
   ['atencion-materiales', '/materiales/atencion'],

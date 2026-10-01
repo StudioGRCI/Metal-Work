@@ -628,7 +628,7 @@ export function EmitirOrden({
           <Campo
             etiqueta="Fecha de entrega prometida"
             htmlFor="eo-fecha"
-            ayuda="La que se le dijo al cliente: es la que manda en Control de plazos"
+            ayuda="La que se le dijo al cliente: es la que manda al medir si la OT se entregó a tiempo"
             requerido
           >
             <Entrada id="eo-fecha" name="fecha_entrega" type="date" required value={fechaEntrega} onChange={(e) => setFechaEntrega(e.target.value)} />

@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import {
   AlertTriangle,
-  CalendarClock,
   CheckCircle2,
   ChevronRight,
   ClipboardList,
@@ -24,7 +23,6 @@ import { fecha, fechaLarga, hoyLima, moneda, porcentaje } from '@/lib/format'
 import { costoDeOrdenes } from '@/lib/datos/costos-ot'
 import { indicadoresTablero, ordenesAtrasadas, ordenesPorEntrega } from '@/lib/datos/ordenes'
 import { pendientesGlobales, type PendienteGlobal } from '@/lib/datos/pendientes-globales'
-import { resumenDePlazos } from '@/lib/datos/plazos'
 import { NAVEGACION, puedeVer } from '@/lib/navegacion'
 import { exigirSesion, puede, type PerfilSesion } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
@@ -49,15 +47,11 @@ export default async function PaginaTablero() {
   // Las atrasadas se piden aparte y ordenadas por fecha comprometida: sacarlas
   // de la primera página de abiertas dejaba fuera una orden vieja y muy
   // atrasada, y la tarjeta llegaba a decir «ninguna» con el indicador en tres.
-  // «Atrasadas» cuenta órdenes que pasaron su entrega; las etapas vencidas van
-  // aparte: una orden con la entrega a un mes puede llevar tres etapas
-  // vencidas, y el Tablero decía «buen trabajo» con quince vencidas en /plazos.
   const verCosteo = puede(perfil, 'costos.ver')
-  const [indicadores, enTaller, atrasadas, plazos] = await Promise.all([
+  const [indicadores, enTaller, atrasadas] = await Promise.all([
     indicadoresTablero(),
     ordenesPorEntrega(8),
     ordenesAtrasadas(),
-    puede(perfil, ['produccion.ver', 'ordenes.listar']) ? resumenDePlazos() : Promise.resolve(null),
   ])
   // El costo de cada unidad solo se calcula para quien puede verlo.
   // El margen se ve solo con el precio de venta a la vista: la misma llave que `margen_ot`.
@@ -69,8 +63,6 @@ export default async function PaginaTablero() {
       )
     : null
   const puedeCrear = puede(perfil, 'ordenes.crear')
-  const etapasVencidas = plazos?.porPlazo.VENCIDO ?? 0
-  const areasConVencidas = (plazos?.areas ?? []).filter((a) => a.vencidas > 0).slice(0, 3)
   // Para el pie de «Órdenes abiertas»: un número suelto no dice si son muchas
   // o pocas hasta que se ve contra el total registrado.
   const totalOrdenes = indicadores.total
@@ -86,7 +78,7 @@ export default async function PaginaTablero() {
 
       {/* Dos columnas ya en el teléfono: cinco tarjetas apiladas ocupaban una
           pantalla entera antes de llegar a la lista de órdenes. */}
-      <div className={`grid grid-cols-2 gap-3 sm:gap-4 ${plazos ? 'lg:grid-cols-6' : 'lg:grid-cols-5'}`}>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
         <Indicador
           icono={ClipboardList}
           titulo="Órdenes abiertas"
@@ -118,16 +110,6 @@ export default async function PaginaTablero() {
           pie="pasaron la fecha comprometida"
           href="/ordenes?estado=ABIERTAS&atrasadas=1"
         />
-        {plazos && (
-          <Indicador
-            icono={CalendarClock}
-            titulo="Etapas vencidas"
-            valor={etapasVencidas}
-            tono={etapasVencidas > 0 ? 'peligro' : 'exito'}
-            pie={etapasVencidas > 0 ? 'pasaron su fecha en el programa' : 'todas las etapas en fecha'}
-            href="/plazos?plazo=VENCIDO"
-          />
-        )}
         <Indicador
           icono={Zap}
           titulo="Urgentes"
@@ -298,32 +280,11 @@ export default async function PaginaTablero() {
           <Tarjeta>
             <TarjetaCabecera
               titulo="Requieren atención"
-              descripcion="Órdenes que pasaron su fecha de entrega, y las áreas con etapas vencidas"
+              descripcion="Órdenes que pasaron su fecha de entrega"
             />
             <TarjetaCuerpo className="space-y-2">
-              {areasConVencidas.length > 0 && (
-                <ul className="mb-2 space-y-1 border-b border-borde pb-2">
-                  {areasConVencidas.map((a) => (
-                    <li key={a.codigo}>
-                      <Link
-                        href={`/plazos?area=${a.codigo}&plazo=VENCIDO`}
-                        className="flex min-h-11 items-center justify-between gap-3 rounded-[var(--radius-base)] px-2 text-sm hover:bg-superficie-2 sm:min-h-0 sm:py-1.5"
-                      >
-                        <span className="text-texto">{a.nombre}</span>
-                        <span className="tabular text-xs font-medium text-peligro">
-                          {a.vencidas} {a.vencidas === 1 ? 'etapa vencida' : 'etapas vencidas'}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
               {atrasadas.length === 0 ? (
-                <p className="py-4 text-center text-sm text-exito">
-                  {areasConVencidas.length > 0
-                    ? 'Ninguna orden pasó su fecha de entrega.'
-                    : 'Ninguna orden atrasada. Buen trabajo.'}
-                </p>
+                <p className="py-4 text-center text-sm text-exito">Ninguna orden atrasada. Buen trabajo.</p>
               ) : (
                 atrasadas.slice(0, 6).map((orden) => (
                   <Link

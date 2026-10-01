@@ -39,9 +39,8 @@ export type EtapaParaCumplir = {
 }
 
 /**
- * Cómo le fue a una etapa contra su fecha de fin programada. Es la misma
- * lectura del semáforo de Control de plazos, dicha con días: «2 días tarde» se
- * entiende sin leyenda.
+ * Cómo le fue a una etapa contra su fecha de fin programada, dicha con días:
+ * «2 días tarde» se entiende sin leyenda.
  */
 export function cumplimientoDeEtapa(etapa: EtapaParaCumplir, hoy: string): { etiqueta: string; tono: Tono } {
   if (etapa.estado === 'OMITIDA') return { etiqueta: 'Omitida', tono: 'neutro' }

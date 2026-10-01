@@ -56,7 +56,7 @@ export function rutasDelMenu(archivo = ARCHIVO_NAVEGACION) {
     return []
   }
 
-  // `ruta: '/plazos'` es como se llama hoy; `href` queda contemplado por si el
+  // `ruta: '/ordenes'` es como se llama hoy; `href` queda contemplado por si el
   // menú se renombra al vocabulario de Next.
   const patron = /\b(?:ruta|href)\s*:\s*['"`]([^'"`]+)['"`]/g
   const encontradas = [...texto.matchAll(patron)]

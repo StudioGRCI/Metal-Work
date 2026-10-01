@@ -527,7 +527,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                         <div className="min-w-0 flex-1">
                           <p className="flex flex-wrap items-center gap-2 text-sm text-texto">
                             {etapa.etapa}
-                            {/* Lo que /plazos llama «Vencido», aquí con nombre de etapa. */}
+                            {/* Una etapa que pasó su fecha programada, con su nombre. */}
                             {programa.vencida && <Insignia tono="peligro">Vencida</Insignia>}
                             {programa.tocaAhora && <Insignia tono="aviso">Toca ahora</Insignia>}
                           </p>

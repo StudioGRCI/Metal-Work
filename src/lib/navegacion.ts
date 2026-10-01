@@ -1,7 +1,6 @@
 import {
   ArrowLeftRight,
   Boxes,
-  CalendarClock,
   ClipboardList,
   FileSpreadsheet,
   FileText,
@@ -53,19 +52,6 @@ export const NAVEGACION: GrupoNavegacion[] = [
         icono: FileSpreadsheet,
         permiso: 'ordenes.listar',
         descripcion: 'Todas las OT y su avance',
-        disponible: true,
-      },
-      // El control de plazos es de todas las áreas del taller y lo mira
-      // cualquiera de ellas: que Maestranza vea que Diseño la tiene trabada es
-      // el punto. Del taller, no de ventas: por eso cuelga de `ordenes.listar`
-      // —entrar al módulo— y no de `ordenes.ver`, que es la llave de lectura
-      // que ventas necesita.
-      {
-        titulo: 'Control de plazos',
-        ruta: '/plazos',
-        icono: CalendarClock,
-        permiso: ['ordenes.listar', 'produccion.ver'],
-        descripcion: 'En qué va cada área y qué la trabó',
         disponible: true,
       },
     ],
@@ -222,7 +208,7 @@ export function rutaActiva(ruta: string, rutas: string[]) {
 /**
  * Las pestañas de abajo en el teléfono: las cuatro primeras de esta lista que
  * la persona ve, y después «Más». El orden está pensado para que a cada puesto
- * le queden las suyas sin escribir un rol a mano: al taller, Órdenes y Plazos;
+ * le queden las suyas sin escribir un rol a mano: al taller, Órdenes;
  * a Diseño y Administración, su entrada de cotizaciones primero; a
  * Ventas, Cotizaciones, Clientes y el tablero. El nombre va corto porque la
  * pestaña es angosta.
@@ -241,7 +227,6 @@ export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/rrhh', corto: 'Planillas' },
   { ruta: '/costos/gastos-generales', corto: 'Gastos' },
   { ruta: '/compras/valorizacion', corto: 'Precios' },
-  { ruta: '/plazos', corto: 'Plazos' },
   { ruta: '/clientes', corto: 'Clientes' },
   { ruta: '/', corto: 'Tablero' },
   { ruta: '/unidades', corto: 'Unidades' },

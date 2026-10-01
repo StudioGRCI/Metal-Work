@@ -282,7 +282,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
-  // Sin etapas con fecha no hay plan contra real, ni Control de plazos, ni
+  // Sin etapas con fecha no hay plan contra real ni
   // avance que medir: Diseño las define y Administración las programa. Las dos
   // cuentas salen de la misma lectura.
   const planDeEtapas = (() => {

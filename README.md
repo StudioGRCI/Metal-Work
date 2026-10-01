@@ -208,7 +208,6 @@ Los permisos se editan por rol en `roles_permisos`, sin tocar código.
 | **Cotización en PDF** | Carga del documento comercial, revisión de Gerencia y vínculo con su orden de trabajo |
 | **Carrocerías y materiales** | Lo que la casa ya fabricó con su ficha lista, y el catálogo del que Diseño arma el desglose |
 | **Órdenes de trabajo** | Registro desde el PDF de la OT, ficha de taller, etapas y plazos por área, hoja de Diseño, materiales, actividades por área, avance y trazabilidad |
-| **Control de plazos** | En qué va cada área y qué la trabó |
 | **Avance en taller** | Una tarjeta por unidad: dónde está, hace cuánto no se toca, qué la traba y las fotos del día; y las unidades que entraron sin orden |
 | **El día en el taller** | Lo que reportó cada área ese día, y quién no reportó |
 | **Clientes y unidades** | Ficha del cliente con su flota, contactos e historial de órdenes |
@@ -223,7 +222,6 @@ src/
 │   ├── (app)/              Pantallas con sesión iniciada
 │   │   ├── page.tsx        Tablero del taller
 │   │   ├── ordenes/        Órdenes de trabajo
-│   │   ├── plazos/         Control de plazos por área
 │   │   ├── clientes/       Clientes y sus unidades
 │   │   ├── cotizaciones/   Registro, revisión y emisión de OT desde PDF
 │   │   ├── carrocerias/    Las carrocerías de la casa con su ficha

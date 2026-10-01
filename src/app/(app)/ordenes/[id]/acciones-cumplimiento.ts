@@ -536,7 +536,6 @@ export async function reportarMaestranza(_previo: unknown, datos: FormData): Pro
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
-  revalidatePath('/plazos')
   return { ok: true, mensaje: 'Maestranza reportó.' }
 }
 
@@ -581,7 +580,6 @@ export async function reportarProduccion(_previo: unknown, datos: FormData): Pro
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
-  revalidatePath('/plazos')
   return { ok: true, mensaje: 'Producción reportó.' }
 }
 
@@ -676,7 +674,6 @@ export async function marcarPiezasDelPlano(_previo: unknown, datos: FormData): P
   if (cuantas === 0) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
-  revalidatePath('/plazos')
   return {
     ok: true,
     mensaje:

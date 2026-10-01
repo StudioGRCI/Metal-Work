@@ -45,7 +45,6 @@ export async function definirEtapas(_previo: unknown, datos: FormData): Promise<
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   revalidatePath(`/ordenes/${orden.data}`)
-  revalidatePath('/plazos')
   return { ok: true, mensaje: `${data} etapas definidas para la OT.` }
 }
 
@@ -66,6 +65,5 @@ export async function programarEtapa(_previo: unknown, datos: FormData): Promise
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== etapa.data) return { ok: false, error: 'La fecha no se guardó.' }
   revalidatePath(`/ordenes/${orden.data}`)
-  revalidatePath('/plazos')
   return { ok: true, mensaje: 'Fechas de la etapa guardadas.' }
 }
