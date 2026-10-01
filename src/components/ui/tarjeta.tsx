@@ -29,7 +29,8 @@ export function TarjetaCabecera({
     // Las acciones bajan de línea cuando no caben al lado del título. Sin eso, en
     // el teléfono un botón que no parte línea ensanchaba la tarjeta, y con ella
     // la columna entera: el resumen de la orden se salía 44 px por el costado.
-    <div className={cn('flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-borde px-4 py-3', className)}>
+    // Al imprimir, el título no se queda al pie de una hoja con su contenido en la siguiente.
+    <div className={cn('flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-borde px-4 py-3 print:break-after-avoid', className)}>
       <div className="min-w-0 flex-1 basis-60">
         <h2 className="text-sm font-semibold text-texto">{titulo}</h2>
         {descripcion && <p className="mt-0.5 text-xs text-texto-suave">{descripcion}</p>}

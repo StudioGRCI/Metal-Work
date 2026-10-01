@@ -150,7 +150,7 @@ export function AccionesEstado({
             <Boton
               key={t.estado}
               tamano="sm"
-              variante={t.estado === 'ANULADA' ? 'peligro' : t.estado === 'APROBADA' ? 'primario' : 'secundario'}
+              variante={t.estado === 'ANULADA' ? 'contornoPeligro' : t.estado === 'APROBADA' ? 'primario' : 'secundario'}
               onClick={() => abrir(t)}
             >
               {t.etiqueta}

@@ -31,7 +31,7 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
         {/* En el teléfono el contenido deja abajo el alto de la barra de
             pestañas, más el borde del iPhone: así la última fila de una lista
             nunca queda debajo de la barra. */}
-        <main className="min-w-0 flex-1 px-4 pt-6 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:px-6 lg:pb-6">
+        <main className="min-w-0 flex-1 px-4 pt-6 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:px-6 lg:pb-6 print:p-0">
           {children}
         </main>
       </div>

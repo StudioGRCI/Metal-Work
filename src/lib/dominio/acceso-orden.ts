@@ -11,6 +11,9 @@ export function seccionesDeOrden(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>)
     || ['ALMACENERO', 'COMPRADOR', 'CALIDAD'].includes(perfil.rol.codigo)
   return [
     'resumen',
+    // El expediente lo ve quien ve la orden: cada bloque se lee con su propio
+    // RLS, y el costo solo se pide con `costos.ver`.
+    'expediente',
     ...(tiene('ordenes.editar', 'produccion.ver', 'diseno.planos') ? ['ficha'] : []),
     ...(tiene('ordenes.listar', 'produccion.ver') ? ['etapas'] : []),
     ...(tecnico ? ['planos'] : []),

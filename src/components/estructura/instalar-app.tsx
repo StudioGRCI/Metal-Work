@@ -149,7 +149,7 @@ export function AvisoInstalar() {
   if (instalada || yaNo || (!evento && !iphone)) return null
 
   return (
-    <div className="flex items-center gap-3 border-b border-borde bg-acento-suave px-4 py-2.5 lg:hidden">
+    <div className="flex items-center gap-3 border-b border-borde bg-acento-suave px-4 py-2.5 lg:hidden print:hidden">
       <p className="min-w-0 flex-1 text-xs text-texto">
         {evento ? (
           'Tenla como aplicación en este celular: se abre sin la barra del navegador.'

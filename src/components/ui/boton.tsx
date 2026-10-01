@@ -2,7 +2,7 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
-export type Variante = 'primario' | 'secundario' | 'contorno' | 'fantasma' | 'peligro'
+export type Variante = 'primario' | 'secundario' | 'contorno' | 'fantasma' | 'peligro' | 'contornoPeligro'
 export type Tamano = 'sm' | 'md' | 'lg' | 'icono'
 
 // Variantes, tamaños y base salen del archivo para que el enlace con pinta de
@@ -17,6 +17,11 @@ export const VARIANTES: Record<Variante, string> = {
   // existe --peligro-texto, calculado para los dos temas. Vale para «Anular»,
   // «Rechazar» y toda la familia destructiva, acá y en EnlaceBoton.
   peligro: 'bg-peligro text-peligro-texto hover:opacity-90 border border-transparent',
+  // Lo destructivo que se ofrece pero casi nunca se usa —«Anular» junto a
+  // «Pausar» y «Terminar»—: rojo de contorno para que se reconozca sin ser lo
+  // más llamativo de la pantalla. El relleno rojo queda para confirmar dentro
+  // de la ventana, que es donde de verdad se decide.
+  contornoPeligro: 'bg-transparent text-peligro hover:bg-peligro-suave border border-peligro',
 }
 
 // El blanco crece en el teléfono, donde se marca con el dedo y a veces con

@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { TIPO_EVENTO_BITACORA, TIPO_TRABAJO, definir } from '@/lib/dominio/estados'
+import { ESTADO_ETAPA, ESTADO_OT, TIPO_EVENTO_BITACORA, TIPO_TRABAJO, definir } from '@/lib/dominio/estados'
 import { puesto } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Enums, Vistas } from '@/types/database'
@@ -299,6 +299,31 @@ export async function ordenesAtrasadas(limite = 6) {
   return data ?? []
 }
 
+/**
+ * Las unidades que siguen en taller, de la entrega más próxima a la más lejana:
+ * lo que el tablero pone primero es lo que antes tiene que salir. Las que no
+ * tienen fecha comprometida van al final, que no hay nada que reclamarles.
+ */
+export async function ordenesPorEntrega(limite = 8) {
+  const supabase = await createClient()
+
+  const { data, error, count } = await supabase
+    .from('ot_resumen')
+    .select(
+      'id, numero, estado, prioridad, cliente_id, cliente, placa, unidad_id, codigo_interno, numero_chasis, marca, modelo, avance_porcentaje, fecha_entrega_comprometida, dias_atraso',
+      { count: 'exact' },
+    )
+    .in('estado', ESTADOS_ABIERTOS)
+    .order('fecha_entrega_comprometida', { ascending: true, nullsFirst: false })
+    .order('numero')
+    .limit(limite)
+
+  if (error) throw new Error(`No se pudieron cargar las órdenes en taller: ${error.message}`)
+  // La vista declara anulable cada columna; una orden siempre tiene id.
+  const ordenes = (data ?? []).flatMap((o) => (o.id ? [{ ...o, id: o.id }] : []))
+  return { ordenes, total: count ?? 0 }
+}
+
 /** Las fechas límite que las reglas de plazo de la empresa le imponen a la orden. */
 export async function fechasClaveDeOrden(ordenId: string) {
   const supabase = await createClient()
@@ -370,6 +395,18 @@ export type EventoTimeline = {
   titulo: string
   detalle: string | null
   usuario: string | null
+  /** Resumen que escribe la auditoría sola («Etapa modificada · Campos: …»), no un hecho del trabajo. */
+  automatico: boolean
+}
+
+/**
+ * La base escribe los cambios de estado con su código —«Estado de la OT:
+ * APROBADA → EN_PROCESO»— y así salían en pantalla. Se traduce solo el par de
+ * a los lados de la flecha, para no tocar lo que alguien escribió a mano.
+ */
+function estadosLegibles(texto: string) {
+  const etiqueta = (codigo: string) => ESTADO_OT[codigo]?.etiqueta ?? (ESTADO_ETAPA as Record<string, { etiqueta: string }>)[codigo]?.etiqueta ?? codigo
+  return texto.replace(/\b([A-Z][A-Z_]{3,}) → ([A-Z][A-Z_]{3,})\b/g, (_todo, de: string, a: string) => `${etiqueta(de)} → ${etiqueta(a)}`)
 }
 
 /**
@@ -427,10 +464,13 @@ export async function timelineDeOrden(ordenId: string, limite = 200): Promise<Ev
         f.categoria === 'BITACORA' && f.titulo
           ? definir(TIPO_EVENTO_BITACORA, f.titulo.replaceAll(' ', '_')).etiqueta
           : (f.titulo ?? ''),
-      detalle: esCambioDeTrabajo ? detalleCambio : f.detalle?.replace(/\(([A-Z_]+)\)/g, (todo, codigo: string) =>
-        TIPO_TRABAJO[codigo] ? `(${TIPO_TRABAJO[codigo].etiqueta})` : todo,
-      ) ?? null,
+      detalle: esCambioDeTrabajo ? detalleCambio : f.detalle
+        ? estadosLegibles(f.detalle.replace(/\(([A-Z_]+)\)/g, (todo, codigo: string) =>
+          TIPO_TRABAJO[codigo] ? `(${TIPO_TRABAJO[codigo].etiqueta})` : todo,
+        ))
+        : null,
       usuario: f.usuario_id ? (nombres.get(f.usuario_id) ?? null) : null,
+      automatico: esCambioDeTrabajo || f.categoria === 'AUDITORIA',
       }
     })
 }

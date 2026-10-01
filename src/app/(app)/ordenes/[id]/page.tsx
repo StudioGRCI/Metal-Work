@@ -1,4 +1,5 @@
 import { FileText, Truck, CalendarDays } from 'lucide-react'
+import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { seccionesDeOrden } from '@/lib/dominio/acceso-orden'
 import type { Metadata } from 'next'
@@ -13,6 +14,7 @@ import { ESTADO_ETAPA, PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@
 import { fecha, fechaHora, hoyLima, numero as fmtNumero, puesto } from '@/lib/format'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
+import { situacionDeEntrega } from '@/lib/dominio/expediente'
 import {
   actividadParaConvertirEtapas,
   clientesParaElegir,
@@ -89,11 +91,11 @@ type Vista = (typeof VISTAS)[number]
 /** Estados en los que la orden ya no corre plazo: no puede estar atrasada. */
 const ESTADOS_CERRADOS: string[] = ['ENTREGADA', 'FACTURADA', 'ANULADA']
 
-function pieDeEntrega(finReal: string | null, comprometida: string | null, vencida: boolean) {
+/** Lo que se dice bajo la fecha prometida: cuánto falta, o hace cuánto venció. */
+function pieDeEntrega(finReal: string | null, comprometida: string | null, cerrada: boolean) {
   if (finReal) return `Trabajo terminado el ${fecha(finReal)}`
-  if (vencida) return 'Ya pasó la fecha prometida al cliente'
-  if (comprometida) return 'Fecha prometida al cliente'
-  return 'Todavía sin fecha comprometida'
+  if (cerrada) return 'Fecha prometida al cliente'
+  return situacionDeEntrega(comprometida, null, hoyLima()).pie
 }
 
 export default async function PaginaOrden({ params, searchParams }: PageProps<'/ordenes/[id]'>) {
@@ -361,25 +363,31 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         </p>
       )}
 
-      <div className="mb-4"><Pestanas ordenId={orden.id} numero={orden.numero} activa={vista} contadores={toca.contadores} visibles={secciones} /></div>
+      {/* En el monitor las secciones viven en la barra lateral: el contenedor
+          se oculta pero el componente se monta igual, porque es el que las
+          publica allí. */}
+      <div className="mb-4 lg:hidden"><Pestanas ordenId={orden.id} numero={orden.numero} activa={vista} contadores={toca.contadores} visibles={secciones} /></div>
       <Tarjeta className={vista==='resumen'?'overflow-hidden border-acento/20':'border-borde shadow-none'}>
         <TarjetaCuerpo className={vista==='resumen'?'grid items-center gap-6 bg-gradient-to-r from-acento-suave/50 to-superficie p-5 sm:grid-cols-[minmax(0,1fr)_auto]':'flex flex-wrap items-center gap-x-6 gap-y-3 py-3'}>
           <div className={vista==='resumen'?'flex min-w-0 items-center gap-4':'flex min-w-44 flex-1 items-center gap-3'}>
             {vista==='resumen'&&<span className="hidden size-14 shrink-0 items-center justify-center rounded-2xl bg-acento-suave text-acento sm:flex"><Truck aria-hidden className="size-7"/></span>}
             <div className="min-w-0 flex-1">
               <div className="mb-2 flex items-baseline justify-between gap-4">
-                <span className="text-xs font-medium text-texto-suave">{vista==='resumen'?'Avance aprobado de la unidad':'Avance de la OT'}</span>
+                <span className="text-xs font-medium text-texto-suave">Avance de la unidad</span>
                 <strong className="tabular text-lg text-texto">{fmtNumero(orden.avance_porcentaje,1)} %</strong>
               </div>
               <Progreso valor={orden.avance_porcentaje} etiqueta="Avance de la orden de trabajo" alto={vista==='resumen'?'md':'sm'}/>
-              {vista==='resumen'&&<p className="mt-2 text-xs text-texto-suave">Etapas con evidencia y reportes revisados · {tipoCarroceria?.nombre??definir(TIPO_TRABAJO,orden.tipo_trabajo).etiqueta}</p>}
+              {/* El número suma todos los reportes de las áreas, revisados o no
+                  (migración 097: la aprobación es el visto bueno, no la llave
+                  del porcentaje). Decía «aprobado» y no lo era. */}
+              {vista==='resumen'&&<p className="mt-2 text-xs text-texto-suave">Según lo que reportan las áreas · {tipoCarroceria?.nombre??definir(TIPO_TRABAJO,orden.tipo_trabajo).etiqueta} · <Link href={`/ordenes/${orden.id}/expediente`} className="font-medium text-acento hover:underline">Ver expediente</Link></p>}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <div className="flex items-center gap-2">
               <CalendarDays aria-hidden className="size-4 shrink-0 text-texto-suave"/>
               <div><p className="text-xs text-texto-suave">Entrega comprometida</p><p className={entregaVencida?'tabular font-semibold text-peligro':'tabular font-semibold text-texto'}>{fecha(orden.fecha_entrega_comprometida)}</p>
-                {vista==='resumen'&&<p className="mt-1 max-w-48 text-xs text-texto-suave">{pieDeEntrega(orden.fecha_fin_real,orden.fecha_entrega_comprometida,entregaVencida)}</p>}
+                {vista==='resumen'&&<p className={entregaVencida?'mt-1 max-w-48 text-xs text-peligro':'mt-1 max-w-48 text-xs text-texto-suave'}>{pieDeEntrega(orden.fecha_fin_real,orden.fecha_entrega_comprometida,ESTADOS_CERRADOS.includes(orden.estado))}</p>}
               </div>
             </div>
             {cotizacionPdf&&<div className="border-l border-borde pl-4"><p className="text-xs text-texto-suave">Cotización {cotizacionPdf.numero}</p>
@@ -413,9 +421,12 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           />
 
           <SeccionDesplegable titulo="Cliente y unidad" descripcion={cliente?.razon_social ?? 'Datos de identificación de esta OT'} abierta={puedeEditarDatos}>
-            <TarjetaCabecera titulo="Cliente y unidad"
-              acciones={puedeEditarDatos ? <EditarOrden orden={orden} cotizaciones={nuevasCotizaciones} /> : undefined} />
-            <TarjetaCuerpo className="space-y-0">
+            {puedeEditarDatos && (
+              <div className="mb-2 flex justify-end">
+                <EditarOrden orden={orden} cotizaciones={nuevasCotizaciones} />
+              </div>
+            )}
+            <div>
               {/* Sin cliente solo puede estar la que abrió el taller (100): la
                   oficina se lo pone acá; los demás leen que falta. */}
               {orden.cliente_id === null && clientesParaPoner ? (
@@ -440,15 +451,16 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                 valor={[unidad?.marca, unidad?.modelo, unidad?.anio].filter(Boolean).join(' ') || null}
               />
               <Dato etiqueta="N.º de chasis" valor={unidad?.numero_chasis} />
-            </TarjetaCuerpo>
+            </div>
           </SeccionDesplegable>
 
           <SeccionDesplegable titulo="Datos del trabajo" descripcion={`${tipoCarroceria?.nombre ?? 'Carrocería'} · ${sede.nombre}`} abierta={puedeEditarDatos}>
-            <TarjetaCabecera titulo="Trabajo"
-              acciones={perfil.rol.codigo === 'ADMINISTRACION' && puedeEditarDatos
-                ? <EditarResumenAdministracion orden={orden} responsables={responsablesDisponibles} />
-                : undefined} />
-            <TarjetaCuerpo className="space-y-0">
+            {perfil.rol.codigo === 'ADMINISTRACION' && puedeEditarDatos && (
+              <div className="mb-2 flex justify-end">
+                <EditarResumenAdministracion orden={orden} responsables={responsablesDisponibles} />
+              </div>
+            )}
+            <div>
               <Dato etiqueta="Tipo de trabajo" valor={definir(TIPO_TRABAJO, orden.tipo_trabajo).etiqueta} />
               <Dato etiqueta="Tipo de carrocería" valor={tipoCarroceria?.nombre} />
               <Dato etiqueta="Taller" valor={sede.nombre} />
@@ -458,7 +470,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               />
               <Dato etiqueta="Registrada" valor={fecha(orden.fecha_registro)} />
               <Dato etiqueta="Inicio real" valor={fechaHora(orden.fecha_inicio_real)} />
-            </TarjetaCuerpo>
+            </div>
           </SeccionDesplegable>
 
           {orden.especificaciones_tecnicas && (
