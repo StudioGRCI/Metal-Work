@@ -64,7 +64,7 @@ import { CostosYControles, ControlDeSalida } from './costos-y-controles'
 import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
 import { FechasClave, SalidaDeUnidad } from './salida-y-plazos'
-import { TeToca, queMeToca } from './te-toca'
+import { queMeToca } from './te-toca'
 
 export async function generateMetadata({ params }: PageProps<'/ordenes/[id]'>): Promise<Metadata> {
   const { id } = await params
@@ -218,13 +218,13 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     ? hojaAreas[0].diario.filter((reporte) => idsAreasVisibles.has(reporte.area_id))
     : []
 
-  // Las observaciones van arriba del resumen, con las áreas a las que se dirigen.
+  // Las observaciones van con la orden en papel, con las áreas a las que se dirigen.
   const [observaciones, areasParaObservar] =
     vista === 'resumen' ? await Promise.all([observacionesDeOrden(id), areasDelTaller()]) : [[], []]
 
-  // Los archivos de la orden (099): en el resumen y junto a la hoja, que es
-  // donde el taller los busca. Quitarlos es de quien los subió, la oficina o
-  // el jefe: lo mismo que dice la política.
+  // Los archivos de la orden (099), en el resumen junto a sus observaciones.
+  // Quitarlos es de quien los subió, la oficina o el jefe: lo mismo que dice
+  // la política.
   const puedeSubirArchivos = perfil.rol.codigo === 'SUPERVISOR' && puede(perfil, [
     'produccion.actividades',
     'ordenes.editar',
@@ -233,7 +233,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   ])
   const quitaCualquiera = puede(perfil, ['ordenes.editar', 'produccion.cualquier_area'])
   const archivos: AdjuntoEnPantalla[] | null =
-    vista === 'resumen' || vista === 'actividades'
+    vista === 'resumen'
       ? (await adjuntosDeOrden(id)).map((a) => ({
           id: a.id,
           tipo: a.tipo,
@@ -283,30 +283,41 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         <div className="min-w-0 space-y-4">
       {vista === 'resumen' && (
         <>
-          {/* Como en todas las pestañas: primero qué falta, después cómo va el
-              trabajo y al final lo que se consulta. Antes el cliente y los datos
-              del trabajo ocupaban el medio y las etapas quedaban al fondo, a
-              media pantalla y con un hueco al lado. */}
-          <TeToca ordenId={orden.id} items={toca.items} />
-          <Observaciones
-            ordenId={orden.id}
-            observaciones={observaciones.map((o) => ({ ...o, resoluble: puedeResolverObservacion(perfil, o) }))}
-            areas={areasParaObservar}
-            puedeAnotar={orden.estado !== 'ANULADA'}
-            /* «Observar» desde una pieza o una actividad llega con el área y el
-               encabezado en la URL; el texto se acota porque es de la URL. */
-            preseleccion={
-              typeof query.observar === 'string' && /^[A-Z]{2,5}$/.test(query.observar)
-                ? {
-                    areaCodigo: query.observar,
-                    texto: typeof query.sobre === 'string' ? query.sobre.slice(0, 300) : '',
+          {/* Arriba lo que más se consulta: cómo van las etapas y, al lado, la
+              orden en papel con sus observaciones, que hablan de ella (pedido
+              de la empresa, 2026-10-01). La franja «Siguiente paso para ti» se
+              retiró: lo pendiente ya lo numeran las pestañas. En el teléfono la
+              orden va primero: es lo que el taller busca y donde se anota un
+              error; en el monitor queda a la derecha. */}
+          <div className="grid items-start gap-4 lg:grid-cols-3 *:min-w-0">
+            <div className="space-y-4 lg:col-start-3 lg:row-start-1">
+              <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos ?? []} puedeSubir={puedeSubirArchivos}>
+                <Observaciones
+                  ordenId={orden.id}
+                  observaciones={observaciones.map((o) => ({ ...o, resoluble: puedeResolverObservacion(perfil, o) }))}
+                  areas={areasParaObservar}
+                  puedeAnotar={orden.estado !== 'ANULADA'}
+                  /* «Observar» desde una pieza o una actividad llega con el área y el
+                     encabezado en la URL; el texto se acota porque es de la URL. */
+                  preseleccion={
+                    typeof query.observar === 'string' && /^[A-Z]{2,5}$/.test(query.observar)
+                      ? {
+                          areaCodigo: query.observar,
+                          texto: typeof query.sobre === 'string' ? query.sobre.slice(0, 300) : '',
+                        }
+                      : null
                   }
-                : null
-            }
-          />
+                />
+              </ArchivosDeOrden>
+              {fechasClave && (
+                <FechasClave
+                  fechas={fechasClave}
+                  disenoCumplida={pendientes.planos > 0 && pendientes.planosEntregados >= pendientes.planos}
+                />
+              )}
+            </div>
 
-          <div className={fechasClave ? 'grid gap-4 lg:grid-cols-2 *:min-w-0' : undefined}>
-            <Tarjeta>
+            <Tarjeta className="lg:col-span-2 lg:col-start-1 lg:row-start-1">
               <TarjetaCabecera
                 titulo="Etapas de producción"
                 descripcion={etapas.length > 0 ? `${etapas.filter((e) => e.estado === 'TERMINADA').length} de ${etapas.length} terminadas` : undefined}
@@ -320,18 +331,29 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               />
               <TarjetaCuerpo>
                 {etapas.length === 0 ? (
-                  <p className="py-4 text-center text-sm text-texto-suave">
-                    {orden.estado === 'BORRADOR'
-                      ? 'Cuando la orden sea aprobada, Diseño definirá las etapas.'
-                      : 'Diseño aún no definió las etapas. Abre Etapas para ver el siguiente paso.'}
-                  </p>
+                  <div className="py-4 text-center">
+                    <p className="text-sm text-texto-suave">
+                      {orden.estado === 'BORRADOR'
+                        ? 'Cuando la orden sea aprobada, Diseño definirá las etapas.'
+                        : 'Diseño aún no definió las etapas de esta orden.'}
+                    </p>
+                    {orden.estado !== 'BORRADOR' && orden.plan_etapas_manual && puede(perfil, 'diseno.planos')
+                      && !ESTADOS_CERRADOS.includes(orden.estado) && (
+                      <EnlaceBoton href={`/ordenes/${orden.id}?vista=etapas`} tamano="sm" className="mt-3">
+                        Definir etapas
+                      </EnlaceBoton>
+                    )}
+                  </div>
                 ) : (
                   <ol className="divide-y divide-borde">
                     {etapas.map((etapa) => {
                       const estadoEtapa = definir(ESTADO_ETAPA, etapa.estado)
                       const programa = programaDeEtapa(etapa, hoyLima())
                       return (
-                        <li key={etapa.etapa_id} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
+                        <li key={etapa.etapa_id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                          <span className="tabular grid size-6 shrink-0 place-items-center rounded-full bg-superficie-2 text-[11px] font-semibold text-texto-suave">
+                            {etapa.orden_secuencia}
+                          </span>
                           <div className="min-w-0 flex-1">
                             <p className="flex flex-wrap items-center gap-2 text-sm text-texto">
                               {etapa.etapa}
@@ -347,7 +369,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                               </p>
                             )}
                           </div>
-                          <Progreso valor={etapa.avance_porcentaje} alto="sm" className="w-20 shrink-0 sm:w-28" />
+                          <Progreso valor={etapa.avance_porcentaje} alto="sm" className="w-20 shrink-0 sm:w-32" />
                           <span className="tabular w-10 shrink-0 text-right text-xs text-texto-suave">
                             {fmtNumero(etapa.avance_porcentaje, 0)}%
                           </span>
@@ -358,12 +380,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                 )}
               </TarjetaCuerpo>
             </Tarjeta>
-            {fechasClave && (
-              <FechasClave
-                fechas={fechasClave}
-                disenoCumplida={pendientes.planos > 0 && pendientes.planosEntregados >= pendientes.planos}
-              />
-            )}
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2 *:min-w-0">
@@ -437,9 +453,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
             </Tarjeta>
           )}
 
-          {archivos && (archivos.length > 0 || puedeSubirArchivos) && (
-            <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos} puedeSubir={puedeSubirArchivos} />
-          )}
         </>
       )}
 

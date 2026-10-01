@@ -28,22 +28,38 @@ export function PlanContraReal({ etapas, hoy, viva }: { etapas: FilaPlan[]; hoy:
     <figure aria-label="Plan contra real de las etapas. El detalle está en la tabla de etapas.">
       <figcaption className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-texto-suave">
         <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden className="h-2 w-5 rounded-[4px] bg-borde-fuerte/45" /> Programado
+          <span aria-hidden className="h-2.5 w-5 rounded-[4px] bg-borde-fuerte/50" /> Programado
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden className="h-2 w-5 rounded-[4px] bg-acento" /> Real
+          <span aria-hidden className="h-2.5 w-5 rounded-[4px] bg-acento" /> Real
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden className="h-2 w-5 rounded-[4px] bg-acento/45" /> En curso, hasta hoy
+          <span aria-hidden className="h-2.5 w-5 rounded-[4px] bg-acento/45" /> En curso, hasta hoy
         </span>
         {marcaHoy !== null && (
           <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="h-3 w-px bg-texto-tenue" /> Hoy
+            <span aria-hidden className="h-3 w-px bg-texto-suave" /> Hoy
           </span>
         )}
       </figcaption>
 
-      <div aria-hidden className="space-y-2.5">
+      {/* La marca de hoy, rotulada arriba de las barras: una raya sin nombre
+          no se distinguía del borde de una barra. */}
+      {marcaHoy !== null && (
+        <div aria-hidden className="grid grid-cols-1 sm:grid-cols-[minmax(10rem,15rem)_1fr] sm:gap-3">
+          <span className="hidden sm:block" />
+          <div className="relative h-4">
+            <span
+              className="absolute -translate-x-1/2 rounded-full bg-superficie-2 px-1.5 text-[10px] font-medium text-texto-suave"
+              style={{ left: `${marcaHoy}%` }}
+            >
+              Hoy
+            </span>
+          </div>
+        </div>
+      )}
+
+      <div aria-hidden className="space-y-2">
         {etapas.map((e) => {
           const plan = e.inicio_programado && e.fin_programado ? rango.tramo(e.inicio_programado, e.fin_programado) : null
           const ini = diaDeLima(e.inicio_real)
@@ -59,24 +75,26 @@ export function PlanContraReal({ etapas, hoy, viva }: { etapas: FilaPlan[]; hoy:
             .filter(Boolean)
             .join(' · ')
           return (
-            <div key={e.id} title={globo} className="grid grid-cols-1 gap-1 sm:grid-cols-[minmax(9rem,16rem)_1fr] sm:items-center sm:gap-3">
-              <p className="truncate text-sm text-texto">
-                {e.nombre}
-                {e.area && <span className="text-texto-tenue"> · {e.area}</span>}
+            <div key={e.id} title={globo} className="grid grid-cols-1 gap-1 sm:grid-cols-[minmax(10rem,15rem)_1fr] sm:items-center sm:gap-3">
+              {/* El área va debajo del nombre: en la misma línea se cortaba
+                  («Habilitado de casco y mamparos · Ma…»). */}
+              <p className="min-w-0 text-sm leading-tight text-texto">
+                <span className="line-clamp-2">{e.nombre}</span>
+                {e.area && <span className="block text-xs text-texto-tenue">{e.area}</span>}
               </p>
-              <div className="relative h-7 rounded-[4px] bg-superficie-2">
+              <div className="relative h-9 rounded-[4px] bg-superficie-2">
                 {marcaHoy !== null && (
-                  <span className="absolute inset-y-0 w-px bg-texto-tenue" style={{ left: `${marcaHoy}%` }} />
+                  <span className="absolute inset-y-0 w-px bg-texto-suave" style={{ left: `${marcaHoy}%` }} />
                 )}
                 {plan && (
                   <span
-                    className="absolute top-1 h-2 rounded-[4px] bg-borde-fuerte/45"
+                    className="absolute top-1.5 h-2.5 rounded-[4px] bg-borde-fuerte/50"
                     style={{ left: `${plan.izquierda}%`, width: `${plan.ancho}%` }}
                   />
                 )}
                 {real && (
                   <span
-                    className={fin ? 'absolute bottom-1 h-2 rounded-[4px] bg-acento' : 'absolute bottom-1 h-2 rounded-[4px] bg-acento/45'}
+                    className={fin ? 'absolute bottom-1.5 h-2.5 rounded-[4px] bg-acento' : 'absolute bottom-1.5 h-2.5 rounded-[4px] bg-acento/45'}
                     style={{ left: `${real.izquierda}%`, width: `${real.ancho}%` }}
                   />
                 )}
@@ -86,7 +104,7 @@ export function PlanContraReal({ etapas, hoy, viva }: { etapas: FilaPlan[]; hoy:
         })}
       </div>
 
-      <div aria-hidden className="mt-2 grid grid-cols-1 sm:grid-cols-[minmax(9rem,16rem)_1fr] sm:gap-3">
+      <div aria-hidden className="mt-2 grid grid-cols-1 sm:grid-cols-[minmax(10rem,15rem)_1fr] sm:gap-3">
         <span className="hidden sm:block" />
         <div className="tabular flex justify-between text-[11px] text-texto-tenue">
           <span>{fecha(rango.desde)}</span>

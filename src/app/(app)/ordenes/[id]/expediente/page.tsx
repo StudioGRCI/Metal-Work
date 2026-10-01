@@ -162,9 +162,11 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
         Metal Work · Expediente emitido el {fechaLarga(hoy)}. Costos y avance a esa fecha.
       </p>
 
+      {/* En pastillas, como las secciones de la OT: en texto suelto se leían
+          como cuatro enlaces cualquiera y no como el índice de la hoja. */}
       <nav
         aria-label="Contenido del expediente"
-        className="-mx-4 mb-5 flex gap-x-5 overflow-x-auto px-4 text-sm whitespace-nowrap [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 print:hidden"
+        className="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 text-sm whitespace-nowrap [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 print:hidden"
       >
         {[
           ['#plan', 'Plan contra real'],
@@ -174,7 +176,11 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
           ['#entrega', 'Entrega'],
           ...(conFoto.length > 0 ? [['#fotos', 'Fotos']] : []),
         ].map(([href, titulo]) => (
-          <a key={href} href={href} className="inline-flex min-h-11 shrink-0 items-center text-acento hover:underline sm:min-h-0">
+          <a
+            key={href}
+            href={href}
+            className="inline-flex min-h-11 shrink-0 items-center rounded-full border border-borde bg-superficie px-3.5 text-texto-suave transition-colors hover:border-acento/40 hover:text-acento sm:min-h-9"
+          >
             {titulo}
           </a>
         ))}
@@ -242,6 +248,16 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
           )}
         </section>
 
+        {/* ------------------------------------------------- los hitos */}
+        {/* Van antes que los datos de la unidad: dicen en qué paso va la orden,
+            que es lo primero que se pregunta. */}
+        <Tarjeta className="no-partir">
+          <TarjetaCabecera titulo="Hitos" descripcion="Los pasos que toda carrocería recorre, con su fecha" />
+          <TarjetaCuerpo>
+            <Hitos orden={orden} expediente={expediente} />
+          </TarjetaCuerpo>
+        </Tarjeta>
+
         {/* ------------------------------------------------- la unidad */}
         <Tarjeta className="no-partir">
           <TarjetaCabecera titulo="La unidad" descripcion="Qué se fabricó y para quién" />
@@ -274,14 +290,6 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                 </div>
               )}
             </dl>
-          </TarjetaCuerpo>
-        </Tarjeta>
-
-        {/* ------------------------------------------------- los hitos */}
-        <Tarjeta className="no-partir">
-          <TarjetaCabecera titulo="Hitos" descripcion="Los pasos que toda carrocería recorre, con su fecha" />
-          <TarjetaCuerpo>
-            <Hitos orden={orden} expediente={expediente} />
           </TarjetaCuerpo>
         </Tarjeta>
 
@@ -345,43 +353,90 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
           </TarjetaCuerpo>
         </Tarjeta>
 
-        {/* ------------------------------------------------- las áreas */}
-        <Tarjeta id="areas" className="no-partir scroll-mt-20">
-          <TarjetaCabecera titulo="Avance por área" descripcion="La hoja de actividades de cada área y cuánto lleva de lo suyo" />
-          <TarjetaCuerpo className="space-y-4">
-            {expediente.areas.length === 0 ? (
-              <p className="text-sm text-texto-suave">Ninguna área armó todavía su hoja de actividades para esta orden.</p>
-            ) : (
-              <ul className="space-y-3">
-                {expediente.areas.map((a) => (
-                  <li key={a.area_codigo} className="grid grid-cols-[minmax(7rem,10rem)_1fr_auto] items-center gap-3 text-sm">
-                    <span className="text-texto">{a.area}</span>
-                    <Progreso valor={a.avance_pct} etiqueta={`Avance de ${a.area}`} />
-                    <span className="tabular w-36 text-right text-xs text-texto-suave">
-                      {porcentaje(a.avance_pct)} · {a.terminadas}/{a.actividades} actividades
-                    </span>
-                  </li>
-                ))}
-              </ul>
+        {/* El avance de cada área y las observaciones son cortos: lado a lado en
+            el monitor, uno sobre otro en el teléfono y en la hoja impresa. */}
+        <div className="grid gap-5 lg:grid-cols-2 *:min-w-0 print:grid-cols-1">
+          {/* ------------------------------------------------- las áreas */}
+          <Tarjeta id="areas" className="no-partir scroll-mt-20">
+            <TarjetaCabecera titulo="Avance por área" descripcion="La hoja de actividades de cada área y cuánto lleva de lo suyo" />
+            <TarjetaCuerpo className="space-y-4">
+              {expediente.areas.length === 0 ? (
+                <p className="text-sm text-texto-suave">Ninguna área armó todavía su hoja de actividades para esta orden.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {expediente.areas.map((a) => (
+                    <li key={a.area_codigo} className="grid grid-cols-[minmax(7rem,10rem)_1fr_auto] items-center gap-3 text-sm">
+                      <span className="text-texto">{a.area}</span>
+                      <Progreso valor={a.avance_pct} etiqueta={`Avance de ${a.area}`} />
+                      <span className="tabular w-36 text-right text-xs text-texto-suave">
+                        {porcentaje(a.avance_pct)} · {a.terminadas}/{a.actividades} actividades
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {(expediente.planos.length > 0 || expediente.materiales.length > 0) && (
+                <dl className="grid gap-x-8 border-t border-borde pt-3 sm:grid-cols-2 lg:grid-cols-1">
+                  {expediente.planos.length > 0 && (
+                    <Dato
+                      etiqueta="Planos entregados por Diseño"
+                      valor={`${expediente.planos.filter((p) => p.fecha_entrega).length} de ${expediente.planos.length}`}
+                    />
+                  )}
+                  {expediente.materiales.length > 0 && (
+                    <Dato
+                      etiqueta="Materiales despachados"
+                      valor={`${expediente.materiales.filter((m) => Number(m.cantidad_despachada ?? 0) >= Number(m.cantidad_solicitada ?? 0)).length} de ${expediente.materiales.length} líneas completas`}
+                    />
+                  )}
+                </dl>
+              )}
+            </TarjetaCuerpo>
+          </Tarjeta>
+
+          {/* --------------------------------------------- observaciones */}
+          <Tarjeta id="observaciones" className="no-partir scroll-mt-20">
+            <TarjetaCabecera
+              titulo="Observaciones"
+              descripcion={
+                observaciones.length === 0
+                  ? 'Los errores que alguien encontró en la orden'
+                  : `${observaciones.filter((o) => o.abierta).length} abiertas · ${observaciones.filter((o) => !o.abierta).length} resueltas`
+              }
+            />
+            {observaciones.length === 0 && (
+              <TarjetaCuerpo>
+                <p className="flex items-center gap-2 text-sm text-texto-suave">
+                  <CheckCircle2 aria-hidden className="size-4 shrink-0 text-exito" />
+                  Nadie levantó observaciones sobre esta orden.
+                </p>
+              </TarjetaCuerpo>
             )}
-            {(expediente.planos.length > 0 || expediente.materiales.length > 0) && (
-              <dl className="grid gap-x-8 border-t border-borde pt-3 sm:grid-cols-2">
-                {expediente.planos.length > 0 && (
-                  <Dato
-                    etiqueta="Planos entregados por Diseño"
-                    valor={`${expediente.planos.filter((p) => p.fecha_entrega).length} de ${expediente.planos.length}`}
-                  />
-                )}
-                {expediente.materiales.length > 0 && (
-                  <Dato
-                    etiqueta="Materiales despachados"
-                    valor={`${expediente.materiales.filter((m) => Number(m.cantidad_despachada ?? 0) >= Number(m.cantidad_solicitada ?? 0)).length} de ${expediente.materiales.length} líneas completas`}
-                  />
-                )}
-              </dl>
+            {observaciones.length > 0 && (
+              <TarjetaCuerpo>
+                <ul className="divide-y divide-borde">
+                  {observaciones.map((o) => (
+                    <li key={o.id} className="py-2.5 text-sm first:pt-0 last:pb-0">
+                      <p className="flex flex-wrap items-center gap-2">
+                        <Insignia tono={o.abierta ? 'aviso' : 'exito'}>{o.abierta ? 'Abierta' : 'Resuelta'}</Insignia>
+                        <span className="text-texto">{o.descripcion}</span>
+                      </p>
+                      <p className="mt-1 text-xs text-texto-tenue">
+                        Para {o.area} · {fechaHora(o.creado_en)}
+                        {o.registrado_por_nombre && ` · ${o.registrado_por_nombre}`}
+                      </p>
+                      {!o.abierta && o.resolucion && (
+                        <p className="mt-1 text-xs text-exito">
+                          Resuelta el {fecha(o.resuelta_en)}: {o.resolucion}
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </TarjetaCuerpo>
             )}
-          </TarjetaCuerpo>
-        </Tarjeta>
+          </Tarjeta>
+        </div>
 
         {/* ------------------------------------------------- el costo */}
         {expediente.costo && composicion && (
@@ -460,41 +515,6 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
           <TarjetaCuerpo>
             <Proceso expediente={expediente} eventos={eventos} />
           </TarjetaCuerpo>
-        </Tarjeta>
-
-        {/* --------------------------------------------- observaciones */}
-        <Tarjeta className="no-partir">
-          <TarjetaCabecera
-            titulo="Observaciones"
-            descripcion={
-              observaciones.length === 0
-                ? 'Nadie levantó observaciones sobre esta orden'
-                : `${observaciones.filter((o) => o.abierta).length} abiertas · ${observaciones.filter((o) => !o.abierta).length} resueltas`
-            }
-          />
-          {observaciones.length > 0 && (
-            <TarjetaCuerpo>
-              <ul className="divide-y divide-borde">
-                {observaciones.map((o) => (
-                  <li key={o.id} className="py-2.5 text-sm first:pt-0 last:pb-0">
-                    <p className="flex flex-wrap items-center gap-2">
-                      <Insignia tono={o.abierta ? 'aviso' : 'exito'}>{o.abierta ? 'Abierta' : 'Resuelta'}</Insignia>
-                      <span className="text-texto">{o.descripcion}</span>
-                    </p>
-                    <p className="mt-1 text-xs text-texto-tenue">
-                      Para {o.area} · {fechaHora(o.creado_en)}
-                      {o.registrado_por_nombre && ` · ${o.registrado_por_nombre}`}
-                    </p>
-                    {!o.abierta && o.resolucion && (
-                      <p className="mt-1 text-xs text-exito">
-                        Resuelta el {fecha(o.resuelta_en)}: {o.resolucion}
-                      </p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </TarjetaCuerpo>
-          )}
         </Tarjeta>
 
         {/* ------------------------------------------------- la entrega */}
@@ -614,15 +634,28 @@ function Hitos({ orden, expediente }: { orden: OrdenParaHitos; expediente: Exped
     { titulo: 'Acta de entrega', cuando: expediente.acta?.fecha_entrega ?? null, detalle: expediente.acta?.numero ?? undefined },
     { titulo: 'Salida de planta', cuando: expediente.salida?.creado_en ?? expediente.acta?.salida_confirmada_en ?? null },
   ]
+  // En el monitor, una línea de tiempo: cada paso unido al anterior, en verde
+  // el tramo que ya se recorrió. En el teléfono, una lista en dos columnas.
   return (
-    <ol className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
-      {hitos.map((h) => (
-        <li key={h.titulo} className="flex items-start gap-2.5">
-          {h.cuando ? (
-            <CheckCircle2 aria-hidden className="mt-0.5 size-5 shrink-0 text-exito" />
-          ) : (
-            <Circle aria-hidden className="mt-0.5 size-5 shrink-0 text-texto-tenue" />
+    <ol className="grid gap-x-4 gap-y-4 sm:grid-cols-2 lg:flex lg:gap-0">
+      {hitos.map((h, i) => (
+        <li key={h.titulo} className="relative flex items-start gap-2.5 lg:flex-1 lg:flex-col lg:items-center lg:gap-2 lg:px-2 lg:text-center">
+          {i > 0 && (
+            <span
+              aria-hidden
+              className={cn(
+                'absolute top-2.5 right-1/2 hidden h-0.5 w-full -translate-y-1/2 lg:block',
+                hitos[i - 1].cuando && h.cuando ? 'bg-exito' : 'bg-borde',
+              )}
+            />
           )}
+          <span className="relative z-10 shrink-0 rounded-full bg-superficie">
+            {h.cuando ? (
+              <CheckCircle2 aria-hidden className="size-5 text-exito" />
+            ) : (
+              <Circle aria-hidden className="size-5 text-texto-tenue" />
+            )}
+          </span>
           <span className="min-w-0">
             <span className={cn('block text-sm', h.cuando ? 'font-medium text-texto' : 'text-texto-suave')}>
               {h.titulo}

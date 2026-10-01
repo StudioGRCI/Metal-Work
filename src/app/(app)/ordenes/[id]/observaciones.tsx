@@ -6,7 +6,6 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { Observacion } from '@/lib/datos/observaciones'
 import { useEnvio } from '@/lib/envio'
 import { fechaHora } from '@/lib/format'
@@ -30,8 +29,12 @@ function Falla({ texto }: { texto: string | null }) {
 /**
  * Los errores que alguien encontró en la orden (migración 106). Cada uno va a
  * un área, le avisa a esa área y al jefe de producción, y queda abierto hasta
- * que se resuelve diciendo qué se hizo. Va arriba del resumen: lo que está mal
- * es lo primero que hay que ver al abrir la orden.
+ * que se resuelve diciendo qué se hizo.
+ *
+ * Desde el 2026-10-01 no es una tarjeta propia: va dentro de la tarjeta de la
+ * orden, junto a su PDF, que es de lo que habla («si encuentras un error en la
+ * orden…»). Las abiertas quedan a la vista; las resueltas, plegadas, porque ya
+ * son historia y empujaban hacia abajo lo que sí falta.
  */
 export function Observaciones({
   ordenId,
@@ -51,69 +54,76 @@ export function Observaciones({
   preseleccion?: { areaCodigo: string; texto: string } | null
 }) {
   const [anotando, setAnotando] = useState(Boolean(preseleccion && puedeAnotar))
-  const abiertas = observaciones.filter((o) => o.abierta).length
+  const abiertas = observaciones.filter((o) => o.abierta)
+  const resueltas = observaciones.filter((o) => !o.abierta)
   const areaPreseleccionada = preseleccion ? (areas.find((a) => a.codigo === preseleccion.areaCodigo)?.id ?? '') : ''
 
-  // Sin ninguna, una sola línea: una tarjeta grande que dice «no hay nada»
-  // empujaba hacia abajo lo que sí se viene a mirar.
-  if (observaciones.length === 0 && !anotando) {
-    return (
-      <Tarjeta className="lg:col-span-2" id="observaciones">
-        <TarjetaCuerpo className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3">
-          <p className="flex min-w-0 flex-1 basis-60 items-start gap-2 text-sm text-texto-suave">
-            <CheckCircle2 aria-hidden className="mt-0.5 size-4 shrink-0 text-exito" />
-            <span>
-              <span className="font-medium text-texto">Sin observaciones.</span>{' '}
-              {puedeAnotar && 'Si encuentras un error en la orden, anótalo y se le avisa al área.'}
-            </span>
-          </p>
-          {puedeAnotar && (
-            <Boton variante="secundario" tamano="sm" onClick={() => setAnotando(true)}>
-              <Plus aria-hidden className="size-3.5" />
-              Anotar observación
-            </Boton>
-          )}
-        </TarjetaCuerpo>
-      </Tarjeta>
-    )
-  }
-
   return (
-    <Tarjeta className="scroll-mt-20 lg:col-span-2" id="observaciones">
-      <TarjetaCabecera
-        titulo={abiertas > 0 ? `Observaciones · ${abiertas} ${abiertas === 1 ? 'abierta' : 'abiertas'}` : 'Observaciones'}
-        descripcion="Un error o un pendiente que alguien encontró en la orden. Va al área responsable y a Supervisión, y queda abierto hasta que se resuelve."
-        acciones={
-          puedeAnotar && !anotando ? (
-            <Boton variante="secundario" tamano="sm" onClick={() => setAnotando(true)}>
-              <Plus aria-hidden className="size-3.5" />
-              Anotar observación
-            </Boton>
-          ) : null
-        }
-      />
-      <TarjetaCuerpo className="space-y-3">
-        {anotando && (
-          <NuevaObservacion
-            ordenId={ordenId}
-            areas={areas}
-            areaInicial={areaPreseleccionada}
-            textoInicial={preseleccion?.texto ?? ''}
-            alCerrar={() => setAnotando(false)}
-          />
+    <section id="observaciones" aria-labelledby="observaciones-titulo" className="scroll-mt-24 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 id="observaciones-titulo" className="flex items-center gap-2 text-sm font-semibold text-texto">
+          Observaciones
+          {abiertas.length > 0 && (
+            <Insignia tono="aviso">
+              {abiertas.length} {abiertas.length === 1 ? 'abierta' : 'abiertas'}
+            </Insignia>
+          )}
+        </h3>
+        {puedeAnotar && !anotando && (
+          <Boton variante="secundario" tamano="sm" onClick={() => setAnotando(true)}>
+            <Plus aria-hidden className="size-3.5" />
+            Anotar observación
+          </Boton>
         )}
+      </div>
 
-        {observaciones.length > 0 && (
-          <ul className="space-y-3">
-            {observaciones.map((o) => (
+      {anotando && (
+        <NuevaObservacion
+          ordenId={ordenId}
+          areas={areas}
+          areaInicial={areaPreseleccionada}
+          textoInicial={preseleccion?.texto ?? ''}
+          alCerrar={() => setAnotando(false)}
+        />
+      )}
+
+      {abiertas.length === 0 && !anotando && (
+        <p className="flex items-start gap-2 text-sm text-texto-suave">
+          <CheckCircle2 aria-hidden className="mt-0.5 size-4 shrink-0 text-exito" />
+          <span>
+            <span className="font-medium text-texto">
+              {resueltas.length > 0 ? 'Sin observaciones abiertas.' : 'Sin observaciones.'}
+            </span>{' '}
+            {puedeAnotar && 'Si encuentras un error en la orden, anótalo y se le avisa al área.'}
+          </span>
+        </p>
+      )}
+
+      {abiertas.length > 0 && (
+        <ul className="space-y-3">
+          {abiertas.map((o) => (
+            <li key={o.id}>
+              <ItemObservacion ordenId={ordenId} observacion={o} />
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {resueltas.length > 0 && (
+        <details className="group rounded-[var(--radius-base)] border border-borde">
+          <summary className="cursor-pointer px-3 py-2 text-sm text-texto-suave hover:text-texto">
+            {resueltas.length === 1 ? 'Ver la observación resuelta' : `Ver las ${resueltas.length} observaciones resueltas`}
+          </summary>
+          <ul className="space-y-3 border-t border-borde p-3">
+            {resueltas.map((o) => (
               <li key={o.id}>
                 <ItemObservacion ordenId={ordenId} observacion={o} />
               </li>
             ))}
           </ul>
-        )}
-      </TarjetaCuerpo>
-    </Tarjeta>
+        </details>
+      )}
+    </section>
   )
 }
 
@@ -185,12 +195,16 @@ function ItemObservacion({ ordenId, observacion: o }: { ordenId: string; observa
           : 'space-y-2 rounded-[var(--radius-base)] border border-borde p-3'
       }
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <Insignia tono={o.abierta ? 'aviso' : 'exito'}>{o.abierta ? 'Abierta' : 'Resuelta'}</Insignia>
-        <span className="text-sm font-medium text-texto">Para {o.area}</span>
-        <span className="text-[11px] text-texto-tenue">
-          · {o.registrado_por_nombre ?? 'Alguien del taller'} · {fechaHora(o.creado_en)}
-        </span>
+      {/* Quién y cuándo, en su propia línea: junto al PDF la columna es
+          angosta y, en la misma línea, el «·» quedaba suelto al empezar. */}
+      <div>
+        <p className="flex flex-wrap items-center gap-2">
+          <Insignia tono={o.abierta ? 'aviso' : 'exito'}>{o.abierta ? 'Abierta' : 'Resuelta'}</Insignia>
+          <span className="text-sm font-medium text-texto">Para {o.area}</span>
+        </p>
+        <p className="mt-1 text-[11px] text-texto-tenue">
+          {o.registrado_por_nombre ?? 'Alguien del taller'} · {fechaHora(o.creado_en)}
+        </p>
       </div>
 
       <p className="flex items-start gap-1.5 text-sm whitespace-pre-wrap text-texto">

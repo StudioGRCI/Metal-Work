@@ -38,7 +38,6 @@ const ordenId = await primero(
   "select id from public.ordenes_trabajo where estado <> 'BORRADOR' order by numero limit 1",
 )
 const clienteId = await primero('select id from public.clientes order by razon_social limit 1')
-const cotizacionId = await primero('select id from public.cotizaciones limit 1')
 const flotaId = await primero('select id from public.flota_unidades order by ingreso desc limit 1')
 const plantillaId = await primero(
   'select id from public.plantillas_ficha where activa order by nombre limit 1',
@@ -52,6 +51,8 @@ const RUTAS = [
   ['orden-nueva', '/ordenes/nueva'],
   ordenId && ['orden-detalle', `/ordenes/${ordenId}`],
   ordenId && ['orden-planos', `/ordenes/${ordenId}/planos`],
+  ordenId && ['orden-etapas', `/ordenes/${ordenId}?vista=etapas`],
+  ordenId && ['orden-expediente', `/ordenes/${ordenId}/expediente`],
   ['clientes', '/clientes'],
   ['cliente-nuevo', '/clientes/nuevo'],
   clienteId && ['cliente-detalle', `/clientes/${clienteId}`],
@@ -59,11 +60,9 @@ const RUTAS = [
   ['unidades', '/unidades'],
   ['carrocerias', '/carrocerias'],
   plantillaId && ['carroceria-detalle', `/carrocerias/${plantillaId}`],
-  ['cotizaciones', '/cotizaciones'],
-  ['cotizacion-nueva', '/cotizaciones/nueva'],
-  cotizacionId && ['cotizacion-detalle', `/cotizaciones/${cotizacionId}`],
+  // La cotización pasó a PDF: las pantallas de cotización armada y su tabla
+  // ya no existen, y el recorrido se caía buscándolas.
   ['cotizacion-pdf', '/cotizaciones/pdf'],
-  ['cotizacion-trabajo', '/cotizaciones/trabajo'],
   ['avance-taller', '/avance'],
   ['avance-abrir-orden', '/avance/abrir-orden'],
   ordenId && ['avance-unidad', `/avance/${ordenId}`],

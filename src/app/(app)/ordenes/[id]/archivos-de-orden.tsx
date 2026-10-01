@@ -2,7 +2,7 @@
 
 import { FileSpreadsheet, FileText, FileUp, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useRef, useState, useTransition } from 'react'
+import { useRef, useState, useTransition, type ReactNode } from 'react'
 
 import { BASE_BOTON, TAMANOS, VARIANTES } from '@/components/ui/boton'
 import { Boton } from '@/components/ui/boton'
@@ -31,19 +31,25 @@ function tamano(bytes: number | null) {
 }
 
 /**
- * Los archivos de la orden (migración 099): el PDF de la orden de trabajo —el
- * de la oficina o el del cliente— para tenerlo a mano en el taller, y el Excel
- * del cronograma si se guardó al cargarlo. Es un lugar para el papel, no un
- * repositorio: lo que se reporta sigue siendo la hoja de cada área.
+ * La orden de trabajo en papel (migración 099): el PDF —el de la oficina o el
+ * del cliente— para tenerlo a mano en el taller, y el Excel del cronograma si
+ * se guardó al cargarlo. Es un lugar para el papel, no un repositorio: lo que
+ * se reporta sigue siendo la hoja de cada área.
+ *
+ * Debajo van las observaciones de la orden (`children`): un error que alguien
+ * encontró en la orden se lee junto al documento que lo tiene (pedido de la
+ * empresa, 2026-10-01).
  */
 export function ArchivosDeOrden({
   ordenId,
   adjuntos,
   puedeSubir,
+  children,
 }: {
   ordenId: string
   adjuntos: AdjuntoEnPantalla[]
   puedeSubir: boolean
+  children?: ReactNode
 }) {
   const router = useRouter()
   const [subiendo, setSubiendo] = useState(false)
@@ -77,8 +83,8 @@ export function ArchivosDeOrden({
   return (
     <Tarjeta>
       <TarjetaCabecera
-        titulo="Archivos de la orden"
-        descripcion="El PDF de la orden de trabajo, de la oficina o del cliente, y el Excel del cronograma. Para tenerlos a mano en el taller."
+        titulo="Orden de trabajo"
+        descripcion="El PDF de la orden para tenerlo a mano en el taller, y lo que alguien encontró mal en ella."
         acciones={
           puedeSubir && (
             <label
@@ -106,10 +112,10 @@ export function ArchivosDeOrden({
           )
         }
       />
-      <TarjetaCuerpo className="space-y-3">
+      <TarjetaCuerpo className="space-y-4">
         {adjuntos.length === 0 ? (
           <p className="text-sm text-texto-suave">
-            Todavía no hay archivos.{' '}
+            Todavía no se subió el PDF de la orden.{' '}
             {puedeSubir
               ? `Sube el PDF de la orden con el botón de arriba (hasta ${MAXIMO_ADJUNTO_MB} MB).`
               : 'Los sube la oficina o el supervisor.'}
@@ -132,6 +138,8 @@ export function ArchivosDeOrden({
             {aviso}
           </p>
         )}
+
+        {children && <div className="border-t border-borde pt-4">{children}</div>}
       </TarjetaCuerpo>
     </Tarjeta>
   )

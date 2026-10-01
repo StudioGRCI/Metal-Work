@@ -1,7 +1,6 @@
 'use client'
 
-import { CalendarDays } from 'lucide-react'
-import Link from 'next/link'
+import { CalendarDays, Pencil } from 'lucide-react'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
@@ -13,6 +12,7 @@ import { ESTADO_ETAPA, definir } from '@/lib/dominio/estados'
 import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
 import { cantidad, fecha } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
+import { cn } from '@/lib/utils'
 import type { Vistas } from '@/types/database'
 
 import { definirEtapas, programarEtapa } from './acciones-etapas'
@@ -42,6 +42,9 @@ export function Etapas({
   puedeProgramar: boolean
 }) {
   const [programando, setProgramando] = useState<string | null>(null)
+  // Corregir o agregar etapas reemplaza la lista por el formulario: las dos a
+  // la vez repetían cada etapa en pantalla.
+  const [editando, setEditando] = useState(false)
 
   if (etapas.length === 0 && !puedeDefinir) {
     return (
@@ -56,114 +59,129 @@ export function Etapas({
   }
 
   const vencidas = etapas.filter((e) => programaDeEtapa(e, hoy).vencida).length
+  const terminadas = etapas.filter((e) => e.estado === 'TERMINADA').length
 
+  // Los avisos de quién hace qué («Diseño puede vincular cada plano…»,
+  // «Programa el inicio y fin…») se retiraron el 2026-10-01: confundían más de
+  // lo que ayudaban. Lo dicen los botones de cada uno.
   return (
     <Tarjeta>
       <TarjetaCabecera
         titulo="Etapas de producción"
         descripcion={etapas.length === 0
           ? 'Diseño define las etapas y sus porcentajes. Administración programa las fechas después.'
-          : esNueva
-            ? 'El avance sale de los reportes de tareas y revisiones de planos; las fechas controlan los plazos.'
-            : 'Esta OT conserva su plan histórico: el avance se pondera por las horas estimadas de cada etapa.'}
-        acciones={vencidas > 0 ? <Insignia tono="peligro">{vencidas} {vencidas === 1 ? 'vencida' : 'vencidas'}</Insignia> : null}
+          : `${etapas.length} ${etapas.length === 1 ? 'etapa' : 'etapas'} · ${terminadas} ${terminadas === 1 ? 'terminada' : 'terminadas'}. ${esNueva
+            ? 'El avance sale de los reportes de tareas y de las revisiones de planos.'
+            : 'Esta OT conserva su plan histórico: el avance se pondera por las horas estimadas de cada etapa.'}`}
+        acciones={
+          <div className="flex flex-wrap items-center gap-2">
+            {vencidas > 0 && <Insignia tono="peligro">{vencidas} {vencidas === 1 ? 'vencida' : 'vencidas'}</Insignia>}
+            {puedeDefinir && etapas.length > 0 && !editando && (
+              <Boton variante="secundario" tamano="sm" onClick={() => setEditando(true)}>
+                <Pencil aria-hidden className="size-3.5" />
+                Editar o agregar etapa
+              </Boton>
+            )}
+          </div>
+        }
       />
       <TarjetaCuerpo className="space-y-3 p-3 sm:p-4">
-        {etapas.length > 0 && puedeDefinir && <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
-          Etapas definidas. Diseño puede vincular cada plano a cualquiera de ellas en <Link href={`/ordenes/${ordenId}/planos`} className="font-medium text-acento underline">Planos y revisiones</Link>; Administración pondrá las fechas.
-        </p>}
-        {etapas.length > 0 && puedeProgramar && <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
-          Programa el inicio y fin de cada etapa con su botón «Programar».
-        </p>}
-        {/* Sin etapas, definirlas es el trabajo de la pestaña y va arriba; con
-            etapas, corregirlas es mantenimiento y va debajo de la lista. */}
-        {puedeDefinir && etapas.length === 0 && (
+        {puedeDefinir && (etapas.length === 0 || editando) ? (
           <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-4 sm:p-5">
-            <FormularioDefinicion ordenId={ordenId} areas={areas} etapas={[]} conversion={!esNueva}
-              actividadesPorVincular={actividadesPorVincular} />
+            <FormularioDefinicion ordenId={ordenId} areas={areas} etapas={etapas}
+              conversion={etapas.length === 0 && !esNueva}
+              actividadesPorVincular={etapas.length === 0 ? actividadesPorVincular : []}
+              alTerminar={etapas.length > 0 ? () => setEditando(false) : undefined}
+              alCancelar={etapas.length > 0 ? () => setEditando(false) : undefined} />
           </div>
-        )}
-        {etapas.map((etapa) => {
-          const estado = definir(ESTADO_ETAPA, etapa.estado)
-          const programa = programaDeEtapa(etapa, hoy)
+        ) : (
+          <ol className="space-y-2">
+            {etapas.map((etapa) => {
+              const estado = definir(ESTADO_ETAPA, etapa.estado)
+              const programa = programaDeEtapa(etapa, hoy)
+              const area = etapa.area_id ? areas.find((a) => a.id === etapa.area_id)?.nombre ?? 'Área asignada' : null
+              const abierta = programando === etapa.etapa_id
 
-          return (
-            <div
-              key={etapa.etapa_id}
-              id={`etapa-${etapa.etapa_id}`}
-              className="scroll-mt-20 rounded-[var(--radius-base)] border border-borde p-3"
-            >
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="tabular w-6 shrink-0 text-xs text-texto-tenue">
-                  {etapa.orden_secuencia}
-                </span>
-
-                <div className="min-w-40 flex-1">
-                  <p className="flex items-center gap-2 text-sm font-medium text-texto">
-                    {etapa.etapa}
-                  </p>
-                  <p className="text-[11px] text-texto-suave">
-                    {cantidad(etapa.horas_estimadas)} h estimadas
-                    {etapa.area_id && ` · ${areas.find((a) => a.id === etapa.area_id)?.nombre ?? 'Área asignada'}`}
-                    {etapa.peso_pct !== null && ` · peso ${cantidad(etapa.peso_pct)} %`}
-                    {etapa.fecha_fin_real && ` · terminada el ${fecha(etapa.fecha_fin_real)}`}
-                  </p>
-                  {(programa.inicio || programa.fin) && (
-                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-texto-suave">
-                      <CalendarDays aria-hidden className="size-3 shrink-0" />
-                      <span className="tabular">
-                        {fecha(programa.inicio) ?? '—'} → {fecha(programa.fin) ?? '—'}
-                      </span>
-                      {programa.vencida && <Insignia tono="peligro">Vencida</Insignia>}
-                      {programa.tocaAhora && <Insignia tono="aviso">Toca ahora</Insignia>}
-                    </p>
+              return (
+                <li
+                  key={etapa.etapa_id}
+                  id={`etapa-${etapa.etapa_id}`}
+                  className={cn(
+                    'scroll-mt-20 rounded-[var(--radius-base)] border p-3 sm:p-4',
+                    programa.vencida ? 'border-peligro/40' : 'border-borde',
                   )}
-                </div>
+                >
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+                    <span className="tabular grid size-7 shrink-0 place-items-center rounded-full bg-superficie-2 text-xs font-semibold text-texto-suave">
+                      {etapa.orden_secuencia}
+                    </span>
 
-                {/* La barra ocupa la línea entera en el teléfono, donde si no
-                    se queda apretada entre el nombre y la insignia; en el
-                    monitor vuelve a sus 160 px de siempre. */}
-                <div className="w-full sm:w-40">
-                  <Progreso valor={etapa.avance_porcentaje} mostrarValor alto="sm" />
-                </div>
+                    <div className="min-w-0 flex-1 basis-56">
+                      <p className="text-sm font-medium text-texto">{etapa.etapa}</p>
+                      <p className="mt-0.5 text-xs text-texto-suave">
+                        {[
+                          area,
+                          etapa.peso_pct !== null ? `${cantidad(etapa.peso_pct)} % del avance` : null,
+                          // Las horas solo pesan en el plan histórico; en las OT
+                          // nuevas valen 0 y decirlo era ruido.
+                          Number(etapa.horas_estimadas ?? 0) > 0 ? `${cantidad(etapa.horas_estimadas)} h estimadas` : null,
+                          etapa.fecha_fin_real ? `terminada el ${fecha(etapa.fecha_fin_real)}` : null,
+                        ].filter(Boolean).join(' · ')}
+                      </p>
+                      <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-texto-suave">
+                        <CalendarDays aria-hidden className="size-3.5 shrink-0" />
+                        {programa.inicio || programa.fin ? (
+                          <span className="tabular">{fecha(programa.inicio) ?? '—'} → {fecha(programa.fin) ?? '—'}</span>
+                        ) : (
+                          <span className="text-texto-tenue">Sin fechas programadas</span>
+                        )}
+                        {programa.vencida && <Insignia tono="peligro">Vencida</Insignia>}
+                        {programa.tocaAhora && <Insignia tono="aviso">Toca ahora</Insignia>}
+                      </p>
+                    </div>
 
-                <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+                    {/* La barra ocupa la línea entera en el teléfono, donde si no
+                        se queda apretada entre el nombre y la insignia. */}
+                    <div className="flex w-full items-center gap-3 sm:w-auto">
+                      <Progreso valor={etapa.avance_porcentaje} mostrarValor alto="sm" className="flex-1 sm:w-44 sm:flex-none" />
+                      <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+                    </div>
 
-                {puedeProgramar && (
-                  <Boton variante="fantasma" tamano="sm"
-                    onClick={() => setProgramando(programando === etapa.etapa_id ? null : etapa.etapa_id)}
-                    aria-expanded={programando === etapa.etapa_id}>
-                    {programando === etapa.etapa_id ? 'Cerrar fechas' : 'Programar'}
-                  </Boton>
-                )}
-              </div>
+                    {puedeProgramar && (
+                      <Boton variante={abierta ? 'fantasma' : 'secundario'} tamano="sm"
+                        onClick={() => setProgramando(abierta ? null : etapa.etapa_id)}
+                        aria-expanded={abierta}>
+                        {abierta ? 'Cerrar' : programa.inicio || programa.fin ? 'Cambiar fechas' : 'Programar fechas'}
+                      </Boton>
+                    )}
+                  </div>
 
-              {programando === etapa.etapa_id && (
-                <FormularioProgramacion ordenId={ordenId} etapa={etapa}
-                  alTerminar={() => setProgramando(null)} />
-              )}
-            </div>
-          )
-        })}
-        {puedeDefinir && etapas.length > 0 && (
-          <details className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-3 sm:p-4">
-            <summary className="cursor-pointer text-sm font-medium text-texto">Editar etapas de la OT</summary>
-            <FormularioDefinicion ordenId={ordenId} areas={areas}
-              etapas={etapas} conversion={false} actividadesPorVincular={[]} />
-          </details>
+                  {abierta && (
+                    <FormularioProgramacion ordenId={ordenId} etapa={etapa}
+                      alTerminar={() => setProgramando(null)} />
+                  )}
+                </li>
+              )
+            })}
+          </ol>
         )}
       </TarjetaCuerpo>
     </Tarjeta>
   )
 }
-function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesPorVincular }: {
+function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesPorVincular, alTerminar, alCancelar }: {
   ordenId: string
   areas: Area[]
   etapas: Etapa[]
   conversion: boolean
   actividadesPorVincular: ActividadPorVincular[]
+  /** Guardadas las etapas, vuelve a la lista. */
+  alTerminar?: () => void
+  /** Sin cambios, vuelve a la lista. */
+  alCancelar?: () => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(definirEtapas)
+  const { alEnviar, enviando, error } = useEnvio(definirEtapas, alTerminar)
+  const corrigiendo = etapas.length > 0
   const [seleccion, setSeleccion] = useState(() => etapas
     .filter((e) => e.etapa_id !== null)
     .map((e) => ({ id: e.etapa_id!, nombre: e.etapa ?? '', area: e.area_id ?? '', peso: e.peso_pct ?? 0,
@@ -197,8 +215,12 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
       <input type="hidden" name="orden_id" value={ordenId} />
       {conversion && <input type="hidden" name="conversion" value="1" />}
       <div>
-        <h3 className="text-base font-semibold text-texto">Definir etapas de esta OT</h3>
-        <p className="mt-1 text-sm text-texto-suave">Crea cada etapa con su área responsable y reparte el 100 % del avance. Administración añadirá las fechas.</p>
+        <h3 className="text-base font-semibold text-texto">{corrigiendo ? 'Editar o agregar etapas' : 'Definir etapas de esta OT'}</h3>
+        <p className="mt-1 text-sm text-texto-suave">
+          {corrigiendo
+            ? 'Cambia el nombre, el área o el peso de cada etapa, o agrega otra. Entre todas reparten el 100 % del avance; una etapa con avance no se quita.'
+            : 'Crea cada etapa con su área responsable y reparte el 100 % del avance. Administración añadirá las fechas.'}
+        </p>
       </div>
       {seleccion.length === 0 && <div className="rounded-[var(--radius-base)] border border-dashed border-borde-fuerte bg-superficie px-4 py-6 text-center">
         <p className="text-sm font-medium text-texto">Aún no hay etapas</p>
@@ -260,10 +282,17 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
         <ul className="mt-1 list-inside list-disc space-y-1">{bloqueos.map((bloqueo) => <li key={bloqueo}>{bloqueo}</li>)}</ul>
       </div>}
       {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
-      <Boton type="submit" tamano="sm" cargando={enviando}
-        disabled={bloqueos.length > 0}>
-        Guardar etapas
-      </Boton>
+      <div className="flex flex-wrap gap-2">
+        <Boton type="submit" tamano="sm" cargando={enviando}
+          disabled={bloqueos.length > 0}>
+          Guardar etapas
+        </Boton>
+        {alCancelar && (
+          <Boton type="button" variante="fantasma" tamano="sm" onClick={alCancelar} disabled={enviando}>
+            Cancelar
+          </Boton>
+        )}
+      </div>
     </form>
   )
 }

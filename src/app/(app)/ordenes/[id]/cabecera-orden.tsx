@@ -88,10 +88,14 @@ export function CabeceraDeOrden({ orden, perfil, vista, secciones, contadores, c
           <span className="flex flex-wrap items-center gap-3">
             {orden.numero}
             <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
-            <span className="flex items-center gap-1 text-xs font-normal text-texto-suave">
-              <Punto tono={prioridad.tono} />
-              {prioridad.etiqueta}
-            </span>
+            {/* «Normal» es lo de casi todas: decirlo en cada orden es ruido.
+                Se dice cuando se sale de lo normal. */}
+            {orden.prioridad !== 'NORMAL' && (
+              <span className="flex items-center gap-1 text-xs font-normal text-texto-suave">
+                <Punto tono={prioridad.tono} />
+                {prioridad.etiqueta}
+              </span>
+            )}
           </span>
         }
         descripcion={
@@ -102,8 +106,15 @@ export function CabeceraDeOrden({ orden, perfil, vista, secciones, contadores, c
             {cliente?.razon_social && (
               <span className="block font-medium text-texto">{cliente.razon_social}</span>
             )}
-            <span className="block">
-              {[unidad ? nombreDeUnidad(unidad) : null, orden.descripcion].filter(Boolean).join(' · ')}
+            {/* El código de la unidad aparte del texto: es lo que se busca y se
+                dicta en el taller, y pegado a la descripción se perdía. */}
+            <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+              {unidad && (
+                <span className="tabular rounded-[var(--radius-base)] bg-superficie-2 px-1.5 py-0.5 text-xs font-medium text-texto">
+                  {nombreDeUnidad(unidad)}
+                </span>
+              )}
+              {orden.descripcion && <span>{orden.descripcion}</span>}
             </span>
           </>
         }

@@ -1,8 +1,4 @@
-import Link from 'next/link'
-
-import { Punto } from '@/components/ui/etiqueta-estado'
 import type { Tono } from '@/components/ui/etiqueta-estado'
-import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { PendientesOrden } from '@/lib/datos/pendientes-ot'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 
@@ -18,6 +14,10 @@ function plural(n: number, uno: string, varios: string) {
  * Qué le toca a quien mira, según su puesto, y cuántos pendientes lleva cada
  * pestaña. Es la misma lógica de permisos que decide qué botones se ven: a
  * quien no puede resolver algo no se le cuenta como suyo.
+ *
+ * Los contadores numeran las pestañas de la OT. La franja «Siguiente paso para
+ * ti» que pintaba los `items` arriba del resumen se retiró el 2026-10-01: la
+ * empresa la encontró invasiva, y lo pendiente ya lo dicen esos números.
  */
 export function queMeToca(
   perfil: PerfilSesion,
@@ -119,30 +119,4 @@ export function queMeToca(
   }
 
   return { items, contadores: { resumen: obs, planos, materiales, actividades } }
-}
-
-/** La franja de arriba: lo que le toca hacer a quien mira, con el enlace a su pestaña. */
-export function TeToca({ ordenId, items }: { ordenId: string; items: Pendiente[] }) {
-  if (items.length === 0) return null
-
-  return (
-    <Tarjeta className="border-acento/40">
-      <TarjetaCuerpo className="py-3">
-        <p className="text-[11px] font-medium tracking-wide text-texto-suave uppercase">Siguiente paso para ti</p>
-        <ul className="mt-1 flex flex-wrap gap-x-5 gap-y-1">
-          {items.map((i) => (
-            <li key={`${i.vista}-${i.texto}`}>
-              <Link
-                href={i.vista === 'planos' ? `/ordenes/${ordenId}/planos` : `/ordenes/${ordenId}?vista=${i.vista}`}
-                className="inline-flex min-h-11 items-center gap-1.5 text-sm text-texto hover:text-acento hover:underline sm:min-h-0"
-              >
-                <Punto tono={i.tono} />
-                {i.texto}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </TarjetaCuerpo>
-    </Tarjeta>
-  )
 }
