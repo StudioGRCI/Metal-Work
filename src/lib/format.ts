@@ -107,6 +107,14 @@ export function periodo(valor: string | null | undefined) {
   return partes ? `${partes[2]}/${partes[1]}` : '—'
 }
 
+/** El mes de un periodo con su año, «setiembre de 2026». Una fecha sin hora se lee tal cual, sin correrla de día. */
+export function mesLargo(valor: string | null | undefined) {
+  const partes = valor ? /^(\d{4})-(\d{2})/.exec(valor.trim()) : null
+  if (!partes) return '—'
+  const d = new Date(`${partes[1]}-${partes[2]}-15T12:00:00`)
+  return espaciosNormales(d.toLocaleDateString('es-PE', { timeZone: ZONA, month: 'long', year: 'numeric' }))
+}
+
 export function fechaLarga(valor: string | Date | null | undefined) {
   if (!valor) return '—'
   // Igual que en fecha(): un día del calendario se lee tal cual.

@@ -2,7 +2,7 @@ import 'server-only'
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
-import { hoyLima } from '@/lib/format'
+import { hoyLima, mesLargo } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -282,6 +282,79 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
+  // Sin etapas con fecha no hay plan contra real, ni Control de plazos, ni
+  // avance que medir: Diseño las define y Administración las programa. Las dos
+  // cuentas salen de la misma lectura.
+  const planDeEtapas = (() => {
+    let lectura: Promise<{ sinEtapas: number; sinProgramar: number }> | null = null
+    return () =>
+      (lectura ??= (async () => {
+        const { data: ordenes, error } = await supabase
+          .from('ordenes_trabajo')
+          .select('id')
+          .in('estado', [...ESTADOS_ACTIVOS_OT])
+          .eq('plan_etapas_manual', true)
+          .limit(500)
+        if (error) throw new Error('No se pudieron leer las órdenes.')
+        const ids = (ordenes ?? []).map((o) => o.id)
+        if (ids.length === 0) return { sinEtapas: 0, sinProgramar: 0 }
+        const { data: etapas, error: errorEtapas } = await supabase
+          .from('ot_etapas')
+          .select('orden_id, estado, fecha_inicio_programada, fecha_fin_programada')
+          .in('orden_id', ids)
+        if (errorEtapas) throw new Error('No se pudieron leer las etapas.')
+        const conEtapas = new Set((etapas ?? []).map((e) => e.orden_id))
+        const sinProgramar = new Set(
+          (etapas ?? [])
+            .filter((e) => e.estado !== 'OMITIDA' && (!e.fecha_inicio_programada || !e.fecha_fin_programada))
+            .map((e) => e.orden_id),
+        )
+        return { sinEtapas: ids.filter((id) => !conEtapas.has(id)).length, sinProgramar: sinProgramar.size }
+      })())
+  })()
+
+  if (puede(perfil, 'diseno.planos')) {
+    tareas.push({
+      clave: 'ot_sin_etapas',
+      ruta: '/ordenes?estado=ABIERTAS',
+      tono: 'aviso',
+      texto: (n) => plural(n, 'orden sin etapas definidas', 'órdenes sin etapas definidas'),
+      contar: async () => (await planDeEtapas()).sinEtapas,
+    })
+  }
+
+  if (puede(perfil, 'ordenes.editar')) {
+    tareas.push({
+      clave: 'etapas_sin_programar',
+      ruta: '/ordenes?estado=ABIERTAS',
+      tono: 'aviso',
+      texto: (n) => plural(n, 'orden con etapas sin programar', 'órdenes con etapas sin programar'),
+      contar: async () => (await planDeEtapas()).sinProgramar,
+    })
+  }
+
+  // La mano de obra de cada carrocería entra cuando RR. HH. cierra la planilla
+  // del mes y la reparte: mientras tanto, el costo de todas las OT sale corto.
+  if (puede(perfil, 'rrhh.gestionar_planillas')) {
+    const mesAnterior = primerDiaDelMesAnterior(hoy)
+    tareas.push({
+      clave: 'planilla_por_cerrar',
+      ruta: '/rrhh',
+      tono: 'aviso',
+      texto: (n) => `${n} planilla de taller de ${mesLargo(mesAnterior)} por cerrar y repartir`,
+      contar: async () => {
+        const { count, error } = await supabase
+          .from('planillas')
+          .select('id', { count: 'exact', head: true })
+          .eq('tipo', 'TALLER')
+          .eq('periodo', mesAnterior)
+          .eq('estado', 'CERRADA')
+        if (error) throw new Error('No se pudo leer la planilla.')
+        return (count ?? 0) > 0 ? 0 : 1
+      },
+    })
+  }
+
   if (puede(perfil, 'tesoreria.liberar') || puede(perfil, 'ordenes.entregar')) {
     const cierre = terminadas()
     if (puede(perfil, 'tesoreria.liberar')) {
@@ -355,4 +428,11 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   })
 
   return { items, porRuta }
+}
+
+/** El día 1 del mes anterior a `dia` (YYYY-MM-DD), que es como la base guarda el periodo de una planilla. */
+function primerDiaDelMesAnterior(dia: string) {
+  const [anio, mes] = dia.split('-').map(Number)
+  const previo = mes === 1 ? { anio: anio - 1, mes: 12 } : { anio, mes: mes - 1 }
+  return `${previo.anio}-${String(previo.mes).padStart(2, '0')}-01`
 }

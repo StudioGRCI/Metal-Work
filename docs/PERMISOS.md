@@ -15,7 +15,7 @@ Tesorería. Los permisos siguientes se comprobaron en producción.
 | Puesto | Permisos relevantes | Qué ve o hace |
 | --- | --- | --- |
 | Vendedor | `cotizaciones.crear`, `cotizaciones.ver_pdf_comercial` | Registra el PDF enviado al cliente y consulta su seguimiento. |
-| Gerencia | `cotizaciones.revisar`, `cotizaciones.ver_pdf_comercial` | Aprueba o devuelve la cotización PDF con observaciones. Su menú muestra Tablero, Cotización y Órdenes de trabajo. |
+| Gerencia | `cotizaciones.revisar`, `cotizaciones.ver_pdf_comercial`, `costos.ver` | Aprueba o devuelve la cotización PDF con observaciones. Ve el costo de cada OT en el tablero, el expediente y la pestaña Costos, sin registrar ni aprobar gastos (migración `20261001090000`). Su menú muestra Tablero, Cotización y Órdenes de trabajo. |
 | Administración | `cotizaciones.ver_pdf_comercial`, `cotizaciones.liberar_tesoreria`, `ordenes.crear`, `ordenes.editar`, `usuarios.gestionar`, `produccion.aprobar_reportes`, `ordenes.revisar_taller` | Carga la OT en PDF, la libera a Tesorería, administra Personal y revisa reportes y OT abiertas por el taller. |
 | Tesorería | `tesoreria.ver_documentos`, `tesoreria.liberar`, `ordenes.listar`, `ordenes.ver` | Consulta cotizaciones liberadas y documentos de compra; confirma la liberación financiera de una OT. Su menú muestra Tablero, Órdenes y Tesorería. |
 | Diseño e ingeniería | `diseno.planos`, `ordenes.listar`, `ordenes.ver` | Prepara la ficha técnica, guía de planos y desglose de materiales. No consulta importes ni PDF comerciales. |
