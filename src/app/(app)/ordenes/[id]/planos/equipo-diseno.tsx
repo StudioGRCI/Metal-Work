@@ -23,8 +23,8 @@ export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
   const colaboradores = equipo.filter((persona) => persona.funcion === 'COLABORADOR').length
   const [expandida, setExpandida] = useState(puedeAsignar && (equipo.length === 0 || catalogos.planos.some((plano) => !plano.integrante_diseno_id)))
   const alta = useEnvio(agregarPersonaDiseno)
-  return <details open={expandida} onToggle={(evento) => setExpandida(evento.currentTarget.open)}
-    className="group mt-4 rounded-[var(--radius-base)] border border-borde bg-superficie shadow-[var(--sombra)]">
+  return <details id="equipo-diseno" open={expandida} onToggle={(evento) => setExpandida(evento.currentTarget.open)}
+    className="group scroll-mt-20 rounded-[var(--radius-base)] border border-borde bg-superficie shadow-[var(--sombra)]">
     <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-acento [&::-webkit-details-marker]:hidden">
       <span className="min-w-0"><span className="block text-sm font-semibold text-texto">Personas que elaboran los planos</span>
         <span className="mt-0.5 block text-xs text-texto-suave">{responsable?.nombre ?? 'Sin responsable'} · {colaboradores} {colaboradores === 1 ? 'colaborador' : 'colaboradores'} · {catalogos.planos.length} {catalogos.planos.length === 1 ? 'plano' : 'planos'}</span>

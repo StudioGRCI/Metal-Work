@@ -339,7 +339,7 @@ function NuevoPlano({
       </p>
     )
     if (equipo.length === 0) return <p className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
-      Anota primero al responsable y a los colaboradores en «Personas que elaboran los planos», arriba.
+      Anota primero al responsable y a los colaboradores en <a href="#equipo-diseno" className="font-medium text-acento underline">«Personas que elaboran los planos»</a>, al final de esta página.
     </p>
     return (
       <div className="flex flex-wrap items-center justify-end gap-3">

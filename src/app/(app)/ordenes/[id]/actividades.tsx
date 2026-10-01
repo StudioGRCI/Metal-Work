@@ -105,8 +105,9 @@ export function ActividadesDeOrden({
   const hoy = hoyLima()
   const puedeCorregir = new Set(corregibles)
   const puedeEliminar = new Set(eliminables)
-  // Lo que el jefe observó y esta persona tiene que corregir: va primero en el
-  // diario y con enlace, porque si no quedaba enterrado entre lo aprobado.
+  // Lo que el jefe observó y esta persona tiene que corregir: va primero en la
+  // pestaña y con enlace a su reporte. Antes iba arriba del diario, que está
+  // al fondo, debajo de las hojas de todas las áreas.
   const observadosMios = diario.filter((r) => r.revision === 'OBSERVADO' && puedeCorregir.has(r.id))
   const reportadaHoy = (actividadId: string) => diario.find((r) => r.actividad_id === actividadId && r.fecha === hoy)
 
@@ -120,6 +121,23 @@ export function ActividadesDeOrden({
 
   return (
     <div className="space-y-4">
+      {observadosMios.length > 0 && (
+        <div className="rounded-[var(--radius-base)] border border-peligro/30 bg-peligro-suave px-4 py-3" role="status">
+          <p className="text-xs font-semibold text-peligro">
+            Administración observó {observadosMios.length === 1 ? 'un reporte tuyo' : `${observadosMios.length} reportes tuyos`}: corrígelo{observadosMios.length === 1 ? '' : 's'} y vuelve{observadosMios.length === 1 ? '' : 'n'} a la cola.
+          </p>
+          <ul className="mt-1 space-y-1">
+            {observadosMios.map((r) => (
+              <li key={r.id} className="text-xs text-texto">
+                <a href={`#${r.id}`} className="font-medium hover:underline">
+                  {fmtFecha(r.fecha)} · {r.actividad} · +{numero(r.avance_pct, 0)} %
+                </a>
+                {r.observacion && <span className="text-texto-suave"> — {r.observacion}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <Tarjeta>
         <TarjetaCabecera
           titulo={esNueva ? 'Tareas y fotos del taller' : 'Avance por área'}
@@ -377,23 +395,6 @@ export function ActividadesDeOrden({
             }
           />
           <TarjetaCuerpo className="p-0">
-            {observadosMios.length > 0 && (
-              <div className="border-b border-borde bg-peligro-suave px-4 py-3" role="status">
-                <p className="text-xs font-semibold text-peligro">
-                  Administración observó {observadosMios.length === 1 ? 'un reporte tuyo' : `${observadosMios.length} reportes tuyos`}: corrígelo{observadosMios.length === 1 ? '' : 's'} y vuelve{observadosMios.length === 1 ? '' : 'n'} a la cola.
-                </p>
-                <ul className="mt-1 space-y-1">
-                  {observadosMios.map((r) => (
-                    <li key={r.id} className="text-xs text-texto">
-                      <a href={`#${r.id}`} className="font-medium hover:underline">
-                        {fmtFecha(r.fecha)} · {r.actividad} · +{numero(r.avance_pct, 0)} %
-                      </a>
-                      {r.observacion && <span className="text-texto-suave"> — {r.observacion}</span>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
             <ul className="divide-y divide-[var(--borde)]">
               {diario.map((r) => {
                 const revisa = aprueba && r.revision !== 'APROBADO'

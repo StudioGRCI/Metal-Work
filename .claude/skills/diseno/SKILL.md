@@ -26,6 +26,32 @@ de toda pantalla; las secciones de un detalle van por pestañas con
 `?vista=` en la URL (ver `ordenes/[id]/pestanas.tsx`), y cada pestaña carga
 **solo sus datos** en el server component.
 
+## Jerarquía de las pestañas de la OT
+
+Toda pestaña de la OT se lee de arriba abajo en el mismo orden, para que la
+gente sepa dónde mirar sin aprender cada pantalla:
+
+1. **La cabecera de la OT, idéntica en todas**: `CabeceraDeOrden`
+   (`ordenes/[id]/cabecera-orden.tsx`) con número, estado, cliente, acciones,
+   avisos y franja de avance. Una ruta aparte (como `/planos`) la usa igual; no
+   se arma otra.
+2. **Dónde está y qué falta**: el siguiente paso, lo observado que le toca a
+   quien mira y las cifras de la pestaña.
+3. **El trabajo de la pestaña**: la acción principal y la lista con la que se
+   trabaja.
+4. **Para consultar**: datos de referencia, configuración que se toca poco
+   («Editar etapas», «Personas que elaboran los planos», la merma), historial
+   y notas. Siempre al final.
+
+Una sola columna de lectura. Dos columnas solo para bloques del mismo nivel
+(Cliente | Datos del trabajo), nunca para mezclar niveles: la rejilla de dos
+columnas del Resumen dejaba las etapas al fondo y con un hueco al lado, debajo
+de los datos del cliente (2026-10-01). Crear lo que todavía no existe es el
+trabajo de la pestaña y va arriba; corregirlo cuando ya existe es
+mantenimiento y va al final (las etapas: «Definir» arriba, «Editar» bajo la
+lista). Si un aviso remite a otro bloque, lo enlaza con un ancla en vez de
+decir «arriba» o «abajo».
+
 ## El tema
 
 Tres reglas y nada más, en `globals.css`:

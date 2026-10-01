@@ -75,16 +75,14 @@ export function Etapas({
         {etapas.length > 0 && puedeProgramar && <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
           Programa el inicio y fin de cada etapa con su botón «Programar».
         </p>}
-        {puedeDefinir && (etapas.length === 0
-          ? <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-4 sm:p-5">
-              <FormularioDefinicion ordenId={ordenId} areas={areas} etapas={[]} conversion={!esNueva}
-                actividadesPorVincular={actividadesPorVincular} />
-            </div>
-          : <details className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-3 sm:p-4">
-              <summary className="cursor-pointer text-sm font-medium text-texto">Editar etapas de la OT</summary>
-              <FormularioDefinicion ordenId={ordenId} areas={areas}
-                etapas={etapas} conversion={false} actividadesPorVincular={[]} />
-            </details>)}
+        {/* Sin etapas, definirlas es el trabajo de la pestaña y va arriba; con
+            etapas, corregirlas es mantenimiento y va debajo de la lista. */}
+        {puedeDefinir && etapas.length === 0 && (
+          <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-4 sm:p-5">
+            <FormularioDefinicion ordenId={ordenId} areas={areas} etapas={[]} conversion={!esNueva}
+              actividadesPorVincular={actividadesPorVincular} />
+          </div>
+        )}
         {etapas.map((etapa) => {
           const estado = definir(ESTADO_ETAPA, etapa.estado)
           const programa = programaDeEtapa(etapa, hoy)
@@ -147,6 +145,13 @@ export function Etapas({
             </div>
           )
         })}
+        {puedeDefinir && etapas.length > 0 && (
+          <details className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-3 sm:p-4">
+            <summary className="cursor-pointer text-sm font-medium text-texto">Editar etapas de la OT</summary>
+            <FormularioDefinicion ordenId={ordenId} areas={areas}
+              etapas={etapas} conversion={false} actividadesPorVincular={[]} />
+          </details>
+        )}
       </TarjetaCuerpo>
     </Tarjeta>
   )
