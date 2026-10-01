@@ -56,7 +56,10 @@ export async function listarUnidades(filtros: { clienteId?: string; busqueda?: s
 
   let consulta = supabase
     .from('unidades')
-    .select('id, cliente_id, placa, tipo_vehiculo, marca, modelo, anio, numero_chasis, numero_motor, color, capacidad_m3, capacidad_toneladas, observaciones, activo, cliente:clientes!inner(id, razon_social), tipo_carroceria:tipos_carroceria(nombre)')
+    // Sin `!inner`: una unidad que registró el taller no tiene cliente, y a quien
+    // entra con `produccion.ver` el RLS le esconde el cliente; con `!inner` las dos
+    // desaparecían de la lista (la misma trampa que en `ordenes.ts`).
+    .select('id, cliente_id, placa, codigo_interno, numero_fmi, tipo_vehiculo, marca, modelo, anio, numero_chasis, numero_motor, color, capacidad_m3, capacidad_toneladas, observaciones, activo, cliente:clientes(id, razon_social), tipo_carroceria:tipos_carroceria(nombre)')
 
   if (!filtros.incluirInactivas) consulta = consulta.eq('activo', true)
 
@@ -64,7 +67,9 @@ export async function listarUnidades(filtros: { clienteId?: string; busqueda?: s
 
   if (filtros.busqueda?.trim()) {
     const t = filtros.busqueda.trim().replace(/[%,()]/g, '')
-    consulta = consulta.or(`placa.ilike.%${t}%,marca.ilike.%${t}%,modelo.ilike.%${t}%,numero_chasis.ilike.%${t}%`)
+    consulta = consulta.or(
+      `placa.ilike.%${t}%,codigo_interno.ilike.%${t}%,numero_fmi.ilike.%${t}%,marca.ilike.%${t}%,modelo.ilike.%${t}%,numero_chasis.ilike.%${t}%`,
+    )
   }
 
   const { data, error } = await consulta.order('placa').limit(300)

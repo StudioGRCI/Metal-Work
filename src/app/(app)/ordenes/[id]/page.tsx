@@ -272,6 +272,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   // matrícula llega meses después, con la tarjeta de propiedad. Mientras, la
   // nombra su número FMI o su código de fábrica (`nombreDeUnidad`).
   const unidad = orden.unidad as unknown as {
+    id: string
     placa: string | null
     numero_fmi: string | null
     codigo_interno: string | null
@@ -456,6 +457,11 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                 valor={[unidad?.marca, unidad?.modelo, unidad?.anio].filter(Boolean).join(' ') || null}
               />
               <Dato etiqueta="N.º de chasis" valor={unidad?.numero_chasis} />
+              {unidad && puede(perfil, ['clientes.ver', 'produccion.ver']) && (
+                <Link href={`/unidades/${unidad.id}`} className="mt-2 inline-block text-sm text-acento hover:underline">
+                  Ver todo lo que se le hizo a esta unidad
+                </Link>
+              )}
             </div>
           </SeccionDesplegable>
 

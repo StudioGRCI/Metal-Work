@@ -32,7 +32,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
       <BuscadorSimple
         ruta="/unidades"
         etiqueta="Buscar unidades"
-        marcador="Buscar por placa, marca, modelo o número de chasis"
+        marcador="Buscar por placa, código interno, FMI, marca, modelo o chasis"
       />
       <div className="mt-3 flex justify-end">
         <Link href={incluirInactivas ? '/unidades' : '/unidades?estado=inactivas'} className="text-sm text-acento hover:underline">
@@ -84,7 +84,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
               />
             ) : (
               unidades.map((u) => {
-                const cliente = u.cliente as unknown as { id: string; razon_social: string }
+                const cliente = u.cliente as unknown as { id: string; razon_social: string } | null
                 const carroceria = u.tipo_carroceria as unknown as { nombre: string } | null
 
                 const capacidad = [
@@ -113,9 +113,12 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                           placa se nombra con lo que la identifique —código
                           interno, chasis, marca— y se dice que le falta, para
                           que nadie lea eso como si fuera una matrícula. */}
-                      <span className={todaviaSinPlaca(u) ? 'text-texto-suave' : 'tabular'}>
+                      <Link
+                        href={`/unidades/${u.id}`}
+                        className={todaviaSinPlaca(u) ? 'text-acento hover:underline' : 'tabular text-acento hover:underline'}
+                      >
                         {nombre}
-                      </span>
+                      </Link>
                       {avisarFalta && (
                         <span className="block text-[11px] font-normal text-texto-tenue">
                           sin placa
@@ -123,12 +126,18 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                       )}
                     </TD>
                     <TD>
-                      <Link
-                        href={`/clientes/${cliente.id}`}
-                        className="max-w-52 truncate text-acento hover:underline"
-                      >
-                        {cliente.razon_social}
-                      </Link>
+                      {cliente ? (
+                        <Link
+                          href={`/clientes/${cliente.id}`}
+                          className="max-w-52 truncate text-acento hover:underline"
+                        >
+                          {cliente.razon_social}
+                        </Link>
+                      ) : u.cliente_id ? (
+                        <span className="text-texto-tenue">—</span>
+                      ) : (
+                        <span className="text-texto-suave">Del taller</span>
+                      )}
                     </TD>
                     <TD>
                       {[u.marca, u.modelo, u.anio].filter(Boolean).join(' ') || '—'}
@@ -156,7 +165,9 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                     {puede(perfil, 'clientes.editar') && (
                       <TD>
                         <div className="space-y-2">
-                          <NuevaUnidad clienteId={cliente.id} unidad={u} compacta />
+                          {/* Una unidad del taller todavía no tiene cliente: se edita
+                              desde su orden, cuando Administración le pone uno. */}
+                          {u.cliente_id && <NuevaUnidad clienteId={u.cliente_id} unidad={u} compacta />}
                           <AccionesCatalogo tipo="unidad" id={u.id} nombre={nombre} activo={u.activo} puedeEditar esAdmin={perfil.rol.codigo === 'ADMIN'} />
                         </div>
                       </TD>
