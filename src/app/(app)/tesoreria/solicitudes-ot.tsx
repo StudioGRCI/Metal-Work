@@ -12,7 +12,7 @@ import { responderSolicitudTesoreria } from '../ordenes/[id]/acciones-costos'
 type Solicitud = Awaited<ReturnType<typeof solicitudesPendientesTesoreria>>[number]
 
 export function SolicitudesOT({ solicitudes }: { solicitudes: Solicitud[] }) {
-  return <Tarjeta className="mb-5"><TarjetaCabecera titulo="Solicitudes de Costos y Materiales" descripcion="Responde los pedidos de pago o revisión de salida. Marcar atendida documenta la coordinación; la liberación de salida se registra por separado en la OT." />
+  return <Tarjeta className="mb-5"><TarjetaCabecera titulo="Solicitudes de Costos y Materiales" descripcion="Responde los pedidos de revisión de salida. Marcar atendida documenta la coordinación; la liberación de salida se registra por separado en la OT." />
     <TarjetaCuerpo className="space-y-3">{solicitudes.length === 0 ? <p className="text-sm text-texto-suave">No hay solicitudes pendientes.</p> : solicitudes.map(s => <SolicitudPendiente key={s.id} solicitud={s} />)}</TarjetaCuerpo>
   </Tarjeta>
 }
@@ -20,7 +20,7 @@ export function SolicitudesOT({ solicitudes }: { solicitudes: Solicitud[] }) {
 function SolicitudPendiente({ solicitud: s }: { solicitud: Solicitud }) {
   const { alEnviar, enviando, error, resultado } = useEnvio(responderSolicitudTesoreria)
   return <article className="rounded-[var(--radius-base)] border border-borde p-4">
-    <div className="flex flex-wrap justify-between gap-2"><p className="font-semibold text-texto">{s.tipo === 'MATERIALES' ? 'Pago de materiales' : 'Revisión de salida'} · OT {s.orden?.numero ?? '—'}</p><Link className="text-sm text-acento hover:underline" href={`/ordenes/${s.orden_id}?vista=costos`}>Abrir OT</Link></div>
+    <div className="flex flex-wrap justify-between gap-2"><p className="font-semibold text-texto">{s.tipo === 'MATERIALES' ? 'Pago de materiales' : 'Revisión de salida'} · OT {s.orden?.numero ?? '—'}</p><Link className="text-sm text-acento hover:underline" href={`/ordenes/${s.orden_id}?vista=entrega`}>Abrir OT</Link></div>
     <p className="mt-2 whitespace-pre-wrap text-sm">{s.concepto}</p>
     {s.monto !== null && <p className="mt-1 font-semibold tabular">{moneda(s.monto, s.moneda === 'USD' ? 'USD' : 'PEN')}</p>}
     <p className="mt-1 text-xs text-texto-suave">{fechaHora(s.creado_en)} · {s.solicitante ? `${s.solicitante.nombres} ${s.solicitante.apellidos}` : 'Costos y Materiales'}</p>

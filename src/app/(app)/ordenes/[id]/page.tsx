@@ -636,7 +636,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
       {vista === 'costos' && datosCostos && (
         <CostosYControles ordenId={orden.id} datos={datosCostos}
-          puedeSolicitar={puede(perfil, 'costos.solicitar_pago')}
           puedeRegistrarGasto={puede(perfil, 'costos.registrar_gasto')}
           puedeRevisarGasto={puede(perfil, 'costos.revisar_gasto')}
           puedeVerCosteo={puede(perfil, 'costos.ver')}

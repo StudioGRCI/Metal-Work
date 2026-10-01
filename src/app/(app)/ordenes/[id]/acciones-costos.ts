@@ -12,23 +12,17 @@ const id = z.string().uuid()
 export async function solicitarTesoreria(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'costos.solicitar_pago')) return { ok: false, error: 'Solo Costos y Materiales envía estas solicitudes.' }
+  // Desde la OT solo se pide la revisión de salida: la solicitud de pago de
+  // materiales se retiró de la pestaña Costos el 2026-10-01.
   const entrada = z.object({
     orden_id: id,
-    tipo: z.enum(['MATERIALES', 'SALIDA_OT']),
     concepto: z.string().trim().min(10).max(1000),
-    monto: z.string().trim(),
-    moneda: z.enum(['PEN', 'USD', '']),
   }).safeParse(Object.fromEntries(datos))
   if (!entrada.success) return { ok: false, error: entrada.error.issues[0]?.message ?? 'Revisa la solicitud.' }
   const v = entrada.data
-  const monto = v.tipo === 'MATERIALES' ? Number(v.monto) : null
-  if (v.tipo === 'MATERIALES' && (!Number.isFinite(monto) || monto === null || monto <= 0 || !/^\d{1,12}(?:\.\d{1,2})?$/.test(v.monto) || !v.moneda)) {
-    return { ok: false, error: 'Indica el importe y moneda del pago de materiales.' }
-  }
   const supabase = await createClient()
   const { data, error } = await supabase.from('ot_solicitudes_tesoreria').insert({
-    orden_id: v.orden_id, tipo: v.tipo, concepto: v.concepto,
-    monto, moneda: v.tipo === 'MATERIALES' ? (v.moneda as 'PEN' | 'USD') : null,
+    orden_id: v.orden_id, tipo: 'SALIDA_OT', concepto: v.concepto, monto: null, moneda: null,
   }).select('id').maybeSingle()
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: NO_TOCO_NADA }

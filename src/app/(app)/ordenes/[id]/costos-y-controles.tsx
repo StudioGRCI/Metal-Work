@@ -16,10 +16,9 @@ import { solicitarTesoreria } from './acciones-costos'
 import { adjuntarControlFirmado, guardarControlVehicular, registrarGastoArea, revisarGastoArea } from './acciones-control-y-gastos'
 
 type Datos = Awaited<ReturnType<typeof controlesYSolicitudesDeOrden>>
-export function CostosYControles({ ordenId, datos, puedeSolicitar, puedeRegistrarGasto, puedeRevisarGasto, puedeVerCosteo, ordenCerrada, esAdministracion = false }: {
+export function CostosYControles({ ordenId, datos, puedeRegistrarGasto, puedeRevisarGasto, puedeVerCosteo, ordenCerrada, esAdministracion = false }: {
   ordenId: string
   datos: Datos
-  puedeSolicitar: boolean
   puedeRegistrarGasto: boolean
   puedeRevisarGasto: boolean
   puedeVerCosteo: boolean
@@ -30,8 +29,6 @@ export function CostosYControles({ ordenId, datos, puedeSolicitar, puedeRegistra
   return <div className="space-y-5">
     {puedeVerCosteo && <ResumenCosteo ordenId={ordenId} lineas={datos.costeo} />}
     <GastosDeAreas ordenId={ordenId} datos={datos} puedeRegistrar={puedeRegistrarGasto && !ordenCerrada} puedeRevisar={puedeRevisarGasto} esAdministracion={esAdministracion} />
-    <SolicitudesTesoreria ordenId={ordenId} datos={datos} tipo="MATERIALES"
-      puedeSolicitar={puedeSolicitar && !ordenCerrada} salidaCompleta={false} />
   </div>
 }
 
@@ -46,33 +43,35 @@ export function ControlDeSalida({ ordenId, datos, puedeControlar, puedeVerCosteo
   const salidaCompleta = Boolean(datos.control?.salida_cerrada_en && datos.control.escaneo_ruta)
   return <div className="space-y-4">
     {(puedeControlar || puedeVerCosteo) && <FichaVehicular ordenId={ordenId} datos={datos} editable={puedeControlar && !ordenCerrada} />}
-    <SolicitudesTesoreria ordenId={ordenId} datos={datos} tipo="SALIDA_OT"
+    <RevisionDeSalida ordenId={ordenId} datos={datos}
       puedeSolicitar={puedeSolicitar && !ordenCerrada} salidaCompleta={salidaCompleta} />
   </div>
 }
 
-function SolicitudesTesoreria({ ordenId, datos, tipo, puedeSolicitar, salidaCompleta }: {
+/**
+ * Lo único que Costos le pide a Tesorería desde la OT: revisar la salida. La
+ * tarjeta de «Pagos solicitados a Tesorería» de la pestaña Costos se retiró el
+ * 2026-10-01 a pedido de la empresa.
+ */
+function RevisionDeSalida({ ordenId, datos, puedeSolicitar, salidaCompleta }: {
   ordenId: string
   datos: Datos
-  tipo: 'MATERIALES' | 'SALIDA_OT'
   puedeSolicitar: boolean
   salidaCompleta: boolean
 }) {
-  const solicitudes = datos.solicitudes.filter((solicitud) => solicitud.tipo === tipo)
+  const solicitudes = datos.solicitudes.filter((solicitud) => solicitud.tipo === 'SALIDA_OT')
   return (
     <Tarjeta>
-      <TarjetaCabecera titulo={tipo === 'MATERIALES' ? 'Pagos solicitados a Tesorería' : 'Revisión financiera para la salida'}
-        descripcion={tipo === 'MATERIALES' ? 'Registra la solicitud de pago de materiales. Tesorería confirma su atención.' : 'Se solicita después de cerrar la ficha de salida y adjuntar el escaneo firmado.'} />
+      <TarjetaCabecera titulo="Revisión financiera para la salida"
+        descripcion="Se solicita después de cerrar la ficha de salida y adjuntar el escaneo firmado." />
       <TarjetaCuerpo className="space-y-4">
-        {puedeSolicitar && (tipo === 'MATERIALES' || salidaCompleta) &&
-          <NuevaSolicitud ordenId={ordenId} tipo={tipo} salidaCompleta={salidaCompleta} />}
-        {puedeSolicitar && tipo === 'SALIDA_OT' && !salidaCompleta &&
+        {puedeSolicitar && salidaCompleta && <NuevaSolicitud ordenId={ordenId} />}
+        {puedeSolicitar && !salidaCompleta &&
           <p className="text-sm text-texto-suave">Completa la ficha de salida y adjunta el escaneo firmado para solicitar la revisión a Tesorería.</p>}
         {solicitudes.length === 0 ? <p className="text-sm text-texto-suave">Todavía no hay solicitudes de este paso.</p> :
           <ol className="space-y-2">{solicitudes.map(s => <li key={s.id} className="rounded-[var(--radius-base)] border border-borde p-3 text-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2"><strong>{s.tipo === 'SALIDA_OT' ? 'Revisión para salida' : 'Pago de materiales'}</strong><Insignia tono={definir(ESTADO_SOLICITUD_TESORERIA, s.estado).tono}>{definir(ESTADO_SOLICITUD_TESORERIA, s.estado).etiqueta}</Insignia></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><strong>Revisión para salida</strong><Insignia tono={definir(ESTADO_SOLICITUD_TESORERIA, s.estado).tono}>{definir(ESTADO_SOLICITUD_TESORERIA, s.estado).etiqueta}</Insignia></div>
             <p className="mt-1 whitespace-pre-wrap">{s.concepto}</p>
-            {s.monto !== null && <p className="mt-1 font-semibold tabular">{moneda(s.monto, s.moneda === 'USD' ? 'USD' : 'PEN')}</p>}
             <p className="mt-1 text-xs text-texto-suave">{fechaHora(s.creado_en)} · {s.solicitante ? `${s.solicitante.nombres} ${s.solicitante.apellidos}` : 'Costos y Materiales'}</p>
             {s.respuesta && <p className="mt-2 rounded-[var(--radius-base)] bg-superficie-2 p-2">Tesorería: {s.respuesta}</p>}
           </li>)}</ol>}
@@ -234,16 +233,15 @@ function FichaVehicular({ ordenId, datos, editable }: { ordenId: string; datos: 
   </Tarjeta>
 }
 
-function NuevaSolicitud({ ordenId, tipo, salidaCompleta }: { ordenId: string; tipo: 'MATERIALES' | 'SALIDA_OT'; salidaCompleta: boolean }) {
+/** Solo se pinta con la salida cerrada y su escaneo firmado adjunto. */
+function NuevaSolicitud({ ordenId }: { ordenId: string }) {
   const { alEnviar, enviando, resultado, error } = useEnvio(solicitarTesoreria)
-  return <form onSubmit={alEnviar} className="grid gap-3 rounded-[var(--radius-base)] border border-borde p-4 sm:grid-cols-2">
+  return <form onSubmit={alEnviar} className="grid gap-3 rounded-[var(--radius-base)] border border-borde p-4">
     <input type="hidden" name="orden_id" value={ordenId} />
-    <input type="hidden" name="tipo" value={tipo} />
-    {tipo === 'MATERIALES' && <div className="grid grid-cols-[1fr_7rem] gap-2"><Campo etiqueta="Importe" htmlFor="solicitud-monto" requerido><Entrada id="solicitud-monto" name="monto" type="number" min="0.01" step="0.01" required /></Campo><Campo etiqueta="Moneda" htmlFor="solicitud-moneda" requerido><Seleccion id="solicitud-moneda" name="moneda" defaultValue="PEN"><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion></Campo></div>}
-    {tipo === 'SALIDA_OT' && <><input type="hidden" name="monto" value="" /><input type="hidden" name="moneda" value="" /><p className="self-end text-xs text-texto-suave">{salidaCompleta ? 'Lista de salida completada.' : 'Completa primero la lista de salida.'}</p></>}
-    <div className="sm:col-span-2"><Campo etiqueta="Concepto y referencia" htmlFor="solicitud-concepto" requerido ayuda="Indica proveedor, factura o motivo de la revisión."><AreaTexto id="solicitud-concepto" name="concepto" minLength={10} maxLength={1000} required rows={3} /></Campo></div>
-    {error && <p role="alert" className="sm:col-span-2 text-sm text-peligro">{error}</p>}
-    {resultado?.ok && <p role="status" className="sm:col-span-2 text-sm text-exito">{resultado.mensaje}</p>}
-    <div className="sm:col-span-2"><Boton type="submit" tamano="sm" cargando={enviando} disabled={tipo === 'SALIDA_OT' && !salidaCompleta}>Enviar a Tesorería</Boton></div>
+    <p className="text-xs text-texto-suave">Lista de salida completada.</p>
+    <Campo etiqueta="Concepto y referencia" htmlFor="solicitud-concepto" requerido ayuda="Indica el motivo de la revisión."><AreaTexto id="solicitud-concepto" name="concepto" minLength={10} maxLength={1000} required rows={3} /></Campo>
+    {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
+    {resultado?.ok && <p role="status" className="text-sm text-exito">{resultado.mensaje}</p>}
+    <div><Boton type="submit" tamano="sm" cargando={enviando}>Enviar a Tesorería</Boton></div>
   </form>
 }
