@@ -101,6 +101,12 @@ export function hora(valor: string | Date | null | undefined) {
   )
 }
 
+/** El mes de una planilla o un periodo de la base (`2026-09-01`), como «09/2026». */
+export function periodo(valor: string | null | undefined) {
+  const partes = valor ? /^(\d{4})-(\d{2})/.exec(valor.trim()) : null
+  return partes ? `${partes[2]}/${partes[1]}` : '—'
+}
+
 export function fechaLarga(valor: string | Date | null | undefined) {
   if (!valor) return '—'
   // Igual que en fecha(): un día del calendario se lee tal cual.

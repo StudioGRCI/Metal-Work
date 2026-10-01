@@ -146,6 +146,48 @@ export const TIPO_EVENTO_BITACORA: Record<string, Def> = {
   ENTREGA: { etiqueta: 'Entrega', tono: 'exito' },
 }
 
+/** Los gastos que cada área carga a su OT; Administración los aprueba (migración 20260929226000). */
+export const ESTADO_GASTO_AREA: Record<string, Def> = {
+  PENDIENTE: { etiqueta: 'Por aprobar', tono: 'aviso' },
+  APROBADO: { etiqueta: 'Aprobado', tono: 'exito' },
+  OBSERVADO: { etiqueta: 'Observado', tono: 'peligro' },
+}
+
+export const TIPO_GASTO_AREA: Record<string, Def> = {
+  SERVICIO: { etiqueta: 'Servicio', tono: 'neutro' },
+  TRANSPORTE: { etiqueta: 'Transporte', tono: 'neutro' },
+  VIATICO: { etiqueta: 'Viático', tono: 'neutro' },
+  SUBCONTRATO: { etiqueta: 'Subcontrato', tono: 'neutro' },
+  OTRO: { etiqueta: 'Otro', tono: 'neutro' },
+}
+
+/** Lo que Costos le pide a Tesorería desde la OT (migración 20260929160000). */
+export const ESTADO_SOLICITUD_TESORERIA: Record<string, Def> = {
+  PENDIENTE: { etiqueta: 'Pendiente', tono: 'aviso' },
+  ATENDIDA: { etiqueta: 'Atendida', tono: 'exito' },
+  OBSERVADA: { etiqueta: 'Observada', tono: 'peligro' },
+}
+
+/** Los comprobantes que registra Contabilidad en Adquisiciones (migración 20260929190000). */
+export const TIPO_COMPROBANTE: Record<string, Def> = {
+  FACTURA_COMPRA: { etiqueta: 'Factura de compra', tono: 'neutro' },
+  RECIBO_HONORARIOS: { etiqueta: 'Recibo por honorarios', tono: 'neutro' },
+  FACTURA_VEHICULO: { etiqueta: 'Factura de vehículo', tono: 'neutro' },
+  FACTURA_TESORERIA: { etiqueta: 'Factura de Tesorería', tono: 'neutro' },
+  OTRO: { etiqueta: 'Otro comprobante', tono: 'neutro' },
+}
+
+export const ESTADO_COMPROBANTE: Record<string, Def> = {
+  BORRADOR: { etiqueta: 'Borrador', tono: 'aviso', descripcion: 'Falta adjuntar el PDF o vincular la factura' },
+  REGISTRADA: { etiqueta: 'Registrado', tono: 'exito' },
+}
+
+export const TIPO_PLANILLA: Record<string, Def> = {
+  TALLER: { etiqueta: 'Planilla de taller', tono: 'neutro' },
+  ADMINISTRATIVA: { etiqueta: 'Planilla administrativa', tono: 'neutro' },
+  SUBCONTRATOS: { etiqueta: 'Subcontratos', tono: 'neutro' },
+}
+
 const VACIO: Def = { etiqueta: '—', tono: 'neutro' }
 
 /** Busca la definición de un valor de enum sin reventar si llega uno desconocido. */

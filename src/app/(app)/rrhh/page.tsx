@@ -1,7 +1,8 @@
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { exigirPermiso, puede } from '@/lib/sesion'
-import { moneda, porcentaje } from '@/lib/format'
+import { TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
+import { moneda, periodo, porcentaje } from '@/lib/format'
 import { detallePlanilla } from '@/lib/dominio/planilla-mwp'
 import { ImportarPlanilla } from './importar'
 import { createClient } from '@/lib/supabase/server'
@@ -28,7 +29,7 @@ export default async function PaginaRRHH() {
   return <><EncabezadoPagina titulo="Recursos Humanos" descripcion="Tres planillas separadas. Distribuye el 100 % de cada persona o subcontrato entre las OT antes de cerrar el mes." />
     {gestiona&&<details className="mb-5 rounded-[var(--radius-base)] border border-borde bg-superficie p-4"><summary className="cursor-pointer font-semibold text-acento">Crear planilla del mes</summary><div className="pt-4"><NuevaPlanilla /></div></details>}
     <div className="space-y-5">{(planillas.data??[]).length===0&&<p className="text-sm text-texto-suave">Crea la primera planilla para comenzar.</p>}
-      {(planillas.data??[]).map(p=><Tarjeta key={p.id}><TarjetaCabecera titulo={`${({TALLER:'Planilla de taller',ADMINISTRATIVA:'Planilla administrativa',SUBCONTRATOS:'Subcontratos'})[p.tipo]} · ${p.periodo.slice(0,7)}`} descripcion={`${p.estado==='BORRADOR'?'En preparación':'Cerrada'} · ${(personas.data??[]).filter(x=>x.planilla_id===p.id).length} personas · Costo ${moneda((personas.data??[]).filter(x=>x.planilla_id===p.id).reduce((n,x)=>n+x.monto,0),p.moneda==='USD'?'USD':'PEN')}`} acciones={gestiona&&p.estado==='BORRADOR'&&p.moneda==='PEN'?<ImportarPlanilla planillaId={p.id} periodo={p.periodo}/>:undefined}/><TarjetaCuerpo className="space-y-4">
+      {(planillas.data??[]).map(p=><Tarjeta key={p.id}><TarjetaCabecera titulo={`${definir(TIPO_PLANILLA, p.tipo).etiqueta} · ${periodo(p.periodo)}`} descripcion={`${p.estado==='BORRADOR'?'En preparación':'Cerrada'} · ${(personas.data??[]).filter(x=>x.planilla_id===p.id).length} personas · Costo ${moneda((personas.data??[]).filter(x=>x.planilla_id===p.id).reduce((n,x)=>n+x.monto,0),p.moneda==='USD'?'USD':'PEN')}`} acciones={gestiona&&p.estado==='BORRADOR'&&p.moneda==='PEN'?<ImportarPlanilla planillaId={p.id} periodo={p.periodo}/>:undefined}/><TarjetaCuerpo className="space-y-4">
         {(personas.data??[]).filter(x=>x.planilla_id===p.id).map(x=>{
           const partes=(distribuciones.data??[]).filter(d=>d.persona_id===x.id)
           const suma=partes.reduce((n,d)=>n+Number(d.porcentaje),0)

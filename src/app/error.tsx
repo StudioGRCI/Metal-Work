@@ -6,10 +6,10 @@ import { Boton } from '@/components/ui/boton'
 
 export default function ErrorGlobal({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string }
-  reset: () => void
+  retry: () => void
 }) {
   useEffect(() => {
     console.error(error)
@@ -22,7 +22,8 @@ export default function ErrorGlobal({
         No se pudo completar la operación. Si el problema persiste, informa al administrador
         indicando el código {error.digest ?? 'sin código'}.
       </p>
-      <Boton type="button" onClick={reset} className="mt-6">
+      {/* retry vuelve a pedir los datos al servidor; reset solo redibujaba lo que ya había fallado. */}
+      <Boton type="button" onClick={() => retry()} className="mt-6">
         Reintentar
       </Boton>
     </main>

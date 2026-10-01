@@ -1,6 +1,8 @@
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { fecha } from '@/lib/format'
+import { ESTADO_COMPROBANTE, TIPO_COMPROBANTE, definir } from '@/lib/dominio/estados'
+import { fecha, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import { CompletarAdquisicion, FormularioAdquisicion } from './formulario'
@@ -41,10 +43,10 @@ export default async function PaginaAdquisiciones() {
     {puede(perfil,'adquisiciones.registrar') && <Tarjeta className="mb-5"><TarjetaCabecera titulo="Nuevo comprobante" descripcion="Adjunta el PDF y relaciona la OT si corresponde." /><TarjetaCuerpo><FormularioAdquisicion ordenes={ordenes.data ?? []} compras={compras.data ?? []} documentos={documentos.data ?? []} /></TarjetaCuerpo></Tarjeta>}
     <Tarjeta><TarjetaCabecera titulo="Comprobantes registrados" descripcion="La condición de crédito genera saldo pendiente para Tesorería." />
       <TarjetaCuerpo className="space-y-2">{filas.length===0 ? <p className="text-sm text-texto-suave">Todavía no hay comprobantes.</p> : filas.map(a=><article key={a.id} className="grid gap-1 rounded-lg border border-borde p-3 sm:grid-cols-[1fr_auto]">
-        <div><p className="font-medium text-texto">{a.proveedor} · {a.numero_documento}</p><p className="text-xs text-texto-suave">{a.tipo.replaceAll('_',' ')} · {a.estado} · emitido {fecha(a.fecha_emision)} · vence {fecha(a.fecha_vencimiento)}</p>
+        <div><p className="flex flex-wrap items-center gap-2 font-medium text-texto">{a.proveedor} · {a.numero_documento}<Insignia tono={definir(ESTADO_COMPROBANTE, a.estado).tono}>{definir(ESTADO_COMPROBANTE, a.estado).etiqueta}</Insignia></p><p className="text-xs text-texto-suave">{definir(TIPO_COMPROBANTE, a.tipo).etiqueta} · emitido {fecha(a.fecha_emision)} · vence {fecha(a.fecha_vencimiento)}</p>
           {a.estado==='BORRADOR'&&a.registrado_por===perfil.id&&<CompletarAdquisicion id={a.id} />}
           {a.url&&<a href={a.url} target="_blank" rel="noreferrer" className="mt-1 inline-block text-sm font-medium text-acento hover:underline">Abrir PDF</a>}</div>
-        <p className="tabular text-right font-semibold text-texto">{a.moneda==='PEN'?'S/':'US$'} {Number(a.total).toFixed(2)}</p>
+        <p className="tabular text-right font-semibold text-texto">{moneda(a.total, a.moneda==='USD'?'USD':'PEN')}</p>
       </article>)}</TarjetaCuerpo></Tarjeta>
   </>
 }

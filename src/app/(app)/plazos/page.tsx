@@ -97,9 +97,11 @@ export default async function PaginaPlazos({ searchParams }: PageProps<'/plazos'
 
   return (
     <>
+      {/* El título es el nombre del menú: con «Avance del taller» arriba y
+          «Control de plazos» en el menú, la pantalla no parecía la que se
+          había pedido. */}
       <EncabezadoPagina
-        migas={[{ titulo: 'Control de plazos' }]}
-        titulo="Avance del taller"
+        titulo="Control de plazos"
         descripcion="Revisa qué necesita atención, entra al área y deja el reporte o seguimiento desde la misma lista."
       />
 

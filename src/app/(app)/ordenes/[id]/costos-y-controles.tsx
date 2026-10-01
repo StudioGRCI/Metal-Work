@@ -1,11 +1,15 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
+import { ComposicionDelCosto } from '@/components/expediente/composicion-costo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { controlesYSolicitudesDeOrden } from '@/lib/datos/costos-ot'
+import { ESTADO_GASTO_AREA, ESTADO_SOLICITUD_TESORERIA, TIPO_GASTO_AREA, definir } from '@/lib/dominio/estados'
+import { composicionDelCosto } from '@/lib/dominio/expediente'
 import { fecha, fechaHora, moneda } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import { solicitarTesoreria } from './acciones-costos'
@@ -22,7 +26,7 @@ export function CostosYControles({ ordenId, datos, puedeSolicitar, puedeRegistra
   ordenCerrada: boolean
 }) {
   return <div className="space-y-5">
-    {puedeVerCosteo && <ResumenCosteo lineas={datos.costeo} />}
+    {puedeVerCosteo && <ResumenCosteo ordenId={ordenId} lineas={datos.costeo} />}
     <GastosDeAreas ordenId={ordenId} datos={datos} puedeRegistrar={puedeRegistrarGasto && !ordenCerrada} puedeRevisar={puedeRevisarGasto} />
     <SolicitudesTesoreria ordenId={ordenId} datos={datos} tipo="MATERIALES"
       puedeSolicitar={puedeSolicitar && !ordenCerrada} salidaCompleta={false} />
@@ -64,7 +68,7 @@ function SolicitudesTesoreria({ ordenId, datos, tipo, puedeSolicitar, salidaComp
           <p className="text-sm text-texto-suave">Completa la ficha de salida y adjunta el escaneo firmado para solicitar la revisión a Tesorería.</p>}
         {solicitudes.length === 0 ? <p className="text-sm text-texto-suave">Todavía no hay solicitudes de este paso.</p> :
           <ol className="space-y-2">{solicitudes.map(s => <li key={s.id} className="rounded-[var(--radius-base)] border border-borde p-3 text-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2"><strong>{s.tipo === 'SALIDA_OT' ? 'Revisión para salida' : 'Pago de materiales'}</strong><Insignia tono={s.estado === 'ATENDIDA' ? 'exito' : s.estado === 'OBSERVADA' ? 'peligro' : 'aviso'}>{s.estado}</Insignia></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><strong>{s.tipo === 'SALIDA_OT' ? 'Revisión para salida' : 'Pago de materiales'}</strong><Insignia tono={definir(ESTADO_SOLICITUD_TESORERIA, s.estado).tono}>{definir(ESTADO_SOLICITUD_TESORERIA, s.estado).etiqueta}</Insignia></div>
             <p className="mt-1 whitespace-pre-wrap">{s.concepto}</p>
             {s.monto !== null && <p className="mt-1 font-semibold tabular">{moneda(s.monto, s.moneda === 'USD' ? 'USD' : 'PEN')}</p>}
             <p className="mt-1 text-xs text-texto-suave">{fechaHora(s.creado_en)} · {s.solicitante ? `${s.solicitante.nombres} ${s.solicitante.apellidos}` : 'Costos y Materiales'}</p>
@@ -75,22 +79,24 @@ function SolicitudesTesoreria({ ordenId, datos, tipo, puedeSolicitar, salidaComp
   )
 }
 
-function ResumenCosteo({ lineas }: { lineas: Datos['costeo'] }) {
-  const pendientes = lineas.find(l => l.fuente === 'MATERIALES_SIN_PRECIO')?.pendientes ?? 0
-  const fuentes: Record<string, string> = { MATERIALES: 'Materiales despachados', PLANILLA: 'Planilla cerrada asignada', GASTOS_AREA: 'Gastos de áreas aprobados' }
-  const monedas = ['PEN', 'USD'] as const
+/**
+ * El costo a la fecha, con la misma barra repartida del expediente: antes eran
+ * dos cajas fijas —soles y dólares— con cada fuente en renglones, y la de
+ * dólares salía llena de ceros en casi todas las órdenes. El detalle línea por
+ * línea vive en el expediente.
+ */
+function ResumenCosteo({ ordenId, lineas }: { ordenId: string; lineas: Datos['costeo'] }) {
+  const { monedas, sinPrecio } = composicionDelCosto(lineas)
   return <Tarjeta>
-    <TarjetaCabecera titulo="Costo acumulado de la OT" descripcion="Suma despachos valorizados, planilla cerrada asignada y gastos aprobados. Las compras se cuentan al despacharse." />
-    <TarjetaCuerpo className="space-y-3">
-      {monedas.map(m => <div key={m} className="rounded-[var(--radius-base)] border border-borde p-3">
-        <strong className="text-sm">{m === 'PEN' ? 'Soles' : 'Dólares'}</strong>
-        {Object.entries(fuentes).map(([fuente, titulo]) => {
-          const valor = lineas.find(l => l.fuente === fuente && l.moneda === m)?.monto ?? 0
-          return <div key={fuente} className="flex justify-between gap-3 py-1 text-sm"><span>{titulo}</span><span className="tabular">{moneda(valor, m)}</span></div>
-        })}
-        <div className="flex justify-between gap-3 border-t border-borde pt-2 font-semibold"><span>Total {m}</span><span className="tabular">{moneda(lineas.filter(l => l.moneda === m).reduce((s, l) => s + (l.monto??0), 0), m)}</span></div>
-      </div>)}
-      {pendientes > 0 && <p role="status" className="text-sm text-aviso">{pendientes} despacho(s) aún sin precio. El costo está incompleto hasta valorizarlos.</p>}
+    <TarjetaCabecera titulo="Costo acumulado de la OT" descripcion="Material despachado a precio de compra, planilla cerrada asignada y gastos aprobados de las áreas."
+      acciones={<Link href={`/ordenes/${ordenId}/expediente#costo`} className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0">Ver el detalle línea por línea</Link>} />
+    <TarjetaCuerpo className="space-y-4">
+      {monedas.length === 0
+        ? <p className="text-sm text-texto-suave">Todavía no hay costo: se suma al despachar material, al cerrar la planilla del mes y al aprobar un gasto de área.</p>
+        : monedas.map(c => <ComposicionDelCosto key={c.moneda} composicion={c} />)}
+      {sinPrecio > 0 && <p role="status" className="text-sm text-aviso">
+        {sinPrecio === 1 ? 'Un despacho sigue sin precio' : `${sinPrecio} despachos siguen sin precio`}: el costo está incompleto hasta valorizarlos.
+      </p>}
       <p className="text-xs text-texto-suave">El precio de material es el último precio de compra disponible al momento del despacho; revisa la valorización antes de cerrar la OT.</p>
     </TarjetaCuerpo>
   </Tarjeta>
@@ -121,8 +127,8 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar }: {
       </details>}
       {datos.gastos.length === 0 ? <p className="text-sm text-texto-suave">Todavía no hay gastos registrados en esta OT.</p> :
         <ol className="space-y-3">{datos.gastos.map(g => <li key={g.id} className="rounded-[var(--radius-base)] border border-borde p-3 text-sm">
-          <div className="flex flex-wrap justify-between gap-2"><strong>{g.descripcion}</strong><Insignia tono={g.estado === 'APROBADO' ? 'exito' : g.estado === 'OBSERVADO' ? 'peligro' : 'aviso'}>{g.estado}</Insignia></div>
-          <p className="mt-1 text-texto-suave">{g.area?.nombre ?? 'Área'} · {g.tipo} · {fecha(g.fecha)} · {moneda(g.monto, g.moneda === 'USD' ? 'USD' : 'PEN')}</p>
+          <div className="flex flex-wrap justify-between gap-2"><strong>{g.descripcion}</strong><Insignia tono={definir(ESTADO_GASTO_AREA, g.estado).tono}>{definir(ESTADO_GASTO_AREA, g.estado).etiqueta}</Insignia></div>
+          <p className="mt-1 text-texto-suave">{g.area?.nombre ?? 'Área'} · {definir(TIPO_GASTO_AREA, g.tipo).etiqueta} · {fecha(g.fecha)} · {moneda(g.monto, g.moneda === 'USD' ? 'USD' : 'PEN')}</p>
           {g.url && <a className="text-acento underline" href={g.url} target="_blank" rel="noopener noreferrer">Ver comprobante</a>}
           {g.observacion_revision && <p className="mt-2 text-peligro">Observación: {g.observacion_revision}</p>}
           {puedeRevisar && g.estado === 'PENDIENTE' && <RevisionGasto id={g.id} ordenId={ordenId} />}
