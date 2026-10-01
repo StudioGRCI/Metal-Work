@@ -11,7 +11,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
-import { expedienteDeOrden, type Expediente, type LineaCosto } from '@/lib/datos/expediente'
+import { expedienteDeOrden, type Expediente, type LineaCosto, type PresupuestoExpediente } from '@/lib/datos/expediente'
 import { observacionesDeOrden } from '@/lib/datos/observaciones'
 import { obtenerOrden, timelineDeOrden } from '@/lib/datos/ordenes'
 import { pendientesDeOrden } from '@/lib/datos/pendientes-ot'
@@ -40,7 +40,7 @@ import { cn } from '@/lib/utils'
 
 import { Pestanas } from '../pestanas'
 import { queMeToca } from '../te-toca'
-import { CerrarCosto, ConfirmarIgv } from './acciones-costo'
+import { CerrarCosto, ConfirmarIgv, FijarPresupuesto } from './acciones-costo'
 import { BotonImprimir } from './imprimir'
 
 export async function generateMetadata({ params }: PageProps<'/ordenes/[id]/expediente'>): Promise<Metadata> {
@@ -83,6 +83,8 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   const verMargen = verCosteo && puede(perfil, 'cotizaciones.ver_pdf_comercial')
   const puedeConfirmarIgv = puede(perfil, ['cotizaciones.crear', 'cotizaciones.revisar', 'cotizaciones.liberar_tesoreria'])
   const puedeCerrarCosto = puede(perfil, ['costos.controlar_ot', 'ordenes.editar'])
+  // Las llaves de `fijar_presupuesto_ot`: decidir y, además, ver costo y precio.
+  const puedeFijarPresupuesto = verMargen && puede(perfil, ['cotizaciones.revisar', 'ordenes.editar'])
   // La misma regla que el resumen de la OT: el documento comercial solo lo
   // abren Gerencia, Administración y Tesorería.
   const verCotizacion = ['GERENTE', 'ADMINISTRACION', 'TESORERIA', 'ADMIN'].includes(perfil.rol.codigo)
@@ -425,6 +427,15 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                   cotizacionId={expediente.cotizacionId}
                   ordenId={orden.id}
                   puedeConfirmar={puedeConfirmarIgv}
+                  cerrado={Boolean(expediente.costo.cierre)}
+                />
+              )}
+              {expediente.presupuesto && (
+                <PresupuestoDeLaCarroceria
+                  presupuesto={expediente.presupuesto}
+                  ordenId={orden.id}
+                  puedeFijar={puedeFijarPresupuesto}
+                  cerrado={Boolean(expediente.costo.cierre)}
                 />
               )}
               <CierreDelCosto
@@ -834,11 +845,13 @@ function MargenDeLaCarroceria({
   cotizacionId,
   ordenId,
   puedeConfirmar,
+  cerrado,
 }: {
   margen: NonNullable<Expediente['margen']>
   cotizacionId: string | null
   ordenId: string
   puedeConfirmar: boolean
+  cerrado: boolean
 }) {
   const venta = margen.moneda_venta === 'USD' ? 'USD' : 'PEN'
   if (margen.precio_venta === null) {
@@ -886,7 +899,11 @@ function MargenDeLaCarroceria({
                   : 'En soles'
               }
             />
-            <CifraMargen etiqueta="Costo a la fecha" valor={moneda(margen.costo_pen)} pie="Material, planilla y gastos" />
+            <CifraMargen
+              etiqueta={cerrado ? 'Costo cerrado' : 'Costo a la fecha'}
+              valor={moneda(margen.costo_pen)}
+              pie={cerrado ? 'El que quedó al cerrar la OT' : 'Material, planilla y gastos'}
+            />
             {margen.costo_pen <= 0 ? (
               // Sin costo cargado, el margen saldría 100 %: una cifra que parece buena y no dice nada.
               <CifraMargen etiqueta="Margen" valor="—" pie="Todavía no hay costo cargado" />
@@ -906,6 +923,112 @@ function MargenDeLaCarroceria({
           )}
         </>
       )}
+    </section>
+  )
+}
+
+const SEMAFORO_PRESUPUESTO: Record<
+  NonNullable<PresupuestoExpediente['semaforo']>,
+  { tono: Tono; titulo: string; explica: string; barra: string }
+> = {
+  EN_RANGO: { tono: 'exito', titulo: 'Dentro del presupuesto', explica: 'Lo gastado está dentro de lo que se puede gastar.', barra: 'bg-exito' },
+  AJUSTADO: {
+    tono: 'aviso',
+    titulo: 'Cerca del tope',
+    explica: 'Ya se gastó el 90 % o más y la unidad no llega al 90 % de avance.',
+    barra: 'bg-aviso',
+  },
+  EXCEDIDO: { tono: 'peligro', titulo: 'Pasó el presupuesto', explica: 'Lo gastado es más de lo que se podía gastar.', barra: 'bg-peligro' },
+}
+
+/**
+ * Lo que se puede gastar en la unidad contra lo gastado, con el avance al lado.
+ * El semáforo compara el gasto con el tope y no con el avance: el material se
+ * compra al empezar, y un gasto por delante del avance no es una alarma.
+ */
+function PresupuestoDeLaCarroceria({
+  presupuesto,
+  ordenId,
+  puedeFijar,
+  cerrado,
+}: {
+  presupuesto: PresupuestoExpediente
+  ordenId: string
+  puedeFijar: boolean
+  cerrado: boolean
+}) {
+  if (presupuesto.presupuesto_pen === null || presupuesto.semaforo === null) {
+    return (
+      <section aria-label="Presupuesto" className="no-partir space-y-2 rounded-[var(--radius-base)] border border-borde p-4">
+        <h3 className="text-sm font-semibold text-texto">Presupuesto de costo</h3>
+        <p className="text-sm text-texto-suave">
+          Sale solo de la cotización cuando se confirma si su monto incluye IGV: el precio sin IGV ÷ 1.15, la utilidad
+          estándar de la casa.{puedeFijar ? ' Si la OT no tiene cotización, fíjalo a mano.' : ''}
+        </p>
+        {puedeFijar && <FijarPresupuesto ordenId={ordenId} manual={false} />}
+      </section>
+    )
+  }
+
+  const s = SEMAFORO_PRESUPUESTO[presupuesto.semaforo]
+  const consumido = presupuesto.consumido_pct ?? 0
+  const regla = `Precio sin IGV ÷ ${numero(1 + presupuesto.utilidad_pct / 100, 2)}: la utilidad de ${porcentaje(presupuesto.utilidad_pct, 0)} de la casa`
+  const fijado = [presupuesto.fijado_por, presupuesto.fijado_en ? fecha(presupuesto.fijado_en) : null].filter(Boolean).join(', ')
+
+  return (
+    <section aria-label="Presupuesto" className="no-partir space-y-3 rounded-[var(--radius-base)] border border-borde p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-texto">Presupuesto de costo</h3>
+        <Insignia tono={s.tono}>{s.titulo}</Insignia>
+      </div>
+      <dl className="grid gap-3 sm:grid-cols-3">
+        <CifraMargen
+          etiqueta="Se puede gastar"
+          valor={moneda(presupuesto.presupuesto_pen)}
+          pie={presupuesto.origen === 'MANUAL' ? `Fijado a mano${fijado ? ` · ${fijado}` : ''}` : regla}
+        />
+        <CifraMargen
+          etiqueta={cerrado ? 'Costo cerrado' : 'Gastado a la fecha'}
+          valor={moneda(presupuesto.costo_pen)}
+          pie={`${porcentaje(consumido, 1)} del presupuesto`}
+          tono={presupuesto.semaforo === 'EXCEDIDO' ? 'peligro' : undefined}
+        />
+        <CifraMargen etiqueta="Avance de la unidad" valor={porcentaje(presupuesto.avance_pct, 0)} pie="Lo hecho, según los reportes" />
+      </dl>
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2">
+          <span className="w-16 shrink-0 text-xs text-texto-suave">Gastado</span>
+          <div
+            role="meter"
+            aria-label="Gastado del presupuesto"
+            aria-valuenow={Math.round(consumido)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            className="h-2 w-full overflow-hidden rounded-full bg-neutro-suave"
+          >
+            <div className={cn('h-full rounded-full', s.barra)} style={{ width: `${Math.min(100, Math.max(0, consumido))}%` }} />
+          </div>
+          <span className="tabular w-12 shrink-0 text-right text-xs text-texto-suave">{Math.round(consumido)}%</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-16 shrink-0 text-xs text-texto-suave">Avance</span>
+          <Progreso valor={presupuesto.avance_pct} etiqueta="Avance de la unidad" className="w-full" />
+          <span className="tabular w-12 shrink-0 text-right text-xs text-texto-suave">{Math.round(presupuesto.avance_pct)}%</span>
+        </div>
+      </div>
+      <p className="text-xs text-texto-suave">
+        {s.explica}
+        {consumido > presupuesto.avance_pct &&
+          presupuesto.semaforo !== 'EXCEDIDO' &&
+          ' El material se compra al empezar: es normal que el gasto vaya por delante del avance.'}
+      </p>
+      {presupuesto.origen === 'MANUAL' && presupuesto.motivo && (
+        <p className="text-xs text-texto-suave">Motivo del presupuesto: {presupuesto.motivo}</p>
+      )}
+      {presupuesto.costo_incompleto && (
+        <p className="text-xs text-aviso">El costo todavía está incompleto: lo gastado de verdad puede ser más.</p>
+      )}
+      {puedeFijar && <FijarPresupuesto ordenId={ordenId} manual={presupuesto.origen === 'MANUAL'} />}
     </section>
   )
 }

@@ -56,26 +56,40 @@ export async function solicitudesPendientesTesoreria() {
  * en el tablero: lo comprado en dólares entra al cambio de su fecha. Una llamada
  * por orden —son pocas, las que caben en el tablero—; si una falla, esa orden
  * sale sin cifra en vez de tumbar la pantalla. Solo se llama con `costos.ver`;
- * el margen, además, solo con el precio a la vista (`conMargen`).
+ * el margen y el presupuesto, además, solo con el precio a la vista (`conMargen`).
  */
 export async function costoDeOrdenes(ids: string[], opciones: { conMargen?: boolean } = {}) {
   const supabase = await createClient()
   const filas = await Promise.all(
     ids.map(async (id) => {
-      const [costo, margen] = await Promise.all([
+      // `presupuesto_ot` trae el margen y el semáforo del presupuesto en una llamada.
+      const [costo, presupuesto] = await Promise.all([
         supabase.rpc('costeo_ot_en_soles', { p_orden: id }),
-        opciones.conMargen ? supabase.rpc('margen_ot', { p_orden: id }).maybeSingle() : Promise.resolve({ data: null, error: null }),
+        opciones.conMargen
+          ? supabase.rpc('presupuesto_ot', { p_orden: id }).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
       ])
       if (costo.error || !costo.data) return [id, null] as const
-      const total = { pen: 0, sinPrecio: 0, sinCambio: 0, margenPct: null as number | null }
+      const total = {
+        pen: 0,
+        sinPrecio: 0,
+        sinCambio: 0,
+        margenPct: null as number | null,
+        consumidoPct: null as number | null,
+        semaforo: null as 'EN_RANGO' | 'AJUSTADO' | 'EXCEDIDO' | null,
+      }
       for (const l of costo.data) {
         if (l.fuente === 'MATERIALES_SIN_PRECIO') total.sinPrecio += 1
         else if (l.monto_pen === null && l.moneda === 'USD') total.sinCambio += 1
         else total.pen += Number(l.monto_pen ?? 0)
       }
       // Sin costo cargado el margen saldría 100 %: no se muestra hasta que haya costo.
-      const pct = (margen.data as { margen_pct: number | null } | null)?.margen_pct
-      total.margenPct = pct === null || pct === undefined || total.pen <= 0 ? null : Number(pct)
+      const p = presupuesto.data as { margen_pct: number | null; consumido_pct: number | null; semaforo: string | null } | null
+      if (p && total.pen > 0) {
+        total.margenPct = p.margen_pct === null ? null : Number(p.margen_pct)
+        total.consumidoPct = p.consumido_pct === null ? null : Number(p.consumido_pct)
+        total.semaforo = (p.semaforo as typeof total.semaforo) ?? null
+      }
       return [id, total] as const
     }),
   )

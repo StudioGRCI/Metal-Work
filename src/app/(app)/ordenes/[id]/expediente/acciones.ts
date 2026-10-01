@@ -66,3 +66,48 @@ export async function cerrarCosto(_previo: unknown, datos: FormData): Promise<Re
   revalidatePath('/')
   return { ok: true, mensaje: 'Costo cerrado. Queda congelado como evidencia.' }
 }
+
+/**
+ * Gerencia o Administración fijan a mano lo que se puede gastar en la unidad, o
+ * la devuelven al presupuesto de la cotización. Las llaves son las de
+ * `fijar_presupuesto_ot`: decidir (`cotizaciones.revisar` u `ordenes.editar`) y
+ * ver el costo y el precio, contra los que se lo mide.
+ */
+export async function fijarPresupuesto(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  const decide = puede(perfil, ['cotizaciones.revisar', 'ordenes.editar'])
+  const ve = puede(perfil, 'costos.ver') && puede(perfil, 'cotizaciones.ver_pdf_comercial')
+  if (!decide || !ve) return { ok: false, error: 'El presupuesto de una OT lo fijan Gerencia o Administración.' }
+
+  const entrada = z
+    .object({
+      orden_id: uuid,
+      accion: z.enum(['fijar', 'cotizacion']),
+      monto: z.string().trim().optional().default(''),
+      motivo: z.string().trim().max(500).optional().default(''),
+    })
+    .safeParse(Object.fromEntries(datos))
+  if (!entrada.success) return { ok: false, error: 'Revisa el monto y el motivo del presupuesto.' }
+  const v = entrada.data
+
+  let monto: number | null = null
+  if (v.accion === 'fijar') {
+    monto = Number(v.monto)
+    if (!v.monto || !Number.isFinite(monto) || monto <= 0) {
+      return { ok: false, error: 'Escribe el presupuesto en soles, mayor que cero.' }
+    }
+    if (v.motivo.length < 5) return { ok: false, error: 'Escribe por qué la OT lleva este presupuesto.' }
+  }
+
+  const db = await createClient()
+  const { error } = await db.rpc('fijar_presupuesto_ot', {
+    p_orden: v.orden_id,
+    p_monto: monto,
+    p_motivo: v.accion === 'fijar' ? v.motivo : null,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+
+  revalidatePath(`/ordenes/${v.orden_id}/expediente`)
+  revalidatePath('/')
+  return { ok: true, mensaje: monto === null ? 'Vuelve al presupuesto de la cotización.' : 'Presupuesto fijado.' }
+}

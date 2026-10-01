@@ -201,7 +201,7 @@ export default async function PaginaTablero() {
                           // Cada renglón es su propia rejilla: con columnas de
                           // ancho fijo las barras de avance quedan alineadas.
                           costos
-                            ? 'sm:grid-cols-[minmax(0,1fr)_8rem_8.5rem_7rem]'
+                            ? 'sm:grid-cols-[minmax(0,1fr)_8rem_8.5rem_8.5rem]'
                             : 'sm:grid-cols-[minmax(0,1fr)_8rem_8.5rem]',
                         )}
                       >
@@ -259,6 +259,20 @@ export default async function PaginaTablero() {
                                 {costo.margenPct !== null && (
                                   <span className={cn('block', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
                                     Margen {porcentaje(costo.margenPct, 1)}
+                                  </span>
+                                )}
+                                {costo.semaforo && costo.consumidoPct !== null && (
+                                  <span
+                                    className={cn(
+                                      'block',
+                                      costo.semaforo === 'EXCEDIDO'
+                                        ? 'text-peligro'
+                                        : costo.semaforo === 'AJUSTADO'
+                                          ? 'text-aviso'
+                                          : 'text-texto-suave',
+                                    )}
+                                  >
+                                    {porcentaje(costo.consumidoPct, 0)} del presupuesto
                                   </span>
                                 )}
                                 {costo.sinPrecio > 0 && (

@@ -96,6 +96,21 @@ export type MargenExpediente = {
   lineas_sin_cambio: number
 }
 
+/** Lo que devuelve `presupuesto_ot`: sin presupuesto, el monto y el semáforo vienen en null. */
+export type PresupuestoExpediente = {
+  presupuesto_pen: number | null
+  origen: 'COTIZACION' | 'MANUAL' | null
+  motivo: string | null
+  fijado_en: string | null
+  fijado_por: string | null
+  utilidad_pct: number
+  costo_pen: number
+  consumido_pct: number | null
+  avance_pct: number
+  semaforo: 'EN_RANGO' | 'AJUSTADO' | 'EXCEDIDO' | null
+  costo_incompleto: boolean
+}
+
 export type CierreExpediente = {
   costo_pen: number
   cerrado_en: string
@@ -120,7 +135,7 @@ export async function expedienteDeOrden(ordenId: string, opciones: { verCosteo: 
   const supabase = await createClient()
   const verMargen = opciones.verCosteo && Boolean(opciones.verMargen)
 
-  const [etapas, areas, diario, evidencias, acta, liberacion, salida, planos, materiales, resumen, detalle, enSoles, cierre, margen, venta] =
+  const [etapas, areas, diario, evidencias, acta, liberacion, salida, planos, materiales, resumen, detalle, enSoles, cierre, margen, venta, presupuesto] =
     await Promise.all([
       supabase
         .from('ot_etapas')
@@ -191,6 +206,8 @@ export async function expedienteDeOrden(ordenId: string, opciones: { verCosteo: 
       verMargen
         ? supabase.from('ordenes_trabajo').select('cotizacion_pdf_id').eq('id', ordenId).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
+      // El presupuesto delata el precio (precio sin IGV ÷ 1.15): las llaves del margen.
+      verMargen ? supabase.rpc('presupuesto_ot', { p_orden: ordenId }).maybeSingle() : Promise.resolve({ data: null, error: null }),
     ])
 
   if (etapas.error) throw new Error(`No se pudieron leer las etapas: ${etapas.error.message}`)
@@ -200,6 +217,7 @@ export async function expedienteDeOrden(ordenId: string, opciones: { verCosteo: 
   if (enSoles.error) throw new Error(`No se pudo pasar el costo a soles: ${enSoles.error.message}`)
   if (cierre.error) throw new Error(`No se pudo leer el cierre del costo: ${cierre.error.message}`)
   if (margen.error) throw new Error(`No se pudo calcular el margen: ${margen.error.message}`)
+  if (presupuesto.error) throw new Error(`No se pudo calcular el presupuesto: ${presupuesto.error.message}`)
 
   const rutas = (evidencias.data ?? []).map((e) => e.foto_ruta).filter((r): r is string => Boolean(r))
   const enlaces = await enlacesDeFotos(rutas, 3600)
@@ -270,6 +288,9 @@ export async function expedienteDeOrden(ordenId: string, opciones: { verCosteo: 
       : null,
     margen: margen.data ? (normalizarMargen(margen.data as Record<string, unknown>) satisfies MargenExpediente) : null,
     cotizacionId: (venta.data as { cotizacion_pdf_id: string | null } | null)?.cotizacion_pdf_id ?? null,
+    presupuesto: presupuesto.data
+      ? (normalizarPresupuesto(presupuesto.data as Record<string, unknown>) satisfies PresupuestoExpediente)
+      : null,
   }
 }
 
@@ -289,5 +310,22 @@ function normalizarMargen(m: Record<string, unknown>): MargenExpediente {
     margen_pct: n(m.margen_pct),
     despachos_sin_precio: Number(m.despachos_sin_precio ?? 0),
     lineas_sin_cambio: Number(m.lineas_sin_cambio ?? 0),
+  }
+}
+
+function normalizarPresupuesto(p: Record<string, unknown>): PresupuestoExpediente {
+  const n = (v: unknown) => (v === null || v === undefined ? null : Number(v))
+  return {
+    presupuesto_pen: n(p.presupuesto_pen),
+    origen: (p.origen as PresupuestoExpediente['origen']) ?? null,
+    motivo: (p.motivo as string | null) ?? null,
+    fijado_en: (p.fijado_en as string | null) ?? null,
+    fijado_por: (p.fijado_por as string | null) ?? null,
+    utilidad_pct: Number(p.utilidad_pct ?? 15),
+    costo_pen: Number(p.costo_pen ?? 0),
+    consumido_pct: n(p.consumido_pct),
+    avance_pct: Number(p.avance_pct ?? 0),
+    semaforo: (p.semaforo as PresupuestoExpediente['semaforo']) ?? null,
+    costo_incompleto: Boolean(p.costo_incompleto),
   }
 }

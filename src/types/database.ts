@@ -3867,6 +3867,54 @@ export type Database = {
           }
         ]
       }
+      ot_presupuestos: {
+        Row: {
+          id: string
+          orden_id: string
+          monto_pen: number | null
+          motivo: string
+          fijado_por: string
+          fijado_en: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          monto_pen?: number | null
+          motivo: string
+          fijado_por?: string
+          fijado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          monto_pen?: number | null
+          motivo?: string
+          fijado_por?: string
+          fijado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_presupuestos_fijado_por_fkey"
+            columns: ["fijado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_presupuestos_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_repuestos: {
         Row: {
           id: string
@@ -6437,6 +6485,14 @@ export type Database = {
         }
         Returns: string
       }
+      fijar_presupuesto_ot: {
+        Args: {
+          p_orden: string | null
+          p_monto: number | null
+          p_motivo: string | null
+        }
+        Returns: null
+      }
       flota_sigue_en_taller: {
         Args: {
           p_flota: string | null
@@ -6652,6 +6708,26 @@ export type Database = {
           p_cliente: string | null
         }
         Returns: null
+      }
+      presupuesto_ot: {
+        Args: {
+          p_orden: string | null
+        }
+        Returns: {
+          presupuesto_pen: number | null
+          origen: string | null
+          motivo: string | null
+          fijado_en: string | null
+          fijado_por: string | null
+          utilidad_pct: number | null
+          precio_neto_pen: number | null
+          costo_pen: number | null
+          consumido_pct: number | null
+          avance_pct: number | null
+          margen_pct: number | null
+          semaforo: string | null
+          costo_incompleto: boolean | null
+        }[]
       }
       produccion_siguiente_numero: {
         Args: {

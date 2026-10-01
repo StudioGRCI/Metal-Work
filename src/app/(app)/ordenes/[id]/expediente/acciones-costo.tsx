@@ -3,10 +3,10 @@
 import type { FormEvent } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { AreaTexto, Campo } from '@/components/ui/campos'
+import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { useEnvio } from '@/lib/envio'
 
-import { cerrarCosto, confirmarIgv } from './acciones'
+import { cerrarCosto, confirmarIgv, fijarPresupuesto } from './acciones'
 
 /**
  * Dos botones, una sola pregunta: si el monto de la cotización trae IGV. El
@@ -72,6 +72,59 @@ export function CerrarCosto({ ordenId }: { ordenId: string }) {
         <Boton type="submit" cargando={enviando}>
           Cerrar el costo
         </Boton>
+      </form>
+    </details>
+  )
+}
+
+/**
+ * Fija a mano lo que se puede gastar en la unidad, con su motivo, o la devuelve
+ * al presupuesto de la cotización. El botón tocado viaja como `accion`.
+ */
+export function FijarPresupuesto({ ordenId, manual }: { ordenId: string; manual: boolean }) {
+  const { alEnviar, enviando, error } = useEnvio(fijarPresupuesto)
+
+  function enviar(evento: FormEvent<HTMLFormElement>) {
+    const boton = (evento.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null
+    alEnviar(evento, (datos) => {
+      datos.set('accion', boton?.value === 'cotizacion' ? 'cotizacion' : 'fijar')
+    })
+  }
+
+  return (
+    <details className="rounded-[var(--radius-base)] border border-borde p-3 print:hidden">
+      <summary className="cursor-pointer text-sm font-medium text-acento">
+        {manual ? 'Cambiar el presupuesto' : 'Fijar el presupuesto a mano'}
+      </summary>
+      <form onSubmit={enviar} className="mt-3 space-y-3">
+        <input type="hidden" name="orden_id" value={ordenId} />
+        <p className="text-xs text-texto-suave">
+          Para cuando la regla de la cotización no vale: una venta con menos utilidad, un adicional aprobado, una OT del
+          taller o una garantía. Queda tu puesto, la fecha y el motivo.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-[12rem_1fr]">
+          <Campo etiqueta="Presupuesto en soles" htmlFor="presupuesto-monto">
+            <Entrada id="presupuesto-monto" name="monto" type="number" inputMode="decimal" min="0.01" step="0.01" />
+          </Campo>
+          <Campo etiqueta="Motivo" htmlFor="presupuesto-motivo" ayuda="Por ejemplo: adicional de compuerta aprobado el 12/09.">
+            <AreaTexto id="presupuesto-motivo" name="motivo" rows={2} maxLength={500} />
+          </Campo>
+        </div>
+        {error && (
+          <p role="alert" className="text-sm text-peligro">
+            {error}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Boton type="submit" value="fijar" cargando={enviando}>
+            Guardar el presupuesto
+          </Boton>
+          {manual && (
+            <Boton type="submit" value="cotizacion" variante="secundario" formNoValidate cargando={enviando}>
+              Volver al de la cotización
+            </Boton>
+          )}
+        </div>
       </form>
     </details>
   )
