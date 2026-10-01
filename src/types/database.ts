@@ -1635,6 +1635,9 @@ export type Database = {
           precio_unitario: number | null
           moneda: string | null
           devolucion_de: string | null
+          unidad_id: string | null
+          codigo_unidad: string | null
+          orden_id: string | null
         }
         Insert: {
           id: string
@@ -1654,6 +1657,9 @@ export type Database = {
           precio_unitario?: number | null
           moneda?: string | null
           devolucion_de?: string | null
+          unidad_id?: string | null
+          codigo_unidad?: string | null
+          orden_id?: string | null
         }
         Update: {
           id?: string
@@ -1673,6 +1679,9 @@ export type Database = {
           precio_unitario?: number | null
           moneda?: string | null
           devolucion_de?: string | null
+          unidad_id?: string | null
+          codigo_unidad?: string | null
+          orden_id?: string | null
         }
         Relationships: [
           {
@@ -1697,6 +1706,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "movimientos_materiales_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "movimientos_materiales_registrado_por_fkey"
             columns: ["registrado_por"]
             isOneToOne: false
@@ -1715,6 +1731,13 @@ export type Database = {
             columns: ["responsable_id"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_unidad_id_fkey"
+            columns: ["unidad_id"]
+            isOneToOne: false
+            referencedRelation: "unidades"
             referencedColumns: ["id"]
           }
         ]
@@ -5440,6 +5463,34 @@ export type Database = {
         }
         Relationships: []
       }
+      v_kardex_almacen: {
+        Row: {
+          id: string | null
+          fecha: string | null
+          material_id: string | null
+          material_codigo: string | null
+          material: string | null
+          unidad_medida: string | null
+          movimiento: string | null
+          origen: string | null
+          entrada: number | null
+          salida: number | null
+          saldo: number | null
+          documento: string | null
+          unidad_id: string | null
+          codigo_unidad: string | null
+          orden_id: string | null
+          orden_numero: string | null
+          recibido_por_nombre: string | null
+          registrado_por: string | null
+          registrado_por_nombre: string | null
+          precio_unitario: number | null
+          moneda: string | null
+          con_foto: boolean | null
+          devolucion_de: string | null
+        }
+        Relationships: []
+      }
       v_orden_compra_material_pendiente: {
         Row: {
           id: string | null
@@ -6078,6 +6129,12 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      nombre_unidad_almacen: {
+        Args: {
+          p_u: string | null
+        }
+        Returns: string
+      }
       notificar_a_permiso: {
         Args: {
           p_permiso: string | null
@@ -6356,6 +6413,19 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_salida_almacen: {
+        Args: {
+          p_id: string | null
+          p_material: string | null
+          p_cantidad: number | null
+          p_unidad: string | null
+          p_codigo: string | null
+          p_motivo: string | null
+          p_recibe: string | null
+          p_foto: string | null
+        }
+        Returns: string
+      }
       registrar_salida_fisica: {
         Args: {
           p_entrega: string | null
@@ -6509,6 +6579,17 @@ export type Database = {
           p_observacion?: string | null
         }
         Returns: string
+      }
+      unidades_para_salida_almacen: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          nombre: string | null
+          codigo_interno: string | null
+          placa: string | null
+          vehiculo: string | null
+          ordenes: string | null
+        }[]
       }
       usuario_actual: {
         Args: Record<PropertyKey, never>

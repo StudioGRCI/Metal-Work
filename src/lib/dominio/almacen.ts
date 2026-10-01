@@ -34,3 +34,22 @@ export const ESTADO_ORDEN_COMPRA: Record<string, Def> = {
   RECIBIDA: { etiqueta: 'Recibida', tono: 'exito' },
   ANULADA: { etiqueta: 'Anulada', tono: 'peligro' },
 }
+
+/** Cómo se lee cada fila del kardex: si entró, salió o se corrigió por conteo. */
+export const MOVIMIENTO_KARDEX: Record<string, Def> = {
+  INGRESO: { etiqueta: 'Ingreso', tono: 'exito' },
+  DESPACHO: { etiqueta: 'Despacho a OT', tono: 'acento', descripcion: 'Entrega de una solicitud de material de la OT' },
+  SALIDA: { etiqueta: 'Salida', tono: 'aviso', descripcion: 'Retiro sin solicitud, vinculado a una unidad' },
+  AJUSTE: { etiqueta: 'Ajuste', tono: 'info', descripcion: 'Corrección por conteo físico' },
+}
+
+/** De dónde vino cada movimiento. */
+export const ORIGEN_KARDEX: Record<string, string> = {
+  COMPRA: 'Compra recibida',
+  SALDO_INICIAL: 'Saldo inicial',
+  INGRESO_GENERAL: 'Ingreso general',
+  DEVOLUCION: 'Devolución',
+  DESPACHO: 'Solicitud de OT',
+  SALIDA_GENERAL: 'Salida por unidad',
+  CONTEO: 'Conteo físico',
+}

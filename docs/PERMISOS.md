@@ -21,6 +21,8 @@ Tesorería. Los permisos siguientes se comprobaron en producción.
 | Diseño e ingeniería | `diseno.planos`, `ordenes.listar`, `ordenes.ver` | Prepara la ficha técnica, guía de planos y desglose de materiales. No consulta importes ni PDF comerciales. |
 | Supervisión de Producción, Maestranza y Acabados | `ordenes.listar`, `ordenes.ver`, `produccion.actividades`, `produccion.reportar_tarea` | Cada cuenta crea las actividades y reporta fotos y avance de su área. Producción y Maestranza marcan sus respectivos vistos buenos en la ficha. No aprueban sus propios reportes. |
 | Operario | `ordenes.listar`, `ordenes.ver`, `produccion.registrar` | Registra el avance operativo autorizado. No ve la cotización comercial. |
+| Almacenero | `almacen.ver`, `almacen.recibir`, `almacen.despachar`, `requerimientos.ver` | Lleva el kardex (`/almacen/kardex`): registra ingresos y salidas. Toda salida va vinculada a un vehículo registrado o al código de su unidad, con foto y nombre de quien recibe. Comprobado con el rol real el 2026-10-01 (check 314). |
+| Costos y Materiales | `almacen.ver` | Lee el kardex y el historial de movimientos; no registra ingresos ni salidas. |
 
 ## Visibilidad de documentos
 

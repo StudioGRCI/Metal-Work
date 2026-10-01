@@ -19,7 +19,7 @@ export default async function PaginaStockAlmacen() {
       crearCompra: false, recibir: false, despachar: false,
     }),
     db.from('movimientos_materiales')
-      .select('id,tipo,cantidad,documento_referencia,registrado_en,requerimiento_detalle_id,material_id,origen,recibido_por_nombre,foto_ruta')
+      .select('id,tipo,cantidad,documento_referencia,registrado_en,requerimiento_detalle_id,material_id,origen,recibido_por_nombre,foto_ruta,codigo_unidad')
       .order('registrado_en', { ascending: false }).limit(80),
     db.from('conteos_inventario')
       .select('id,material_id,cantidad_fisica,ajuste,motivo,registrado_en')
@@ -51,7 +51,7 @@ export default async function PaginaStockAlmacen() {
       const materialId=m.material_id??otMaterial?.material_id??''
       return {
         id: m.id, fecha: m.registrado_en, material: materialPorId.get(materialId)?.descripcion ?? 'Material',
-        detalle: m.tipo === 'INGRESO' ? `Ingreso · ${m.documento_referencia ?? 'sin referencia'}` : `Entrega a ${m.recibido_por_nombre??'su área'}`,
+        detalle: m.tipo === 'INGRESO' ? `Ingreso · ${m.documento_referencia ?? 'sin referencia'}` : `Entrega a ${m.recibido_por_nombre??'su área'}${m.codigo_unidad ? ` · ${m.codigo_unidad}` : ''}`,
         foto: m.foto_ruta ? `/almacen/movimientos/${m.id}/evidencia` : null,
         cantidad: (m.tipo === 'INGRESO' ? 1 : -1) * Number(m.cantidad),
         unidad: materialPorId.get(materialId)?.unidad ?? '',
@@ -72,7 +72,8 @@ export default async function PaginaStockAlmacen() {
       <StockAlmacen existencias={datos.existencias} catalogoAlmacen={datos.catalogoAlmacen} despachos={eventos.filter(e=>e.cantidad<0&&e.detalle.startsWith('Entrega')).map(e=>({id:e.id,etiqueta:`${e.material} · ${e.detalle} · ${cantidad(-e.cantidad)} ${e.unidad}`}))} />
       <Tarjeta>
         <TarjetaCabecera titulo="Ingresos, despachos y ajustes recientes"
-          descripcion="Los movimientos de compra y despacho se registran desde Materiales de la OT." />
+          descripcion="Los movimientos de compra y despacho se registran desde Materiales de la OT; las salidas por unidad, desde el kardex."
+          acciones={<Link href="/almacen/kardex" className="text-sm text-acento underline">Ver kardex completo</Link>} />
         <TarjetaCuerpo className="space-y-2">
           {eventos.length === 0 && <p className="text-sm text-texto-suave">Todavía no hay movimientos registrados.</p>}
           {eventos.map(e => <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-borde py-2 last:border-0">

@@ -27,7 +27,7 @@ export function NuevoIngreso({materiales,despachos}:{materiales:MaterialParaCont
  <Campo etiqueta="Moneda" htmlFor="ing-moneda"><Seleccion id="ing-moneda" name="moneda"><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion></Campo>
  <Campo etiqueta="Precio unitario" htmlFor="ing-precio" ayuda="Si no se conoce, quedará pendiente de valorización."><Entrada id="ing-precio" name="precio" type="number" min={0} step="0.01" inputMode="decimal"/></Campo>
  </div>
- {origen==='DEVOLUCION'&&<Campo etiqueta="Despacho que se devuelve" htmlFor="ing-devolucion" requerido><Seleccion id="ing-devolucion" name="devolucion" required defaultValue=""><option value="">Elige la entrega original</option>{despachos.map(d=><option key={d.id} value={d.id}>{d.etiqueta}</option>)}</Seleccion></Campo>}
+ {origen==='DEVOLUCION'&&<Campo etiqueta="Entrega o salida que se devuelve" htmlFor="ing-devolucion" requerido><Seleccion id="ing-devolucion" name="devolucion" required defaultValue=""><option value="">Elige la entrega original</option>{despachos.map(d=><option key={d.id} value={d.id}>{d.etiqueta}</option>)}</Seleccion></Campo>}
  {envio.error&&<p role="alert" className="text-sm text-peligro">{envio.error}</p>}
  <Boton type="submit" cargando={envio.enviando}>Confirmar ingreso</Boton>
  </form></Ventana>{envio.resultado?.ok&&<p role="status" className="mt-2 text-sm text-exito">{envio.resultado.mensaje}</p>}</>
