@@ -7,7 +7,7 @@ export type MaterialParaValorizar = Database['public']['Functions']['materiales_
 
 /**
  * Lo que hay en almacén con su último precio de compra y el precio que fijó
- * Logística. La función exige `compras.crear`, `almacen.ver` o `costos.ver`:
+ * Logística. La función exige `almacen.valorizar`, `almacen.ver` o `costos.ver`:
  * Logística no lee los movimientos del almacén, recibe solo esto.
  */
 export async function materialesParaValorizar(): Promise<MaterialParaValorizar[]> {

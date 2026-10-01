@@ -32,14 +32,14 @@ const monedaValida = (m: string | null) => (m === 'PEN' || m === 'USD' ? m : nul
  * del almacén, se carga a la OT y su costo queda en blanco.
  *
  * La lectura es la misma que pide `materiales_para_valorizar`: Logística
- * (`compras.crear`), Almacén (`almacen.ver`) y Costos (`costos.ver`).
+ * (`almacen.valorizar`), Almacén (`almacen.ver`) y Costos (`costos.ver`).
  */
 export default async function PaginaValorizacion({ searchParams }: PageProps<'/compras/valorizacion'>) {
-  const perfil = await exigirPermiso(['compras.crear', 'almacen.ver', 'costos.ver'])
+  const perfil = await exigirPermiso(['almacen.valorizar', 'almacen.ver', 'costos.ver'])
   const params = await searchParams
   const ver = texto(params.ver)
   const busqueda = texto(params.q).slice(0, 60).toLocaleLowerCase('es')
-  const puedeValorizar = puede(perfil, 'compras.crear')
+  const puedeValorizar = puede(perfil, 'almacen.valorizar')
 
   const todos = await materialesParaValorizar()
   const conCosteo = todos.map((m) => ({ ...m, costeo: precioDeCosteo(m) }))

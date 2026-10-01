@@ -14,12 +14,12 @@ function dato(formulario: FormData, nombre: string) {
 
 /**
  * Diseño e Ingeniería evalúa la merma de material de la OT y fija su
- * porcentaje. `fijar_merma_ot` exige `diseno.planos`, el mismo permiso que se
- * pide aquí, y que la OT siga abierta.
+ * porcentaje. `fijar_merma_ot` exige `diseno.merma`, el mismo permiso que se
+ * pide aquí, y que la OT siga abierta. Gerencia la ve, pero no la fija.
  */
 export async function fijarMermaOrden(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'La merma la evalúa y la fija Diseño e Ingeniería.' }
+  if (!puede(perfil, 'diseno.merma')) return { ok: false, error: 'La merma la evalúa y la fija Diseño e Ingeniería.' }
 
   const v = z.object({
     orden_id: z.string().uuid(),

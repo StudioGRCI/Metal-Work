@@ -26,6 +26,7 @@ select set_config('u.diseno', (select u.id::text from public.usuarios u join pub
 select set_config('u.rrhh', (select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'RECURSOS_HUMANOS' and u.activo limit 1), true);
 select set_config('u.admin', (select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'ADMINISTRACION' and u.activo limit 1), true);
 select set_config('u.costos', (select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'COSTOS_MATERIALES' and u.activo limit 1), true);
+select set_config('u.gerente', (select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'GERENTE' and u.activo limit 1), true);
 select set_config('u.supervisor', (select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'SUPERVISOR' and u.activo limit 1), true);
 insert into storage.objects(bucket_id, name, owner_id, metadata) values ('evidencias-almacen',
   current_setting('u.almacen') || '/' || current_setting('prueba.salida') || '.jpg', current_setting('u.almacen'),
@@ -87,6 +88,27 @@ do $$ begin
   begin
     perform public.fijar_merma_ot(current_setting('prueba.orden')::uuid, 50, 'Intento sin permiso');
     raise exception 'FAIL: Costos fijó la merma';
+  exception when insufficient_privilege then null; end;
+end $$;
+reset role;
+
+-- 4b. Gerencia ve la merma y el precio, pero no los fija (migración 20261001120000).
+select pg_temp.como(current_setting('u.gerente'));
+set local role authenticated;
+do $$ begin
+  if not exists (select 1 from public.ot_mermas where orden_id = current_setting('prueba.orden')::uuid and porcentaje = 10) then
+    raise exception 'FAIL: Gerencia no ve la merma';
+  end if;
+  if not exists (select 1 from public.materiales_para_valorizar() where material_id = current_setting('prueba.material')::uuid and precio = 12.5) then
+    raise exception 'FAIL: Gerencia no ve el precio';
+  end if;
+  begin
+    perform public.fijar_merma_ot(current_setting('prueba.orden')::uuid, 50, 'Intento de Gerencia');
+    raise exception 'FAIL: Gerencia fijó la merma';
+  exception when insufficient_privilege then null; end;
+  begin
+    perform public.valorizar_material(gen_random_uuid(), current_setting('prueba.material')::uuid, 99, 'PEN', '');
+    raise exception 'FAIL: Gerencia fijó un precio';
   exception when insufficient_privilege then null; end;
 end $$;
 reset role;

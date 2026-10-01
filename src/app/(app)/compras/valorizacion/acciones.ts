@@ -15,11 +15,12 @@ function dato(formulario: FormData, nombre: string) {
 /**
  * Logística fija el precio de un material del almacén. No corrige el anterior:
  * agrega uno nuevo, vigente desde ahora, y lo que ya salió conserva el suyo.
- * `valorizar_material` exige `compras.crear`, el mismo permiso que se pide aquí.
+ * `valorizar_material` exige `almacen.valorizar`, el mismo permiso que se pide
+ * aquí. Es solo de Logística: Gerencia mira el costo, no fija precios.
  */
 export async function valorizarMaterial(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Solo Logística fija el precio de los materiales del almacén.' }
+  if (!puede(perfil, 'almacen.valorizar')) return { ok: false, error: 'Solo Logística fija el precio de los materiales del almacén.' }
 
   const v = z.object({
     operacion_id: z.string().uuid(),

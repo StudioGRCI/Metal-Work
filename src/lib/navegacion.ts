@@ -140,7 +140,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
         titulo: 'Valorización del almacén',
         ruta: '/compras/valorizacion',
         icono: Tag,
-        permiso: ['compras.crear', 'costos.ver'],
+        permiso: ['almacen.valorizar', 'costos.ver'],
         descripcion: 'Precio de los consumibles y saldos sin compra',
         disponible: true,
       },

@@ -186,9 +186,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     vista === 'materiales'
       ? await materialesParaPantalla(id, puede(perfil, 'requerimientos.ver'))
       : null
-  // La merma la fija Diseño y la lee Costos: los mismos dos permisos que acepta
-  // la política `ver_ot_mermas`.
-  const verMerma = vista === 'materiales' && puede(perfil, ['diseno.planos', 'costos.ver'])
+  // La merma la fija Diseño (`diseno.merma`) y la leen Diseño y Costos: los
+  // mismos permisos que acepta la política `ver_ot_mermas`.
+  const verMerma = vista === 'materiales' && puede(perfil, ['diseno.merma', 'diseno.planos', 'costos.ver'])
   const merma = verMerma ? await mermaDeOrden(id) : null
   const puedeVerControlEntrega = puede(perfil, 'costos.controlar_ot') || puede(perfil, 'costos.ver') || puede(perfil, 'costos.solicitar_pago')
   const datosCostos = vista === 'costos' || (vista === 'entrega' && puedeVerControlEntrega)
@@ -623,7 +623,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               registradoEn: merma.registrado_en,
               registradoPor: merma.registrador ? `${merma.registrador.nombres} ${merma.registrador.apellidos}`.trim() : null,
             } : null}
-            puedeFijar={puede(perfil, 'diseno.planos')}
+            puedeFijar={puede(perfil, 'diseno.merma')}
             ordenViva={!ESTADOS_CERRADOS.includes(orden.estado)} />
         )}<AtencionMaterialesDeOrden ordenId={orden.id} perfil={perfil} /></div>
       )}
