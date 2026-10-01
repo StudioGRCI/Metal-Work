@@ -105,19 +105,11 @@ export const NAVEGACION: GrupoNavegacion[] = [
     items: [
       {titulo:'Compras',ruta:'/compras',icono:Receipt,permiso:'compras.crear',descripcion:'Órdenes de compra agrupadas, facturas y entregas',disponible:true},
       {
-        titulo: 'Stock de Almacén',
-        ruta: '/almacen/stock',
-        icono: Boxes,
-        permiso: 'almacen.recibir',
-        descripcion: 'Existencias, ingresos, despachos y conteos físicos',
-        disponible: true,
-      },
-      {
         titulo: 'Kardex de Almacén',
         ruta: '/almacen/kardex',
         icono: ListOrdered,
         permiso: 'almacen.ver',
-        descripcion: 'Ingresos, egresos por unidad e historial con saldo',
+        descripcion: 'Saldos, ingresos, egresos por unidad y conteo físico',
         disponible: true,
       },
       // Logística fija el precio de lo que nunca se compró por el sistema.
@@ -217,7 +209,6 @@ export function rutaActiva(ruta: string, rutas: string[]) {
 export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/cotizaciones/pdf', corto: 'Cotizar' },
   { ruta: '/ordenes', corto: 'Órdenes' },
-  { ruta: '/almacen/stock', corto: 'Stock' },
   { ruta: '/almacen/kardex', corto: 'Kardex' },
   { ruta: '/diseno/informe-semanal', corto: 'Informe' },
   { ruta: '/diseno/evaluaciones', corto: 'Evaluar' },

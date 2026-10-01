@@ -91,7 +91,11 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const query = await searchParams
   if (query.vista === 'cumplimiento') redirect(`/ordenes/${id}/planos`)
   const secciones = seccionesDeOrden(perfil)
-  const vista: Vista = VISTAS.includes(query.vista as Vista) ? (query.vista as Vista) : 'resumen'
+  // Sin pestaña pedida se abre el resumen, o la primera que la persona ve:
+  // a Almacén la OT se le abre directo en Materiales.
+  const vista: Vista = VISTAS.includes(query.vista as Vista)
+    ? (query.vista as Vista)
+    : secciones.includes('resumen') ? 'resumen' : ((secciones[0] ?? 'resumen') as Vista)
   if (!secciones.includes(vista)) redirect('/sin-permiso')
 
   const puedeVerCotizacionEnOt = veCotizacionEnOt(perfil)

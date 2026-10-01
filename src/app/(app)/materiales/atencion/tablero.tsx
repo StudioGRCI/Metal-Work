@@ -7,7 +7,6 @@ import { Ventana } from '@/components/ui/ventana'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 import { registrarIngresoGeneral } from './acciones'
-import {NuevoIngreso} from '../../almacen/stock/ingreso'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -20,12 +19,11 @@ import type {
   AreaMaterial,
   CompraMaterialPendiente,
   ExistenciaMaterial,
-  MaterialParaConteo,
   LineaAtencionMaterial,
   ResponsableMaterial,
 } from '@/lib/datos/atencion-materiales'
 
-import { crearOrdenCompra, despacharMaterial, registrarConteo, registrarRecepcion, resolverPropuesta, revisarStock, registrarPrecioCompra, marcarEntregaCompra, fijarCondicionCompra } from './acciones'
+import { crearOrdenCompra, despacharMaterial, registrarRecepcion, resolverPropuesta, revisarStock, registrarPrecioCompra, marcarEntregaCompra, fijarCondicionCompra } from './acciones'
 import { SubirDocumentoCompra } from './subir-documento-compra'
 
 const NOMBRE_AREA: Record<string, string> = {
@@ -237,65 +235,6 @@ export function TableroMateriales({
 }
 
 /** Existencias globales y conteo físico, fuera del circuito de una OT. */
-export function StockAlmacen({ existencias, catalogoAlmacen,despachos=[] }: {
-  existencias: ExistenciaMaterial[]
-  catalogoAlmacen: MaterialParaConteo[]
-  despachos?:{id:string;etiqueta:string}[]
-}) {
-  const [busqueda,setBusqueda]=useState('')
-  const visibles=existencias.filter(m=>(m.descripcion+' '+m.codigo).toLowerCase().includes(busqueda.toLowerCase()))
-  return <Tarjeta>
-    <TarjetaCabecera titulo="Existencias" descripcion="El saldo físico incluye lo reservado. El disponible es lo que puedes asignar a otra OT." acciones={<NuevoIngreso materiales={catalogoAlmacen} despachos={despachos}/>} />
-    <TarjetaCuerpo className="space-y-4">
-      <Campo etiqueta="Buscar en stock" htmlFor="stock-buscar"><Entrada id="stock-buscar" value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="Código o descripción"/></Campo>
-      {existencias.length === 0
-        ? <p className="text-sm text-texto-suave">Registra el saldo inicial o el primer ingreso para comenzar.</p>
-        : <div className="divide-y divide-borde">{visibles.map((material) => (
-          <div key={material.material_id} className="grid items-center gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-texto">{material.descripcion}</p>
-              <p className="text-xs text-texto-suave">{material.codigo}</p>
-            </div>
-            <dl className="grid grid-cols-3 gap-5 text-right text-xs text-texto-suave">
-              <div><dt>Físico ({material.unidad})</dt><dd className="tabular mt-1 font-semibold text-texto">{cantidad(Number(material.existencia??0))}</dd></div>
-              <div><dt>Reservado</dt><dd className="tabular mt-1 font-semibold text-texto">{cantidad(Number(material.reservado??0))}</dd></div>
-              <div><dt>Disponible</dt><dd className="tabular mt-1 font-semibold text-acento">{cantidad(Number(material.disponible??0))}</dd></div>
-            </dl>
-          </div>
-        ))}</div>}
-      {existencias.length>0&&visibles.length===0&&<p className="text-sm text-texto-suave">No hay coincidencias. Prueba otro código o descripción.</p>}
-      <ConteoGeneral materiales={catalogoAlmacen} />
-    </TarjetaCuerpo>
-  </Tarjeta>
-}
-
-function ConteoGeneral({ materiales }: { materiales: MaterialParaConteo[] }) {
-  const [clave, setClave] = useState(() => crypto.randomUUID())
-  const { alEnviar, enviando, error } = useEnvio(registrarConteo, () => setClave(crypto.randomUUID()))
-  return <details className="rounded-[var(--radius-base)] border border-borde p-3">
-    <summary className="cursor-pointer text-sm font-medium text-acento">Registrar o corregir conteo físico</summary>
-    <p className="mt-2 text-xs text-texto-suave">Cuenta las unidades disponibles en el almacén. Se guardará el ajuste, el motivo y el usuario que lo registró.</p>
-    <form key={clave} onSubmit={alEnviar} className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_2fr_auto] xl:items-end">
-      <input type="hidden" name="operacion_id" value={clave} />
-      <Campo etiqueta="Material" htmlFor="conteo-general-material" requerido>
-        <Seleccion id="conteo-general-material" name="material_id" required defaultValue="">
-          <option value="" disabled>Elige el material</option>
-          {materiales.map((m) => <option key={m.id} value={m.id}>{m.descripcion} · {m.codigo} · {m.unidad ?? 's/u'}</option>)}
-        </Seleccion>
-      </Campo>
-      <Campo etiqueta="Cantidad física" htmlFor="conteo-general-cantidad" requerido>
-        <Entrada id="conteo-general-cantidad" name="cantidad_fisica" type="number" inputMode="decimal" min={0} step="0.001" required />
-      </Campo>
-      <Campo etiqueta="Motivo o acta" htmlFor="conteo-general-motivo" requerido>
-        <Entrada id="conteo-general-motivo" name="motivo" minLength={10} maxLength={300} required placeholder="Ej.: Conteo físico, acta 001" />
-      </Campo>
-      <Boton type="submit" tamano="sm" cargando={enviando} disabled={materiales.length === 0}>Guardar conteo</Boton>
-      {error && <p role="alert" className="text-xs text-peligro sm:col-span-2 xl:col-span-4">{error}</p>}
-    </form>
-    {materiales.length === 0 && <p className="mt-2 text-xs text-texto-suave">No hay materiales activos para contar.</p>}
-  </details>
-}
-
 function PrecioCompra({ compra }: { compra: CompraMaterialPendiente }) {
   const { alEnviar, enviando, error } = useEnvio(registrarPrecioCompra)
   return <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-2 rounded-md border border-borde p-2">
@@ -404,7 +343,7 @@ function LineaMaterial({
       )}
       {puedeRevisarStock && linea.aprobacion_diseno === 'APROBADO' &&
         linea.decision_almacen === 'PENDIENTE' && (
-        <Link href="/almacen/stock" className="mt-2 inline-block text-sm text-acento underline">Consultar stock e ingresos de Almacén</Link>
+        <Link href={`/almacen/kardex?material=${linea.material_id}`} className="mt-2 inline-block text-sm text-acento underline">Ver el kardex de este material</Link>
       )}
 
       {linea.aprobacion_diseno === 'PROPUESTO' && (

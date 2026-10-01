@@ -110,7 +110,9 @@ export function MaterialesDeOrden({
               {!ordenViva
                 ? `${motivoInactiva ?? 'La orden no está en curso'}: mientras, la lista no se toca.`
                 : catalogo.planos.length === 0
-                  ? puedeDisenar ? 'Crea primero un plano para esta orden.' : 'Diseño debe liberar un plano a tu área antes de solicitar materiales.'
+                  ? puedeDisenar ? 'Crea primero un plano para esta orden.'
+                    : puedeSolicitar ? 'Diseño debe liberar un plano a tu área antes de solicitar materiales.'
+                    : 'Diseño todavía no asigna materiales a esta orden.'
                 : puedeDisenar
                   ? 'Agrega el primer material con el botón de arriba: qué lleva la unidad y cuánto.'
                   : puedeSolicitar

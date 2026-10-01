@@ -73,6 +73,5 @@ export async function registrarSalidaAlmacen(_previo: unknown, formulario: FormD
   if (data !== v.data.operacion_id) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/almacen/kardex')
-  revalidatePath('/almacen/stock')
   return { ok: true, mensaje: 'Salida registrada en el kardex con su unidad.' }
 }

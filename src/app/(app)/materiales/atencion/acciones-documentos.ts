@@ -86,7 +86,7 @@ export async function registrarDocumentoCompra(
 
   revalidatePath('/ordenes/[id]', 'page')
   revalidatePath('/compras')
-  revalidatePath('/almacen/stock')
+  revalidatePath('/almacen/kardex')
   revalidatePath('/tesoreria')
   return { ok: true, mensaje: 'Documento adjuntado a la compra y disponible para Tesorería.' }
 }

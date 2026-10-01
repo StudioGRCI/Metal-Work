@@ -43,7 +43,7 @@ export async function resolverPropuesta(_previo: unknown, formulario: FormData):
   if (!data) return { ok: false, error: 'La propuesta no cambió. Recarga la pantalla.' }
   revalidatePath('/ordenes/[id]', 'page')
   revalidatePath('/compras')
-  revalidatePath('/almacen/stock')
+  revalidatePath('/almacen/kardex')
   return { ok: true, mensaje: v.data.decision === 'aprobar' ? 'Material aprobado para Almacén.' : 'Propuesta rechazada.' }
 }
 
@@ -61,7 +61,7 @@ export async function revisarStock(_previo: unknown, formulario: FormData): Prom
   if (!data) return { ok: false, error: 'La revisión no cambió. Recarga la pantalla.' }
   revalidatePath('/ordenes/[id]', 'page')
   revalidatePath('/compras')
-  revalidatePath('/almacen/stock')
+  revalidatePath('/almacen/kardex')
   return { ok: true, mensaje: v.data.decision === 'STOCK' ? 'Stock reservado para despacho.' : 'Material derivado a Logística.' }
 }
 
@@ -82,7 +82,7 @@ export async function registrarConteo(_previo: unknown, formulario: FormData): P
   if (!data) return { ok: false, error: 'El conteo no quedó registrado. Recarga la pantalla.' }
   revalidatePath('/ordenes/[id]', 'page')
   revalidatePath('/compras')
-  revalidatePath('/almacen/stock')
+  revalidatePath('/almacen/kardex')
   return { ok: true, mensaje: 'Conteo físico registrado. Revisa de nuevo la decisión de stock.' }
 }
 
@@ -100,7 +100,7 @@ export async function registrarPrecioCompra(_previo: unknown, formulario: FormDa
   if (!data) return { ok: false, error: 'El precio no quedó registrado. Recarga la pantalla.' }
   revalidatePath('/ordenes/[id]', 'page')
   revalidatePath('/compras')
-  revalidatePath('/almacen/stock')
+  revalidatePath('/almacen/kardex')
   return { ok: true, mensaje: 'Precio unitario registrado.' }
 }
 
@@ -121,7 +121,7 @@ export async function fijarCondicionCompra(_previo: unknown, formulario: FormDat
   if (data !== v.data.compra_id) return { ok: false, error: 'La condición no cambió. Recarga la compra.' }
   revalidatePath('/ordenes/[id]', 'page')
   revalidatePath('/compras')
-  revalidatePath('/almacen/stock')
+  revalidatePath('/almacen/kardex')
   revalidatePath('/tesoreria/cuentas')
   return { ok: true, mensaje: 'Condición de pago guardada para Tesorería.' }
 }
@@ -137,7 +137,7 @@ export async function marcarEntregaCompra(_previo: unknown, formulario: FormData
   if (!data) return { ok: false, error: 'La entrega no quedó registrada. Recarga la pantalla.' }
   revalidatePath('/ordenes/[id]', 'page')
   revalidatePath('/compras')
-  revalidatePath('/almacen/stock')
+  revalidatePath('/almacen/kardex')
   return { ok: true, mensaje: 'Entrega a Almacén confirmada.' }
 }
 
@@ -196,7 +196,7 @@ export async function crearOrdenCompra(_previo: unknown, formulario: FormData): 
 
   revalidatePath('/ordenes/[id]', 'page')
   revalidatePath('/compras')
-  revalidatePath('/almacen/stock')
+  revalidatePath('/almacen/kardex')
   revalidatePath('/tesoreria/cuentas')
   return { ok: true, mensaje: 'Compra y condición de pago registradas; Almacén ya puede esperar su recepción.' }
 }
@@ -229,7 +229,7 @@ export async function registrarRecepcion(_previo: unknown, formulario: FormData)
 
   revalidatePath('/ordenes/[id]', 'page')
   revalidatePath('/compras')
-  revalidatePath('/almacen/stock')
+  revalidatePath('/almacen/kardex')
   return { ok: true, mensaje: 'Recepción registrada y saldo de almacén actualizado.' }
 }
 
@@ -274,7 +274,7 @@ export async function despacharMaterial(_previo: unknown, formulario: FormData):
 
   revalidatePath('/ordenes/[id]', 'page')
   revalidatePath('/compras')
-  revalidatePath('/almacen/stock')
+  revalidatePath('/almacen/kardex')
   return { ok: true, mensaje: 'Entrega registrada con la persona responsable del área.' }
 }
 
@@ -292,6 +292,6 @@ export async function registrarIngresoGeneral(_previo:unknown,formulario:FormDat
   if(error) return {ok:false,error:mensajeDeError(error)}
   if(data!==v.data.operacion_id) return {ok:false,error:NO_TOCO_NADA}
   revalidatePath('/compras')
-  revalidatePath('/almacen/stock');revalidatePath('/ordenes/[id]','page')
+  revalidatePath('/almacen/kardex');revalidatePath('/ordenes/[id]','page')
   return {ok:true,mensaje:'Ingreso registrado en el kardex de Almacén.'}
 }

@@ -1,10 +1,13 @@
 import { z } from 'zod'
+import { seccionesDeOrden } from '@/lib/dominio/acceso-orden'
 import { obtenerSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string; version: string }> }) {
   const perfil = await obtenerSesion()
   if (!perfil?.activo) return new Response('Inicia sesión para consultar el plano.', { status: 401 })
+  // El PDF se abre desde la pestaña Planos: quien no la ve, no lo descarga por URL.
+  if (!seccionesDeOrden(perfil).includes('planos')) return new Response('Tu puesto no consulta los planos de la orden.', { status: 403 })
   const { id, version } = await params
   if (!z.string().uuid().safeParse(id).success || !z.string().uuid().safeParse(version).success) return new Response('Plano no encontrado.', { status: 404 })
   const supabase = await createClient()

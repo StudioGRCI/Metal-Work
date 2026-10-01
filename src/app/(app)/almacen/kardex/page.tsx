@@ -14,7 +14,8 @@ import { cantidad, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
-import { NuevoIngreso } from '../stock/ingreso'
+import { ConteoFisico } from './conteo'
+import { NuevoIngreso } from './ingreso'
 import { NuevaSalida } from './salida'
 
 export const metadata = { title: 'Kardex de Almacén' }
@@ -79,6 +80,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   if (entregas.error) throw new Error('No se pudieron cargar las entregas que se pueden devolver.')
 
   const { filas, total, cronologico } = kardex
+  const saldoPorMaterial = new Map(materiales.map((m) => [m.material_id, m.existencia]))
   const elegido = filtros.material ? materiales.find((m) => m.material_id === filtros.material) : undefined
   const paginas = Math.max(1, Math.ceil(total / FILAS_POR_PAGINA))
   const entradas = filas.reduce((s, f) => s + Number(f.entrada ?? 0), 0)
@@ -94,7 +96,6 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
       <EncabezadoPagina
         titulo="Kardex de Almacén"
         descripcion="Ingresos, egresos e historial de movimientos con el saldo de cada material. Toda salida queda vinculada a un vehículo o al código de su unidad."
-        migas={[{ titulo: 'Stock de Almacén', ruta: '/almacen/stock' }, { titulo: 'Kardex' }]}
         acciones={(puedeSalida || puedeIngreso) && (
           <div className="flex flex-wrap items-start gap-2">
             {puedeSalida && (
@@ -104,6 +105,11 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                   id: u.id, nombre: u.nombre ?? 'Unidad', vehiculo: u.vehiculo, ordenes: u.ordenes,
                 }))}
               />
+            )}
+            {puedeIngreso && catalogo && (
+              <ConteoFisico materiales={catalogo.catalogoAlmacen.map((m) => ({
+                ...m, saldo: saldoPorMaterial.get(m.id) ?? 0,
+              }))} />
             )}
             {puedeIngreso && catalogo && (
               <NuevoIngreso
