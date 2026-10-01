@@ -416,18 +416,33 @@ async function manejarArchivos(req, res, url) {
   // Subida: POST /object/<cubeta>/<camino>
   if (req.method === 'POST' && ruta.startsWith('/object/') && !ruta.startsWith('/object/sign/')) {
     const camino = ruta.replace('/object/', '')
-    const contenido = await leerCuerpo(req)
+    let contenido = await leerCuerpo(req)
+    let tipo = req.headers['content-type'] ?? 'application/octet-stream'
+    // El navegador sube un File como formulario multipart (storage-js lo
+    // envuelve así). Supabase guarda solo la parte del archivo con su tipo;
+    // sin esto el banco guardaba el sobre del formulario y la foto no pasaba
+    // la revisión de bytes de la acción.
+    if (tipo.startsWith('multipart/form-data')) {
+      const formulario = await new Response(contenido, { headers: { 'content-type': tipo } }).formData()
+      const archivo = [...formulario.values()].find((v) => typeof v === 'object' && v !== null && 'arrayBuffer' in v)
+      if (archivo) {
+        contenido = Buffer.from(await archivo.arrayBuffer())
+        tipo = archivo.type || 'application/octet-stream'
+      }
+    }
     const destino = join(ARCHIVOS, camino)
     await mkdir(dirname(destino), { recursive: true })
     await writeFile(destino, contenido)
 
+    // Dueño, tipo y tamaño como los anota Supabase: las funciones que enlazan
+    // una foto (la salida del kardex) los comprueban antes de aceptarla.
     const [cubeta, ...resto] = camino.split('/')
     await grupo.query(
-      `insert into storage.objects (bucket_id, name, owner)
-       values ($1, $2, $3)
+      `insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
+       values ($1, $2, $3, $4, jsonb_build_object('mimetype', $5::text, 'size', $6::bigint))
        on conflict do nothing`,
-      [cubeta, resto.join('/'), sesion.sub],
-    ).catch(() => {})
+      [cubeta, resto.join('/'), sesion.sub, sesion.sub, tipo, contenido.length],
+    ).catch((e) => console.error(`No se pudo anotar ${camino} en storage.objects: ${e.message}`))
 
     return responder(res, 200, { Key: camino, Id: randomUUID() })
   }
@@ -498,7 +513,7 @@ const servidor = createServer(async (req, res) => {
       'access-control-allow-origin': '*',
       'access-control-allow-methods': 'GET, POST, PATCH, DELETE, HEAD, OPTIONS',
       'access-control-allow-headers':
-        'authorization, apikey, content-type, prefer, range, x-client-info, accept, accept-profile, content-profile, x-supabase-api-version',
+        'authorization, apikey, content-type, prefer, range, x-client-info, accept, accept-profile, content-profile, x-supabase-api-version, x-upsert, cache-control',
       'access-control-max-age': '3600',
     })
     return res.end()

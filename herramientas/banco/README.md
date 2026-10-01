@@ -57,6 +57,19 @@ reporte por área: `supervisor.prd@metalwork.test`,
 el valor local de `BANCO_CLAVE`; no son cuentas de la empresa ni se crean en
 Supabase.
 
+## Si `preparar.sh` se cae
+
+Medido el 2026-10-01: la preparación ya no llega al final sola, por dos causas.
+
+- **Migraciones que arreglan datos de producción.** `20260929110100_cuentas_solo_supervision`,
+  `20260929180000_importar_catalogo_almacen` y `20260929222000_corregir_numero_ot_2939`
+  buscan cuentas, un Excel o una OT reales que la base vacía no tiene. Ninguna crea
+  esquema: se pueden saltar en local (correr las migraciones con `ON_ERROR_STOP=0` y
+  revisar que los errores sean solo esos).
+- **`db/demo/datos-demo.sql` quedó atrás del flujo.** Crea una cuenta `JEFE_TALLER`,
+  que el esquema ya rechaza, y pasa órdenes a `EN_PROCESO` sin plan de etapas de
+  Diseño. Hasta que se ponga al día, sembrar a mano solo lo que la prueba necesita.
+
 ## Qué hay dentro
 
 | Archivo | Qué hace |
