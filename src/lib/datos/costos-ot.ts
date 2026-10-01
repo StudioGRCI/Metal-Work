@@ -50,3 +50,26 @@ export async function solicitudesPendientesTesoreria() {
   if (error) throw new Error(`No se pudieron leer las solicitudes pendientes: ${error.message}`)
   return data ?? []
 }
+
+/**
+ * Lo que lleva costado cada orden, para ponerlo al lado de su avance en el
+ * tablero. Una llamada por orden a la misma función de la pestaña Costos —son
+ * pocas, las que caben en el tablero—; si una falla, esa orden sale sin cifra
+ * en vez de tumbar la pantalla. Solo se llama con `costos.ver`.
+ */
+export async function costoDeOrdenes(ids: string[]) {
+  const supabase = await createClient()
+  const filas = await Promise.all(
+    ids.map(async (id) => {
+      const { data, error } = await supabase.rpc('resumen_costeo_ot', { p_orden: id })
+      if (error || !data) return [id, null] as const
+      const total = { PEN: 0, USD: 0, sinPrecio: 0 }
+      for (const l of data) {
+        if (l.fuente === 'MATERIALES_SIN_PRECIO') total.sinPrecio += Number(l.pendientes ?? 0)
+        else if (l.moneda === 'PEN' || l.moneda === 'USD') total[l.moneda] += Number(l.monto ?? 0)
+      }
+      return [id, total] as const
+    }),
+  )
+  return new Map(filas)
+}

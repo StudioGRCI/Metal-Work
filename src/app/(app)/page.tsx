@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
+  ChevronRight,
   ClipboardList,
   Factory,
   PauseCircle,
@@ -13,16 +14,20 @@ import {
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Indicador } from '@/components/ui/indicador'
-import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Insignia, Punto, type Tono } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { ESTADO_OT, ORDEN_ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { ESTADO_OT, ORDEN_ESTADO_OT, PRIORIDAD, definir } from '@/lib/dominio/estados'
+import { situacionDeEntrega } from '@/lib/dominio/expediente'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
-import { fecha } from '@/lib/format'
-import { indicadoresTablero, listarOrdenes, ordenesAtrasadas } from '@/lib/datos/ordenes'
+import { fecha, fechaLarga, hoyLima, moneda } from '@/lib/format'
+import { costoDeOrdenes } from '@/lib/datos/costos-ot'
+import { indicadoresTablero, ordenesAtrasadas, ordenesPorEntrega } from '@/lib/datos/ordenes'
 import { pendientesGlobales, type PendienteGlobal } from '@/lib/datos/pendientes-globales'
 import { resumenDePlazos } from '@/lib/datos/plazos'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { NAVEGACION, puedeVer } from '@/lib/navegacion'
+import { exigirSesion, puede, type PerfilSesion } from '@/lib/sesion'
+import { cn } from '@/lib/utils'
 
 export const metadata = { title: 'Tablero' }
 
@@ -34,14 +39,9 @@ export default async function PaginaTablero() {
   if (!puede(perfil, 'ordenes.listar')) {
     return (
       <>
-        <EncabezadoPagina
-          titulo={perfil.puesto}
-          // «El menú» y no «la barra lateral»: en el teléfono es el botón de
-          // arriba, y a esta pantalla llega justamente quien todavía no sabe
-          // dónde está lo suyo.
-          descripcion="Abre el menú para entrar a los módulos habilitados para tu perfil."
-        />
+        <EncabezadoPagina titulo={perfil.puesto} descripcion="Lo que te toca y tus módulos, a un toque." />
         <TeTocaHoy items={pendientes.items} />
+        <TusModulos perfil={perfil} />
       </>
     )
   }
@@ -52,24 +52,28 @@ export default async function PaginaTablero() {
   // «Atrasadas» cuenta órdenes que pasaron su entrega; las etapas vencidas van
   // aparte: una orden con la entrega a un mes puede llevar tres etapas
   // vencidas, y el Tablero decía «buen trabajo» con quince vencidas en /plazos.
-  const [indicadores, { ordenes }, atrasadas, plazos] = await Promise.all([
+  const verCosteo = puede(perfil, 'costos.ver')
+  const [indicadores, enTaller, atrasadas, plazos] = await Promise.all([
     indicadoresTablero(),
-    listarOrdenes({ estado: 'ABIERTAS', pagina: 1 }),
+    ordenesPorEntrega(8),
     ordenesAtrasadas(),
     puede(perfil, ['produccion.ver', 'ordenes.listar']) ? resumenDePlazos() : Promise.resolve(null),
   ])
+  // El costo de cada unidad solo se calcula para quien puede verlo.
+  const costos = verCosteo ? await costoDeOrdenes(enTaller.ordenes.map((o) => o.id)) : null
   const puedeCrear = puede(perfil, 'ordenes.crear')
   const etapasVencidas = plazos?.porPlazo.VENCIDO ?? 0
   const areasConVencidas = (plazos?.areas ?? []).filter((a) => a.vencidas > 0).slice(0, 3)
   // Para el pie de «Órdenes abiertas»: un número suelto no dice si son muchas
   // o pocas hasta que se ve contra el total registrado.
   const totalOrdenes = indicadores.total
+  const hoy = hoyLima()
 
   return (
     <>
       {/* El puesto y no el nombre (migración 109): la pantalla es del puesto,
           quien lo ocupe hoy ya sabe cómo se llama. */}
-      <EncabezadoPagina titulo={perfil.puesto} descripcion="Estado del taller al día de hoy." />
+      <EncabezadoPagina titulo={perfil.puesto} descripcion={`Estado del taller al ${fechaLarga(hoy)}.`} />
 
       <TeTocaHoy items={pendientes.items} />
 
@@ -103,7 +107,7 @@ export default async function PaginaTablero() {
           icono={AlertTriangle}
           titulo="Atrasadas"
           valor={indicadores.atrasadas}
-          tono="peligro"
+          tono={indicadores.atrasadas > 0 ? 'peligro' : 'neutro'}
           pie="pasaron la fecha comprometida"
           href="/ordenes?estado=ABIERTAS&atrasadas=1"
         />
@@ -121,32 +125,36 @@ export default async function PaginaTablero() {
           icono={Zap}
           titulo="Urgentes"
           valor={indicadores.urgentes}
-          tono="peligro"
+          tono={indicadores.urgentes > 0 ? 'aviso' : 'neutro'}
           pie={`de ${indicadores.abiertas} abiertas`}
           href="/ordenes?estado=ABIERTAS&prioridad=URGENTE"
         />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
-        <Tarjeta className="lg:col-span-2">
+        <Tarjeta className="lg:col-span-2 lg:self-start">
           <TarjetaCabecera
-            titulo="Órdenes en taller"
-            descripcion="Lo que está abierto ahora mismo, por fecha de registro"
+            titulo="Unidades en taller"
+            descripcion={
+              verCosteo
+                ? 'De la entrega más próxima a la más lejana, con su avance y lo que llevan costado'
+                : 'De la entrega más próxima a la más lejana, con su avance'
+            }
             acciones={
               <Link
                 href="/ordenes?estado=ABIERTAS"
                 className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0"
               >
-                Ver todas
+                Ver todas{enTaller.total > enTaller.ordenes.length ? ` (${enTaller.total})` : ''}
               </Link>
             }
           />
-          <TarjetaCuerpo className="space-y-3">
-            {ordenes.length === 0 ? (
+          <TarjetaCuerpo className="p-2 sm:p-3">
+            {enTaller.ordenes.length === 0 ? (
               <div className="py-8 text-center">
                 <p className="text-sm font-medium text-texto">No hay órdenes abiertas</p>
                 <p className="mt-1 text-xs text-texto-suave">
-                  En cuanto se apruebe una, aparece acá con su avance.
+                  En cuanto se apruebe una, aparece acá con su avance y su fecha de entrega.
                 </p>
                 {puedeCrear && (
                   <div className="mt-4 flex justify-center">
@@ -159,89 +167,115 @@ export default async function PaginaTablero() {
                 )}
               </div>
             ) : (
-              ordenes.slice(0, 8).map((orden) => {
-                const estado = definir(ESTADO_OT, orden.estado)
-                // Con unidad el renglón la nombra siempre, tenga placa o no;
-                // sin unidad no se nombra nada, para no gastar el ancho de una
-                // línea que se lee de un vistazo.
-                const unidad = orden.unidad_id
-                  ? {
-                      placa: orden.placa,
-                      codigo_interno: orden.codigo_interno,
-                      numero_chasis: orden.numero_chasis,
-                      marca: orden.marca,
-                      modelo: orden.modelo,
-                    }
-                  : null
-                return (
-                  <Link
-                    key={orden.id}
-                    href={`/ordenes/${orden.id}`}
-                    className="flex items-center gap-3 rounded-[var(--radius-base)] p-2 hover:bg-superficie-2"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-2 text-sm font-medium text-texto">
-                        {orden.numero}
-                        <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
-                      </p>
-                      <p className="truncate text-xs text-texto-suave">
-                        {orden.cliente}
-                        {unidad && (
-                          <span
-                            className={todaviaSinPlaca(unidad) ? 'text-texto-tenue' : undefined}
-                          >
-                            {` · ${nombreDeUnidad(unidad)}`}
-                          </span>
+              <ul className="divide-y divide-borde">
+                {enTaller.ordenes.map((orden) => {
+                  const estado = definir(ESTADO_OT, orden.estado)
+                  const prioridad = definir(PRIORIDAD, orden.prioridad)
+                  const entrega = situacionDeEntrega(orden.fecha_entrega_comprometida, null, hoy)
+                  const costo = costos?.get(orden.id)
+                  // Con unidad el renglón la nombra siempre, tenga placa o no;
+                  // sin unidad no se nombra nada, para no gastar el ancho de una
+                  // línea que se lee de un vistazo.
+                  const unidad = orden.unidad_id
+                    ? {
+                        placa: orden.placa,
+                        codigo_interno: orden.codigo_interno,
+                        numero_chasis: orden.numero_chasis,
+                        marca: orden.marca,
+                        modelo: orden.modelo,
+                      }
+                    : null
+                  return (
+                    <li key={orden.id}>
+                      <Link
+                        href={`/ordenes/${orden.id}`}
+                        className={cn(
+                          'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 rounded-[var(--radius-base)] px-2 py-3 hover:bg-superficie-2',
+                          // Cada renglón es su propia rejilla: con columnas de
+                          // ancho fijo las barras de avance quedan alineadas.
+                          costos
+                            ? 'sm:grid-cols-[minmax(0,1fr)_8rem_8.5rem_7rem]'
+                            : 'sm:grid-cols-[minmax(0,1fr)_8rem_8.5rem]',
                         )}
-                      </p>
-                    </div>
-                    {/* La barra cede ancho en el teléfono: con 128 px fijos el
-                        número de orden y el cliente quedaban recortados. */}
-                    <div className="w-20 shrink-0 sm:w-32">
-                      <Progreso valor={orden.avance_porcentaje} mostrarValor alto="sm" />
-                    </div>
-                  </Link>
-                )
-              })
+                      >
+                        <div className="min-w-0">
+                          <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-texto">
+                            {orden.numero}
+                            <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+                            {orden.prioridad && orden.prioridad !== 'NORMAL' && (
+                              <span className="flex items-center gap-1 text-xs font-normal text-texto-suave">
+                                <Punto tono={prioridad.tono} />
+                                {prioridad.etiqueta}
+                              </span>
+                            )}
+                          </p>
+                          {/* La unidad primero: es lo que está en el taller, y
+                              la razón social larga del cliente la cortaba. */}
+                          <p className="line-clamp-2 text-xs text-texto-suave sm:line-clamp-1">
+                            {unidad && (
+                              <span className={todaviaSinPlaca(unidad) ? 'text-texto-tenue' : 'text-texto'}>
+                                {nombreDeUnidad(unidad)}
+                                {(orden.cliente || orden.cliente_id === null) && ' · '}
+                              </span>
+                            )}
+                            {/* Un cliente que el puesto no puede ver llega vacío:
+                                «sin cliente» solo cuando de verdad no lo tiene. */}
+                            {orden.cliente ??
+                              (orden.cliente_id === null ? <span className="text-aviso">Sin cliente todavía</span> : null)}
+                          </p>
+                        </div>
+
+                        {/* En el teléfono el avance va a la derecha del nombre y la
+                            entrega en su propia línea; en el monitor, columnas. */}
+                        <div className="w-24 sm:w-auto">
+                          <Progreso valor={orden.avance_porcentaje} mostrarValor alto="sm" etiqueta={`Avance de la OT ${orden.numero}`} />
+                        </div>
+
+                        <div className="col-span-2 flex items-baseline justify-between gap-3 sm:col-span-1 sm:block">
+                          <p className="tabular text-xs text-texto">
+                            {orden.fecha_entrega_comprometida ? `Entrega ${fecha(orden.fecha_entrega_comprometida)}` : 'Sin fecha'}
+                          </p>
+                          <p className={cn('text-xs', TONO_TEXTO[entrega.tono])}>{entrega.pie}</p>
+                        </div>
+
+                        {costos && (
+                          <p className="tabular col-span-2 text-xs sm:col-span-1 sm:text-right">
+                            <span className="text-texto-tenue sm:hidden">Costo a la fecha: </span>
+                            {!costo ? (
+                              <span className="text-texto-tenue" title="No se pudo calcular el costo de esta orden">—</span>
+                            ) : (
+                              <>
+                                {/* Soles y dólares no se suman: no hay tipo de cambio en el sistema. */}
+                                {(costo.PEN > 0 || costo.USD === 0) && (
+                                  <span className={cn('sm:block', costo.PEN > 0 ? 'font-medium text-texto' : 'text-texto-tenue')}>
+                                    {moneda(costo.PEN)}
+                                  </span>
+                                )}
+                                {costo.USD > 0 && (
+                                  <span className="font-medium text-texto sm:block">
+                                    {costo.PEN > 0 && <span className="sm:hidden"> + </span>}
+                                    {moneda(costo.USD, 'USD')}
+                                  </span>
+                                )}
+                                {costo.sinPrecio > 0 && (
+                                  <span className="block text-aviso">
+                                    {costo.sinPrecio} {costo.sinPrecio === 1 ? 'material' : 'materiales'} sin precio
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </p>
+                        )}
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
             )}
           </TarjetaCuerpo>
         </Tarjeta>
 
         <div className="space-y-4">
-          <Tarjeta>
-            <TarjetaCabecera titulo="Por estado" />
-            <TarjetaCuerpo className="space-y-2">
-              {indicadores.porEstado.length === 0 ? (
-                <p className="py-4 text-center text-sm text-texto-suave">
-                  Todavía no hay ninguna orden registrada.
-                </p>
-              ) : (
-                [...indicadores.porEstado]
-                  .sort(
-                    (a, b) =>
-                      ORDEN_ESTADO_OT.indexOf(a.estado as never) -
-                      ORDEN_ESTADO_OT.indexOf(b.estado as never),
-                  )
-                  .map(({ estado, cantidad }) => {
-                    const def = definir(ESTADO_OT, estado)
-                    return (
-                      // El conteo lleva a su lista filtrada: era un número que
-                      // no llevaba a ninguna parte y obligaba a repetir el
-                      // filtro a mano en Órdenes.
-                      <Link
-                        key={estado}
-                        href={`/ordenes?estado=${estado}`}
-                        className="flex min-h-11 items-center justify-between gap-2 rounded-[var(--radius-base)] text-sm hover:bg-superficie-2 sm:min-h-0"
-                      >
-                        <Insignia tono={def.tono}>{def.etiqueta}</Insignia>
-                        <span className="tabular font-medium text-texto">{cantidad}</span>
-                      </Link>
-                    )
-                  })
-              )}
-            </TarjetaCuerpo>
-          </Tarjeta>
-
           <Tarjeta>
             <TarjetaCabecera
               titulo="Requieren atención"
@@ -288,16 +322,75 @@ export default async function PaginaTablero() {
               )}
             </TarjetaCuerpo>
           </Tarjeta>
+
+          <Tarjeta>
+            {/* Todas las órdenes, también las entregadas y facturadas que los
+                indicadores de arriba —solo abiertas— no cuentan. */}
+            <TarjetaCabecera titulo="Todas por estado" />
+            <TarjetaCuerpo className="space-y-2">
+              {indicadores.porEstado.length === 0 ? (
+                <p className="py-4 text-center text-sm text-texto-suave">
+                  Todavía no hay ninguna orden registrada.
+                </p>
+              ) : (
+                [...indicadores.porEstado]
+                  .sort(
+                    (a, b) =>
+                      ORDEN_ESTADO_OT.indexOf(a.estado as never) -
+                      ORDEN_ESTADO_OT.indexOf(b.estado as never),
+                  )
+                  .map(({ estado, cantidad }) => {
+                    const def = definir(ESTADO_OT, estado)
+                    return (
+                      // El conteo lleva a su lista filtrada: era un número que
+                      // no llevaba a ninguna parte y obligaba a repetir el
+                      // filtro a mano en Órdenes.
+                      <Link
+                        key={estado}
+                        href={`/ordenes?estado=${estado}`}
+                        className="flex min-h-11 items-center justify-between gap-2 rounded-[var(--radius-base)] text-sm hover:bg-superficie-2 sm:min-h-0"
+                      >
+                        <Insignia tono={def.tono}>{def.etiqueta}</Insignia>
+                        <span className="tabular font-medium text-texto">{cantidad}</span>
+                      </Link>
+                    )
+                  })
+              )}
+            </TarjetaCuerpo>
+          </Tarjeta>
         </div>
       </div>
     </>
   )
 }
 
+/** El color del texto que acompaña la fecha de entrega: solo lo vencido o lo inminente se marca. */
+const TONO_TEXTO: Record<Tono, string> = {
+  neutro: 'text-texto-tenue',
+  exito: 'text-exito',
+  aviso: 'text-aviso',
+  peligro: 'text-peligro',
+  info: 'text-info',
+  acento: 'text-acento',
+}
+
+const TONO_CIFRA: Record<Tono, string> = {
+  neutro: 'bg-neutro-suave text-texto',
+  exito: 'bg-exito-suave text-exito',
+  aviso: 'bg-aviso-suave text-aviso',
+  peligro: 'bg-peligro-suave text-peligro',
+  info: 'bg-info-suave text-info',
+  acento: 'bg-acento-suave text-acento',
+}
+
 /**
- * Lo que le toca a este puesto, con el número y el enlace a donde se resuelve.
- * Cada tarjeta existe solo para quien tiene el permiso que la resuelve; si no
- * hay nada, se dice en una línea y no se ocupa media pantalla.
+ * Lo que le toca a este puesto: una bandeja, una tarea por renglón, con su
+ * cantidad y el enlace a donde se resuelve.
+ *
+ * Eran tarjetas de indicador con la frase entera en mayúsculas —«REPORTES
+ * POR APROBAR», «ÓRDENES SIN PLANOS QUE DESGLOSAR»— y se leían como un letrero,
+ * no como algo que hacer. Si no hay nada, se dice en una línea y no se ocupa
+ * media pantalla.
  */
 function TeTocaHoy({ items }: { items: PendienteGlobal[] }) {
   if (items.length === 0) {
@@ -310,20 +403,82 @@ function TeTocaHoy({ items }: { items: PendienteGlobal[] }) {
   }
 
   return (
-    <section aria-label="Te toca" className="mb-4">
-      <p className="mb-2 text-[11px] font-medium tracking-wide text-texto-suave uppercase">Te toca</p>
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        {items.map((i) => (
-          <Indicador
-            key={i.clave}
-            icono={ClipboardList}
-            titulo={i.texto.replace(/^\d+\s/, '')}
-            valor={i.cantidad}
-            tono={i.tono === 'neutro' ? 'neutro' : i.tono === 'exito' ? 'exito' : i.tono === 'info' ? 'acento' : i.tono}
-            href={i.ruta}
-          />
-        ))}
-      </div>
+    <Tarjeta className="mb-4">
+      <TarjetaCabecera titulo="Te toca" descripcion="Lo que espera a tu puesto, de lo más urgente a lo demás" />
+      <ul className="grid divide-y divide-borde sm:grid-cols-2 sm:divide-y-0">
+        {[...items]
+          .sort((a, b) => PESO_TONO[a.tono as Tono] - PESO_TONO[b.tono as Tono])
+          .map((i) => {
+            const error = i.clave.endsWith('_error')
+            return (
+              <li key={i.clave} className="sm:border-b sm:border-borde sm:odd:border-r">
+                <Link
+                  href={i.ruta}
+                  className="flex min-h-14 items-center gap-3 px-4 py-2.5 text-sm hover:bg-superficie-2"
+                >
+                  <span
+                    className={cn(
+                      'tabular inline-flex h-7 min-w-9 shrink-0 items-center justify-center rounded-full px-2 text-sm font-semibold',
+                      TONO_CIFRA[(error ? 'aviso' : i.tono) as Tono] ?? TONO_CIFRA.neutro,
+                    )}
+                  >
+                    {error ? '!' : i.cantidad}
+                  </span>
+                  <span className="min-w-0 flex-1 text-texto">
+                    {/* La cifra ya va en la burbuja: la frase empieza en lo que es. */}
+                    {error ? i.texto : primeraEnMayuscula(i.texto.replace(/^\d+\s/, ''))}
+                  </span>
+                  <ChevronRight aria-hidden className="size-4 shrink-0 text-texto-tenue" />
+                </Link>
+              </li>
+            )
+          })}
+      </ul>
+    </Tarjeta>
+  )
+}
+
+/** Lo rojo primero, después lo amarillo; el resto en el orden en que llegó. */
+const PESO_TONO: Record<Tono, number> = { peligro: 0, aviso: 1, acento: 2, info: 3, exito: 4, neutro: 5 }
+
+function primeraEnMayuscula(texto: string) {
+  return texto.charAt(0).toUpperCase() + texto.slice(1)
+}
+
+/**
+ * Para los puestos que no trabajan con órdenes —Ventas, Tesorería, Recursos
+ * Humanos—: sus módulos, a un toque. Antes la pantalla decía «abre el menú» y
+ * nada más, y quien llegaba al tablero no tenía a dónde ir desde aquí.
+ */
+function TusModulos({ perfil }: { perfil: PerfilSesion }) {
+  const esAdmin = perfil.rol.codigo === 'ADMIN'
+  const modulos = NAVEGACION.flatMap((g) => g.items).filter(
+    (i) => i.ruta !== '/' && i.disponible && puedeVer(i, perfil.permisos, esAdmin, perfil.rol.codigo),
+  )
+  if (modulos.length === 0) return null
+  return (
+    <section aria-label="Tus módulos">
+      <h2 className="mb-2 text-sm font-semibold text-texto">Tus módulos</h2>
+      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {modulos.map((m) => {
+          const Icono = m.icono
+          return (
+            <li key={m.ruta}>
+              <Link href={m.ruta} className="group block h-full rounded-[var(--radius-base)]">
+                <Tarjeta className="flex h-full items-start gap-3 p-4 transition-colors group-hover:border-borde-fuerte group-hover:bg-superficie-2">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-base)] bg-acento-suave text-acento">
+                    <Icono aria-hidden className="size-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-texto">{m.titulo}</span>
+                    {m.descripcion && <span className="mt-0.5 block text-xs text-texto-suave">{m.descripcion}</span>}
+                  </span>
+                </Tarjeta>
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
     </section>
   )
 }
