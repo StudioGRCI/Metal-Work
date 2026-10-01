@@ -305,8 +305,19 @@ async function manejarDatos(req, res, url) {
     const forma = await formaDeFuncion(nombre)
     if (!forma) return responder(res, 404, { message: `No existe la función «${nombre}»` })
 
+    // `.single()` pide un objeto aunque la función devuelva filas, y PostgREST lo
+    // entrega: sin esto el banco mandaba la lista, el tablero leía `data.abiertas`
+    // de un arreglo y todos los indicadores salían en cero.
+    const objeto = (req.headers.accept ?? '').includes('vnd.pgrst.object')
+
     return conSesion(sesion, async (cliente) => {
       const { rows, fields } = await cliente.query(consulta.texto, consulta.valores)
+      if (forma.proretset && objeto) {
+        if (rows.length !== 1) {
+          return responder(res, 406, { message: `Se esperaba una fila y llegaron ${rows.length}` })
+        }
+        return responder(res, 200, rows[0])
+      }
       if (forma.proretset) return responder(res, 200, rows)
       if (forma.typtype === 'c') return responder(res, 200, rows[0] ?? null)
       const columna = fields[0]?.name
