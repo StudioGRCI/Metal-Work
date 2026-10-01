@@ -265,7 +265,10 @@ Cuando haga falta tocar datos —no esquema— de producción:
   `apply_migration` no entra, se aplica por partes con `execute_sql` y la
   versión se anota a mano en `supabase_migrations.schema_migrations (version,
   name, statements)`. Vale solo para lo que no borra datos: un borrado real se
-  le pregunta al usuario.
+  le pregunta al usuario. Un `DELETE` cuelga **aunque vaya dentro** de un
+  `do $$ … $$`: para ensayar en producción que una etapa se reabre, se corrige
+  el reporte (`update … set avance_pct`) en vez de borrarlo, y el borrado se
+  prueba en local (check 317).
 
 ## Reglas de Postgres que no son de este proyecto
 
