@@ -52,3 +52,24 @@ export async function cerrarPlanilla(_previo:unknown,datos:FormData):Promise<Res
   if(data!==id.data) return {ok:false,error:NO_TOCO_NADA}
   volver(); return {ok:true,mensaje:'Planilla cerrada con 100 % distribuido por persona.'}
 }
+
+/**
+ * Repartir en partes iguales el costo de varias personas entre varias OT de
+ * una vez. Reemplaza el reparto que tuvieran esas personas.
+ */
+export async function repartirEnPartesIguales(_previo:unknown,datos:FormData):Promise<ResultadoAccion> {
+  await exigirPermiso('rrhh.gestionar_planillas')
+  const planilla=uuid.safeParse(datos.get('planilla_id'))
+  const personas=z.array(uuid).min(1).max(300).safeParse(datos.getAll('persona_id'))
+  const ordenes=z.array(uuid).min(1).max(50).safeParse(datos.getAll('orden_id'))
+  if(!planilla.success) return {ok:false,error:'Planilla no válida.'}
+  if(!personas.success) return {ok:false,error:'Marca al menos una persona.'}
+  if(!ordenes.success) return {ok:false,error:'Marca entre una y cincuenta OT.'}
+  const db=await createClient()
+  const {data,error}=await db.rpc('repartir_planilla_en_partes_iguales',{p_planilla:planilla.data,p_personas:personas.data,p_ordenes:ordenes.data})
+  if(error) return {ok:false,error:mensajeDeError(error)}
+  if(!data) return {ok:false,error:NO_TOCO_NADA}
+  volver()
+  const parte=Math.floor(10000/ordenes.data.length)/100
+  return {ok:true,mensaje:`${data} ${data===1?'persona repartida':'personas repartidas'}: ${ordenes.data.length===1?'100 %':`${parte} % en cada una de las ${ordenes.data.length} OT`}.`}
+}

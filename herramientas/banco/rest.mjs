@@ -479,11 +479,18 @@ export function construirEscritura(esquema, relacion, metodo, cuerpo, busqueda) 
   throw new ErrorNoSoportado(`Método no soportado: ${metodo}`)
 }
 
+// node-pg convierte todo arreglo en un arreglo de Postgres («{…}»). PostgREST,
+// en cambio, le pasa a la función el JSON tal cual: un arreglo de objetos va a
+// un parámetro `jsonb` (las líneas de una planilla importada) y llegaba como
+// «invalid input syntax for type json». Los arreglos de textos o uuid
+// (`uuid[]`) siguen como arreglos.
+const argumento = (v) => (Array.isArray(v) && v.some((x) => x !== null && typeof x === 'object') ? JSON.stringify(v) : v)
+
 /** Llamada a función (`/rpc/nombre`). */
 export function construirLlamada(nombre, argumentos) {
   const ctx = crearContexto()
   const claves = Object.keys(argumentos ?? {})
-  const parametros = claves.map((c) => `${comillas(c)} => ${ctx.parametro(argumentos[c])}`)
+  const parametros = claves.map((c) => `${comillas(c)} => ${ctx.parametro(argumento(argumentos[c]))}`)
   return {
     texto: `select * from public.${comillas(nombre)}(${parametros.join(', ')})`,
     valores: ctx.valores,

@@ -6322,6 +6322,12 @@ export type Database = {
         }
         Returns: string
       }
+      clave_nombre_planilla: {
+        Args: {
+          p_nombre: string | null
+        }
+        Returns: string
+      }
       completar_cuenta_acceso: {
         Args: {
           p_cuenta: string | null
@@ -6681,11 +6687,10 @@ export type Database = {
           tipo_unidad: string | null
         }[]
       }
-      importar_detalle_planilla: {
+      importar_planilla_excel: {
         Args: {
           p_id: string | null
           p_planilla: string | null
-          p_hoja: string | null
           p_lineas: Json | null
         }
         Returns: string
@@ -7154,6 +7159,14 @@ export type Database = {
           p_nota: string | null
         }
         Returns: string
+      }
+      repartir_planilla_en_partes_iguales: {
+        Args: {
+          p_planilla: string | null
+          p_personas: string[] | null
+          p_ordenes: string[] | null
+        }
+        Returns: number
       }
       resolver_observacion_ot: {
         Args: {

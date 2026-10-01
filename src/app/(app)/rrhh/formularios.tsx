@@ -1,9 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { useEnvio } from '@/lib/envio'
-import { crearPlanilla, agregarPersona, distribuirPersona, cerrarPlanilla } from './acciones'
+import { crearPlanilla, agregarPersona, distribuirPersona, cerrarPlanilla, repartirEnPartesIguales } from './acciones'
 
 type Orden={id:string;numero:string;unidad:string}
 
@@ -46,5 +47,59 @@ export function CerrarPlanilla({id}:{id:string}) {
   return <form onSubmit={alEnviar} className="space-y-2"><input type="hidden" name="planilla_id" value={id} />
     <Boton type="submit" tamano="sm" cargando={enviando}>Cerrar planilla</Boton>
     {error&&<p role="alert" className="text-xs text-peligro">{error}</p>}{resultado?.ok&&<p role="status" className="text-xs text-exito">{resultado.mensaje}</p>}
+  </form>
+}
+
+/**
+ * Repartir en partes iguales: se marcan las personas (de entrada, las que
+ * todavía no suman 100 %) y las OT, y cada persona queda con el mismo % en
+ * cada OT. Reemplaza el reparto que esas personas tuvieran.
+ */
+export function RepartirPartesIguales({ planillaId, personas, ordenes }: {
+  planillaId: string
+  personas: { id: string; nombre: string; asignado: number }[]
+  ordenes: Orden[]
+}) {
+  const [filtro, setFiltro] = useState('')
+  const [marcadas, setMarcadas] = useState<string[]>([])
+  const { alEnviar, enviando, error, resultado } = useEnvio(repartirEnPartesIguales, () => setMarcadas([]))
+  const buscar = filtro.trim().toLowerCase()
+  const visibles = ordenes.filter((o) => !buscar || `${o.numero} ${o.unidad}`.toLowerCase().includes(buscar))
+  const parte = marcadas.length ? Math.floor(10000 / marcadas.length) / 100 : 0
+  return <form onSubmit={alEnviar} className="space-y-4">
+    <input type="hidden" name="planilla_id" value={planillaId} />
+    <fieldset>
+      <legend className="text-xs font-medium text-texto-suave">Personas</legend>
+      <div className="mt-1.5 grid gap-1 sm:grid-cols-2">
+        {personas.map((p) => (
+          <label key={p.id} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-[var(--radius-base)] px-2 text-sm text-texto hover:bg-superficie-2">
+            <input type="checkbox" name="persona_id" value={p.id} defaultChecked={p.asignado !== 100} className="size-4 accent-[var(--acento)]" />
+            <span className="min-w-0 flex-1 truncate">{p.nombre}</span>
+            <span className="tabular text-xs text-texto-suave">{p.asignado.toFixed(2)} %</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend className="text-xs font-medium text-texto-suave">OT entre las que se reparte</legend>
+      <Entrada aria-label="Buscar OT por número o unidad" placeholder="Buscar por número o unidad" value={filtro}
+        onChange={(e) => setFiltro(e.target.value)} className="mt-1.5" />
+      <div className="mt-2 max-h-64 overflow-y-auto rounded-[var(--radius-base)] border border-borde">
+        {ordenes.map((o) => (
+          <label key={o.id} className={`flex min-h-11 cursor-pointer items-center gap-2 border-b border-borde px-3 text-sm text-texto last:border-0 hover:bg-superficie-2 ${visibles.includes(o) ? '' : 'hidden'}`}>
+            <input type="checkbox" name="orden_id" value={o.id} checked={marcadas.includes(o.id)}
+              onChange={(e) => setMarcadas((antes) => e.target.checked ? [...antes, o.id] : antes.filter((x) => x !== o.id))}
+              className="size-4 accent-[var(--acento)]" />
+            <span className="tabular font-medium">{o.numero}</span><span className="text-texto-suave">{o.unidad}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+    <p className="text-sm text-texto-suave" aria-live="polite">
+      {marcadas.length === 0 ? 'Marca las OT.' : marcadas.length === 1 ? 'Cada persona marcada queda con el 100 % en esa OT.' : `Cada persona marcada queda con ${parte} % en cada una de las ${marcadas.length} OT (la última se lleva el redondeo).`}
+    </p>
+    {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
+    {resultado?.ok && <p role="status" className="text-sm text-exito">{resultado.mensaje}</p>}
+    <Boton type="submit" tamano="sm" cargando={enviando} disabled={!marcadas.length}>Repartir en partes iguales</Boton>
   </form>
 }
