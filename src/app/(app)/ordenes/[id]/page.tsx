@@ -30,7 +30,7 @@ import { actividadesDeOrden, areasDelTaller, despachosParaReporte } from '@/lib/
 import { adjuntosDeOrden } from '@/lib/datos/adjuntos'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
-import { controlesYSolicitudesDeOrden } from '@/lib/datos/costos-ot'
+import { controlesYSolicitudesDeOrden, mermaDeOrden } from '@/lib/datos/costos-ot'
 import {
   accesoriosDeOrden,
   personalDelTaller,
@@ -62,6 +62,7 @@ import { Observaciones } from './observaciones'
 import { ActividadesDeOrden } from './actividades'
 import { MaterialesDeOrden } from './materiales'
 import { AtencionMaterialesDeOrden } from './atencion-materiales'
+import { MermaDeOrden } from './merma'
 import { CostosYControles, ControlDeSalida } from './costos-y-controles'
 import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
@@ -185,6 +186,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     vista === 'materiales'
       ? await materialesParaPantalla(id, puede(perfil, 'requerimientos.ver'))
       : null
+  // La merma la fija Diseño y la lee Costos: los mismos dos permisos que acepta
+  // la política `ver_ot_mermas`.
+  const verMerma = vista === 'materiales' && puede(perfil, ['diseno.planos', 'costos.ver'])
+  const merma = verMerma ? await mermaDeOrden(id) : null
   const puedeVerControlEntrega = puede(perfil, 'costos.controlar_ot') || puede(perfil, 'costos.ver') || puede(perfil, 'costos.solicitar_pago')
   const datosCostos = vista === 'costos' || (vista === 'entrega' && puedeVerControlEntrega)
     ? await controlesYSolicitudesDeOrden(id, puede(perfil, 'costos.ver')) : null
@@ -610,7 +615,17 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           areaPropia={areaPropiaMaterial}
           ordenViva={motivoInactiva === null}
           motivoInactiva={motivoInactiva}
-        /><AtencionMaterialesDeOrden ordenId={orden.id} perfil={perfil} /></div>
+        />{verMerma && (
+          <MermaDeOrden ordenId={orden.id}
+            merma={merma ? {
+              porcentaje: Number(merma.porcentaje),
+              motivo: merma.motivo,
+              registradoEn: merma.registrado_en,
+              registradoPor: merma.registrador ? `${merma.registrador.nombres} ${merma.registrador.apellidos}`.trim() : null,
+            } : null}
+            puedeFijar={puede(perfil, 'diseno.planos')}
+            ordenViva={!ESTADOS_CERRADOS.includes(orden.estado)} />
+        )}<AtencionMaterialesDeOrden ordenId={orden.id} perfil={perfil} /></div>
       )}
 
       {vista === 'costos' && datosCostos && (
@@ -619,7 +634,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           puedeRegistrarGasto={puede(perfil, 'costos.registrar_gasto')}
           puedeRevisarGasto={puede(perfil, 'costos.revisar_gasto')}
           puedeVerCosteo={puede(perfil, 'costos.ver')}
-          ordenCerrada={ESTADOS_CERRADOS.includes(orden.estado)} />
+          ordenCerrada={ESTADOS_CERRADOS.includes(orden.estado)}
+          esAdministracion={perfil.rol.codigo === 'ADMINISTRACION'} />
       )}
 
       {vista === 'entrega' && (

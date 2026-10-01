@@ -85,10 +85,17 @@
      visualización contra la superficie de cada tema: banda de luminosidad,
      croma y separación para daltonismo (ΔE 9.2 claro / 9.4 oscuro). La
      aguamarina queda en 2.82:1 sobre blanco, así que todo gráfico que la use
-     lleva la cifra escrita en la leyenda o en una tabla. */
+     lleva la cifra escrita en la leyenda o en una tabla.
+     Del 4 al 6 (amarillo · magenta · verde) entraron con la merma, los
+     indirectos y los gastos de operación del costeo (2026-10-01). Revalidadas
+     las seis en ese orden: ΔE 9.1 claro / 8.4 oscuro, y en claro amarillo y
+     magenta quedan bajo 3:1 sobre blanco: la misma regla de la cifra escrita. */
   --serie-1: #2a78d6;
   --serie-2: #eb6834;
   --serie-3: #1baf7a;
+  --serie-4: #eda100;
+  --serie-5: #e87ba4;
+  --serie-6: #008300;
 
   --radio: 0.5rem;
   --sombra: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 3px rgb(16 24 40 / 0.1);
@@ -152,6 +159,9 @@
     --serie-1: #3987e5;
     --serie-2: #d95926;
     --serie-3: #199e70;
+    --serie-4: #c98500;
+    --serie-5: #d55181;
+    --serie-6: #008300;
 
     --sombra: 0 1px 2px rgb(0 0 0 / 0.6), 0 2px 6px -2px rgb(0 0 0 / 0.5);
     /* Una sombra negra sobre un fondo casi negro no despega nada: la hoja del
@@ -202,6 +212,9 @@
   --serie-1: #3987e5;
   --serie-2: #d95926;
   --serie-3: #199e70;
+  --serie-4: #c98500;
+  --serie-5: #d55181;
+  --serie-6: #008300;
 
   --sombra: 0 1px 2px rgb(0 0 0 / 0.6), 0 2px 6px -2px rgb(0 0 0 / 0.5);
   --sombra-alta:
@@ -241,6 +254,9 @@
   --color-serie-1: var(--serie-1);
   --color-serie-2: var(--serie-2);
   --color-serie-3: var(--serie-3);
+  --color-serie-4: var(--serie-4);
+  --color-serie-5: var(--serie-5);
+  --color-serie-6: var(--serie-6);
   --radius-base: var(--radio);
   /* Para escribir `shadow-base` y `shadow-alta` en vez de repetir el
      `shadow-[var(--sombra)]` a mano en cada tarjeta y cada modal. */
@@ -384,6 +400,9 @@ h1, h2, h3 {
     --serie-1: #2a78d6;
     --serie-2: #eb6834;
     --serie-3: #1baf7a;
+    --serie-4: #eda100;
+    --serie-5: #e87ba4;
+    --serie-6: #008300;
     --sombra: none;
     color-scheme: light;
   }

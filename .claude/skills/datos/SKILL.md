@@ -252,6 +252,14 @@ Cuando haga falta tocar datos —no esquema— de producción:
 - **Un `select` que devuelve cero filas no distingue** entre «no hay datos» y «el
   RLS los esconde». Son diagnósticos opuestos: separarlos siempre antes de
   concluir nada.
+- **Cualquier sentencia `DROP` cuelga `apply_migration` y `execute_sql`.** El
+  servidor de Supabase pide confirmarla y esa confirmación no llega a la sesión:
+  la llamada muere a los 60 s sin tocar nada. Pasa con `DROP TRIGGER`, `DROP
+  POLICY` o `DROP FUNCTION`, aunque lleven `if exists` y vayan dentro de una
+  transacción. `ALTER TABLE … DROP CONSTRAINT` sí pasa. En su lugar:
+  `create or replace trigger`, la política dentro de un `do $$ … if not exists
+  (select 1 from pg_policies …) then create policy …` y `alter policy` para
+  cambiarla. Medido el 2026-10-01 con las migraciones `20261001100000` y `…110000`.
 
 ## Reglas de Postgres que no son de este proyecto
 

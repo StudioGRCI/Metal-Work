@@ -93,10 +93,19 @@ export function tiempoEnTaller(inicio: string | null, fin: string | null, hoy: s
 
 /* ---------------------------------------------------------------- el costo */
 
+/**
+ * De qué está hecho el costo, en el orden fijo de sus colores. Las tres
+ * primeras eran todo el costo hasta el 2026-10-01; las otras tres llegaron con
+ * la hoja RESUMEN de la empresa: la merma que pone Diseño, los servicios del
+ * local y los gastos de operación que pone Administración.
+ */
 export const FUENTES_COSTO = [
   { clave: 'MATERIALES', etiqueta: 'Materiales', serie: 'bg-serie-1' },
   { clave: 'PLANILLA', etiqueta: 'Mano de obra (planilla)', serie: 'bg-serie-2' },
   { clave: 'GASTOS_AREA', etiqueta: 'Gastos de las áreas', serie: 'bg-serie-3' },
+  { clave: 'MERMA', etiqueta: 'Merma de material', serie: 'bg-serie-4' },
+  { clave: 'INDIRECTOS', etiqueta: 'Servicios del local', serie: 'bg-serie-5' },
+  { clave: 'GASTOS_OPERACION', etiqueta: 'Gastos de operación', serie: 'bg-serie-6' },
 ] as const
 
 export type LineaResumenCosto = { fuente: string | null; moneda: string | null; monto: number | null; pendientes: number | null }

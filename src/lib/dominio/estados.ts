@@ -159,6 +159,8 @@ export const TIPO_GASTO_AREA: Record<string, Def> = {
   VIATICO: { etiqueta: 'Viático', tono: 'neutro' },
   SUBCONTRATO: { etiqueta: 'Subcontrato', tono: 'neutro' },
   OTRO: { etiqueta: 'Otro', tono: 'neutro' },
+  TRAMITE: { etiqueta: 'Trámites de placas y documentación', tono: 'neutro' },
+  COMISION: { etiqueta: 'Comisión de venta', tono: 'neutro' },
 }
 
 /** Lo que Costos le pide a Tesorería desde la OT (migración 20260929160000). */

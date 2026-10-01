@@ -16,7 +16,7 @@ import { solicitarTesoreria } from './acciones-costos'
 import { adjuntarControlFirmado, guardarControlVehicular, registrarGastoArea, revisarGastoArea } from './acciones-control-y-gastos'
 
 type Datos = Awaited<ReturnType<typeof controlesYSolicitudesDeOrden>>
-export function CostosYControles({ ordenId, datos, puedeSolicitar, puedeRegistrarGasto, puedeRevisarGasto, puedeVerCosteo, ordenCerrada }: {
+export function CostosYControles({ ordenId, datos, puedeSolicitar, puedeRegistrarGasto, puedeRevisarGasto, puedeVerCosteo, ordenCerrada, esAdministracion = false }: {
   ordenId: string
   datos: Datos
   puedeSolicitar: boolean
@@ -24,10 +24,12 @@ export function CostosYControles({ ordenId, datos, puedeSolicitar, puedeRegistra
   puedeRevisarGasto: boolean
   puedeVerCosteo: boolean
   ordenCerrada: boolean
+  /** Administración además carga los trámites de placas y la comisión de venta de la OT. */
+  esAdministracion?: boolean
 }) {
   return <div className="space-y-5">
     {puedeVerCosteo && <ResumenCosteo ordenId={ordenId} lineas={datos.costeo} />}
-    <GastosDeAreas ordenId={ordenId} datos={datos} puedeRegistrar={puedeRegistrarGasto && !ordenCerrada} puedeRevisar={puedeRevisarGasto} />
+    <GastosDeAreas ordenId={ordenId} datos={datos} puedeRegistrar={puedeRegistrarGasto && !ordenCerrada} puedeRevisar={puedeRevisarGasto} esAdministracion={esAdministracion} />
     <SolicitudesTesoreria ordenId={ordenId} datos={datos} tipo="MATERIALES"
       puedeSolicitar={puedeSolicitar && !ordenCerrada} salidaCompleta={false} />
   </div>
@@ -88,22 +90,22 @@ function SolicitudesTesoreria({ ordenId, datos, tipo, puedeSolicitar, salidaComp
 function ResumenCosteo({ ordenId, lineas }: { ordenId: string; lineas: Datos['costeo'] }) {
   const { monedas, sinPrecio } = composicionDelCosto(lineas)
   return <Tarjeta>
-    <TarjetaCabecera titulo="Costo acumulado de la OT" descripcion="Material despachado a precio de compra, planilla cerrada asignada y gastos aprobados de las áreas."
+    <TarjetaCabecera titulo="Costo acumulado de la OT" descripcion="Material despachado y sacado a la unidad, merma de Diseño, planilla repartida por RR. HH., gastos aprobados de las áreas, servicios del local y gastos de operación de Administración."
       acciones={<Link href={`/ordenes/${ordenId}/expediente#costo`} className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0">Ver el detalle línea por línea</Link>} />
     <TarjetaCuerpo className="space-y-4">
       {monedas.length === 0
-        ? <p className="text-sm text-texto-suave">Todavía no hay costo: se suma al despachar material, al cerrar la planilla del mes y al aprobar un gasto de área.</p>
+        ? <p className="text-sm text-texto-suave">Todavía no hay costo: se suma al despachar o sacar material a la unidad, al cerrar la planilla del mes, al aprobar un gasto de área y al cargar los gastos del mes.</p>
         : monedas.map(c => <ComposicionDelCosto key={c.moneda} composicion={c} />)}
       {sinPrecio > 0 && <p role="status" className="text-sm text-aviso">
-        {sinPrecio === 1 ? 'Un despacho sigue sin precio' : `${sinPrecio} despachos siguen sin precio`}: el costo está incompleto hasta valorizarlos.
+        {sinPrecio === 1 ? 'Un material entregado sigue sin precio' : `${sinPrecio} materiales entregados siguen sin precio`}: el costo está incompleto hasta que Logística los valorice.
       </p>}
-      <p className="text-xs text-texto-suave">El precio de material es el último precio de compra disponible al momento del despacho; revisa la valorización antes de cerrar la OT.</p>
+      <p className="text-xs text-texto-suave">El material vale su último precio de compra al momento de la entrega; si no tiene compra, el precio que fijó Logística en la valorización del almacén.</p>
     </TarjetaCuerpo>
   </Tarjeta>
 }
 
-function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar }: {
-  ordenId: string; datos: Datos; puedeRegistrar: boolean; puedeRevisar: boolean
+function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdministracion }: {
+  ordenId: string; datos: Datos; puedeRegistrar: boolean; puedeRevisar: boolean; esAdministracion: boolean
 }) {
   const [id, setId] = useState(() => crypto.randomUUID())
   const { alEnviar, enviando, resultado, error } = useEnvio(registrarGastoArea, () => setId(crypto.randomUUID()))
@@ -114,7 +116,7 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar }: {
         <summary className="cursor-pointer font-medium">Registrar gasto de mi área</summary>
         <form onSubmit={alEnviar} className="mt-4 grid gap-3 sm:grid-cols-2">
           <input type="hidden" name="id" value={id} /><input type="hidden" name="orden_id" value={ordenId} />
-          <Campo etiqueta="Tipo" htmlFor="gasto-tipo" requerido><Seleccion id="gasto-tipo" name="tipo" defaultValue="SERVICIO"><option value="SERVICIO">Servicio</option><option value="TRANSPORTE">Transporte</option><option value="VIATICO">Viático</option><option value="SUBCONTRATO">Subcontrato</option><option value="OTRO">Otro</option></Seleccion></Campo>
+          <Campo etiqueta="Tipo" htmlFor="gasto-tipo" requerido><Seleccion id="gasto-tipo" name="tipo" defaultValue="SERVICIO"><option value="SERVICIO">Servicio</option><option value="TRANSPORTE">Transporte</option><option value="VIATICO">Viático</option><option value="SUBCONTRATO">Subcontrato</option><option value="OTRO">Otro</option>{esAdministracion && <><option value="TRAMITE">Trámites de placas y documentación</option><option value="COMISION">Comisión de venta</option></>}</Seleccion></Campo>
           <Campo etiqueta="Fecha" htmlFor="gasto-fecha" requerido><Entrada id="gasto-fecha" type="date" name="fecha" required /></Campo>
           <Campo etiqueta="Importe" htmlFor="gasto-monto" requerido><Entrada id="gasto-monto" type="number" min="0.01" step="0.01" name="monto" required /></Campo>
           <Campo etiqueta="Moneda" htmlFor="gasto-moneda" requerido><Seleccion id="gasto-moneda" name="moneda" defaultValue="PEN"><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion></Campo>

@@ -414,6 +414,36 @@ export type Database = {
           }
         ]
       }
+      conceptos_gasto_general: {
+        Row: {
+          codigo: string
+          nombre: string
+          grupo: string
+          tasa_sugerida: number | null
+          orden: number
+          activo: boolean
+          actualizado_en: string
+        }
+        Insert: {
+          codigo: string
+          nombre: string
+          grupo: string
+          tasa_sugerida?: number | null
+          orden: number
+          activo?: boolean
+          actualizado_en?: string
+        }
+        Update: {
+          codigo?: string
+          nombre?: string
+          grupo?: string
+          tasa_sugerida?: number | null
+          orden?: number
+          activo?: boolean
+          actualizado_en?: string
+        }
+        Relationships: []
+      }
       contactos_cliente: {
         Row: {
           id: string
@@ -1463,6 +1493,82 @@ export type Database = {
             columns: ["sede_id"]
             isOneToOne: false
             referencedRelation: "sedes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      gastos_generales_mes: {
+        Row: {
+          id: string
+          periodo: string
+          concepto: string
+          descripcion: string
+          monto: number
+          moneda: string
+          reparto: string
+          tasa: number | null
+          estado: string
+          motivo_anulacion: string | null
+          anulado_por: string | null
+          anulado_en: string | null
+          registrado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id: string
+          periodo: string
+          concepto: string
+          descripcion: string
+          monto: number
+          moneda: string
+          reparto: string
+          tasa?: number | null
+          estado?: string
+          motivo_anulacion?: string | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          periodo?: string
+          concepto?: string
+          descripcion?: string
+          monto?: number
+          moneda?: string
+          reparto?: string
+          tasa?: number | null
+          estado?: string
+          motivo_anulacion?: string | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gastos_generales_mes_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gastos_generales_mes_concepto_fkey"
+            columns: ["concepto"]
+            isOneToOne: false
+            referencedRelation: "conceptos_gasto_general"
+            referencedColumns: ["codigo"]
+          },
+          {
+            foreignKeyName: "gastos_generales_mes_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -3264,6 +3370,54 @@ export type Database = {
           }
         ]
       }
+      ot_mermas: {
+        Row: {
+          id: string
+          orden_id: string
+          porcentaje: number
+          motivo: string
+          registrado_por: string
+          registrado_en: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          porcentaje: number
+          motivo: string
+          registrado_por?: string
+          registrado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          porcentaje?: number
+          motivo?: string
+          registrado_por?: string
+          registrado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_mermas_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_mermas_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_observaciones: {
         Row: {
           id: string
@@ -4993,6 +5147,57 @@ export type Database = {
           }
         ]
       }
+      valorizaciones_material: {
+        Row: {
+          id: string
+          material_id: string
+          precio: number
+          moneda: string
+          observacion: string
+          registrado_por: string
+          vigente_desde: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id: string
+          material_id: string
+          precio: number
+          moneda: string
+          observacion?: string
+          registrado_por?: string
+          vigente_desde?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          material_id?: string
+          precio?: number
+          moneda?: string
+          observacion?: string
+          registrado_por?: string
+          vigente_desde?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "valorizaciones_material_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "valorizaciones_material_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       ot_avance_resumen: {
@@ -5721,6 +5926,13 @@ export type Database = {
         }
         Returns: null
       }
+      anular_gasto_general: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       archivo_plano_vinculado: {
         Args: {
           p_ruta: string | null
@@ -6035,6 +6247,14 @@ export type Database = {
         }
         Returns: string
       }
+      fijar_merma_ot: {
+        Args: {
+          p_orden: string | null
+          p_porcentaje: number | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       fijar_precio_compra_material: {
         Args: {
           p_detalle: string | null
@@ -6116,6 +6336,21 @@ export type Database = {
           p_compra: string | null
         }
         Returns: string
+      }
+      materiales_para_valorizar: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          material_id: string | null
+          codigo: string | null
+          descripcion: string | null
+          unidad: string | null
+          existencia: number | null
+          ultima_compra: number | null
+          moneda_compra: string | null
+          precio: number | null
+          moneda: string | null
+          valorizado_en: string | null
+        }[]
       }
       mi_rol: {
         Args: Record<PropertyKey, never>
@@ -6391,6 +6626,19 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_gasto_general: {
+        Args: {
+          p_id: string | null
+          p_periodo: string | null
+          p_concepto: string | null
+          p_descripcion: string | null
+          p_monto: number | null
+          p_moneda: string | null
+          p_reparto: string | null
+          p_tasa: number | null
+        }
+        Returns: string
+      }
       registrar_ingreso_almacen: {
         Args: {
           p_id: string | null
@@ -6602,6 +6850,16 @@ export type Database = {
           nombre: string | null
           rol: string | null
         }[]
+      }
+      valorizar_material: {
+        Args: {
+          p_id: string | null
+          p_material: string | null
+          p_precio: number | null
+          p_moneda: string | null
+          p_observacion?: string | null
+        }
+        Returns: string
       }
     }
     Enums: {

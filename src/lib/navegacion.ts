@@ -9,9 +9,11 @@ import {
   ListOrdered,
   Receipt,
   Settings,
+  Tag,
   Truck,
   UserCog,
   Users,
+  Wallet,
 } from 'lucide-react'
 
 export type ItemNavegacion = {
@@ -131,6 +133,16 @@ export const NAVEGACION: GrupoNavegacion[] = [
         descripcion: 'Ingresos, egresos por unidad e historial con saldo',
         disponible: true,
       },
+      // Logística fija el precio de lo que nunca se compró por el sistema.
+      // Costos la consulta; Almacén también puede, pero no la necesita en su menú.
+      {
+        titulo: 'Valorización del almacén',
+        ruta: '/compras/valorizacion',
+        icono: Tag,
+        permiso: ['compras.crear', 'costos.ver'],
+        descripcion: 'Precio de los consumibles y saldos sin compra',
+        disponible: true,
+      },
     ],
   },
   {
@@ -146,6 +158,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
         disponible: true,
       },
       { titulo: 'Cuentas de Tesorería', ruta: '/tesoreria/cuentas', icono: FileSpreadsheet, permiso: 'tesoreria.ver_documentos', descripcion: 'Cobros por OT y pagos de compras', disponible: true },
+      { titulo: 'Gastos del mes', ruta: '/costos/gastos-generales', icono: Wallet, permiso: ['costos.gastos_generales', 'costos.ver'], descripcion: 'Servicios del local y gastos de operación', disponible: true },
       { titulo: 'Recursos Humanos', ruta: '/rrhh', icono: UserCog, permiso: 'rrhh.ver_planillas', descripcion: 'Planillas y distribución por unidad', disponible: true },
     ],
   },
@@ -224,6 +237,8 @@ export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/tesoreria/cuentas', corto: 'Cuentas' },
   { ruta: '/adquisiciones', corto: 'Facturas' },
   { ruta: '/rrhh', corto: 'Planillas' },
+  { ruta: '/costos/gastos-generales', corto: 'Gastos' },
+  { ruta: '/compras/valorizacion', corto: 'Precios' },
   { ruta: '/plazos', corto: 'Plazos' },
   { ruta: '/clientes', corto: 'Clientes' },
   { ruta: '/', corto: 'Tablero' },

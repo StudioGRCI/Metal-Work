@@ -705,7 +705,7 @@ function Proceso({ expediente, eventos }: { expediente: Expediente; eventos: Eve
 function DetalleDelCosto({ lineas }: { lineas: LineaCosto[] }) {
   const grupos = [
     ...FUENTES_COSTO.map((f) => ({ clave: f.clave, etiqueta: f.etiqueta, serie: f.serie as string | null })),
-    { clave: 'MATERIALES_SIN_PRECIO', etiqueta: 'Despachos sin precio', serie: null },
+    { clave: 'MATERIALES_SIN_PRECIO', etiqueta: 'Material sin precio (Logística debe valorizarlo)', serie: null },
   ]
     .map((g) => ({ ...g, lineas: lineas.filter((l) => l.fuente === g.clave) }))
     .filter((g) => g.lineas.length > 0)

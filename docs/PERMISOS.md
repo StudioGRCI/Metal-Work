@@ -16,13 +16,33 @@ Tesorería. Los permisos siguientes se comprobaron en producción.
 | --- | --- | --- |
 | Vendedor | `cotizaciones.crear`, `cotizaciones.ver_pdf_comercial` | Registra el PDF enviado al cliente y consulta su seguimiento. |
 | Gerencia | `cotizaciones.revisar`, `cotizaciones.ver_pdf_comercial`, `costos.ver` | Aprueba o devuelve la cotización PDF con observaciones. Ve el costo de cada OT en el tablero, el expediente y la pestaña Costos, sin registrar ni aprobar gastos (migración `20261001090000`). Su menú muestra Tablero, Cotización y Órdenes de trabajo. |
-| Administración | `cotizaciones.ver_pdf_comercial`, `cotizaciones.liberar_tesoreria`, `ordenes.crear`, `ordenes.editar`, `usuarios.gestionar`, `produccion.aprobar_reportes`, `ordenes.revisar_taller` | Carga la OT en PDF, la libera a Tesorería, administra Personal y revisa reportes y OT abiertas por el taller. |
+| Administración | `cotizaciones.ver_pdf_comercial`, `cotizaciones.liberar_tesoreria`, `ordenes.crear`, `ordenes.editar`, `usuarios.gestionar`, `produccion.aprobar_reportes`, `ordenes.revisar_taller`, `costos.gastos_generales` | Carga la OT en PDF, la libera a Tesorería, administra Personal y revisa reportes y OT abiertas por el taller. Registra los gastos del mes (`/costos/gastos-generales`) y, en la pestaña Costos de la OT, los trámites de placas y la comisión de venta. |
 | Tesorería | `tesoreria.ver_documentos`, `tesoreria.liberar`, `ordenes.listar`, `ordenes.ver` | Consulta cotizaciones liberadas y documentos de compra; confirma la liberación financiera de una OT. Su menú muestra Tablero, Órdenes y Tesorería. |
-| Diseño e ingeniería | `diseno.planos`, `ordenes.listar`, `ordenes.ver` | Prepara la ficha técnica, guía de planos y desglose de materiales. No consulta importes ni PDF comerciales. |
+| Diseño e ingeniería | `diseno.planos`, `ordenes.listar`, `ordenes.ver` | Prepara la ficha técnica, guía de planos y desglose de materiales. Evalúa y fija el % de merma de material de cada OT abierta (pestaña Materiales). No consulta importes ni PDF comerciales. |
 | Supervisión de Producción, Maestranza y Acabados | `ordenes.listar`, `ordenes.ver`, `produccion.actividades`, `produccion.reportar_tarea` | Cada cuenta crea las actividades y reporta fotos y avance de su área. Producción y Maestranza marcan sus respectivos vistos buenos en la ficha. No aprueban sus propios reportes. |
 | Operario | `ordenes.listar`, `ordenes.ver`, `produccion.registrar` | Registra el avance operativo autorizado. No ve la cotización comercial. |
 | Almacenero | `almacen.ver`, `almacen.recibir`, `almacen.despachar`, `requerimientos.ver` | Lleva el kardex (`/almacen/kardex`): registra ingresos y salidas. Toda salida va vinculada a un vehículo registrado o al código de su unidad, con foto y nombre de quien recibe. Comprobado con el rol real el 2026-10-01 (check 314). |
-| Costos y Materiales | `almacen.ver` | Lee el kardex y el historial de movimientos; no registra ingresos ni salidas. |
+| Costos y Materiales | `almacen.ver`, `costos.ver` | Lee el kardex y el historial de movimientos; no registra ingresos ni salidas. Consulta la valorización del almacén, los gastos del mes y la merma, sin modificarlos. |
+| Logística (Comprador) | `compras.crear` | Fija el precio de los materiales del almacén que nunca se compraron por el sistema (`/compras/valorizacion`). Cada precio es uno nuevo, vigente desde ese momento; el anterior queda en el historial. |
+| Recursos Humanos | `rrhh.ver_planillas`, `rrhh.gestionar_planillas` | Sube la mano de obra de terceros como planilla de subcontratos y el personal que no es de taller como planilla administrativa; las dos se reparten por OT como la de taller. |
+
+## Quién pone cada parte del costo de una OT
+
+Migración `20261001110000_costeo_por_responsable`, comprobada con los roles
+reales el 2026-10-01 (check 315 y ensayo de las pantallas, revertidos).
+
+| Parte del costo | Quién la pone | Dónde |
+| --- | --- | --- |
+| Material | Almacén lo saca; el precio es el de la compra o, si nunca se compró, el que fija Logística | Kardex, `/compras/valorizacion` |
+| Merma | Diseño e Ingeniería fija el % sobre el material valorizado | Pestaña Materiales de la OT |
+| Mano de obra de taller, administrativa y de terceros | RR. HH., en la planilla del mes repartida por OT | `/rrhh` |
+| Gastos de área (servicios, transporte, viáticos) | Cada área; Administración revisa | Pestaña Costos de la OT |
+| Trámites de placas y comisión de venta | Administración | Pestaña Costos de la OT |
+| Servicios del local y gastos de operación | Administración, por mes, con tasa por OT o partes iguales entre las OT de la planilla cerrada de ese mes | `/costos/gastos-generales` |
+| Servicios de terceros (fletes y otros) | Pendiente de definir responsable | — |
+
+Una salida por unidad se carga a la OT abierta de esa unidad si tiene una sola;
+con dos o más OT abiertas queda en el kardex sin OT.
 
 ## Visibilidad de documentos
 

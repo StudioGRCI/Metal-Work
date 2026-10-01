@@ -73,3 +73,16 @@ export async function costoDeOrdenes(ids: string[]) {
   )
   return new Map(filas)
 }
+
+/**
+ * El % de merma que fijó Diseño e Ingeniería para la OT, o null si aún no lo
+ * evaluó. La política `ver_ot_mermas` lo muestra a `diseno.planos` y `costos.ver`.
+ */
+export async function mermaDeOrden(ordenId: string) {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('ot_mermas')
+    .select('porcentaje, motivo, registrado_en, registrador:usuarios!ot_mermas_registrado_por_fkey(nombres, apellidos)')
+    .eq('orden_id', ordenId).maybeSingle()
+  if (error) throw new Error(`No se pudo leer la merma de la OT: ${error.message}`)
+  return data
+}

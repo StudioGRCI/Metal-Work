@@ -24,7 +24,7 @@ export async function registrarGastoArea(_previo: unknown, datos: FormData): Pro
   if (!puede(perfil, 'costos.registrar_gasto') || !perfil.area_id) return { ok: false, error: 'Tu cuenta no tiene área habilitada para registrar gastos.' }
   const entrada = z.object({
     id: uuid, orden_id: uuid,
-    tipo: z.enum(['SERVICIO','TRANSPORTE','VIATICO','SUBCONTRATO','OTRO']),
+    tipo: z.enum(['SERVICIO','TRANSPORTE','VIATICO','SUBCONTRATO','OTRO','TRAMITE','COMISION']),
     descripcion: z.string().trim().min(10).max(500),
     fecha: z.iso.date(),
     monto: z.string().regex(/^\d{1,12}(?:\.\d{1,2})?$/),
