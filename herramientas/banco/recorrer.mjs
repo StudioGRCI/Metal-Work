@@ -74,6 +74,7 @@ const RUTAS = [
   ['materiales', '/materiales'],
   ['materiales-vacio', '/materiales?buscar=MW-PRUEBA-SIN-RESULTADOS'],
   ['atencion-materiales', '/materiales/atencion'],
+  ['informe-semanal', '/diseno/informe-semanal'],
   ['evaluaciones', '/diseno/evaluaciones'],
   ['evaluacion-nueva', '/diseno/evaluaciones/nueva'],
   evaluacionId && ['evaluacion-detalle', `/diseno/evaluaciones/${evaluacionId}`],

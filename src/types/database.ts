@@ -926,6 +926,76 @@ export type Database = {
           }
         ]
       }
+      diseno_entregas_planos: {
+        Row: {
+          id: string
+          semana_inicio: string
+          orden_id: string
+          integrante_id: string
+          tipo_plano: string
+          n_planos: number
+          n_piezas: number
+          fecha_entrega: string | null
+          estado: string
+          entregado_a: string[]
+          creado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          semana_inicio: string
+          orden_id: string
+          integrante_id: string
+          tipo_plano: string
+          n_planos: number
+          n_piezas?: number
+          fecha_entrega?: string | null
+          estado?: string
+          entregado_a?: string[]
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          semana_inicio?: string
+          orden_id?: string
+          integrante_id?: string
+          tipo_plano?: string
+          n_planos?: number
+          n_piezas?: number
+          fecha_entrega?: string | null
+          estado?: string
+          entregado_a?: string[]
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diseno_entregas_planos_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diseno_entregas_planos_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_diseno_entrega_integrante_orden"
+            columns: ["integrante_id", "orden_id"]
+            isOneToOne: false
+            referencedRelation: "ot_equipo_diseno"
+            referencedColumns: ["id", "orden_id"]
+          }
+        ]
+      }
       diseno_evaluaciones: {
         Row: {
           id: string
@@ -1136,6 +1206,7 @@ export type Database = {
           observacion: string
           creado_por: string
           creado_en: string
+          actualizado_en: string
         }
         Insert: {
           id?: string
@@ -1148,6 +1219,7 @@ export type Database = {
           observacion?: string
           creado_por?: string
           creado_en?: string
+          actualizado_en?: string
         }
         Update: {
           id?: string
@@ -1160,6 +1232,7 @@ export type Database = {
           observacion?: string
           creado_por?: string
           creado_en?: string
+          actualizado_en?: string
         }
         Relationships: [
           {
@@ -6596,6 +6669,17 @@ export type Database = {
           p_nombre: string | null
         }
         Returns: string
+      }
+      identificacion_ot_diseno: {
+        Args: {
+          p_ordenes: string[] | null
+        }
+        Returns: {
+          orden_id: string | null
+          numero: string | null
+          codigo_interno: string | null
+          tipo_unidad: string | null
+        }[]
       }
       importar_detalle_planilla: {
         Args: {
