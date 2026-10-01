@@ -6378,6 +6378,27 @@ export type Database = {
         }
         Returns: number
       }
+      documentos_compra_tesoreria: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          orden_compra_id: string | null
+          tipo: string | null
+          nombre_archivo: string | null
+          ruta_storage: string | null
+          mime_type: string | null
+          tamano_bytes: number | null
+          subido_por: string | null
+          creado_en: string | null
+          proveedor: string | null
+          referencia: string | null
+          fecha_estimada: string | null
+          orden_id: string | null
+          numero_ot: string | null
+          area_destino: string | null
+          vinculos_ot: Json | null
+        }[]
+      }
       editar_carroceria_ventas: {
         Args: {
           p_id: string | null
