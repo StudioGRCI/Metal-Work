@@ -5861,6 +5861,23 @@ export type Database = {
         }
         Returns: string
       }
+      detalle_costeo_ot: {
+        Args: {
+          p_orden: string | null
+        }
+        Returns: {
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          referencia: string | null
+        }[]
+      }
       dias_de_taller: {
         Args: {
           p_desde: string | null
