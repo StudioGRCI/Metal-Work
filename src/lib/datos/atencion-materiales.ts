@@ -38,6 +38,11 @@ async function catalogoCompleto(db: Awaited<ReturnType<typeof createClient>>) {
   return {data:materiales.sort((a,b)=>a.descripcion.localeCompare(b.descripcion,'es')),error:null}
 }
 
+/** Todo el catálogo activo de Almacén, en orden alfabético. */
+export async function catalogoDeAlmacen(): Promise<MaterialParaConteo[]> {
+  return (await catalogoCompleto(await createClient())).data
+}
+
 async function existenciasCompletas(db: Awaited<ReturnType<typeof createClient>>) {
   const filas: ExistenciaMaterial[]=[]
   let ultimo: string|undefined

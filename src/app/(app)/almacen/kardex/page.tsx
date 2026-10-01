@@ -1,3 +1,4 @@
+import { Download, FileSpreadsheet } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -8,7 +9,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarAtencionMateriales } from '@/lib/datos/atencion-materiales'
-import { cargarKardex, FILAS_POR_PAGINA, materialesDelKardex, unidadesParaSalida, type FiltrosKardex } from '@/lib/datos/kardex'
+import { cargarKardex, FILAS_POR_PAGINA, filtrosDeKardex, materialesDelKardex, unidadesParaSalida } from '@/lib/datos/kardex'
 import { MOVIMIENTO_KARDEX, ORIGEN_KARDEX } from '@/lib/dominio/almacen'
 import { cantidad, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -16,6 +17,7 @@ import { createClient } from '@/lib/supabase/server'
 
 import { ConteoFisico } from './conteo'
 import { NuevoIngreso } from './ingreso'
+import { CargarPlanilla } from './planilla'
 import { NuevaSalida } from './salida'
 
 export const metadata = { title: 'Kardex de Almacén' }
@@ -27,13 +29,6 @@ const TIPOS = [
   { valor: 'AJUSTE', etiqueta: 'Ajustes' },
 ]
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const DIA = /^\d{4}-\d{2}-\d{2}$/
-
-function texto(valor: string | string[] | undefined) {
-  return typeof valor === 'string' ? valor.trim() : ''
-}
-
 /**
  * El kardex del almacenero: cada ingreso, cada egreso y cada ajuste de conteo,
  * con el saldo que queda después. Elegido un material se lee como la ficha de
@@ -43,22 +38,8 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   const perfil = await exigirPermiso('almacen.ver')
   const params = await searchParams
 
-  const material = texto(params.material)
-  const tipo = texto(params.tipo)
-  const desde = texto(params.desde)
-  const hasta = texto(params.hasta)
-  // Los comodines de ilike se quitan: se busca el texto tal cual se escribió.
-  const unidad = texto(params.unidad).replace(/[%_*,()]/g, '').slice(0, 60)
-  const pagina = Math.max(1, Number.parseInt(texto(params.pagina) || '1', 10) || 1)
-
-  const filtros: FiltrosKardex = {
-    material: UUID.test(material) ? material : undefined,
-    tipo: tipo === 'INGRESO' || tipo === 'SALIDA' || tipo === 'AJUSTE' ? tipo : undefined,
-    desde: DIA.test(desde) ? desde : undefined,
-    hasta: DIA.test(hasta) ? hasta : undefined,
-    unidad: unidad || undefined,
-    pagina,
-  }
+  const filtros = filtrosDeKardex(params)
+  const pagina = filtros.pagina
 
   const puedeSalida = puede(perfil, 'almacen.despachar')
   const puedeIngreso = puede(perfil, 'almacen.recibir')
@@ -89,6 +70,10 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   const saldoAnterior = cronologico && primera
     ? Number(primera.saldo ?? 0) - Number(primera.entrada ?? 0) + Number(primera.salida ?? 0)
     : null
+  // El Excel baja con los mismos filtros que la pantalla, sin la página.
+  const consultaExcel = new URLSearchParams(Object.entries({
+    material: filtros.material, tipo: filtros.tipo, desde: filtros.desde, hasta: filtros.hasta, unidad: filtros.unidad,
+  }).filter((e): e is [string, string] => Boolean(e[1]))).toString()
   const hayFiltros = Boolean(filtros.material || filtros.tipo || filtros.desde || filtros.hasta || filtros.unidad)
 
   return (
@@ -123,6 +108,19 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           </div>
         )}
       />
+
+      {(puedeSalida || puedeIngreso) && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[var(--radius-base)] border border-dashed border-borde-fuerte bg-superficie px-4 py-3">
+          <p className="min-w-0 flex-1 basis-72 text-sm text-texto-suave">
+            <span className="font-medium text-texto">¿Sin internet?</span> Descarga la planilla, anota en Excel los ingresos y las salidas, y cárgala al volver la señal: cada movimiento entra con su fecha.
+          </p>
+          <a href="/almacen/kardex/planilla" download
+            className="inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-base)] border border-borde-fuerte px-3 text-sm font-medium text-texto hover:bg-superficie-2 sm:min-h-9">
+            <FileSpreadsheet aria-hidden className="size-4" />Descargar planilla
+          </a>
+          <CargarPlanilla />
+        </div>
+      )}
 
       <Tarjeta className="mb-4">
         <TarjetaCuerpo>
@@ -179,6 +177,12 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           descripcion={elegido
             ? 'En orden de fecha, como la ficha de kardex. El saldo es lo que quedó en almacén tras cada movimiento.'
             : 'Lo último primero. El saldo es el del material en ese momento; elige un material para ver su ficha.'}
+          acciones={
+            <a href={`/almacen/kardex/excel${consultaExcel ? `?${consultaExcel}` : ''}`} download
+              className="inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-base)] border border-borde-fuerte px-3 text-sm font-medium text-texto hover:bg-superficie-2 sm:min-h-9">
+              <Download aria-hidden className="size-4" />Descargar Excel
+            </a>
+          }
         />
         <Tabla>
           <TablaCabecera>
@@ -233,6 +237,9 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                         {f.recibido_por_nombre && f.registrado_por_nombre ? ' · ' : null}
                         {f.registrado_por_nombre ? `Registró ${f.registrado_por_nombre}` : null}
                       </span>
+                    )}
+                    {f.desde_planilla && (
+                      <span className="block text-[11px] text-acento">Desde planilla · cargado el {fechaHora(f.cargado_en)}</span>
                     )}
                   </TD>
                   <TD className="max-w-52">

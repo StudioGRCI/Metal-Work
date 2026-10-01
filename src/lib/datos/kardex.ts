@@ -7,7 +7,7 @@ import type { Database, Vistas } from '@/types/database'
 export type FilaKardex = Pick<Vistas<'v_kardex_almacen'>,
   'id' | 'fecha' | 'material_id' | 'material_codigo' | 'material' | 'unidad_medida' | 'movimiento' | 'origen'
   | 'entrada' | 'salida' | 'saldo' | 'documento' | 'codigo_unidad' | 'orden_id' | 'orden_numero'
-  | 'recibido_por_nombre' | 'registrado_por_nombre' | 'con_foto'>
+  | 'recibido_por_nombre' | 'registrado_por_nombre' | 'con_foto' | 'desde_planilla' | 'cargado_en'>
 
 export type UnidadParaSalida = Database['public']['Functions']['unidades_para_salida_almacen']['Returns'][number]
 
@@ -23,7 +23,47 @@ export type FiltrosKardex = {
 
 export const FILAS_POR_PAGINA = 100
 
-const COLUMNAS = 'id,fecha,material_id,material_codigo,material,unidad_medida,movimiento,origen,entrada,salida,saldo,documento,codigo_unidad,orden_id,orden_numero,recibido_por_nombre,registrado_por_nombre,con_foto'
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const DIA = /^\d{4}-\d{2}-\d{2}$/
+const texto = (valor: string | string[] | null | undefined) => (typeof valor === 'string' ? valor.trim() : '')
+
+/** Los filtros de la URL, los mismos para la pantalla y para el Excel. */
+export function filtrosDeKardex(params: Record<string, string | string[] | undefined>): FiltrosKardex {
+  const material = texto(params.material)
+  const tipo = texto(params.tipo)
+  const desde = texto(params.desde)
+  const hasta = texto(params.hasta)
+  // Los comodines de ilike se quitan: se busca el texto tal cual se escribió.
+  const unidad = texto(params.unidad).replace(/[%_*,()]/g, '').slice(0, 60)
+  return {
+    material: UUID.test(material) ? material : undefined,
+    tipo: tipo === 'INGRESO' || tipo === 'SALIDA' || tipo === 'AJUSTE' ? tipo : undefined,
+    desde: DIA.test(desde) ? desde : undefined,
+    hasta: DIA.test(hasta) ? hasta : undefined,
+    unidad: unidad || undefined,
+    pagina: Math.max(1, Number.parseInt(texto(params.pagina) || '1', 10) || 1),
+  }
+}
+
+const COLUMNAS = 'id,fecha,material_id,material_codigo,material,unidad_medida,movimiento,origen,entrada,salida,saldo,documento,codigo_unidad,orden_id,orden_numero,recibido_por_nombre,registrado_por_nombre,con_foto,desde_planilla,cargado_en'
+
+/** Lo que más filas puede llevar el Excel del kardex: un año largo de almacén. */
+export const MAX_FILAS_EXCEL = 20000
+
+/** La misma consulta para la pantalla y para el Excel: los filtros no pueden decir cosas distintas. */
+function consultaKardex(db: Awaited<ReturnType<typeof createClient>>, filtros: Omit<FiltrosKardex, 'pagina'>, contar: boolean) {
+  let consulta = db.from('v_kardex_almacen').select(COLUMNAS, contar ? { count: 'exact' } : undefined)
+  if (filtros.material) consulta = consulta.eq('material_id', filtros.material)
+  if (filtros.tipo === 'INGRESO') consulta = consulta.eq('movimiento', 'INGRESO')
+  if (filtros.tipo === 'SALIDA') consulta = consulta.in('movimiento', ['SALIDA', 'DESPACHO'])
+  if (filtros.tipo === 'AJUSTE') consulta = consulta.eq('movimiento', 'AJUSTE')
+  // Los días son de Lima: el 30 de setiembre termina a medianoche de Lima, no
+  // de Greenwich, o las salidas de la tarde caerían en el día siguiente.
+  if (filtros.desde) consulta = consulta.gte('fecha', `${filtros.desde}T00:00:00-05:00`)
+  if (filtros.hasta) consulta = consulta.lt('fecha', `${sumarDias(filtros.hasta, 1)}T00:00:00-05:00`)
+  if (filtros.unidad) consulta = consulta.ilike('codigo_unidad', `%${filtros.unidad}%`)
+  return consulta
+}
 
 /**
  * Las filas del kardex. Con un material elegido se leen en orden de fecha,
@@ -37,20 +77,8 @@ const COLUMNAS = 'id,fecha,material_id,material_codigo,material,unidad_medida,mo
 export async function cargarKardex(filtros: FiltrosKardex) {
   const db = await createClient()
   const cronologico = Boolean(filtros.material)
-  let consulta = db.from('v_kardex_almacen').select(COLUMNAS, { count: 'exact' })
-
-  if (filtros.material) consulta = consulta.eq('material_id', filtros.material)
-  if (filtros.tipo === 'INGRESO') consulta = consulta.eq('movimiento', 'INGRESO')
-  if (filtros.tipo === 'SALIDA') consulta = consulta.in('movimiento', ['SALIDA', 'DESPACHO'])
-  if (filtros.tipo === 'AJUSTE') consulta = consulta.eq('movimiento', 'AJUSTE')
-  // Los días son de Lima: el 30 de setiembre termina a medianoche de Lima, no
-  // de Greenwich, o las salidas de la tarde caerían en el día siguiente.
-  if (filtros.desde) consulta = consulta.gte('fecha', `${filtros.desde}T00:00:00-05:00`)
-  if (filtros.hasta) consulta = consulta.lt('fecha', `${sumarDias(filtros.hasta, 1)}T00:00:00-05:00`)
-  if (filtros.unidad) consulta = consulta.ilike('codigo_unidad', `%${filtros.unidad}%`)
-
   const desde = (filtros.pagina - 1) * FILAS_POR_PAGINA
-  const { data, error, count } = await consulta
+  const { data, error, count } = await consultaKardex(db, filtros, true)
     .order('fecha', { ascending: false })
     .order('id', { ascending: false })
     .range(desde, desde + FILAS_POR_PAGINA - 1)
@@ -58,6 +86,25 @@ export async function cargarKardex(filtros: FiltrosKardex) {
 
   const filas: FilaKardex[] = data ?? []
   return { filas: cronologico ? [...filas].reverse() : filas, total: count ?? 0, cronologico }
+}
+
+/**
+ * Todas las filas del kardex con los mismos filtros, en orden de fecha, para el
+ * Excel. Se leen de mil en mil; `truncado` avisa si pasaron de MAX_FILAS_EXCEL.
+ */
+export async function kardexParaExcel(filtros: Omit<FiltrosKardex, 'pagina'>) {
+  const db = await createClient()
+  const filas: FilaKardex[] = []
+  for (let desde = 0; desde < MAX_FILAS_EXCEL; desde += 1000) {
+    const { data, error } = await consultaKardex(db, filtros, false)
+      .order('fecha', { ascending: true })
+      .order('id', { ascending: true })
+      .range(desde, Math.min(desde + 999, MAX_FILAS_EXCEL - 1))
+    if (error) throw new Error(`No se pudo leer el kardex: ${error.message}`)
+    filas.push(...(data ?? []))
+    if ((data ?? []).length < 1000) return { filas, truncado: false }
+  }
+  return { filas, truncado: true }
 }
 
 /** Los materiales que tienen kardex: los que alguna vez entraron, salieron o se contaron. */

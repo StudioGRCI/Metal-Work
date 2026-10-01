@@ -1839,6 +1839,8 @@ export type Database = {
           unidad_id: string | null
           codigo_unidad: string | null
           orden_id: string | null
+          desde_planilla: boolean
+          cargado_en: string
         }
         Insert: {
           id: string
@@ -1861,6 +1863,8 @@ export type Database = {
           unidad_id?: string | null
           codigo_unidad?: string | null
           orden_id?: string | null
+          desde_planilla?: boolean
+          cargado_en?: string
         }
         Update: {
           id?: string
@@ -1883,6 +1887,8 @@ export type Database = {
           unidad_id?: string | null
           codigo_unidad?: string | null
           orden_id?: string | null
+          desde_planilla?: boolean
+          cargado_en?: string
         }
         Relationships: [
           {
@@ -5928,6 +5934,8 @@ export type Database = {
           moneda: string | null
           con_foto: boolean | null
           devolucion_de: string | null
+          desde_planilla: boolean | null
+          cargado_en: string | null
         }
         Relationships: []
       }
@@ -6989,6 +6997,19 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_ingreso_planilla: {
+        Args: {
+          p_id: string | null
+          p_material: string | null
+          p_cantidad: number | null
+          p_origen: string | null
+          p_documento: string | null
+          p_precio: number | null
+          p_moneda: string | null
+          p_fecha: string | null
+        }
+        Returns: string
+      }
       registrar_recepcion_material: {
         Args: {
           p_id: string | null
@@ -7015,6 +7036,19 @@ export type Database = {
         Args: {
           p_entrega: string | null
           p_constancia: string | null
+        }
+        Returns: string
+      }
+      registrar_salida_planilla: {
+        Args: {
+          p_id: string | null
+          p_material: string | null
+          p_cantidad: number | null
+          p_codigo: string | null
+          p_motivo: string | null
+          p_recibe: string | null
+          p_foto: string | null
+          p_fecha: string | null
         }
         Returns: string
       }
