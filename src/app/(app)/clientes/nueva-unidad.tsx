@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Pencil, Plus } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -67,11 +67,12 @@ export function NuevaUnidad({
         type="button"
         variante={compacta ? 'contorno' : 'secundario'}
         tamano="sm"
-        aria-label="Nueva unidad"
+        aria-label={unidad ? `Editar ${unidad.marca} ${unidad.modelo}` : 'Nueva unidad'}
         onClick={abrir}
       >
-        <Plus aria-hidden className="size-3.5" />
-        {compacta ? 'Nueva' : 'Agregar unidad'}
+        {/* Con unidad es corregir la que ya está: decía «Nueva» y abría «Editar». */}
+        {unidad ? <Pencil aria-hidden className="size-3.5" /> : <Plus aria-hidden className="size-3.5" />}
+        {unidad ? 'Editar' : compacta ? 'Nueva' : 'Agregar unidad'}
       </Boton>
 
       {/* La `Ventana` del sistema pone el portal —el formulario de adentro no

@@ -79,7 +79,6 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   }
   for (const tramite of [
     { permiso: 'diseno.revisar_informe', estado: 'EN_REVISION', texto: 'informes semanales por revisar' },
-    { permiso: 'administracion.recibir_informe', estado: 'APROBADO', texto: 'informes semanales aprobados por recibir' },
   ]) {
     if (puede(perfil, tramite.permiso)) tareas.push({
       clave: `informe_${tramite.estado}`, ruta: '/diseno/informe-semanal', tono: 'aviso', texto: n => `${n} ${tramite.texto}`,

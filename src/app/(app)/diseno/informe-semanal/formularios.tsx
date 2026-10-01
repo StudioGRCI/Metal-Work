@@ -172,7 +172,7 @@ export function FormularioInformeDiseno({ inicio, informe, responsable }: { inic
   </form>
 }
 
-export function DecisionInforme({ id, estado }: { id: string; estado: 'EN_REVISION' | 'APROBADO' | 'OBSERVADO' | 'RECIBIDO' }) {
+export function DecisionInforme({ id, estado }: { id: string; estado: 'EN_REVISION' | 'APROBADO' | 'OBSERVADO' }) {
   const envio = useEnvio(transitarInforme)
   return <form onSubmit={envio.alEnviar} className="space-y-3">
     <input type="hidden" name="informe_id" value={id} /><input type="hidden" name="estado" value={estado} />
@@ -180,7 +180,7 @@ export function DecisionInforme({ id, estado }: { id: string; estado: 'EN_REVISI
       ? <Campo etiqueta="Qué debe corregir el colaborador" htmlFor="revision-inf" requerido><AreaTexto id="revision-inf" name="observacion" minLength={10} maxLength={2000} required /></Campo>
       : <input type="hidden" name="observacion" value="" />}
     <Boton type="submit" cargando={envio.enviando} variante={estado === 'OBSERVADO' ? 'secundario' : 'primario'}>
-      {estado === 'EN_REVISION' ? 'Enviar a Diseño' : estado === 'APROBADO' ? 'Aprobar y enviar a Administración' : estado === 'OBSERVADO' ? 'Devolver con observaciones' : 'Confirmar recepción'}
+      {estado === 'EN_REVISION' ? 'Enviar a Diseño' : estado === 'APROBADO' ? 'Aprobar informe' : 'Devolver con observaciones'}
     </Boton>
     {envio.error && <p role="alert" className="text-sm text-peligro">{envio.error}</p>}
     {envio.resultado?.ok && <p role="status" className="text-sm text-exito">{envio.resultado.mensaje}</p>}

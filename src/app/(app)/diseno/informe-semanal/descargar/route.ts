@@ -18,7 +18,7 @@ async function leerLogo() {
 }
 
 export async function GET(request: NextRequest) {
-  await exigirPermiso(['diseno.planos', 'diseno.subir_pdf', 'supervision.general','administracion.recibir_informe'])
+  await exigirPermiso(['diseno.planos', 'diseno.subir_pdf', 'supervision.general'])
   const parametro = request.nextUrl.searchParams.get('semana')
   if (!parametro) return NextResponse.json({ error: 'Indica la semana del informe.' }, { status: 400 })
   let inicio: string

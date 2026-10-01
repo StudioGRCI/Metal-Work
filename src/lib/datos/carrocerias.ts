@@ -8,8 +8,10 @@ import { createClient } from '@/lib/supabase/server'
  *
  * Es lo que ve Diseño e Ingeniería antes de cotizar: elegir una carrocería
  * trae su ficha puesta (migración 071) y acá se mira qué trae cada una y de
- * qué OT salió. Solo lectura: las plantillas se corrigen por migración, para
- * que un espesor no cambie sin que quede escrito de dónde salió el nuevo.
+ * qué OT salió. Las plantillas son de solo lectura: se corrigen por migración,
+ * para que un espesor no cambie sin que quede escrito de dónde salió el nuevo.
+ * El nombre y las medidas técnicas de cada carrocería sí los corrige Diseño
+ * (`diseno.carrocerias`, migración 20261001213000).
  */
 export type PlantillaResumen = {
   id: string
@@ -30,6 +32,13 @@ export type CarroceriaConFicha = {
   capacidad: string | null
   descripcion: string | null
   activo: boolean
+  horas_hombre_estandar: number
+  modelo: string | null
+  tipo: string | null
+  largo_m: number | null
+  ancho_m: number | null
+  alto_m: number | null
+  peso_neto_tn: number | null
   plantillas: PlantillaResumen[]
   pasos_verificacion: number
 }
@@ -38,12 +47,28 @@ export async function carroceriasConFicha(incluirInactivas = false, incluirDetal
   const supabase = await createClient()
   let consultaTipos = supabase
     .from('tipos_carroceria')
-    .select('id, codigo, nombre, descripcion, tipo_unidad, capacidad, activo')
+    .select('id, codigo, nombre, descripcion, tipo_unidad, capacidad, activo, horas_hombre_estandar, modelo, tipo, largo_m, ancho_m, alto_m, peso_neto_tn')
   if (!incluirInactivas) consultaTipos = consultaTipos.eq('activo', true)
 
   const { data: tipos, error: errorTipos } = await consultaTipos.order('nombre')
   if (errorTipos) throw new Error(`No se pudo leer el catálogo de carrocerías: ${errorTipos.message}`)
-  const base = tipos ?? []
+  // El banco local devuelve los numeric como texto; Supabase, como número.
+  const base = (tipos ?? []).map((t) => ({
+    id: t.id,
+    codigo: t.codigo,
+    nombre: t.nombre,
+    tipo_unidad: t.tipo_unidad,
+    capacidad: t.capacidad,
+    descripcion: t.descripcion,
+    activo: t.activo,
+    horas_hombre_estandar: Number(t.horas_hombre_estandar ?? 0),
+    modelo: t.modelo,
+    tipo: t.tipo,
+    largo_m: t.largo_m === null ? null : Number(t.largo_m),
+    ancho_m: t.ancho_m === null ? null : Number(t.ancho_m),
+    alto_m: t.alto_m === null ? null : Number(t.alto_m),
+    peso_neto_tn: t.peso_neto_tn === null ? null : Number(t.peso_neto_tn),
+  }))
   if (!incluirDetalleTecnico) {
     return base.map((t) => ({ ...t, plantillas: [], pasos_verificacion: 0 }))
   }
@@ -87,13 +112,7 @@ export async function carroceriasConFicha(incluirInactivas = false, incluirDetal
   }
 
   return base.map((t) => ({
-    id: t.id,
-    codigo: t.codigo,
-    nombre: t.nombre,
-    tipo_unidad: t.tipo_unidad,
-    capacidad: t.capacidad,
-    descripcion: t.descripcion,
-    activo: t.activo,
+    ...t,
     plantillas: porTipo.get(t.id) ?? [],
     // Sin lista propia, la OT usa la genérica: se dice cuántos pasos tiene esa.
     pasos_verificacion: pasosPorTipo.get(t.id) ?? pasosPorTipo.get('GENERICA') ?? 0,

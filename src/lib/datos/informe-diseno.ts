@@ -9,7 +9,7 @@ import { finSemanaDiseno } from '@/lib/dominio/semana-diseno'
  * modelado (`diseno_tareas`) y el avance de planos (`diseno_entregas_planos`).
  *
  * Mientras el informe está abierto se lee lo vivo; enviado, la copia sellada
- * (`contenido_enviado`), que es lo que revisó Diseño y recibe Administración.
+ * (`contenido_enviado`), que es lo que revisó y aprobó Diseño.
  * El código interno y si es CM o SR vienen de `identificacion_ot_diseno`: el
  * colaborador no lee `unidades` (migración 20261001201500).
  */
@@ -50,7 +50,7 @@ export async function datosInformeDiseno(inicio: string) {
 
   if (informe.data?.contenido_enviado && informe.data.estado !== 'BORRADOR' && informe.data.estado !== 'OBSERVADO') {
     const copia = ContenidoEnviado.safeParse(informe.data.contenido_enviado)
-    if (!copia.success) throw new Error('El contenido enviado no se pudo leer. Solicita revisión a Administración.')
+    if (!copia.success) throw new Error('El contenido enviado no se pudo leer. Pide a Diseño que devuelva el informe y se vuelva a enviar.')
     return { informe: informe.data, inicio, fin, enviado: true, tareas: copia.data.tareas as TareaInforme[], entregas: copia.data.entregas as EntregaInforme[] }
   }
 

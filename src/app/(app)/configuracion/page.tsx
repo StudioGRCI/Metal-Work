@@ -28,6 +28,9 @@ export default async function PaginaConfiguracion({
     catalogosDelTaller(),
   ])
   const puedeEditar = puede(perfil, 'configuracion.editar')
+  // Las medidas de las carrocerías las lleva Diseño (migración 20261001213000):
+  // Administración las ve aquí, pero ya no las corrige.
+  const puedeMedidas = puede(perfil, 'diseno.carrocerias')
 
   return (
     <>
@@ -69,22 +72,22 @@ export default async function PaginaConfiguracion({
           <Tarjeta>
             <TarjetaCabecera
               titulo="Tipos de carrocería"
-              descripcion="Tipos y medidas técnicas de referencia para el taller."
+              descripcion="Tipos y medidas técnicas de referencia. Las corrige Diseño e Ingeniería desde Carrocerías."
             />
             <TarjetaCuerpo className="space-y-1">
               {/* La lista vacía sin explicación se lee como pantalla rota. Es
                   además el caso que deja al taller sin poder cotizar. */}
               {catalogos.carrocerias.length === 0 && (
                 <p className="text-sm text-texto-suave">
-                  Todavía no hay tipos de carrocería. Se dan de alta desde administración para
-                  clasificar las órdenes de trabajo.
+                  Todavía no hay tipos de carrocería. Se dan de alta al cargar una orden de
+                  trabajo o desde Carrocerías.
                 </p>
               )}
               {catalogos.carrocerias.map((c) => (
                 <MedidasCarroceria
                   key={c.id}
                   carroceria={c as unknown as CarroceriaConMedidas}
-                  puedeEditar={puedeEditar}
+                  puedeEditar={puedeMedidas}
                 />
               ))}
             </TarjetaCuerpo>

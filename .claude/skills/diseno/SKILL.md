@@ -241,6 +241,14 @@ interacciones con botones (emitir, descargar, anular); interacción nueva de pes
   para escribir; y mirar la pantalla con cada rol que la usa, no solo con el
   que motivó el cambio.
 
+- **Una función de un archivo `'use client'` no se llama desde el servidor.**
+  Exportar un ayudante puro (un resumen, un formateo) junto a un componente de
+  cliente y llamarlo desde una página de servidor compila, pasa TypeScript y
+  ESLint, y en la pantalla tumba la página entera: «Attempted to call X() from
+  the server but X is on the client». Le pasó a `resumenMedidas` en Carrocerías
+  (2026-10-01) y solo se vio al abrirla con la cuenta de Diseño. Las funciones
+  puras que usan los dos lados van en `src/lib/dominio/`.
+
 - **Una columna nueva no aparece sola.** Aunque esté en la base y en los tipos,
   la pantalla la ignora hasta que se agrega al `select` explícito de
   `src/lib/datos/*`. El síntoma es un campo vacío sin ningún error.

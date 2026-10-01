@@ -1,8 +1,9 @@
 /**
  * El informe semanal de Diseño tal como lo pide el formato de la empresa
  * «Informe semanal – Área de Ingeniería» (MW-IF-DI-01, versión 1.0, revisado
- * el 30/05/2026). Lo llena el colaborador de Diseño; lo revisa Diseño y lo
- * recibe Administración (migraciones 20260930093000 y 20261001201500).
+ * el 30/05/2026). Lo llena el colaborador de Diseño y lo aprueba Diseño; ahí
+ * termina (migraciones 20260930093000, 20261001201500 y 20261001213000, que
+ * retiró la recepción de Administración).
  */
 
 export const FORMATO_INFORME_DISENO = {

@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
+import { resumenMedidas } from '@/lib/dominio/medidas-carroceria'
 import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 
@@ -25,68 +26,39 @@ export type CarroceriaConMedidas = {
   peso_neto_tn: number | null
 }
 
-/** Resumen técnico del catálogo, en un renglón. */
-function resumen(c: CarroceriaConMedidas): string | null {
-  const medidas = [c.largo_m, c.ancho_m, c.alto_m].filter((m) => m !== null)
-  const partes = [
-    c.modelo,
-    medidas.length > 0 ? `${medidas.join(' × ')} m` : null,
-    c.capacidad,
-    c.peso_neto_tn ? `${c.peso_neto_tn} tn` : null,
-  ].filter(Boolean)
-  return partes.length > 0 ? partes.join(' · ') : null
-}
-
 /**
- * Las medidas con las que la casa fabrica cada carrocería.
- *
- * Estas medidas orientan la ficha técnica de taller y pueden ajustarse para
- * cada orden durante el trabajo de Diseño.
+ * El botón que abre las medidas técnicas de una carrocería, con su ventana.
+ * Las corrige Diseño e Ingeniería (`diseno.carrocerias`); la acción exige el
+ * mismo permiso que acepta la política de `tipos_carroceria`.
  */
-export function MedidasCarroceria({
+export function EditarMedidas({
   carroceria,
-  puedeEditar,
+  conTexto = false,
 }: {
   carroceria: CarroceriaConMedidas
-  puedeEditar: boolean
+  /** En una tabla se lee mejor «Medidas» que un lápiz suelto. */
+  conTexto?: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
   const { alEnviar: accion, enviando: guardando, resultado } = useEnvio(guardarMedidasCarroceria)
 
-  const dice = resumen(carroceria)
-
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-borde py-1.5 text-sm last:border-0">
-      <div className="min-w-0">
-        <p className="text-texto">
-          {carroceria.nombre}
-          {!carroceria.activo && (
-            <span className="ml-2 text-[11px] text-texto-tenue">(inactivo)</span>
-          )}
-        </p>
-        {/* Sin medidas se dice, y se dice qué se pierde: una lista de nombres no
-            deja ver cuáles están a medio cargar. */}
-        <p className={cn('text-xs', dice ? 'text-texto-suave' : 'text-texto-tenue')}>
-          {dice ?? 'Todavía no hay medidas técnicas de referencia'}
-        </p>
-      </div>
-
-      <div className="flex shrink-0 items-center gap-2">
-        <span className="tabular text-xs text-texto-suave">
-          {carroceria.horas_hombre_estandar} h
-        </span>
-        {puedeEditar && (
-          <Boton
-            type="button"
-            variante="fantasma"
-            tamano="sm"
-            aria-label={`Medidas de ${carroceria.nombre}`}
-            onClick={() => setAbierta(true)}
-          >
-            <Pencil aria-hidden className="size-3.5" />
-          </Boton>
-        )}
-      </div>
+    <>
+      {conTexto ? (
+        <Boton type="button" tamano="sm" variante="contorno" onClick={() => setAbierta(true)}>
+          <Ruler aria-hidden className="size-3.5" /> Medidas
+        </Boton>
+      ) : (
+        <Boton
+          type="button"
+          variante="fantasma"
+          tamano="sm"
+          aria-label={`Medidas de ${carroceria.nombre}`}
+          onClick={() => setAbierta(true)}
+        >
+          <Pencil aria-hidden className="size-3.5" />
+        </Boton>
+      )}
 
       <Ventana
         abierta={abierta}
@@ -200,6 +172,47 @@ export function MedidasCarroceria({
           </div>
         </form>
       </Ventana>
+    </>
+  )
+}
+
+/**
+ * Las medidas con las que la casa fabrica cada carrocería, en un renglón.
+ *
+ * Estas medidas orientan la ficha técnica de taller y pueden ajustarse para
+ * cada orden durante el trabajo de Diseño.
+ */
+export function MedidasCarroceria({
+  carroceria,
+  puedeEditar,
+}: {
+  carroceria: CarroceriaConMedidas
+  puedeEditar: boolean
+}) {
+  const dice = resumenMedidas(carroceria)
+
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-borde py-1.5 text-sm last:border-0">
+      <div className="min-w-0">
+        <p className="text-texto">
+          {carroceria.nombre}
+          {!carroceria.activo && (
+            <span className="ml-2 text-[11px] text-texto-tenue">(inactivo)</span>
+          )}
+        </p>
+        {/* Sin medidas se dice, y se dice qué se pierde: una lista de nombres no
+            deja ver cuáles están a medio cargar. */}
+        <p className={cn('text-xs', dice ? 'text-texto-suave' : 'text-texto-tenue')}>
+          {dice ?? 'Todavía no hay medidas técnicas de referencia'}
+        </p>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="tabular text-xs text-texto-suave">
+          {carroceria.horas_hombre_estandar} h
+        </span>
+        {puedeEditar && <EditarMedidas carroceria={carroceria} />}
+      </div>
     </div>
   )
 }

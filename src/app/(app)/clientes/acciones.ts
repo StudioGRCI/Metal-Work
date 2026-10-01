@@ -150,13 +150,17 @@ export async function guardarUnidad(
 
   const v = analisis.data
   const editando = Boolean(v.id)
-  if (!puede(perfil, 'clientes.editar')) {
+  // Corrigen la unidad Ventas (`clientes.editar`) y Diseño e Ingeniería
+  // (`diseno.unidades`), los mismos permisos que acepta la política de
+  // `unidades`; el alta sigue siendo de Ventas, en la ficha del cliente.
+  if (!puede(perfil, editando ? ['clientes.editar', 'diseno.unidades'] : 'clientes.editar')) {
     return { ok: false, error: editando ? 'No tienes permiso para editar unidades.' : 'No tienes permiso para registrar unidades.' }
   }
 
   const supabase = await createClient()
   const fila = {
-    cliente_id: v.cliente_id,
+    // Diseño corrige el vehículo, no de quién es: el cliente lo cambia Ventas.
+    ...(!editando || puede(perfil, 'clientes.editar') ? { cliente_id: v.cliente_id } : {}),
     placa: nulo(v.placa),
     tipo_vehiculo: v.tipo_vehiculo,
     marca: v.marca,

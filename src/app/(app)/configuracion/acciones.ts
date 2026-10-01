@@ -142,19 +142,19 @@ const esquemaCarroceria = z
   })
 
 /**
- * Alta de un tipo de carrocería desde configuración.
+ * Alta de un tipo de carrocería.
  *
- * El catálogo no puede frenar una venta: si el cliente pide algo que no
- * está, el vendedor lo da de alta con su nombre y sigue. El código se arma
- * del nombre; las horas y los precios de referencia los ajusta administración
- * después, desde Configuración.
+ * El catálogo no puede frenar una venta ni la carga de una OT: si el cliente
+ * pide algo que no está, el vendedor o Administración lo da de alta con su
+ * nombre y sigue. El código se arma del nombre; las medidas técnicas las
+ * completa después Diseño e Ingeniería, desde Carrocerías.
  */
 export async function crearCarroceria(
   _previo: unknown,
   datos: FormData,
 ): Promise<ResultadoAccion<{ id: string; nombre: string }>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['ordenes.crear', 'configuracion.editar', 'cotizaciones.crear'])) {
+  if (!puede(perfil, ['ordenes.crear', 'diseno.carrocerias', 'cotizaciones.crear'])) {
     return { ok: false, error: 'No tienes permiso para agregar tipos de carrocería.' }
   }
 
@@ -206,7 +206,8 @@ export async function crearCarroceria(
   if (error) return { ok: false, error: mensajeDeError(error) }
 
   revalidatePath('/configuracion')
-  return { ok: true, mensaje: 'Tipo de carrocería agregado. Administración le pondrá sus horas de referencia.', datos: data }
+  revalidatePath('/carrocerias')
+  return { ok: true, mensaje: 'Tipo de carrocería agregado. Diseño e Ingeniería completa sus medidas en Carrocerías.', datos: data }
 }
 
 const esquemaEditarCarroceria = z.object({
@@ -221,11 +222,13 @@ export async function editarCarroceria(_previo: unknown, datos: FormData): Promi
   const analisis = esquemaEditarCarroceria.safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los datos.' }
   const v = analisis.data
-  if (!puede(perfil, ['configuracion.editar', 'cotizaciones.crear'])) {
-    return { ok: false, error: 'No tienes permiso para editar el catálogo.' }
+  if (!puede(perfil, ['diseno.carrocerias', 'cotizaciones.crear'])) {
+    return { ok: false, error: 'El catálogo de carrocerías lo corrige Diseño e Ingeniería.' }
   }
   const supabase = await createClient()
-  const resultado = puede(perfil, 'configuracion.editar')
+  // Diseño corrige la fila con su permiso, el mismo que pide la política;
+  // Ventas, solo nombre, descripción y si está activa, por su función.
+  const resultado = puede(perfil, 'diseno.carrocerias')
     ? await supabase.from('tipos_carroceria').update({ nombre: v.nombre, descripcion: nuloSiVacio(v.descripcion) }).eq('id', v.id).select('id').maybeSingle()
     : await supabase.rpc('editar_carroceria_ventas', { p_id: v.id, p_nombre: v.nombre, p_descripcion: v.descripcion ?? '', p_activo: v.activo })
   if (resultado.error) return { ok: false, error: mensajeDeError(resultado.error) }
@@ -263,14 +266,18 @@ function medidaOpcional(texto?: string): number | null {
 }
 
 /**
- * Medidas técnicas de referencia para el catálogo de carrocerías.
+ * Medidas técnicas de referencia para el catálogo de carrocerías. Las lleva
+ * Diseño e Ingeniería (`diseno.carrocerias`, el mismo permiso que acepta la
+ * política de `tipos_carroceria`).
  */
 export async function guardarMedidasCarroceria(
   _previo: unknown,
   datos: FormData,
 ): Promise<ResultadoAccion> {
-  const problema = await exigirEdicion()
-  if (problema) return { ok: false, error: problema }
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'diseno.carrocerias')) {
+    return { ok: false, error: 'Las medidas de las carrocerías las lleva Diseño e Ingeniería.' }
+  }
 
   const analisis = esquemaMedidasCarroceria.safeParse(Object.fromEntries(datos))
   if (!analisis.success) {
@@ -306,6 +313,7 @@ export async function guardarMedidasCarroceria(
   }
 
   revalidatePath('/configuracion')
+  revalidatePath('/carrocerias')
   return {
     ok: true,
     mensaje: 'Medidas técnicas guardadas en el catálogo.',

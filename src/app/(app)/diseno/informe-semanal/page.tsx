@@ -23,13 +23,14 @@ import {
 export const metadata = { title: 'Informe semanal · Diseño e Ingeniería' }
 const ESTADOS: Record<string, string> = {
   BORRADOR: 'Borrador del colaborador', EN_REVISION: 'Pendiente de revisión de Diseño', OBSERVADO: 'Devuelto para corregir',
-  APROBADO: 'Aprobado · pendiente de Administración', RECIBIDO: 'Recibido por Administración',
+  // RECIBIDO quedó del circuito anterior, cuando el informe iba a Administración.
+  APROBADO: 'Aprobado por Diseño', RECIBIDO: 'Recibido por Administración',
 }
 
 export default async function PaginaInformeSemanalDiseno({ searchParams }: {
   searchParams: Promise<{ semana?: string }>
 }) {
-  const perfil = await exigirPermiso(['diseno.planos', 'diseno.subir_pdf', 'supervision.general', 'administracion.recibir_informe'])
+  const perfil = await exigirPermiso(['diseno.planos', 'diseno.subir_pdf', 'supervision.general'])
   const parametros = await searchParams
   let inicio = inicioSemanaDiseno(hoyLima())
   if (parametros.semana) {
@@ -42,9 +43,9 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
     puedeEscribir
       ? db.from('ot_equipo_diseno').select('id,orden_id,nombre,funcion').eq('funcion', 'COLABORADOR').order('nombre').limit(1000)
       : Promise.resolve({ data: [], error: null }),
-    puede(perfil, ['diseno.revisar_informe', 'administracion.recibir_informe'])
+    puede(perfil, 'diseno.revisar_informe')
       ? db.from('diseno_informes').select('id,numero,semana_inicio,estado')
-        .eq('estado', puede(perfil, 'diseno.revisar_informe') ? 'EN_REVISION' : 'APROBADO')
+        .eq('estado', 'EN_REVISION')
         .order('semana_inicio').limit(100)
       : Promise.resolve({ data: [], error: null }),
   ])
@@ -77,7 +78,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
 
   return <>
     <EncabezadoPagina titulo="Informe semanal de Diseño e Ingeniería"
-      descripcion={`Formato ${FORMATO_INFORME_DISENO.codigo}. Lo llena el colaborador; Diseño lo revisa y Administración recibe la versión aprobada.`}
+      descripcion={`Formato ${FORMATO_INFORME_DISENO.codigo}. Lo llena el colaborador y lo aprueba Diseño.`}
       acciones={informe && <a href={`/diseno/informe-semanal/descargar?semana=${inicio}`} download
         className={cn(BASE_BOTON, VARIANTES.secundario, TAMANOS.md)}>
         <Download aria-hidden className="size-4" /> Descargar Word
@@ -117,7 +118,6 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
               <DecisionInforme id={informe.id} estado="APROBADO" />
               <details><summary className="cursor-pointer py-2 text-sm font-medium text-acento">Devolver con observaciones</summary><DecisionInforme id={informe.id} estado="OBSERVADO" /></details>
             </div>}
-            {puede(perfil, 'administracion.recibir_informe') && informe.estado === 'APROBADO' && <DecisionInforme id={informe.id} estado="RECIBIDO" />}
           </div>}
           {!abierta && puedeEscribir && <p className="mt-3 text-sm text-texto-suave">El informe ya se envió: las tablas muestran lo que se envió y no se pueden cambiar salvo que Diseño lo devuelva.</p>}
         </TarjetaCuerpo>

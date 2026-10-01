@@ -133,13 +133,13 @@ export async function guardarInformeDiseno(_previo: unknown, datos: FormData): P
 
 export async function transitarInforme(_previo:unknown,datos:FormData):Promise<ResultadoAccion> {
  const perfil=await exigirSesion()
- const v=z.object({informe_id:z.string().uuid(),estado:z.enum(['EN_REVISION','APROBADO','OBSERVADO','RECIBIDO']),observacion:z.string().trim().max(2000)}).safeParse(Object.fromEntries(datos))
+ const v=z.object({informe_id:z.string().uuid(),estado:z.enum(['EN_REVISION','APROBADO','OBSERVADO']),observacion:z.string().trim().max(2000)}).safeParse(Object.fromEntries(datos))
  if(!v.success)return {ok:false,error:'Revisa la decisión y la observación.'}
- const permiso=v.data.estado==='EN_REVISION'?'diseno.preparar_informe':v.data.estado==='RECIBIDO'?'administracion.recibir_informe':'diseno.revisar_informe'
+ const permiso=v.data.estado==='EN_REVISION'?'diseno.preparar_informe':'diseno.revisar_informe'
  if(!puede(perfil,permiso))return {ok:false,error:'Tu usuario no puede realizar esta decisión.'}
  const db=await createClient();const {data,error}=await db.rpc('transitar_informe_diseno',{p_informe:v.data.informe_id,p_estado:v.data.estado,p_observacion:v.data.observacion||null})
  if(error)return {ok:false,error:mensajeDeError(error)}
  if(data!==v.data.informe_id)return {ok:false,error:NO_TOCO_NADA}
  revalidatePath('/diseno/informe-semanal')
- return {ok:true,mensaje:v.data.estado==='EN_REVISION'?'Informe enviado a Diseño.':v.data.estado==='APROBADO'?'Informe aprobado y disponible para Administración.':v.data.estado==='RECIBIDO'?'Recepción confirmada.':'Observaciones enviadas al colaborador.'}
+ return {ok:true,mensaje:v.data.estado==='EN_REVISION'?'Informe enviado a Diseño.':v.data.estado==='APROBADO'?'Informe aprobado. El colaborador recibe el aviso.':'Observaciones enviadas al colaborador.'}
 }

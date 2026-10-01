@@ -86,7 +86,9 @@ export const NAVEGACION: GrupoNavegacion[] = [
         titulo: 'Informe semanal de Diseño',
         ruta: '/diseno/informe-semanal',
         icono: FileText,
-        permiso: ['diseno.planos', 'diseno.subir_pdf', 'supervision.general','administracion.recibir_informe'],
+        // Lo llena el colaborador y lo aprueba Diseño; ahí termina (migración
+        // 20261001213000). Administración ya no lo recibe.
+        permiso: ['diseno.planos', 'diseno.subir_pdf', 'supervision.general'],
         descripcion: 'Tareas de colaboradores y planos aprobados en Word',
         disponible: true,
       },
@@ -115,7 +117,8 @@ export const NAVEGACION: GrupoNavegacion[] = [
         disponible: true,
       },
       // Logística fija el precio de lo que nunca se compró por el sistema.
-      // Costos la consulta; Almacén también puede, pero no la necesita en su menú.
+      // Costos la consulta; Almacén también puede, pero no la necesita en su
+      // menú. Administración ya no la ve (ver FUERA_DEL_MENU).
       {
         titulo: 'Valorización del almacén',
         ruta: '/compras/valorizacion',
@@ -181,8 +184,22 @@ const RUTAS_POR_PUESTO: Record<string, readonly string[]> = {
   TESORERIA: ['/', '/ordenes', '/tesoreria', '/tesoreria/cuentas', '/tesoreria/tipo-de-cambio', '/adquisiciones'],
 }
 
+/**
+ * Lo que un puesto alcanza con sus permisos pero no es su trabajo, y por eso
+ * no va en su menú. Administración lee clientes, unidades, catálogos y costos
+ * porque carga la OT y ve su costo; pero la valorización es de Logística, y
+ * Unidades y Carrocerías las lleva Diseño e Ingeniería (pedido de la empresa,
+ * 2026-10-01). El menú no es el límite de acceso: la valorización también
+ * rechaza a Administración en la pantalla, y el catálogo de carrocerías ya no
+ * acepta sus cambios en la base (migración 20261001213000).
+ */
+const FUERA_DEL_MENU: Record<string, readonly string[]> = {
+  DISENO: ['/configuracion'],
+  ADMINISTRACION: ['/compras/valorizacion', '/unidades', '/carrocerias'],
+}
+
 export function puedeVer(item: ItemNavegacion, permisos: string[], esAdmin: boolean, rolCodigo: string) {
-  if (rolCodigo === 'DISENO' && item.ruta === '/configuracion') return false
+  if (FUERA_DEL_MENU[rolCodigo]?.includes(item.ruta)) return false
   if (RUTAS_POR_PUESTO[rolCodigo] && !RUTAS_POR_PUESTO[rolCodigo].includes(item.ruta)) return false
   if (!item.permiso || esAdmin) return true
   return (Array.isArray(item.permiso) ? item.permiso : [item.permiso]).some((p) => permisos.includes(p))

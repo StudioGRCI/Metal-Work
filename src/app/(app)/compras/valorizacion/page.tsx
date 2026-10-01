@@ -31,11 +31,15 @@ const monedaValida = (m: string | null) => (m === 'PEN' || m === 'USD' ? m : nul
  * sistema —consumibles, saldos iniciales—. Sin ese precio el material sale
  * del almacén, se carga a la OT y su costo queda en blanco.
  *
- * La lectura es la misma que pide `materiales_para_valorizar`: Logística
- * (`almacen.valorizar`), Almacén (`almacen.ver`) y Costos (`costos.ver`).
+ * La pantalla es de Logística (`almacen.valorizar`), y la consultan quienes
+ * llevan el almacén (`almacen.ver`: Almacén, Costos y Materiales, Gerencia,
+ * Supervisión General). `materiales_para_valorizar` también deja leer a quien
+ * ve costos, porque Administración necesita el precio para el costo de la OT;
+ * pero la valorización no es su trabajo y la pantalla no la acepta (pedido de
+ * la empresa, 2026-10-01).
  */
 export default async function PaginaValorizacion({ searchParams }: PageProps<'/compras/valorizacion'>) {
-  const perfil = await exigirPermiso(['almacen.valorizar', 'almacen.ver', 'costos.ver'])
+  const perfil = await exigirPermiso(['almacen.valorizar', 'almacen.ver'])
   const params = await searchParams
   const ver = texto(params.ver)
   const busqueda = texto(params.q).slice(0, 60).toLocaleLowerCase('es')

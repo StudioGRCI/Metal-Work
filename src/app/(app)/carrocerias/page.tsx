@@ -5,9 +5,11 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { AccionesCatalogo } from '@/app/(app)/catalogos/acciones-catalogo'
+import { EditarMedidas } from '@/app/(app)/configuracion/medidas-carroceria'
 import { EditarCarroceria } from './editar-carroceria'
 import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
 import { carroceriasConFicha } from '@/lib/datos/carrocerias'
+import { resumenMedidas } from '@/lib/dominio/medidas-carroceria'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Carrocerías' }
@@ -23,7 +25,10 @@ const TIPO_UNIDAD: Record<string, string> = {
  * Cada fila es una carrocería del catálogo con las fichas técnicas que la casa
  * ya escribió para ella —transcritas de sus propias OT— y los pasos de
  * verificación que el taller recorre. Acá se consulta qué ficha técnica y
- * equipamiento corresponden a cada tipo de carrocería.
+ * equipamiento corresponden a cada tipo de carrocería, y Diseño corrige el
+ * nombre, la descripción y las medidas técnicas (`diseno.carrocerias`,
+ * migración 20261001213000). Ventas conserva el alta y el nombre para no
+ * frenar una cotización.
  */
 export default async function PaginaCarrocerias({ searchParams }: PageProps<'/carrocerias'>) {
   const perfil = await exigirPermiso(['diseno.planos', 'configuracion.ver', 'cotizaciones.crear'])
@@ -31,7 +36,8 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
   const incluirInactivas = params.estado === 'inactivas'
   const verDetalleTecnico = puede(perfil, ['diseno.planos', 'configuracion.ver'])
   const carrocerias = await carroceriasConFicha(incluirInactivas, verDetalleTecnico)
-  const puedeEditar = puede(perfil, ['configuracion.editar', 'cotizaciones.crear'])
+  const puedeEditar = puede(perfil, ['diseno.carrocerias', 'cotizaciones.crear'])
+  const puedeMedidas = puede(perfil, 'diseno.carrocerias')
 
   const conFicha = carrocerias.filter((c) => c.plantillas.length > 0).length
   const fichas = carrocerias.reduce((n, c) => n + c.plantillas.length, 0)
@@ -76,6 +82,11 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
                     <span className="ml-2 rounded bg-superficie-2 px-1 text-[11px] font-semibold text-texto-suave">
                       {c.codigo}
                     </span>
+                    {verDetalleTecnico && (
+                      <span className="block text-[11px] text-texto-suave">
+                        {resumenMedidas(c) ?? 'Sin medidas técnicas'}
+                      </span>
+                    )}
                   </TD>
                   <TD className="hidden text-texto-suave sm:table-cell">
                     {c.tipo_unidad ? TIPO_UNIDAD[c.tipo_unidad] ?? c.tipo_unidad : '—'}
@@ -107,6 +118,7 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
                   <TD>
                     <div className="space-y-2">
                       {puedeEditar && <EditarCarroceria id={c.id} nombre={c.nombre} descripcion={c.descripcion} activo={c.activo} />}
+                      {puedeMedidas && <EditarMedidas carroceria={c} conTexto />}
                       <AccionesCatalogo tipo="carroceria" id={c.id} nombre={c.nombre} activo={c.activo} puedeEditar={puedeEditar} esAdmin={perfil.rol.codigo === 'ADMIN'} />
                     </div>
                   </TD>

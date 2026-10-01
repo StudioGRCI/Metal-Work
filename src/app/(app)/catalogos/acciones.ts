@@ -22,13 +22,17 @@ export async function cambiarEstadoCatalogo(_previo: unknown, datos: FormData): 
   const analisis = entrada.safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: 'No se pudo identificar el registro.' }
   const { tipo, id, activo } = analisis.data
+  // El mismo permiso que acepta la política de cada tabla: carrocerías,
+  // Diseño (o Ventas por su función); unidades, Ventas o Diseño; clientes, Ventas.
   const permiso = tipo === 'carroceria'
-    ? puede(perfil, ['configuracion.editar', 'cotizaciones.crear'])
-    : puede(perfil, 'clientes.editar')
+    ? puede(perfil, ['diseno.carrocerias', 'cotizaciones.crear'])
+    : tipo === 'unidad'
+      ? puede(perfil, ['clientes.editar', 'diseno.unidades'])
+      : puede(perfil, 'clientes.editar')
   if (!permiso) return { ok: false, error: 'Tu perfil no puede cambiar el estado de este registro.' }
 
   const supabase = await createClient()
-  if (tipo === 'carroceria' && !puede(perfil, 'configuracion.editar')) {
+  if (tipo === 'carroceria' && !puede(perfil, 'diseno.carrocerias')) {
     const { data: actual, error: lectura } = await supabase.from('tipos_carroceria').select('nombre, descripcion').eq('id', id).maybeSingle()
     if (lectura) return { ok: false, error: mensajeDeError(lectura) }
     if (!actual) return { ok: false, error: NO_TOCO_NADA }

@@ -17,6 +17,8 @@ export const metadata = { title: 'Unidades' }
 export default async function PaginaUnidades({ searchParams }: PageProps<'/unidades'>) {
   const perfil = await exigirPermiso(['clientes.ver', 'produccion.ver'])
   const params = await searchParams
+  // Corrigen unidades Ventas y Diseño e Ingeniería (migración 20261001213000).
+  const puedeEditar = puede(perfil, ['clientes.editar', 'diseno.unidades'])
 
   const busqueda = typeof params.q === 'string' ? params.q : undefined
   const incluirInactivas = params.estado === 'inactivas'
@@ -57,13 +59,13 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
               <TH className="hidden sm:table-cell">Carrocería</TH>
               <TH className="hidden text-right sm:table-cell">Capacidad</TH>
               <TH className="hidden sm:table-cell">N.º de chasis</TH>
-              {puede(perfil, 'clientes.editar') && <TH>Acciones</TH>}
+              {puedeEditar && <TH>Acciones</TH>}
             </tr>
           </TablaCabecera>
           <tbody>
             {unidades.length === 0 ? (
               <SinDatos
-                colSpan={puede(perfil, 'clientes.editar') ? 8 : 7}
+                colSpan={puedeEditar ? 8 : 7}
                 titulo={busqueda ? 'Ninguna unidad coincide' : 'Aún no hay unidades'}
                 descripcion={
                   busqueda
@@ -162,7 +164,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                     <TD className="hidden font-mono text-xs text-texto-suave sm:table-cell">
                       {u.numero_chasis ?? '—'}
                     </TD>
-                    {puede(perfil, 'clientes.editar') && (
+                    {puedeEditar && (
                       <TD>
                         <div className="space-y-2">
                           {/* Una unidad del taller todavía no tiene cliente: se edita
