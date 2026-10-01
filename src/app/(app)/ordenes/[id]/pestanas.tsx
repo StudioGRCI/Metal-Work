@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 const SECCIONES = [
   { clave: 'resumen', titulo: 'Resumen' },
   { clave: 'expediente', titulo: 'Expediente' },
+  { clave: 'ficha', titulo: 'Ficha de taller' },
   { clave: 'etapas', titulo: 'Etapas' },
   { clave: 'planos', titulo: 'Planos y revisiones' },
   { clave: 'materiales', titulo: 'Materiales' },

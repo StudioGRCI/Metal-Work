@@ -30,8 +30,11 @@ export async function definirEtapas(_previo: unknown, datos: FormData): Promise<
   if (configuracion.some((e) => e.nombre === null || e.area_id === null || e.peso_pct === null)) {
     return { ok: false, error: 'Cada etapa necesita nombre, área y un porcentaje entre 1 y 100 %.' }
   }
-  if (configuracion.reduce((total, e) => total + (e.peso_pct ?? 0), 0) !== 100) {
-    return { ok: false, error: 'Los pesos de las etapas deben sumar 100 %.' }
+  // Diseño guarda por partes hasta completar el 100 %; lo único que no se admite
+  // es pasarse (la base dice lo mismo en `guardar_etapas_libres`).
+  const contemplado = configuracion.reduce((total, e) => total + (e.peso_pct ?? 0), 0)
+  if (contemplado > 100) {
+    return { ok: false, error: `Las etapas suman ${contemplado} %: no pueden pasar de 100 %. Baja el porcentaje de alguna.` }
   }
   const supabase = await createClient()
   const conversion = datos.get('conversion') === '1'
@@ -45,7 +48,12 @@ export async function definirEtapas(_previo: unknown, datos: FormData): Promise<
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   revalidatePath(`/ordenes/${orden.data}`)
-  return { ok: true, mensaje: `${data} etapas definidas para la OT.` }
+  return {
+    ok: true,
+    mensaje: contemplado < 100
+      ? `${data} ${data === 1 ? 'etapa guardada' : 'etapas guardadas'}. Falta contemplar ${100 - contemplado} %.`
+      : `${data} ${data === 1 ? 'etapa guardada' : 'etapas guardadas'}: el 100 % está contemplado.`,
+  }
 }
 
 export async function programarEtapa(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {

@@ -37,7 +37,7 @@ const REGLAS: Record<string, string> = {
   ck_pieza_ensamble: 'Un ensamble no pasa por Maestranza: Producción lo empieza y lo arma.',
   ck_pieza_fechas_mtz: 'La culminación no puede ser anterior al inicio del habilitado.',
   ck_pieza_fechas_prd: 'El inicio del armado no puede ser anterior a la recepción.',
-  uq_ot_plano: 'Esta orden ya tiene un plano con ese número.',
+  uq_ot_plano: 'Esta orden ya tiene un plano con ese código.',
 }
 
 function explicar(error: { message: string; code?: string }): string {
@@ -81,7 +81,7 @@ async function exigirTaller() {
 const esquemaPlano = z.object({
   orden_id: z.string().uuid(),
   etapa_id: z.string().uuid('Primero crea y elige una etapa de esta OT para el plano.'),
-  numero_plano: z.string().trim().min(1, 'Ponle número al plano').max(20, 'El número del plano es demasiado largo'),
+  numero_plano: z.string().trim().min(1, 'Ponle código al plano').max(40, 'El código del plano es demasiado largo: hasta 40 caracteres'),
   nombre: z.string().trim().min(2, 'Ponle nombre al plano').max(120),
   peso_pct: z.coerce.number().min(0, 'El peso no puede ser negativo').max(100, 'Ningún plano pesa más de 100'),
   entregar_hoy: marcado,

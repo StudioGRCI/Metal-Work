@@ -331,7 +331,7 @@ function Verificacion({
         descripcion={
           pasos.length
             ? `${hechos} de ${pasos.length} pasos con ambos vistos buenos.`
-            : 'Diseño crea los pasos de verificación de esta orden.'
+            : 'Administración crea los pasos de verificación de esta orden.'
         }
       />
       <TarjetaCuerpo className="space-y-3">
@@ -351,8 +351,8 @@ function Verificacion({
         {pasos.length === 0 ? (
           <p className="py-6 text-center text-sm text-texto-suave">
             {sinArmar
-              ? 'Diseño todavía no agregó pasos a esta orden.'
-              : 'Diseño todavía no agregó pasos de verificación.'}
+              ? 'Administración todavía no agregó pasos a esta orden.'
+              : 'Administración todavía no agregó pasos de verificación.'}
           </p>
         ) : (
           <div className="overflow-x-auto">

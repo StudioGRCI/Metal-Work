@@ -146,7 +146,7 @@ export async function listarEtapas(ordenId: string) {
       .order('orden_secuencia'),
     supabase
       .from('ot_etapas')
-      .select('id, observaciones, etapa_catalogo_id, area_id, peso_pct, horas_reales')
+      .select('id, observaciones, etapa_catalogo_id, area_id, peso_pct, horas_reales, creado_en')
       .eq('orden_id', ordenId),
   ])
 
@@ -160,6 +160,8 @@ export async function listarEtapas(ordenId: string) {
     area_id: e.etapa_id ? (porEtapa.get(e.etapa_id)?.area_id ?? null) : null,
     peso_pct: e.etapa_id ? (porEtapa.get(e.etapa_id)?.peso_pct ?? null) : null,
     horas_reales: e.etapa_id ? (porEtapa.get(e.etapa_id)?.horas_reales ?? null) : null,
+    // Cuándo la guardó Diseño: lo pide Diseño para saber desde cuándo existe cada etapa.
+    creado_en: e.etapa_id ? (porEtapa.get(e.etapa_id)?.creado_en ?? null) : null,
   }))
 }
 

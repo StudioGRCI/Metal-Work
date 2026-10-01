@@ -19,7 +19,7 @@ import {
   agregarMaterial,
   proponerMaterial,
   proponerMaterialNuevo,
-  cambiarCantidadMaterial,
+  editarLineaMaterial,
   crearRequerimiento,
   quitarMaterial,
 } from './acciones-materiales'
@@ -71,15 +71,15 @@ export function MaterialesDeOrden({
       <Tarjeta>
         <TarjetaCabecera
           titulo="Materiales de la orden"
-          descripcion="Diseño asigna materiales a planos. El área puede proponer otros insumos, Diseño los aprueba y Almacén comprueba el stock antes de derivar a Logística."
+          descripcion="Diseño carga lo que lleva la unidad, con su plano si ya lo tiene. El área puede proponer otros insumos, Diseño los aprueba y Almacén comprueba el stock antes de derivar a Logística."
         />
         <TarjetaCuerpo className="grid gap-3 sm:grid-cols-3">
           <Dato titulo="Líneas" valor={String(materiales.length)} pie="materiales distintos" />
           <Dato titulo="Planos con material" valor={String(porPlano)} pie="de los que hay en la hoja" />
           <Dato
-            titulo="Sin plano (histórico)"
+            titulo="Sin plano"
             valor={String(materiales.filter((m) => !m.plano_id).length)}
-            pie="por vincular a un plano"
+            pie="material de la unidad; se vincula al editar"
           />
         </TarjetaCuerpo>
       </Tarjeta>
@@ -109,15 +109,14 @@ export function MaterialesDeOrden({
             <p className="mt-1 text-sm text-texto-suave">
               {!ordenViva
                 ? `${motivoInactiva ?? 'La orden no está en curso'}: mientras, la lista no se toca.`
-                : catalogo.planos.length === 0
-                  ? puedeDisenar ? 'Crea primero un plano para esta orden.'
-                    : puedeSolicitar ? 'Diseño debe liberar un plano a tu área antes de solicitar materiales.'
-                    : 'Diseño todavía no asigna materiales a esta orden.'
                 : puedeDisenar
-                  ? 'Agrega el primer material con el botón de arriba: qué lleva la unidad y cuánto.'
-                  : puedeSolicitar
-                    ? 'Puedes proponer el material que necesita tu área, aunque no esté en el catálogo. Diseño lo revisará.'
-                    : 'Todavía no hay materiales vinculados a esta orden.'}
+                  ? 'Agrega el primer material con el botón de arriba: qué lleva la unidad y cuánto. El plano es opcional.'
+                : catalogo.planos.length === 0
+                  ? puedeSolicitar ? 'Diseño debe liberar un plano a tu área antes de solicitar materiales.'
+                    : 'Diseño todavía no asigna materiales a esta orden.'
+                : puedeSolicitar
+                  ? 'Puedes proponer el material que necesita tu área, aunque no esté en el catálogo. Diseño lo revisará.'
+                  : 'Todavía no hay materiales vinculados a esta orden.'}
             </p>
           </TarjetaCuerpo>
         </Tarjeta>
@@ -328,7 +327,9 @@ function AccionesLinea({ material, ordenId, catalogo }: { material: MaterialDeOr
   const [editando, setEditando] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
   const [areaDestino, setAreaDestino] = useState(material.area_destino)
-  const { alEnviar, enviando, error } = useEnvio(cambiarCantidadMaterial, () => setEditando(false))
+  const [materialId, setMaterialId] = useState(material.material_id)
+  const { alEnviar, enviando, error } = useEnvio(editarLineaMaterial, () => setEditando(false))
+  const elegido = catalogo.materiales.find((m) => m.id === materialId)
   const quitar = useEnvio(quitarMaterial, () => setConfirmando(false))
 
   // Quitar pregunta antes: el icono va pegado al lápiz y con guante se toca sin
@@ -359,18 +360,41 @@ function AccionesLinea({ material, ordenId, catalogo }: { material: MaterialDeOr
         type="button"
         variante="fantasma"
         tamano="sm"
-        aria-label={`Corregir la cantidad de ${material.material}`}
+        aria-label={`Editar ${material.material}`}
         onClick={() => setEditando(true)}
       >
         <Pencil aria-hidden className="size-4" />
       </Boton>
       <Ventana abierta={editando} alCerrar={() => { if (!enviando) setEditando(false) }}
         titulo={`Editar material · ${material.material}`}
-        descripcion={`Plano ${material.numero_plano ?? 'sin número'} · ${material.plano_nombre ?? 'sin nombre'}`}>
+        descripcion="Se puede cambiar todo mientras el área no lo haya solicitado al almacén.">
         <form onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={material.id} />
           <input type="hidden" name="orden_id" value={ordenId} />
-          <Campo etiqueta={`Cantidad (${material.unidad})`} htmlFor={`cantidad-${material.id}`} requerido>
+          <Campo etiqueta="Material" htmlFor={`material-${material.id}`} requerido>
+            <SeleccionBuscable
+              id={`material-${material.id}`}
+              name="material_id"
+              requerido
+              permiteVaciar={false}
+              valor={materialId}
+              onChange={setMaterialId}
+              marcador="Busca el material"
+              marcadorBusqueda="Código o descripción"
+              opciones={catalogo.materiales.map((m) => ({
+                valor: m.id,
+                etiqueta: m.descripcion,
+                detalle: [m.codigo, m.unidad].filter(Boolean).join(' · '),
+              }))}
+            />
+          </Campo>
+          <Campo etiqueta="Plano" htmlFor={`plano-${material.id}`}>
+            <Seleccion id={`plano-${material.id}`} name="plano_id" defaultValue={material.plano_id ?? ''}>
+              <option value="">Sin plano: material de la unidad</option>
+              {catalogo.planos.map((p) => <option key={p.id} value={p.id}>{p.numero_plano} · {p.nombre}</option>)}
+            </Seleccion>
+          </Campo>
+          <Campo etiqueta={`Cantidad (${elegido?.unidad ?? material.unidad})`} htmlFor={`cantidad-${material.id}`} requerido>
             <Entrada id={`cantidad-${material.id}`} name="cantidad" type="number" inputMode="decimal"
               min={0.001} step="0.001" defaultValue={material.cantidad} required
               className="tabular text-right" />
@@ -392,6 +416,10 @@ function AccionesLinea({ material, ordenId, catalogo }: { material: MaterialDeOr
               {catalogo.etapas.filter((etapa) => etapa.areaCodigo === areaDestino).map((etapa) =>
                 <option key={etapa.id} value={etapa.id}>{etapa.nombre}</option>)}
             </Seleccion>
+          </Campo>
+          <Campo etiqueta="Observación" htmlFor={`obs-${material.id}`}>
+            <Entrada id={`obs-${material.id}`} name="observacion" maxLength={500} defaultValue={material.observacion ?? ''}
+              placeholder="Opcional: medida, corte, marca pedida" />
           </Campo>
           {error && <Error_ texto={error} />}
           <div className="flex justify-end gap-2">
@@ -439,8 +467,9 @@ function NuevoMaterial({
   })
 
   if (!abierto) {
-    if (catalogo.planos.length === 0) return <p className="text-sm text-texto-suave">
-      {propuesta ? 'Diseño debe aprobar y liberar un plano a tu área para solicitar materiales.' : 'Primero, Diseño debe crear un plano.'} Consulta <Link href={`/ordenes/${ordenId}?vista=planos`} className="font-medium text-acento underline">Planos</Link>.
+    // Diseño agrega aunque todavía no haya planos; un área propone desde un plano liberado.
+    if (propuesta && catalogo.planos.length === 0) return <p className="text-sm text-texto-suave">
+      Diseño debe aprobar y liberar un plano a tu área para solicitar materiales. Consulta <Link href={`/ordenes/${ordenId}/planos`} className="font-medium text-acento underline">Planos</Link>.
     </p>
     return (
       <div className="flex justify-end">
@@ -459,7 +488,7 @@ function NuevoMaterial({
     <Tarjeta className="border-acento">
       <TarjetaCabecera
         titulo={propuesta ? 'Proponer material a Diseño' : 'Agregar material a la lista'}
-        descripcion={propuesta ? 'Elige el plano y la cantidad que necesita tu área. Diseño revisará la propuesta antes de enviarla a Almacén.' : 'Qué necesita cada plano y cuánto. Si el material no está en el catálogo, se agrega en «Materiales» del menú.'}
+        descripcion={propuesta ? 'Elige el plano y la cantidad que necesita tu área. Diseño revisará la propuesta antes de enviarla a Almacén.' : 'Qué lleva la unidad y cuánto; el plano es opcional y se puede vincular después. Si el material no está en el catálogo, se agrega en «Materiales» del menú.'}
       />
       <TarjetaCuerpo>
         <form key={guardados} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
@@ -501,9 +530,9 @@ function NuevoMaterial({
             />
           </Campo>
 
-          <Campo etiqueta="Plano" htmlFor="nm-plano" requerido>
-            <Seleccion id="nm-plano" name="plano_id" defaultValue="" required>
-              <option value="" disabled>Elige el plano</option>
+          <Campo etiqueta="Plano" htmlFor="nm-plano" requerido={propuesta}>
+            <Seleccion id="nm-plano" name="plano_id" defaultValue="" required={propuesta}>
+              <option value="" disabled={propuesta}>{propuesta ? 'Elige el plano' : 'Sin plano: material de la unidad'}</option>
               {catalogo.planos.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.numero_plano} · {p.nombre}

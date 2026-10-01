@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { FileText, Upload } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
-import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { useEnvio } from '@/lib/envio'
 import { fechaHora } from '@/lib/format'
@@ -98,8 +98,15 @@ export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
   </Tarjeta>
 }
 
+/**
+ * Un plano puede llevar un PDF distinto para cada área —uno para Maestranza y
+ * otro para Producción— o el mismo para varias. Se marcan las áreas y el
+ * archivo viaja a cada una como su propia versión: cada área lo revisa y lo
+ * recibe por su lado. Cada envío tiene su identificador, decidido aquí y
+ * guardado hasta que cambie el archivo, para que un reintento no duplique.
+ */
 export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Catalogos; ordenId: string; planoId: string }) {
-  const [solicitud, setSolicitud] = useState(() => crypto.randomUUID())
+  const [solicitudes, setSolicitudes] = useState<Record<string, string>>({})
   const [aviso, setAviso] = useState<string | null>(null)
   async function cargar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     setAviso(null)
@@ -107,46 +114,64 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
     if (!(archivo instanceof File) || !archivo.size || archivo.size > 20 * 1024 * 1024 || await archivo.slice(0, 5).text() !== '%PDF-') {
       return { ok: false, error: 'Selecciona un PDF válido de hasta 20 MB.' }
     }
+    const areas = datos.getAll('area_id').map(String).filter(Boolean)
+    if (areas.length === 0) return { ok: false, error: 'Marca al menos un área que recibirá este PDF.' }
     const supabase = createClient()
     const { data: sesion, error: sesionError } = await supabase.auth.getUser()
     if (sesionError || !sesion.user) return { ok: false, error: 'La sesión venció. Vuelve a ingresar.' }
-    const ruta = `${sesion.user.id}/${solicitud}.pdf`
-    try {
-      const { error: subida } = await supabase.storage.from('planos-privados').upload(ruta, archivo, { contentType: 'application/pdf', upsert: false })
-      // El mismo identificador permite confirmar un envío cuya respuesta se perdió.
-      if (subida && subida.statusCode !== '409') return { ok: false, error: 'No se pudo cargar el PDF. Revisa la conexión y vuelve a intentar.' }
-      const formulario = new FormData()
-      formulario.set('id', solicitud)
-      formulario.set('plano_id', String(datos.get('plano_id') ?? ''))
-      formulario.set('area_id', String(datos.get('area_id') ?? ''))
-      formulario.set('nombre_archivo', archivo.name.slice(0, 200))
-      formulario.set('nota_envio', String(datos.get('nota_envio') ?? ''))
-      const resultado = await registrarVersionPlano(null, formulario)
-      if (!resultado.ok) {
+    const ids = { ...solicitudes }
+    for (const area of areas) ids[area] ??= crypto.randomUUID()
+    setSolicitudes(ids)
+    const nombre = (area: string) => catalogos.areas.find((a) => a.id === area)?.nombre ?? 'el área'
+    const enviadas: string[] = []
+    const fallidas: string[] = []
+    let mensaje: string | undefined
+    for (const area of areas) {
+      const ruta = `${sesion.user.id}/${ids[area]}.pdf`
+      try {
+        const { error: subida } = await supabase.storage.from('planos-privados').upload(ruta, archivo, { contentType: 'application/pdf', upsert: false })
+        // El mismo identificador permite confirmar un envío cuya respuesta se perdió.
+        if (subida && subida.statusCode !== '409') { fallidas.push(`${nombre(area)}: no se pudo cargar el PDF`); continue }
+        const formulario = new FormData()
+        formulario.set('id', ids[area])
+        formulario.set('plano_id', String(datos.get('plano_id') ?? ''))
+        formulario.set('area_id', area)
+        formulario.set('nombre_archivo', archivo.name.slice(0, 200))
+        formulario.set('nota_envio', String(datos.get('nota_envio') ?? ''))
+        const resultado = await registrarVersionPlano(null, formulario)
+        if (resultado.ok) { enviadas.push(nombre(area)); mensaje = resultado.mensaje; continue }
         const { error: limpieza } = await supabase.storage.from('planos-privados').remove([ruta])
-        if (limpieza) return { ok: false, error: `${resultado.error} No se pudo retirar el archivo sin registrar; conserva esta pantalla y vuelve a intentar.` }
+        fallidas.push(`${nombre(area)}: ${resultado.error}${limpieza ? ' No se pudo retirar el archivo sin registrar.' : ''}`)
+      } catch {
+        // Si ya se registró, RLS impide borrarlo. Un reintento conserva la misma solicitud.
+        await supabase.storage.from('planos-privados').remove([ruta]).catch(() => undefined)
+        fallidas.push(`${nombre(area)}: no se pudo confirmar el envío`)
       }
-      return resultado
-    } catch {
-      // Si ya se registró, RLS impide borrarlo. Un reintento conserva la misma solicitud.
-      await supabase.storage.from('planos-privados').remove([ruta]).catch(() => undefined)
-      return { ok: false, error: 'No se pudo confirmar el envío. Vuelve a intentar con el mismo archivo.' }
     }
+    if (fallidas.length > 0) {
+      return { ok: false, error: `${enviadas.length ? `Enviado a ${enviadas.join(' y ')}. ` : ''}Falta: ${fallidas.join('; ')}. Vuelve a enviar con el mismo archivo.` }
+    }
+    return { ok: true, mensaje: `${mensaje ?? 'PDF registrado.'} Áreas: ${enviadas.join(', ')}.` }
   }
   const { alEnviar, enviando, error } = useEnvio(cargar, r => setAviso(r.mensaje ?? 'Versión registrada.'))
   return <Tarjeta>
-    <TarjetaCabecera titulo="Adjuntar PDF o nueva revisión" descripcion="Indica el área destinataria. Si lo sube un colaborador, Jefatura de Diseño lo revisa primero; cada corrección crea una versión nueva." />
+    <TarjetaCabecera titulo="Adjuntar PDF o nueva revisión" descripcion="Marca las áreas que reciben este PDF: si Maestranza y Producción llevan planos distintos, súbelos por separado. Si lo sube un colaborador, Jefatura de Diseño lo revisa primero; una corrección se adjunta como revisión nueva de esa área." />
     <TarjetaCuerpo>
         <form onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="plano_id" value={planoId} />
-          <div>
-            <Campo etiqueta="Área destinataria" htmlFor="version-area"><Seleccion id="version-area" name="area_id" required disabled={enviando} defaultValue=""><option value="" disabled>Elige un área</option>{catalogos.areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</Seleccion></Campo>
-          </div>
+          <fieldset disabled={enviando}>
+            <legend className="mb-1.5 text-sm font-medium text-texto">Áreas que reciben este PDF</legend>
+            <div className="flex flex-wrap gap-x-5 gap-y-2">
+              {catalogos.areas.map(a => <label key={a.id} className="inline-flex min-h-11 items-center gap-2 text-sm text-texto sm:min-h-0">
+                <input type="checkbox" name="area_id" value={a.id} className="size-4 accent-acento" />{a.nombre}
+              </label>)}
+            </div>
+          </fieldset>
           <Campo etiqueta="Observación para la revisión" htmlFor="version-nota" ayuda="Indica qué cambió o qué debe revisar el área destinataria.">
             <AreaTexto id="version-nota" name="nota_envio" maxLength={1000} disabled={enviando} />
           </Campo>
-          <Campo etiqueta="Plano en PDF" htmlFor="version-archivo" ayuda="Hasta 20 MB. Para otro archivo, selecciónalo de nuevo; se creará una nueva revisión.">
-            <Entrada id="version-archivo" name="archivo" type="file" accept="application/pdf,.pdf" required disabled={enviando} onChange={() => { setSolicitud(crypto.randomUUID()); setAviso(null) }} />
+          <Campo etiqueta="Plano en PDF" htmlFor="version-archivo" ayuda="Hasta 20 MB. Para otro archivo, selecciónalo de nuevo.">
+            <Entrada id="version-archivo" name="archivo" type="file" accept="application/pdf,.pdf" required disabled={enviando} onChange={() => { setSolicitudes({}); setAviso(null) }} />
           </Campo>
           {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
           {aviso && <p role="status" className="text-sm text-exito">{aviso}</p>}
@@ -154,6 +179,37 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
         </form>
     </TarjetaCuerpo>
   </Tarjeta>
+}
+
+/**
+ * Qué PDF tiene cada área en este plano, con la última revisión de cada una. Sin
+ * esto había que abrir el panel y leer versión por versión para saber si a
+ * Producción ya le había llegado el suyo.
+ */
+export function PdfPorArea({ versiones, areas }: { versiones: VersionEnPantalla[]; areas: { id: string; nombre: string }[] }) {
+  // Las versiones vienen de la más reciente a la más antigua: la primera de cada área es la última.
+  const ultima = new Map<string, VersionEnPantalla>()
+  for (const v of versiones) if (!ultima.has(v.area_id)) ultima.set(v.area_id, v)
+  const filas = [
+    ...areas.map(a => ({ id: a.id, nombre: a.nombre })),
+    ...[...ultima.values()].filter(v => !areas.some(a => a.id === v.area_id)).map(v => ({ id: v.area_id, nombre: v.area.nombre })),
+  ]
+  if (filas.length === 0) return null
+  return <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs" aria-label="PDF por área">
+    {filas.map(f => {
+      const v = ultima.get(f.id)
+      const [texto, tono]: [string, Tono] = !v ? ['sin PDF', 'neutro']
+        : v.revision_diseno === 'PENDIENTE' ? ['pendiente de Jefatura de Diseño', 'aviso']
+          : v.revision_diseno === 'OBSERVADO' ? ['observado por Jefatura de Diseño', 'peligro']
+            : v.estado === 'POR_REVISAR' ? ['por revisar', 'aviso']
+              : v.estado === 'OBSERVADO' ? ['requiere corrección', 'peligro']
+                : v.estado === 'RECIBIDO' ? ['recibido', 'exito'] : ['aprobado, falta recepción', 'exito']
+      return <li key={f.id} className="flex items-center gap-1.5">
+        <span className="font-medium text-texto">{f.nombre}:</span>
+        <Insignia tono={tono}>{texto}{v ? ` · rev. ${v.revision}` : ''}</Insignia>
+      </li>
+    })}
+  </ul>
 }
 
 export function Version({ version: v, ordenId }: { version: VersionEnPantalla; ordenId: string }) {

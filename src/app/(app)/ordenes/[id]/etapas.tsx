@@ -10,14 +10,14 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_ETAPA, definir } from '@/lib/dominio/estados'
 import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
-import { cantidad, fecha } from '@/lib/format'
+import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 import type { Vistas } from '@/types/database'
 
 import { definirEtapas, programarEtapa } from './acciones-etapas'
 
-type Etapa = Vistas<'ot_tablero_etapas'> & { observaciones: string | null; area_id: string | null; peso_pct: number | null; horas_reales: number | null }
+type Etapa = Vistas<'ot_tablero_etapas'> & { observaciones: string | null; area_id: string | null; peso_pct: number | null; horas_reales: number | null; creado_en: string | null }
 type Area = { id: string; nombre: string; codigo: string }
 type ActividadPorVincular = { id: string; nombre: string; area_id: string }
 
@@ -60,6 +60,10 @@ export function Etapas({
 
   const vencidas = etapas.filter((e) => programaDeEtapa(e, hoy).vencida).length
   const terminadas = etapas.filter((e) => e.estado === 'TERMINADA').length
+  // Diseño guarda las etapas por partes: lo que todavía no repartió cuenta como
+  // pendiente en el avance de la OT, y aquí se dice cuánto es.
+  const contemplado = Math.round(etapas.reduce((suma, e) => suma + Number(e.peso_pct ?? 0), 0) * 100) / 100
+  const faltaContemplar = Math.max(0, Math.round((100 - contemplado) * 100) / 100)
 
   // Los avisos de quién hace qué («Diseño puede vincular cada plano…»,
   // «Programa el inicio y fin…») se retiraron el 2026-10-01: confundían más de
@@ -86,6 +90,20 @@ export function Etapas({
         }
       />
       <TarjetaCuerpo className="space-y-3 p-3 sm:p-4">
+        {esNueva && etapas.length > 0 && !editando && (
+          <div className="rounded-[var(--radius-base)] border border-borde p-3">
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-sm">
+              <span className="text-texto">Contemplado en etapas: <strong className="tabular">{cantidad(contemplado)} %</strong></span>
+              <span className={faltaContemplar > 0 ? 'text-aviso' : 'text-exito'}>
+                {faltaContemplar > 0 ? <>Falta contemplar: <strong className="tabular">{cantidad(faltaContemplar)} %</strong></> : 'El 100 % está contemplado'}
+              </span>
+            </div>
+            <Progreso valor={contemplado} etiqueta="Porcentaje contemplado en etapas" alto="sm" />
+            {faltaContemplar > 0 && (
+              <p className="mt-2 text-xs text-texto-suave">Mientras falte, esa parte cuenta como pendiente en el avance de la OT.</p>
+            )}
+          </div>
+        )}
         {puedeDefinir && (etapas.length === 0 || editando) ? (
           <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-4 sm:p-5">
             <FormularioDefinicion ordenId={ordenId} areas={areas} etapas={etapas}
@@ -126,6 +144,8 @@ export function Etapas({
                           // nuevas valen 0 y decirlo era ruido.
                           Number(etapa.horas_estimadas ?? 0) > 0 ? `${cantidad(etapa.horas_estimadas)} h estimadas` : null,
                           etapa.fecha_fin_real ? `terminada el ${fecha(etapa.fecha_fin_real)}` : null,
+                          // Cuándo la guardó Diseño: lo pidió Diseño (2026-10-01).
+                          etapa.creado_en ? `guardada el ${fechaHora(etapa.creado_en)}` : null,
                         ].filter(Boolean).join(' · ')}
                       </p>
                       <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-texto-suave">
@@ -180,7 +200,7 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
   /** Sin cambios, vuelve a la lista. */
   alCancelar?: () => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(definirEtapas, alTerminar)
+  const { alEnviar, enviando, error, resultado } = useEnvio(definirEtapas, alTerminar)
   const corrigiendo = etapas.length > 0
   const [seleccion, setSeleccion] = useState(() => etapas
     .filter((e) => e.etapa_id !== null)
@@ -196,7 +216,7 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
   const areaActividad = areas.find((area) => area.id === actividadExistente?.area_id)?.nombre ?? 'Producción'
   const bloqueos = [
     seleccion.length === 0 ? 'Agrega al menos una etapa.' : null,
-    seleccion.length > 0 && total !== 100 ? `Reparte el 100 %; ahora suman ${total} %.` : null,
+    total > 100 ? `Las etapas suman ${total} %: baja alguna, no pueden pasar de 100 %.` : null,
     conversion && etapasDiseno.length !== 1 ? 'Incluye exactamente una etapa de Diseño para vincular el plano existente.' : null,
     conversion && actividadesPorVincular.length !== 1 ? 'No se pudo identificar la actividad histórica; recarga la orden.' : null,
     conversion && actividadExistente && etapasDeActividad.length === 0
@@ -218,8 +238,8 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
         <h3 className="text-base font-semibold text-texto">{corrigiendo ? 'Editar o agregar etapas' : 'Definir etapas de esta OT'}</h3>
         <p className="mt-1 text-sm text-texto-suave">
           {corrigiendo
-            ? 'Cambia el nombre, el área o el peso de cada etapa, o agrega otra. Entre todas reparten el 100 % del avance; una etapa con avance no se quita.'
-            : 'Crea cada etapa con su área responsable y reparte el 100 % del avance. Administración añadirá las fechas.'}
+            ? 'Cambia el nombre, el área o el peso de cada etapa, o agrega otra. Se puede guardar por partes hasta llegar al 100 %; una etapa con avance no se quita.'
+            : 'Crea cada etapa con su área responsable y su peso. Puedes guardar por partes: lo que falte para el 100 % queda por contemplar y se completa después. Administración añadirá las fechas.'}
         </p>
       </div>
       {seleccion.length === 0 && <div className="rounded-[var(--radius-base)] border border-dashed border-borde-fuerte bg-superficie px-4 py-6 text-center">
@@ -263,7 +283,9 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
         <Boton type="button" variante={seleccion.length === 0 ? 'primario' : 'secundario'} tamano="sm" onClick={() => setSeleccion((actual) => [
           ...actual, { id: crypto.randomUUID(), nombre: '', area: '', peso: 0, avance: 0, iniciada: false },
         ])}>+ Agregar etapa</Boton>
-        {seleccion.length > 0 && <p className={`text-sm font-medium tabular ${total === 100 ? 'text-exito' : total > 100 ? 'text-peligro' : 'text-texto-suave'}`} role="status">Porcentaje asignado: {total} % de 100 %</p>}
+        {seleccion.length > 0 && <p className={`text-sm font-medium tabular ${total === 100 ? 'text-exito' : total > 100 ? 'text-peligro' : 'text-texto-suave'}`} role="status">
+          Contemplado: {total} %{total < 100 ? ` · falta contemplar ${100 - total} %` : total === 100 ? ' · completo' : ''}
+        </p>}
       </div>
       {conversion && seleccion.length > 0 && actividadesPorVincular.map((actividad) => (
         <Campo key={actividad.id} etiqueta={`Actividad existente: ${actividad.nombre}`} htmlFor="etapa-actividad" requerido>
@@ -282,6 +304,7 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
         <ul className="mt-1 list-inside list-disc space-y-1">{bloqueos.map((bloqueo) => <li key={bloqueo}>{bloqueo}</li>)}</ul>
       </div>}
       {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
+      {resultado?.ok && <p role="status" className="text-sm text-exito">{resultado.mensaje}</p>}
       <div className="flex flex-wrap gap-2">
         <Boton type="submit" tamano="sm" cargando={enviando}
           disabled={bloqueos.length > 0}>

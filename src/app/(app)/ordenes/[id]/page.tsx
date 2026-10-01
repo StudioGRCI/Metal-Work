@@ -109,7 +109,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   ])
   if (!orden) notFound()
   if (orden.plan_etapas_manual && vista === 'avance') redirect(`/ordenes/${id}?vista=actividades`)
-  if (orden.plan_etapas_manual && vista === 'ficha') redirect(`/ordenes/${id}?vista=bitacora`)
 
   // Por qué la hoja de Diseño no acepta planos: en borrador falta quien la
   // apruebe; cerrada, ya no hay qué repartir.
@@ -269,6 +268,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const responsable = orden.responsable as unknown as { puesto: string | null } | null
   const tipoCarroceria = orden.tipo_carroceria as unknown as { nombre: string } | null
 
+  // Diseño guarda las etapas por partes: lo que aún no reparte se avisa en el resumen.
+  const faltaContemplar = Math.max(0, 100 - etapas.reduce((suma, e) => suma + Number(e.peso_pct ?? 0), 0))
   const areaSupervisor = vista === 'ficha' && perfil.rol.codigo === 'SUPERVISOR' && perfil.area_id
     ? (await areasDelTaller()).find((a) => a.id === perfil.area_id)?.codigo
     : null
@@ -320,7 +321,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
             <Tarjeta className="lg:col-span-2 lg:col-start-1 lg:row-start-1">
               <TarjetaCabecera
                 titulo="Etapas de producción"
-                descripcion={etapas.length > 0 ? `${etapas.filter((e) => e.estado === 'TERMINADA').length} de ${etapas.length} terminadas` : undefined}
+                descripcion={etapas.length > 0 ? `${etapas.filter((e) => e.estado === 'TERMINADA').length} de ${etapas.length} terminadas`
+                  + (orden.plan_etapas_manual && faltaContemplar > 0 ? ` · falta contemplar ${fmtNumero(faltaContemplar, 0)} %` : '') : undefined}
                 acciones={
                   etapas.length > 0 && (
                     <EnlaceBoton href={`/ordenes/${orden.id}?vista=etapas`} variante="fantasma" tamano="sm">
@@ -477,14 +479,16 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           repuestos={repuestos}
           verificaciones={verificaciones}
           personal={personal}
-          puedeEditar={puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
-          puedeEscribirOrden={puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
-          puedeArmar={puede(perfil, 'diseno.planos') && !ESTADOS_CERRADOS.includes(orden.estado)}
+          /* La ficha la llena Administración (`ordenes.editar`, lo mismo que
+             piden sus políticas); Diseño y el taller la ven. */
+          puedeEditar={puede(perfil, 'ordenes.editar') && !ESTADOS_CERRADOS.includes(orden.estado)}
+          puedeEscribirOrden={puede(perfil, 'ordenes.editar') && !ESTADOS_CERRADOS.includes(orden.estado)}
+          puedeArmar={puede(perfil, 'ordenes.editar') && !ESTADOS_CERRADOS.includes(orden.estado)}
           rolVerificacion={
             ESTADOS_CERRADOS.includes(orden.estado) ? null :
             areaSupervisor === 'PRD' || areaSupervisor === 'MTZ' ? areaSupervisor : null
           }
-          puedeCrearVerificacion={perfil.rol.codigo === 'DISENO' && !ESTADOS_CERRADOS.includes(orden.estado)}
+          puedeCrearVerificacion={puede(perfil, 'ordenes.editar') && !ESTADOS_CERRADOS.includes(orden.estado)}
         />
       )}
 
@@ -604,11 +608,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       {vista === 'bitacora' && (
         <div className="space-y-4">
           <Bitacora ordenId={orden.id} eventos={timeline} puedeComentar={puede(perfil, 'ordenes.ver')} />
-          {!orden.plan_etapas_manual && (secciones.includes('ficha') || secciones.includes('avance')) && (
+          {!orden.plan_etapas_manual && secciones.includes('avance') && (
             <Tarjeta>
-              <TarjetaCabecera titulo="Registros del flujo anterior" descripcion="Estos documentos y reportes se conservan para consulta." />
+              <TarjetaCabecera titulo="Registros del flujo anterior" descripcion="Estos reportes se conservan para consulta." />
               <TarjetaCuerpo className="flex flex-wrap gap-2">
-                {secciones.includes('ficha') && <EnlaceBoton href={`/ordenes/${orden.id}?vista=ficha`} variante="secundario" tamano="sm">Ver ficha de taller</EnlaceBoton>}
                 {secciones.includes('avance') && <EnlaceBoton href={`/ordenes/${orden.id}?vista=avance`} variante="secundario" tamano="sm">Ver reportes anteriores</EnlaceBoton>}
               </TarjetaCuerpo>
             </Tarjeta>

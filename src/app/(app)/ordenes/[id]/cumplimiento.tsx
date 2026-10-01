@@ -19,7 +19,7 @@ import type {
 import { cantidad as fmtCantidad, fecha, hoyLima, numero } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
-import { CargarVersion, Version, type Catalogos, type VersionEnPantalla } from './planos/panel-planos'
+import { CargarVersion, PdfPorArea, Version, type Catalogos, type VersionEnPantalla } from './planos/panel-planos'
 
 import {
   agregarPlano,
@@ -109,8 +109,12 @@ export function Cumplimiento({
   const faltaPeso = Math.round((100 - pesoTotal) * 100) / 100
   const sinEntregar = planos.filter((p) => !p.fecha_entrega).length
   // El número que sigue: el mayor de los que ya son número, más uno.
-  const numeros = planos.map((p) => Number.parseInt(p.numero_plano ?? '', 10)).filter((n) => Number.isFinite(n))
-  const numeroPropuesto = String(Math.max(0, ...numeros) + 1)
+  // El código lo pone Diseño («1», «2A», «MTZ-01»…). Solo se propone el que
+  // sigue cuando todos los anteriores son números; si no, no se adivina.
+  const codigos = planos.map((p) => p.numero_plano ?? '')
+  const numeroPropuesto = codigos.every((c) => /^\d+$/.test(c))
+    ? String(Math.max(0, ...codigos.map((c) => Number.parseInt(c, 10))) + 1)
+    : ''
   const colaboradores = new Set(catalogos.equipoNominal.filter(p => p.funcion === 'COLABORADOR').map(p => p.id))
   const planosDeColaboradores = new Set(catalogos.planos.filter(p =>
     p.integrante_diseno_id && colaboradores.has(p.integrante_diseno_id)).map(p => p.id))
@@ -372,8 +376,8 @@ function NuevoPlano({
       <TarjetaCuerpo>
         <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">
           <input type="hidden" name="orden_id" value={ordenId} />
-          <Campo etiqueta="N.º plano" htmlFor="np-numero">
-            <Entrada id="np-numero" name="numero_plano" required autoFocus defaultValue={numeroPropuesto} />
+          <Campo etiqueta="Código" htmlFor="np-numero">
+            <Entrada id="np-numero" name="numero_plano" required autoFocus maxLength={40} defaultValue={numeroPropuesto} />
           </Campo>
           <Campo etiqueta="Nombre" htmlFor="np-nombre" className="sm:col-span-2">
             <Entrada id="np-nombre" name="nombre" required placeholder="HABILITADO · ESTRUCTURA CAJÓN" />
@@ -525,6 +529,11 @@ function TarjetaPlano({
         }
       />
 
+      <TarjetaCuerpo className="border-b border-borde py-2.5">
+        <PdfPorArea versiones={versiones} areas={catalogos.areas} />
+        {versiones.length === 0 && catalogos.areas.length === 0 && <p className="text-xs text-texto-suave">Este plano aún no tiene PDF.</p>}
+      </TarjetaCuerpo>
+
       {modo === 'entregar' && (
         <FormularioEntrega ordenId={ordenId} planoId={planoId} alTerminar={() => setModo('ver')} />
       )}
@@ -618,8 +627,8 @@ function FormularioPlano({
     <form onSubmit={alEnviar} className="grid gap-3 border-t border-borde bg-superficie-2 px-4 py-3 sm:grid-cols-6">
       <input type="hidden" name="orden_id" value={ordenId} />
       <input type="hidden" name="plano_id" value={id} />
-      <Campo etiqueta="N.º plano" htmlFor={`ep-numero-${id}`}>
-        <Entrada id={`ep-numero-${id}`} name="numero_plano" required defaultValue={plano.numero_plano ?? ''} />
+      <Campo etiqueta="Código" htmlFor={`ep-numero-${id}`}>
+        <Entrada id={`ep-numero-${id}`} name="numero_plano" required maxLength={40} defaultValue={plano.numero_plano ?? ''} />
       </Campo>
       <Campo etiqueta="Nombre" htmlFor={`ep-nombre-${id}`} className="sm:col-span-2">
         <Entrada id={`ep-nombre-${id}`} name="nombre" required defaultValue={plano.nombre ?? ''} />

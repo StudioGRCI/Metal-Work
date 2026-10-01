@@ -16,7 +16,7 @@ import { createClient } from '@/lib/supabase/server'
  * haber guardado—.
  */
 const REGLAS: Record<string, string> = {
-  uq_ot_material: 'Ese material ya está en la lista para ese plano. Corrige la cantidad en vez de agregarlo otra vez.',
+  uq_ot_material: 'Ese material ya está en la lista para ese plano (o sin plano). Corrige esa línea en vez de agregarlo otra vez.',
   ot_materiales_cantidad_check: 'La cantidad tiene que ser mayor que cero.',
   'Este material ya forma parte de un requerimiento': 'Este material ya está solicitado y su línea de Diseño quedó protegida.',
   fk_ot_material_plano: 'Ese plano no es de esta orden.',
@@ -36,7 +36,9 @@ const esquemaAlta = z.object({
   orden_id: z.string().uuid(),
   material_id: z.string().uuid('Elige el material'),
   cantidad: z.coerce.number().positive('La cantidad tiene que ser mayor que cero'),
-  plano_id: z.string().uuid('Elige el plano que necesita este material.'),
+  // El plano es opcional: Diseño puede cargar el material de la unidad antes de
+  // tener los planos, y vincularlo después al editar la línea.
+  plano_id: z.union([z.string().uuid(), z.literal('')]).optional(),
   etapa_id: z.string().uuid().optional().or(z.literal('')),
   area_destino: z.enum(['MTZ', 'PRD', 'ACB']),
   observacion: z.string().trim().optional(),
@@ -62,7 +64,7 @@ export async function agregarMaterial(_previo: unknown, datos: FormData): Promis
       orden_id: v.orden_id,
       material_id: v.material_id,
       cantidad: v.cantidad,
-      plano_id: v.plano_id,
+      plano_id: nulo(v.plano_id),
       etapa_id: nulo(v.etapa_id),
       area_destino: v.area_destino,
       observacion: nulo(v.observacion),
@@ -160,15 +162,22 @@ export async function crearRequerimiento(_previo: unknown, datos: FormData): Pro
   return { ok: true, mensaje: `${materiales.data.length} materiales enviados a Requerimientos.` }
 }
 
-const esquemaCantidad = z.object({
+// Diseño corrige la línea entera —material, plano, cantidad, área, etapa y
+// observación— mientras nadie la haya pedido al almacén. Ya solicitada, la base
+// la protege (`trg_ot_material_bloquear_edicion_solicitada`) para no descuadrar
+// lo que Almacén atiende.
+const esquemaEdicion = z.object({
   id: z.string().uuid(),
   orden_id: z.string().uuid(),
+  material_id: z.string().uuid('Elige el material'),
+  plano_id: z.union([z.string().uuid(), z.literal('')]),
   cantidad: z.coerce.number().positive('La cantidad tiene que ser mayor que cero'),
   area_destino: z.enum(['MTZ', 'PRD', 'ACB']),
   etapa_id: z.union([z.string().uuid(), z.literal('')]),
+  observacion: z.string().trim().max(500, 'La observación es muy larga: hasta 500 caracteres.').optional(),
 })
 
-export async function cambiarCantidadMaterial(
+export async function editarLineaMaterial(
   _previo: unknown,
   datos: FormData,
 ): Promise<ResultadoAccion> {
@@ -177,9 +186,9 @@ export async function cambiarCantidadMaterial(
     return { ok: false, error: 'La lista de materiales la arma Diseño.' }
   }
 
-  const analisis = esquemaCantidad.safeParse(Object.fromEntries(datos))
+  const analisis = esquemaEdicion.safeParse(Object.fromEntries(datos))
   if (!analisis.success) {
-    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa la cantidad.' }
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los datos del material.' }
   }
 
   const v = analisis.data
@@ -187,7 +196,14 @@ export async function cambiarCantidadMaterial(
 
   const { data, error } = await supabase
     .from('ot_materiales')
-    .update({ cantidad: v.cantidad, area_destino: v.area_destino, etapa_id: nulo(v.etapa_id) })
+    .update({
+      material_id: v.material_id,
+      plano_id: nulo(v.plano_id),
+      cantidad: v.cantidad,
+      area_destino: v.area_destino,
+      etapa_id: nulo(v.etapa_id),
+      observacion: nulo(v.observacion),
+    })
     .eq('id', v.id)
     .eq('orden_id', v.orden_id)
     .select('id')
@@ -197,7 +213,7 @@ export async function cambiarCantidadMaterial(
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
-  return { ok: true, mensaje: 'Cantidad corregida.' }
+  return { ok: true, mensaje: 'Material actualizado.' }
 }
 
 const esquemaQuitar = z.object({

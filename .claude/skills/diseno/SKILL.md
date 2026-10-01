@@ -40,17 +40,18 @@ gente sepa dónde mirar sin aprender cada pantalla:
 3. **El trabajo de la pestaña**: la acción principal y la lista con la que se
    trabaja.
 4. **Para consultar**: datos de referencia, configuración que se toca poco
-   («Editar etapas», «Personas que elaboran los planos», la merma), historial
+   («Personas que elaboran los planos», la merma), historial
    y notas. Siempre al final.
 
 Una sola columna de lectura. Dos columnas solo para bloques del mismo nivel
 (Cliente | Datos del trabajo), nunca para mezclar niveles: la rejilla de dos
 columnas del Resumen dejaba las etapas al fondo y con un hueco al lado, debajo
 de los datos del cliente (2026-10-01). Crear lo que todavía no existe es el
-trabajo de la pestaña y va arriba; corregirlo cuando ya existe es
-mantenimiento y va al final (las etapas: «Definir» arriba, «Editar» bajo la
-lista). Si un aviso remite a otro bloque, lo enlaza con un ancla en vez de
-decir «arriba» o «abajo».
+trabajo de la pestaña y va arriba; corregirlo cuando ya existe se ofrece como
+botón en la cabecera de su tarjeta y cambia la lista por el formulario (las
+etapas: «Editar o agregar etapa»), no como otro bloque metido en la lista. Si un
+aviso remite a otro bloque, lo enlaza con un ancla en vez de decir «arriba» o
+«abajo».
 
 ## El tema
 

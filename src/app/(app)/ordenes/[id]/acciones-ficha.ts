@@ -21,8 +21,11 @@ function numero(texto?: string) {
 }
 
 /**
- * Llenar la ficha es trabajo de taller: la hace quien registra producción, no
- * solo quien administra órdenes. Marcar un V°B° tampoco es editar la orden.
+ * La ficha de taller la llena Administración (`ordenes.editar`): lo pidió el
+ * jefe de Diseño el 2026-10-01; Diseño la ve pero no la edita. Es el mismo
+ * permiso que piden las políticas `ficha_diseno_*`, `guardar_ficha_diseno` y el
+ * disparador de los pasos —cruzado a propósito, para que ninguna escritura
+ * afecte cero filas sin error—. Los vistos buenos siguen siendo de Supervisión.
  */
 type Guarda =
   | { ok: true; perfil: Awaited<ReturnType<typeof exigirSesion>> }
@@ -30,8 +33,8 @@ type Guarda =
 
 async function exigirTaller(): Promise<Guarda> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.planos')) {
-    return { ok: false, error: 'La ficha de taller la completa Diseño.' }
+  if (!puede(perfil, 'ordenes.editar')) {
+    return { ok: false, error: 'La ficha de taller la completa Administración.' }
   }
   return { ok: true, perfil }
 }
@@ -48,10 +51,10 @@ async function exigirTaller(): Promise<Guarda> {
  */
 async function exigirEscribirOrden(): Promise<Guarda> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.planos')) {
+  if (!puede(perfil, 'ordenes.editar')) {
     return {
       ok: false,
-      error: 'Los datos de la ficha los completa Diseño.',
+      error: 'Los datos de la ficha los completa Administración.',
     }
   }
   return { ok: true, perfil }
@@ -64,10 +67,10 @@ async function exigirEscribirOrden(): Promise<Guarda> {
  */
 async function exigirArmarFicha(): Promise<Guarda> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.planos')) {
+  if (!puede(perfil, 'ordenes.editar')) {
     return {
       ok: false,
-      error: 'Los accesorios y repuestos los completa Diseño.',
+      error: 'Los accesorios y repuestos los completa Administración.',
     }
   }
   return { ok: true, perfil }
@@ -311,14 +314,14 @@ export async function quitarRepuesto(_previo: unknown, datos: FormData): Promise
   return { ok: true }
 }
 
-/** Diseño escribe la lista de pasos de esta OT, sin traer una plantilla automática. */
+/** Administración escribe la lista de pasos de esta OT, sin traer una plantilla automática. */
 export async function agregarVerificacion(
   _previo: unknown,
   datos: FormData,
 ): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (perfil.rol.codigo !== 'DISENO' || !puede(perfil, 'diseno.planos')) {
-    return { ok: false, error: 'Solo Diseño puede crear pasos.' }
+  if (!puede(perfil, 'ordenes.editar')) {
+    return { ok: false, error: 'Solo Administración puede crear pasos.' }
   }
   const analisis = z.object({
     orden_id: z.string().uuid(),
@@ -396,8 +399,8 @@ export async function anotarVerificacion(
   datos: FormData,
 ): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.planos')) {
-    return { ok: false, error: 'Solo Diseño puede anotar observaciones en los pasos.' }
+  if (!puede(perfil, 'ordenes.editar')) {
+    return { ok: false, error: 'Solo Administración puede anotar observaciones en los pasos.' }
   }
 
   const analisis = z
