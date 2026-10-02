@@ -22,7 +22,10 @@ export function seccionesDeOrden(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>)
     ...(tecnico ? ['planos'] : []),
     ...(tiene('diseno.planos', 'cotizaciones.costear', 'produccion.ver', 'requerimientos.ver') || tecnico ? ['materiales'] : []),
     ...(tiene('costos.ver', 'costos.registrar_gasto') ? ['costos'] : []),
-    ...(tiene('produccion.ver', 'diseno.planos') ? ['actividades'] : []),
+    // Administración revisa los reportes del taller (`produccion.aprobar_reportes`)
+    // y los revisa aquí: sin la pestaña, el aviso de «reportes por aprobar» no
+    // tenía adónde llevarla.
+    ...(tiene('produccion.ver', 'diseno.planos', 'produccion.aprobar_reportes') ? ['actividades'] : []),
     'entrega',
     ...(tiene('produccion.ver') ? ['avance'] : []),
     'bitacora',

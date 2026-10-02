@@ -192,9 +192,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   // Diseño las arma todas (106); el jefe y el supervisor, las de su mano.
   const areasArmables = hojaAreas ? areasParaArmar(perfil, hojaAreas[1]) : []
   // Y las que ve: las que arma más las de su mano. Sin estas, el operario —que
-  // reporta pero no arma— se quedaba sin su hoja y sin «Reportar día».
+  // reporta pero no arma— se quedaba sin su hoja y sin «Reportar día». Quien
+  // revisa los reportes los ve todos: es lo que dice `puede_ver_hoja_de_area`.
   const areasVisibles = hojaAreas
-    ? puede(perfil, 'supervision.general') ? hojaAreas[1] : hojaAreas[1].filter(
+    ? puede(perfil, ['supervision.general', 'produccion.aprobar_reportes']) ? hojaAreas[1] : hojaAreas[1].filter(
         (a) => areasArmables.some((x) => x.id === a.id) || areasDeSuMano(perfil, [a]).length > 0,
       )
     : []

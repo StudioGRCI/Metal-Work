@@ -270,6 +270,15 @@ Cuando haga falta tocar datos —no esquema— de producción:
   el reporte (`update … set avance_pct`) en vez de borrarlo, y el borrado se
   prueba en local (check 317).
 
+- **Una prueba verde en producción solo prueba los datos que había.** El 2026-10-02
+  Administración aprobó «1 fila» con su rol real en producción, pero el único
+  reporte era de una OT histórica, donde `validar_reporte_taller` no mira nada;
+  en el flujo nuevo la misma aprobación caía con «El reporte de la tarea
+  corresponde al supervisor», y solo lo mostró el clic real en el banco. Antes de
+  dar por probada una escritura, mirar si la fila de prueba pasa por la misma
+  rama de disparadores que la de uso real (`plan_etapas_manual`, estado de la
+  OT); si producción no tiene una así, se prueba en el banco o en un check.
+
 ## Reglas de Postgres que no son de este proyecto
 
 La skill `supabase-postgres-best-practices` (de Supabase, MIT, vendorizada en
