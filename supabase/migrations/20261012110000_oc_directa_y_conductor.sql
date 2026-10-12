@@ -148,8 +148,8 @@ begin
     if v_origen is distinct from 'DIRECTA' then
       raise exception 'Una línea sin requerimiento solo va en una orden de compra directa.' using errcode = 'check_violation';
     end if;
-    if not exists (select 1 from public.materiales where id = new.material_id and activo) then
-      raise exception 'Elige un material activo del catálogo de Almacén.' using errcode = 'check_violation';
+    if not exists (select 1 from public.materiales where id = new.material_id and activo and not unidad_pendiente) then
+      raise exception 'Elige un material activo del catálogo de Almacén, con su unidad definida.' using errcode = 'check_violation';
     end if;
   else
     if v_origen = 'DIRECTA' then
@@ -752,6 +752,12 @@ begin
         left join public.unidades u on u.id = o.unidad_id
        where d.orden_compra_id = c.id
     ) l on true
+   -- Lo mismo que deja ver la política de la tabla: Logística todo; quien solo
+   -- consulta, las directas y las de las áreas que le tocan.
+   where public.es_admin() or public.tiene_permiso('compras.crear') or public.tiene_permiso('tesoreria.ver_documentos')
+      or c.requerimiento_id is null
+      or exists (select 1 from public.requerimientos_materiales r
+                  where r.id = c.requerimiento_id and public.puede_ver_area_material(r.area_destino))
    order by c.creado_en desc
    limit 300;
 end;
