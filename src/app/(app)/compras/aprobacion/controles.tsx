@@ -66,7 +66,7 @@ export function FormularioRegla({ regla, puestos }: { regla: ReglaAprobacion | n
   )
 }
 
-export function DecisionCompra({ id, referencia }: { id: string; referencia: string }) {
+export function DecisionCompra({ id, numero, tipo }: { id: string; numero: string; tipo: 'OC' | 'OS' }) {
   const [rechazando, setRechazando] = useState(false)
   const aprobacion = useAccion(aprobarCompra)
   const rechazo = useEnvio(rechazarCompra, () => setRechazando(false))
@@ -74,6 +74,7 @@ export function DecisionCompra({ id, referencia }: { id: string; referencia: str
   function aprobar() {
     const datos = new FormData()
     datos.set('id', id)
+    datos.set('tipo', tipo)
     aprobacion.ejecutar(datos)
   }
 
@@ -95,12 +96,17 @@ export function DecisionCompra({ id, referencia }: { id: string; referencia: str
       <Ventana
         abierta={rechazando}
         alCerrar={() => setRechazando(false)}
-        titulo={`Rechazar la compra ${referencia}`}
-        descripcion="Sus insumos vuelven a quedar por comprar y Logística recibe el motivo. Una compra rechazada no se reabre: se emite otra."
+        titulo={`Rechazar la orden ${numero}`}
+        descripcion={
+          tipo === 'OS'
+            ? 'Logística recibe el motivo. Una orden de servicio rechazada no se reabre: se emite otra.'
+            : 'Si venía de un requerimiento, sus insumos vuelven a quedar por comprar. Logística recibe el motivo. Una compra rechazada no se reabre: se emite otra.'
+        }
         ancho="md"
       >
         <form onSubmit={rechazo.alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={id} />
+          <input type="hidden" name="tipo" value={tipo} />
           <Campo etiqueta="Motivo" htmlFor={`motivo-${id}`} requerido>
             <AreaTexto
               id={`motivo-${id}`}
@@ -121,7 +127,7 @@ export function DecisionCompra({ id, referencia }: { id: string; referencia: str
               Cancelar
             </Boton>
             <Boton type="submit" variante="peligro" cargando={rechazo.enviando}>
-              Rechazar compra
+              Rechazar
             </Boton>
           </div>
         </form>

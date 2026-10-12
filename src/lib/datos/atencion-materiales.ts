@@ -18,6 +18,8 @@ export type CompraMaterialPendiente = Vistas<'v_orden_compra_material_pendiente'
   precios_completos: boolean
   /** NO_REQUERIDA, POR_APROBAR, APROBADA o RECHAZADA: ver `APROBACION_COMPRA`. */
   aprobacion: string
+  /** El número OC-…-MW que pone el sistema; las compras de antes no lo tienen. */
+  numero: string | null
 }
 export type ExistenciaMaterial = Vistas<'v_existencias_materiales'>
 export type MaterialParaConteo = { id: string; descripcion: string; codigo: string; unidad: string | null }
@@ -130,7 +132,7 @@ export async function cargarAtencionMateriales(permisos: {
   const idsLineaCompra = (compras.data ?? []).map((compra) => compra.id).filter((id): id is string => Boolean(id))
   const [entregas, precios, facturas] = await Promise.all([
     idsCompra.length > 0
-      ? supabase.from('ordenes_compra_materiales').select('id, entregado_almacen_en, condicion_pago, dias_credito, moneda, aprobacion').in('id', idsCompra)
+      ? supabase.from('ordenes_compra_materiales').select('id, numero, entregado_almacen_en, condicion_pago, dias_credito, moneda, aprobacion').in('id', idsCompra)
       : Promise.resolve({ data: [], error: null }),
     idsLineaCompra.length > 0
       ? supabase.from('orden_compra_material_detalles').select('id, orden_compra_id, precio_unitario').in('orden_compra_id', idsCompra)
@@ -158,6 +160,7 @@ export async function cargarAtencionMateriales(permisos: {
       dias_credito: entregaPorCompra.get(compra.orden_compra_id ?? '')?.dias_credito ?? 0,
       moneda: entregaPorCompra.get(compra.orden_compra_id ?? '')?.moneda ?? 'PEN',
       aprobacion: entregaPorCompra.get(compra.orden_compra_id ?? '')?.aprobacion ?? 'NO_REQUERIDA',
+      numero: entregaPorCompra.get(compra.orden_compra_id ?? '')?.numero ?? null,
       precio_unitario: precioPorLinea.get(compra.id ?? '') ?? null,
       tiene_factura: (facturas.data ?? []).some(f=>f.orden_compra_id===compra.orden_compra_id),
       precios_completos: (precios.data ?? []).filter(p=>p.orden_compra_id===compra.orden_compra_id).every(p=>p.precio_unitario!==null),

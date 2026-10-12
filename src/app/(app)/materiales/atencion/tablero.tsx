@@ -196,7 +196,7 @@ export function TableroMateriales({
         const pendientesCompra=lineasCompra.filter(c=>Number(c.cantidad_pendiente)>0)
         const detenida=compraDetenida(compra.aprobacion)
         const aprobacion=APROBACION_COMPRA[compra.aprobacion]
-        return <Tarjeta key={compra.orden_compra_id}><TarjetaCabecera titulo={`${compra.referencia} · ${compra.proveedor}`} descripcion={`${lineasCompra.length} ${lineasCompra.length === 1 ? 'insumo' : 'insumos'} · ${detenida?aprobacion?.descripcion:compra.entregado_almacen_en?'Entrega comunicada a Almacén':'Pendiente de entregar a Almacén'}`} acciones={compra.aprobacion!=='NO_REQUERIDA'&&aprobacion?<Insignia tono={aprobacion.tono}>{aprobacion.etiqueta}</Insignia>:undefined}/><TarjetaCuerpo>
+        return <Tarjeta key={compra.orden_compra_id}><TarjetaCabecera titulo={`${compra.numero ?? compra.referencia} · ${compra.proveedor}`} descripcion={`${lineasCompra.length} ${lineasCompra.length === 1 ? 'insumo' : 'insumos'} · ${detenida?aprobacion?.descripcion:compra.entregado_almacen_en?'Entrega comunicada a Almacén':'Pendiente de entregar a Almacén'}`} acciones={compra.aprobacion!=='NO_REQUERIDA'&&aprobacion?<Insignia tono={aprobacion.tono}>{aprobacion.etiqueta}</Insignia>:undefined}/><TarjetaCuerpo>
           <div className="space-y-3 border-t border-borde pt-3">
                   {puedeCrearCompra && detenida && (
                     <p className="text-xs text-texto-suave">Mientras no se apruebe no se descarga, no se envía al proveedor ni se entrega a Almacén. La decide quien aprueba las compras en <Link href="/compras/aprobacion" className="font-medium text-acento underline">Aprobación de compras</Link>.</p>
@@ -208,7 +208,7 @@ export function TableroMateriales({
                         key={`condicion-${compra.orden_compra_id}`} compra={compra} />)}
                       {[compra].map((compra) => compra.orden_compra_id && <EntregaCompra
                         key={compra.orden_compra_id} compra={compra} />)}
-                      {[compra].map(c=><Link key={'pdf-'+c.orden_compra_id} href={`/compras/${c.orden_compra_id}/pdf`} className="inline-flex min-h-11 items-center text-sm font-medium text-acento underline">Descargar compra {c.referencia}</Link>)}
+                      {[compra].map(c=><Link key={'pdf-'+c.orden_compra_id} href={`/compras/${c.orden_compra_id}/pdf`} className="inline-flex min-h-11 items-center text-sm font-medium text-acento underline">Descargar compra {c.numero ?? c.referencia}</Link>)}
                       {lineasCompra.filter((compra) => compra.precio_unitario === null).map((compra) => (
                         <PrecioCompra key={compra.id} compra={compra} />
                       ))}
@@ -255,7 +255,7 @@ function PrecioCompra({ compra }: { compra: CompraMaterialPendiente }) {
   const { alEnviar, enviando, error } = useEnvio(registrarPrecioCompra)
   return <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-2 rounded-md border border-borde p-2">
     <input type="hidden" name="detalle_id" value={compra.id ?? ''} />
-    <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.referencia}</span>
+    <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.numero ?? compra.referencia}</span>
     <Campo etiqueta={`Precio unitario (${compra.moneda})`} htmlFor={`precio-${compra.id}`} ayuda="Sin IGV. Si el proveedor lo da con IGV, divídelo entre 1.18.">
       <Entrada id={`precio-${compra.id}`} name="precio" type="number" inputMode="decimal" min={0} step="0.01" required className="tabular w-32" />
     </Campo>
@@ -266,10 +266,10 @@ function PrecioCompra({ compra }: { compra: CompraMaterialPendiente }) {
 
 function EntregaCompra({ compra }: { compra: CompraMaterialPendiente }) {
   const { alEnviar, enviando, error } = useEnvio(marcarEntregaCompra)
-  if (compra.entregado_almacen_en) return <p className="text-xs text-exito">{compra.referencia}: entregada a Almacén</p>
+  if (compra.entregado_almacen_en) return <p className="text-xs text-exito">{compra.numero ?? compra.referencia}: entregada a Almacén</p>
   return <form onSubmit={alEnviar} className="flex flex-wrap items-center gap-2">
     <input type="hidden" name="compra_id" value={compra.orden_compra_id ?? ''} />
-    <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.referencia}</span>
+    <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.numero ?? compra.referencia}</span>
     <Boton type="submit" tamano="sm" cargando={enviando} disabled={!compra.tiene_factura||!compra.precios_completos}>Entregar compra a Almacén</Boton>
     <p className="basis-full text-[11px] text-texto-suave">{!compra.precios_completos?'Faltan precios unitarios. ':''}{!compra.tiene_factura?'Adjunta la factura para continuar.':'Factura registrada; Tesorería podrá revisarla.'}</p>
     {error && <p role="alert" className="basis-full text-xs text-peligro">{error}</p>}
@@ -459,7 +459,7 @@ function FormularioCompra({lineas,proveedores,puedeRegistrarProveedor,alTerminar
        </div>
        {avisoAlta&&<p role="status" className="text-xs text-exito">{avisoAlta}</p>}
      </Campo>
-     <Campo etiqueta="Número de orden de compra" htmlFor="oc-numero" requerido><Entrada id="oc-numero" name="referencia" required minLength={2} maxLength={100}/></Campo>
+     <Campo etiqueta="Referencia del proveedor" htmlFor="oc-numero" requerido ayuda="Su cotización o proforma. El número OC-…-MW lo pone el sistema al emitir."><Entrada id="oc-numero" name="referencia" required minLength={2} maxLength={100}/></Campo>
      <Campo etiqueta="Entrega estimada" htmlFor="oc-fecha"><Entrada id="oc-fecha" name="fecha_estimada" type="date"/></Campo>
      <Campo etiqueta="Moneda" htmlFor="oc-moneda"><Seleccion id="oc-moneda" name="moneda"><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion></Campo>
      <Campo etiqueta="Pago" htmlFor="oc-pago"><Seleccion id="oc-pago" name="condicion" value={condicion} onChange={e=>{setCondicion(e.target.value);if(e.target.value==='CONTADO')setDias(0)}}><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option></Seleccion></Campo>
@@ -497,7 +497,7 @@ function FormularioRecepcion({ compra, clave }: { compra: CompraMaterialPendient
       <input type="hidden" name="operacion_id" value={clave ?? ''} />
       <input type="hidden" name="compra_detalle_id" value={compra.id ?? ''} />
       <div className="sm:col-span-2">
-        <p className="text-xs font-medium text-texto">{compra.proveedor} · {compra.referencia}</p>
+        <p className="text-xs font-medium text-texto">{compra.proveedor} · {compra.numero ?? compra.referencia}</p>
         <p className="mt-0.5 text-[11px] text-texto-suave">Pendiente {cantidad(restante)} · estimado {formatearFecha(compra.fecha_estimada)}</p>
       </div>
       <Campo etiqueta="Cantidad que llegó" htmlFor={`rec-cant-${compra.id}`} requerido>
