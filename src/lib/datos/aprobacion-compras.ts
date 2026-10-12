@@ -3,7 +3,8 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 
 export type LineaParaAprobar = {
-  orden: string
+  /** Sin OT en la compra directa: va al almacén. */
+  orden: string | null
   area: string | null
   material_codigo: string
   material: string
@@ -12,9 +13,16 @@ export type LineaParaAprobar = {
   precio_unitario: number | null
 }
 
+/** Una orden de compra (OC) o de servicio (OS) en la bandeja de Gerencia. */
 export type CompraParaAprobar = {
+  tipo: 'OC' | 'OS'
   id: string
+  numero: string
   referencia: string
+  /** REQUERIMIENTO o DIRECTA en una compra; SERVICIO en una orden de servicio. */
+  origen: string
+  /** Por qué se compra sin requerimiento, o qué se hace en el servicio. */
+  motivo: string | null
   proveedor: string
   proveedor_documento: string | null
   moneda: string
@@ -30,6 +38,7 @@ export type CompraParaAprobar = {
   decidida_en: string | null
   motivo_rechazo: string | null
   ordenes: string[]
+  unidades: string[]
   lineas: LineaParaAprobar[]
 }
 
@@ -58,7 +67,7 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
       .from('regla_aprobacion_compras')
       .select('activa, monto_desde, rol_aprobador_id, actualizado_en, rol:roles(nombre)')
       .maybeSingle(),
-    supabase.rpc('compras_para_aprobar'),
+    supabase.rpc('documentos_por_aprobar'),
     opciones.puestos
       ? supabase.from('roles').select('id, codigo, nombre, nivel').order('nivel', { ascending: false })
       : Promise.resolve({ data: [], error: null }),
@@ -79,8 +88,12 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
       : null,
     compras: (compras.data ?? []).map(
       (c): CompraParaAprobar => ({
+        tipo: c.tipo === 'OS' ? 'OS' : 'OC',
         id: c.id ?? '',
+        numero: c.numero ?? c.referencia ?? '',
         referencia: c.referencia ?? '',
+        origen: c.origen ?? 'REQUERIMIENTO',
+        motivo: c.motivo,
         proveedor: c.proveedor ?? '',
         proveedor_documento: c.proveedor_documento,
         moneda: c.moneda ?? 'PEN',
@@ -90,12 +103,13 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
         dias_credito: c.dias_credito ?? 0,
         fecha_estimada: c.fecha_estimada,
         aprobacion: c.aprobacion ?? 'POR_APROBAR',
-        pedida_en: c.pedida_en ?? c.creado_en,
+        pedida_en: c.pedida_en,
         emitida_por: c.emitida_por,
         decidida_por: c.decidida_por,
         decidida_en: c.decidida_en,
         motivo_rechazo: c.motivo_rechazo,
         ordenes: c.ordenes ?? [],
+        unidades: c.unidades ?? [],
         lineas: (c.lineas as LineaParaAprobar[] | null) ?? [],
       }),
     ),

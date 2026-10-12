@@ -6235,6 +6235,7 @@ export type Database = {
           fecha_vencimiento: string | null
           total_estimado: number | null
           moneda: string | null
+          numero: string | null
         }
         Relationships: []
       }

@@ -95,6 +95,17 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       .in('requerimientos_materiales.ordenes_trabajo.estado', [...ESTADOS_ACTIVOS_OT])),
   })
 
+  // El conductor de Logística: lo que tiene por recoger o lleva en camino.
+  if (puede(perfil, 'compras.recojo')) tareas.push({
+    clave: 'compras_por_recoger', ruta: '/recojos', tono: 'aviso',
+    texto: n => plural(n, 'compra por recoger o dejar en almacén', 'compras por recoger o dejar en almacén'),
+    contar: async () => {
+      const { data, error } = await supabase.rpc('compras_para_recojo')
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      return (data ?? []).filter((r) => r.recojo !== 'DEJADO').length
+    },
+  })
+
   if (puede(perfil, 'cotizaciones.revisar')) {
     tareas.push({
       clave: 'pdf_por_revisar',

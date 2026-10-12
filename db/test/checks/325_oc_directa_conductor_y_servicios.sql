@@ -126,6 +126,29 @@ select test.afirmar(
   'Logística lee las líneas de la directa (la política ya no exige requerimiento)');
 reset role;
 
+-- Tesorería ve la directa a crédito entre las compras sin comprobante, sin OT y
+-- con su número (migración 113000). Solo si hay una cuenta de Tesorería.
+select set_config('prueba.tesoreria', coalesce((
+  select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id
+   where r.codigo = 'TESORERIA' and u.activo order by u.creado_en limit 1), ''), true);
+do $$
+declare v integer;
+begin
+  if current_setting('prueba.tesoreria') = '' then
+    raise notice 'Sin cuenta de Tesorería: no se prueba su lista de compras a crédito.';
+    return;
+  end if;
+  perform pg_temp.como('tesoreria');
+  set local role authenticated;
+  select count(*) into v from public.v_compras_credito_sin_comprobante c
+   where c.orden_compra_id = current_setting('prueba.oc1')::uuid
+     and c.numero_ot is null and c.numero is not null and c.total_estimado = 150;
+  reset role;
+  if v <> 1 then
+    raise exception 'FALLA: Tesorería no ve la compra directa a crédito sin comprobante (vio %)', v;
+  end if;
+end $$;
+
 select test.afirmar(
   (select count(*) from public.notificaciones where origen_id = current_setting('prueba.oc1')::uuid
       and usuario_id = current_setting('prueba.gerente')::uuid and ruta = '/compras/aprobacion') = 1,

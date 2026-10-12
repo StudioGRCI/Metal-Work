@@ -10,8 +10,14 @@ import { createClient } from '@/lib/supabase/server'
 function refrescar() {
   revalidatePath('/compras/aprobacion')
   revalidatePath('/compras')
+  revalidatePath('/compras/ordenes')
+  revalidatePath('/compras/servicios')
+  revalidatePath('/recojos')
   revalidatePath('/ordenes/[id]', 'page')
 }
+
+/** La bandeja trae órdenes de compra (OC) y de servicio (OS); cada una se decide con su función. */
+const TIPO = z.enum(['OC', 'OS']).catch('OC')
 
 /**
  * La regla la fija quien tenga `compras.configurar_aprobacion`, el mismo
@@ -59,14 +65,24 @@ export async function fijarReglaAprobacion(_previo: unknown, datos: FormData): P
 export async function aprobarCompra(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   await exigirSesion()
   const id = z.string().uuid().safeParse(datos.get('id'))
-  if (!id.success) return { ok: false, error: 'No se reconoció la compra. Vuelve a cargar la pantalla.' }
+  if (!id.success) return { ok: false, error: 'No se reconoció la orden. Vuelve a cargar la pantalla.' }
+  const tipo = TIPO.parse(datos.get('tipo'))
 
   const supabase = await createClient()
-  const { error } = await supabase.rpc('aprobar_compra', { p_compra: id.data })
+  const { error } =
+    tipo === 'OS'
+      ? await supabase.rpc('aprobar_orden_servicio', { p_id: id.data })
+      : await supabase.rpc('aprobar_compra', { p_compra: id.data })
   if (error) return { ok: false, error: mensajeDeError(error) }
 
   refrescar()
-  return { ok: true, mensaje: 'Compra aprobada. Logística ya puede enviarla al proveedor.' }
+  return {
+    ok: true,
+    mensaje:
+      tipo === 'OS'
+        ? 'Orden de servicio aprobada. Logística ya puede encargar el trabajo.'
+        : 'Compra aprobada. Logística ya puede enviarla al proveedor; si es directa, al conductor ya le llegó el recojo.',
+  }
 }
 
 export async function rechazarCompra(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -82,11 +98,21 @@ export async function rechazarCompra(_previo: unknown, datos: FormData): Promise
     })
     .safeParse({ id: datos.get('id'), motivo: datos.get('motivo') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el motivo.' }
+  const tipo = TIPO.parse(datos.get('tipo'))
 
   const supabase = await createClient()
-  const { error } = await supabase.rpc('rechazar_compra', { p_compra: analisis.data.id, p_motivo: analisis.data.motivo })
+  const { error } =
+    tipo === 'OS'
+      ? await supabase.rpc('rechazar_orden_servicio', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
+      : await supabase.rpc('rechazar_compra', { p_compra: analisis.data.id, p_motivo: analisis.data.motivo })
   if (error) return { ok: false, error: mensajeDeError(error) }
 
   refrescar()
-  return { ok: true, mensaje: 'Compra rechazada. Sus insumos volvieron a quedar por comprar y Logística recibió el motivo.' }
+  return {
+    ok: true,
+    mensaje:
+      tipo === 'OS'
+        ? 'Orden de servicio rechazada. Logística recibió el motivo.'
+        : 'Compra rechazada. Logística recibió el motivo; si venía de un requerimiento, sus insumos volvieron a quedar por comprar.',
+  }
 }

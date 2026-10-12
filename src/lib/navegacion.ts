@@ -16,6 +16,7 @@ import {
   UserCog,
   Users,
   Wallet,
+  Wrench,
 } from 'lucide-react'
 
 export type ItemNavegacion = {
@@ -110,6 +111,31 @@ export const NAVEGACION: GrupoNavegacion[] = [
     titulo: 'Abastecimiento',
     items: [
       {titulo:'Compras',ruta:'/compras',icono:Receipt,permiso:'compras.crear',descripcion:'Órdenes de compra agrupadas, facturas y entregas',disponible:true},
+      {
+        titulo: 'Órdenes de compra',
+        ruta: '/compras/ordenes',
+        icono: FileText,
+        permiso: 'compras.crear',
+        descripcion: 'Cada OC con su número: directas o de requerimiento, recojo y factura',
+        disponible: true,
+      },
+      {
+        titulo: 'Órdenes de servicio',
+        ruta: '/compras/servicios',
+        icono: Wrench,
+        permiso: 'compras.crear',
+        descripcion: 'Trabajos de terceros con su número OS, aprobación y conformidad',
+        disponible: true,
+      },
+      // El conductor de Logística: lo que tiene que recoger y dejar en almacén.
+      {
+        titulo: 'Recojos',
+        ruta: '/recojos',
+        icono: Truck,
+        permiso: 'compras.recojo',
+        descripcion: 'Compras aprobadas por recoger y dejar en almacén',
+        disponible: true,
+      },
       // Lo ven también Almacén, Costos y Supervisión (`proveedores.ver`), pero
       // en el menú solo de quienes llevan el padrón: Logística, Contabilidad y
       // Gerencia.
@@ -129,7 +155,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
         ruta: '/compras/aprobacion',
         icono: BadgeCheck,
         permiso: ['compras.configurar_aprobacion', 'compras.crear'],
-        descripcion: 'La regla de montos y las órdenes de compra que esperan visto',
+        descripcion: 'La regla de montos y las órdenes de compra y de servicio que esperan visto',
         disponible: true,
       },
       {
@@ -268,7 +294,9 @@ export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/materiales', corto: 'Materiales' },
   { ruta: '/configuracion', corto: 'Ajustes' },
   { ruta: '/personal', corto: 'Personal' },
-  // Al final: solo ocupa una pestaña libre (la de Gerencia o Logística, que
-  // tienen menos de cuatro) y no desplaza la de ningún otro puesto.
+  // Al final: solo ocupan una pestaña libre (la de Gerencia, Logística o su
+  // conductor, que tienen menos de cuatro) y no desplazan la de ningún otro puesto.
+  { ruta: '/recojos', corto: 'Recojos' },
+  { ruta: '/compras/ordenes', corto: 'OC' },
   { ruta: '/compras/aprobacion', corto: 'Aprobar' },
 ]
