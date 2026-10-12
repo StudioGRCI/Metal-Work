@@ -105,8 +105,20 @@ async function leerCuerpo(req) {
   return Buffer.concat(trozos)
 }
 
-/** Ejecuta dentro de una transacción con el rol y los claims de la sesión. */
-async function conSesion(sesion, tarea) {
+/**
+ * Ejecuta dentro de una transacción con el rol y los claims de la sesión.
+ *
+ * La respuesta sale después del commit, como en PostgREST: los triggers
+ * diferidos corren al cerrar la transacción, y si se contestaba antes, la
+ * lectura que la aplicación hace enseguida (la aprobación de una compra) podía
+ * no verlos, y un error al cerrar llegaba como éxito.
+ */
+async function conSesion(sesion, res, tarea) {
+  const pendiente = []
+  const { writeHead, end } = res
+  res.writeHead = (...args) => { pendiente.push(['writeHead', args]); return res }
+  res.end = (...args) => { pendiente.push(['end', args]); return res }
+  const soltar = () => { res.writeHead = writeHead; res.end = end }
   const cliente = await grupo.connect()
   try {
     await cliente.query('begin')
@@ -121,11 +133,15 @@ async function conSesion(sesion, tarea) {
     }
     const resultado = await tarea(cliente)
     await cliente.query('commit')
+    soltar()
+    for (const [metodo, args] of pendiente) res[metodo](...args)
     return resultado
   } catch (fallo) {
+    soltar()
     await cliente.query('rollback').catch(() => {})
     throw fallo
   } finally {
+    soltar()
     cliente.release()
   }
 }
@@ -310,7 +326,7 @@ async function manejarDatos(req, res, url) {
     // de un arreglo y todos los indicadores salían en cero.
     const objeto = (req.headers.accept ?? '').includes('vnd.pgrst.object')
 
-    return conSesion(sesion, async (cliente) => {
+    return conSesion(sesion, res, async (cliente) => {
       const { rows, fields } = await cliente.query(consulta.texto, consulta.valores)
       if (forma.proretset && objeto) {
         if (rows.length !== 1) {
@@ -342,7 +358,7 @@ async function manejarDatos(req, res, url) {
     const soloCabecera = req.method === 'HEAD' || prefiere.includes('head=true')
     const objeto = (req.headers.accept ?? '').includes('vnd.pgrst.object')
 
-    return conSesion(sesion, async (cliente) => {
+    return conSesion(sesion, res, async (cliente) => {
       const filas = soloCabecera ? [] : (await cliente.query(consulta.texto, consulta.valores)).rows
       let total = null
       if (quiereConteo) {
@@ -380,7 +396,7 @@ async function manejarDatos(req, res, url) {
     const devuelve = prefiere.includes('return=representation')
     const objeto = (req.headers.accept ?? '').includes('vnd.pgrst.object')
 
-    return conSesion(sesion, async (cliente) => {
+    return conSesion(sesion, res, async (cliente) => {
       const { rows } = await cliente.query(escritura.texto, escritura.valores)
       if (!devuelve) return responder(res, req.method === 'DELETE' ? 204 : 201, null)
 
