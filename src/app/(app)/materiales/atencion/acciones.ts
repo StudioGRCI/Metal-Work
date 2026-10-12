@@ -295,15 +295,38 @@ export async function despacharMaterial(_previo: unknown, formulario: FormData):
   return { ok: true, mensaje: 'Entrega registrada con la persona responsable del área.' }
 }
 
+/**
+ * Ingreso general a Almacén. Con `material_id` es un material del catálogo; sin
+ * él, el almacenero escribió el nombre y la base lo da de alta (o reutiliza el
+ * que ya tenga ese nombre y esa unidad) antes de registrar el ingreso.
+ */
 export async function registrarIngresoGeneral(_previo:unknown,formulario:FormData):Promise<ResultadoAccion> {
   const perfil=await exigirSesion()
   if(!puede(perfil,'almacen.recibir')) return {ok:false,error:'Solo Almacén registra sus ingresos.'}
-  const v=z.object({operacion_id:z.string().uuid(),material_id:z.string().uuid(),cantidad:z.coerce.number().positive().multipleOf(0.001),
+  const v=z.object({operacion_id:z.string().uuid(),material_id:z.string().uuid().optional(),
+    material_nuevo_id:z.string().uuid().optional(),descripcion:z.string().trim().max(200).optional(),unidad_id:z.string().uuid().optional(),
+    cantidad:z.coerce.number().positive().multipleOf(0.001),
     origen:z.enum(['SALDO_INICIAL','INGRESO_GENERAL','DEVOLUCION']),documento:z.string().trim().min(2).max(100),
     precio:z.coerce.number().min(0).multipleOf(0.01).optional(),moneda:z.enum(['PEN','USD']),devolucion:z.string().uuid().optional()})
-    .safeParse({...Object.fromEntries(formulario),precio:dato(formulario,'precio')||undefined,devolucion:dato(formulario,'devolucion')||undefined})
+    .safeParse({operacion_id:dato(formulario,'operacion_id'),material_id:dato(formulario,'material_id')||undefined,
+      material_nuevo_id:dato(formulario,'material_nuevo_id')||undefined,descripcion:dato(formulario,'descripcion')||undefined,
+      unidad_id:dato(formulario,'unidad_id')||undefined,cantidad:dato(formulario,'cantidad'),origen:dato(formulario,'origen'),
+      documento:dato(formulario,'documento'),precio:dato(formulario,'precio')||undefined,moneda:dato(formulario,'moneda'),
+      devolucion:dato(formulario,'devolucion')||undefined})
   if(!v.success) return {ok:false,error:'Revisa el material, cantidad, referencia y valor del ingreso.'}
   const db=await createClient()
+  if(!v.data.material_id){
+    if(!v.data.material_nuevo_id||!v.data.descripcion||v.data.descripcion.length<3) return {ok:false,error:'Escribe el nombre del material (al menos 3 letras).'}
+    if(!v.data.unidad_id) return {ok:false,error:'Elige la unidad en que se cuenta el material nuevo.'}
+    if(v.data.origen==='DEVOLUCION') return {ok:false,error:'Una devolución es de un material que ya salió: elígelo de la lista.'}
+    const {data,error}=await db.rpc('registrar_ingreso_material_libre',{p_id:v.data.operacion_id,p_material_nuevo:v.data.material_nuevo_id,
+      p_descripcion:v.data.descripcion,p_unidad:v.data.unidad_id,p_cantidad:v.data.cantidad,p_origen:v.data.origen,
+      p_documento:v.data.documento,p_precio:v.data.precio??null,p_moneda:v.data.moneda})
+    if(error) return {ok:false,error:mensajeDeError(error)}
+    if(data!==v.data.operacion_id) return {ok:false,error:NO_TOCO_NADA}
+    revalidatePath('/almacen/kardex')
+    return {ok:true,mensaje:'Ingreso registrado. El material ya tiene saldo y aparece en las salidas.'}
+  }
   const {data,error}=await db.rpc('registrar_ingreso_almacen',{p_id:v.data.operacion_id,p_material:v.data.material_id,p_cantidad:v.data.cantidad,
     p_origen:v.data.origen,p_documento:v.data.documento,p_precio:v.data.precio??null,p_moneda:v.data.moneda,p_devolucion:v.data.devolucion??null})
   if(error) return {ok:false,error:mensajeDeError(error)}
