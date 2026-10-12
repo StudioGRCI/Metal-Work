@@ -7872,6 +7872,20 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_ingreso_material_libre: {
+        Args: {
+          p_id: string | null
+          p_material_nuevo: string | null
+          p_descripcion: string | null
+          p_unidad: string | null
+          p_cantidad: number | null
+          p_origen: string | null
+          p_documento: string | null
+          p_precio: number | null
+          p_moneda: string | null
+        }
+        Returns: string
+      }
       registrar_ingreso_planilla: {
         Args: {
           p_id: string | null
