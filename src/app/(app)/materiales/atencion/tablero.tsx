@@ -196,7 +196,9 @@ export function TableroMateriales({
         const pendientesCompra=lineasCompra.filter(c=>Number(c.cantidad_pendiente)>0)
         const detenida=compraDetenida(compra.aprobacion)
         const aprobacion=APROBACION_COMPRA[compra.aprobacion]
-        return <Tarjeta key={compra.orden_compra_id}><TarjetaCabecera titulo={`${compra.referencia} · ${compra.proveedor}`} descripcion={`${lineasCompra.length} ${lineasCompra.length === 1 ? 'insumo' : 'insumos'} · ${detenida?aprobacion?.descripcion:compra.entregado_almacen_en?'Entrega comunicada a Almacén':'Pendiente de entregar a Almacén'}`} acciones={compra.aprobacion!=='NO_REQUERIDA'&&aprobacion?<Insignia tono={aprobacion.tono}>{aprobacion.etiqueta}</Insignia>:undefined}/><TarjetaCuerpo>
+        const paraAlmacen=!compra.requerimiento_id
+        const insignias=<>{paraAlmacen&&<Insignia tono="info">Para almacén</Insignia>}{compra.aprobacion!=='NO_REQUERIDA'&&aprobacion&&<Insignia tono={aprobacion.tono}>{aprobacion.etiqueta}</Insignia>}</>
+        return <Tarjeta key={compra.orden_compra_id}><TarjetaCabecera titulo={`${compra.referencia} · ${compra.proveedor}`} descripcion={`${lineasCompra.length} ${lineasCompra.length === 1 ? 'insumo' : 'insumos'} · ${detenida?aprobacion?.descripcion:estadoDeEntrega(compra)}`} acciones={paraAlmacen||compra.aprobacion!=='NO_REQUERIDA'?<div className="flex flex-wrap gap-1">{insignias}</div>:undefined}/><TarjetaCuerpo>
           <div className="space-y-3 border-t border-borde pt-3">
                   {puedeCrearCompra && detenida && (
                     <p className="text-xs text-texto-suave">Mientras no se apruebe no se descarga, no se envía al proveedor ni se entrega a Almacén. La decide quien aprueba las compras en <Link href="/compras/aprobacion" className="font-medium text-acento underline">Aprobación de compras</Link>.</p>
@@ -554,6 +556,13 @@ function FormularioDespacho({
       {error && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
     </form>
   )
+}
+
+/** Dónde está la compra entre el proveedor y el almacén. */
+function estadoDeEntrega(compra: CompraMaterialPendiente): string {
+  if (compra.entregado_almacen_en) return 'Entregada en almacén'
+  if (compra.recogido_en) return `Recogida por el conductor el ${formatearFecha(compra.recogido_en)}, en camino al almacén`
+  return 'Por recoger: está en la lista del conductor'
 }
 
 function estadoGrupo(lineas: LineaAtencionMaterial[]): string {

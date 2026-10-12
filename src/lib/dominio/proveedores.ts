@@ -36,3 +36,10 @@ export const APROBACION_COMPRA: Record<string, Def> = {
 export function compraDetenida(aprobacion: string | null | undefined): boolean {
   return aprobacion === 'POR_APROBAR' || aprobacion === 'RECHAZADA'
 }
+
+/** Dónde está la compra en manos del conductor. */
+export const ESTADO_RECOJO: Record<string, Def> = {
+  POR_RECOGER: { etiqueta: 'Por recoger', tono: 'aviso', descripcion: 'Lista para recoger donde el proveedor.' },
+  EN_CAMINO: { etiqueta: 'En camino', tono: 'info', descripcion: 'Recogida: falta dejarla en almacén.' },
+  EN_ALMACEN: { etiqueta: 'En almacén', tono: 'exito', descripcion: 'Dejada en almacén.' },
+}

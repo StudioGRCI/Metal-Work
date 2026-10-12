@@ -10,6 +10,8 @@ export type LineaAtencionMaterial = Vistas<'v_atencion_materiales'> & {
 }
 export type CompraMaterialPendiente = Vistas<'v_orden_compra_material_pendiente'> & {
   entregado_almacen_en: string | null
+  /** Cuándo el conductor la recogió donde el proveedor; null si todavía no. */
+  recogido_en: string | null
   precio_unitario: number | null
   condicion_pago: string
   dias_credito: number
@@ -130,7 +132,7 @@ export async function cargarAtencionMateriales(permisos: {
   const idsLineaCompra = (compras.data ?? []).map((compra) => compra.id).filter((id): id is string => Boolean(id))
   const [entregas, precios, facturas] = await Promise.all([
     idsCompra.length > 0
-      ? supabase.from('ordenes_compra_materiales').select('id, entregado_almacen_en, condicion_pago, dias_credito, moneda, aprobacion').in('id', idsCompra)
+      ? supabase.from('ordenes_compra_materiales').select('id, entregado_almacen_en, recogido_en, condicion_pago, dias_credito, moneda, aprobacion').in('id', idsCompra)
       : Promise.resolve({ data: [], error: null }),
     idsLineaCompra.length > 0
       ? supabase.from('orden_compra_material_detalles').select('id, orden_compra_id, precio_unitario').in('orden_compra_id', idsCompra)
@@ -154,6 +156,7 @@ export async function cargarAtencionMateriales(permisos: {
     compras: (compras.data ?? []).map((compra) => ({
       ...compra,
       entregado_almacen_en: entregaPorCompra.get(compra.orden_compra_id ?? '')?.entregado_almacen_en ?? null,
+      recogido_en: entregaPorCompra.get(compra.orden_compra_id ?? '')?.recogido_en ?? null,
       condicion_pago: entregaPorCompra.get(compra.orden_compra_id ?? '')?.condicion_pago ?? 'CONTADO',
       dias_credito: entregaPorCompra.get(compra.orden_compra_id ?? '')?.dias_credito ?? 0,
       moneda: entregaPorCompra.get(compra.orden_compra_id ?? '')?.moneda ?? 'PEN',

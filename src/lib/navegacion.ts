@@ -110,6 +110,8 @@ export const NAVEGACION: GrupoNavegacion[] = [
     titulo: 'Abastecimiento',
     items: [
       {titulo:'Compras',ruta:'/compras',icono:Receipt,permiso:'compras.crear',descripcion:'Órdenes de compra agrupadas, facturas y entregas',disponible:true},
+      // El conductor de Logística: recoge donde el proveedor y deja en almacén.
+      {titulo:'Recojos',ruta:'/recojos',icono:Truck,permiso:'compras.recoger',descripcion:'Compras por recoger donde el proveedor y dejar en almacén',disponible:true},
       // Lo ven también Almacén, Costos y Supervisión (`proveedores.ver`), pero
       // en el menú solo de quienes llevan el padrón: Logística, Contabilidad y
       // Gerencia.
@@ -206,6 +208,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
 const RUTAS_POR_PUESTO: Record<string, readonly string[]> = {
   GERENTE: ['/', '/cotizaciones/pdf', '/ordenes', '/compras/aprobacion', '/proveedores'],
   TESORERIA: ['/', '/ordenes', '/tesoreria', '/tesoreria/cuentas', '/tesoreria/tipo-de-cambio', '/adquisiciones'],
+  CONDUCTOR: ['/', '/recojos'],
 }
 
 /**
@@ -253,6 +256,7 @@ export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/cotizaciones/pdf', corto: 'Cotizar' },
   { ruta: '/ordenes', corto: 'Órdenes' },
   { ruta: '/almacen/kardex', corto: 'Kardex' },
+  { ruta: '/recojos', corto: 'Recojos' },
   { ruta: '/diseno/informe-semanal', corto: 'Informe' },
   { ruta: '/diseno/evaluaciones', corto: 'Evaluación' },
   { ruta: '/tesoreria', corto: 'Tesorería' },

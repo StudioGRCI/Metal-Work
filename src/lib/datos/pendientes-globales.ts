@@ -95,6 +95,27 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       .in('requerimientos_materiales.ordenes_trabajo.estado', [...ESTADOS_ACTIVOS_OT])),
   })
 
+  // El conductor: lo que tiene por recoger o lleva en camino. Almacén: lo que
+  // el conductor dejó y falta validar en el kardex.
+  if (puede(perfil, 'compras.recoger')) tareas.push({
+    clave: 'compras_por_recoger', ruta: '/recojos', tono: 'aviso',
+    texto: n => plural(n, 'compra por recoger o dejar en almacén', 'compras por recoger o dejar en almacén'),
+    contar: async () => {
+      const { data, error } = await supabase.rpc('recojos_de_compras')
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      return (data ?? []).filter((r) => r.estado !== 'EN_ALMACEN').length
+    },
+  })
+  if (puede(perfil, 'almacen.recibir')) tareas.push({
+    clave: 'ingresos_por_validar', ruta: '/almacen/kardex#por-validar', tono: 'aviso',
+    texto: n => plural(n, 'ingreso de compra por validar en el kardex', 'ingresos de compras por validar en el kardex'),
+    contar: async () => {
+      const { data, error } = await supabase.rpc('ingresos_por_validar')
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      return (data ?? []).length
+    },
+  })
+
   if (puede(perfil, 'cotizaciones.revisar')) {
     tareas.push({
       clave: 'pdf_por_revisar',
@@ -447,7 +468,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     }
     if (n <= 0) return
     items.push({ clave: t.clave, texto: t.texto(n), ruta: t.ruta, cantidad: n, tono: t.tono })
-    const base = t.ruta.split('?')[0]
+    const base = t.ruta.split(/[?#]/)[0]
     porRuta[base] = (porRuta[base] ?? 0) + n
   })
 

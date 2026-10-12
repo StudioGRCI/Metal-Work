@@ -15,6 +15,11 @@ export const metadata = { title: 'Aprobación de compras' }
 
 const NOMBRE_AREA: Record<string, string> = { MTZ: 'Maestranza', PRD: 'Producción', ACB: 'Acabados' }
 
+/** Para qué es la compra: sus OT, o el almacén cuando no viene de ninguna. */
+function paraQuien(ordenes: string[]) {
+  return ordenes.length > 0 ? `OT ${ordenes.join(', ')}` : 'Reposición de almacén'
+}
+
 function divisa(codigo: string) {
   return codigo === 'USD' ? 'USD' : 'PEN'
 }
@@ -104,7 +109,7 @@ export default async function PaginaAprobacionCompras() {
                           <p className="font-medium text-texto">
                             {c.referencia} · {c.proveedor}
                           </p>
-                          <p className="text-[11px] text-texto-suave">OT {c.ordenes.join(', ') || '—'}</p>
+                          <p className="text-[11px] text-texto-suave">{paraQuien(c.ordenes)}</p>
                           {c.motivo_rechazo && <p className="mt-1 text-xs text-texto-suave">Motivo: {c.motivo_rechazo}</p>}
                         </TD>
                         <TD className="tabular text-right whitespace-nowrap">{moneda(c.monto, divisa(c.moneda))}</TD>
@@ -158,7 +163,7 @@ function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; a
           </div>
           <div>
             <dt className="text-xs text-texto-suave">Para</dt>
-            <dd className="text-texto">OT {c.ordenes.join(', ') || '—'}</dd>
+            <dd className="text-texto">{paraQuien(c.ordenes)}</dd>
           </div>
         </dl>
 
@@ -180,11 +185,11 @@ function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; a
                     <p className="text-texto">{l.material}</p>
                     <p className="text-[11px] text-texto-suave">
                       {l.material_codigo}
-                      <span className="sm:hidden"> · OT {l.orden}</span>
+                      <span className="sm:hidden"> · {l.orden ? `OT ${l.orden}` : 'Almacén'}</span>
                     </p>
                   </TD>
                   <TD className="hidden text-texto-suave sm:table-cell">
-                    {l.orden}
+                    {l.orden ?? 'Almacén'}
                     {l.area && <p className="text-[11px]">{NOMBRE_AREA[l.area] ?? l.area}</p>}
                   </TD>
                   <TD className="tabular text-right whitespace-nowrap">
