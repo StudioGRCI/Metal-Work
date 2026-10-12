@@ -10,6 +10,9 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { MaterialParaConteo } from '@/lib/datos/atencion-materiales'
 import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
+import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
+import { igvCompra } from '@/lib/dominio/compra-materiales'
+import { comprobantePedido } from '@/lib/dominio/proveedores'
 import { useEnvio } from '@/lib/envio'
 import { moneda as formatoMoneda } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
@@ -29,8 +32,10 @@ async function esPdf(archivo: File) {
 
 /**
  * La orden de compra directa: proveedor del padrón, materiales del catálogo de
- * Almacén, cantidad y precio sin IGV, y por qué se compra. La factura se puede
- * adjuntar aquí mismo o después, desde la lista.
+ * Almacén, cantidad y precio sin IGV, y por qué se compra. Dice si viene con
+ * factura o sin ella —sin factura igual se pide un comprobante— y para qué
+ * unidad es (código interno, o PLANTA). El comprobante se puede adjuntar aquí
+ * mismo o después, desde la lista.
  */
 export function NuevaCompraDirecta({
   proveedores,
@@ -104,6 +109,7 @@ function FormularioCompraDirecta({
   const [condicion, setCondicion] = useState('CONTADO')
   const [dias, setDias] = useState(0)
   const [divisa, setDivisa] = useState<'PEN' | 'USD'>('PEN')
+  const [conFactura, setConFactura] = useState(true)
   const [lineas, setLineas] = useState<Linea[]>(() => [lineaVacia()])
 
   const opcionesMaterial = useMemo(
@@ -128,21 +134,22 @@ function FormularioCompraDirecta({
     async (_previo, datos) => {
       const factura = datos.get('factura')
       datos.delete('factura')
-      const conFactura = factura instanceof File && factura.size > 0
-      if (conFactura && !(await esPdf(factura))) {
-        return { ok: false, error: 'La factura debe ser un PDF de hasta 20 MB. Quítala para adjuntarla después.' }
+      const nombre = conFactura ? 'La factura' : 'El comprobante'
+      const adjuntando = factura instanceof File && factura.size > 0
+      if (adjuntando && !(await esPdf(factura))) {
+        return { ok: false, error: `${nombre} debe ser un PDF de hasta 20 MB. Quítalo para adjuntarlo después.` }
       }
       datos.set(
         'lineas',
         JSON.stringify(lineas.map((l) => ({ material_id: l.material_id, cantidad: l.cantidad, precio: l.precio }))),
       )
       const emitida = await emitirCompraDirecta(null, datos)
-      if (!emitida.ok || !conFactura) return emitida
+      if (!emitida.ok || !adjuntando) return emitida
 
       const documento = new FormData()
       documento.set('id', idFactura)
       documento.set('orden_compra_id', id)
-      documento.set('tipo', 'FACTURA')
+      documento.set('tipo', conFactura ? 'FACTURA' : 'COMPROBANTE')
       documento.set('nombre_archivo', factura.name.trim().slice(0, 200))
       const adjunta = await subirArchivoPrivado({
         bucket: 'documentos-compras',
@@ -151,9 +158,11 @@ function FormularioCompraDirecta({
         contentType: 'application/pdf',
         registrar: () => registrarDocumentoCompra(null, documento),
       })
-      // La orden ya quedó: si la factura no subió, se dice y se adjunta desde la lista.
-      if (!adjunta.ok) return { ok: true, mensaje: `${emitida.mensaje} La factura no se adjuntó (${adjunta.error}); adjúntala desde la lista.` }
-      return { ok: true, mensaje: `${emitida.mensaje} Factura adjunta.` }
+      // La orden ya quedó: si el comprobante no subió, se dice y se adjunta desde la lista.
+      if (!adjunta.ok) {
+        return { ok: true, mensaje: `${emitida.mensaje} ${nombre} no se adjuntó (${adjunta.error}); adjúntalo desde la lista.` }
+      }
+      return { ok: true, mensaje: `${emitida.mensaje} ${conFactura ? 'Factura adjunta.' : 'Comprobante adjunto.'}` }
     },
     (r) => alTerminar(r.mensaje ?? 'Orden emitida.'),
   )
@@ -184,6 +193,25 @@ function FormularioCompraDirecta({
               rows={2}
               placeholder="Por ejemplo: reposición de consumibles que bajaron del mínimo."
             />
+          </Campo>
+          <Campo
+            etiqueta="Código interno"
+            htmlFor="ocd-codigo"
+            requerido
+            ayuda={AYUDA_CODIGO_INTERNO}
+          >
+            <Entrada id="ocd-codigo" name="codigo_interno" required minLength={2} maxLength={60} defaultValue="PLANTA" autoComplete="off" />
+          </Campo>
+          <Campo etiqueta="Comprobante" htmlFor="ocd-comprobante" ayuda={comprobantePedido(conFactura).pide}>
+            <Seleccion
+              id="ocd-comprobante"
+              name="con_factura"
+              value={conFactura ? 'true' : 'false'}
+              onChange={(e) => setConFactura(e.target.value === 'true')}
+            >
+              <option value="true">Con factura</option>
+              <option value="false">Sin factura</option>
+            </Seleccion>
           </Campo>
           <Campo etiqueta="Entrega estimada" htmlFor="ocd-fecha">
             <Entrada id="ocd-fecha" name="fecha_estimada" type="date" />
@@ -278,13 +306,26 @@ function FormularioCompraDirecta({
               Agregar material
             </Boton>
             <p className="text-sm text-texto">
-              Total sin IGV <span className="tabular font-semibold">{formatoMoneda(total, divisa)}</span>
+              {conFactura ? 'Subtotal sin IGV' : 'Total'} <span className="tabular font-semibold">{formatoMoneda(total, divisa)}</span>
+              {conFactura && (
+                <span className="ml-2 text-texto-suave">
+                  · con IGV <span className="tabular">{formatoMoneda(total + igvCompra(total), divisa)}</span>
+                </span>
+              )}
             </p>
           </div>
           {materiales.length === 0 && <p className="text-sm text-texto-suave">El catálogo de Almacén está vacío: Almacén da de alta los materiales.</p>}
         </fieldset>
 
-        <Campo etiqueta="Factura (opcional)" htmlFor="ocd-factura" ayuda="PDF de hasta 20 MB. Si todavía no la tienes, la adjuntas después desde la lista.">
+        <Campo
+          etiqueta={conFactura ? 'Factura (opcional)' : 'Comprobante (opcional)'}
+          htmlFor="ocd-factura"
+          ayuda={
+            conFactura
+              ? 'PDF de hasta 20 MB. Si todavía no la tienes, la adjuntas después desde la lista.'
+              : 'La boleta, nota de venta o recibo, en PDF de hasta 20 MB. Si todavía no lo tienes, lo adjuntas después desde la lista.'
+          }
+        >
           <Entrada id="ocd-factura" name="factura" type="file" accept="application/pdf,.pdf" disabled={enviando} />
         </Campo>
 
