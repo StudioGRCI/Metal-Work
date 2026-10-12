@@ -45,7 +45,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   const puedeIngreso = puede(perfil, 'almacen.recibir')
   const db = await createClient()
 
-  const [kardex, materiales, unidades, catalogo, entregas] = await Promise.all([
+  const [kardex, materiales, unidades, catalogo, entregas, unidadesMedida] = await Promise.all([
     cargarKardex(filtros),
     materialesDelKardex(),
     puedeSalida ? unidadesParaSalida() : Promise.resolve([]),
@@ -57,8 +57,13 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
       ? db.from('v_kardex_almacen').select('id,material,unidad_medida,salida,codigo_unidad,fecha')
           .in('movimiento', ['DESPACHO', 'SALIDA']).order('fecha', { ascending: false }).limit(100)
       : Promise.resolve({ data: [], error: null }),
+    // Un material escrito a mano entra con la unidad que se elija.
+    puedeIngreso
+      ? db.from('unidades_medida').select('id,codigo,nombre').eq('activo', true).order('nombre')
+      : Promise.resolve({ data: [], error: null }),
   ])
   if (entregas.error) throw new Error('No se pudieron cargar las entregas que se pueden devolver.')
+  if (unidadesMedida.error) throw new Error('No se pudieron cargar las unidades de medida.')
 
   const { filas, total, cronologico } = kardex
   const saldoPorMaterial = new Map(materiales.map((m) => [m.material_id, m.existencia]))
@@ -99,6 +104,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
             {puedeIngreso && catalogo && (
               <NuevoIngreso
                 materiales={catalogo.catalogoAlmacen}
+                unidades={unidadesMedida.data ?? []}
                 despachos={(entregas.data ?? []).filter((e) => e.id).map((e) => ({
                   id: e.id as string,
                   etiqueta: `${e.material ?? 'Material'} · ${e.codigo_unidad ?? 'sin unidad'} · ${cantidad(e.salida)} ${e.unidad_medida ?? ''} · ${fechaHora(e.fecha)}`,
