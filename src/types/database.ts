@@ -1810,6 +1810,7 @@ export type Database = {
           creado_desde_ot: string | null
           codigo_almacen_origen: string | null
           unidad_pendiente: boolean
+          stock_minimo: number | null
         }
         Insert: {
           id?: string
@@ -1834,6 +1835,7 @@ export type Database = {
           creado_desde_ot?: string | null
           codigo_almacen_origen?: string | null
           unidad_pendiente?: boolean
+          stock_minimo?: number | null
         }
         Update: {
           id?: string
@@ -1858,6 +1860,7 @@ export type Database = {
           creado_desde_ot?: string | null
           codigo_almacen_origen?: string | null
           unidad_pendiente?: boolean
+          stock_minimo?: number | null
         }
         Relationships: [
           {
@@ -2284,8 +2287,8 @@ export type Database = {
           cotizacion_pdf_id: string | null
           tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           diseno_lider_id: string | null
-          plan_etapas_manual: boolean
           diseno_lider_entrega_nombre: string | null
+          plan_etapas_manual: boolean
         }
         Insert: {
           id?: string
@@ -2333,8 +2336,8 @@ export type Database = {
           cotizacion_pdf_id?: string | null
           tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           diseno_lider_id?: string | null
-          plan_etapas_manual?: boolean
           diseno_lider_entrega_nombre?: string | null
+          plan_etapas_manual?: boolean
         }
         Update: {
           id?: string
@@ -2382,8 +2385,8 @@ export type Database = {
           cotizacion_pdf_id?: string | null
           tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           diseno_lider_id?: string | null
-          plan_etapas_manual?: boolean
           diseno_lider_entrega_nombre?: string | null
+          plan_etapas_manual?: boolean
         }
         Relationships: [
           {
@@ -6648,6 +6651,13 @@ export type Database = {
         }
         Returns: null
       }
+      fijar_stock_minimo: {
+        Args: {
+          p_material: string | null
+          p_minimo: number | null
+        }
+        Returns: string
+      }
       flota_sigue_en_taller: {
         Args: {
           p_flota: string | null
@@ -7086,6 +7096,20 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_ingreso_material_libre: {
+        Args: {
+          p_id: string | null
+          p_material_nuevo: string | null
+          p_descripcion: string | null
+          p_unidad: string | null
+          p_cantidad: number | null
+          p_origen: string | null
+          p_documento: string | null
+          p_precio: number | null
+          p_moneda: string | null
+        }
+        Returns: string
+      }
       registrar_ingreso_planilla: {
         Args: {
           p_id: string | null
@@ -7234,6 +7258,12 @@ export type Database = {
         }
         Returns: string
       }
+      saldo_material_interno: {
+        Args: {
+          p_material: string | null
+        }
+        Returns: number
+      }
       saldo_registrado_material: {
         Args: {
           p_material: string | null
@@ -7318,6 +7348,13 @@ export type Database = {
           nombre: string | null
           rol: string | null
         }[]
+      }
+      validar_fecha_planilla_almacen: {
+        Args: {
+          p_material: string | null
+          p_fecha: string | null
+        }
+        Returns: null
       }
       valorizar_material: {
         Args: {
