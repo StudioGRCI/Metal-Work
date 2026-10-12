@@ -268,13 +268,14 @@ select public.emitir_compra_agrupada(current_setting('prueba.oc2')::uuid, curren
   null, 'CONTADO', 0, 'PEN');
 set constraints all immediate;
 select test.afirmar(
-  (select origen = 'REQUERIMIENTO' and numero ~ '^(OC-[0-9]{4,}-MW|PRUEBA-[0-9]+)$' and aprobacion = 'NO_REQUERIDA' and recojo is null
+  (select origen = 'REQUERIMIENTO' and numero ~ '^(OC-[0-9]{4,}-MW|PRUEBA-[0-9]+)$' and aprobacion = 'NO_REQUERIDA' and recojo = 'POR_RECOGER'
      from public.ordenes_compra_materiales where id = current_setting('prueba.oc2')::uuid),
-  'la compra de requerimiento también recibe número de la casa y, con la regla apagada, no pide aprobación');
+  'la compra de requerimiento también recibe número de la casa y, con la regla apagada, sale sola hacia el conductor');
 select test.afirmar(
   (select material_id from public.orden_compra_material_detalles where orden_compra_id = current_setting('prueba.oc2')::uuid)
     = current_setting('prueba.mat_req')::uuid,
   'la línea de requerimiento se queda con su material');
+-- Ya está con el conductor: volver a mandarla no hace nada.
 select public.mandar_compra_a_recojo(current_setting('prueba.oc2')::uuid);
 reset role;
 

@@ -23,20 +23,46 @@ export const ESTADO_SERVICIO: Record<string, Def> = {
   ANULADA: { etiqueta: 'Anulada', tono: 'peligro', descripcion: 'Anulada con su motivo.' },
 }
 
+export type ValidacionIngreso = 'PENDIENTE' | 'OBSERVADO' | 'VALIDADO' | null
+
+/**
+ * Una compra deja una fila por línea en el almacén: PENDIENTE si alguna espera
+ * a Almacén; si no, OBSERVADO si alguna se observó; VALIDADO si todas entraron.
+ */
+export function validacionDeCompra(estados: string[]): ValidacionIngreso {
+  if (estados.length === 0) return null
+  if (estados.includes('PENDIENTE')) return 'PENDIENTE'
+  if (estados.includes('OBSERVADO')) return 'OBSERVADO'
+  return 'VALIDADO'
+}
+
+/** Lo que hizo Almacén con lo que dejó el conductor, una vez dejado. */
+export const VALIDACION_INGRESO: Record<string, Def> = {
+  PENDIENTE: { etiqueta: 'Por validar en almacén', tono: 'aviso', descripcion: 'El conductor la dejó; Almacén tiene que validar el ingreso en su kardex.' },
+  OBSERVADO: { etiqueta: 'Observada por Almacén', tono: 'peligro', descripcion: 'Almacén no la recibió completa: lee su observación en el kardex.' },
+  VALIDADO: { etiqueta: 'Validada por Almacén', tono: 'exito', descripcion: 'Entró al kardex y ya se puede despachar.' },
+}
+
 /** Qué le toca hacer ahora a quien mira una compra, en una frase. */
 export function situacionCompra(c: {
   aprobacion: string
   recojo: string | null
   entregado_almacen_en: string | null
+  /** Solo cuando se sabe: PENDIENTE, OBSERVADO o VALIDADO. */
+  validacion?: string | null
 }): { etiqueta: string; tono: Tono } {
   if (c.aprobacion === 'POR_APROBAR') return { etiqueta: 'Espera a Gerencia', tono: 'aviso' }
   if (c.aprobacion === 'RECHAZADA') return { etiqueta: 'Rechazada', tono: 'peligro' }
+  if (c.recojo === 'DEJADO' && c.validacion && VALIDACION_INGRESO[c.validacion]) {
+    const v = VALIDACION_INGRESO[c.validacion]
+    return { etiqueta: v.etiqueta, tono: v.tono }
+  }
   if (c.recojo) {
     const r = RECOJO_COMPRA[c.recojo]
     return { etiqueta: r?.etiqueta ?? c.recojo, tono: r?.tono ?? 'neutro' }
   }
   if (c.entregado_almacen_en) return { etiqueta: 'Entregada a Almacén', tono: 'exito' }
-  return { etiqueta: 'Por entregar', tono: 'neutro' }
+  return { etiqueta: 'Por mandar a recojo', tono: 'neutro' }
 }
 
 /** Una compra se puede mandar a recojo si ya se puede enviar y nadie la llevó todavía. */

@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { validacionDeCompra, type ValidacionIngreso } from '@/lib/dominio/logistica'
 import { createClient } from '@/lib/supabase/server'
 
 /** Una orden de compra en el listado de Logística: número, para qué y en qué va. */
@@ -26,12 +27,24 @@ export type OrdenCompraListada = {
   unidades: string[]
   lineas: number
   tiene_factura: boolean
+  /** Lo que hizo Almacén con lo que dejó el conductor; null mientras no lo deja. */
+  validacion: ValidacionIngreso
 }
 
 export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('ordenes_compra_listado')
   if (error) throw new Error(`No se pudieron leer las órdenes de compra: ${error.message}`)
+  // Lo que el conductor dejó y si Almacén ya lo validó.
+  const dejadas = (data ?? []).filter((c) => c.recojo === 'DEJADO' && c.id).map((c) => c.id as string)
+  const pendientes = dejadas.length > 0
+    ? await supabase.from('ingresos_pendientes_almacen').select('orden_compra_id, estado').in('orden_compra_id', dejadas)
+    : { data: [], error: null }
+  if (pendientes.error) throw new Error(`No se pudo leer lo que validó Almacén: ${pendientes.error.message}`)
+  const estadosPorCompra = new Map<string, string[]>()
+  for (const fila of pendientes.data ?? []) {
+    estadosPorCompra.set(fila.orden_compra_id, [...(estadosPorCompra.get(fila.orden_compra_id) ?? []), fila.estado])
+  }
   return (data ?? []).map((c) => ({
     id: c.id ?? '',
     numero: c.numero ?? '',
@@ -55,6 +68,7 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
     unidades: c.unidades ?? [],
     lineas: c.lineas ?? 0,
     tiene_factura: c.tiene_factura === true,
+    validacion: validacionDeCompra(estadosPorCompra.get(c.id ?? '') ?? []),
   }))
 }
 
