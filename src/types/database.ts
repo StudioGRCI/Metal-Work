@@ -1810,6 +1810,7 @@ export type Database = {
           creado_desde_ot: string | null
           codigo_almacen_origen: string | null
           unidad_pendiente: boolean
+          stock_minimo: number | null
         }
         Insert: {
           id?: string
@@ -1834,6 +1835,7 @@ export type Database = {
           creado_desde_ot?: string | null
           codigo_almacen_origen?: string | null
           unidad_pendiente?: boolean
+          stock_minimo?: number | null
         }
         Update: {
           id?: string
@@ -1858,6 +1860,7 @@ export type Database = {
           creado_desde_ot?: string | null
           codigo_almacen_origen?: string | null
           unidad_pendiente?: boolean
+          stock_minimo?: number | null
         }
         Relationships: [
           {
@@ -2182,6 +2185,17 @@ export type Database = {
           condicion_pago: string
           dias_credito: number
           moneda: string
+          proveedor_id: string | null
+          aprobacion: string
+          monto_pen: number | null
+          aprobacion_pedida_en: string | null
+          aprobado_por: string | null
+          aprobado_en: string | null
+          monto_aprobado_pen: number | null
+          rechazado_por: string | null
+          rechazado_en: string | null
+          motivo_rechazo: string | null
+          lineas_rechazadas: Json | null
         }
         Insert: {
           id?: string
@@ -2197,6 +2211,17 @@ export type Database = {
           condicion_pago?: string
           dias_credito?: number
           moneda?: string
+          proveedor_id?: string | null
+          aprobacion?: string
+          monto_pen?: number | null
+          aprobacion_pedida_en?: string | null
+          aprobado_por?: string | null
+          aprobado_en?: string | null
+          monto_aprobado_pen?: number | null
+          rechazado_por?: string | null
+          rechazado_en?: string | null
+          motivo_rechazo?: string | null
+          lineas_rechazadas?: Json | null
         }
         Update: {
           id?: string
@@ -2212,8 +2237,26 @@ export type Database = {
           condicion_pago?: string
           dias_credito?: number
           moneda?: string
+          proveedor_id?: string | null
+          aprobacion?: string
+          monto_pen?: number | null
+          aprobacion_pedida_en?: string | null
+          aprobado_por?: string | null
+          aprobado_en?: string | null
+          monto_aprobado_pen?: number | null
+          rechazado_por?: string | null
+          rechazado_en?: string | null
+          motivo_rechazo?: string | null
+          lineas_rechazadas?: Json | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ordenes_compra_materiales_aprobado_por_fkey"
+            columns: ["aprobado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ordenes_compra_materiales_creado_por_fkey"
             columns: ["creado_por"]
@@ -2224,6 +2267,20 @@ export type Database = {
           {
             foreignKeyName: "ordenes_compra_materiales_entregado_almacen_por_fkey"
             columns: ["entregado_almacen_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_materiales_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_materiales_rechazado_por_fkey"
+            columns: ["rechazado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -2284,8 +2341,8 @@ export type Database = {
           cotizacion_pdf_id: string | null
           tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           diseno_lider_id: string | null
-          plan_etapas_manual: boolean
           diseno_lider_entrega_nombre: string | null
+          plan_etapas_manual: boolean
         }
         Insert: {
           id?: string
@@ -2333,8 +2390,8 @@ export type Database = {
           cotizacion_pdf_id?: string | null
           tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           diseno_lider_id?: string | null
-          plan_etapas_manual?: boolean
           diseno_lider_entrega_nombre?: string | null
+          plan_etapas_manual?: boolean
         }
         Update: {
           id?: string
@@ -2382,8 +2439,8 @@ export type Database = {
           cotizacion_pdf_id?: string | null
           tipo_unidad?: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
           diseno_lider_id?: string | null
-          plan_etapas_manual?: boolean
           diseno_lider_entrega_nombre?: string | null
+          plan_etapas_manual?: boolean
         }
         Relationships: [
           {
@@ -4735,6 +4792,74 @@ export type Database = {
           }
         ]
       }
+      proveedores: {
+        Row: {
+          id: string
+          tipo_documento: Database["public"]["Enums"]["tipo_documento_cliente"]
+          numero_documento: string
+          razon_social: string
+          nombre_comercial: string | null
+          rubro: string | null
+          contacto: string | null
+          telefono: string | null
+          correo: string | null
+          direccion: string | null
+          condicion_pago: string
+          dias_credito: number
+          observaciones: string | null
+          activo: boolean
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          tipo_documento?: Database["public"]["Enums"]["tipo_documento_cliente"]
+          numero_documento: string
+          razon_social: string
+          nombre_comercial?: string | null
+          rubro?: string | null
+          contacto?: string | null
+          telefono?: string | null
+          correo?: string | null
+          direccion?: string | null
+          condicion_pago?: string
+          dias_credito?: number
+          observaciones?: string | null
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          tipo_documento?: Database["public"]["Enums"]["tipo_documento_cliente"]
+          numero_documento?: string
+          razon_social?: string
+          nombre_comercial?: string | null
+          rubro?: string | null
+          contacto?: string | null
+          telefono?: string | null
+          correo?: string | null
+          direccion?: string | null
+          condicion_pago?: string
+          dias_credito?: number
+          observaciones?: string | null
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proveedores_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       pruebas_cuentas: {
         Row: {
           usuario_id: string
@@ -4834,6 +4959,54 @@ export type Database = {
           actualizado_en?: string
         }
         Relationships: []
+      }
+      regla_aprobacion_compras: {
+        Row: {
+          id: string
+          unica: boolean
+          activa: boolean
+          monto_desde: number
+          rol_aprobador_id: string
+          actualizado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          unica?: boolean
+          activa?: boolean
+          monto_desde?: number
+          rol_aprobador_id: string
+          actualizado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          unica?: boolean
+          activa?: boolean
+          monto_desde?: number
+          rol_aprobador_id?: string
+          actualizado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "regla_aprobacion_compras_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "regla_aprobacion_compras_rol_aprobador_id_fkey"
+            columns: ["rol_aprobador_id"]
+            isOneToOne: false
+            referencedRelation: "roles"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       requerimiento_material_detalles: {
         Row: {
@@ -6249,6 +6422,12 @@ export type Database = {
         }
         Returns: string
       }
+      aprobar_compra: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: string
+      }
       archivo_plano_vinculado: {
         Args: {
           p_ruta: string | null
@@ -6333,6 +6512,30 @@ export type Database = {
           p_cuenta: string | null
         }
         Returns: null
+      }
+      compras_para_aprobar: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          referencia: string | null
+          proveedor: string | null
+          proveedor_documento: string | null
+          moneda: string | null
+          monto: number | null
+          monto_pen: number | null
+          condicion_pago: string | null
+          dias_credito: number | null
+          fecha_estimada: string | null
+          aprobacion: string | null
+          pedida_en: string | null
+          creado_en: string | null
+          emitida_por: string | null
+          decidida_por: string | null
+          decidida_en: string | null
+          motivo_rechazo: string | null
+          ordenes: string[] | null
+          lineas: Json | null
+        }[]
       }
       confirmar_igv_cotizacion: {
         Args: {
@@ -6573,6 +6776,19 @@ export type Database = {
         }
         Returns: string
       }
+      emitir_compra_agrupada: {
+        Args: {
+          p_id: string | null
+          p_proveedor_id: string | null
+          p_referencia: string | null
+          p_detalles: Json | null
+          p_fecha: string | null
+          p_condicion: string | null
+          p_dias: number | null
+          p_moneda: string | null
+        }
+        Returns: string
+      }
       emitir_orden_de_cotizacion: {
         Args: {
           p_cotizacion: string | null
@@ -6593,6 +6809,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      es_aprobador_compras: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       es_laborable: {
         Args: {
           p_fecha: string | null
@@ -6609,6 +6829,12 @@ export type Database = {
           p_fin_real?: string | null
         }
         Returns: Database["public"]["Enums"]["estado_plazo"]
+      }
+      evaluar_aprobacion_compra: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: string
       }
       exigir_permiso: {
         Args: {
@@ -6647,6 +6873,21 @@ export type Database = {
           p_motivo: string | null
         }
         Returns: null
+      }
+      fijar_regla_aprobacion_compras: {
+        Args: {
+          p_activa: boolean | null
+          p_monto_desde: number | null
+          p_rol_aprobador: string | null
+        }
+        Returns: string
+      }
+      fijar_stock_minimo: {
+        Args: {
+          p_material: string | null
+          p_minimo: number | null
+        }
+        Returns: string
       }
       flota_sigue_en_taller: {
         Args: {
@@ -6765,6 +7006,12 @@ export type Database = {
           moneda: string | null
           valorizado_en: string | null
         }[]
+      }
+      mensaje_compra_sin_aprobar: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: string
       }
       mi_rol: {
         Args: Record<PropertyKey, never>
@@ -7028,6 +7275,13 @@ export type Database = {
         }
         Returns: null
       }
+      rechazar_compra: {
+        Args: {
+          p_compra: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       recibir_version_plano: {
         Args: {
           p_id: string | null
@@ -7234,6 +7488,18 @@ export type Database = {
         }
         Returns: string
       }
+      ruc_es_valido: {
+        Args: {
+          p_ruc: string | null
+        }
+        Returns: boolean
+      }
+      saldo_material_interno: {
+        Args: {
+          p_material: string | null
+        }
+        Returns: number
+      }
       saldo_registrado_material: {
         Args: {
           p_material: string | null
@@ -7288,6 +7554,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      tipo_cambio_venta: {
+        Args: {
+          p_fecha: string | null
+        }
+        Returns: number
+      }
       transitar_informe_diseno: {
         Args: {
           p_informe: string | null
@@ -7318,6 +7590,13 @@ export type Database = {
           nombre: string | null
           rol: string | null
         }[]
+      }
+      validar_fecha_planilla_almacen: {
+        Args: {
+          p_material: string | null
+          p_fecha: string | null
+        }
+        Returns: null
       }
       valorizar_material: {
         Args: {

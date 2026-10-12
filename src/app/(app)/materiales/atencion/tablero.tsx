@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowDownToLine, ArrowUpFromLine, ShoppingCart } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpFromLine, Plus, ShoppingCart } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Ventana } from '@/components/ui/ventana'
@@ -11,6 +11,7 @@ import { registrarIngresoGeneral } from './acciones'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cantidad, fecha as formatearFecha } from '@/lib/format'
@@ -22,6 +23,9 @@ import type {
   LineaAtencionMaterial,
   ResponsableMaterial,
 } from '@/lib/datos/atencion-materiales'
+import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
+import { APROBACION_COMPRA, compraDetenida, condicionDePago } from '@/lib/dominio/proveedores'
+import { FormularioProveedor } from '@/app/(app)/proveedores/formulario'
 
 import { crearOrdenCompra, despacharMaterial, registrarRecepcion, resolverPropuesta, revisarStock, registrarPrecioCompra, marcarEntregaCompra, fijarCondicionCompra } from './acciones'
 import { SubirDocumentoCompra } from './subir-documento-compra'
@@ -77,6 +81,8 @@ export function TableroMateriales({
   clavesRecepcion,
   clavesDespacho,
   clavesDocumento,
+  proveedores = [],
+  puedeRegistrarProveedor = false,
 }: {
   lineas: LineaAtencionMaterial[]
   existencias: ExistenciaMaterial[]
@@ -94,8 +100,12 @@ export function TableroMateriales({
   clavesRecepcion: Record<string, string>
   clavesDespacho: Record<string, string>
   clavesDocumento: Record<string, string>
+  /** El padrón activo, para elegir el proveedor de la orden de compra. */
+  proveedores?: ProveedorParaCompra[]
+  puedeRegistrarProveedor?: boolean
 }) {
   const [compraAbierta,setCompraAbierta]=useState(false)
+  const [avisoCompra,setAvisoCompra]=useState<string|null>(null)
   const [filtro, setFiltro] = useState<Filtro>('TODOS')
   const agrupados = useMemo(() => {
     const grupos = new Map<string, LineaAtencionMaterial[]>()
@@ -119,10 +129,11 @@ export function TableroMateriales({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div><h2 className="text-lg font-semibold text-texto">Solicitudes y entregas</h2>
           <p className="mt-1 text-sm text-texto-suave">{porRevisar} por revisar · {porComprar} por comprar · {enAlmacen} por despachar · {completos} entregadas</p></div>
-        {puedeCrearCompra && <Boton onClick={()=>setCompraAbierta(true)} disabled={porComprar===0}><ShoppingCart aria-hidden className="size-4" />Nueva orden de compra</Boton>}
+        {puedeCrearCompra && <Boton onClick={()=>{setAvisoCompra(null);setCompraAbierta(true)}} disabled={porComprar===0}><ShoppingCart aria-hidden className="size-4" />Nueva orden de compra</Boton>}
       </div>
+      {avisoCompra && <p role="status" className="rounded-md bg-exito-suave px-3 py-2 text-sm text-exito">{avisoCompra}</p>}
       <Ventana abierta={compraAbierta} alCerrar={()=>setCompraAbierta(false)} titulo="Orden de compra" descripcion="Selecciona los insumos, registra sus precios y define el pago. Cada línea conserva su OT." ancho="xl">
-        <FormularioCompra lineas={lineas.filter(l=>l.aprobacion_diseno==='APROBADO'&&l.decision_almacen==='COMPRA'&&Number(l.cantidad_solicitada)-Number(l.cantidad_stock??0)>Number(l.cantidad_comprada))} alTerminar={()=>setCompraAbierta(false)} />
+        <FormularioCompra lineas={lineas.filter(l=>l.aprobacion_diseno==='APROBADO'&&l.decision_almacen==='COMPRA'&&Number(l.cantidad_solicitada)-Number(l.cantidad_stock??0)>Number(l.cantidad_comprada))} proveedores={proveedores} puedeRegistrarProveedor={puedeRegistrarProveedor} alTerminar={(mensaje)=>{setCompraAbierta(false);setAvisoCompra(mensaje??null)}} />
       </Ventana>
       {lineas.length > 0 && (
         <Tarjeta>
@@ -183,9 +194,14 @@ export function TableroMateriales({
       {(puedeVerCompras||puedeRecibir||puedeAdjuntarDocumentos)&&[...new Map(compras.filter(c=>c.orden_compra_id).map(c=>[c.orden_compra_id,c])).values()].map(compra=>{
         const lineasCompra=compras.filter(c=>c.orden_compra_id===compra.orden_compra_id)
         const pendientesCompra=lineasCompra.filter(c=>Number(c.cantidad_pendiente)>0)
-        return <Tarjeta key={compra.orden_compra_id}><TarjetaCabecera titulo={`${compra.referencia} · ${compra.proveedor}`} descripcion={`${lineasCompra.length} ${lineasCompra.length === 1 ? 'insumo' : 'insumos'} · ${compra.entregado_almacen_en?'Entrega comunicada a Almacén':'Pendiente de entregar a Almacén'}`}/><TarjetaCuerpo>
+        const detenida=compraDetenida(compra.aprobacion)
+        const aprobacion=APROBACION_COMPRA[compra.aprobacion]
+        return <Tarjeta key={compra.orden_compra_id}><TarjetaCabecera titulo={`${compra.referencia} · ${compra.proveedor}`} descripcion={`${lineasCompra.length} ${lineasCompra.length === 1 ? 'insumo' : 'insumos'} · ${detenida?aprobacion?.descripcion:compra.entregado_almacen_en?'Entrega comunicada a Almacén':'Pendiente de entregar a Almacén'}`} acciones={compra.aprobacion!=='NO_REQUERIDA'&&aprobacion?<Insignia tono={aprobacion.tono}>{aprobacion.etiqueta}</Insignia>:undefined}/><TarjetaCuerpo>
           <div className="space-y-3 border-t border-borde pt-3">
-                  {puedeCrearCompra && [compra].length > 0 && (
+                  {puedeCrearCompra && detenida && (
+                    <p className="text-xs text-texto-suave">Mientras no se apruebe no se descarga, no se envía al proveedor ni se entrega a Almacén. La decide quien aprueba las compras en <Link href="/compras/aprobacion" className="font-medium text-acento underline">Aprobación de compras</Link>.</p>
+                  )}
+                  {puedeCrearCompra && !detenida && [compra].length > 0 && (
                     <div className="space-y-2">
                       <p className="text-xs font-semibold text-texto">Compra y entrega a Almacén</p>
                       {[compra].map((compra) => compra.orden_compra_id && <CondicionCompra
@@ -198,7 +214,7 @@ export function TableroMateriales({
                       ))}
                     </div>
                   )}
-                  {puedeRecibir && pendientesCompra.length > 0 && (
+                  {puedeRecibir && !detenida && pendientesCompra.length > 0 && (
                     <div>
                       <p className="mb-2 text-xs font-semibold text-texto">Llegadas pendientes</p>
                       {pendientesCompra.every((compra) => !compra.entregado_almacen_en) && (
@@ -211,7 +227,7 @@ export function TableroMateriales({
                       </div>
                     </div>
                   )}
-                  {puedeAdjuntarDocumentos && [compra].length > 0 && (
+                  {puedeAdjuntarDocumentos && !detenida && [compra].length > 0 && (
                     <div className="space-y-2">
                       <p className="text-xs font-semibold text-texto">Documentos para Tesorería</p>
                       {[compra].map((compra) => compra.orden_compra_id && (
@@ -411,21 +427,45 @@ function CantidadMini({ nombre, valor, unidad }: { nombre: string; valor: number
   return <div className="rounded-md bg-superficie-2 px-2 py-1.5"><p className="text-texto-suave">{nombre}</p><p className="tabular mt-0.5 font-semibold text-texto">{cantidad(valor)} {unidad}</p></div>
 }
 
-function FormularioCompra({lineas,alTerminar}:{lineas:LineaAtencionMaterial[];alTerminar:()=>void}) {
+function FormularioCompra({lineas,proveedores,puedeRegistrarProveedor,alTerminar}:{lineas:LineaAtencionMaterial[];proveedores:ProveedorParaCompra[];puedeRegistrarProveedor:boolean;alTerminar:(mensaje?:string)=>void}) {
  const [id]=useState(()=>crypto.randomUUID())
  const [seleccionados,setSeleccionados]=useState<string[]>([])
- const {alEnviar,enviando,error}=useEnvio(crearOrdenCompra,alTerminar)
- return <form onSubmit={alEnviar} className="space-y-6">
+ // El que se registra desde aquí se suma a la lista sin esperar a que la
+ // pantalla se vuelva a cargar, y queda elegido.
+ const [nuevos,setNuevos]=useState<ProveedorParaCompra[]>([])
+ const [proveedorId,setProveedorId]=useState('')
+ const [condicion,setCondicion]=useState('CONTADO')
+ const [dias,setDias]=useState(0)
+ const [altaAbierta,setAltaAbierta]=useState(false)
+ const [avisoAlta,setAvisoAlta]=useState<string|null>(null)
+ const padron=useMemo(()=>{const vistos=new Set(proveedores.map(p=>p.id));return [...proveedores,...nuevos.filter(n=>!vistos.has(n.id))]},[proveedores,nuevos])
+ const {alEnviar,enviando,error}=useEnvio(crearOrdenCompra,(r)=>alTerminar(r.mensaje))
+ // Si la pantalla se refresca con la ventana abierta, una línea elegida que otra
+ // compra acaba de cubrir desaparece de la lista: deja de contar como elegida.
+ const elegidas=seleccionados.filter(id=>lineas.some(l=>l.detalle_id===id))
+ // Elegir el proveedor trae su pago habitual; se puede cambiar para esta compra.
+ function elegir(id:string){
+   setProveedorId(id)
+   const p=padron.find(x=>x.id===id)
+   if(p){setCondicion(p.condicion_pago);setDias(p.dias_credito)}
+ }
+ return <><form onSubmit={alEnviar} className="space-y-6">
    <input type="hidden" name="operacion_id" value={id}/>
    <div className="grid gap-4 sm:grid-cols-2">
-     <Campo etiqueta="Proveedor" htmlFor="oc-proveedor" requerido><Entrada id="oc-proveedor" name="proveedor" required minLength={2} maxLength={160}/></Campo>
+     <Campo etiqueta="Proveedor" htmlFor="oc-proveedor" requerido ayuda={padron.length===0?'El padrón está vacío: registra el primero.':undefined}>
+       <div className="flex gap-2">
+         <SeleccionBuscable id="oc-proveedor" name="proveedor_id" className="min-w-0 flex-1" requerido valor={proveedorId} onChange={elegir} marcador="Elige del padrón…" marcadorBusqueda="Razón social o RUC…" opciones={padron.map(p=>({valor:p.id,etiqueta:p.razon_social,detalle:`${p.numero_documento} · ${condicionDePago(p.condicion_pago,p.dias_credito)}`}))}/>
+         {puedeRegistrarProveedor&&<Boton type="button" variante="contorno" onClick={()=>{setAvisoAlta(null);setAltaAbierta(true)}}><Plus aria-hidden className="size-4"/>Nuevo</Boton>}
+       </div>
+       {avisoAlta&&<p role="status" className="text-xs text-exito">{avisoAlta}</p>}
+     </Campo>
      <Campo etiqueta="Número de orden de compra" htmlFor="oc-numero" requerido><Entrada id="oc-numero" name="referencia" required minLength={2} maxLength={100}/></Campo>
      <Campo etiqueta="Entrega estimada" htmlFor="oc-fecha"><Entrada id="oc-fecha" name="fecha_estimada" type="date"/></Campo>
      <Campo etiqueta="Moneda" htmlFor="oc-moneda"><Seleccion id="oc-moneda" name="moneda"><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion></Campo>
-     <Campo etiqueta="Pago" htmlFor="oc-pago"><Seleccion id="oc-pago" name="condicion"><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option></Seleccion></Campo>
-     <Campo etiqueta="Días de crédito" ayuda="0 para contado" htmlFor="oc-dias"><Entrada id="oc-dias" name="dias" type="number" min={0} max={365} defaultValue={0}/></Campo>
+     <Campo etiqueta="Pago" htmlFor="oc-pago"><Seleccion id="oc-pago" name="condicion" value={condicion} onChange={e=>{setCondicion(e.target.value);if(e.target.value==='CONTADO')setDias(0)}}><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option></Seleccion></Campo>
+     <Campo etiqueta="Días de crédito" ayuda="0 para contado" htmlFor="oc-dias"><Entrada id="oc-dias" name="dias" type="number" min={condicion==='CREDITO'?1:0} max={condicion==='CREDITO'?365:0} value={dias} onChange={e=>setDias(Number(e.target.value))}/></Campo>
    </div>
-   <fieldset className="space-y-3"><legend className="mb-3 font-semibold text-texto">Insumos pendientes · {seleccionados.length} seleccionados</legend>
+   <fieldset className="space-y-3"><legend className="mb-3 font-semibold text-texto">Insumos pendientes · {elegidas.length} seleccionados</legend>
      {lineas.map(l=>{const id=l.detalle_id??'';const seleccionado=seleccionados.includes(id);const faltante=Number(l.cantidad_solicitada)-Number(l.cantidad_stock??0)-Number(l.cantidad_comprada);return <div key={id} className="rounded-xl border border-borde p-4">
        <label className="flex min-h-11 items-center gap-3 text-sm font-medium text-texto"><input type="checkbox" name="detalle_id" value={id} checked={seleccionado} onChange={e=>setSeleccionados(e.target.checked?[...seleccionados,id]:seleccionados.filter(x=>x!==id))} className="size-5 accent-acento"/>{l.material}</label>
        <p className="ml-8 text-xs text-texto-suave">OT {l.numero_ot} · {NOMBRE_AREA[l.area_destino??'']} · Faltan {cantidad(faltante)} {l.unidad}</p>
@@ -435,8 +475,18 @@ function FormularioCompra({lineas,alTerminar}:{lineas:LineaAtencionMaterial[];al
      {lineas.length===0&&<p className="text-sm text-texto-suave">Almacén aún no derivó insumos pendientes de compra.</p>}
    </fieldset>
    {error&&<p role="alert" className="text-sm text-peligro">{error}</p>}
-   <Boton type="submit" cargando={enviando} disabled={!seleccionados.length}>Crear orden de compra</Boton>
+   <Boton type="submit" cargando={enviando} disabled={!elegidas.length||!proveedorId}>Crear orden de compra</Boton>
  </form>
+ <Ventana abierta={altaAbierta} alCerrar={()=>setAltaAbierta(false)} titulo="Nuevo proveedor" descripcion="Queda en el padrón y elegido para esta compra. Lo demás se completa en Proveedores." ancho="md">
+   <FormularioProveedor breve alTerminar={(creado,mensaje)=>{
+     setAltaAbierta(false)
+     if(!creado)return
+     setNuevos(n=>[...n.filter(x=>x.id!==creado.id),creado])
+     setProveedorId(creado.id);setCondicion(creado.condicion_pago);setDias(creado.dias_credito)
+     setAvisoAlta(mensaje??null)
+   }}/>
+ </Ventana>
+ </>
 }
 
 function FormularioRecepcion({ compra, clave }: { compra: CompraMaterialPendiente; clave: string | undefined }) {

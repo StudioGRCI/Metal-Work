@@ -1,4 +1,7 @@
 begin;
+-- Desde el padrón (migración 20261012100000) la compra elige su proveedor.
+insert into public.proveedores(id,numero_documento,razon_social) values(gen_random_uuid(),'20100047218','PROVEEDOR DE PRUEBA') on conflict (tipo_documento,numero_documento) do update set activo=true;
+select set_config('prueba.proveedor',(select id::text from public.proveedores where tipo_documento='RUC' and numero_documento='20100047218'),true);
 select set_config('prueba.detalle',(select d.id::text from public.requerimiento_material_detalles d join public.ot_materiales om on om.id=d.ot_material_id join public.ordenes_trabajo o on o.id=om.orden_id where o.estado::text<>'ANULADA' and d.aprobacion_diseno='APROBADO' limit 1),true);
 select set_config('prueba.material',(select om.material_id::text from public.requerimiento_material_detalles d join public.ot_materiales om on om.id=d.ot_material_id where d.id=current_setting('prueba.detalle')::uuid),true);
 select set_config('prueba.ingreso',gen_random_uuid()::text,true);
@@ -33,10 +36,10 @@ update public.requerimiento_material_detalles d set decision_almacen='COMPRA',ca
 set local role authenticated;
 do $$ declare v_id uuid:=gen_random_uuid(); v_json jsonb; begin
  v_json:=jsonb_build_array(jsonb_build_object('id',current_setting('prueba.detalle'),'cantidad',1,'precio',5));
- perform public.crear_compra_agrupada(v_id,'Proveedor de prueba',v_id::text,v_json,null,'CONTADO',0,'PEN');
- if public.crear_compra_agrupada(v_id,'Proveedor de prueba',v_id::text,v_json,null,'CONTADO',0,'PEN')<>v_id then raise exception 'FAIL: compra duplicada'; end if;
+ perform public.emitir_compra_agrupada(v_id,current_setting('prueba.proveedor')::uuid,v_id::text,v_json,null,'CONTADO',0,'PEN');
+ if public.emitir_compra_agrupada(v_id,current_setting('prueba.proveedor')::uuid,v_id::text,v_json,null,'CONTADO',0,'PEN')<>v_id then raise exception 'FAIL: compra duplicada'; end if;
  begin
-   perform public.crear_compra_agrupada(gen_random_uuid(),'Proveedor de prueba',gen_random_uuid()::text,jsonb_build_array(jsonb_build_object('id',current_setting('prueba.detalle'),'cantidad',2,'precio',5)),null,'CONTADO',0,'PEN');
+   perform public.emitir_compra_agrupada(gen_random_uuid(),current_setting('prueba.proveedor')::uuid,gen_random_uuid()::text,jsonb_build_array(jsonb_build_object('id',current_setting('prueba.detalle'),'cantidad',2,'precio',5)),null,'CONTADO',0,'PEN');
    raise exception 'FAIL: compró parte reservada';
  exception when others then if sqlerrm like 'FAIL:%' then raise; end if; if sqlerrm not like 'La cantidad excede%' then raise; end if; end;
 end $$;

@@ -3,6 +3,7 @@ import 'server-only'
 import ExcelJS from 'exceljs'
 
 import type { FilaKardex } from '@/lib/datos/kardex'
+import { FILA_ENCABEZADO_CONTEO } from '@/lib/dominio/conteo-inicial'
 import { MOVIMIENTO_KARDEX, ORIGEN_KARDEX } from '@/lib/dominio/almacen'
 
 const AZUL = 'FF13467F'
@@ -346,5 +347,103 @@ export async function generarKardexExcel({ filas, filtrosTexto, porMaterial, tru
     total.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRIS } } })
   }
   if (filas.length === 0) hoja.getCell(5, 1).value = 'Ningún movimiento con esos filtros.'
+  return Buffer.from(await libro.xlsx.writeBuffer())
+}
+
+// ------------------------------------------------------------ conteo inicial
+
+export type MaterialDeConteo = { codigo: string; descripcion: string; unidad: string | null; saldo: number }
+
+/**
+ * El formato del conteo inicial: todo el catálogo activo, una fila por
+ * material, con el saldo que el sistema tiene hoy. Se imprime, se cuenta el
+ * anaquel y se anota la cantidad; lo que no se contó se deja en blanco.
+ */
+export async function generarConteoInicial({ materiales, generadoEn, generadoPor }: {
+  materiales: MaterialDeConteo[]
+  generadoEn: Date
+  generadoPor: string
+}): Promise<Buffer> {
+  const libro = new ExcelJS.Workbook()
+  libro.creator = 'Metal Work'
+  libro.created = generadoEn
+  const hoy = horaDeLima(generadoEn)
+  const fechaTexto = `${String(hoy.getUTCDate()).padStart(2, '0')}/${String(hoy.getUTCMonth() + 1).padStart(2, '0')}/${hoy.getUTCFullYear()}`
+
+  const guia = libro.addWorksheet('Cómo llenar', { properties: { tabColor: { argb: ROJO } } })
+  guia.getColumn(1).width = 6
+  guia.getColumn(2).width = 110
+  titulo(guia, 'Conteo inicial del almacén', `Descargado el ${fechaTexto} por ${generadoPor}. Es el inventario con el que el almacén arranca en el sistema.`, 2)
+  const pasos = [
+    'Imprime la hoja «Conteo» o llévala en la tableta: trae todo el catálogo activo de Almacén, ordenado por código.',
+    'Cuenta cada material en el anaquel y anota lo que hay en «Cantidad contada», en la unidad de la columna «Unidad».',
+    'Si no hay nada de un material, escribe 0. Si no lo contaste, deja la celda en blanco: ese material no se toca.',
+    'El precio unitario es opcional y sin IGV. Sirve para valorizar el saldo inicial; si no lo sabes, Logística lo fija después en Valorización.',
+    'Al terminar: Kardex de Almacén → «Conteo inicial» → indica la fecha del conteo y carga este archivo. Revisa lo que se va a registrar y confirma.',
+    'Un material sin saldo en el sistema entra como saldo inicial. Uno que ya tiene saldo queda como ajuste de conteo por la diferencia, igual que el conteo físico.',
+    'Cargar el mismo archivo otra vez no duplica nada.',
+    'No cambies los encabezados ni el nombre de la hoja: el sistema los busca por su nombre.',
+  ]
+  pasos.forEach((paso, i) => {
+    const fila = guia.getRow(4 + i)
+    fila.getCell(1).value = i + 1
+    fila.getCell(1).font = { bold: true, color: { argb: ROJO }, size: 12 }
+    fila.getCell(1).alignment = { vertical: 'top', horizontal: 'center' }
+    fila.getCell(2).value = paso
+    fila.getCell(2).alignment = { wrapText: true, vertical: 'top' }
+    fila.getCell(2).font = { size: 12 }
+    fila.height = 34
+  })
+
+  const H = FILA_ENCABEZADO_CONTEO
+  const columnas = [
+    { titulo: 'Código', ancho: 18 },
+    { titulo: 'Material', ancho: 50 },
+    { titulo: 'Unidad', ancho: 9 },
+    { titulo: `Saldo en el sistema al ${fechaTexto}`, ancho: 16, formato: '#,##0.###' },
+    { titulo: 'Cantidad contada', ancho: 14, formato: '#,##0.###' },
+    { titulo: 'Precio unitario sin IGV (opcional)', ancho: 16, formato: '#,##0.00##' },
+    { titulo: 'Moneda', ancho: 10 },
+  ]
+  const hoja = libro.addWorksheet('Conteo', {
+    properties: { tabColor: { argb: AZUL } },
+    views: [{ state: 'frozen', ySplit: H, xSplit: 0 }],
+    pageSetup: { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9, printTitlesRow: `${H}:${H}` },
+  })
+  titulo(hoja, 'Conteo inicial del almacén', 'Anota la cantidad contada de cada material. En blanco: no se contó. Las columnas grises son del sistema.', columnas.length)
+  columnas.forEach((c, i) => {
+    hoja.getColumn(i + 1).width = c.ancho
+    hoja.getCell(H, i + 1).value = c.titulo
+  })
+  encabezado(hoja.getRow(H))
+  materiales.forEach((m, i) => {
+    const fila = hoja.getRow(H + 1 + i)
+    fila.values = [m.codigo, m.descripcion, m.unidad ?? '', m.saldo, null, null, null]
+    columnas.forEach((c, j) => {
+      const celda = fila.getCell(j + 1)
+      borde(celda)
+      if (c.formato) celda.numFmt = c.formato
+      if (j <= 3) {
+        celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRIS } }
+        celda.font = { color: { argb: 'FF374151' } }
+      }
+    })
+  })
+  const ultima = H + Math.max(1, materiales.length)
+  validar(hoja, `E${H + 1}:E${ultima}`, {
+    type: 'decimal', operator: 'greaterThanOrEqual', allowBlank: true, formulae: [0],
+    showErrorMessage: true, errorTitle: 'Cantidad contada', error: 'Escribe la cantidad contada, de 0 en adelante. En blanco si no se contó.',
+  })
+  validar(hoja, `F${H + 1}:F${ultima}`, {
+    type: 'decimal', operator: 'greaterThanOrEqual', allowBlank: true, formulae: [0],
+    showErrorMessage: true, errorTitle: 'Precio', error: 'El precio no puede ser negativo. Déjalo vacío si no lo sabes.',
+  })
+  validar(hoja, `G${H + 1}:G${ultima}`, {
+    type: 'list', allowBlank: true, formulae: ['"Soles,Dólares"'],
+    showErrorMessage: true, errorTitle: 'Moneda', error: 'Elige Soles o Dólares. Vacío cuenta como soles.',
+  })
+  hoja.autoFilter = { from: `A${H}`, to: `G${ultima}` }
+
+  libro.views = [{ x: 0, y: 0, width: 20000, height: 12000, firstSheet: 0, activeTab: 1, visibility: 'visible' }]
   return Buffer.from(await libro.xlsx.writeBuffer())
 }

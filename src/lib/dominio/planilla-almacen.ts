@@ -119,3 +119,5 @@ export function leerHoja(hoja: 'Ingresos' | 'Salidas', filas: Celda[][]): FilaLe
   })
   return salida
 }
+
+export { numero as numeroDeCelda, texto as textoDeCelda }
