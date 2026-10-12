@@ -272,3 +272,6 @@ revoke execute on function public.crear_compra_agrupada(uuid, text, text, jsonb,
 -- pantalla la usa desde que la compra se agrupa, y dejarla abierta sería la
 -- puerta trasera del proveedor escrito a mano.
 revoke execute on function public.crear_orden_compra_material(uuid, uuid, text, text, jsonb, date) from authenticated;
+-- Ni su envoltura con condición de pago: es security definer y llama a la de
+-- arriba como dueña, así que cerrar solo aquella no la cierra.
+revoke execute on function public.crear_orden_compra_material_con_pago(uuid, uuid, text, text, jsonb, date, text, integer, text) from authenticated;

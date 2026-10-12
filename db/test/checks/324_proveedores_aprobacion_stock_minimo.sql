@@ -133,6 +133,10 @@ select test.debe_fallar(
   format($q$select public.crear_compra_agrupada(gen_random_uuid(), 'ESCRITO A MANO', 'OC-X', '[{"id":"%s","cantidad":1,"precio":1}]'::jsonb, null, 'CONTADO', 0, 'PEN')$q$,
          current_setting('prueba.det1')),
   'la aplicación ya no puede emitir una compra con el proveedor escrito a mano', 'permission denied');
+select test.afirmar(
+  not has_function_privilege('authenticated', 'public.crear_orden_compra_material(uuid, uuid, text, text, jsonb, date)', 'execute')
+  and not has_function_privilege('authenticated', 'public.crear_orden_compra_material_con_pago(uuid, uuid, text, text, jsonb, date, text, integer, text)', 'execute'),
+  'tampoco por las versiones viejas de la compra, con o sin condición de pago');
 
 select set_config('prueba.oc1', gen_random_uuid()::text, true);
 select public.emitir_compra_agrupada(current_setting('prueba.oc1')::uuid, current_setting('prueba.proveedor')::uuid,
