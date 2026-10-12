@@ -1,6 +1,7 @@
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { TableroMateriales } from '@/app/(app)/materiales/atencion/tablero'
 import { cargarAtencionMateriales } from '@/lib/datos/atencion-materiales'
+import { proveedoresParaCompra } from '@/lib/datos/proveedores'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 
 export async function AtencionMaterialesDeOrden({ ordenId, perfil }: { ordenId: string; perfil: PerfilSesion }) {
@@ -15,7 +16,10 @@ export async function AtencionMaterialesDeOrden({ ordenId, perfil }: { ordenId: 
   }
   if (!permisos.verRequerimientos) return null
 
-  const datos = await cargarAtencionMateriales(permisos, ordenId)
+  const [datos, proveedores] = await Promise.all([
+    cargarAtencionMateriales(permisos, ordenId),
+    permisos.crearCompra ? proveedoresParaCompra() : Promise.resolve([]),
+  ])
   const clavesCompra = Object.fromEntries(
     [...new Set(datos.lineas.map((linea) => linea.requerimiento_id).filter((id): id is string => Boolean(id)))]
       .map((id) => [id, crypto.randomUUID()]),
@@ -55,6 +59,8 @@ export async function AtencionMaterialesDeOrden({ ordenId, perfil }: { ordenId: 
       clavesRecepcion={clavesRecepcion}
       clavesDespacho={clavesDespacho}
       clavesDocumento={clavesDocumento}
+      proveedores={proveedores}
+      puedeRegistrarProveedor={puede(perfil, 'proveedores.editar')}
     />}
   </section>
 }

@@ -9,16 +9,18 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarAtencionMateriales } from '@/lib/datos/atencion-materiales'
-import { cargarKardex, FILAS_POR_PAGINA, filtrosDeKardex, materialesDelKardex, unidadesParaSalida } from '@/lib/datos/kardex'
+import { cargarKardex, FILAS_POR_PAGINA, filtrosDeKardex, materialesDelKardex, minimosDeStock, unidadesParaSalida } from '@/lib/datos/kardex'
 import { MOVIMIENTO_KARDEX, ORIGEN_KARDEX } from '@/lib/dominio/almacen'
 import { cantidad, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 import { ConteoFisico } from './conteo'
+import { ConteoInicial } from './conteo-inicial'
 import { NuevoIngreso } from './ingreso'
 import { CargarPlanilla } from './planilla'
 import { NuevaSalida } from './salida'
+import { FijarStockMinimo } from './stock-minimo'
 
 export const metadata = { title: 'Kardex de Almacén' }
 
@@ -45,7 +47,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   const puedeIngreso = puede(perfil, 'almacen.recibir')
   const db = await createClient()
 
-  const [kardex, materiales, unidades, catalogo, entregas, unidadesMedida] = await Promise.all([
+  const [kardex, materiales, unidades, catalogo, entregas, minimos, unidadesMedida] = await Promise.all([
     cargarKardex(filtros),
     materialesDelKardex(),
     puedeSalida ? unidadesParaSalida() : Promise.resolve([]),
@@ -57,6 +59,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
       ? db.from('v_kardex_almacen').select('id,material,unidad_medida,salida,codigo_unidad,fecha')
           .in('movimiento', ['DESPACHO', 'SALIDA']).order('fecha', { ascending: false }).limit(100)
       : Promise.resolve({ data: [], error: null }),
+    minimosDeStock(),
     // Un material escrito a mano entra con la unidad que se elija.
     puedeIngreso
       ? db.from('unidades_medida').select('id,codigo,nombre').eq('activo', true).order('nombre')
@@ -68,6 +71,11 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   const { filas, total, cronologico } = kardex
   const saldoPorMaterial = new Map(materiales.map((m) => [m.material_id, m.existencia]))
   const elegido = filtros.material ? materiales.find((m) => m.material_id === filtros.material) : undefined
+  const minimoElegido = elegido ? minimos.get(elegido.material_id) ?? null : null
+  // Los que están por debajo de su mínimo, el más corto primero (en proporción).
+  const bajoMinimo = materiales
+    .filter((m) => minimos.has(m.material_id) && m.existencia < (minimos.get(m.material_id) ?? 0))
+    .sort((a, b) => a.existencia / (minimos.get(a.material_id) || 1) - b.existencia / (minimos.get(b.material_id) || 1))
   const paginas = Math.max(1, Math.ceil(total / FILAS_POR_PAGINA))
   const entradas = filas.reduce((s, f) => s + Number(f.entrada ?? 0), 0)
   const salidas = filas.reduce((s, f) => s + Number(f.salida ?? 0), 0)
@@ -96,6 +104,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                 }))}
               />
             )}
+            {puedeIngreso && <ConteoInicial />}
             {puedeIngreso && catalogo && (
               <ConteoFisico materiales={catalogo.catalogoAlmacen.map((m) => ({
                 ...m, saldo: saldoPorMaterial.get(m.id) ?? 0,
@@ -168,13 +177,48 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
         </TarjetaCuerpo>
       </Tarjeta>
 
+      {!elegido && bajoMinimo.length > 0 && (
+        <Tarjeta className="mb-4">
+          <TarjetaCabecera
+            titulo={bajoMinimo.length === 1 ? '1 material bajo su stock mínimo' : `${bajoMinimo.length} materiales bajo su stock mínimo`}
+            descripcion="Almacén y Logística recibieron el aviso al cruzar la línea. Elige uno para ver su ficha."
+            acciones={<Insignia tono="peligro">Reponer</Insignia>}
+          />
+          <TarjetaCuerpo>
+            <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {bajoMinimo.slice(0, 30).map((m) => (
+                <li key={m.material_id} className="rounded-[var(--radius-base)] border border-borde px-3 py-2">
+                  <Link href={`/almacen/kardex?material=${m.material_id}`} className="line-clamp-1 text-sm font-medium text-acento hover:underline">{m.descripcion}</Link>
+                  <p className="tabular text-xs text-texto-suave">
+                    <span className="font-mono">{m.codigo}</span> · quedan <span className="font-semibold text-peligro">{cantidad(m.existencia)}</span> de un mínimo de {cantidad(minimos.get(m.material_id))} {m.unidad ?? ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+            {bajoMinimo.length > 30 && <p className="mt-2 text-xs text-texto-suave">Y {bajoMinimo.length - 30} más.</p>}
+          </TarjetaCuerpo>
+        </Tarjeta>
+      )}
+
       {elegido && (
-        <dl className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Cifra etiqueta={`Saldo en almacén (${elegido.unidad ?? 's/u'})`} valor={cantidad(elegido.existencia)} />
-          <Cifra etiqueta="Libre para salidas" valor={cantidad(elegido.disponible)} acento />
-          <Cifra etiqueta={total > filas.length ? 'Entradas en lo mostrado' : 'Entradas del periodo'} valor={cantidad(entradas)} />
-          <Cifra etiqueta={total > filas.length ? 'Egresos en lo mostrado' : 'Egresos del periodo'} valor={cantidad(salidas)} />
-        </dl>
+        <>
+          <dl className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Cifra etiqueta={`Saldo en almacén (${elegido.unidad ?? 's/u'})`} valor={cantidad(elegido.existencia)}
+              alerta={minimoElegido !== null && elegido.existencia < minimoElegido ? `Bajo el mínimo de ${cantidad(minimoElegido)}` : undefined} />
+            <Cifra etiqueta="Libre para salidas" valor={cantidad(elegido.disponible)} acento />
+            <Cifra etiqueta={total > filas.length ? 'Entradas en lo mostrado' : 'Entradas del periodo'} valor={cantidad(entradas)} />
+            <Cifra etiqueta={total > filas.length ? 'Egresos en lo mostrado' : 'Egresos del periodo'} valor={cantidad(salidas)} />
+          </dl>
+          {puedeIngreso ? (
+            <div className="mb-4">
+              <FijarStockMinimo key={`${elegido.material_id}-${minimoElegido}`} materialId={elegido.material_id} minimo={minimoElegido} unidad={elegido.unidad} />
+            </div>
+          ) : (
+            <p className="mb-4 text-sm text-texto-suave">
+              {minimoElegido === null ? 'Sin stock mínimo: no avisa cuando baja.' : `Stock mínimo: ${cantidad(minimoElegido)} ${elegido.unidad ?? ''}.`}
+            </p>
+          )}
+        </>
       )}
 
       <Tarjeta className="overflow-hidden">
@@ -276,11 +320,12 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   )
 }
 
-function Cifra({ etiqueta, valor, acento }: { etiqueta: string; valor: string; acento?: boolean }) {
+function Cifra({ etiqueta, valor, acento, alerta }: { etiqueta: string; valor: string; acento?: boolean; alerta?: string }) {
   return (
-    <div className="rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2">
+    <div className={`rounded-[var(--radius-base)] border bg-superficie px-3 py-2 ${alerta ? 'border-peligro' : 'border-borde'}`}>
       <dt className="text-[11px] text-texto-suave">{etiqueta}</dt>
-      <dd className={`tabular mt-1 text-lg font-semibold ${acento ? 'text-acento' : 'text-texto'}`}>{valor}</dd>
+      <dd className={`tabular mt-1 text-lg font-semibold ${alerta ? 'text-peligro' : acento ? 'text-acento' : 'text-texto'}`}>{valor}</dd>
+      {alerta && <dd className="text-[11px] font-medium text-peligro">{alerta}</dd>}
     </div>
   )
 }

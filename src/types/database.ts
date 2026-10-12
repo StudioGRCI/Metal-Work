@@ -1741,6 +1741,129 @@ export type Database = {
           }
         ]
       }
+      ingresos_pendientes_almacen: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          orden_compra_detalle_id: string
+          material_id: string
+          requerimiento_detalle_id: string | null
+          orden_id: string | null
+          cantidad: number
+          precio_unitario: number | null
+          moneda: string | null
+          dejado_por: string
+          dejado_en: string
+          estado: string
+          cantidad_validada: number | null
+          movimiento_id: string | null
+          validado_por: string | null
+          validado_en: string | null
+          observacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id: string
+          orden_compra_detalle_id: string
+          material_id: string
+          requerimiento_detalle_id?: string | null
+          orden_id?: string | null
+          cantidad: number
+          precio_unitario?: number | null
+          moneda?: string | null
+          dejado_por: string
+          dejado_en: string
+          estado?: string
+          cantidad_validada?: number | null
+          movimiento_id?: string | null
+          validado_por?: string | null
+          validado_en?: string | null
+          observacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          orden_compra_detalle_id?: string
+          material_id?: string
+          requerimiento_detalle_id?: string | null
+          orden_id?: string | null
+          cantidad?: number
+          precio_unitario?: number | null
+          moneda?: string | null
+          dejado_por?: string
+          dejado_en?: string
+          estado?: string
+          cantidad_validada?: number | null
+          movimiento_id?: string | null
+          validado_por?: string | null
+          validado_en?: string | null
+          observacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingresos_pendientes_almacen_dejado_por_fkey"
+            columns: ["dejado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingresos_pendientes_almacen_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingresos_pendientes_almacen_movimiento_id_fkey"
+            columns: ["movimiento_id"]
+            isOneToOne: true
+            referencedRelation: "movimientos_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingresos_pendientes_almacen_orden_compra_detalle_id_fkey"
+            columns: ["orden_compra_detalle_id"]
+            isOneToOne: true
+            referencedRelation: "orden_compra_material_detalles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingresos_pendientes_almacen_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingresos_pendientes_almacen_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingresos_pendientes_almacen_requerimiento_detalle_id_fkey"
+            columns: ["requerimiento_detalle_id"]
+            isOneToOne: false
+            referencedRelation: "requerimiento_material_detalles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingresos_pendientes_almacen_validado_por_fkey"
+            columns: ["validado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       liberaciones_tesoreria: {
         Row: {
           id: string
@@ -2112,32 +2235,35 @@ export type Database = {
         Row: {
           id: string
           orden_compra_id: string
-          requerimiento_id: string
-          requerimiento_detalle_id: string
+          requerimiento_id: string | null
+          requerimiento_detalle_id: string | null
           cantidad: number
           creado_en: string
           actualizado_en: string
           precio_unitario: number | null
+          material_id: string | null
         }
         Insert: {
           id?: string
           orden_compra_id: string
-          requerimiento_id: string
-          requerimiento_detalle_id: string
+          requerimiento_id?: string | null
+          requerimiento_detalle_id?: string | null
           cantidad: number
           creado_en?: string
           actualizado_en?: string
           precio_unitario?: number | null
+          material_id?: string | null
         }
         Update: {
           id?: string
           orden_compra_id?: string
-          requerimiento_id?: string
-          requerimiento_detalle_id?: string
+          requerimiento_id?: string | null
+          requerimiento_detalle_id?: string | null
           cantidad?: number
           creado_en?: string
           actualizado_en?: string
           precio_unitario?: number | null
+          material_id?: string | null
         }
         Relationships: [
           {
@@ -2146,6 +2272,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "requerimiento_material_detalles"
             referencedColumns: ["id", "requerimiento_id"]
+          },
+          {
+            foreignKeyName: "orden_compra_material_detalles_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "orden_compra_material_detalles_orden_compra_id_fkey"
@@ -2173,7 +2306,7 @@ export type Database = {
       ordenes_compra_materiales: {
         Row: {
           id: string
-          requerimiento_id: string
+          requerimiento_id: string | null
           proveedor: string
           referencia: string
           fecha_estimada: string | null
@@ -2185,10 +2318,31 @@ export type Database = {
           condicion_pago: string
           dias_credito: number
           moneda: string
+          proveedor_id: string | null
+          aprobacion: string
+          monto_pen: number | null
+          aprobacion_pedida_en: string | null
+          aprobado_por: string | null
+          aprobado_en: string | null
+          monto_aprobado_pen: number | null
+          rechazado_por: string | null
+          rechazado_en: string | null
+          motivo_rechazo: string | null
+          lineas_rechazadas: Json | null
+          origen: string
+          numero: string | null
+          motivo: string | null
+          recojo: string | null
+          recojo_pedido_en: string | null
+          recojo_pedido_por: string | null
+          recogido_en: string | null
+          recogido_por: string | null
+          dejado_en: string | null
+          dejado_por: string | null
         }
         Insert: {
           id?: string
-          requerimiento_id: string
+          requerimiento_id?: string | null
           proveedor: string
           referencia: string
           fecha_estimada?: string | null
@@ -2200,10 +2354,31 @@ export type Database = {
           condicion_pago?: string
           dias_credito?: number
           moneda?: string
+          proveedor_id?: string | null
+          aprobacion?: string
+          monto_pen?: number | null
+          aprobacion_pedida_en?: string | null
+          aprobado_por?: string | null
+          aprobado_en?: string | null
+          monto_aprobado_pen?: number | null
+          rechazado_por?: string | null
+          rechazado_en?: string | null
+          motivo_rechazo?: string | null
+          lineas_rechazadas?: Json | null
+          origen?: string
+          numero?: string | null
+          motivo?: string | null
+          recojo?: string | null
+          recojo_pedido_en?: string | null
+          recojo_pedido_por?: string | null
+          recogido_en?: string | null
+          recogido_por?: string | null
+          dejado_en?: string | null
+          dejado_por?: string | null
         }
         Update: {
           id?: string
-          requerimiento_id?: string
+          requerimiento_id?: string | null
           proveedor?: string
           referencia?: string
           fecha_estimada?: string | null
@@ -2215,11 +2390,46 @@ export type Database = {
           condicion_pago?: string
           dias_credito?: number
           moneda?: string
+          proveedor_id?: string | null
+          aprobacion?: string
+          monto_pen?: number | null
+          aprobacion_pedida_en?: string | null
+          aprobado_por?: string | null
+          aprobado_en?: string | null
+          monto_aprobado_pen?: number | null
+          rechazado_por?: string | null
+          rechazado_en?: string | null
+          motivo_rechazo?: string | null
+          lineas_rechazadas?: Json | null
+          origen?: string
+          numero?: string | null
+          motivo?: string | null
+          recojo?: string | null
+          recojo_pedido_en?: string | null
+          recojo_pedido_por?: string | null
+          recogido_en?: string | null
+          recogido_por?: string | null
+          dejado_en?: string | null
+          dejado_por?: string | null
         }
         Relationships: [
           {
+            foreignKeyName: "ordenes_compra_materiales_aprobado_por_fkey"
+            columns: ["aprobado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ordenes_compra_materiales_creado_por_fkey"
             columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_materiales_dejado_por_fkey"
+            columns: ["dejado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -2232,10 +2442,200 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "ordenes_compra_materiales_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_materiales_rechazado_por_fkey"
+            columns: ["rechazado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_materiales_recogido_por_fkey"
+            columns: ["recogido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_materiales_recojo_pedido_por_fkey"
+            columns: ["recojo_pedido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ordenes_compra_materiales_requerimiento_id_fkey"
             columns: ["requerimiento_id"]
             isOneToOne: false
             referencedRelation: "requerimientos_materiales"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ordenes_servicio: {
+        Row: {
+          id: string
+          numero: string
+          proveedor_id: string
+          proveedor: string
+          orden_id: string | null
+          area_id: string | null
+          descripcion: string
+          referencia: string | null
+          fecha_inicio: string | null
+          fecha_fin: string | null
+          moneda: string
+          monto: number
+          monto_pen: number | null
+          condicion_pago: string
+          dias_credito: number
+          aprobacion: string
+          aprobado_por: string | null
+          aprobado_en: string | null
+          rechazado_por: string | null
+          rechazado_en: string | null
+          motivo_rechazo: string | null
+          estado: string
+          iniciado_en: string | null
+          conformidad_por: string | null
+          conformidad_en: string | null
+          observacion_conformidad: string | null
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          proveedor_id: string
+          proveedor: string
+          orden_id?: string | null
+          area_id?: string | null
+          descripcion: string
+          referencia?: string | null
+          fecha_inicio?: string | null
+          fecha_fin?: string | null
+          moneda?: string
+          monto: number
+          monto_pen?: number | null
+          condicion_pago?: string
+          dias_credito?: number
+          aprobacion?: string
+          aprobado_por?: string | null
+          aprobado_en?: string | null
+          rechazado_por?: string | null
+          rechazado_en?: string | null
+          motivo_rechazo?: string | null
+          estado?: string
+          iniciado_en?: string | null
+          conformidad_por?: string | null
+          conformidad_en?: string | null
+          observacion_conformidad?: string | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          proveedor_id?: string
+          proveedor?: string
+          orden_id?: string | null
+          area_id?: string | null
+          descripcion?: string
+          referencia?: string | null
+          fecha_inicio?: string | null
+          fecha_fin?: string | null
+          moneda?: string
+          monto?: number
+          monto_pen?: number | null
+          condicion_pago?: string
+          dias_credito?: number
+          aprobacion?: string
+          aprobado_por?: string | null
+          aprobado_en?: string | null
+          rechazado_por?: string | null
+          rechazado_en?: string | null
+          motivo_rechazo?: string | null
+          estado?: string
+          iniciado_en?: string | null
+          conformidad_por?: string | null
+          conformidad_en?: string | null
+          observacion_conformidad?: string | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ordenes_servicio_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_servicio_aprobado_por_fkey"
+            columns: ["aprobado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_servicio_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_servicio_conformidad_por_fkey"
+            columns: ["conformidad_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_servicio_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_servicio_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_servicio_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_servicio_rechazado_por_fkey"
+            columns: ["rechazado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -4738,6 +5138,74 @@ export type Database = {
           }
         ]
       }
+      proveedores: {
+        Row: {
+          id: string
+          tipo_documento: Database["public"]["Enums"]["tipo_documento_cliente"]
+          numero_documento: string
+          razon_social: string
+          nombre_comercial: string | null
+          rubro: string | null
+          contacto: string | null
+          telefono: string | null
+          correo: string | null
+          direccion: string | null
+          condicion_pago: string
+          dias_credito: number
+          observaciones: string | null
+          activo: boolean
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          tipo_documento?: Database["public"]["Enums"]["tipo_documento_cliente"]
+          numero_documento: string
+          razon_social: string
+          nombre_comercial?: string | null
+          rubro?: string | null
+          contacto?: string | null
+          telefono?: string | null
+          correo?: string | null
+          direccion?: string | null
+          condicion_pago?: string
+          dias_credito?: number
+          observaciones?: string | null
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          tipo_documento?: Database["public"]["Enums"]["tipo_documento_cliente"]
+          numero_documento?: string
+          razon_social?: string
+          nombre_comercial?: string | null
+          rubro?: string | null
+          contacto?: string | null
+          telefono?: string | null
+          correo?: string | null
+          direccion?: string | null
+          condicion_pago?: string
+          dias_credito?: number
+          observaciones?: string | null
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proveedores_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       pruebas_cuentas: {
         Row: {
           usuario_id: string
@@ -4837,6 +5305,54 @@ export type Database = {
           actualizado_en?: string
         }
         Relationships: []
+      }
+      regla_aprobacion_compras: {
+        Row: {
+          id: string
+          unica: boolean
+          activa: boolean
+          monto_desde: number
+          rol_aprobador_id: string
+          actualizado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          unica?: boolean
+          activa?: boolean
+          monto_desde?: number
+          rol_aprobador_id: string
+          actualizado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          unica?: boolean
+          activa?: boolean
+          monto_desde?: number
+          rol_aprobador_id?: string
+          actualizado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "regla_aprobacion_compras_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "regla_aprobacion_compras_rol_aprobador_id_fkey"
+            columns: ["rol_aprobador_id"]
+            isOneToOne: false
+            referencedRelation: "roles"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       requerimiento_material_detalles: {
         Row: {
@@ -5712,6 +6228,7 @@ export type Database = {
           fecha_vencimiento: string | null
           total_estimado: number | null
           moneda: string | null
+          numero: string | null
         }
         Relationships: []
       }
@@ -6252,6 +6769,18 @@ export type Database = {
         }
         Returns: string
       }
+      aprobar_compra: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: string
+      }
+      aprobar_orden_servicio: {
+        Args: {
+          p_id: string | null
+        }
+        Returns: string
+      }
       archivo_plano_vinculado: {
         Args: {
           p_ruta: string | null
@@ -6277,6 +6806,14 @@ export type Database = {
           p_orden_id: string | null
         }
         Returns: number
+      }
+      avanzar_orden_servicio: {
+        Args: {
+          p_id: string | null
+          p_paso: string | null
+          p_nota: string | null
+        }
+        Returns: string
       }
       cambiar_clave_personal: {
         Args: {
@@ -6336,6 +6873,51 @@ export type Database = {
           p_cuenta: string | null
         }
         Returns: null
+      }
+      compras_para_aprobar: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          referencia: string | null
+          proveedor: string | null
+          proveedor_documento: string | null
+          moneda: string | null
+          monto: number | null
+          monto_pen: number | null
+          condicion_pago: string | null
+          dias_credito: number | null
+          fecha_estimada: string | null
+          aprobacion: string | null
+          pedida_en: string | null
+          creado_en: string | null
+          emitida_por: string | null
+          decidida_por: string | null
+          decidida_en: string | null
+          motivo_rechazo: string | null
+          ordenes: string[] | null
+          lineas: Json | null
+        }[]
+      }
+      compras_para_recojo: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          numero: string | null
+          referencia: string | null
+          origen: string | null
+          proveedor: string | null
+          proveedor_documento: string | null
+          proveedor_direccion: string | null
+          proveedor_telefono: string | null
+          proveedor_contacto: string | null
+          recojo: string | null
+          pedido_en: string | null
+          recogido_en: string | null
+          dejado_en: string | null
+          fecha_estimada: string | null
+          ordenes: string[] | null
+          lineas: Json | null
+        }[]
       }
       confirmar_igv_cotizacion: {
         Args: {
@@ -6536,6 +7118,34 @@ export type Database = {
           vinculos_ot: Json | null
         }[]
       }
+      documentos_por_aprobar: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          tipo: string | null
+          id: string | null
+          numero: string | null
+          referencia: string | null
+          origen: string | null
+          proveedor: string | null
+          proveedor_documento: string | null
+          moneda: string | null
+          monto: number | null
+          monto_pen: number | null
+          condicion_pago: string | null
+          dias_credito: number | null
+          fecha_estimada: string | null
+          aprobacion: string | null
+          pedida_en: string | null
+          emitida_por: string | null
+          decidida_por: string | null
+          decidida_en: string | null
+          motivo_rechazo: string | null
+          motivo: string | null
+          ordenes: string[] | null
+          unidades: string[] | null
+          lineas: Json | null
+        }[]
+      }
       editar_carroceria_ventas: {
         Args: {
           p_id: string | null
@@ -6576,6 +7186,33 @@ export type Database = {
         }
         Returns: string
       }
+      emitir_compra_agrupada: {
+        Args: {
+          p_id: string | null
+          p_proveedor_id: string | null
+          p_referencia: string | null
+          p_detalles: Json | null
+          p_fecha: string | null
+          p_condicion: string | null
+          p_dias: number | null
+          p_moneda: string | null
+        }
+        Returns: string
+      }
+      emitir_compra_directa: {
+        Args: {
+          p_id: string | null
+          p_proveedor_id: string | null
+          p_referencia: string | null
+          p_motivo: string | null
+          p_detalles: Json | null
+          p_fecha: string | null
+          p_condicion: string | null
+          p_dias: number | null
+          p_moneda: string | null
+        }
+        Returns: string
+      }
       emitir_orden_de_cotizacion: {
         Args: {
           p_cotizacion: string | null
@@ -6592,7 +7229,28 @@ export type Database = {
         }
         Returns: string
       }
+      emitir_orden_servicio: {
+        Args: {
+          p_id: string | null
+          p_proveedor_id: string | null
+          p_orden_id: string | null
+          p_area_id: string | null
+          p_descripcion: string | null
+          p_referencia: string | null
+          p_fecha_inicio: string | null
+          p_fecha_fin: string | null
+          p_moneda: string | null
+          p_monto: number | null
+          p_condicion: string | null
+          p_dias: number | null
+        }
+        Returns: string
+      }
       es_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      es_aprobador_compras: {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
@@ -6612,6 +7270,12 @@ export type Database = {
           p_fin_real?: string | null
         }
         Returns: Database["public"]["Enums"]["estado_plazo"]
+      }
+      evaluar_aprobacion_compra: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: string
       }
       exigir_permiso: {
         Args: {
@@ -6650,6 +7314,14 @@ export type Database = {
           p_motivo: string | null
         }
         Returns: null
+      }
+      fijar_regla_aprobacion_compras: {
+        Args: {
+          p_activa: boolean | null
+          p_monto_desde: number | null
+          p_rol_aprobador: string | null
+        }
+        Returns: string
       }
       fijar_stock_minimo: {
         Args: {
@@ -6737,7 +7409,25 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      mandar_compra_a_recojo: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: string
+      }
+      marcar_compra_dejada_almacen: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: string
+      }
       marcar_compra_entregada_almacen: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: string
+      }
+      marcar_compra_recogida: {
         Args: {
           p_compra: string | null
         }
@@ -6775,6 +7465,12 @@ export type Database = {
           moneda: string | null
           valorizado_en: string | null
         }[]
+      }
+      mensaje_compra_sin_aprobar: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: string
       }
       mi_rol: {
         Args: Record<PropertyKey, never>
@@ -6830,6 +7526,63 @@ export type Database = {
         }
         Returns: string
       }
+      ordenes_compra_listado: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          numero: string | null
+          referencia: string | null
+          origen: string | null
+          proveedor: string | null
+          proveedor_documento: string | null
+          moneda: string | null
+          monto: number | null
+          monto_pen: number | null
+          condicion_pago: string | null
+          dias_credito: number | null
+          fecha_estimada: string | null
+          aprobacion: string | null
+          motivo_rechazo: string | null
+          recojo: string | null
+          entregado_almacen_en: string | null
+          creado_en: string | null
+          emitida_por: string | null
+          motivo: string | null
+          ordenes: string[] | null
+          unidades: string[] | null
+          lineas: number | null
+          tiene_factura: boolean | null
+        }[]
+      }
+      ordenes_servicio_listado: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          numero: string | null
+          referencia: string | null
+          proveedor: string | null
+          proveedor_documento: string | null
+          orden: string | null
+          unidad: string | null
+          area: string | null
+          descripcion: string | null
+          fecha_inicio: string | null
+          fecha_fin: string | null
+          moneda: string | null
+          monto: number | null
+          monto_pen: number | null
+          condicion_pago: string | null
+          dias_credito: number | null
+          aprobacion: string | null
+          motivo_rechazo: string | null
+          estado: string | null
+          motivo_anulacion: string | null
+          observacion_conformidad: string | null
+          creado_en: string | null
+          emitida_por: string | null
+          atrasada: boolean | null
+        }[]
+      }
       ot_recalcular_avance: {
         Args: {
           p_orden_id: string | null
@@ -6864,6 +7617,15 @@ export type Database = {
           p_destino: Database["public"]["Enums"]["estado_ot"] | null
         }
         Returns: boolean
+      }
+      ots_para_logistica: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          numero: string | null
+          unidad: string | null
+          estado: string | null
+        }[]
       }
       pascua: {
         Args: {
@@ -7037,6 +7799,20 @@ export type Database = {
           p_etapa_id: string | null
         }
         Returns: null
+      }
+      rechazar_compra: {
+        Args: {
+          p_compra: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      rechazar_orden_servicio: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
       }
       recibir_version_plano: {
         Args: {
@@ -7258,6 +8034,12 @@ export type Database = {
         }
         Returns: string
       }
+      ruc_es_valido: {
+        Args: {
+          p_ruc: string | null
+        }
+        Returns: boolean
+      }
       saldo_material_interno: {
         Args: {
           p_material: string | null
@@ -7317,6 +8099,12 @@ export type Database = {
           p_codigo: string | null
         }
         Returns: boolean
+      }
+      tipo_cambio_venta: {
+        Args: {
+          p_fecha: string | null
+        }
+        Returns: number
       }
       transitar_informe_diseno: {
         Args: {

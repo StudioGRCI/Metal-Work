@@ -140,3 +140,21 @@ export async function unidadesParaSalida(): Promise<UnidadParaSalida[]> {
   if (error) throw new Error(`No se pudieron cargar las unidades: ${error.message}`)
   return data ?? []
 }
+
+/** El stock mínimo de cada material que lo tiene fijado. Los demás no avisan. */
+export async function minimosDeStock(): Promise<Map<string, number>> {
+  const db = await createClient()
+  const minimos = new Map<string, number>()
+  for (let desde = 0; ; desde += 1000) {
+    const { data, error } = await db.from('materiales')
+      .select('id,stock_minimo')
+      .not('stock_minimo', 'is', null)
+      .eq('activo', true)
+      .order('id')
+      .range(desde, desde + 999)
+    if (error) throw new Error(`No se pudieron cargar los stocks mínimos: ${error.message}`)
+    for (const m of data ?? []) if (m.stock_minimo !== null) minimos.set(m.id, Number(m.stock_minimo))
+    if (!data || data.length < 1000) break
+  }
+  return minimos
+}

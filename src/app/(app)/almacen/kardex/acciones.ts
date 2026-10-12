@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
 import { catalogoDeAlmacen } from '@/lib/datos/atencion-materiales'
 import { materialesDelKardex } from '@/lib/datos/kardex'
+import { leerHojaConteo, motivoConteoInicial, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
 import { leerHoja, type Celda, type FilaLeida } from '@/lib/dominio/planilla-almacen'
 import { cantidad, fechaHora, hoyLima, sumarDias } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
@@ -119,11 +120,34 @@ export type FilaPlanilla = {
 
 const MAX_FILAS_PLANILLA = 600
 
-/** Un identificador fijo por fila escrita: volver a cargar la misma planilla no duplica. */
-async function idDeFila(usuario: string, f: FilaLeida) {
-  const contenido = [usuario, f.hoja, f.fecha, f.hora ?? '', f.codigo.toUpperCase(), f.cantidad, f.origen, f.documento, f.precio ?? '', f.moneda, f.unidad, f.recibe].join('|')
+/** Un identificador fijo para un mismo contenido: volver a cargar el mismo archivo no duplica. */
+function uuidDe(contenido: string) {
   const hex = createHash('sha256').update(contenido).digest('hex')
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${((parseInt(hex[16], 16) & 3) | 8).toString(16)}${hex.slice(17, 20)}-${hex.slice(20, 32)}`
+}
+
+/** Un identificador fijo por fila escrita: volver a cargar la misma planilla no duplica. */
+async function idDeFila(usuario: string, f: FilaLeida) {
+  return uuidDe([usuario, f.hoja, f.fecha, f.hora ?? '', f.codigo.toUpperCase(), f.cantidad, f.origen, f.documento, f.precio ?? '', f.moneda, f.unidad, f.recibe].join('|'))
+}
+
+type Hojas = Awaited<ReturnType<typeof readXlsxFile>>
+
+/** Abre el Excel subido sin dejar que un archivo chico se expanda a cientos de MB. */
+async function abrirLibro(archivo: FormDataEntryValue | null, queEs: string): Promise<{ hojas: Hojas } | { error: string }> {
+  if (!(archivo instanceof File) || archivo.size === 0 || archivo.size > 8 * 1024 * 1024) {
+    return { error: `Elige ${queEs} en Excel (.xlsx) de hasta 8 MB.` }
+  }
+  try {
+    const bytes = new Uint8Array(await archivo.arrayBuffer())
+    if (bytes[0] !== 80 || bytes[1] !== 75) return { error: 'El archivo no es un Excel .xlsx. Guárdalo como «Libro de Excel».' }
+    let descomprimido = 0, entradas = 0
+    // Mirar el directorio del ZIP sin extraer: un XLSX chico no puede expandirse a cientos de MB.
+    unzipSync(bytes, { filter: (e) => { descomprimido += e.originalSize; entradas++; if (descomprimido > 60 * 1024 * 1024 || entradas > 3000) throw new Error('El archivo tiene demasiados datos.'); return false } })
+    return { hojas: await readXlsxFile(Buffer.from(bytes), { trim: false }) }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'No se pudo leer el archivo.' }
+  }
 }
 
 /**
@@ -137,18 +161,11 @@ export async function leerPlanillaAlmacen(_previo: unknown, datos: FormData): Pr
   const despacha = puede(perfil, 'almacen.despachar')
   if (!ingresa && !despacha) return { ok: false, error: 'Solo Almacén carga la planilla.' }
 
-  const archivo = datos.get('archivo')
-  if (!(archivo instanceof File) || archivo.size === 0 || archivo.size > 8 * 1024 * 1024) {
-    return { ok: false, error: 'Elige la planilla de Excel (.xlsx) de hasta 8 MB.' }
-  }
+  const abierto = await abrirLibro(datos.get('archivo'), 'la planilla')
+  if ('error' in abierto) return { ok: false, error: abierto.error }
   let leidas: FilaLeida[]
   try {
-    const bytes = new Uint8Array(await archivo.arrayBuffer())
-    if (bytes[0] !== 80 || bytes[1] !== 75) return { ok: false, error: 'El archivo no es un Excel .xlsx. Guárdalo como «Libro de Excel».' }
-    let descomprimido = 0, entradas = 0
-    // Mirar el directorio del ZIP sin extraer: un XLSX chico no puede expandirse a cientos de MB.
-    unzipSync(bytes, { filter: (e) => { descomprimido += e.originalSize; entradas++; if (descomprimido > 60 * 1024 * 1024 || entradas > 3000) throw new Error('La planilla tiene demasiados datos.'); return false } })
-    const libro = await readXlsxFile(Buffer.from(bytes), { trim: false })
+    const libro = abierto.hojas
     const ingresos = libro.find((h) => h.sheet === 'Ingresos')
     const salidas = libro.find((h) => h.sheet === 'Salidas')
     if (!ingresos || !salidas) {
@@ -302,4 +319,205 @@ export async function registrarFilaPlanilla(_previo: unknown, formulario: FormDa
   }
   revalidatePath('/almacen/kardex')
   return { ok: true }
+}
+
+// ------------------------------------------------------------ conteo inicial
+
+export type FilaConteo = {
+  id: string
+  fila: number
+  codigo: string
+  materialId: string | null
+  descripcion: string | null
+  unidadMedida: string | null
+  contado: number | null
+  /** Lo que el sistema tenía al revisar el archivo. */
+  saldo: number
+  precio: number | null
+  moneda: 'PEN' | 'USD'
+  /** Sin saldo en el sistema entra como saldo inicial; con saldo, como ajuste por la diferencia. */
+  via: 'SALDO_INICIAL' | 'AJUSTE'
+  estado: 'LISTA' | 'CARGADA' | 'SIN_CAMBIO' | 'ERROR'
+  errores: string[]
+  aviso: string | null
+}
+
+const MAX_FILAS_CONTEO = 5000
+
+/** Qué identificadores de la lista ya están en el kardex, como ingreso o como conteo. */
+async function yaEnElKardex(db: Awaited<ReturnType<typeof createClient>>, ids: string[]) {
+  const hallados = new Set<string>()
+  for (let i = 0; i < ids.length; i += 150) {
+    const tanda = ids.slice(i, i + 150)
+    const [movimientos, conteos] = await Promise.all([
+      db.from('movimientos_materiales').select('id').in('id', tanda),
+      db.from('conteos_inventario').select('id').in('id', tanda),
+    ])
+    if (movimientos.error || conteos.error) throw new Error('No se pudo revisar lo que ya está en el kardex. Vuelve a intentar.')
+    for (const m of [...(movimientos.data ?? []), ...(conteos.data ?? [])]) hallados.add(m.id)
+  }
+  return hallados
+}
+
+const esquemaFecha = z.iso.date('Indica la fecha del conteo.')
+
+/**
+ * Lee el formato del conteo inicial y lo contrasta con la base: material por
+ * código, filas repetidas, lo que ya se cargó y cómo entra cada fila. No
+ * registra nada.
+ */
+export async function leerConteoInicial(_previo: unknown, datos: FormData): Promise<ResultadoAccion<{ filas: FilaConteo[] }>> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'Solo Almacén carga el conteo inicial.' }
+
+  const fecha = esquemaFecha.safeParse(dato(datos, 'fecha'))
+  if (!fecha.success) return { ok: false, error: 'Indica la fecha en que se hizo el conteo.' }
+  const hoy = hoyLima()
+  if (fecha.data > hoy) return { ok: false, error: 'La fecha del conteo es posterior a hoy.' }
+  if (fecha.data < sumarDias(hoy, -31)) return { ok: false, error: 'El conteo es de hace más de 31 días: lo que pasó desde entonces ya movió los saldos. Vuelve a contar.' }
+
+  const abierto = await abrirLibro(datos.get('archivo'), 'el formato del conteo')
+  if ('error' in abierto) return { ok: false, error: abierto.error }
+  const hoja = abierto.hojas.find((h) => h.sheet === 'Conteo')
+  if (!hoja) return { ok: false, error: 'No es el formato del conteo inicial: falta la hoja «Conteo». Descárgalo de nuevo desde el kardex.' }
+  let leidas
+  try {
+    leidas = leerHojaConteo(hoja.data as unknown as Celda[][])
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'No se pudo leer el conteo.' }
+  }
+  if (leidas.length === 0) return { ok: false, error: 'No hay cantidades contadas: anótalas en la columna «Cantidad contada».' }
+  if (leidas.length > MAX_FILAS_CONTEO) return { ok: false, error: `El conteo tiene ${leidas.length} filas; carga hasta ${MAX_FILAS_CONTEO} por vez.` }
+
+  const db = await createClient()
+  const [catalogo, existencias] = await Promise.all([catalogoDeAlmacen(), materialesDelKardex()])
+  const materialPorCodigo = new Map(catalogo.map((m) => [m.codigo.trim().toUpperCase(), m]))
+  const saldoDe = new Map(existencias.map((m) => [m.material_id, m.existencia]))
+  const ids = leidas.map((f) => uuidDe([perfil.id, 'CONTEO_INICIAL', fecha.data, f.codigo.toUpperCase(), f.contado ?? '', f.precio ?? '', f.moneda].join('|')))
+  let cargadas: Set<string>
+  try {
+    cargadas = await yaEnElKardex(db, ids)
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'No se pudo revisar el kardex.' }
+  }
+
+  const vistas = new Map<string, number>()
+  const filas: FilaConteo[] = leidas.map((f, i) => {
+    const errores = [...f.errores]
+    const material = materialPorCodigo.get(f.codigo.toUpperCase()) ?? null
+    if (f.codigo && !material) errores.push(`El código ${f.codigo} no está en el catálogo activo de Almacén.`)
+    if (material) {
+      const previa = vistas.get(material.id)
+      if (previa !== undefined) errores.push(`Este material ya está en la fila ${leidas[previa].fila}: deja una sola fila por material, con el total contado.`)
+      else vistas.set(material.id, i)
+    }
+    const saldo = material ? saldoDe.get(material.id) ?? 0 : 0
+    const via = saldo === 0 ? 'SALDO_INICIAL' : 'AJUSTE'
+    let estado: FilaConteo['estado'] = errores.length ? 'ERROR' : 'LISTA'
+    if (cargadas.has(ids[i])) estado = 'CARGADA'
+    else if (estado === 'LISTA' && via === 'SALDO_INICIAL' && f.contado === 0) estado = 'SIN_CAMBIO'
+    return {
+      id: ids[i], fila: f.fila, codigo: f.codigo,
+      materialId: material?.id ?? null, descripcion: material?.descripcion ?? null, unidadMedida: material?.unidad ?? null,
+      contado: f.contado, saldo, precio: f.precio, moneda: f.moneda, via, estado, errores,
+      aviso: via === 'AJUSTE' && f.precio !== null && estado === 'LISTA'
+        ? 'Ya tiene saldo: entra como ajuste y el precio no se usa. Si hace falta, Logística lo fija en Valorización.'
+        : null,
+    }
+  })
+  return { ok: true, datos: { filas } }
+}
+
+/**
+ * Registra una tanda del conteo inicial. Sin saldo, un ingreso de saldo
+ * inicial con su precio; con saldo, un conteo que deja el ajuste por la
+ * diferencia. La base vuelve a comprobar permiso, material y área.
+ */
+export async function registrarConteoInicial(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion<{ resultados: { id: string; error: string | null }[] }>> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'Solo Almacén carga el conteo inicial.' }
+
+  const fecha = esquemaFecha.safeParse(dato(datos, 'fecha'))
+  let crudas: unknown
+  try {
+    crudas = JSON.parse(dato(datos, 'filas'))
+  } catch {
+    crudas = null
+  }
+  const filas = z.array(z.object({
+    id: z.string().uuid(),
+    material_id: z.string().uuid(),
+    contado: z.number().min(0).multipleOf(0.001),
+    precio: z.number().min(0).multipleOf(0.0001).nullable(),
+    moneda: z.enum(['PEN', 'USD']),
+    via: z.enum(['SALDO_INICIAL', 'AJUSTE']),
+  })).min(1).max(TANDA_CONTEO).safeParse(crudas)
+  if (!fecha.success || !filas.success) return { ok: false, error: 'La tanda no se entiende. Vuelve a cargar el archivo.' }
+
+  const db = await createClient()
+  const motivo = motivoConteoInicial(fecha.data)
+  // Entre revisar y registrar alguien pudo mover el saldo: un saldo inicial
+  // sobre un material que ya tiene saldo lo sumaría dos veces.
+  const iniciales = filas.data.filter((f) => f.via === 'SALDO_INICIAL')
+  let cargadas = new Set<string>()
+  const saldoAhora = new Map<string, number>()
+  if (iniciales.length > 0) {
+    try {
+      cargadas = await yaEnElKardex(db, iniciales.map((f) => f.id))
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'No se pudo revisar el kardex.' }
+    }
+    const { data, error } = await db.from('v_existencias_materiales').select('material_id,existencia').in('material_id', iniciales.map((f) => f.material_id))
+    if (error) return { ok: false, error: 'No se pudo revisar el saldo actual. Vuelve a intentar.' }
+    for (const m of data ?? []) if (m.material_id) saldoAhora.set(m.material_id, Number(m.existencia ?? 0))
+  }
+
+  const resultados: { id: string; error: string | null }[] = []
+  for (const f of filas.data) {
+    if (f.via === 'SALDO_INICIAL' && !cargadas.has(f.id) && (saldoAhora.get(f.material_id) ?? 0) !== 0) {
+      resultados.push({ id: f.id, error: 'El material recibió movimientos desde que revisaste el archivo. Vuelve a cargarlo: entrará como ajuste.' })
+      continue
+    }
+    const { data, error } = f.via === 'SALDO_INICIAL'
+      ? await db.rpc('registrar_ingreso_almacen', {
+          p_id: f.id, p_material: f.material_id, p_cantidad: f.contado, p_origen: 'SALDO_INICIAL',
+          p_documento: motivo, p_precio: f.precio, p_moneda: f.moneda,
+        })
+      : await db.rpc('registrar_conteo_almacen', { p_id: f.id, p_material: f.material_id, p_cantidad_fisica: f.contado, p_motivo: motivo })
+    if (error) resultados.push({ id: f.id, error: mensajeDeError(error) })
+    else if (data !== f.id) resultados.push({ id: f.id, error: NO_TOCO_NADA })
+    else resultados.push({ id: f.id, error: null })
+  }
+  revalidatePath('/almacen/kardex')
+  return { ok: true, datos: { resultados } }
+}
+
+// ---------------------------------------------------------------- stock mínimo
+
+/**
+ * El mínimo lo fija Almacén, con el mismo permiso que exige
+ * `fijar_stock_minimo` en la base. Vacío quita el mínimo: el material deja de
+ * avisar.
+ */
+export async function fijarStockMinimo(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'Solo Almacén fija el stock mínimo.' }
+
+  const texto = dato(datos, 'minimo').trim()
+  const v = z.object({
+    material_id: z.string().uuid(),
+    minimo: z.number({ message: 'El mínimo es un número, como 12 o 2.5.' }).min(0, 'El mínimo va de 0 en adelante.').max(99999999999).multipleOf(0.001, 'El mínimo admite hasta 3 decimales.').nullable(),
+  }).safeParse({ material_id: dato(datos, 'material_id'), minimo: texto === '' ? null : Number(texto.replace(',', '.')) })
+  if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? 'Revisa el stock mínimo.' }
+
+  const db = await createClient()
+  const { data, error } = await db.rpc('fijar_stock_minimo', { p_material: v.data.material_id, p_minimo: v.data.minimo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== v.data.material_id) return { ok: false, error: NO_TOCO_NADA }
+
+  revalidatePath('/almacen/kardex')
+  return { ok: true, mensaje: v.data.minimo === null ? 'Mínimo quitado: este material ya no avisa.' : 'Stock mínimo guardado.' }
 }

@@ -1,6 +1,8 @@
 import {
   ArrowLeftRight,
+  BadgeCheck,
   Boxes,
+  Building2,
   ClipboardList,
   FileSpreadsheet,
   FileText,
@@ -14,6 +16,7 @@ import {
   UserCog,
   Users,
   Wallet,
+  Wrench,
 } from 'lucide-react'
 
 export type ItemNavegacion = {
@@ -109,6 +112,53 @@ export const NAVEGACION: GrupoNavegacion[] = [
     items: [
       {titulo:'Compras',ruta:'/compras',icono:Receipt,permiso:'compras.crear',descripcion:'Órdenes de compra agrupadas, facturas y entregas',disponible:true},
       {
+        titulo: 'Órdenes de compra',
+        ruta: '/compras/ordenes',
+        icono: FileText,
+        permiso: 'compras.crear',
+        descripcion: 'Cada OC con su número: directas o de requerimiento, recojo y factura',
+        disponible: true,
+      },
+      {
+        titulo: 'Órdenes de servicio',
+        ruta: '/compras/servicios',
+        icono: Wrench,
+        permiso: 'compras.crear',
+        descripcion: 'Trabajos de terceros con su número OS, aprobación y conformidad',
+        disponible: true,
+      },
+      // El conductor de Logística: lo que tiene que recoger y dejar en almacén.
+      {
+        titulo: 'Recojos',
+        ruta: '/recojos',
+        icono: Truck,
+        permiso: 'compras.recojo',
+        descripcion: 'Compras aprobadas por recoger y dejar en almacén',
+        disponible: true,
+      },
+      // Lo ven también Almacén, Costos y Supervisión (`proveedores.ver`), pero
+      // en el menú solo de quienes llevan el padrón: Logística, Contabilidad y
+      // Gerencia.
+      {
+        titulo: 'Proveedores',
+        ruta: '/proveedores',
+        icono: Building2,
+        permiso: 'proveedores.editar',
+        descripcion: 'El padrón del que se elige en la orden de compra',
+        disponible: true,
+      },
+      // Quien aprueba es un puesto que Gerencia elige, no un permiso: si elige
+      // otro, a ese puesto le llega el aviso con el enlace aunque no lo tenga
+      // en el menú.
+      {
+        titulo: 'Aprobación de compras',
+        ruta: '/compras/aprobacion',
+        icono: BadgeCheck,
+        permiso: ['compras.configurar_aprobacion', 'compras.crear'],
+        descripcion: 'La regla de montos y las órdenes de compra y de servicio que esperan visto',
+        disponible: true,
+      },
+      {
         titulo: 'Kardex de Almacén',
         ruta: '/almacen/kardex',
         icono: ListOrdered,
@@ -180,7 +230,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
 
 /** Permisos amplios permiten consultar detalles; el menú prioriza cada puesto. */
 const RUTAS_POR_PUESTO: Record<string, readonly string[]> = {
-  GERENTE: ['/', '/cotizaciones/pdf', '/ordenes'],
+  GERENTE: ['/', '/cotizaciones/pdf', '/ordenes', '/compras/aprobacion', '/proveedores'],
   TESORERIA: ['/', '/ordenes', '/tesoreria', '/tesoreria/cuentas', '/tesoreria/tipo-de-cambio', '/adquisiciones'],
 }
 
@@ -244,4 +294,9 @@ export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/materiales', corto: 'Materiales' },
   { ruta: '/configuracion', corto: 'Ajustes' },
   { ruta: '/personal', corto: 'Personal' },
+  // Al final: solo ocupan una pestaña libre (la de Gerencia, Logística o su
+  // conductor, que tienen menos de cuatro) y no desplazan la de ningún otro puesto.
+  { ruta: '/recojos', corto: 'Recojos' },
+  { ruta: '/compras/ordenes', corto: 'OC' },
+  { ruta: '/compras/aprobacion', corto: 'Aprobar' },
 ]

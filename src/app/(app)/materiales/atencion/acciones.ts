@@ -147,7 +147,7 @@ export async function crearOrdenCompra(_previo: unknown, formulario: FormData): 
 
   const cabecera = z.object({
     operacion_id: z.string().uuid(),
-    proveedor: z.string().trim().min(2).max(160),
+    proveedor_id: z.string().uuid(),
     referencia: z.string().trim().min(2).max(100),
     fecha_estimada: z.iso.date().optional(),
     condicion: z.enum(['CONTADO','CREDITO']),
@@ -155,7 +155,7 @@ export async function crearOrdenCompra(_previo: unknown, formulario: FormData): 
     moneda: z.enum(['PEN','USD']),
   }).safeParse({
     operacion_id: dato(formulario, 'operacion_id'),
-    proveedor: dato(formulario, 'proveedor'),
+    proveedor_id: dato(formulario, 'proveedor_id'),
     referencia: dato(formulario, 'referencia'),
     fecha_estimada: dato(formulario, 'fecha_estimada') || undefined,
     condicion: dato(formulario, 'condicion'),
@@ -172,8 +172,11 @@ export async function crearOrdenCompra(_previo: unknown, formulario: FormData): 
     cantidad: dato(formulario, `cantidad_${String(id)}`),
     precio: dato(formulario, `precio_${String(id)}`),
   })))
+  if (!cabecera.success && cabecera.error.issues.some((i) => i.path[0] === 'proveedor_id')) {
+    return { ok: false, error: 'Elige el proveedor del padrón. Si es nuevo, regístralo con «Nuevo proveedor».' }
+  }
   if (!cabecera.success || !lineas.success) {
-    return { ok: false, error: 'Revisa proveedor, referencia, fecha, pago y cantidades a comprar.' }
+    return { ok: false, error: 'Revisa referencia, fecha, pago y cantidades a comprar.' }
   }
   if ((cabecera.data.condicion === 'CONTADO' && cabecera.data.dias !== 0) ||
       (cabecera.data.condicion === 'CREDITO' && cabecera.data.dias === 0)) {
@@ -181,9 +184,11 @@ export async function crearOrdenCompra(_previo: unknown, formulario: FormData): 
   }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('crear_compra_agrupada', {
+  // El proveedor sale del padrón: la base copia su razón social en la compra y
+  // ya no acepta un nombre escrito a mano.
+  const { data, error } = await supabase.rpc('emitir_compra_agrupada', {
     p_id: cabecera.data.operacion_id,
-    p_proveedor: cabecera.data.proveedor,
+    p_proveedor_id: cabecera.data.proveedor_id,
     p_referencia: cabecera.data.referencia,
     p_fecha: cabecera.data.fecha_estimada ?? null,
     p_detalles: lineas.data,
@@ -194,10 +199,22 @@ export async function crearOrdenCompra(_previo: unknown, formulario: FormData): 
   if (error) return { ok: false, error: errorDeMaterial(error) }
   if (data !== cabecera.data.operacion_id) return { ok: false, error: 'La compra no quedó registrada. Recarga la pantalla.' }
 
+  // La aprobación la decide la base al cerrar la compra, según la regla que fijó
+  // Gerencia; aquí solo se lee para decirlo.
+  const { data: emitida } = await supabase
+    .from('ordenes_compra_materiales')
+    .select('aprobacion')
+    .eq('id', cabecera.data.operacion_id)
+    .maybeSingle()
+
   revalidatePath('/ordenes/[id]', 'page')
   revalidatePath('/compras')
+  revalidatePath('/compras/aprobacion')
   revalidatePath('/almacen/kardex')
   revalidatePath('/tesoreria/cuentas')
+  if (emitida?.aprobacion === 'POR_APROBAR') {
+    return { ok: true, mensaje: 'Compra registrada. Pasa el monto que pide aprobación: queda por aprobar antes de enviarla al proveedor.' }
+  }
   return { ok: true, mensaje: 'Compra y condición de pago registradas; Almacén ya puede esperar su recepción.' }
 }
 
