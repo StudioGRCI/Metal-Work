@@ -126,21 +126,6 @@ export async function fijarCondicionCompra(_previo: unknown, formulario: FormDat
   return { ok: true, mensaje: 'Condición de pago guardada para Tesorería.' }
 }
 
-export async function marcarEntregaCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
-  const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Logística confirma la entrega al almacén.' }
-  const v = z.object({ compra_id: z.string().uuid() }).safeParse(Object.fromEntries(formulario))
-  if (!v.success) return { ok: false, error: 'La compra no es válida.' }
-  const supabase = await createClient()
-  const { data, error } = await supabase.rpc('marcar_compra_entregada_almacen', { p_compra: v.data.compra_id })
-  if (error) return { ok: false, error: errorDeMaterial(error) }
-  if (!data) return { ok: false, error: 'La entrega no quedó registrada. Recarga la pantalla.' }
-  revalidatePath('/ordenes/[id]', 'page')
-  revalidatePath('/compras')
-  revalidatePath('/almacen/kardex')
-  return { ok: true, mensaje: 'Entrega a Almacén confirmada.' }
-}
-
 export async function crearOrdenCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Tu perfil no puede registrar compras.' }

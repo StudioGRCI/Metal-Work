@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { validacionDeCompra, type ValidacionIngreso } from '@/lib/dominio/logistica'
 import { createClient } from '@/lib/supabase/server'
 import type { Tablas, Vistas } from '@/types/database'
 
@@ -20,6 +21,10 @@ export type CompraMaterialPendiente = Vistas<'v_orden_compra_material_pendiente'
   aprobacion: string
   /** El número OC-…-MW que pone el sistema; las compras de antes no lo tienen. */
   numero: string | null
+  /** POR_RECOGER, RECOGIDO o DEJADO: ver `RECOJO_COMPRA`. Null: no va con el conductor. */
+  recojo: string | null
+  /** Lo que hizo Almacén con lo que dejó el conductor: ver `situacionCompra`. */
+  validacion: ValidacionIngreso
 }
 export type ExistenciaMaterial = Vistas<'v_existencias_materiales'>
 export type MaterialParaConteo = { id: string; descripcion: string; codigo: string; unidad: string | null }
@@ -130,9 +135,9 @@ export async function cargarAtencionMateriales(permisos: {
   }
   const idsCompra = (compras.data ?? []).map((compra) => compra.orden_compra_id).filter((id): id is string => Boolean(id))
   const idsLineaCompra = (compras.data ?? []).map((compra) => compra.id).filter((id): id is string => Boolean(id))
-  const [entregas, precios, facturas] = await Promise.all([
+  const [entregas, precios, facturas, pendientesAlmacen] = await Promise.all([
     idsCompra.length > 0
-      ? supabase.from('ordenes_compra_materiales').select('id, numero, entregado_almacen_en, condicion_pago, dias_credito, moneda, aprobacion').in('id', idsCompra)
+      ? supabase.from('ordenes_compra_materiales').select('id, numero, entregado_almacen_en, condicion_pago, dias_credito, moneda, aprobacion, recojo').in('id', idsCompra)
       : Promise.resolve({ data: [], error: null }),
     idsLineaCompra.length > 0
       ? supabase.from('orden_compra_material_detalles').select('id, orden_compra_id, precio_unitario').in('orden_compra_id', idsCompra)
@@ -140,8 +145,16 @@ export async function cargarAtencionMateriales(permisos: {
     idsCompra.length > 0 && (permisos.crearCompra || permisos.verCompras)
       ? supabase.from('documentos_compra_material').select('orden_compra_id').in('orden_compra_id',idsCompra).eq('tipo','FACTURA')
       : Promise.resolve({ data: [], error: null }),
+    // Lo que el conductor dejó y si Almacén ya lo validó.
+    idsCompra.length > 0 && (permisos.verCompras || permisos.recibir)
+      ? supabase.from('ingresos_pendientes_almacen').select('orden_compra_id, estado').in('orden_compra_id', idsCompra)
+      : Promise.resolve({ data: [], error: null }),
   ])
-  if (entregas.error || precios.error || facturas.error) throw new Error('No se pudieron leer la entrega, facturas o precios de compra.')
+  if (entregas.error || precios.error || facturas.error || pendientesAlmacen.error) throw new Error('No se pudieron leer la entrega, facturas o precios de compra.')
+  const estadosPorCompra = new Map<string, string[]>()
+  for (const fila of pendientesAlmacen.data ?? []) {
+    estadosPorCompra.set(fila.orden_compra_id, [...(estadosPorCompra.get(fila.orden_compra_id) ?? []), fila.estado])
+  }
   const entregaPorCompra = new Map((entregas.data ?? []).map((entrega) => [entrega.id, entrega]))
   const precioPorLinea = new Map((precios.data ?? []).map((precio) => [precio.id, precio.precio_unitario]))
   return {
@@ -161,6 +174,8 @@ export async function cargarAtencionMateriales(permisos: {
       moneda: entregaPorCompra.get(compra.orden_compra_id ?? '')?.moneda ?? 'PEN',
       aprobacion: entregaPorCompra.get(compra.orden_compra_id ?? '')?.aprobacion ?? 'NO_REQUERIDA',
       numero: entregaPorCompra.get(compra.orden_compra_id ?? '')?.numero ?? null,
+      recojo: entregaPorCompra.get(compra.orden_compra_id ?? '')?.recojo ?? null,
+      validacion: validacionDeCompra(estadosPorCompra.get(compra.orden_compra_id ?? '') ?? []),
       precio_unitario: precioPorLinea.get(compra.id ?? '') ?? null,
       tiene_factura: (facturas.data ?? []).some(f=>f.orden_compra_id===compra.orden_compra_id),
       precios_completos: (precios.data ?? []).filter(p=>p.orden_compra_id===compra.orden_compra_id).every(p=>p.precio_unitario!==null),

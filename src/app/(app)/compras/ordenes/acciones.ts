@@ -18,6 +18,8 @@ function refrescar() {
   revalidatePath('/compras')
   revalidatePath('/recojos')
   revalidatePath('/almacen/kardex')
+  // El tablero de Atención de materiales vive también en la pestaña de la OT.
+  revalidatePath('/ordenes/[id]', 'page')
 }
 
 const LINEAS = z
