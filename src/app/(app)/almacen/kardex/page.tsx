@@ -10,7 +10,6 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarAtencionMateriales } from '@/lib/datos/atencion-materiales'
 import { cargarKardex, FILAS_POR_PAGINA, filtrosDeKardex, materialesDelKardex, minimosDeStock, unidadesParaSalida } from '@/lib/datos/kardex'
-import { ingresosPorValidar } from '@/lib/datos/recojos'
 import { MOVIMIENTO_KARDEX, ORIGEN_KARDEX } from '@/lib/dominio/almacen'
 import { cantidad, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -19,7 +18,6 @@ import { createClient } from '@/lib/supabase/server'
 import { ConteoFisico } from './conteo'
 import { ConteoInicial } from './conteo-inicial'
 import { NuevoIngreso } from './ingreso'
-import { IngresosPorValidar } from './por-validar'
 import { CargarPlanilla } from './planilla'
 import { NuevaSalida } from './salida'
 import { FijarStockMinimo } from './stock-minimo'
@@ -49,7 +47,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   const puedeIngreso = puede(perfil, 'almacen.recibir')
   const db = await createClient()
 
-  const [kardex, materiales, unidades, catalogo, entregas, minimos, porValidar] = await Promise.all([
+  const [kardex, materiales, unidades, catalogo, entregas, minimos] = await Promise.all([
     cargarKardex(filtros),
     materialesDelKardex(),
     puedeSalida ? unidadesParaSalida() : Promise.resolve([]),
@@ -62,8 +60,6 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           .in('movimiento', ['DESPACHO', 'SALIDA']).order('fecha', { ascending: false }).limit(100)
       : Promise.resolve({ data: [], error: null }),
     minimosDeStock(),
-    // Lo que el conductor dejó en almacén y falta ingresar.
-    puedeIngreso ? ingresosPorValidar() : Promise.resolve([]),
   ])
   if (entregas.error) throw new Error('No se pudieron cargar las entregas que se pueden devolver.')
 
@@ -121,8 +117,6 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           </div>
         )}
       />
-
-      {puedeIngreso && <IngresosPorValidar ingresos={porValidar} />}
 
       {(puedeSalida || puedeIngreso) && (
         <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[var(--radius-base)] border border-dashed border-borde-fuerte bg-superficie px-4 py-3">

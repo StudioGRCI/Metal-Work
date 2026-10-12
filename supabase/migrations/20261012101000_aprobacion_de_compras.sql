@@ -382,12 +382,11 @@ begin
            'cantidad', d.cantidad, 'precio_unitario', d.precio_unitario) order by o.numero, m.codigo), '[]'::jsonb)
     into v_lineas
     from public.orden_compra_material_detalles d
-    -- Una compra para almacén no tiene requerimiento: su línea nombra el material.
-    left join public.requerimientos_materiales r on r.id = d.requerimiento_id
-    left join public.ordenes_trabajo o on o.id = r.orden_id
-    left join public.requerimiento_material_detalles rd on rd.id = d.requerimiento_detalle_id
-    left join public.ot_materiales om on om.id = rd.ot_material_id
-    join public.materiales m on m.id = coalesce(d.material_id, om.material_id)
+    join public.requerimientos_materiales r on r.id = d.requerimiento_id
+    join public.ordenes_trabajo o on o.id = r.orden_id
+    join public.requerimiento_material_detalles rd on rd.id = d.requerimiento_detalle_id
+    join public.ot_materiales om on om.id = rd.ot_material_id
+    join public.materiales m on m.id = om.material_id
    where d.orden_compra_id = p_compra;
 
   -- Las líneas se liberan para que Logística las vuelva a comprar; la copia
@@ -398,9 +397,7 @@ begin
          motivo_rechazo = btrim(p_motivo), lineas_rechazadas = v_lineas
    where id = p_compra;
   perform public.notificar_a_usuario(v_compra.creado_por, 'Compra rechazada: ' || v_compra.referencia,
-    btrim(p_motivo) || case when v_compra.requerimiento_id is null
-                            then ' Si todavía hace falta, emite otra orden para almacén.'
-                            else ' Sus líneas volvieron a quedar pendientes de compra.' end,
+    btrim(p_motivo) || ' Sus líneas volvieron a quedar pendientes de compra.',
     '/compras', 'ordenes_compra_materiales', p_compra, public.usuario_actual());
   return p_compra;
 end;
@@ -435,8 +432,7 @@ begin
          public.puesto(coalesce(ua, ur)),
          coalesce(c.aprobado_en, c.rechazado_en),
          c.motivo_rechazo,
-         coalesce(l.ordenes, array(select distinct x->>'orden' from jsonb_array_elements(c.lineas_rechazadas) x
-                                    where x->>'orden' is not null order by 1)),
+         coalesce(l.ordenes, array(select distinct x->>'orden' from jsonb_array_elements(c.lineas_rechazadas) x order by 1)),
          coalesce(l.lineas, c.lineas_rechazadas, '[]'::jsonb)
     from public.ordenes_compra_materiales c
     left join public.proveedores p on p.id = c.proveedor_id
@@ -445,17 +441,17 @@ begin
     left join public.usuarios ur on ur.id = c.rechazado_por
     left join lateral (
       select sum(d.cantidad * coalesce(d.precio_unitario, 0)) as total,
-             array_agg(distinct o.numero order by o.numero) filter (where o.numero is not null) as ordenes,
+             array_agg(distinct o.numero order by o.numero) as ordenes,
              jsonb_agg(jsonb_build_object(
                'orden', o.numero, 'area', r.area_destino,
                'material_codigo', m.codigo, 'material', m.descripcion, 'unidad', um.codigo,
                'cantidad', d.cantidad, 'precio_unitario', d.precio_unitario) order by o.numero, m.codigo) as lineas
         from public.orden_compra_material_detalles d
-        left join public.requerimientos_materiales r on r.id = d.requerimiento_id
-        left join public.ordenes_trabajo o on o.id = r.orden_id
-        left join public.requerimiento_material_detalles rd on rd.id = d.requerimiento_detalle_id
-        left join public.ot_materiales om on om.id = rd.ot_material_id
-        join public.materiales m on m.id = coalesce(d.material_id, om.material_id)
+        join public.requerimientos_materiales r on r.id = d.requerimiento_id
+        join public.ordenes_trabajo o on o.id = r.orden_id
+        join public.requerimiento_material_detalles rd on rd.id = d.requerimiento_detalle_id
+        join public.ot_materiales om on om.id = rd.ot_material_id
+        join public.materiales m on m.id = om.material_id
         left join public.unidades_medida um on um.id = m.unidad_medida_id
        where d.orden_compra_id = c.id
     ) l on true

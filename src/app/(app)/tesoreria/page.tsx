@@ -110,7 +110,7 @@ export default async function PaginaTesoreria() {
                 <p className="font-medium text-texto">{TIPO_DOCUMENTO[documento.tipo ?? ''] ?? 'Documento de compra'}</p>
                 {documento.ordenes.length > 0 ? documento.ordenes.map(o =>
                   <Insignia key={`${o.orden_id}-${o.area_destino}`} tono="neutro">OT {o.numero_ot} · {AREA[o.area_destino] ?? o.area_destino}</Insignia>
-                ) : <Insignia tono="neutro">{documento.numero_ot ? `OT ${documento.numero_ot}` : 'Compra para almacén'}</Insignia>}
+                ) : <Insignia tono="neutro">OT {documento.numero_ot ?? '—'}</Insignia>}
               </div>
               <p className="mt-1 break-words text-sm text-texto-suave">{documento.nombre_archivo}</p>
               <p className="mt-1 text-xs text-texto-tenue">

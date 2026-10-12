@@ -1975,13 +1975,6 @@ export type Database = {
             referencedColumns: ["id", "requerimiento_detalle_id"]
           },
           {
-            foreignKeyName: "fk_mov_material_oc_linea"
-            columns: ["orden_compra_detalle_id"]
-            isOneToOne: false
-            referencedRelation: "orden_compra_material_detalles"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "movimientos_materiales_devolucion_de_fkey"
             columns: ["devolucion_de"]
             isOneToOne: false
@@ -2119,35 +2112,32 @@ export type Database = {
         Row: {
           id: string
           orden_compra_id: string
-          requerimiento_id: string | null
-          requerimiento_detalle_id: string | null
+          requerimiento_id: string
+          requerimiento_detalle_id: string
           cantidad: number
           creado_en: string
           actualizado_en: string
           precio_unitario: number | null
-          material_id: string | null
         }
         Insert: {
           id?: string
           orden_compra_id: string
-          requerimiento_id?: string | null
-          requerimiento_detalle_id?: string | null
+          requerimiento_id: string
+          requerimiento_detalle_id: string
           cantidad: number
           creado_en?: string
           actualizado_en?: string
           precio_unitario?: number | null
-          material_id?: string | null
         }
         Update: {
           id?: string
           orden_compra_id?: string
-          requerimiento_id?: string | null
-          requerimiento_detalle_id?: string | null
+          requerimiento_id?: string
+          requerimiento_detalle_id?: string
           cantidad?: number
           creado_en?: string
           actualizado_en?: string
           precio_unitario?: number | null
-          material_id?: string | null
         }
         Relationships: [
           {
@@ -2156,13 +2146,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "requerimiento_material_detalles"
             referencedColumns: ["id", "requerimiento_id"]
-          },
-          {
-            foreignKeyName: "orden_compra_material_detalles_material_id_fkey"
-            columns: ["material_id"]
-            isOneToOne: false
-            referencedRelation: "materiales"
-            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "orden_compra_material_detalles_orden_compra_id_fkey"
@@ -2190,7 +2173,7 @@ export type Database = {
       ordenes_compra_materiales: {
         Row: {
           id: string
-          requerimiento_id: string | null
+          requerimiento_id: string
           proveedor: string
           referencia: string
           fecha_estimada: string | null
@@ -2213,13 +2196,10 @@ export type Database = {
           rechazado_en: string | null
           motivo_rechazo: string | null
           lineas_rechazadas: Json | null
-          recogido_en: string | null
-          recogido_por: string | null
-          documento_entrega: string | null
         }
         Insert: {
           id?: string
-          requerimiento_id?: string | null
+          requerimiento_id: string
           proveedor: string
           referencia: string
           fecha_estimada?: string | null
@@ -2242,13 +2222,10 @@ export type Database = {
           rechazado_en?: string | null
           motivo_rechazo?: string | null
           lineas_rechazadas?: Json | null
-          recogido_en?: string | null
-          recogido_por?: string | null
-          documento_entrega?: string | null
         }
         Update: {
           id?: string
-          requerimiento_id?: string | null
+          requerimiento_id?: string
           proveedor?: string
           referencia?: string
           fecha_estimada?: string | null
@@ -2271,9 +2248,6 @@ export type Database = {
           rechazado_en?: string | null
           motivo_rechazo?: string | null
           lineas_rechazadas?: Json | null
-          recogido_en?: string | null
-          recogido_por?: string | null
-          documento_entrega?: string | null
         }
         Relationships: [
           {
@@ -2307,13 +2281,6 @@ export type Database = {
           {
             foreignKeyName: "ordenes_compra_materiales_rechazado_por_fkey"
             columns: ["rechazado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ordenes_compra_materiales_recogido_por_fkey"
-            columns: ["recogido_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -6487,12 +6454,6 @@ export type Database = {
         }
         Returns: number
       }
-      avisar_compra_por_recoger: {
-        Args: {
-          p_compra: string | null
-        }
-        Returns: null
-      }
       cambiar_clave_personal: {
         Args: {
           p_usuario: string | null
@@ -6828,19 +6789,6 @@ export type Database = {
         }
         Returns: string
       }
-      emitir_compra_para_almacen: {
-        Args: {
-          p_id: string | null
-          p_proveedor_id: string | null
-          p_referencia: string | null
-          p_detalles: Json | null
-          p_fecha: string | null
-          p_condicion: string | null
-          p_dias: number | null
-          p_moneda: string | null
-        }
-        Returns: string
-      }
       emitir_orden_de_cotizacion: {
         Args: {
           p_cotizacion: string | null
@@ -7002,20 +6950,6 @@ export type Database = {
           por_estado: Json | null
         }[]
       }
-      ingresos_por_validar: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          id: string | null
-          referencia: string | null
-          proveedor: string | null
-          ordenes: string[] | null
-          dejado_en: string | null
-          dejado_por: string | null
-          recogido_por: string | null
-          documento_entrega: string | null
-          lineas: Json | null
-        }[]
-      }
       levantar_observacion_ot: {
         Args: {
           p_orden: string | null
@@ -7034,20 +6968,7 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
-      marcar_compra_dejada_en_almacen: {
-        Args: {
-          p_compra: string | null
-          p_documento: string | null
-        }
-        Returns: string
-      }
       marcar_compra_entregada_almacen: {
-        Args: {
-          p_compra: string | null
-        }
-        Returns: string
-      }
-      marcar_compra_recogida: {
         Args: {
           p_compra: string | null
         }
@@ -7367,27 +7288,6 @@ export type Database = {
         }
         Returns: string
       }
-      recojos_de_compras: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          id: string | null
-          referencia: string | null
-          proveedor: string | null
-          proveedor_documento: string | null
-          proveedor_direccion: string | null
-          proveedor_telefono: string | null
-          proveedor_contacto: string | null
-          fecha_estimada: string | null
-          estado: string | null
-          recogido_en: string | null
-          recogido_por: string | null
-          dejado_en: string | null
-          dejado_por: string | null
-          documento_entrega: string | null
-          ingresado: boolean | null
-          lineas: Json | null
-        }[]
-      }
       reemplazar_etapas_historicas: {
         Args: {
           p_orden_id: string | null
@@ -7697,15 +7597,6 @@ export type Database = {
           p_fecha: string | null
         }
         Returns: null
-      }
-      validar_ingreso_compra: {
-        Args: {
-          p_operacion: string | null
-          p_compra: string | null
-          p_documento: string | null
-          p_lineas?: Json | null
-        }
-        Returns: number
       }
       valorizar_material: {
         Args: {

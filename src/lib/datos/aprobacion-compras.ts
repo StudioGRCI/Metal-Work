@@ -3,8 +3,7 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 
 export type LineaParaAprobar = {
-  /** Null en una compra para almacén, que no viene de ninguna OT. */
-  orden: string | null
+  orden: string
   area: string | null
   material_codigo: string
   material: string

@@ -63,7 +63,7 @@ export default async function PaginaCuentas() {
         {(pendientes.data??[]).length===0 ? <p className="text-sm text-texto-suave">No hay compras a crédito pendientes de factura.</p> : (pendientes.data??[]).map(c=>
           <div key={c.orden_compra_id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-[var(--radius-base)] border border-borde p-3 text-sm">
             <span>
-              <span className="text-texto">{c.numero_ot ? `OT ${c.numero_ot}` : 'Para almacén'} · {c.proveedor}{c.referencia ? ` · ${c.referencia}` : ''}</span>
+              <span className="text-texto">OT {c.numero_ot} · {c.proveedor}{c.referencia ? ` · ${c.referencia}` : ''}</span>
               <span className="block text-xs text-texto-suave">Comprada el {fecha(c.fecha_compra)} · <Vencimiento dia={c.fecha_vencimiento} saldo={Number(c.total_estimado ?? 1)} /></span>
             </span>
             <strong className="tabular">{c.total_estimado===null ? <span className="font-normal text-aviso">Precio pendiente</span> : moneda(c.total_estimado, codigoMoneda(c.moneda))}</strong>
