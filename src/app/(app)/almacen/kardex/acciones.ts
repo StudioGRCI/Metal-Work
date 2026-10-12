@@ -521,3 +521,54 @@ export async function fijarStockMinimo(_previo: unknown, datos: FormData): Promi
   revalidatePath('/almacen/kardex')
   return { ok: true, mensaje: v.data.minimo === null ? 'Mínimo quitado: este material ya no avisa.' : 'Stock mínimo guardado.' }
 }
+
+// ------------------------------------------------- lo que dejó el conductor
+
+/**
+ * Valida lo que el conductor de Logística dejó en almacén: cada línea de la
+ * compra con lo que de verdad llegó. Si llegó todo basta un toque; si llegó
+ * menos, la línea queda observada con su motivo y lo que sí llegó entra igual
+ * al kardex. La base lo hace en una sola transacción (`validar_ingresos_compra`).
+ */
+export async function validarIngresosCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'Solo quien recibe en Almacén valida los ingresos.' }
+
+  const compra = z.string().uuid().safeParse(dato(formulario, 'compra_id'))
+  const ids = formulario.getAll('linea').map(String)
+  if (!compra.success || ids.length === 0 || ids.length > 200 || ids.some((id) => !z.string().uuid().safeParse(id).success)) {
+    return { ok: false, error: 'Vuelve a cargar el kardex: la compra ya no está como se ve.' }
+  }
+  const lineas = []
+  for (const id of ids) {
+    const texto = dato(formulario, `cantidad_${id}`).trim()
+    const llego = Number(texto)
+    if (texto === '' || !Number.isFinite(llego) || llego < 0 || Math.round(llego * 1000) !== llego * 1000) {
+      return { ok: false, error: 'Escribe cuánto llegó de cada material (cero si no llegó nada).' }
+    }
+    const observacion = dato(formulario, `observacion_${id}`).trim()
+    if (observacion.length > 500) return { ok: false, error: 'La observación puede tener hasta 500 letras.' }
+    lineas.push({ id, movimiento_id: llego > 0 ? crypto.randomUUID() : null, cantidad: llego, observacion: observacion || null })
+  }
+  const documento = dato(formulario, 'documento').trim()
+  if (documento.length > 100) return { ok: false, error: 'La guía puede tener hasta 100 letras.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('validar_ingresos_compra', {
+    p_compra: compra.data,
+    p_lineas: lineas,
+    p_documento: documento || undefined,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== lineas.length) return { ok: false, error: NO_TOCO_NADA }
+
+  revalidatePath('/almacen/kardex')
+  revalidatePath('/compras')
+  const observadas = lineas.filter((l) => l.observacion || l.cantidad === 0).length
+  return {
+    ok: true,
+    mensaje: observadas > 0
+      ? 'Ingreso validado. Lo observado le llegó a Logística para que lo resuelva.'
+      : 'Ingreso validado: ya está en el kardex con su saldo.',
+  }
+}

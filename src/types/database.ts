@@ -2098,6 +2098,13 @@ export type Database = {
             referencedColumns: ["id", "requerimiento_detalle_id"]
           },
           {
+            foreignKeyName: "fk_mov_material_oc_linea"
+            columns: ["orden_compra_detalle_id"]
+            isOneToOne: false
+            referencedRelation: "orden_compra_material_detalles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "movimientos_materiales_devolucion_de_fkey"
             columns: ["devolucion_de"]
             isOneToOne: false
@@ -7391,6 +7398,28 @@ export type Database = {
           por_estado: Json | null
         }[]
       }
+      ingresos_por_validar: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          orden_compra_id: string | null
+          referencia: string | null
+          proveedor: string | null
+          compra_directa: boolean | null
+          orden_id: string | null
+          orden_numero: string | null
+          material_id: string | null
+          material_codigo: string | null
+          material: string | null
+          unidad_medida: string | null
+          cantidad: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          dejado_en: string | null
+          dejado_por_nombre: string | null
+          recogido_en: string | null
+        }[]
+      }
       levantar_observacion_ot: {
         Args: {
           p_orden: string | null
@@ -8143,6 +8172,14 @@ export type Database = {
           p_fecha: string | null
         }
         Returns: null
+      }
+      validar_ingresos_compra: {
+        Args: {
+          p_compra: string | null
+          p_lineas: Json | null
+          p_documento?: string | null
+        }
+        Returns: number
       }
       valorizar_material: {
         Args: {
