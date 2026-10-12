@@ -9,6 +9,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarAtencionMateriales } from '@/lib/datos/atencion-materiales'
+import { ingresosPorValidar } from '@/lib/datos/ingresos-por-validar'
 import { cargarKardex, FILAS_POR_PAGINA, filtrosDeKardex, materialesDelKardex, minimosDeStock, unidadesParaSalida } from '@/lib/datos/kardex'
 import { MOVIMIENTO_KARDEX, ORIGEN_KARDEX } from '@/lib/dominio/almacen'
 import { cantidad, fechaHora } from '@/lib/format'
@@ -18,6 +19,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ConteoFisico } from './conteo'
 import { ConteoInicial } from './conteo-inicial'
 import { NuevoIngreso } from './ingreso'
+import { BandejaPorValidar } from './por-validar'
 import { CargarPlanilla } from './planilla'
 import { NuevaSalida } from './salida'
 import { FijarStockMinimo } from './stock-minimo'
@@ -47,7 +49,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   const puedeIngreso = puede(perfil, 'almacen.recibir')
   const db = await createClient()
 
-  const [kardex, materiales, unidades, catalogo, entregas, minimos, unidadesMedida] = await Promise.all([
+  const [kardex, materiales, unidades, catalogo, entregas, minimos, unidadesMedida, porValidar] = await Promise.all([
     cargarKardex(filtros),
     materialesDelKardex(),
     puedeSalida ? unidadesParaSalida() : Promise.resolve([]),
@@ -64,9 +66,12 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
     puedeIngreso
       ? db.from('unidades_medida').select('id,codigo,nombre').eq('activo', true).order('nombre')
       : Promise.resolve({ data: [], error: null }),
+    // Lo que el conductor de Logística dejó y falta validar.
+    ingresosPorValidar(),
   ])
   if (entregas.error) throw new Error('No se pudieron cargar las entregas que se pueden devolver.')
   if (unidadesMedida.error) throw new Error('No se pudieron cargar las unidades de medida.')
+  const lineasPorValidar = porValidar.reduce((s, e) => s + e.lineas.length, 0)
 
   const { filas, total, cronologico } = kardex
   const saldoPorMaterial = new Map(materiales.map((m) => [m.material_id, m.existencia]))
@@ -176,6 +181,19 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           />
         </TarjetaCuerpo>
       </Tarjeta>
+
+      {!elegido && (porValidar.length > 0 || puedeIngreso) && (
+        <Tarjeta id="por-validar" className="mb-4">
+          <TarjetaCabecera
+            titulo={porValidar.length === 0 ? 'Ingresos por validar' : `Ingresos por validar · ${porValidar.length === 1 ? '1 compra' : `${porValidar.length} compras`}`}
+            descripcion="Lo que el conductor de Logística dejó en almacén. Revisa lo que llegó y valídalo: entra al kardex sin volver a registrarlo."
+            acciones={lineasPorValidar > 0 ? <Insignia tono="aviso">{lineasPorValidar === 1 ? '1 material' : `${lineasPorValidar} materiales`}</Insignia> : undefined}
+          />
+          <TarjetaCuerpo>
+            <BandejaPorValidar entregas={porValidar} puedeValidar={puedeIngreso} />
+          </TarjetaCuerpo>
+        </Tarjeta>
+      )}
 
       {!elegido && bajoMinimo.length > 0 && (
         <Tarjeta className="mb-4">
