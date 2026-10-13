@@ -8,7 +8,7 @@ import { catalogoDeAlmacen } from '@/lib/datos/atencion-materiales'
 import { cargarOrdenesCompra, type OrdenCompraListada } from '@/lib/datos/logistica'
 import { proveedoresParaCompra } from '@/lib/datos/proveedores'
 import { ORIGEN_COMPRA, puedeIrARecojo, situacionCompra } from '@/lib/dominio/logistica'
-import { compraDetenida, condicionDePago } from '@/lib/dominio/proveedores'
+import { comprobantePedido, compraDetenida, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -29,13 +29,13 @@ export default async function PaginaOrdenesCompra() {
     emite ? proveedoresParaCompra() : Promise.resolve([]),
     emite ? catalogoDeAlmacen() : Promise.resolve([]),
   ])
-  const sinFactura = compras.filter((c) => !c.tiene_factura && c.aprobacion !== 'RECHAZADA').length
+  const sinComprobante = compras.filter((c) => !c.tiene_factura && c.aprobacion !== 'RECHAZADA').length
 
   return (
     <>
       <EncabezadoPagina
         titulo="Órdenes de compra"
-        descripcion="Todas las órdenes, con su número OC-…-MW: las que nacen de un requerimiento de OT y las directas para el almacén. Aquí se ve si esperan a Gerencia, si el conductor ya las recogió y si falta la factura."
+        descripcion="Todas las órdenes, con su número OC-…-MW: las que nacen de un requerimiento de OT y las directas para el almacén. Aquí se ve si esperan a Gerencia, si el conductor ya las recogió y si falta el comprobante."
         migas={[{ titulo: 'Compras', ruta: emite ? '/compras' : undefined }, { titulo: 'Órdenes de compra' }]}
         acciones={
           emite && (
@@ -48,10 +48,12 @@ export default async function PaginaOrdenesCompra() {
         }
       />
 
-      {sinFactura > 0 && (
+      {sinComprobante > 0 && (
         <p className="mb-3 text-sm text-texto-suave">
-          <span className="tabular font-semibold text-texto">{sinFactura}</span>{' '}
-          {sinFactura === 1 ? 'orden sigue sin factura adjunta.' : 'órdenes siguen sin factura adjunta.'}
+          <span className="tabular font-semibold text-texto">{sinComprobante}</span>{' '}
+          {sinComprobante === 1
+            ? 'orden sigue sin su comprobante adjunto (factura, o boleta si es sin factura).'
+            : 'órdenes siguen sin su comprobante adjunto (factura, o boleta si es sin factura).'}
         </p>
       )}
 
@@ -63,7 +65,7 @@ export default async function PaginaOrdenesCompra() {
               <TH className="hidden md:table-cell">Para</TH>
               <TH className="text-right">Monto sin IGV</TH>
               <TH>En qué va</TH>
-              <TH className="hidden sm:table-cell">Factura</TH>
+              <TH className="hidden sm:table-cell">Comprobante</TH>
               <TH className="text-right">
                 <span className="sr-only">Acciones</span>
               </TH>
@@ -92,7 +94,13 @@ export default async function PaginaOrdenesCompra() {
 function FilaCompra({ compra: c, emite }: { compra: OrdenCompraListada; emite: boolean }) {
   const origen = ORIGEN_COMPRA[c.origen]
   const situacion = situacionCompra(c)
-  const para = c.origen === 'DIRECTA' ? 'Almacén' : [c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, ...c.unidades].filter(Boolean).join(' · ')
+  const para = [
+    c.codigo_interno,
+    ...(c.origen === 'DIRECTA' ? ['Almacén'] : [c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, ...c.unidades]),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  const comprobante = comprobantePedido(c.con_factura)
   return (
     <TR>
       <TD>
@@ -121,7 +129,12 @@ function FilaCompra({ compra: c, emite }: { compra: OrdenCompraListada; emite: b
         <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
       </TD>
       <TD className="hidden sm:table-cell">
-        {c.tiene_factura ? <Insignia tono="exito">Adjunta</Insignia> : <span className="text-xs text-texto-suave">Pendiente</span>}
+        {c.tiene_factura ? (
+          <Insignia tono="exito">Adjunto</Insignia>
+        ) : (
+          <span className="text-xs text-texto-suave">{c.con_factura ? 'Factura pendiente' : 'Comprobante pendiente'}</span>
+        )}
+        <p className="text-[11px] text-texto-suave">{comprobante.etiqueta}</p>
       </TD>
       <TD className="text-right">
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -142,6 +155,9 @@ function FilaCompra({ compra: c, emite }: { compra: OrdenCompraListada; emite: b
               numero={c.numero}
               recojo={puedeIrARecojo(c)}
               adjuntar={c.aprobacion !== 'RECHAZADA'}
+              conFactura={c.con_factura}
+              codigoInterno={c.codigo_interno}
+              tieneComprobante={c.tiene_factura}
             />
           )}
         </div>

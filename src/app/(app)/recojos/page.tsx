@@ -1,4 +1,4 @@
-import { MapPin, Phone, User } from 'lucide-react'
+import { MapPin, Phone, Receipt, User } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -6,6 +6,7 @@ import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarRecojos, type CompraParaRecojo } from '@/lib/datos/logistica'
 import { RECOJO_COMPRA } from '@/lib/dominio/logistica'
+import { comprobantePedido } from '@/lib/dominio/proveedores'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -70,6 +71,7 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
         titulo={`${r.numero} · ${r.proveedor}`}
         descripcion={[
           r.referencia && r.referencia !== r.numero ? `Ref. ${r.referencia}` : null,
+          r.codigo_interno ? `Para ${r.codigo_interno}` : null,
           r.origen === 'DIRECTA' ? 'Para el almacén' : r.ordenes.length ? `OT ${r.ordenes.join(', ')}` : null,
           r.fecha_estimada ? `Lista desde ${fecha(r.fecha_estimada)}` : null,
         ]
@@ -104,6 +106,14 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
             <li className="flex items-center gap-2">
               <User aria-hidden className="size-4 shrink-0 text-texto-suave" />
               {r.proveedor_contacto}
+            </li>
+          )}
+          {r.recojo !== 'DEJADO' && (
+            <li className="flex items-start gap-2">
+              <Receipt aria-hidden className="mt-0.5 size-4 shrink-0 text-texto-suave" />
+              <span>
+                <span className="font-medium">{comprobantePedido(r.con_factura).etiqueta}.</span> {comprobantePedido(r.con_factura).pide}
+              </span>
             </li>
           )}
           {!r.proveedor_direccion && !r.proveedor_telefono && (

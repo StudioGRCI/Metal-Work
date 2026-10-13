@@ -15,11 +15,17 @@ export type Proveedor = Pick<
   | 'telefono'
   | 'correo'
   | 'direccion'
+  | 'direccion_recojo'
   | 'condicion_pago'
   | 'dias_credito'
   | 'observaciones'
   | 'activo'
->
+> & {
+  /** Solo las activas. Llega vacío para quien no tiene `proveedores.ver_cuentas`: lo esconde el RLS. */
+  cuentas: CuentaProveedor[]
+}
+
+export type CuentaProveedor = Pick<Tablas<'proveedor_cuentas'>, 'id' | 'banco' | 'numero_cuenta' | 'titular' | 'moneda'>
 
 /** Lo que el formulario de la orden de compra necesita para elegir y llenar el pago. */
 export type ProveedorParaCompra = Pick<
@@ -30,7 +36,7 @@ export type ProveedorParaCompra = Pick<
 export const PROVEEDORES_POR_PAGINA = 25
 
 const COLUMNAS =
-  'id, tipo_documento, numero_documento, razon_social, nombre_comercial, rubro, contacto, telefono, correo, direccion, condicion_pago, dias_credito, observaciones, activo'
+  'id, tipo_documento, numero_documento, razon_social, nombre_comercial, rubro, contacto, telefono, correo, direccion, direccion_recojo, condicion_pago, dias_credito, observaciones, activo, cuentas:proveedor_cuentas(id, banco, numero_cuenta, titular, moneda, activo)'
 
 export async function listarProveedores(filtros: { busqueda?: string; pagina?: number; incluirInactivos?: boolean } = {}) {
   const supabase = await createClient()
@@ -52,7 +58,12 @@ export async function listarProveedores(filtros: { busqueda?: string; pagina?: n
   if (error) throw new Error(`No se pudieron listar los proveedores: ${error.message}`)
 
   return {
-    proveedores: (data ?? []) as Proveedor[],
+    proveedores: (data ?? []).map(({ cuentas, ...p }) => ({
+      ...p,
+      cuentas: (cuentas ?? [])
+        .filter((c) => c.activo)
+        .map(({ id, banco, numero_cuenta, titular, moneda }) => ({ id, banco, numero_cuenta, titular, moneda })),
+    })) as Proveedor[],
     total: count ?? 0,
     pagina,
     paginas: Math.max(1, Math.ceil((count ?? 0) / PROVEEDORES_POR_PAGINA)),
