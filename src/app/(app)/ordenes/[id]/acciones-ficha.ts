@@ -86,7 +86,7 @@ export async function guardarFichaFisica(
 
   const analisis = z
     .object({
-      orden_id: z.string().uuid(),
+      orden_id: z.guid(),
       largo_m: z.string().trim().optional(),
       ancho_m: z.string().trim().optional(),
       alto_m: z.string().trim().optional(),
@@ -148,7 +148,7 @@ export async function agregarAccesorioOT(
 
   const analisis = z
     .object({
-      orden_id: z.string().uuid(),
+      orden_id: z.guid(),
       cantidad: z.coerce.number().positive('La cantidad tiene que ser mayor que cero'),
       unidad: z.string().trim().default('unid'),
       descripcion: z.string().trim().min(3, 'Falta la descripción'),
@@ -188,8 +188,8 @@ export async function marcarAccesorio(_previo: unknown, datos: FormData): Promis
 
   const analisis = z
     .object({
-      id: z.string().uuid(),
-      orden_id: z.string().uuid(),
+      id: z.guid(),
+      orden_id: z.guid(),
       verificado: z.enum(['si', 'no']),
     })
     .safeParse(Object.fromEntries(datos))
@@ -228,7 +228,7 @@ export async function quitarAccesorioOT(
   if (!guarda.ok) return { ok: false, error: guarda.error }
 
   const analisis = z
-    .object({ id: z.string().uuid(), orden_id: z.string().uuid() })
+    .object({ id: z.guid(), orden_id: z.guid() })
     .safeParse(Object.fromEntries(datos))
 
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
@@ -255,7 +255,7 @@ export async function agregarRepuesto(_previo: unknown, datos: FormData): Promis
 
   const analisis = z
     .object({
-      orden_id: z.string().uuid(),
+      orden_id: z.guid(),
       cantidad: z.coerce.number().positive('La cantidad tiene que ser mayor que cero'),
       descripcion: z.string().trim().min(3, 'Falta la descripción'),
       marca: z.string().trim().optional(),
@@ -294,7 +294,7 @@ export async function quitarRepuesto(_previo: unknown, datos: FormData): Promise
   if (!guarda.ok) return { ok: false, error: guarda.error }
 
   const analisis = z
-    .object({ id: z.string().uuid(), orden_id: z.string().uuid() })
+    .object({ id: z.guid(), orden_id: z.guid() })
     .safeParse(Object.fromEntries(datos))
 
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
@@ -324,7 +324,7 @@ export async function agregarVerificacion(
     return { ok: false, error: 'Solo Administración puede crear pasos.' }
   }
   const analisis = z.object({
-    orden_id: z.string().uuid(),
+    orden_id: z.guid(),
     descripcion: z.string().trim().min(3).max(300),
   }).safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: 'Describe el paso en 3 a 300 caracteres.' }
@@ -354,8 +354,8 @@ export async function marcarVerificacion(
 
   const analisis = z
     .object({
-      id: z.string().uuid(),
-      orden_id: z.string().uuid(),
+      id: z.guid(),
+      orden_id: z.guid(),
       avance: z.enum(['1', '2']),
       valor: z.enum(['si', 'no']),
     })
@@ -405,8 +405,8 @@ export async function anotarVerificacion(
 
   const analisis = z
     .object({
-      id: z.string().uuid(),
-      orden_id: z.string().uuid(),
+      id: z.guid(),
+      orden_id: z.guid(),
       observaciones: z.string().trim().optional(),
     })
     .safeParse(Object.fromEntries(datos))

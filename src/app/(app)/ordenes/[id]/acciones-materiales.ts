@@ -33,13 +33,13 @@ function traducir(error: { message: string }) {
 const nulo = (v: string | undefined) => (v && v.length > 0 ? v : null)
 
 const esquemaAlta = z.object({
-  orden_id: z.string().uuid(),
-  material_id: z.string().uuid('Elige el material'),
+  orden_id: z.guid(),
+  material_id: z.guid('Elige el material'),
   cantidad: z.coerce.number().positive('La cantidad tiene que ser mayor que cero'),
   // El plano es opcional: Diseño puede cargar el material de la unidad antes de
   // tener los planos, y vincularlo después al editar la línea.
-  plano_id: z.union([z.string().uuid(), z.literal('')]).optional(),
-  etapa_id: z.string().uuid().optional().or(z.literal('')),
+  plano_id: z.union([z.guid(), z.literal('')]).optional(),
+  etapa_id: z.guid().optional().or(z.literal('')),
   area_destino: z.enum(['MTZ', 'PRD', 'ACB']),
   observacion: z.string().trim().optional(),
 })
@@ -84,7 +84,7 @@ export async function proponerMaterial(_previo: unknown, datos: FormData): Promi
   const perfil = await exigirSesion()
   if (!puede(perfil, 'requerimientos.crear')) return { ok: false, error: 'Tu área no puede proponer materiales.' }
   const v = z.object({
-    orden_id: z.string().uuid(), plano_id: z.string().uuid(), material_id: z.string().uuid(),
+    orden_id: z.guid(), plano_id: z.guid(), material_id: z.guid(),
     cantidad: z.coerce.number().positive(), observacion: z.string().trim().max(500).optional(),
   }).safeParse(Object.fromEntries(datos))
   if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? 'Revisa la propuesta.' }
@@ -106,9 +106,9 @@ export async function proponerMaterialNuevo(_previo: unknown, datos: FormData): 
     return { ok: false, error: 'Solo el área que utilizará el material puede proponerlo.' }
   }
   const v = z.object({
-    solicitud_id: z.string().uuid(), orden_id: z.string().uuid(), plano_id: z.string().uuid(),
-    descripcion: z.string().trim().min(3).max(200), categoria_id: z.string().uuid(),
-    unidad_id: z.string().uuid(), cantidad: z.coerce.number().positive(),
+    solicitud_id: z.guid(), orden_id: z.guid(), plano_id: z.guid(),
+    descripcion: z.string().trim().min(3).max(200), categoria_id: z.guid(),
+    unidad_id: z.guid(), cantidad: z.coerce.number().positive(),
     especificacion: z.string().trim().max(300).optional(),
   }).safeParse(Object.fromEntries(datos))
   if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? 'Revisa el nuevo material.' }
@@ -133,13 +133,13 @@ export async function crearRequerimiento(_previo: unknown, datos: FormData): Pro
   }
 
   const analisis = z.object({
-    orden_id: z.string().uuid(),
+    orden_id: z.guid(),
     area_destino: z.enum(['MTZ', 'PRD', 'ACB']),
   }).safeParse({
     orden_id: datos.get('orden_id'),
     area_destino: datos.get('area_destino'),
   })
-  const materiales = z.array(z.string().uuid()).min(1).max(100).safeParse(datos.getAll('material_id'))
+  const materiales = z.array(z.guid()).min(1).max(100).safeParse(datos.getAll('material_id'))
   if (!analisis.success || !materiales.success) {
     return { ok: false, error: 'No se pudo identificar la orden, el área o los materiales.' }
   }
@@ -167,13 +167,13 @@ export async function crearRequerimiento(_previo: unknown, datos: FormData): Pro
 // la protege (`trg_ot_material_bloquear_edicion_solicitada`) para no descuadrar
 // lo que Almacén atiende.
 const esquemaEdicion = z.object({
-  id: z.string().uuid(),
-  orden_id: z.string().uuid(),
-  material_id: z.string().uuid('Elige el material'),
-  plano_id: z.union([z.string().uuid(), z.literal('')]),
+  id: z.guid(),
+  orden_id: z.guid(),
+  material_id: z.guid('Elige el material'),
+  plano_id: z.union([z.guid(), z.literal('')]),
   cantidad: z.coerce.number().positive('La cantidad tiene que ser mayor que cero'),
   area_destino: z.enum(['MTZ', 'PRD', 'ACB']),
-  etapa_id: z.union([z.string().uuid(), z.literal('')]),
+  etapa_id: z.union([z.guid(), z.literal('')]),
   observacion: z.string().trim().max(500, 'La observación es muy larga: hasta 500 caracteres.').optional(),
 })
 
@@ -217,8 +217,8 @@ export async function editarLineaMaterial(
 }
 
 const esquemaQuitar = z.object({
-  id: z.string().uuid(),
-  orden_id: z.string().uuid(),
+  id: z.guid(),
+  orden_id: z.guid(),
 })
 
 export async function quitarMaterial(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {

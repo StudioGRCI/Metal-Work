@@ -26,7 +26,7 @@ function refrescar() {
 const LINEAS = z
   .array(
     z.object({
-      material_id: z.string().uuid('Elige el material de cada línea.'),
+      material_id: z.guid('Elige el material de cada línea.'),
       cantidad: z.coerce
         .number({ message: 'Indica la cantidad de cada línea.' })
         .positive('La cantidad de cada línea va mayor que cero.')
@@ -62,8 +62,8 @@ type FormularioDeCompra = {
 function leerFormularioDeCompra(formulario: FormData, delRequerimiento: boolean): { ok: true; datos: FormularioDeCompra } | { ok: false; error: string } {
   const cabecera = z
     .object({
-      operacion_id: z.string().uuid(),
-      proveedor_id: z.string().uuid('Elige el proveedor del padrón. Si es nuevo, regístralo con «Nuevo».'),
+      operacion_id: z.guid(),
+      proveedor_id: z.guid('Elige el proveedor del padrón. Si es nuevo, regístralo con «Nuevo».'),
       referencia: z.string().trim().max(100, 'La referencia del proveedor pasa de 100 caracteres.'),
       motivo: delRequerimiento
         ? z.string().trim().max(500).default('')
@@ -170,7 +170,7 @@ export async function emitirCompraDirecta(_previo: unknown, formulario: FormData
 export async function emitirCompraDelRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Generar la orden de compra del requerimiento corresponde a Logística.' }
-  const rq = z.string().uuid().safeParse(dato(formulario, 'requerimiento_id'))
+  const rq = z.guid().safeParse(dato(formulario, 'requerimiento_id'))
   if (!rq.success) return { ok: false, error: 'No se reconoció el requerimiento. Vuelve a cargar la pantalla.' }
   const items = z
     .array(z.coerce.number().int().min(1).max(100))
@@ -212,7 +212,7 @@ export async function emitirCompraDelRequerimiento(_previo: unknown, formulario:
 export async function mandarARecojo(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Mandar compras a recojo corresponde a Logística.' }
-  const id = z.string().uuid().safeParse(formulario.get('id'))
+  const id = z.guid().safeParse(formulario.get('id'))
   if (!id.success) return { ok: false, error: 'No se reconoció la compra. Vuelve a cargar la pantalla.' }
 
   const supabase = await createClient()
@@ -233,7 +233,7 @@ export async function corregirDatosCompra(_previo: unknown, formulario: FormData
   if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Corregir una compra corresponde a Logística.' }
   const v = z
     .object({
-      id: z.string().uuid(),
+      id: z.guid(),
       con_factura: z.enum(['true', 'false'], { message: 'Indica si la compra viene con factura o sin factura.' }),
       codigo_interno: z.string().trim().min(2, FALTA_CODIGO_INTERNO).max(60, CODIGO_INTERNO_LARGO),
     })

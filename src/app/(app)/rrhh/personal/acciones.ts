@@ -23,12 +23,12 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
 
   const analisis = z
     .object({
-      id: z.string().uuid(),
+      id: z.guid(),
       nombres: z.string().min(2, 'Escribe los nombres.').max(80, 'Los nombres pasan de 80 caracteres.'),
       apellidos: z.string().min(2, 'Escribe los apellidos.').max(80, 'Los apellidos pasan de 80 caracteres.'),
       dni: z.string().regex(/^\d{8}$/, 'El DNI lleva 8 dígitos.'),
       cargo: z.string().max(80, 'El cargo pasa de 80 caracteres.'),
-      area_id: z.union([z.literal(''), z.string().uuid()]),
+      area_id: z.union([z.literal(''), z.guid()]),
       hora_entrada: z.string().regex(HORA, 'Elige la hora de entrada.'),
       hora_salida: z.string().regex(HORA, 'Elige la hora de salida.'),
       banco: z.string().min(2, 'Escribe el banco.').max(60, 'El banco pasa de 60 caracteres.'),
@@ -83,7 +83,7 @@ export async function cambiarEstadoTrabajador(_previo: unknown, formulario: Form
   if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const analisis = z
-    .object({ id: z.string().uuid(), activo: z.enum(['si', 'no']) })
+    .object({ id: z.guid(), activo: z.enum(['si', 'no']) })
     .safeParse({ id: dato(formulario, 'id'), activo: dato(formulario, 'activo') })
   if (!analisis.success) return { ok: false, error: 'Vuelve a cargar la pantalla.' }
   const activo = analisis.data.activo === 'si'

@@ -29,7 +29,7 @@ const QUIEN: Record<keyof typeof PASOS, string> = {
 export async function marcarPasoRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const analisis = z
     .object({
-      id: z.string().uuid(),
+      id: z.guid(),
       paso: z.enum(['sin_stock', 'listo', 'en_atencion', 'entregado']),
       nota: z.string().trim().max(500, 'La nota pasa de 500 caracteres.'),
     })

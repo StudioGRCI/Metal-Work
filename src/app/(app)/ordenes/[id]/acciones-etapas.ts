@@ -7,7 +7,7 @@ import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
-const uuid = z.string().uuid()
+const uuid = z.guid()
 const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
 export async function definirEtapas(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {

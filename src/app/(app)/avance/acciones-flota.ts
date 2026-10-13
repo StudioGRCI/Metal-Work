@@ -99,8 +99,8 @@ export async function registrarTrabajoSinOrden(
 
 // ------------------------------------------------------------- el reporte
 const esquemaReporte = z.object({
-  flota_id: z.string().uuid(),
-  area_id: z.string().uuid('Elige el área'),
+  flota_id: z.guid(),
+  area_id: z.guid('Elige el área'),
   fecha: z.string().regex(ES_FECHA, 'Falta la fecha'),
   descripcion: z.string().trim().min(5, 'Cuenta qué se hizo hoy'),
   avance_porcentaje: z.string().trim().optional(),
@@ -209,7 +209,7 @@ export async function reportarFlota(_previo: unknown, datos: FormData): Promise<
 
 // ------------------------------------------------- terminado, retomado, cerrado
 const esquemaEstado = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   estado: z.enum(['EN_TALLER', 'LISTA', 'SALIO']),
   retiro: z.string().trim().max(200).optional(),
 })

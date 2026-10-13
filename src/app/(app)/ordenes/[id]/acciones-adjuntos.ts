@@ -17,7 +17,7 @@ import { createClient } from '@/lib/supabase/server'
 const PUEDEN_SUBIR = ['produccion.actividades', 'ordenes.editar', 'ordenes.crear', 'ordenes.abrir_taller']
 
 const esquemaAdjunto = z.object({
-  orden_id: z.string().uuid(),
+  orden_id: z.guid(),
   tipo: z.enum(['ORDEN', 'CRONOGRAMA']),
   nombre_archivo: z.string().trim().min(1).max(200),
   ruta_storage: z.string().min(1),
@@ -61,7 +61,7 @@ export async function registrarAdjunto(_previo: unknown, datos: FormData): Promi
   return { ok: true, mensaje: v.tipo === 'ORDEN' ? 'PDF guardado en la orden.' : 'Excel guardado en la orden.' }
 }
 
-const esquemaQuitar = z.object({ id: z.string().uuid(), orden_id: z.string().uuid() })
+const esquemaQuitar = z.object({ id: z.guid(), orden_id: z.guid() })
 
 /**
  * Quitar un archivo: la fila y el archivo. Primero la fila, que es la que dice

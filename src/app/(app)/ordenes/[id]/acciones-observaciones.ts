@@ -14,8 +14,8 @@ import { createClient } from '@/lib/supabase/server'
  * rápido; las reglas las pone la base y sus mensajes llegan tal cual.
  */
 const esquemaLevantar = z.object({
-  orden_id: z.string().uuid(),
-  area_id: z.string().uuid('Elige a qué área va la observación'),
+  orden_id: z.guid(),
+  area_id: z.guid('Elige a qué área va la observación'),
   descripcion: z
     .string()
     .trim()
@@ -48,8 +48,8 @@ export async function levantarObservacion(_previo: unknown, datos: FormData): Pr
 }
 
 const esquemaResolver = z.object({
-  id: z.string().uuid(),
-  orden_id: z.string().uuid(),
+  id: z.guid(),
+  orden_id: z.guid(),
   resolucion: z
     .string()
     .trim()

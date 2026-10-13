@@ -9,7 +9,7 @@ import { createClient } from '@/lib/supabase/server'
 
 const entrada = z.object({
   tipo: z.enum(['cliente', 'unidad', 'carroceria']),
-  id: z.string().uuid(),
+  id: z.guid(),
   activo: z.enum(['true', 'false']).transform((v) => v === 'true'),
 })
 
@@ -58,7 +58,7 @@ export async function cambiarEstadoCatalogo(_previo: unknown, datos: FormData): 
 export async function eliminarCatalogo(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (perfil.rol.codigo !== 'ADMIN') return { ok: false, error: 'Solo Administración puede eliminar físicamente un registro.' }
-  const analisis = z.object({ tipo: z.enum(['cliente', 'unidad', 'carroceria']), id: z.string().uuid() }).safeParse(Object.fromEntries(datos))
+  const analisis = z.object({ tipo: z.enum(['cliente', 'unidad', 'carroceria']), id: z.guid() }).safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: 'No se pudo identificar el registro.' }
   const { tipo, id } = analisis.data
   const tabla = tipo === 'cliente' ? 'clientes' : tipo === 'unidad' ? 'unidades' : 'tipos_carroceria'

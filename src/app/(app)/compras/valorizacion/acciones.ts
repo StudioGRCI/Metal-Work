@@ -23,8 +23,8 @@ export async function valorizarMaterial(_previo: unknown, formulario: FormData):
   if (!puede(perfil, 'almacen.valorizar')) return { ok: false, error: 'Solo Logística fija el precio de los materiales del almacén.' }
 
   const v = z.object({
-    operacion_id: z.string().uuid(),
-    material_id: z.string().uuid(),
+    operacion_id: z.guid(),
+    material_id: z.guid(),
     precio: z.coerce.number().min(0).max(9999999999).multipleOf(0.0001),
     moneda: z.enum(['PEN', 'USD']),
     observacion: z.string().trim().max(300),

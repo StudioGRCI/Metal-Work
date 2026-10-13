@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
-import { ALMACENES, esAlmacen, exigeFormato } from '@/lib/dominio/almacen'
+import { ALMACENES, almacenEnFrase, esAlmacen, exigeFormato } from '@/lib/dominio/almacen'
 import { cantidad, fechaHora } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -53,7 +53,7 @@ export default async function PaginaFormato({ params }: PageProps<'/almacen/movi
           <div>
             <p className="text-xs uppercase tracking-wide text-texto-suave">Metal Work Perú S.A.C. · Almacén</p>
             <h1 className="mt-1 text-xl font-semibold">{titulo}</h1>
-            {def && <p className="text-sm text-texto-suave">Almacén de {def.etiqueta.toLowerCase()}</p>}
+            {almacen && <p className="text-sm text-texto-suave">Almacén de {almacenEnFrase(almacen)}</p>}
           </div>
           <div className="text-right text-sm">
             <p className="font-mono">N.º {corto}</p>

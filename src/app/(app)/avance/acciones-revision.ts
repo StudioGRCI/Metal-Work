@@ -50,7 +50,7 @@ function revalidarReportes() {
 // ------------------------------------------------------------ aprobar u observar
 const esquemaRevision = z.object({
   clase: z.enum(['hoja', 'orden', 'flota']),
-  id: z.string().uuid(),
+  id: z.guid(),
   decision: z.enum(['APROBADO', 'OBSERVADO']),
   observacion: z.string().trim().max(500, 'La observación es muy larga: dilo en pocas palabras.').optional(),
 })
@@ -161,7 +161,7 @@ export async function aprobarElDia(_previo: unknown, datos: FormData): Promise<R
 // -------------------------------------------------------------------- eliminar
 const esquemaEliminar = z.object({
   clase: z.enum(['hoja', 'orden', 'flota']),
-  id: z.string().uuid(),
+  id: z.guid(),
 })
 
 /**
@@ -218,7 +218,7 @@ export async function eliminarReporte(_previo: unknown, datos: FormData): Promis
 
 // ------------------------------------------------------------------- corregir
 const nulo = (v: string | undefined) => (v && v.trim().length > 0 ? v.trim() : null)
-const id = z.string().uuid()
+const id = z.guid()
 
 const esquemaCorreccion = z.discriminatedUnion('clase', [
   z.object({

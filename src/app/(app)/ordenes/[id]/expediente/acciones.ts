@@ -7,7 +7,7 @@ import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
-const uuid = z.string().uuid()
+const uuid = z.guid()
 
 /**
  * Ventas, Gerencia o Administración dicen si el monto de la cotización trae IGV.

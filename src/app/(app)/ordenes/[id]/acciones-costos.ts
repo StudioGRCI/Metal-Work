@@ -7,7 +7,7 @@ import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/accion
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
-const id = z.string().uuid()
+const id = z.guid()
 
 export async function solicitarTesoreria(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()

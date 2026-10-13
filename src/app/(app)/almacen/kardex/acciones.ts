@@ -9,9 +9,9 @@ import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
 import { catalogoDeAlmacen } from '@/lib/datos/atencion-materiales'
-import { materialesDelKardex } from '@/lib/datos/kardex'
+import { materialesDelKardex, materialesParaPlanilla, type MaterialParaPlanilla } from '@/lib/datos/kardex'
 import { leerHojaConteo, motivoConteoInicial, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
-import { leerHoja, type Celda, type FilaLeida } from '@/lib/dominio/planilla-almacen'
+import { leerHoja, normalizarNombre, similitud, type Celda, type FilaLeida } from '@/lib/dominio/planilla-almacen'
 import { cantidad, fechaHora, hoyLima, sumarDias } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -47,16 +47,16 @@ export async function registrarSalidaAlmacen(_previo: unknown, formulario: FormD
 
   const destino = dato(formulario, 'destino')
   const v = z.object({
-    operacion_id: z.string().uuid(),
-    material_id: z.string().uuid(),
+    operacion_id: z.guid(),
+    material_id: z.guid(),
     cantidad: z.coerce.number().positive().multipleOf(0.001),
     destino: z.enum(['UNIDAD', 'CODIGO']),
-    unidad_id: z.string().uuid().optional(),
+    unidad_id: z.guid().optional(),
     codigo_unidad: z.string().trim().min(3).max(60).optional(),
     motivo: z.string().trim().min(3).max(200),
     recibido_por_nombre: z.string().trim().min(3).max(160),
     foto_ruta: z.string().min(40).max(200),
-    requerimiento_linea_id: z.string().uuid().optional(),
+    requerimiento_linea_id: z.guid().optional(),
   }).safeParse({
     operacion_id: dato(formulario, 'operacion_id'),
     material_id: dato(formulario, 'material_id'),
@@ -110,7 +110,7 @@ export async function cerrarSalidaConFormato(_previo: unknown, formulario: FormD
   if (!puede(perfil, 'almacen.despachar')) return { ok: false, error: 'Solo Almacén cierra salidas con el formato firmado.' }
 
   const v = z.object({
-    movimiento_id: z.string().uuid(),
+    movimiento_id: z.guid(),
     formato_ruta: z.string().min(40).max(200),
   }).safeParse({ movimiento_id: dato(formulario, 'movimiento_id'), formato_ruta: dato(formulario, 'formato_ruta') })
   if (!v.success) return { ok: false, error: 'No se reconoció la salida o el archivo del formato.' }
@@ -140,6 +140,16 @@ export async function cerrarSalidaConFormato(_previo: unknown, formulario: FormD
 
 // ------------------------------------------------------- planilla sin internet
 
+/** Un material del catálogo que se parece a lo escrito, para que Almacén elija. */
+export type SugerenciaPlanilla = {
+  id: string
+  codigo: string
+  descripcion: string
+  unidad: string | null
+  /** Cómo entraría si se elige este: saldo inicial si no tiene saldo, ingreso general si ya tiene. */
+  origen: 'INGRESO_GENERAL' | 'SALDO_INICIAL'
+}
+
 export type FilaPlanilla = {
   id: string
   hoja: 'Ingresos' | 'Salidas'
@@ -149,8 +159,17 @@ export type FilaPlanilla = {
   fechaTexto: string
   materialId: string | null
   codigo: string
+  /** La descripción del material del catálogo que se usará. */
   descripcion: string | null
+  /** Lo que escribió Almacén cuando no puso el código. */
+  descripcionEscrita: string
   unidadMedida: string | null
+  /** La unidad escrita en la planilla, ya reconocida; null si no escribió ninguna. */
+  unidadId: string | null
+  /** Si no está con ese nombre: el material que se dará de alta en «Por clasificar». */
+  nuevo: { id: string; unidadId: string; unidad: string } | null
+  /** Los del catálogo con un nombre parecido: Almacén elige uno o lo da de alta. */
+  sugerencias: SugerenciaPlanilla[]
   cantidad: number | null
   origen: 'INGRESO_GENERAL' | 'SALDO_INICIAL'
   documento: string
@@ -160,11 +179,15 @@ export type FilaPlanilla = {
   /** El nombre de la unidad registrada a la que se vinculará; null si el código es nuevo. */
   unidadRegistrada: string | null
   recibe: string
-  estado: 'LISTA' | 'CARGADA' | 'ERROR'
+  /** ELEGIR: no está con ese nombre y hay parecidos; se registra cuando Almacén elige. */
+  estado: 'LISTA' | 'ELEGIR' | 'CARGADA' | 'ERROR'
   errores: string[]
+  avisos: string[]
 }
 
 const MAX_FILAS_PLANILLA = 600
+/** Desde cuánto parecido se ofrece un material del catálogo en vez de darlo de alta. */
+const PARECIDO_MINIMO = 0.45
 
 /** Un identificador fijo para un mismo contenido: volver a cargar el mismo archivo no duplica. */
 function uuidDe(contenido: string) {
@@ -172,9 +195,15 @@ function uuidDe(contenido: string) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${((parseInt(hex[16], 16) & 3) | 8).toString(16)}${hex.slice(17, 20)}-${hex.slice(20, 32)}`
 }
 
-/** Un identificador fijo por fila escrita: volver a cargar la misma planilla no duplica. */
+/**
+ * Un identificador fijo por fila escrita: volver a cargar la misma planilla no
+ * duplica. Sin código entra la descripción escrita; con código, y con el tipo
+ * vacío como ingreso general, queda como siempre: las planillas ya cargadas
+ * dan el mismo identificador.
+ */
 async function idDeFila(usuario: string, f: FilaLeida) {
-  return uuidDe([usuario, f.hoja, f.fecha, f.hora ?? '', f.codigo.toUpperCase(), f.cantidad, f.origen, f.documento, f.precio ?? '', f.moneda, f.unidad, f.recibe].join('|'))
+  const material = f.codigo ? f.codigo.toUpperCase() : `DESCRIPCION:${normalizarNombre(f.descripcion)}:${normalizarNombre(f.unidadEscrita)}`
+  return uuidDe([usuario, f.hoja, f.fecha, f.hora ?? '', material, f.cantidad, f.origen ?? 'INGRESO_GENERAL', f.documento, f.precio ?? '', f.moneda, f.unidad, f.recibe].join('|'))
 }
 
 type Hojas = Awaited<ReturnType<typeof readXlsxFile>>
@@ -198,8 +227,9 @@ async function abrirLibro(archivo: FormDataEntryValue | null, queEs: string): Pr
 
 /**
  * Lee la planilla llenada sin internet y la contrasta con la base: material
- * por código, unidad registrada o código nuevo, fechas que la base acepta,
- * filas repetidas, lo que ya se cargó y si alcanza el saldo. No registra nada.
+ * por código o por descripción, unidad registrada o código nuevo, fechas que
+ * la base acepta, filas repetidas, lo que ya se cargó y si alcanza el saldo.
+ * No registra nada.
  */
 export async function leerPlanillaAlmacen(_previo: unknown, datos: FormData): Promise<ResultadoAccion<{ filas: FilaPlanilla[] }>> {
   const perfil = await exigirSesion()
@@ -209,6 +239,7 @@ export async function leerPlanillaAlmacen(_previo: unknown, datos: FormData): Pr
 
   const abierto = await abrirLibro(datos.get('archivo'), 'la planilla')
   if ('error' in abierto) return { ok: false, error: abierto.error }
+  const hoy = hoyLima()
   let leidas: FilaLeida[]
   try {
     const libro = abierto.hojas
@@ -218,7 +249,7 @@ export async function leerPlanillaAlmacen(_previo: unknown, datos: FormData): Pr
       return { ok: false, error: 'No es la planilla de almacén: faltan las hojas «Ingresos» y «Salidas». Descárgala de nuevo desde el kardex.' }
     }
     leidas = [
-      ...leerHoja('Ingresos', ingresos.data as unknown as Celda[][]),
+      ...leerHoja('Ingresos', ingresos.data as unknown as Celda[][], hoy),
       ...leerHoja('Salidas', salidas.data as unknown as Celda[][]),
     ]
   } catch (e) {
@@ -228,14 +259,26 @@ export async function leerPlanillaAlmacen(_previo: unknown, datos: FormData): Pr
   if (leidas.length > MAX_FILAS_PLANILLA) return { ok: false, error: `La planilla tiene ${leidas.length} filas; carga hasta ${MAX_FILAS_PLANILLA} por vez.` }
 
   const db = await createClient()
-  const [catalogo, existencias, unidades] = await Promise.all([
-    catalogoDeAlmacen(),
+  const [catalogo, existencias, unidades, medidas] = await Promise.all([
+    materialesParaPlanilla(),
     materialesDelKardex(),
     db.rpc('unidades_para_salida_almacen'),
+    db.from('unidades_medida').select('id,codigo,nombre').eq('activo', true),
   ])
   if (unidades.error) return { ok: false, error: mensajeDeError(unidades.error) }
+  if (medidas.error) return { ok: false, error: 'No se pudieron cargar las unidades de medida. Vuelve a intentar.' }
   const materialPorCodigo = new Map(catalogo.map((m) => [m.codigo.trim().toUpperCase(), m]))
+  const materialesPorNombre = new Map<string, MaterialParaPlanilla[]>()
+  for (const m of catalogo) {
+    const clave = normalizarNombre(m.descripcion)
+    materialesPorNombre.set(clave, [...(materialesPorNombre.get(clave) ?? []), m])
+  }
+  const medidaPorTexto = new Map<string, { id: string; codigo: string }>()
+  for (const u of medidas.data ?? []) for (const clave of [u.codigo, u.nombre]) medidaPorTexto.set(normalizarNombre(clave), { id: u.id, codigo: u.codigo })
+  const porDefecto = medidaPorTexto.get('UND') ?? null
   const libre = new Map(existencias.map((m) => [m.material_id, m.disponible]))
+  const saldo = new Map(existencias.map((m) => [m.material_id, Number(m.existencia ?? 0)]))
+  const origenSegunSaldo = (id: string | null | undefined) => ((id && (saldo.get(id) ?? 0) > 0) ? 'INGRESO_GENERAL' : 'SALDO_INICIAL') as FilaPlanilla['origen']
   // La misma regla que registrar_salida_almacen: placa o código interno, si es de una sola unidad.
   const porIdentificador = new Map<string, string[]>()
   for (const u of unidades.data ?? []) {
@@ -245,8 +288,56 @@ export async function leerPlanillaAlmacen(_previo: unknown, datos: FormData): Pr
     }
   }
 
+  // Cada fila con su material: por código, por el mismo nombre o, si no está, con los parecidos para elegir.
+  const resueltas = leidas.map((f) => {
+    const errores: string[] = []
+    const avisos: string[] = []
+    let material: MaterialParaPlanilla | null = null
+    let unidadId: string | null = null
+    let nuevo: FilaPlanilla['nuevo'] = null
+    let sugerencias: SugerenciaPlanilla[] = []
+    if (f.codigo) {
+      material = materialPorCodigo.get(f.codigo.toUpperCase()) ?? null
+      if (!material) errores.push(`El código ${f.codigo} no está en el catálogo activo de Almacén.`)
+    } else if (f.descripcion) {
+      if (f.unidadEscrita) {
+        const medida = medidaPorTexto.get(normalizarNombre(f.unidadEscrita))
+        if (medida) unidadId = medida.id
+        else errores.push(`La unidad «${f.unidadEscrita}» no está registrada: escribe UND, KG, GAL… o déjala vacía.`)
+      }
+      const iguales = materialesPorNombre.get(normalizarNombre(f.descripcion)) ?? []
+      const conSuUnidad = unidadId ? iguales.filter((m) => m.unidad_id === unidadId) : []
+      const candidatos = conSuUnidad.length > 0 ? conSuUnidad : iguales
+      if (candidatos.length > 0) {
+        // Con nombres repetidos en el catálogo se usa el que ya tiene saldo; si ninguno, el primero por código.
+        const ordenados = [...candidatos].sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'))
+        material = ordenados.find((m) => (saldo.get(m.id) ?? 0) > 0) ?? ordenados[0]
+        if (candidatos.length > 1) {
+          avisos.push(`Hay ${candidatos.length} materiales con este nombre (${ordenados.map((m) => m.codigo).join(', ')}): se usa ${material.codigo}${(saldo.get(material.id) ?? 0) > 0 ? ', que ya tiene saldo' : ''}.`)
+        }
+      } else {
+        sugerencias = catalogo
+          .map((m) => ({ m, parecido: similitud(f.descripcion, m.descripcion) }))
+          .filter((x) => x.parecido >= PARECIDO_MINIMO)
+          .sort((a, b) => b.parecido - a.parecido)
+          .slice(0, 4)
+          .map(({ m }) => ({ id: m.id, codigo: m.codigo, descripcion: m.descripcion, unidad: m.unidad, origen: origenSegunSaldo(m.id) }))
+        const medida = unidadId ? { id: unidadId, codigo: (medidas.data ?? []).find((u) => u.id === unidadId)?.codigo ?? '' } : porDefecto
+        if (!medida) errores.push('No está registrada la unidad UND: escribe la unidad del material en la planilla.')
+        else nuevo = { id: uuidDe([perfil.id, 'MATERIAL_NUEVO', normalizarNombre(f.descripcion), medida.id].join('|')), unidadId: medida.id, unidad: medida.codigo }
+      }
+    }
+    if (material && unidadId && unidadId !== material.unidad_id && !material.unidad_pendiente) {
+      errores.push(`${material.codigo} se cuenta en ${material.unidad ?? 'otra unidad'}: corrige la unidad o déjala vacía.`)
+    } else if (material?.unidad_pendiente && f.hoja === 'Ingresos') {
+      const queda = unidadId ? (medidas.data ?? []).find((u) => u.id === unidadId)?.codigo : material.unidad
+      avisos.push(`Su unidad seguía provisional en el catálogo: al registrarlo queda en ${queda ?? 'UND'} y ya aparece en salidas.`)
+    }
+    return { errores, avisos, material, unidadId, nuevo, sugerencias }
+  })
+
   const ids = await Promise.all(leidas.map((f) => idDeFila(perfil.id, f)))
-  const materiales = [...new Set(leidas.map((f) => materialPorCodigo.get(f.codigo.toUpperCase())?.id).filter((x): x is string => Boolean(x)))]
+  const materiales = [...new Set(resueltas.map((r) => r.material?.id).filter((x): x is string => Boolean(x)))]
   const [cargadas, conteos] = await Promise.all([
     db.from('movimientos_materiales').select('id').in('id', ids),
     materiales.length ? db.from('conteos_inventario').select('material_id,registrado_en').in('material_id', materiales) : Promise.resolve({ data: [], error: null }),
@@ -257,14 +348,12 @@ export async function leerPlanillaAlmacen(_previo: unknown, datos: FormData): Pr
   for (const c of conteos.data ?? []) if (!ultimoConteo.has(c.material_id) || c.registrado_en > ultimoConteo.get(c.material_id)!) ultimoConteo.set(c.material_id, c.registrado_en)
 
   const ahora = Date.now()
-  const hoy = hoyLima()
   const limite = sumarDias(hoy, -31)
   const porDia = new Map<string, number>()
   const vistas = new Map<string, number>()
   const filas: FilaPlanilla[] = leidas.map((f, i) => {
-    const errores = [...f.errores]
-    const material = materialPorCodigo.get(f.codigo.toUpperCase()) ?? null
-    if (f.codigo && !material) errores.push(`El código ${f.codigo} no está en el catálogo activo de Almacén.`)
+    const { avisos, material, unidadId, nuevo, sugerencias } = resueltas[i]
+    const errores = [...f.errores, ...resueltas[i].errores]
     if (f.hoja === 'Ingresos' && !ingresa) errores.push('Tu puesto no registra ingresos.')
     if (f.hoja === 'Salidas' && !despacha) errores.push('Tu puesto no registra salidas.')
 
@@ -274,7 +363,8 @@ export async function leerPlanillaAlmacen(_previo: unknown, datos: FormData): Pr
       const orden = porDia.get(f.fecha) ?? 0
       porDia.set(f.fecha, orden + 1)
       const hora = f.hora ?? `${String(8 + Math.floor(orden / 60)).padStart(2, '0')}:${String(orden % 60).padStart(2, '0')}`
-      const instante = new Date(`${f.fecha}T${hora}:00-05:00`).getTime()
+      // Sin fecha ni hora, entra en el momento en que se carga, en el orden de la planilla.
+      const instante = f.fechaSupuesta && !f.hora ? ahora - 60000 + orden : new Date(`${f.fecha}T${hora}:00-05:00`).getTime()
       fecha = new Date(f.hora || instante <= ahora ? instante : ahora - 60000).toISOString()
       if (f.fecha > hoy || (f.hora && instante > ahora + 5 * 60000)) errores.push('La fecha es posterior a hoy.')
       else if (f.fecha < limite) errores.push('Es de hace más de 31 días: regularízalo con un conteo físico.')
@@ -287,14 +377,20 @@ export async function leerPlanillaAlmacen(_previo: unknown, datos: FormData): Pr
     else vistas.set(ids[i], i)
 
     const registradas = f.unidad ? porIdentificador.get(f.unidad) : undefined
+    const fechaTexto = f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)}/${f.fecha.slice(0, 4)}` : ''
+    let estado: FilaPlanilla['estado'] = yaCargadas.has(ids[i]) ? 'CARGADA' : errores.length ? 'ERROR' : 'LISTA'
+    if (estado === 'LISTA' && f.hoja === 'Ingresos' && !material && sugerencias.length > 0) estado = 'ELEGIR'
     return {
       id: ids[i], hoja: f.hoja, fila: f.fila, fecha,
-      fechaTexto: f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)}/${f.fecha.slice(0, 4)}${f.hora ? ` ${f.hora}` : ''}` : '—',
-      materialId: material?.id ?? null, codigo: f.codigo, descripcion: material?.descripcion ?? null, unidadMedida: material?.unidad ?? null,
-      cantidad: f.cantidad, origen: f.origen, documento: f.documento, precio: f.precio, moneda: f.moneda,
+      fechaTexto: !f.fecha ? '—' : f.fechaSupuesta ? `${fechaTexto} (hoy: la fila no tenía fecha)` : `${fechaTexto}${f.hora ? ` ${f.hora}` : ''}`,
+      materialId: material?.id ?? null, codigo: material?.codigo ?? f.codigo, descripcion: material?.descripcion ?? null,
+      descripcionEscrita: f.descripcion, unidadMedida: material?.unidad ?? nuevo?.unidad ?? null, unidadId, nuevo, sugerencias,
+      cantidad: f.cantidad,
+      origen: f.origen ?? (f.hoja === 'Ingresos' ? origenSegunSaldo(material?.id) : 'INGRESO_GENERAL'),
+      documento: f.documento || (f.hoja === 'Ingresos' && f.fecha ? `Planilla de Almacén del ${fechaTexto}` : f.documento),
+      precio: f.precio, moneda: f.moneda,
       unidad: f.unidad, unidadRegistrada: registradas?.length === 1 ? registradas[0] : null, recibe: f.recibe,
-      estado: yaCargadas.has(ids[i]) ? 'CARGADA' : errores.length ? 'ERROR' : 'LISTA',
-      errores,
+      estado, errores, avisos,
     }
   })
 
@@ -313,8 +409,10 @@ export async function leerPlanillaAlmacen(_previo: unknown, datos: FormData): Pr
 }
 
 /**
- * Registra una fila de la planilla con la fecha en que pasó. La base vuelve a
- * comprobarlo todo: permiso, fecha, material, saldo, unidad y foto.
+ * Registra una fila de la planilla con la fecha en que pasó. Un ingreso puede
+ * traer el material del catálogo o, si no está, la descripción y la unidad con
+ * que se dará de alta. La base vuelve a comprobarlo todo: permiso, fecha,
+ * material, saldo, unidad y foto.
  */
 export async function registrarFilaPlanilla(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -322,40 +420,58 @@ export async function registrarFilaPlanilla(_previo: unknown, formulario: FormDa
   if (hoja === 'Ingresos' && !puede(perfil, 'almacen.recibir')) return { ok: false, error: 'Tu puesto no registra ingresos.' }
   if (hoja === 'Salidas' && !puede(perfil, 'almacen.despachar')) return { ok: false, error: 'Tu puesto no registra salidas.' }
   const comun = z.object({
-    id: z.string().uuid(),
-    material_id: z.string().uuid(),
+    id: z.guid(),
     cantidad: z.coerce.number().positive().multipleOf(0.001),
     fecha: z.string().datetime({ offset: true }),
-  }).safeParse({ id: dato(formulario, 'id'), material_id: dato(formulario, 'material_id'), cantidad: dato(formulario, 'cantidad'), fecha: dato(formulario, 'fecha') })
-  if (!comun.success) return { ok: false, error: 'La fila no tiene material, cantidad o fecha válidos.' }
+  }).safeParse({ id: dato(formulario, 'id'), cantidad: dato(formulario, 'cantidad'), fecha: dato(formulario, 'fecha') })
+  if (!comun.success) return { ok: false, error: 'La fila no tiene cantidad o fecha válidas.' }
   const db = await createClient()
 
   if (hoja === 'Ingresos') {
     const v = z.object({
+      material_id: z.guid().optional(),
+      material_nuevo: z.guid().optional(),
+      descripcion: z.string().trim().max(200),
+      unidad_id: z.guid().optional(),
       origen: z.enum(['INGRESO_GENERAL', 'SALDO_INICIAL']),
       documento: z.string().trim().min(2).max(100),
       precio: z.union([z.literal(''), z.coerce.number().min(0).multipleOf(0.0001)]),
       moneda: z.enum(['PEN', 'USD']),
-    }).safeParse({ origen: dato(formulario, 'origen'), documento: dato(formulario, 'documento'), precio: dato(formulario, 'precio'), moneda: dato(formulario, 'moneda') })
-    if (!v.success) return { ok: false, error: 'Revisa el tipo de ingreso, el documento y el precio.' }
-    const { data, error } = await db.rpc('registrar_ingreso_planilla', {
-      p_id: comun.data.id, p_material: comun.data.material_id, p_cantidad: comun.data.cantidad, p_origen: v.data.origen,
+    }).safeParse({
+      material_id: dato(formulario, 'material_id') || undefined,
+      material_nuevo: dato(formulario, 'material_nuevo') || undefined,
+      descripcion: dato(formulario, 'descripcion'),
+      unidad_id: dato(formulario, 'unidad_id') || undefined,
+      origen: dato(formulario, 'origen'), documento: dato(formulario, 'documento'), precio: dato(formulario, 'precio'), moneda: dato(formulario, 'moneda'),
+    })
+    if (!v.success) return { ok: false, error: 'Revisa el material, el tipo de ingreso, el documento y el precio.' }
+    if (!v.data.material_id && (!v.data.material_nuevo || v.data.descripcion.length < 3 || !v.data.unidad_id)) {
+      return { ok: false, error: 'Elige el material del catálogo o dalo de alta como nuevo.' }
+    }
+    const { data, error } = await db.rpc('registrar_ingreso_planilla_libre', {
+      p_id: comun.data.id,
+      p_material: v.data.material_id ?? null,
+      p_material_nuevo: v.data.material_id ? null : v.data.material_nuevo ?? null,
+      p_descripcion: v.data.descripcion,
+      p_unidad: v.data.unidad_id ?? null,
+      p_cantidad: comun.data.cantidad, p_origen: v.data.origen,
       p_documento: v.data.documento, p_precio: v.data.precio === '' ? null : v.data.precio, p_moneda: v.data.moneda, p_fecha: comun.data.fecha,
     })
     if (error) return { ok: false, error: mensajeDeError(error) }
     if (data !== comun.data.id) return { ok: false, error: NO_TOCO_NADA }
   } else if (hoja === 'Salidas') {
     const v = z.object({
+      material_id: z.guid(),
       unidad: z.string().trim().min(3).max(60),
       motivo: z.string().trim().min(3).max(200),
       recibe: z.string().trim().min(3).max(160),
       foto_ruta: z.string().min(40).max(200),
-    }).safeParse({ unidad: dato(formulario, 'unidad'), motivo: dato(formulario, 'motivo'), recibe: dato(formulario, 'recibe'), foto_ruta: dato(formulario, 'foto_ruta') })
-    if (!v.success) return { ok: false, error: 'Revisa la unidad, el vale, quién recibe y la foto.' }
+    }).safeParse({ material_id: dato(formulario, 'material_id'), unidad: dato(formulario, 'unidad'), motivo: dato(formulario, 'motivo'), recibe: dato(formulario, 'recibe'), foto_ruta: dato(formulario, 'foto_ruta') })
+    if (!v.success) return { ok: false, error: 'Revisa el material, la unidad, el vale, quién recibe y la foto.' }
     const foto = await comprobarFoto(db, v.data.foto_ruta)
     if (foto) return { ok: false, error: foto }
     const { data, error } = await db.rpc('registrar_salida_planilla', {
-      p_id: comun.data.id, p_material: comun.data.material_id, p_cantidad: comun.data.cantidad, p_codigo: v.data.unidad,
+      p_id: comun.data.id, p_material: v.data.material_id, p_cantidad: comun.data.cantidad, p_codigo: v.data.unidad,
       p_motivo: v.data.motivo, p_recibe: v.data.recibe, p_foto: v.data.foto_ruta, p_fecha: comun.data.fecha,
     })
     if (error) return { ok: false, error: mensajeDeError(error) }
@@ -494,8 +610,8 @@ export async function registrarConteoInicial(
     crudas = null
   }
   const filas = z.array(z.object({
-    id: z.string().uuid(),
-    material_id: z.string().uuid(),
+    id: z.guid(),
+    material_id: z.guid(),
     contado: z.number().min(0).multipleOf(0.001),
     precio: z.number().min(0).multipleOf(0.0001).nullable(),
     moneda: z.enum(['PEN', 'USD']),
@@ -554,7 +670,7 @@ export async function fijarStockMinimo(_previo: unknown, datos: FormData): Promi
 
   const texto = dato(datos, 'minimo').trim()
   const v = z.object({
-    material_id: z.string().uuid(),
+    material_id: z.guid(),
     minimo: z.number({ message: 'El mínimo es un número, como 12 o 2.5.' }).min(0, 'El mínimo va de 0 en adelante.').max(99999999999).multipleOf(0.001, 'El mínimo admite hasta 3 decimales.').nullable(),
   }).safeParse({ material_id: dato(datos, 'material_id'), minimo: texto === '' ? null : Number(texto.replace(',', '.')) })
   if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? 'Revisa el stock mínimo.' }
@@ -580,9 +696,9 @@ export async function validarIngresosCompra(_previo: unknown, formulario: FormDa
   const perfil = await exigirSesion()
   if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'Solo quien recibe en Almacén valida los ingresos.' }
 
-  const compra = z.string().uuid().safeParse(dato(formulario, 'compra_id'))
+  const compra = z.guid().safeParse(dato(formulario, 'compra_id'))
   const ids = formulario.getAll('linea').map(String)
-  if (!compra.success || ids.length === 0 || ids.length > 200 || ids.some((id) => !z.string().uuid().safeParse(id).success)) {
+  if (!compra.success || ids.length === 0 || ids.length > 200 || ids.some((id) => !z.guid().safeParse(id).success)) {
     return { ok: false, error: 'Vuelve a cargar el kardex: la compra ya no está como se ve.' }
   }
   const lineas = []

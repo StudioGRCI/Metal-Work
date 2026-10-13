@@ -33,7 +33,7 @@ function dato(formulario: FormData, nombre: string) {
 export async function resolverPropuesta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'Diseño aprueba las propuestas de materiales.' }
-  const v = z.object({ detalle_id: z.string().uuid(), decision: z.enum(['aprobar', 'rechazar']) })
+  const v = z.object({ detalle_id: z.guid(), decision: z.enum(['aprobar', 'rechazar']) })
     .safeParse(Object.fromEntries(formulario))
   if (!v.success) return { ok: false, error: 'Elige una propuesta y una decisión válidas.' }
   const supabase = await createClient()
@@ -51,7 +51,7 @@ export async function resolverPropuesta(_previo: unknown, formulario: FormData):
 export async function revisarStock(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'almacen.ver')) return { ok: false, error: 'Almacén revisa el stock.' }
-  const v = z.object({ detalle_id: z.string().uuid(), decision: z.enum(['STOCK', 'COMPRA']) })
+  const v = z.object({ detalle_id: z.guid(), decision: z.enum(['STOCK', 'COMPRA']) })
     .safeParse(Object.fromEntries(formulario))
   if (!v.success) return { ok: false, error: 'Elige el material y la decisión de stock.' }
   const supabase = await createClient()
@@ -70,7 +70,7 @@ export async function registrarConteo(_previo: unknown, formulario: FormData): P
   const perfil = await exigirSesion()
   if (!puede(perfil, 'almacen.ver')) return { ok: false, error: 'Solo Almacén registra el conteo físico.' }
   const v = z.object({
-    operacion_id: z.string().uuid(), material_id: z.string().uuid(),
+    operacion_id: z.guid(), material_id: z.guid(),
     cantidad_fisica: z.coerce.number().min(0), motivo: z.string().trim().min(10).max(300),
   }).safeParse(Object.fromEntries(formulario))
   if (!v.success) return { ok: false, error: 'Indica el saldo físico y un motivo de 10 a 300 caracteres.' }
@@ -90,7 +90,7 @@ export async function registrarConteo(_previo: unknown, formulario: FormData): P
 export async function registrarPrecioCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Logística registra el precio del insumo.' }
-  const v = z.object({ detalle_id: z.string().uuid(), precio: z.coerce.number().min(0) })
+  const v = z.object({ detalle_id: z.guid(), precio: z.coerce.number().min(0) })
     .safeParse(Object.fromEntries(formulario))
   if (!v.success) return { ok: false, error: 'Indica un precio unitario válido.' }
   const supabase = await createClient()
@@ -109,7 +109,7 @@ export async function fijarCondicionCompra(_previo: unknown, formulario: FormDat
   const perfil = await exigirSesion()
   if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Logística define la condición de pago.' }
   const v = z.object({
-    compra_id: z.string().uuid(), condicion: z.enum(['CONTADO','CREDITO']),
+    compra_id: z.guid(), condicion: z.enum(['CONTADO','CREDITO']),
     dias: z.coerce.number().int().min(0).max(365), moneda: z.enum(['PEN','USD']),
   }).safeParse(Object.fromEntries(formulario))
   if (!v.success) return { ok: false, error: 'Indica condición, plazo y moneda válidos.' }
@@ -132,8 +132,8 @@ export async function crearOrdenCompra(_previo: unknown, formulario: FormData): 
   if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Tu perfil no puede registrar compras.' }
 
   const cabecera = z.object({
-    operacion_id: z.string().uuid(),
-    proveedor_id: z.string().uuid(),
+    operacion_id: z.guid(),
+    proveedor_id: z.guid(),
     referencia: z.string().trim().min(2).max(100),
     fecha_estimada: z.iso.date().optional(),
     condicion: z.enum(['CONTADO','CREDITO']),
@@ -154,7 +154,7 @@ export async function crearOrdenCompra(_previo: unknown, formulario: FormData): 
   })
   const ids = formulario.getAll('detalle_id')
   const lineas = z.array(z.object({
-    id: z.string().uuid(),
+    id: z.guid(),
     cantidad: z.coerce.number().positive(),
     precio: z.coerce.number().min(0).multipleOf(0.01),
   })).min(1).max(100).safeParse(ids.map((id) => ({
@@ -216,8 +216,8 @@ export async function registrarRecepcion(_previo: unknown, formulario: FormData)
   const perfil = await exigirSesion()
   if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'Tu perfil no puede registrar ingresos a almacén.' }
   const datos = z.object({
-    operacion_id: z.string().uuid(),
-    compra_detalle_id: z.string().uuid(),
+    operacion_id: z.guid(),
+    compra_detalle_id: z.guid(),
     cantidad: z.coerce.number().positive(),
     documento_referencia: z.string().trim().min(2).max(100),
   }).safeParse({
@@ -248,10 +248,10 @@ export async function despacharMaterial(_previo: unknown, formulario: FormData):
   const perfil = await exigirSesion()
   if (!puede(perfil, 'almacen.despachar')) return { ok: false, error: 'Tu perfil no puede despachar materiales.' }
   const datos = z.object({
-    operacion_id: z.string().uuid(),
-    requerimiento_detalle_id: z.string().uuid(),
+    operacion_id: z.guid(),
+    requerimiento_detalle_id: z.guid(),
     cantidad: z.coerce.number().positive(),
-    responsable_id: z.string().uuid(),
+    responsable_id: z.guid(),
     recibido_por_nombre: z.string().trim().min(3).max(160),
     foto_ruta: z.string().min(40).max(200),
   }).safeParse({
@@ -297,11 +297,11 @@ export async function despacharMaterial(_previo: unknown, formulario: FormData):
 export async function registrarIngresoGeneral(_previo:unknown,formulario:FormData):Promise<ResultadoAccion> {
   const perfil=await exigirSesion()
   if(!puede(perfil,'almacen.recibir')) return {ok:false,error:'Solo Almacén registra sus ingresos.'}
-  const v=z.object({operacion_id:z.string().uuid(),material_id:z.string().uuid().optional(),
-    material_nuevo_id:z.string().uuid().optional(),descripcion:z.string().trim().max(200).optional(),unidad_id:z.string().uuid().optional(),
+  const v=z.object({operacion_id:z.guid(),material_id:z.guid().optional(),
+    material_nuevo_id:z.guid().optional(),descripcion:z.string().trim().max(200).optional(),unidad_id:z.guid().optional(),
     cantidad:z.coerce.number().positive().multipleOf(0.001),
     origen:z.enum(['SALDO_INICIAL','INGRESO_GENERAL','DEVOLUCION']),documento:z.string().trim().min(2).max(100),
-    precio:z.coerce.number().min(0).multipleOf(0.01).optional(),moneda:z.enum(['PEN','USD']),devolucion:z.string().uuid().optional()})
+    precio:z.coerce.number().min(0).multipleOf(0.01).optional(),moneda:z.enum(['PEN','USD']),devolucion:z.guid().optional()})
     .safeParse({operacion_id:dato(formulario,'operacion_id'),material_id:dato(formulario,'material_id')||undefined,
       material_nuevo_id:dato(formulario,'material_nuevo_id')||undefined,descripcion:dato(formulario,'descripcion')||undefined,
       unidad_id:dato(formulario,'unidad_id')||undefined,cantidad:dato(formulario,'cantidad'),origen:dato(formulario,'origen'),

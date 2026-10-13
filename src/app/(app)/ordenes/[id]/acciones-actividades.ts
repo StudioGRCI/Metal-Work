@@ -60,9 +60,9 @@ async function puedeEditarTarea(perfil: PerfilSesion, ordenId: string, areaId: s
 }
 
 const esquemaActividad = z.object({
-  orden_id: z.string().uuid(),
-  etapa_id: z.union([z.string().uuid(), z.literal('')]).optional(),
-  area_id: z.string().uuid('Elige el área'),
+  orden_id: z.guid(),
+  etapa_id: z.union([z.guid(), z.literal('')]).optional(),
+  area_id: z.guid('Elige el área'),
   nombre: z.string().trim().min(3, 'Escribe qué actividad es'),
   referencia: z.string().trim().optional(),
   detalle: z.string().trim().optional(),
@@ -129,9 +129,9 @@ export async function agregarActividad(_previo: unknown, datos: FormData): Promi
 }
 
 const esquemaEditar = z.object({
-  id: z.string().uuid(),
-  orden_id: z.string().uuid(),
-  etapa_id: z.union([z.string().uuid(), z.literal('')]).optional(),
+  id: z.guid(),
+  orden_id: z.guid(),
+  etapa_id: z.union([z.guid(), z.literal('')]).optional(),
   nombre: z.string().trim().min(3, 'Escribe qué actividad es'),
   referencia: z.string().trim().optional(),
   detalle: z.string().trim().optional(),
@@ -199,8 +199,8 @@ export async function editarActividad(_previo: unknown, datos: FormData): Promis
 }
 
 const esquemaPeso = z.object({
-  id: z.string().uuid(),
-  orden_id: z.string().uuid(),
+  id: z.guid(),
+  orden_id: z.guid(),
   peso_pct: z.coerce.number().min(0).max(100),
 })
 
@@ -240,7 +240,7 @@ export async function cambiarPesoActividad(
   return { ok: true, mensaje: 'Peso corregido.' }
 }
 
-const esquemaQuitar = z.object({ id: z.string().uuid(), orden_id: z.string().uuid() })
+const esquemaQuitar = z.object({ id: z.guid(), orden_id: z.guid() })
 
 export async function quitarActividad(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -291,7 +291,7 @@ export async function quitarActividad(_previo: unknown, datos: FormData): Promis
 const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/
 
 const esquemaFilaCronograma = z.object({
-  area_id: z.string().uuid(),
+  area_id: z.guid(),
   nombre: z.string().trim().min(1).max(200),
   referencia: z.string().trim().max(200).nullable().optional(),
   peso_pct: z.number().min(0).max(100),
@@ -311,7 +311,7 @@ export async function cargarCronograma(_previo: unknown, datos: FormData): Promi
     return { ok: false, error: 'El cronograma lo carga Diseño o Supervisión del área.' }
   }
 
-  const orden = z.string().uuid().safeParse(datos.get('orden_id'))
+  const orden = z.guid().safeParse(datos.get('orden_id'))
   if (!orden.success) return { ok: false, error: 'No se pudo identificar la orden.' }
 
   let filas: z.infer<typeof esquemaFilaCronograma>[]
@@ -347,8 +347,8 @@ export async function cargarCronograma(_previo: unknown, datos: FormData): Promi
 }
 
 const esquemaAvance = z.object({
-  actividad_id: z.string().uuid(),
-  orden_id: z.string().uuid(),
+  actividad_id: z.guid(),
+  orden_id: z.guid(),
   fecha: z.string().min(1, 'Falta la fecha'),
   avance_pct: z.coerce.number().min(0.01, 'El avance del día tiene que ser mayor que cero').max(100),
   nota: z.string().trim().optional(),
@@ -378,7 +378,7 @@ export async function reportarAvance(_previo: unknown, datos: FormData): Promise
     return { ok: false, error: 'Ese avance es de otra área: cada uno reporta lo suyo.' }
   }
 
-  const materiales = z.array(z.object({ movimiento_id: z.string().uuid(), cantidad: z.number().positive() })).max(30)
+  const materiales = z.array(z.object({ movimiento_id: z.guid(), cantidad: z.number().positive() })).max(30)
   let usados: z.infer<typeof materiales> = []
   try {
     usados = materiales.parse(JSON.parse(v.materiales_usados || '[]'))
@@ -413,7 +413,7 @@ export async function reportarAvance(_previo: unknown, datos: FormData): Promise
   return { ok: true, mensaje: 'Avance del día reportado.' }
 }
 
-const esquemaHoja = z.object({ orden_id: z.string().uuid() })
+const esquemaHoja = z.object({ orden_id: z.guid() })
 
 /**
  * El jefe aprueba de una vez lo que queda por aprobar de esta orden. Es el
@@ -449,8 +449,8 @@ export async function aprobarHojaDeOrden(_previo: unknown, datos: FormData): Pro
 
 // ------------------------------------------------------ el día de un área
 const esquemaDiaDeArea = z.object({
-  orden_id: z.string().uuid(),
-  area_id: z.string().uuid(),
+  orden_id: z.guid(),
+  area_id: z.guid(),
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Falta la fecha'),
 })
 

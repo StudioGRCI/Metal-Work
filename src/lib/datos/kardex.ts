@@ -230,3 +230,38 @@ export async function lineasDeRequerimientoParaSalida(): Promise<LineaRqParaSali
     entregado: Number(l.entregado ?? 0), pendiente: Number(l.pendiente ?? 0),
   }] : [])
 }
+
+export type MaterialParaPlanilla = {
+  id: string
+  codigo: string
+  descripcion: string
+  unidad_id: string
+  unidad: string | null
+  /** Del catálogo importado con la unidad provisional: la planilla la confirma al contarlo. */
+  unidad_pendiente: boolean
+}
+
+/**
+ * Todo el catálogo activo, también lo que tiene la unidad provisional: la
+ * planilla busca ahí por código o por descripción, porque Almacén copia los
+ * nombres del catálogo completo y no solo de lo que ya tiene saldo.
+ */
+export async function materialesParaPlanilla(): Promise<MaterialParaPlanilla[]> {
+  const db = await createClient()
+  const materiales: MaterialParaPlanilla[] = []
+  let ultimo: string | undefined
+  for (;;) {
+    let consulta = db.from('materiales').select('id,codigo,descripcion,unidad_medida_id,unidad_pendiente,unidad:unidades_medida(codigo)')
+      .eq('activo', true).order('id').limit(1000)
+    if (ultimo) consulta = consulta.gt('id', ultimo)
+    const { data, error } = await consulta
+    if (error) throw new Error(`No se pudo cargar el catálogo de Almacén: ${error.message}`)
+    materiales.push(...(data ?? []).map((m) => ({
+      id: m.id, codigo: m.codigo, descripcion: m.descripcion, unidad_id: m.unidad_medida_id,
+      unidad: m.unidad?.codigo ?? null, unidad_pendiente: m.unidad_pendiente,
+    })))
+    if (!data?.length || data.length < 1000) break
+    ultimo = data[data.length - 1].id
+  }
+  return materiales
+}

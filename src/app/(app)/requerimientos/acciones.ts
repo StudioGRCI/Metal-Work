@@ -26,8 +26,8 @@ const LINEA = z.object({
     .number({ message: 'Indica la cantidad de cada insumo.' })
     .positive('La cantidad de cada insumo debe ser mayor que cero.')
     .max(999999999, 'Una cantidad es demasiado grande.'),
-  unidad_medida_id: z.string().uuid('Elige la unidad de cada insumo.'),
-  categoria_id: z.string().uuid('Elige la categoría de cada insumo.'),
+  unidad_medida_id: z.guid('Elige la unidad de cada insumo.'),
+  categoria_id: z.guid('Elige la categoría de cada insumo.'),
 })
 
 /**
@@ -40,8 +40,8 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
 
   const cabecera = z
     .object({
-      operacion_id: z.string().uuid(),
-      area_id: z.string().uuid('Elige el área que necesita los insumos.'),
+      operacion_id: z.guid(),
+      area_id: z.guid('Elige el área que necesita los insumos.'),
       codigo_interno: z
         .string()
         .trim()
@@ -106,7 +106,7 @@ export async function anularRequerimiento(_previo: unknown, formulario: FormData
 
   const analisis = z
     .object({
-      id: z.string().uuid(),
+      id: z.guid(),
       motivo: z
         .string()
         .trim()

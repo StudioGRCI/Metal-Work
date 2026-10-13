@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { Campo, Entrada } from '@/components/ui/campos'
+import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
+import { normalizarNombre } from '@/lib/dominio/planilla-almacen'
 import { cantidad } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -17,12 +18,16 @@ import { leerPlanillaAlmacen, registrarFilaPlanilla, type FilaPlanilla } from '.
 
 const TIPOS_FOTO = ['image/jpeg', 'image/png', 'image/webp']
 type Resultado = { estado: 'enviando' } | { estado: 'ok' } | { estado: 'error'; mensaje: string }
+/** Lo que eligió Almacén para una fila sin material: uno del catálogo o darlo de alta. */
+const NUEVO = 'NUEVO'
 
 /**
  * Cargar la planilla llenada sin internet. Primero se lee y se muestra qué se
- * va a registrar y qué no; cada salida pide su foto; después se registra fila
- * por fila, con la fecha en que pasó, y se ve el resultado de cada una.
- * Volver a cargar la misma planilla no duplica nada.
+ * va a registrar y qué no; cada salida pide su foto; un ingreso escrito solo
+ * con la descripción que no está con ese nombre pide elegir el material o
+ * darlo de alta; después se registra fila por fila, con la fecha en que pasó,
+ * y se ve el resultado de cada una. Volver a cargar la misma planilla no
+ * duplica nada.
  */
 export function CargarPlanilla() {
   const router = useRouter()
@@ -31,13 +36,15 @@ export function CargarPlanilla() {
   const [error, setError] = useState<string | null>(null)
   const [filas, setFilas] = useState<FilaPlanilla[] | null>(null)
   const [fotos, setFotos] = useState<Record<string, File>>({})
+  const [elecciones, setElecciones] = useState<Record<string, string>>({})
   const [resultados, setResultados] = useState<Record<string, Resultado>>({})
   const [registrando, setRegistrando] = useState(false)
   const enCurso = useRef(false)
 
-  const listas = (filas ?? []).filter((f) => f.estado === 'LISTA')
+  const listas = (filas ?? []).filter((f) => f.estado === 'LISTA' || (f.estado === 'ELEGIR' && elecciones[f.id]))
   const porRegistrar = listas.filter((f) => f.hoja === 'Ingresos' || fotos[f.id])
   const sinFoto = listas.filter((f) => f.hoja === 'Salidas' && !fotos[f.id])
+  const sinElegir = (filas ?? []).filter((f) => f.estado === 'ELEGIR' && !elecciones[f.id])
   const hechas = Object.values(resultados).filter((r) => r.estado === 'ok').length
   const fallidas = Object.values(resultados).filter((r) => r.estado === 'error').length
   const terminado = !registrando && Object.keys(resultados).length > 0
@@ -45,6 +52,7 @@ export function CargarPlanilla() {
   function reiniciar() {
     setFilas(null)
     setFotos({})
+    setElecciones({})
     setResultados({})
     setError(null)
   }
@@ -115,7 +123,15 @@ export function CargarPlanilla() {
         let resultado: ResultadoAccion
         try {
           if (f.hoja === 'Ingresos') {
-            datos.set('origen', f.origen)
+            // Sin material del catálogo: el elegido por Almacén, o darlo de alta con su descripción.
+            const eleccion = elecciones[f.id]
+            const elegido = eleccion && eleccion !== NUEVO ? f.sugerencias.find((s) => s.id === eleccion) : undefined
+            const nuevo = !f.materialId && !elegido && f.nuevo
+            datos.set('material_id', f.materialId ?? elegido?.id ?? '')
+            datos.set('material_nuevo', nuevo ? nuevo.id : '')
+            datos.set('descripcion', f.descripcionEscrita)
+            datos.set('unidad_id', nuevo ? nuevo.unidadId : f.unidadId ?? '')
+            datos.set('origen', elegido?.origen ?? f.origen)
             datos.set('documento', f.documento)
             datos.set('precio', f.precio === null ? '' : String(f.precio))
             datos.set('moneda', f.moneda)
@@ -150,6 +166,7 @@ export function CargarPlanilla() {
     listas: listas.length,
     cargadas: filas.filter((f) => f.estado === 'CARGADA').length,
     errores: filas.filter((f) => f.estado === 'ERROR').length,
+    elegir: filas.filter((f) => f.estado === 'ELEGIR').length,
   } : null
 
   return (
@@ -158,7 +175,7 @@ export function CargarPlanilla() {
         <FileUp aria-hidden className="size-4" />Cargar planilla
       </Boton>
       <Ventana abierta={abierta} alCerrar={cerrar} titulo="Cargar planilla sin internet" ancho="xl"
-        descripcion="Lo anotado en la planilla de Excel entra al kardex con la fecha en que pasó. Primero revisas qué se va a registrar; cada salida pide su foto.">
+        descripcion="Lo anotado en la planilla de Excel entra al kardex con la fecha en que pasó. En Ingresos basta la descripción y la cantidad. Primero revisas qué se va a registrar; cada salida pide su foto.">
         <div className="space-y-4">
           {!filas && (
             <Campo etiqueta="Planilla de Excel" htmlFor="planilla-archivo" ayuda="La que descargaste con «Descargar planilla», ya llena.">
@@ -174,7 +191,8 @@ export function CargarPlanilla() {
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <Insignia tono="exito">{resumen.listas} para registrar</Insignia>
                 {resumen.cargadas > 0 && <Insignia tono="neutro">{resumen.cargadas} ya estaban en el kardex</Insignia>}
-                {resumen.errores > 0 && <Insignia tono="peligro">{resumen.errores} con errores</Insignia>}
+                {resumen.elegir > 0 && <Insignia tono="aviso">{resumen.elegir} por elegir el material</Insignia>}
+                {resumen.errores > 0 && <Insignia tono="peligro">{resumen.errores} no se cargan</Insignia>}
                 {!registrando && !terminado && (
                   <button type="button" onClick={reiniciar} className="ml-auto text-sm text-acento hover:underline">Elegir otra planilla</button>
                 )}
@@ -191,16 +209,40 @@ export function CargarPlanilla() {
                           <span>Fila {f.fila} · {f.fechaTexto}</span>
                         </p>
                         <p className="mt-1 text-sm font-medium text-texto">
-                          {cantidad(f.cantidad)} {f.unidadMedida ?? ''} · {f.descripcion ?? f.codigo}
-                          <span className="ml-1 font-mono text-[11px] font-normal text-texto-tenue">{f.codigo}</span>
+                          {f.cantidad === null ? 'Sin cantidad' : `${cantidad(f.cantidad)} ${f.unidadMedida ?? ''}`} · {f.descripcion ?? (f.descripcionEscrita || f.codigo)}
+                          {f.materialId && <span className="ml-1 font-mono text-[11px] font-normal text-texto-tenue">{f.codigo}</span>}
                         </p>
+                        {f.descripcionEscrita && f.descripcion && normalizarNombre(f.descripcion) !== normalizarNombre(f.descripcionEscrita) && (
+                          <p className="text-xs text-texto-suave">Escrito en la planilla: {f.descripcionEscrita}</p>
+                        )}
+                        {f.estado === 'LISTA' && f.hoja === 'Ingresos' && !f.materialId && f.nuevo && (
+                          <p className="text-xs text-aviso">No está en el catálogo con ese nombre: se da de alta en «Por clasificar», en {f.nuevo.unidad}.</p>
+                        )}
                         <p className="text-xs text-texto-suave">
                           {f.hoja === 'Ingresos'
                             ? `${f.origen === 'SALDO_INICIAL' ? 'Saldo inicial' : 'Ingreso general'} · ${f.documento}`
                             : `${f.documento} · ${f.unidadRegistrada ? `a ${f.unidadRegistrada}` : `a ${f.unidad} (código nuevo)`} · recibe ${f.recibe}`}
                         </p>
+                        {f.avisos.length > 0 && f.estado !== 'CARGADA' && (
+                          <ul className="mt-1 list-disc pl-4 text-xs text-texto-suave">{f.avisos.map((a) => <li key={a}>{a}</li>)}</ul>
+                        )}
                         {f.errores.length > 0 && (
                           <ul className="mt-1 list-disc pl-4 text-xs text-peligro">{f.errores.map((e) => <li key={e}>{e}</li>)}</ul>
+                        )}
+                        {f.estado === 'ELEGIR' && r?.estado !== 'ok' && (
+                          <div className="mt-2 max-w-xl">
+                            <label htmlFor={`elegir-${f.id}`} className="text-xs font-medium text-texto">
+                              No está en el catálogo con ese nombre. ¿Es alguno de estos?
+                            </label>
+                            <Seleccion id={`elegir-${f.id}`} value={elecciones[f.id] ?? ''} disabled={registrando}
+                              onChange={(e) => setElecciones((previas) => ({ ...previas, [f.id]: e.target.value }))}>
+                              <option value="">Elige el material…</option>
+                              {f.sugerencias.map((s) => (
+                                <option key={s.id} value={s.id}>{s.descripcion} · {s.codigo}{s.unidad ? ` (${s.unidad})` : ''}</option>
+                              ))}
+                              {f.nuevo && <option value={NUEVO}>Ninguno: darlo de alta en «Por clasificar» ({f.nuevo.unidad})</option>}
+                            </Seleccion>
+                          </div>
                         )}
                         {r?.estado === 'error' && <p role="alert" className="mt-1 text-xs text-peligro">{r.mensaje}</p>}
                       </div>
@@ -222,6 +264,9 @@ export function CargarPlanilla() {
                 })}
               </ul>
 
+              {!terminado && sinElegir.length > 0 && (
+                <p className="text-sm text-aviso">{sinElegir.length === 1 ? 'Un ingreso espera' : `${sinElegir.length} ingresos esperan`} que elijas el material; {sinElegir.length === 1 ? 'no se registrará' : 'no se registrarán'} hasta entonces.</p>
+              )}
               {!terminado && sinFoto.length > 0 && (
                 <p className="text-sm text-aviso">{sinFoto.length === 1 ? 'Una salida no tiene foto y no se registrará' : `${sinFoto.length} salidas no tienen foto y no se registrarán`} hasta que la adjuntes.</p>
               )}

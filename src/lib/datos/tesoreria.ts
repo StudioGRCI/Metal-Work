@@ -9,7 +9,7 @@ export type DocumentoCompraTesoreria = Vistas<'v_documentos_compra_tesoreria'> &
   ordenes: z.infer<typeof esquemaVinculos>
 }
 
-const esquemaVinculos = z.array(z.object({ orden_id: z.string().uuid(), numero_ot: z.string(), area_destino: z.string() }))
+const esquemaVinculos = z.array(z.object({ orden_id: z.guid(), numero_ot: z.string(), area_destino: z.string() }))
 
 /** Archivos de compra visibles para Tesorería y Logística, con enlaces temporales. */
 export async function documentosDeCompraParaTesoreria(): Promise<DocumentoCompraTesoreria[]> {

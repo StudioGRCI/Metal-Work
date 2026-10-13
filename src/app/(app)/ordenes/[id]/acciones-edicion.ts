@@ -7,7 +7,7 @@ import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 const esquema = z.object({
-  orden_id: z.string().uuid(),
+  orden_id: z.guid(),
   version: z.string().datetime({ offset: true }),
   unidad_version: z.string().optional(),
   descripcion: z.string().trim().min(5).max(5000),
@@ -16,7 +16,7 @@ const esquema = z.object({
   codigo_interno: z.string().trim().max(40),
   marca: z.string().trim().max(80),
   modelo: z.string().trim().max(80),
-  cotizacion_nueva_id: z.union([z.string().uuid(), z.literal('')]),
+  cotizacion_nueva_id: z.union([z.guid(), z.literal('')]),
   motivo: z.string().trim().min(5, 'Explica el motivo del cambio').max(1000),
   confirmar_cambio: z.string().optional(),
 })
@@ -46,13 +46,13 @@ export async function editarResumenAdministracion(_previo: unknown, datos: FormD
     return { ok: false, error: 'Solo Administración corrige vehículo y responsable.' }
   }
   const entrada = z.object({
-    orden_id: z.string().uuid(),
+    orden_id: z.guid(),
     version: z.string().datetime({ offset: true }),
     unidad_version: z.string().datetime({ offset: true }),
     marca: z.string().trim().max(80),
     modelo: z.string().trim().max(80),
     anio: z.union([z.literal(''), z.coerce.number().int().min(1950).max(2100)]),
-    responsable_id: z.union([z.literal(''), z.string().uuid()]),
+    responsable_id: z.union([z.literal(''), z.guid()]),
     motivo: z.string().trim().min(5).max(500),
   }).safeParse(Object.fromEntries(datos))
   if (!entrada.success) return { ok: false, error: entrada.error.issues[0]?.message ?? 'Revisa los datos.' }

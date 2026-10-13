@@ -14,9 +14,9 @@ const esquemaPersona = z.object({
   apellidos: z.string().trim().min(2, 'Los apellidos son obligatorios'),
   correo: z.string().trim().toLowerCase().email('El correo no es válido'),
   clave: z.string().min(CLAVE_MINIMA, `La contraseña debe tener al menos ${CLAVE_MINIMA} caracteres`),
-  rol_id: z.string().uuid('Elige el puesto'),
-  sede_id: z.string().uuid('Elige el taller'),
-  area_id: z.string().uuid().optional().or(z.literal('')),
+  rol_id: z.guid('Elige el puesto'),
+  sede_id: z.guid('Elige el taller'),
+  area_id: z.guid().optional().or(z.literal('')),
   cargo: z.string().trim().optional(),
   documento: z.string().trim().optional(),
   telefono: z.string().trim().optional(),
@@ -77,12 +77,12 @@ export async function darDeAltaPersona(
 }
 
 const esquemaEdicion = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   nombres: z.string().trim().min(2, 'Los nombres son obligatorios'),
   apellidos: z.string().trim().min(2, 'Los apellidos son obligatorios'),
-  rol_id: z.string().uuid('Elige el puesto'),
-  sede_id: z.string().uuid('Elige el taller'),
-  area_id: z.string().uuid().optional().or(z.literal('')),
+  rol_id: z.guid('Elige el puesto'),
+  sede_id: z.guid('Elige el taller'),
+  area_id: z.guid().optional().or(z.literal('')),
   cargo: z.string().trim().optional(),
   documento: z.string().trim().optional(),
   telefono: z.string().trim().optional(),
@@ -137,7 +137,7 @@ export async function cambiarClave(_previo: unknown, datos: FormData): Promise<R
 
   const analisis = z
     .object({
-      id: z.string().uuid(),
+      id: z.guid(),
       clave: z.string().min(CLAVE_MINIMA, `La contraseña debe tener al menos ${CLAVE_MINIMA} caracteres`),
     })
     .safeParse(Object.fromEntries(datos))
@@ -165,7 +165,7 @@ export async function cambiarEstado(_previo: unknown, datos: FormData): Promise<
   }
 
   const analisis = z
-    .object({ id: z.string().uuid(), activo: z.coerce.boolean() })
+    .object({ id: z.guid(), activo: z.coerce.boolean() })
     .safeParse(Object.fromEntries(datos))
 
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }

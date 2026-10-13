@@ -9,10 +9,10 @@ import { exigirSesion, puede } from '@/lib/sesion'
 import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 
 const esquemaNuevaOrden = z.object({
-  cliente_id: z.string().uuid('Selecciona un cliente'),
-  unidad_id: z.string().uuid().optional().or(z.literal('')),
-  sede_id: z.string().uuid('Selecciona la sede o taller'),
-  tipo_carroceria_id: z.string().uuid().optional().or(z.literal('')),
+  cliente_id: z.guid('Selecciona un cliente'),
+  unidad_id: z.guid().optional().or(z.literal('')),
+  sede_id: z.guid('Selecciona la sede o taller'),
+  tipo_carroceria_id: z.guid().optional().or(z.literal('')),
   tipo_trabajo: z.enum(['FABRICACION', 'REPARACION', 'REPOTENCIACION', 'MANTENIMIENTO', 'GARANTIA']),
   prioridad: z.enum(['BAJA', 'NORMAL', 'ALTA', 'URGENTE']),
   descripcion: z.string().trim().min(5, 'Describe el trabajo a realizar'),
@@ -20,7 +20,7 @@ const esquemaNuevaOrden = z.object({
   fecha_inicio_programada: z.string().optional(),
   fecha_fin_programada: z.string().optional(),
   fecha_entrega_comprometida: z.string().optional(),
-  responsable_id: z.string().uuid().optional().or(z.literal('')),
+  responsable_id: z.guid().optional().or(z.literal('')),
   observaciones: z.string().trim().optional(),
 })
 
@@ -68,7 +68,7 @@ export async function crearOrden(_previo: unknown, datos: FormData): Promise<Res
 }
 
 const esquemaCambioEstado = z.object({
-  orden_id: z.string().uuid(),
+  orden_id: z.guid(),
   estado: z.enum([
     'BORRADOR', 'APROBADA', 'PROGRAMADA', 'EN_PROCESO', 'PAUSADA',
     'CONTROL_CALIDAD', 'TERMINADA', 'ENTREGADA', 'FACTURADA', 'ANULADA',
@@ -142,8 +142,8 @@ export async function cambiarEstadoOrden(
 }
 
 const esquemaPonerCliente = z.object({
-  orden_id: z.string().uuid(),
-  cliente_id: z.string().uuid('Elige el cliente'),
+  orden_id: z.guid(),
+  cliente_id: z.guid('Elige el cliente'),
 })
 
 /**
@@ -179,7 +179,7 @@ export async function ponerClienteAOrden(_previo: unknown, datos: FormData): Pro
 }
 
 const esquemaEntrega = z.object({
-  orden_id: z.string().uuid(),
+  orden_id: z.guid(),
   recibe_nombre: z.string().trim().min(3, 'Escribe quién recibe la unidad'),
   recibe_documento: z.string().trim().optional(),
   recibe_cargo: z.string().trim().optional(),
@@ -251,7 +251,7 @@ export async function registrarEntrega(_previo: unknown, datos: FormData): Promi
 }
 
 const esquemaComentario = z.object({
-  orden_id: z.string().uuid(),
+  orden_id: z.guid(),
   descripcion: z.string().trim().min(3, 'Escribe el comentario'),
 })
 
@@ -289,7 +289,7 @@ export async function liberarTesoreria(_previo: unknown, datos: FormData): Promi
 
   const analisis = z
     .object({
-      orden_id: z.string().uuid(),
+      orden_id: z.guid(),
       observacion: z.string().trim().optional(),
     })
     .safeParse(Object.fromEntries(datos))
@@ -311,7 +311,7 @@ export async function liberarTesoreria(_previo: unknown, datos: FormData): Promi
 export async function registrarSalidaFisica(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'ordenes.entregar')) return { ok: false, error: 'La salida física la registra el responsable de entrega.' }
-  const analisis = z.object({ entrega_id: z.string().uuid(), orden_id: z.string().uuid(),
+  const analisis = z.object({ entrega_id: z.guid(), orden_id: z.guid(),
     constancia: z.string().trim().min(10).max(500), confirmada: z.literal('on'),
   }).safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: 'Describe la salida (10 a 500 caracteres) y confirma que observaste salir el vehículo.' }
@@ -333,7 +333,7 @@ export async function confirmarSalida(_previo: unknown, datos: FormData): Promis
   }
 
   const analisis = z
-    .object({ entrega_id: z.string().uuid(), orden_id: z.string().uuid() })
+    .object({ entrega_id: z.guid(), orden_id: z.guid() })
     .safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }
 

@@ -8,7 +8,7 @@ import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import type { Json } from '@/types/database'
 
-const uuid = z.string().uuid()
+const uuid = z.guid()
 const pdfMaximo = 15 * 1024 * 1024
 
 async function leerPdf(datos: FormData) {
