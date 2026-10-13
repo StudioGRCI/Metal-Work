@@ -10,7 +10,7 @@ export type LineaRequerimiento = {
   categoria: string
 }
 
-/** Un requerimiento en el listado: número, quién lo necesita, para qué y qué se pide. */
+/** Un requerimiento en el listado: número, quién lo necesita, para qué, qué se pide y por dónde va. */
 export type RequerimientoListado = {
   id: string
   numero: string
@@ -20,21 +20,32 @@ export type RequerimientoListado = {
   fecha_requerida: string | null
   estado: string
   motivo_anulacion: string | null
+  nota_almacen: string | null
+  nota_logistica: string | null
+  nota_entrega: string | null
+  revision_stock_en: string | null
+  en_atencion_en: string | null
+  listo_en_almacen_en: string | null
+  entregado_en: string | null
   creado_en: string
   lineas: LineaRequerimiento[]
 }
 
 export type OpcionCatalogo = { id: string; codigo: string; nombre: string }
 
-export async function cargarRequerimientos(): Promise<RequerimientoListado[]> {
+const SELECT_RQ =
+  'id, numero, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(item, descripcion, cantidad, unidad:unidades_medida(codigo), categoria:categorias_material(nombre))'
+
+/**
+ * Los requerimientos, del más nuevo al más viejo. Con `soloAbiertos`, los que
+ * todavía esperan a Almacén, a Logística o a que el área los recoja: es lo que
+ * la bandeja de atención muestra.
+ */
+export async function cargarRequerimientos(opciones: { soloAbiertos?: boolean } = {}): Promise<RequerimientoListado[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('requerimientos')
-    .select(
-      'id, numero, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, creado_en, area:areas(nombre), lineas:requerimiento_lineas(item, descripcion, cantidad, unidad:unidades_medida(codigo), categoria:categorias_material(nombre))',
-    )
-    .order('creado_en', { ascending: false })
-    .limit(300)
+  let consulta = supabase.from('requerimientos').select(SELECT_RQ)
+  if (opciones.soloAbiertos) consulta = consulta.in('estado', ['POR_ATENDER', 'SIN_STOCK', 'EN_ATENCION', 'LISTO_EN_ALMACEN'])
+  const { data, error } = await consulta.order('creado_en', { ascending: false }).limit(300)
   if (error) throw new Error(`No se pudieron leer los requerimientos: ${error.message}`)
   return (data ?? []).map((r) => ({
     id: r.id,
@@ -45,6 +56,13 @@ export async function cargarRequerimientos(): Promise<RequerimientoListado[]> {
     fecha_requerida: r.fecha_requerida,
     estado: r.estado,
     motivo_anulacion: r.motivo_anulacion,
+    nota_almacen: r.nota_almacen,
+    nota_logistica: r.nota_logistica,
+    nota_entrega: r.nota_entrega,
+    revision_stock_en: r.revision_stock_en,
+    en_atencion_en: r.en_atencion_en,
+    listo_en_almacen_en: r.listo_en_almacen_en,
+    entregado_en: r.entregado_en,
     creado_en: r.creado_en,
     lineas: (r.lineas ?? [])
       .map((l) => ({

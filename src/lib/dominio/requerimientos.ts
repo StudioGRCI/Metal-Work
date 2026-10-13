@@ -2,13 +2,22 @@ import type { Tono } from '@/components/ui/etiqueta-estado'
 
 type Def = { etiqueta: string; tono: Tono; descripcion: string }
 
-/** En qué va el requerimiento. EN_ATENCION y ATENDIDO los marca Logística. */
+/**
+ * En qué va el requerimiento. Primero lo revisa Almacén; si no hay stock lo
+ * compra Logística; cuando está en almacén, Supervisión lo recoge y Almacén lo
+ * entrega (migración 20261013100000).
+ */
 export const ESTADO_REQUERIMIENTO: Record<string, Def> = {
-  POR_ATENDER: { etiqueta: 'Por atender', tono: 'aviso', descripcion: 'Le llegó a Logística; todavía no lo empieza.' },
-  EN_ATENCION: { etiqueta: 'En atención', tono: 'info', descripcion: 'Logística lo está comprando.' },
-  ATENDIDO: { etiqueta: 'Atendido', tono: 'exito', descripcion: 'Logística lo cerró.' },
+  POR_ATENDER: { etiqueta: 'Por revisar', tono: 'aviso', descripcion: 'Almacén revisa si hay stock.' },
+  SIN_STOCK: { etiqueta: 'Sin stock', tono: 'peligro', descripcion: 'Almacén no lo tiene; Logística lo compra.' },
+  EN_ATENCION: { etiqueta: 'En compra', tono: 'info', descripcion: 'Logística lo está comprando.' },
+  LISTO_EN_ALMACEN: { etiqueta: 'Listo en almacén', tono: 'exito', descripcion: 'El área puede recogerlo.' },
+  ENTREGADO: { etiqueta: 'Entregado', tono: 'neutro', descripcion: 'Almacén lo entregó al área.' },
   ANULADO: { etiqueta: 'Anulado', tono: 'peligro', descripcion: 'Anulado con su motivo.' },
 }
+
+/** Los que todavía esperan a alguien: lo que la bandeja de atención muestra primero. */
+export const ESTADOS_RQ_ABIERTOS = ['POR_ATENDER', 'SIN_STOCK', 'EN_ATENCION', 'LISTO_EN_ALMACEN'] as const
 
 /** Por qué entra un vehículo a la planta (los formatos MW/JM/CON-FOR-VIG de portería). */
 export const MOTIVO_VEHICULO: Record<string, Def> = {

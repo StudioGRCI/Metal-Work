@@ -108,9 +108,10 @@ export const NAVEGACION: GrupoNavegacion[] = [
       },
     ],
   },
-  // El área de Requerimientos: anota lo que cada área necesita y se lo pasa a
-  // Logística, y lleva el registro de vehículos que entran y salen de la planta.
-  // Logística ve los RQ porque los atiende.
+  // El menú va por área, en el orden del circuito de materiales: Requerimientos
+  // pide → Almacén revisa el stock → Logística compra → el conductor recoge →
+  // Almacén recepciona y entrega. «Atención de requerimiento» es la misma
+  // bandeja para Logística y Almacén, y por eso cuelga de las dos.
   {
     titulo: 'Requerimientos',
     items: [
@@ -118,8 +119,8 @@ export const NAVEGACION: GrupoNavegacion[] = [
         titulo: 'Requerimientos',
         ruta: '/requerimientos',
         icono: ClipboardList,
-        permiso: ['requerimientos.emitir', 'compras.crear'],
-        descripcion: 'Lo que cada área necesita comprar, con su número RQ, para Logística',
+        permiso: ['requerimientos.emitir', 'requerimientos.ver'],
+        descripcion: 'Lo que cada área necesita, con su número RQ, y por dónde va',
         disponible: true,
       },
       {
@@ -133,9 +134,16 @@ export const NAVEGACION: GrupoNavegacion[] = [
     ],
   },
   {
-    titulo: 'Abastecimiento',
+    titulo: 'Logística',
     items: [
-      {titulo:'Compras',ruta:'/compras',icono:Receipt,permiso:'compras.crear',descripcion:'Órdenes de compra agrupadas, facturas y entregas',disponible:true},
+      {
+        titulo: 'Atención de requerimiento',
+        ruta: '/requerimientos/atencion',
+        icono: ClipboardList,
+        permiso: 'compras.crear',
+        descripcion: 'Los RQ sin stock que hay que comprar, y en qué van',
+        disponible: true,
+      },
       {
         titulo: 'Órdenes de compra',
         ruta: '/compras/ordenes',
@@ -150,6 +158,17 @@ export const NAVEGACION: GrupoNavegacion[] = [
         icono: Wrench,
         permiso: 'compras.crear',
         descripcion: 'Trabajos de terceros con su número OS, aprobación y conformidad',
+        disponible: true,
+      },
+      // Quien aprueba es un puesto que Gerencia elige, no un permiso: si elige
+      // otro, a ese puesto le llega el aviso con el enlace aunque no lo tenga
+      // en el menú.
+      {
+        titulo: 'Aprobación de compras',
+        ruta: '/compras/aprobacion',
+        icono: BadgeCheck,
+        permiso: ['compras.configurar_aprobacion', 'compras.crear'],
+        descripcion: 'La regla de montos y las órdenes de compra y de servicio que esperan visto',
         disponible: true,
       },
       // El conductor de Logística: lo que tiene que recoger y dejar en almacén.
@@ -172,23 +191,12 @@ export const NAVEGACION: GrupoNavegacion[] = [
         descripcion: 'El padrón del que se elige en la orden de compra',
         disponible: true,
       },
-      // Quien aprueba es un puesto que Gerencia elige, no un permiso: si elige
-      // otro, a ese puesto le llega el aviso con el enlace aunque no lo tenga
-      // en el menú.
       {
-        titulo: 'Aprobación de compras',
-        ruta: '/compras/aprobacion',
-        icono: BadgeCheck,
-        permiso: ['compras.configurar_aprobacion', 'compras.crear'],
-        descripcion: 'La regla de montos y las órdenes de compra y de servicio que esperan visto',
-        disponible: true,
-      },
-      {
-        titulo: 'Kardex de Almacén',
-        ruta: '/almacen/kardex',
-        icono: ListOrdered,
-        permiso: 'almacen.ver',
-        descripcion: 'Saldos, ingresos, egresos por unidad y conteo físico',
+        titulo: 'Compras agrupadas',
+        ruta: '/compras',
+        icono: Receipt,
+        permiso: 'compras.crear',
+        descripcion: 'Las compras por OT agrupadas por proveedor, con facturas y entregas',
         disponible: true,
       },
       // Logística fija el precio de lo que nunca se compró por el sistema.
@@ -200,6 +208,30 @@ export const NAVEGACION: GrupoNavegacion[] = [
         icono: Tag,
         permiso: ['almacen.valorizar', 'costos.ver'],
         descripcion: 'Precio de los consumibles y saldos sin compra',
+        disponible: true,
+      },
+    ],
+  },
+  // Almacén: primero lo que espera por él, después su kardex. Las entradas de
+  // sus cuatro almacenes (EPP, consumibles, accesorios y materia prima) las
+  // suma el hilo de Almacén aquí.
+  {
+    titulo: 'Almacén',
+    items: [
+      {
+        titulo: 'Atención de requerimiento',
+        ruta: '/requerimientos/atencion',
+        icono: ClipboardList,
+        permiso: ['almacen.recibir', 'almacen.despachar'],
+        descripcion: 'Los RQ por revisar stock, por recepcionar y por entregar al área',
+        disponible: true,
+      },
+      {
+        titulo: 'Kardex de Almacén',
+        ruta: '/almacen/kardex',
+        icono: ListOrdered,
+        permiso: 'almacen.ver',
+        descripcion: 'Saldos, ingresos, egresos por unidad y conteo físico',
         disponible: true,
       },
     ],
@@ -271,6 +303,10 @@ const RUTAS_POR_PUESTO: Record<string, readonly string[]> = {
 const FUERA_DEL_MENU: Record<string, readonly string[]> = {
   DISENO: ['/configuracion'],
   ADMINISTRACION: ['/compras/valorizacion', '/unidades', '/carrocerias'],
+  // Almacén y Logística trabajan los RQ desde su bandeja de atención, no desde
+  // el listado de Requerimientos, aunque `requerimientos.ver` les deje leerlo.
+  ALMACENERO: ['/requerimientos'],
+  COMPRADOR: ['/requerimientos'],
 }
 
 export function puedeVer(item: ItemNavegacion, permisos: string[], esAdmin: boolean, rolCodigo: string) {
@@ -325,5 +361,6 @@ export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/compras/ordenes', corto: 'OC' },
   { ruta: '/compras/aprobacion', corto: 'Aprobar' },
   { ruta: '/requerimientos', corto: 'RQ' },
+  { ruta: '/requerimientos/atencion', corto: 'Atención' },
   { ruta: '/vehiculos', corto: 'Vehículos' },
 ]

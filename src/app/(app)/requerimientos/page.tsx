@@ -3,7 +3,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { cargarRequerimientos, catalogosDelRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
-import { ESTADO_REQUERIMIENTO } from '@/lib/dominio/requerimientos'
+import { ESTADO_REQUERIMIENTO, ESTADOS_RQ_ABIERTOS } from '@/lib/dominio/requerimientos'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -13,13 +13,14 @@ import { NuevoRequerimiento } from './formulario'
 export const metadata = { title: 'Requerimientos' }
 
 export default async function PaginaRequerimientos() {
-  const perfil = await exigirPermiso(['requerimientos.emitir', 'requerimientos.ver', 'compras.crear'])
+  const perfil = await exigirPermiso(['requerimientos.emitir', 'requerimientos.ver', 'compras.crear', 'almacen.recibir'])
   const emite = puede(perfil, 'requerimientos.emitir')
   const [requerimientos, catalogos] = await Promise.all([
     cargarRequerimientos(),
     emite ? catalogosDelRequerimiento() : Promise.resolve(null),
   ])
-  const porAtender = requerimientos.filter((r) => r.estado === 'POR_ATENDER').length
+  const abiertos = requerimientos.filter((r) => ESTADOS_RQ_ABIERTOS.includes(r.estado as (typeof ESTADOS_RQ_ABIERTOS)[number])).length
+  const listos = requerimientos.filter((r) => r.estado === 'LISTO_EN_ALMACEN').length
 
   return (
     <>
@@ -27,8 +28,8 @@ export default async function PaginaRequerimientos() {
         titulo="Requerimientos"
         descripcion={
           emite
-            ? 'Lo que cada área necesita comprar, con el código interno de la unidad y su justificación. Al registrarlo le llega a Logística, que lo atiende con la orden de compra.'
-            : 'Los requerimientos que registra el área de Requerimientos. Logística los atiende con la orden de compra.'
+            ? 'Lo que cada área necesita, con el código interno de la unidad y su justificación. Al registrarlo lo revisa Almacén: si hay stock queda listo; si no, Logística lo compra.'
+            : 'Los requerimientos que registra el área de Requerimientos. «Listo en almacén» es lo que el área ya puede recoger.'
         }
         migas={[{ titulo: 'Requerimientos' }]}
         acciones={catalogos && <NuevoRequerimiento {...catalogos} />}
@@ -36,7 +37,9 @@ export default async function PaginaRequerimientos() {
 
       {requerimientos.length > 0 && (
         <p className="mb-3 text-sm text-texto-suave">
-          {porAtender === 0 ? 'Ninguno espera a Logística.' : `${porAtender} ${porAtender === 1 ? 'espera' : 'esperan'} a Logística.`}
+          {abiertos === 0 ? 'Ninguno en camino.' : `${abiertos} en camino`}
+          {listos > 0 && ` · ${listos} ${listos === 1 ? 'listo' : 'listos'} en almacén para recoger`}
+          {abiertos > 0 && '.'}
         </p>
       )}
 
@@ -98,9 +101,14 @@ function FilaRequerimiento({ rq, emite }: { rq: RequerimientoListado; emite: boo
           ))}
         </ul>
       </TD>
-      <TD className="align-top">{estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : rq.estado}</TD>
+      <TD className="align-top">
+        {estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : rq.estado}
+        {rq.nota_almacen && <p className="mt-1 max-w-xs text-[11px] text-texto-suave">Almacén: {rq.nota_almacen}</p>}
+        {rq.listo_en_almacen_en && !rq.entregado_en && <p className="text-[11px] text-texto-suave">Desde {fechaHora(rq.listo_en_almacen_en)}</p>}
+        {rq.entregado_en && <p className="text-[11px] text-texto-suave">Entregado {fechaHora(rq.entregado_en)}{rq.nota_entrega ? ` a ${rq.nota_entrega}` : ''}</p>}
+      </TD>
       <TD className="text-right align-top">
-        {emite && rq.estado === 'POR_ATENDER' && <AnularRequerimiento id={rq.id} numero={rq.numero} />}
+        {emite && (rq.estado === 'POR_ATENDER' || rq.estado === 'SIN_STOCK') && <AnularRequerimiento id={rq.id} numero={rq.numero} />}
       </TD>
     </TR>
   )

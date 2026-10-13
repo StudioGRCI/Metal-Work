@@ -5596,6 +5596,17 @@ export type Database = {
           creado_por: string
           creado_en: string
           actualizado_en: string
+          revision_stock_en: string | null
+          revision_stock_por: string | null
+          nota_almacen: string | null
+          en_atencion_en: string | null
+          en_atencion_por: string | null
+          nota_logistica: string | null
+          listo_en_almacen_en: string | null
+          listo_en_almacen_por: string | null
+          entregado_en: string | null
+          entregado_por: string | null
+          nota_entrega: string | null
         }
         Insert: {
           id?: string
@@ -5611,6 +5622,17 @@ export type Database = {
           creado_por?: string
           creado_en?: string
           actualizado_en?: string
+          revision_stock_en?: string | null
+          revision_stock_por?: string | null
+          nota_almacen?: string | null
+          en_atencion_en?: string | null
+          en_atencion_por?: string | null
+          nota_logistica?: string | null
+          listo_en_almacen_en?: string | null
+          listo_en_almacen_por?: string | null
+          entregado_en?: string | null
+          entregado_por?: string | null
+          nota_entrega?: string | null
         }
         Update: {
           id?: string
@@ -5626,6 +5648,17 @@ export type Database = {
           creado_por?: string
           creado_en?: string
           actualizado_en?: string
+          revision_stock_en?: string | null
+          revision_stock_por?: string | null
+          nota_almacen?: string | null
+          en_atencion_en?: string | null
+          en_atencion_por?: string | null
+          nota_logistica?: string | null
+          listo_en_almacen_en?: string | null
+          listo_en_almacen_por?: string | null
+          entregado_en?: string | null
+          entregado_por?: string | null
+          nota_entrega?: string | null
         }
         Relationships: [
           {
@@ -5645,6 +5678,34 @@ export type Database = {
           {
             foreignKeyName: "requerimientos_creado_por_fkey"
             columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimientos_en_atencion_por_fkey"
+            columns: ["en_atencion_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimientos_entregado_por_fkey"
+            columns: ["entregado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimientos_listo_en_almacen_por_fkey"
+            columns: ["listo_en_almacen_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimientos_revision_stock_por_fkey"
+            columns: ["revision_stock_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -7581,6 +7642,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      fn_rq_avisar: {
+        Args: {
+          p_rq: string | null
+          p_titulo: string | null
+          p_cuerpo: string | null
+          p_a: string | null
+        }
+        Returns: null
+      }
       guardar_etapas_libres: {
         Args: {
           p_orden_id: string | null
@@ -8330,6 +8400,34 @@ export type Database = {
           p_id: string | null
           p_aprobar: boolean | null
           p_observacion?: string | null
+        }
+        Returns: string
+      }
+      rq_marcar_en_atencion: {
+        Args: {
+          p_id: string | null
+          p_nota: string | null
+        }
+        Returns: string
+      }
+      rq_marcar_entregado: {
+        Args: {
+          p_id: string | null
+          p_nota: string | null
+        }
+        Returns: string
+      }
+      rq_marcar_listo_en_almacen: {
+        Args: {
+          p_id: string | null
+          p_nota: string | null
+        }
+        Returns: string
+      }
+      rq_marcar_sin_stock: {
+        Args: {
+          p_id: string | null
+          p_nota: string | null
         }
         Returns: string
       }
