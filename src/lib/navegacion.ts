@@ -4,7 +4,9 @@ import {
   Boxes,
   Building2,
   CarFront,
+  ClipboardCheck,
   ClipboardList,
+  Clock,
   FileSpreadsheet,
   FileText,
   Layers,
@@ -222,6 +224,17 @@ export const NAVEGACION: GrupoNavegacion[] = [
       { titulo: 'Recursos Humanos', ruta: '/rrhh', icono: UserCog, permiso: 'rrhh.ver_planillas', descripcion: 'Planillas y distribución por unidad', disponible: true },
     ],
   },
+  // Recursos Humanos lleva la ficha del personal y su horario; la portería, con
+  // una subcuenta de RR. HH., marca la asistencia desde el celular y de ahí
+  // salen las tardanzas con su descuento.
+  {
+    titulo: 'Personal y asistencia',
+    items: [
+      { titulo: 'Personal', ruta: '/rrhh/personal', icono: Users, permiso: ['rrhh.personal', 'asistencia.ver'], descripcion: 'La ficha de cada persona: datos, cuenta de pago y horario', disponible: true },
+      { titulo: 'Asistencia', ruta: '/rrhh/asistencia', icono: ClipboardCheck, permiso: ['asistencia.marcar', 'asistencia.ver'], descripcion: 'Ingreso y salida de cada persona, marcados en portería', disponible: true },
+      { titulo: 'Tardanzas', ruta: '/rrhh/tardanzas', icono: Clock, permiso: ['asistencia.ver', 'rrhh.personal'], descripcion: 'Tardanzas del mes y el descuento que generan', disponible: true },
+    ],
+  },
   {
     titulo: 'Ventas',
     items: [
@@ -326,4 +339,7 @@ export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/compras/aprobacion', corto: 'Aprobar' },
   { ruta: '/requerimientos', corto: 'RQ' },
   { ruta: '/vehiculos', corto: 'Vehículos' },
+  { ruta: '/rrhh/asistencia', corto: 'Asistencia' },
+  { ruta: '/rrhh/personal', corto: 'Personal' },
+  { ruta: '/rrhh/tardanzas', corto: 'Tardanzas' },
 ]
