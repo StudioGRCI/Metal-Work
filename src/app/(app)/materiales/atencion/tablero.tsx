@@ -24,7 +24,8 @@ import type {
   ResponsableMaterial,
 } from '@/lib/datos/atencion-materiales'
 import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
-import { APROBACION_COMPRA, compraDetenida, condicionDePago } from '@/lib/dominio/proveedores'
+import { APROBACION_COMPRA, comprobantePedido, compraDetenida, condicionDePago } from '@/lib/dominio/proveedores'
+import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { RECOJO_COMPRA, VALIDACION_INGRESO, puedeIrARecojo, situacionCompra } from '@/lib/dominio/logistica'
 import { mandarARecojo } from '@/app/(app)/compras/ordenes/acciones'
 import { FormularioProveedor } from '@/app/(app)/proveedores/formulario'
@@ -242,6 +243,7 @@ export function TableroMateriales({
                           key={compra.orden_compra_id}
                           ordenCompraId={compra.orden_compra_id}
                           solicitudId={clavesDocumento[compra.orden_compra_id] ?? ''}
+                          tipoInicial={compra.con_factura ? 'FACTURA' : 'COMPROBANTE'}
                         />
                       ))}
                     </div>
@@ -461,6 +463,7 @@ function FormularioCompra({lineas,proveedores,puedeRegistrarProveedor,alTerminar
  const [dias,setDias]=useState(0)
  const [altaAbierta,setAltaAbierta]=useState(false)
  const [avisoAlta,setAvisoAlta]=useState<string|null>(null)
+ const [conFactura,setConFactura]=useState(true)
  const padron=useMemo(()=>{const vistos=new Set(proveedores.map(p=>p.id));return [...proveedores,...nuevos.filter(n=>!vistos.has(n.id))]},[proveedores,nuevos])
  const {alEnviar,enviando,error}=useEnvio(crearOrdenCompra,(r)=>alTerminar(r.mensaje))
  // Si la pantalla se refresca con la ventana abierta, una línea elegida que otra
@@ -483,6 +486,8 @@ function FormularioCompra({lineas,proveedores,puedeRegistrarProveedor,alTerminar
        {avisoAlta&&<p role="status" className="text-xs text-exito">{avisoAlta}</p>}
      </Campo>
      <Campo etiqueta="Referencia del proveedor" htmlFor="oc-numero" requerido ayuda="Su cotización o proforma. El número OC-…-MW lo pone el sistema al emitir."><Entrada id="oc-numero" name="referencia" required minLength={2} maxLength={100}/></Campo>
+     <Campo etiqueta="Código interno" htmlFor="oc-codigo" requerido ayuda={AYUDA_CODIGO_INTERNO}><Entrada id="oc-codigo" name="codigo_interno" required minLength={2} maxLength={60} autoComplete="off"/></Campo>
+     <Campo etiqueta="Comprobante" htmlFor="oc-comprobante" ayuda={comprobantePedido(conFactura).pide}><Seleccion id="oc-comprobante" name="con_factura" value={conFactura?'true':'false'} onChange={e=>setConFactura(e.target.value==='true')}><option value="true">Con factura</option><option value="false">Sin factura</option></Seleccion></Campo>
      <Campo etiqueta="Entrega estimada" htmlFor="oc-fecha"><Entrada id="oc-fecha" name="fecha_estimada" type="date"/></Campo>
      <Campo etiqueta="Moneda" htmlFor="oc-moneda"><Seleccion id="oc-moneda" name="moneda"><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion></Campo>
      <Campo etiqueta="Pago" htmlFor="oc-pago"><Seleccion id="oc-pago" name="condicion" value={condicion} onChange={e=>{setCondicion(e.target.value);if(e.target.value==='CONTADO')setDias(0)}}><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option></Seleccion></Campo>

@@ -14,12 +14,16 @@ const TIPOS = [
   ['ORDEN_PAGO', 'Orden de pago'],
   ['ORDEN_SERVICIO', 'Orden de servicio'],
   ['FACTURA', 'Factura'],
+  // Sin factura igual se pide un comprobante: boleta, nota de venta o recibo.
+  ['COMPROBANTE', 'Boleta, nota de venta o recibo'],
   ['OTRO', 'Otro documento'],
 ] as const
 
-export function SubirDocumentoCompra({ ordenCompraId, solicitudId }: {
+export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial }: {
   ordenCompraId: string
   solicitudId: string
+  /** El que pide la compra: FACTURA, o COMPROBANTE si es sin factura. */
+  tipoInicial?: 'FACTURA' | 'COMPROBANTE'
 }) {
   const [id, setId] = useState(solicitudId)
   const [mensaje, setMensaje] = useState<string | null>(null)
@@ -43,7 +47,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId }: {
     <input type="hidden" name="id" value={id} />
     <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
     <Campo etiqueta="Tipo de documento" htmlFor={`tipo-doc-compra-${ordenCompraId}`}>
-      <Seleccion id={`tipo-doc-compra-${ordenCompraId}`} name="tipo" required disabled={enviando} defaultValue="">
+      <Seleccion id={`tipo-doc-compra-${ordenCompraId}`} name="tipo" required disabled={enviando} defaultValue={tipoInicial ?? ''}>
         <option value="" disabled>Elige el tipo</option>
         {TIPOS.map(([valor, etiqueta]) => <option key={valor} value={valor}>{etiqueta}</option>)}
       </Seleccion>

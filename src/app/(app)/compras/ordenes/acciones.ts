@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { CODIGO_INTERNO_LARGO, FALTA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -63,6 +64,8 @@ export async function emitirCompraDirecta(_previo: unknown, formulario: FormData
       condicion: z.enum(['CONTADO', 'CREDITO']),
       dias: z.coerce.number().int().min(0).max(365),
       moneda: z.enum(['PEN', 'USD']),
+      con_factura: z.enum(['true', 'false'], { message: 'Indica si la compra viene con factura o sin factura.' }),
+      codigo_interno: z.string().trim().min(2, FALTA_CODIGO_INTERNO).max(60, CODIGO_INTERNO_LARGO),
     })
     .safeParse({
       operacion_id: dato(formulario, 'operacion_id'),
@@ -73,6 +76,8 @@ export async function emitirCompraDirecta(_previo: unknown, formulario: FormData
       condicion: dato(formulario, 'condicion'),
       dias: dato(formulario, 'dias'),
       moneda: dato(formulario, 'moneda'),
+      con_factura: dato(formulario, 'con_factura'),
+      codigo_interno: dato(formulario, 'codigo_interno'),
     })
   if (!cabecera.success) return { ok: false, error: cabecera.error.issues[0]?.message ?? 'Revisa la orden de compra.' }
   if (cabecera.data.referencia && cabecera.data.referencia.length < 2) {
@@ -108,6 +113,8 @@ export async function emitirCompraDirecta(_previo: unknown, formulario: FormData
     p_condicion: cabecera.data.condicion,
     p_dias: cabecera.data.dias,
     p_moneda: cabecera.data.moneda,
+    p_con_factura: cabecera.data.con_factura === 'true',
+    p_codigo_interno: cabecera.data.codigo_interno,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== cabecera.data.operacion_id) return { ok: false, error: 'La compra no quedó registrada. Recarga la pantalla.' }
@@ -138,4 +145,34 @@ export async function mandarARecojo(_previo: unknown, formulario: FormData): Pro
 
   refrescar()
   return { ok: true, mensaje: 'Mandada a recojo: al conductor le llegó el aviso.' }
+}
+
+/**
+ * Corrige si la compra viene con factura y su código interno. Mismo permiso que
+ * `fijar_datos_compra` en la base, que además no deja cambiar lo de la factura
+ * cuando el comprobante ya está adjunto.
+ */
+export async function corregirDatosCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Corregir una compra corresponde a Logística.' }
+  const v = z
+    .object({
+      id: z.string().uuid(),
+      con_factura: z.enum(['true', 'false'], { message: 'Indica si la compra viene con factura o sin factura.' }),
+      codigo_interno: z.string().trim().min(2, FALTA_CODIGO_INTERNO).max(60, CODIGO_INTERNO_LARGO),
+    })
+    .safeParse({ id: dato(formulario, 'id'), con_factura: dato(formulario, 'con_factura'), codigo_interno: dato(formulario, 'codigo_interno') })
+  if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? 'Revisa los datos de la compra.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('fijar_datos_compra', {
+    p_compra: v.data.id,
+    p_con_factura: v.data.con_factura === 'true',
+    p_codigo_interno: v.data.codigo_interno,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== v.data.id) return { ok: false, error: 'La compra no cambió. Vuelve a cargar la pantalla.' }
+
+  refrescar()
+  return { ok: true, mensaje: 'Compra corregida.' }
 }

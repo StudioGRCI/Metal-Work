@@ -1,16 +1,116 @@
 'use client'
 
-import { Archive, Pencil, Plus, RotateCcw } from 'lucide-react'
+import { Archive, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import type { Proveedor, ProveedorParaCompra } from '@/lib/datos/proveedores'
-import { rucEsValido } from '@/lib/dominio/proveedores'
+import { BANCOS_SUGERIDOS, rucEsValido } from '@/lib/dominio/proveedores'
 import { useAccion, useEnvio } from '@/lib/envio'
 
 import { cambiarEstadoProveedor, guardarProveedor } from './acciones'
+
+type FilaCuenta = { clave: string; id?: string; banco: string; numero_cuenta: string; titular: string; moneda: string }
+
+// La clave de la primera fila es fija para que el servidor y el navegador pinten
+// el mismo id; las que se agregan después nacen en un clic y llevan una al azar.
+const filaVacia = (clave = 'nueva'): FilaCuenta => ({ clave, banco: '', numero_cuenta: '', titular: '', moneda: 'PEN' })
+const filaEscrita = (f: FilaCuenta) => Boolean(f.banco.trim() || f.numero_cuenta.trim() || f.titular.trim())
+
+/**
+ * Las cuentas a las que se le paga. Van en la orden de compra que recibe el
+ * proveedor, en la moneda de la compra. Una fila vacía no se manda.
+ */
+function CuentasBancarias({ prefijo, iniciales }: { prefijo: string; iniciales: Proveedor['cuentas'] }) {
+  const [filas, setFilas] = useState<FilaCuenta[]>(() =>
+    iniciales.length ? iniciales.map((c) => ({ clave: c.id, ...c })) : [filaVacia()],
+  )
+  const cambiar = (clave: string, cambio: Partial<FilaCuenta>) =>
+    setFilas((fs) => fs.map((f) => (f.clave === clave ? { ...f, ...cambio } : f)))
+  const enviadas = filas
+    .filter(filaEscrita)
+    .map(({ id, banco, numero_cuenta, titular, moneda }) => ({ id: id ?? null, banco, numero_cuenta, titular, moneda }))
+
+  return (
+    <fieldset className="space-y-3 rounded-[var(--radius-base)] border border-borde p-3">
+      <legend className="px-1 text-sm font-medium text-texto">Cuentas bancarias</legend>
+      <p className="text-xs text-texto-suave">
+        Salen en la orden de compra, la de la misma moneda de la compra. Si el titular es el mismo proveedor, déjalo vacío.
+      </p>
+      <input type="hidden" name="cuentas" value={JSON.stringify(enviadas)} />
+      <datalist id={`${prefijo}-bancos`}>
+        {BANCOS_SUGERIDOS.map((b) => (
+          <option key={b} value={b} />
+        ))}
+      </datalist>
+      {filas.map((f, i) => {
+        const id = `${prefijo}-cuenta-${f.clave}`
+        return (
+          <div key={f.clave} className="space-y-3 border-t border-borde pt-3 first-of-type:border-t-0 first-of-type:pt-0">
+            <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">
+              <Campo etiqueta={filas.length > 1 ? `Banco (cuenta ${i + 1})` : 'Banco'} htmlFor={`${id}-banco`}>
+                <Entrada
+                  id={`${id}-banco`}
+                  list={`${prefijo}-bancos`}
+                  value={f.banco}
+                  onChange={(e) => cambiar(f.clave, { banco: e.target.value })}
+                  maxLength={80}
+                  autoComplete="off"
+                />
+              </Campo>
+              <Campo etiqueta="Moneda" htmlFor={`${id}-moneda`}>
+                <Seleccion id={`${id}-moneda`} value={f.moneda} onChange={(e) => cambiar(f.clave, { moneda: e.target.value })}>
+                  <option value="PEN">Soles</option>
+                  <option value="USD">Dólares</option>
+                </Seleccion>
+              </Campo>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+              <Campo etiqueta="Número de cuenta o CCI" htmlFor={`${id}-numero`}>
+                <Entrada
+                  id={`${id}-numero`}
+                  value={f.numero_cuenta}
+                  onChange={(e) => cambiar(f.clave, { numero_cuenta: e.target.value })}
+                  inputMode="numeric"
+                  maxLength={40}
+                  autoComplete="off"
+                />
+              </Campo>
+              <Campo etiqueta="Titular de la cuenta" htmlFor={`${id}-titular`}>
+                <Entrada
+                  id={`${id}-titular`}
+                  value={f.titular}
+                  onChange={(e) => cambiar(f.clave, { titular: e.target.value })}
+                  placeholder="El mismo proveedor"
+                  maxLength={160}
+                />
+              </Campo>
+              <Boton
+                type="button"
+                variante="fantasma"
+                tamano="sm"
+                aria-label={`Quitar la cuenta ${i + 1}`}
+                onClick={() =>
+                  setFilas((fs) => (fs.length > 1 ? fs.filter((x) => x.clave !== f.clave) : [filaVacia(crypto.randomUUID())]))
+                }
+              >
+                <Trash2 aria-hidden className="size-4" />
+              </Boton>
+            </div>
+          </div>
+        )
+      })}
+      {filas.length < 6 && (
+        <Boton type="button" variante="contorno" tamano="sm" onClick={() => setFilas((fs) => [...fs, filaVacia(crypto.randomUUID())])}>
+          <Plus aria-hidden className="size-3.5" />
+          Agregar otra cuenta
+        </Boton>
+      )}
+    </fieldset>
+  )
+}
 
 /**
  * El formulario del proveedor. Completo en la pantalla de Proveedores; corto
@@ -20,10 +120,13 @@ import { cambiarEstadoProveedor, guardarProveedor } from './acciones'
 export function FormularioProveedor({
   proveedor,
   breve = false,
+  cuentasVisibles = true,
   alTerminar,
 }: {
   proveedor?: Proveedor
   breve?: boolean
+  /** Sin `proveedores.ver_cuentas` las cuentas llegan vacías: no se ofrecen, para no darlas de baja al guardar. */
+  cuentasVisibles?: boolean
   alTerminar: (creado: ProveedorParaCompra | undefined, mensaje: string | undefined) => void
 }) {
   const [tipo, setTipo] = useState<string>(proveedor?.tipo_documento ?? 'RUC')
@@ -115,13 +218,23 @@ export function FormularioProveedor({
         </Campo>
       </div>
 
+      <Campo
+        etiqueta="Dirección de recojo"
+        htmlFor={`${prefijo}-recojo`}
+        ayuda="Adonde va el conductor a recoger. Si es la misma dirección fiscal, puede quedar vacía."
+      >
+        <Entrada id={`${prefijo}-recojo`} name="direccion_recojo" defaultValue={proveedor?.direccion_recojo ?? ''} maxLength={250} />
+      </Campo>
+
+      {cuentasVisibles && <CuentasBancarias prefijo={prefijo} iniciales={proveedor?.cuentas ?? []} />}
+
       {!breve && (
         <>
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Correo" htmlFor={`${prefijo}-correo`}>
               <Entrada id={`${prefijo}-correo`} name="correo" type="email" defaultValue={proveedor?.correo ?? ''} maxLength={160} />
             </Campo>
-            <Campo etiqueta="Dirección" htmlFor={`${prefijo}-direccion`}>
+            <Campo etiqueta="Dirección fiscal" htmlFor={`${prefijo}-direccion`}>
               <Entrada id={`${prefijo}-direccion`} name="direccion" defaultValue={proveedor?.direccion ?? ''} maxLength={250} />
             </Campo>
           </div>
@@ -182,7 +295,7 @@ export function NuevoProveedor() {
   )
 }
 
-export function AccionesProveedor({ proveedor }: { proveedor: Proveedor }) {
+export function AccionesProveedor({ proveedor, cuentasVisibles }: { proveedor: Proveedor; cuentasVisibles: boolean }) {
   const [editando, setEditando] = useState(false)
   const estado = useAccion(cambiarEstadoProveedor)
 
@@ -209,7 +322,7 @@ export function AccionesProveedor({ proveedor }: { proveedor: Proveedor }) {
         </span>
       )}
       <Ventana abierta={editando} alCerrar={() => setEditando(false)} titulo={proveedor.razon_social} descripcion="Corregir los datos del proveedor." ancho="lg">
-        <FormularioProveedor proveedor={proveedor} alTerminar={() => setEditando(false)} />
+        <FormularioProveedor proveedor={proveedor} cuentasVisibles={cuentasVisibles} alTerminar={() => setEditando(false)} />
       </Ventana>
     </div>
   )

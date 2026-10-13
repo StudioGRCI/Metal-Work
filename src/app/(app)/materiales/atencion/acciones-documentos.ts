@@ -10,7 +10,7 @@ import { createClient } from '@/lib/supabase/server'
 const FORMATO = z.object({
   id: z.string().uuid(),
   orden_compra_id: z.string().uuid(),
-  tipo: z.enum(['ORDEN_COMPRA', 'ORDEN_PAGO', 'ORDEN_SERVICIO', 'FACTURA', 'OTRO']),
+  tipo: z.enum(['ORDEN_COMPRA', 'ORDEN_PAGO', 'ORDEN_SERVICIO', 'FACTURA', 'COMPROBANTE', 'OTRO']),
   nombre_archivo: z.string().trim().min(1).max(200),
 })
 

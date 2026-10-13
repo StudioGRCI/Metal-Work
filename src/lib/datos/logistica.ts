@@ -26,7 +26,12 @@ export type OrdenCompraListada = {
   ordenes: string[]
   unidades: string[]
   lineas: number
+  /** Ya tiene su comprobante: la factura o, si es sin factura, la boleta, nota de venta o recibo. */
   tiene_factura: boolean
+  /** Si el proveedor da factura. Sin factura igual se adjunta un comprobante. */
+  con_factura: boolean
+  /** El de la unidad (PLA_SR_O4_1_26/28…) o PLANTA. Vacío en las compras de antes. */
+  codigo_interno: string | null
   /** Lo que hizo Almacén con lo que dejó el conductor; null mientras no lo deja. */
   validacion: ValidacionIngreso
 }
@@ -41,6 +46,15 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
     ? await supabase.from('ingresos_pendientes_almacen').select('orden_compra_id, estado').in('orden_compra_id', dejadas)
     : { data: [], error: null }
   if (pendientes.error) throw new Error(`No se pudo leer lo que validó Almacén: ${pendientes.error.message}`)
+  // El listado de la base no trae estos dos datos (su forma no cambia sin
+  // borrarla); se leen aparte, de a tandas para no alargar la URL.
+  const ids = (data ?? []).map((c) => c.id).filter((id): id is string => Boolean(id))
+  const datosCompra = new Map<string, { con_factura: boolean; codigo_interno: string | null }>()
+  for (let i = 0; i < ids.length; i += 150) {
+    const tanda = await supabase.from('ordenes_compra_materiales').select('id, con_factura, codigo_interno').in('id', ids.slice(i, i + 150))
+    if (tanda.error) throw new Error(`No se pudo leer el comprobante de las compras: ${tanda.error.message}`)
+    for (const fila of tanda.data ?? []) datosCompra.set(fila.id, fila)
+  }
   const estadosPorCompra = new Map<string, string[]>()
   for (const fila of pendientes.data ?? []) {
     estadosPorCompra.set(fila.orden_compra_id, [...(estadosPorCompra.get(fila.orden_compra_id) ?? []), fila.estado])
@@ -68,6 +82,8 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
     unidades: c.unidades ?? [],
     lineas: c.lineas ?? 0,
     tiene_factura: c.tiene_factura === true,
+    con_factura: datosCompra.get(c.id ?? '')?.con_factura ?? true,
+    codigo_interno: datosCompra.get(c.id ?? '')?.codigo_interno ?? null,
     validacion: validacionDeCompra(estadosPorCompra.get(c.id ?? '') ?? []),
   }))
 }
@@ -91,12 +107,21 @@ export type CompraParaRecojo = {
   fecha_estimada: string | null
   ordenes: string[]
   lineas: LineaRecojo[]
+  /** Con factura se pide la factura; sin factura, boleta, nota de venta o recibo. */
+  con_factura: boolean
+  comprobante_adjunto: boolean
+  codigo_interno: string | null
 }
 
 export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('compras_para_recojo')
+  // `datos_de_recojo` trae lo que se sumó después (el comprobante y el código
+  // interno) con el mismo permiso y filtro: la forma de `compras_para_recojo` no
+  // cambia sin borrarla.
+  const [{ data, error }, extra] = await Promise.all([supabase.rpc('compras_para_recojo'), supabase.rpc('datos_de_recojo')])
   if (error) throw new Error(`No se pudieron leer los recojos: ${error.message}`)
+  if (extra.error) throw new Error(`No se pudo leer el comprobante de los recojos: ${extra.error.message}`)
+  const extraPorCompra = new Map((extra.data ?? []).map((e) => [e.id, e]))
   return (data ?? []).map((c) => ({
     id: c.id ?? '',
     numero: c.numero ?? '',
@@ -114,6 +139,9 @@ export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
     fecha_estimada: c.fecha_estimada,
     ordenes: c.ordenes ?? [],
     lineas: ((c.lineas as LineaRecojo[] | null) ?? []).map((l) => ({ ...l, cantidad: Number(l.cantidad) })),
+    con_factura: extraPorCompra.get(c.id)?.con_factura ?? true,
+    comprobante_adjunto: extraPorCompra.get(c.id)?.comprobante_adjunto === true,
+    codigo_interno: extraPorCompra.get(c.id)?.codigo_interno ?? null,
   }))
 }
 

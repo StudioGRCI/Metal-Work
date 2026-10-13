@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
+import { CODIGO_INTERNO_LARGO, FALTA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -138,6 +139,8 @@ export async function crearOrdenCompra(_previo: unknown, formulario: FormData): 
     condicion: z.enum(['CONTADO','CREDITO']),
     dias: z.coerce.number().int().min(0).max(365),
     moneda: z.enum(['PEN','USD']),
+    con_factura: z.enum(['true','false']),
+    codigo_interno: z.string().trim().min(2, FALTA_CODIGO_INTERNO).max(60, CODIGO_INTERNO_LARGO),
   }).safeParse({
     operacion_id: dato(formulario, 'operacion_id'),
     proveedor_id: dato(formulario, 'proveedor_id'),
@@ -146,6 +149,8 @@ export async function crearOrdenCompra(_previo: unknown, formulario: FormData): 
     condicion: dato(formulario, 'condicion'),
     dias: dato(formulario, 'dias'),
     moneda: dato(formulario, 'moneda'),
+    con_factura: dato(formulario, 'con_factura'),
+    codigo_interno: dato(formulario, 'codigo_interno'),
   })
   const ids = formulario.getAll('detalle_id')
   const lineas = z.array(z.object({
@@ -160,6 +165,8 @@ export async function crearOrdenCompra(_previo: unknown, formulario: FormData): 
   if (!cabecera.success && cabecera.error.issues.some((i) => i.path[0] === 'proveedor_id')) {
     return { ok: false, error: 'Elige el proveedor del padrón. Si es nuevo, regístralo con «Nuevo proveedor».' }
   }
+  const faltaCodigo = !cabecera.success && cabecera.error.issues.find((i) => i.path[0] === 'codigo_interno')
+  if (faltaCodigo) return { ok: false, error: faltaCodigo.message }
   if (!cabecera.success || !lineas.success) {
     return { ok: false, error: 'Revisa referencia, fecha, pago y cantidades a comprar.' }
   }
@@ -180,6 +187,8 @@ export async function crearOrdenCompra(_previo: unknown, formulario: FormData): 
     p_condicion: cabecera.data.condicion,
     p_dias: cabecera.data.dias,
     p_moneda: cabecera.data.moneda,
+    p_con_factura: cabecera.data.con_factura === 'true',
+    p_codigo_interno: cabecera.data.codigo_interno,
   })
   if (error) return { ok: false, error: errorDeMaterial(error) }
   if (data !== cabecera.data.operacion_id) return { ok: false, error: 'La compra no quedó registrada. Recarga la pantalla.' }
