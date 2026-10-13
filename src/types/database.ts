@@ -152,6 +152,82 @@ export type Database = {
           }
         ]
       }
+      asistencias: {
+        Row: {
+          id: string
+          trabajador_id: string
+          fecha: string
+          tipo: string
+          marcado_en: string
+          hora: string
+          tardanza_minutos: number
+          descuento: number
+          observacion: string | null
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          trabajador_id: string
+          fecha: string
+          tipo: string
+          marcado_en?: string
+          hora: string
+          tardanza_minutos?: number
+          descuento?: number
+          observacion?: string | null
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          trabajador_id?: string
+          fecha?: string
+          tipo?: string
+          marcado_en?: string
+          hora?: string
+          tardanza_minutos?: number
+          descuento?: number
+          observacion?: string | null
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "asistencias_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asistencias_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asistencias_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       audit_log: {
         Row: {
           id: number
@@ -5935,6 +6011,38 @@ export type Database = {
           }
         ]
       }
+      rrhh_regla_tardanza: {
+        Row: {
+          id: boolean
+          tolerancia_minutos: number
+          descuento_por_minuto: number
+          actualizado_por: string | null
+          actualizado_en: string
+        }
+        Insert: {
+          id?: boolean
+          tolerancia_minutos?: number
+          descuento_por_minuto?: number
+          actualizado_por?: string | null
+          actualizado_en?: string
+        }
+        Update: {
+          id?: boolean
+          tolerancia_minutos?: number
+          descuento_por_minuto?: number
+          actualizado_por?: string | null
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rrhh_regla_tardanza_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       sedes: {
         Row: {
           id: string
@@ -6143,6 +6251,104 @@ export type Database = {
           {
             foreignKeyName: "tipos_de_cambio_registrado_por_fkey"
             columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      trabajador_cuentas: {
+        Row: {
+          id: string
+          trabajador_id: string
+          banco: string
+          tipo_cuenta: string
+          numero_cuenta: string
+          cci: string | null
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          trabajador_id: string
+          banco: string
+          tipo_cuenta: string
+          numero_cuenta: string
+          cci?: string | null
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          trabajador_id?: string
+          banco?: string
+          tipo_cuenta?: string
+          numero_cuenta?: string
+          cci?: string | null
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trabajador_cuentas_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: true
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      trabajadores: {
+        Row: {
+          id: string
+          nombres: string
+          apellidos: string
+          dni: string
+          cargo: string | null
+          area_id: string | null
+          hora_entrada: string
+          hora_salida: string
+          activo: boolean
+          creado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          nombres: string
+          apellidos: string
+          dni: string
+          cargo?: string | null
+          area_id?: string | null
+          hora_entrada?: string
+          hora_salida?: string
+          activo?: boolean
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          nombres?: string
+          apellidos?: string
+          dni?: string
+          cargo?: string | null
+          area_id?: string | null
+          hora_entrada?: string
+          hora_salida?: string
+          activo?: boolean
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trabajadores_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trabajadores_creado_por_fkey"
+            columns: ["creado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -7195,6 +7401,13 @@ export type Database = {
         }
         Returns: string
       }
+      anular_asistencia: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       anular_gasto_general: {
         Args: {
           p_id: string | null
@@ -7961,6 +8174,15 @@ export type Database = {
         }
         Returns: string
       }
+      marcar_asistencia: {
+        Args: {
+          p_id: string | null
+          p_trabajador_id: string | null
+          p_tipo: string | null
+          p_observacion?: string | null
+        }
+        Returns: string
+      }
       marcar_compra_dejada_almacen: {
         Args: {
           p_compra: string | null
@@ -8332,6 +8554,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      puede_ver_trabajadores: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       puede_ver_version_plano: {
         Args: {
           p_id: string | null
@@ -8651,6 +8877,37 @@ export type Database = {
         Args: {
           p_id: string | null
           p_nota: string | null
+        }
+        Returns: string
+      }
+      rrhh_cambiar_estado_trabajador: {
+        Args: {
+          p_id: string | null
+          p_activo: boolean | null
+        }
+        Returns: string
+      }
+      rrhh_guardar_regla_tardanza: {
+        Args: {
+          p_tolerancia_minutos: number | null
+          p_descuento_por_minuto: number | null
+        }
+        Returns: null
+      }
+      rrhh_guardar_trabajador: {
+        Args: {
+          p_id: string | null
+          p_nombres: string | null
+          p_apellidos: string | null
+          p_dni: string | null
+          p_cargo: string | null
+          p_area_id: string | null
+          p_hora_entrada: string | null
+          p_hora_salida: string | null
+          p_banco: string | null
+          p_tipo_cuenta: string | null
+          p_numero_cuenta: string | null
+          p_cci: string | null
         }
         Returns: string
       }

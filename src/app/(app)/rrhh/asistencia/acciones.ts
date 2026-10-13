@@ -1,0 +1,72 @@
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
+
+import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { exigirSesion, puede } from '@/lib/sesion'
+import { createClient } from '@/lib/supabase/server'
+
+function dato(formulario: FormData, nombre: string) {
+  const valor = formulario.get(nombre)
+  return typeof valor === 'string' ? valor.trim() : ''
+}
+
+/** El portero marca el ingreso o la salida de una persona. Mismo permiso que `marcar_asistencia`. */
+export async function marcarAsistencia(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'asistencia.marcar')) return { ok: false, error: 'La asistencia la marca la portería.' }
+
+  const analisis = z
+    .object({
+      marca_id: z.string().uuid(),
+      trabajador_id: z.string().uuid(),
+      tipo: z.enum(['INGRESO', 'SALIDA']),
+      observacion: z.string().max(300, 'La observación pasa de 300 caracteres.'),
+    })
+    .safeParse({
+      marca_id: dato(formulario, 'marca_id'),
+      trabajador_id: dato(formulario, 'trabajador_id'),
+      tipo: dato(formulario, 'tipo'),
+      observacion: dato(formulario, 'observacion'),
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('marcar_asistencia', {
+    p_id: d.marca_id,
+    p_trabajador_id: d.trabajador_id,
+    p_tipo: d.tipo,
+    p_observacion: d.observacion || null,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.marca_id) return { ok: false, error: 'La marca no quedó registrada. Recarga la pantalla.' }
+
+  revalidatePath('/rrhh/asistencia')
+  revalidatePath('/rrhh/tardanzas')
+  return { ok: true, mensaje: d.tipo === 'INGRESO' ? 'Ingreso marcado.' : 'Salida marcada.' }
+}
+
+/** Una marca equivocada se anula con motivo. Mismo permiso que `anular_asistencia`. */
+export async function anularAsistencia(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ['asistencia.ver', 'asistencia.marcar'])) return { ok: false, error: 'No puede anular marcas de asistencia.' }
+
+  const analisis = z
+    .object({
+      id: z.string().uuid(),
+      motivo: z.string().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.'),
+    })
+    .safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('anular_asistencia', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'La marca no se anuló. Recarga la pantalla.' }
+
+  revalidatePath('/rrhh/asistencia')
+  revalidatePath('/rrhh/tardanzas')
+  return { ok: true, mensaje: 'Marca anulada. Queda con su motivo.' }
+}

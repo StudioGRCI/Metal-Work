@@ -1,0 +1,136 @@
+import Link from 'next/link'
+
+import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { Insignia } from '@/components/ui/etiqueta-estado'
+import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { Tarjeta } from '@/components/ui/tarjeta'
+import { areasParaPersonal, listarTrabajadores, type Trabajador } from '@/lib/datos/rrhh'
+import { TIPO_CUENTA, horaCorta } from '@/lib/dominio/rrhh'
+import { exigirPermiso, puede } from '@/lib/sesion'
+
+import { ControlesTrabajador, NuevoTrabajador } from './formulario'
+
+export const metadata = { title: 'Personal de Recursos Humanos' }
+
+const FILTROS = [
+  { valor: 'activos', titulo: 'Activos' },
+  { valor: 'todos', titulo: 'Todos' },
+] as const
+
+export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/rrhh/personal'>) {
+  const perfil = await exigirPermiso(['rrhh.personal', 'asistencia.ver'])
+  const gestiona = puede(perfil, 'rrhh.personal')
+  const params = await searchParams
+  const filtro = params.estado === 'todos' ? 'todos' : 'activos'
+  const [personal, areas] = await Promise.all([listarTrabajadores(filtro), areasParaPersonal()])
+
+  return (
+    <>
+      <EncabezadoPagina
+        titulo="Personal"
+        descripcion="La ficha de cada persona de planta y oficina: sus datos, la cuenta donde se le paga y su horario. Con el horario, la marca del portero sabe si llegó tarde."
+        migas={[{ titulo: 'Recursos Humanos', ruta: '/rrhh' }, { titulo: 'Personal' }]}
+        acciones={gestiona && <NuevoTrabajador areas={areas} />}
+      />
+
+      <nav aria-label="Filtro" className="mb-3 flex gap-2">
+        {FILTROS.map((f) => (
+          <Link
+            key={f.valor}
+            href={f.valor === 'activos' ? '/rrhh/personal' : `/rrhh/personal?estado=${f.valor}`}
+            aria-current={filtro === f.valor ? 'page' : undefined}
+            className={`inline-flex min-h-9 items-center rounded-lg border px-3 text-sm font-medium ${
+              filtro === f.valor ? 'border-acento bg-acento-suave text-texto' : 'border-borde text-texto-suave hover:text-texto'
+            }`}
+          >
+            {f.titulo}
+            {filtro === f.valor && <span className="ml-2 tabular text-xs text-texto-suave">{personal.length}</span>}
+          </Link>
+        ))}
+      </nav>
+
+      <Tarjeta className="overflow-hidden">
+        <Tabla>
+          <TablaCabecera>
+            <tr>
+              <TH>Persona</TH>
+              <TH className="hidden md:table-cell">Horario</TH>
+              {gestiona && <TH className="hidden lg:table-cell">Cuenta</TH>}
+              <TH>Estado</TH>
+              {gestiona && (
+                <TH className="text-right">
+                  <span className="sr-only">Acciones</span>
+                </TH>
+              )}
+            </tr>
+          </TablaCabecera>
+          <tbody>
+            {personal.length === 0 ? (
+              <SinDatos
+                titulo={filtro === 'activos' ? 'No hay personal activo' : 'Todavía no hay nadie registrado'}
+                descripcion={gestiona ? 'Registra a la primera persona con el botón de arriba.' : 'Recursos Humanos registra al personal.'}
+              />
+            ) : (
+              personal.map((t) => <FilaTrabajador key={t.id} trabajador={t} areas={areas} gestiona={gestiona} />)
+            )}
+          </tbody>
+        </Tabla>
+      </Tarjeta>
+    </>
+  )
+}
+
+function FilaTrabajador({
+  trabajador: t,
+  areas,
+  gestiona,
+}: {
+  trabajador: Trabajador
+  areas: { id: string; codigo: string; nombre: string }[]
+  gestiona: boolean
+}) {
+  const horario = `${horaCorta(t.hora_entrada)} – ${horaCorta(t.hora_salida)}`
+  return (
+    <TR className={t.activo ? undefined : 'opacity-60'}>
+      <TD className="align-top">
+        <p className="font-semibold text-texto">
+          {t.apellidos}, {t.nombres}
+        </p>
+        <p className="tabular text-xs text-texto-suave">DNI {t.dni}</p>
+        {(t.cargo || t.area) && (
+          <p className="text-xs text-texto">
+            {t.cargo ?? 'Sin cargo'}
+            {t.area && ` · ${t.area.nombre}`}
+          </p>
+        )}
+        <p className="tabular text-[11px] text-texto-suave md:hidden">{horario}</p>
+      </TD>
+      <TD className="hidden align-top md:table-cell">
+        <span className="tabular text-sm text-texto">{horario}</span>
+      </TD>
+      {gestiona && (
+        <TD className="hidden align-top lg:table-cell">
+          {t.cuenta ? (
+            <>
+              <p className="text-sm text-texto">
+                {t.cuenta.banco} · {TIPO_CUENTA[t.cuenta.tipo_cuenta]?.etiqueta ?? t.cuenta.tipo_cuenta}
+              </p>
+              <p className="tabular text-xs text-texto-suave">{t.cuenta.numero_cuenta}</p>
+              {t.cuenta.cci && <p className="tabular text-[11px] text-texto-suave">CCI {t.cuenta.cci}</p>}
+            </>
+          ) : (
+            <span className="text-xs text-texto-suave">Sin cuenta</span>
+          )}
+        </TD>
+      )}
+      <TD className="align-top">
+        {t.activo ? <Insignia tono="exito">Activo</Insignia> : <Insignia tono="neutro">De baja</Insignia>}
+      </TD>
+      {gestiona && (
+        <TD className="text-right align-top">
+          <ControlesTrabajador trabajador={t} areas={areas} />
+        </TD>
+      )}
+    </TR>
+  )
+}
