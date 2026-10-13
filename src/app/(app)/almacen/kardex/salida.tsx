@@ -18,7 +18,7 @@ import { registrarSalidaAlmacen } from './acciones'
 export type MaterialParaSalida = { id: string; codigo: string; descripcion: string; unidad: string | null; disponible: number; almacen: Almacen | null }
 /** Una línea de requerimiento con algo por entregar; la salida la descuenta. */
 export type LineaRqParaElegir = {
-  linea_id: string; numero: string; codigo_interno: string; area: string; item: number
+  linea_id: string; requerimiento_id: string; numero: string; codigo_interno: string; area: string; item: number
   descripcion: string; unidad: string; almacen: Almacen | null; pendiente: number
 }
 export type UnidadParaElegir = { id: string; nombre: string; vehiculo: string | null; ordenes: string | null }
@@ -30,11 +30,17 @@ const TIPOS_FOTO = ['image/jpeg', 'image/png', 'image/webp']
  * unidad va: un vehículo registrado o, si todavía no está en el sistema, su
  * código interno de fabricación o su placa.
  */
-export function NuevaSalida({ materiales, unidades, lineasRq = [] }: { materiales: MaterialParaSalida[]; unidades: UnidadParaElegir[]; lineasRq?: LineaRqParaElegir[] }) {
-  const [abierta, setAbierta] = useState(false)
+export function NuevaSalida({ materiales, unidades, lineasRq = [], rqInicial }: {
+  materiales: MaterialParaSalida[]; unidades: UnidadParaElegir[]; lineasRq?: LineaRqParaElegir[]
+  /** Un requerimiento que viene de «Atención»: la ventana se abre con su primer ítem elegido. */
+  rqInicial?: string
+}) {
+  // La primera línea pendiente del RQ que mandó la pantalla de atención, si la hay.
+  const lineaInicial = rqInicial ? lineasRq.find((l) => l.requerimiento_id === rqInicial)?.linea_id ?? '' : ''
+  const [abierta, setAbierta] = useState(Boolean(lineaInicial))
   const [id, setId] = useState(() => crypto.randomUUID())
   const [materialId, setMaterialId] = useState('')
-  const [lineaId, setLineaId] = useState('')
+  const [lineaId, setLineaId] = useState(lineaInicial)
   const [destino, setDestino] = useState<'UNIDAD' | 'CODIGO'>(unidades.length > 0 ? 'UNIDAD' : 'CODIGO')
   const [unidadId, setUnidadId] = useState('')
 

@@ -45,6 +45,8 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
 
   const filtros = filtrosDeKardex(params)
   const pagina = filtros.pagina
+  // «Atención de requerimiento» manda aquí con el RQ para registrar su salida.
+  const rqInicial = typeof params.rq === 'string' && /^[0-9a-f-]{36}$/i.test(params.rq) ? params.rq : undefined
 
   const puedeSalida = puede(perfil, 'almacen.despachar')
   const puedeIngreso = puede(perfil, 'almacen.recibir')
@@ -120,6 +122,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
               <NuevaSalida
                 materiales={materiales.map((m) => ({ id: m.material_id, codigo: m.codigo, descripcion: m.descripcion, unidad: m.unidad, disponible: m.disponible, almacen: m.almacen }))}
                 lineasRq={lineasRq}
+                rqInicial={rqInicial}
                 unidades={unidades.filter((u): u is typeof u & { id: string } => Boolean(u.id)).map((u) => ({
                   id: u.id, nombre: u.nombre ?? 'Unidad', vehiculo: u.vehiculo, ordenes: u.ordenes,
                 }))}

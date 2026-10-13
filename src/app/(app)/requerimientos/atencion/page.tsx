@@ -210,7 +210,14 @@ function Fila({
           {recibe && (rq.estado === 'SIN_STOCK' || rq.estado === 'EN_ATENCION') && (
             <PasoRequerimiento id={rq.id} numero={rq.numero} paso="listo" />
           )}
-          {despacha && rq.estado === 'LISTO_EN_ALMACEN' && <PasoRequerimiento id={rq.id} numero={rq.numero} paso="entregado" />}
+          {despacha && rq.estado === 'LISTO_EN_ALMACEN' && (
+            <>
+              <Link href={`/almacen/kardex?rq=${rq.id}`} className="text-xs text-acento hover:underline">
+                Registrar la salida en el kardex
+              </Link>
+              <PasoRequerimiento id={rq.id} numero={rq.numero} paso="entregado" />
+            </>
+          )}
         </div>
       </TD>
     </TR>
