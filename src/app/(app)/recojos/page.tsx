@@ -14,6 +14,13 @@ import { PasoRecojo } from './paso-recojo'
 
 export const metadata = { title: 'Recojos' }
 
+/** Lo que el conductor marca después, según en qué va el recojo. */
+const SIGUIENTE_PASO: Record<string, 'EN_RECOJO' | 'RECOGIDO' | 'DEJADO'> = {
+  POR_RECOGER: 'EN_RECOJO',
+  EN_RECOJO: 'RECOGIDO',
+  RECOGIDO: 'DEJADO',
+}
+
 export default async function PaginaRecojos() {
   const perfil = await exigirPermiso(['compras.recojo', 'compras.crear'])
   const conductor = puede(perfil, 'compras.recojo')
@@ -27,7 +34,7 @@ export default async function PaginaRecojos() {
         titulo="Recojos"
         descripcion={
           conductor
-            ? 'Las compras aprobadas que tienes que recoger. Marca «Ya la recogí» al salir del proveedor y «La dejé en almacén» al entregarla: Almacén valida el ingreso sin volver a registrarlo.'
+            ? 'Las compras aprobadas que tienes que recoger. Marca «Salgo a recoger» cuando vas al proveedor, «Ya la recogí» al salir con el material y «La dejé en almacén» al entregarla: el requerimiento muestra en qué va y Almacén valida el ingreso sin volver a registrarlo.'
             : 'Lo que el conductor tiene que recoger y lo que ya dejó en almacén.'
         }
       />
@@ -138,6 +145,7 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
         <p className="text-xs text-texto-suave">
           {[
             r.pedido_en && `Mandada a recojo ${fechaHora(r.pedido_en)}`,
+            r.en_recojo_en && `salió a recogerla ${fechaHora(r.en_recojo_en)}`,
             r.recogido_en && `recogida ${fechaHora(r.recogido_en)}`,
             r.dejado_en && `dejada en almacén ${fechaHora(r.dejado_en)}`,
           ]
@@ -145,9 +153,7 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
             .join(' · ')}
         </p>
 
-        {conductor && (r.recojo === 'POR_RECOGER' || r.recojo === 'RECOGIDO') && (
-          <PasoRecojo id={r.id} numero={r.numero} paso={r.recojo === 'POR_RECOGER' ? 'RECOGIDO' : 'DEJADO'} />
-        )}
+        {conductor && SIGUIENTE_PASO[r.recojo] && <PasoRecojo id={r.id} numero={r.numero} paso={SIGUIENTE_PASO[r.recojo]} />}
       </TarjetaCuerpo>
     </Tarjeta>
   )

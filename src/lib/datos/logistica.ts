@@ -118,6 +118,8 @@ export type CompraParaRecojo = {
   proveedor_contacto: string | null
   recojo: string
   pedido_en: string | null
+  /** Cuándo marcó «Salgo a recoger»; vacía si marcó directo que la recogió. */
+  en_recojo_en: string | null
   recogido_en: string | null
   dejado_en: string | null
   fecha_estimada: string | null
@@ -131,13 +133,19 @@ export type CompraParaRecojo = {
 
 export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
   const supabase = await createClient()
-  // `datos_de_recojo` trae lo que se sumó después (el comprobante y el código
-  // interno) con el mismo permiso y filtro: la forma de `compras_para_recojo` no
-  // cambia sin borrarla.
-  const [{ data, error }, extra] = await Promise.all([supabase.rpc('compras_para_recojo'), supabase.rpc('datos_de_recojo')])
+  // `datos_de_recojo` y `salidas_a_recojo` traen lo que se sumó después (el
+  // comprobante, el código interno y la hora en que salió a recoger) con el
+  // mismo permiso: la forma de `compras_para_recojo` no cambia sin borrarla.
+  const [{ data, error }, extra, salidas] = await Promise.all([
+    supabase.rpc('compras_para_recojo'),
+    supabase.rpc('datos_de_recojo'),
+    supabase.rpc('salidas_a_recojo'),
+  ])
   if (error) throw new Error(`No se pudieron leer los recojos: ${error.message}`)
   if (extra.error) throw new Error(`No se pudo leer el comprobante de los recojos: ${extra.error.message}`)
+  if (salidas.error) throw new Error(`No se pudo leer cuándo salió a recoger: ${salidas.error.message}`)
   const extraPorCompra = new Map((extra.data ?? []).map((e) => [e.id, e]))
+  const salidaPorCompra = new Map((salidas.data ?? []).map((s) => [s.id, s.en_recojo_en]))
   return (data ?? []).map((c) => ({
     id: c.id ?? '',
     numero: c.numero ?? '',
@@ -150,6 +158,7 @@ export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
     proveedor_contacto: c.proveedor_contacto,
     recojo: c.recojo ?? 'POR_RECOGER',
     pedido_en: c.pedido_en,
+    en_recojo_en: salidaPorCompra.get(c.id) ?? null,
     recogido_en: c.recogido_en,
     dejado_en: c.dejado_en,
     fecha_estimada: c.fecha_estimada,

@@ -8,9 +8,13 @@ export const ORIGEN_COMPRA: Record<string, Def> = {
   DIRECTA: { etiqueta: 'Directa', tono: 'info', descripcion: 'Logística compra para el almacén, sin requerimiento.' },
 }
 
-/** En qué va el recojo del conductor. Sin recojo, la entrega la marca Logística. */
+/**
+ * En qué va el recojo del conductor. Sin recojo, la entrega la marca Logística.
+ * «En recojo» lo marca él con «Salgo a recoger» (migración 20261013121000).
+ */
 export const RECOJO_COMPRA: Record<string, Def> = {
-  POR_RECOGER: { etiqueta: 'Por recoger', tono: 'aviso', descripcion: 'El conductor tiene que ir al proveedor.' },
+  POR_RECOGER: { etiqueta: 'Pendiente de recojo', tono: 'aviso', descripcion: 'El conductor tiene que ir al proveedor.' },
+  EN_RECOJO: { etiqueta: 'En recojo', tono: 'info', descripcion: 'El conductor salió a recogerla al proveedor.' },
   RECOGIDO: { etiqueta: 'Recogida', tono: 'info', descripcion: 'El conductor la tiene y va hacia el almacén.' },
   DEJADO: { etiqueta: 'En almacén', tono: 'exito', descripcion: 'El conductor la dejó; Almacén valida el ingreso.' },
 }
