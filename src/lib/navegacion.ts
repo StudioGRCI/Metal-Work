@@ -3,6 +3,7 @@ import {
   BadgeCheck,
   Boxes,
   Building2,
+  CarFront,
   ClipboardList,
   FileSpreadsheet,
   FileText,
@@ -103,6 +104,30 @@ export const NAVEGACION: GrupoNavegacion[] = [
         icono: ClipboardList,
         permiso: ['diseno.evaluar', 'administracion.recibir_evaluacion'],
         descripcion: 'La evaluación del personal de Diseño e Ingeniería, enviada a Administración',
+        disponible: true,
+      },
+    ],
+  },
+  // El área de Requerimientos: anota lo que cada área necesita y se lo pasa a
+  // Logística, y lleva el registro de vehículos que entran y salen de la planta.
+  // Logística ve los RQ porque los atiende.
+  {
+    titulo: 'Requerimientos',
+    items: [
+      {
+        titulo: 'Requerimientos',
+        ruta: '/requerimientos',
+        icono: ClipboardList,
+        permiso: ['requerimientos.emitir', 'compras.crear'],
+        descripcion: 'Lo que cada área necesita comprar, con su número RQ, para Logística',
+        disponible: true,
+      },
+      {
+        titulo: 'Vehículos',
+        ruta: '/vehiculos',
+        icono: CarFront,
+        permiso: ['vehiculos.registrar', 'vehiculos.ver'],
+        descripcion: 'Ingreso y salida de vehículos de la planta',
         disponible: true,
       },
     ],
@@ -299,4 +324,6 @@ export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/recojos', corto: 'Recojos' },
   { ruta: '/compras/ordenes', corto: 'OC' },
   { ruta: '/compras/aprobacion', corto: 'Aprobar' },
+  { ruta: '/requerimientos', corto: 'RQ' },
+  { ruta: '/vehiculos', corto: 'Vehículos' },
 ]

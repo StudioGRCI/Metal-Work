@@ -1,0 +1,12 @@
+-- =============================================================================
+-- EL REQUERIMIENTO TIENE NÚMERO
+-- -----------------------------------------------------------------------------
+-- Hoy el pedido de materiales se anota en REQUERIMIENTOS DIARIOS.xlsx y se
+-- identifica «por la unidad y la fecha»: no tiene número, y cuando Logística
+-- lo atiende nadie puede decir cuál de los 886 pedidos cerró. El requerimiento
+-- (RQ) que registra el área de Requerimientos nace con número de la casa.
+--
+-- Va sola porque Postgres no deja usar en la misma transacción un valor de
+-- enum recién agregado: la migración siguiente crea la serie con él.
+-- =============================================================================
+alter type public.tipo_correlativo add value if not exists 'REQUERIMIENTO';

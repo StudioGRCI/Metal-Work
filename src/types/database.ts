@@ -5313,6 +5313,91 @@ export type Database = {
         }
         Relationships: []
       }
+      registro_vehiculos: {
+        Row: {
+          id: string
+          placa: string | null
+          chasis: string | null
+          codigo_interno: string | null
+          unidad: string
+          empresa: string
+          motivo: string
+          ingreso_en: string
+          observacion_ingreso: string | null
+          ingreso_por: string
+          salida_en: string | null
+          observacion_salida: string | null
+          salida_por: string | null
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          placa?: string | null
+          chasis?: string | null
+          codigo_interno?: string | null
+          unidad: string
+          empresa: string
+          motivo: string
+          ingreso_en: string
+          observacion_ingreso?: string | null
+          ingreso_por?: string
+          salida_en?: string | null
+          observacion_salida?: string | null
+          salida_por?: string | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          placa?: string | null
+          chasis?: string | null
+          codigo_interno?: string | null
+          unidad?: string
+          empresa?: string
+          motivo?: string
+          ingreso_en?: string
+          observacion_ingreso?: string | null
+          ingreso_por?: string
+          salida_en?: string | null
+          observacion_salida?: string | null
+          salida_por?: string | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "registro_vehiculos_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registro_vehiculos_ingreso_por_fkey"
+            columns: ["ingreso_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registro_vehiculos_salida_por_fkey"
+            columns: ["salida_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       regla_aprobacion_compras: {
         Row: {
           id: string
@@ -5357,6 +5442,64 @@ export type Database = {
             columns: ["rol_aprobador_id"]
             isOneToOne: false
             referencedRelation: "roles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      requerimiento_lineas: {
+        Row: {
+          id: string
+          requerimiento_id: string
+          item: number
+          descripcion: string
+          cantidad: number
+          unidad_medida_id: string
+          categoria_id: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          requerimiento_id: string
+          item: number
+          descripcion: string
+          cantidad: number
+          unidad_medida_id: string
+          categoria_id: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          requerimiento_id?: string
+          item?: number
+          descripcion?: string
+          cantidad?: number
+          unidad_medida_id?: string
+          categoria_id?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requerimiento_lineas_categoria_id_fkey"
+            columns: ["categoria_id"]
+            isOneToOne: false
+            referencedRelation: "categorias_material"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_lineas_requerimiento_id_fkey"
+            columns: ["requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "requerimientos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_lineas_unidad_medida_id_fkey"
+            columns: ["unidad_medida_id"]
+            isOneToOne: false
+            referencedRelation: "unidades_medida"
             referencedColumns: ["id"]
           }
         ]
@@ -5432,6 +5575,76 @@ export type Database = {
           {
             foreignKeyName: "requerimiento_material_detalles_revisado_por_fkey"
             columns: ["revisado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      requerimientos: {
+        Row: {
+          id: string
+          numero: string
+          area_id: string
+          codigo_interno: string
+          justificacion: string
+          fecha_requerida: string | null
+          estado: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          area_id: string
+          codigo_interno: string
+          justificacion: string
+          fecha_requerida?: string | null
+          estado?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          area_id?: string
+          codigo_interno?: string
+          justificacion?: string
+          fecha_requerida?: string | null
+          estado?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requerimientos_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimientos_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimientos_creado_por_fkey"
+            columns: ["creado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -6776,6 +6989,20 @@ export type Database = {
         }
         Returns: string
       }
+      anular_registro_vehiculo: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      anular_requerimiento: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       aprobar_compra: {
         Args: {
           p_compra: string | null
@@ -7253,6 +7480,17 @@ export type Database = {
         }
         Returns: string
       }
+      emitir_requerimiento: {
+        Args: {
+          p_id: string | null
+          p_area_id: string | null
+          p_codigo_interno: string | null
+          p_justificacion: string | null
+          p_fecha_requerida: string | null
+          p_lineas: Json | null
+        }
+        Returns: string
+      }
       es_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -7516,6 +7754,12 @@ export type Database = {
       nombre_unidad_almacen: {
         Args: {
           p_u: string | null
+        }
+        Returns: string
+      }
+      normalizar_placa: {
+        Args: {
+          p: string | null
         }
         Returns: string
       }
@@ -7805,6 +8049,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      puede_ver_requerimientos: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       puede_ver_version_plano: {
         Args: {
           p_id: string | null
@@ -7928,6 +8176,20 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_ingreso_vehiculo: {
+        Args: {
+          p_id: string | null
+          p_placa: string | null
+          p_chasis: string | null
+          p_codigo_interno: string | null
+          p_unidad: string | null
+          p_empresa: string | null
+          p_motivo: string | null
+          p_ingreso_en: string | null
+          p_observacion: string | null
+        }
+        Returns: string
+      }
       registrar_recepcion_material: {
         Args: {
           p_id: string | null
@@ -7967,6 +8229,14 @@ export type Database = {
           p_recibe: string | null
           p_foto: string | null
           p_fecha: string | null
+        }
+        Returns: string
+      }
+      registrar_salida_vehiculo: {
+        Args: {
+          p_id: string | null
+          p_salida_en: string | null
+          p_observacion: string | null
         }
         Returns: string
       }
