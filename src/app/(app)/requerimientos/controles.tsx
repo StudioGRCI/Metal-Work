@@ -24,7 +24,7 @@ export function AnularRequerimiento({ id, numero }: { id: string; numero: string
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`Anular el requerimiento ${numero}`}
-        descripcion="No se borra: queda con su número, el motivo y la fecha. Logística deja de verlo por atender."
+        descripcion="No se borra: queda con su número, el motivo y la fecha. Almacén y Logística dejan de verlo por atender."
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">

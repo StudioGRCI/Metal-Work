@@ -232,6 +232,17 @@ interacciones con botones (emitir, descargar, anular); interacción nueva de pes
   servidor y RLS rechacen una URL directa sin permiso. Ocultar el enlace no
   sustituye esa protección.
 
+- **El menú se ordena por el área que lo usa, no por el módulo que lo construyó.**
+  El 2026-10-13 DKS vio «muy desordenado» el menú de Logística, Requerimientos y
+  Almacén: cada hilo había colgado su pantalla donde cayó («Abastecimiento» tenía
+  compras, recojos, kardex y valorización mezclados, y «Requerimientos» mandaba
+  a Logística). Un grupo de `NAVEGACION` es un puesto y sus entradas van en el
+  orden de su trabajo (primero lo que espera por él); una pantalla compartida
+  por dos puestos cuelga de los dos grupos con el permiso de cada uno; y lo que
+  un puesto alcanza por un permiso heredado pero no es su trabajo se tapa en
+  `FUERA_DEL_MENU`. Al agregar una pantalla, mirar el menú completo con el rol
+  que la usa, no solo que la entrada aparezca.
+
 - **Una lista de «lo que puede escribir» no sirve para decidir «lo que ve».**
   El 2026-09-14 la pestaña Actividades pasó a recibir solo las áreas cuya hoja
   la persona puede *armar*, y el mismo arreglo decidía qué tablas se pintaban:
