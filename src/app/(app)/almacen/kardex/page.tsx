@@ -11,7 +11,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { cargarAtencionMateriales } from '@/lib/datos/atencion-materiales'
 import { ingresosPorValidar } from '@/lib/datos/ingresos-por-validar'
 import { cargarKardex, FILAS_POR_PAGINA, filtrosDeKardex, lineasDeRequerimientoParaSalida, materialesDelKardex, minimosDeStock, salidasPorCerrar, unidadesParaSalida } from '@/lib/datos/kardex'
-import { ALMACENES, MOVIMIENTO_KARDEX, ORDEN_ALMACENES, ORIGEN_KARDEX, exigeFormato } from '@/lib/dominio/almacen'
+import { ALMACENES, MOVIMIENTO_KARDEX, ORDEN_ALMACENES, ORIGEN_KARDEX, almacenEnFrase, exigeFormato } from '@/lib/dominio/almacen'
 import { cantidad, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -97,7 +97,6 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
     porCerrar: porCerrar.filter((s) => s.almacen === a).length,
   }))
   const porClasificar = materiales.filter((m) => !m.almacen && m.existencia > 0).length
-  const almacenElegido = filtros.almacen ? ALMACENES[filtros.almacen] : null
   const paginas = Math.max(1, Math.ceil(total / FILAS_POR_PAGINA))
   const entradas = filas.reduce((s, f) => s + Number(f.entrada ?? 0), 0)
   const salidas = filas.reduce((s, f) => s + Number(f.salida ?? 0), 0)
@@ -304,7 +303,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
 
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
-          titulo={elegido ? `${elegido.descripcion} · ${elegido.codigo}` : almacenElegido ? `Historial de ${almacenElegido.etiqueta.toLowerCase()}` : 'Historial de movimientos'}
+          titulo={elegido ? `${elegido.descripcion} · ${elegido.codigo}` : filtros.almacen ? `Historial de ${almacenEnFrase(filtros.almacen)}` : 'Historial de movimientos'}
           descripcion={elegido
             ? 'En orden de fecha, como la ficha de kardex. El saldo es lo que quedó en almacén tras cada movimiento.'
             : 'Lo último primero. El saldo es el del material en ese momento; elige un material para ver su ficha.'}

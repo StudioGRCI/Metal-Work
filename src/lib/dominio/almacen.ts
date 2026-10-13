@@ -90,6 +90,11 @@ export function esAlmacen(valor: string | null | undefined): valor is Almacen {
   return valor === 'EPP' || valor === 'CONSUMIBLES' || valor === 'ACCESORIOS' || valor === 'MATERIA_PRIMA'
 }
 
+/** El nombre del almacén dentro de una frase («Historial de consumibles»); EPP es sigla y no se baja. */
+export function almacenEnFrase(almacen: Almacen) {
+  return almacen === 'EPP' ? 'EPP' : ALMACENES[almacen].etiqueta.toLowerCase()
+}
+
 /** Un almacén cuya salida se cierra con un formato firmado. */
 export function exigeFormato(almacen: string | null | undefined) {
   return almacen === 'MATERIA_PRIMA' || almacen === 'EPP'
