@@ -99,8 +99,13 @@ En la misma migración que la crea, sin excepción:
 
 ## Acciones de servidor (Next.js)
 
-- Validar la entrada con `zod` antes de tocar la base; los UUID con
-  `z.string().uuid()`.
+- Validar la entrada con `zod` antes de tocar la base; los identificadores con
+  `z.guid()`, **nunca** `z.uuid()` ni `z.string().uuid()`. Desde zod 4 esos dos
+  exigen versión y variante RFC 9562 y rechazan ids que Postgres sí acepta, como
+  los `md5(...)::uuid` de la carga del inventario del 12/10: la salida de Almacén
+  decía «Revisa material, cantidad, motivo y quién recibe» con todo lleno
+  (2026-10-13, PR #73). Por lo mismo, una carga por SQL genera sus ids con
+  `gen_random_uuid()`, no con `md5()::uuid`.
 - Exigir permiso con `exigirPermiso`/`puede` **al principio** de la acción,
   no confiar en que la pantalla escondió el botón.
 - Los errores de Postgres pasan por `mensajeDeError` — no filtrar el mensaje
