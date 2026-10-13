@@ -191,7 +191,7 @@ function FormularioTrabajador({
             </Seleccion>
           </Campo>
           <Campo etiqueta="Número de cuenta" htmlFor={`tr-cuenta-${id}`} requerido>
-            <Entrada id={`tr-cuenta-${id}`} name="numero_cuenta" required inputMode="numeric" pattern="[0-9-]{6,30}" maxLength={30} defaultValue={t?.cuenta?.numero_cuenta ?? ''} autoComplete="off" className="tabular" />
+            <Entrada id={`tr-cuenta-${id}`} name="numero_cuenta" required inputMode="numeric" pattern="[0-9\-]{6,30}" maxLength={30} defaultValue={t?.cuenta?.numero_cuenta ?? ''} autoComplete="off" className="tabular" />
           </Campo>
           <Campo etiqueta="CCI" htmlFor={`tr-cci-${id}`} ayuda="Los 20 dígitos, si el pago va a otro banco.">
             <Entrada id={`tr-cci-${id}`} name="cci" inputMode="numeric" pattern="[0-9]{20}" maxLength={20} defaultValue={t?.cuenta?.cci ?? ''} autoComplete="off" className="tabular" />
