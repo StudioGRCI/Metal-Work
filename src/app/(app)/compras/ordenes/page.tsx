@@ -97,6 +97,8 @@ function FilaCompra({ compra: c, emite }: { compra: OrdenCompraListada; emite: b
   const para = [
     c.codigo_interno,
     ...(c.origen === 'DIRECTA' ? ['Almacén'] : [c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, ...c.unidades]),
+    // Qué requerimiento (RQ-0001-2026…) atiende esta compra, si nació de uno.
+    c.requerimientos.length ? c.requerimientos.join(', ') : null,
   ]
     .filter(Boolean)
     .join(' · ')

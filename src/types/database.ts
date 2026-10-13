@@ -5520,6 +5520,9 @@ export type Database = {
           categoria_id: string
           creado_en: string
           actualizado_en: string
+          orden_compra_id: string | null
+          atendida_en: string | null
+          atendida_por: string | null
         }
         Insert: {
           id?: string
@@ -5531,6 +5534,9 @@ export type Database = {
           categoria_id: string
           creado_en?: string
           actualizado_en?: string
+          orden_compra_id?: string | null
+          atendida_en?: string | null
+          atendida_por?: string | null
         }
         Update: {
           id?: string
@@ -5542,13 +5548,30 @@ export type Database = {
           categoria_id?: string
           creado_en?: string
           actualizado_en?: string
+          orden_compra_id?: string | null
+          atendida_en?: string | null
+          atendida_por?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "requerimiento_lineas_atendida_por_fkey"
+            columns: ["atendida_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "requerimiento_lineas_categoria_id_fkey"
             columns: ["categoria_id"]
             isOneToOne: false
             referencedRelation: "categorias_material"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_lineas_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
             referencedColumns: ["id"]
           },
           {
@@ -7571,6 +7594,22 @@ export type Database = {
           p_moneda: string | null
           p_con_factura: boolean | null
           p_codigo_interno: string | null
+        }
+        Returns: string
+      }
+      emitir_compra_del_requerimiento: {
+        Args: {
+          p_id: string | null
+          p_requerimiento_id: string | null
+          p_items: number[] | null
+          p_proveedor_id: string | null
+          p_referencia: string | null
+          p_detalles: Json | null
+          p_fecha: string | null
+          p_condicion: string | null
+          p_dias: number | null
+          p_moneda: string | null
+          p_con_factura: boolean | null
         }
         Returns: string
       }

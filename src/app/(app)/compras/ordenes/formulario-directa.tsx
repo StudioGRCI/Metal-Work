@@ -1,6 +1,6 @@
 'use client'
 
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, ShoppingCart, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { registrarDocumentoCompra } from '@/app/(app)/materiales/atencion/acciones-documentos'
@@ -14,13 +14,23 @@ import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
 import { useEnvio } from '@/lib/envio'
-import { moneda as formatoMoneda } from '@/lib/format'
+import { cantidad as formatoCantidad, moneda as formatoMoneda } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 
 import { SelectorProveedor } from '../selector-proveedor'
-import { emitirCompraDirecta } from './acciones'
+import { emitirCompraDelRequerimiento, emitirCompraDirecta } from './acciones'
 
 type Linea = { clave: string; material_id: string; cantidad: string; precio: string }
+
+/** El requerimiento del que nace la OC: lo que el formulario muestra y los insumos que ofrece marcar. */
+export type RequerimientoParaCompra = {
+  id: string
+  numero: string
+  area: string
+  codigo_interno: string
+  justificacion: string
+  lineas: { item: number; descripcion: string; cantidad: number; unidad: string; orden_compra: string | null; compra_rechazada: boolean }[]
+}
 
 function lineaVacia(): Linea {
   return { clave: crypto.randomUUID(), material_id: '', cantidad: '', precio: '' }
@@ -90,12 +100,75 @@ export function NuevaCompraDirecta({
   )
 }
 
+/**
+ * «Generar OC» desde un requerimiento que Almacén dejó sin stock: el mismo
+ * formulario de la directa, con el código interno y el motivo tomados del RQ y
+ * la lista de insumos del RQ que esta orden cubre.
+ */
+export function GenerarCompraDelRequerimiento({
+  requerimiento,
+  proveedores,
+  materiales,
+  puedeRegistrarProveedor,
+}: {
+  requerimiento: RequerimientoParaCompra
+  proveedores: ProveedorParaCompra[]
+  materiales: MaterialParaConteo[]
+  puedeRegistrarProveedor: boolean
+}) {
+  const [abierta, setAbierta] = useState(false)
+  const [vez, setVez] = useState(0)
+  const [aviso, setAviso] = useState<string | null>(null)
+  return (
+    <>
+      <Boton
+        type="button"
+        tamano="sm"
+        onClick={() => {
+          setAviso(null)
+          setVez((v) => v + 1)
+          setAbierta(true)
+        }}
+      >
+        <ShoppingCart aria-hidden className="size-4" />
+        Generar OC
+      </Boton>
+      {aviso && (
+        <p role="status" className="max-w-xs text-right text-xs text-exito">
+          {aviso}
+        </p>
+      )}
+      <Ventana
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo={`Generar OC del ${requerimiento.numero}`}
+        descripcion="Marca qué insumos del requerimiento cubre esta orden y elige del catálogo lo que se compra. Gerencia la aprueba y el conductor la deja en almacén; Almacén la recepciona y el requerimiento queda listo."
+        ancho="xl"
+      >
+        <FormularioCompraDirecta
+          key={vez}
+          requerimiento={requerimiento}
+          proveedores={proveedores}
+          materiales={materiales}
+          puedeRegistrarProveedor={puedeRegistrarProveedor}
+          alTerminar={(mensaje) => {
+            setAbierta(false)
+            setAviso(mensaje)
+          }}
+        />
+      </Ventana>
+    </>
+  )
+}
+
 function FormularioCompraDirecta({
+  requerimiento,
   proveedores,
   materiales,
   puedeRegistrarProveedor,
   alTerminar,
 }: {
+  requerimiento?: RequerimientoParaCompra
   proveedores: ProveedorParaCompra[]
   materiales: MaterialParaConteo[]
   puedeRegistrarProveedor: boolean
@@ -143,7 +216,7 @@ function FormularioCompraDirecta({
         'lineas',
         JSON.stringify(lineas.map((l) => ({ material_id: l.material_id, cantidad: l.cantidad, precio: l.precio }))),
       )
-      const emitida = await emitirCompraDirecta(null, datos)
+      const emitida = requerimiento ? await emitirCompraDelRequerimiento(null, datos) : await emitirCompraDirecta(null, datos)
       if (!emitida.ok || !adjuntando) return emitida
 
       const documento = new FormData()
@@ -183,25 +256,34 @@ function FormularioCompraDirecta({
           <Campo etiqueta="Referencia del proveedor" htmlFor="ocd-referencia" ayuda="Su cotización o proforma. Si la dejas vacía, se usa el número de la orden.">
             <Entrada id="ocd-referencia" name="referencia" maxLength={100} placeholder="COT-0123" />
           </Campo>
-          <Campo etiqueta="Por qué se compra sin requerimiento" htmlFor="ocd-motivo" requerido className="sm:col-span-2">
-            <AreaTexto
-              id="ocd-motivo"
-              name="motivo"
-              required
-              minLength={5}
-              maxLength={500}
-              rows={2}
-              placeholder="Por ejemplo: reposición de consumibles que bajaron del mínimo."
-            />
-          </Campo>
-          <Campo
-            etiqueta="Código interno"
-            htmlFor="ocd-codigo"
-            requerido
-            ayuda={AYUDA_CODIGO_INTERNO}
-          >
-            <Entrada id="ocd-codigo" name="codigo_interno" required minLength={2} maxLength={60} defaultValue="PLANTA" autoComplete="off" />
-          </Campo>
+          {requerimiento ? (
+            <div className="rounded-xl border border-borde bg-superficie-2 p-3 text-sm sm:col-span-2">
+              <input type="hidden" name="requerimiento_id" value={requerimiento.id} />
+              <p className="text-texto">
+                <span className="font-semibold">{requerimiento.numero}</span> · {requerimiento.area} · código interno{' '}
+                <span className="tabular font-semibold">{requerimiento.codigo_interno}</span>
+              </p>
+              <p className="mt-1 text-texto-suave">{requerimiento.justificacion}</p>
+              <p className="mt-1 text-xs text-texto-suave">El código interno y el motivo de la orden salen del requerimiento.</p>
+            </div>
+          ) : (
+            <>
+              <Campo etiqueta="Por qué se compra sin requerimiento" htmlFor="ocd-motivo" requerido className="sm:col-span-2">
+                <AreaTexto
+                  id="ocd-motivo"
+                  name="motivo"
+                  required
+                  minLength={5}
+                  maxLength={500}
+                  rows={2}
+                  placeholder="Por ejemplo: reposición de consumibles que bajaron del mínimo."
+                />
+              </Campo>
+              <Campo etiqueta="Código interno" htmlFor="ocd-codigo" requerido ayuda={AYUDA_CODIGO_INTERNO}>
+                <Entrada id="ocd-codigo" name="codigo_interno" required minLength={2} maxLength={60} defaultValue="PLANTA" autoComplete="off" />
+              </Campo>
+            </>
+          )}
           <Campo etiqueta="Comprobante" htmlFor="ocd-comprobante" ayuda={comprobantePedido(conFactura).pide}>
             <Seleccion
               id="ocd-comprobante"
@@ -248,6 +330,31 @@ function FormularioCompraDirecta({
             />
           </Campo>
         </div>
+
+        {requerimiento && (
+          <fieldset className="space-y-2">
+            <legend className="mb-2 font-semibold text-texto">Insumos del requerimiento que cubre esta orden</legend>
+            {requerimiento.lineas.map((l) => {
+              const ocupado = Boolean(l.orden_compra) && !l.compra_rechazada
+              return (
+                <label key={l.item} className={`flex items-start gap-2 text-sm ${ocupado ? 'text-texto-suave' : 'text-texto'}`}>
+                  <input type="checkbox" name="item" value={l.item} defaultChecked={!ocupado} disabled={ocupado} className="mt-1" />
+                  <span>
+                    <span className="tabular font-medium">
+                      {formatoCantidad(l.cantidad)} {l.unidad}
+                    </span>{' '}
+                    {l.descripcion}
+                    {l.orden_compra && (
+                      <span className="block text-xs text-texto-suave">
+                        {l.compra_rechazada ? `La ${l.orden_compra} se rechazó: vuelve a comprarse.` : `Ya va en la ${l.orden_compra}.`}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              )
+            })}
+          </fieldset>
+        )}
 
         <fieldset className="space-y-3">
           <legend className="mb-3 font-semibold text-texto">Materiales · {lineas.length}</legend>
