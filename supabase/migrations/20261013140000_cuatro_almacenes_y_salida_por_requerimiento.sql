@@ -134,7 +134,7 @@ select l.id as linea_id, r.id as requerimiento_id, r.numero, r.codigo_interno, a
       from public.movimientos_materiales m
       left join public.movimientos_materiales d on d.devolucion_de = m.id and d.tipo = 'INGRESO'
      where m.requerimiento_linea_id = l.id) s on true
- where r.estado <> 'ANULADO';
+ where r.estado not in ('ANULADO', 'ENTREGADO');
 revoke all on public.v_rq_lineas_para_salida from public, anon;
 grant select on public.v_rq_lineas_para_salida to authenticated;
 
