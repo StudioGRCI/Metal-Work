@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowDownToLine, ArrowUpFromLine, Plus, ShoppingCart } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpFromLine, Plus, ShoppingCart, Truck } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Ventana } from '@/components/ui/ventana'
@@ -15,7 +15,7 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cantidad, fecha as formatearFecha } from '@/lib/format'
-import { useEnvio } from '@/lib/envio'
+import { useAccion, useEnvio } from '@/lib/envio'
 import type {
   AreaMaterial,
   CompraMaterialPendiente,
@@ -25,9 +25,11 @@ import type {
 } from '@/lib/datos/atencion-materiales'
 import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { APROBACION_COMPRA, compraDetenida, condicionDePago } from '@/lib/dominio/proveedores'
+import { RECOJO_COMPRA, VALIDACION_INGRESO, puedeIrARecojo, situacionCompra } from '@/lib/dominio/logistica'
+import { mandarARecojo } from '@/app/(app)/compras/ordenes/acciones'
 import { FormularioProveedor } from '@/app/(app)/proveedores/formulario'
 
-import { crearOrdenCompra, despacharMaterial, registrarRecepcion, resolverPropuesta, revisarStock, registrarPrecioCompra, marcarEntregaCompra, fijarCondicionCompra } from './acciones'
+import { crearOrdenCompra, despacharMaterial, registrarRecepcion, resolverPropuesta, revisarStock, registrarPrecioCompra, fijarCondicionCompra } from './acciones'
 import { SubirDocumentoCompra } from './subir-documento-compra'
 
 const NOMBRE_AREA: Record<string, string> = {
@@ -196,17 +198,18 @@ export function TableroMateriales({
         const pendientesCompra=lineasCompra.filter(c=>Number(c.cantidad_pendiente)>0)
         const detenida=compraDetenida(compra.aprobacion)
         const aprobacion=APROBACION_COMPRA[compra.aprobacion]
-        return <Tarjeta key={compra.orden_compra_id}><TarjetaCabecera titulo={`${compra.numero ?? compra.referencia} · ${compra.proveedor}`} descripcion={`${lineasCompra.length} ${lineasCompra.length === 1 ? 'insumo' : 'insumos'} · ${detenida?aprobacion?.descripcion:compra.entregado_almacen_en?'Entrega comunicada a Almacén':'Pendiente de entregar a Almacén'}`} acciones={compra.aprobacion!=='NO_REQUERIDA'&&aprobacion?<Insignia tono={aprobacion.tono}>{aprobacion.etiqueta}</Insignia>:undefined}/><TarjetaCuerpo>
+        const situacion=situacionCompra(compra)
+        return <Tarjeta key={compra.orden_compra_id}><TarjetaCabecera titulo={`${compra.numero ?? compra.referencia} · ${compra.proveedor}`} descripcion={`${lineasCompra.length} ${lineasCompra.length === 1 ? 'insumo' : 'insumos'} · ${detenida?aprobacion?.descripcion:detalleDelRecojo(compra)}`} acciones={<Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>}/><TarjetaCuerpo>
           <div className="space-y-3 border-t border-borde pt-3">
                   {puedeCrearCompra && detenida && (
                     <p className="text-xs text-texto-suave">Mientras no se apruebe no se descarga, no se envía al proveedor ni se entrega a Almacén. La decide quien aprueba las compras en <Link href="/compras/aprobacion" className="font-medium text-acento underline">Aprobación de compras</Link>.</p>
                   )}
                   {puedeCrearCompra && !detenida && [compra].length > 0 && (
                     <div className="space-y-2">
-                      <p className="text-xs font-semibold text-texto">Compra y entrega a Almacén</p>
+                      <p className="text-xs font-semibold text-texto">Compra y recojo</p>
                       {[compra].map((compra) => compra.orden_compra_id && <CondicionCompra
                         key={`condicion-${compra.orden_compra_id}`} compra={compra} />)}
-                      {[compra].map((compra) => compra.orden_compra_id && <EntregaCompra
+                      {[compra].map((compra) => compra.orden_compra_id && <RecojoCompra
                         key={compra.orden_compra_id} compra={compra} />)}
                       {[compra].map(c=><Link key={'pdf-'+c.orden_compra_id} href={`/compras/${c.orden_compra_id}/pdf`} className="inline-flex min-h-11 items-center text-sm font-medium text-acento underline">Descargar compra {c.numero ?? c.referencia}</Link>)}
                       {lineasCompra.filter((compra) => compra.precio_unitario === null).map((compra) => (
@@ -217,11 +220,15 @@ export function TableroMateriales({
                   {puedeRecibir && !detenida && pendientesCompra.length > 0 && (
                     <div>
                       <p className="mb-2 text-xs font-semibold text-texto">Llegadas pendientes</p>
-                      {pendientesCompra.every((compra) => !compra.entregado_almacen_en) && (
-                        <p className="mb-2 text-xs text-texto-suave">Logística todavía no marcó la entrega de estas compras a Almacén.</p>
+                      {compra.recojo === 'DEJADO' ? (
+                        <p className="mb-2 text-xs text-texto-suave">El conductor la dejó en el almacén. Valida el ingreso en el <Link href="/almacen/kardex" className="font-medium text-acento underline">kardex</Link>, sin volver a registrarlo.</p>
+                      ) : compra.recojo ? (
+                        <p className="mb-2 text-xs text-texto-suave">Va con el conductor. Cuando la deje en el almacén, el ingreso te llega al kardex para validarlo.</p>
+                      ) : pendientesCompra.every((compra) => !compra.entregado_almacen_en) && (
+                        <p className="mb-2 text-xs text-texto-suave">Todavía no va con el conductor: Logística la manda a recojo.</p>
                       )}
                       <div className="grid gap-2 lg:grid-cols-2">
-                        {pendientesCompra.filter((compra) => compra.entregado_almacen_en).map((compra) => (
+                        {!compra.recojo && pendientesCompra.filter((compra) => compra.entregado_almacen_en).map((compra) => (
                           <FormularioRecepcion key={compra.id} compra={compra} clave={clavesRecepcion[compra.id ?? '']} />
                         ))}
                       </div>
@@ -264,21 +271,37 @@ function PrecioCompra({ compra }: { compra: CompraMaterialPendiente }) {
   </form>
 }
 
-function EntregaCompra({ compra }: { compra: CompraMaterialPendiente }) {
-  const { alEnviar, enviando, error } = useEnvio(marcarEntregaCompra)
-  if (compra.entregado_almacen_en) return <p className="text-xs text-exito">{compra.numero ?? compra.referencia}: entregada a Almacén</p>
-  return <form onSubmit={alEnviar} className="flex flex-wrap items-center gap-2">
-    <input type="hidden" name="compra_id" value={compra.orden_compra_id ?? ''} />
+/** Una frase con lo que pasa con la compra después de emitida. */
+function detalleDelRecojo(compra: CompraMaterialPendiente): string {
+  if (compra.recojo === 'DEJADO' && compra.validacion) return VALIDACION_INGRESO[compra.validacion]?.descripcion ?? ''
+  if (compra.recojo) return RECOJO_COMPRA[compra.recojo]?.descripcion ?? ''
+  if (compra.entregado_almacen_en) return 'Entregada a Almacén antes de que hubiera conductor.'
+  return 'Todavía no va con el conductor.'
+}
+
+/**
+ * La compra va con el conductor: sale sola al aprobarse o al emitirse sin
+ * aprobación. «Mandar a recojo» queda para las compras de antes.
+ */
+function RecojoCompra({ compra }: { compra: CompraMaterialPendiente }) {
+  const envio = useAccion(mandarARecojo)
+  // En qué va ya lo dice la cabecera de la tarjeta.
+  if (!puedeIrARecojo(compra)) return null
+  return <div className="flex flex-wrap items-center gap-2">
     <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.numero ?? compra.referencia}</span>
-    <Boton type="submit" tamano="sm" cargando={enviando} disabled={!compra.tiene_factura||!compra.precios_completos}>Entregar compra a Almacén</Boton>
-    <p className="basis-full text-[11px] text-texto-suave">{!compra.precios_completos?'Faltan precios unitarios. ':''}{!compra.tiene_factura?'Adjunta la factura para continuar.':'Factura registrada; Tesorería podrá revisarla.'}</p>
-    {error && <p role="alert" className="basis-full text-xs text-peligro">{error}</p>}
-  </form>
+    <Boton type="button" tamano="sm" variante="secundario" cargando={envio.enviando} onClick={() => {
+      const datos = new FormData()
+      datos.set('id', compra.orden_compra_id ?? '')
+      envio.ejecutar(datos)
+    }}><Truck aria-hidden className="size-4" />Mandar a recojo</Boton>
+    <p className="basis-full text-[11px] text-texto-suave">El conductor la recoge donde el proveedor y la deja en el almacén; Almacén valida el ingreso sin volver a registrarlo.</p>
+    {envio.error && <p role="alert" className="basis-full text-xs text-peligro">{envio.error}</p>}
+  </div>
 }
 
 function CondicionCompra({ compra }: { compra: CompraMaterialPendiente }) {
   const { alEnviar, enviando, error, resultado } = useEnvio(fijarCondicionCompra)
-  if (compra.entregado_almacen_en) return <p className="text-xs text-texto-suave">Pago {compra.condicion_pago.toLowerCase()} · {compra.moneda}{compra.condicion_pago === 'CREDITO' ? ` · ${compra.dias_credito} días` : ''}</p>
+  if (compra.entregado_almacen_en) return <p className="text-xs text-texto-suave">Pago: {condicionDePago(compra.condicion_pago, compra.dias_credito)} · {compra.moneda === 'USD' ? 'Dólares' : 'Soles'}</p>
   return <form onSubmit={alEnviar} className="grid gap-2 rounded-lg border border-borde p-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
     <input type="hidden" name="compra_id" value={compra.orden_compra_id ?? ''} />
     <Campo etiqueta="Pago" htmlFor={`cond-${compra.orden_compra_id}`}><Seleccion id={`cond-${compra.orden_compra_id}`} name="condicion" defaultValue={compra.condicion_pago}><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option></Seleccion></Campo>

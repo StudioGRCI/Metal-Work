@@ -269,6 +269,13 @@ Cuando haga falta tocar datos —no esquema— de producción:
   `do $$ … $$`: para ensayar en producción que una etapa se reabre, se corrige
   el reporte (`update … set avance_pct`) en vez de borrarlo, y el borrado se
   prueba en local (check 317).
+  El borrado cuelga también **dentro del cuerpo de una función** (`create or
+  replace function … delete from …`), y también metido en una cadena de
+  `execute` dentro de un `do`: el conector lee el texto entero. Medido el
+  2026-10-12 con `rechazar_compra` (migraciones `20261012101000` y `…110000`):
+  el resto de la migración entra si se aplica sin esa función, y la función se
+  le da al usuario para que la pegue en el SQL Editor de Supabase. Un `update`
+  dentro de una función sí pasa.
 
 - **Una prueba verde en producción solo prueba los datos que había.** El 2026-10-02
   Administración aprobó «1 fila» con su rol real en producción, pero el único
