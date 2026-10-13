@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { filtrosDeKardex, kardexParaExcel, materialesDelKardex } from '@/lib/datos/kardex'
 import { generarKardexExcel } from '@/lib/documentos/excel-almacen'
+import { ALMACENES } from '@/lib/dominio/almacen'
 import { fecha as fechaCorta, hoyLima } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
     filtros.desde ? `desde el ${fechaCorta(filtros.desde)}` : null,
     filtros.hasta ? `hasta el ${fechaCorta(filtros.hasta)}` : null,
     filtros.unidad ? `unidad o código «${filtros.unidad}»` : null,
+    filtros.almacen ? `almacén de ${ALMACENES[filtros.almacen].etiqueta.toLowerCase()}` : null,
   ].filter(Boolean)
 
   const archivo = await generarKardexExcel({

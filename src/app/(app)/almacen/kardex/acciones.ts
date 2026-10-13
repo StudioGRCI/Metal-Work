@@ -56,6 +56,7 @@ export async function registrarSalidaAlmacen(_previo: unknown, formulario: FormD
     motivo: z.string().trim().min(3).max(200),
     recibido_por_nombre: z.string().trim().min(3).max(160),
     foto_ruta: z.string().min(40).max(200),
+    requerimiento_linea_id: z.string().uuid().optional(),
   }).safeParse({
     operacion_id: dato(formulario, 'operacion_id'),
     material_id: dato(formulario, 'material_id'),
@@ -66,16 +67,19 @@ export async function registrarSalidaAlmacen(_previo: unknown, formulario: FormD
     motivo: dato(formulario, 'motivo'),
     recibido_por_nombre: dato(formulario, 'recibido_por_nombre'),
     foto_ruta: dato(formulario, 'foto_ruta'),
+    requerimiento_linea_id: dato(formulario, 'requerimiento_linea_id') || undefined,
   })
   if (!v.success) return { ok: false, error: 'Revisa material, cantidad, motivo y quién recibe.' }
-  if (v.data.destino === 'UNIDAD' && !v.data.unidad_id) return { ok: false, error: 'Elige el vehículo que recibe el material.' }
-  if (v.data.destino === 'CODIGO' && !v.data.codigo_unidad) return { ok: false, error: 'Escribe el código de la unidad (de 3 a 60 caracteres).' }
+  // Si la salida atiende un requerimiento, el destino lo pone el propio RQ y aquí puede venir vacío.
+  const porRq = Boolean(v.data.requerimiento_linea_id)
+  if (!porRq && v.data.destino === 'UNIDAD' && !v.data.unidad_id) return { ok: false, error: 'Elige el vehículo que recibe el material.' }
+  if (!porRq && v.data.destino === 'CODIGO' && !v.data.codigo_unidad) return { ok: false, error: 'Escribe el código de la unidad (de 3 a 60 caracteres).' }
 
   const supabase = await createClient()
   const foto = await comprobarFoto(supabase, v.data.foto_ruta)
   if (foto) return { ok: false, error: foto }
 
-  const { data, error } = await supabase.rpc('registrar_salida_almacen', {
+  const { data, error } = await supabase.rpc('registrar_salida_material', {
     p_id: v.data.operacion_id,
     p_material: v.data.material_id,
     p_cantidad: v.data.cantidad,
@@ -84,12 +88,54 @@ export async function registrarSalidaAlmacen(_previo: unknown, formulario: FormD
     p_motivo: v.data.motivo,
     p_recibe: v.data.recibido_por_nombre,
     p_foto: v.data.foto_ruta,
+    p_requerimiento_linea: v.data.requerimiento_linea_id ?? null,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== v.data.operacion_id) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/almacen/kardex')
-  return { ok: true, mensaje: 'Salida registrada en el kardex con su unidad.' }
+  revalidatePath('/requerimientos')
+  return { ok: true, mensaje: porRq ? 'Salida registrada y descontada del requerimiento.' : 'Salida registrada en el kardex con su unidad.' }
+}
+
+/**
+ * La materia prima y los EPP salen en dos pasos: primero la salida con su
+ * foto, y la salida se cierra solo cuando Almacén carga el escaneo del formato
+ * firmado por el almacenero y por quien recibe. El archivo ya está en el
+ * almacenamiento; aquí se comprueba que sea un PDF o una foto antes de
+ * enlazarlo, y la base vuelve a comprobar dueño, tipo y tamaño.
+ */
+export async function cerrarSalidaConFormato(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'almacen.despachar')) return { ok: false, error: 'Solo Almacén cierra salidas con el formato firmado.' }
+
+  const v = z.object({
+    movimiento_id: z.string().uuid(),
+    formato_ruta: z.string().min(40).max(200),
+  }).safeParse({ movimiento_id: dato(formulario, 'movimiento_id'), formato_ruta: dato(formulario, 'formato_ruta') })
+  if (!v.success) return { ok: false, error: 'No se reconoció la salida o el archivo del formato.' }
+  if (!v.data.formato_ruta.endsWith(`/${v.data.movimiento_id}-formato.pdf`) && !/-formato\.(jpg|png|webp)$/.test(v.data.formato_ruta)) {
+    return { ok: false, error: 'El formato firmado tiene que ser un PDF o una foto JPG, PNG o WebP.' }
+  }
+
+  const supabase = await createClient()
+  const esPdf = v.data.formato_ruta.endsWith('.pdf')
+  if (esPdf) {
+    const { data: objeto, error: lectura } = await supabase.storage.from('evidencias-almacen').download(v.data.formato_ruta)
+    if (lectura || !objeto || objeto.size > 10485760) return { ok: false, error: 'No se pudo verificar el formato. Vuelve a cargarlo.' }
+    const cabecera = new TextDecoder().decode(new Uint8Array(await objeto.slice(0, 5).arrayBuffer()))
+    if (cabecera !== '%PDF-') return { ok: false, error: 'El archivo no es un PDF válido.' }
+  } else {
+    const foto = await comprobarFoto(supabase, v.data.formato_ruta)
+    if (foto) return { ok: false, error: foto }
+  }
+
+  const { data, error } = await supabase.rpc('cerrar_salida_con_formato', { p_id: v.data.movimiento_id, p_ruta: v.data.formato_ruta })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== v.data.movimiento_id) return { ok: false, error: NO_TOCO_NADA }
+
+  revalidatePath('/almacen/kardex')
+  return { ok: true, mensaje: 'Salida cerrada con su formato firmado.' }
 }
 
 // ------------------------------------------------------- planilla sin internet

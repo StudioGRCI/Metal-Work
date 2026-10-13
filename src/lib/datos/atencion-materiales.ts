@@ -58,7 +58,7 @@ async function existenciasCompletas(db: Awaited<ReturnType<typeof createClient>>
   const filas: ExistenciaMaterial[]=[]
   let ultimo: string|undefined
   for (;;) {
-    let consulta=db.from('v_existencias_materiales').select('material_id,codigo,descripcion,unidad,existencia,reservado,disponible').order('material_id').limit(1000)
+    let consulta=db.from('v_existencias_materiales').select('material_id,codigo,descripcion,unidad,existencia,reservado,disponible,almacen,categoria').order('material_id').limit(1000)
     if(ultimo)consulta=consulta.gt('material_id',ultimo)
     const {data,error}=await consulta
     if(error)throw new Error(`No se pudieron cargar las existencias: ${error.message}`)
