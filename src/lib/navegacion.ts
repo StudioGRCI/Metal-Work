@@ -5,11 +5,14 @@ import {
   Building2,
   CarFront,
   ClipboardList,
+  Cog,
   FileSpreadsheet,
   FileText,
+  HardHat,
   Layers,
   LayoutDashboard,
   ListOrdered,
+  Package,
   Receipt,
   Settings,
   Tag,
@@ -212,9 +215,10 @@ export const NAVEGACION: GrupoNavegacion[] = [
       },
     ],
   },
-  // Almacén: primero lo que espera por él, después su kardex. Las entradas de
-  // sus cuatro almacenes (EPP, consumibles, accesorios y materia prima) las
-  // suma el hilo de Almacén aquí.
+  // Almacén: primero lo que espera por él, después su kardex y, debajo, los
+  // cuatro almacenes que maneja (EPP, consumibles, accesorios y materia
+  // prima): son el mismo kardex filtrado por `?almacen=`, con el valor en
+  // mayúsculas que lee la pantalla de Almacén.
   {
     titulo: 'Almacén',
     items: [
@@ -227,13 +231,17 @@ export const NAVEGACION: GrupoNavegacion[] = [
         disponible: true,
       },
       {
-        titulo: 'Kardex de Almacén',
+        titulo: 'Kardex',
         ruta: '/almacen/kardex',
         icono: ListOrdered,
         permiso: 'almacen.ver',
         descripcion: 'Saldos, ingresos, egresos por unidad y conteo físico',
         disponible: true,
       },
+      { titulo: 'EPP', ruta: '/almacen/kardex?almacen=EPP', icono: HardHat, permiso: 'almacen.ver', descripcion: 'Equipos de protección: salen con el formato de entrega firmado', disponible: true },
+      { titulo: 'Consumibles', ruta: '/almacen/kardex?almacen=CONSUMIBLES', icono: Package, permiso: 'almacen.ver', descripcion: 'Discos, soldadura, pintura: salen sin más trámite', disponible: true },
+      { titulo: 'Accesorios', ruta: '/almacen/kardex?almacen=ACCESORIOS', icono: Cog, permiso: 'almacen.ver', descripcion: 'Atados a un código interno: solo salen para esa unidad', disponible: true },
+      { titulo: 'Materia prima', ruta: '/almacen/kardex?almacen=MATERIA_PRIMA', icono: Layers, permiso: 'almacen.ver', descripcion: 'Planchas, perfiles y tubos: salen con el formato de recepción firmado', disponible: true },
     ],
   },
   {
