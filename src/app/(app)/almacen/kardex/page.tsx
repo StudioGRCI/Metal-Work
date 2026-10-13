@@ -10,8 +10,8 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarAtencionMateriales } from '@/lib/datos/atencion-materiales'
 import { ingresosPorValidar } from '@/lib/datos/ingresos-por-validar'
-import { cargarKardex, FILAS_POR_PAGINA, filtrosDeKardex, materialesDelKardex, minimosDeStock, unidadesParaSalida } from '@/lib/datos/kardex'
-import { MOVIMIENTO_KARDEX, ORIGEN_KARDEX } from '@/lib/dominio/almacen'
+import { cargarKardex, FILAS_POR_PAGINA, filtrosDeKardex, lineasDeRequerimientoParaSalida, materialesDelKardex, minimosDeStock, salidasPorCerrar, unidadesParaSalida } from '@/lib/datos/kardex'
+import { ALMACENES, MOVIMIENTO_KARDEX, ORDEN_ALMACENES, ORIGEN_KARDEX, exigeFormato } from '@/lib/dominio/almacen'
 import { cantidad, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -19,6 +19,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ConteoFisico } from './conteo'
 import { ConteoInicial } from './conteo-inicial'
 import { NuevoIngreso } from './ingreso'
+import { SalidasPorCerrar } from './por-cerrar'
 import { BandejaPorValidar } from './por-validar'
 import { CargarPlanilla } from './planilla'
 import { NuevaSalida } from './salida'
@@ -49,7 +50,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   const puedeIngreso = puede(perfil, 'almacen.recibir')
   const db = await createClient()
 
-  const [kardex, materiales, unidades, catalogo, entregas, minimos, unidadesMedida, porValidar] = await Promise.all([
+  const [kardex, materiales, unidades, catalogo, entregas, minimos, unidadesMedida, porValidar, porCerrar, lineasRq] = await Promise.all([
     cargarKardex(filtros),
     materialesDelKardex(),
     puedeSalida ? unidadesParaSalida() : Promise.resolve([]),
@@ -68,6 +69,10 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
       : Promise.resolve({ data: [], error: null }),
     // Lo que el conductor de Logística dejó y falta validar.
     ingresosPorValidar(),
+    // Salidas de materia prima y EPP que esperan su formato firmado.
+    salidasPorCerrar(),
+    // Lo que piden los requerimientos vivos, para atenderlo desde la salida.
+    puedeSalida ? lineasDeRequerimientoParaSalida() : Promise.resolve([]),
   ])
   if (entregas.error) throw new Error('No se pudieron cargar las entregas que se pueden devolver.')
   if (unidadesMedida.error) throw new Error('No se pudieron cargar las unidades de medida.')
@@ -81,6 +86,16 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   const bajoMinimo = materiales
     .filter((m) => minimos.has(m.material_id) && m.existencia < (minimos.get(m.material_id) ?? 0))
     .sort((a, b) => a.existencia / (minimos.get(a.material_id) || 1) - b.existencia / (minimos.get(b.material_id) || 1))
+  // El tablero: cuántos materiales con saldo, bajo mínimo y salidas abiertas tiene cada almacén.
+  const tablero = ORDEN_ALMACENES.map((a) => ({
+    almacen: a,
+    def: ALMACENES[a],
+    conSaldo: materiales.filter((m) => m.almacen === a && m.existencia > 0).length,
+    bajoMinimo: bajoMinimo.filter((m) => m.almacen === a).length,
+    porCerrar: porCerrar.filter((s) => s.almacen === a).length,
+  }))
+  const porClasificar = materiales.filter((m) => !m.almacen && m.existencia > 0).length
+  const almacenElegido = filtros.almacen ? ALMACENES[filtros.almacen] : null
   const paginas = Math.max(1, Math.ceil(total / FILAS_POR_PAGINA))
   const entradas = filas.reduce((s, f) => s + Number(f.entrada ?? 0), 0)
   const salidas = filas.reduce((s, f) => s + Number(f.salida ?? 0), 0)
@@ -90,9 +105,9 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
     : null
   // El Excel baja con los mismos filtros que la pantalla, sin la página.
   const consultaExcel = new URLSearchParams(Object.entries({
-    material: filtros.material, tipo: filtros.tipo, desde: filtros.desde, hasta: filtros.hasta, unidad: filtros.unidad,
+    material: filtros.material, tipo: filtros.tipo, desde: filtros.desde, hasta: filtros.hasta, unidad: filtros.unidad, almacen: filtros.almacen,
   }).filter((e): e is [string, string] => Boolean(e[1]))).toString()
-  const hayFiltros = Boolean(filtros.material || filtros.tipo || filtros.desde || filtros.hasta || filtros.unidad)
+  const hayFiltros = Boolean(filtros.material || filtros.tipo || filtros.desde || filtros.hasta || filtros.unidad || filtros.almacen)
 
   return (
     <>
@@ -103,7 +118,8 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           <div className="flex flex-wrap items-start gap-2">
             {puedeSalida && (
               <NuevaSalida
-                materiales={materiales.map((m) => ({ id: m.material_id, codigo: m.codigo, descripcion: m.descripcion, unidad: m.unidad, disponible: m.disponible }))}
+                materiales={materiales.map((m) => ({ id: m.material_id, codigo: m.codigo, descripcion: m.descripcion, unidad: m.unidad, disponible: m.disponible, almacen: m.almacen }))}
+                lineasRq={lineasRq}
                 unidades={unidades.filter((u): u is typeof u & { id: string } => Boolean(u.id)).map((u) => ({
                   id: u.id, nombre: u.nombre ?? 'Unidad', vehiculo: u.vehiculo, ordenes: u.ordenes,
                 }))}
@@ -142,10 +158,40 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
         </div>
       )}
 
+      {!elegido && (
+        <section aria-label="Los cuatro almacenes" className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {tablero.map((t) => {
+            const activo = filtros.almacen === t.almacen
+            return (
+              <Link key={t.almacen} href={activo ? '/almacen/kardex' : `/almacen/kardex?almacen=${t.almacen}`} aria-current={activo ? 'page' : undefined}
+                className={`block rounded-[var(--radius-base)] border bg-superficie px-3 py-2 hover:bg-superficie-2 ${activo ? 'border-acento ring-1 ring-acento' : 'border-borde'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold">{t.def.etiqueta}</span>
+                  <Insignia tono={t.def.tono}>{t.conSaldo === 1 ? '1 material' : `${t.conSaldo} materiales`}</Insignia>
+                </div>
+                <p className="mt-1 line-clamp-2 text-[11px] text-texto-suave">{t.def.regla}</p>
+                <p className="mt-1 text-[11px]">
+                  {t.bajoMinimo > 0 && <span className="font-medium text-peligro">{t.bajoMinimo} bajo mínimo</span>}
+                  {t.bajoMinimo > 0 && t.porCerrar > 0 && <span className="text-texto-tenue"> · </span>}
+                  {t.porCerrar > 0 && <span className="font-medium text-aviso">{t.porCerrar === 1 ? '1 salida por cerrar' : `${t.porCerrar} salidas por cerrar`}</span>}
+                  {t.bajoMinimo === 0 && t.porCerrar === 0 && <span className="text-texto-tenue">Sin pendientes</span>}
+                </p>
+              </Link>
+            )
+          })}
+          {porClasificar > 0 && (
+            <p className="text-xs text-texto-suave sm:col-span-2 lg:col-span-4">
+              {porClasificar === 1 ? '1 material con saldo sigue' : `${porClasificar} materiales con saldo siguen`} por clasificar: su categoría no tiene almacén y salen como consumibles hasta que se le asigne uno.
+            </p>
+          )}
+        </section>
+      )}
+
       <Tarjeta className="mb-4">
         <TarjetaCuerpo>
           <form method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1.5fr_auto] lg:items-end">
             {filtros.tipo && <input type="hidden" name="tipo" value={filtros.tipo} />}
+            {filtros.almacen && <input type="hidden" name="almacen" value={filtros.almacen} />}
             <Campo etiqueta="Material" htmlFor="k-material">
               <Seleccion id="k-material" name="material" defaultValue={filtros.material ?? ''}>
                 <option value="">Todo el almacén</option>
@@ -191,6 +237,20 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           />
           <TarjetaCuerpo>
             <BandejaPorValidar entregas={porValidar} puedeValidar={puedeIngreso} />
+          </TarjetaCuerpo>
+        </Tarjeta>
+      )}
+
+      {!elegido && (porCerrar.length > 0 || puedeSalida) && (
+        <Tarjeta id="por-cerrar" className="mb-4">
+          <TarjetaCabecera
+            titulo={porCerrar.length === 0 ? 'Salidas por cerrar' : `Salidas por cerrar · ${porCerrar.length === 1 ? '1 salida' : `${porCerrar.length} salidas`}`}
+            descripcion="Materia prima y EPP salen con formato: imprímelo, fírmenlo el almacenero y quien recibe, y carga el escaneo para cerrar la salida."
+            acciones={porCerrar.length > 0 ? <Insignia tono="aviso">Formato pendiente</Insignia> : undefined}
+          />
+          <TarjetaCuerpo>
+            <SalidasPorCerrar puedeCerrar={puedeSalida}
+              salidas={porCerrar.filter((s): s is typeof s & { id: string } => Boolean(s.id) && (!filtros.almacen || s.almacen === filtros.almacen))} />
           </TarjetaCuerpo>
         </Tarjeta>
       )}
@@ -241,7 +301,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
 
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
-          titulo={elegido ? `${elegido.descripcion} · ${elegido.codigo}` : 'Historial de movimientos'}
+          titulo={elegido ? `${elegido.descripcion} · ${elegido.codigo}` : almacenElegido ? `Historial de ${almacenElegido.etiqueta.toLowerCase()}` : 'Historial de movimientos'}
           descripcion={elegido
             ? 'En orden de fecha, como la ficha de kardex. El saldo es lo que quedó en almacén tras cada movimiento.'
             : 'Lo último primero. El saldo es el del material en ese momento; elige un material para ver su ficha.'}
@@ -317,8 +377,17 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                     {f.orden_id && f.orden_numero && (
                       <Link href={`/ordenes/${f.orden_id}?vista=materiales`} className="text-[11px] text-acento hover:underline">OT {f.orden_numero}</Link>
                     )}
+                    {f.requerimiento_numero && (
+                      <span className="block text-[11px] text-texto-suave">{f.requerimiento_numero}</span>
+                    )}
                     {f.con_foto && (
                       <Link href={`/almacen/movimientos/${f.id}/evidencia`} target="_blank" className="ml-2 text-[11px] text-acento hover:underline">Ver foto</Link>
+                    )}
+                    {f.formato_pendiente && (
+                      <Link href={`/almacen/movimientos/${f.id}/formato`} target="_blank" className="ml-2 text-[11px] font-medium text-aviso hover:underline">Formato pendiente</Link>
+                    )}
+                    {f.con_formato && exigeFormato(f.almacen) && (
+                      <Link href={`/almacen/movimientos/${f.id}/formato-firmado`} target="_blank" className="ml-2 text-[11px] text-acento hover:underline">Ver formato</Link>
                     )}
                   </TD>
                   <TD className="tabular text-right text-exito">{Number(f.entrada) > 0 ? cantidad(f.entrada) : ''}</TD>

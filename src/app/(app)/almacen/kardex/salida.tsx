@@ -7,6 +7,7 @@ import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
+import { type Almacen, ALMACENES, exigeFormato } from '@/lib/dominio/almacen'
 import { useEnvio } from '@/lib/envio'
 import { cantidad } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
@@ -14,7 +15,12 @@ import { createClient } from '@/lib/supabase/client'
 
 import { registrarSalidaAlmacen } from './acciones'
 
-export type MaterialParaSalida = { id: string; codigo: string; descripcion: string; unidad: string | null; disponible: number }
+export type MaterialParaSalida = { id: string; codigo: string; descripcion: string; unidad: string | null; disponible: number; almacen: Almacen | null }
+/** Una línea de requerimiento con algo por entregar; la salida la descuenta. */
+export type LineaRqParaElegir = {
+  linea_id: string; numero: string; codigo_interno: string; area: string; item: number
+  descripcion: string; unidad: string; almacen: Almacen | null; pendiente: number
+}
 export type UnidadParaElegir = { id: string; nombre: string; vehiculo: string | null; ordenes: string | null }
 
 const TIPOS_FOTO = ['image/jpeg', 'image/png', 'image/webp']
@@ -24,10 +30,11 @@ const TIPOS_FOTO = ['image/jpeg', 'image/png', 'image/webp']
  * unidad va: un vehículo registrado o, si todavía no está en el sistema, su
  * código interno de fabricación o su placa.
  */
-export function NuevaSalida({ materiales, unidades }: { materiales: MaterialParaSalida[]; unidades: UnidadParaElegir[] }) {
+export function NuevaSalida({ materiales, unidades, lineasRq = [] }: { materiales: MaterialParaSalida[]; unidades: UnidadParaElegir[]; lineasRq?: LineaRqParaElegir[] }) {
   const [abierta, setAbierta] = useState(false)
   const [id, setId] = useState(() => crypto.randomUUID())
   const [materialId, setMaterialId] = useState('')
+  const [lineaId, setLineaId] = useState('')
   const [destino, setDestino] = useState<'UNIDAD' | 'CODIGO'>(unidades.length > 0 ? 'UNIDAD' : 'CODIGO')
   const [unidadId, setUnidadId] = useState('')
 
@@ -50,12 +57,19 @@ export function NuevaSalida({ materiales, unidades }: { materiales: MaterialPara
   }, () => {
     setId(crypto.randomUUID())
     setMaterialId('')
+    setLineaId('')
     setUnidadId('')
     setAbierta(false)
   })
 
+  const linea = lineasRq.find((l) => l.linea_id === lineaId)
   const elegido = materiales.find((m) => m.id === materialId)
-  const conSaldo = materiales.filter((m) => m.disponible > 0)
+  // Con un requerimiento elegido se ofrecen solo los materiales de su almacén.
+  const conSaldo = materiales.filter((m) => m.disponible > 0 && (!linea?.almacen || !m.almacen || m.almacen === linea.almacen))
+  // El RQ ya dice a qué unidad va; solo «PLANTA» deja elegir el destino.
+  const destinoDelRq = linea && linea.codigo_interno.toUpperCase() !== 'PLANTA' ? linea.codigo_interno : null
+  const regla = elegido?.almacen ? ALMACENES[elegido.almacen] : null
+  const maximo = elegido ? (linea ? Math.min(elegido.disponible, linea.pendiente) : elegido.disponible) : undefined
 
   return (
     <>
@@ -73,6 +87,25 @@ export function NuevaSalida({ materiales, unidades }: { materiales: MaterialPara
         <form key={id} onSubmit={alEnviar} className="space-y-5">
           <input type="hidden" name="operacion_id" value={id} />
           <input type="hidden" name="destino" value={destino} />
+
+          {lineasRq.length > 0 && (
+            <Campo etiqueta="Requerimiento que atiende" htmlFor="sal-rq"
+              ayuda="Opcional. Si la salida atiende un ítem de requerimiento, la cantidad se descuenta de lo pedido y el destino lo pone el RQ.">
+              <SeleccionBuscable
+                id="sal-rq"
+                name="requerimiento_linea_id"
+                valor={lineaId}
+                onChange={(v) => { setLineaId(v); setMaterialId('') }}
+                marcador="Sin requerimiento"
+                marcadorBusqueda="Número de RQ, código interno o material"
+                opciones={lineasRq.map((l) => ({
+                  valor: l.linea_id,
+                  etiqueta: `${l.numero} · ítem ${l.item} · ${l.descripcion}`,
+                  detalle: `${l.codigo_interno} · ${l.area} · faltan ${cantidad(l.pendiente)} ${l.unidad}`,
+                }))}
+              />
+            </Campo>
+          )}
 
           <Campo etiqueta="Material" htmlFor="sal-material" requerido
             ayuda={conSaldo.length === 0 ? 'No hay materiales con saldo libre. Registra primero su ingreso.' : undefined}>
@@ -95,15 +128,29 @@ export function NuevaSalida({ materiales, unidades }: { materiales: MaterialPara
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta={`Cantidad${elegido?.unidad ? ` (${elegido.unidad})` : ''}`} htmlFor="sal-cantidad" requerido
-              ayuda={elegido ? `Libre en almacén: ${cantidad(elegido.disponible)}` : undefined}>
+              ayuda={elegido ? `Libre en almacén: ${cantidad(elegido.disponible)}${linea ? ` · el RQ pide ${cantidad(linea.pendiente)} más` : ''}` : undefined}>
               <Entrada id="sal-cantidad" name="cantidad" type="number" inputMode="decimal" min={0.001} step="0.001"
-                max={elegido?.disponible} required />
+                max={maximo} defaultValue={linea && maximo ? maximo : undefined} required />
             </Campo>
             <Campo etiqueta="Motivo o vale" htmlFor="sal-motivo" requerido>
-              <Entrada id="sal-motivo" name="motivo" required minLength={3} maxLength={200} placeholder="Ej.: Vale 0045, discos de corte" />
+              <Entrada key={lineaId} id="sal-motivo" name="motivo" required minLength={3} maxLength={200} placeholder="Ej.: Vale 0045, discos de corte"
+                defaultValue={linea ? `${linea.numero} · ítem ${linea.item}` : undefined} />
             </Campo>
           </div>
 
+          {regla && (
+            <p className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
+              <span className="font-medium text-texto">{regla.etiqueta}:</span> {regla.regla}
+              {exigeFormato(elegido?.almacen) && ' Después de confirmar, imprime el formato desde «Salidas por cerrar» y carga el escaneo firmado.'}
+            </p>
+          )}
+
+          {destinoDelRq ? (
+            <p className="rounded-[var(--radius-base)] border border-borde px-3 py-2 text-sm">
+              <span className="text-texto-suave">Va a la unidad </span><span className="font-medium">{destinoDelRq}</span>
+              <span className="text-texto-suave">, la del requerimiento {linea?.numero}.</span>
+            </p>
+          ) : (
           <fieldset className="space-y-3 rounded-[var(--radius-base)] border border-borde p-3">
             <legend className="px-1 text-sm font-medium text-texto">¿A qué unidad va? <span className="text-peligro">*</span></legend>
             <div role="group" aria-label="Destino de la salida" className="flex flex-wrap gap-2">
@@ -142,6 +189,7 @@ export function NuevaSalida({ materiales, unidades }: { materiales: MaterialPara
               </Campo>
             )}
           </fieldset>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Nombre de quien recibe" htmlFor="sal-recibe" requerido>
