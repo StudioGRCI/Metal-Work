@@ -41,7 +41,7 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
           >
             <ChevronLeft aria-hidden className="size-4" />
           </Link>
-          <p className="px-1 text-sm font-medium text-texto capitalize">{mesLargo(`${mes}-01`)}</p>
+          <p className="px-1 text-sm font-medium text-texto first-letter:uppercase">{mesLargo(`${mes}-01`)}</p>
           {mes < mesActual && (
             <Link
               href={`/rrhh/tardanzas?mes=${mesVecino(mes, 1)}`}

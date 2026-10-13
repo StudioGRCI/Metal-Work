@@ -308,7 +308,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
 
 /** Permisos amplios permiten consultar detalles; el menú prioriza cada puesto. */
 const RUTAS_POR_PUESTO: Record<string, readonly string[]> = {
-  GERENTE: ['/', '/cotizaciones/pdf', '/ordenes', '/compras/aprobacion', '/proveedores'],
+  GERENTE: ['/', '/cotizaciones/pdf', '/ordenes', '/compras/aprobacion', '/proveedores', '/rrhh/tardanzas'],
   TESORERIA: ['/', '/ordenes', '/tesoreria', '/tesoreria/cuentas', '/tesoreria/tipo-de-cambio', '/adquisiciones'],
 }
 
