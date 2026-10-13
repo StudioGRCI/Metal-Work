@@ -5,11 +5,14 @@ import {
   Building2,
   CarFront,
   ClipboardList,
+  Cog,
   FileSpreadsheet,
   FileText,
+  HardHat,
   Layers,
   LayoutDashboard,
   ListOrdered,
+  Package,
   Receipt,
   Settings,
   Tag,
@@ -108,9 +111,10 @@ export const NAVEGACION: GrupoNavegacion[] = [
       },
     ],
   },
-  // El área de Requerimientos: anota lo que cada área necesita y se lo pasa a
-  // Logística, y lleva el registro de vehículos que entran y salen de la planta.
-  // Logística ve los RQ porque los atiende.
+  // El menú va por área, en el orden del circuito de materiales: Requerimientos
+  // pide → Almacén revisa el stock → Logística compra → el conductor recoge →
+  // Almacén recepciona y entrega. «Atención de requerimiento» es la misma
+  // bandeja para Logística y Almacén, y por eso cuelga de las dos.
   {
     titulo: 'Requerimientos',
     items: [
@@ -118,8 +122,8 @@ export const NAVEGACION: GrupoNavegacion[] = [
         titulo: 'Requerimientos',
         ruta: '/requerimientos',
         icono: ClipboardList,
-        permiso: ['requerimientos.emitir', 'compras.crear'],
-        descripcion: 'Lo que cada área necesita comprar, con su número RQ, para Logística',
+        permiso: ['requerimientos.emitir', 'requerimientos.ver'],
+        descripcion: 'Lo que cada área necesita, con su número RQ, y por dónde va',
         disponible: true,
       },
       {
@@ -133,9 +137,16 @@ export const NAVEGACION: GrupoNavegacion[] = [
     ],
   },
   {
-    titulo: 'Abastecimiento',
+    titulo: 'Logística',
     items: [
-      {titulo:'Compras',ruta:'/compras',icono:Receipt,permiso:'compras.crear',descripcion:'Órdenes de compra agrupadas, facturas y entregas',disponible:true},
+      {
+        titulo: 'Atención de requerimiento',
+        ruta: '/requerimientos/atencion',
+        icono: ClipboardList,
+        permiso: 'compras.crear',
+        descripcion: 'Los RQ sin stock que hay que comprar, y en qué van',
+        disponible: true,
+      },
       {
         titulo: 'Órdenes de compra',
         ruta: '/compras/ordenes',
@@ -150,6 +161,17 @@ export const NAVEGACION: GrupoNavegacion[] = [
         icono: Wrench,
         permiso: 'compras.crear',
         descripcion: 'Trabajos de terceros con su número OS, aprobación y conformidad',
+        disponible: true,
+      },
+      // Quien aprueba es un puesto que Gerencia elige, no un permiso: si elige
+      // otro, a ese puesto le llega el aviso con el enlace aunque no lo tenga
+      // en el menú.
+      {
+        titulo: 'Aprobación de compras',
+        ruta: '/compras/aprobacion',
+        icono: BadgeCheck,
+        permiso: ['compras.configurar_aprobacion', 'compras.crear'],
+        descripcion: 'La regla de montos y las órdenes de compra y de servicio que esperan visto',
         disponible: true,
       },
       // El conductor de Logística: lo que tiene que recoger y dejar en almacén.
@@ -172,23 +194,12 @@ export const NAVEGACION: GrupoNavegacion[] = [
         descripcion: 'El padrón del que se elige en la orden de compra',
         disponible: true,
       },
-      // Quien aprueba es un puesto que Gerencia elige, no un permiso: si elige
-      // otro, a ese puesto le llega el aviso con el enlace aunque no lo tenga
-      // en el menú.
       {
-        titulo: 'Aprobación de compras',
-        ruta: '/compras/aprobacion',
-        icono: BadgeCheck,
-        permiso: ['compras.configurar_aprobacion', 'compras.crear'],
-        descripcion: 'La regla de montos y las órdenes de compra y de servicio que esperan visto',
-        disponible: true,
-      },
-      {
-        titulo: 'Kardex de Almacén',
-        ruta: '/almacen/kardex',
-        icono: ListOrdered,
-        permiso: 'almacen.ver',
-        descripcion: 'Saldos, ingresos, egresos por unidad y conteo físico',
+        titulo: 'Compras agrupadas',
+        ruta: '/compras',
+        icono: Receipt,
+        permiso: 'compras.crear',
+        descripcion: 'Las compras por OT agrupadas por proveedor, con facturas y entregas',
         disponible: true,
       },
       // Logística fija el precio de lo que nunca se compró por el sistema.
@@ -202,6 +213,35 @@ export const NAVEGACION: GrupoNavegacion[] = [
         descripcion: 'Precio de los consumibles y saldos sin compra',
         disponible: true,
       },
+    ],
+  },
+  // Almacén: primero lo que espera por él, después su kardex y, debajo, los
+  // cuatro almacenes que maneja (EPP, consumibles, accesorios y materia
+  // prima): son el mismo kardex filtrado por `?almacen=`, con el valor en
+  // mayúsculas que lee la pantalla de Almacén.
+  {
+    titulo: 'Almacén',
+    items: [
+      {
+        titulo: 'Atención de requerimiento',
+        ruta: '/requerimientos/atencion',
+        icono: ClipboardList,
+        permiso: ['almacen.recibir', 'almacen.despachar'],
+        descripcion: 'Los RQ por revisar stock, por recepcionar y por entregar al área',
+        disponible: true,
+      },
+      {
+        titulo: 'Kardex',
+        ruta: '/almacen/kardex',
+        icono: ListOrdered,
+        permiso: 'almacen.ver',
+        descripcion: 'Saldos, ingresos, egresos por unidad y conteo físico',
+        disponible: true,
+      },
+      { titulo: 'EPP', ruta: '/almacen/kardex?almacen=EPP', icono: HardHat, permiso: 'almacen.ver', descripcion: 'Equipos de protección: salen con el formato de entrega firmado', disponible: true },
+      { titulo: 'Consumibles', ruta: '/almacen/kardex?almacen=CONSUMIBLES', icono: Package, permiso: 'almacen.ver', descripcion: 'Discos, soldadura, pintura: salen sin más trámite', disponible: true },
+      { titulo: 'Accesorios', ruta: '/almacen/kardex?almacen=ACCESORIOS', icono: Cog, permiso: 'almacen.ver', descripcion: 'Atados a un código interno: solo salen para esa unidad', disponible: true },
+      { titulo: 'Materia prima', ruta: '/almacen/kardex?almacen=MATERIA_PRIMA', icono: Layers, permiso: 'almacen.ver', descripcion: 'Planchas, perfiles y tubos: salen con el formato de recepción firmado', disponible: true },
     ],
   },
   {
@@ -271,6 +311,10 @@ const RUTAS_POR_PUESTO: Record<string, readonly string[]> = {
 const FUERA_DEL_MENU: Record<string, readonly string[]> = {
   DISENO: ['/configuracion'],
   ADMINISTRACION: ['/compras/valorizacion', '/unidades', '/carrocerias'],
+  // Almacén y Logística trabajan los RQ desde su bandeja de atención, no desde
+  // el listado de Requerimientos, aunque `requerimientos.ver` les deje leerlo.
+  ALMACENERO: ['/requerimientos'],
+  COMPRADOR: ['/requerimientos'],
 }
 
 export function puedeVer(item: ItemNavegacion, permisos: string[], esAdmin: boolean, rolCodigo: string) {
@@ -325,5 +369,6 @@ export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/compras/ordenes', corto: 'OC' },
   { ruta: '/compras/aprobacion', corto: 'Aprobar' },
   { ruta: '/requerimientos', corto: 'RQ' },
+  { ruta: '/requerimientos/atencion', corto: 'Atención' },
   { ruta: '/vehiculos', corto: 'Vehículos' },
 ]
