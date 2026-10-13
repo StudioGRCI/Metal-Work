@@ -8,6 +8,10 @@ export type LineaRequerimiento = {
   cantidad: number
   unidad: string
   categoria: string
+  /** La OC que Logística generó para este insumo (OC-5583-MW); vacía mientras no se compra. */
+  orden_compra: string | null
+  /** Gerencia rechazó esa OC: el insumo vuelve a estar libre para otra. */
+  compra_rechazada: boolean
 }
 
 /** Un requerimiento en el listado: número, quién lo necesita, para qué, qué se pide y por dónde va. */
@@ -34,7 +38,7 @@ export type RequerimientoListado = {
 export type OpcionCatalogo = { id: string; codigo: string; nombre: string }
 
 const SELECT_RQ =
-  'id, numero, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(item, descripcion, cantidad, unidad:unidades_medida(codigo), categoria:categorias_material(nombre))'
+  'id, numero, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(item, descripcion, cantidad, unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion))'
 
 /**
  * Los requerimientos, del más nuevo al más viejo. Con `soloAbiertos`, los que
@@ -71,6 +75,8 @@ export async function cargarRequerimientos(opciones: { soloAbiertos?: boolean } 
         cantidad: Number(l.cantidad),
         unidad: l.unidad?.codigo ?? '',
         categoria: l.categoria?.nombre ?? '',
+        orden_compra: l.orden_compra ? (l.orden_compra.numero ?? l.orden_compra.referencia ?? null) : null,
+        compra_rechazada: l.orden_compra?.aprobacion === 'RECHAZADA',
       }))
       .sort((a, b) => a.item - b.item),
   }))

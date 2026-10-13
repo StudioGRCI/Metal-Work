@@ -32,6 +32,8 @@ export type OrdenCompraListada = {
   con_factura: boolean
   /** El de la unidad (PLA_SR_O4_1_26/28…) o PLANTA. Vacío en las compras de antes. */
   codigo_interno: string | null
+  /** Los RQ (RQ-0001-2026…) que esta compra atiende; vacío en las que no nacen de uno. */
+  requerimientos: string[]
   /** Lo que hizo Almacén con lo que dejó el conductor; null mientras no lo deja. */
   validacion: ValidacionIngreso
 }
@@ -54,6 +56,19 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
     const tanda = await supabase.from('ordenes_compra_materiales').select('id, con_factura, codigo_interno').in('id', ids.slice(i, i + 150))
     if (tanda.error) throw new Error(`No se pudo leer el comprobante de las compras: ${tanda.error.message}`)
     for (const fila of tanda.data ?? []) datosCompra.set(fila.id, fila)
+  }
+  // Qué RQ atiende cada compra: también aparte, con la misma tanda.
+  const rqPorCompra = new Map<string, Set<string>>()
+  for (let i = 0; i < ids.length; i += 150) {
+    const tanda = await supabase
+      .from('requerimiento_lineas')
+      .select('orden_compra_id, requerimiento:requerimientos(numero)')
+      .in('orden_compra_id', ids.slice(i, i + 150))
+    if (tanda.error) throw new Error(`No se pudo leer qué requerimiento atiende cada compra: ${tanda.error.message}`)
+    for (const fila of tanda.data ?? []) {
+      if (!fila.orden_compra_id || !fila.requerimiento?.numero) continue
+      rqPorCompra.set(fila.orden_compra_id, (rqPorCompra.get(fila.orden_compra_id) ?? new Set()).add(fila.requerimiento.numero))
+    }
   }
   const estadosPorCompra = new Map<string, string[]>()
   for (const fila of pendientes.data ?? []) {
@@ -84,6 +99,7 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
     tiene_factura: c.tiene_factura === true,
     con_factura: datosCompra.get(c.id ?? '')?.con_factura ?? true,
     codigo_interno: datosCompra.get(c.id ?? '')?.codigo_interno ?? null,
+    requerimientos: [...(rqPorCompra.get(c.id ?? '') ?? [])].sort(),
     validacion: validacionDeCompra(estadosPorCompra.get(c.id ?? '') ?? []),
   }))
 }

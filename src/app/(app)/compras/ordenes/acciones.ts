@@ -40,32 +40,46 @@ const LINEAS = z
   .min(1, 'Agrega al menos un material.')
   .max(100, 'Una orden lleva hasta cien líneas.')
 
-/**
- * La orden de compra directa: sin requerimiento ni OT. Exige `compras.crear`,
- * el mismo permiso que pide `emitir_compra_directa` en la base. La aprobación
- * de Gerencia la decide la base al cerrar la transacción: la directa siempre la
- * pide.
- */
-export async function emitirCompraDirecta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
-  const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Tu perfil no puede emitir órdenes de compra.' }
+type FormularioDeCompra = {
+  operacion_id: string
+  proveedor_id: string
+  referencia: string
+  motivo: string
+  fecha_estimada?: string
+  condicion: 'CONTADO' | 'CREDITO'
+  dias: number
+  moneda: 'PEN' | 'USD'
+  con_factura: boolean
+  codigo_interno: string
+  lineas: z.infer<typeof LINEAS>
+}
 
+/**
+ * Lo que traen los dos formularios de compra (la directa y la que nace del
+ * requerimiento), leído una sola vez. En la del requerimiento el motivo y el
+ * código interno salen del RQ en la base, así que no se exigen aquí.
+ */
+function leerFormularioDeCompra(formulario: FormData, delRequerimiento: boolean): { ok: true; datos: FormularioDeCompra } | { ok: false; error: string } {
   const cabecera = z
     .object({
       operacion_id: z.string().uuid(),
       proveedor_id: z.string().uuid('Elige el proveedor del padrón. Si es nuevo, regístralo con «Nuevo».'),
       referencia: z.string().trim().max(100, 'La referencia del proveedor pasa de 100 caracteres.'),
-      motivo: z
-        .string()
-        .trim()
-        .min(5, 'Cuenta por qué se compra sin requerimiento: Gerencia lo lee al aprobar.')
-        .max(500, 'El motivo pasa de 500 caracteres.'),
+      motivo: delRequerimiento
+        ? z.string().trim().max(500).default('')
+        : z
+            .string()
+            .trim()
+            .min(5, 'Cuenta por qué se compra sin requerimiento: Gerencia lo lee al aprobar.')
+            .max(500, 'El motivo pasa de 500 caracteres.'),
       fecha_estimada: z.iso.date().optional(),
       condicion: z.enum(['CONTADO', 'CREDITO']),
       dias: z.coerce.number().int().min(0).max(365),
       moneda: z.enum(['PEN', 'USD']),
       con_factura: z.enum(['true', 'false'], { message: 'Indica si la compra viene con factura o sin factura.' }),
-      codigo_interno: z.string().trim().min(2, FALTA_CODIGO_INTERNO).max(60, CODIGO_INTERNO_LARGO),
+      codigo_interno: delRequerimiento
+        ? z.string().trim().max(60).default('')
+        : z.string().trim().min(2, FALTA_CODIGO_INTERNO).max(60, CODIGO_INTERNO_LARGO),
     })
     .safeParse({
       operacion_id: dato(formulario, 'operacion_id'),
@@ -101,34 +115,96 @@ export async function emitirCompraDirecta(_previo: unknown, formulario: FormData
   if (new Set(lineas.data.map((l) => l.material_id)).size !== lineas.data.length) {
     return { ok: false, error: 'No repitas un material: suma las cantidades en una sola línea.' }
   }
+  return { ok: true, datos: { ...cabecera.data, con_factura: cabecera.data.con_factura === 'true', lineas: lineas.data } }
+}
+
+async function numeroEmitido(supabase: Awaited<ReturnType<typeof createClient>>, id: string) {
+  const { data } = await supabase.from('ordenes_compra_materiales').select('numero').eq('id', id).maybeSingle()
+  return data?.numero ?? ''
+}
+
+/**
+ * La orden de compra directa: sin requerimiento ni OT. Exige `compras.crear`,
+ * el mismo permiso que pide `emitir_compra_directa` en la base. La aprobación
+ * de Gerencia la decide la base al cerrar la transacción: la directa siempre la
+ * pide.
+ */
+export async function emitirCompraDirecta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Tu perfil no puede emitir órdenes de compra.' }
+  const leido = leerFormularioDeCompra(formulario, false)
+  if (!leido.ok) return leido
+  const d = leido.datos
 
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('emitir_compra_directa', {
-    p_id: cabecera.data.operacion_id,
-    p_proveedor_id: cabecera.data.proveedor_id,
-    p_referencia: cabecera.data.referencia || null,
-    p_motivo: cabecera.data.motivo,
-    p_detalles: lineas.data,
-    p_fecha: cabecera.data.fecha_estimada ?? null,
-    p_condicion: cabecera.data.condicion,
-    p_dias: cabecera.data.dias,
-    p_moneda: cabecera.data.moneda,
-    p_con_factura: cabecera.data.con_factura === 'true',
-    p_codigo_interno: cabecera.data.codigo_interno,
+    p_id: d.operacion_id,
+    p_proveedor_id: d.proveedor_id,
+    p_referencia: d.referencia || null,
+    p_motivo: d.motivo,
+    p_detalles: d.lineas,
+    p_fecha: d.fecha_estimada ?? null,
+    p_condicion: d.condicion,
+    p_dias: d.dias,
+    p_moneda: d.moneda,
+    p_con_factura: d.con_factura,
+    p_codigo_interno: d.codigo_interno,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
-  if (data !== cabecera.data.operacion_id) return { ok: false, error: 'La compra no quedó registrada. Recarga la pantalla.' }
+  if (data !== d.operacion_id) return { ok: false, error: 'La compra no quedó registrada. Recarga la pantalla.' }
 
-  const { data: emitida } = await supabase
-    .from('ordenes_compra_materiales')
-    .select('numero')
-    .eq('id', cabecera.data.operacion_id)
-    .maybeSingle()
-
+  const numero = await numeroEmitido(supabase, d.operacion_id)
   refrescar()
   return {
     ok: true,
-    mensaje: `Orden ${emitida?.numero ?? ''} emitida. Espera la aprobación de Gerencia; aprobada, le llega al conductor para el recojo.`,
+    mensaje: `Orden ${numero} emitida. Espera la aprobación de Gerencia; aprobada, le llega al conductor para el recojo.`,
+  }
+}
+
+/**
+ * La orden de compra que nace del requerimiento que Almacén dejó sin stock:
+ * los mismos datos que la directa más el RQ y qué insumos cubre. El motivo y
+ * el código interno los toma la base del RQ (`emitir_compra_del_requerimiento`,
+ * permiso `compras.crear`), y el RQ pasa a «En compra» con la misma función.
+ */
+export async function emitirCompraDelRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Generar la orden de compra del requerimiento corresponde a Logística.' }
+  const rq = z.string().uuid().safeParse(dato(formulario, 'requerimiento_id'))
+  if (!rq.success) return { ok: false, error: 'No se reconoció el requerimiento. Vuelve a cargar la pantalla.' }
+  const items = z
+    .array(z.coerce.number().int().min(1).max(100))
+    .min(1, 'Marca al menos un insumo del requerimiento que cubre esta orden.')
+    .safeParse(formulario.getAll('item').filter((v): v is string => typeof v === 'string'))
+  if (!items.success) return { ok: false, error: items.error.issues[0]?.message ?? 'Revisa los insumos marcados.' }
+  const leido = leerFormularioDeCompra(formulario, true)
+  if (!leido.ok) return leido
+  const d = leido.datos
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('emitir_compra_del_requerimiento', {
+    p_id: d.operacion_id,
+    p_requerimiento_id: rq.data,
+    p_items: items.data,
+    p_proveedor_id: d.proveedor_id,
+    p_referencia: d.referencia || null,
+    p_detalles: d.lineas,
+    p_fecha: d.fecha_estimada ?? null,
+    p_condicion: d.condicion,
+    p_dias: d.dias,
+    p_moneda: d.moneda,
+    p_con_factura: d.con_factura,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.operacion_id) return { ok: false, error: 'La compra no quedó registrada. Recarga la pantalla.' }
+
+  const numero = await numeroEmitido(supabase, d.operacion_id)
+  refrescar()
+  revalidatePath('/requerimientos')
+  revalidatePath('/requerimientos/atencion')
+  return {
+    ok: true,
+    mensaje: `Orden ${numero} emitida para el requerimiento. Espera la aprobación de Gerencia; aprobada, el conductor la recoge y la deja en almacén.`,
   }
 }
 

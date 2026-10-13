@@ -4,6 +4,9 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
+import { GenerarCompraDelRequerimiento } from '@/app/(app)/compras/ordenes/formulario-directa'
+import { catalogoDeAlmacen, type MaterialParaConteo } from '@/lib/datos/atencion-materiales'
+import { proveedoresParaCompra, type ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { cargarRequerimientos, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { ESTADO_REQUERIMIENTO } from '@/lib/dominio/requerimientos'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
@@ -30,7 +33,13 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   const compra = puede(perfil, 'compras.crear')
   const params = await searchParams
   const vista = params.vista === 'todos' ? 'todos' : 'abiertos'
-  const requerimientos = await cargarRequerimientos({ soloAbiertos: vista === 'abiertos' })
+  // Logística genera la OC desde aquí: necesita el padrón y el catálogo de Almacén.
+  const [requerimientos, proveedores, materiales] = await Promise.all([
+    cargarRequerimientos({ soloAbiertos: vista === 'abiertos' }),
+    compra ? proveedoresParaCompra() : Promise.resolve([]),
+    compra ? catalogoDeAlmacen() : Promise.resolve([]),
+  ])
+  const paraComprar = compra ? { proveedores, materiales, puedeRegistrarProveedor: puede(perfil, 'proveedores.editar') } : null
 
   const meToca = requerimientos.filter((r) => leToca(r.estado, { recibe, despacha, compra })).length
 
@@ -82,7 +91,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
                 descripcion="Cuando Requerimientos registre uno, aparece aquí y te llega un aviso."
               />
             ) : (
-              requerimientos.map((r) => <Fila key={r.id} rq={r} recibe={recibe} despacha={despacha} compra={compra} />)
+              requerimientos.map((r) => <Fila key={r.id} rq={r} recibe={recibe} despacha={despacha} compra={compra} paraComprar={paraComprar} />)
             )}
           </tbody>
         </Tabla>
@@ -98,8 +107,25 @@ function leToca(estado: string, p: { recibe: boolean; despacha: boolean; compra:
   return false
 }
 
-function Fila({ rq, recibe, despacha, compra }: { rq: RequerimientoListado; recibe: boolean; despacha: boolean; compra: boolean }) {
+type ParaComprar = { proveedores: ProveedorParaCompra[]; materiales: MaterialParaConteo[]; puedeRegistrarProveedor: boolean }
+
+function Fila({
+  rq,
+  recibe,
+  despacha,
+  compra,
+  paraComprar,
+}: {
+  rq: RequerimientoListado
+  recibe: boolean
+  despacha: boolean
+  compra: boolean
+  paraComprar: ParaComprar | null
+}) {
   const estado = ESTADO_REQUERIMIENTO[rq.estado]
+  // Logística genera la OC mientras el RQ está sin stock o en compra y queda algún insumo sin su OC viva.
+  const generaOc = compra && paraComprar && (rq.estado === 'SIN_STOCK' || rq.estado === 'EN_ATENCION')
+    && rq.lineas.some((l) => !l.orden_compra || l.compra_rechazada)
   const pasos = [
     [`Registrado ${fechaHora(rq.creado_en)}`, rq.fecha_requerida ? `se necesita el ${fecha(rq.fecha_requerida)}` : null].filter(Boolean).join(' · '),
     rq.revision_stock_en && rq.estado !== 'LISTO_EN_ALMACEN' && rq.estado !== 'ENTREGADO' ? `Almacén revisó ${fechaHora(rq.revision_stock_en)}` : null,
@@ -128,7 +154,18 @@ function Fila({ rq, recibe, despacha, compra }: { rq: RequerimientoListado; reci
                 {cantidad(l.cantidad)} {l.unidad}
               </span>{' '}
               <span className="text-texto">{l.descripcion}</span>
-              <span className="block text-[11px] text-texto-suave">{l.categoria}</span>
+              <span className="block text-[11px] text-texto-suave">
+                {l.categoria}
+                {l.orden_compra && (
+                  <>
+                    {' · '}
+                    <span className={`tabular ${l.compra_rechazada ? 'text-peligro' : 'text-texto'}`}>
+                      {l.orden_compra}
+                      {l.compra_rechazada ? ' rechazada' : ''}
+                    </span>
+                  </>
+                )}
+              </span>
             </li>
           ))}
         </ul>
@@ -148,6 +185,26 @@ function Fila({ rq, recibe, despacha, compra }: { rq: RequerimientoListado; reci
               <PasoRequerimiento id={rq.id} numero={rq.numero} paso="listo" />
               <PasoRequerimiento id={rq.id} numero={rq.numero} paso="sin_stock" />
             </>
+          )}
+          {generaOc && (
+            <GenerarCompraDelRequerimiento
+              requerimiento={{
+                id: rq.id,
+                numero: rq.numero,
+                area: rq.area,
+                codigo_interno: rq.codigo_interno,
+                justificacion: rq.justificacion,
+                lineas: rq.lineas.map((l) => ({
+                  item: l.item,
+                  descripcion: l.descripcion,
+                  cantidad: l.cantidad,
+                  unidad: l.unidad,
+                  orden_compra: l.orden_compra,
+                  compra_rechazada: l.compra_rechazada,
+                })),
+              }}
+              {...paraComprar}
+            />
           )}
           {compra && rq.estado === 'SIN_STOCK' && <PasoRequerimiento id={rq.id} numero={rq.numero} paso="en_atencion" />}
           {recibe && (rq.estado === 'SIN_STOCK' || rq.estado === 'EN_ATENCION') && (
