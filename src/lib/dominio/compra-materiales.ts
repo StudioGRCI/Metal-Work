@@ -6,3 +6,8 @@ export function importeCompra(cantidad: number, precio: number | null) {
 export function totalCompra(lineas: {cantidad:number;precio:number|null}[]) {
   return lineas.reduce((centimos,linea)=>centimos+Math.round(importeCompra(linea.cantidad,linea.precio)*100),0)/100
 }
+
+/** El IGV de una compra con factura, redondeado al céntimo como en la OC impresa. */
+export function igvCompra(subtotal: number) {
+  return Math.round(subtotal * 18) / 100
+}

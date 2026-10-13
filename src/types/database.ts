@@ -2422,6 +2422,8 @@ export type Database = {
           recogido_por: string | null
           dejado_en: string | null
           dejado_por: string | null
+          con_factura: boolean
+          codigo_interno: string | null
         }
         Insert: {
           id?: string
@@ -2458,6 +2460,8 @@ export type Database = {
           recogido_por?: string | null
           dejado_en?: string | null
           dejado_por?: string | null
+          con_factura?: boolean
+          codigo_interno?: string | null
         }
         Update: {
           id?: string
@@ -2494,6 +2498,8 @@ export type Database = {
           recogido_por?: string | null
           dejado_en?: string | null
           dejado_por?: string | null
+          con_factura?: boolean
+          codigo_interno?: string | null
         }
         Relationships: [
           {
@@ -5221,6 +5227,60 @@ export type Database = {
           }
         ]
       }
+      proveedor_cuentas: {
+        Row: {
+          id: string
+          proveedor_id: string
+          banco: string
+          numero_cuenta: string
+          titular: string
+          moneda: string
+          activo: boolean
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          proveedor_id: string
+          banco: string
+          numero_cuenta: string
+          titular: string
+          moneda?: string
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          proveedor_id?: string
+          banco?: string
+          numero_cuenta?: string
+          titular?: string
+          moneda?: string
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proveedor_cuentas_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proveedor_cuentas_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       proveedores: {
         Row: {
           id: string
@@ -5240,6 +5300,7 @@ export type Database = {
           creado_por: string | null
           creado_en: string
           actualizado_en: string
+          direccion_recojo: string | null
         }
         Insert: {
           id?: string
@@ -5259,6 +5320,7 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          direccion_recojo?: string | null
         }
         Update: {
           id?: string
@@ -5278,6 +5340,7 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          direccion_recojo?: string | null
         }
         Relationships: [
           {
@@ -7321,6 +7384,12 @@ export type Database = {
         }
         Returns: null
       }
+      compra_tiene_comprobante: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: boolean
+      }
       compras_para_aprobar: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -7477,6 +7546,15 @@ export type Database = {
           web: string | null
           gerente_general: string | null
           gerente_general_cargo: string | null
+        }[]
+      }
+      datos_de_recojo: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          con_factura: boolean | null
+          comprobante_adjunto: boolean | null
+          codigo_interno: string | null
         }[]
       }
       definir_etapas_diseno: {
@@ -7643,6 +7721,8 @@ export type Database = {
           p_condicion: string | null
           p_dias: number | null
           p_moneda: string | null
+          p_con_factura: boolean | null
+          p_codigo_interno: string | null
         }
         Returns: string
       }
@@ -7657,6 +7737,8 @@ export type Database = {
           p_condicion: string | null
           p_dias: number | null
           p_moneda: string | null
+          p_con_factura: boolean | null
+          p_codigo_interno: string | null
         }
         Returns: string
       }
@@ -7750,6 +7832,14 @@ export type Database = {
         }
         Returns: string
       }
+      fijar_datos_compra: {
+        Args: {
+          p_compra: string | null
+          p_con_factura: boolean | null
+          p_codigo_interno: string | null
+        }
+        Returns: string
+      }
       fijar_merma_ot: {
         Args: {
           p_orden: string | null
@@ -7793,6 +7883,13 @@ export type Database = {
           p_flota: string | null
         }
         Returns: boolean
+      }
+      guardar_cuentas_proveedor: {
+        Args: {
+          p_proveedor: string | null
+          p_cuentas: Json | null
+        }
+        Returns: number
       }
       guardar_etapas_libres: {
         Args: {
@@ -8692,6 +8789,13 @@ export type Database = {
           nombre: string | null
           rol: string | null
         }[]
+      }
+      validar_datos_de_compra: {
+        Args: {
+          p_con_factura: boolean | null
+          p_codigo_interno: string | null
+        }
+        Returns: null
       }
       validar_fecha_planilla_almacen: {
         Args: {

@@ -15,7 +15,9 @@ export type CompraMaterialPendiente = Vistas<'v_orden_compra_material_pendiente'
   condicion_pago: string
   dias_credito: number
   moneda: string
+  /** Ya tiene su comprobante: la factura o, si es sin factura, la boleta o nota de venta. */
   tiene_factura: boolean
+  con_factura: boolean
   precios_completos: boolean
   /** NO_REQUERIDA, POR_APROBAR, APROBADA o RECHAZADA: ver `APROBACION_COMPRA`. */
   aprobacion: string
@@ -137,13 +139,13 @@ export async function cargarAtencionMateriales(permisos: {
   const idsLineaCompra = (compras.data ?? []).map((compra) => compra.id).filter((id): id is string => Boolean(id))
   const [entregas, precios, facturas, pendientesAlmacen] = await Promise.all([
     idsCompra.length > 0
-      ? supabase.from('ordenes_compra_materiales').select('id, numero, entregado_almacen_en, condicion_pago, dias_credito, moneda, aprobacion, recojo').in('id', idsCompra)
+      ? supabase.from('ordenes_compra_materiales').select('id, numero, entregado_almacen_en, condicion_pago, dias_credito, moneda, aprobacion, recojo, con_factura').in('id', idsCompra)
       : Promise.resolve({ data: [], error: null }),
     idsLineaCompra.length > 0
       ? supabase.from('orden_compra_material_detalles').select('id, orden_compra_id, precio_unitario').in('orden_compra_id', idsCompra)
       : Promise.resolve({ data: [], error: null }),
     idsCompra.length > 0 && (permisos.crearCompra || permisos.verCompras)
-      ? supabase.from('documentos_compra_material').select('orden_compra_id').in('orden_compra_id',idsCompra).eq('tipo','FACTURA')
+      ? supabase.from('documentos_compra_material').select('orden_compra_id, tipo').in('orden_compra_id',idsCompra).in('tipo',['FACTURA','COMPROBANTE'])
       : Promise.resolve({ data: [], error: null }),
     // Lo que el conductor dejó y si Almacén ya lo validó.
     idsCompra.length > 0 && (permisos.verCompras || permisos.recibir)
@@ -177,7 +179,10 @@ export async function cargarAtencionMateriales(permisos: {
       recojo: entregaPorCompra.get(compra.orden_compra_id ?? '')?.recojo ?? null,
       validacion: validacionDeCompra(estadosPorCompra.get(compra.orden_compra_id ?? '') ?? []),
       precio_unitario: precioPorLinea.get(compra.id ?? '') ?? null,
-      tiene_factura: (facturas.data ?? []).some(f=>f.orden_compra_id===compra.orden_compra_id),
+      con_factura: entregaPorCompra.get(compra.orden_compra_id ?? '')?.con_factura ?? true,
+      // Sin factura vale la boleta o nota de venta; con factura, solo la factura.
+      tiene_factura: (facturas.data ?? []).some(f=>f.orden_compra_id===compra.orden_compra_id
+        && (f.tipo==='FACTURA' || entregaPorCompra.get(compra.orden_compra_id ?? '')?.con_factura===false)),
       precios_completos: (precios.data ?? []).filter(p=>p.orden_compra_id===compra.orden_compra_id).every(p=>p.precio_unitario!==null),
     })),
     areas: areas.data ?? [],

@@ -7,7 +7,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { listarProveedores, PROVEEDORES_POR_PAGINA } from '@/lib/datos/proveedores'
-import { condicionDePago } from '@/lib/dominio/proveedores'
+import { condicionDePago, resumenCuenta } from '@/lib/dominio/proveedores'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AccionesProveedor, NuevoProveedor } from './formulario'
@@ -26,6 +26,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
     incluirInactivos,
   })
   const edita = puede(perfil, 'proveedores.editar')
+  const verCuentas = puede(perfil, 'proveedores.ver_cuentas')
 
   return (
     <>
@@ -61,13 +62,14 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                   caben el RUC y Editar sin correr la tabla de lado. */}
               <TH className="hidden sm:table-cell">Contacto</TH>
               <TH className="hidden sm:table-cell">Pago</TH>
+              {verCuentas && <TH className="hidden lg:table-cell">Cuentas</TH>}
               {edita && <TH>Acciones</TH>}
             </tr>
           </TablaCabecera>
           <tbody>
             {proveedores.length === 0 ? (
               <SinDatos
-                colSpan={edita ? 5 : 4}
+                colSpan={4 + (edita ? 1 : 0) + (verCuentas ? 1 : 0)}
                 titulo={busqueda ? 'Ningún proveedor coincide' : 'Aún no hay proveedores en el padrón'}
                 descripcion={
                   busqueda
@@ -105,9 +107,23 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                       {p.correo && <p className="text-[11px]">{p.correo}</p>}
                     </TD>
                     <TD className="hidden whitespace-nowrap text-texto-suave sm:table-cell">{pago}</TD>
+                    {verCuentas && (
+                      <TD className="hidden text-texto-suave lg:table-cell">
+                        {p.cuentas.length === 0 ? (
+                          <span className="text-aviso">Sin cuenta</span>
+                        ) : (
+                          p.cuentas.map((c) => (
+                            <p key={c.id} className="tabular whitespace-nowrap text-[11px]">
+                              {resumenCuenta(c)}
+                            </p>
+                          ))
+                        )}
+                        {p.direccion_recojo && <p className="text-[11px]">Recojo: {p.direccion_recojo}</p>}
+                      </TD>
+                    )}
                     {edita && (
                       <TD>
-                        <AccionesProveedor proveedor={p} />
+                        <AccionesProveedor proveedor={p} cuentasVisibles={verCuentas} />
                       </TD>
                     )}
                   </TR>

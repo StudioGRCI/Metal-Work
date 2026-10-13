@@ -36,3 +36,45 @@ export const APROBACION_COMPRA: Record<string, Def> = {
 export function compraDetenida(aprobacion: string | null | undefined): boolean {
   return aprobacion === 'POR_APROBAR' || aprobacion === 'RECHAZADA'
 }
+
+/**
+ * Los bancos con que trabaja la casa, para sugerir mientras se escribe. El
+ * campo es libre: una caja o un banco que no esté aquí se escribe igual.
+ */
+export const BANCOS_SUGERIDOS = [
+  'BCP',
+  'BBVA',
+  'INTERBANK',
+  'SCOTIABANK',
+  'BANBIF',
+  'BANCO DE LA NACIÓN',
+  'BANCO PICHINCHA',
+  'CAJA TRUJILLO',
+  'CAJA PIURA',
+  'CAJA AREQUIPA',
+] as const
+
+/** «S/» o «US$», como se lee una cuenta en Tesorería. */
+export function simboloMoneda(moneda: string | null | undefined): string {
+  return moneda === 'USD' ? 'US$' : 'S/'
+}
+
+/** «BCP · S/ · 1912345678012», para mostrar una cuenta en una línea. */
+export function resumenCuenta(c: { banco: string; moneda: string; numero_cuenta: string }): string {
+  return `${c.banco} · ${simboloMoneda(c.moneda)} · ${c.numero_cuenta}`
+}
+
+/**
+ * La cuenta que va en la OC: la activa en la moneda de la compra; si no hay,
+ * la primera que tenga. Sin cuentas, ninguna.
+ */
+export function cuentaParaCompra<T extends { moneda: string }>(cuentas: T[], moneda: string): T | null {
+  return cuentas.find((c) => c.moneda === moneda) ?? cuentas[0] ?? null
+}
+
+/** Qué comprobante se pide, en palabras de Logística y del conductor. */
+export function comprobantePedido(conFactura: boolean): { etiqueta: string; pide: string } {
+  return conFactura
+    ? { etiqueta: 'Con factura', pide: 'Pide la factura.' }
+    : { etiqueta: 'Sin factura', pide: 'Pide boleta, nota de venta o recibo: sin factura igual va un comprobante.' }
+}
