@@ -344,7 +344,6 @@ declare
   v_trab     public.trabajadores%rowtype;
   v_regla    public.rrhh_regla_tardanza%rowtype;
   v_ahora    timestamptz := now();
-  v_lima     timestamp := now() at time zone 'America/Lima';
   v_fecha    date := (now() at time zone 'America/Lima')::date;
   v_hora     time := (now() at time zone 'America/Lima')::time;
   v_minutos  int := 0;
@@ -434,7 +433,7 @@ $$;
 revoke all on function public.anular_asistencia(uuid, text) from public, anon;
 grant execute on function public.anular_asistencia(uuid, text) to authenticated;
 
--- 8. La cuenta de la portería y el área de la de RR. HH. ------------------------------
+-- 8. La cuenta de la portería ----------------------------------------------------------
 -- Nace sin clave usable: la clave temporal se le da por fuera del repositorio.
 do $$
 declare
@@ -448,10 +447,6 @@ begin
   select id into v_sede from public.sedes order by creado_en limit 1;
   select id into v_area from public.areas where codigo = 'RRH';
   if v_sede is null then return; end if;
-
-  -- La cuenta de RR. HH. no tenía área: es la de Recursos Humanos.
-  update public.usuarios set area_id = v_area
-   where lower(correo) = 'rrhh@metalworkperusac.com' and area_id is null and v_area is not null;
 
   if exists (select 1 from auth.users where lower(email) = v_correo) then return; end if;
 
