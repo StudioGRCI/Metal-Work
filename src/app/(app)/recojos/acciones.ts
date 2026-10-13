@@ -15,7 +15,7 @@ export async function marcarRecojo(_previo: unknown, datos: FormData): Promise<R
   const perfil = await exigirSesion()
   if (!puede(perfil, 'compras.recojo')) return { ok: false, error: 'Marcar recojos corresponde al conductor de Logística.' }
   const analisis = z
-    .object({ id: z.string().uuid(), paso: z.enum(['RECOGIDO', 'DEJADO']) })
+    .object({ id: z.guid(), paso: z.enum(['RECOGIDO', 'DEJADO']) })
     .safeParse({ id: datos.get('id'), paso: datos.get('paso') })
   if (!analisis.success) return { ok: false, error: 'No se reconoció la compra. Vuelve a cargar la pantalla.' }
 

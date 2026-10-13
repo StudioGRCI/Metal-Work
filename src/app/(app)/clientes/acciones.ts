@@ -9,7 +9,7 @@ import { exigirSesion, puede } from '@/lib/sesion'
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
 
 const esquemaCliente = z.object({
-  id: z.string().uuid().optional().or(z.literal('')),
+  id: z.guid().optional().or(z.literal('')),
   tipo_documento: z.enum(['RUC', 'DNI', 'CE', 'PASAPORTE']),
   numero_documento: z.string().trim().min(8, 'El documento es obligatorio'),
   razon_social: z.string().trim().min(3, 'La razón social es obligatoria'),
@@ -94,8 +94,8 @@ export async function guardarCliente(_previo: unknown, datos: FormData): Promise
 }
 
 const esquemaUnidad = z.object({
-  id: z.string().uuid().optional().or(z.literal('')),
-  cliente_id: z.string().uuid('Selecciona el cliente'),
+  id: z.guid().optional().or(z.literal('')),
+  cliente_id: z.guid('Selecciona el cliente'),
   // Sin placa se puede registrar: la empresa fabrica sobre chasis que
   // todavía no están matriculados y la placa llega al final del trabajo. Si se
   // escribe, se guarda en mayúsculas y con su forma de siempre.
@@ -127,7 +127,7 @@ const esquemaUnidad = z.object({
   // La carrocería ya no se pide acá: es lo que Metal Work va a fabricar y se
   // decide en la cotización. Se acepta si viene —hay unidades registradas antes
   // del cambio y pantallas que todavía la mandan— pero no se exige.
-  tipo_carroceria_id: z.string().uuid().optional().or(z.literal('')),
+  tipo_carroceria_id: z.guid().optional().or(z.literal('')),
   observaciones: z.string().trim().optional(),
 })
 
@@ -260,7 +260,7 @@ export async function crearClienteRapido(
 }
 
 const esquemaContactoRapido = z.object({
-  cliente_id: z.string().uuid(),
+  cliente_id: z.guid(),
   nombre: z.string().trim().min(3, 'Escribe el nombre de la persona'),
   cargo: z.string().trim().optional(),
   telefono: z.string().trim().optional(),

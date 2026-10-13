@@ -9,7 +9,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   // El PDF se abre desde la pestaña Planos: quien no la ve, no lo descarga por URL.
   if (!seccionesDeOrden(perfil).includes('planos')) return new Response('Tu puesto no consulta los planos de la orden.', { status: 403 })
   const { id, version } = await params
-  if (!z.string().uuid().safeParse(id).success || !z.string().uuid().safeParse(version).success) return new Response('Plano no encontrado.', { status: 404 })
+  if (!z.guid().safeParse(id).success || !z.guid().safeParse(version).success) return new Response('Plano no encontrado.', { status: 404 })
   const supabase = await createClient()
   const { data: plano, error } = await supabase.from('ot_plano_versiones')
     .select('ruta_storage, nombre_archivo, plano:ot_planos!inner(orden_id)').eq('id', version).eq('plano.orden_id', id).maybeSingle()

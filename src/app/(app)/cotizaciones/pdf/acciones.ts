@@ -31,10 +31,10 @@ const mimeCotizacion = z.enum(Object.keys(EXTENSION_DE) as [string, ...string[]]
 })
 
 const esquemaSubir = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   numero: z.string().trim().min(3, 'Escribe el número que dice la cotización').max(40),
-  cliente_id: z.string().uuid('Elige el cliente'),
-  tipo_carroceria_id: z.string().uuid('Elige qué se fabrica'),
+  cliente_id: z.guid('Elige el cliente'),
+  tipo_carroceria_id: z.guid('Elige qué se fabrica'),
   monto_venta: z.string().trim().regex(/^\d{1,12}(?:\.\d{1,2})?$/, 'Escribe un monto válido, con hasta dos decimales.'),
   moneda: z.enum(['PEN', 'USD'], { message: 'Elige soles o dólares.' }),
   incluye_igv: z.enum(['si', 'no'], { message: 'Indica si el total incluye IGV.' }),
@@ -95,7 +95,7 @@ export async function registrarCotizacionPdf(_previo: unknown, datos: FormData):
 }
 
 const esquemaRevisar = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   decision: z.enum(['APROBADA', 'RECHAZADA']),
   observacion: z.string().trim().max(500).optional(),
 })
@@ -138,10 +138,10 @@ export async function revisarCotizacionPdf(_previo: unknown, datos: FormData): P
 }
 
 const esquemaCorregir = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   version: z.coerce.number().int().min(1),
-  cliente_id: z.string().uuid(),
-  tipo_carroceria_id: z.string().uuid(),
+  cliente_id: z.guid(),
+  tipo_carroceria_id: z.guid(),
   motivo_correccion: z.string().trim().min(5, 'Explica por qué corriges la cotización').max(500),
   nombre_archivo: z.string().trim().min(1).max(200),
   ruta_storage: z.string().min(1),
@@ -200,7 +200,7 @@ export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): 
   return { ok: true, mensaje: `Corrección subida: la ${data.numero} vuelve a Gerencia (versión ${data.version}).${igv}` }
 }
 
-const esquemaQuitar = z.object({ id: z.string().uuid() })
+const esquemaQuitar = z.object({ id: z.guid() })
 
 /**
  * Quitar una cotización (migraciones 102 y 103): quien la subió o Gerencia,
@@ -257,8 +257,8 @@ export async function quitarCotizacionPdf(_previo: unknown, datos: FormData): Pr
 }
 
 const esquemaEmitir = z.object({
-  cotizacion_id: z.string().uuid(),
-  orden_id: z.string().uuid(),
+  cotizacion_id: z.guid(),
+  orden_id: z.guid(),
   // Migración 108: el número lo trae el papel de la orden, como el de la
   // cotización. Se acepta «2922» o «2922-2026»; la base normaliza y comprueba
   // que no se repita.

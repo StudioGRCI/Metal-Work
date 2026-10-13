@@ -6,7 +6,7 @@ import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/accion
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
-const uuid=z.string().uuid()
+const uuid=z.guid()
 const volver=()=>revalidatePath('/rrhh')
 
 export async function crearPlanilla(_previo:unknown, datos:FormData):Promise<ResultadoAccion> {

@@ -17,7 +17,7 @@ import { createClient } from '@/lib/supabase/server'
  */
 export async function marcarAvisoLeido(id: string): Promise<ResultadoAccion> {
   await exigirSesion()
-  if (!z.string().uuid().safeParse(id).success) return { ok: false, error: 'El aviso no es válido.' }
+  if (!z.guid().safeParse(id).success) return { ok: false, error: 'El aviso no es válido.' }
   const supabase = await createClient()
 
   const { data, error } = await supabase

@@ -22,7 +22,7 @@ export async function registrarIngresoVehiculo(_previo: unknown, formulario: For
 
   const analisis = z
     .object({
-      operacion_id: z.string().uuid(),
+      operacion_id: z.guid(),
       placa: z.string().max(15, 'La placa pasa de 15 caracteres.'),
       chasis: z.string().max(40, 'El número de chasis pasa de 40 caracteres.'),
       codigo_interno: z.string().max(60, 'El código interno pasa de 60 caracteres.'),
@@ -77,7 +77,7 @@ export async function registrarSalidaVehiculo(_previo: unknown, formulario: Form
 
   const analisis = z
     .object({
-      id: z.string().uuid(),
+      id: z.guid(),
       salida_en: z.string(),
       observacion: z.string().max(500, 'La observación pasa de 500 caracteres.'),
     })
@@ -106,7 +106,7 @@ export async function anularRegistroVehiculo(_previo: unknown, formulario: FormD
 
   const analisis = z
     .object({
-      id: z.string().uuid(),
+      id: z.guid(),
       motivo: z.string().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.'),
     })
     .safeParse({ id: formulario.get('id'), motivo: dato(formulario, 'motivo') })

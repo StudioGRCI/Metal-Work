@@ -211,7 +211,7 @@ export async function crearCarroceria(
 }
 
 const esquemaEditarCarroceria = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   nombre: z.string().trim().min(3).max(120),
   descripcion: z.string().trim().max(1000).optional(),
   activo: z.enum(['true', 'false']).transform((v) => v === 'true'),
@@ -240,7 +240,7 @@ export async function editarCarroceria(_previo: unknown, datos: FormData): Promi
 }
 
 const esquemaMedidasCarroceria = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   modelo: z.string().trim().optional(),
   tipo: z.string().trim().optional(),
   largo_m: z.string().trim().optional(),

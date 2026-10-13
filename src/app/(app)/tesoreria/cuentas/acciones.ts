@@ -7,7 +7,7 @@ import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 const dinero = z.coerce.number().positive().multipleOf(0.01)
-const documento = z.object({ orden_id:z.string().uuid(), numero_documento:z.string().trim().min(3).max(80), fecha_emision:z.iso.date(), fecha_vencimiento:z.iso.date(), moneda:z.enum(['PEN','USD']), total:dinero, observacion:z.string().trim().max(1000) })
+const documento = z.object({ orden_id:z.guid(), numero_documento:z.string().trim().min(3).max(80), fecha_emision:z.iso.date(), fecha_vencimiento:z.iso.date(), moneda:z.enum(['PEN','USD']), total:dinero, observacion:z.string().trim().max(1000) })
 
 export async function crearCuentaCobrar(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   await exigirPermiso('tesoreria.registrar_cobros')
@@ -22,7 +22,7 @@ export async function crearCuentaCobrar(_previo: unknown, formulario: FormData):
   return {ok:true,mensaje:`Cuenta ${v.data.numero_documento} registrada.`}
 }
 
-const movimiento=z.object({id:z.string().uuid(),fecha:z.iso.date(),monto:dinero,referencia:z.string().trim().min(3).max(120)})
+const movimiento=z.object({id:z.guid(),fecha:z.iso.date(),monto:dinero,referencia:z.string().trim().min(3).max(120)})
 
 export async function registrarCobro(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   await exigirPermiso('tesoreria.registrar_cobros')

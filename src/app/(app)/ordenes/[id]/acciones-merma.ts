@@ -22,7 +22,7 @@ export async function fijarMermaOrden(_previo: unknown, formulario: FormData): P
   if (!puede(perfil, 'diseno.merma')) return { ok: false, error: 'La merma la evalúa y la fija Diseño e Ingeniería.' }
 
   const v = z.object({
-    orden_id: z.string().uuid(),
+    orden_id: z.guid(),
     porcentaje: z.coerce.number().min(0).max(100).multipleOf(0.01),
     motivo: z.string().trim().min(5).max(300),
   }).safeParse({

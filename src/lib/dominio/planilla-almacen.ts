@@ -14,8 +14,15 @@ export type FilaLeida = {
   fecha: string | null
   hora: string | null
   codigo: string
+  /** Sin código, la descripción escrita a mano: el material se busca por su nombre. */
+  descripcion: string
+  /** La unidad escrita a mano en la columna gris, si la hay. */
+  unidadEscrita: string
+  /** La fecha vino vacía y se toma la del día en que se carga. */
+  fechaSupuesta: boolean
   cantidad: number | null
-  origen: 'INGRESO_GENERAL' | 'SALDO_INICIAL'
+  /** null: la fila no dice el tipo y lo decide quien carga según el saldo. */
+  origen: 'INGRESO_GENERAL' | 'SALDO_INICIAL' | null
   documento: string
   precio: number | null
   moneda: 'PEN' | 'USD'
@@ -70,39 +77,76 @@ export function leerHora(v: Celda): string | null | undefined {
   return `${dos(Number(m[1]))}:${m[2]}`
 }
 
-/** Las filas anotadas de una hoja: debajo del encabezado que empieza en «Fecha». */
-export function leerHoja(hoja: 'Ingresos' | 'Salidas', filas: Celda[][]): FilaLeida[] {
+/** El nombre de un material para compararlo: mayúsculas, sin tildes y con un solo espacio. */
+export function normalizarNombre(t: string) {
+  return t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim()
+}
+
+function trigramas(t: string) {
+  const conjunto = new Set<string>()
+  for (const palabra of normalizarNombre(t).split(/[^A-Z0-9Ñ]+/).filter(Boolean)) {
+    const p = `  ${palabra} `
+    for (let i = 0; i + 3 <= p.length; i++) conjunto.add(p.slice(i, i + 3))
+  }
+  return conjunto
+}
+
+/** Cuánto se parecen dos nombres, de 0 a 1, como `similarity` de pg_trgm. */
+export function similitud(a: string, b: string) {
+  const x = trigramas(a), y = trigramas(b)
+  if (x.size === 0 || y.size === 0) return 0
+  let comunes = 0
+  for (const t of x) if (y.has(t)) comunes++
+  return comunes / (x.size + y.size - comunes)
+}
+
+/**
+ * Las filas anotadas de una hoja: debajo del encabezado que empieza en «Fecha».
+ * En Ingresos basta la descripción y la cantidad: sin fecha se toma `hoy`, y
+ * la guía y el tipo los pone quien carga.
+ */
+export function leerHoja(hoja: 'Ingresos' | 'Salidas', filas: Celda[][], hoy?: string): FilaLeida[] {
   const inicio = filas.findIndex((f) => texto(f[0]).toLowerCase() === 'fecha')
   if (inicio < 0) throw new Error(`La hoja «${hoja}» no tiene el encabezado de la planilla. Descárgala de nuevo desde el kardex.`)
   const salida: FilaLeida[] = []
   filas.slice(inicio + 1).forEach((f, i) => {
     // Las columnas grises (material, unidad, libre) se llenan solas: no cuentan como anotadas.
-    const escritas = hoja === 'Ingresos' ? [0, 1, 2, 5, 6, 7, 8, 9] : [0, 1, 2, 5, 6, 7, 8]
+    // En Ingresos la descripción escrita a mano encima de la fórmula también cuenta.
+    const escritas = hoja === 'Ingresos' ? [0, 1, 2, 3, 5, 6, 7, 8, 9] : [0, 1, 2, 5, 6, 7, 8]
     if (escritas.every((c) => texto(f[c]) === '' && !(f[c] instanceof Date))) return
     const errores: string[] = []
-    const fecha = leerFecha(f[0])
+    const codigo = texto(f[2])
+    // Con código, la columna Material la llena la fórmula; sin código, es lo que escribió Almacén.
+    const descripcion = hoja === 'Ingresos' && !codigo ? texto(f[3]) : ''
+    const unidadEscrita = hoja === 'Ingresos' && !codigo ? texto(f[4]) : ''
+    const sinFecha = hoja === 'Ingresos' && Boolean(hoy) && texto(f[0]) === '' && !(f[0] instanceof Date)
+    const fecha = sinFecha ? hoy! : leerFecha(f[0])
     if (!fecha) errores.push('La fecha no se entiende: escríbela como dd/mm/aaaa.')
     const hora = leerHora(f[1])
     if (hora === undefined) errores.push('La hora no se entiende: escríbela como 10:30.')
-    const codigo = texto(f[2])
-    if (!codigo) errores.push('Falta el código del material.')
+    if (!codigo && hoja === 'Salidas') errores.push('Falta el código del material.')
+    else if (!codigo && !descripcion) errores.push('Falta el código o la descripción del material.')
+    else if (!codigo && (descripcion.length < 3 || descripcion.length > 200)) errores.push('La descripción del material va de 3 a 200 letras.')
     const cantidad = numero(f[5])
-    if (cantidad === null || cantidad <= 0) errores.push('La cantidad tiene que ser mayor que cero.')
+    if (cantidad === null && texto(f[5]) === '') errores.push('Sin cantidad: esta fila no se carga.')
+    else if (cantidad === null || cantidad <= 0) errores.push('La cantidad tiene que ser mayor que cero.')
     else if (Math.round(cantidad * 1000) !== cantidad * 1000) errores.push('La cantidad admite hasta 3 decimales.')
 
-    const base = { hoja, fila: inicio + i + 2, fecha, hora: hora ?? null, codigo, cantidad, errores }
+    const base = { hoja, fila: inicio + i + 2, fecha, hora: hora ?? null, codigo, descripcion, unidadEscrita, fechaSupuesta: sinFecha, cantidad, errores }
     if (hoja === 'Ingresos') {
       const tipo = texto(f[6]).toLowerCase()
       const documento = texto(f[7])
       const precio = numero(f[8])
       const moneda = texto(f[9]).toLowerCase()
       if (tipo && !['ingreso general', 'saldo inicial'].includes(tipo)) errores.push('Tipo de ingreso: «Ingreso general» o «Saldo inicial».')
-      if (documento.length < 2 || documento.length > 100) errores.push('Escribe la guía o documento (de 2 a 100 caracteres).')
+      // Sin guía, quien carga pone «Planilla de Almacén del …».
+      if (documento && (documento.length < 2 || documento.length > 100)) errores.push('La guía o documento va de 2 a 100 caracteres.')
       if (texto(f[8]) && (precio === null || precio < 0)) errores.push('El precio no se entiende: déjalo vacío si no lo sabes.')
       if (moneda && !['soles', 'dólares', 'dolares', 'pen', 'usd'].includes(moneda)) errores.push('Moneda: Soles o Dólares.')
       salida.push({
         ...base,
-        origen: tipo === 'saldo inicial' ? 'SALDO_INICIAL' : 'INGRESO_GENERAL',
+        // Sin tipo, quien carga decide: saldo inicial si el material no tiene saldo, ingreso general si ya tiene.
+        origen: tipo === 'saldo inicial' ? 'SALDO_INICIAL' : tipo === 'ingreso general' ? 'INGRESO_GENERAL' : null,
         documento, precio: precio !== null && precio >= 0 ? Math.round(precio * 10000) / 10000 : null,
         moneda: ['dólares', 'dolares', 'usd'].includes(moneda) ? 'USD' : 'PEN',
         unidad: '', recibe: '',

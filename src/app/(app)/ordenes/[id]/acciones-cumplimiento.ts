@@ -79,14 +79,14 @@ async function exigirTaller() {
 
 // ============================================================== los planos
 const esquemaPlano = z.object({
-  orden_id: z.string().uuid(),
-  etapa_id: z.string().uuid('Primero crea y elige una etapa de esta OT para el plano.'),
+  orden_id: z.guid(),
+  etapa_id: z.guid('Primero crea y elige una etapa de esta OT para el plano.'),
   numero_plano: z.string().trim().min(1, 'Ponle código al plano').max(40, 'El código del plano es demasiado largo: hasta 40 caracteres'),
   nombre: z.string().trim().min(2, 'Ponle nombre al plano').max(120),
   peso_pct: z.coerce.number().min(0, 'El peso no puede ser negativo').max(100, 'Ningún plano pesa más de 100'),
   entregar_hoy: marcado,
   observacion: z.string().trim().max(500).optional(),
-  integrante_id: z.string().uuid('Elige quién elaboró el plano.'),
+  integrante_id: z.guid('Elige quién elaboró el plano.'),
 })
 
 /**
@@ -142,7 +142,7 @@ export async function agregarPlano(_previo: unknown, datos: FormData): Promise<R
 }
 
 const esquemaEntregaEnLote = z.object({
-  orden_id: z.string().uuid(),
+  orden_id: z.guid(),
 })
 
 /**
@@ -176,7 +176,7 @@ export async function entregarPlanosPendientes(_previo: unknown, datos: FormData
   return { ok: true, mensaje: `${n} plano${n === 1 ? '' : 's'} entregado${n === 1 ? '' : 's'} al taller.` }
 }
 
-const esquemaRepartir = z.object({ orden_id: z.string().uuid() })
+const esquemaRepartir = z.object({ orden_id: z.guid() })
 
 /**
  * Repartir el 100 % en partes iguales entre los planos de la orden. Es lo que
@@ -222,7 +222,7 @@ export async function repartirPesoDePlanos(_previo: unknown, datos: FormData): P
   return { ok: true, mensaje: `Peso repartido: ${parte} % a cada uno de los ${planos.length} planos.` }
 }
 
-const esquemaEditarPlano = esquemaPlano.extend({ plano_id: z.string().uuid() })
+const esquemaEditarPlano = esquemaPlano.extend({ plano_id: z.guid() })
 
 /** Corregir los datos del plano sin alterar su fecha de entrega. */
 export async function editarPlano(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -263,8 +263,8 @@ export async function editarPlano(_previo: unknown, datos: FormData): Promise<Re
 }
 
 const esquemaEntrega = z.object({
-  plano_id: z.string().uuid(),
-  orden_id: z.string().uuid(),
+  plano_id: z.guid(),
+  orden_id: z.guid(),
 })
 
 /**
@@ -299,7 +299,7 @@ export async function entregarPlano(_previo: unknown, datos: FormData): Promise<
   return { ok: true, mensaje: 'Plano entregado al taller.' }
 }
 
-const esquemaQuitar = z.object({ id: z.string().uuid(), orden_id: z.string().uuid() })
+const esquemaQuitar = z.object({ id: z.guid(), orden_id: z.guid() })
 
 /** Quitar un plano que todavía no tiene trabajo reportado; la base lo defiende. */
 export async function quitarPlano(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -329,8 +329,8 @@ export async function quitarPlano(_previo: unknown, datos: FormData): Promise<Re
 
 // ============================================================== las piezas
 const esquemaPiezas = z.object({
-  plano_id: z.string().uuid(),
-  orden_id: z.string().uuid(),
+  plano_id: z.guid(),
+  orden_id: z.guid(),
   // Una pieza por línea, como en la hoja: «# | nombre | cantidad». La cantidad
   // es opcional (1) y «ENS» como número marca un ensamble.
   lista: z.string().trim().min(1, 'Escribe al menos una pieza'),
@@ -420,8 +420,8 @@ export async function agregarPiezas(_previo: unknown, datos: FormData): Promise<
 }
 
 const esquemaEditarPieza = z.object({
-  pieza_id: z.string().uuid(),
-  orden_id: z.string().uuid(),
+  pieza_id: z.guid(),
+  orden_id: z.guid(),
   numero_pieza: z.string().trim().min(1, 'Ponle número a la pieza').max(20),
   nombre: z.string().trim().min(2, 'Ponle nombre a la pieza').max(120),
   cantidad: z.coerce.number().positive('La cantidad tiene que ser mayor que cero'),
@@ -491,8 +491,8 @@ export async function quitarPieza(_previo: unknown, datos: FormData): Promise<Re
 
 // ========================================================== lo que reporta el taller
 const esquemaMaestranza = z.object({
-  pieza_id: z.string().uuid(),
-  orden_id: z.string().uuid(),
+  pieza_id: z.guid(),
+  orden_id: z.guid(),
   mtz_inicio: fechaOpcional,
   mtz_habilitado: marcado,
   mtz_culminacion: fechaOpcional,
@@ -540,8 +540,8 @@ export async function reportarMaestranza(_previo: unknown, datos: FormData): Pro
 }
 
 const esquemaProduccion = z.object({
-  pieza_id: z.string().uuid(),
-  orden_id: z.string().uuid(),
+  pieza_id: z.guid(),
+  orden_id: z.guid(),
   prd_recepcion: fechaOpcional,
   prd_recibido: marcado,
   prd_inicio: fechaOpcional,
@@ -599,10 +599,10 @@ const PASOS = {
 } as const
 
 const esquemaLote = z.object({
-  plano_id: z.string().uuid(),
-  orden_id: z.string().uuid(),
+  plano_id: z.guid(),
+  orden_id: z.guid(),
   /** Con pieza, el lote es de una: el botón «Habilitada hoy» de cada pieza. */
-  pieza_id: z.string().uuid().optional(),
+  pieza_id: z.guid().optional(),
   marca: z.enum(['mtz_habilitado', 'mtz_entregado', 'prd_recibido', 'prd_armado'], { message: 'Elige qué marcar' }),
   fecha: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elige la fecha'),
 })

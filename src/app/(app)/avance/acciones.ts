@@ -8,8 +8,8 @@ import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 const esquema = z.object({
-  orden_id: z.string().uuid(),
-  etapa_id: z.string().uuid().optional().or(z.literal('')),
+  orden_id: z.guid(),
+  etapa_id: z.guid().optional().or(z.literal('')),
   fecha: z.string().trim().min(1, 'Falta la fecha'),
   descripcion: z.string().trim().min(5, 'Cuenta qué se hizo hoy en la unidad'),
   avance_porcentaje: z.string().trim().optional(),

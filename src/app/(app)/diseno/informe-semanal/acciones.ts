@@ -17,9 +17,9 @@ export async function registrarTareaDiseno(_previo: unknown, datos: FormData): P
   const perfil = await exigirDiseno()
   if (!perfil) return { ok: false, error: 'Solo Diseño registra sus tareas.' }
   const entrada = z.object({
-    id: z.string().uuid(),
-    orden_id: z.string().uuid(),
-    integrante_id: z.string().uuid(),
+    id: z.guid(),
+    orden_id: z.guid(),
+    integrante_id: z.guid(),
     tipo: z.enum(CLAVES_TAREA),
     componente: z.string().trim().min(2).max(200),
     fecha_inicio: z.iso.date(),
@@ -47,10 +47,10 @@ export async function registrarEntregaPlanos(_previo: unknown, datos: FormData):
   const perfil = await exigirDiseno()
   if (!perfil) return { ok: false, error: 'Solo el colaborador de Diseño registra el avance de planos.' }
   const entrada = z.object({
-    id: z.string().uuid(),
+    id: z.guid(),
     semana_inicio: z.iso.date(),
-    orden_id: z.string().uuid(),
-    integrante_id: z.string().uuid(),
+    orden_id: z.guid(),
+    integrante_id: z.guid(),
     tipo_plano: z.string().trim().min(2).max(200),
     n_planos: z.coerce.number().int().min(1).max(999),
     n_piezas: z.coerce.number().int().min(0).max(9999),
@@ -83,7 +83,7 @@ export async function registrarEntregaPlanos(_previo: unknown, datos: FormData):
 export async function quitarRegistroInforme(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirDiseno()
   if (!perfil) return { ok: false, error: 'Solo el colaborador de Diseño corrige lo que registró.' }
-  const entrada = z.object({ id: z.string().uuid(), tabla: z.enum(['tarea', 'entrega']) }).safeParse(Object.fromEntries(datos))
+  const entrada = z.object({ id: z.guid(), tabla: z.enum(['tarea', 'entrega']) }).safeParse(Object.fromEntries(datos))
   if (!entrada.success) return { ok: false, error: 'No se entendió qué quitar. Vuelve a cargar la pantalla.' }
   const db = await createClient()
   const consulta = entrada.data.tabla === 'tarea'
@@ -133,7 +133,7 @@ export async function guardarInformeDiseno(_previo: unknown, datos: FormData): P
 
 export async function transitarInforme(_previo:unknown,datos:FormData):Promise<ResultadoAccion> {
  const perfil=await exigirSesion()
- const v=z.object({informe_id:z.string().uuid(),estado:z.enum(['EN_REVISION','APROBADO','OBSERVADO']),observacion:z.string().trim().max(2000)}).safeParse(Object.fromEntries(datos))
+ const v=z.object({informe_id:z.guid(),estado:z.enum(['EN_REVISION','APROBADO','OBSERVADO']),observacion:z.string().trim().max(2000)}).safeParse(Object.fromEntries(datos))
  if(!v.success)return {ok:false,error:'Revisa la decisión y la observación.'}
  const permiso=v.data.estado==='EN_REVISION'?'diseno.preparar_informe':'diseno.revisar_informe'
  if(!puede(perfil,permiso))return {ok:false,error:'Tu usuario no puede realizar esta decisión.'}

@@ -7,7 +7,7 @@ import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
-const ES_UUID = z.string().uuid()
+const ES_UUID = z.guid()
 
 export async function liberarCotizacionATesoreria(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -38,7 +38,7 @@ export async function registrarObservacionCotizacionTesoreria(
     return { ok: false, error: 'Solo Tesorería puede registrar observaciones financieras.' }
   }
   const datos = z.object({
-    cotizacion_id: z.string().uuid(),
+    cotizacion_id: z.guid(),
     observacion: z.string().trim().min(3).max(2000),
   }).safeParse(Object.fromEntries(formulario))
   if (!datos.success) return { ok: false, error: 'Escribe una observación de al menos 3 caracteres (máximo 2000).' }

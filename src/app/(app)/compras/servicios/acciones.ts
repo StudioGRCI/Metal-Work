@@ -28,10 +28,10 @@ export async function emitirOrdenServicio(_previo: unknown, formulario: FormData
 
   const analisis = z
     .object({
-      operacion_id: z.string().uuid(),
-      proveedor_id: z.string().uuid('Elige el proveedor del padrón. Si es nuevo, regístralo con «Nuevo».'),
-      orden_id: z.string().uuid().optional(),
-      area_id: z.string().uuid().optional(),
+      operacion_id: z.guid(),
+      proveedor_id: z.guid('Elige el proveedor del padrón. Si es nuevo, regístralo con «Nuevo».'),
+      orden_id: z.guid().optional(),
+      area_id: z.guid().optional(),
       descripcion: z
         .string()
         .trim()
@@ -112,7 +112,7 @@ export async function avanzarOrdenServicio(_previo: unknown, formulario: FormDat
 
   const analisis = z
     .object({
-      id: z.string().uuid(),
+      id: z.guid(),
       paso: z.enum(['EN_EJECUCION', 'CONFORME', 'ANULADA']),
       nota: z.string().trim().max(500, 'La nota pasa de 500 caracteres.'),
     })

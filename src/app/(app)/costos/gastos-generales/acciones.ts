@@ -25,7 +25,7 @@ export async function registrarGastoGeneral(_previo: unknown, formulario: FormDa
 
   const reparto = dato(formulario, 'reparto')
   const v = z.object({
-    operacion_id: z.string().uuid(),
+    operacion_id: z.guid(),
     mes: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
     concepto: z.string().regex(/^[A-Z_]{2,40}$/),
     descripcion: z.string().trim().min(3).max(300),
@@ -72,7 +72,7 @@ export async function anularGastoGeneral(_previo: unknown, formulario: FormData)
   if (!puede(perfil, 'costos.gastos_generales')) return { ok: false, error: SOLO_ADMINISTRACION }
 
   const v = z.object({
-    id: z.string().uuid(),
+    id: z.guid(),
     motivo: z.string().trim().min(5).max(300),
   }).safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })
   if (!v.success) return { ok: false, error: 'Escribe el motivo de la anulación (de 5 a 300 caracteres).' }

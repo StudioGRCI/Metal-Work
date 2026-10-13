@@ -6,8 +6,8 @@ import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/accion
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
-const ordenId = z.string().uuid()
-const integranteId = z.string().uuid()
+const ordenId = z.guid()
+const integranteId = z.guid()
 const nombre = z.string().trim().min(2, 'Escribe el nombre completo.').max(120)
 const funcion = z.enum(['RESPONSABLE', 'COLABORADOR'])
 
@@ -65,7 +65,7 @@ export async function quitarPersonaDiseno(_previo: unknown, datos: FormData): Pr
 export async function asignarAutorPlano(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   if (!await permiso()) return { ok: false, error: 'Solo Diseño asigna los planos.' }
   const entrada = z.object({
-    orden_id: ordenId, plano_id: z.string().uuid(),
+    orden_id: ordenId, plano_id: z.guid(),
     integrante_id: z.union([integranteId, z.literal('')]),
   }).safeParse(Object.fromEntries(datos))
   if (!entrada.success) return { ok: false, error: 'Elige un plano y una persona válidos.' }

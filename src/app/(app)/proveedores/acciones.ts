@@ -18,7 +18,7 @@ const texto = (maximo: number) => z.string().trim().max(maximo, `Ese dato pasa d
 
 const esquemaProveedor = z
   .object({
-    id: z.string().uuid().optional().or(z.literal('')),
+    id: z.guid().optional().or(z.literal('')),
     tipo_documento: z.enum(['RUC', 'DNI', 'CE', 'PASAPORTE']),
     numero_documento: z.string().trim().min(1, 'Falta el número de documento.').max(20, 'El documento es demasiado largo.'),
     razon_social: z.string().trim().min(2, 'Falta la razón social.').max(160, 'La razón social pasa de 160 caracteres.'),
@@ -52,7 +52,7 @@ const esquemaProveedor = z
 // sus dígitos: «191-2345678-0-12» y «1912345678012» son la misma cuenta, y el
 // CCI (20 dígitos) también entra aquí.
 const esquemaCuenta = z.object({
-  id: z.string().uuid().nullish(),
+  id: z.guid().nullish(),
   banco: z.string().trim().min(2, 'Falta el banco de una de las cuentas.').max(80, 'El nombre del banco pasa de 80 caracteres.'),
   numero_cuenta: z
     .string()
@@ -230,7 +230,7 @@ export async function cambiarEstadoProveedor(_previo: unknown, datos: FormData):
   if (!puede(perfil, PERMISO)) return { ok: false, error: 'Tu perfil no puede dar de baja proveedores.' }
 
   const analisis = z
-    .object({ id: z.string().uuid(), activo: z.enum(['true', 'false']) })
+    .object({ id: z.guid(), activo: z.enum(['true', 'false']) })
     .safeParse({ id: datos.get('id'), activo: datos.get('activo') })
   if (!analisis.success) return { ok: false, error: 'No se reconoció el proveedor. Vuelve a cargar la pantalla.' }
 

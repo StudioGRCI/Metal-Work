@@ -16,9 +16,9 @@ const esquema = z.object({
   moneda: z.enum(['PEN', 'USD']),
   total: z.coerce.number().positive().multipleOf(0.01),
   condicion_pago: z.enum(['CONTADO', 'CREDITO']),
-  orden_id: z.union([z.literal(''), z.string().uuid()]),
-  orden_compra_id: z.union([z.literal(''), z.string().uuid()]),
-  documento_compra_id: z.union([z.literal(''), z.string().uuid()]),
+  orden_id: z.union([z.literal(''), z.guid()]),
+  orden_compra_id: z.union([z.literal(''), z.guid()]),
+  documento_compra_id: z.union([z.literal(''), z.guid()]),
   observacion: z.string().trim().max(1000),
 })
 
@@ -76,7 +76,7 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
 
 export async function completarAdquisicion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirPermiso('adquisiciones.registrar')
-  const id = z.string().uuid().safeParse(formulario.get('id'))
+  const id = z.guid().safeParse(formulario.get('id'))
   if (!id.success) return { ok: false, error: 'El borrador no es válido.' }
   const archivo = formulario.get('pdf')
   if (!(archivo instanceof File) || archivo.size < 5 || archivo.size > 10 * 1024 * 1024 || archivo.type !== 'application/pdf') {

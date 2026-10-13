@@ -7,7 +7,7 @@ import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 const esquema = z.object({
-  id: z.string().uuid(), plano_id: z.string().uuid(), area_id: z.string().uuid(),
+  id: z.guid(), plano_id: z.guid(), area_id: z.guid(),
   nombre_archivo: z.string().trim().min(1).max(200),
   nota_envio: z.string().trim().max(1000).optional(),
 })
@@ -42,7 +42,7 @@ export async function resolverRevisionDiseno(_previo: unknown, datos: FormData):
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'Solo Jefatura de Diseño revisa los PDF de colaboradores.' }
   const entrada = z.object({
-    id: z.string().uuid(), accion: z.enum(['aprobar', 'observar']),
+    id: z.guid(), accion: z.enum(['aprobar', 'observar']),
     observacion: z.string().trim().max(1000).optional(),
   }).safeParse(Object.fromEntries(datos))
   if (!entrada.success) return { ok: false, error: 'Elige una decisión válida y escribe hasta 1000 caracteres.' }
@@ -65,7 +65,7 @@ export async function resolverRevisionDiseno(_previo: unknown, datos: FormData):
 export async function resolverVersionPlano(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   const analisis = z.object({
-    id: z.string().uuid(), accion: z.enum(['aprobar', 'observar', 'recibir']),
+    id: z.guid(), accion: z.enum(['aprobar', 'observar', 'recibir']),
     observacion: z.string().trim().max(1000).optional(),
   }).safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: 'Revisa la acción y la observación (máximo 1000 caracteres).' }
@@ -87,15 +87,15 @@ export async function asignarEquipoDiseno(_previo: unknown, formulario: FormData
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.asignar')) return { ok: false, error: 'La asignación de Diseño corresponde al líder del área.' }
 
-  const ordenId = z.string().uuid().safeParse(formulario.get('orden_id'))
-  const lider = z.union([z.string().uuid(), z.literal('')]).safeParse(formulario.get('lider_id'))
+  const ordenId = z.guid().safeParse(formulario.get('orden_id'))
+  const lider = z.union([z.guid(), z.literal('')]).safeParse(formulario.get('lider_id'))
   const ids = formulario.getAll('plano_id')
   if (!ordenId.success || !lider.success || ids.length > 100 || ids.some((id) => typeof id !== 'string')) {
     return { ok: false, error: 'La orden o la lista de planos no es válida.' }
   }
   const asignaciones = z.array(z.object({
-    plano_id: z.string().uuid(),
-    usuario_id: z.union([z.string().uuid(), z.literal('')]),
+    plano_id: z.guid(),
+    usuario_id: z.union([z.guid(), z.literal('')]),
   })).max(100).safeParse(ids.map((id) => ({
     plano_id: String(id),
     usuario_id: formulario.get(`responsable_${String(id)}`),
@@ -119,7 +119,7 @@ export async function asignarEquipoDiseno(_previo: unknown, formulario: FormData
 export async function guardarLiderEntregaPlanos(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'Solo Diseño puede indicar quién lidera la entrega de planos.' }
-  const analisis = z.object({ orden_id: z.string().uuid(), nombre: z.string().trim().min(2).max(120) })
+  const analisis = z.object({ orden_id: z.guid(), nombre: z.string().trim().min(2).max(120) })
     .safeParse(Object.fromEntries(formulario))
   if (!analisis.success) return { ok: false, error: 'Escribe el nombre completo del líder (entre 2 y 120 caracteres).' }
   const supabase = await createClient()

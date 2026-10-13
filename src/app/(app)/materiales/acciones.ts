@@ -14,12 +14,12 @@ import { createClient } from '@/lib/supabase/server'
  * error y la pantalla diría «guardado» sin haber guardado.
  */
 const esquema = z.object({
-  id: z.string().uuid().optional().or(z.literal('')),
+  id: z.guid().optional().or(z.literal('')),
   codigo: z.string().trim().max(30).optional(),
   descripcion: z.string().trim().min(3, 'Escribe cómo se llama el material'),
   especificacion_tecnica: z.string().trim().max(300).optional(),
-  categoria_id: z.string().uuid('Elige la categoría'),
-  unidad_medida_id: z.string().uuid('Elige la unidad'),
+  categoria_id: z.guid('Elige la categoría'),
+  unidad_medida_id: z.guid('Elige la unidad'),
   confirmar_unidad: z.enum(['si']).optional(),
 })
 
@@ -96,7 +96,7 @@ function traducir(error: { message: string; code?: string }) {
   return mensajeDeError(error)
 }
 
-const esquemaEstado = z.object({ id: z.string().uuid(), activo: z.enum(['1', '0']) })
+const esquemaEstado = z.object({ id: z.guid(), activo: z.enum(['1', '0']) })
 
 /** Un material no se borra: se retira del catálogo, y lo que ya lo usa sigue entero. */
 export async function cambiarEstadoMaterial(

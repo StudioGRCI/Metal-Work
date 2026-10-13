@@ -19,8 +19,8 @@ export async function marcarAsistencia(_previo: unknown, formulario: FormData): 
 
   const analisis = z
     .object({
-      marca_id: z.string().uuid(),
-      trabajador_id: z.string().uuid(),
+      marca_id: z.guid(),
+      trabajador_id: z.guid(),
       tipo: z.enum(['INGRESO', 'SALIDA']),
       observacion: z.string().max(300, 'La observación pasa de 300 caracteres.'),
     })
@@ -55,7 +55,7 @@ export async function anularAsistencia(_previo: unknown, formulario: FormData): 
 
   const analisis = z
     .object({
-      id: z.string().uuid(),
+      id: z.guid(),
       motivo: z.string().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.'),
     })
     .safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })

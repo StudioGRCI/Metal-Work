@@ -36,7 +36,7 @@ export async function fijarReglaAprobacion(_previo: unknown, datos: FormData): P
         .min(0, 'El monto va de 0 en adelante.')
         .max(999999999, 'El monto es demasiado grande.')
         .multipleOf(0.01, 'El monto lleva como máximo dos decimales.'),
-      rol_aprobador: z.string().uuid('Elige el puesto que aprobará las compras.'),
+      rol_aprobador: z.guid('Elige el puesto que aprobará las compras.'),
     })
     .safeParse({ activa: datos.get('activa'), monto_desde: datos.get('monto_desde'), rol_aprobador: datos.get('rol_aprobador') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa la regla.' }
@@ -64,7 +64,7 @@ export async function fijarReglaAprobacion(_previo: unknown, datos: FormData): P
 // (`es_aprobador_compras`). La pantalla solo muestra los botones a ese puesto.
 export async function aprobarCompra(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   await exigirSesion()
-  const id = z.string().uuid().safeParse(datos.get('id'))
+  const id = z.guid().safeParse(datos.get('id'))
   if (!id.success) return { ok: false, error: 'No se reconoció la orden. Vuelve a cargar la pantalla.' }
   const tipo = TIPO.parse(datos.get('tipo'))
 
@@ -89,7 +89,7 @@ export async function rechazarCompra(_previo: unknown, datos: FormData): Promise
   await exigirSesion()
   const analisis = z
     .object({
-      id: z.string().uuid(),
+      id: z.guid(),
       motivo: z
         .string()
         .trim()

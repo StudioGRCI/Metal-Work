@@ -17,7 +17,7 @@ const RUTA = '/diseno/evaluaciones'
  * `administracion.recibir_evaluacion` para recibir o devolver.
  */
 const DatosEvaluacion = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   nueva: z.enum(['si', 'no']),
   evaluado_nombre: z.string().trim().min(2).max(120),
   puesto: z.string().trim().min(2).max(100),
@@ -74,7 +74,7 @@ const ESTADO_DE_LA_ACCION = { enviar: 'ENVIADA', recibir: 'RECIBIDA', devolver: 
 export async function cambiarEstadoEvaluacion(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   const entrada = z.object({
-    id: z.string().uuid(),
+    id: z.guid(),
     accion: z.enum(['enviar', 'recibir', 'devolver']),
     observacion: z.string().trim().max(1000).optional(),
   }).safeParse(Object.fromEntries(datos))
@@ -115,7 +115,7 @@ export async function cambiarEstadoEvaluacion(_previo: unknown, datos: FormData)
 export async function borrarEvaluacionDiseno(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.evaluar')) return { ok: false, error: 'Solo quien hizo la evaluación borra su borrador.' }
-  const id = z.string().uuid().safeParse(datos.get('id'))
+  const id = z.guid().safeParse(datos.get('id'))
   if (!id.success) return { ok: false, error: 'No se entendió qué evaluación borrar. Vuelve a cargar la pantalla.' }
 
   const db = await createClient()
