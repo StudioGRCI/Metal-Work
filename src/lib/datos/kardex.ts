@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { type Almacen, esAlmacen } from '@/lib/dominio/almacen'
 import { sumarDias } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Vistas } from '@/types/database'
@@ -7,7 +8,8 @@ import type { Database, Vistas } from '@/types/database'
 export type FilaKardex = Pick<Vistas<'v_kardex_almacen'>,
   'id' | 'fecha' | 'material_id' | 'material_codigo' | 'material' | 'unidad_medida' | 'movimiento' | 'origen'
   | 'entrada' | 'salida' | 'saldo' | 'documento' | 'codigo_unidad' | 'orden_id' | 'orden_numero'
-  | 'recibido_por_nombre' | 'registrado_por_nombre' | 'con_foto' | 'desde_planilla' | 'cargado_en'>
+  | 'recibido_por_nombre' | 'registrado_por_nombre' | 'con_foto' | 'desde_planilla' | 'cargado_en'
+  | 'almacen' | 'codigo_interno' | 'requerimiento_numero' | 'con_formato' | 'formato_pendiente'>
 
 export type UnidadParaSalida = Database['public']['Functions']['unidades_para_salida_almacen']['Returns'][number]
 
@@ -18,6 +20,8 @@ export type FiltrosKardex = {
   desde?: string
   hasta?: string
   unidad?: string
+  /** Uno de los cuatro almacenes, o todos. */
+  almacen?: Almacen
   pagina: number
 }
 
@@ -35,17 +39,19 @@ export function filtrosDeKardex(params: Record<string, string | string[] | undef
   const hasta = texto(params.hasta)
   // Los comodines de ilike se quitan: se busca el texto tal cual se escribió.
   const unidad = texto(params.unidad).replace(/[%_*,()]/g, '').slice(0, 60)
+  const almacen = texto(params.almacen).toUpperCase()
   return {
     material: UUID.test(material) ? material : undefined,
     tipo: tipo === 'INGRESO' || tipo === 'SALIDA' || tipo === 'AJUSTE' ? tipo : undefined,
     desde: DIA.test(desde) ? desde : undefined,
     hasta: DIA.test(hasta) ? hasta : undefined,
     unidad: unidad || undefined,
+    almacen: esAlmacen(almacen) ? almacen : undefined,
     pagina: Math.max(1, Number.parseInt(texto(params.pagina) || '1', 10) || 1),
   }
 }
 
-const COLUMNAS = 'id,fecha,material_id,material_codigo,material,unidad_medida,movimiento,origen,entrada,salida,saldo,documento,codigo_unidad,orden_id,orden_numero,recibido_por_nombre,registrado_por_nombre,con_foto,desde_planilla,cargado_en'
+const COLUMNAS = 'id,fecha,material_id,material_codigo,material,unidad_medida,movimiento,origen,entrada,salida,saldo,documento,codigo_unidad,orden_id,orden_numero,recibido_por_nombre,registrado_por_nombre,con_foto,desde_planilla,cargado_en,almacen,codigo_interno,requerimiento_numero,con_formato,formato_pendiente'
 
 /** Lo que más filas puede llevar el Excel del kardex: un año largo de almacén. */
 export const MAX_FILAS_EXCEL = 20000
@@ -62,6 +68,7 @@ function consultaKardex(db: Awaited<ReturnType<typeof createClient>>, filtros: O
   if (filtros.desde) consulta = consulta.gte('fecha', `${filtros.desde}T00:00:00-05:00`)
   if (filtros.hasta) consulta = consulta.lt('fecha', `${sumarDias(filtros.hasta, 1)}T00:00:00-05:00`)
   if (filtros.unidad) consulta = consulta.ilike('codigo_unidad', `%${filtros.unidad}%`)
+  if (filtros.almacen) consulta = consulta.eq('almacen', filtros.almacen)
   return consulta
 }
 
@@ -107,14 +114,26 @@ export async function kardexParaExcel(filtros: Omit<FiltrosKardex, 'pagina'>) {
   return { filas, truncado: true }
 }
 
+export type MaterialDelKardex = {
+  material_id: string
+  codigo: string
+  descripcion: string
+  unidad: string | null
+  existencia: number
+  disponible: number
+  /** A cuál de los cuatro almacenes pertenece; null mientras esté por clasificar. */
+  almacen: Almacen | null
+  categoria: string | null
+}
+
 /** Los materiales que tienen kardex: los que alguna vez entraron, salieron o se contaron. */
 export async function materialesDelKardex() {
   const db = await createClient()
-  const filas: { material_id: string; codigo: string; descripcion: string; unidad: string | null; existencia: number; disponible: number }[] = []
+  const filas: MaterialDelKardex[] = []
   let ultimo: string | undefined
   for (;;) {
     let consulta = db.from('v_existencias_materiales')
-      .select('material_id,codigo,descripcion,unidad,existencia,disponible')
+      .select('material_id,codigo,descripcion,unidad,existencia,disponible,almacen,categoria')
       .order('material_id').limit(1000)
     if (ultimo) consulta = consulta.gt('material_id', ultimo)
     const { data, error } = await consulta
@@ -124,6 +143,7 @@ export async function materialesDelKardex() {
       filas.push({
         material_id: m.material_id, codigo: m.codigo ?? '', descripcion: m.descripcion ?? 'Material',
         unidad: m.unidad, existencia: Number(m.existencia ?? 0), disponible: Number(m.disponible ?? 0),
+        almacen: esAlmacen(m.almacen) ? m.almacen : null, categoria: m.categoria,
       })
     }
     if (!data?.length || data.length < 1000) break
@@ -157,4 +177,56 @@ export async function minimosDeStock(): Promise<Map<string, number>> {
     if (!data || data.length < 1000) break
   }
   return minimos
+}
+
+/** Una salida de materia prima o EPP que sigue abierta: falta su formato firmado. */
+export type SalidaPorCerrar = Pick<FilaKardex, 'id' | 'fecha' | 'material_id' | 'material' | 'material_codigo' | 'unidad_medida'
+  | 'salida' | 'codigo_unidad' | 'recibido_por_nombre' | 'documento' | 'almacen' | 'requerimiento_numero'>
+
+/** Las salidas que esperan el escaneo del formato firmado, la más antigua primero. */
+export async function salidasPorCerrar(): Promise<SalidaPorCerrar[]> {
+  const db = await createClient()
+  const { data, error } = await db.from('v_kardex_almacen')
+    .select('id,fecha,material_id,material,material_codigo,unidad_medida,salida,codigo_unidad,recibido_por_nombre,documento,almacen,requerimiento_numero')
+    .eq('formato_pendiente', true)
+    .order('fecha', { ascending: true })
+    .limit(200)
+  if (error) throw new Error(`No se pudieron cargar las salidas por cerrar: ${error.message}`)
+  return data ?? []
+}
+
+/** Una línea de requerimiento con algo por entregar, para atenderla desde la salida. */
+export type LineaRqParaSalida = {
+  linea_id: string
+  requerimiento_id: string
+  numero: string
+  codigo_interno: string
+  area: string
+  item: number
+  descripcion: string
+  cantidad: number
+  unidad: string
+  categoria: string
+  almacen: Almacen | null
+  entregado: number
+  pendiente: number
+}
+
+/** Lo que piden los requerimientos vivos y todavía no se entregó, por número e ítem. */
+export async function lineasDeRequerimientoParaSalida(): Promise<LineaRqParaSalida[]> {
+  const db = await createClient()
+  const { data, error } = await db.from('v_rq_lineas_para_salida')
+    .select('linea_id,requerimiento_id,numero,codigo_interno,area,item,descripcion,cantidad,unidad,categoria,almacen,entregado,pendiente')
+    .gt('pendiente', 0)
+    .order('numero', { ascending: false })
+    .order('item')
+    .limit(500)
+  if (error) throw new Error(`No se pudieron cargar los requerimientos por atender: ${error.message}`)
+  return (data ?? []).flatMap((l) => l.linea_id && l.requerimiento_id && l.numero ? [{
+    linea_id: l.linea_id, requerimiento_id: l.requerimiento_id, numero: l.numero,
+    codigo_interno: l.codigo_interno ?? 'PLANTA', area: l.area ?? '', item: l.item ?? 0,
+    descripcion: l.descripcion ?? '', cantidad: Number(l.cantidad ?? 0), unidad: l.unidad ?? '',
+    categoria: l.categoria ?? '', almacen: esAlmacen(l.almacen) ? l.almacen : null,
+    entregado: Number(l.entregado ?? 0), pendiente: Number(l.pendiente ?? 0),
+  }] : [])
 }

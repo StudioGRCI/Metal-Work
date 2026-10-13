@@ -317,6 +317,7 @@ export type Database = {
           activo: boolean
           creado_en: string
           actualizado_en: string
+          almacen: string | null
         }
         Insert: {
           id?: string
@@ -329,6 +330,7 @@ export type Database = {
           activo?: boolean
           creado_en?: string
           actualizado_en?: string
+          almacen?: string | null
         }
         Update: {
           id?: string
@@ -341,6 +343,7 @@ export type Database = {
           activo?: boolean
           creado_en?: string
           actualizado_en?: string
+          almacen?: string | null
         }
         Relationships: [
           {
@@ -2116,6 +2119,11 @@ export type Database = {
           orden_id: string | null
           desde_planilla: boolean
           cargado_en: string
+          codigo_interno: string | null
+          requerimiento_linea_id: string | null
+          formato_ruta: string | null
+          formato_cerrado_en: string | null
+          formato_cerrado_por: string | null
         }
         Insert: {
           id: string
@@ -2140,6 +2148,11 @@ export type Database = {
           orden_id?: string | null
           desde_planilla?: boolean
           cargado_en?: string
+          codigo_interno?: string | null
+          requerimiento_linea_id?: string | null
+          formato_ruta?: string | null
+          formato_cerrado_en?: string | null
+          formato_cerrado_por?: string | null
         }
         Update: {
           id?: string
@@ -2164,6 +2177,11 @@ export type Database = {
           orden_id?: string | null
           desde_planilla?: boolean
           cargado_en?: string
+          codigo_interno?: string | null
+          requerimiento_linea_id?: string | null
+          formato_ruta?: string | null
+          formato_cerrado_en?: string | null
+          formato_cerrado_por?: string | null
         }
         Relationships: [
           {
@@ -2185,6 +2203,13 @@ export type Database = {
             columns: ["devolucion_de"]
             isOneToOne: false
             referencedRelation: "movimientos_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_formato_cerrado_por_fkey"
+            columns: ["formato_cerrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           },
           {
@@ -2213,6 +2238,13 @@ export type Database = {
             columns: ["requerimiento_detalle_id"]
             isOneToOne: false
             referencedRelation: "requerimiento_material_detalles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_requerimiento_linea_id_fkey"
+            columns: ["requerimiento_linea_id"]
+            isOneToOne: false
+            referencedRelation: "requerimiento_lineas"
             referencedColumns: ["id"]
           },
           {
@@ -5596,6 +5628,9 @@ export type Database = {
           categoria_id: string
           creado_en: string
           actualizado_en: string
+          orden_compra_id: string | null
+          atendida_en: string | null
+          atendida_por: string | null
         }
         Insert: {
           id?: string
@@ -5607,6 +5642,9 @@ export type Database = {
           categoria_id: string
           creado_en?: string
           actualizado_en?: string
+          orden_compra_id?: string | null
+          atendida_en?: string | null
+          atendida_por?: string | null
         }
         Update: {
           id?: string
@@ -5618,13 +5656,30 @@ export type Database = {
           categoria_id?: string
           creado_en?: string
           actualizado_en?: string
+          orden_compra_id?: string | null
+          atendida_en?: string | null
+          atendida_por?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "requerimiento_lineas_atendida_por_fkey"
+            columns: ["atendida_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "requerimiento_lineas_categoria_id_fkey"
             columns: ["categoria_id"]
             isOneToOne: false
             referencedRelation: "categorias_material"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_lineas_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
             referencedColumns: ["id"]
           },
           {
@@ -6990,6 +7045,8 @@ export type Database = {
           existencia: number | null
           reservado: number | null
           disponible: number | null
+          almacen: string | null
+          categoria: string | null
         }
         Relationships: []
       }
@@ -7079,6 +7136,12 @@ export type Database = {
           devolucion_de: string | null
           desde_planilla: boolean | null
           cargado_en: string | null
+          almacen: string | null
+          codigo_interno: string | null
+          requerimiento_linea_id: string | null
+          requerimiento_numero: string | null
+          con_formato: boolean | null
+          formato_pendiente: boolean | null
         }
         Relationships: []
       }
@@ -7280,6 +7343,26 @@ export type Database = {
         }
         Relationships: []
       }
+      v_rq_lineas_para_salida: {
+        Row: {
+          linea_id: string | null
+          requerimiento_id: string | null
+          numero: string | null
+          codigo_interno: string | null
+          area: string | null
+          estado: string | null
+          fecha_requerida: string | null
+          item: number | null
+          descripcion: string | null
+          cantidad: number | null
+          unidad: string | null
+          categoria: string | null
+          almacen: string | null
+          entregado: number | null
+          pendiente: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       abrir_orden_del_taller: {
@@ -7311,6 +7394,12 @@ export type Database = {
           p_tabla: string | null
         }
         Returns: null
+      }
+      almacen_de_material: {
+        Args: {
+          p_material: string | null
+        }
+        Returns: string
       }
       anular_asistencia: {
         Args: {
@@ -7424,6 +7513,13 @@ export type Database = {
       cerrar_planilla: {
         Args: {
           p_planilla: string | null
+        }
+        Returns: string
+      }
+      cerrar_salida_con_formato: {
+        Args: {
+          p_id: string | null
+          p_ruta: string | null
         }
         Returns: string
       }
@@ -7784,6 +7880,22 @@ export type Database = {
           p_moneda: string | null
           p_con_factura: boolean | null
           p_codigo_interno: string | null
+        }
+        Returns: string
+      }
+      emitir_compra_del_requerimiento: {
+        Args: {
+          p_id: string | null
+          p_requerimiento_id: string | null
+          p_items: number[] | null
+          p_proveedor_id: string | null
+          p_referencia: string | null
+          p_detalles: Json | null
+          p_fecha: string | null
+          p_condicion: string | null
+          p_dias: number | null
+          p_moneda: string | null
+          p_con_factura: boolean | null
         }
         Returns: string
       }
@@ -8609,6 +8721,20 @@ export type Database = {
         Args: {
           p_entrega: string | null
           p_constancia: string | null
+        }
+        Returns: string
+      }
+      registrar_salida_material: {
+        Args: {
+          p_id: string | null
+          p_material: string | null
+          p_cantidad: number | null
+          p_unidad: string | null
+          p_codigo: string | null
+          p_motivo: string | null
+          p_recibe: string | null
+          p_foto: string | null
+          p_requerimiento_linea: string | null
         }
         Returns: string
       }

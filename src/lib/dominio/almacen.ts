@@ -53,3 +53,44 @@ export const ORIGEN_KARDEX: Record<string, string> = {
   SALIDA_GENERAL: 'Salida por unidad',
   CONTEO: 'Conteo físico',
 }
+
+/** Los cuatro almacenes de la empresa. Cada uno sale con su propia regla. */
+export type Almacen = 'EPP' | 'CONSUMIBLES' | 'ACCESORIOS' | 'MATERIA_PRIMA'
+
+export const ALMACENES: Record<Almacen, Def & { regla: string; formato: string | null }> = {
+  CONSUMIBLES: {
+    etiqueta: 'Consumibles', tono: 'exito',
+    descripcion: 'Discos, lijas, soldadura, pintura y ferretería: lo que más rota.',
+    regla: 'Sale con la unidad a la que va, quién recibe y la foto.',
+    formato: null,
+  },
+  ACCESORIOS: {
+    etiqueta: 'Accesorios', tono: 'info',
+    descripcion: 'Sistemas y accesorios de la unidad: hidráulico, eléctrico, frenos, suspensión.',
+    regla: 'Sale solo para una unidad con código interno. Lo que entró para una unidad no sale para otra.',
+    formato: null,
+  },
+  MATERIA_PRIMA: {
+    etiqueta: 'Materia prima', tono: 'aviso',
+    descripcion: 'Planchas, perfiles y tubos de acero: el almacén más costoso.',
+    regla: 'La salida queda abierta hasta adjuntar el formato de recepción firmado por Almacén y por quien recibe.',
+    formato: 'Formato de recepción de materia prima',
+  },
+  EPP: {
+    etiqueta: 'EPP', tono: 'acento',
+    descripcion: 'Cascos, guantes, lentes, caretas y arneses.',
+    regla: 'La salida queda abierta hasta adjuntar el formato de entrega de EPP firmado.',
+    formato: 'Formato de entrega de EPP',
+  },
+}
+
+export const ORDEN_ALMACENES: Almacen[] = ['CONSUMIBLES', 'ACCESORIOS', 'MATERIA_PRIMA', 'EPP']
+
+export function esAlmacen(valor: string | null | undefined): valor is Almacen {
+  return valor === 'EPP' || valor === 'CONSUMIBLES' || valor === 'ACCESORIOS' || valor === 'MATERIA_PRIMA'
+}
+
+/** Un almacén cuya salida se cierra con un formato firmado. */
+export function exigeFormato(almacen: string | null | undefined) {
+  return almacen === 'MATERIA_PRIMA' || almacen === 'EPP'
+}

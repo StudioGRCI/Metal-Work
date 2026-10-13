@@ -56,9 +56,31 @@ recorrido de pantallas). **Falta aplicarlas y comprobarlas en producción.**
 | Ver la bandeja de aprobación (`/compras/aprobacion`), con órdenes de compra y de servicio | El aprobador, Gerencia y quien tiene `compras.ver` (solo lectura) | `documentos_por_aprobar`; la OS se aprueba con `aprobar_orden_servicio` y se rechaza con `rechazar_orden_servicio` |
 | Atender el requerimiento (`/requerimientos/atencion`): marcar sin stock o listo en almacén, y recepcionar lo comprado | `almacen.recibir`: Almacén | `rq_marcar_sin_stock`, `rq_marcar_listo_en_almacen` (avisa al supervisor del área que pidió y a quien emitió) |
 | Entregar el RQ al área, anotando quién lo recogió | `almacen.despachar`: Almacén | `rq_marcar_entregado`; cierra el RQ y lo congela |
-| Marcar que Logística está comprando un RQ sin stock | `compras.crear`: Logística | `rq_marcar_en_atencion`; solo desde SIN_STOCK. La OC se vincula desde su hilo |
+| Marcar que Logística está comprando un RQ sin stock | `compras.crear`: Logística | `rq_marcar_en_atencion`; solo desde SIN_STOCK |
+| Generar la OC desde el RQ (`/requerimientos/atencion`, botón «Generar OC»): elegir qué insumos cubre; la OC lleva el código interno y el motivo del RQ y sigue el circuito de la directa | `compras.crear`: Logística | `emitir_compra_del_requerimiento`; solo desde SIN_STOCK o EN_ATENCION, pasa el RQ a EN_ATENCION con `rq_marcar_en_atencion`. Cada insumo guarda su OC (`requerimiento_lineas.orden_compra_id`); una OC rechazada por Gerencia libera el insumo. Órdenes de compra dice qué RQ atiende cada OC (migración `20261013120000`, check 332, `herramientas/banco/probar-oc-del-rq.mjs`) |
 | Cargar el conteo inicial del almacén (formato en Excel desde el kardex) | `almacen.recibir`: Almacén. Sin saldo entra como saldo inicial con su precio; con saldo, como ajuste. Cargar el mismo archivo otra vez no duplica | `registrar_ingreso_almacen` y `registrar_conteo_almacen`, los mismos de siempre |
 | Fijar el stock mínimo de un material | `almacen.recibir` | `fijar_stock_minimo`. Al cruzar el mínimo avisa una vez a quien tiene `almacen.recibir` o `compras.crear`; a Logística el aviso la lleva a Compras, a Almacén al kardex |
+
+## Los cuatro almacenes y la salida por requerimiento
+
+Migración `20261013140000_cuatro_almacenes_y_salida_por_requerimiento`.
+Comprobada con los roles reales en la base local (check 331) y en el banco
+local con la cuenta de Almacén el 2026-10-13. **Falta aplicarla y comprobarla
+en producción.**
+
+Cada categoría de material pertenece a uno de cuatro almacenes
+(`categorias_material.almacen`: `CONSUMIBLES`, `ACCESORIOS`, `MATERIA_PRIMA`,
+`EPP`; una subcategoría hereda el de su padre y «Por clasificar» queda sin
+almacén). El kardex los muestra como tablero y se filtra con `?almacen=`.
+
+| Qué | Quién | Cómo lo exige la base |
+| --- | --- | --- |
+| Registrar una salida, con o sin requerimiento | `almacen.despachar`: Almacén | `registrar_salida_material` (la antigua `registrar_salida_almacen` la llama sin RQ). Con una línea de RQ, la cantidad no puede pasar de lo que falta entregar, el material tiene que ser del almacén de la categoría pedida y el destino lo pone el código interno del RQ (salvo `PLANTA`). |
+| Sacar un consumible | `almacen.despachar` | Igual que siempre: unidad, quién recibe y foto. Un material sin almacén sale así. |
+| Sacar un accesorio | `almacen.despachar` | Solo para una unidad con código interno. Lo que entró marcado para una unidad (`movimientos_materiales.codigo_interno` en el ingreso) no sale para otra: «De este accesorio hay N libre para la unidad X». |
+| Sacar materia prima o EPP | `almacen.despachar` | La salida se registra y queda **abierta** (`formato_pendiente` en `v_kardex_almacen`) hasta cerrarla. |
+| Cerrar la salida con el formato firmado | `almacen.despachar` | `cerrar_salida_con_formato`: el escaneo o la foto (PDF, JPG, PNG o WebP, hasta 10 MB) va en `evidencias-almacen` como `<uid>/<id>-formato.<ext>`, del mismo dueño que lo carga. El formato imprimible está en `/almacen/movimientos/<id>/formato` y el firmado se ve en `/almacen/movimientos/<id>/formato-firmado`. |
+| Ver qué piden los RQ y qué falta entregar (`v_rq_lineas_para_salida`) | `requerimientos.ver` (Almacén y Supervisión, además de quien ya lo tenía) o `compras.crear` | La vista corre como quien la consulta (`security_invoker`) y respeta las políticas de `requerimientos`. Supervisión ve, pero no saca ni cierra nada: no tiene `almacen.despachar`. |
 
 ## Quién pone cada parte del costo de una OT
 
