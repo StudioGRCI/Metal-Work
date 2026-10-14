@@ -77,79 +77,87 @@ export type Marca = {
   tipo: string
   hora: string
   tardanza_minutos: number
-  descuento: number
+  /** El ingreso pasó la tolerancia: cuenta para el descuento del mes. */
+  es_tardanza: boolean
   observacion: string | null
   anulado_en: string | null
   motivo_anulacion: string | null
 }
 
-const COLUMNAS_MARCA = 'id, trabajador_id, fecha, tipo, hora, tardanza_minutos, descuento, observacion, anulado_en, motivo_anulacion'
+const COLUMNAS_MARCA = 'id, trabajador_id, fecha, tipo, hora, tardanza_minutos, es_tardanza, observacion, anulado_en, motivo_anulacion'
 
 /** Las marcas de un día, incluidas las anuladas (se muestran tachadas). */
 export async function marcasDelDia(fecha: string): Promise<Marca[]> {
   const supabase = await createClient()
   const { data, error } = await supabase.from('asistencias').select(COLUMNAS_MARCA).eq('fecha', fecha).order('hora')
   if (error) throw new Error(`No se pudo leer la asistencia del día: ${error.message}`)
-  return (data ?? []).map((m) => ({ ...m, descuento: Number(m.descuento) }))
+  return data ?? []
 }
 
-/** La regla vigente de tardanza. */
-export async function reglaTardanza() {
+/** La regla vigente: la tolerancia y cada cuántas tardanzas del mes se descuenta qué porcentaje. */
+export type ReglaTardanza = {
+  tolerancia_minutos: number
+  tardanzas_por_descuento: number
+  porcentaje_descuento: number
+  actualizado_en: string
+}
+
+export async function reglaTardanza(): Promise<ReglaTardanza | null> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('rrhh_regla_tardanza')
-    .select('tolerancia_minutos, descuento_por_minuto, actualizado_en')
+    .select('tolerancia_minutos, tardanzas_por_descuento, porcentaje_descuento, actualizado_en')
     .maybeSingle()
   if (error) throw new Error(`No se pudo leer la regla de tardanza: ${error.message}`)
-  return data ? { ...data, descuento_por_minuto: Number(data.descuento_por_minuto) } : null
+  return data ? { ...data, porcentaje_descuento: Number(data.porcentaje_descuento) } : null
 }
 
-/** Lo que acumula cada persona en un mes: tardanzas, minutos y descuento. */
+/** Lo que acumula cada persona en un mes: tardanzas, y el descuento que suman cada tantas. */
 export type ResumenTardanza = {
   trabajador: Pick<Trabajador, 'id' | 'nombres' | 'apellidos' | 'dni' | 'cargo' | 'activo'>
   dias_con_ingreso: number
   tardanzas: number
   minutos: number
-  descuento: number
+  /** Cuántos grupos completos de tardanzas hay en el mes. */
+  grupos: number
+  /** El porcentaje de su remuneración que se le descuenta. */
+  porcentaje: number
+  /** Solo para quien ve el sueldo (RR. HH.); `null` también si falta su remuneración. */
+  remuneracion_mensual: number | null
+  descuento: number | null
 }
 
-/** El resumen del mes (`YYYY-MM`), de mayor a menor descuento. Cuenta solo marcas vigentes. */
+/**
+ * El resumen del mes (`YYYY-MM`), de mayor a menor descuento. Lo calcula la
+ * base (`rrhh_tardanzas_del_mes`) con las marcas vigentes y la regla de hoy.
+ */
 export async function resumenTardanzas(mes: string): Promise<ResumenTardanza[]> {
   const supabase = await createClient()
-  const desde = `${mes}-01`
-  const [anio, m] = mes.split('-').map(Number)
-  const hasta = `${m === 12 ? anio + 1 : anio}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01`
-  const [marcas, personal] = await Promise.all([
-    supabase
-      .from('asistencias')
-      .select('trabajador_id, tardanza_minutos, descuento')
-      .eq('tipo', 'INGRESO')
-      .is('anulado_en', null)
-      .gte('fecha', desde)
-      .lt('fecha', hasta)
-      .limit(5000),
-    supabase.from('trabajadores').select('id, nombres, apellidos, dni, cargo, activo'),
-  ])
-  if (marcas.error) throw new Error(`No se pudo leer la asistencia del mes: ${marcas.error.message}`)
-  if (personal.error) throw new Error(`No se pudo leer el personal: ${personal.error.message}`)
-
-  const porPersona = new Map<string, ResumenTardanza>()
-  for (const t of personal.data ?? []) {
-    porPersona.set(t.id, { trabajador: t, dias_con_ingreso: 0, tardanzas: 0, minutos: 0, descuento: 0 })
-  }
-  for (const x of marcas.data ?? []) {
-    const r = porPersona.get(x.trabajador_id)
-    if (!r) continue
-    r.dias_con_ingreso += 1
-    if (Number(x.descuento) > 0) {
-      r.tardanzas += 1
-      r.minutos += x.tardanza_minutos
-      r.descuento += Number(x.descuento)
-    }
-  }
-  return [...porPersona.values()]
-    .filter((r) => r.trabajador.activo || r.dias_con_ingreso > 0)
-    .sort((a, b) => b.descuento - a.descuento || a.trabajador.apellidos.localeCompare(b.trabajador.apellidos))
+  const { data, error } = await supabase.rpc('rrhh_tardanzas_del_mes', { p_mes: `${mes}-01` })
+  if (error) throw new Error(`No se pudo leer las tardanzas del mes: ${error.message}`)
+  return (data ?? []).flatMap((f) =>
+    f.trabajador_id
+      ? [
+          {
+            trabajador: {
+              id: f.trabajador_id,
+              nombres: f.nombres ?? '',
+              apellidos: f.apellidos ?? '',
+              dni: f.dni ?? '',
+              cargo: f.cargo,
+              activo: f.activo ?? true,
+            },
+            dias_con_ingreso: f.dias_con_ingreso ?? 0,
+            tardanzas: f.tardanzas ?? 0,
+            minutos: f.minutos ?? 0,
+            grupos: f.grupos ?? 0,
+            porcentaje: Number(f.porcentaje ?? 0),
+            remuneracion_mensual: f.remuneracion_mensual === null ? null : Number(f.remuneracion_mensual),
+            descuento: f.descuento === null ? null : Number(f.descuento),
+          },
+        ]
+      : [],
+  )
 }
 
 /** Del primer día de un mes `YYYY-MM` al primero del siguiente, como texto. */
@@ -257,4 +265,56 @@ export async function listarObservaciones(filtro: { mes: string } | { trabajador
   const { data, error } = await consulta.order('fecha', { ascending: false }).order('creado_en', { ascending: false }).limit(2000)
   if (error) throw new Error(`No se pudieron leer las observaciones: ${error.message}`)
   return ((data ?? []) as unknown as FilaObservacion[]).map((o) => ({ ...o, trabajador: unico(o.trabajador) }))
+}
+
+/** Un permiso que pidió una persona, con lo que ya justificó con sus horas extras. */
+export type Permiso = {
+  id: string
+  trabajador_id: string
+  nombre: string
+  cargo: string | null
+  activo: boolean
+  fecha: string
+  horas: number
+  motivo: string
+  justificadas: number
+  por_justificar: number
+  /** Las horas extras que hoy tiene reservadas la persona. */
+  saldo: number
+  creado_en: string
+  anulado_en: string | null
+  motivo_anulacion: string | null
+}
+
+/**
+ * Con `mes` (`YYYY-MM`), los permisos de ese mes, incluidos los anulados; sin
+ * él, los que todavía deben horas, de cualquier mes. Lo calcula la base
+ * (`rrhh_permisos_personal`): quien solo consulta no lee el uso del saldo.
+ */
+export async function listarPermisos(mes?: string): Promise<Permiso[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('rrhh_permisos_personal', mes ? { p_mes: `${mes}-01` } : {})
+  if (error) throw new Error(`No se pudieron leer los permisos: ${error.message}`)
+  return (data ?? []).flatMap((f) =>
+    f.id && f.trabajador_id && f.fecha && f.creado_en
+      ? [
+          {
+            id: f.id,
+            trabajador_id: f.trabajador_id,
+            nombre: f.nombre ?? '',
+            cargo: f.cargo,
+            activo: f.activo ?? true,
+            fecha: f.fecha,
+            horas: Number(f.horas ?? 0),
+            motivo: f.motivo ?? '',
+            justificadas: Number(f.justificadas ?? 0),
+            por_justificar: Number(f.por_justificar ?? 0),
+            saldo: Number(f.saldo ?? 0),
+            creado_en: f.creado_en,
+            anulado_en: f.anulado_en,
+            motivo_anulacion: f.motivo_anulacion,
+          },
+        ]
+      : [],
+  )
 }

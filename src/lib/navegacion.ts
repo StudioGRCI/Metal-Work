@@ -5,6 +5,7 @@ import {
   Boxes,
   Calculator,
   Building2,
+  CalendarClock,
   CarFront,
   ClipboardCheck,
   ClipboardList,
@@ -332,15 +333,18 @@ export const NAVEGACION = [
   },
   // Recursos Humanos lleva la ficha del personal y su horario; la portería, con
   // una subcuenta de RR. HH., marca la asistencia desde el celular y de ahí
-  // salen las tardanzas con su descuento. Las planillas son suyas también:
-  // antes colgaban de Finanzas con el nombre del área, y en el menú de RR. HH.
-  // se leía «Recursos Humanos» dentro de «Recursos Humanos».
+  // salen las tardanzas, que descuentan cada tres en el mes. Los permisos que
+  // pide la gente se registran aquí y se justifican con sus horas extras
+  // reservadas. Las planillas son suyas también: antes colgaban de Finanzas
+  // con el nombre del área, y en el menú de RR. HH. se leía «Recursos
+  // Humanos» dentro de «Recursos Humanos».
   {
     titulo: 'Recursos Humanos',
     items: [
       { titulo: 'Personal', ruta: '/rrhh/personal', icono: Users, permiso: ['rrhh.personal', 'asistencia.ver'], descripcion: 'La ficha de cada persona: datos, cuenta de pago y horario', disponible: true },
       { titulo: 'Asistencia', ruta: '/rrhh/asistencia', icono: ClipboardCheck, permiso: ['asistencia.marcar', 'asistencia.ver'], descripcion: 'Ingreso y salida de cada persona, marcados en portería', disponible: true },
-      { titulo: 'Tardanzas', ruta: '/rrhh/tardanzas', icono: Clock, permiso: ['asistencia.ver', 'rrhh.personal'], descripcion: 'Tardanzas del mes y el descuento que generan', disponible: true },
+      { titulo: 'Tardanzas', ruta: '/rrhh/tardanzas', icono: Clock, permiso: ['asistencia.ver', 'rrhh.personal'], descripcion: 'Tardanzas del mes: cada tres, un descuento del sueldo', disponible: true },
+      { titulo: 'Permisos', ruta: '/rrhh/permisos', icono: CalendarClock, permiso: ['rrhh.permisos', 'asistencia.ver'], descripcion: 'Las horas de permiso de cada persona, justificadas con sus horas extras', disponible: true },
       { titulo: 'Horas extras', ruta: '/rrhh/horas-extras', icono: ClockAlert, permiso: ['planilla_diaria.preparar', 'planilla_diaria.ver'], descripcion: 'Lo que pasa de 8 horas al día: pagarlo o reservarlo', disponible: true },
       { titulo: 'Planilla diaria', ruta: '/planilla-diaria', icono: Banknote, permiso: ['planilla_diaria.preparar', 'planilla_diaria.ver'], descripcion: 'Las horas validadas que se pagan, enviadas a Tesorería', disponible: true },
       { titulo: 'Costeo por código', ruta: '/rrhh/costeo', icono: Calculator, permiso: 'rrhh.personal', descripcion: 'Horas de cada persona por código interno y lo que cuestan', disponible: true },
@@ -553,6 +557,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/rrhh/personal',
           '/rrhh/asistencia',
           '/rrhh/tardanzas',
+          '/rrhh/permisos',
           '/rrhh/costeo',
           '/rrhh/observaciones',
           '/rrhh',
@@ -689,6 +694,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/rrhh/asistencia', corto: 'Asistencia' },
   { ruta: '/rrhh/personal', corto: 'Personal' },
   { ruta: '/rrhh/tardanzas', corto: 'Tardanzas' },
+  { ruta: '/rrhh/permisos', corto: 'Permisos' },
   { ruta: '/rrhh/costeo', corto: 'Costeo' },
   { ruta: '/rrhh/observaciones', corto: 'Observaciones' },
   { ruta: '/reportes-diarios', corto: 'Reporte' },

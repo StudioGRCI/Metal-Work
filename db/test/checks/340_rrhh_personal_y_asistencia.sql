@@ -1,6 +1,6 @@
 -- Recursos Humanos registra al personal con su cuenta y su horario; la
 -- portería marca ingreso y salida desde el celular y la tardanza sale sola con
--- la regla vigente. El portero ve nombres y horarios, nunca cuentas bancarias.
+-- la tolerancia vigente. El portero ve nombres y horarios, nunca cuentas bancarias.
 \set ON_ERROR_STOP on
 begin;
 
@@ -54,9 +54,12 @@ begin
     format('select public.rrhh_guardar_trabajador(%L, ''Mal'', ''Horario'', ''70000333'', null, null, ''18:00'', ''08:00'', ''Banco'', ''AHORROS'', ''123456'', null)', gen_random_uuid()),
     'la salida va después de la entrada');
 
-  -- Tolerancia cero y S/ 0,50 por minuto, para que la cuenta sea exacta.
-  perform public.rrhh_guardar_regla_tardanza(0, 0.5);
-  perform test.afirmar((select descuento_por_minuto from public.rrhh_regla_tardanza) = 0.5, 'la regla se guarda');
+  -- Tolerancia cero: cualquier minuto después de su hora es tardanza. El
+  -- descuento ya no es por minuto: cada 3 tardanzas del mes, 5 % (check 345).
+  perform public.rrhh_guardar_regla_tardanza(0, 3, 5);
+  perform test.afirmar((select tolerancia_minutos = 0 and tardanzas_por_descuento = 3 and porcentaje_descuento = 5
+                          from public.rrhh_regla_tardanza), 'la regla se guarda');
+  perform test.debe_fallar('select public.rrhh_guardar_regla_tardanza(5, 0.08)', 'la regla de soles por minuto ya no se guarda');
   reset role;
 end $$;
 
@@ -87,7 +90,8 @@ begin
   select * into v_marca from public.asistencias where id = current_setting('prueba.m1')::uuid;
   v_minutos := floor(extract(epoch from ((now() at time zone 'America/Lima')::time - time '00:00')) / 60)::int;
   perform test.afirmar(v_marca.tardanza_minutos between v_minutos - 1 and v_minutos, 'la tardanza son los minutos después de su hora de entrada');
-  perform test.afirmar(v_marca.descuento = round(v_marca.tardanza_minutos * 0.5, 2), 'el descuento es minutos por la tarifa');
+  perform test.afirmar(v_marca.es_tardanza = (v_marca.tardanza_minutos > 0) and v_marca.descuento = 0,
+    'pasada la tolerancia es tardanza, sin descuento por minuto');
   perform test.afirmar(v_marca.fecha = (now() at time zone 'America/Lima')::date, 'la fecha es la de Lima');
 
   perform test.debe_fallar(
@@ -96,7 +100,8 @@ begin
 
   v_id := public.marcar_asistencia(current_setting('prueba.m2')::uuid, current_setting('prueba.t2')::uuid, 'INGRESO', 'llegó caminando');
   select * into v_marca from public.asistencias where id = current_setting('prueba.m2')::uuid;
-  perform test.afirmar(v_marca.tardanza_minutos = 0 and v_marca.descuento = 0, 'quien entra antes de su hora no tiene tardanza');
+  perform test.afirmar(v_marca.tardanza_minutos = 0 and v_marca.descuento = 0 and not v_marca.es_tardanza,
+    'quien entra antes de su hora no tiene tardanza');
 
   v_id := public.marcar_asistencia(current_setting('prueba.m3')::uuid, current_setting('prueba.t1')::uuid, 'SALIDA', null);
   perform test.afirmar((select tardanza_minutos from public.asistencias where id = current_setting('prueba.m3')::uuid) = 0, 'la salida no lleva tardanza');
@@ -128,7 +133,7 @@ begin
   perform test.debe_fallar(
     format('select public.marcar_asistencia(%L, %L, ''INGRESO'', null)', gen_random_uuid(), current_setting('prueba.t2')),
     'un operario no marca asistencia');
-  perform test.debe_fallar('select public.rrhh_guardar_regla_tardanza(10, 1)', 'un operario no cambia la regla');
+  perform test.debe_fallar('select public.rrhh_guardar_regla_tardanza(10, 3, 5)', 'un operario no cambia la regla');
   reset role;
 end $$;
 

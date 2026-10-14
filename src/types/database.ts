@@ -169,6 +169,7 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          es_tardanza: boolean
         }
         Insert: {
           id?: string
@@ -186,6 +187,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          es_tardanza?: boolean
         }
         Update: {
           id?: string
@@ -203,6 +205,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          es_tardanza?: boolean
         }
         Relationships: [
           {
@@ -1945,6 +1948,7 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          permiso_id: string | null
         }
         Insert: {
           id?: string
@@ -1958,6 +1962,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          permiso_id?: string | null
         }
         Update: {
           id?: string
@@ -1971,6 +1976,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          permiso_id?: string | null
         }
         Relationships: [
           {
@@ -1978,6 +1984,13 @@ export type Database = {
             columns: ["anulado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "horas_compensadas_permiso_id_fkey"
+            columns: ["permiso_id"]
+            isOneToOne: false
+            referencedRelation: "permisos_personal"
             referencedColumns: ["id"]
           },
           {
@@ -5285,6 +5298,70 @@ export type Database = {
         }
         Relationships: []
       }
+      permisos_personal: {
+        Row: {
+          id: string
+          trabajador_id: string
+          fecha: string
+          horas: number
+          motivo: string
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          trabajador_id: string
+          fecha: string
+          horas: number
+          motivo: string
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          trabajador_id?: string
+          fecha?: string
+          horas?: number
+          motivo?: string
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permisos_personal_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permisos_personal_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permisos_personal_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       planilla_diaria_detalle: {
         Row: {
           id: string
@@ -7033,6 +7110,8 @@ export type Database = {
           descuento_por_minuto: number
           actualizado_por: string | null
           actualizado_en: string
+          tardanzas_por_descuento: number
+          porcentaje_descuento: number
         }
         Insert: {
           id?: boolean
@@ -7040,6 +7119,8 @@ export type Database = {
           descuento_por_minuto?: number
           actualizado_por?: string | null
           actualizado_en?: string
+          tardanzas_por_descuento?: number
+          porcentaje_descuento?: number
         }
         Update: {
           id?: boolean
@@ -7047,6 +7128,8 @@ export type Database = {
           descuento_por_minuto?: number
           actualizado_por?: string | null
           actualizado_en?: string
+          tardanzas_por_descuento?: number
+          porcentaje_descuento?: number
         }
         Relationships: [
           {
@@ -9529,6 +9612,12 @@ export type Database = {
         }
         Returns: string
       }
+      horas_en_texto: {
+        Args: {
+          p_horas: number | null
+        }
+        Returns: string
+      }
       horas_extras_por_decidir: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -10532,6 +10621,13 @@ export type Database = {
         }
         Returns: string
       }
+      rrhh_anular_permiso: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       rrhh_anular_tareo: {
         Args: {
           p_id: string | null
@@ -10586,7 +10682,8 @@ export type Database = {
       rrhh_guardar_regla_tardanza: {
         Args: {
           p_tolerancia_minutos: number | null
-          p_descuento_por_minuto: number | null
+          p_tardanzas_por_descuento: number | null
+          p_porcentaje_descuento: number | null
         }
         Returns: null
       }
@@ -10631,6 +10728,35 @@ export type Database = {
           desde: string | null
         }[]
       }
+      rrhh_justificar_permiso: {
+        Args: {
+          p_id: string | null
+          p_permiso_id: string | null
+          p_horas?: number | null
+        }
+        Returns: string
+      }
+      rrhh_permisos_personal: {
+        Args: {
+          p_mes?: string | null
+        }
+        Returns: {
+          id: string | null
+          trabajador_id: string | null
+          nombre: string | null
+          cargo: string | null
+          activo: boolean | null
+          fecha: string | null
+          horas: number | null
+          motivo: string | null
+          justificadas: number | null
+          por_justificar: number | null
+          saldo: number | null
+          creado_en: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+        }[]
+      }
       rrhh_registrar_observacion: {
         Args: {
           p_id: string | null
@@ -10644,6 +10770,16 @@ export type Database = {
         }
         Returns: string
       }
+      rrhh_registrar_permiso: {
+        Args: {
+          p_id: string | null
+          p_trabajador_id: string | null
+          p_fecha: string | null
+          p_horas: number | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       rrhh_registrar_tareo: {
         Args: {
           p_id: string | null
@@ -10654,6 +10790,26 @@ export type Database = {
           p_labor?: string | null
         }
         Returns: string
+      }
+      rrhh_tardanzas_del_mes: {
+        Args: {
+          p_mes: string | null
+        }
+        Returns: {
+          trabajador_id: string | null
+          nombres: string | null
+          apellidos: string | null
+          dni: string | null
+          cargo: string | null
+          activo: boolean | null
+          dias_con_ingreso: number | null
+          tardanzas: number | null
+          minutos: number | null
+          grupos: number | null
+          porcentaje: number | null
+          remuneracion_mensual: number | null
+          descuento: number | null
+        }[]
       }
       rrhh_usar_saldo_horas: {
         Args: {
@@ -10670,6 +10826,12 @@ export type Database = {
           p_ruc: string | null
         }
         Returns: boolean
+      }
+      saldo_horas_de: {
+        Args: {
+          p_trabajador_id: string | null
+        }
+        Returns: number
       }
       saldo_horas_por_persona: {
         Args: {

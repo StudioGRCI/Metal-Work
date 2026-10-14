@@ -10,7 +10,6 @@ import { Ventana } from '@/components/ui/ventana'
 import type { Marca, Trabajador } from '@/lib/datos/rrhh'
 import { horaCorta, minutosLargos } from '@/lib/dominio/rrhh'
 import { useEnvio } from '@/lib/envio'
-import { moneda } from '@/lib/format'
 
 import { anularAsistencia, marcarAsistencia } from './acciones'
 
@@ -163,16 +162,14 @@ function TarjetaPersona({ persona: p, marcas, marca, anula }: { persona: Persona
 }
 
 function LineaMarca({ marca: m, anula }: { marca: Marca; anula: boolean }) {
-  const tarde = m.tipo === 'INGRESO' && m.descuento > 0
+  const tarde = m.tipo === 'INGRESO' && m.es_tardanza
   return (
     <div className="flex items-center justify-end gap-1.5">
       <span className="text-xs text-texto">
         {m.tipo === 'INGRESO' ? 'Ingreso' : 'Salida'} <span className="tabular font-semibold">{horaCorta(m.hora)}</span>
       </span>
       {tarde ? (
-        <Insignia tono="peligro">
-          Tarde {minutosLargos(m.tardanza_minutos)} · {moneda(m.descuento)}
-        </Insignia>
+        <Insignia tono="peligro">Tarde {minutosLargos(m.tardanza_minutos)}</Insignia>
       ) : m.tipo === 'INGRESO' && m.tardanza_minutos > 0 ? (
         <Insignia tono="aviso">{minutosLargos(m.tardanza_minutos)} tarde, tolerado</Insignia>
       ) : m.tipo === 'INGRESO' ? (
