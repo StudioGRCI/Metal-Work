@@ -34,6 +34,7 @@ export default async function PaginaNuevoReporte() {
       <Tarjeta className="max-w-3xl">
         <TarjetaCuerpo>
           <FormularioReporteDiario
+            id={crypto.randomUUID()}
             cuentaId={perfil.id}
             hoy={hoy}
             minimo={sumarDias(hoy, -DIAS_PARA_EL_REPORTE)}

@@ -80,6 +80,7 @@ Medido el 2026-10-01: la preparación ya no llega al final sola, por dos causas.
 | `esquema.mjs` | Lee las claves foráneas para resolver las incrustaciones. |
 | `recorrer.mjs` | Recorre la aplicación con un navegador y deja el informe y las capturas. |
 | `probar-cotizacion.mjs` | Aprieta los botones de una cotización: emitir, descargar el PDF, anular con motivo y volver a descargar. |
+| `probar-reporte-diario.mjs` | El reporte diario de supervisión con la cuenta de cada puesto: el supervisor lo sube desde el celular con fotos que se achican, el tope de 16 horas, RR. HH. ve las horas en el costeo y las que esperan su costo, Gerencia consulta y la portería no entra. Crea su propio personal inventado; las cuentas `*.local@metalwork.test` se crean aparte. |
 
 ## Lo que respeta y lo que no
 

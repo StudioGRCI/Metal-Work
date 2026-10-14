@@ -25,8 +25,15 @@ export type OpcionPersona = OpcionBuscable
 type FilaPersona = { clave: string; trabajadorId: string; horas: string }
 type FilaTrabajo = { clave: string; descripcion: string; avance: string; personal: FilaPersona[] }
 
-const nuevaPersona = (): FilaPersona => ({ clave: crypto.randomUUID(), trabajadorId: '', horas: '' })
-const nuevoTrabajo = (): FilaTrabajo => ({ clave: crypto.randomUUID(), descripcion: '', avance: '', personal: [nuevaPersona()] })
+// Las filas que se agregan tocando llevan una clave al azar; las primeras, una
+// fija, porque el servidor y el navegador tienen que pintar los mismos `id`.
+const nuevaPersona = (clave: string = crypto.randomUUID()): FilaPersona => ({ clave, trabajadorId: '', horas: '' })
+const nuevoTrabajo = (clave: string = crypto.randomUUID()): FilaTrabajo => ({
+  clave,
+  descripcion: '',
+  avance: '',
+  personal: [nuevaPersona(`${clave}-1`)],
+})
 
 /** «4,5» o «4.5» → 4.5; vacío → NaN. */
 function horasDe(texto: string) {
@@ -46,16 +53,21 @@ function paraEnviar(filas: FilaPersona[]) {
  * su gente, y al final las fotos. El personal sale de la lista de RR. HH.; con
  * «Personal general» se pone una sola vez para todo el reporte.
  *
- * El id del reporte se decide aquí: las fotos viajan a `{cuenta}/{reporte}/…`
- * antes de que el reporte exista, y un reintento manda el mismo y no duplica.
+ * El id del reporte llega del servidor con la página: las fotos viajan a
+ * `{cuenta}/{reporte}/…` antes de que el reporte exista, y un reintento manda
+ * el mismo y no duplica. Sacarlo con `crypto.randomUUID()` en el navegador daba
+ * uno distinto al que pintó el servidor, y el campo oculto se quedaba con el
+ * del servidor mientras las fotos subían con el otro.
  */
 export function FormularioReporteDiario({
+  id,
   cuentaId,
   hoy,
   minimo,
   personal,
   codigos,
 }: {
+  id: string
   cuentaId: string
   hoy: string
   minimo: string
@@ -63,10 +75,9 @@ export function FormularioReporteDiario({
   codigos: string[]
 }) {
   const router = useRouter()
-  const [id] = useState(() => crypto.randomUUID())
-  const [trabajos, setTrabajos] = useState<FilaTrabajo[]>(() => [nuevoTrabajo()])
+  const [trabajos, setTrabajos] = useState<FilaTrabajo[]>(() => [nuevoTrabajo('trabajo-1')])
   const [general, setGeneral] = useState(false)
-  const [personalGeneral, setPersonalGeneral] = useState<FilaPersona[]>(() => [nuevaPersona()])
+  const [personalGeneral, setPersonalGeneral] = useState<FilaPersona[]>(() => [nuevaPersona('general-1')])
   const [fotos, setFotos] = useState<FotoLista[]>([])
   const { alEnviar, enviando, error } = useEnvio(
     registrarReporteDiario,
@@ -174,10 +185,25 @@ export function FormularioReporteDiario({
           Trabajos realizados
         </h2>
         {trabajos.map((t, i) => (
-          <fieldset key={t.clave} className="space-y-3 rounded-lg border border-borde p-3" data-trabajo={i + 1}>
+          <fieldset key={t.clave} className="min-w-0 space-y-3 rounded-lg border border-borde p-3" data-trabajo={i + 1}>
             <legend className="sr-only">Trabajo {i + 1}</legend>
-            <div className="grid gap-3 sm:grid-cols-[1fr_7rem_auto] sm:items-start">
-              <Campo etiqueta={`Trabajo ${i + 1}`} htmlFor={`rd-trabajo-${t.clave}`} requerido>
+            <div className="flex items-center justify-between gap-2">
+              <p aria-hidden className="text-sm font-medium text-texto">
+                Trabajo {i + 1}
+              </p>
+              <Boton
+                type="button"
+                variante="fantasma"
+                tamano="icono"
+                aria-label={`Quitar el trabajo ${i + 1}`}
+                disabled={trabajos.length === 1}
+                onClick={() => setTrabajos((ts) => ts.filter((x) => x.clave !== t.clave))}
+              >
+                <Trash2 aria-hidden className="size-4" />
+              </Boton>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">
+              <Campo etiqueta="Descripción del trabajo" htmlFor={`rd-trabajo-${t.clave}`} requerido>
                 <AreaTexto
                   id={`rd-trabajo-${t.clave}`}
                   required
@@ -189,7 +215,7 @@ export function FormularioReporteDiario({
                   placeholder="Descripción del trabajo: por ejemplo, soldadura de la tolva lado izquierdo"
                 />
               </Campo>
-              <Campo etiqueta="Avance %" htmlFor={`rd-avance-${t.clave}`} requerido>
+              <Campo etiqueta="Avance %" htmlFor={`rd-avance-${t.clave}`} requerido className="max-w-32 sm:max-w-none">
                 <Entrada
                   id={`rd-avance-${t.clave}`}
                   type="number"
@@ -203,17 +229,6 @@ export function FormularioReporteDiario({
                   className="tabular"
                 />
               </Campo>
-              <Boton
-                type="button"
-                variante="fantasma"
-                tamano="icono"
-                aria-label={`Quitar el trabajo ${i + 1}`}
-                disabled={trabajos.length === 1}
-                onClick={() => setTrabajos((ts) => ts.filter((x) => x.clave !== t.clave))}
-                className="sm:mt-6"
-              >
-                <Trash2 aria-hidden className="size-4" />
-              </Boton>
             </div>
             {!general && (
               <ListaPersonal
@@ -306,6 +321,7 @@ export function FormularioReporteDiario({
           bucket={BUCKET_FOTOS_REPORTE}
           comprimir
           maximoMb={MAXIMO_MB_FOTO_REPORTE}
+          titulo={null}
         />
       </section>
 
@@ -351,8 +367,10 @@ function ListaPersonal({
         // Quien ya está en otra fila de esta lista no se ofrece de nuevo.
         const elegidas = new Set(filas.filter((x) => x.clave !== p.clave).map((x) => x.trabajadorId))
         return (
-          <div key={p.clave} className="grid grid-cols-[1fr_5.5rem_auto] items-center gap-2">
+          // En el teléfono el nombre va a lo ancho y las horas debajo: al lado, el nombre se cortaba en «Prue…».
+          <div key={p.clave} className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
             <SeleccionBuscable
+              className="basis-full sm:basis-0 sm:flex-1"
               opciones={opciones.filter((o) => !elegidas.has(o.valor))}
               valor={p.trabajadorId}
               onChange={(valor) => cambiar(p.clave, { trabajadorId: valor })}
@@ -373,8 +391,11 @@ function ListaPersonal({
               onChange={(e) => cambiar(p.clave, { horas: e.target.value })}
               required={Boolean(p.trabajadorId)}
               disabled={deshabilitado}
-              className="tabular"
+              className="tabular w-24 flex-none"
             />
+            <span aria-hidden className="-ml-1 text-sm text-texto-suave">
+              h
+            </span>
             <Boton
               type="button"
               variante="fantasma"

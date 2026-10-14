@@ -85,6 +85,7 @@ export function SelectorFotos({
   bucket = 'fotos-avance',
   comprimir = false,
   maximoMb = MAXIMO_MB,
+  titulo = 'Fotos',
 }: {
   fotos: FotoLista[]
   alCambiar: Dispatch<SetStateAction<FotoLista[]>>
@@ -93,6 +94,8 @@ export function SelectorFotos({
   bucket?: string
   comprimir?: boolean
   maximoMb?: number
+  /** `null` cuando el formulario ya le pone su propio título a la sección. */
+  titulo?: string | null
 }) {
   async function subir(foto: FotoLista) {
     const supabase = createClient()
@@ -185,7 +188,7 @@ export function SelectorFotos({
 
   return (
     <div>
-      <p className="mb-1.5 text-sm font-medium text-texto">Fotos</p>
+      {titulo && <p className="mb-1.5 text-sm font-medium text-texto">{titulo}</p>}
       <div className="flex flex-wrap gap-2">
         {fotos.map((foto, i) => (
           <div

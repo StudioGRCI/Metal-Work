@@ -132,7 +132,7 @@ function FilaTrabajador({
                 <span className="tabular">{moneda(t.costo_mensual / HORAS_DEL_MES)}</span> la hora
               </>
             ) : (
-              'Sin costo mensual: no se le pueden cargar horas'
+              'Sin costo mensual: no se le pueden cargar horas, y las de los reportes diarios esperan a que se lo pongas'
             )}
           </p>
         </TD>
