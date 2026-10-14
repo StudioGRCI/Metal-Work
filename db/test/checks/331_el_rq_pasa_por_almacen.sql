@@ -97,7 +97,7 @@ select test.afirmar((select nota_almacen from public.requerimientos where id = c
 select test.afirmar(pg_temp.estado('rq2') = 'LISTO_EN_ALMACEN', 'rq2 queda LISTO_EN_ALMACEN con stock');
 select test.afirmar(
   exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.comprador_log')::uuid
-             and origen_id = current_setting('prueba.rq1')::uuid and titulo like 'Requerimiento sin stock%'),
+             and origen_id = current_setting('prueba.rq1')::uuid and titulo like 'Requerimiento por comprar%'),
   'sin stock avisa a Logística');
 select test.afirmar(
   exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.supervisor_mtz')::uuid

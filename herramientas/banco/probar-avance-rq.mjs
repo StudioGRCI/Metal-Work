@@ -114,15 +114,16 @@ async function mirarRq(cuenta, ruta, captura) {
   await contexto.close()
 }
 
-// ------------------------------------------------ 2. Sin stock y la OC desde el RQ
+// ------------------------------------------------ 2. Almacén no tiene nada y la OC desde el RQ
 {
   const { pagina, contexto } = await entrar(CUENTAS.almacen)
   await pagina.goto(`${BASE}/requerimientos/atencion`, { waitUntil: 'networkidle' })
   const fila = pagina.locator('tbody tr', { hasText: numeroRq })
-  await fila.getByRole('button', { name: 'Sin stock' }).click()
+  await fila.getByRole('button', { name: 'Revisar stock' }).click()
   const ventana = pagina.locator('[role="dialog"]')
+  await ventana.getByRole('button', { name: 'No tengo nada' }).click()
   await ventana.locator('textarea[name="nota"]').fill('No queda plancha de 2 mm')
-  await ventana.getByRole('button', { name: 'Marcar sin stock' }).click()
+  await ventana.getByRole('button', { name: 'Guardar la revisión' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 20000 })
   await contexto.close()
 }

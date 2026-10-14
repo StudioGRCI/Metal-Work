@@ -29,7 +29,16 @@ export type RequerimientoParaCompra = {
   area: string
   codigo_interno: string
   justificacion: string
-  lineas: { item: number; descripcion: string; cantidad: number; unidad: string; orden_compra: string | null; compra_rechazada: boolean }[]
+  lineas: {
+    item: number
+    descripcion: string
+    cantidad: number
+    unidad: string
+    orden_compra: string | null
+    compra_rechazada: boolean
+    /** Cuánto tenía Almacén al revisarlo; vacío si no lo revisó. Lo que tiene completo no se compra. */
+    en_stock: number | null
+  }[]
 }
 
 function lineaVacia(): Linea {
@@ -101,9 +110,11 @@ export function NuevaCompraDirecta({
 }
 
 /**
- * «Generar OC» desde un requerimiento que Almacén dejó sin stock: el mismo
- * formulario de la directa, con el código interno y el motivo tomados del RQ y
- * la lista de insumos del RQ que esta orden cubre.
+ * «Generar OC» desde un requerimiento al que Almacén le encontró faltantes: el
+ * mismo formulario de la directa, con el código interno y el motivo tomados del
+ * RQ y la lista de insumos que esta orden cubre. Solo se ofrece lo que falta:
+ * lo que Almacén tiene completo no se compra, y de lo que tenía en parte se
+ * compra el resto.
  */
 export function GenerarCompraDelRequerimiento({
   requerimiento,
@@ -335,16 +346,27 @@ function FormularioCompraDirecta({
           <fieldset className="space-y-2">
             <legend className="mb-2 font-semibold text-texto">Insumos del requerimiento que cubre esta orden</legend>
             {requerimiento.lineas.map((l) => {
-              const ocupado = Boolean(l.orden_compra) && !l.compra_rechazada
+              const enStock = l.en_stock ?? 0
+              const loTiene = l.en_stock !== null && enStock >= l.cantidad
+              const ocupado = loTiene || (Boolean(l.orden_compra) && !l.compra_rechazada)
               return (
                 <label key={l.item} className={`flex items-start gap-2 text-sm ${ocupado ? 'text-texto-suave' : 'text-texto'}`}>
                   <input type="checkbox" name="item" value={l.item} defaultChecked={!ocupado} disabled={ocupado} className="mt-1" />
                   <span>
                     <span className="tabular font-medium">
-                      {formatoCantidad(l.cantidad)} {l.unidad}
+                      {formatoCantidad(loTiene ? l.cantidad : l.cantidad - enStock)} {l.unidad}
                     </span>{' '}
                     {l.descripcion}
-                    {l.orden_compra && (
+                    {loTiene ? (
+                      <span className="block text-xs text-texto-suave">Almacén lo tiene: no se compra.</span>
+                    ) : (
+                      enStock > 0 && (
+                        <span className="block text-xs text-texto-suave">
+                          Pidieron {formatoCantidad(l.cantidad)}; Almacén tiene {formatoCantidad(enStock)}: se compra el resto.
+                        </span>
+                      )
+                    )}
+                    {!loTiene && l.orden_compra && (
                       <span className="block text-xs text-texto-suave">
                         {l.compra_rechazada ? `La ${l.orden_compra} se rechazó: vuelve a comprarse.` : `Ya va en la ${l.orden_compra}.`}
                       </span>

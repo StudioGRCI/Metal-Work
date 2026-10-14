@@ -82,7 +82,7 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   await ventana.locator('select[name="unidad_medida_id"]').nth(1).selectOption({ label: 'KG' })
   await ventana.locator('select[name="categoria_id"]').nth(1).selectOption({ index: 2 })
   // Tres toques: un solo RQ.
-  const enviar = ventana.getByRole('button', { name: 'Registrar y mandar a Logística' })
+  const enviar = ventana.getByRole('button', { name: 'Registrar y mandar a Almacén' })
   await enviar.click()
   await enviar.click({ timeout: 1000 }).catch(() => {})
   await enviar.click({ timeout: 1000 }).catch(() => {})

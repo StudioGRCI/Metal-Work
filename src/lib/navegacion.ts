@@ -146,7 +146,7 @@ export const NAVEGACION = [
         titulo: 'Requerimientos',
         ruta: '/requerimientos',
         icono: ClipboardList,
-        permiso: ['requerimientos.emitir', 'requerimientos.ver'],
+        permiso: ['requerimientos.emitir', 'requerimientos.administracion', 'requerimientos.ver'],
         descripcion: 'Lo que cada área necesita, con su número RQ, y por dónde va',
         disponible: true,
       },
@@ -178,7 +178,7 @@ export const NAVEGACION = [
         ruta: '/requerimientos/atencion',
         icono: ClipboardList,
         permiso: 'compras.crear',
-        descripcion: 'Los RQ sin stock que hay que comprar, y en qué van',
+        descripcion: 'Lo que Almacén no tiene de cada RQ, para comprarlo, y en qué va',
         disponible: true,
       },
       {
@@ -262,7 +262,7 @@ export const NAVEGACION = [
         ruta: '/requerimientos/atencion',
         icono: ClipboardList,
         permiso: ['almacen.recibir', 'almacen.despachar'],
-        descripcion: 'Los RQ por revisar stock, por recepcionar y por entregar al área',
+        descripcion: 'Los RQ por revisar insumo por insumo, por recepcionar y por entregar al área',
         disponible: true,
       },
       {
@@ -512,12 +512,15 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // también la rechaza) y Unidades y Carrocerías las lleva Diseño. De RR. HH.
   // le toca el resumen de tardanzas, como a Gerencia: la ficha y la asistencia
   // las abre por su dirección, y así no tiene dos «Personal» en el menú.
+  // Desde el 2026-10-15 lleva el requerimiento de Administración (lo de
+  // oficina): lo registra, Almacén lo revisa y ella hace la OC de lo que falta.
   ADMINISTRACION: {
     grupos: [
       {
         titulo: 'Administración',
         rutas: ['/cotizaciones/pdf', '/ordenes', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio', '/diseno/evaluaciones', '/clientes'],
       },
+      { titulo: 'Requerimiento de Administración', rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes'] },
       { titulo: 'Consultas', rutas: ['/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos'] },
       { titulo: 'Administración del sistema', rutas: ['/personal', '/configuracion'] },
     ],

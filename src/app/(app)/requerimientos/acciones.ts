@@ -31,12 +31,25 @@ const LINEA = z.object({
 })
 
 /**
- * El requerimiento (RQ) que registra Requerimientos y le llega a Logística.
- * Exige `requerimientos.emitir`, el mismo permiso que `emitir_requerimiento`.
+ * El permiso de cada requerimiento, el mismo que exige `rq_exigir` en la base
+ * para registrarlo y anularlo: el de operación es del área de Requerimientos;
+ * el de Administración, de la administradora.
+ */
+const PERMISO_DEL_TIPO = {
+  OPERACION: { permiso: 'requerimientos.emitir', quien: 'El requerimiento de operación lo lleva el área de Requerimientos.' },
+  ADMINISTRACION: { permiso: 'requerimientos.administracion', quien: 'El requerimiento de Administración lo lleva la administradora.' },
+} as const
+
+/**
+ * El requerimiento (RQ o RQA) que se registra y le llega primero a Almacén.
+ * Exige el permiso de su tipo, el mismo que `emitir_requerimiento`.
  */
 export async function emitirRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'requerimientos.emitir')) return { ok: false, error: 'Los requerimientos los registra el área de Requerimientos.' }
+  const tipo = z.enum(['OPERACION', 'ADMINISTRACION']).safeParse(dato(formulario, 'tipo'))
+  if (!tipo.success) return { ok: false, error: 'Elige si el requerimiento es de operación o de Administración.' }
+  const delTipo = PERMISO_DEL_TIPO[tipo.data]
+  if (!puede(perfil, delTipo.permiso)) return { ok: false, error: delTipo.quien }
 
   const cabecera = z
     .object({
@@ -45,7 +58,7 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
       codigo_interno: z
         .string()
         .trim()
-        .min(2, 'Escribe el código interno de la unidad. Si no es para una unidad, escribe PLANTA.')
+        .min(2, 'Escribe el código interno de la unidad. Si no es para una unidad, escribe PLANTA u OFICINA.')
         .max(60, 'El código interno pasa de 60 caracteres.'),
       justificacion: z
         .string()
@@ -84,6 +97,7 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('emitir_requerimiento', {
     p_id: cabecera.data.operacion_id,
+    p_tipo: tipo.data,
     p_area_id: cabecera.data.area_id,
     p_codigo_interno: cabecera.data.codigo_interno,
     p_justificacion: cabecera.data.justificacion,
@@ -96,13 +110,19 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
   const { data: emitido } = await supabase.from('requerimientos').select('numero').eq('id', cabecera.data.operacion_id).maybeSingle()
 
   revalidatePath('/requerimientos')
-  return { ok: true, mensaje: `Requerimiento ${emitido?.numero ?? ''} registrado. Ya le llegó a Logística.` }
+  revalidatePath('/requerimientos/atencion')
+  return { ok: true, mensaje: `Requerimiento ${emitido?.numero ?? ''} registrado. Ya le llegó a Almacén para revisar el stock.` }
 }
 
-/** Anular mientras Logística no lo empieza. Mismo permiso que `anular_requerimiento`. */
+/**
+ * Anular mientras nadie lo compra. Lo anula quien lleva su tipo: la base
+ * (`anular_requerimiento`) mira el tipo del RQ y exige el permiso de ese tipo.
+ */
 export async function anularRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'requerimientos.emitir')) return { ok: false, error: 'Los requerimientos los anula el área de Requerimientos.' }
+  if (!puede(perfil, ['requerimientos.emitir', 'requerimientos.administracion'])) {
+    return { ok: false, error: 'Los requerimientos los anula quien los registra: Requerimientos o la administradora.' }
+  }
 
   const analisis = z
     .object({
@@ -122,5 +142,6 @@ export async function anularRequerimiento(_previo: unknown, formulario: FormData
   if (data !== analisis.data.id) return { ok: false, error: 'El requerimiento no se anuló. Recarga la pantalla.' }
 
   revalidatePath('/requerimientos')
+  revalidatePath('/requerimientos/atencion')
   return { ok: true, mensaje: 'Requerimiento anulado. Queda con su número y su motivo.' }
 }

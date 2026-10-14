@@ -103,18 +103,19 @@ let oc2 = ''
   await contexto.close()
 }
 
-// ------------------------------------------------ 3. Almacén lo deja sin stock
+// ------------------------------------------------ 3. Almacén no tiene nada
 {
   const { pagina, contexto } = await entrar(CUENTAS.almacen)
   await pagina.goto(`${BASE}/requerimientos/atencion`, { waitUntil: 'networkidle' })
   const fila = pagina.locator('tbody tr', { hasText: numeroRq })
-  await fila.getByRole('button', { name: 'Sin stock' }).click()
+  await fila.getByRole('button', { name: 'Revisar stock' }).click()
   const ventana = pagina.locator('[role="dialog"]')
+  await ventana.getByRole('button', { name: 'No tengo nada' }).click()
   await ventana.locator('textarea[name="nota"]').fill('No queda plancha de 2 mm')
-  await ventana.getByRole('button', { name: 'Marcar sin stock' }).click()
+  await ventana.getByRole('button', { name: 'Guardar la revisión' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 20000 })
   await pagina.waitForTimeout(800)
-  comprobar((await texto(fila)).includes('Sin stock'), 'queda «Sin stock»')
+  comprobar((await texto(fila)).includes('Por comprar'), 'queda «Por comprar»')
   comprobar((await fila.getByRole('button', { name: 'Generar OC' }).count()) === 0, 'Almacén no tiene «Generar OC»')
   await contexto.close()
 }
