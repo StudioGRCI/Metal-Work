@@ -1,6 +1,6 @@
 'use client'
 
-import { Plus, Trash2, Users } from 'lucide-react'
+import { Plus, Trash2, Users, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
@@ -35,6 +35,25 @@ const nuevoTrabajo = (clave: string = crypto.randomUUID()): FilaTrabajo => ({
   personal: [nuevaPersona(`${clave}-1`)],
 })
 
+/** Lo que ya traía el reporte observado que se corrige: se abre con todo eso escrito. */
+export type ReporteACorregir = {
+  reemplaza: string
+  fecha: string
+  codigo_interno: string
+  asunto: string
+  descripcion: string
+  general: boolean
+  trabajos: { descripcion: string; avance: number; personal: { trabajador_id: string; horas: number }[] }[]
+  personal_general: { trabajador_id: string; horas: number }[]
+  fotos: { ruta: string; enlace: string | null }[]
+}
+
+function filasDe(personal: { trabajador_id: string; horas: number }[], prefijo: string): FilaPersona[] {
+  return personal.length === 0
+    ? [nuevaPersona(`${prefijo}-1`)]
+    : personal.map((p, i) => ({ clave: `${prefijo}-${i + 1}`, trabajadorId: p.trabajador_id, horas: String(p.horas) }))
+}
+
 /** «4,5» o «4.5» → 4.5; vacío → NaN. */
 function horasDe(texto: string) {
   return texto.trim() === '' ? Number.NaN : Number(texto.replace(',', '.'))
@@ -66,6 +85,7 @@ export function FormularioReporteDiario({
   minimo,
   personal,
   codigos,
+  corrige = null,
 }: {
   id: string
   cuentaId: string
@@ -73,11 +93,23 @@ export function FormularioReporteDiario({
   minimo: string
   personal: OpcionPersona[]
   codigos: string[]
+  corrige?: ReporteACorregir | null
 }) {
   const router = useRouter()
-  const [trabajos, setTrabajos] = useState<FilaTrabajo[]>(() => [nuevoTrabajo('trabajo-1')])
-  const [general, setGeneral] = useState(false)
-  const [personalGeneral, setPersonalGeneral] = useState<FilaPersona[]>(() => [nuevaPersona('general-1')])
+  const [trabajos, setTrabajos] = useState<FilaTrabajo[]>(() =>
+    corrige && corrige.trabajos.length > 0
+      ? corrige.trabajos.map((t, i) => ({
+          clave: `trabajo-${i + 1}`,
+          descripcion: t.descripcion,
+          avance: String(t.avance),
+          personal: filasDe(t.personal, `trabajo-${i + 1}`),
+        }))
+      : [nuevoTrabajo('trabajo-1')],
+  )
+  const [general, setGeneral] = useState(corrige?.general ?? false)
+  const [personalGeneral, setPersonalGeneral] = useState<FilaPersona[]>(() => filasDe(corrige?.personal_general ?? [], 'general'))
+  // Las fotos del observado se quedan donde están; se pueden quitar y sumar otras hasta el tope.
+  const [fotosPrevias, setFotosPrevias] = useState(corrige?.fotos ?? [])
   const [fotos, setFotos] = useState<FotoLista[]>([])
   const { alEnviar, enviando, error } = useEnvio(
     registrarReporteDiario,
@@ -117,12 +149,13 @@ export function FormularioReporteDiario({
             ),
           )
           datos.set('personal', JSON.stringify(general ? paraEnviar(personalGeneral) : []))
-          datos.set('fotos', JSON.stringify(fotosParaEnviar(fotos).map((f) => f.ruta_storage)))
+          datos.set('fotos', JSON.stringify([...fotosPrevias.map((f) => f.ruta), ...fotosParaEnviar(fotos).map((f) => f.ruta_storage)]))
         })
       }
       className="space-y-6"
     >
       <input type="hidden" name="id" value={id} />
+      {corrige && <input type="hidden" name="reemplaza" value={corrige.reemplaza} />}
 
       <section aria-labelledby="rd-cabecera" className="space-y-4">
         <h2 id="rd-cabecera" className="text-sm font-semibold text-texto">
@@ -130,7 +163,7 @@ export function FormularioReporteDiario({
         </h2>
         <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
           <Campo etiqueta="Día" htmlFor="rd-fecha" requerido>
-            <Entrada id="rd-fecha" name="fecha" type="date" required defaultValue={hoy} min={minimo} max={hoy} />
+            <Entrada id="rd-fecha" name="fecha" type="date" required defaultValue={corrige?.fecha ?? hoy} min={minimo} max={hoy} />
           </Campo>
           <Campo
             etiqueta="Código interno"
@@ -145,6 +178,7 @@ export function FormularioReporteDiario({
               minLength={2}
               maxLength={60}
               list="rd-codigos"
+              defaultValue={corrige?.codigo_interno}
               autoComplete="off"
               autoCapitalize="characters"
               className="font-mono uppercase"
@@ -164,6 +198,7 @@ export function FormularioReporteDiario({
             minLength={3}
             maxLength={120}
             placeholder="Por ejemplo: armado de la tolva"
+            defaultValue={corrige?.asunto}
             autoComplete="off"
           />
         </Campo>
@@ -176,6 +211,7 @@ export function FormularioReporteDiario({
             maxLength={1000}
             rows={2}
             placeholder="Lo que pasó hoy en este código: qué se avanzó, qué falta, si algo trabó el trabajo."
+            defaultValue={corrige?.descripcion}
           />
         </Campo>
       </section>
@@ -313,11 +349,33 @@ export function FormularioReporteDiario({
         <h2 id="rd-fotos" className="text-sm font-semibold text-texto">
           Fotos del trabajo
         </h2>
+        {fotosPrevias.length > 0 && (
+          <ul className="flex flex-wrap gap-2" aria-label="Fotos del reporte observado">
+            {fotosPrevias.map((f, i) => (
+              <li key={f.ruta} className="relative size-24 overflow-hidden rounded-lg border border-borde">
+                {f.enlace ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- enlace firmado de Storage, no pasa por el optimizador
+                  <img src={f.enlace} alt={`Foto ${i + 1} del reporte observado`} className="size-full object-cover" />
+                ) : (
+                  <p className="flex size-full items-center justify-center p-1 text-center text-xs text-texto-suave">Foto {i + 1}</p>
+                )}
+                <button
+                  type="button"
+                  aria-label={`Quitar la foto ${i + 1}`}
+                  onClick={() => setFotosPrevias((fs) => fs.filter((x) => x.ruta !== f.ruta))}
+                  className="absolute top-1 right-1 inline-flex size-7 items-center justify-center rounded-full bg-superficie/90 text-texto shadow"
+                >
+                  <X aria-hidden className="size-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <SelectorFotos
           fotos={fotos}
           alCambiar={setFotos}
           prefijoRuta={`${cuentaId}/${id}`}
-          maximo={MAXIMO_FOTOS_REPORTE}
+          maximo={MAXIMO_FOTOS_REPORTE - fotosPrevias.length}
           bucket={BUCKET_FOTOS_REPORTE}
           comprimir
           maximoMb={MAXIMO_MB_FOTO_REPORTE}
@@ -335,7 +393,7 @@ export function FormularioReporteDiario({
       )}
       <div className="flex justify-end">
         <Boton type="submit" cargando={enviando} disabled={sinPersonal || subiendo || fallidas} className="w-full sm:w-auto">
-          {subiendo ? 'Esperando las fotos…' : 'Subir reporte'}
+          {subiendo ? 'Esperando las fotos…' : corrige ? 'Subir el reporte corregido' : 'Subir reporte'}
         </Boton>
       </div>
     </form>

@@ -32,7 +32,7 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
     <>
       <EncabezadoPagina
         titulo="Personal"
-        descripcion="La ficha de cada persona de planta y oficina: sus datos, la cuenta donde se le paga, su horario y lo que cuesta al mes. Con el horario, la marca del portero sabe si llegó tarde; con el costo, sus horas se cargan a cada código interno."
+        descripcion="La ficha de cada persona de planta y oficina: sus datos, la cuenta donde se le paga, su horario y lo que gana y lo que cuesta al mes. Con el horario, la marca del portero sabe si llegó tarde; con la remuneración se le paga en la planilla diaria; con el costo, sus horas se cargan a cada código interno."
         migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Personal' }]}
         acciones={gestiona && <NuevoTrabajador areas={areas} />}
       />
@@ -126,6 +126,16 @@ function FilaTrabajador({
             <span className="text-xs text-texto-suave">Sin cuenta</span>
           )}
           <p className="mt-1 text-[11px] text-texto-suave">
+            {t.remuneracion_mensual ? (
+              <>
+                Gana <span className="tabular">{moneda(t.remuneracion_mensual)}</span> al mes ·{' '}
+                <span className="tabular">{moneda(t.remuneracion_mensual / HORAS_DEL_MES)}</span> la hora
+              </>
+            ) : (
+              'Sin remuneración mensual: sus horas validadas esperan para entrar a la planilla diaria'
+            )}
+          </p>
+          <p className="mt-0.5 text-[11px] text-texto-suave">
             {t.costo_mensual ? (
               <>
                 Cuesta <span className="tabular">{moneda(t.costo_mensual)}</span> al mes ·{' '}

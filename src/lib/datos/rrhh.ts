@@ -18,17 +18,21 @@ export type Trabajador = {
   cuenta: { banco: string; tipo_cuenta: string; numero_cuenta: string; cci: string | null } | null
   /** Lo que cuesta al mes. Solo lo ve RR. HH.: de ahí sale el costo de su hora en el tareo. */
   costo_mensual: number | null
+  /** Lo que se le paga al mes, sin aportes. Solo lo ve RR. HH.: de ahí sale su hora en la planilla diaria. */
+  remuneracion_mensual: number | null
 }
 
 const COLUMNAS_TRABAJADOR =
   'id, nombres, apellidos, dni, cargo, area_id, hora_entrada, hora_salida, activo,' +
   ' area:areas(id, codigo, nombre), cuenta:trabajador_cuentas(banco, tipo_cuenta, numero_cuenta, cci),' +
-  ' costo:trabajador_costos(costo_mensual)'
+  ' costo:trabajador_costos(costo_mensual), remuneracion:trabajador_remuneraciones(remuneracion_mensual)'
 
 type FilaCosto = { costo_mensual: number | string }
-type FilaTrabajador = Omit<Trabajador, 'cuenta' | 'costo_mensual'> & {
+type FilaRemuneracion = { remuneracion_mensual: number | string }
+type FilaTrabajador = Omit<Trabajador, 'cuenta' | 'costo_mensual' | 'remuneracion_mensual'> & {
   cuenta: Trabajador['cuenta'] | Trabajador['cuenta'][]
   costo: FilaCosto | FilaCosto[] | null
+  remuneracion: FilaRemuneracion | FilaRemuneracion[] | null
 }
 
 /** Una relación 1 a 1 por llave única llega como objeto; si llegara como lista, se toma la primera. */
@@ -36,9 +40,15 @@ function unico<T>(valor: T | T[] | null): T | null {
   return Array.isArray(valor) ? (valor[0] ?? null) : valor
 }
 
-function aplanar({ costo, ...fila }: FilaTrabajador): Trabajador {
+function aplanar({ costo, remuneracion, ...fila }: FilaTrabajador): Trabajador {
   const c = unico(costo)
-  return { ...fila, cuenta: unico(fila.cuenta), costo_mensual: c ? Number(c.costo_mensual) : null }
+  const r = unico(remuneracion)
+  return {
+    ...fila,
+    cuenta: unico(fila.cuenta),
+    costo_mensual: c ? Number(c.costo_mensual) : null,
+    remuneracion_mensual: r ? Number(r.remuneracion_mensual) : null,
+  }
 }
 
 /** Todo el personal, por apellidos. `activos` deja fuera a los de baja. */

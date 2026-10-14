@@ -200,11 +200,29 @@ function FormularioTrabajador({
       </fieldset>
 
       <fieldset className="space-y-4">
-        <legend className="text-sm font-semibold text-texto">Lo que cuesta a la empresa</legend>
+        <legend className="text-sm font-semibold text-texto">Lo que gana y lo que cuesta a la empresa</legend>
         <p className="text-xs text-texto-suave">
-          Con esto se costean sus horas en cada código interno: la hora vale el costo mensual entre {HORAS_DEL_MES}.
+          Con la remuneración se le paga en la planilla diaria; con el costo se costean sus horas en cada código interno. En los dos,
+          la hora vale el monto mensual entre {HORAS_DEL_MES}.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
+          <Campo
+            etiqueta="Remuneración mensual (S/)"
+            htmlFor={`tr-remuneracion-${id}`}
+            ayuda="Sueldo, asignación y bonos, sin los aportes de la empresa: lo que se le paga."
+          >
+            <Entrada
+              id={`tr-remuneracion-${id}`}
+              name="remuneracion_mensual"
+              type="number"
+              min={0.01}
+              max={100000}
+              step={0.01}
+              inputMode="decimal"
+              defaultValue={t?.remuneracion_mensual ?? ''}
+              className="tabular"
+            />
+          </Campo>
           <Campo etiqueta="Costo mensual (S/)" htmlFor={`tr-costo-${id}`} ayuda="Sueldo, asignación y bonos, más los aportes de la empresa.">
             <Entrada
               id={`tr-costo-${id}`}

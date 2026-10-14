@@ -1,6 +1,7 @@
 import {
   ArrowLeftRight,
   BadgeCheck,
+  Banknote,
   Boxes,
   Calculator,
   Building2,
@@ -8,6 +9,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   Clock,
+  ClockAlert,
   Cog,
   FileSpreadsheet,
   FileText,
@@ -264,7 +266,7 @@ export const NAVEGACION = [
         ruta: '/reportes-diarios',
         icono: NotebookPen,
         permiso: ['reporte_diario.registrar', 'reporte_diario.ver'],
-        descripcion: 'Trabajos del día con su avance, el personal con sus horas y fotos',
+        descripcion: 'Trabajos del día con su avance, el personal con sus horas y fotos; Gerencia y RR. HH. lo validan',
         disponible: true,
       },
     ],
@@ -281,6 +283,8 @@ export const NAVEGACION = [
         descripcion: 'Cotizaciones liberadas y documentos de compras',
         disponible: true,
       },
+      // La paga Tesorería; la arma RR. HH. (está también en su grupo, con su permiso).
+      { titulo: 'Planilla diaria', ruta: '/planilla-diaria', icono: Banknote, permiso: 'planilla_diaria.pagar', descripcion: 'Pagar a cada persona a su cuenta, con comprobante y boleta', disponible: true },
       { titulo: 'Cuentas de Tesorería', ruta: '/tesoreria/cuentas', icono: FileSpreadsheet, permiso: 'tesoreria.ver_documentos', descripcion: 'Cobros por OT y pagos de compras', disponible: true },
       { titulo: 'Gastos del mes', ruta: '/costos/gastos-generales', icono: Wallet, permiso: ['costos.gastos_generales', 'costos.ver'], descripcion: 'Servicios del local y gastos de operación', disponible: true },
       { titulo: 'Tipo de cambio', ruta: '/tesoreria/tipo-de-cambio', icono: ArrowLeftRight, permiso: 'tesoreria.tipo_cambio', descripcion: 'El cambio del dólar de cada día, para el costo en soles', disponible: true },
@@ -297,6 +301,8 @@ export const NAVEGACION = [
       { titulo: 'Personal', ruta: '/rrhh/personal', icono: Users, permiso: ['rrhh.personal', 'asistencia.ver'], descripcion: 'La ficha de cada persona: datos, cuenta de pago y horario', disponible: true },
       { titulo: 'Asistencia', ruta: '/rrhh/asistencia', icono: ClipboardCheck, permiso: ['asistencia.marcar', 'asistencia.ver'], descripcion: 'Ingreso y salida de cada persona, marcados en portería', disponible: true },
       { titulo: 'Tardanzas', ruta: '/rrhh/tardanzas', icono: Clock, permiso: ['asistencia.ver', 'rrhh.personal'], descripcion: 'Tardanzas del mes y el descuento que generan', disponible: true },
+      { titulo: 'Horas extras', ruta: '/rrhh/horas-extras', icono: ClockAlert, permiso: ['planilla_diaria.preparar', 'planilla_diaria.ver'], descripcion: 'Lo que pasa de 8 horas al día: pagarlo o reservarlo', disponible: true },
+      { titulo: 'Planilla diaria', ruta: '/planilla-diaria', icono: Banknote, permiso: ['planilla_diaria.preparar', 'planilla_diaria.ver'], descripcion: 'Las horas validadas que se pagan, enviadas a Tesorería', disponible: true },
       { titulo: 'Costeo por código', ruta: '/rrhh/costeo', icono: Calculator, permiso: 'rrhh.personal', descripcion: 'Horas de cada persona por código interno y lo que cuestan', disponible: true },
       { titulo: 'Observaciones', ruta: '/rrhh/observaciones', icono: MessageSquareWarning, permiso: ['rrhh.personal', 'asistencia.ver'], descripcion: 'Observaciones, amonestaciones y suspensiones del personal', disponible: true },
       { titulo: 'Planillas', ruta: '/rrhh', icono: UserCog, permiso: 'rrhh.ver_planillas', descripcion: 'Planillas del mes y su distribución por unidad', disponible: true },
@@ -429,20 +435,22 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // Cerrado desde #28: lo que Gerencia decide y poco más. Lo demás que su
   // permiso le deja ver (Requerimientos, el kardex, Personal) lo abre desde el
   // enlace del aviso o por su dirección.
+  // Los reportes diarios esperan su visto bueno: pasaron de Consultas a su trabajo.
   GERENTE: {
     grupos: [
-      { titulo: 'Gerencia', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/ordenes'] },
-      { titulo: 'Consultas', rutas: ['/reportes-diarios', '/proveedores', '/rrhh/tardanzas', '/rrhh/observaciones'] },
+      { titulo: 'Gerencia', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/ordenes'] },
+      { titulo: 'Consultas', rutas: ['/planilla-diaria', '/rrhh/horas-extras', '/proveedores', '/rrhh/tardanzas', '/rrhh/observaciones'] },
     ],
-    telefono: ['/cotizaciones/pdf', '/compras/aprobacion', '/ordenes', '/'],
+    telefono: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/ordenes'],
   },
   // Cerrado desde #28, como Gerencia.
+  // La planilla diaria espera su pago: va primero.
   TESORERIA: {
     grupos: [
-      { titulo: 'Finanzas', rutas: ['/tesoreria', '/tesoreria/cuentas', '/tesoreria/tipo-de-cambio', '/adquisiciones'] },
+      { titulo: 'Finanzas', rutas: ['/planilla-diaria', '/tesoreria', '/tesoreria/cuentas', '/tesoreria/tipo-de-cambio', '/adquisiciones'] },
       { titulo: 'Consultas', rutas: ['/ordenes'] },
     ],
-    telefono: ['/tesoreria', '/tesoreria/cuentas', '/tesoreria/tipo-de-cambio', '/adquisiciones'],
+    telefono: ['/planilla-diaria', '/tesoreria', '/tesoreria/cuentas', '/adquisiciones'],
   },
   CONTABILIDAD: {
     grupos: [
@@ -484,16 +492,27 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     ],
     telefono: ['/cotizaciones/pdf', '/ordenes', '/costos/gastos-generales', '/diseno/evaluaciones'],
   },
-  // Los reportes diarios de los supervisores alimentan el costeo: van antes de él.
+  // Primero lo que espera por RR. HH.: los reportes diarios por validar, las
+  // horas extras por decidir y la planilla diaria por enviar.
   RECURSOS_HUMANOS: {
     grupos: [
       {
         titulo: 'Recursos Humanos',
-        rutas: ['/rrhh/personal', '/rrhh/asistencia', '/rrhh/tardanzas', '/reportes-diarios', '/rrhh/costeo', '/rrhh/observaciones', '/rrhh'],
+        rutas: [
+          '/reportes-diarios',
+          '/rrhh/horas-extras',
+          '/planilla-diaria',
+          '/rrhh/personal',
+          '/rrhh/asistencia',
+          '/rrhh/tardanzas',
+          '/rrhh/costeo',
+          '/rrhh/observaciones',
+          '/rrhh',
+        ],
       },
       { titulo: 'Consultas', rutas: ['/ordenes'] },
     ],
-    telefono: ['/rrhh/personal', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh'],
+    telefono: ['/reportes-diarios', '/planilla-diaria', '/rrhh/personal', '/rrhh/asistencia'],
   },
   PORTERO: {
     grupos: [{ titulo: 'Portería', rutas: ['/rrhh/asistencia'] }],
@@ -624,6 +643,8 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/rrhh/costeo', corto: 'Costeo' },
   { ruta: '/rrhh/observaciones', corto: 'Observaciones' },
   { ruta: '/reportes-diarios', corto: 'Reporte' },
+  { ruta: '/planilla-diaria', corto: 'Planilla' },
+  { ruta: '/rrhh/horas-extras', corto: 'Extras' },
   { ruta: '/tesoreria/tipo-de-cambio', corto: 'Cambio' },
   { ruta: '/proveedores', corto: 'Proveedores' },
 ]
