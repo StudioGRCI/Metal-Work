@@ -83,6 +83,8 @@ const RUTAS = [
   ordenId && ['orden-actividades', `/ordenes/${ordenId}?vista=actividades`],
   ['configuracion', '/configuracion'],
   ['personal', '/personal'],
+  ['rrhh-costeo', '/rrhh/costeo'],
+  ['rrhh-observaciones', '/rrhh/observaciones'],
   ['sin-permiso', '/sin-permiso'],
 ].filter(Boolean)
 

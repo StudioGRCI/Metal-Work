@@ -7,7 +7,7 @@ import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import type { Trabajador } from '@/lib/datos/rrhh'
-import { BANCOS, TIPO_CUENTA, horaCorta } from '@/lib/dominio/rrhh'
+import { BANCOS, HORAS_DEL_MES, TIPO_CUENTA, horaCorta } from '@/lib/dominio/rrhh'
 import { useEnvio } from '@/lib/envio'
 
 import { cambiarEstadoTrabajador, guardarTrabajador } from './acciones'
@@ -195,6 +195,28 @@ function FormularioTrabajador({
           </Campo>
           <Campo etiqueta="CCI" htmlFor={`tr-cci-${id}`} ayuda="Los 20 dígitos, si el pago va a otro banco.">
             <Entrada id={`tr-cci-${id}`} name="cci" inputMode="numeric" pattern="[0-9]{20}" maxLength={20} defaultValue={t?.cuenta?.cci ?? ''} autoComplete="off" className="tabular" />
+          </Campo>
+        </div>
+      </fieldset>
+
+      <fieldset className="space-y-4">
+        <legend className="text-sm font-semibold text-texto">Lo que cuesta a la empresa</legend>
+        <p className="text-xs text-texto-suave">
+          Con esto se costean sus horas en cada código interno: la hora vale el costo mensual entre {HORAS_DEL_MES}.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Campo etiqueta="Costo mensual (S/)" htmlFor={`tr-costo-${id}`} ayuda="Sueldo, asignación y bonos, más los aportes de la empresa.">
+            <Entrada
+              id={`tr-costo-${id}`}
+              name="costo_mensual"
+              type="number"
+              min={0.01}
+              max={100000}
+              step={0.01}
+              inputMode="decimal"
+              defaultValue={t?.costo_mensual ?? ''}
+              className="tabular"
+            />
           </Campo>
         </div>
       </fieldset>

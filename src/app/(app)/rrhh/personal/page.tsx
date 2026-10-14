@@ -5,7 +5,8 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { areasParaPersonal, listarTrabajadores, type Trabajador } from '@/lib/datos/rrhh'
-import { TIPO_CUENTA, horaCorta } from '@/lib/dominio/rrhh'
+import { HORAS_DEL_MES, TIPO_CUENTA, horaCorta } from '@/lib/dominio/rrhh'
+import { moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { ControlesTrabajador, NuevoTrabajador } from './formulario'
@@ -31,7 +32,7 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
     <>
       <EncabezadoPagina
         titulo="Personal"
-        descripcion="La ficha de cada persona de planta y oficina: sus datos, la cuenta donde se le paga y su horario. Con el horario, la marca del portero sabe si llegó tarde."
+        descripcion="La ficha de cada persona de planta y oficina: sus datos, la cuenta donde se le paga, su horario y lo que cuesta al mes. Con el horario, la marca del portero sabe si llegó tarde; con el costo, sus horas se cargan a cada código interno."
         migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Personal' }]}
         acciones={gestiona && <NuevoTrabajador areas={areas} />}
       />
@@ -124,6 +125,16 @@ function FilaTrabajador({
           ) : (
             <span className="text-xs text-texto-suave">Sin cuenta</span>
           )}
+          <p className="mt-1 text-[11px] text-texto-suave">
+            {t.costo_mensual ? (
+              <>
+                Cuesta <span className="tabular">{moneda(t.costo_mensual)}</span> al mes ·{' '}
+                <span className="tabular">{moneda(t.costo_mensual / HORAS_DEL_MES)}</span> la hora
+              </>
+            ) : (
+              'Sin costo mensual: no se le pueden cargar horas'
+            )}
+          </p>
         </TD>
       )}
       <TD className="align-top">
