@@ -27,7 +27,7 @@
 --
 -- Las tablas nuevas se escriben solo por las funciones de abajo. Sin DROP: el
 -- conector de producción no deja pasar ninguno, ni dentro de un bloque. La
--- restricción vieja de las cuentas por cobrar se suelta en la 20261015121000.
+-- restricción vieja de las cuentas por cobrar se suelta en la 20261015123000.
 -- =============================================================================
 
 -- 1. Permisos ---------------------------------------------------------------------
@@ -125,7 +125,7 @@ select public.activar_registro_de_prueba('facturas_venta');
 -- 4. La cuenta por cobrar nace de la factura -------------------------------------
 -- La factura que Contabilidad anula se lleva su cuenta: queda marcada y deja
 -- de salir. El número de la factura vale una vez por OT entre las vigentes
--- (el índice de abajo; la 20261015121000 suelta la restricción que lo pedía
+-- (el índice de abajo; la 20261015123000 suelta la restricción que lo pedía
 -- también entre las anuladas).
 alter table public.cuentas_cobrar_ot add column if not exists factura_venta_id uuid references public.facturas_venta(id) on delete restrict;
 alter table public.cuentas_cobrar_ot add column if not exists anulada_en timestamptz;
@@ -595,7 +595,7 @@ begin
               where orden_id = v_fac.orden_id and numero_documento = v_fac.numero and anulada_en is null) then
     raise exception 'Tesorería ya tiene la factura % de esa OT por cobrar.', v_fac.numero using errcode = 'unique_violation';
   end if;
-  -- Mientras siga la restricción vieja (la suelta la 20261015121000), el número
+  -- Mientras siga la restricción vieja (la suelta la 20261015123000), el número
   -- de una factura anulada no vuelve a entrar en esa OT: que lo diga claro.
   if exists (select 1 from public.cuentas_cobrar_ot
               where orden_id = v_fac.orden_id and numero_documento = v_fac.numero and anulada_en is not null)
