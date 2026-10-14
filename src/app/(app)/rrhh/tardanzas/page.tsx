@@ -16,6 +16,9 @@ export const metadata = { title: 'Tardanzas del personal' }
 export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh/tardanzas'>) {
   const perfil = await exigirPermiso(['asistencia.ver', 'rrhh.personal'])
   const ajusta = puede(perfil, 'rrhh.personal')
+  // La miga lleva a las planillas solo a quien las abre: Gerencia y
+  // Administración consultan esto con `asistencia.ver` y ahí las rebotaban.
+  const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const mesActual = mesDeLima(hoyLima())
   const mes = mesValido(params.mes) ? params.mes : mesActual
@@ -29,7 +32,7 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
       <EncabezadoPagina
         titulo="Tardanzas"
         descripcion="Por cada persona, cuántas veces llegó después de su hora en el mes, cuántos minutos suman y el descuento que eso genera, para la planilla."
-        migas={[{ titulo: 'Recursos Humanos', ruta: '/rrhh' }, { titulo: 'Tardanzas' }]}
+        migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Tardanzas' }]}
       />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-import { NAVEGACION, puedeVer, rutaActiva } from '@/lib/navegacion'
+import { menuDe, rutaActiva } from '@/lib/navegacion'
 import { cn } from '@/lib/utils'
 import { useContextoOrden } from './contexto-orden'
 
@@ -35,16 +35,14 @@ export function NavegacionLista({
   const { orden } = useContextoOrden()
   const ordenActual = orden && (ruta === `/ordenes/${orden.id}` || ruta.startsWith(`/ordenes/${orden.id}/`)) ? orden : null
 
+  // El menú de su puesto, el mismo que arma la barra de abajo del teléfono.
+  const grupos = menuDe(permisos, esAdmin, rolCodigo)
+
   // El mismo criterio que la barra de abajo del teléfono: los dos marcan igual.
   const activa = rutaActiva(
     ruta,
-    NAVEGACION.flatMap((g) => g.items).map((i) => i.ruta),
+    grupos.flatMap((g) => g.items).map((i) => i.ruta),
   )
-
-  const grupos = NAVEGACION.map((g) => ({
-    ...g,
-    items: g.items.filter((i) => i.disponible && puedeVer(i, permisos, esAdmin, rolCodigo)),
-  })).filter((g) => g.items.length > 0)
 
   return (
     <nav aria-label="Menú principal" className="flex h-full flex-col gap-5 overflow-y-auto px-3 py-5">

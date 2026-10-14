@@ -23,7 +23,7 @@ import { fecha, fechaLarga, hoyLima, moneda, porcentaje } from '@/lib/format'
 import { costoDeOrdenes } from '@/lib/datos/costos-ot'
 import { indicadoresTablero, ordenesAtrasadas, ordenesPorEntrega } from '@/lib/datos/ordenes'
 import { pendientesGlobales, type PendienteGlobal } from '@/lib/datos/pendientes-globales'
-import { NAVEGACION, puedeVer } from '@/lib/navegacion'
+import { menuDe } from '@/lib/navegacion'
 import { exigirSesion, puede, type PerfilSesion } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
 
@@ -432,9 +432,9 @@ function primeraEnMayuscula(texto: string) {
  */
 function TusModulos({ perfil }: { perfil: PerfilSesion }) {
   const esAdmin = perfil.rol.codigo === 'ADMIN'
-  const modulos = NAVEGACION.flatMap((g) => g.items).filter(
-    (i) => i.ruta !== '/' && i.disponible && puedeVer(i, perfil.permisos, esAdmin, perfil.rol.codigo),
-  )
+  const modulos = menuDe(perfil.permisos, esAdmin, perfil.rol.codigo)
+    .flatMap((g) => g.items)
+    .filter((i) => i.ruta !== '/')
   if (modulos.length === 0) return null
   return (
     <section aria-label="Tus módulos">
