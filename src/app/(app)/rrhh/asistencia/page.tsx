@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { listarTrabajadores, marcasDelDia } from '@/lib/datos/rrhh'
 import { diaVecino, fechaValida } from '@/lib/dominio/rrhh'
-import { fechaLarga, hoyLima, moneda } from '@/lib/format'
+import { fechaLarga, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { Marcador } from './marcador'
@@ -27,8 +27,7 @@ export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrh
   const [personal, marcas] = await Promise.all([listarTrabajadores('activos'), marcasDelDia(fecha)])
   const vigentes = marcas.filter((m) => m.anulado_en === null)
   const ingresos = vigentes.filter((m) => m.tipo === 'INGRESO')
-  const tarde = ingresos.filter((m) => m.descuento > 0)
-  const descuento = tarde.reduce((n, m) => n + m.descuento, 0)
+  const tarde = ingresos.filter((m) => m.es_tardanza)
 
   return (
     <>
@@ -37,7 +36,7 @@ export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrh
         descripcion={
           marca
             ? 'Toca «Ingreso» cuando la persona entra y «Salida» cuando se va. La hora la pone el sistema; si entra después de su hora, queda la tardanza.'
-            : 'Lo que marcó la portería cada día, con las tardanzas y el descuento que generan.'
+            : 'Lo que marcó la portería cada día, con las tardanzas. El descuento sale del mes, en «Tardanzas».'
         }
         migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Asistencia' }]}
       />
@@ -69,8 +68,7 @@ export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrh
           {tarde.length > 0 && (
             <>
               {' '}
-              · <span className="tabular">{tarde.length}</span> {tarde.length === 1 ? 'tardanza' : 'tardanzas'} ·{' '}
-              <span className="tabular">{moneda(descuento)}</span>
+              · <span className="tabular">{tarde.length}</span> {tarde.length === 1 ? 'tardanza' : 'tardanzas'}
             </>
           )}
         </p>

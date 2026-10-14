@@ -8,8 +8,16 @@ import { useEnvio } from '@/lib/envio'
 
 import { guardarReglaTardanza } from './acciones'
 
-/** La tolerancia y el descuento por minuto, para que RR. HH. los ajuste sin pedirlo a nadie. */
-export function FormularioRegla({ tolerancia, descuentoPorMinuto }: { tolerancia: number; descuentoPorMinuto: number }) {
+/** La tolerancia y el descuento por tardanzas, para que RR. HH. los ajuste sin pedirlo a nadie. */
+export function FormularioRegla({
+  tolerancia,
+  tardanzasPorDescuento,
+  porcentajeDescuento,
+}: {
+  tolerancia: number
+  tardanzasPorDescuento: number
+  porcentajeDescuento: number
+}) {
   const [aviso, setAviso] = useState<string | null>(null)
   const { alEnviar, enviando, error } = useEnvio(guardarReglaTardanza, (r) => setAviso(r.mensaje ?? 'Regla guardada.'))
   return (
@@ -20,12 +28,15 @@ export function FormularioRegla({ tolerancia, descuentoPorMinuto }: { tolerancia
       }}
       className="space-y-4"
     >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Campo etiqueta="Tolerancia (minutos)" htmlFor="regla-tolerancia" requerido ayuda="Hasta estos minutos después de su hora no se descuenta.">
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Campo etiqueta="Tolerancia (minutos)" htmlFor="regla-tolerancia" requerido ayuda="Hasta estos minutos después de su hora no cuenta como tardanza.">
           <Entrada id="regla-tolerancia" name="tolerancia_minutos" type="number" min={0} max={120} step={1} required defaultValue={tolerancia} className="tabular" />
         </Campo>
-        <Campo etiqueta="Descuento por minuto (S/)" htmlFor="regla-descuento" requerido ayuda="Pasada la tolerancia se descuentan todos los minutos de tardanza.">
-          <Entrada id="regla-descuento" name="descuento_por_minuto" type="number" min={0} max={100} step={0.0001} required defaultValue={descuentoPorMinuto} className="tabular" />
+        <Campo etiqueta="Tardanzas por descuento" htmlFor="regla-veces" requerido ayuda="Cada tantas tardanzas en el mes, un descuento.">
+          <Entrada id="regla-veces" name="tardanzas_por_descuento" type="number" min={1} max={31} step={1} required defaultValue={tardanzasPorDescuento} className="tabular" />
+        </Campo>
+        <Campo etiqueta="Descuento (% del sueldo)" htmlFor="regla-porcentaje" requerido ayuda="De su remuneración mensual, por cada grupo de tardanzas.">
+          <Entrada id="regla-porcentaje" name="porcentaje_descuento" type="number" min={0} max={100} step={0.01} required defaultValue={porcentajeDescuento} className="tabular" />
         </Campo>
       </div>
       {error && (

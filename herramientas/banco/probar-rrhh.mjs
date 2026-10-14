@@ -6,8 +6,9 @@
  *      nunca), ve su cuenta bancaria y ajusta la regla de tardanza.
  *   2. La portería, en tamaño de celular, no entra a «Personal», no ve ninguna
  *      cuenta, marca el ingreso de las dos y la salida de una: la tarde sale
- *      con su descuento y la otra «a tiempo».
- *   3. RR. HH. ve la tardanza y el descuento en el resumen del mes.
+ *      «Tarde» con sus minutos, sin soles, y la otra «a tiempo».
+ *   3. RR. HH. ve en el resumen del mes que le faltan dos tardanzas para el
+ *      descuento: se descuenta cada tres, no por minuto.
  *   4. Gerencia consulta la asistencia sin botones de marcar.
  *   5. Logística no ve nada de esto.
  *
@@ -107,12 +108,13 @@ async function registrar(pagina, p, entrada, salida) {
 
   await pagina.goto(`${BASE}/rrhh/tardanzas`, { waitUntil: 'networkidle' })
   await pagina.locator('#regla-tolerancia').fill('0')
-  await pagina.locator('#regla-descuento').fill('0.5')
+  await pagina.locator('#regla-veces').fill('3')
+  await pagina.locator('#regla-porcentaje').fill('5')
   await pagina.getByRole('button', { name: 'Guardar la regla' }).click()
   await pagina.getByRole('status').filter({ hasText: 'Regla guardada' }).waitFor({ timeout: 15000 }).catch(() => {})
   await pagina.reload({ waitUntil: 'networkidle' })
   const regla = (await pagina.locator('text=minutos de tolerancia').first().textContent()) ?? ''
-  comprobar(/0 minutos de tolerancia/.test(regla) && /0[.,]50/.test(regla), `la regla queda en 0 min y S/ 0,50 (${regla.slice(0, 90)})`)
+  comprobar(/0 minutos de tolerancia/.test(regla) && /cada 3 tardanzas/.test(regla) && /5 %/.test(regla), `la regla queda en 0 min, cada 3 tardanzas, 5 % (${regla.slice(0, 120)})`)
   comprobar(errores.length === 0, `RR. HH. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await pagina.screenshot({ path: `${CAPTURAS}/rrhh-tardanzas-regla.png`, fullPage: true })
   await contexto.close()
@@ -136,7 +138,7 @@ async function registrar(pagina, p, entrada, salida) {
   await tarjetaTarde.getByRole('button', { name: /Marcar el ingreso/ }).click()
   await tarjetaTarde.getByText(/^Tarde /).waitFor({ timeout: 15000 }).catch(() => {})
   const textoTarde = (await tarjetaTarde.textContent()) ?? ''
-  comprobar(/Tarde .*S\/\s?\d/.test(textoTarde), `el ingreso de quien entra 00:00 sale tarde con descuento (${textoTarde.replace(/\s+/g, ' ').slice(0, 120)})`)
+  comprobar(/Tarde (\d+ h )?\d+ min/.test(textoTarde) && !/S\/\s?\d/.test(textoTarde), `el ingreso de quien entra 00:00 sale tarde, con minutos y sin soles (${textoTarde.replace(/\s+/g, ' ').slice(0, 120)})`)
   comprobar(await tarjetaTarde.getByRole('button', { name: /Marcar el ingreso/ }).isDisabled(), 'no se puede marcar un segundo ingreso')
 
   await tarjetaTarde.getByRole('button', { name: /Marcar la salida/ }).click()
@@ -167,7 +169,7 @@ async function registrar(pagina, p, entrada, salida) {
   await pagina.goto(`${BASE}/rrhh/tardanzas`, { waitUntil: 'networkidle' })
   const fila = pagina.locator('tbody tr', { hasText: tarde.nombres })
   const texto = ((await fila.textContent()) ?? '').replace(/\s+/g, ' ')
-  comprobar(/S\/\s?\d/.test(texto), `el resumen del mes trae el descuento de quien llegó tarde (${texto.slice(0, 120)})`)
+  comprobar(/Le faltan 2 para el descuento/.test(texto) && texto.trim().endsWith('—'), `una tardanza no descuenta: le faltan 2 (${texto.slice(0, 120)})`)
   const otra = ((await pagina.locator('tbody tr', { hasText: puntual.nombres }).textContent()) ?? '').replace(/\s+/g, ' ')
   comprobar(otra.trim().endsWith('—'), `quien llegó a tiempo no tiene descuento (${otra.slice(0, 120)})`)
   await contexto.close()

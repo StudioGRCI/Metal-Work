@@ -70,8 +70,13 @@ export function diaVecino(dia: string, paso: -1 | 1): string {
   return d.toISOString().slice(0, 10)
 }
 
-/** Las horas de un mes con que se divide el costo mensual: 30 días de 8 horas, la base del descuento por tardanza. */
+/** Las horas de un mes con que se divide el costo mensual: 30 días de 8 horas. */
 export const HORAS_DEL_MES = 240
+
+/** «5 %» o «2,5 %» para el descuento por tardanzas. */
+export function porcentajeCorto(porcentaje: number): string {
+  return `${Number(porcentaje.toFixed(2)).toLocaleString('es-PE', { maximumFractionDigits: 2 })} %`
+}
 
 /** «6,5 h» para las horas del tareo. */
 export function horasCortas(horas: number): string {
