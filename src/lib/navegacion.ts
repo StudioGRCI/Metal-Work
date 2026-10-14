@@ -14,6 +14,7 @@ import {
   FileSpreadsheet,
   FileText,
   HardHat,
+  Hash,
   Layers,
   LayoutDashboard,
   ListOrdered,
@@ -70,6 +71,16 @@ export const NAVEGACION = [
         icono: FileSpreadsheet,
         permiso: 'ordenes.listar',
         descripcion: 'Todas las OT y su avance',
+        disponible: true,
+      },
+      // Lo que se trabaja hoy va por código interno, no por OT: Gerencia ve cada
+      // código con sus reportes de avance y su costeo (migración 20261014220000).
+      {
+        titulo: 'Códigos internos',
+        ruta: '/codigos-internos',
+        icono: Hash,
+        permiso: 'codigos_internos.ver',
+        descripcion: 'Cada código con su avance y lo que lleva costado: mano de obra, materiales y compras',
         disponible: true,
       },
     ],
@@ -436,12 +447,14 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // permiso le deja ver (Requerimientos, el kardex, Personal) lo abre desde el
   // enlace del aviso o por su dirección.
   // Los reportes diarios esperan su visto bueno: pasaron de Consultas a su trabajo.
+  // Los códigos internos van junto a ellos y, en el teléfono, en lugar de las OT:
+  // el taller trabaja por código mientras la OT no está del todo en el sistema.
   GERENTE: {
     grupos: [
-      { titulo: 'Gerencia', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/ordenes'] },
+      { titulo: 'Gerencia', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/codigos-internos', '/ordenes'] },
       { titulo: 'Consultas', rutas: ['/planilla-diaria', '/rrhh/horas-extras', '/proveedores', '/rrhh/tardanzas', '/rrhh/observaciones'] },
     ],
-    telefono: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/ordenes'],
+    telefono: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/codigos-internos'],
   },
   // Cerrado desde #28, como Gerencia.
   // La planilla diaria espera su pago: va primero.
@@ -643,6 +656,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/rrhh/costeo', corto: 'Costeo' },
   { ruta: '/rrhh/observaciones', corto: 'Observaciones' },
   { ruta: '/reportes-diarios', corto: 'Reporte' },
+  { ruta: '/codigos-internos', corto: 'Códigos' },
   { ruta: '/planilla-diaria', corto: 'Planilla' },
   { ruta: '/rrhh/horas-extras', corto: 'Extras' },
   { ruta: '/tesoreria/tipo-de-cambio', corto: 'Cambio' },

@@ -8562,6 +8562,124 @@ export type Database = {
         }
         Returns: string
       }
+      codigo_interno_avance: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          codigo: string | null
+          reporte_id: string | null
+          fecha: string | null
+          asunto: string | null
+          area: string | null
+          estado: string | null
+          creado_en: string | null
+          personal_general: boolean | null
+          horas_reporte: number | null
+          trabajo_orden: number | null
+          trabajo: string | null
+          avance: number | null
+          horas: number | null
+          personas: number | null
+        }[]
+      }
+      codigo_interno_compras: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          id: string | null
+          numero: string | null
+          fecha: string | null
+          proveedor: string | null
+          aprobacion: string | null
+          recojo: string | null
+          entregado_almacen_en: string | null
+          validaciones: string[] | null
+          moneda: string | null
+          monto: number | null
+          lineas: number | null
+          sin_precio: number | null
+          requerimientos: string | null
+        }[]
+      }
+      codigo_interno_costeo: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          codigo: string | null
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          horas: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+        }[]
+      }
+      codigo_interno_documentos: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          codigo: string | null
+          tipo: string | null
+          id: string | null
+          numero: string | null
+          fecha: string | null
+          estado: string | null
+          detalle: string | null
+        }[]
+      }
+      codigo_interno_personal: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          trabajador_id: string | null
+          nombre: string | null
+          cargo: string | null
+          horas: number | null
+          horas_sin_costo: number | null
+          dias: number | null
+          primer_dia: string | null
+          ultimo_dia: string | null
+        }[]
+      }
+      codigos_internos_resumen: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          codigo: string | null
+          requerimientos: number | null
+          compras: number | null
+          salidas: number | null
+          reportes: number | null
+          vehiculos: number | null
+          unidades: number | null
+          ordenes: number | null
+          ultima_actividad: string | null
+          ultimo_reporte: string | null
+          trabajos: number | null
+          trabajos_terminados: number | null
+          avance_medio: number | null
+          horas: number | null
+          horas_sin_costo: number | null
+          mano_obra: number | null
+          materiales_pen: number | null
+          materiales_usd: number | null
+          materiales_sin_precio: number | null
+          compras_pen: number | null
+          compras_usd: number | null
+          compras_sin_precio: number | null
+        }[]
+      }
       completar_cuenta_acceso: {
         Args: {
           p_cuenta: string | null
@@ -9327,6 +9445,12 @@ export type Database = {
       nombre_unidad_almacen: {
         Args: {
           p_u: string | null
+        }
+        Returns: string
+      }
+      normalizar_codigo_interno: {
+        Args: {
+          p: string | null
         }
         Returns: string
       }
