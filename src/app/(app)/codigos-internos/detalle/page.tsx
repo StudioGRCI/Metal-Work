@@ -24,6 +24,7 @@ import {
   costoDelCodigo,
   dondeAparece,
   enlaceCodigo,
+  faltaElPrecio,
   normalizarCodigo,
   parecidos,
   ultimoAvancePorTrabajo,
@@ -142,26 +143,30 @@ function ComoVa({ c }: { c: ResumenCodigo }) {
         <Indicador
           titulo="Costo hasta hoy"
           valor={
-            <>
-              {moneda(costo.pen)}
-              {costo.usd > 0 && <span className="block text-sm">+ {moneda(costo.usd, 'USD')}</span>}
-            </>
+            faltaElPrecio(costo.pen + costo.usd, c.materiales_sin_precio + c.horas_sin_costo) ?? (
+              <>
+                {moneda(costo.pen)}
+                {costo.usd > 0 && <span className="block text-sm">+ {moneda(costo.usd, 'USD')}</span>}
+              </>
+            )
           }
           pie="Mano de obra y materiales"
         />
         <Indicador
           titulo="Mano de obra"
-          valor={moneda(c.mano_obra)}
+          valor={faltaElPrecio(c.mano_obra, c.horas_sin_costo, 'Sin costo') ?? moneda(c.mano_obra)}
           tono={c.horas_sin_costo > 0 ? 'aviso' : 'neutro'}
           pie={`${horasCortas(c.horas)} de personal${c.horas_sin_costo > 0 ? ` · ${horasCortas(c.horas_sin_costo)} sin costo` : ''}`}
         />
         <Indicador
           titulo="Materiales"
           valor={
-            <>
-              {moneda(c.materiales_pen)}
-              {c.materiales_usd > 0 && <span className="block text-sm">+ {moneda(c.materiales_usd, 'USD')}</span>}
-            </>
+            faltaElPrecio(c.materiales_pen + c.materiales_usd, c.materiales_sin_precio) ?? (
+              <>
+                {moneda(c.materiales_pen)}
+                {c.materiales_usd > 0 && <span className="block text-sm">+ {moneda(c.materiales_usd, 'USD')}</span>}
+              </>
+            )
           }
           tono={c.materiales_sin_precio > 0 ? 'aviso' : 'neutro'}
           pie={`${c.salidas} ${c.salidas === 1 ? 'salida' : 'salidas'} del almacén${c.materiales_sin_precio > 0 ? ` · ${c.materiales_sin_precio} sin precio` : ''}`}
@@ -359,7 +364,10 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                 <TR className="font-semibold">
                   <TD colSpan={2}>Total</TD>
                   <TD className="tabular text-right">{horasCortas(horasMo)}</TD>
-                  <TD className="tabular text-right">{moneda(suma(manoObra, 'PEN'))}</TD>
+                  <TD className="tabular text-right">
+                    {faltaElPrecio(suma(manoObra, 'PEN'), manoObra.filter((l) => l.fuente === 'MANO_OBRA_SIN_COSTO').length, 'Sin costo') ??
+                      moneda(suma(manoObra, 'PEN'))}
+                  </TD>
                 </TR>
               </>
             )}
@@ -412,7 +420,8 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                   <TD />
                   <TD className="hidden sm:table-cell" />
                   <TD className="tabular text-right">
-                    {moneda(suma(materiales, 'PEN'))}
+                    {faltaElPrecio(suma(materiales, 'PEN') + suma(materiales, 'USD'), materiales.filter((l) => l.fuente === 'MATERIALES_SIN_PRECIO').length) ??
+                      moneda(suma(materiales, 'PEN'))}
                     {suma(materiales, 'USD') > 0 && <p>+ {moneda(suma(materiales, 'USD'), 'USD')}</p>}
                   </TD>
                 </TR>

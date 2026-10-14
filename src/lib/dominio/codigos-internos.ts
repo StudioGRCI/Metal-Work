@@ -70,6 +70,14 @@ export function dondeAparece(c: {
   return partes.length > 0 ? partes.join(' · ') : 'Solo en documentos anulados'
 }
 
+/**
+ * Lo que va en lugar de «S/ 0.00» cuando no hay nada con precio pero sí cosas sin
+ * él: un cero ahí se lee como «no costó nada», y lo que pasa es que falta el precio.
+ */
+export function faltaElPrecio(monto: number, pendientes: number, etiqueta = 'Sin precio'): string | null {
+  return monto === 0 && pendientes > 0 ? etiqueta : null
+}
+
 /** Un trabajo de un reporte, como lo devuelve `codigo_interno_avance`. */
 export type TrabajoReportado = {
   reporte_id: string

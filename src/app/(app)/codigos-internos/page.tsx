@@ -7,7 +7,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { listarCodigosInternos, type ResumenCodigo } from '@/lib/datos/codigos-internos'
-import { costoDelCodigo, dondeAparece, enlaceCodigo, llaveParecido, parecidos } from '@/lib/dominio/codigos-internos'
+import { costoDelCodigo, dondeAparece, enlaceCodigo, faltaElPrecio, llaveParecido, parecidos } from '@/lib/dominio/codigos-internos'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import { fecha, moneda } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
@@ -120,7 +120,9 @@ function FilaCodigo({ codigo: c, parecidos }: { codigo: ResumenCodigo; parecidos
           <p className="text-xs text-texto-suave">{dondeAparece(c)}</p>
         </div>
         <div className="text-right">
-          <p className="tabular font-semibold text-texto">{moneda(costo.pen)}</p>
+          <p className="tabular font-semibold text-texto">
+            {faltaElPrecio(costo.pen + costo.usd, c.materiales_sin_precio + c.horas_sin_costo) ?? moneda(costo.pen)}
+          </p>
           {costo.usd > 0 && <p className="tabular text-xs text-texto">+ {moneda(costo.usd, 'USD')}</p>}
           <p className="text-[11px] text-texto-suave">costo hasta hoy</p>
         </div>
@@ -146,11 +148,14 @@ function FilaCodigo({ codigo: c, parecidos }: { codigo: ResumenCodigo; parecidos
 
       <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-texto-suave">
         <span>
-          Mano de obra <span className="tabular text-texto">{moneda(c.mano_obra)}</span>
+          Mano de obra <span className="tabular text-texto">{faltaElPrecio(c.mano_obra, c.horas_sin_costo, 'sin costo') ?? moneda(c.mano_obra)}</span>
           {c.horas > 0 && <span className="tabular"> ({horasCortas(c.horas)})</span>}
         </span>
         <span>
-          Materiales <span className="tabular text-texto">{moneda(c.materiales_pen)}</span>
+          Materiales{' '}
+          <span className="tabular text-texto">
+            {faltaElPrecio(c.materiales_pen + c.materiales_usd, c.materiales_sin_precio, 'sin precio') ?? moneda(c.materiales_pen)}
+          </span>
           {c.materiales_usd > 0 && <span className="tabular text-texto"> + {moneda(c.materiales_usd, 'USD')}</span>}
         </span>
         {(c.compras_pen > 0 || c.compras_usd > 0) && (
