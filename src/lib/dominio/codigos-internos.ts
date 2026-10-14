@@ -177,3 +177,8 @@ export function enlaceCodigo(codigo: string, vista?: VistaCodigo) {
   if (vista && vista !== 'avance') query.set('vista', vista)
   return `/codigos-internos/detalle?${query}`
 }
+
+/** El detalle del gasto de un código para Requerimientos: como el de Gerencia, el código va en la consulta. */
+export function enlaceGastoCodigo(codigo: string) {
+  return `/requerimientos/gasto-por-codigo/detalle?${new URLSearchParams({ codigo })}`
+}

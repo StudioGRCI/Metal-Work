@@ -552,7 +552,7 @@ async function VistaDocumentos({ codigo, perfil }: { codigo: string; perfil: Per
     COTIZACION: puede(perfil, 'cotizaciones.ver_pdf_comercial') ? (d) => `/cotizaciones/pdf?q=${encodeURIComponent(d.numero)}` : null,
     UNIDAD: puede(perfil, ['clientes.ver', 'produccion.ver']) ? (d) => `/unidades/${d.id}` : null,
     REQUERIMIENTO: null,
-    VEHICULO: puede(perfil, ['vehiculos.registrar', 'vehiculos.ver']) ? () => '/vehiculos' : null,
+    VEHICULO: puede(perfil, ['vehiculos.registrar', 'vehiculos.ver']) ? (d) => `/vehiculos/${d.id}` : null,
   }
   const estado = (tipo: string, valor: string) =>
     tipo === 'REQUERIMIENTO'

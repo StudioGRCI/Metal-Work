@@ -3,12 +3,13 @@
  * puesto (nunca ADMIN):
  *
  *   1. Requerimientos registra un RQ con dos insumos y lo ve en su lista.
- *   2. Registra el ingreso de un vehículo, lo ve en planta y marca su salida.
- *   3. Logística ve el RQ por atender, sin el botón de registrar.
- *   4. Gerencia ve el historial de vehículos, sin el botón de registrar.
+ *   2. Logística ve el RQ por atender, sin el botón de registrar.
+ *
+ * Los vehículos, que desde el 2026-10-15 entran y salen con fotos, los recorre
+ * `probar-gasto-y-fotos.mjs`.
  *
  * Variables: BANCO_CLAVE (la clave local de las cuentas), BASE
- * (http://localhost:3111), y los correos REQUERIMIENTOS, LOGISTICA y GERENCIA
+ * (http://localhost:3111), y los correos REQUERIMIENTOS y LOGISTICA
  * si no son los de `*.local@metalwork.test`.
  */
 import { chromium } from 'playwright-core'
@@ -20,7 +21,6 @@ const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
 const CUENTAS = {
   requerimientos: process.env.REQUERIMIENTOS ?? 'requerimientos.local@metalwork.test',
   logistica: process.env.LOGISTICA ?? 'logistica.local@metalwork.test',
-  gerencia: process.env.GERENCIA ?? 'gerencia.local@metalwork.test',
 }
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')
@@ -99,40 +99,13 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
     `la fila trae código, área, los dos insumos y «Por atender»: ${fila.replace(/\s+/g, ' ').slice(0, 220)}`)
   await pagina.screenshot({ path: `${CAPTURAS}/requerimientos.png`, fullPage: true })
 
-  // ---------------------------------------------- 2. Vehículos
-  await pagina.goto(`${BASE}/vehiculos`, { waitUntil: 'networkidle' })
-  const placa = `T${sello.slice(-2)}-${sello.slice(0, 3)}`
-  await pagina.getByRole('button', { name: 'Registrar ingreso' }).click()
-  const v = pagina.locator('[role="dialog"]')
-  await v.locator('#veh-placa').fill(placa.toLowerCase())
-  await v.locator('#veh-codigo').fill(codigo)
-  await v.locator('#veh-unidad').fill('Tolva 18 m3 Volvo FMX')
-  await v.locator('#veh-empresa').fill('ING. Y CONST. ACOSTA')
-  await v.locator('#veh-motivo').selectOption('MANTENIMIENTO')
-  await v.locator('#veh-obs').fill('Ingresa con llanta baja')
-  await v.getByRole('button', { name: 'Registrar ingreso' }).click()
-  await pagina.locator('[role="status"]').waitFor({ timeout: 20000 })
-  const placaGuardada = placa.replace('-', '').toUpperCase()
-  const enPlanta = pagina.locator('tbody tr', { hasText: placaGuardada })
-  await enPlanta.first().waitFor({ timeout: 20000 }).catch(() => {})
-  comprobar((await enPlanta.count()) === 1, `el vehículo ${placaGuardada} figura en planta`)
-  comprobar((await enPlanta.innerText()).includes('En planta'), 'con la insignia «En planta»')
-
-  await enPlanta.getByRole('button', { name: 'Marcar salida' }).click()
-  await pagina.locator('[role="dialog"] textarea[name="observacion"]').fill('Sale al arenado externo')
-  await pagina.locator('[role="dialog"]').getByRole('button', { name: 'Registrar salida' }).click()
-  await pagina.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 20000 })
-  await enPlanta.first().waitFor({ state: 'detached', timeout: 20000 }).catch(() => {})
-  comprobar((await pagina.locator('tbody tr', { hasText: placaGuardada }).count()) === 0, 'al salir deja de figurar en planta')
-  await pagina.goto(`${BASE}/vehiculos?vista=historial`, { waitUntil: 'networkidle' })
-  const historial = await pagina.locator('tbody tr', { hasText: placaGuardada }).innerText()
-  comprobar(historial.includes('Sale al arenado externo') && historial.includes('Mantenimiento'), `en el historial con su salida: ${historial.replace(/\s+/g, ' ').slice(0, 200)}`)
-  await pagina.screenshot({ path: `${CAPTURAS}/vehiculos.png`, fullPage: true })
+  // El ingreso y la salida de vehículos, con sus fotos, los recorre
+  // `probar-gasto-y-fotos.mjs` desde el 2026-10-15.
   comprobar(errores.length === 0, `sin errores de consola como Requerimientos ${errores.join(' | ')}`)
   await contexto.close()
 }
 
-// ------------------------------------------------ 3. Logística
+// ------------------------------------------------ 2. Logística
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.logistica)
   await pagina.goto(`${BASE}/requerimientos`, { waitUntil: 'networkidle' })
@@ -146,19 +119,9 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   await contexto.close()
 }
 
-// ------------------------------------------------ 4. Gerencia
-{
-  const { pagina, contexto, errores } = await entrar(CUENTAS.gerencia)
-  await pagina.goto(`${BASE}/vehiculos?vista=historial`, { waitUntil: 'networkidle' })
-  comprobar((await pagina.locator('tbody tr', { hasText: 'ACOSTA' }).count()) >= 1, 'Gerencia ve el historial de vehículos')
-  comprobar((await pagina.getByRole('button', { name: 'Registrar ingreso' }).count()) === 0, 'Gerencia no registra ingresos')
-  comprobar(errores.length === 0, `sin errores de consola como Gerencia ${errores.join(' | ')}`)
-  await contexto.close()
-}
-
 await navegador.close()
 if (fallas.length > 0) {
   console.error(`\n${fallas.length} comprobación(es) fallaron.`)
   process.exit(1)
 }
-console.log('\nTodo bien: RQ y vehículos con clic real.')
+console.log('\nTodo bien: RQ con clic real.')

@@ -76,3 +76,15 @@ export const MOTIVOS_VEHICULO = Object.keys(MOTIVO_VEHICULO) as [string, ...stri
 export function horaDeLima(valor: string): string | null {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(valor) ? `${valor}:00-05:00` : null
 }
+
+/**
+ * Las fotos del vehículo al entrar y al salir: de 1 a 15 cada vez, como exige
+ * `registrar_ingreso_vehiculo` y `registrar_salida_vehiculo` (migración 20261015161000).
+ */
+export const MAXIMO_FOTOS_VEHICULO = 15
+
+/** El bucket privado de esas fotos: la ruta es `{cuenta}/{registro}/ingreso|salida/{foto}.jpg`. */
+export const BUCKET_FOTOS_VEHICULO = 'fotos-vehiculos'
+
+/** Lo que pesa como máximo una foto ya achicada en el teléfono (el tope del bucket). */
+export const MAXIMO_MB_FOTO_VEHICULO = 5

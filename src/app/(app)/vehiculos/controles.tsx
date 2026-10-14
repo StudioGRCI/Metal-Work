@@ -3,25 +3,56 @@
 import { Ban, LogOut } from 'lucide-react'
 import { useState } from 'react'
 
+import { fotosParaEnviar, hayFallidas, haySubiendo, quitarFotosSueltas, soltarMiniaturas, type FotoLista } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
+import { BUCKET_FOTOS_VEHICULO } from '@/lib/dominio/requerimientos'
 import { useEnvio } from '@/lib/envio'
 
 import { anularRegistroVehiculo, registrarSalidaVehiculo } from './acciones'
+import { AvisoFotos, FotosDelMomento } from './formulario'
 
 type Paso = 'SALIDA' | 'ANULAR'
 
-/** Lo que se marca en un vehículo que está en planta: que salió, o que el ingreso se anotó mal. */
-export function ControlesVehiculo({ id, nombre }: { id: string; nombre: string }) {
+/**
+ * Lo que se marca en un vehículo que está en planta: que salió, con sus fotos,
+ * o que el ingreso se anotó mal. Si la ventana de la salida se cierra sin
+ * registrar, las fotos que ya subieron se retiran de Storage.
+ */
+export function ControlesVehiculo({ id, nombre, cuentaId }: { id: string; nombre: string; cuentaId: string }) {
   const [paso, setPaso] = useState<Paso | null>(null)
-  const salida = useEnvio(registrarSalidaVehiculo, () => setPaso(null))
+  const [fotos, setFotos] = useState<FotoLista[]>([])
+  const salida = useEnvio(registrarSalidaVehiculo, () => {
+    // Ya son parte de la salida: solo se sueltan las miniaturas.
+    soltarMiniaturas(fotos)
+    setFotos([])
+    setPaso(null)
+  })
   const anular = useEnvio(anularRegistroVehiculo, () => setPaso(null))
   const envio = paso === 'ANULAR' ? anular : salida
+  const subiendo = haySubiendo(fotos)
+  const fallidas = hayFallidas(fotos)
+  const listas = fotosParaEnviar(fotos).length
+  const bloqueado = paso === 'SALIDA' && (subiendo || fallidas || listas === 0)
+
+  function cerrar() {
+    quitarFotosSueltas(BUCKET_FOTOS_VEHICULO, fotos)
+    setFotos([])
+    setPaso(null)
+  }
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      <Boton type="button" variante="secundario" tamano="sm" onClick={() => setPaso('SALIDA')}>
+      <Boton
+        type="button"
+        variante="secundario"
+        tamano="sm"
+        onClick={() => {
+          setFotos([])
+          setPaso('SALIDA')
+        }}
+      >
         <LogOut aria-hidden className="size-4" />
         Marcar salida
       </Boton>
@@ -31,16 +62,23 @@ export function ControlesVehiculo({ id, nombre }: { id: string; nombre: string }
       </Boton>
       <Ventana
         abierta={paso !== null}
-        alCerrar={() => setPaso(null)}
+        alCerrar={cerrar}
         titulo={paso === 'ANULAR' ? `Anular el ingreso de ${nombre}` : `Salida de ${nombre}`}
         descripcion={
           paso === 'ANULAR'
             ? 'Para un ingreso que se anotó mal. No se borra: queda con su motivo.'
-            : 'El vehículo deja la planta. La salida ya marcada no se corrige.'
+            : 'El vehículo deja la planta, con fotos de cómo sale. La salida ya marcada no se corrige.'
         }
-        ancho="md"
+        ancho={paso === 'SALIDA' ? 'lg' : 'md'}
       >
-        <form onSubmit={envio.alEnviar} className="space-y-4">
+        <form
+          onSubmit={(e) =>
+            envio.alEnviar(e, (datos) => {
+              if (paso === 'SALIDA') datos.set('fotos', JSON.stringify(fotosParaEnviar(fotos).map((f) => f.ruta_storage)))
+            })
+          }
+          className="space-y-4"
+        >
           <input type="hidden" name="id" value={id} />
           {paso === 'SALIDA' && (
             <Campo etiqueta="Fecha y hora de salida" htmlFor={`veh-salida-${id}`} ayuda="Déjalo vacío si sale ahora.">
@@ -61,17 +99,26 @@ export function ControlesVehiculo({ id, nombre }: { id: string; nombre: string }
               placeholder={paso === 'ANULAR' ? 'Por ejemplo: se anotó la placa de otro vehículo.' : 'Por ejemplo: sale al arenado externo.'}
             />
           </Campo>
+          {paso === 'SALIDA' && (
+            <FotosDelMomento titulo="Fotos al salir" fotos={fotos} setFotos={setFotos} prefijoRuta={`${cuentaId}/${id}/salida`} />
+          )}
           {envio.error && (
             <p role="alert" className="text-sm text-peligro">
               {envio.error}
             </p>
           )}
+          {paso === 'SALIDA' && <AvisoFotos subiendo={subiendo} fallidas={fallidas} listas={listas} momento="salir" />}
           <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setPaso(null)}>
+            <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
             </Boton>
-            <Boton type="submit" variante={paso === 'ANULAR' ? 'peligro' : 'primario'} cargando={envio.enviando}>
-              {paso === 'ANULAR' ? 'Anular' : 'Registrar salida'}
+            <Boton
+              type="submit"
+              variante={paso === 'ANULAR' ? 'peligro' : 'primario'}
+              cargando={envio.enviando}
+              disabled={bloqueado}
+            >
+              {paso === 'ANULAR' ? 'Anular' : subiendo ? 'Esperando las fotos…' : 'Registrar salida'}
             </Boton>
           </div>
         </form>

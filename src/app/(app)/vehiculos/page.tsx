@@ -1,3 +1,4 @@
+import { Camera } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -30,9 +31,9 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
     <>
       <EncabezadoPagina
         titulo="Ingreso y salida de vehículos"
-        descripcion="Cada vez que un vehículo entra a la planta —para fabricación, mantenimiento, garantía o de vuelta del arenado— y cuándo sale. Reemplaza el seguimiento de portería en Excel."
+        descripcion="Cada vez que un vehículo entra a la planta —para fabricación, mantenimiento, garantía o de vuelta del arenado— y cuándo sale, con fotos de cómo entró y cómo salió. Reemplaza el seguimiento de portería en Excel."
         migas={[{ titulo: 'Vehículos' }]}
-        acciones={registra && <NuevoIngresoVehiculo />}
+        acciones={registra && <NuevoIngresoVehiculo cuentaId={perfil.id} />}
       />
 
       <nav aria-label="Vista" className="mb-3 flex gap-2">
@@ -71,7 +72,7 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
                 descripcion={registra ? 'Cuando entre uno, anótalo con «Registrar ingreso».' : 'El área de Requerimientos registra cada ingreso.'}
               />
             ) : (
-              registros.map((r) => <FilaVehiculo key={r.id} registro={r} registra={registra} />)
+              registros.map((r) => <FilaVehiculo key={r.id} registro={r} registra={registra} cuentaId={perfil.id} />)
             )}
           </tbody>
         </Tabla>
@@ -80,20 +81,33 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
   )
 }
 
-function FilaVehiculo({ registro: r, registra }: { registro: RegistroVehiculo; registra: boolean }) {
+function FilaVehiculo({ registro: r, registra, cuentaId }: { registro: RegistroVehiculo; registra: boolean; cuentaId: string }) {
   const motivo = MOTIVO_VEHICULO[r.motivo]
   const nombre = r.placa ?? r.chasis ?? r.codigo_interno ?? 'vehículo'
   const anulado = r.anulado_en !== null
   return (
     <TR className={anulado ? 'opacity-60' : undefined}>
       <TD className="align-top">
-        <p className="tabular font-semibold text-texto">{r.placa ?? (r.chasis ? `Chasis ${r.chasis}` : r.codigo_interno)}</p>
+        <Link href={`/vehiculos/${r.id}`} className="tabular font-semibold text-acento hover:underline">
+          {r.placa ?? (r.chasis ? `Chasis ${r.chasis}` : r.codigo_interno)}
+        </Link>
         {r.placa && r.chasis && <p className="tabular text-[11px] text-texto-suave">Chasis {r.chasis}</p>}
         {r.codigo_interno && (r.placa || r.chasis) && <p className="tabular text-[11px] text-texto-suave">{r.codigo_interno}</p>}
         <p className="text-xs text-texto">
           {r.unidad} · {r.empresa}
         </p>
         <p className="text-[11px] text-texto-suave md:hidden">{motivo?.etiqueta ?? r.motivo}</p>
+        {(r.fotos_ingreso > 0 || r.fotos_salida > 0) && (
+          <Link href={`/vehiculos/${r.id}`} className="mt-1 inline-flex items-center gap-1 text-[11px] text-texto-suave hover:text-texto">
+            <Camera aria-hidden className="size-3.5" />
+            {[
+              r.fotos_ingreso > 0 && `${r.fotos_ingreso} al entrar`,
+              r.fotos_salida > 0 && `${r.fotos_salida} al salir`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </Link>
+        )}
         {r.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulado: {r.motivo_anulacion}</p>}
       </TD>
       <TD className="hidden align-top md:table-cell">
@@ -116,7 +130,7 @@ function FilaVehiculo({ registro: r, registra }: { registro: RegistroVehiculo; r
         )}
       </TD>
       <TD className="text-right align-top">
-        {registra && !r.salida_en && !anulado && <ControlesVehiculo id={r.id} nombre={nombre} />}
+        {registra && !r.salida_en && !anulado && <ControlesVehiculo id={r.id} nombre={nombre} cuentaId={cuentaId} />}
       </TD>
     </TR>
   )
