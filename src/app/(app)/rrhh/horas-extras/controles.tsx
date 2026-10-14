@@ -55,7 +55,7 @@ export function DecidirExtras({ id, trabajadorId, fecha }: { id: string; trabaja
   )
 }
 
-/** Usar horas del saldo de una persona: un permiso o un descanso que se compensa con lo reservado. */
+/** Usar horas del saldo de una persona en un descanso. Un permiso se justifica en «Permisos», que también descuenta de aquí. */
 export function UsarSaldo({ id, trabajadorId, nombre, saldo, hoy }: { id: string; trabajadorId: string; nombre: string; saldo: number; hoy: string }) {
   const [abierta, setAbierta] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(usarSaldoHoras, () => setAbierta(false))
@@ -69,7 +69,7 @@ export function UsarSaldo({ id, trabajadorId, nombre, saldo, hoy }: { id: string
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`Usar horas del saldo de ${nombre}`}
-        descripcion={`Tiene ${saldo.toLocaleString('es-PE', { maximumFractionDigits: 2 })} h reservadas. Lo que uses se descuenta de su saldo.`}
+        descripcion={`Tiene ${saldo.toLocaleString('es-PE', { maximumFractionDigits: 2 })} h reservadas. Lo que uses se descuenta de su saldo. Si es para un permiso, regístralo y justifícalo en «Permisos».`}
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
@@ -100,7 +100,7 @@ export function UsarSaldo({ id, trabajadorId, nombre, saldo, hoy }: { id: string
               required
               minLength={10}
               maxLength={300}
-              placeholder="Por ejemplo: permiso para un trámite en la mañana."
+              placeholder="Por ejemplo: descanso el sábado por las horas del lunes."
             />
           </Campo>
           {error && (

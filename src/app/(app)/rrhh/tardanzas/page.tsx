@@ -5,7 +5,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { reglaTardanza, resumenTardanzas } from '@/lib/datos/rrhh'
-import { mesDeLima, mesValido, mesVecino, minutosLargos } from '@/lib/dominio/rrhh'
+import { mesDeLima, mesValido, mesVecino, minutosLargos, porcentajeCorto } from '@/lib/dominio/rrhh'
 import { hoyLima, mesLargo, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -16,6 +16,9 @@ export const metadata = { title: 'Tardanzas del personal' }
 export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh/tardanzas'>) {
   const perfil = await exigirPermiso(['asistencia.ver', 'rrhh.personal'])
   const ajusta = puede(perfil, 'rrhh.personal')
+  // El monto sale de la remuneración, que solo ve RR. HH. (la misma regla que
+  // aplica `rrhh_tardanzas_del_mes`). Gerencia y Administración ven el porcentaje.
+  const veSueldo = ajusta || puede(perfil, 'planilla_diaria.preparar')
   // La miga lleva a las planillas solo a quien las abre: Gerencia y
   // Administración consultan esto con `asistencia.ver` y ahí las rebotaban.
   const planillas = puede(perfil, 'rrhh.ver_planillas')
@@ -24,14 +27,17 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
   const mes = mesValido(params.mes) ? params.mes : mesActual
 
   const [resumen, regla] = await Promise.all([resumenTardanzas(mes), reglaTardanza()])
-  const conTardanza = resumen.filter((r) => r.tardanzas > 0)
-  const total = conTardanza.reduce((n, r) => n + r.descuento, 0)
+  const cada = regla?.tardanzas_por_descuento ?? 3
+  const pct = regla?.porcentaje_descuento ?? 5
+  const conDescuento = resumen.filter((r) => r.porcentaje > 0)
+  const total = conDescuento.reduce((n, r) => n + (r.descuento ?? 0), 0)
+  const sinRemuneracion = conDescuento.filter((r) => r.remuneracion_mensual === null).length
 
   return (
     <>
       <EncabezadoPagina
         titulo="Tardanzas"
-        descripcion="Por cada persona, cuántas veces llegó después de su hora en el mes, cuántos minutos suman y el descuento que eso genera, para la planilla."
+        descripcion={`Por cada persona, cuántas veces llegó después de su hora y su tolerancia en el mes. Cada ${cada} tardanzas se descuenta el ${porcentajeCorto(pct)} de su remuneración mensual; el mes siguiente empieza de cero.`}
         migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Tardanzas' }]}
       />
 
@@ -55,9 +61,15 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
             </Link>
           )}
         </div>
-        <p className="text-xs text-texto-suave">
-          <span className="tabular">{conTardanza.length}</span> {conTardanza.length === 1 ? 'persona' : 'personas'} con tardanza ·{' '}
-          <span className="tabular">{moneda(total)}</span> de descuento
+        <p className="text-xs text-texto-suave" data-resumen-tardanzas>
+          <span className="tabular">{conDescuento.length}</span> {conDescuento.length === 1 ? 'persona' : 'personas'} con descuento
+          {veSueldo && conDescuento.length > 0 && (
+            <>
+              {' '}
+              · <span className="tabular">{moneda(total)}</span>
+              {sinRemuneracion > 0 && ` (${sinRemuneracion} sin remuneración en su ficha)`}
+            </>
+          )}
         </p>
       </div>
 
@@ -67,7 +79,7 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
             <TablaCabecera>
               <tr>
                 <TH>Persona</TH>
-                <TH className="text-right">Días</TH>
+                <TH className="hidden text-right sm:table-cell">Días</TH>
                 <TH className="text-right">Tardanzas</TH>
                 <TH className="hidden text-right sm:table-cell">Minutos</TH>
                 <TH className="text-right">Descuento</TH>
@@ -77,23 +89,46 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
               {resumen.length === 0 ? (
                 <SinDatos titulo="No hay personal registrado" descripcion="Recursos Humanos registra al personal en «Personal»." />
               ) : (
-                resumen.map((r) => (
-                  <TR key={r.trabajador.id} className={r.trabajador.activo ? undefined : 'opacity-60'}>
-                    <TD>
-                      <p className="font-medium text-texto">
-                        {r.trabajador.apellidos}, {r.trabajador.nombres}
-                      </p>
-                      <p className="text-xs text-texto-suave">
-                        {r.trabajador.cargo ?? 'Sin cargo'}
-                        {!r.trabajador.activo && ' · de baja'}
-                      </p>
-                    </TD>
-                    <TD className="tabular text-right">{r.dias_con_ingreso}</TD>
-                    <TD className={`tabular text-right ${r.tardanzas > 0 ? 'font-semibold text-peligro' : ''}`}>{r.tardanzas}</TD>
-                    <TD className="tabular hidden text-right sm:table-cell">{minutosLargos(r.minutos)}</TD>
-                    <TD className="tabular text-right">{r.descuento > 0 ? moneda(r.descuento) : '—'}</TD>
-                  </TR>
-                ))
+                resumen.map((r) => {
+                  const faltan = cada - (r.tardanzas % cada)
+                  return (
+                    <TR key={r.trabajador.id} className={r.trabajador.activo ? undefined : 'opacity-60'} data-tardanzas={r.trabajador.dni}>
+                      <TD>
+                        <p className="font-medium text-texto">
+                          {r.trabajador.apellidos}, {r.trabajador.nombres}
+                        </p>
+                        <p className="text-xs text-texto-suave">
+                          {r.trabajador.cargo ?? 'Sin cargo'}
+                          {!r.trabajador.activo && ' · de baja'}
+                        </p>
+                      </TD>
+                      <TD className="tabular hidden text-right sm:table-cell">{r.dias_con_ingreso}</TD>
+                      <TD className="text-right">
+                        <p className={`tabular ${r.tardanzas > 0 ? 'font-semibold text-peligro' : ''}`}>{r.tardanzas}</p>
+                        {r.tardanzas > 0 && (
+                          <p className="text-xs text-texto-suave">
+                            {faltan === 1 ? 'Le falta 1' : `Le faltan ${faltan}`} para {r.porcentaje > 0 ? 'otro' : 'el'} descuento
+                          </p>
+                        )}
+                      </TD>
+                      <TD className="tabular hidden text-right sm:table-cell">{minutosLargos(r.minutos)}</TD>
+                      <TD className="text-right">
+                        {r.porcentaje > 0 ? (
+                          <>
+                            <p className="tabular font-semibold text-texto">{porcentajeCorto(r.porcentaje)}</p>
+                            {veSueldo && (
+                              <p className="text-xs text-texto-suave">
+                                {r.descuento === null ? 'Falta su remuneración' : <span className="tabular">{moneda(r.descuento)}</span>}
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          '—'
+                        )}
+                      </TD>
+                    </TR>
+                  )
+                })
               )}
             </tbody>
           </Tabla>
@@ -104,13 +139,13 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
             titulo="La regla de tardanza"
             descripcion={
               regla
-                ? `Hoy: ${regla.tolerancia_minutos} ${regla.tolerancia_minutos === 1 ? 'minuto' : 'minutos'} de tolerancia y ${moneda(regla.descuento_por_minuto)} por cada minuto de tardanza. Cambiarla no toca las marcas ya hechas.`
+                ? `Hoy: ${regla.tolerancia_minutos} ${regla.tolerancia_minutos === 1 ? 'minuto' : 'minutos'} de tolerancia; cada ${cada} tardanzas del mes se descuenta el ${porcentajeCorto(pct)} de la remuneración mensual. Si una marca fue tardanza queda fijo al marcar; el descuento del mes se calcula con la regla de hoy. Las tardanzas no se compensan con horas extras: eso es para los permisos.`
                 : 'Todavía no hay regla: se usa la de la base.'
             }
           />
           {ajusta && (
             <TarjetaCuerpo>
-              <FormularioRegla tolerancia={regla?.tolerancia_minutos ?? 5} descuentoPorMinuto={regla?.descuento_por_minuto ?? 0.08} />
+              <FormularioRegla tolerancia={regla?.tolerancia_minutos ?? 5} tardanzasPorDescuento={cada} porcentajeDescuento={pct} />
             </TarjetaCuerpo>
           )}
         </Tarjeta>
