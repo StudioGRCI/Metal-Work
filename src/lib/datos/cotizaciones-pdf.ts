@@ -1,7 +1,7 @@
 import 'server-only'
 
+import { envioYFacturasDe } from '@/lib/datos/facturacion'
 import { createClient } from '@/lib/supabase/server'
-import { exigirSesion, puede } from '@/lib/sesion'
 import type { Tablas, Vistas } from '@/types/database'
 
 /**
@@ -15,8 +15,10 @@ export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & {
   url: string | null
   urlAprobada: string | null
   versiones: VersionCotizacion[]
-  liberacionTesoreria: Pick<Tablas<'cotizaciones_pdf_liberaciones_tesoreria'>, 'id' | 'liberado_en'> | null
-  observacionesTesoreria: Pick<Tablas<'cotizaciones_pdf_observaciones_tesoreria'>, 'id' | 'observacion' | 'creado_en'>[]
+  /** Cuándo Administración la envió a Contabilidad para facturarla (migración 20261015120000). */
+  enviadaAContabilidad: string | null
+  /** Las facturas que salieron de ella, las que quien mira puede ver. */
+  facturas: Pick<Tablas<'facturas_venta'>, 'numero' | 'estado' | 'total' | 'moneda'>[]
   /** Semirremolque o carrocería montada, si el catálogo lo sabe: lo propone al emitir la OT (migración 104). */
   tipo_unidad: string | null
 }
@@ -67,17 +69,7 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
   if (filas.length === 0) return []
 
   const cotizacionIds = filas.flatMap((f) => f.id ? [f.id] : [])
-  const [liberaciones, observaciones] = await Promise.all([
-    supabase.from('cotizaciones_pdf_liberaciones_tesoreria')
-      .select('id, cotizacion_pdf_id, liberado_en').in('cotizacion_pdf_id', cotizacionIds),
-    supabase.from('cotizaciones_pdf_observaciones_tesoreria')
-      .select('id, cotizacion_pdf_id, observacion, creado_en').in('cotizacion_pdf_id', cotizacionIds)
-      .order('creado_en', { ascending: false }),
-  ])
-  if (liberaciones.error) throw new Error(`No se pudo leer la liberación a Tesorería: ${liberaciones.error.message}`)
-  const perfil = await exigirSesion()
-  const verObservaciones = puede(perfil, 'tesoreria.ver_documentos')
-  if (verObservaciones && observaciones.error) throw new Error(`No se pudieron leer las observaciones de Tesorería: ${observaciones.error.message}`)
+  const finanzas = await envioYFacturasDe(cotizacionIds)
 
   // Solo las que tuvieron más de una versión tienen historial que leer.
   const conHistorial = filas.filter((f) => (f.version ?? 1) > 1 && f.id).map((f) => f.id as string)
@@ -104,14 +96,11 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
   const enlaces = await enlacesDe([...filas, ...versiones])
 
   return filas.map((f) => {
-    const liberacion = liberaciones.data?.find((l) => l.cotizacion_pdf_id === f.id) ?? null
     const ultimaAprobada = versiones.find((v) => v.cotizacion_id === f.id && v.estado_al_archivar === 'APROBADA')
     return {
       ...f,
-      liberacionTesoreria: liberacion ? { id: liberacion.id, liberado_en: liberacion.liberado_en } : null,
-      observacionesTesoreria: (verObservaciones ? observaciones.data ?? [] : [])
-        .filter((o) => o.cotizacion_pdf_id === f.id)
-        .map((o) => ({ id: o.id, observacion: o.observacion, creado_en: o.creado_en })),
+      enviadaAContabilidad: (f.id && finanzas.envios.get(f.id)) ?? null,
+      facturas: ((f.id && finanzas.facturas.get(f.id)) || []).map(({ numero, estado, total, moneda }) => ({ numero, estado, total, moneda })),
       tipo_unidad: (f.tipo_carroceria_id && tipoDe.get(f.tipo_carroceria_id)) ?? null,
       url: (f.ruta_storage && enlaces.get(f.ruta_storage)) ?? null,
       urlAprobada: f.estado === 'APROBADA'

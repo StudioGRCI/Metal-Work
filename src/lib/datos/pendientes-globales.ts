@@ -450,6 +450,55 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
+  // La OT pasa por Contabilidad (migración 20261015120000): las cuatro cuentas
+  // salen de una sola lectura, y la base deja en nulo las que no son de quien mira.
+  const finanzas = (() => {
+    let lectura: Promise<{ por_enviar_contabilidad: number | null; por_facturar: number | null; facturas_por_enviar: number | null; servicios_por_pagar: number | null }> | null = null
+    return () =>
+      (lectura ??= (async () => {
+        const { data, error } = await supabase.rpc('finanzas_pendientes')
+        if (error || !data?.[0]) throw new Error('No se pudo consultar el pendiente.')
+        return data[0]
+      })())
+  })()
+
+  if (puede(perfil, 'cotizaciones.enviar_contabilidad')) {
+    tareas.push({
+      clave: 'por_enviar_contabilidad',
+      ruta: '/cotizaciones/pdf?estado=POR_ENVIAR',
+      tono: 'acento',
+      texto: (n) => plural(n, 'cotización con OT por enviar a Contabilidad', 'cotizaciones con OT por enviar a Contabilidad'),
+      contar: async () => (await finanzas()).por_enviar_contabilidad ?? 0,
+    })
+  }
+
+  if (puede(perfil, 'contabilidad.facturar')) {
+    tareas.push({
+      clave: 'por_facturar',
+      ruta: '/contabilidad/facturacion',
+      tono: 'acento',
+      texto: (n) => plural(n, 'cotización por facturar', 'cotizaciones por facturar'),
+      contar: async () => (await finanzas()).por_facturar ?? 0,
+    })
+    tareas.push({
+      clave: 'facturas_por_enviar',
+      ruta: '/contabilidad/facturacion',
+      tono: 'aviso',
+      texto: (n) => plural(n, 'factura anexada por enviar a Tesorería', 'facturas anexadas por enviar a Tesorería'),
+      contar: async () => (await finanzas()).facturas_por_enviar ?? 0,
+    })
+  }
+
+  if (puede(perfil, 'tesoreria.pagar_servicios')) {
+    tareas.push({
+      clave: 'servicios_por_pagar',
+      ruta: '/tesoreria/pagos-de-servicio',
+      tono: 'aviso',
+      texto: (n) => plural(n, 'servicio conforme por pagar', 'servicios conformes por pagar'),
+      contar: async () => (await finanzas()).servicios_por_pagar ?? 0,
+    })
+  }
+
   if (puede(perfil, 'cotizaciones.crear')) {
     tareas.push({
       clave: 'pdf_rechazadas',

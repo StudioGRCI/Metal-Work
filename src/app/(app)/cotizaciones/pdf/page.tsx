@@ -1,4 +1,4 @@
-import { Download, FileText, History, Hourglass, MessageSquareWarning } from 'lucide-react'
+import { Download, FileText, History, Hourglass, MessageSquareWarning, ReceiptText } from 'lucide-react'
 import Link from 'next/link'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
@@ -14,7 +14,7 @@ import { fecha as fmtFecha, hora, moneda as formatoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, puedeCorregirCotizacion, puedeQuitarCotizacion } from '@/lib/sesion'
 
 import { CorregirCotizacion, EmitirOrden, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
-import { LiberarATesoreria } from './liberar-a-tesoreria'
+import { EnviarAContabilidad } from './enviar-a-contabilidad'
 import { SubirCotizacion } from './subir-cotizacion'
 
 export const metadata = { title: 'Cotización' }
@@ -56,11 +56,31 @@ function EnlaceArchivo({ url, mime, nombre }: { url: string; mime: string | null
  * veces lo mismo. Lo que el sistema sí guarda es la traza —quién la subió, qué
  * observó Gerencia en cada vuelta, quién la aprobó, qué orden salió— y el papel.
  */
-const FILTROS_ESTADO = ['POR_REVISAR', 'APROBADA_SIN_OT', 'RECHAZADA', 'CON_OT', 'ANULADA'] as const
+const FILTROS_ESTADO = ['POR_REVISAR', 'APROBADA_SIN_OT', 'POR_ENVIAR', 'RECHAZADA', 'CON_OT', 'ANULADA'] as const
 type FiltroEstado = (typeof FILTROS_ESTADO)[number]
 
-function enFiltro(c: { estado: string | null; orden_id: string | null }, filtro: FiltroEstado | null) {
+type ParaFiltrar = {
+  estado: string | null
+  orden_id: string | null
+  orden_estado: string | null
+  enviadaAContabilidad: string | null
+  versiones: { estado_al_archivar: string | null }[]
+}
+
+/**
+ * Con su OT y sin enviar a Contabilidad (migración 20261015120000). Aprobada, o
+ * con una versión aprobada si después llegó una corrección: Contabilidad
+ * factura la aprobada.
+ */
+function porEnviarAContabilidad(c: ParaFiltrar) {
+  return Boolean(c.orden_id) && c.orden_estado !== 'ANULADA' && !c.enviadaAContabilidad &&
+    (c.estado === 'APROBADA' || c.versiones.some((v) => v.estado_al_archivar === 'APROBADA'))
+}
+
+function enFiltro(c: ParaFiltrar, filtro: FiltroEstado | null) {
   switch (filtro) {
+    case 'POR_ENVIAR':
+      return porEnviarAContabilidad(c)
     case 'POR_REVISAR':
       return c.estado === 'POR_REVISAR'
     case 'APROBADA_SIN_OT':
@@ -77,13 +97,13 @@ function enFiltro(c: { estado: string | null; orden_id: string | null }, filtro:
 }
 
 export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<'/cotizaciones/pdf'>) {
-  const perfil = await exigirPermiso(['cotizaciones.ver_pdf_comercial', 'cotizaciones.liberar_tesoreria', 'tesoreria.ver_documentos'])
+  const perfil = await exigirPermiso(['cotizaciones.ver_pdf_comercial', 'cotizaciones.enviar_contabilidad'])
   const params = await searchParams
 
   const puedeSubir = puede(perfil, 'cotizaciones.crear')
   const revisa = puede(perfil, 'cotizaciones.revisar')
   const emite = puede(perfil, 'ordenes.crear')
-  const liberaTesoreria = puede(perfil, 'cotizaciones.liberar_tesoreria')
+  const enviaContabilidad = puede(perfil, 'cotizaciones.enviar_contabilidad')
 
   const [cotizaciones, catalogos] = await Promise.all([
     listarCotizacionesPdf(),
@@ -94,6 +114,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const sinOrden = cotizaciones.filter((c) => c.estado === 'APROBADA' && !c.orden_id).length
   const rechazadas = cotizaciones.filter((c) => c.estado === 'RECHAZADA').length
   const conOrden = cotizaciones.filter((c) => Boolean(c.orden_id)).length
+  const porEnviar = cotizaciones.filter(porEnviarAContabilidad).length
   const anuladas = cotizaciones.filter((c) => c.estado === 'ANULADA').length
 
   // Los filtros y la búsqueda se resuelven en memoria: la lista ya viene entera
@@ -110,7 +131,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const meToca = (c: (typeof cotizaciones)[number]) =>
     (revisa && c.estado === 'POR_REVISAR') ||
     (emite && c.estado === 'APROBADA' && !c.orden_id) ||
-    (liberaTesoreria && c.estado === 'APROBADA' && !c.liberacionTesoreria) ||
+    (enviaContabilidad && porEnviarAContabilidad(c)) ||
     puedeCorregirCotizacion(perfil, c)
   const visibles = cotizaciones
     .filter((c) => enFiltro(c, filtro) && coincide(c))
@@ -120,6 +141,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     { valor: null, etiqueta: `Vigentes (${cotizaciones.length - anuladas})` },
     { valor: 'POR_REVISAR', etiqueta: `Por revisar (${porRevisar})` },
     { valor: 'APROBADA_SIN_OT', etiqueta: `Aprobadas sin OT (${sinOrden})` },
+    { valor: 'POR_ENVIAR', etiqueta: `Por enviar a Contabilidad (${porEnviar})` },
     { valor: 'RECHAZADA', etiqueta: `Rechazadas (${rechazadas})` },
     { valor: 'CON_OT', etiqueta: `Con OT (${conOrden})` },
     { valor: 'ANULADA', etiqueta: `Anuladas (${anuladas})` },
@@ -129,7 +151,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Cotización"
-        descripcion="Gerencia aprueba el documento; Administración emite la OT y puede liberar la cotización aceptada a Tesorería."
+        descripcion="Gerencia aprueba el documento; Administración emite la OT y la envía a Contabilidad, que la factura y pasa la factura a Tesorería."
         acciones={puedeSubir && <SubirCotizacion clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />}
       />
 
@@ -250,8 +272,19 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       <p className="text-[11px] text-texto-tenue">
                         Aprobada por {c.revisado_por_nombre ?? 'Gerencia'}
                         {c.revisado_en ? ` el ${fmtFecha(c.revisado_en)}` : ''}
-                        {c.liberacionTesoreria && <> · Liberada a Tesorería el {fmtFecha(c.liberacionTesoreria.liberado_en)}</>}
-                        {c.observacionesTesoreria.length > 0 && <> · {c.observacionesTesoreria.length} observaciones de Tesorería</>}
+                        {c.enviadaAContabilidad && <> · Enviada a Contabilidad el {fmtFecha(c.enviadaAContabilidad)}</>}
+                      </p>
+                    )}
+
+                    {c.facturas.length > 0 && (
+                      <p className="flex flex-wrap items-center gap-1.5 text-xs text-texto-suave">
+                        <ReceiptText aria-hidden className="size-3.5" />
+                        {c.facturas.map((f) => (
+                          <Insignia key={f.numero + f.estado} tono={f.estado === 'ANULADA' ? 'peligro' : f.estado === 'ENVIADA' ? 'exito' : 'aviso'}>
+                            Factura {f.numero} · {formatoMoneda(f.total, f.moneda === 'USD' ? 'USD' : 'PEN')}
+                            {f.estado === 'ANULADA' ? ' · anulada' : f.estado === 'ENVIADA' ? ' · en Tesorería' : ' · por enviar'}
+                          </Insignia>
+                        ))}
                       </p>
                     )}
 
@@ -294,6 +327,16 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       </p>
                     )}
 
+                    {!enviaContabilidad && porEnviarAContabilidad(c) && (
+                      <p className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-aviso-suave px-2.5 py-1.5 text-xs text-aviso">
+                        <Hourglass aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+                        <span>
+                          <span className="font-medium">Falta que Administración la envíe a Contabilidad.</span>{' '}
+                          Contabilidad emite la factura y la pasa a Tesorería para su cobro.
+                        </span>
+                      </p>
+                    )}
+
                     {c.orden_id && (
                       <p className="flex flex-wrap items-center gap-2 text-sm">
                         <Link href={`/ordenes/${c.orden_id}`} className="font-medium text-acento hover:underline">
@@ -304,14 +347,14 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         </Insignia>
                       </p>
                     )}
-                    {(revisa && c.estado === 'POR_REVISAR' || emite && c.estado === 'APROBADA' && !c.orden_id || liberaTesoreria && c.estado === 'APROBADA' && !c.liberacionTesoreria || corrige || quitable) && (
+                    {(revisa && c.estado === 'POR_REVISAR' || emite && c.estado === 'APROBADA' && !c.orden_id || enviaContabilidad && porEnviarAContabilidad(c) || corrige || quitable) && (
                       <div className="flex flex-wrap items-center gap-2">
                         {revisa && c.estado === 'POR_REVISAR' && c.id && <RevisarCotizacion id={c.id} />}
                         {!c.orden_id && emite && c.estado === 'APROBADA' && c.id && (
                           <EmitirOrden cotizacionId={c.id} numero={c.numero ?? 'cotización'} tipoUnidad={c.tipo_unidad} />
                         )}
-                        {liberaTesoreria && c.estado === 'APROBADA' && c.id && !c.liberacionTesoreria && (
-                          <LiberarATesoreria cotizacionId={c.id} />
+                        {enviaContabilidad && porEnviarAContabilidad(c) && c.id && (
+                          <EnviarAContabilidad cotizacionId={c.id} numero={c.numero ?? ''} ordenNumero={c.orden_numero ?? ''} />
                         )}
                         {corrige && c.id && (
                           <CorregirCotizacion id={c.id} numero={c.numero ?? ''} observacion={c.observacion}

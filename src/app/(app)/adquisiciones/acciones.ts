@@ -70,7 +70,7 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   if (errorRegistro) return { ok: false, error: `Comprobante en borrador: ${mensajeDeError(errorRegistro)}` }
   if (!registrado) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
-  revalidatePath('/tesoreria/cuentas')
+  revalidatePath('/tesoreria/por-pagar')
   return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado.` }
 }
 
@@ -106,6 +106,6 @@ export async function completarAdquisicion(_previo: unknown, formulario: FormDat
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
-  revalidatePath('/tesoreria/cuentas')
+  revalidatePath('/tesoreria/por-pagar')
   return { ok: true, mensaje: 'Comprobante completado y registrado.' }
 }

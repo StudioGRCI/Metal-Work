@@ -13,8 +13,10 @@ import {
   ClockAlert,
   Cog,
   Coins,
+  CreditCard,
   FileSpreadsheet,
   FileText,
+  HandCoins,
   HardHat,
   Hash,
   Layers,
@@ -24,6 +26,7 @@ import {
   NotebookPen,
   Package,
   Receipt,
+  ReceiptText,
   Route,
   Settings,
   Tag,
@@ -95,7 +98,7 @@ export const NAVEGACION = [
         titulo: 'Cotización',
         ruta: '/cotizaciones/pdf',
         icono: FileText,
-        permiso: ['cotizaciones.ver_pdf_comercial', 'cotizaciones.liberar_tesoreria', 'tesoreria.ver_documentos'],
+        permiso: ['cotizaciones.ver_pdf_comercial', 'cotizaciones.enviar_contabilidad'],
         descripcion: 'El PDF que se le mandó al cliente, y su visto de Gerencia',
         disponible: true,
       },
@@ -306,9 +309,15 @@ export const NAVEGACION = [
       },
     ],
   },
+  // La OT pasa por Contabilidad (migración 20261015120000): Administración le
+  // envía la cotización con su OT, Contabilidad anexa la factura y la envía a
+  // Tesorería, que la cobra. Tesorería trabaja en cuatro: Adquisiciones (todo
+  // lo comprado, por factura), Cuentas por cobrar, Cuentas por pagar y Pagos de
+  // servicio.
   {
     titulo: 'Finanzas',
     items: [
+      { titulo: 'Facturación', ruta: '/contabilidad/facturacion', icono: ReceiptText, permiso: 'contabilidad.facturar', descripcion: 'Las cotizaciones con OT que envió Administración: anexar la factura y enviarla a Tesorería', disponible: true },
       {
         titulo: 'Gestión de compras',
         ruta: '/compras/gestion',
@@ -326,18 +335,12 @@ export const NAVEGACION = [
         descripcion: 'Si cada orden de servicio lleva detracción y de qué tipo según SUNAT',
         disponible: true,
       },
-      { titulo: 'Adquisiciones', ruta: '/adquisiciones', icono: Receipt, permiso: 'adquisiciones.ver', descripcion: 'Facturas, recibos y documentos de compras', disponible: true },
-      {
-        titulo: 'Tesorería',
-        ruta: '/tesoreria',
-        icono: Receipt,
-        permiso: 'tesoreria.ver_documentos',
-        descripcion: 'Cotizaciones liberadas y documentos de compras',
-        disponible: true,
-      },
+      { titulo: 'Adquisiciones', ruta: '/adquisiciones', icono: Receipt, permiso: 'adquisiciones.ver', descripcion: 'Todo lo comprado, por factura: cada factura con sus OC y si calza con ellas', disponible: true },
+      { titulo: 'Cuentas por cobrar', ruta: '/tesoreria/por-cobrar', icono: HandCoins, permiso: 'tesoreria.ver_documentos', descripcion: 'Las facturas que envió Contabilidad y sus cobros', disponible: true },
+      { titulo: 'Cuentas por pagar', ruta: '/tesoreria/por-pagar', icono: CreditCard, permiso: 'tesoreria.ver_documentos', descripcion: 'Las facturas de compra, al contado o a crédito, pagadas con su voucher', disponible: true },
+      { titulo: 'Pagos de servicio', ruta: '/tesoreria/pagos-de-servicio', icono: Wrench, permiso: ['tesoreria.pagar_servicios', 'tesoreria.ver_documentos'], descripcion: 'Las órdenes de servicio aprobadas, pagadas al proveedor con su voucher', disponible: true },
       // La paga Tesorería; la arma RR. HH. (está también en su grupo, con su permiso).
       { titulo: 'Planilla diaria', ruta: '/planilla-diaria', icono: Banknote, permiso: 'planilla_diaria.pagar', descripcion: 'Pagar a cada persona a su cuenta, con comprobante y boleta', disponible: true },
-      { titulo: 'Cuentas de Tesorería', ruta: '/tesoreria/cuentas', icono: FileSpreadsheet, permiso: 'tesoreria.ver_documentos', descripcion: 'Cobros por OT y pagos de compras', disponible: true },
       { titulo: 'Gastos del mes', ruta: '/costos/gastos-generales', icono: Wallet, permiso: ['costos.gastos_generales', 'costos.ver'], descripcion: 'Servicios del local y gastos de operación', disponible: true },
       { titulo: 'Tipo de cambio', ruta: '/tesoreria/tipo-de-cambio', icono: ArrowLeftRight, permiso: 'tesoreria.tipo_cambio', descripcion: 'El cambio del dólar de cada día, para el costo en soles', disponible: true },
     ],
@@ -504,26 +507,32 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     telefono: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/codigos-internos'],
   },
   // Cerrado desde #28, como Gerencia.
-  // La planilla diaria espera su pago: va primero.
+  // Sus cuatro, en el orden en que Gerencia las nombró el 2026-10-14:
+  // Adquisiciones, Cuentas por cobrar, Cuentas por pagar y Pagos de servicio.
+  // Después la planilla diaria que paga y el tipo de cambio.
   TESORERIA: {
     grupos: [
-      { titulo: 'Finanzas', rutas: ['/planilla-diaria', '/tesoreria', '/tesoreria/cuentas', '/tesoreria/tipo-de-cambio', '/adquisiciones'] },
+      {
+        titulo: 'Tesorería',
+        rutas: ['/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/tesoreria/pagos-de-servicio', '/planilla-diaria', '/tesoreria/tipo-de-cambio'],
+      },
       { titulo: 'Consultas', rutas: ['/ordenes'] },
     ],
-    telefono: ['/planilla-diaria', '/tesoreria', '/tesoreria/cuentas', '/adquisiciones'],
+    telefono: ['/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/tesoreria/pagos-de-servicio'],
   },
-  // La guía de remisión de cada OC que recoge el conductor espera por
-  // Contabilidad: la gestión de compras va primero, y después la detracción de
-  // las órdenes de servicio.
+  // Primero lo que espera por ella: las cotizaciones por facturar. Después las
+  // compras en su orden: la guía de remisión de cada OC que recoge el conductor,
+  // la detracción de las órdenes de servicio y la factura de compra. El kardex
+  // lo consulta en lectura: ingresos con su guía, atenciones y egresos.
   CONTABILIDAD: {
     grupos: [
       {
         titulo: 'Contabilidad',
-        rutas: ['/compras/gestion', '/compras/servicios', '/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio'],
+        rutas: ['/contabilidad/facturacion', '/compras/gestion', '/compras/servicios', '/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio'],
       },
-      { titulo: 'Consultas', rutas: ['/ordenes', '/requerimientos'] },
+      { titulo: 'Consultas', rutas: ['/almacen/kardex', '/ordenes', '/requerimientos'] },
     ],
-    telefono: ['/compras/gestion', '/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio'],
+    telefono: ['/contabilidad/facturacion', '/compras/gestion', '/adquisiciones', '/almacen/kardex'],
   },
   // Unidades y Carrocerías las lleva Diseño e Ingeniería (pedido de la
   // empresa, 2026-10-01). Configuración la alcanza por `configuracion.ver`,
@@ -688,9 +697,11 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/almacen/kardex', corto: 'Kardex' },
   { ruta: '/diseno/informe-semanal', corto: 'Informe' },
   { ruta: '/diseno/evaluaciones', corto: 'Evaluación' },
-  { ruta: '/tesoreria', corto: 'Tesorería' },
-  { ruta: '/tesoreria/cuentas', corto: 'Cuentas' },
-  { ruta: '/adquisiciones', corto: 'Facturas' },
+  { ruta: '/contabilidad/facturacion', corto: 'Facturar' },
+  { ruta: '/adquisiciones', corto: 'Compras' },
+  { ruta: '/tesoreria/por-cobrar', corto: 'Por cobrar' },
+  { ruta: '/tesoreria/por-pagar', corto: 'Por pagar' },
+  { ruta: '/tesoreria/pagos-de-servicio', corto: 'Servicios' },
   { ruta: '/rrhh', corto: 'Planillas' },
   { ruta: '/costos/gastos-generales', corto: 'Gastos' },
   { ruta: '/compras/valorizacion', corto: 'Precios' },
