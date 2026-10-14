@@ -15,9 +15,9 @@ declare v text; v_id uuid;
 begin
   foreach v in array array['REQUERIMIENTOS:REQ', 'ADMINISTRACION:ADM', 'ALMACENERO:ALM', 'COMPRADOR:LOG', 'VENDEDOR:GCO'] loop
     v_id := gen_random_uuid();
-    insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.347@prueba.local');
+    insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.349@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
-    select v_id, split_part(v, ':', 1), 'Check 347', lower(replace(v, ':', '.')) || '.347@prueba.local', r.id,
+    select v_id, split_part(v, ':', 1), 'Check 349', lower(replace(v, ':', '.')) || '.349@prueba.local', r.id,
            (select id from public.areas where codigo = split_part(v, ':', 2))
       from public.roles r where r.codigo = split_part(v, ':', 1);
     perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
@@ -35,13 +35,13 @@ begin
   -- Lo que se compra y a quién, como dueño de las tablas.
   perform set_config('request.jwt.claim.sub', '', true);
   insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
-  values ('CHK347-1', 'Plancha LAF 2 mm (prueba 347)', current_setting('prueba.cat')::uuid, current_setting('prueba.und')::uuid),
-         ('CHK347-2', 'Disco de corte (prueba 347)', current_setting('prueba.cat')::uuid, current_setting('prueba.und')::uuid);
-  perform set_config('prueba.m1', (select id::text from public.materiales where codigo = 'CHK347-1'), true);
-  perform set_config('prueba.m2', (select id::text from public.materiales where codigo = 'CHK347-2'), true);
+  values ('CHK349-1', 'Plancha LAF 2 mm (prueba 349)', current_setting('prueba.cat')::uuid, current_setting('prueba.und')::uuid),
+         ('CHK349-2', 'Disco de corte (prueba 349)', current_setting('prueba.cat')::uuid, current_setting('prueba.und')::uuid);
+  perform set_config('prueba.m1', (select id::text from public.materiales where codigo = 'CHK349-1'), true);
+  perform set_config('prueba.m2', (select id::text from public.materiales where codigo = 'CHK349-2'), true);
   insert into public.proveedores (numero_documento, razon_social, direccion, telefono)
-  values ('20999347003', 'Proveedor de prueba 347', 'Av. Argentina 457, Lima', '999 333 447');
-  perform set_config('prueba.prov', (select id::text from public.proveedores where numero_documento = '20999347003'), true);
+  values ('20999349006', 'Proveedor de prueba 349', 'Av. Argentina 457, Lima', '999 333 447');
+  perform set_config('prueba.prov', (select id::text from public.proveedores where numero_documento = '20999349006'), true);
   update public.regla_aprobacion_compras set activa = false where unica;
 end $$;
 
@@ -101,9 +101,9 @@ select test.afirmar(not exists (select 1 from public.roles_permisos rp join publ
 select pg_temp.como('requerimientos');
 set local role authenticated;
 select public.emitir_requerimiento(current_setting('prueba.rqo')::uuid, 'OPERACION', current_setting('prueba.area_mtz')::uuid,
-  'CHK347_SR_1', 'Armado de la tolva de prueba 347', null, pg_temp.lineas(3));
+  'CHK349_SR_1', 'Armado de la tolva de prueba 349', null, pg_temp.lineas(3));
 select public.emitir_requerimiento(current_setting('prueba.rqo3')::uuid, 'OPERACION', current_setting('prueba.area_prd')::uuid,
-  'CHK347_SR_2', 'Pintura de la tolva de prueba 347', null, pg_temp.lineas(2));
+  'CHK349_SR_2', 'Pintura de la tolva de prueba 349', null, pg_temp.lineas(2));
 select test.debe_fallar(format($q$select public.emitir_requerimiento(gen_random_uuid(), 'OPERACION', '%s', 'PLANTA',
   'Útiles para la oficina de prueba', null, pg_temp.lineas(1))$q$, current_setting('prueba.area_rrh')),
   'RR. HH. no pide por el de operación', 'requerimiento de Administración');

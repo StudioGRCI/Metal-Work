@@ -31,6 +31,7 @@ export async function marcarRecojo(_previo: unknown, datos: FormData): Promise<R
   if (error) return { ok: false, error: mensajeDeError(error) }
 
   revalidatePath('/recojos')
+  revalidatePath('/compras/gestion')
   revalidatePath('/compras/ordenes')
   revalidatePath('/almacen/kardex')
   // El avance de cada RQ sale del recojo de sus OC.

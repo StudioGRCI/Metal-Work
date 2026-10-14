@@ -19,6 +19,7 @@ import {
 } from '@/lib/datos/codigos-internos'
 import {
   ESTADO_DOCUMENTO_CODIGO,
+  ESTADO_SERVICIO_CODIGO,
   TIPO_DOCUMENTO_CODIGO,
   VISTAS_CODIGO,
   costoDelCodigo,
@@ -552,6 +553,9 @@ async function VistaDocumentos({ codigo, perfil }: { codigo: string; perfil: Per
     COTIZACION: puede(perfil, 'cotizaciones.ver_pdf_comercial') ? (d) => `/cotizaciones/pdf?q=${encodeURIComponent(d.numero)}` : null,
     UNIDAD: puede(perfil, ['clientes.ver', 'produccion.ver']) ? (d) => `/unidades/${d.id}` : null,
     REQUERIMIENTO: null,
+    SERVICIO: puede(perfil, ['compras.crear', 'compras.ver', 'compras.detraccion'])
+      ? () => `/compras/servicios?codigo=${encodeURIComponent(codigo)}`
+      : null,
     VEHICULO: puede(perfil, ['vehiculos.registrar', 'vehiculos.ver']) ? (d) => `/vehiculos/${d.id}` : null,
   }
   const estado = (tipo: string, valor: string) =>
@@ -559,13 +563,16 @@ async function VistaDocumentos({ codigo, perfil }: { codigo: string; perfil: Per
       ? definir(ESTADO_REQUERIMIENTO, valor)
       : tipo === 'OT'
         ? definir(ESTADO_OT, valor)
-        : definir(ESTADO_DOCUMENTO_CODIGO, valor)
+        : tipo === 'SERVICIO'
+          ? definir(ESTADO_SERVICIO_CODIGO, valor)
+          : definir(ESTADO_DOCUMENTO_CODIGO, valor)
 
   return (
     <>
       <p className="text-sm text-texto-suave">
         Hoy la OT y la cotización se encuentran por la unidad: si en Unidades una unidad lleva este código, aquí salen su OT y la cotización PDF
-        de esa OT. Los reportes, las salidas del almacén, los requerimientos y las compras llevan el código escrito a mano.
+        de esa OT. Los reportes, las salidas del almacén, los requerimientos, las compras y las órdenes de servicio llevan el código escrito a
+        mano.
       </p>
       {Object.entries(TIPO_DOCUMENTO_CODIGO).map(([tipo, def]) => {
         const deTipo = documentos.filter((d) => d.tipo === tipo)

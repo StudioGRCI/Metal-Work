@@ -73,3 +73,22 @@ export function situacionCompra(c: {
 export function puedeIrARecojo(c: { aprobacion: string; recojo: string | null; entregado_almacen_en: string | null }) {
   return (c.aprobacion === 'APROBADA' || c.aprobacion === 'NO_REQUERIDA') && !c.recojo && !c.entregado_almacen_en
 }
+
+/**
+ * La guía de remisión que Contabilidad carga en la gestión de compras
+ * (migración 20261015140000): un PDF en este bucket, con la ruta
+ * compra/{oc}/{guía}.pdf que la base comprueba.
+ */
+export const BUCKET_GUIAS_REMISION = 'guias-remision'
+export const MAXIMO_MB_GUIA = 10
+
+export function rutaGuiaRemision(compraId: string, guiaId: string) {
+  return `compra/${compraId}/${guiaId}.pdf`
+}
+
+/** Serie y número como figuran en la guía: T001-00000123. La base exige lo mismo. */
+export const NUMERO_GUIA = /^[A-Z0-9]{1,4}-[0-9]{1,10}$/
+
+export function normalizarNumeroGuia(texto: string) {
+  return texto.trim().replace(/\s+/g, '').toUpperCase()
+}

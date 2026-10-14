@@ -491,9 +491,11 @@ async function manejarArchivos(req, res, url) {
       return responder(res, 200, data)
     }
 
-  // Enlace firmado individual: POST /object/sign/<cubeta>/<camino>
+  // Enlace firmado individual: POST /object/sign/<cubeta>/<camino>. Como
+  // Supabase, sin `/storage/v1`: storage-js le antepone su propia dirección,
+  // y con el prefijo el enlace salía doble y daba 404.
     const ficha = firmar({ camino, exp: Math.floor(Date.now() / 1000) + 3600 })
-    return responder(res, 200, { signedURL: `/storage/v1/object/sign/${camino}?token=${ficha}` })
+    return responder(res, 200, { signedURL: `/object/sign/${camino}?token=${ficha}` })
   }
 
   // Descarga por enlace firmado

@@ -87,6 +87,12 @@ select pg_temp.como('gerente');
 set local role authenticated;
 select public.aprobar_compra(current_setting('prueba.oc_directa')::uuid);
 reset role;
+-- Logística las pone en la lista del conductor con su peso (migración 20261015140000).
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.programar_recojo(current_setting('prueba.oc_directa')::uuid, 40, null);
+select public.programar_recojo(current_setting('prueba.oc_req')::uuid, 60, null);
+reset role;
 
 select pg_temp.como('conductor');
 set local role authenticated;
