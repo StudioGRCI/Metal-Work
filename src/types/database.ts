@@ -5703,6 +5703,216 @@ export type Database = {
           }
         ]
       }
+      reporte_diario_fotos: {
+        Row: {
+          id: string
+          reporte_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          reporte_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          reporte_id?: string
+          orden?: number
+          ruta?: string
+          mime_type?: string
+          tamano_bytes?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reporte_diario_fotos_reporte_id_fkey"
+            columns: ["reporte_id"]
+            isOneToOne: false
+            referencedRelation: "reportes_diarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      reporte_diario_personal: {
+        Row: {
+          id: string
+          reporte_id: string
+          trabajo_id: string | null
+          trabajador_id: string
+          nombre: string
+          cargo: string | null
+          fecha: string
+          horas: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          reporte_id: string
+          trabajo_id?: string | null
+          trabajador_id: string
+          nombre: string
+          cargo?: string | null
+          fecha: string
+          horas: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          reporte_id?: string
+          trabajo_id?: string | null
+          trabajador_id?: string
+          nombre?: string
+          cargo?: string | null
+          fecha?: string
+          horas?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reporte_diario_personal_reporte_id_fkey"
+            columns: ["reporte_id"]
+            isOneToOne: false
+            referencedRelation: "reportes_diarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reporte_diario_personal_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reporte_diario_personal_trabajo_id_fkey"
+            columns: ["trabajo_id"]
+            isOneToOne: false
+            referencedRelation: "reporte_diario_trabajos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      reporte_diario_trabajos: {
+        Row: {
+          id: string
+          reporte_id: string
+          orden: number
+          descripcion: string
+          avance: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          reporte_id: string
+          orden: number
+          descripcion: string
+          avance: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          reporte_id?: string
+          orden?: number
+          descripcion?: string
+          avance?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reporte_diario_trabajos_reporte_id_fkey"
+            columns: ["reporte_id"]
+            isOneToOne: false
+            referencedRelation: "reportes_diarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      reportes_diarios: {
+        Row: {
+          id: string
+          fecha: string
+          codigo_interno: string
+          asunto: string
+          descripcion: string
+          personal_general: boolean
+          area_id: string | null
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          fecha: string
+          codigo_interno: string
+          asunto: string
+          descripcion: string
+          personal_general?: boolean
+          area_id?: string | null
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          fecha?: string
+          codigo_interno?: string
+          asunto?: string
+          descripcion?: string
+          personal_general?: boolean
+          area_id?: string | null
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reportes_diarios_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reportes_diarios_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reportes_diarios_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       requerimiento_lineas: {
         Row: {
           id: string
@@ -6234,6 +6444,7 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          reporte_linea_id: string | null
         }
         Insert: {
           id?: string
@@ -6250,6 +6461,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          reporte_linea_id?: string | null
         }
         Update: {
           id?: string
@@ -6266,6 +6478,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          reporte_linea_id?: string | null
         }
         Relationships: [
           {
@@ -6280,6 +6493,13 @@ export type Database = {
             columns: ["registrado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tareos_reporte_linea_id_fkey"
+            columns: ["reporte_linea_id"]
+            isOneToOne: true
+            referencedRelation: "reporte_diario_personal"
             referencedColumns: ["id"]
           },
           {
@@ -7623,6 +7843,13 @@ export type Database = {
         }
         Returns: string
       }
+      anular_reporte_diario: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       anular_requerimiento: {
         Args: {
           p_id: string | null
@@ -8938,6 +9165,19 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_reporte_diario: {
+        Args: {
+          p_id: string | null
+          p_fecha: string | null
+          p_codigo_interno: string | null
+          p_asunto: string | null
+          p_descripcion: string | null
+          p_trabajos: Json | null
+          p_personal_general?: Json | null
+          p_fotos?: Json | null
+        }
+        Returns: string
+      }
       registrar_salida_almacen: {
         Args: {
           p_id: string | null
@@ -9019,6 +9259,26 @@ export type Database = {
           p_ordenes: string[] | null
         }
         Returns: number
+      }
+      reporte_diario_agregar_persona: {
+        Args: {
+          p_reporte: string | null
+          p_trabajo_id: string | null
+          p_labor: string | null
+          p_persona: Json | null
+        }
+        Returns: null
+      }
+      reporte_diario_personal_disponible: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          nombres: string | null
+          apellidos: string | null
+          cargo: string | null
+          area_id: string | null
+          area: string | null
+        }[]
       }
       resolver_observacion_ot: {
         Args: {
@@ -9171,6 +9431,23 @@ export type Database = {
           p_cci: string | null
         }
         Returns: string
+      }
+      rrhh_horas_del_dia: {
+        Args: {
+          p_trabajador_id: string | null
+          p_fecha: string | null
+        }
+        Returns: number
+      }
+      rrhh_horas_esperando_costo: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          trabajador_id: string | null
+          nombre: string | null
+          horas: number | null
+          lineas: number | null
+          desde: string | null
+        }[]
       }
       rrhh_registrar_observacion: {
         Args: {

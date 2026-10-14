@@ -164,6 +164,8 @@ export type Tareo = {
   anulado_en: string | null
   motivo_anulacion: string | null
   trabajador: PersonaCorta | null
+  /** El reporte diario del que vinieron estas horas; `null` si las cargó RR. HH. a mano. */
+  reporte: { id: string; asunto: string; area: string | null } | null
 }
 
 /** Las horas cargadas en un mes (`YYYY-MM`), incluidas las anuladas, de la más reciente a la más vieja. */
@@ -174,7 +176,8 @@ export async function tareosDelMes(mes: string): Promise<Tareo[]> {
     .from('tareos')
     .select(
       'id, trabajador_id, fecha, codigo_interno, horas, labor, costo_hora, costo, anulado_en, motivo_anulacion,' +
-        ' trabajador:trabajadores(id, nombres, apellidos, dni, cargo)',
+        ' trabajador:trabajadores(id, nombres, apellidos, dni, cargo),' +
+        ' linea:reporte_diario_personal!tareos_reporte_linea_id_fkey(reporte:reportes_diarios!reporte_diario_personal_reporte_id_fkey(id, asunto, area:areas(nombre)))',
     )
     .gte('fecha', desde)
     .lt('fecha', hasta)
@@ -182,14 +185,20 @@ export async function tareosDelMes(mes: string): Promise<Tareo[]> {
     .order('creado_en', { ascending: false })
     .limit(3000)
   if (error) throw new Error(`No se pudo leer el tareo del mes: ${error.message}`)
-  type Fila = Omit<Tareo, 'trabajador'> & { trabajador: PersonaCorta | PersonaCorta[] | null }
-  return ((data ?? []) as unknown as Fila[]).map((t) => ({
-    ...t,
-    horas: Number(t.horas),
-    costo_hora: Number(t.costo_hora),
-    costo: Number(t.costo),
-    trabajador: unico(t.trabajador),
-  }))
+  type Reporte = { id: string; asunto: string; area: { nombre: string } | { nombre: string }[] | null }
+  type Linea = { reporte: Reporte | Reporte[] | null }
+  type Fila = Omit<Tareo, 'trabajador' | 'reporte'> & { trabajador: PersonaCorta | PersonaCorta[] | null; linea: Linea | Linea[] | null }
+  return ((data ?? []) as unknown as Fila[]).map(({ linea, ...t }) => {
+    const reporte = unico(unico(linea)?.reporte ?? null)
+    return {
+      ...t,
+      horas: Number(t.horas),
+      costo_hora: Number(t.costo_hora),
+      costo: Number(t.costo),
+      trabajador: unico(t.trabajador),
+      reporte: reporte ? { id: reporte.id, asunto: reporte.asunto, area: unico(reporte.area)?.nombre ?? null } : null,
+    }
+  })
 }
 
 /** Los códigos internos que ya usa la empresa, para elegir en vez de escribir. */

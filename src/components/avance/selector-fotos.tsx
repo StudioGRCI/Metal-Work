@@ -3,6 +3,7 @@
 import { Camera, Images, RotateCcw, X } from 'lucide-react'
 import type { Dispatch, SetStateAction } from 'react'
 
+import { comprimirFoto } from '@/lib/comprimir-foto'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
@@ -15,6 +16,9 @@ export type FotoLista = {
 }
 
 const MAXIMO_MB = 10
+// Lo que puede pesar la foto tal como sale de la cámara cuando se va a achicar antes de subirla.
+const MAXIMO_ORIGINAL_MB = 40
+const EXTENSION: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }
 // Los mismos que acepta el bucket (migración 078); el mensaje sale de esta lista.
 const TIPOS = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
 const TIPOS_TEXTO = 'JPG, PNG, WEBP o HEIC'
@@ -67,26 +71,38 @@ function explicarFalla(mensaje: string) {
  *
  * `prefijoRuta` es la carpeta: las políticas de Storage leen la ruta para
  * decidir quién ve la foto (`ot/{orden}/…` hereda la orden; `flota/{unidad}/…`
- * queda para quien ve el taller).
+ * queda para quien ve el taller; en el reporte diario, `{cuenta}/{reporte}/…`).
+ *
+ * Con `comprimir`, la foto se achica en el teléfono antes de subirla (ver
+ * `comprimirFoto`) y sube siempre como JPEG; `maximoMb` es entonces lo que puede
+ * pesar ya achicada.
  */
 export function SelectorFotos({
   fotos,
   alCambiar,
   prefijoRuta,
   maximo,
+  bucket = 'fotos-avance',
+  comprimir = false,
+  maximoMb = MAXIMO_MB,
 }: {
   fotos: FotoLista[]
   alCambiar: Dispatch<SetStateAction<FotoLista[]>>
   prefijoRuta: string
   maximo?: number
+  bucket?: string
+  comprimir?: boolean
+  maximoMb?: number
 }) {
   async function subir(foto: FotoLista) {
     const supabase = createClient()
-    const extension = (foto.archivo.name.split('.').pop() ?? 'jpg').toLowerCase()
+    const extension = comprimir
+      ? (EXTENSION[foto.archivo.type] ?? 'jpg')
+      : (foto.archivo.name.split('.').pop() ?? 'jpg').toLowerCase()
     const ruta = `${prefijoRuta}/${crypto.randomUUID()}.${extension}`
 
     const { error } = await supabase.storage
-      .from('fotos-avance')
+      .from(bucket)
       .upload(ruta, foto.archivo, { contentType: foto.archivo.type, upsert: false })
 
     alCambiar((f) =>
@@ -112,14 +128,40 @@ export function SelectorFotos({
         alCambiar((f) => [...f, { archivo, vistaPrevia: '', subiendo: false, error: `Solo fotos ${TIPOS_TEXTO}.` }])
         continue
       }
-      if (archivo.size > MAXIMO_MB * 1024 * 1024) {
-        alCambiar((f) => [...f, { archivo, vistaPrevia: '', subiendo: false, error: `Pesa más de ${MAXIMO_MB} MB.` }])
+      const tope = comprimir ? MAXIMO_ORIGINAL_MB : maximoMb
+      if (archivo.size > tope * 1024 * 1024) {
+        alCambiar((f) => [...f, { archivo, vistaPrevia: '', subiendo: false, error: `Pesa más de ${tope} MB.` }])
         continue
       }
 
       const foto: FotoLista = { archivo, vistaPrevia: URL.createObjectURL(archivo), subiendo: true }
       alCambiar((f) => [...f, foto])
-      await subir(foto)
+      if (!comprimir) {
+        await subir(foto)
+        continue
+      }
+
+      // Mientras se achica, la miniatura ya está con «subiendo…» encima.
+      let achicada: File | null = null
+      try {
+        achicada = await comprimirFoto(archivo)
+      } catch {
+        achicada = null
+      }
+      const falla = !achicada
+        ? 'No se pudo abrir esta foto: tómala de nuevo o elige otra.'
+        : achicada.size > maximoMb * 1024 * 1024
+          ? `Aun achicada pesa más de ${maximoMb} MB.`
+          : null
+      if (!achicada || falla) {
+        // Sin miniatura no se ofrece «Reintentar»: volvería a fallar igual.
+        URL.revokeObjectURL(foto.vistaPrevia)
+        alCambiar((f) => f.map((item) => (item === foto ? { ...item, vistaPrevia: '', subiendo: false, error: falla ?? undefined } : item)))
+        continue
+      }
+      const lista: FotoLista = { ...foto, archivo: achicada }
+      alCambiar((f) => f.map((item) => (item === foto ? lista : item)))
+      await subir(lista)
     }
   }
 
@@ -133,7 +175,7 @@ export function SelectorFotos({
   async function quitar(foto: FotoLista) {
     if (foto.ruta) {
       const supabase = createClient()
-      await supabase.storage.from('fotos-avance').remove([foto.ruta])
+      await supabase.storage.from(bucket).remove([foto.ruta])
     }
     if (foto.vistaPrevia) URL.revokeObjectURL(foto.vistaPrevia)
     alCambiar((f) => f.filter((item) => item !== foto))
@@ -237,7 +279,9 @@ export function SelectorFotos({
       )}
 
       <p className="mt-1 text-[11px] text-texto-tenue">
-        {maximo === 1 ? 'Una foto' : 'Varias a la vez desde la galería'}. Hasta {MAXIMO_MB} MB por foto, en {TIPOS_TEXTO}.
+        {comprimir
+          ? `${maximo ? `Hasta ${maximo} ${maximo === 1 ? 'foto' : 'fotos'}` : 'Varias a la vez desde la galería'}, en ${TIPOS_TEXTO}. Se achican en el teléfono antes de subir.`
+          : `${maximo === 1 ? 'Una foto' : 'Varias a la vez desde la galería'}. Hasta ${maximoMb} MB por foto, en ${TIPOS_TEXTO}.`}
       </p>
     </div>
   )
