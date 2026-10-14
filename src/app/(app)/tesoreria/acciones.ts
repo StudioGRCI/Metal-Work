@@ -36,21 +36,72 @@ export async function registrarCobro(_previo: unknown, formulario: FormData): Pr
   return { ok: true, mensaje: 'Cobro registrado y saldo actualizado.' }
 }
 
-/** Un pago de un comprobante a crédito que registró Contabilidad. Mismo permiso que la política de `pagos_adquisicion`. */
-export async function registrarPago(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
-  await exigirPermiso('tesoreria.registrar_pagos')
-  const v = movimiento.safeParse(Object.fromEntries(formulario))
-  if (!v.success) return { ok: false, error: 'Indica la fecha, el importe y la referencia bancaria del pago.' }
+const NO_PAGA_FACTURAS = 'Los pagos de las facturas los registra Tesorería.'
+
+/**
+ * Tesorería paga una factura de compra registrada en Adquisiciones, al contado
+ * o a crédito, con su voucher ya subido a `pagos-facturas/{factura}/…`
+ * (migración 20261015122000). Mismo permiso que `registrar_pago_factura`
+ * (`tesoreria.registrar_pagos`). El id llega de la pantalla: un reintento no
+ * registra otro.
+ */
+export async function registrarPagoFactura(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tesoreria.registrar_pagos')) return { ok: false, error: NO_PAGA_FACTURAS }
+  const analisis = z
+    .object({
+      id: z.guid(),
+      adquisicion_id: z.guid(),
+      fecha: z.iso.date('Elige el día del pago.'),
+      monto: z.coerce.number('Escribe lo que se pagó.').positive('Escribe lo que se pagó.').multipleOf(0.01, 'El importe va en dos decimales.'),
+      referencia: z.string().min(3, 'Escribe el número de operación del banco.').max(120, 'El número de operación pasa de 120 caracteres.'),
+      ruta: z.string().min(1, 'Adjunta el voucher del pago.').max(200),
+    })
+    .safeParse({
+      id: dato(formulario, 'id'),
+      adquisicion_id: dato(formulario, 'adquisicion_id'),
+      fecha: dato(formulario, 'fecha'),
+      monto: dato(formulario, 'monto'),
+      referencia: dato(formulario, 'referencia'),
+      ruta: dato(formulario, 'ruta'),
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el pago.' }
+  const d = analisis.data
+
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('pagos_adquisicion')
-    .insert({ adquisicion_id: v.data.id, fecha: v.data.fecha, monto: v.data.monto, referencia: v.data.referencia })
-    .select('id')
-    .maybeSingle()
+  const { data, error } = await supabase.rpc('registrar_pago_factura', {
+    p_id: d.id,
+    p_adquisicion: d.adquisicion_id,
+    p_fecha: d.fecha,
+    p_monto: d.monto,
+    p_referencia: d.referencia,
+    p_ruta: d.ruta,
+  })
   if (error) return { ok: false, error: mensajeDeError(error) }
-  if (!data) return { ok: false, error: NO_TOCO_NADA }
+  if (data !== d.id) return { ok: false, error: 'El pago no se registró. Recarga la pantalla.' }
+
   revalidatePath('/tesoreria/por-pagar')
+  revalidatePath('/adquisiciones')
   return { ok: true, mensaje: 'Pago registrado y saldo actualizado.' }
+}
+
+/** Anular con su motivo un pago de factura mal registrado. Mismo permiso que `anular_pago_factura`. */
+export async function anularPagoFactura(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tesoreria.registrar_pagos')) return { ok: false, error: NO_PAGA_FACTURAS }
+  const analisis = z
+    .object({ id: z.guid(), motivo: z.string().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.') })
+    .safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('anular_pago_factura', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'El pago no se anuló. Recarga la pantalla.' }
+
+  revalidatePath('/tesoreria/por-pagar')
+  revalidatePath('/adquisiciones')
+  return { ok: true, mensaje: 'Pago anulado: la factura vuelve a su saldo.' }
 }
 
 const NO_PAGA_SERVICIOS = 'Los pagos de servicio los registra Tesorería.'

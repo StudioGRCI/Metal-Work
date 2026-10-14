@@ -485,7 +485,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/compras/valorizacion',
         ],
       },
-      { titulo: 'Consultas', rutas: ['/ordenes'] },
+      // Adquisiciones, en lectura: qué OC ya tienen su factura y si calza (2026-10-14).
+      { titulo: 'Consultas', rutas: ['/adquisiciones', '/ordenes'] },
     ],
     telefono: ['/requerimientos/atencion', '/compras/ordenes', '/compras/aprobacion', '/compras/gestion'],
   },

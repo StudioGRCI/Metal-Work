@@ -45,9 +45,14 @@ select public.activar_timestamps('adquisiciones_ordenes_compra');
 select public.activar_auditoria('adquisiciones_ordenes_compra');
 select public.activar_registro_de_prueba('adquisiciones_ordenes_compra');
 
--- Las que ya tenían su OC única, antes de que el disparador de abajo exija borrador.
+-- Las que ya tenían su OC única. Solo las que faltan: al volver a correr, el
+-- disparador de abajo ya existe y rechazaría enlazar una factura registrada
+-- antes de que el `on conflict` llegue a mirar.
 insert into public.adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id)
-select a.id, a.orden_compra_id from public.adquisiciones a where a.orden_compra_id is not null
+select a.id, a.orden_compra_id from public.adquisiciones a
+ where a.orden_compra_id is not null
+   and not exists (select 1 from public.adquisiciones_ordenes_compra l
+                    where l.adquisicion_id = a.id and l.orden_compra_id = a.orden_compra_id)
 on conflict (adquisicion_id, orden_compra_id) do nothing;
 
 alter table public.adquisiciones_ordenes_compra enable row level security;
@@ -240,7 +245,8 @@ grant execute on function public.adquisiciones_control(uuid[]) to authenticated;
 -- de aquí las OC de la factura que registra.
 create or replace function public.compras_sin_factura()
 returns table (orden_compra_id uuid, numero text, proveedor text, referencia text, moneda text, total numeric,
-               sin_precio boolean, condicion_pago text, numero_ot text, creado_en timestamptz, en_borrador boolean)
+               sin_precio boolean, condicion_pago text, numero_ot text, creado_en timestamptz, en_borrador boolean,
+               orden_id uuid)
 language plpgsql stable security definer set search_path to 'public' as $$
 begin
   if not (public.es_admin() or public.tiene_permiso('adquisiciones.ver')) then
@@ -253,7 +259,8 @@ begin
            c.condicion_pago, o.numero, c.creado_en,
            exists (select 1 from public.adquisiciones_ordenes_compra l
                      join public.adquisiciones a on a.id = l.adquisicion_id
-                    where l.orden_compra_id = c.id and a.estado = 'BORRADOR')
+                    where l.orden_compra_id = c.id and a.estado = 'BORRADOR'),
+           r.orden_id
       from public.ordenes_compra_materiales c
       left join public.requerimientos_materiales r on r.id = c.requerimiento_id
       left join public.ordenes_trabajo o on o.id = r.orden_id

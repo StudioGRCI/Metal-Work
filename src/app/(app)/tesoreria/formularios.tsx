@@ -8,15 +8,18 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
-import { BUCKET_PAGOS_SERVICIO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
+import { BUCKET_PAGOS_FACTURAS, BUCKET_PAGOS_SERVICIO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
 import { useEnvio } from '@/lib/envio'
 import { moneda, type CodigoMoneda } from '@/lib/format'
 
-import { anularPagoServicio, registrarCobro, registrarPago, registrarPagoServicio } from './acciones'
+import { anularPagoFactura, anularPagoServicio, registrarCobro, registrarPagoFactura, registrarPagoServicio } from './acciones'
 
-/** Un cobro de una factura o un pago de un comprobante a crédito: fecha, importe y referencia bancaria. */
-export function Movimiento({ id, tipo, saldo, hoy }: { id: string; tipo: 'cobro' | 'pago'; saldo: number; hoy: string }) {
-  const { alEnviar, enviando, error, resultado } = useEnvio(tipo === 'cobro' ? registrarCobro : registrarPago)
+/**
+ * Un cobro de una factura de venta: fecha, importe y referencia bancaria. Los
+ * pagos de las facturas de compra van con su voucher, en `PagarFactura`.
+ */
+export function Movimiento({ id, tipo, saldo, hoy }: { id: string; tipo: 'cobro'; saldo: number; hoy: string }) {
+  const { alEnviar, enviando, error, resultado } = useEnvio(registrarCobro)
   return (
     <details className="mt-2">
       <summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-medium text-acento sm:min-h-0">Registrar {tipo}</summary>
@@ -176,6 +179,143 @@ export function AnularPagoServicio({ pagoId }: { pagoId: string }) {
           <input type="hidden" name="id" value={pagoId} />
           <Campo etiqueta="Motivo" htmlFor={`anular-pago-servicio-${pagoId}`} requerido>
             <AreaTexto id={`anular-pago-servicio-${pagoId}`} name="motivo" required minLength={10} maxLength={500} />
+          </Campo>
+          {error && (
+            <p role="alert" className="text-sm text-peligro">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" variante="peligro" cargando={enviando}>
+              Anular
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
+    </>
+  )
+}
+
+/**
+ * Tesorería paga una factura de compra con su voucher: el día, lo pagado y el
+ * número de operación. El voucher sube primero a Storage y, si el pago no entra,
+ * se retira. El id del pago se decide al abrir la ventana: un reintento no
+ * registra otro.
+ */
+export function PagarFactura({
+  adquisicionId,
+  numero,
+  proveedor,
+  hoy,
+  saldo,
+  codigoMoneda,
+}: {
+  adquisicionId: string
+  numero: string
+  proveedor: string
+  hoy: string
+  saldo: number
+  codigoMoneda: CodigoMoneda
+}) {
+  const [pagoId, setPagoId] = useState<string | null>(null)
+
+  async function pagar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+    const archivo = datos.get('archivo')
+    datos.delete('archivo')
+    if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: 'Adjunta el voucher del pago.' }
+    if (!pagoId) return { ok: false, error: 'Vuelve a abrir el formulario del pago.' }
+    return subirArchivoFinanzas(BUCKET_PAGOS_FACTURAS, adquisicionId, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
+      datos.set('ruta', ruta)
+      return registrarPagoFactura(null, datos)
+    })
+  }
+  const { alEnviar, enviando, error } = useEnvio(pagar, () => setPagoId(null))
+  const campo = (nombre: string) => `${nombre}-${adquisicionId}`
+
+  return (
+    <>
+      <Boton type="button" tamano="sm" onClick={() => setPagoId(crypto.randomUUID())} data-pagar-factura={numero}>
+        <Wallet aria-hidden className="size-4" />
+        Registrar pago
+      </Boton>
+      <Ventana
+        abierta={pagoId !== null}
+        alCerrar={() => setPagoId(null)}
+        titulo={`Pago de la factura ${numero}`}
+        descripcion={`${proveedor}. Falta pagar ${moneda(saldo, codigoMoneda)}.`}
+        ancho="md"
+      >
+        <form onSubmit={alEnviar} className="space-y-4">
+          <input type="hidden" name="id" value={pagoId ?? ''} />
+          <input type="hidden" name="adquisicion_id" value={adquisicionId} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Campo etiqueta="Día del pago" htmlFor={campo('fecha')} requerido>
+              <Entrada id={campo('fecha')} name="fecha" type="date" required defaultValue={hoy} max={hoy} />
+            </Campo>
+            <Campo etiqueta={`Importe pagado (${codigoMoneda === 'USD' ? 'dólares' : 'soles'})`} htmlFor={campo('monto')} requerido>
+              <Entrada
+                id={campo('monto')}
+                name="monto"
+                type="number"
+                inputMode="decimal"
+                min="0.01"
+                max={saldo > 0 ? saldo.toFixed(2) : undefined}
+                step="0.01"
+                required
+                defaultValue={saldo > 0 ? saldo.toFixed(2) : undefined}
+                className="tabular"
+              />
+            </Campo>
+            <Campo etiqueta="N.º de operación" htmlFor={campo('referencia')} requerido ayuda="El que da el banco en la constancia.">
+              <Entrada id={campo('referencia')} name="referencia" minLength={3} maxLength={120} required autoComplete="off" className="tabular" />
+            </Campo>
+          </div>
+          <Campo etiqueta="Voucher o constancia del pago" htmlFor={campo('archivo')} requerido ayuda={`PDF o foto, hasta ${MAXIMO_MB_FINANZAS} MB.`}>
+            <Entrada id={campo('archivo')} name="archivo" type="file" accept={ACEPTA} required />
+          </Campo>
+          {error && (
+            <p role="alert" className="text-sm text-peligro">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="contorno" onClick={() => setPagoId(null)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" cargando={enviando}>
+              Registrar el pago
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
+    </>
+  )
+}
+
+/** Anular con su motivo un pago de factura mal registrado: la factura vuelve a su saldo. */
+export function AnularPagoFactura({ pagoId }: { pagoId: string }) {
+  const [abierta, setAbierta] = useState(false)
+  const { alEnviar, enviando, error } = useEnvio(anularPagoFactura, () => setAbierta(false))
+  return (
+    <>
+      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} data-anular-pago-factura={pagoId}>
+        <Ban aria-hidden className="size-4" />
+        Anular
+      </Boton>
+      <Ventana
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo="Anular el pago"
+        descripcion="Queda en el historial con su motivo y su voucher; la factura vuelve a su saldo."
+        ancho="md"
+      >
+        <form onSubmit={alEnviar} className="space-y-4">
+          <input type="hidden" name="id" value={pagoId} />
+          <Campo etiqueta="Motivo" htmlFor={`anular-pago-factura-${pagoId}`} requerido>
+            <AreaTexto id={`anular-pago-factura-${pagoId}`} name="motivo" required minLength={10} maxLength={500} />
           </Campo>
           {error && (
             <p role="alert" className="text-sm text-peligro">

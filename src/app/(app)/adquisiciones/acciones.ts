@@ -17,15 +17,26 @@ const esquema = z.object({
   total: z.coerce.number().positive().multipleOf(0.01),
   condicion_pago: z.enum(['CONTADO', 'CREDITO']),
   orden_id: z.union([z.literal(''), z.guid()]),
-  orden_compra_id: z.union([z.literal(''), z.guid()]),
   documento_compra_id: z.union([z.literal(''), z.guid()]),
   observacion: z.string().trim().max(1000),
 })
+const esquemaOrdenes = z.array(z.guid()).max(40, 'Una factura cubre hasta 40 OC.')
 
+const condicionEnTexto = (c: string) => (c === 'CREDITO' ? 'crédito' : 'contado')
+
+/**
+ * Contabilidad registra una factura o un recibo. Una factura de compra cubre una
+ * o varias OC del mismo proveedor (migración 20261015122000): la principal va en
+ * el comprobante —es la que fija su OT— y las demás se enlazan mientras está en
+ * borrador, antes de subir el PDF. Que el total no calce con el de las OC no
+ * frena nada: Adquisiciones solo lo avisa.
+ */
 export async function registrarAdquisicion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   await exigirPermiso('adquisiciones.registrar')
   const entrada = esquema.safeParse(Object.fromEntries(formulario))
   if (!entrada.success) return { ok: false, error: entrada.error.issues[0]?.message ?? 'Revisa el comprobante.' }
+  const marcadas = esquemaOrdenes.safeParse([...new Set(formulario.getAll('ordenes_compra').filter((v) => v !== ''))])
+  if (!marcadas.success) return { ok: false, error: marcadas.error.issues[0]?.message ?? 'Vuelve a marcar las OC de la factura.' }
   const archivo = formulario.get('pdf')
   const v = entrada.data
   const tieneArchivo = archivo instanceof File && archivo.size > 0
@@ -40,25 +51,59 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   }
   const id = crypto.randomUUID()
   const supabase = await createClient()
-  let compraId = v.orden_compra_id || null
+  let ordenes = marcadas.data
+  let principal: string | null = null
   if (v.documento_compra_id) {
     const { data: documento, error: errorDocumento } = await supabase.from('documentos_compra_material')
       .select('id, orden_compra_id, tipo').eq('id', v.documento_compra_id).maybeSingle()
     if (errorDocumento) return { ok: false, error: mensajeDeError(errorDocumento) }
-    if (!documento || documento.tipo !== 'FACTURA' || (compraId && compraId !== documento.orden_compra_id)) {
-      return { ok: false, error: 'Elige una factura de la misma compra.' }
+    if (!documento || documento.tipo !== 'FACTURA' || (ordenes.length > 0 && !ordenes.includes(documento.orden_compra_id))) {
+      return { ok: false, error: 'La factura que subió Logística tiene que ser de una de las OC marcadas.' }
     }
-    compraId = documento.orden_compra_id
+    principal = documento.orden_compra_id
+    if (ordenes.length === 0) ordenes = [documento.orden_compra_id]
   }
+
+  // Antes de crear nada: que las OC marcadas puedan ir juntas en esta factura.
+  // La base lo vuelve a exigir; aquí se ataja para no dejar un borrador a medias.
+  if (ordenes.length > 1 || (ordenes.length === 1 && !principal)) {
+    const { data: pendientes, error: errorPendientes } = await supabase.rpc('compras_sin_factura')
+    if (errorPendientes) return { ok: false, error: mensajeDeError(errorPendientes) }
+    const porId = new Map((pendientes ?? []).flatMap((c) => (c.orden_compra_id ? [[c.orden_compra_id, c] as const] : [])))
+    // Solo la OC de la factura que subió Logística puede no estar en la lista.
+    if (ordenes.some((o) => !porId.has(o) && o !== principal)) {
+      return { ok: false, error: 'Una de las OC marcadas ya tiene su factura registrada. Recarga la pantalla.' }
+    }
+    const conocidas = ordenes.flatMap((o) => porId.get(o) ?? [])
+    const nombre = (p: string | null) => (p ?? '').trim().toUpperCase()
+    const otroProveedor = conocidas.find((c) => nombre(c.proveedor) !== nombre(conocidas[0].proveedor))
+    if (otroProveedor) return { ok: false, error: `Una factura es de un solo proveedor: la OC ${otroProveedor.numero ?? otroProveedor.referencia} es de ${otroProveedor.proveedor}.` }
+    const otraCondicion = conocidas.find((c) => c.condicion_pago !== v.condicion_pago)
+    if (otraCondicion) {
+      return { ok: false, error: `La OC ${otraCondicion.numero ?? otraCondicion.referencia} es al ${condicionEnTexto(otraCondicion.condicion_pago ?? '')}: la factura tiene que ir igual.` }
+    }
+    // La principal fija la OT del comprobante: la de la OT elegida, si hay una.
+    principal ??= (v.orden_id && conocidas.find((c) => c.orden_id === v.orden_id)?.orden_compra_id) || ordenes[0]
+  }
+  principal ??= ordenes[0] ?? null
+
   const { data: borrador, error: errorAlta } = await supabase.from('adquisiciones').insert({
     id, tipo: v.tipo, proveedor: v.proveedor, numero_documento: v.numero_documento,
     fecha_emision: v.fecha_emision, fecha_vencimiento: v.fecha_vencimiento,
     moneda: v.moneda, total: v.total, condicion_pago: v.condicion_pago,
-    orden_id: v.orden_id || null, orden_compra_id: compraId, documento_compra_id: v.documento_compra_id || null,
+    orden_id: v.orden_id || null, orden_compra_id: principal, documento_compra_id: v.documento_compra_id || null,
     observacion: v.observacion,
   }).select('id').maybeSingle()
   if (errorAlta) return { ok: false, error: mensajeDeError(errorAlta) }
   if (!borrador) return { ok: false, error: NO_TOCO_NADA }
+  // La principal la enlaza la base sola; las demás, aquí.
+  const resto = ordenes.filter((o) => o !== principal)
+  if (resto.length > 0) {
+    const { data: enlazadas, error: errorEnlace } = await supabase.from('adquisiciones_ordenes_compra')
+      .insert(resto.map((o) => ({ adquisicion_id: id, orden_compra_id: o }))).select('id')
+    if (errorEnlace) return { ok: false, error: `El comprobante quedó en borrador sin todas sus OC: ${mensajeDeError(errorEnlace)}` }
+    if ((enlazadas ?? []).length !== resto.length) return { ok: false, error: NO_TOCO_NADA }
+  }
   const ruta = bytes ? `adquisiciones/${id}/comprobante.pdf` : null
   if (ruta && bytes) {
     const { error: errorArchivo } = await supabase.storage.from('comprobantes-financieros')
@@ -71,7 +116,8 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   if (!registrado) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
-  return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado.` }
+  const cuantas = ordenes.length
+  return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado${cuantas > 1 ? ` con ${cuantas} OC` : cuantas === 1 ? ' con su OC' : ''}.` }
 }
 
 export async function completarAdquisicion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {

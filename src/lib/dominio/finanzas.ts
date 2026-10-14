@@ -12,6 +12,9 @@ export const BUCKET_FACTURAS_VENTA = 'facturas-venta'
 /** El bucket privado de los comprobantes de pago de servicio: la ruta es `{orden de servicio}/{archivo}`. */
 export const BUCKET_PAGOS_SERVICIO = 'pagos-servicio'
 
+/** El bucket privado de los vouchers con que Tesorería paga las facturas de compra: la ruta es `{factura}/{archivo}`. */
+export const BUCKET_PAGOS_FACTURAS = 'pagos-facturas'
+
 /** Lo que puede pesar una factura o un comprobante. */
 export const MAXIMO_MB_FINANZAS = 10
 
@@ -28,6 +31,18 @@ export const ESTADO_FACTURA_VENTA: Record<string, { etiqueta: string; tono: Tono
   ANEXADA: { etiqueta: 'Por enviar a Tesorería', tono: 'aviso' },
   ENVIADA: { etiqueta: 'En Tesorería', tono: 'exito' },
   ANULADA: { etiqueta: 'Anulada', tono: 'peligro' },
+}
+
+/**
+ * El aviso de Adquisiciones: si el total de la factura calza con el de sus OC
+ * (`adquisiciones_control`, migración 20261015122000). Solo avisa; no frena nada.
+ */
+export const CONTROL_FACTURA_COMPRA: Record<string, { etiqueta: string; tono: Tono }> = {
+  CALZA: { etiqueta: 'Calza con sus OC', tono: 'exito' },
+  NO_CALZA: { etiqueta: 'No calza con sus OC', tono: 'aviso' },
+  SIN_OC: { etiqueta: 'Sin OC', tono: 'neutro' },
+  OTRA_MONEDA: { etiqueta: 'OC en otra moneda', tono: 'neutro' },
+  SIN_PRECIO: { etiqueta: 'OC sin precio', tono: 'aviso' },
 }
 
 /**

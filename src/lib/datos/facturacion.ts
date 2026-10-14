@@ -24,7 +24,7 @@ type FilaBandeja = Funciones<'facturacion_bandeja'>['Returns'][number]
 export type CotizacionPorFacturar = FilaBandeja & { url: string | null; facturas: FacturaVenta[] }
 
 /** Enlaces firmados de un bucket, por ruta. Sin enlace la fila igual se muestra: se ve qué hay aunque no se abra. */
-async function enlaces(bucket: string, rutas: (string | null)[], segundos = 600): Promise<Map<string, string>> {
+export async function enlaces(bucket: string, rutas: (string | null)[], segundos = 600): Promise<Map<string, string>> {
   const unicas = [...new Set(rutas.filter((r): r is string => Boolean(r)))]
   const mapa = new Map<string, string>()
   if (unicas.length === 0) return mapa
