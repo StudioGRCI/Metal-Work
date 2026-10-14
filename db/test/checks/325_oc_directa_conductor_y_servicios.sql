@@ -193,8 +193,17 @@ select test.afirmar(
   'al aprobarla, la directa sale sola hacia el conductor');
 select test.afirmar(
   (select count(*) from public.notificaciones where origen_id = current_setting('prueba.oc1')::uuid
+      and usuario_id = current_setting('prueba.comprador')::uuid and ruta = '/compras/gestion') = 1,
+  'a Logística le llega el aviso para programar el recojo (migración 20261015140000)');
+-- Logística la pone en la lista del conductor con su peso.
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.programar_recojo(current_setting('prueba.oc1')::uuid, 45, null);
+reset role;
+select test.afirmar(
+  (select count(*) from public.notificaciones where origen_id = current_setting('prueba.oc1')::uuid
       and usuario_id = current_setting('prueba.conductor')::uuid and ruta = '/recojos') = 1,
-  'al conductor le llega el aviso del recojo');
+  'programada, al conductor le llega el aviso del recojo');
 
 -- ======================================================== 3. EL CONDUCTOR
 select pg_temp.como('conductor');
@@ -277,6 +286,7 @@ select test.afirmar(
   'la línea de requerimiento se queda con su material');
 -- Ya está con el conductor: volver a mandarla no hace nada.
 select public.mandar_compra_a_recojo(current_setting('prueba.oc2')::uuid);
+select public.programar_recojo(current_setting('prueba.oc2')::uuid, 30, null);
 reset role;
 
 select test.debe_fallar(

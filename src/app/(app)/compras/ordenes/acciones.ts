@@ -18,6 +18,7 @@ function refrescar() {
   revalidatePath('/compras/aprobacion')
   revalidatePath('/compras')
   revalidatePath('/recojos')
+  revalidatePath('/compras/gestion')
   revalidatePath('/almacen/kardex')
   // El tablero de Atención de materiales vive también en la pestaña de la OT.
   revalidatePath('/ordenes/[id]', 'page')
@@ -157,7 +158,7 @@ export async function emitirCompraDirecta(_previo: unknown, formulario: FormData
   refrescar()
   return {
     ok: true,
-    mensaje: `Orden ${numero} emitida. Espera la aprobación de Gerencia; aprobada, le llega al conductor para el recojo.`,
+    mensaje: `Orden ${numero} emitida. Espera la aprobación de Gerencia; aprobada, prográmala en Gestión de compras con su peso para que le llegue al conductor.`,
   }
 }
 
@@ -204,7 +205,7 @@ export async function emitirCompraDelRequerimiento(_previo: unknown, formulario:
   revalidatePath('/requerimientos/atencion')
   return {
     ok: true,
-    mensaje: `Orden ${numero} emitida para el requerimiento. Espera la aprobación de Gerencia; aprobada, el conductor la recoge y la deja en almacén.`,
+    mensaje: `Orden ${numero} emitida para el requerimiento. Espera la aprobación de Gerencia; aprobada, prográmala en Gestión de compras con su peso y el conductor la recoge y la deja en almacén.`,
   }
 }
 
@@ -220,7 +221,7 @@ export async function mandarARecojo(_previo: unknown, formulario: FormData): Pro
   if (error) return { ok: false, error: mensajeDeError(error) }
 
   refrescar()
-  return { ok: true, mensaje: 'Mandada a recojo: al conductor le llegó el aviso.' }
+  return { ok: true, mensaje: 'Mandada a recojo. Prográmala en Gestión de compras con su peso para que le llegue al conductor.' }
 }
 
 /**

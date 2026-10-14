@@ -6,7 +6,8 @@
  *   2. Almacén lo deja sin stock y Logística genera una OC para los dos.
  *   3. Requerimientos ve «OC por aprobar» con el número de la OC (no lee la
  *      tabla de compras: lo trae el avance).
- *   4. Gerencia aprueba: Supervisión ve el RQ «Pendiente de recojo».
+ *   4. Gerencia aprueba: Supervisión ve el RQ «Pendiente de recojo», y
+ *      Logística la pone en la lista del conductor con su peso.
  *   5. El conductor toca «Salgo a recoger»: la tarjeta dice «En recojo» y el
  *      botón pasa a «Ya la recogí». Supervisión ve «En recojo» y el porcentaje
  *      sube; Logística lo ve por insumo en Atención.
@@ -141,8 +142,11 @@ async function mirarRq(cuenta, ruta, captura) {
   await ventana.locator('[id^="ocd-precio-"]').first().fill('120.50')
   await ventana.getByRole('button', { name: 'Emitir orden de compra' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 30000 })
-  await pagina.locator('[role="status"]').waitFor({ timeout: 20000 })
-  oc = ((await pagina.locator('[role="status"]').innerText()).match(/OC-\d+-MW/) ?? [''])[0]
+  // Con todos sus insumos cubiertos, el RQ ya no ofrece «Generar OC» y el aviso
+  // se va con el botón: el número se lee entonces de la fila del RQ.
+  const aviso = await pagina.locator('[role="status"]').waitFor({ timeout: 5000 }).then(() => pagina.locator('[role="status"]').innerText(), () => '')
+  await pagina.waitForTimeout(800)
+  oc = ((aviso || (await pagina.locator('tbody tr', { hasText: numeroRq }).innerText())).match(/OC-\d+-MW/) ?? [''])[0]
   comprobar(oc !== '', `OC ${oc} para los dos insumos`)
   await contexto.close()
 }
@@ -170,6 +174,20 @@ async function mirarRq(cuenta, ruta, captura) {
   comprobar(pct === 45 && t.includes('Pendiente de recojo'), `aprobada: Supervisión ve «Pendiente de recojo» y 45 % (${pct})`)
   comprobar(t.includes(oc), `Supervisión ve con qué OC va (${oc})`)
   comprobar(/con insumos pendientes de recojo/.test(resumen), 'el resumen cuenta los pendientes de recojo')
+}
+
+// ------------------------------------------------ 4b. Logística la programa
+// Desde la gestión de compras (migración 20261015140000) el conductor sale solo
+// con lo que Logística le pone en su lista, con su peso.
+{
+  const { pagina, contexto } = await entrar(CUENTAS.logistica)
+  await pagina.goto(`${BASE}/compras/gestion`, { waitUntil: 'networkidle' })
+  const tarjeta = pagina.locator('section[aria-labelledby="titulo-por-programar"] > div', { hasText: oc })
+  await tarjeta.locator('input[name="peso"]').fill('85')
+  await tarjeta.getByRole('button', { name: 'Poner en la lista' }).click()
+  await pagina.locator('section[aria-labelledby="titulo-lista"] > div', { hasText: oc }).waitFor({ timeout: 20000 })
+  comprobar(true, `Logística pone la ${oc} en la lista del conductor con 85 kg`)
+  await contexto.close()
 }
 
 // ------------------------------------------------ 5. «Salgo a recoger»

@@ -106,6 +106,10 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
 
 /** Lo que el conductor necesita para ir, recoger y dejar. Sin precios. */
 export type LineaRecojo = { material_codigo: string | null; material: string | null; unidad: string | null; cantidad: number; orden: string | null }
+
+/** La guía de remisión vigente de una compra, cargada por Contabilidad. */
+export type GuiaRemision = { id: string; numero: string; fecha: string; nombre_archivo: string; cargada_en: string }
+
 export type CompraParaRecojo = {
   id: string
   numero: string
@@ -123,29 +127,35 @@ export type CompraParaRecojo = {
   recogido_en: string | null
   dejado_en: string | null
   fecha_estimada: string | null
+  creado_en: string | null
   ordenes: string[]
+  /** Los RQ (RQ-0001-2026…) que esta compra atiende. */
+  requerimientos: string[]
   lineas: LineaRecojo[]
   /** Con factura se pide la factura; sin factura, boleta, nota de venta o recibo. */
   con_factura: boolean
   comprobante_adjunto: boolean
   codigo_interno: string | null
+  /** Si Logística la puso en la lista del conductor. */
+  en_lista: boolean
+  /** 1.º, 2.º… entre las pendientes de recojo que están en la lista; vacío si no. */
+  lugar: number | null
+  /** El peso que puso Logística; se queda aunque la saque de la lista. */
+  peso_kg: number | null
+  guia: GuiaRemision | null
+  guias_anuladas: number
 }
 
+/**
+ * Las compras con el conductor —pendientes, en recojo y recogidas— y las que
+ * dejó en almacén esta semana, con su lugar en la lista, su peso y su guía de
+ * remisión (migración 20261015140000). La misma lista la leen Logística, que la
+ * programa; Contabilidad, que carga la guía; y el conductor, que la recoge.
+ */
 export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
   const supabase = await createClient()
-  // `datos_de_recojo` y `salidas_a_recojo` traen lo que se sumó después (el
-  // comprobante, el código interno y la hora en que salió a recoger) con el
-  // mismo permiso: la forma de `compras_para_recojo` no cambia sin borrarla.
-  const [{ data, error }, extra, salidas] = await Promise.all([
-    supabase.rpc('compras_para_recojo'),
-    supabase.rpc('datos_de_recojo'),
-    supabase.rpc('salidas_a_recojo'),
-  ])
+  const { data, error } = await supabase.rpc('compras_en_gestion')
   if (error) throw new Error(`No se pudieron leer los recojos: ${error.message}`)
-  if (extra.error) throw new Error(`No se pudo leer el comprobante de los recojos: ${extra.error.message}`)
-  if (salidas.error) throw new Error(`No se pudo leer cuándo salió a recoger: ${salidas.error.message}`)
-  const extraPorCompra = new Map((extra.data ?? []).map((e) => [e.id, e]))
-  const salidaPorCompra = new Map((salidas.data ?? []).map((s) => [s.id, s.en_recojo_en]))
   return (data ?? []).map((c) => ({
     id: c.id ?? '',
     numero: c.numero ?? '',
@@ -158,15 +168,25 @@ export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
     proveedor_contacto: c.proveedor_contacto,
     recojo: c.recojo ?? 'POR_RECOGER',
     pedido_en: c.pedido_en,
-    en_recojo_en: salidaPorCompra.get(c.id) ?? null,
+    en_recojo_en: c.en_recojo_en,
     recogido_en: c.recogido_en,
     dejado_en: c.dejado_en,
     fecha_estimada: c.fecha_estimada,
+    creado_en: c.creado_en,
     ordenes: c.ordenes ?? [],
+    requerimientos: c.requerimientos ?? [],
     lineas: ((c.lineas as LineaRecojo[] | null) ?? []).map((l) => ({ ...l, cantidad: Number(l.cantidad) })),
-    con_factura: extraPorCompra.get(c.id)?.con_factura ?? true,
-    comprobante_adjunto: extraPorCompra.get(c.id)?.comprobante_adjunto === true,
-    codigo_interno: extraPorCompra.get(c.id)?.codigo_interno ?? null,
+    con_factura: c.con_factura ?? true,
+    comprobante_adjunto: c.comprobante_adjunto === true,
+    codigo_interno: c.codigo_interno,
+    en_lista: c.en_lista === true,
+    lugar: c.lugar,
+    peso_kg: c.peso_kg === null ? null : Number(c.peso_kg),
+    guia:
+      c.guia_id && c.guia_numero
+        ? { id: c.guia_id, numero: c.guia_numero, fecha: c.guia_fecha ?? '', nombre_archivo: c.guia_nombre_archivo ?? '', cargada_en: c.guia_cargada_en ?? '' }
+        : null,
+    guias_anuladas: c.guias_anuladas ?? 0,
   }))
 }
 

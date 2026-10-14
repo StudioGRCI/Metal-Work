@@ -1820,6 +1820,79 @@ export type Database = {
           }
         ]
       }
+      guias_remision_compra: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          numero: string
+          fecha_emision: string
+          nombre_archivo: string
+          ruta: string
+          tamano_bytes: number
+          cargada_por: string
+          cargada_en: string
+          anulada_en: string | null
+          anulada_por: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id: string
+          numero: string
+          fecha_emision: string
+          nombre_archivo: string
+          ruta: string
+          tamano_bytes: number
+          cargada_por?: string
+          cargada_en?: string
+          anulada_en?: string | null
+          anulada_por?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          numero?: string
+          fecha_emision?: string
+          nombre_archivo?: string
+          ruta?: string
+          tamano_bytes?: number
+          cargada_por?: string
+          cargada_en?: string
+          anulada_en?: string | null
+          anulada_por?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guias_remision_compra_anulada_por_fkey"
+            columns: ["anulada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guias_remision_compra_cargada_por_fkey"
+            columns: ["cargada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guias_remision_compra_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: true
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       horas_compensadas: {
         Row: {
           id: string
@@ -5787,6 +5860,54 @@ export type Database = {
           }
         ]
       }
+      programacion_recojo: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          posicion: number | null
+          peso_kg: number
+          programado_por: string
+          programado_en: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id: string
+          posicion?: number | null
+          peso_kg: number
+          programado_por?: string
+          programado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          posicion?: number | null
+          peso_kg?: number
+          programado_por?: string
+          programado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "programacion_recojo_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: true
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "programacion_recojo_programado_por_fkey"
+            columns: ["programado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       proveedor_cuentas: {
         Row: {
           id: string
@@ -8410,6 +8531,13 @@ export type Database = {
         }
         Returns: string
       }
+      anular_guia_remision: {
+        Args: {
+          p_guia: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       anular_pago_planilla_diaria: {
         Args: {
           p_id: string | null
@@ -8502,6 +8630,17 @@ export type Database = {
         }
         Returns: string
       }
+      avisar_a_quien_tiene: {
+        Args: {
+          p_permiso: string | null
+          p_titulo: string | null
+          p_cuerpo: string | null
+          p_ruta: string | null
+          p_compra: string | null
+          p_excepto?: string | null
+        }
+        Returns: null
+      }
       cambiar_clave_personal: {
         Args: {
           p_usuario: string | null
@@ -8529,6 +8668,16 @@ export type Database = {
           p_filas: Json | null
         }
         Returns: Json
+      }
+      cargar_guia_remision: {
+        Args: {
+          p_id: string | null
+          p_compra: string | null
+          p_numero: string | null
+          p_fecha: string | null
+          p_nombre_archivo: string | null
+        }
+        Returns: string
       }
       cerrar_costo_ot: {
         Args: {
@@ -8691,6 +8840,43 @@ export type Database = {
           p_compra: string | null
         }
         Returns: boolean
+      }
+      compras_en_gestion: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          numero: string | null
+          referencia: string | null
+          origen: string | null
+          proveedor: string | null
+          proveedor_documento: string | null
+          proveedor_direccion: string | null
+          proveedor_telefono: string | null
+          proveedor_contacto: string | null
+          codigo_interno: string | null
+          con_factura: boolean | null
+          comprobante_adjunto: boolean | null
+          recojo: string | null
+          pedido_en: string | null
+          en_recojo_en: string | null
+          recogido_en: string | null
+          dejado_en: string | null
+          fecha_estimada: string | null
+          creado_en: string | null
+          ordenes: string[] | null
+          requerimientos: string[] | null
+          lineas: Json | null
+          en_lista: boolean | null
+          lugar: number | null
+          peso_kg: number | null
+          programado_en: string | null
+          guia_id: string | null
+          guia_numero: string | null
+          guia_fecha: string | null
+          guia_nombre_archivo: string | null
+          guia_cargada_en: string | null
+          guias_anuladas: number | null
+        }[]
       }
       compras_para_aprobar: {
         Args: Record<PropertyKey, never>
@@ -9710,6 +9896,14 @@ export type Database = {
         }
         Returns: number
       }
+      programar_recojo: {
+        Args: {
+          p_compra: string | null
+          p_peso: number | null
+          p_posicion?: number | null
+        }
+        Returns: number
+      }
       proponer_material_de_area: {
         Args: {
           p_orden: string | null
@@ -9826,6 +10020,12 @@ export type Database = {
       puesto_de: {
         Args: {
           p_usuario: string | null
+        }
+        Returns: string
+      }
+      quitar_recojo_de_la_lista: {
+        Args: {
+          p_compra: string | null
         }
         Returns: string
       }
