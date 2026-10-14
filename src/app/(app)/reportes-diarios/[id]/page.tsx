@@ -1,18 +1,28 @@
+import { PencilLine } from 'lucide-react'
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { reporteDiario, type PersonaReporte } from '@/lib/datos/reportes-diarios'
 import { diaDeLima } from '@/lib/dominio/expediente'
-import { DIAS_PARA_EL_REPORTE } from '@/lib/dominio/reporte-diario'
+import {
+  AREA_QUE_VALIDA,
+  DIAS_PARA_EL_REPORTE,
+  ESTADO_REPORTE,
+  estadoDeReporte,
+  type LadoValidacion,
+} from '@/lib/dominio/reporte-diario'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import { fechaHora, fechaLarga, hoyLima, sumarDias } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularReporte } from './anular'
+import { ValidarReporte } from './validacion'
 
 export const metadata = { title: 'Reporte diario' }
 
@@ -35,10 +45,16 @@ export default async function PaginaReporteDiario({ params, searchParams }: Page
   if (!r) notFound()
 
   const anulado = r.anulado_en !== null
-  // Lo mismo que exige `anular_reporte_diario`: quien lo subió, dentro de los 7 días; RR. HH., siempre.
+  const estado = estadoDeReporte(r)
+  // Lo mismo que exige `anular_reporte_diario`: quien lo subió, dentro de los 7
+  // días y mientras no lo validen las dos áreas; RR. HH., siempre.
   const propio = r.registrado_por === perfil.id && puede(perfil, 'reporte_diario.registrar')
   const aTiempo = (diaDeLima(r.creado_en) ?? '') >= sumarDias(hoyLima(), -DIAS_PARA_EL_REPORTE)
-  const puedeAnular = !anulado && (veCosteo || (propio && aTiempo))
+  const puedeAnular = !anulado && (veCosteo || (propio && aTiempo && estado !== 'VALIDADO'))
+  const valida: LadoValidacion[] = []
+  if (puede(perfil, 'reporte_diario.validar_gerencia')) valida.push('GERENCIA')
+  if (puede(perfil, 'reporte_diario.validar_rrhh')) valida.push('RRHH')
+  const corrige = propio && estado === 'OBSERVADO'
   const general = r.personal.filter((p) => p.trabajo_id === null)
   const horas = r.personal.reduce((n, p) => n + p.horas, 0)
   const personas = new Set(r.personal.map((p) => p.trabajador_id)).size
@@ -54,21 +70,90 @@ export default async function PaginaReporteDiario({ params, searchParams }: Page
           </>
         }
         migas={[{ titulo: 'Reporte diario', ruta: '/reportes-diarios' }, { titulo: r.asunto }]}
-        acciones={puedeAnular && <AnularReporte id={r.id} asunto={r.asunto} />}
+        acciones={
+          (corrige || puedeAnular) && (
+            <>
+              {corrige && (
+                <EnlaceBoton href={`/reportes-diarios/nuevo?corrige=${r.id}`} tamano="sm">
+                  <PencilLine aria-hidden className="size-4" />
+                  Corregir y subir de nuevo
+                </EnlaceBoton>
+              )}
+              {puedeAnular && <AnularReporte id={r.id} asunto={r.asunto} />}
+            </>
+          )
+        }
       />
 
       {subido === '1' && !anulado && (
         <p role="status" className="mb-4 rounded-lg border border-exito bg-exito-suave px-3 py-2 text-sm text-texto">
-          Reporte subido. Sus horas van al costeo de Recursos Humanos con el código {r.codigo_interno}.
+          Reporte subido. Sus horas van al costeo de Recursos Humanos con el código {r.codigo_interno}, y Gerencia y Recursos Humanos
+          lo validan para la planilla diaria.
         </p>
       )}
-      {anulado && (
+      {r.observado_en && (
+        <div className="mb-4 rounded-lg border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-observacion>
+          <p>
+            <span className="font-medium">Observado por {AREA_QUE_VALIDA[r.observacion_area ?? 'RRHH']}</span> el {fechaHora(r.observado_en)}:{' '}
+            {r.observacion}
+          </p>
+          {r.corregido_por ? (
+            <p className="mt-1">
+              El supervisor ya lo corrigió:{' '}
+              <Link href={`/reportes-diarios/${r.corregido_por}`} className="font-medium text-acento underline">
+                ver el reporte corregido
+              </Link>
+              .
+            </p>
+          ) : corrige ? (
+            <p className="mt-1">Corrígelo con «Corregir y subir de nuevo»: se abre con lo que ya escribiste y sus fotos.</p>
+          ) : (
+            <p className="mt-1">Espera a que el supervisor lo corrija y lo suba de nuevo. Sus horas no entran a la planilla diaria.</p>
+          )}
+        </div>
+      )}
+      {anulado && !r.corregido_por && (
         <p className="mb-4 rounded-lg border border-peligro bg-peligro-suave px-3 py-2 text-sm text-texto">
           Anulado el {fechaHora(r.anulado_en)}: {r.motivo_anulacion} Sus horas salieron del costeo.
         </p>
       )}
+      {r.reemplaza_a && (
+        <p className="mb-4 text-sm text-texto-suave">
+          Corrige un{' '}
+          <Link href={`/reportes-diarios/${r.reemplaza_a}`} className="font-medium text-acento underline">
+            reporte observado
+          </Link>
+          .
+        </p>
+      )}
 
       <div className="max-w-3xl space-y-5">
+        {!anulado && (
+          <Tarjeta>
+            <TarjetaCabecera
+              titulo="Validación"
+              descripcion="Sus horas entran a la planilla diaria cuando le dan su visto bueno Gerencia y Recursos Humanos, en cualquier orden."
+              acciones={<Insignia tono={ESTADO_REPORTE[estado].tono}>{ESTADO_REPORTE[estado].etiqueta}</Insignia>}
+            />
+            <ul className="divide-y divide-borde">
+              {(['GERENCIA', 'RRHH'] as const).map((lado) => {
+                const visto = lado === 'GERENCIA' ? r.visto_gerencia_en : r.visto_rrhh_en
+                return (
+                  <li key={lado} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3" data-lado={lado}>
+                    <div>
+                      <p className="text-sm font-medium text-texto">{AREA_QUE_VALIDA[lado]}</p>
+                      <p className="text-xs text-texto-suave">
+                        {visto ? `Visto bueno el ${fechaHora(visto)}` : estado === 'OBSERVADO' ? 'Sin visto: está observado' : 'Falta su visto bueno'}
+                      </p>
+                    </div>
+                    {estado === 'POR_VALIDAR' && valida.includes(lado) && <ValidarReporte id={r.id} lado={lado} yaDioVisto={Boolean(visto)} />}
+                  </li>
+                )
+              })}
+            </ul>
+          </Tarjeta>
+        )}
+
         <Tarjeta>
           <TarjetaCabecera
             titulo="Lo que cuenta el reporte"

@@ -39,6 +39,13 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
         z.literal(''),
         z.coerce.number('Escribe el costo mensual en soles.').positive('El costo mensual va en soles, mayor que cero.').max(100000, 'El costo mensual pasa de S/ 100 000.'),
       ]),
+      remuneracion_mensual: z.union([
+        z.literal(''),
+        z.coerce
+          .number('Escribe la remuneración mensual en soles.')
+          .positive('La remuneración mensual va en soles, mayor que cero.')
+          .max(100000, 'La remuneración mensual pasa de S/ 100 000.'),
+      ]),
     })
     .safeParse({
       id: dato(formulario, 'id'),
@@ -54,6 +61,7 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
       numero_cuenta: dato(formulario, 'numero_cuenta').replace(/\s/g, ''),
       cci: dato(formulario, 'cci').replace(/\s/g, ''),
       costo_mensual: dato(formulario, 'costo_mensual').replace(/[\s,]/g, ''),
+      remuneracion_mensual: dato(formulario, 'remuneracion_mensual').replace(/[\s,]/g, ''),
     })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa la ficha.' }
   const d = analisis.data
@@ -85,6 +93,18 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
     if (costo.error) return { ok: false, error: `La ficha quedó guardada, pero el costo mensual no: ${mensajeDeError(costo.error)}` }
     if (costo.data !== d.id) return { ok: false, error: 'La ficha quedó guardada, pero el costo mensual no. Recarga la pantalla.' }
     revalidatePath('/rrhh/costeo')
+  }
+  // La remuneración, igual: aparte y después. Con ella entra a la planilla diaria.
+  if (d.remuneracion_mensual !== '') {
+    const remuneracion = await supabase.rpc('rrhh_guardar_remuneracion_trabajador', {
+      p_trabajador_id: d.id,
+      p_remuneracion_mensual: d.remuneracion_mensual,
+    })
+    if (remuneracion.error) {
+      return { ok: false, error: `La ficha quedó guardada, pero la remuneración mensual no: ${mensajeDeError(remuneracion.error)}` }
+    }
+    if (remuneracion.data !== d.id) return { ok: false, error: 'La ficha quedó guardada, pero la remuneración mensual no. Recarga la pantalla.' }
+    revalidatePath('/planilla-diaria')
   }
   return { ok: true, mensaje: `${d.nombres} ${d.apellidos} queda en el personal.` }
 }

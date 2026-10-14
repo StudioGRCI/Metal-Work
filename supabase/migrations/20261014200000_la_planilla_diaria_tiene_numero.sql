@@ -1,0 +1,13 @@
+-- =============================================================================
+-- LA PLANILLA DIARIA TIENE NÚMERO
+-- -----------------------------------------------------------------------------
+-- Gerencia pidió (2026-10-14) que los reportes diarios de los supervisores, una
+-- vez validados por Gerencia y por RR. HH., formen una PLANILLA DIARIA que RR. HH.
+-- manda a Tesorería para el pago. Tesorería paga contra ella y adjunta el
+-- comprobante y la boleta: es un documento, y como todo documento que se paga
+-- lleva número de la casa (PD-0001-2026) y no se borra nunca.
+--
+-- Va sola porque Postgres no deja usar en la misma transacción un valor de
+-- enum recién agregado: la migración 20261014202000 crea la serie con él.
+-- =============================================================================
+alter type public.tipo_correlativo add value if not exists 'PLANILLA_DIARIA';

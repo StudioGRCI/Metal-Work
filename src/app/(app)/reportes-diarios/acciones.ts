@@ -45,9 +45,11 @@ const TRABAJO = z.object({
 })
 
 /**
- * El supervisor sube su reporte del día. Mismo permiso que
- * `registrar_reporte_diario` (`reporte_diario.registrar`); la base vuelve a
- * revisar todo y es la que pasa las horas al costeo.
+ * El supervisor sube su reporte del día, o corrige uno observado (`reemplaza`):
+ * el observado se anula y este entra en su lugar. Mismo permiso que
+ * `registrar_reporte_diario` y `registrar_reporte_corregido`
+ * (`reporte_diario.registrar`); la base vuelve a revisar todo y es la que pasa
+ * las horas al costeo y avisa a Gerencia y a RR. HH. que lo validen.
  */
 export async function registrarReporteDiario(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ id: string }>> {
   const perfil = await exigirSesion()
@@ -56,6 +58,7 @@ export async function registrarReporteDiario(_previo: unknown, formulario: FormD
   const analisis = z
     .object({
       id: z.guid(),
+      reemplaza: z.guid().nullable(),
       fecha: z.iso.date('Elige el día del reporte.'),
       codigo_interno: z
         .string()
@@ -73,6 +76,7 @@ export async function registrarReporteDiario(_previo: unknown, formulario: FormD
     })
     .safeParse({
       id: dato(formulario, 'id'),
+      reemplaza: dato(formulario, 'reemplaza') || null,
       fecha: dato(formulario, 'fecha'),
       codigo_interno: dato(formulario, 'codigo_interno'),
       asunto: dato(formulario, 'asunto'),
@@ -91,7 +95,7 @@ export async function registrarReporteDiario(_previo: unknown, formulario: FormD
   if (personas === 0) return { ok: false, error: 'Pon al menos a una persona con sus horas: de ahí sale el costeo.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('registrar_reporte_diario', {
+  const reporte = {
     p_id: d.id,
     p_fecha: d.fecha,
     p_codigo_interno: d.codigo_interno,
@@ -100,13 +104,74 @@ export async function registrarReporteDiario(_previo: unknown, formulario: FormD
     p_trabajos: d.trabajos.map((t) => ({ ...t, personal: d.general ? [] : t.personal })),
     p_personal_general: d.general ? d.personal_general : [],
     p_fotos: d.fotos,
-  })
+  }
+  const { data, error } = d.reemplaza
+    ? await supabase.rpc('registrar_reporte_corregido', { ...reporte, p_reemplaza: d.reemplaza })
+    : await supabase.rpc('registrar_reporte_diario', reporte)
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El reporte no quedó subido. Recarga la pantalla.' }
 
   revalidatePath('/reportes-diarios')
+  if (d.reemplaza) revalidatePath(`/reportes-diarios/${d.reemplaza}`)
   revalidatePath('/rrhh/costeo')
-  return { ok: true, mensaje: 'Reporte subido: sus horas van al costeo de Recursos Humanos.', datos: { id: d.id } }
+  return {
+    ok: true,
+    mensaje: 'Reporte subido: sus horas van al costeo y Gerencia y Recursos Humanos lo validan.',
+    datos: { id: d.id },
+  }
+}
+
+const LADO = z.enum(['GERENCIA', 'RRHH'], 'Vuelve a cargar la pantalla.')
+const PERMISO_DEL_LADO = { GERENCIA: 'reporte_diario.validar_gerencia', RRHH: 'reporte_diario.validar_rrhh' } as const
+
+/**
+ * El visto bueno de Gerencia o de RR. HH. Cada lado con su permiso, el mismo
+ * que exige `validar_reporte_diario`. Con los dos, el reporte entra a la
+ * planilla diaria.
+ */
+export async function validarReporteDiario(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  const analisis = z.object({ id: z.guid(), lado: LADO }).safeParse({ id: dato(formulario, 'id'), lado: dato(formulario, 'lado') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+  const { id, lado } = analisis.data
+  if (!puede(perfil, PERMISO_DEL_LADO[lado])) return { ok: false, error: `El visto de ${lado === 'GERENCIA' ? 'Gerencia' : 'Recursos Humanos'} lo da esa área.` }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('validar_reporte_diario', { p_id: id, p_lado: lado })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+
+  revalidatePath('/reportes-diarios')
+  revalidatePath(`/reportes-diarios/${id}`)
+  revalidatePath('/planilla-diaria')
+  revalidatePath('/rrhh/horas-extras')
+  return {
+    ok: true,
+    mensaje: data === 'VALIDADO' ? 'Validado por las dos áreas: sus horas pasan a la planilla diaria.' : 'Visto bueno registrado.',
+  }
+}
+
+/** Observar un reporte: vuelve al supervisor con el motivo. Mismo permiso por lado que `observar_reporte_diario`. */
+export async function observarReporteDiario(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  const analisis = z
+    .object({
+      id: z.guid(),
+      lado: LADO,
+      motivo: z.string().min(10, 'Cuenta qué tiene que corregir el supervisor, en al menos 10 caracteres.').max(500, 'La observación pasa de 500 caracteres.'),
+    })
+    .safeParse({ id: dato(formulario, 'id'), lado: dato(formulario, 'lado'), motivo: dato(formulario, 'motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+  const { id, lado, motivo } = analisis.data
+  if (!puede(perfil, PERMISO_DEL_LADO[lado])) return { ok: false, error: `Como ${lado === 'GERENCIA' ? 'Gerencia' : 'Recursos Humanos'} observa esa área.` }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('observar_reporte_diario', { p_id: id, p_lado: lado, p_motivo: motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== id) return { ok: false, error: 'La observación no quedó. Recarga la pantalla.' }
+
+  revalidatePath('/reportes-diarios')
+  revalidatePath(`/reportes-diarios/${id}`)
+  return { ok: true, mensaje: 'Observado: el supervisor recibe el aviso para corregirlo y subirlo de nuevo.' }
 }
 
 /**

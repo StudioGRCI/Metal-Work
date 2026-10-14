@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { BUCKET_FOTOS_REPORTE } from '@/lib/dominio/reporte-diario'
+import { BUCKET_FOTOS_REPORTE, type LadoValidacion } from '@/lib/dominio/reporte-diario'
 import { createClient } from '@/lib/supabase/server'
 
 /** Un trabajo realizado, con su avance. */
@@ -32,6 +32,13 @@ export type ReporteListado = {
   creado_en: string
   anulado_en: string | null
   motivo_anulacion: string | null
+  visto_gerencia_en: string | null
+  visto_rrhh_en: string | null
+  observado_en: string | null
+  observacion_area: LadoValidacion | null
+  observacion: string | null
+  /** El reporte observado que este corrige. */
+  reemplaza_a: string | null
   area: string | null
   trabajos: TrabajoReporte[]
   personal: { trabajador_id: string; horas: number }[]
@@ -42,6 +49,8 @@ export type ReporteListado = {
 export type ReporteDetalle = Omit<ReporteListado, 'personal' | 'fotos'> & {
   personal: PersonaReporte[]
   fotos: { id: string; orden: number; ruta: string; enlace: string | null }[]
+  /** El reporte que corrigió a este, si lo observaron y el supervisor ya lo subió de nuevo. */
+  corregido_por: string | null
 }
 
 type Uno<T> = T | T[] | null
@@ -52,6 +61,7 @@ function unico<T>(valor: Uno<T>): T | null {
 
 const COLUMNAS_REPORTE =
   'id, fecha, codigo_interno, asunto, descripcion, personal_general, registrado_por, creado_en, anulado_en, motivo_anulacion,' +
+  ' visto_gerencia_en, visto_rrhh_en, observado_en, observacion_area, observacion, reemplaza_a,' +
   ' area:areas(nombre),' +
   ' trabajos:reporte_diario_trabajos!reporte_diario_trabajos_reporte_id_fkey(id, orden, descripcion, avance)'
 
@@ -130,7 +140,12 @@ export async function reporteDiario(id: string, veCosteo: boolean): Promise<Repo
     fotos: { id: string; orden: number; ruta: string }[] | null
   }
   const fotos = [...(fila.fotos ?? [])].sort((a, b) => a.orden - b.orden)
-  const enlaces = await enlacesDeFotos(fotos.map((f) => f.ruta))
+  const [enlaces, corregido] = await Promise.all([
+    enlacesDeFotos(fotos.map((f) => f.ruta)),
+    fila.observado_en
+      ? supabase.from('reportes_diarios').select('id').eq('reemplaza_a', id).limit(1).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ])
 
   return {
     ...cabecera(fila),
@@ -143,6 +158,7 @@ export async function reporteDiario(id: string, veCosteo: boolean): Promise<Repo
       }
     }),
     fotos: fotos.map((f) => ({ ...f, enlace: enlaces[f.ruta] ?? null })),
+    corregido_por: corregido.data?.id ?? null,
   }
 }
 

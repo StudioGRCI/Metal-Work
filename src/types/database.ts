@@ -1820,6 +1820,140 @@ export type Database = {
           }
         ]
       }
+      horas_compensadas: {
+        Row: {
+          id: string
+          trabajador_id: string
+          fecha: string
+          horas: number
+          motivo: string
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          trabajador_id: string
+          fecha: string
+          horas: number
+          motivo: string
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          trabajador_id?: string
+          fecha?: string
+          horas?: number
+          motivo?: string
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "horas_compensadas_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "horas_compensadas_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "horas_compensadas_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      horas_extras_decisiones: {
+        Row: {
+          id: string
+          trabajador_id: string
+          fecha: string
+          horas: number
+          horas_tramo1: number
+          horas_tramo2: number
+          decision: string
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          trabajador_id: string
+          fecha: string
+          horas: number
+          horas_tramo1: number
+          horas_tramo2: number
+          decision: string
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          trabajador_id?: string
+          fecha?: string
+          horas?: number
+          horas_tramo1?: number
+          horas_tramo2?: number
+          decision?: string
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "horas_extras_decisiones_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "horas_extras_decisiones_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "horas_extras_decisiones_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ingresos_pendientes_almacen: {
         Row: {
           id: string
@@ -5012,6 +5146,257 @@ export type Database = {
         }
         Relationships: []
       }
+      planilla_diaria_detalle: {
+        Row: {
+          id: string
+          persona_id: string
+          trabajador_id: string
+          fecha: string
+          concepto: string
+          horas: number
+          horas_tramo1: number
+          horas_tramo2: number
+          valor_hora: number
+          recargo_tramo1: number
+          recargo_tramo2: number
+          monto: number
+          decision_id: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          persona_id: string
+          trabajador_id: string
+          fecha: string
+          concepto: string
+          horas: number
+          horas_tramo1?: number
+          horas_tramo2?: number
+          valor_hora: number
+          recargo_tramo1?: number
+          recargo_tramo2?: number
+          monto: number
+          decision_id?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          persona_id?: string
+          trabajador_id?: string
+          fecha?: string
+          concepto?: string
+          horas?: number
+          horas_tramo1?: number
+          horas_tramo2?: number
+          valor_hora?: number
+          recargo_tramo1?: number
+          recargo_tramo2?: number
+          monto?: number
+          decision_id?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planilla_diaria_detalle_decision_id_fkey"
+            columns: ["decision_id"]
+            isOneToOne: false
+            referencedRelation: "horas_extras_decisiones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_diaria_detalle_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "planilla_diaria_personas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_diaria_detalle_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      planilla_diaria_pagos: {
+        Row: {
+          id: string
+          planilla_id: string
+          fecha_pago: string
+          operacion: string | null
+          comprobante_ruta: string
+          comprobante_mime: string
+          comprobante_tamano: number
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          planilla_id: string
+          fecha_pago: string
+          operacion?: string | null
+          comprobante_ruta: string
+          comprobante_mime: string
+          comprobante_tamano: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          planilla_id?: string
+          fecha_pago?: string
+          operacion?: string | null
+          comprobante_ruta?: string
+          comprobante_mime?: string
+          comprobante_tamano?: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planilla_diaria_pagos_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_diaria_pagos_planilla_id_fkey"
+            columns: ["planilla_id"]
+            isOneToOne: false
+            referencedRelation: "planillas_diarias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_diaria_pagos_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      planilla_diaria_personas: {
+        Row: {
+          id: string
+          planilla_id: string
+          trabajador_id: string
+          nombre: string
+          cargo: string | null
+          horas_ordinarias: number
+          horas_extras: number
+          monto_ordinarias: number
+          monto_extras: number
+          total: number
+          pago_id: string | null
+          boleta_ruta: string | null
+          boleta_mime: string | null
+          boleta_tamano: number | null
+          boleta_subida_por: string | null
+          boleta_subida_en: string | null
+          boleta_entregada_por: string | null
+          boleta_entregada_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          planilla_id: string
+          trabajador_id: string
+          nombre: string
+          cargo?: string | null
+          horas_ordinarias: number
+          horas_extras: number
+          monto_ordinarias: number
+          monto_extras: number
+          total: number
+          pago_id?: string | null
+          boleta_ruta?: string | null
+          boleta_mime?: string | null
+          boleta_tamano?: number | null
+          boleta_subida_por?: string | null
+          boleta_subida_en?: string | null
+          boleta_entregada_por?: string | null
+          boleta_entregada_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          planilla_id?: string
+          trabajador_id?: string
+          nombre?: string
+          cargo?: string | null
+          horas_ordinarias?: number
+          horas_extras?: number
+          monto_ordinarias?: number
+          monto_extras?: number
+          total?: number
+          pago_id?: string | null
+          boleta_ruta?: string | null
+          boleta_mime?: string | null
+          boleta_tamano?: number | null
+          boleta_subida_por?: string | null
+          boleta_subida_en?: string | null
+          boleta_entregada_por?: string | null
+          boleta_entregada_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planilla_diaria_personas_boleta_entregada_por_fkey"
+            columns: ["boleta_entregada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_diaria_personas_boleta_subida_por_fkey"
+            columns: ["boleta_subida_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_diaria_personas_pago_id_fkey"
+            columns: ["pago_id"]
+            isOneToOne: false
+            referencedRelation: "planilla_diaria_pagos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_diaria_personas_planilla_id_fkey"
+            columns: ["planilla_id"]
+            isOneToOne: false
+            referencedRelation: "planillas_diarias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planilla_diaria_personas_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       planilla_distribuciones: {
         Row: {
           id: string
@@ -5166,6 +5551,63 @@ export type Database = {
           {
             foreignKeyName: "planillas_registrado_por_fkey"
             columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      planillas_diarias: {
+        Row: {
+          id: string
+          numero: string
+          fecha: string
+          personas: number
+          total: number
+          enviada_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          fecha: string
+          personas: number
+          total: number
+          enviada_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          fecha?: string
+          personas?: number
+          total?: number
+          enviada_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planillas_diarias_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planillas_diarias_enviada_por_fkey"
+            columns: ["enviada_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -5858,6 +6300,15 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          visto_gerencia_por: string | null
+          visto_gerencia_en: string | null
+          visto_rrhh_por: string | null
+          visto_rrhh_en: string | null
+          observado_por: string | null
+          observado_en: string | null
+          observacion_area: string | null
+          observacion: string | null
+          reemplaza_a: string | null
         }
         Insert: {
           id?: string
@@ -5873,6 +6324,15 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          visto_gerencia_por?: string | null
+          visto_gerencia_en?: string | null
+          visto_rrhh_por?: string | null
+          visto_rrhh_en?: string | null
+          observado_por?: string | null
+          observado_en?: string | null
+          observacion_area?: string | null
+          observacion?: string | null
+          reemplaza_a?: string | null
         }
         Update: {
           id?: string
@@ -5888,6 +6348,15 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          visto_gerencia_por?: string | null
+          visto_gerencia_en?: string | null
+          visto_rrhh_por?: string | null
+          visto_rrhh_en?: string | null
+          observado_por?: string | null
+          observado_en?: string | null
+          observacion_area?: string | null
+          observacion?: string | null
+          reemplaza_a?: string | null
         }
         Relationships: [
           {
@@ -5905,8 +6374,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "reportes_diarios_observado_por_fkey"
+            columns: ["observado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reportes_diarios_reemplaza_a_fkey"
+            columns: ["reemplaza_a"]
+            isOneToOne: false
+            referencedRelation: "reportes_diarios"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "reportes_diarios_registrado_por_fkey"
             columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reportes_diarios_visto_gerencia_por_fkey"
+            columns: ["visto_gerencia_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reportes_diarios_visto_rrhh_por_fkey"
+            columns: ["visto_rrhh_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -6303,6 +6800,41 @@ export type Database = {
             columns: ["rol_id"]
             isOneToOne: false
             referencedRelation: "roles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      rrhh_regla_horas_extras: {
+        Row: {
+          id: boolean
+          horas_tramo1: number
+          recargo_tramo1: number
+          recargo_tramo2: number
+          actualizado_por: string | null
+          actualizado_en: string
+        }
+        Insert: {
+          id?: boolean
+          horas_tramo1?: number
+          recargo_tramo1?: number
+          recargo_tramo2?: number
+          actualizado_por?: string | null
+          actualizado_en?: string
+        }
+        Update: {
+          id?: boolean
+          horas_tramo1?: number
+          recargo_tramo1?: number
+          recargo_tramo2?: number
+          actualizado_por?: string | null
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rrhh_regla_horas_extras_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -6709,6 +7241,48 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "trabajador_cuentas_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: true
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      trabajador_remuneraciones: {
+        Row: {
+          id: string
+          trabajador_id: string
+          remuneracion_mensual: number
+          actualizado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          trabajador_id: string
+          remuneracion_mensual: number
+          actualizado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          trabajador_id?: string
+          remuneracion_mensual?: number
+          actualizado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trabajador_remuneraciones_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trabajador_remuneraciones_trabajador_id_fkey"
             columns: ["trabajador_id"]
             isOneToOne: true
             referencedRelation: "trabajadores"
@@ -7836,6 +8410,20 @@ export type Database = {
         }
         Returns: string
       }
+      anular_pago_planilla_diaria: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      anular_planilla_diaria: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       anular_registro_vehiculo: {
         Args: {
           p_id: string | null
@@ -8398,6 +8986,18 @@ export type Database = {
         }
         Returns: string
       }
+      entregar_boleta_planilla_diaria: {
+        Args: {
+          p_persona_id: string | null
+        }
+        Returns: string
+      }
+      enviar_planilla_diaria: {
+        Args: {
+          p_id: string | null
+        }
+        Returns: string
+      }
       es_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -8534,6 +9134,21 @@ export type Database = {
         }
         Returns: string
       }
+      horas_extras_por_decidir: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          trabajador_id: string | null
+          nombre: string | null
+          cargo: string | null
+          fecha: string | null
+          horas_del_dia: number | null
+          extras: number | null
+          por_decidir: number | null
+          horas_tramo1: number | null
+          horas_tramo2: number | null
+          remuneracion_mensual: number | null
+        }[]
+      }
       identificacion_ot_diseno: {
         Args: {
           p_ordenes: string[] | null
@@ -8587,6 +9202,18 @@ export type Database = {
           dejado_en: string | null
           dejado_por_nombre: string | null
           recogido_en: string | null
+        }[]
+      }
+      jornadas_validadas: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          trabajador_id: string | null
+          fecha: string | null
+          horas: number | null
+          ordinarias: number | null
+          extras: number | null
+          ordinarias_en_planilla: number | null
+          extras_decididas: number | null
         }[]
       }
       levantar_observacion_ot: {
@@ -8733,6 +9360,14 @@ export type Database = {
         }
         Returns: number
       }
+      observar_reporte_diario: {
+        Args: {
+          p_id: string | null
+          p_lado: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       orden_compra_de_ruta: {
         Args: {
           p_ruta: string | null
@@ -8851,6 +9486,51 @@ export type Database = {
           p_anio: number | null
         }
         Returns: string
+      }
+      planilla_diaria_archivo: {
+        Args: {
+          p_planilla_id: string | null
+          p_ruta: string | null
+        }
+        Returns: string
+      }
+      planilla_diaria_cuentas: {
+        Args: {
+          p_planilla_id: string | null
+        }
+        Returns: {
+          persona_id: string | null
+          banco: string | null
+          tipo_cuenta: string | null
+          numero_cuenta: string | null
+          cci: string | null
+        }[]
+      }
+      planilla_diaria_pendiente: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          trabajador_id: string | null
+          fecha: string | null
+          concepto: string | null
+          horas: number | null
+          horas_tramo1: number | null
+          horas_tramo2: number | null
+          decision_id: string | null
+        }[]
+      }
+      planilla_diaria_por_enviar: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          trabajador_id: string | null
+          nombre: string | null
+          cargo: string | null
+          fecha: string | null
+          concepto: string | null
+          horas: number | null
+          horas_tramo1: number | null
+          horas_tramo2: number | null
+          remuneracion_mensual: number | null
+        }[]
       }
       plantilla_de_la_carroceria: {
         Args: {
@@ -8986,6 +9666,10 @@ export type Database = {
         Returns: boolean
       }
       puede_ver_pdf_ot: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      puede_ver_planilla_diaria: {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
@@ -9156,12 +9840,37 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_pago_planilla_diaria: {
+        Args: {
+          p_id: string | null
+          p_planilla_id: string | null
+          p_personas: string[] | null
+          p_fecha_pago: string | null
+          p_operacion: string | null
+          p_ruta: string | null
+        }
+        Returns: string
+      }
       registrar_recepcion_material: {
         Args: {
           p_id: string | null
           p_orden_compra_detalle_id: string | null
           p_cantidad: number | null
           p_documento_referencia: string | null
+        }
+        Returns: string
+      }
+      registrar_reporte_corregido: {
+        Args: {
+          p_reemplaza: string | null
+          p_id: string | null
+          p_fecha: string | null
+          p_codigo_interno: string | null
+          p_asunto: string | null
+          p_descripcion: string | null
+          p_trabajos: Json | null
+          p_personal_general?: Json | null
+          p_fotos?: Json | null
         }
         Returns: string
       }
@@ -9269,6 +9978,26 @@ export type Database = {
         }
         Returns: null
       }
+      reporte_diario_estado: {
+        Args: {
+          p: string | null
+        }
+        Returns: string
+      }
+      reporte_diario_insertar: {
+        Args: {
+          p_id: string | null
+          p_fecha: string | null
+          p_codigo_interno: string | null
+          p_asunto: string | null
+          p_descripcion: string | null
+          p_trabajos: Json | null
+          p_personal_general: Json | null
+          p_fotos: Json | null
+          p_reemplaza: string | null
+        }
+        Returns: string
+      }
       reporte_diario_personal_disponible: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -9374,6 +10103,13 @@ export type Database = {
         }
         Returns: string
       }
+      rrhh_anular_decision_horas_extras: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       rrhh_anular_observacion: {
         Args: {
           p_id: string | null
@@ -9382,6 +10118,13 @@ export type Database = {
         Returns: string
       }
       rrhh_anular_tareo: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      rrhh_anular_uso_saldo: {
         Args: {
           p_id: string | null
           p_motivo: string | null
@@ -9401,6 +10144,15 @@ export type Database = {
           codigo: string | null
         }[]
       }
+      rrhh_decidir_horas_extras: {
+        Args: {
+          p_id: string | null
+          p_trabajador_id: string | null
+          p_fecha: string | null
+          p_decision: string | null
+        }
+        Returns: string
+      }
       rrhh_guardar_costo_trabajador: {
         Args: {
           p_trabajador_id: string | null
@@ -9408,12 +10160,27 @@ export type Database = {
         }
         Returns: string
       }
+      rrhh_guardar_regla_horas_extras: {
+        Args: {
+          p_horas_tramo1: number | null
+          p_recargo_tramo1: number | null
+          p_recargo_tramo2: number | null
+        }
+        Returns: null
+      }
       rrhh_guardar_regla_tardanza: {
         Args: {
           p_tolerancia_minutos: number | null
           p_descuento_por_minuto: number | null
         }
         Returns: null
+      }
+      rrhh_guardar_remuneracion_trabajador: {
+        Args: {
+          p_trabajador_id: string | null
+          p_remuneracion_mensual: number | null
+        }
+        Returns: string
       }
       rrhh_guardar_trabajador: {
         Args: {
@@ -9473,11 +10240,34 @@ export type Database = {
         }
         Returns: string
       }
+      rrhh_usar_saldo_horas: {
+        Args: {
+          p_id: string | null
+          p_trabajador_id: string | null
+          p_fecha: string | null
+          p_horas: number | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       ruc_es_valido: {
         Args: {
           p_ruc: string | null
         }
         Returns: boolean
+      }
+      saldo_horas_por_persona: {
+        Args: {
+          p_trabajador_id?: string | null
+        }
+        Returns: {
+          trabajador_id: string | null
+          nombre: string | null
+          cargo: string | null
+          reservadas: number | null
+          usadas: number | null
+          saldo: number | null
+        }[]
       }
       saldo_material_interno: {
         Args: {
@@ -9530,6 +10320,13 @@ export type Database = {
           p_tipo: Database["public"]["Enums"]["tipo_correlativo"] | null
           p_serie?: string | null
           p_sede?: string | null
+        }
+        Returns: string
+      }
+      subir_boleta_planilla_diaria: {
+        Args: {
+          p_persona_id: string | null
+          p_ruta: string | null
         }
         Returns: string
       }
@@ -9605,6 +10402,13 @@ export type Database = {
         }
         Returns: number
       }
+      validar_reporte_diario: {
+        Args: {
+          p_id: string | null
+          p_lado: string | null
+        }
+        Returns: string
+      }
       valorizar_material: {
         Args: {
           p_id: string | null
@@ -9628,7 +10432,7 @@ export type Database = {
       magnitud_medida: "UNIDAD" | "MASA" | "LONGITUD" | "AREA" | "VOLUMEN"
       moneda: "PEN" | "USD"
       prioridad_ot: "BAJA" | "NORMAL" | "ALTA" | "URGENTE"
-      tipo_correlativo: "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO"
+      tipo_correlativo: "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO" | "PLANILLA_DIARIA"
       tipo_documento_cliente: "RUC" | "DNI" | "CE" | "PASAPORTE"
       tipo_evento_ot: "CREACION" | "CAMBIO_ESTADO" | "AVANCE" | "MATERIAL" | "DOCUMENTO" | "INSPECCION" | "PAUSA" | "REANUDACION" | "COMENTARIO" | "ENTREGA"
       tipo_trabajo_ot: "FABRICACION" | "REPARACION" | "REPOTENCIACION" | "MANTENIMIENTO" | "GARANTIA"

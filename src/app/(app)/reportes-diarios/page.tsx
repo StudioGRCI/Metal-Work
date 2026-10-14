@@ -8,12 +8,15 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { listarReportesDiarios, type ReporteListado } from '@/lib/datos/reportes-diarios'
-import { horasPorPersona } from '@/lib/dominio/reporte-diario'
+import { ESTADO_REPORTE, estadoDeReporte, faltaParaValidar, horasPorPersona, type EstadoReporte } from '@/lib/dominio/reporte-diario'
 import { horasCortas, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fechaLarga, hoyLima, mesLargo } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Reporte diario' }
+
+/** El filtro por estado: lo que espera a quien mira primero. */
+const FILTRO_ESTADO: Record<string, EstadoReporte> = { 'por-validar': 'POR_VALIDAR', observados: 'OBSERVADO', validados: 'VALIDADO' }
 
 export default async function PaginaReportesDiarios({ searchParams }: PageProps<'/reportes-diarios'>) {
   const perfil = await exigirPermiso(['reporte_diario.registrar', 'reporte_diario.ver'])
@@ -23,13 +26,17 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
   const mesActual = mesDeLima(hoyLima())
   const mes = mesValido(params.mes) ? params.mes : mesActual
   const area = typeof params.area === 'string' ? params.area : null
+  const filtro = typeof params.estado === 'string' && params.estado in FILTRO_ESTADO ? params.estado : null
 
   const todos = await listarReportesDiarios(mes)
   const areas = [...new Set(todos.map((r) => r.area ?? 'Sin área'))].sort()
-  const reportes = area ? todos.filter((r) => (r.area ?? 'Sin área') === area) : todos
+  const deLaArea = area ? todos.filter((r) => (r.area ?? 'Sin área') === area) : todos
+  const reportes = filtro ? deLaArea.filter((r) => estadoDeReporte(r) === FILTRO_ESTADO[filtro]) : deLaArea
   const vigentes = reportes.filter((r) => !r.anulado_en)
   const horas = vigentes.reduce((n, r) => n + r.personal.reduce((m, p) => m + p.horas, 0), 0)
-  const enlaceMes = (m: string) => `/reportes-diarios?mes=${m}${area ? `&area=${encodeURIComponent(area)}` : ''}`
+  const cuantos = (e: EstadoReporte) => deLaArea.filter((r) => estadoDeReporte(r) === e).length
+  const enlaceMes = (m: string) =>
+    `/reportes-diarios?mes=${m}${area ? `&area=${encodeURIComponent(area)}` : ''}${filtro ? `&estado=${filtro}` : ''}`
 
   return (
     <>
@@ -37,8 +44,8 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
         titulo="Reporte diario"
         descripcion={
           sube
-            ? 'Lo que hiciste en el día por código interno: los trabajos con su avance, quién trabajó y cuántas horas, y hasta tres fotos. Las horas pasan solas al costeo de Recursos Humanos.'
-            : 'Lo que cada supervisor reporta en el día por código interno: trabajos con su avance, el personal con sus horas y fotos. Las horas pasan solas al costeo por código interno.'
+            ? 'Lo que hiciste en el día por código interno: los trabajos con su avance, quién trabajó y cuántas horas, y hasta tres fotos. Las horas pasan solas al costeo; Gerencia y Recursos Humanos lo validan para la planilla diaria, o te lo observan para que lo corrijas.'
+            : 'Lo que cada supervisor reporta en el día por código interno: trabajos con su avance, el personal con sus horas y fotos. Con el visto bueno de Gerencia y de Recursos Humanos, sus horas pasan a la planilla diaria.'
         }
         migas={[{ titulo: 'Reporte diario' }]}
         acciones={
@@ -77,6 +84,21 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
         </p>
       </div>
 
+      <PastillaFiltro
+        ruta="/reportes-diarios"
+        clave="estado"
+        params={params}
+        activo={filtro}
+        etiqueta="Estado"
+        opciones={[
+          { valor: null, etiqueta: 'Todos' },
+          { valor: 'por-validar', etiqueta: `Por validar (${cuantos('POR_VALIDAR')})` },
+          { valor: 'observados', etiqueta: `Observados (${cuantos('OBSERVADO')})` },
+          { valor: 'validados', etiqueta: `Validados (${cuantos('VALIDADO')})` },
+        ]}
+        className="mb-3"
+      />
+
       {veTodos && areas.length > 1 && (
         <PastillaFiltro
           ruta="/reportes-diarios"
@@ -92,11 +114,13 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
       {reportes.length === 0 ? (
         <Tarjeta>
           <TarjetaCuerpo>
-            <p className="text-sm font-medium text-texto">Sin reportes este mes</p>
+            <p className="text-sm font-medium text-texto">{filtro ? 'Ningún reporte en este estado' : 'Sin reportes este mes'}</p>
             <p className="text-sm text-texto-suave">
-              {sube
-                ? 'Sube el del día con «Nuevo reporte»: un reporte por cada código interno en que trabajaste.'
-                : 'Aparecen aquí cuando los supervisores suben su reporte del día.'}
+              {filtro
+                ? 'Quita el filtro de estado con «Todos» para ver el resto.'
+                : sube
+                  ? 'Sube el del día con «Nuevo reporte»: un reporte por cada código interno en que trabajaste.'
+                  : 'Aparecen aquí cuando los supervisores suben su reporte del día.'}
             </p>
           </TarjetaCuerpo>
         </Tarjeta>
@@ -117,6 +141,8 @@ function FilaReporte({ reporte: r, conArea }: { reporte: ReporteListado; conArea
   const personas = horasPorPersona(r.personal).size
   const horas = r.personal.reduce((n, p) => n + p.horas, 0)
   const anulado = r.anulado_en !== null
+  const estado = estadoDeReporte(r)
+  const falta = faltaParaValidar(r)
   return (
     <Link
       href={`/reportes-diarios/${r.id}`}
@@ -132,8 +158,12 @@ function FilaReporte({ reporte: r, conArea }: { reporte: ReporteListado; conArea
           <p className={`font-semibold text-texto ${anulado ? 'line-through' : ''}`}>{r.asunto}</p>
           <p className="font-mono text-xs text-texto">{r.codigo_interno}</p>
         </div>
-        {anulado ? <Insignia tono="peligro">Anulado</Insignia> : null}
+        <div className="text-right">
+          <Insignia tono={ESTADO_REPORTE[estado].tono}>{ESTADO_REPORTE[estado].etiqueta}</Insignia>
+          {falta && <p className="mt-1 text-xs text-texto-suave">{falta}</p>}
+        </div>
       </div>
+      {estado === 'OBSERVADO' && r.observacion && <p className="mt-1 text-xs text-texto">Observación: {r.observacion}</p>}
       <ul className="mt-2 space-y-1">
         {r.trabajos.map((t) => (
           <li key={t.id} className="grid grid-cols-[1fr_6.5rem] items-center gap-3 text-xs">

@@ -81,6 +81,7 @@ Medido el 2026-10-01: la preparación ya no llega al final sola, por dos causas.
 | `recorrer.mjs` | Recorre la aplicación con un navegador y deja el informe y las capturas. |
 | `probar-cotizacion.mjs` | Aprieta los botones de una cotización: emitir, descargar el PDF, anular con motivo y volver a descargar. |
 | `probar-reporte-diario.mjs` | El reporte diario de supervisión con la cuenta de cada puesto: el supervisor lo sube desde el celular con fotos que se achican, el tope de 16 horas, RR. HH. ve las horas en el costeo y las que esperan su costo, Gerencia consulta y la portería no entra. Crea su propio personal inventado; las cuentas `*.local@metalwork.test` se crean aparte. |
+| `probar-planilla-diaria.mjs` | Del reporte diario a la planilla diaria, con la cuenta de cada puesto: Gerencia y RR. HH. validan (cada una solo con su botón), Gerencia observa y el supervisor corrige y sube de nuevo, RR. HH. paga o reserva las horas que pasan de 8 y usa el saldo, manda la planilla, Tesorería ve las cuentas, paga en lote con comprobante y adjunta boletas, RR. HH. las entrega; Gerencia consulta sin cuentas y el supervisor y la portería no entran. Crea su propio personal inventado. |
 
 ## Lo que respeta y lo que no
 

@@ -85,6 +85,8 @@ const RUTAS = [
   ['personal', '/personal'],
   ['rrhh-costeo', '/rrhh/costeo'],
   ['rrhh-observaciones', '/rrhh/observaciones'],
+  ['rrhh-horas-extras', '/rrhh/horas-extras'],
+  ['planilla-diaria', '/planilla-diaria'],
   ['sin-permiso', '/sin-permiso'],
 ].filter(Boolean)
 
