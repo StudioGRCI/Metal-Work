@@ -69,3 +69,32 @@ export function diaVecino(dia: string, paso: -1 | 1): string {
   d.setUTCDate(d.getUTCDate() + paso)
   return d.toISOString().slice(0, 10)
 }
+
+/** Las horas de un mes con que se divide el costo mensual: 30 días de 8 horas, la base del descuento por tardanza. */
+export const HORAS_DEL_MES = 240
+
+/** «6,5 h» para las horas del tareo. */
+export function horasCortas(horas: number): string {
+  return `${Number(horas.toFixed(2)).toLocaleString('es-PE', { maximumFractionDigits: 2 })} h`
+}
+
+/** Lo que se le registra a una persona, de lo más leve a lo más grave. */
+export const TIPO_OBSERVACION: Record<string, Def> = {
+  OBSERVACION: { etiqueta: 'Observación', tono: 'info' },
+  AMONESTACION_VERBAL: { etiqueta: 'Amonestación verbal', tono: 'aviso' },
+  AMONESTACION_ESCRITA: { etiqueta: 'Amonestación escrita', tono: 'peligro' },
+  SUSPENSION: { etiqueta: 'Suspensión', tono: 'peligro' },
+}
+export const TIPOS_OBSERVACION = ['OBSERVACION', 'AMONESTACION_VERBAL', 'AMONESTACION_ESCRITA', 'SUSPENSION'] as const
+
+/** Por qué: los del cuadro de penalidades de RR. HH. y lo que más se reclama en planta. */
+export const MOTIVO_OBSERVACION: Record<string, Def> = {
+  TARDANZAS: { etiqueta: 'Tardanzas', tono: 'neutro' },
+  FALTA_INJUSTIFICADA: { etiqueta: 'Falta injustificada', tono: 'neutro' },
+  EPP: { etiqueta: 'No usa su EPP', tono: 'neutro' },
+  SEGURIDAD: { etiqueta: 'Seguridad en planta', tono: 'neutro' },
+  CALIDAD: { etiqueta: 'Calidad del trabajo', tono: 'neutro' },
+  CONDUCTA: { etiqueta: 'Conducta', tono: 'neutro' },
+  OTRO: { etiqueta: 'Otro', tono: 'neutro' },
+}
+export const MOTIVOS_OBSERVACION = ['TARDANZAS', 'FALTA_INJUSTIFICADA', 'EPP', 'SEGURIDAD', 'CALIDAD', 'CONDUCTA', 'OTRO'] as const

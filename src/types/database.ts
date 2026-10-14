@@ -2346,6 +2346,79 @@ export type Database = {
         }
         Relationships: []
       }
+      observaciones_personal: {
+        Row: {
+          id: string
+          trabajador_id: string
+          fecha: string
+          tipo: string
+          motivo: string
+          detalle: string
+          codigo_interno: string | null
+          dias_suspension: number | null
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          trabajador_id: string
+          fecha: string
+          tipo: string
+          motivo: string
+          detalle: string
+          codigo_interno?: string | null
+          dias_suspension?: number | null
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          trabajador_id?: string
+          fecha?: string
+          tipo?: string
+          motivo?: string
+          detalle?: string
+          codigo_interno?: string | null
+          dias_suspension?: number | null
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "observaciones_personal_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "observaciones_personal_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "observaciones_personal_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       orden_compra_material_detalles: {
         Row: {
           id: string
@@ -6145,6 +6218,79 @@ export type Database = {
           }
         ]
       }
+      tareos: {
+        Row: {
+          id: string
+          trabajador_id: string
+          fecha: string
+          codigo_interno: string
+          horas: number
+          labor: string | null
+          costo_hora: number
+          costo: number
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          trabajador_id: string
+          fecha: string
+          codigo_interno: string
+          horas: number
+          labor?: string | null
+          costo_hora: number
+          costo: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          trabajador_id?: string
+          fecha?: string
+          codigo_interno?: string
+          horas?: number
+          labor?: string | null
+          costo_hora?: number
+          costo?: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tareos_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tareos_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tareos_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       tipos_carroceria: {
         Row: {
           id: string
@@ -6266,6 +6412,48 @@ export type Database = {
             columns: ["registrado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      trabajador_costos: {
+        Row: {
+          id: string
+          trabajador_id: string
+          costo_mensual: number
+          actualizado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          trabajador_id: string
+          costo_mensual: number
+          actualizado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          trabajador_id?: string
+          costo_mensual?: number
+          actualizado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trabajador_costos_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trabajador_costos_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: true
+            referencedRelation: "trabajadores"
             referencedColumns: ["id"]
           }
         ]
@@ -8926,10 +9114,37 @@ export type Database = {
         }
         Returns: string
       }
+      rrhh_anular_observacion: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      rrhh_anular_tareo: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       rrhh_cambiar_estado_trabajador: {
         Args: {
           p_id: string | null
           p_activo: boolean | null
+        }
+        Returns: string
+      }
+      rrhh_codigos_internos: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          codigo: string | null
+        }[]
+      }
+      rrhh_guardar_costo_trabajador: {
+        Args: {
+          p_trabajador_id: string | null
+          p_costo_mensual: number | null
         }
         Returns: string
       }
@@ -8954,6 +9169,30 @@ export type Database = {
           p_tipo_cuenta: string | null
           p_numero_cuenta: string | null
           p_cci: string | null
+        }
+        Returns: string
+      }
+      rrhh_registrar_observacion: {
+        Args: {
+          p_id: string | null
+          p_trabajador_id: string | null
+          p_fecha: string | null
+          p_tipo: string | null
+          p_motivo: string | null
+          p_detalle: string | null
+          p_codigo_interno?: string | null
+          p_dias_suspension?: number | null
+        }
+        Returns: string
+      }
+      rrhh_registrar_tareo: {
+        Args: {
+          p_id: string | null
+          p_trabajador_id: string | null
+          p_fecha: string | null
+          p_codigo_interno: string | null
+          p_horas: number | null
+          p_labor?: string | null
         }
         Returns: string
       }
