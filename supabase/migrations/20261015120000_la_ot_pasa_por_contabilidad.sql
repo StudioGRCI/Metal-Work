@@ -26,8 +26,8 @@
 -- lectura: los ingresos con su guía, las atenciones y los egresos.
 --
 -- Las tablas nuevas se escriben solo por las funciones de abajo. Sin DROP: el
--- conector de producción no deja pasar ninguno (una restricción se cambia con
--- `alter table … drop constraint` dentro de un bloque, que sí pasa).
+-- conector de producción no deja pasar ninguno, ni dentro de un bloque. La
+-- restricción vieja de las cuentas por cobrar se suelta en la 20261015121000.
 -- =============================================================================
 
 -- 1. Permisos ---------------------------------------------------------------------
@@ -124,7 +124,9 @@ select public.activar_registro_de_prueba('facturas_venta');
 
 -- 4. La cuenta por cobrar nace de la factura -------------------------------------
 -- La factura que Contabilidad anula se lleva su cuenta: queda marcada y deja
--- de salir. El número de la factura vale una vez por OT entre las vigentes.
+-- de salir. El número de la factura vale una vez por OT entre las vigentes
+-- (el índice de abajo; la 20261015121000 suelta la restricción que lo pedía
+-- también entre las anuladas).
 alter table public.cuentas_cobrar_ot add column if not exists factura_venta_id uuid references public.facturas_venta(id) on delete restrict;
 alter table public.cuentas_cobrar_ot add column if not exists anulada_en timestamptz;
 comment on column public.cuentas_cobrar_ot.factura_venta_id is 'La factura de Contabilidad de la que salió esta cuenta (vacío en las que Tesorería anotó a mano antes).';
@@ -133,10 +135,6 @@ do $$ begin
   if not exists (select 1 from pg_constraint where conname = 'uq_cuenta_cobrar_factura'
                    and conrelid = 'public.cuentas_cobrar_ot'::regclass) then
     alter table public.cuentas_cobrar_ot add constraint uq_cuenta_cobrar_factura unique (factura_venta_id);
-  end if;
-  if exists (select 1 from pg_constraint where conname = 'cuentas_cobrar_ot_orden_id_numero_documento_key'
-               and conrelid = 'public.cuentas_cobrar_ot'::regclass) then
-    alter table public.cuentas_cobrar_ot drop constraint cuentas_cobrar_ot_orden_id_numero_documento_key;
   end if;
 end $$;
 create unique index if not exists uq_cuenta_cobrar_numero_vigente
@@ -596,6 +594,14 @@ begin
   if exists (select 1 from public.cuentas_cobrar_ot
               where orden_id = v_fac.orden_id and numero_documento = v_fac.numero and anulada_en is null) then
     raise exception 'Tesorería ya tiene la factura % de esa OT por cobrar.', v_fac.numero using errcode = 'unique_violation';
+  end if;
+  -- Mientras siga la restricción vieja (la suelta la 20261015121000), el número
+  -- de una factura anulada no vuelve a entrar en esa OT: que lo diga claro.
+  if exists (select 1 from public.cuentas_cobrar_ot
+              where orden_id = v_fac.orden_id and numero_documento = v_fac.numero and anulada_en is not null)
+     and exists (select 1 from pg_constraint where conname = 'cuentas_cobrar_ot_orden_id_numero_documento_key'
+                   and conrelid = 'public.cuentas_cobrar_ot'::regclass) then
+    raise exception 'La factura % ya se envió una vez a esa OT y se anuló: para enviarla otra vez con el mismo número, el administrador del sistema tiene que liberar ese número.', v_fac.numero using errcode = 'check_violation';
   end if;
 
   update public.facturas_venta set estado = 'ENVIADA', enviada_por = v_yo, enviada_en = now() where id = p_factura;
