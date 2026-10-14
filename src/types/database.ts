@@ -6012,6 +6012,50 @@ export type Database = {
         }
         Relationships: []
       }
+      registro_vehiculo_fotos: {
+        Row: {
+          id: string
+          registro_id: string
+          momento: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          registro_id: string
+          momento: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          registro_id?: string
+          momento?: string
+          orden?: number
+          ruta?: string
+          mime_type?: string
+          tamano_bytes?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "registro_vehiculo_fotos_registro_id_fkey"
+            columns: ["registro_id"]
+            isOneToOne: false
+            referencedRelation: "registro_vehiculos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       registro_vehiculos: {
         Row: {
           id: string
@@ -8638,6 +8682,49 @@ export type Database = {
           detalle: string | null
         }[]
       }
+      codigo_interno_gasto: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          codigo: string | null
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          horas: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+        }[]
+      }
+      codigo_interno_lineas: {
+        Args: {
+          p_codigo: string | null
+          p_mano_obra: boolean | null
+        }
+        Returns: {
+          codigo: string | null
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          horas: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+        }[]
+      }
       codigo_interno_personal: {
         Args: {
           p_codigo: string | null
@@ -8651,6 +8738,22 @@ export type Database = {
           dias: number | null
           primer_dia: string | null
           ultimo_dia: string | null
+        }[]
+      }
+      codigos_internos_gasto: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          codigo: string | null
+          requerimientos: number | null
+          compras: number | null
+          salidas: number | null
+          ultima_actividad: string | null
+          materiales_pen: number | null
+          materiales_usd: number | null
+          materiales_sin_precio: number | null
+          compras_pen: number | null
+          compras_usd: number | null
+          compras_sin_precio: number | null
         }[]
       }
       codigos_internos_resumen: {
@@ -9961,6 +10064,7 @@ export type Database = {
           p_motivo: string | null
           p_ingreso_en: string | null
           p_observacion: string | null
+          p_fotos: Json | null
         }
         Returns: string
       }
@@ -10063,6 +10167,7 @@ export type Database = {
           p_id: string | null
           p_salida_en: string | null
           p_observacion: string | null
+          p_fotos: Json | null
         }
         Returns: string
       }
@@ -10542,6 +10647,14 @@ export type Database = {
           p_observacion?: string | null
         }
         Returns: string
+      }
+      vehiculo_anotar_fotos: {
+        Args: {
+          p_registro: string | null
+          p_momento: string | null
+          p_fotos: Json | null
+        }
+        Returns: null
       }
     }
     Enums: {

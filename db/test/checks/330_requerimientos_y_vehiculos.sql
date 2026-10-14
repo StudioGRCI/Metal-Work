@@ -116,15 +116,12 @@ do $$ begin
   end if;
 end $$;
 
--- Le llega a Logística, que lo ve con su permiso; Ventas no lo ve.
+-- Primero lo revisa Almacén (check 331): a Logística no le llega el aviso
+-- todavía, pero lo ve con su permiso; Ventas no lo ve.
 select test.afirmar(
-  exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.comprador')::uuid
-             and ruta = '/requerimientos' and origen_id = current_setting('prueba.rq')::uuid),
-  'a Logística le llega el aviso del requerimiento por atender');
-select test.afirmar(
-  not exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.gerente')::uuid
+  not exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.comprador')::uuid
                  and origen_id = current_setting('prueba.rq')::uuid),
-  'a Gerencia no le llega cada requerimiento: aprueba la compra, no el pedido');
+  'a Logística no le llega el aviso hasta que Almacén diga que no hay stock');
 
 select pg_temp.como('comprador');
 set local role authenticated;
@@ -162,10 +159,24 @@ select test.debe_fallar(
   'un RQ no se borra nunca', 'no se borra');
 
 -- ================================================ 2. EL REGISTRO DE VEHÍCULOS
+-- Cada ingreso y cada salida llevan sus fotos (check 346 prueba sus reglas).
+-- Storage local no trae RLS: aquí se prende, como en Supabase. Se deshace con el rollback.
+alter table storage.objects enable row level security;
+grant select, insert, delete on storage.objects to authenticated;
+
+-- Sube una foto a la carpeta de la cuenta actual y devuelve la lista que va a la función.
+create or replace function pg_temp.foto(p_registro text, p_momento text) returns jsonb language plpgsql as $$
+declare v_ruta text := auth.uid()::text || '/' || p_registro || '/' || p_momento || '/' || gen_random_uuid() || '.jpg';
+begin
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('fotos-vehiculos', v_ruta, auth.uid()::text, '{"mimetype": "image/jpeg", "size": 150000}');
+  return jsonb_build_array(v_ruta);
+end $$;
+
 select pg_temp.como('vendedor');
 set local role authenticated;
 select test.debe_fallar(
-  format($q$select public.registrar_ingreso_vehiculo('%s', 'ABC-123', null, null, 'Tolva 18 m3', 'INCOAC', 'MANTENIMIENTO', null, null)$q$,
+  format($q$select public.registrar_ingreso_vehiculo('%s', 'ABC-123', null, null, 'Tolva 18 m3', 'INCOAC', 'MANTENIMIENTO', null, null, '[]')$q$,
          current_setting('prueba.v1')),
   'Ventas no registra vehículos', 'permiso');
 reset role;
@@ -173,34 +184,38 @@ reset role;
 select pg_temp.como('requerimientos');
 set local role authenticated;
 select test.debe_fallar(
-  format($q$select public.registrar_ingreso_vehiculo('%s', ' ', ' ', '', 'Tolva 18 m3', 'INCOAC', 'MANTENIMIENTO', null, null)$q$,
-         current_setting('prueba.v1')),
+  format($q$select public.registrar_ingreso_vehiculo('%s', ' ', ' ', '', 'Tolva 18 m3', 'INCOAC', 'MANTENIMIENTO', null, null, pg_temp.foto('%s', 'ingreso'))$q$,
+         current_setting('prueba.v1'), current_setting('prueba.v1')),
   'sin placa, chasis ni código no se sabe qué entró', 'placa');
 select public.registrar_ingreso_vehiculo(current_setting('prueba.v1')::uuid, ' abc 123 ', null, 'VSC_CM_N3_6_26/18',
-  'Tolva 18 m3 Volvo', 'ING. Y CONST. ACOSTA', 'MANTENIMIENTO', now() - interval '2 hours', 'Ingresa con llanta baja');
+  'Tolva 18 m3 Volvo', 'ING. Y CONST. ACOSTA', 'MANTENIMIENTO', now() - interval '2 hours', 'Ingresa con llanta baja',
+  pg_temp.foto(current_setting('prueba.v1'), 'ingreso'));
 select test.afirmar(
   (select placa = 'ABC123' and salida_en is null from public.registro_vehiculos where id = current_setting('prueba.v1')::uuid),
   'la placa se guarda en mayúsculas y sin espacios, y el vehículo queda en planta');
 select test.debe_fallar(
-  format($q$select public.registrar_ingreso_vehiculo('%s', 'ABC123', null, null, 'Tolva', 'INCOAC', 'GARANTIA', null, null)$q$,
-         current_setting('prueba.v2')),
+  format($q$select public.registrar_ingreso_vehiculo('%s', 'ABC123', null, null, 'Tolva', 'INCOAC', 'GARANTIA', null, null, pg_temp.foto('%s', 'ingreso'))$q$,
+         current_setting('prueba.v2'), current_setting('prueba.v2')),
   'el mismo vehículo no entra dos veces sin haber salido', 'ya está en la planta');
 select test.debe_fallar(
-  format($q$select public.registrar_salida_vehiculo('%s', now() - interval '3 hours', null)$q$, current_setting('prueba.v1')),
+  format($q$select public.registrar_salida_vehiculo('%s', now() - interval '3 hours', null, pg_temp.foto('%s', 'salida'))$q$,
+         current_setting('prueba.v1'), current_setting('prueba.v1')),
   'la salida no puede ser anterior al ingreso', 'anterior al ingreso');
-select public.registrar_salida_vehiculo(current_setting('prueba.v1')::uuid, null, 'Sale al arenado externo');
+select public.registrar_salida_vehiculo(current_setting('prueba.v1')::uuid, null, 'Sale al arenado externo',
+  pg_temp.foto(current_setting('prueba.v1'), 'salida'));
 -- Vuelve del arenado: es otro ingreso.
 select public.registrar_ingreso_vehiculo(current_setting('prueba.v2')::uuid, 'ABC123', null, 'VSC_CM_N3_6_26/18',
-  'Tolva 18 m3 Volvo', 'ING. Y CONST. ACOSTA', 'ARENADO', null, null);
+  'Tolva 18 m3 Volvo', 'ING. Y CONST. ACOSTA', 'ARENADO', null, null, pg_temp.foto(current_setting('prueba.v2'), 'ingreso'));
 -- Un chasis nuevo de fabricación entra sin placa.
 select public.registrar_ingreso_vehiculo(current_setting('prueba.v3')::uuid, null, '9BM958074KB123456', null,
-  'Chasis Mercedes-Benz Atego', 'MAT CENTER', 'FABRICACION', null, null);
+  'Chasis Mercedes-Benz Atego', 'MAT CENTER', 'FABRICACION', null, null, pg_temp.foto(current_setting('prueba.v3'), 'ingreso'));
 select test.debe_fallar(
   format($q$update public.registro_vehiculos set empresa = 'Otra' where id = '%s'$q$, current_setting('prueba.v1')),
   'el registro no se edita por debajo', 'permission denied');
 select public.anular_registro_vehiculo(current_setting('prueba.v3')::uuid, 'Se anotó un chasis que no era');
 select test.debe_fallar(
-  format($q$select public.registrar_salida_vehiculo('%s', null, null)$q$, current_setting('prueba.v3')),
+  format($q$select public.registrar_salida_vehiculo('%s', null, null, pg_temp.foto('%s', 'salida'))$q$,
+         current_setting('prueba.v3'), current_setting('prueba.v3')),
   'un ingreso anulado no tiene salida', 'anulado');
 reset role;
 
@@ -221,6 +236,10 @@ select test.afirmar(
   (select count(*) from public.registro_vehiculos
     where id in (current_setting('prueba.v1')::uuid, current_setting('prueba.v2')::uuid, current_setting('prueba.v3')::uuid)) = 3,
   'Gerencia consulta el registro de vehículos');
+select test.afirmar(
+  (select count(*) from public.registro_vehiculo_fotos
+    where registro_id in (current_setting('prueba.v1')::uuid, current_setting('prueba.v2')::uuid, current_setting('prueba.v3')::uuid)) = 4,
+  'y sus fotos: el ingreso y la salida del primero, y el ingreso de los otros dos');
 reset role;
 
 select pg_temp.como('vendedor');
