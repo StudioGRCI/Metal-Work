@@ -87,7 +87,7 @@ export default async function PaginaPlanillaDiaria() {
             />
             {porDecidir.length > 0 && (
               <p className="border-b border-borde bg-aviso-suave px-4 py-2 text-sm text-texto">
-                Hay {porDecidir.length} {porDecidir.length === 1 ? 'día' : 'días'} con horas extras por decidir: entran a la planilla solo las que
+                Hay {porDecidir.length} {porDecidir.length === 1 ? 'jornada' : 'jornadas'} con horas extras por decidir: entran a la planilla solo las que
                 decidas pagar, en{' '}
                 <Link href="/rrhh/horas-extras" className="font-medium text-acento underline">
                   Horas extras

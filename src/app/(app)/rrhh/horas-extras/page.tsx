@@ -53,7 +53,7 @@ export default async function PaginaHorasExtras() {
             titulo="Por decidir"
             descripcion={
               porDecidir.length > 0
-                ? `${horasCortas(horasPorDecidir)} en ${porDecidir.length} ${porDecidir.length === 1 ? 'día' : 'días'}. Las ${horasCortas(regla.horas_tramo1)} primeras de cada día van con ${regla.recargo_tramo1} % y las siguientes con ${regla.recargo_tramo2} %.`
+                ? `${horasCortas(horasPorDecidir)} en ${porDecidir.length} ${porDecidir.length === 1 ? 'jornada' : 'jornadas'}. Las ${horasCortas(regla.horas_tramo1)} primeras de cada día van con ${regla.recargo_tramo1} % y las siguientes con ${regla.recargo_tramo2} %.`
                 : 'Nada por decidir.'
             }
           />
