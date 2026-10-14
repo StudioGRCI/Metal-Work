@@ -23,6 +23,7 @@ import {
   NotebookPen,
   Package,
   Receipt,
+  Route,
   Settings,
   Tag,
   Truck,
@@ -183,7 +184,7 @@ export const NAVEGACION = [
         ruta: '/compras/servicios',
         icono: Wrench,
         permiso: 'compras.crear',
-        descripcion: 'Trabajos de terceros con su número OS, aprobación y conformidad',
+        descripcion: 'Trabajos de terceros con su número OS, código interno, detracción, aprobación y conformidad',
         disponible: true,
       },
       // Quien aprueba es un puesto que Gerencia elige, no un permiso: si elige
@@ -195,6 +196,17 @@ export const NAVEGACION = [
         icono: BadgeCheck,
         permiso: ['compras.configurar_aprobacion', 'compras.crear'],
         descripcion: 'La regla de montos y las órdenes de compra y de servicio que esperan visto',
+        disponible: true,
+      },
+      // Logística decide qué OC recoge el conductor, en qué orden y con qué
+      // peso; Contabilidad emite con ese peso la guía de remisión y la carga en
+      // la misma pantalla (está también en Finanzas, con su permiso).
+      {
+        titulo: 'Gestión de compras',
+        ruta: '/compras/gestion',
+        icono: Route,
+        permiso: 'compras.crear',
+        descripcion: 'Qué órdenes de compra recoge el conductor, en qué orden y con qué peso',
         disponible: true,
       },
       // El conductor de Logística: lo que tiene que recoger y dejar en almacén.
@@ -286,6 +298,23 @@ export const NAVEGACION = [
   {
     titulo: 'Finanzas',
     items: [
+      {
+        titulo: 'Gestión de compras',
+        ruta: '/compras/gestion',
+        icono: Route,
+        permiso: 'compras.guia_remision',
+        descripcion: 'Las OC que recoge el conductor, con su peso: cargar su guía de remisión',
+        disponible: true,
+      },
+      // Contabilidad responde por la detracción de cada orden de servicio.
+      {
+        titulo: 'Órdenes de servicio',
+        ruta: '/compras/servicios',
+        icono: Wrench,
+        permiso: 'compras.detraccion',
+        descripcion: 'Si cada orden de servicio lleva detracción y de qué tipo según SUNAT',
+        disponible: true,
+      },
       { titulo: 'Adquisiciones', ruta: '/adquisiciones', icono: Receipt, permiso: 'adquisiciones.ver', descripcion: 'Facturas, recibos y documentos de compras', disponible: true },
       {
         titulo: 'Tesorería',
@@ -421,9 +450,9 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     ],
     telefono: ['/requerimientos/atencion', '/ordenes', '/almacen/kardex', '/'],
   },
-  // Del RQ sin stock a la OC, su visto de Gerencia y el recojo del conductor,
-  // que Logística sigue desde «Recojos» (la pantalla ya le mostraba lo que el
-  // conductor tiene por recoger, pero no estaba en su menú).
+  // Del RQ sin stock a la OC, su visto de Gerencia y la gestión de compras:
+  // qué recoge el conductor, en qué orden y con qué peso. «Recojos» la abre
+  // por su dirección: la gestión ya muestra todo lo que el conductor lleva.
   COMPRADOR: {
     grupos: [
       {
@@ -432,7 +461,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/requerimientos/atencion',
           '/compras/ordenes',
           '/compras/aprobacion',
-          '/recojos',
+          '/compras/gestion',
           '/compras/servicios',
           '/compras',
           '/proveedores',
@@ -441,7 +470,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       },
       { titulo: 'Consultas', rutas: ['/ordenes'] },
     ],
-    telefono: ['/requerimientos/atencion', '/compras/ordenes', '/compras/aprobacion', '/recojos'],
+    telefono: ['/requerimientos/atencion', '/compras/ordenes', '/compras/aprobacion', '/compras/gestion'],
   },
   CONDUCTOR: {
     grupos: [{ titulo: 'Logística', rutas: ['/recojos'] }],
@@ -469,12 +498,18 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     ],
     telefono: ['/planilla-diaria', '/tesoreria', '/tesoreria/cuentas', '/adquisiciones'],
   },
+  // La guía de remisión de cada OC que recoge el conductor espera por
+  // Contabilidad: la gestión de compras va primero, y después la detracción de
+  // las órdenes de servicio.
   CONTABILIDAD: {
     grupos: [
-      { titulo: 'Contabilidad', rutas: ['/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio'] },
+      {
+        titulo: 'Contabilidad',
+        rutas: ['/compras/gestion', '/compras/servicios', '/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio'],
+      },
       { titulo: 'Consultas', rutas: ['/ordenes', '/requerimientos'] },
     ],
-    telefono: ['/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio', '/ordenes'],
+    telefono: ['/compras/gestion', '/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio'],
   },
   // Unidades y Carrocerías las lleva Diseño e Ingeniería (pedido de la
   // empresa, 2026-10-01). Configuración la alcanza por `configuracion.ver`,
@@ -652,6 +687,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/recojos', corto: 'Recojos' },
   { ruta: '/compras/ordenes', corto: 'OC' },
   { ruta: '/compras/aprobacion', corto: 'Aprobar' },
+  { ruta: '/compras/gestion', corto: 'Gestión' },
   { ruta: '/requerimientos', corto: 'RQ' },
   { ruta: '/requerimientos/atencion', corto: 'Atención' },
   { ruta: '/vehiculos', corto: 'Vehículos' },

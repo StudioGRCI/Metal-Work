@@ -54,6 +54,7 @@ export function dondeAparece(c: {
   compras: number
   unidades: number
   ordenes: number
+  servicios: number
   vehiculos: number
   horas: number
 }): string {
@@ -63,6 +64,7 @@ export function dondeAparece(c: {
     c.salidas > 0 && plural(c.salidas, 'salida del almacén', 'salidas del almacén'),
     c.requerimientos > 0 && plural(c.requerimientos, 'RQ', 'RQ'),
     c.compras > 0 && plural(c.compras, 'OC', 'OC'),
+    c.servicios > 0 && plural(c.servicios, 'OS', 'OS'),
     c.unidades > 0 && plural(c.unidades, 'unidad', 'unidades'),
     c.ordenes > 0 && plural(c.ordenes, 'OT', 'OT'),
     c.vehiculos > 0 && plural(c.vehiculos, 'ingreso a la planta', 'ingresos a la planta'),
@@ -142,6 +144,7 @@ export const TIPO_DOCUMENTO_CODIGO: Record<string, { titulo: string; vacio: stri
   COTIZACION: { titulo: 'Cotizaciones', vacio: 'Sin cotización: hoy solo se llega a ella por la OT de la unidad.' },
   UNIDAD: { titulo: 'Unidades', vacio: 'Ninguna unidad de Unidades lleva este código.' },
   REQUERIMIENTO: { titulo: 'Requerimientos', vacio: 'Ningún requerimiento pidió insumos para este código.' },
+  SERVICIO: { titulo: 'Órdenes de servicio', vacio: 'Logística no emitió órdenes de servicio con este código.' },
   VEHICULO: { titulo: 'Ingresos a la planta', vacio: 'Portería no registró ingresos de un vehículo con este código.' },
 }
 
@@ -154,6 +157,16 @@ export const ESTADO_DOCUMENTO_CODIGO: Record<string, Def> = {
   POR_REVISAR: { etiqueta: 'Por revisar', tono: 'aviso' },
   APROBADA: { etiqueta: 'Aprobada', tono: 'exito' },
   RECHAZADA: { etiqueta: 'Rechazada', tono: 'peligro' },
+  ANULADA: { etiqueta: 'Anulada', tono: 'peligro' },
+}
+
+/** En qué va una orden de servicio del código: la decisión de Gerencia y, después, el trabajo. */
+export const ESTADO_SERVICIO_CODIGO: Record<string, Def> = {
+  POR_APROBAR: { etiqueta: 'Por aprobar', tono: 'aviso' },
+  RECHAZADA: { etiqueta: 'Rechazada', tono: 'peligro' },
+  EMITIDA: { etiqueta: 'Aprobada', tono: 'neutro' },
+  EN_EJECUCION: { etiqueta: 'En ejecución', tono: 'info' },
+  CONFORME: { etiqueta: 'Conforme', tono: 'exito' },
   ANULADA: { etiqueta: 'Anulada', tono: 'peligro' },
 }
 

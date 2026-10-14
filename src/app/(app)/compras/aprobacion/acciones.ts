@@ -13,6 +13,7 @@ function refrescar() {
   revalidatePath('/compras/ordenes')
   revalidatePath('/compras/servicios')
   revalidatePath('/recojos')
+  revalidatePath('/compras/gestion')
   revalidatePath('/ordenes/[id]', 'page')
 }
 
@@ -81,7 +82,7 @@ export async function aprobarCompra(_previo: unknown, datos: FormData): Promise<
     mensaje:
       tipo === 'OS'
         ? 'Orden de servicio aprobada. Logística ya puede encargar el trabajo.'
-        : 'Compra aprobada. Logística ya puede enviarla al proveedor; si es directa, al conductor ya le llegó el recojo.',
+        : 'Compra aprobada. Logística ya puede enviarla al proveedor y programar su recojo con el conductor en Gestión de compras.',
   }
 }
 

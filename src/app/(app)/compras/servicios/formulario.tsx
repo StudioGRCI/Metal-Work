@@ -9,21 +9,29 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { AreaSolicitante, OtParaLogistica } from '@/lib/datos/logistica'
 import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
+import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
+import type { TipoDetraccion } from '@/lib/dominio/detraccion'
 import { useEnvio } from '@/lib/envio'
 
 import { SelectorProveedor } from '../selector-proveedor'
 import { emitirOrdenServicio } from './acciones'
+import { SelectorDetraccion } from './selector-detraccion'
 
-/** La orden de servicio: quién hace el trabajo, qué, para qué OT o área, cuánto y cuándo. */
+/**
+ * La orden de servicio: quién hace el trabajo, qué, para qué código interno, OT
+ * o área, cuánto, cuándo y si lleva detracción.
+ */
 export function NuevaOrdenServicio({
   proveedores,
   ordenes,
   areas,
+  tipos,
   puedeRegistrarProveedor,
 }: {
   proveedores: ProveedorParaCompra[]
   ordenes: OtParaLogistica[]
   areas: AreaSolicitante[]
+  tipos: TipoDetraccion[]
   puedeRegistrarProveedor: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
@@ -59,6 +67,7 @@ export function NuevaOrdenServicio({
           proveedores={proveedores}
           ordenes={ordenes}
           areas={areas}
+          tipos={tipos}
           puedeRegistrarProveedor={puedeRegistrarProveedor}
           alTerminar={(mensaje) => {
             setAbierta(false)
@@ -74,12 +83,14 @@ function FormularioServicio({
   proveedores,
   ordenes,
   areas,
+  tipos,
   puedeRegistrarProveedor,
   alTerminar,
 }: {
   proveedores: ProveedorParaCompra[]
   ordenes: OtParaLogistica[]
   areas: AreaSolicitante[]
+  tipos: TipoDetraccion[]
   puedeRegistrarProveedor: boolean
   alTerminar: (mensaje: string) => void
 }) {
@@ -89,6 +100,8 @@ function FormularioServicio({
   const [ordenId, setOrdenId] = useState('')
   const [condicion, setCondicion] = useState('CONTADO')
   const [dias, setDias] = useState(0)
+  const [divisa, setDivisa] = useState('PEN')
+  const [monto, setMonto] = useState('')
   const { alEnviar, enviando, error } = useEnvio(emitirOrdenServicio, (r) => alTerminar(r.mensaje ?? 'Orden de servicio emitida.'))
 
   return (
@@ -119,6 +132,9 @@ function FormularioServicio({
         />
       </Campo>
       <div className="grid gap-4 sm:grid-cols-2">
+        <Campo etiqueta="Código interno" htmlFor="os-codigo" requerido ayuda={AYUDA_CODIGO_INTERNO}>
+          <Entrada id="os-codigo" name="codigo_interno" required minLength={2} maxLength={60} autoComplete="off" />
+        </Campo>
         <Campo etiqueta="Para la OT (opcional)" htmlFor="os-orden" ayuda="Si el servicio es para una unidad en taller.">
           <SeleccionBuscable
             id="os-orden"
@@ -145,11 +161,22 @@ function FormularioServicio({
         </Campo>
         <Campo etiqueta="Monto sin IGV" htmlFor="os-monto" requerido>
           <div className="flex gap-2">
-            <Seleccion id="os-moneda" name="moneda" defaultValue="PEN" aria-label="Moneda" className="w-28">
+            <Seleccion id="os-moneda" name="moneda" value={divisa} onChange={(e) => setDivisa(e.target.value)} aria-label="Moneda" className="w-28">
               <option value="PEN">Soles</option>
               <option value="USD">Dólares</option>
             </Seleccion>
-            <Entrada id="os-monto" name="monto" type="number" inputMode="decimal" min={0} step="0.01" required className="min-w-0 flex-1" />
+            <Entrada
+              id="os-monto"
+              name="monto"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="0.01"
+              required
+              value={monto}
+              onChange={(e) => setMonto(e.target.value)}
+              className="min-w-0 flex-1"
+            />
           </div>
         </Campo>
         <Campo etiqueta="Inicio" htmlFor="os-inicio">
@@ -184,6 +211,12 @@ function FormularioServicio({
           />
         </Campo>
       </div>
+      <SelectorDetraccion
+        id="os-detraccion"
+        tipos={tipos}
+        montoSinIgvPen={divisa === 'PEN' && monto !== '' ? Number(monto) : null}
+        enDolares={divisa === 'USD'}
+      />
       {error && (
         <p role="alert" className="text-sm text-peligro">
           {error}

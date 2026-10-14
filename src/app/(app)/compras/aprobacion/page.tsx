@@ -5,6 +5,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarAprobacionCompras, esAprobadorDeCompras, type CompraParaAprobar } from '@/lib/datos/aprobacion-compras'
+import { resumenDetraccion } from '@/lib/dominio/detraccion'
 import { ORIGEN_COMPRA } from '@/lib/dominio/logistica'
 import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
 import { cantidad, fecha, fechaHora, moneda } from '@/lib/format'
@@ -130,7 +131,7 @@ export default async function PaginaAprobacionCompras() {
 /** Para qué es: la OT y su unidad, o el almacén en la compra directa. */
 function destino(c: CompraParaAprobar) {
   if (c.origen === 'DIRECTA') return 'Para el almacén'
-  const partes = [c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, ...c.unidades].filter(Boolean)
+  const partes = [c.codigo_interno, c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, ...c.unidades].filter(Boolean)
   return partes.length ? partes.join(' · ') : c.tipo === 'OS' ? 'Sin OT' : 'OT —'
 }
 
@@ -183,6 +184,7 @@ function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; a
             <dd className="text-texto">{destino(c)}</dd>
           </div>
         </dl>
+        {c.detraccion && <LineaDetraccion detraccion={c.detraccion} />}
 
         {c.lineas.length > 0 && (
         <div className="overflow-x-auto rounded-md border border-borde">
@@ -233,5 +235,16 @@ function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; a
         )}
       </TarjetaCuerpo>
     </Tarjeta>
+  )
+}
+
+/** La detracción de la orden de servicio: lo que se deposita aparte de lo que se paga al proveedor. */
+function LineaDetraccion({ detraccion }: { detraccion: NonNullable<CompraParaAprobar['detraccion']> }) {
+  const r = resumenDetraccion(detraccion)
+  return (
+    <p className="flex flex-wrap items-center gap-2 text-sm" data-detraccion>
+      <Insignia tono={r.tono}>{r.texto}</Insignia>
+      {r.detalle && <span className="text-xs text-texto-suave">{r.detalle}</span>}
+    </p>
   )
 }

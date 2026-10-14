@@ -138,6 +138,11 @@ select test.afirmar(pg_temp.etapa_insumo(1) = 'PENDIENTE_RECOJO', 'aprobada: el 
 reset role;
 
 -- ============================================ 4. «Salgo a recoger»: solo el conductor
+-- Sale con lo que Logística le programó (migración 20261015140000).
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.programar_recojo(current_setting('prueba.oc1')::uuid, 90, null);
+reset role;
 select pg_temp.como('almacenero');
 set local role authenticated;
 select test.debe_fallar($q$select public.marcar_compra_en_recojo(current_setting('prueba.oc1')::uuid)$q$,
@@ -221,6 +226,10 @@ reset role;
 select pg_temp.como('gerente');
 set local role authenticated;
 select public.aprobar_compra(current_setting('prueba.oc2')::uuid);
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.programar_recojo(current_setting('prueba.oc2')::uuid, 15, null);
 reset role;
 select pg_temp.como('conductor');
 set local role authenticated;

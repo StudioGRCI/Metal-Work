@@ -1,5 +1,6 @@
 import 'server-only'
 
+import type { DetraccionDeServicio, TipoDetraccion } from '@/lib/dominio/detraccion'
 import { validacionDeCompra, type ValidacionIngreso } from '@/lib/dominio/logistica'
 import { createClient } from '@/lib/supabase/server'
 
@@ -106,6 +107,10 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
 
 /** Lo que el conductor necesita para ir, recoger y dejar. Sin precios. */
 export type LineaRecojo = { material_codigo: string | null; material: string | null; unidad: string | null; cantidad: number; orden: string | null }
+
+/** La guía de remisión vigente de una compra, cargada por Contabilidad. */
+export type GuiaRemision = { id: string; numero: string; fecha: string; nombre_archivo: string; cargada_en: string }
+
 export type CompraParaRecojo = {
   id: string
   numero: string
@@ -123,29 +128,35 @@ export type CompraParaRecojo = {
   recogido_en: string | null
   dejado_en: string | null
   fecha_estimada: string | null
+  creado_en: string | null
   ordenes: string[]
+  /** Los RQ (RQ-0001-2026…) que esta compra atiende. */
+  requerimientos: string[]
   lineas: LineaRecojo[]
   /** Con factura se pide la factura; sin factura, boleta, nota de venta o recibo. */
   con_factura: boolean
   comprobante_adjunto: boolean
   codigo_interno: string | null
+  /** Si Logística la puso en la lista del conductor. */
+  en_lista: boolean
+  /** 1.º, 2.º… entre las pendientes de recojo que están en la lista; vacío si no. */
+  lugar: number | null
+  /** El peso que puso Logística; se queda aunque la saque de la lista. */
+  peso_kg: number | null
+  guia: GuiaRemision | null
+  guias_anuladas: number
 }
 
+/**
+ * Las compras con el conductor —pendientes, en recojo y recogidas— y las que
+ * dejó en almacén esta semana, con su lugar en la lista, su peso y su guía de
+ * remisión (migración 20261015140000). La misma lista la leen Logística, que la
+ * programa; Contabilidad, que carga la guía; y el conductor, que la recoge.
+ */
 export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
   const supabase = await createClient()
-  // `datos_de_recojo` y `salidas_a_recojo` traen lo que se sumó después (el
-  // comprobante, el código interno y la hora en que salió a recoger) con el
-  // mismo permiso: la forma de `compras_para_recojo` no cambia sin borrarla.
-  const [{ data, error }, extra, salidas] = await Promise.all([
-    supabase.rpc('compras_para_recojo'),
-    supabase.rpc('datos_de_recojo'),
-    supabase.rpc('salidas_a_recojo'),
-  ])
+  const { data, error } = await supabase.rpc('compras_en_gestion')
   if (error) throw new Error(`No se pudieron leer los recojos: ${error.message}`)
-  if (extra.error) throw new Error(`No se pudo leer el comprobante de los recojos: ${extra.error.message}`)
-  if (salidas.error) throw new Error(`No se pudo leer cuándo salió a recoger: ${salidas.error.message}`)
-  const extraPorCompra = new Map((extra.data ?? []).map((e) => [e.id, e]))
-  const salidaPorCompra = new Map((salidas.data ?? []).map((s) => [s.id, s.en_recojo_en]))
   return (data ?? []).map((c) => ({
     id: c.id ?? '',
     numero: c.numero ?? '',
@@ -158,15 +169,25 @@ export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
     proveedor_contacto: c.proveedor_contacto,
     recojo: c.recojo ?? 'POR_RECOGER',
     pedido_en: c.pedido_en,
-    en_recojo_en: salidaPorCompra.get(c.id) ?? null,
+    en_recojo_en: c.en_recojo_en,
     recogido_en: c.recogido_en,
     dejado_en: c.dejado_en,
     fecha_estimada: c.fecha_estimada,
+    creado_en: c.creado_en,
     ordenes: c.ordenes ?? [],
+    requerimientos: c.requerimientos ?? [],
     lineas: ((c.lineas as LineaRecojo[] | null) ?? []).map((l) => ({ ...l, cantidad: Number(l.cantidad) })),
-    con_factura: extraPorCompra.get(c.id)?.con_factura ?? true,
-    comprobante_adjunto: extraPorCompra.get(c.id)?.comprobante_adjunto === true,
-    codigo_interno: extraPorCompra.get(c.id)?.codigo_interno ?? null,
+    con_factura: c.con_factura ?? true,
+    comprobante_adjunto: c.comprobante_adjunto === true,
+    codigo_interno: c.codigo_interno,
+    en_lista: c.en_lista === true,
+    lugar: c.lugar,
+    peso_kg: c.peso_kg === null ? null : Number(c.peso_kg),
+    guia:
+      c.guia_id && c.guia_numero
+        ? { id: c.guia_id, numero: c.guia_numero, fecha: c.guia_fecha ?? '', nombre_archivo: c.guia_nombre_archivo ?? '', cargada_en: c.guia_cargada_en ?? '' }
+        : null,
+    guias_anuladas: c.guias_anuladas ?? 0,
   }))
 }
 
@@ -184,6 +205,7 @@ export type OrdenServicioListada = {
   fecha_fin: string | null
   moneda: string
   monto: number
+  monto_pen: number | null
   condicion_pago: string
   dias_credito: number
   aprobacion: string
@@ -194,12 +216,80 @@ export type OrdenServicioListada = {
   creado_en: string
   emitida_por: string | null
   atrasada: boolean
+  /** Vacío solo en las OS de antes de que se pidiera. */
+  codigo_interno: string | null
+  detraccion: DetraccionDeServicio
 }
 
+/** Los tipos de servicio con detracción, con el porcentaje y el mínimo de SUNAT. */
+export async function cargarTiposDetraccion(): Promise<TipoDetraccion[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('detracciones_servicio')
+    .select('codigo, descripcion, porcentaje, monto_minimo, ejemplos, base_legal')
+    .eq('activo', true)
+    .order('orden')
+  if (error) throw new Error(`No se pudieron leer los tipos de detracción: ${error.message}`)
+  return (data ?? []).map((t) => ({ ...t, porcentaje: Number(t.porcentaje), monto_minimo: Number(t.monto_minimo) }))
+}
+
+/** La detracción tal como la guarda y la calcula la base. */
+export const COLUMNAS_DETRACCION =
+  'id, codigo_interno, detraccion_afecta, detraccion_codigo, detraccion_porcentaje, detraccion_minimo, detraccion_motivo, total_con_igv_pen, detraccion_monto'
+
+type FilaDetraccion = {
+  id: string
+  codigo_interno: string | null
+  detraccion_afecta: boolean | null
+  detraccion_codigo: string | null
+  detraccion_porcentaje: number | null
+  detraccion_minimo: number | null
+  detraccion_motivo: string | null
+  total_con_igv_pen: number | null
+  detraccion_monto: number | null
+}
+
+const SIN_DEFINIR: DetraccionDeServicio = {
+  afecta: null,
+  codigo: null,
+  descripcion: null,
+  porcentaje: null,
+  minimo: null,
+  motivo: null,
+  total_con_igv_pen: null,
+  monto: null,
+}
+
+export function detraccionDeFila(f: FilaDetraccion | undefined, tipos: TipoDetraccion[]): DetraccionDeServicio {
+  if (!f) return SIN_DEFINIR
+  const numeroONulo = (v: number | null) => (v === null ? null : Number(v))
+  return {
+    afecta: f.detraccion_afecta,
+    codigo: f.detraccion_codigo,
+    descripcion: tipos.find((t) => t.codigo === f.detraccion_codigo)?.descripcion ?? null,
+    porcentaje: numeroONulo(f.detraccion_porcentaje),
+    minimo: numeroONulo(f.detraccion_minimo),
+    motivo: f.detraccion_motivo,
+    total_con_igv_pen: numeroONulo(f.total_con_igv_pen),
+    monto: numeroONulo(f.detraccion_monto),
+  }
+}
+
+/**
+ * Las OS con su código interno y su detracción. El listado de la base no los
+ * trae (cambiarle las columnas exige borrarlo, y el conector de producción no
+ * deja); se leen de la tabla, con las mismas 300 últimas.
+ */
 export async function cargarOrdenesServicio(): Promise<OrdenServicioListada[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('ordenes_servicio_listado')
+  const [{ data, error }, extra, tipos] = await Promise.all([
+    supabase.rpc('ordenes_servicio_listado'),
+    supabase.from('ordenes_servicio').select(COLUMNAS_DETRACCION).order('creado_en', { ascending: false }).limit(300),
+    cargarTiposDetraccion(),
+  ])
   if (error) throw new Error(`No se pudieron leer las órdenes de servicio: ${error.message}`)
+  if (extra.error) throw new Error(`No se pudo leer la detracción de las órdenes de servicio: ${extra.error.message}`)
+  const porId = new Map((extra.data ?? []).map((f) => [f.id, f]))
   return (data ?? []).map((s) => ({
     id: s.id ?? '',
     numero: s.numero ?? '',
@@ -214,6 +304,7 @@ export async function cargarOrdenesServicio(): Promise<OrdenServicioListada[]> {
     fecha_fin: s.fecha_fin,
     moneda: s.moneda ?? 'PEN',
     monto: Number(s.monto ?? 0),
+    monto_pen: s.monto_pen === null ? null : Number(s.monto_pen),
     condicion_pago: s.condicion_pago ?? 'CONTADO',
     dias_credito: s.dias_credito ?? 0,
     aprobacion: s.aprobacion ?? 'POR_APROBAR',
@@ -224,6 +315,8 @@ export async function cargarOrdenesServicio(): Promise<OrdenServicioListada[]> {
     creado_en: s.creado_en ?? '',
     emitida_por: s.emitida_por,
     atrasada: s.atrasada === true,
+    codigo_interno: porId.get(s.id ?? '')?.codigo_interno ?? null,
+    detraccion: detraccionDeFila(porId.get(s.id ?? ''), tipos),
   }))
 }
 

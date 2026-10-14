@@ -81,6 +81,8 @@ select test.afirmar(
 -- Ya está con el conductor: «Mandar a recojo» no hace nada.
 select test.afirmar(public.mandar_compra_a_recojo(current_setting('prueba.oc1')::uuid) = current_setting('prueba.oc1')::uuid,
   'volver a mandarla a recojo no la mueve');
+-- Logística la pone en la lista del conductor con su peso (migración 20261015140000).
+select public.programar_recojo(current_setting('prueba.oc1')::uuid, 25, null);
 reset role;
 
 select test.afirmar(

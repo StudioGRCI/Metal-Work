@@ -1,4 +1,5 @@
-import { MapPin, Phone, Receipt, User } from 'lucide-react'
+import { FileText, MapPin, Phone, Receipt, Scale, User } from 'lucide-react'
+import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -25,7 +26,10 @@ export default async function PaginaRecojos() {
   const perfil = await exigirPermiso(['compras.recojo', 'compras.crear'])
   const conductor = puede(perfil, 'compras.recojo')
   const recojos = await cargarRecojos()
-  const pendientes = recojos.filter((r) => r.recojo !== 'DEJADO')
+  // Lo que lleva encima va primero; después, la lista que le programó
+  // Logística, en su orden. La base ya las devuelve así.
+  const pendientes = recojos.filter((r) => r.recojo === 'EN_RECOJO' || r.recojo === 'RECOGIDO' || (r.recojo === 'POR_RECOGER' && r.en_lista))
+  const sinProgramar = recojos.filter((r) => r.recojo === 'POR_RECOGER' && !r.en_lista)
   const dejadas = recojos.filter((r) => r.recojo === 'DEJADO')
 
   return (
@@ -34,8 +38,8 @@ export default async function PaginaRecojos() {
         titulo="Recojos"
         descripcion={
           conductor
-            ? 'Las compras aprobadas que tienes que recoger. Marca «Salgo a recoger» cuando vas al proveedor, «Ya la recogí» al salir con el material y «La dejé en almacén» al entregarla: el requerimiento muestra en qué va y Almacén valida el ingreso sin volver a registrarlo.'
-            : 'Lo que el conductor tiene que recoger y lo que ya dejó en almacén.'
+            ? 'Las compras que Logística te programó, en el orden en que tienes que recogerlas, con su peso y su guía de remisión. Marca «Salgo a recoger» cuando vas al proveedor, «Ya la recogí» al salir con el material y «La dejé en almacén» al entregarla: el requerimiento muestra en qué va y Almacén valida el ingreso sin volver a registrarlo.'
+            : 'Lo que el conductor tiene que recoger, en el orden que le programó Logística, y lo que ya dejó en almacén.'
         }
       />
 
@@ -49,11 +53,24 @@ export default async function PaginaRecojos() {
               <SinDatos
                 enTabla={false}
                 titulo="No hay nada por recoger"
-                descripcion="Cuando Gerencia apruebe una compra para recoger, aparece aquí y te llega un aviso."
+                descripcion="Cuando Logística te programe una compra para recoger, aparece aquí con su peso y te llega un aviso."
               />
             </Tarjeta>
           ) : (
             pendientes.map((r) => <TarjetaRecojo key={r.id} recojo={r} conductor={conductor} />)
+          )}
+          {sinProgramar.length > 0 && (
+            <p className="text-sm text-texto-suave">
+              <span className="tabular font-semibold text-texto">{sinProgramar.length}</span>{' '}
+              {sinProgramar.length === 1 ? 'compra aprobada espera' : 'compras aprobadas esperan'} que Logística{' '}
+              {sinProgramar.length === 1 ? 'la programe' : 'las programe'}
+              {conductor ? `: todavía no salgas a ${sinProgramar.length === 1 ? 'recogerla' : 'recogerlas'}.` : '. '}
+              {!conductor && (
+                <Link className="text-acento hover:underline" href="/compras/gestion">
+                  Programarlas en Gestión de compras
+                </Link>
+              )}
+            </p>
           )}
         </section>
 
@@ -75,7 +92,7 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
   return (
     <Tarjeta>
       <TarjetaCabecera
-        titulo={`${r.numero} · ${r.proveedor}`}
+        titulo={r.recojo === 'POR_RECOGER' && r.lugar ? `${r.lugar}.º · ${r.numero} · ${r.proveedor}` : `${r.numero} · ${r.proveedor}`}
         descripcion={[
           r.referencia && r.referencia !== r.numero ? `Ref. ${r.referencia}` : null,
           r.codigo_interno ? `Para ${r.codigo_interno}` : null,
@@ -113,6 +130,26 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
             <li className="flex items-center gap-2">
               <User aria-hidden className="size-4 shrink-0 text-texto-suave" />
               {r.proveedor_contacto}
+            </li>
+          )}
+          {r.peso_kg !== null && (
+            <li className="flex items-center gap-2">
+              <Scale aria-hidden className="size-4 shrink-0 text-texto-suave" />
+              <span>
+                Pesa <span className="tabular font-semibold">{cantidad(r.peso_kg)} kg</span>
+              </span>
+            </li>
+          )}
+          {r.recojo !== 'DEJADO' && (
+            <li className="flex items-start gap-2">
+              <FileText aria-hidden className="mt-0.5 size-4 shrink-0 text-texto-suave" />
+              {r.guia ? (
+                <Link className="font-medium text-acento hover:underline" href={`/compras/gestion/guia/${r.guia.id}`} target="_blank" prefetch={false}>
+                  Guía de remisión {r.guia.numero} (PDF)
+                </Link>
+              ) : (
+                <span className="text-aviso">Contabilidad todavía no carga la guía de remisión.</span>
+              )}
             </li>
           )}
           {r.recojo !== 'DEJADO' && (
@@ -153,7 +190,10 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
             .join(' · ')}
         </p>
 
-        {conductor && SIGUIENTE_PASO[r.recojo] && <PasoRecojo id={r.id} numero={r.numero} paso={SIGUIENTE_PASO[r.recojo]} />}
+        {/* Sale a recoger solo lo que Logística le programó; la base también lo exige. */}
+        {conductor && SIGUIENTE_PASO[r.recojo] && (r.recojo !== 'POR_RECOGER' || r.en_lista) && (
+          <PasoRecojo id={r.id} numero={r.numero} paso={SIGUIENTE_PASO[r.recojo]} />
+        )}
       </TarjetaCuerpo>
     </Tarjeta>
   )

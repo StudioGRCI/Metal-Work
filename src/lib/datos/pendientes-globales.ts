@@ -95,15 +95,36 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       .in('requerimientos_materiales.ordenes_trabajo.estado', [...ESTADOS_ACTIVOS_OT])),
   })
 
-  // El conductor de Logística: lo que tiene por recoger o lleva en camino.
+  // La gestión de compras (migración 20261015140000): Logística, Contabilidad y
+  // el conductor cuentan cosas distintas de la misma lista, que se lee una vez.
+  let gestion: ReturnType<typeof leerGestion> | null = null
+  async function leerGestion() {
+    const { data, error } = await supabase.rpc('compras_en_gestion')
+    if (error) throw new Error('No se pudo consultar el pendiente.')
+    return data ?? []
+  }
+  const enGestion = () => (gestion ??= leerGestion())
+
+  // Logística: lo que Gerencia aprobó y todavía no está en la lista del conductor.
+  if (puede(perfil, 'compras.crear')) tareas.push({
+    clave: 'compras_por_programar', ruta: '/compras/gestion', tono: 'aviso',
+    texto: n => plural(n, 'compra aprobada por programar con el conductor', 'compras aprobadas por programar con el conductor'),
+    contar: async () => (await enGestion()).filter((c) => c.recojo === 'POR_RECOGER' && !c.en_lista).length,
+  })
+
+  // Contabilidad: las que ya tienen peso y esperan su guía de remisión.
+  if (puede(perfil, 'compras.guia_remision')) tareas.push({
+    clave: 'guias_por_cargar', ruta: '/compras/gestion', tono: 'aviso',
+    texto: n => plural(n, 'guía de remisión por cargar', 'guías de remisión por cargar'),
+    contar: async () =>
+      (await enGestion()).filter((c) => c.recojo !== 'DEJADO' && (c.en_lista || c.recojo !== 'POR_RECOGER') && c.peso_kg !== null && !c.guia_id).length,
+  })
+
+  // El conductor de Logística: lo que Logística le programó o lleva en camino.
   if (puede(perfil, 'compras.recojo')) tareas.push({
     clave: 'compras_por_recoger', ruta: '/recojos', tono: 'aviso',
     texto: n => plural(n, 'compra por recoger o dejar en almacén', 'compras por recoger o dejar en almacén'),
-    contar: async () => {
-      const { data, error } = await supabase.rpc('compras_para_recojo')
-      if (error) throw new Error('No se pudo consultar el pendiente.')
-      return (data ?? []).filter((r) => r.recojo !== 'DEJADO').length
-    },
+    contar: async () => (await enGestion()).filter((c) => c.recojo === 'EN_RECOJO' || c.recojo === 'RECOGIDO' || (c.recojo === 'POR_RECOGER' && c.en_lista)).length,
   })
 
   if (puede(perfil, 'cotizaciones.revisar')) {
