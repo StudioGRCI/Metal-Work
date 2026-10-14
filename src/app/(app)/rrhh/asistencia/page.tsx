@@ -15,6 +15,9 @@ export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrh
   const perfil = await exigirPermiso(['asistencia.marcar', 'asistencia.ver'])
   const marca = puede(perfil, 'asistencia.marcar')
   const consulta = puede(perfil, 'asistencia.ver')
+  // La miga lleva a las planillas solo a quien las abre: Gerencia y
+  // Administración consultan esto con `asistencia.ver` y ahí las rebotaban.
+  const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const hoy = hoyLima()
   // El portero marca hoy; quien consulta puede moverse de día.
@@ -36,7 +39,7 @@ export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrh
             ? 'Toca «Ingreso» cuando la persona entra y «Salida» cuando se va. La hora la pone el sistema; si entra después de su hora, queda la tardanza.'
             : 'Lo que marcó la portería cada día, con las tardanzas y el descuento que generan.'
         }
-        migas={[{ titulo: 'Recursos Humanos', ruta: consulta ? '/rrhh' : undefined }, { titulo: 'Asistencia' }]}
+        migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Asistencia' }]}
       />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

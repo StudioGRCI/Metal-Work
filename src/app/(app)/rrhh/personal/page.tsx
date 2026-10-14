@@ -20,6 +20,9 @@ const FILTROS = [
 export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/rrhh/personal'>) {
   const perfil = await exigirPermiso(['rrhh.personal', 'asistencia.ver'])
   const gestiona = puede(perfil, 'rrhh.personal')
+  // La miga lleva a las planillas solo a quien las abre: Gerencia y
+  // Administración consultan esto con `asistencia.ver` y ahí las rebotaban.
+  const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const filtro = params.estado === 'todos' ? 'todos' : 'activos'
   const [personal, areas] = await Promise.all([listarTrabajadores(filtro), areasParaPersonal()])
@@ -29,7 +32,7 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
       <EncabezadoPagina
         titulo="Personal"
         descripcion="La ficha de cada persona de planta y oficina: sus datos, la cuenta donde se le paga y su horario. Con el horario, la marca del portero sabe si llegó tarde."
-        migas={[{ titulo: 'Recursos Humanos', ruta: '/rrhh' }, { titulo: 'Personal' }]}
+        migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Personal' }]}
         acciones={gestiona && <NuevoTrabajador areas={areas} />}
       />
 

@@ -30,21 +30,25 @@ export type ItemNavegacion = {
   ruta: string
   icono: typeof LayoutDashboard
   /** Con varios permisos basta con tener uno para que el módulo se vea. */
-  permiso?: string | string[]
+  permiso?: string | readonly string[]
   descripcion?: string
   /** Los módulos aún no construidos se muestran atenuados y sin enlace. */
   disponible?: boolean
 }
 
-export type GrupoNavegacion = { titulo: string; items: ItemNavegacion[] }
+export type GrupoNavegacion = { titulo: string; items: readonly ItemNavegacion[] }
 
 /**
- * El menú es el circuito de la empresa y nada más: cotización PDF →
- * Gerencia aprueba → Administración carga la orden →
- * Diseño desglosa → almacén y logística atienden → el taller reporta.
- * Cada grupo aparece solo a quien tiene el permiso correspondiente.
+ * El catálogo de módulos, agrupado por el área que los lleva: cotización PDF →
+ * Gerencia aprueba → Administración carga la orden → Diseño desglosa →
+ * almacén y logística atienden → el taller reporta.
+ *
+ * No es el menú de nadie en particular: cada puesto ve el suyo, en el orden de
+ * su trabajo (`MENU_POR_PUESTO`, más abajo). Este catálogo completo, filtrado
+ * por permiso, es solo el menú de ADMIN y de los puestos que todavía no tienen
+ * uno propio.
  */
-export const NAVEGACION: GrupoNavegacion[] = [
+export const NAVEGACION = [
   {
     titulo: 'Principal',
     items: [
@@ -177,11 +181,12 @@ export const NAVEGACION: GrupoNavegacion[] = [
         disponible: true,
       },
       // El conductor de Logística: lo que tiene que recoger y dejar en almacén.
+      // Logística lo sigue desde la misma pantalla, que ya la acepta.
       {
         titulo: 'Recojos',
         ruta: '/recojos',
         icono: Truck,
-        permiso: 'compras.recojo',
+        permiso: ['compras.recojo', 'compras.crear'],
         descripcion: 'Compras aprobadas por recoger y dejar en almacén',
         disponible: true,
       },
@@ -206,7 +211,7 @@ export const NAVEGACION: GrupoNavegacion[] = [
       },
       // Logística fija el precio de lo que nunca se compró por el sistema.
       // Costos la consulta; Almacén también puede, pero no la necesita en su
-      // menú. Administración ya no la ve (ver FUERA_DEL_MENU).
+      // menú. Administración ya no la ve (ver MENU_POR_PUESTO).
       {
         titulo: 'Valorización del almacén',
         ruta: '/compras/valorizacion',
@@ -261,18 +266,20 @@ export const NAVEGACION: GrupoNavegacion[] = [
       { titulo: 'Cuentas de Tesorería', ruta: '/tesoreria/cuentas', icono: FileSpreadsheet, permiso: 'tesoreria.ver_documentos', descripcion: 'Cobros por OT y pagos de compras', disponible: true },
       { titulo: 'Gastos del mes', ruta: '/costos/gastos-generales', icono: Wallet, permiso: ['costos.gastos_generales', 'costos.ver'], descripcion: 'Servicios del local y gastos de operación', disponible: true },
       { titulo: 'Tipo de cambio', ruta: '/tesoreria/tipo-de-cambio', icono: ArrowLeftRight, permiso: 'tesoreria.tipo_cambio', descripcion: 'El cambio del dólar de cada día, para el costo en soles', disponible: true },
-      { titulo: 'Recursos Humanos', ruta: '/rrhh', icono: UserCog, permiso: 'rrhh.ver_planillas', descripcion: 'Planillas y distribución por unidad', disponible: true },
     ],
   },
   // Recursos Humanos lleva la ficha del personal y su horario; la portería, con
   // una subcuenta de RR. HH., marca la asistencia desde el celular y de ahí
-  // salen las tardanzas con su descuento.
+  // salen las tardanzas con su descuento. Las planillas son suyas también:
+  // antes colgaban de Finanzas con el nombre del área, y en el menú de RR. HH.
+  // se leía «Recursos Humanos» dentro de «Recursos Humanos».
   {
     titulo: 'Recursos Humanos',
     items: [
       { titulo: 'Personal', ruta: '/rrhh/personal', icono: Users, permiso: ['rrhh.personal', 'asistencia.ver'], descripcion: 'La ficha de cada persona: datos, cuenta de pago y horario', disponible: true },
       { titulo: 'Asistencia', ruta: '/rrhh/asistencia', icono: ClipboardCheck, permiso: ['asistencia.marcar', 'asistencia.ver'], descripcion: 'Ingreso y salida de cada persona, marcados en portería', disponible: true },
       { titulo: 'Tardanzas', ruta: '/rrhh/tardanzas', icono: Clock, permiso: ['asistencia.ver', 'rrhh.personal'], descripcion: 'Tardanzas del mes y el descuento que generan', disponible: true },
+      { titulo: 'Planillas', ruta: '/rrhh', icono: UserCog, permiso: 'rrhh.ver_planillas', descripcion: 'Planillas del mes y su distribución por unidad', disponible: true },
     ],
   },
   {
@@ -304,37 +311,243 @@ export const NAVEGACION: GrupoNavegacion[] = [
       },
     ],
   },
-]
+] as const satisfies readonly GrupoNavegacion[]
 
-/** Permisos amplios permiten consultar detalles; el menú prioriza cada puesto. */
-const RUTAS_POR_PUESTO: Record<string, readonly string[]> = {
-  GERENTE: ['/', '/cotizaciones/pdf', '/ordenes', '/compras/aprobacion', '/proveedores', '/rrhh/tardanzas'],
-  TESORERIA: ['/', '/ordenes', '/tesoreria', '/tesoreria/cuentas', '/tesoreria/tipo-de-cambio', '/adquisiciones'],
+/** El catálogo tal cual, para recorrerlo sin los tipos literales de `as const`. */
+const GRUPOS: readonly GrupoNavegacion[] = NAVEGACION
+const CATALOGO: readonly ItemNavegacion[] = GRUPOS.flatMap((g) => g.items)
+
+/** Las rutas que el catálogo conoce: un menú que nombre otra no compila. */
+type RutaDeModulo = (typeof NAVEGACION)[number]['items'][number]['ruta']
+
+type MenuDePuesto = {
+  grupos: readonly { titulo: string; rutas: readonly RutaDeModulo[] }[]
+  /** Las pestañas de abajo en el teléfono, en orden: van las cuatro primeras que la persona ve. */
+  telefono: readonly RutaDeModulo[]
 }
 
 /**
- * Lo que un puesto alcanza con sus permisos pero no es su trabajo, y por eso
- * no va en su menú. Administración lee clientes, unidades, catálogos y costos
- * porque carga la OT y ve su costo; pero la valorización es de Logística, y
- * Unidades y Carrocerías las lleva Diseño e Ingeniería (pedido de la empresa,
- * 2026-10-01). El menú no es el límite de acceso: la valorización también
- * rechaza a Administración en la pantalla, y el catálogo de carrocerías ya no
- * acepta sus cambios en la base (migración 20261001213000).
+ * El menú de cada puesto: primero lo que espera por él, en el orden en que lo
+ * trabaja, y al final lo que solo consulta. El tablero va siempre arriba.
+ *
+ * Salió de entrar con cada cuenta de producción el 2026-10-14. Hasta entonces
+ * el menú era el catálogo filtrado por permiso, y cada permiso de lectura
+ * colgaba una pantalla ajena bajo el nombre del área que la lleva: a
+ * Requerimientos le salían los cuatro almacenes de Almacén y «Logística ›
+ * Valorización», a Contabilidad «Logística › Proveedores». En el teléfono las
+ * pestañas salían de un mismo orden para todos, y a Requerimientos le tocaban
+ * Kardex, Gastos y Precios en vez de su lista de RQ.
+ *
+ * Cada entrada se sigue mostrando solo si el permiso del catálogo la deja ver:
+ * si la base le quita el permiso a un puesto, la entrada desaparece en lugar de
+ * llevar a «Sin permiso». Y el menú no es el límite de acceso: lo que un puesto
+ * no tiene aquí lo abre por su dirección si su permiso lo deja, y lo que su
+ * permiso no deja lo rechazan la pantalla y el RLS.
+ *
+ * **Pantalla nueva: sumarla aquí al menú del puesto que la usa.** No entra
+ * sola; solo ADMIN y los puestos sin menú propio ven el catálogo completo.
  */
-const FUERA_DEL_MENU: Record<string, readonly string[]> = {
-  DISENO: ['/configuracion'],
-  ADMINISTRACION: ['/compras/valorizacion', '/unidades', '/carrocerias'],
-  // Almacén y Logística trabajan los RQ desde su bandeja de atención, no desde
-  // el listado de Requerimientos, aunque `requerimientos.ver` les deje leerlo.
-  ALMACENERO: ['/requerimientos'],
-  COMPRADOR: ['/requerimientos'],
+const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
+  // El circuito del requerimiento: Requerimientos pide → Almacén revisa el
+  // stock → Logística compra → Gerencia aprueba → el conductor recoge →
+  // Almacén recepciona y entrega → Supervisión lo recoge.
+  REQUERIMIENTOS: {
+    grupos: [
+      { titulo: 'Requerimientos', rutas: ['/requerimientos', '/vehiculos'] },
+      // Lo que heredó de la cuenta de Costeo: lo consulta, no lo trabaja.
+      { titulo: 'Consultas', rutas: ['/almacen/kardex', '/ordenes', '/costos/gastos-generales', '/compras/valorizacion'] },
+    ],
+    telefono: ['/requerimientos', '/vehiculos', '/almacen/kardex', '/ordenes'],
+  },
+  // Trabaja los RQ desde su bandeja de atención, no desde la lista de
+  // Requerimientos, aunque `requerimientos.ver` le deje leerla. Las órdenes de
+  // trabajo también esperan por él: los materiales de cada OT los revisa,
+  // recibe y despacha ahí. Debajo del kardex, sus cuatro almacenes.
+  ALMACENERO: {
+    grupos: [
+      {
+        titulo: 'Almacén',
+        rutas: [
+          '/requerimientos/atencion',
+          '/ordenes',
+          '/almacen/kardex',
+          '/almacen/kardex?almacen=EPP',
+          '/almacen/kardex?almacen=CONSUMIBLES',
+          '/almacen/kardex?almacen=ACCESORIOS',
+          '/almacen/kardex?almacen=MATERIA_PRIMA',
+        ],
+      },
+    ],
+    telefono: ['/requerimientos/atencion', '/ordenes', '/almacen/kardex', '/'],
+  },
+  // Del RQ sin stock a la OC, su visto de Gerencia y el recojo del conductor,
+  // que Logística sigue desde «Recojos» (la pantalla ya le mostraba lo que el
+  // conductor tiene por recoger, pero no estaba en su menú).
+  COMPRADOR: {
+    grupos: [
+      {
+        titulo: 'Logística',
+        rutas: [
+          '/requerimientos/atencion',
+          '/compras/ordenes',
+          '/compras/aprobacion',
+          '/recojos',
+          '/compras/servicios',
+          '/compras',
+          '/proveedores',
+          '/compras/valorizacion',
+        ],
+      },
+      { titulo: 'Consultas', rutas: ['/ordenes'] },
+    ],
+    telefono: ['/requerimientos/atencion', '/compras/ordenes', '/compras/aprobacion', '/recojos'],
+  },
+  CONDUCTOR: {
+    grupos: [{ titulo: 'Logística', rutas: ['/recojos'] }],
+    telefono: ['/recojos', '/'],
+  },
+  // Cerrado desde #28: lo que Gerencia decide y poco más. Lo demás que su
+  // permiso le deja ver (Requerimientos, el kardex, Personal) lo abre desde el
+  // enlace del aviso o por su dirección.
+  GERENTE: {
+    grupos: [
+      { titulo: 'Gerencia', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/ordenes'] },
+      { titulo: 'Consultas', rutas: ['/proveedores', '/rrhh/tardanzas'] },
+    ],
+    telefono: ['/cotizaciones/pdf', '/compras/aprobacion', '/ordenes', '/'],
+  },
+  // Cerrado desde #28, como Gerencia.
+  TESORERIA: {
+    grupos: [
+      { titulo: 'Finanzas', rutas: ['/tesoreria', '/tesoreria/cuentas', '/tesoreria/tipo-de-cambio', '/adquisiciones'] },
+      { titulo: 'Consultas', rutas: ['/ordenes'] },
+    ],
+    telefono: ['/tesoreria', '/tesoreria/cuentas', '/tesoreria/tipo-de-cambio', '/adquisiciones'],
+  },
+  CONTABILIDAD: {
+    grupos: [
+      { titulo: 'Contabilidad', rutas: ['/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio'] },
+      { titulo: 'Consultas', rutas: ['/ordenes', '/requerimientos'] },
+    ],
+    telefono: ['/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio', '/ordenes'],
+  },
+  // Unidades y Carrocerías las lleva Diseño e Ingeniería (pedido de la
+  // empresa, 2026-10-01). Configuración la alcanza por `configuracion.ver`,
+  // pero es de Administración.
+  DISENO: {
+    grupos: [
+      {
+        titulo: 'Diseño e Ingeniería',
+        rutas: ['/ordenes', '/materiales', '/carrocerias', '/unidades', '/diseno/informe-semanal', '/diseno/evaluaciones'],
+      },
+      { titulo: 'Consultas', rutas: ['/clientes', '/requerimientos'] },
+    ],
+    telefono: ['/ordenes', '/diseno/informe-semanal', '/materiales', '/carrocerias'],
+  },
+  DISENO_COLABORADOR: {
+    grupos: [{ titulo: 'Diseño e Ingeniería', rutas: ['/diseno/informe-semanal', '/ordenes'] }],
+    telefono: ['/diseno/informe-semanal', '/ordenes', '/'],
+  },
+  // Administración lee clientes, unidades, catálogos y costos porque carga la
+  // OT y ve su costo; pero la valorización es de Logística (la pantalla
+  // también la rechaza) y Unidades y Carrocerías las lleva Diseño. De RR. HH.
+  // le toca el resumen de tardanzas, como a Gerencia: la ficha y la asistencia
+  // las abre por su dirección, y así no tiene dos «Personal» en el menú.
+  ADMINISTRACION: {
+    grupos: [
+      {
+        titulo: 'Administración',
+        rutas: ['/cotizaciones/pdf', '/ordenes', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio', '/diseno/evaluaciones', '/clientes'],
+      },
+      { titulo: 'Consultas', rutas: ['/rrhh/tardanzas', '/vehiculos'] },
+      { titulo: 'Administración del sistema', rutas: ['/personal', '/configuracion'] },
+    ],
+    telefono: ['/cotizaciones/pdf', '/ordenes', '/costos/gastos-generales', '/diseno/evaluaciones'],
+  },
+  RECURSOS_HUMANOS: {
+    grupos: [
+      { titulo: 'Recursos Humanos', rutas: ['/rrhh/personal', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh'] },
+      { titulo: 'Consultas', rutas: ['/ordenes'] },
+    ],
+    telefono: ['/rrhh/personal', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh'],
+  },
+  PORTERO: {
+    grupos: [{ titulo: 'Portería', rutas: ['/rrhh/asistencia'] }],
+    telefono: ['/rrhh/asistencia', '/'],
+  },
+  // Reporta el avance de las OT de su área y recoge de Almacén lo que su área
+  // pidió: el RQ «Listo en almacén», al que también lo lleva el aviso.
+  SUPERVISOR: {
+    grupos: [{ titulo: 'Supervisión', rutas: ['/ordenes', '/requerimientos'] }],
+    telefono: ['/ordenes', '/requerimientos', '/'],
+  },
+  // Mira todas las áreas sin trabajar en ninguna: cada una con su nombre.
+  SUPERVISOR_GENERAL: {
+    grupos: [
+      { titulo: 'Supervisión general', rutas: ['/ordenes', '/diseno/informe-semanal'] },
+      { titulo: 'Requerimientos', rutas: ['/requerimientos', '/vehiculos'] },
+      {
+        titulo: 'Almacén',
+        rutas: [
+          '/almacen/kardex',
+          '/almacen/kardex?almacen=EPP',
+          '/almacen/kardex?almacen=CONSUMIBLES',
+          '/almacen/kardex?almacen=ACCESORIOS',
+          '/almacen/kardex?almacen=MATERIA_PRIMA',
+          '/compras/valorizacion',
+        ],
+      },
+      { titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades'] },
+      { titulo: 'Finanzas', rutas: ['/costos/gastos-generales'] },
+    ],
+    telefono: ['/ordenes', '/requerimientos', '/almacen/kardex', '/cotizaciones/pdf'],
+  },
+  VENDEDOR: {
+    grupos: [{ titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades', '/carrocerias'] }],
+    telefono: ['/cotizaciones/pdf', '/clientes', '/unidades', '/'],
+  },
 }
 
-export function puedeVer(item: ItemNavegacion, permisos: string[], esAdmin: boolean, rolCodigo: string) {
-  if (FUERA_DEL_MENU[rolCodigo]?.includes(item.ruta)) return false
-  if (RUTAS_POR_PUESTO[rolCodigo] && !RUTAS_POR_PUESTO[rolCodigo].includes(item.ruta)) return false
+function lePermite(item: ItemNavegacion, permisos: readonly string[], esAdmin: boolean) {
   if (!item.permiso || esAdmin) return true
-  return (Array.isArray(item.permiso) ? item.permiso : [item.permiso]).some((p) => permisos.includes(p))
+  const pide: readonly string[] = typeof item.permiso === 'string' ? [item.permiso] : item.permiso
+  return pide.some((p) => permisos.includes(p))
+}
+
+/**
+ * El menú de esta persona, por grupos: el de su puesto si lo tiene; si no, el
+ * catálogo entero filtrado por su permiso. Lo usan la barra del monitor, el
+ * cajón del teléfono y «Tus módulos» del tablero, así que los tres dicen lo
+ * mismo.
+ */
+export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo: string): GrupoNavegacion[] {
+  const propio = esAdmin ? undefined : MENU_POR_PUESTO[rolCodigo]
+  const grupos: GrupoNavegacion[] = propio
+    ? [{ titulo: 'Principal', rutas: ['/'] }, ...propio.grupos].map((g) => ({
+        titulo: g.titulo,
+        // Una pantalla compartida está en el catálogo una vez por cada área que
+        // la usa, con el permiso de esa área: vale la que esta persona ve.
+        items: g.rutas.flatMap((r) => CATALOGO.find((i) => i.ruta === r && i.disponible && lePermite(i, permisos, esAdmin)) ?? []),
+      }))
+    : GRUPOS.map((g) => ({ titulo: g.titulo, items: g.items.filter((i) => i.disponible && lePermite(i, permisos, esAdmin)) }))
+  return grupos.filter((g) => g.items.length > 0)
+}
+
+/**
+ * Las pestañas de abajo en el teléfono: hasta cuatro, sacadas del menú de esta
+ * persona en el orden que fija su puesto, y después «Más».
+ */
+export function pestanasDe(permisos: readonly string[], esAdmin: boolean, rolCodigo: string) {
+  const visibles = menuDe(permisos, esAdmin, rolCodigo).flatMap((g) => g.items)
+  const propio = esAdmin ? undefined : MENU_POR_PUESTO[rolCodigo]
+  const orden: readonly string[] = propio ? propio.telefono : PESTANAS_TELEFONO.map((p) => p.ruta)
+  return orden
+    .flatMap((ruta) => {
+      const item = visibles.find((i) => i.ruta === ruta)
+      if (!item) return []
+      return [{ ruta, corto: PESTANAS_TELEFONO.find((p) => p.ruta === ruta)?.corto ?? item.titulo, icono: item.icono }]
+    })
+    .slice(0, 4)
 }
 
 /**
@@ -349,15 +562,12 @@ export function rutaActiva(ruta: string, rutas: string[]) {
 }
 
 /**
- * Las pestañas de abajo en el teléfono: las cuatro primeras de esta lista que
- * la persona ve, y después «Más». El orden está pensado para que a cada puesto
- * le queden las suyas sin escribir un rol a mano: al taller, Órdenes;
- * a Diseño y Administración, su entrada de cotizaciones primero; a
- * Ventas, Cotizaciones, Clientes y el tablero. El nombre va corto porque la
- * pestaña es angosta.
+ * El nombre corto de cada pestaña del teléfono, que es angosta. Para ADMIN y
+ * los puestos sin menú propio, también el orden: las cuatro primeras de esta
+ * lista que la persona ve, y después «Más». Los puestos con menú propio llevan
+ * su orden en `MENU_POR_PUESTO`.
  */
-// El orden deja primero el flujo PDF para Ventas, Gerencia y Administración.
-export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
+export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/cotizaciones/pdf', corto: 'Cotizar' },
   { ruta: '/ordenes', corto: 'Órdenes' },
   { ruta: '/almacen/kardex', corto: 'Kardex' },
@@ -376,8 +586,6 @@ export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/materiales', corto: 'Materiales' },
   { ruta: '/configuracion', corto: 'Ajustes' },
   { ruta: '/personal', corto: 'Personal' },
-  // Al final: solo ocupan una pestaña libre (la de Gerencia, Logística o su
-  // conductor, que tienen menos de cuatro) y no desplazan la de ningún otro puesto.
   { ruta: '/recojos', corto: 'Recojos' },
   { ruta: '/compras/ordenes', corto: 'OC' },
   { ruta: '/compras/aprobacion', corto: 'Aprobar' },
@@ -387,4 +595,6 @@ export const PESTANAS_TELEFONO: { ruta: string; corto: string }[] = [
   { ruta: '/rrhh/asistencia', corto: 'Asistencia' },
   { ruta: '/rrhh/personal', corto: 'Personal' },
   { ruta: '/rrhh/tardanzas', corto: 'Tardanzas' },
+  { ruta: '/tesoreria/tipo-de-cambio', corto: 'Cambio' },
+  { ruta: '/proveedores', corto: 'Proveedores' },
 ]

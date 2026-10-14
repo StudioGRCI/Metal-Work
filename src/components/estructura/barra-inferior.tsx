@@ -9,13 +9,13 @@ import { useContextoOrden } from './contexto-orden'
 import { InstalarApp } from '@/components/estructura/instalar-app'
 import { Ventana } from '@/components/ui/ventana'
 import { NavegacionLista } from '@/components/estructura/navegacion-lista'
-import { NAVEGACION, PESTANAS_TELEFONO, puedeVer, rutaActiva } from '@/lib/navegacion'
+import { menuDe, pestanasDe, rutaActiva } from '@/lib/navegacion'
 import { cn } from '@/lib/utils'
 
 /**
  * La barra de pestañas de abajo, en el teléfono: lo que hace que el sistema se
  * sienta aplicación y no página. Cuatro pestañas —las de cada puesto, ver
- * `PESTANAS_TELEFONO`— y «Más», que abre todas las secciones desde abajo.
+ * `pestanasDe`— y «Más», que abre todas las secciones desde abajo.
  *
  * Reemplaza al menú de arriba a la izquierda. Antes hubo un botón redondo fijo
  * abajo y se quitó porque tapaba la última fila de cada lista; esta barra no
@@ -40,11 +40,8 @@ export function BarraInferior({
   const ruta = usePathname()
   const { abierto, abrir: setAbierto } = useContextoOrden()
 
-  const visibles = NAVEGACION.flatMap((g) => g.items).filter((i) => i.disponible && puedeVer(i, permisos, esAdmin, rolCodigo))
-  const pestanas = PESTANAS_TELEFONO.flatMap((p) => {
-    const item = visibles.find((i) => i.ruta === p.ruta && i.disponible !== false)
-    return item ? [{ ...p, icono: item.icono }] : []
-  }).slice(0, 4)
+  const visibles = menuDe(permisos, esAdmin, rolCodigo).flatMap((g) => g.items)
+  const pestanas = pestanasDe(permisos, esAdmin, rolCodigo)
 
   const activa = rutaActiva(
     ruta,

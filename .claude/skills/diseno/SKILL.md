@@ -236,12 +236,18 @@ interacciones con botones (emitir, descargar, anular); interacción nueva de pes
   El 2026-10-13 DKS vio «muy desordenado» el menú de Logística, Requerimientos y
   Almacén: cada hilo había colgado su pantalla donde cayó («Abastecimiento» tenía
   compras, recojos, kardex y valorización mezclados, y «Requerimientos» mandaba
-  a Logística). Un grupo de `NAVEGACION` es un puesto y sus entradas van en el
-  orden de su trabajo (primero lo que espera por él); una pantalla compartida
-  por dos puestos cuelga de los dos grupos con el permiso de cada uno; y lo que
-  un puesto alcanza por un permiso heredado pero no es su trabajo se tapa en
-  `FUERA_DEL_MENU`. Al agregar una pantalla, mirar el menú completo con el rol
-  que la usa, no solo que la entrada aparezca.
+  a Logística). Y ordenar el catálogo no bastó: el 2026-10-14, entrando con
+  cada cuenta, a Requerimientos le salían los cuatro almacenes de Almacén bajo
+  «Almacén» y a Contabilidad «Logística › Proveedores», porque cada permiso de
+  lectura colgaba la pantalla bajo el área que la lleva; y las pestañas del
+  teléfono salían de un orden único (a Requerimientos le tocaban Kardex, Gastos
+  y Precios, y no su lista de RQ). Desde entonces `NAVEGACION` es solo el
+  catálogo y **cada puesto tiene su menú en `MENU_POR_PUESTO`**: su trabajo en
+  orden (primero lo que espera por él), después «Consultas», y sus cuatro
+  pestañas. Una pantalla compartida está en el catálogo una vez por área, con
+  el permiso de cada una. **Al agregar una pantalla, sumarla al menú del puesto
+  que la usa: no entra sola**, y mirar ese menú completo con su cuenta, en
+  escritorio y en teléfono.
 
 - **Una lista de «lo que puede escribir» no sirve para decidir «lo que ve».**
   El 2026-09-14 la pestaña Actividades pasó a recibir solo las áreas cuya hoja
