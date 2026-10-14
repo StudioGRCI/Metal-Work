@@ -12,7 +12,14 @@ export type LineaRequerimiento = {
   orden_compra: string | null
   /** Gerencia rechazó esa OC: el insumo vuelve a estar libre para otra. */
   compra_rechazada: boolean
+  /** En qué etapa va el insumo (`ETAPA_AVANCE_RQ`); vacía si el RQ está anulado. */
+  etapa: string | null
+  /** Desde cuándo está en esa etapa, si es del recojo (pendiente, en recojo, recogido, dejado). */
+  etapa_desde: string | null
 }
+
+/** En qué porcentaje va el RQ y la etapa de su insumo más atrasado. */
+export type AvanceRequerimiento = { porcentaje: number; etapa: string }
 
 /** Un requerimiento en el listado: número, quién lo necesita, para qué, qué se pide y por dónde va. */
 export type RequerimientoListado = {
@@ -33,7 +40,11 @@ export type RequerimientoListado = {
   entregado_en: string | null
   creado_en: string
   lineas: LineaRequerimiento[]
+  /** Vacío si está anulado. */
+  avance: AvanceRequerimiento | null
 }
+
+type LineaDeAvance = { item: number; orden_compra: string | null; rechazada: boolean; etapa: string; desde: string | null }
 
 export type OpcionCatalogo = { id: string; codigo: string; nombre: string }
 
@@ -51,35 +62,57 @@ export async function cargarRequerimientos(opciones: { soloAbiertos?: boolean } 
   if (opciones.soloAbiertos) consulta = consulta.in('estado', ['POR_ATENDER', 'SIN_STOCK', 'EN_ATENCION', 'LISTO_EN_ALMACEN'])
   const { data, error } = await consulta.order('creado_en', { ascending: false }).limit(300)
   if (error) throw new Error(`No se pudieron leer los requerimientos: ${error.message}`)
-  return (data ?? []).map((r) => ({
-    id: r.id,
-    numero: r.numero,
-    area: r.area?.nombre ?? '—',
-    codigo_interno: r.codigo_interno,
-    justificacion: r.justificacion,
-    fecha_requerida: r.fecha_requerida,
-    estado: r.estado,
-    motivo_anulacion: r.motivo_anulacion,
-    nota_almacen: r.nota_almacen,
-    nota_logistica: r.nota_logistica,
-    nota_entrega: r.nota_entrega,
-    revision_stock_en: r.revision_stock_en,
-    en_atencion_en: r.en_atencion_en,
-    listo_en_almacen_en: r.listo_en_almacen_en,
-    entregado_en: r.entregado_en,
-    creado_en: r.creado_en,
-    lineas: (r.lineas ?? [])
-      .map((l) => ({
-        item: l.item,
-        descripcion: l.descripcion,
-        cantidad: Number(l.cantidad),
-        unidad: l.unidad?.codigo ?? '',
-        categoria: l.categoria?.nombre ?? '',
-        orden_compra: l.orden_compra ? (l.orden_compra.numero ?? l.orden_compra.referencia ?? null) : null,
-        compra_rechazada: l.orden_compra?.aprobacion === 'RECHAZADA',
-      }))
-      .sort((a, b) => a.item - b.item),
-  }))
+  // El avance lo calcula la base con la OC y el recojo de cada insumo. Trae
+  // también el número de la OC, que Supervisión y Requerimientos no leen de la
+  // tabla de compras.
+  const avances = new Map<string, AvanceRequerimiento & { lineas: Map<number, LineaDeAvance> }>()
+  if (data && data.length > 0) {
+    const avance = await supabase.rpc('avance_de_requerimientos', { p_ids: data.map((r) => r.id) })
+    if (avance.error) throw new Error(`No se pudo calcular el avance de los requerimientos: ${avance.error.message}`)
+    for (const a of avance.data ?? []) {
+      if (!a.requerimiento_id || a.porcentaje == null || !a.etapa) continue
+      const lineas = (a.lineas as LineaDeAvance[] | null) ?? []
+      avances.set(a.requerimiento_id, { porcentaje: a.porcentaje, etapa: a.etapa, lineas: new Map(lineas.map((l) => [l.item, l])) })
+    }
+  }
+  return (data ?? []).map((r) => {
+    const avance = avances.get(r.id)
+    return {
+      id: r.id,
+      numero: r.numero,
+      area: r.area?.nombre ?? '—',
+      codigo_interno: r.codigo_interno,
+      justificacion: r.justificacion,
+      fecha_requerida: r.fecha_requerida,
+      estado: r.estado,
+      motivo_anulacion: r.motivo_anulacion,
+      nota_almacen: r.nota_almacen,
+      nota_logistica: r.nota_logistica,
+      nota_entrega: r.nota_entrega,
+      revision_stock_en: r.revision_stock_en,
+      en_atencion_en: r.en_atencion_en,
+      listo_en_almacen_en: r.listo_en_almacen_en,
+      entregado_en: r.entregado_en,
+      creado_en: r.creado_en,
+      lineas: (r.lineas ?? [])
+        .map((l) => {
+          const deLinea = avance?.lineas.get(l.item)
+          return {
+            item: l.item,
+            descripcion: l.descripcion,
+            cantidad: Number(l.cantidad),
+            unidad: l.unidad?.codigo ?? '',
+            categoria: l.categoria?.nombre ?? '',
+            orden_compra: deLinea?.orden_compra ?? (l.orden_compra ? (l.orden_compra.numero ?? l.orden_compra.referencia ?? null) : null),
+            compra_rechazada: deLinea ? deLinea.rechazada : l.orden_compra?.aprobacion === 'RECHAZADA',
+            etapa: deLinea?.etapa ?? null,
+            etapa_desde: deLinea?.desde ?? null,
+          }
+        })
+        .sort((a, b) => a.item - b.item),
+      avance: avance ? { porcentaje: avance.porcentaje, etapa: avance.etapa } : null,
+    }
+  })
 }
 
 /** Lo que el formulario del requerimiento ofrece para elegir: áreas, unidades y categorías. */

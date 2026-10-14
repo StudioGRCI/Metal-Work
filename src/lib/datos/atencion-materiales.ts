@@ -23,7 +23,7 @@ export type CompraMaterialPendiente = Vistas<'v_orden_compra_material_pendiente'
   aprobacion: string
   /** El número OC-…-MW que pone el sistema; las compras de antes no lo tienen. */
   numero: string | null
-  /** POR_RECOGER, RECOGIDO o DEJADO: ver `RECOJO_COMPRA`. Null: no va con el conductor. */
+  /** POR_RECOGER, EN_RECOJO, RECOGIDO o DEJADO: ver `RECOJO_COMPRA`. Null: no va con el conductor. */
   recojo: string | null
   /** Lo que hizo Almacén con lo que dejó el conductor: ver `situacionCompra`. */
   validacion: ValidacionIngreso

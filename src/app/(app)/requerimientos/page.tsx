@@ -7,6 +7,7 @@ import { ESTADO_REQUERIMIENTO, ESTADOS_RQ_ABIERTOS } from '@/lib/dominio/requeri
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
+import { AvanceDelRequerimiento, CompraDelInsumo } from './avance'
 import { AnularRequerimiento } from './controles'
 import { NuevoRequerimiento } from './formulario'
 
@@ -21,6 +22,9 @@ export default async function PaginaRequerimientos() {
   ])
   const abiertos = requerimientos.filter((r) => ESTADOS_RQ_ABIERTOS.includes(r.estado as (typeof ESTADOS_RQ_ABIERTOS)[number])).length
   const listos = requerimientos.filter((r) => r.estado === 'LISTO_EN_ALMACEN').length
+  // Los dos momentos del recojo que se quieren distinguir de un vistazo.
+  const pendientesDeRecojo = requerimientos.filter((r) => r.lineas.some((l) => l.etapa === 'PENDIENTE_RECOJO')).length
+  const enRecojo = requerimientos.filter((r) => r.lineas.some((l) => l.etapa === 'EN_RECOJO')).length
 
   return (
     <>
@@ -38,6 +42,8 @@ export default async function PaginaRequerimientos() {
       {requerimientos.length > 0 && (
         <p className="mb-3 text-sm text-texto-suave">
           {abiertos === 0 ? 'Ninguno en camino.' : `${abiertos} en camino`}
+          {pendientesDeRecojo > 0 && ` · ${pendientesDeRecojo} con insumos pendientes de recojo`}
+          {enRecojo > 0 && ` · ${enRecojo} con insumos en recojo`}
           {listos > 0 && ` · ${listos} ${listos === 1 ? 'listo' : 'listos'} en almacén para recoger`}
           {abiertos > 0 && '.'}
         </p>
@@ -96,13 +102,17 @@ function FilaRequerimiento({ rq, emite }: { rq: RequerimientoListado; emite: boo
                 {cantidad(l.cantidad)} {l.unidad}
               </span>{' '}
               <span className="text-texto">{l.descripcion}</span>
-              <span className="block text-[11px] text-texto-suave">{l.categoria}</span>
+              <span className="block text-[11px] text-texto-suave">
+                {l.categoria}
+                <CompraDelInsumo linea={l} estadoRq={rq.estado} />
+              </span>
             </li>
           ))}
         </ul>
       </TD>
       <TD className="align-top">
         {estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : rq.estado}
+        <AvanceDelRequerimiento rq={rq} />
         {rq.nota_almacen && <p className="mt-1 max-w-xs text-[11px] text-texto-suave">Almacén: {rq.nota_almacen}</p>}
         {rq.listo_en_almacen_en && !rq.entregado_en && <p className="text-[11px] text-texto-suave">Desde {fechaHora(rq.listo_en_almacen_en)}</p>}
         {rq.entregado_en && <p className="text-[11px] text-texto-suave">Entregado {fechaHora(rq.entregado_en)}{rq.nota_entrega ? ` a ${rq.nota_entrega}` : ''}</p>}

@@ -2456,6 +2456,8 @@ export type Database = {
           dejado_por: string | null
           con_factura: boolean
           codigo_interno: string | null
+          en_recojo_en: string | null
+          en_recojo_por: string | null
         }
         Insert: {
           id?: string
@@ -2494,6 +2496,8 @@ export type Database = {
           dejado_por?: string | null
           con_factura?: boolean
           codigo_interno?: string | null
+          en_recojo_en?: string | null
+          en_recojo_por?: string | null
         }
         Update: {
           id?: string
@@ -2532,6 +2536,8 @@ export type Database = {
           dejado_por?: string | null
           con_factura?: boolean
           codigo_interno?: string | null
+          en_recojo_en?: string | null
+          en_recojo_por?: string | null
         }
         Relationships: [
           {
@@ -2551,6 +2557,13 @@ export type Database = {
           {
             foreignKeyName: "ordenes_compra_materiales_dejado_por_fkey"
             columns: ["dejado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_compra_materiales_en_recojo_por_fkey"
+            columns: ["en_recojo_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -7467,6 +7480,17 @@ export type Database = {
         }
         Returns: number
       }
+      avance_de_requerimientos: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          requerimiento_id: string | null
+          porcentaje: number | null
+          etapa: string | null
+          lineas: Json | null
+        }[]
+      }
       avanzar_orden_servicio: {
         Args: {
           p_id: string | null
@@ -8184,6 +8208,12 @@ export type Database = {
         Returns: string
       }
       marcar_compra_dejada_almacen: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: string
+      }
+      marcar_compra_en_recojo: {
         Args: {
           p_compra: string | null
         }
@@ -8944,6 +8974,13 @@ export type Database = {
           p_material: string | null
         }
         Returns: number
+      }
+      salidas_a_recojo: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          en_recojo_en: string | null
+        }[]
       }
       sembrar_feriados: {
         Args: {

@@ -12,6 +12,7 @@ import { ESTADO_REQUERIMIENTO } from '@/lib/dominio/requerimientos'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
+import { AvanceDelRequerimiento, CompraDelInsumo } from '../avance'
 import { PasoRequerimiento } from './controles'
 
 export const metadata = { title: 'Atención de requerimiento' }
@@ -156,15 +157,7 @@ function Fila({
               <span className="text-texto">{l.descripcion}</span>
               <span className="block text-[11px] text-texto-suave">
                 {l.categoria}
-                {l.orden_compra && (
-                  <>
-                    {' · '}
-                    <span className={`tabular ${l.compra_rechazada ? 'text-peligro' : 'text-texto'}`}>
-                      {l.orden_compra}
-                      {l.compra_rechazada ? ' rechazada' : ''}
-                    </span>
-                  </>
-                )}
+                <CompraDelInsumo linea={l} estadoRq={rq.estado} />
               </span>
             </li>
           ))}
@@ -172,6 +165,7 @@ function Fila({
       </TD>
       <TD className="align-top">
         {estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : rq.estado}
+        <AvanceDelRequerimiento rq={rq} />
         <ul className="mt-1 space-y-0.5 text-[11px] text-texto-suave">
           {pasos.map((p) => (
             <li key={p}>{p}</li>

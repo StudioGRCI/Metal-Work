@@ -1,6 +1,6 @@
 'use client'
 
-import { PackageCheck, Truck } from 'lucide-react'
+import { Package, PackageCheck, Truck } from 'lucide-react'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
@@ -10,10 +10,11 @@ import { useAccion } from '@/lib/envio'
 import { marcarRecojo } from './acciones'
 
 /**
- * El botón grande del conductor. «La dejé en almacén» pide confirmar: después
- * de eso Almacén recibe el ingreso y el paso no se deshace.
+ * El botón grande del conductor, uno por paso: «Salgo a recoger», «Ya la
+ * recogí» y «La dejé en almacén». El último pide confirmar: después de eso
+ * Almacén recibe el ingreso y el paso no se deshace.
  */
-export function PasoRecojo({ id, numero, paso }: { id: string; numero: string; paso: 'RECOGIDO' | 'DEJADO' }) {
+export function PasoRecojo({ id, numero, paso }: { id: string; numero: string; paso: 'EN_RECOJO' | 'RECOGIDO' | 'DEJADO' }) {
   const [confirmando, setConfirmando] = useState(false)
   const accion = useAccion(marcarRecojo, () => setConfirmando(false))
 
@@ -26,9 +27,14 @@ export function PasoRecojo({ id, numero, paso }: { id: string; numero: string; p
 
   return (
     <div className="space-y-2">
-      {paso === 'RECOGIDO' ? (
+      {paso === 'EN_RECOJO' ? (
         <Boton type="button" tamano="lg" className="w-full sm:w-auto" cargando={accion.enviando} onClick={marcar}>
           <Truck aria-hidden className="size-4" />
+          Salgo a recoger
+        </Boton>
+      ) : paso === 'RECOGIDO' ? (
+        <Boton type="button" tamano="lg" className="w-full sm:w-auto" cargando={accion.enviando} onClick={marcar}>
+          <Package aria-hidden className="size-4" />
           Ya la recogí
         </Boton>
       ) : (
