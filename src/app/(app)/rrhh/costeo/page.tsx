@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { horasEsperandoCosto } from '@/lib/datos/reportes-diarios'
 import { codigosInternos, listarTrabajadores, tareosDelMes, type Tareo } from '@/lib/datos/rrhh'
 import { HORAS_DEL_MES, fechaValida, horasCortas, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, fechaLarga, hoyLima, mesLargo, moneda, porcentaje } from '@/lib/format'
@@ -43,7 +44,12 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
   const mesActual = mesDeLima(hoy)
   const mes = mesValido(params.mes) ? params.mes : mesActual
 
-  const [tareos, personal, codigos] = await Promise.all([tareosDelMes(mes), listarTrabajadores('activos'), codigosInternos()])
+  const [tareos, personal, codigos, esperando] = await Promise.all([
+    tareosDelMes(mes),
+    listarTrabajadores('activos'),
+    codigosInternos(),
+    horasEsperandoCosto(),
+  ])
   const grupos = agrupar(tareos)
   // El detalle va por día, como llega el parte: por defecto, el último día con horas cargadas.
   const dias = [...new Set(tareos.map((t) => t.fecha))].sort()
@@ -58,7 +64,7 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
     <>
       <EncabezadoPagina
         titulo="Costeo por código interno"
-        descripcion={`Las horas que cada persona trabajó en cada unidad y lo que cuestan. Recursos Humanos las carga con el parte de los supervisores; la hora vale el costo mensual de la persona entre ${HORAS_DEL_MES}.`}
+        descripcion={`Las horas que cada persona trabajó en cada unidad y lo que cuestan. Las del reporte diario de los supervisores entran solas; las demás las carga Recursos Humanos. La hora vale el costo mensual de la persona entre ${HORAS_DEL_MES}.`}
         migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Costeo por código interno' }]}
         acciones={
           <CargarHoras
@@ -101,6 +107,31 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
       </div>
 
       <div className="space-y-5">
+        {esperando.length > 0 && (
+          <Tarjeta className="border-aviso">
+            <TarjetaCabecera
+              titulo="Horas de los reportes que esperan su costo"
+              descripcion="Estas personas tienen horas en reportes diarios pero todavía no tienen costo mensual. Pónselo en Personal y sus horas entran solas al costeo."
+            />
+            <TarjetaCuerpo>
+              <ul className="space-y-1 text-sm">
+                {esperando.map((e) => (
+                  <li key={e.trabajador_id} className="flex flex-wrap justify-between gap-2">
+                    <span className="text-texto">{e.nombre}</span>
+                    <span className="text-xs text-texto-suave">
+                      <span className="tabular">{horasCortas(e.horas)}</span> en {e.lineas} {e.lineas === 1 ? 'carga' : 'cargas'} desde el{' '}
+                      {fecha(e.desde)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <Link href="/rrhh/personal" className="mt-2 inline-block text-sm font-medium text-acento hover:underline">
+                Ir a Personal
+              </Link>
+            </TarjetaCuerpo>
+          </Tarjeta>
+        )}
+
         <Tarjeta>
           <TarjetaCabecera
             titulo="Mano de obra por código interno"
@@ -210,6 +241,11 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
                         <p className={`font-medium text-texto ${anulado ? 'line-through' : ''}`}>{nombre}</p>
                         <p className="font-mono text-xs text-texto-suave md:hidden">{t.codigo_interno}</p>
                         {t.labor && <p className="text-xs text-texto-suave">{t.labor}</p>}
+                        {t.reporte && (
+                          <Link href={`/reportes-diarios/${t.reporte.id}`} className="text-xs text-acento hover:underline">
+                            Del reporte diario{t.reporte.area ? ` de ${t.reporte.area}` : ''}: {t.reporte.asunto}
+                          </Link>
+                        )}
                         {anulado && <p className="text-xs text-texto-suave">Anulado: {t.motivo_anulacion}</p>}
                       </TD>
                       <TD className="hidden align-top font-mono text-xs md:table-cell">{t.codigo_interno}</TD>

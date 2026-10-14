@@ -280,7 +280,10 @@ async function esquema() {
 async function formaDeFuncion(nombre) {
   if (funcionesCache.has(nombre)) return funcionesCache.get(nombre)
   const { rows } = await grupo.query(
-    `select p.proretset, t.typtype, t.typname
+    `select p.proretset, t.typtype, t.typname,
+            coalesce((select array_agg(a.nombre)
+                        from unnest(p.proargnames, p.proargtypes::oid[]) as a(nombre, tipo)
+                       where a.tipo in ('json'::regtype, 'jsonb'::regtype)), '{}') as json
        from pg_proc p join pg_type t on t.oid = p.prorettype
       where p.pronamespace = 'public'::regnamespace and p.proname = $1
       limit 1`,
@@ -317,9 +320,9 @@ async function manejarDatos(req, res, url) {
   if (partes[0] === 'rpc') {
     const nombre = partes[1]
     const argumentos = req.method === 'POST' ? JSON.parse((await leerCuerpo(req)).toString() || '{}') : {}
-    const consulta = construirLlamada(nombre, argumentos)
     const forma = await formaDeFuncion(nombre)
     if (!forma) return responder(res, 404, { message: `No existe la función «${nombre}»` })
+    const consulta = construirLlamada(nombre, argumentos, new Set(forma.json))
 
     // `.single()` pide un objeto aunque la función devuelva filas, y PostgREST lo
     // entrega: sin esto el banco mandaba la lista, el tablero leía `data.abiertas`

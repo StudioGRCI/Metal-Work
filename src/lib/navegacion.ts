@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
   ListOrdered,
   MessageSquareWarning,
+  NotebookPen,
   Package,
   Receipt,
   Settings,
@@ -253,6 +254,21 @@ export const NAVEGACION = [
       { titulo: 'Materia prima', ruta: '/almacen/kardex?almacen=MATERIA_PRIMA', icono: Layers, permiso: 'almacen.ver', descripcion: 'Planchas, perfiles y tubos: salen con el formato de recepción firmado', disponible: true },
     ],
   },
+  // El taller reporta: mientras la OT no está del todo en el sistema, cada
+  // supervisor sube su día por código interno y sus horas van al costeo.
+  {
+    titulo: 'Supervisión',
+    items: [
+      {
+        titulo: 'Reporte diario',
+        ruta: '/reportes-diarios',
+        icono: NotebookPen,
+        permiso: ['reporte_diario.registrar', 'reporte_diario.ver'],
+        descripcion: 'Trabajos del día con su avance, el personal con sus horas y fotos',
+        disponible: true,
+      },
+    ],
+  },
   {
     titulo: 'Finanzas',
     items: [
@@ -416,7 +432,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   GERENTE: {
     grupos: [
       { titulo: 'Gerencia', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/ordenes'] },
-      { titulo: 'Consultas', rutas: ['/proveedores', '/rrhh/tardanzas', '/rrhh/observaciones'] },
+      { titulo: 'Consultas', rutas: ['/reportes-diarios', '/proveedores', '/rrhh/tardanzas', '/rrhh/observaciones'] },
     ],
     telefono: ['/cotizaciones/pdf', '/compras/aprobacion', '/ordenes', '/'],
   },
@@ -468,9 +484,13 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     ],
     telefono: ['/cotizaciones/pdf', '/ordenes', '/costos/gastos-generales', '/diseno/evaluaciones'],
   },
+  // Los reportes diarios de los supervisores alimentan el costeo: van antes de él.
   RECURSOS_HUMANOS: {
     grupos: [
-      { titulo: 'Recursos Humanos', rutas: ['/rrhh/personal', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh/costeo', '/rrhh/observaciones', '/rrhh'] },
+      {
+        titulo: 'Recursos Humanos',
+        rutas: ['/rrhh/personal', '/rrhh/asistencia', '/rrhh/tardanzas', '/reportes-diarios', '/rrhh/costeo', '/rrhh/observaciones', '/rrhh'],
+      },
       { titulo: 'Consultas', rutas: ['/ordenes'] },
     ],
     telefono: ['/rrhh/personal', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh'],
@@ -479,11 +499,13 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [{ titulo: 'Portería', rutas: ['/rrhh/asistencia'] }],
     telefono: ['/rrhh/asistencia', '/'],
   },
-  // Reporta el avance de las OT de su área y recoge de Almacén lo que su área
-  // pidió: el RQ «Listo en almacén», al que también lo lleva el aviso.
+  // Sube su reporte diario (mientras la OT no está del todo en el sistema, es
+  // su trabajo de cada día), reporta el avance de las OT de su área y recoge de
+  // Almacén lo que su área pidió: el RQ «Listo en almacén», al que también lo
+  // lleva el aviso.
   SUPERVISOR: {
-    grupos: [{ titulo: 'Supervisión', rutas: ['/ordenes', '/requerimientos'] }],
-    telefono: ['/ordenes', '/requerimientos', '/'],
+    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/ordenes', '/requerimientos'] }],
+    telefono: ['/reportes-diarios', '/ordenes', '/requerimientos', '/'],
   },
   // Mira todas las áreas sin trabajar en ninguna: cada una con su nombre.
   SUPERVISOR_GENERAL: {
@@ -601,6 +623,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/rrhh/tardanzas', corto: 'Tardanzas' },
   { ruta: '/rrhh/costeo', corto: 'Costeo' },
   { ruta: '/rrhh/observaciones', corto: 'Observaciones' },
+  { ruta: '/reportes-diarios', corto: 'Reporte' },
   { ruta: '/tesoreria/tipo-de-cambio', corto: 'Cambio' },
   { ruta: '/proveedores', corto: 'Proveedores' },
 ]
