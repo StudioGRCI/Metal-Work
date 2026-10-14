@@ -132,6 +132,9 @@ function Caja({ titulo, children, flex }: { titulo: string; children: ReactNode;
 
 const nombreMoneda = (divisa: 'PEN' | 'USD') => (divisa === 'USD' ? 'DÓLARES' : 'SOLES')
 
+/** Cierra la frase con un punto, sin duplicarlo cuando ya termina en uno («S.A.C.»). */
+const conPunto = (frase: string) => (frase.trimEnd().endsWith('.') ? frase.trimEnd() : `${frase.trimEnd()}.`)
+
 /**
  * La orden de compra que se le manda al proveedor, con la forma de la OC-5572
  * que usa la empresa: datos del proveedor con su cuenta, condiciones de pago, a
@@ -277,7 +280,7 @@ export function DocumentoCompraMateriales({ compra: c, lineas, logo }: { compra:
           <Caja titulo="Condiciones de envío" flex={2}>
             <Text style={s.texto}>
               {c.recojo
-                ? `Lo recoge el conductor de ${EMPRESA.razonSocial}${c.proveedor.direccionRecojo ?? c.proveedor.direccion ? ` en ${c.proveedor.direccionRecojo ?? c.proveedor.direccion}` : ''}.`
+                ? conPunto(`Lo recoge el conductor de ${EMPRESA.razonSocial}${c.proveedor.direccionRecojo ?? c.proveedor.direccion ? ` en ${c.proveedor.direccionRecojo ?? c.proveedor.direccion}` : ''}`)
                 : 'Logística coordina la entrega con el proveedor.'}
             </Text>
           </Caja>
