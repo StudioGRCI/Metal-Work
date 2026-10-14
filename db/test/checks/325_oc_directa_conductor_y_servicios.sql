@@ -331,7 +331,7 @@ select pg_temp.como('supervisor');
 set local role authenticated;
 select test.debe_fallar(
   $q$select public.emitir_orden_servicio(gen_random_uuid(), current_setting('prueba.proveedor')::uuid, null, null,
-     'Arenado del chasis completo', null, null, null, 'PEN', 800, 'CONTADO', 0)$q$,
+     'PLANTA', 'Arenado del chasis completo', null, null, null, 'PEN', 800, 'CONTADO', 0, '025', null)$q$,
   'un supervisor no emite órdenes de servicio');
 select test.afirmar((select count(*) from public.ordenes_servicio) = 0, 'un supervisor no ve las órdenes de servicio');
 reset role;
@@ -343,11 +343,12 @@ set local role authenticated;
 select set_config('prueba.ot_vigente', coalesce((select o.id::text from public.ots_para_logistica() o limit 1), ''), true);
 select test.debe_fallar(
   $q$select public.emitir_orden_servicio(gen_random_uuid(), current_setting('prueba.proveedor')::uuid,
-     current_setting('prueba.ot')::uuid, null, 'Arenado del chasis completo', null, null, null, 'PEN', 800, 'CONTADO', 0)$q$,
+     current_setting('prueba.ot')::uuid, null, 'PLANTA', 'Arenado del chasis completo', null, null, null, 'PEN', 800,
+     'CONTADO', 0, '025', null)$q$,
   'a una OT en borrador no se le piden servicios', 'no está vigente');
 select public.emitir_orden_servicio(current_setting('prueba.os1')::uuid, current_setting('prueba.proveedor')::uuid,
-  nullif(current_setting('prueba.ot_vigente'), '')::uuid, (select id from public.areas where codigo = 'ACB'),
-  'Arenado y fondo del chasis completo', 'PROF-12', current_date, current_date + 5, 'PEN', 800, 'CREDITO', 15);
+  nullif(current_setting('prueba.ot_vigente'), '')::uuid, (select id from public.areas where codigo = 'ACB'), 'PLANTA',
+  'Arenado y fondo del chasis completo', 'PROF-12', current_date, current_date + 5, 'PEN', 800, 'CREDITO', 15, '025', null);
 select test.afirmar(
   (select count(*) from public.ordenes_servicio_listado() s where s.id = current_setting('prueba.os1')::uuid
       and s.numero ~ '^(OS-[0-9]{3,}-MW|PRUEBA-[0-9]+)$' and s.estado = 'EMITIDA' and s.aprobacion = 'POR_APROBAR'

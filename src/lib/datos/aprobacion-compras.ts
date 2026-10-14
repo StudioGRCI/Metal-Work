@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila } from '@/lib/datos/logistica'
+import type { DetraccionDeServicio } from '@/lib/dominio/detraccion'
 import { createClient } from '@/lib/supabase/server'
 
 export type LineaParaAprobar = {
@@ -40,6 +42,9 @@ export type CompraParaAprobar = {
   ordenes: string[]
   unidades: string[]
   lineas: LineaParaAprobar[]
+  /** En la orden de servicio: el código de la unidad y su detracción. */
+  codigo_interno: string | null
+  detraccion: DetraccionDeServicio | null
 }
 
 export type ReglaAprobacion = {
@@ -76,6 +81,15 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
   if (compras.error) throw new Error(`No se pudieron leer las compras por aprobar: ${compras.error.message}`)
   if (roles.error) throw new Error(`No se pudieron leer los puestos: ${roles.error.message}`)
 
+  // `documentos_por_aprobar` no trae el código ni la detracción de la OS: se
+  // leen de la tabla, que Gerencia puede ver.
+  const servicios = (compras.data ?? []).filter((c) => c.tipo === 'OS' && c.id).map((c) => c.id as string)
+  const [extra, tipos] = servicios.length
+    ? await Promise.all([supabase.from('ordenes_servicio').select(COLUMNAS_DETRACCION).in('id', servicios), cargarTiposDetraccion()])
+    : [{ data: [], error: null }, []]
+  if (extra.error) throw new Error(`No se pudo leer la detracción de las órdenes de servicio: ${extra.error.message}`)
+  const porId = new Map((extra.data ?? []).map((f) => [f.id, f]))
+
   return {
     regla: regla.data
       ? ({
@@ -111,6 +125,8 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
         ordenes: c.ordenes ?? [],
         unidades: c.unidades ?? [],
         lineas: (c.lineas as LineaParaAprobar[] | null) ?? [],
+        codigo_interno: c.tipo === 'OS' ? (porId.get(c.id ?? '')?.codigo_interno ?? null) : null,
+        detraccion: c.tipo === 'OS' ? detraccionDeFila(porId.get(c.id ?? ''), tipos) : null,
       }),
     ),
     // Operario y Solo consulta quedan fuera: la base tampoco los acepta. ADMIN

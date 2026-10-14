@@ -18,6 +18,8 @@ export type ResumenCodigo = {
   vehiculos: number
   unidades: number
   ordenes: number
+  /** Órdenes de servicio vigentes con el código. */
+  servicios: number
   ultima_actividad: string | null
   ultimo_reporte: string | null
   trabajos: number
@@ -39,8 +41,18 @@ const n = (v: number | null | undefined) => Number(v ?? 0)
 /** Todos los códigos del sistema, del que tuvo movimiento más reciente al más viejo. */
 export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('codigos_internos_resumen')
+  // El resumen de la base no cuenta las órdenes de servicio (cambiarle las
+  // columnas exige borrarlo); salen de sus documentos.
+  const [{ data, error }, documentos] = await Promise.all([
+    supabase.rpc('codigos_internos_resumen'),
+    supabase.rpc('codigo_interno_documentos', { p_codigo: null }),
+  ])
   if (error) throw new Error(`No se pudieron leer los códigos internos: ${error.message}`)
+  if (documentos.error) throw new Error(`No se pudieron leer los documentos de los códigos: ${documentos.error.message}`)
+  const servicios = new Map<string, number>()
+  for (const d of documentos.data ?? []) {
+    if (d.tipo === 'SERVICIO' && d.estado !== 'ANULADA' && d.codigo) servicios.set(d.codigo, (servicios.get(d.codigo) ?? 0) + 1)
+  }
   return (data ?? []).flatMap((f) =>
     f.codigo
       ? [
@@ -53,6 +65,7 @@ export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
             vehiculos: n(f.vehiculos),
             unidades: n(f.unidades),
             ordenes: n(f.ordenes),
+            servicios: servicios.get(f.codigo) ?? 0,
             ultima_actividad: f.ultima_actividad,
             ultimo_reporte: f.ultimo_reporte,
             trabajos: n(f.trabajos),

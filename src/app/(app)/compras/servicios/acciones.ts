@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { CODIGO_INTERNO_LARGO, FALTA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
+import { NO_SUJETA } from '@/lib/dominio/detraccion'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -17,10 +19,23 @@ function refrescar() {
   revalidatePath('/compras/aprobacion')
 }
 
+/** El tipo de SUNAT (tres cifras) o «no sujeta», con su motivo. */
+const detraccion = z.union([z.literal(NO_SUJETA), z.string().regex(/^[0-9]{3}$/)], {
+  message: 'Indica si el servicio lleva detracción: elige su tipo según SUNAT, o «No está sujeta».',
+})
+
+function motivoDeNoSujeta(tipo: string, motivo: string) {
+  if (tipo === NO_SUJETA && (motivo.length < 5 || motivo.length > 200)) {
+    return 'Escribe por qué no está sujeta a detracción (de 5 a 200 caracteres), por ejemplo: el proveedor no cobra IGV.'
+  }
+  return null
+}
+
 /**
  * La orden de servicio: un trabajo que hace un tercero (un torno, una pintura,
- * un doblez). Exige `compras.crear`, el mismo permiso que `emitir_orden_servicio`.
- * Siempre espera la aprobación de Gerencia.
+ * un doblez), con el código interno de la unidad y su detracción. Exige
+ * `compras.crear`, el mismo permiso que `emitir_orden_servicio`. Siempre espera
+ * la aprobación de Gerencia.
  */
 export async function emitirOrdenServicio(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -32,6 +47,7 @@ export async function emitirOrdenServicio(_previo: unknown, formulario: FormData
       proveedor_id: z.guid('Elige el proveedor del padrón. Si es nuevo, regístralo con «Nuevo».'),
       orden_id: z.guid().optional(),
       area_id: z.guid().optional(),
+      codigo_interno: z.string().trim().min(2, FALTA_CODIGO_INTERNO).max(60, CODIGO_INTERNO_LARGO),
       descripcion: z
         .string()
         .trim()
@@ -48,12 +64,15 @@ export async function emitirOrdenServicio(_previo: unknown, formulario: FormData
         .multipleOf(0.01, 'El monto lleva como máximo dos decimales.'),
       condicion: z.enum(['CONTADO', 'CREDITO']),
       dias: z.coerce.number().int().min(0).max(365),
+      detraccion,
+      motivo_detraccion: z.string().trim(),
     })
     .safeParse({
       operacion_id: dato(formulario, 'operacion_id'),
       proveedor_id: dato(formulario, 'proveedor_id'),
       orden_id: dato(formulario, 'orden_id') || undefined,
       area_id: dato(formulario, 'area_id') || undefined,
+      codigo_interno: dato(formulario, 'codigo_interno'),
       descripcion: dato(formulario, 'descripcion'),
       referencia: dato(formulario, 'referencia'),
       fecha_inicio: dato(formulario, 'fecha_inicio') || undefined,
@@ -62,9 +81,13 @@ export async function emitirOrdenServicio(_previo: unknown, formulario: FormData
       monto: dato(formulario, 'monto'),
       condicion: dato(formulario, 'condicion'),
       dias: dato(formulario, 'dias'),
+      detraccion: dato(formulario, 'detraccion'),
+      motivo_detraccion: dato(formulario, 'motivo_detraccion'),
     })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa la orden de servicio.' }
   const d = analisis.data
+  const faltaMotivo = motivoDeNoSujeta(d.detraccion, d.motivo_detraccion)
+  if (faltaMotivo) return { ok: false, error: faltaMotivo }
   if (d.referencia && d.referencia.length < 2) {
     return { ok: false, error: 'La referencia del proveedor va de 2 a 100 caracteres, o déjala vacía.' }
   }
@@ -81,6 +104,7 @@ export async function emitirOrdenServicio(_previo: unknown, formulario: FormData
     p_proveedor_id: d.proveedor_id,
     p_orden_id: d.orden_id ?? null,
     p_area_id: d.area_id ?? null,
+    p_codigo_interno: d.codigo_interno,
     p_descripcion: d.descripcion,
     p_referencia: d.referencia || null,
     p_fecha_inicio: d.fecha_inicio ?? null,
@@ -89,6 +113,8 @@ export async function emitirOrdenServicio(_previo: unknown, formulario: FormData
     p_monto: d.monto,
     p_condicion: d.condicion,
     p_dias: d.dias,
+    p_detraccion: d.detraccion,
+    p_motivo_detraccion: d.detraccion === NO_SUJETA ? d.motivo_detraccion : null,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.operacion_id) return { ok: false, error: 'La orden de servicio no quedó registrada. Recarga la pantalla.' }
@@ -132,4 +158,49 @@ export async function avanzarOrdenServicio(_previo: unknown, formulario: FormDat
 
   refrescar()
   return { ok: true, mensaje: PASOS[analisis.data.paso] }
+}
+
+/**
+ * Corrige el código interno o la detracción de una OS. El código lo cambia
+ * Logística (`compras.crear`) hasta la conformidad; la detracción, Logística o
+ * Contabilidad (`compras.detraccion`) hasta que se anula. Mismos permisos que
+ * `corregir_orden_servicio`, que decide cuál toca.
+ */
+export async function corregirOrdenServicio(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ['compras.crear', 'compras.detraccion'])) {
+    return { ok: false, error: 'Corregir una orden de servicio corresponde a Logística, y su detracción también a Contabilidad.' }
+  }
+
+  const analisis = z
+    .object({
+      id: z.guid(),
+      codigo_interno: z.string().trim().max(60, CODIGO_INTERNO_LARGO),
+      detraccion,
+      motivo_detraccion: z.string().trim(),
+    })
+    .safeParse({
+      id: formulario.get('id'),
+      codigo_interno: dato(formulario, 'codigo_interno'),
+      detraccion: dato(formulario, 'detraccion'),
+      motivo_detraccion: dato(formulario, 'motivo_detraccion'),
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+  const d = analisis.data
+  if (d.codigo_interno && d.codigo_interno.length < 2) return { ok: false, error: FALTA_CODIGO_INTERNO }
+  const faltaMotivo = motivoDeNoSujeta(d.detraccion, d.motivo_detraccion)
+  if (faltaMotivo) return { ok: false, error: faltaMotivo }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('corregir_orden_servicio', {
+    p_id: d.id,
+    p_codigo_interno: d.codigo_interno || null,
+    p_detraccion: d.detraccion,
+    p_motivo_detraccion: d.detraccion === NO_SUJETA ? d.motivo_detraccion : null,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+
+  refrescar()
+  revalidatePath('/codigos-internos/detalle')
+  return { ok: true, mensaje: 'Orden de servicio corregida.' }
 }

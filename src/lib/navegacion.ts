@@ -183,7 +183,7 @@ export const NAVEGACION = [
         ruta: '/compras/servicios',
         icono: Wrench,
         permiso: 'compras.crear',
-        descripcion: 'Trabajos de terceros con su número OS, aprobación y conformidad',
+        descripcion: 'Trabajos de terceros con su número OS, código interno, detracción, aprobación y conformidad',
         disponible: true,
       },
       // Quien aprueba es un puesto que Gerencia elige, no un permiso: si elige
@@ -303,6 +303,15 @@ export const NAVEGACION = [
         icono: Route,
         permiso: 'compras.guia_remision',
         descripcion: 'Las OC que recoge el conductor, con su peso: cargar su guía de remisión',
+        disponible: true,
+      },
+      // Contabilidad responde por la detracción de cada orden de servicio.
+      {
+        titulo: 'Órdenes de servicio',
+        ruta: '/compras/servicios',
+        icono: Wrench,
+        permiso: 'compras.detraccion',
+        descripcion: 'Si cada orden de servicio lleva detracción y de qué tipo según SUNAT',
         disponible: true,
       },
       { titulo: 'Adquisiciones', ruta: '/adquisiciones', icono: Receipt, permiso: 'adquisiciones.ver', descripcion: 'Facturas, recibos y documentos de compras', disponible: true },
@@ -486,10 +495,14 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     telefono: ['/planilla-diaria', '/tesoreria', '/tesoreria/cuentas', '/adquisiciones'],
   },
   // La guía de remisión de cada OC que recoge el conductor espera por
-  // Contabilidad: la gestión de compras va primero.
+  // Contabilidad: la gestión de compras va primero, y después la detracción de
+  // las órdenes de servicio.
   CONTABILIDAD: {
     grupos: [
-      { titulo: 'Contabilidad', rutas: ['/compras/gestion', '/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio'] },
+      {
+        titulo: 'Contabilidad',
+        rutas: ['/compras/gestion', '/compras/servicios', '/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio'],
+      },
       { titulo: 'Consultas', rutas: ['/ordenes', '/requerimientos'] },
     ],
     telefono: ['/compras/gestion', '/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio'],

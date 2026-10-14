@@ -1005,6 +1005,45 @@ export type Database = {
           }
         ]
       }
+      detracciones_servicio: {
+        Row: {
+          codigo: string
+          descripcion: string
+          porcentaje: number
+          monto_minimo: number
+          ejemplos: string
+          base_legal: string
+          orden: number
+          activo: boolean
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          codigo: string
+          descripcion: string
+          porcentaje: number
+          monto_minimo: number
+          ejemplos: string
+          base_legal: string
+          orden: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          codigo?: string
+          descripcion?: string
+          porcentaje?: number
+          monto_minimo?: number
+          ejemplos?: string
+          base_legal?: string
+          orden?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: []
+      }
       diseno_entregas_planos: {
         Row: {
           id: string
@@ -2926,6 +2965,14 @@ export type Database = {
           creado_por: string
           creado_en: string
           actualizado_en: string
+          codigo_interno: string | null
+          detraccion_afecta: boolean | null
+          detraccion_codigo: string | null
+          detraccion_porcentaje: number | null
+          detraccion_minimo: number | null
+          detraccion_motivo: string | null
+          total_con_igv_pen: number | null
+          detraccion_monto: number | null
         }
         Insert: {
           id?: string
@@ -2960,6 +3007,12 @@ export type Database = {
           creado_por?: string
           creado_en?: string
           actualizado_en?: string
+          codigo_interno?: string | null
+          detraccion_afecta?: boolean | null
+          detraccion_codigo?: string | null
+          detraccion_porcentaje?: number | null
+          detraccion_minimo?: number | null
+          detraccion_motivo?: string | null
         }
         Update: {
           id?: string
@@ -2994,6 +3047,12 @@ export type Database = {
           creado_por?: string
           creado_en?: string
           actualizado_en?: string
+          codigo_interno?: string | null
+          detraccion_afecta?: boolean | null
+          detraccion_codigo?: string | null
+          detraccion_porcentaje?: number | null
+          detraccion_minimo?: number | null
+          detraccion_motivo?: string | null
         }
         Relationships: [
           {
@@ -3030,6 +3089,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ordenes_servicio_detraccion_codigo_fkey"
+            columns: ["detraccion_codigo"]
+            isOneToOne: false
+            referencedRelation: "detracciones_servicio"
+            referencedColumns: ["codigo"]
           },
           {
             foreignKeyName: "ordenes_servicio_orden_id_fkey"
@@ -8936,6 +9002,15 @@ export type Database = {
         }
         Returns: null
       }
+      corregir_orden_servicio: {
+        Args: {
+          p_id: string | null
+          p_codigo_interno: string | null
+          p_detraccion: string | null
+          p_motivo_detraccion: string | null
+        }
+        Returns: string
+      }
       costeo_ot_en_soles: {
         Args: {
           p_orden: string | null
@@ -9095,6 +9170,19 @@ export type Database = {
           monto: number | null
           referencia: string | null
         }[]
+      }
+      detraccion_elegida: {
+        Args: {
+          p_detraccion: string | null
+          p_motivo: string | null
+        }
+        Returns: {
+          afecta: boolean | null
+          codigo: string | null
+          porcentaje: number | null
+          minimo: number | null
+          motivo: string | null
+        }
       }
       dias_de_taller: {
         Args: {
@@ -9268,6 +9356,7 @@ export type Database = {
           p_proveedor_id: string | null
           p_orden_id: string | null
           p_area_id: string | null
+          p_codigo_interno: string | null
           p_descripcion: string | null
           p_referencia: string | null
           p_fecha_inicio: string | null
@@ -9276,6 +9365,8 @@ export type Database = {
           p_monto: number | null
           p_condicion: string | null
           p_dias: number | null
+          p_detraccion: string | null
+          p_motivo_detraccion: string | null
         }
         Returns: string
       }
