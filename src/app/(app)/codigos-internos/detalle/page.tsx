@@ -131,7 +131,7 @@ function ComoVa({ c }: { c: ResumenCodigo }) {
   const costo = costoDelCodigo(c)
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Indicador
           titulo="Avance"
           valor={c.avance_medio === null ? 'Sin reportes' : <Progreso valor={c.avance_medio} mostrarValor etiqueta="Avance del código" />}
@@ -151,7 +151,7 @@ function ComoVa({ c }: { c: ResumenCodigo }) {
               </>
             )
           }
-          pie="Mano de obra y materiales"
+          pie="Mano de obra, materiales y servicios"
         />
         <Indicador
           titulo="Mano de obra"
@@ -172,6 +172,16 @@ function ComoVa({ c }: { c: ResumenCodigo }) {
           tono={c.materiales_sin_precio > 0 ? 'aviso' : 'neutro'}
           pie={`${c.salidas} ${c.salidas === 1 ? 'salida' : 'salidas'} del almacén${c.materiales_sin_precio > 0 ? ` · ${c.materiales_sin_precio} sin precio` : ''}`}
         />
+        <Indicador
+          titulo="Servicios"
+          valor={
+            <>
+              {moneda(c.servicios_pen)}
+              {c.servicios_usd > 0 && <span className="block text-sm">+ {moneda(c.servicios_usd, 'USD')}</span>}
+            </>
+          }
+          pie={piesDeServicios(c)}
+        />
       </div>
       {(c.compras_pen > 0 || c.compras_usd > 0 || c.compras > 0) && (
         <p className="text-xs text-texto-suave">
@@ -182,6 +192,20 @@ function ComoVa({ c }: { c: ResumenCodigo }) {
       )}
     </div>
   )
+}
+
+/** «2 OS aprobadas · 1 por aprobar (S/ 700.00)»: lo que espera a Gerencia no suma todavía. */
+function piesDeServicios(c: ResumenCodigo) {
+  const aprobadas = c.servicios - c.servicios_por_aprobar
+  if (c.servicios === 0) return 'Ninguna orden de servicio'
+  const partes = [`${aprobadas} ${aprobadas === 1 ? 'OS aprobada' : 'OS aprobadas'}`]
+  if (c.servicios_por_aprobar > 0) {
+    const espera = [c.servicios_por_aprobar_pen > 0 && moneda(c.servicios_por_aprobar_pen), c.servicios_por_aprobar_usd > 0 && moneda(c.servicios_por_aprobar_usd, 'USD')]
+      .filter(Boolean)
+      .join(' + ')
+    partes.push(`${c.servicios_por_aprobar} por aprobar${espera ? ` (${espera})` : ''}`)
+  }
+  return partes.join(' · ')
 }
 
 /** Cada pestaña carga solo lo suyo. */
@@ -321,9 +345,12 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
   const [lineas, compras] = await Promise.all([costeoDelCodigo(codigo), comprasDelCodigo(codigo)])
   const manoObra = lineas.filter((l) => l.fuente === 'MANO_OBRA' || l.fuente === 'MANO_OBRA_SIN_COSTO')
   const materiales = lineas.filter((l) => l.fuente === 'MATERIALES' || l.fuente === 'MATERIALES_SIN_PRECIO')
+  const servicios = lineas.filter((l) => l.fuente === 'SERVICIOS' || l.fuente === 'SERVICIOS_POR_APROBAR')
+  const aprobados = servicios.filter((l) => l.fuente === 'SERVICIOS')
   const suma = (ls: typeof lineas, m: 'PEN' | 'USD') => ls.reduce((n, l) => n + (l.moneda === m ? (l.monto ?? 0) : 0), 0)
   const horasMo = manoObra.reduce((n, l) => n + (l.horas ?? 0), 0)
   const abrePdf = puede(perfil, ['compras.ver', 'almacen.recibir'])
+  const abreServicios = puede(perfil, ['compras.crear', 'compras.ver', 'compras.detraccion'])
 
   return (
     <>
@@ -424,6 +451,70 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                     {faltaElPrecio(suma(materiales, 'PEN') + suma(materiales, 'USD'), materiales.filter((l) => l.fuente === 'MATERIALES_SIN_PRECIO').length) ??
                       moneda(suma(materiales, 'PEN'))}
                     {suma(materiales, 'USD') > 0 && <p>+ {moneda(suma(materiales, 'USD'), 'USD')}</p>}
+                  </TD>
+                </TR>
+              </>
+            )}
+          </tbody>
+        </Tabla>
+      </Tarjeta>
+
+      <Tarjeta className="overflow-hidden" data-servicios>
+        <TarjetaCabecera
+          titulo="Órdenes de servicio"
+          descripcion="Los trabajos de terceros para este código —torno, pintura, flete—, sin IGV. La aprobada por Gerencia suma al costo, porque no pasa por el almacén; la que espera su aprobación se muestra y no se suma todavía. Las rechazadas y las anuladas no aparecen."
+        />
+        <Tabla>
+          <TablaCabecera>
+            <tr>
+              <TH>OS</TH>
+              <TH>Servicio</TH>
+              <TH className="hidden sm:table-cell">Gerencia</TH>
+              <TH className="text-right">Importe</TH>
+            </tr>
+          </TablaCabecera>
+          <tbody>
+            {servicios.length === 0 ? (
+              <SinDatos titulo="Ninguna orden de servicio con este código" descripcion="Logística pone el código interno al emitir la orden de servicio." />
+            ) : (
+              <>
+                {servicios.map((l) => {
+                  const aprobada = l.fuente === 'SERVICIOS'
+                  return (
+                    <TR key={l.referencia_id ?? l.documento} data-servicio={l.documento}>
+                      <TD className="align-top">
+                        {abreServicios ? (
+                          <Link href={`/compras/servicios?codigo=${encodeURIComponent(codigo)}`} className="font-medium text-acento hover:underline">
+                            {l.documento}
+                          </Link>
+                        ) : (
+                          <p className="font-medium text-texto">{l.documento}</p>
+                        )}
+                        <p className="tabular text-xs text-texto-suave">{fecha(l.fecha)}</p>
+                      </TD>
+                      <TD className="align-top">
+                        <p className="text-texto">{l.concepto}</p>
+                        <p className="text-xs text-texto-suave">{l.detalle}</p>
+                        <p className="mt-1 sm:hidden">
+                          <Insignia tono={aprobada ? 'exito' : 'aviso'}>{aprobada ? 'Aprobada' : 'Por aprobar'}</Insignia>
+                        </p>
+                      </TD>
+                      <TD className="hidden align-top sm:table-cell">
+                        <Insignia tono={aprobada ? 'exito' : 'aviso'}>{aprobada ? 'Aprobada' : 'Por aprobar'}</Insignia>
+                      </TD>
+                      <TD className={`tabular text-right align-top whitespace-nowrap ${aprobada ? '' : 'text-texto-suave'}`}>
+                        {moneda(l.monto, l.moneda ?? 'PEN')}
+                        {!aprobada && <p className="text-[11px]">no suma</p>}
+                      </TD>
+                    </TR>
+                  )
+                })}
+                <TR className="font-semibold">
+                  <TD colSpan={2}>Total aprobado</TD>
+                  <TD className="hidden sm:table-cell" />
+                  <TD className="tabular text-right whitespace-nowrap">
+                    {moneda(suma(aprobados, 'PEN'))}
+                    {suma(aprobados, 'USD') > 0 && <p>+ {moneda(suma(aprobados, 'USD'), 'USD')}</p>}
                   </TD>
                 </TR>
               </>

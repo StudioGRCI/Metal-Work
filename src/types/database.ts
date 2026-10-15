@@ -9045,6 +9045,27 @@ export type Database = {
           referencia_id: string | null
         }[]
       }
+      codigo_interno_lineas_servicio: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          horas: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+        }[]
+      }
       codigo_interno_personal: {
         Args: {
           p_codigo: string | null
@@ -9101,6 +9122,18 @@ export type Database = {
           compras_pen: number | null
           compras_usd: number | null
           compras_sin_precio: number | null
+        }[]
+      }
+      codigos_internos_servicios: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          codigo: string | null
+          servicios: number | null
+          servicios_pen: number | null
+          servicios_usd: number | null
+          por_aprobar: number | null
+          por_aprobar_pen: number | null
+          por_aprobar_usd: number | null
         }[]
       }
       completar_cuenta_acceso: {
