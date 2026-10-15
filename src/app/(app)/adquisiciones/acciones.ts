@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
+import { cambiosDelFormulario, datosDeCorreccion } from '@/lib/correccion-accion'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -21,6 +22,41 @@ const esquema = z.object({
   observacion: z.string().trim().max(1000),
 })
 const esquemaOrdenes = z.array(z.guid()).max(40, 'Una factura cubre hasta 40 OC.')
+
+/**
+ * Lo que el detector leyó de la factura en el navegador (`src/lib/leer-factura.ts`).
+ * Es evidencia para el aviso, no un dato de la factura: si llega mal formado se
+ * descarta y el comprobante se registra igual, sin lectura.
+ */
+const esquemaLectura = z.object({
+  lectura_fuente: z.enum(['XML', 'PDF', 'OCR']),
+  lectura_total: z.union([z.literal(''), z.coerce.number().positive().max(9999999999).multipleOf(0.01)]),
+  lectura_moneda: z.union([z.literal(''), z.enum(['PEN', 'USD'])]),
+  lectura_numero: z.union([z.literal(''), z.string().regex(/^[A-Z][A-Z0-9]{3}-\d{1,8}$/)]),
+  lectura_ordenes: z.string().regex(/^(?:[1-9]\d{0,6}(?:,[1-9]\d{0,6}){0,39})?$/),
+})
+
+function lecturaDelFormulario(formulario: FormData) {
+  const campo = (n: string) => {
+    const v = formulario.get(n)
+    return typeof v === 'string' ? v.trim() : ''
+  }
+  const r = esquemaLectura.safeParse({
+    lectura_fuente: campo('lectura_fuente'),
+    lectura_total: campo('lectura_total'),
+    lectura_moneda: campo('lectura_moneda'),
+    lectura_numero: campo('lectura_numero'),
+    lectura_ordenes: campo('lectura_ordenes'),
+  })
+  if (!r.success) return { lectura_fuente: null, lectura_total: null, lectura_moneda: null, lectura_numero: null, lectura_ordenes: null }
+  return {
+    lectura_fuente: r.data.lectura_fuente,
+    lectura_total: r.data.lectura_total === '' ? null : r.data.lectura_total,
+    lectura_moneda: r.data.lectura_moneda || null,
+    lectura_numero: r.data.lectura_numero || null,
+    lectura_ordenes: r.data.lectura_ordenes ? [...new Set(r.data.lectura_ordenes.split(','))] : [],
+  }
+}
 
 const condicionEnTexto = (c: string) => (c === 'CREDITO' ? 'crédito' : 'contado')
 
@@ -93,6 +129,7 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
     moneda: v.moneda, total: v.total, condicion_pago: v.condicion_pago,
     orden_id: v.orden_id || null, orden_compra_id: principal, documento_compra_id: v.documento_compra_id || null,
     observacion: v.observacion,
+    ...lecturaDelFormulario(formulario),
   }).select('id').maybeSingle()
   if (errorAlta) return { ok: false, error: mensajeDeError(errorAlta) }
   if (!borrador) return { ok: false, error: NO_TOCO_NADA }
@@ -147,11 +184,97 @@ export async function completarAdquisicion(_previo: unknown, formulario: FormDat
       return { ok: false, error: `No se pudo subir el PDF: ${errorArchivo.message}` }
     }
   }
-  const { data, error } = await db.from('adquisiciones').update({ ruta_storage: ruta, estado: 'REGISTRADA' })
+  // Lo que el detector leyó del PDF pendiente; si no leyó nada, queda lo que había.
+  const lectura = lecturaDelFormulario(formulario)
+  const { data, error } = await db.from('adquisiciones')
+    .update({ ruta_storage: ruta, estado: 'REGISTRADA', ...(lectura.lectura_fuente ? lectura : {}) })
     .eq('id', id.data).select('id').maybeSingle()
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
   return { ok: true, mensaje: 'Comprobante completado y registrado.' }
+}
+
+/**
+ * El enlace de la factura que subió Logística, para que el detector la lea en
+ * el navegador de Contabilidad. Lo firma la sesión de quien registra: si el
+ * almacenamiento no se la deja ver, no hay enlace y el detector calla.
+ */
+export async function enlaceDeFacturaDeLogistica(documentoId: string): Promise<string | null> {
+  await exigirPermiso('adquisiciones.registrar')
+  const id = z.guid().safeParse(documentoId)
+  if (!id.success) return null
+  const db = await createClient()
+  const { data } = await db.from('documentos_compra_material').select('ruta_storage, tipo').eq('id', id.data).maybeSingle()
+  if (!data?.ruta_storage || data.tipo !== 'FACTURA') return null
+  const { data: firmado } = await db.storage.from('documentos-compras').createSignedUrl(data.ruta_storage, 120)
+  return firmado?.signedUrl ?? null
+}
+
+/** Lo leído del PDF corregido; si llega mal formado se descarta, como al registrar. */
+const LECTURA_CORREGIDA = z
+  .object({
+    fuente: z.enum(['XML', 'PDF', 'OCR']),
+    total: z.number().positive().max(9999999999).multipleOf(0.01).nullable(),
+    moneda: z.enum(['PEN', 'USD']).nullable(),
+    numero: z.string().regex(/^[A-Z][A-Z0-9]{3}-\d{1,8}$/).nullable(),
+    ordenes: z.array(z.string().regex(/^[1-9]\d{0,6}$/)).max(40),
+  })
+  .optional()
+  .catch(undefined)
+
+const CAMBIOS_FACTURA = z.object({
+  proveedor: z.string().trim().min(2, 'Escribe el proveedor.').max(160).optional(),
+  numero_documento: z.string().trim().min(3, 'Escribe el número del comprobante.').max(80).optional(),
+  fecha_emision: z.iso.date('Revisa la fecha de emisión.').optional(),
+  fecha_vencimiento: z.iso.date('Revisa la fecha de vencimiento.').optional(),
+  moneda: z.enum(['PEN', 'USD']).optional(),
+  total: z.number().positive('El total va mayor que cero.').multipleOf(0.01, 'El total lleva como máximo dos decimales.').optional(),
+  condicion_pago: z.enum(['CONTADO', 'CREDITO']).optional(),
+  observacion: z.string().trim().max(1000).optional(),
+  ordenes: esquemaOrdenes.optional(),
+  pdf_ruta: z
+    .string()
+    .regex(/^adquisiciones\/[0-9a-f-]{36}\/correccion-[0-9a-f-]{36}\.pdf$/, 'Vuelve a adjuntar el PDF corregido de la factura.')
+    .optional(),
+  lectura: LECTURA_CORREGIDA,
+})
+
+/**
+ * Corregir un comprobante ya registrado, con su motivo y su justificante: sus
+ * datos, las OC que cubre y su PDF. La OC que sale queda anotada como quitada y
+ * vuelve a esperar su factura. Mismo permiso que `corregir_factura_compra`.
+ */
+export async function corregirFactura(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  await exigirPermiso('adquisiciones.registrar')
+  const id = z.guid().safeParse(formulario.get('id'))
+  if (!id.success) return { ok: false, error: 'No se reconoció el comprobante. Vuelve a cargar la pantalla.' }
+  const correccion = datosDeCorreccion(formulario)
+  if (!correccion.ok) return correccion
+  const cambios = CAMBIOS_FACTURA.safeParse(cambiosDelFormulario(formulario))
+  if (!cambios.success) return { ok: false, error: cambios.error.issues[0]?.message ?? 'Revisa lo que corriges.' }
+  const { lectura, ...resto } = cambios.data
+  if (resto.pdf_ruta && !resto.pdf_ruta.startsWith(`adquisiciones/${id.data}/`)) {
+    return { ok: false, error: 'Vuelve a adjuntar el PDF corregido de la factura.' }
+  }
+
+  const supabase = await createClient()
+  const c = correccion.datos
+  const { data, error } = await supabase.rpc('corregir_factura_compra', {
+    p_correccion: c.correccion_id,
+    p_id: id.data,
+    p_motivo: c.motivo,
+    p_justificante: c.justificante_ruta,
+    p_nombre: c.justificante_nombre,
+    // Lo leído viaja solo con un PDF nuevo: es la lectura de ese PDF.
+    p_cambios: resto.pdf_ruta && lectura ? { ...resto, lectura } : resto,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== id.data) return { ok: false, error: 'El comprobante no se corrigió. Vuelve a cargar la pantalla.' }
+
+  revalidatePath('/adquisiciones')
+  revalidatePath('/tesoreria/por-pagar')
+  revalidatePath('/compras/ordenes')
+  return { ok: true, mensaje: 'Comprobante corregido, con su justificante.' }
 }

@@ -20,6 +20,8 @@ export type MaterialParaSalida = { id: string; codigo: string; descripcion: stri
 export type LineaRqParaElegir = {
   linea_id: string; requerimiento_id: string; numero: string; codigo_interno: string; area: string; item: number
   descripcion: string; unidad: string; almacen: Almacen | null; pendiente: number
+  /** El material del catálogo con que se pidió; vacío en un material nuevo sin revisar. */
+  material_id: string | null
 }
 export type UnidadParaElegir = { id: string; nombre: string; vehiculo: string | null; ordenes: string | null }
 
@@ -37,9 +39,15 @@ export function NuevaSalida({ materiales, unidades, lineasRq = [], rqInicial }: 
 }) {
   // La primera línea pendiente del RQ que mandó la pantalla de atención, si la hay.
   const lineaInicial = rqInicial ? lineasRq.find((l) => l.requerimiento_id === rqInicial)?.linea_id ?? '' : ''
+  // El RQ se pidió con un material del catálogo: la salida lo trae elegido si tiene saldo.
+  const materialDelRq = (lineaId: string) => {
+    const l = lineasRq.find((x) => x.linea_id === lineaId)
+    const enSuAlmacen = (m: MaterialParaSalida) => !l?.almacen || !m.almacen || m.almacen === l.almacen
+    return l?.material_id && materiales.some((m) => m.id === l.material_id && m.disponible > 0 && enSuAlmacen(m)) ? l.material_id : ''
+  }
   const [abierta, setAbierta] = useState(Boolean(lineaInicial))
   const [id, setId] = useState(() => crypto.randomUUID())
-  const [materialId, setMaterialId] = useState('')
+  const [materialId, setMaterialId] = useState(() => materialDelRq(lineaInicial))
   const [lineaId, setLineaId] = useState(lineaInicial)
   const [destino, setDestino] = useState<'UNIDAD' | 'CODIGO'>(unidades.length > 0 ? 'UNIDAD' : 'CODIGO')
   const [unidadId, setUnidadId] = useState('')
@@ -101,7 +109,7 @@ export function NuevaSalida({ materiales, unidades, lineasRq = [], rqInicial }: 
                 id="sal-rq"
                 name="requerimiento_linea_id"
                 valor={lineaId}
-                onChange={(v) => { setLineaId(v); setMaterialId('') }}
+                onChange={(v) => { setLineaId(v); setMaterialId(materialDelRq(v)) }}
                 marcador="Sin requerimiento"
                 marcadorBusqueda="Número de RQ, código interno o material"
                 opciones={lineasRq.map((l) => ({
@@ -135,7 +143,7 @@ export function NuevaSalida({ materiales, unidades, lineasRq = [], rqInicial }: 
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta={`Cantidad${elegido?.unidad ? ` (${elegido.unidad})` : ''}`} htmlFor="sal-cantidad" requerido
               ayuda={elegido ? `Libre en almacén: ${cantidad(elegido.disponible)}${linea ? ` · el RQ pide ${cantidad(linea.pendiente)} más` : ''}` : undefined}>
-              <Entrada id="sal-cantidad" name="cantidad" type="number" inputMode="decimal" min={0.001} step="0.001"
+              <Entrada key={`${lineaId}-${materialId}`} id="sal-cantidad" name="cantidad" type="number" inputMode="decimal" min={0.001} step="0.001"
                 max={maximo} defaultValue={linea && maximo ? maximo : undefined} required />
             </Campo>
             <Campo etiqueta="Motivo o vale" htmlFor="sal-motivo" requerido>

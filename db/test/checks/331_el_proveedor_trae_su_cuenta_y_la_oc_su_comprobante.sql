@@ -5,6 +5,9 @@
 -- authenticated`. Termina en rollback.
 begin;
 
+alter table storage.objects enable row level security;
+grant select, insert, delete on storage.objects to authenticated;
+
 do $$
 declare v text;
 begin
@@ -23,6 +26,17 @@ begin
   perform set_config('request.jwt.claim.sub', current_setting('prueba.' || p_clave), true);
   perform set_config('request.jwt.claim.role', 'authenticated', true);
   perform set_config('request.jwt.claims', json_build_object('sub', current_setting('prueba.' || p_clave), 'role', 'authenticated')::text, true);
+end $$;
+
+-- Desde la 20261016603000 la OC se corrige solo con su justificante: el
+-- justificante lo sube quien corrige y `corregir_orden_compra` lo exige.
+create or replace function pg_temp.corregir_oc(p_oc uuid, p_factura boolean, p_codigo text) returns uuid language plpgsql as $$
+declare v_c uuid := gen_random_uuid(); v_ruta text := p_oc::text || '/' || v_c::text || '.pdf';
+begin
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('justificantes-correccion', v_ruta, public.usuario_actual()::text, '{"mimetype":"application/pdf","size":900}');
+  return public.corregir_orden_compra(v_c, p_oc, 'Corrección de prueba del check 331', v_ruta, 'correo.pdf',
+    jsonb_build_object('con_factura', p_factura, 'codigo_interno', p_codigo));
 end $$;
 
 -- ----------------------------------------------------------------- armazón
@@ -155,20 +169,20 @@ select test.afirmar(
 select test.afirmar(
   (select not tiene_factura from public.ordenes_compra_listado() where id = current_setting('prueba.oc1')::uuid),
   'el listado la muestra sin comprobante todavía');
-select public.fijar_datos_compra(current_setting('prueba.oc1')::uuid, true, 'PLANTA');
-select public.fijar_datos_compra(current_setting('prueba.oc1')::uuid, false, 'PLA_SR_O4_1_26/28');
+select pg_temp.corregir_oc(current_setting('prueba.oc1')::uuid, true, 'PLANTA');
+select pg_temp.corregir_oc(current_setting('prueba.oc1')::uuid, false, 'PLA_SR_O4_1_26/28');
 select test.afirmar(
   (select not con_factura and codigo_interno = 'PLA_SR_O4_1_26/28' from public.ordenes_compra_materiales where id = current_setting('prueba.oc1')::uuid),
   'Logística corrige con o sin factura y el código interno mientras no haya comprobante');
 select test.debe_fallar(
-  format($q$select public.fijar_datos_compra('%s', false, ' ')$q$, current_setting('prueba.oc1')),
+  format($q$select pg_temp.corregir_oc('%s', false, ' ')$q$, current_setting('prueba.oc1')),
   'el código interno no se deja en blanco');
 reset role;
 
 select pg_temp.como('almacenero');
 set local role authenticated;
 select test.debe_fallar(
-  format($q$select public.fijar_datos_compra('%s', true, 'PLANTA')$q$, current_setting('prueba.oc1')),
+  format($q$select pg_temp.corregir_oc('%s', true, 'PLANTA')$q$, current_setting('prueba.oc1')),
   'Almacén no cambia si la compra viene con factura');
 reset role;
 
@@ -202,9 +216,9 @@ select test.afirmar(
   (select tiene_factura from public.ordenes_compra_listado() where id = current_setting('prueba.oc1')::uuid),
   'con la nota de venta adjunta, la OC sin factura ya tiene su comprobante');
 select test.debe_fallar(
-  format($q$select public.fijar_datos_compra('%s', true, 'PLANTA')$q$, current_setting('prueba.oc1')),
+  format($q$select pg_temp.corregir_oc('%s', true, 'PLANTA')$q$, current_setting('prueba.oc1')),
   'con el comprobante adjunto ya no se cambia a «con factura»');
-select public.fijar_datos_compra(current_setting('prueba.oc1')::uuid, false, 'PLANTA');
+select pg_temp.corregir_oc(current_setting('prueba.oc1')::uuid, false, 'PLANTA');
 select test.afirmar(
   (select codigo_interno = 'PLANTA' from public.ordenes_compra_materiales where id = current_setting('prueba.oc1')::uuid),
   'el código interno se sigue corrigiendo con el comprobante adjunto');

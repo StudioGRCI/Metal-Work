@@ -79,6 +79,25 @@ begin
   raise notice '  ok · todas las funciones tienen su camino de búsqueda fijo';
 end $$;
 
+-- Toda vista mira con los ojos de quien consulta. Un `create or replace view`
+-- que no repite `with (security_invoker = true)` le borra la opción sin avisar,
+-- y la vista pasa a correr como su dueño, por encima del RLS (le pasó a
+-- v_compras_credito_sin_comprobante en la 20261016602000).
+do $$
+declare
+  v_sueltas text;
+begin
+  select string_agg(c.relname, ', ' order by c.relname) into v_sueltas
+    from pg_class c
+   where c.relnamespace = 'public'::regnamespace and c.relkind = 'v'
+     and not exists (select 1 from unnest(coalesce(c.reloptions, '{}')) o
+                      where o in ('security_invoker=true', 'security_invoker=on', 'security_invoker=1'));
+  if v_sueltas is not null then
+    raise exception 'FALLA: vistas que corren como su dueño, por encima del RLS: %', v_sueltas;
+  end if;
+  raise notice '  ok · toda vista mira con el rol de quien consulta';
+end $$;
+
 -- Y lo que sí tiene que seguir funcionando: quien entró puede consultar el
 -- calendario y mirar el tablero.
 do $$

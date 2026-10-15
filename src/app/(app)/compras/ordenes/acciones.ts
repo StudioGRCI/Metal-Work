@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { cambiosDelFormulario, datosDeCorreccion } from '@/lib/correccion-accion'
 import { CODIGO_INTERNO_LARGO, FALTA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -224,32 +225,96 @@ export async function mandarARecojo(_previo: unknown, formulario: FormData): Pro
   return { ok: true, mensaje: 'Mandada a recojo. Prográmala en Gestión de compras con su peso para que le llegue al conductor.' }
 }
 
-/**
- * Corrige si la compra viene con factura y su código interno. Mismo permiso que
- * `fijar_datos_compra` en la base, que además no deja cambiar lo de la factura
- * cuando el comprobante ya está adjunto.
- */
-export async function corregirDatosCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+/** Una línea de la OC como la muestra la corrección. */
+export type LineaParaCorregir = {
+  detalle_id: string
+  material: string
+  codigo: string | null
+  unidad: string | null
+  cantidad: number
+  precio_unitario: number | null
+}
+
+/** Las líneas de la OC, para corregir su cantidad o su precio. Las lee quien ve compras. */
+export async function lineasDeLaCompra(id: string): Promise<ResultadoAccion<LineaParaCorregir[]>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Corregir una compra corresponde a Logística.' }
-  const v = z
-    .object({
-      id: z.guid(),
-      con_factura: z.enum(['true', 'false'], { message: 'Indica si la compra viene con factura o sin factura.' }),
-      codigo_interno: z.string().trim().min(2, FALTA_CODIGO_INTERNO).max(60, CODIGO_INTERNO_LARGO),
-    })
-    .safeParse({ id: dato(formulario, 'id'), con_factura: dato(formulario, 'con_factura'), codigo_interno: dato(formulario, 'codigo_interno') })
-  if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? 'Revisa los datos de la compra.' }
+  const v = z.guid().safeParse(id)
+  if (!v.success) return { ok: false, error: 'No se reconoció la compra. Vuelve a cargar la pantalla.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('orden_compra_material_detalles')
+    .select('id, cantidad, precio_unitario, creado_en, material:materiales(codigo, descripcion, unidad:unidades_medida(codigo))')
+    .eq('orden_compra_id', v.data)
+    .order('creado_en')
+    .order('id')
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  return {
+    ok: true,
+    datos: (data ?? []).map((d) => ({
+      detalle_id: d.id,
+      material: d.material?.descripcion ?? 'Material',
+      codigo: d.material?.codigo ?? null,
+      unidad: d.material?.unidad?.codigo ?? null,
+      cantidad: Number(d.cantidad),
+      precio_unitario: d.precio_unitario === null ? null : Number(d.precio_unitario),
+    })),
+  }
+}
+
+const CAMBIOS_OC = z.object({
+  con_factura: z.boolean().optional(),
+  codigo_interno: z.string().trim().min(2, FALTA_CODIGO_INTERNO).max(60, CODIGO_INTERNO_LARGO).optional(),
+  lineas: z
+    .array(
+      z.object({
+        detalle_id: z.guid(),
+        cantidad: z
+          .number({ message: 'Indica la cantidad de cada línea.' })
+          .positive('La cantidad de cada línea va mayor que cero.')
+          .multipleOf(0.001, 'La cantidad lleva como máximo tres decimales.')
+          .optional(),
+        precio_unitario: z
+          .number({ message: 'Indica el precio unitario de cada línea.' })
+          .min(0, 'El precio no puede ser negativo.')
+          .multipleOf(0.01, 'El precio lleva como máximo dos decimales.')
+          .optional(),
+      }),
+    )
+    .max(200)
+    .optional(),
+})
+
+/**
+ * Corrige la OC con su motivo y su justificante: si viene con factura, su código
+ * interno, y la cantidad o el precio de las líneas que todavía no entraron al
+ * almacén. Mismo permiso que `corregir_orden_compra` en la base; si el precio
+ * sube, la aprobación de Gerencia se vuelve a pedir sola.
+ */
+export async function corregirCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Corregir una compra corresponde a Logística.' }
+  const id = z.guid().safeParse(formulario.get('id'))
+  if (!id.success) return { ok: false, error: 'No se reconoció la compra. Vuelve a cargar la pantalla.' }
+  const correccion = datosDeCorreccion(formulario)
+  if (!correccion.ok) return correccion
+  const cambios = CAMBIOS_OC.safeParse(cambiosDelFormulario(formulario))
+  if (!cambios.success) return { ok: false, error: cambios.error.issues[0]?.message ?? 'Revisa lo que corriges.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('fijar_datos_compra', {
-    p_compra: v.data.id,
-    p_con_factura: v.data.con_factura === 'true',
-    p_codigo_interno: v.data.codigo_interno,
+  const c = correccion.datos
+  const { data, error } = await supabase.rpc('corregir_orden_compra', {
+    p_correccion: c.correccion_id,
+    p_id: id.data,
+    p_motivo: c.motivo,
+    p_justificante: c.justificante_ruta,
+    p_nombre: c.justificante_nombre,
+    p_cambios: cambios.data,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
-  if (data !== v.data.id) return { ok: false, error: 'La compra no cambió. Vuelve a cargar la pantalla.' }
+  if (data !== id.data) return { ok: false, error: 'La compra no se corrigió. Vuelve a cargar la pantalla.' }
 
   refrescar()
-  return { ok: true, mensaje: 'Compra corregida.' }
+  revalidatePath('/adquisiciones')
+  return { ok: true, mensaje: 'Compra corregida, con su justificante.' }
 }

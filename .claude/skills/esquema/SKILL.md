@@ -154,3 +154,11 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   con rol real dio cero avisos (2026-09-16). Cuando la columna la pone un
   BEFORE, el disparador va `after update` a secas y decide adentro con
   `new.x is distinct from old.x`.
+
+- **`create or replace view` sin `with (security_invoker = true)` le borra la
+  opción.** Postgres reemplaza las opciones de la vista por las que trae la
+  sentencia, así que redefinirla para cambiar un `where` la deja corriendo como
+  su dueño, por encima del RLS, sin ningún error. Le pasó a
+  `v_compras_credito_sin_comprobante` en la `20261016602000` y solo lo vio
+  `get_advisors` («Security Definer View») ya en producción. Al redefinir una
+  vista, copiar también su `with (...)`; el check `98` falla si alguna queda sin él.

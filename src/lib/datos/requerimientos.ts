@@ -4,10 +4,20 @@ import { createClient } from '@/lib/supabase/server'
 
 export type LineaRequerimiento = {
   item: number
+  /** Lo que se pidió: el nombre del catálogo, o el que escribió el área si era un material nuevo. */
   descripcion: string
   cantidad: number
   unidad: string
   categoria: string
+  /** El material del catálogo de Almacén; vacío en un material nuevo que Almacén todavía no revisó. */
+  material_id: string | null
+  /** El código y el nombre de ese material en el catálogo. */
+  material_codigo: string | null
+  material_nombre: string | null
+  /** Se pidió como material nuevo, porque no estaba en el catálogo. */
+  material_nuevo: boolean
+  /** La unidad del material es provisional: Almacén la confirma con la de este insumo al revisarlo. */
+  material_unidad_pendiente: boolean
   /** La OC que Logística generó para este insumo (OC-5583-MW); vacía mientras no se compra. */
   orden_compra: string | null
   /** Gerencia rechazó esa OC: el insumo vuelve a estar libre para otra. */
@@ -66,7 +76,7 @@ export type OpcionCatalogo = { id: string; codigo: string; nombre: string }
 export type AreaParaRequerimiento = OpcionCatalogo & { requerimiento: string }
 
 const SELECT_RQ =
-  'id, numero, tipo, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(item, descripcion, cantidad, cantidad_en_stock, unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion))'
+  'id, numero, tipo, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(item, descripcion, cantidad, cantidad_en_stock, material_id, material_nuevo, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion))'
 
 /**
  * Los requerimientos, del más nuevo al más viejo. Con `soloAbiertos`, los que
@@ -125,6 +135,11 @@ export async function cargarRequerimientos(
             cantidad: Number(l.cantidad),
             unidad: l.unidad?.codigo ?? '',
             categoria: l.categoria?.nombre ?? '',
+            material_id: l.material_id,
+            material_codigo: l.material?.codigo ?? null,
+            material_nombre: l.material?.descripcion ?? null,
+            material_nuevo: l.material_nuevo,
+            material_unidad_pendiente: l.material?.unidad_pendiente ?? false,
             orden_compra: deLinea?.orden_compra ?? (l.orden_compra ? (l.orden_compra.numero ?? l.orden_compra.referencia ?? null) : null),
             compra_rechazada: deLinea ? deLinea.rechazada : l.orden_compra?.aprobacion === 'RECHAZADA',
             etapa: deLinea?.etapa ?? null,
@@ -139,13 +154,65 @@ export async function cargarRequerimientos(
   })
 }
 
+/** Un material del catálogo de Almacén, como lo ofrece el formulario del requerimiento. */
+export type MaterialParaRequerimiento = {
+  id: string
+  codigo: string
+  descripcion: string
+  categoria: string
+  unidad_id: string
+  unidad: string
+  /** La unidad todavía es provisional: quien pide dice en cuál lo necesita y Almacén la confirma. */
+  unidad_pendiente: boolean
+}
+
+/**
+ * Todo el catálogo activo de Almacén, por nombre. Se lee por tramos de mil: el
+ * catálogo importado ya pasa de quinientos materiales.
+ */
+async function materialesParaRequerimiento(db: Awaited<ReturnType<typeof createClient>>): Promise<MaterialParaRequerimiento[]> {
+  const materiales: MaterialParaRequerimiento[] = []
+  let ultimo: string | undefined
+  for (;;) {
+    let consulta = db
+      .from('materiales')
+      .select('id, codigo, descripcion, unidad_pendiente, unidad_medida_id, unidad:unidades_medida(codigo), categoria:categorias_material(nombre)')
+      .eq('activo', true)
+      .order('id')
+      .limit(1000)
+    if (ultimo) consulta = consulta.gt('id', ultimo)
+    const { data, error } = await consulta
+    if (error) throw new Error(`No se pudo leer el catálogo de Almacén: ${error.message}`)
+    materiales.push(
+      ...(data ?? []).map((m) => ({
+        id: m.id,
+        codigo: m.codigo,
+        descripcion: m.descripcion,
+        categoria: m.categoria?.nombre ?? '',
+        unidad_id: m.unidad_medida_id,
+        unidad: m.unidad?.codigo ?? '',
+        unidad_pendiente: m.unidad_pendiente,
+      })),
+    )
+    if (!data?.length || data.length < 1000) break
+    ultimo = data[data.length - 1].id
+  }
+  return materiales.sort((a, b) => a.descripcion.localeCompare(b.descripcion, 'es'))
+}
+
+/** El catálogo de Almacén para que Almacén asocie el material nuevo de un requerimiento al revisarlo. */
+export async function catalogoParaRequerimiento(): Promise<MaterialParaRequerimiento[]> {
+  return materialesParaRequerimiento(await createClient())
+}
+
 /**
  * Lo que el formulario del requerimiento ofrece para elegir: las áreas que
- * pueden pedir (cada una con el requerimiento en que va), unidades y categorías.
+ * pueden pedir (cada una con el requerimiento en que va), el catálogo de
+ * Almacén, y las unidades y categorías para un material nuevo.
  */
 export async function catalogosDelRequerimiento() {
   const supabase = await createClient()
-  const [areas, unidades, categorias] = await Promise.all([
+  const [areas, unidades, categorias, materiales] = await Promise.all([
     supabase.from('areas').select('id, codigo, nombre, requerimiento').eq('activo', true).not('requerimiento', 'is', null).order('nombre'),
     supabase.from('unidades_medida').select('id, codigo, nombre').eq('activo', true).order('codigo'),
     supabase
@@ -155,6 +222,7 @@ export async function catalogosDelRequerimiento() {
       .is('categoria_padre_id', null)
       .neq('codigo', 'ALM_POR_CLASIFICAR')
       .order('nombre'),
+    materialesParaRequerimiento(supabase),
   ])
   if (areas.error || unidades.error || categorias.error) {
     throw new Error('No se pudieron leer las áreas, unidades o categorías para el requerimiento.')
@@ -168,5 +236,6 @@ export async function catalogosDelRequerimiento() {
     areas: (areas.data ?? []).flatMap((a) => (a.requerimiento ? [{ id: a.id, codigo: a.codigo, nombre: a.nombre, requerimiento: a.requerimiento }] : [])),
     unidades: unidades.data ?? [],
     categorias: deAlmacen.length > 0 ? deAlmacen : todas,
+    materiales,
   }
 }

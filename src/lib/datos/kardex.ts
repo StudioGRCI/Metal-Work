@@ -210,13 +210,15 @@ export type LineaRqParaSalida = {
   almacen: Almacen | null
   entregado: number
   pendiente: number
+  /** El material del catálogo con que se pidió: la salida lo trae elegido. */
+  material_id: string | null
 }
 
 /** Lo que piden los requerimientos vivos y todavía no se entregó, por número e ítem. */
 export async function lineasDeRequerimientoParaSalida(): Promise<LineaRqParaSalida[]> {
   const db = await createClient()
   const { data, error } = await db.from('v_rq_lineas_para_salida')
-    .select('linea_id,requerimiento_id,numero,codigo_interno,area,item,descripcion,cantidad,unidad,categoria,almacen,entregado,pendiente')
+    .select('linea_id,requerimiento_id,numero,codigo_interno,area,item,descripcion,cantidad,unidad,categoria,almacen,entregado,pendiente,material_id')
     .gt('pendiente', 0)
     .order('numero', { ascending: false })
     .order('item')
@@ -227,7 +229,7 @@ export async function lineasDeRequerimientoParaSalida(): Promise<LineaRqParaSali
     codigo_interno: l.codigo_interno ?? 'PLANTA', area: l.area ?? '', item: l.item ?? 0,
     descripcion: l.descripcion ?? '', cantidad: Number(l.cantidad ?? 0), unidad: l.unidad ?? '',
     categoria: l.categoria ?? '', almacen: esAlmacen(l.almacen) ? l.almacen : null,
-    entregado: Number(l.entregado ?? 0), pendiente: Number(l.pendiente ?? 0),
+    entregado: Number(l.entregado ?? 0), pendiente: Number(l.pendiente ?? 0), material_id: l.material_id,
   }] : [])
 }
 

@@ -4,13 +4,21 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { cargarRequerimientos, catalogosDelRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
+import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
+import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
+import {
+  cargarRequerimientos,
+  catalogosDelRequerimiento,
+  type MaterialParaRequerimiento,
+  type RequerimientoListado,
+} from '@/lib/datos/requerimientos'
 import { ESTADO_REQUERIMIENTO, ESTADOS_RQ_ABIERTOS, TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
-import { AvanceDelRequerimiento, CompraDelInsumo } from './avance'
+import { AvanceDelRequerimiento, CompraDelInsumo, MaterialDelInsumo } from './avance'
 import { AnularRequerimiento } from './controles'
+import { CorregirRequerimiento } from './corregir'
 import { NuevoRequerimiento } from './formulario'
 
 export const metadata = { title: 'Requerimientos' }
@@ -44,6 +52,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
     cargarRequerimientos({ tipo: vista === 'todos' ? undefined : vista }),
     emite ? catalogosDelRequerimiento() : Promise.resolve(null),
   ])
+  const correcciones = await correccionesDe('REQUERIMIENTO', requerimientos.map((r) => r.id))
   const abiertos = requerimientos.filter((r) => ESTADOS_RQ_ABIERTOS.includes(r.estado as (typeof ESTADOS_RQ_ABIERTOS)[number])).length
   const listos = requerimientos.filter((r) => r.estado === 'LISTO_EN_ALMACEN').length
   // Los dos momentos del recojo que se quieren distinguir de un vistazo.
@@ -109,7 +118,15 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
                 descripcion={emite ? 'Registra el primero con «Nuevo requerimiento».' : 'Requerimientos y la administradora los registran; aparecen aquí con su número.'}
               />
             ) : (
-              requerimientos.map((r) => <FilaRequerimiento key={r.id} rq={r} anula={tipos.includes(r.tipo as TipoRequerimiento)} />)
+              requerimientos.map((r) => (
+                <FilaRequerimiento
+                  key={r.id}
+                  rq={r}
+                  anula={tipos.includes(r.tipo as TipoRequerimiento)}
+                  materiales={catalogos?.materiales ?? []}
+                  correcciones={correcciones.get(r.id)}
+                />
+              ))
             )}
           </tbody>
         </Tabla>
@@ -118,7 +135,18 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   )
 }
 
-function FilaRequerimiento({ rq, anula }: { rq: RequerimientoListado; anula: boolean }) {
+function FilaRequerimiento({
+  rq,
+  anula,
+  materiales,
+  correcciones,
+}: {
+  rq: RequerimientoListado
+  /** Quien lleva su tipo: lo anula y lo corrige. */
+  anula: boolean
+  materiales: MaterialParaRequerimiento[]
+  correcciones: CorreccionVista[] | undefined
+}) {
   const estado = ESTADO_REQUERIMIENTO[rq.estado]
   return (
     <TR>
@@ -141,6 +169,7 @@ function FilaRequerimiento({ rq, anula }: { rq: RequerimientoListado; anula: boo
             .join(' · ')}
         </p>
         {rq.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulado: {rq.motivo_anulacion}</p>}
+        <HistorialDeCorrecciones correcciones={correcciones} />
       </TD>
       <TD className="align-top">
         <ul className="space-y-1 text-xs">
@@ -151,6 +180,7 @@ function FilaRequerimiento({ rq, anula }: { rq: RequerimientoListado; anula: boo
               </span>{' '}
               <span className="text-texto">{l.descripcion}</span>
               <span className="block text-[11px] text-texto-suave">
+                <MaterialDelInsumo linea={l} />
                 {l.categoria}
                 <CompraDelInsumo linea={l} estadoRq={rq.estado} />
               </span>
@@ -166,7 +196,10 @@ function FilaRequerimiento({ rq, anula }: { rq: RequerimientoListado; anula: boo
         {rq.entregado_en && <p className="text-[11px] text-texto-suave">Entregado {fechaHora(rq.entregado_en)}{rq.nota_entrega ? ` a ${rq.nota_entrega}` : ''}</p>}
       </TD>
       <TD className="text-right align-top">
-        {anula && (rq.estado === 'POR_ATENDER' || rq.estado === 'SIN_STOCK') && <AnularRequerimiento id={rq.id} numero={rq.numero} />}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {anula && rq.estado !== 'ENTREGADO' && rq.estado !== 'ANULADO' && <CorregirRequerimiento rq={rq} materiales={materiales} />}
+          {anula && (rq.estado === 'POR_ATENDER' || rq.estado === 'SIN_STOCK') && <AnularRequerimiento id={rq.id} numero={rq.numero} />}
+        </div>
       </TD>
     </TR>
   )

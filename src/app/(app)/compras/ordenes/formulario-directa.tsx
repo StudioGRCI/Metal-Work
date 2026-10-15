@@ -19,6 +19,7 @@ import { subirArchivoPrivado } from '@/lib/subida-privada'
 
 import { SelectorProveedor } from '../selector-proveedor'
 import { emitirCompraDelRequerimiento, emitirCompraDirecta } from './acciones'
+import { AvisoFacturaDeLaOrden, useDetectorDeFactura } from './detector-oc'
 
 type Linea = { clave: string; material_id: string; cantidad: string; precio: string }
 
@@ -38,6 +39,8 @@ export type RequerimientoParaCompra = {
     compra_rechazada: boolean
     /** Cuánto tenía Almacén al revisarlo; vacío si no lo revisó. Lo que tiene completo no se compra. */
     en_stock: number | null
+    /** El material del catálogo de Almacén con que se pidió: la orden lo trae puesto. */
+    material_id: string | null
   }[]
 }
 
@@ -194,7 +197,19 @@ function FormularioCompraDirecta({
   const [dias, setDias] = useState(0)
   const [divisa, setDivisa] = useState<'PEN' | 'USD'>('PEN')
   const [conFactura, setConFactura] = useState(true)
-  const [lineas, setLineas] = useState<Linea[]>(() => [lineaVacia()])
+  // La orden de un requerimiento trae puestos los materiales que faltan, con lo
+  // que falta de cada uno: solo queda el precio.
+  const [lineas, setLineas] = useState<Linea[]>(() => {
+    const delCatalogo = new Set(materiales.map((m) => m.id))
+    const porComprar = (requerimiento?.lineas ?? []).flatMap((l) => {
+      const falta = l.cantidad - (l.en_stock ?? 0)
+      const ocupado = falta <= 0 || (Boolean(l.orden_compra) && !l.compra_rechazada)
+      return !ocupado && l.material_id && delCatalogo.has(l.material_id)
+        ? [{ ...lineaVacia(), material_id: l.material_id, cantidad: String(Math.round(falta * 1000) / 1000) }]
+        : []
+    })
+    return porComprar.length > 0 ? porComprar : [lineaVacia()]
+  })
 
   const opcionesMaterial = useMemo(
     () => materiales.map((m) => ({ valor: m.id, etiqueta: m.descripcion, detalle: [m.codigo, m.unidad].filter(Boolean).join(' · ') })),
@@ -202,6 +217,7 @@ function FormularioCompraDirecta({
   )
   const unidadDe = useMemo(() => new Map(materiales.map((m) => [m.id, m.unidad])), [materiales])
   const total = lineas.reduce((suma, l) => suma + (Number(l.cantidad) || 0) * (Number(l.precio) || 0), 0)
+  const detector = useDetectorDeFactura()
 
   function elegirProveedor(p: ProveedorParaCompra | undefined) {
     setProveedorId(p?.id ?? '')
@@ -455,8 +471,23 @@ function FormularioCompraDirecta({
               : 'La boleta, nota de venta o recibo, en PDF de hasta 20 MB. Si todavía no lo tienes, lo adjuntas después desde la lista.'
           }
         >
-          <Entrada id="ocd-factura" name="factura" type="file" accept="application/pdf,.pdf" disabled={enviando} />
+          <Entrada
+            id="ocd-factura"
+            name="factura"
+            type="file"
+            accept="application/pdf,.pdf"
+            disabled={enviando}
+            onChange={(e) => void detector.leer(conFactura ? e.target.files?.[0] : undefined)}
+          />
         </Campo>
+        {conFactura && (
+          <AvisoFacturaDeLaOrden
+            lectura={detector.lectura}
+            leyendo={detector.leyendo}
+            total={total > 0 ? Math.round((total + igvCompra(total)) * 100) / 100 : null}
+            moneda={divisa}
+          />
+        )}
 
         {error && (
           <p role="alert" className="text-sm text-peligro">

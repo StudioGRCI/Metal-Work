@@ -32,6 +32,24 @@ export function AvanceDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
 }
 
 /**
+ * De dónde sale el insumo: el código del catálogo de Almacén, o «material nuevo»
+ * mientras Almacén no lo da de alta. Va delante de la categoría.
+ */
+export function MaterialDelInsumo({ linea: l }: { linea: LineaRequerimiento }) {
+  if (l.material_nuevo && !l.material_id) {
+    return <span className="font-medium text-aviso">Material nuevo: Almacén lo da de alta al revisarlo · </span>
+  }
+  if (!l.material_codigo) return null
+  return (
+    <>
+      <span className="tabular">{l.material_codigo}</span>
+      {l.material_nuevo && <span className="text-texto"> (pedido como material nuevo)</span>}
+      {' · '}
+    </>
+  )
+}
+
+/**
  * La OC del insumo y en qué va. Mientras el RQ está por comprar o en compra
  * cada insumo va por su lado (lo que tenía Almacén, su OC, su recojo); antes y
  * después van todos juntos y basta la etapa del RQ.
