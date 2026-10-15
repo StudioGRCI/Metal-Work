@@ -108,13 +108,15 @@ export type TrabajoReportado = {
   reporte_id: string
   fecha: string
   creado_en: string
+  area: string | null
   trabajo_orden: number
   trabajo: string
   avance: number
 }
 
-/** Un trabajo con su último avance, reconocido por su descripción sin mayúsculas ni espacios de más. */
+/** Un trabajo de un área con su último avance, reconocido por su descripción sin mayúsculas ni espacios de más. */
 export type TrabajoConAvance = {
+  area: string | null
   trabajo: string
   avance: number
   fecha: string
@@ -123,13 +125,15 @@ export type TrabajoConAvance = {
   historial: { fecha: string; avance: number }[]
 }
 
-function llaveTrabajo(trabajo: string) {
-  return trabajo.trim().replace(/\s+/g, ' ').toLowerCase()
+function llaveTrabajo(area: string | null, trabajo: string) {
+  return `${area ?? ''}|${trabajo.trim().replace(/\s+/g, ' ').toLowerCase()}`
 }
 
 /**
- * El último avance de cada trabajo: la misma regla que `codigos_internos_resumen`
- * usa para el avance medio, así la lista y el detalle no dicen cosas distintas.
+ * El último avance de cada trabajo, área por área: «Soldadura» de Maestranza y
+ * «Soldadura» de Producción son dos trabajos. La misma regla que
+ * `codigos_internos_avance` usa para el código sin etapas de Diseño, así la
+ * lista y el detalle no dicen cosas distintas.
  */
 export function ultimoAvancePorTrabajo(filas: TrabajoReportado[]): TrabajoConAvance[] {
   const orden = [...filas].sort(
@@ -137,9 +141,10 @@ export function ultimoAvancePorTrabajo(filas: TrabajoReportado[]): TrabajoConAva
   )
   const trabajos = new Map<string, TrabajoConAvance>()
   for (const f of orden) {
-    const llave = llaveTrabajo(f.trabajo)
+    const llave = llaveTrabajo(f.area, f.trabajo)
     const previo = trabajos.get(llave)
     trabajos.set(llave, {
+      area: f.area,
       trabajo: f.trabajo,
       avance: f.avance,
       fecha: f.fecha,
@@ -150,10 +155,24 @@ export function ultimoAvancePorTrabajo(filas: TrabajoReportado[]): TrabajoConAva
   return [...trabajos.values()].sort((a, b) => b.fecha.localeCompare(a.fecha) || a.avance - b.avance)
 }
 
-/** El promedio del último avance de cada trabajo, en entero. `null` sin trabajos. */
-export function avanceMedio(trabajos: TrabajoConAvance[]): number | null {
-  if (trabajos.length === 0) return null
-  return Math.round(trabajos.reduce((n, t) => n + t.avance, 0) / trabajos.length)
+/** PLANTA agrupa el trabajo de la planta que no es de una unidad: no tiene avance. */
+export const CODIGO_SIN_AVANCE = 'PLANTA'
+
+/**
+ * De dónde sale el porcentaje de un código, en una línea, con lo que devuelve
+ * `codigos_internos_avance`. Sin fila, el código no tiene etapas ni reportes y
+ * va en 0 %.
+ */
+export function origenDelAvance(
+  codigo: string,
+  a: { fuente: 'ETAPAS' | 'REPORTES'; etapas: number; etapas_terminadas: number; trabajos: number; trabajos_terminados: number } | undefined,
+): string {
+  if (codigo === CODIGO_SIN_AVANCE) return 'PLANTA no es una unidad: no lleva avance'
+  if (!a) return 'Sin etapas de Diseño ni reporte diario: todavía no avanza'
+  if (a.fuente === 'ETAPAS') {
+    return `Por sus ${plural(a.etapas, 'etapa', 'etapas')} de Diseño: ${a.etapas_terminadas} ${a.etapas_terminadas === 1 ? 'terminada' : 'terminadas'}`
+  }
+  return `Por el reporte diario, sin etapas de Diseño: ${a.trabajos_terminados} de ${plural(a.trabajos, 'trabajo terminado', 'trabajos terminados')}`
 }
 
 type Def = { etiqueta: string; tono: Tono }
