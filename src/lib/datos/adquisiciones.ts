@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import { enlaces } from '@/lib/datos/facturacion'
 import { BUCKET_PAGOS_FACTURAS } from '@/lib/dominio/finanzas'
+import { lecturaDeFila, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { createClient } from '@/lib/supabase/server'
 import type { Tablas, Vistas } from '@/types/database'
 
@@ -128,6 +129,8 @@ export type PagoDeFactura = PagoFacturaFila & { url: string | null }
 export type CuentaPorPagar = CuentaPagarFila & {
   url: string | null
   control: ControlDeFactura | null
+  /** Lo que el detector leyó de la factura al registrarla; null si no la pudo leer. */
+  lectura: LecturaFactura | null
   pagos: PagoDeFactura[]
 }
 
@@ -155,7 +158,10 @@ export async function cuentasPorPagar(): Promise<CuentaPorPagar[]> {
           .order('fecha')
       : Promise.resolve({ data: [], error: null }),
     ids.length
-      ? supabase.from('adquisiciones').select('id, ruta_storage, documento_compra_id').in('id', ids)
+      ? supabase
+          .from('adquisiciones')
+          .select('id, ruta_storage, documento_compra_id, lectura_fuente, lectura_total, lectura_moneda, lectura_numero, lectura_ordenes')
+          .in('id', ids)
       : Promise.resolve({ data: [], error: null }),
     controlDeFacturas(ids),
   ])
@@ -165,10 +171,12 @@ export async function cuentasPorPagar(): Promise<CuentaPorPagar[]> {
     enlaces(BUCKET_PAGOS_FACTURAS, (pagos.data ?? []).map((p) => p.archivo_ruta)),
     enlacesDeComprobantes(comprobantes.data ?? []),
   ])
+  const lecturas = new Map((comprobantes.data ?? []).map((a) => [a.id, lecturaDeFila(a)]))
   return filas.map((f) => ({
     ...f,
     url: (f.id && pdfs.get(f.id)) || null,
     control: (f.id && controles.get(f.id)) || null,
+    lectura: (f.id && lecturas.get(f.id)) || null,
     pagos: (pagos.data ?? [])
       .filter((p) => p.adquisicion_id === f.id)
       .map((p) => ({ ...p, url: (p.archivo_ruta && vouchers.get(p.archivo_ruta)) || null })),

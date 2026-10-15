@@ -25,9 +25,14 @@ export function AccionesCompra({
   conFactura,
   codigoInterno,
   tieneComprobante,
+  total,
+  moneda,
 }: {
   id: string
   numero: string
+  /** El total con IGV (si va con factura) y la moneda: el detector compara la factura con ellos. */
+  total: number
+  moneda: string
   /** Se puede mandar a recojo: aprobada (o sin aprobación) y nadie la llevó todavía. */
   recojo: boolean
   adjuntar: boolean
@@ -93,7 +98,12 @@ export function AccionesCompra({
         }
         ancho="lg"
       >
-        <SubirDocumentoCompra ordenCompraId={id} solicitudId={idDocumento} tipoInicial={conFactura ? 'FACTURA' : 'COMPROBANTE'} />
+        <SubirDocumentoCompra
+          ordenCompraId={id}
+          solicitudId={idDocumento}
+          tipoInicial={conFactura ? 'FACTURA' : 'COMPROBANTE'}
+          orden={{ numero, total, moneda }}
+        />
       </Ventana>
       <Ventana abierta={corrigiendo} alCerrar={() => setCorrigiendo(false)} titulo={`Corregir la compra ${numero}`} ancho="md">
         <CorregirCompra

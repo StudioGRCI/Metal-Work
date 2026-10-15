@@ -7,6 +7,7 @@ import { Tarjeta } from '@/components/ui/tarjeta'
 import { catalogoDeAlmacen } from '@/lib/datos/atencion-materiales'
 import { cargarOrdenesCompra, type OrdenCompraListada } from '@/lib/datos/logistica'
 import { proveedoresParaCompra } from '@/lib/datos/proveedores'
+import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { ORIGEN_COMPRA, puedeIrARecojo, situacionCompra } from '@/lib/dominio/logistica'
 import { comprobantePedido, compraDetenida, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
@@ -160,6 +161,8 @@ function FilaCompra({ compra: c, emite }: { compra: OrdenCompraListada; emite: b
               conFactura={c.con_factura}
               codigoInterno={c.codigo_interno}
               tieneComprobante={c.tiene_factura}
+              total={c.con_factura ? Math.round((c.monto + igvCompra(c.monto)) * 100) / 100 : c.monto}
+              moneda={c.moneda}
             />
           )}
         </div>

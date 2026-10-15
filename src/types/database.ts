@@ -27,6 +27,12 @@ export type Database = {
           registrado_por: string
           creado_en: string
           actualizado_en: string
+          lectura_fuente: string | null
+          lectura_total: number | null
+          lectura_moneda: string | null
+          lectura_numero: string | null
+          lectura_ordenes: string[] | null
+          lectura_en: string | null
         }
         Insert: {
           id?: string
@@ -48,6 +54,12 @@ export type Database = {
           registrado_por?: string
           creado_en?: string
           actualizado_en?: string
+          lectura_fuente?: string | null
+          lectura_total?: number | null
+          lectura_moneda?: string | null
+          lectura_numero?: string | null
+          lectura_ordenes?: string[] | null
+          lectura_en?: string | null
         }
         Update: {
           id?: string
@@ -69,6 +81,12 @@ export type Database = {
           registrado_por?: string
           creado_en?: string
           actualizado_en?: string
+          lectura_fuente?: string | null
+          lectura_total?: number | null
+          lectura_moneda?: string | null
+          lectura_numero?: string | null
+          lectura_ordenes?: string[] | null
+          lectura_en?: string | null
         }
         Relationships: [
           {

@@ -19,6 +19,7 @@ import { subirArchivoPrivado } from '@/lib/subida-privada'
 
 import { SelectorProveedor } from '../selector-proveedor'
 import { emitirCompraDelRequerimiento, emitirCompraDirecta } from './acciones'
+import { AvisoFacturaDeLaOrden, useDetectorDeFactura } from './detector-oc'
 
 type Linea = { clave: string; material_id: string; cantidad: string; precio: string }
 
@@ -216,6 +217,7 @@ function FormularioCompraDirecta({
   )
   const unidadDe = useMemo(() => new Map(materiales.map((m) => [m.id, m.unidad])), [materiales])
   const total = lineas.reduce((suma, l) => suma + (Number(l.cantidad) || 0) * (Number(l.precio) || 0), 0)
+  const detector = useDetectorDeFactura()
 
   function elegirProveedor(p: ProveedorParaCompra | undefined) {
     setProveedorId(p?.id ?? '')
@@ -469,8 +471,23 @@ function FormularioCompraDirecta({
               : 'La boleta, nota de venta o recibo, en PDF de hasta 20 MB. Si todavía no lo tienes, lo adjuntas después desde la lista.'
           }
         >
-          <Entrada id="ocd-factura" name="factura" type="file" accept="application/pdf,.pdf" disabled={enviando} />
+          <Entrada
+            id="ocd-factura"
+            name="factura"
+            type="file"
+            accept="application/pdf,.pdf"
+            disabled={enviando}
+            onChange={(e) => void detector.leer(conFactura ? e.target.files?.[0] : undefined)}
+          />
         </Campo>
+        {conFactura && (
+          <AvisoFacturaDeLaOrden
+            lectura={detector.lectura}
+            leyendo={detector.leyendo}
+            total={total > 0 ? Math.round((total + igvCompra(total)) * 100) / 100 : null}
+            moneda={divisa}
+          />
+        )}
 
         {error && (
           <p role="alert" className="text-sm text-peligro">

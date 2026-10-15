@@ -1,14 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import type { CompraSinFactura } from '@/lib/datos/adquisiciones'
+import { avisosDelDetector, numeroDeOc, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { useEnvio } from '@/lib/envio'
 import { moneda as dinero } from '@/lib/format'
+import { ACEPTA_XML_FACTURA, camposDeLectura, leerFactura, leerFacturaDeEnlace } from '@/lib/leer-factura'
 
-import { completarAdquisicion, registrarAdquisicion } from './acciones'
+import { completarAdquisicion, enlaceDeFacturaDeLogistica, registrarAdquisicion } from './acciones'
+
+type Fuente = 'xml' | 'pdf' | 'logistica'
 
 type Props = {
   ordenes: { id: string; numero: string }[]
@@ -24,6 +28,10 @@ const codigo = (m: string) => (m === 'USD' ? 'USD' : 'PEN')
  * o varias OC del mismo proveedor y con la misma condición de pago; mientras se
  * llena, se ve si el total calza con el de las OC marcadas. Es solo un aviso: la
  * factura se registra igual.
+ *
+ * El detector lee la factura apenas se adjunta (el XML de SUNAT, el PDF o la que
+ * subió Logística): llena el total, el número, la fecha y las OC que menciona si
+ * están vacíos, y avisa lo que no calza. Lo leído se guarda con el comprobante.
  */
 export function FormularioAdquisicion(props: Props) {
   // Al registrar, el formulario se vuelve a montar vacío y el aviso queda arriba.
@@ -62,11 +70,61 @@ function Formulario({
   const [monedaFactura, setMonedaFactura] = useState('PEN')
   const [total, setTotal] = useState('')
   const [ot, setOt] = useState('')
+  const [numero, setNumero] = useState('')
+  const [emision, setEmision] = useState('')
+  // Lo que leyó el detector de cada fuente; manda el XML, después el PDF, después el de Logística.
+  const [lecturas, setLecturas] = useState<Record<Fuente, LecturaFactura | null | undefined>>({ xml: undefined, pdf: undefined, logistica: undefined })
+  const [leyendo, setLeyendo] = useState<string | null>(null)
+  const turno = useRef<Record<Fuente, number>>({ xml: 0, pdf: 0, logistica: 0 })
   const { alEnviar, enviando, error } = useEnvio(registrarAdquisicion, (r) => alRegistrar(r.mensaje ?? 'Comprobante registrado.'))
 
   const elegidas = compras.filter((c) => marcadas.includes(c.orden_compra_id))
   const base = elegidas[0]
   const encaja = (c: CompraSinFactura) => !base || (mismoNombre(c.proveedor, base.proveedor) && c.condicion_pago === base.condicion_pago)
+  const lectura = lecturas.xml ?? lecturas.pdf ?? lecturas.logistica ?? null
+  const sinLeer = (['xml', 'pdf', 'logistica'] as const).some((f) => lecturas[f] === null) && !lectura
+
+  /**
+   * Lee la factura sin pedir nada a nadie. Lo que está vacío se llena con lo leído;
+   * lo que ya se escribió no se toca: si no calza, se avisa.
+   */
+  async function detectar(fuente: Fuente, leer: (() => Promise<LecturaFactura | null>) | null) {
+    const vez = ++turno.current[fuente]
+    if (!leer) return setLecturas((l) => ({ ...l, [fuente]: undefined }))
+    const sinMarcar = marcadas.length === 0
+    setLeyendo('Leyendo la factura…')
+    const leida = await leer().catch(() => null)
+    if (vez !== turno.current[fuente]) return
+    setLeyendo(null)
+    setLecturas((l) => ({ ...l, [fuente]: leida }))
+    if (!leida) return
+    if (leida.total !== null) setTotal((t) => t || leida.total!.toFixed(2))
+    if (leida.numero) setNumero((n) => n || leida.numero!)
+    if (leida.fecha_emision) setEmision((e) => e || leida.fecha_emision!)
+    if (!sinMarcar) return
+    // Las OC que nombra la factura y esperan la suya, del mismo proveedor y condición que la primera.
+    const nombradas = compras.filter((c) => leida.ordenes.includes(numeroDeOc(c.numero) ?? ''))
+    const primera = nombradas.at(0)
+    if (primera) {
+      const juntas = nombradas.filter((c) => mismoNombre(c.proveedor, primera.proveedor) && c.condicion_pago === primera.condicion_pago)
+      setMarcadas((m) => (m.length > 0 ? m : juntas.map((c) => c.orden_compra_id)))
+      setProveedor((p) => p.trim() || primera.proveedor)
+      setCondicion(primera.condicion_pago)
+      setMonedaFactura(primera.moneda)
+      if (primera.orden_id) setOt((o) => o || primera.orden_id!)
+    } else if (leida.moneda) setMonedaFactura(leida.moneda)
+  }
+
+  const avisos = lectura
+    ? avisosDelDetector({
+        lectura,
+        total: Number(total) > 0 ? Number(total) : null,
+        moneda: monedaFactura,
+        numero,
+        marcadas: elegidas,
+        disponibles: compras,
+      })
+    : []
 
   function marcar(c: CompraSinFactura, si: boolean) {
     alEscribir()
@@ -95,7 +153,17 @@ function Formulario({
         <Entrada id="adq-proveedor" name="proveedor" minLength={2} maxLength={160} required value={proveedor} onChange={(e) => setProveedor(e.target.value)} />
       </Campo>
       <Campo etiqueta="Número de comprobante" htmlFor="adq-numero" requerido>
-        <Entrada id="adq-numero" name="numero_documento" minLength={3} maxLength={80} required autoComplete="off" className="tabular" />
+        <Entrada
+          id="adq-numero"
+          name="numero_documento"
+          minLength={3}
+          maxLength={80}
+          required
+          autoComplete="off"
+          className="tabular"
+          value={numero}
+          onChange={(e) => setNumero(e.target.value)}
+        />
       </Campo>
 
       <fieldset className="sm:col-span-2 xl:col-span-3">
@@ -162,7 +230,7 @@ function Formulario({
         </Seleccion>
       </Campo>
       <Campo etiqueta="Fecha de emisión" htmlFor="adq-emision" requerido>
-        <Entrada id="adq-emision" name="fecha_emision" type="date" required />
+        <Entrada id="adq-emision" name="fecha_emision" type="date" required value={emision} onChange={(e) => setEmision(e.target.value)} />
       </Campo>
       <Campo etiqueta="Condición de pago" htmlFor="adq-condicion">
         <Seleccion id="adq-condicion" name="condicion_pago" value={condicion} onChange={(e) => setCondicion(e.target.value)}>
@@ -193,9 +261,38 @@ function Formulario({
         />
       </Campo>
       <AvisoDeMonto elegidas={elegidas} total={total} monedaFactura={monedaFactura} />
+      <DetectorDeFactura
+        lectura={lectura}
+        leyendo={leyendo}
+        sinLeer={sinLeer}
+        avisos={avisos.map((a) => ({
+          texto: textoDelAviso(a, (monto, m) => dinero(monto, m)),
+          marcar: a.tipo === 'OC_NO_MARCADA' && a.espera ? compras.find((c) => (c.numero ?? c.referencia) === a.oc && encaja(c)) : undefined,
+        }))}
+        alMarcar={(c) => marcar(c, true)}
+      />
+      {Object.entries(camposDeLectura(lectura)).map(([nombre, valor]) => (
+        <input key={nombre} type="hidden" name={nombre} value={valor} />
+      ))}
 
       <Campo etiqueta="Factura ya subida por Logística" htmlFor="adq-documento">
-        <Seleccion id="adq-documento" name="documento_compra_id" defaultValue="">
+        <Seleccion
+          id="adq-documento"
+          name="documento_compra_id"
+          defaultValue=""
+          onChange={(e) => {
+            const id = e.target.value
+            void detectar(
+              'logistica',
+              id
+                ? async () => {
+                    const url = await enlaceDeFacturaDeLogistica(id)
+                    return url ? leerFacturaDeEnlace(url, setLeyendo) : null
+                  }
+                : null,
+            )
+          }}
+        >
           <option value="">Ninguna; subiré un PDF</option>
           {documentos.map((d) => (
             <option key={d.id} value={d.id}>
@@ -205,7 +302,31 @@ function Formulario({
         </Seleccion>
       </Campo>
       <Campo etiqueta="PDF del comprobante" htmlFor="adq-pdf" ayuda="Obligatorio si no eliges una factura de Logística.">
-        <Entrada id="adq-pdf" name="pdf" type="file" accept="application/pdf,.pdf" />
+        <Entrada
+          id="adq-pdf"
+          name="pdf"
+          type="file"
+          accept="application/pdf,.pdf"
+          onChange={(e) => {
+            const archivo = e.target.files?.[0]
+            void detectar('pdf', archivo ? () => leerFactura(archivo, setLeyendo) : null)
+          }}
+        />
+      </Campo>
+      <Campo
+        etiqueta="XML de SUNAT (opcional)"
+        htmlFor="adq-xml"
+        ayuda="Si el proveedor lo mandó, el detector lo lee primero: es el documento legal. Solo se lee, no se guarda."
+      >
+        <Entrada
+          id="adq-xml"
+          type="file"
+          accept={ACEPTA_XML_FACTURA}
+          onChange={(e) => {
+            const archivo = e.target.files?.[0]
+            void detectar('xml', archivo ? () => leerFactura(archivo, setLeyendo) : null)
+          }}
+        />
       </Campo>
       <Campo etiqueta="Observación" htmlFor="adq-nota" className="sm:col-span-2 xl:col-span-3">
         <AreaTexto id="adq-nota" name="observacion" maxLength={1000} />
@@ -221,6 +342,68 @@ function Formulario({
         )}
       </div>
     </form>
+  )
+}
+
+const FUENTE: Record<LecturaFactura['fuente'], string> = { XML: 'el XML de SUNAT', PDF: 'el PDF', OCR: 'el escaneo' }
+
+/**
+ * Lo que leyó el detector y lo que no calza. Callado mientras no hay factura;
+ * si la factura no se pudo leer, lo dice en una línea y nada más.
+ */
+function DetectorDeFactura({
+  lectura,
+  leyendo,
+  sinLeer,
+  avisos,
+  alMarcar,
+}: {
+  lectura: LecturaFactura | null
+  leyendo: string | null
+  sinLeer: boolean
+  avisos: { texto: string; marcar?: CompraSinFactura }[]
+  alMarcar: (c: CompraSinFactura) => void
+}) {
+  const clase = 'text-sm sm:col-span-2 xl:col-span-3'
+  if (leyendo) {
+    return (
+      <p role="status" className={`${clase} text-texto-suave`}>
+        {leyendo}
+      </p>
+    )
+  }
+  if (!lectura) {
+    return sinLeer ? (
+      <p className={`${clase} text-texto-suave`}>No se pudo leer la factura: revisa a mano el total y las OC.</p>
+    ) : null
+  }
+  const m = lectura.moneda ?? 'PEN'
+  const leido = [
+    lectura.total !== null ? `total ${dinero(lectura.total, m)}` : null,
+    lectura.numero,
+    lectura.ordenes.length > 0 ? `menciona ${lectura.ordenes.map((n) => `OC ${n}`).join(', ')}` : 'no menciona OC',
+  ].filter(Boolean)
+  return (
+    <div className={`${clase} space-y-1`}>
+      <p className="text-xs text-texto-suave">
+        Leído de {FUENTE[lectura.fuente]}: {leido.join(' · ')}.
+      </p>
+      {avisos.length > 0 && (
+        <ul role="status" className="space-y-1 text-aviso">
+          {avisos.map((a) => (
+            <li key={a.texto} className="flex flex-wrap items-center gap-2">
+              <span>{a.texto}</span>
+              {a.marcar && (
+                <Boton type="button" variante="contorno" tamano="sm" onClick={() => alMarcar(a.marcar!)}>
+                  Marcarla
+                </Boton>
+              )}
+            </li>
+          ))}
+          <li className="text-xs text-texto-suave">Es solo un aviso: puedes registrarla igual.</li>
+        </ul>
+      )}
+    </div>
   )
 }
 
@@ -255,13 +438,37 @@ function AvisoDeMonto({ elegidas, total, monedaFactura }: { elegidas: CompraSinF
 
 export function CompletarAdquisicion({ id }: { id: string }) {
   const { alEnviar, enviando, error, resultado } = useEnvio(completarAdquisicion)
+  // El detector también lee el PDF pendiente; el aviso sale en la lista al registrarlo.
+  const [lectura, setLectura] = useState<LecturaFactura | null>(null)
+  const [leyendo, setLeyendo] = useState(false)
+  const turno = useRef(0)
   return (
     <form onSubmit={alEnviar} className="mt-2 flex flex-wrap items-end gap-2">
       <input type="hidden" name="id" value={id} />
+      {Object.entries(camposDeLectura(lectura)).map(([nombre, valor]) => (
+        <input key={nombre} type="hidden" name={nombre} value={valor} />
+      ))}
       <Campo etiqueta="PDF pendiente" htmlFor={`pdf-${id}`} requerido>
-        <Entrada id={`pdf-${id}`} name="pdf" type="file" accept="application/pdf,.pdf" required />
+        <Entrada
+          id={`pdf-${id}`}
+          name="pdf"
+          type="file"
+          accept="application/pdf,.pdf"
+          required
+          onChange={async (e) => {
+            const archivo = e.target.files?.[0]
+            const vez = ++turno.current
+            setLectura(null)
+            if (!archivo) return
+            setLeyendo(true)
+            const leida = await leerFactura(archivo)
+            if (vez !== turno.current) return
+            setLeyendo(false)
+            setLectura(leida)
+          }}
+        />
       </Campo>
-      <Boton type="submit" tamano="sm" cargando={enviando}>
+      <Boton type="submit" tamano="sm" cargando={enviando || leyendo}>
         Completar comprobante
       </Boton>
       {error && (
