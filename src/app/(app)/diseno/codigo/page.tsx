@@ -1,3 +1,4 @@
+import { FileText } from 'lucide-react'
 import { notFound } from 'next/navigation'
 
 import { ListaEtapas, resumenEtapas } from '@/components/codigo-interno/etapas'
@@ -5,6 +6,7 @@ import { TablaComparada, TablaListaDiseno, TablaLoPedido } from '@/components/co
 import { ListaPlanos } from '@/components/codigo-interno/planos'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import {
@@ -17,11 +19,14 @@ import {
   loPedidoDelCodigo,
   materialesComparados,
   materialesParaElegir,
+  ordenesDelCodigo,
   planosDeCodigo,
+  type OrdenDelCodigo,
 } from '@/lib/datos/diseno-codigos'
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { VISTAS_DISENO, vistaDisenoValida, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
-import { hoyLima } from '@/lib/format'
+import { ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { fecha, hoyLima } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
 import {
@@ -42,9 +47,11 @@ import {
 export const metadata = { title: 'Código interno · Diseño' }
 
 /**
- * Un código interno visto por Diseño: sus planos, su lista de materiales y sus
- * etapas, cada uno en su pestaña. Lo que antes Diseño cargaba en la OT, ahora
- * va aquí, por el código de la unidad (migración 20261015200000).
+ * Un código interno visto por Diseño: su OT arriba —la que Gerencia cargó al
+ * aprobar la cotización (migración 20261016900000)— y debajo sus planos, su
+ * lista de materiales y sus etapas, cada uno en su pestaña. Lo que antes Diseño
+ * cargaba en la OT, ahora va aquí, por el código de la unidad (migración
+ * 20261015200000).
  */
 export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'/diseno/codigo'>) {
   await exigirPermiso('diseno.codigos')
@@ -54,7 +61,8 @@ export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'
   const vista = vistaDisenoValida(params.vista)
   const titulo = VISTAS_DISENO.find((v) => v.valor === vista)?.titulo ?? 'Planos'
 
-  const resumen = (await codigosDeDiseno()).find((c) => c.codigo === codigo)
+  const [codigos, ordenes] = await Promise.all([codigosDeDiseno(), codigo === 'PLANTA' ? Promise.resolve([]) : ordenesDelCodigo(codigo)])
+  const resumen = codigos.find((c) => c.codigo === codigo)
 
   return (
     <>
@@ -72,6 +80,8 @@ export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'
         </Tarjeta>
       ) : (
         <div className="space-y-5">
+          <OrdenesDelCodigo ordenes={ordenes} />
+
           <div className="grid grid-cols-3 gap-3">
             <Indicador
               titulo="Planos"
@@ -101,6 +111,59 @@ export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'
         </div>
       )}
     </>
+  )
+}
+
+/**
+ * La OT del código: con qué se trabaja y para cuándo. Un código puede tener más
+ * de una (otro trabajo para la misma unidad): van todas, la más nueva primero.
+ */
+function OrdenesDelCodigo({ ordenes }: { ordenes: OrdenDelCodigo[] }) {
+  if (ordenes.length === 0) {
+    return (
+      <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
+        Este código todavía no tiene OT: llega cuando Gerencia aprueba su cotización.
+      </p>
+    )
+  }
+  return (
+    <Tarjeta>
+      <TarjetaCabecera
+        titulo={ordenes.length === 1 ? 'Orden de trabajo' : 'Órdenes de trabajo'}
+        descripcion="La que Gerencia cargó al aprobar la cotización. Es la guía para los planos, los materiales y las etapas."
+      />
+      <TarjetaCuerpo>
+        <ul className="divide-y divide-borde">
+          {ordenes.map((o) => (
+            <li key={o.id} className="flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="min-w-0 space-y-0.5">
+                <p className="flex flex-wrap items-center gap-2">
+                  <span className="text-base font-semibold tabular text-texto">OT {o.numero}</span>
+                  <Insignia tono={definir(ESTADO_OT, o.estado).tono}>{definir(ESTADO_OT, o.estado).etiqueta}</Insignia>
+                </p>
+                <p className="text-sm text-texto-suave">
+                  {[o.descripcion, o.cliente].filter(Boolean).join(' · ')}
+                  {o.fecha_entrega ? ` · entrega prometida ${fecha(o.fecha_entrega)}` : ''}
+                </p>
+              </div>
+              {o.url ? (
+                <a
+                  href={o.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-11 shrink-0 items-center gap-1.5 text-sm text-acento hover:underline sm:min-h-0"
+                >
+                  <FileText aria-hidden className="size-4 shrink-0" />
+                  Abrir el PDF de la OT
+                </a>
+              ) : (
+                <span className="text-xs text-texto-tenue">{o.pdf_nombre ? 'No se pudo abrir el PDF: recarga la página.' : 'Sin PDF'}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </TarjetaCuerpo>
+    </Tarjeta>
   )
 }
 

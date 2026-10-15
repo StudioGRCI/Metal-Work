@@ -9404,6 +9404,7 @@ export type Database = {
           archivo_subido_en: string | null
           monto_venta: number | null
           moneda: Database["public"]["Enums"]["moneda"] | null
+          codigo_interno: string | null
         }
         Relationships: []
       }
@@ -10107,6 +10108,22 @@ export type Database = {
       aprobar_compra: {
         Args: {
           p_compra: string | null
+        }
+        Returns: string
+      }
+      aprobar_cotizacion_con_ot: {
+        Args: {
+          p_cotizacion: string | null
+          p_orden: string | null
+          p_codigo_interno: string | null
+          p_numero_ot: string | null
+          p_tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          p_fecha_entrega: string | null
+          p_ruta_pdf: string | null
+          p_nombre_pdf: string | null
+          p_tamano_pdf: number | null
+          p_marca?: string | null
+          p_modelo?: string | null
         }
         Returns: string
       }
@@ -11784,6 +11801,23 @@ export type Database = {
           unidades: string[] | null
           lineas: number | null
           tiene_factura: boolean | null
+        }[]
+      }
+      ordenes_de_codigo_interno: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          id: string | null
+          numero: string | null
+          estado: string | null
+          descripcion: string | null
+          fecha_entrega: string | null
+          cliente: string | null
+          cotizacion: string | null
+          pdf_ruta: string | null
+          pdf_nombre: string | null
+          creado_en: string | null
         }[]
       }
       ordenes_servicio_listado: {

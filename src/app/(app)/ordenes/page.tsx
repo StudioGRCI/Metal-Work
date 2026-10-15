@@ -117,22 +117,14 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
         acciones={
           (puedeCrear || puedeAbrirEnTaller) && (
             <>
-              {/* El camino real es emitir desde la cotización aprobada: nace
-                  aprobada, con su número de papel, sus etapas y su PDF. La
-                  orden suelta —reparación, garantía— queda como segunda
-                  puerta, nace en borrador y la aprueba Gerencia. Con el botón
-                  primario en «Nueva orden», Administración creaba la OT por el
-                  camino equivocado y la dejaba trabada en borrador. */}
+              {/* La OT de una unidad la carga Gerencia al aprobar la
+                  cotización, con su código interno (migración 20261016900000):
+                  aquí ya no se emite. Queda la orden suelta —reparación,
+                  garantía—, que nace en borrador y la aprueba Gerencia. */}
               {puedeCrear && (
-                <>
-                  <EnlaceBoton href="/cotizaciones/pdf?estado=APROBADA_SIN_OT">
-                    <Plus aria-hidden className="size-4" />
-                    Emitir OT desde cotización
-                  </EnlaceBoton>
-                  <EnlaceBoton href="/ordenes/nueva" variante="contorno">
-                    Orden sin cotización
-                  </EnlaceBoton>
-                </>
+                <EnlaceBoton href="/ordenes/nueva" variante="contorno">
+                  Orden sin cotización
+                </EnlaceBoton>
               )}
               {/* La del taller queda por revisar y la aprueba el jefe de
                   producción; la de la oficina, Gerencia. Son dos puertas. */}
@@ -219,20 +211,13 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                 descripcion={
                   hayFiltros
                     ? 'Con los filtros puestos no aparece ninguna. Prueba con otro estado, otra prioridad, o quita la búsqueda.'
-                    : 'Registra la primera orden para empezar a controlar la producción.'
+                    : 'La OT llega cuando Gerencia aprueba la cotización con su código interno.'
                 }
                 accion={
-                  hayFiltros ? (
+                  hayFiltros && (
                     <EnlaceBoton href="/ordenes" variante="secundario" tamano="sm">
                       Quitar los filtros
                     </EnlaceBoton>
-                  ) : (
-                    puedeCrear && (
-                      <EnlaceBoton href="/cotizaciones/pdf?estado=APROBADA_SIN_OT" tamano="sm">
-                        <Plus aria-hidden className="size-4" />
-                        Emitir la primera orden desde una cotización
-                      </EnlaceBoton>
-                    )
                   )
                 }
               />

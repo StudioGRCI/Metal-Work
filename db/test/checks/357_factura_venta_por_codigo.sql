@@ -1,9 +1,10 @@
 -- La factura de venta y su cobro cuelgan del código interno (2026-10-15).
--- Administración carga la OT de la cotización aprobada con el código interno de
--- la unidad; Contabilidad ve la cotización aprobada y registra la factura con
+-- Gerencia aprueba la cotización con el código interno de la unidad y su OT
+-- (migración 20261016900000); Contabilidad ve la cotización aprobada y registra la factura con
 -- su PDF; la factura entra sola a cuentas por cobrar; Tesorería registra cada
 -- cobro con su voucher. Ni la factura ni el cobro se borran: se anulan.
--- Cada paso con la cuenta del área que lo hace; ninguno como ADMIN.
+-- Cada paso con la cuenta del área que lo hace; ADMIN solo arma la aprobada
+-- de antes que quedó sin OT.
 \set ON_ERROR_STOP on
 begin;
 
@@ -30,15 +31,15 @@ select gen_random_uuid() as cot2 \gset
 select gen_random_uuid() as cot3 \gset
 select gen_random_uuid() as ot1 \gset
 
--- Tres cotizaciones de Ventas: Gerencia aprueba las dos primeras.
+-- Tres cotizaciones de Ventas: la primera la aprueba Gerencia con su código y
+-- su OT; la segunda es una aprobada de antes, sin OT ni código.
 insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, estado, nombre_archivo, ruta_storage, mime_type, tamano_bytes, registrado_por, monto_venta, moneda)
 values (:'cot1', 'QA-357-1', :'cliente_id', :'carroceria_id', 'POR_REVISAR', 'qa-357-1.pdf', 'cot/' || :'cot1' || '/qa-357-1.pdf', 'application/pdf', 120, :'vendedor_id', 50000, 'USD'),
        (:'cot2', 'QA-357-2', :'cliente_id', :'carroceria_id', 'POR_REVISAR', 'qa-357-2.pdf', 'cot/' || :'cot2' || '/qa-357-2.pdf', 'application/pdf', 120, :'vendedor_id', 20000, 'PEN'),
        (:'cot3', 'QA-357-3', :'cliente_id', :'carroceria_id', 'POR_REVISAR', 'qa-357-3.pdf', 'cot/' || :'cot3' || '/qa-357-3.pdf', 'application/pdf', 120, :'vendedor_id', 9000, 'PEN');
-select test.como_usuario(:'gerente_id');
-set local role authenticated;
-update public.cotizaciones_pdf set estado = 'APROBADA' where id in (:'cot1', :'cot2');
-reset role;
+select test.crear_usuario('Ada', 'Admin', 'admin357@demo.pe', 'ADMIN', (select id from public.sedes where codigo = 'QA57')) as admin_id \gset
+select test.como_usuario(:'admin_id');
+update public.cotizaciones_pdf set estado = 'APROBADA' where id = :'cot2';
 
 alter table storage.objects enable row level security;
 grant select, insert, delete on storage.objects to authenticated;
@@ -46,11 +47,12 @@ insert into storage.objects (bucket_id, name, owner_id, metadata) values
   ('cotizaciones-pdf', 'cot/' || :'cot1' || '/qa-357-1.pdf', :'vendedor_id', '{"mimetype": "application/pdf", "size": 120}'),
   ('cotizaciones-pdf', 'cot/' || :'cot3' || '/qa-357-3.pdf', :'vendedor_id', '{"mimetype": "application/pdf", "size": 120}');
 
--- Administración carga la OT de la primera con el código interno de la unidad.
-select test.como_usuario(:'oficina_id');
+-- Gerencia aprueba la primera con el código interno de la unidad y su OT.
+select test.como_usuario(:'gerente_id');
 set local role authenticated;
-select public.emitir_orden_de_cotizacion(:'cot1', :'ot1', '9357', 'qa-ci 357', 'SEMIRREMOLQUE', null, null, null,
-                                         'ot/' || :'ot1' || '/orden.pdf', 'orden.pdf', 100);
+select public.aprobar_cotizacion_con_ot(:'cot1', :'ot1', 'qa-ci 357', '9357', 'SEMIRREMOLQUE',
+                                        ((now() at time zone 'America/Lima')::date + 30),
+                                        'ot/' || :'ot1' || '/orden.pdf', 'orden.pdf', 100);
 reset role;
 
 select set_config('prueba.cot1', :'cot1', true);

@@ -6,12 +6,10 @@ import {
   ClipboardList,
   Factory,
   PauseCircle,
-  Plus,
   Zap,
 } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
-import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Indicador } from '@/components/ui/indicador'
 import { Insignia, Punto, type Tono } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
@@ -136,7 +134,6 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
         { conMargen: verMargen },
       )
     : null
-  const puedeCrear = puede(perfil, 'ordenes.crear')
   // Para el pie de «Órdenes abiertas»: un número suelto no dice si son muchas
   // o pocas hasta que se ve contra el total registrado.
   const totalOrdenes = indicadores.total
@@ -213,17 +210,8 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
               <div className="py-8 text-center">
                 <p className="text-sm font-medium text-texto">No hay órdenes abiertas</p>
                 <p className="mt-1 text-xs text-texto-suave">
-                  En cuanto se apruebe una, aparece acá con su avance y su fecha de entrega.
+                  La OT llega cuando Gerencia aprueba la cotización con su código interno; aparece acá con su avance y su fecha de entrega.
                 </p>
-                {puedeCrear && (
-                  <div className="mt-4 flex justify-center">
-                    {/* La orden sale de la cotización PDF aprobada. */}
-                    <EnlaceBoton href="/cotizaciones/pdf?estado=APROBADA_SIN_OT" tamano="sm">
-                      <Plus aria-hidden className="size-3.5" />
-                      Emitir OT desde una cotización
-                    </EnlaceBoton>
-                  </div>
-                )}
               </div>
             ) : (
               <ul className="divide-y divide-borde">
