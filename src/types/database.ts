@@ -108,6 +108,45 @@ export type Database = {
           }
         ]
       }
+      adquisiciones_ordenes_compra: {
+        Row: {
+          id: string
+          adquisicion_id: string
+          orden_compra_id: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          adquisicion_id: string
+          orden_compra_id: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          adquisicion_id?: string
+          orden_compra_id?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "adquisiciones_ordenes_compra_adquisicion_id_fkey"
+            columns: ["adquisicion_id"]
+            isOneToOne: false
+            referencedRelation: "adquisiciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_ordenes_compra_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       areas: {
         Row: {
           id: string
@@ -448,6 +487,85 @@ export type Database = {
           {
             foreignKeyName: "clientes_vendedor_id_fkey"
             columns: ["vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      cobros_factura_venta: {
+        Row: {
+          id: string
+          factura_id: string
+          fecha: string
+          moneda: string
+          monto: number
+          cancela: boolean
+          operacion: string | null
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          factura_id: string
+          fecha: string
+          moneda: string
+          monto: number
+          cancela?: boolean
+          operacion?: string | null
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          factura_id?: string
+          fecha?: string
+          moneda?: string
+          monto?: number
+          cancela?: boolean
+          operacion?: string | null
+          archivo_ruta?: string
+          archivo_mime?: string
+          archivo_tamano?: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cobros_factura_venta_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cobros_factura_venta_factura_id_fkey"
+            columns: ["factura_id"]
+            isOneToOne: false
+            referencedRelation: "facturas_venta"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cobros_factura_venta_registrado_por_fkey"
+            columns: ["registrado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -1849,6 +1967,107 @@ export type Database = {
             columns: ["area_id"]
             isOneToOne: false
             referencedRelation: "areas"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      facturas_venta: {
+        Row: {
+          id: string
+          codigo_interno: string
+          cotizacion_pdf_id: string
+          cotizacion_numero: string
+          cliente_id: string | null
+          cliente: string
+          numero: string
+          fecha_emision: string
+          fecha_vencimiento: string
+          moneda: string
+          total: number
+          concepto: string | null
+          ruta_storage: string
+          nombre_archivo: string
+          tamano_bytes: number
+          registrado_por: string
+          anulada_por: string | null
+          anulada_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo_interno: string
+          cotizacion_pdf_id: string
+          cotizacion_numero: string
+          cliente_id?: string | null
+          cliente: string
+          numero: string
+          fecha_emision: string
+          fecha_vencimiento: string
+          moneda: string
+          total: number
+          concepto?: string | null
+          ruta_storage: string
+          nombre_archivo: string
+          tamano_bytes: number
+          registrado_por?: string
+          anulada_por?: string | null
+          anulada_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo_interno?: string
+          cotizacion_pdf_id?: string
+          cotizacion_numero?: string
+          cliente_id?: string | null
+          cliente?: string
+          numero?: string
+          fecha_emision?: string
+          fecha_vencimiento?: string
+          moneda?: string
+          total?: number
+          concepto?: string | null
+          ruta_storage?: string
+          nombre_archivo?: string
+          tamano_bytes?: number
+          registrado_por?: string
+          anulada_por?: string | null
+          anulada_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "facturas_venta_anulada_por_fkey"
+            columns: ["anulada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "facturas_venta_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "facturas_venta_cotizacion_pdf_id_fkey"
+            columns: ["cotizacion_pdf_id"]
+            isOneToOne: false
+            referencedRelation: "cotizaciones_pdf"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "facturas_venta_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -5551,6 +5770,13 @@ export type Database = {
           referencia: string
           registrado_por: string
           creado_en: string
+          archivo_ruta: string | null
+          archivo_mime: string | null
+          archivo_tamano: number | null
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          actualizado_en: string
         }
         Insert: {
           id?: string
@@ -5560,6 +5786,13 @@ export type Database = {
           referencia: string
           registrado_por?: string
           creado_en?: string
+          archivo_ruta?: string | null
+          archivo_mime?: string | null
+          archivo_tamano?: number | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          actualizado_en?: string
         }
         Update: {
           id?: string
@@ -5569,6 +5802,13 @@ export type Database = {
           referencia?: string
           registrado_por?: string
           creado_en?: string
+          archivo_ruta?: string | null
+          archivo_mime?: string | null
+          archivo_tamano?: number | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          actualizado_en?: string
         }
         Relationships: [
           {
@@ -5579,7 +5819,96 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "pagos_adquisicion_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "pagos_adquisicion_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      pagos_orden_servicio: {
+        Row: {
+          id: string
+          orden_servicio_id: string
+          fecha_pago: string
+          moneda: string
+          monto: number
+          cancela: boolean
+          operacion: string | null
+          comprobante_proveedor: string | null
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_servicio_id: string
+          fecha_pago: string
+          moneda: string
+          monto: number
+          cancela?: boolean
+          operacion?: string | null
+          comprobante_proveedor?: string | null
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_servicio_id?: string
+          fecha_pago?: string
+          moneda?: string
+          monto?: number
+          cancela?: boolean
+          operacion?: string | null
+          comprobante_proveedor?: string | null
+          archivo_ruta?: string
+          archivo_mime?: string
+          archivo_tamano?: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pagos_orden_servicio_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_orden_servicio_orden_servicio_id_fkey"
+            columns: ["orden_servicio_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_servicio"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_orden_servicio_registrado_por_fkey"
             columns: ["registrado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
@@ -8879,6 +9208,8 @@ export type Database = {
           total: number | null
           pagado: number | null
           saldo: number | null
+          condicion_pago: string | null
+          tipo: string | null
         }
         Relationships: []
       }
@@ -8991,6 +9322,34 @@ export type Database = {
           disponible: number | null
           almacen: string | null
           categoria: string | null
+        }
+        Relationships: []
+      }
+      v_facturas_venta: {
+        Row: {
+          id: string | null
+          codigo_interno: string | null
+          cotizacion_pdf_id: string | null
+          cotizacion_numero: string | null
+          cliente_id: string | null
+          cliente: string | null
+          numero: string | null
+          fecha_emision: string | null
+          fecha_vencimiento: string | null
+          moneda: string | null
+          total: number | null
+          concepto: string | null
+          ruta_storage: string | null
+          nombre_archivo: string | null
+          registrado_por: string | null
+          registrado_por_puesto: string | null
+          creado_en: string | null
+          anulada_en: string | null
+          motivo_anulacion: string | null
+          cobrado: number | null
+          cancelada: boolean | null
+          saldo: number | null
+          ultimo_cobro: string | null
         }
         Relationships: []
       }
@@ -9339,6 +9698,18 @@ export type Database = {
         }
         Returns: null
       }
+      adquisiciones_control: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          adquisicion_id: string | null
+          ordenes: Json | null
+          total_oc: number | null
+          diferencia: number | null
+          control: string | null
+        }[]
+      }
       almacen_de_material: {
         Args: {
           p_material: string | null
@@ -9348,6 +9719,20 @@ export type Database = {
       anular_asistencia: {
         Args: {
           p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      anular_cobro_factura: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      anular_factura_venta: {
+        Args: {
+          p_factura: string | null
           p_motivo: string | null
         }
         Returns: string
@@ -9366,6 +9751,13 @@ export type Database = {
         }
         Returns: string
       }
+      anular_pago_factura: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       anular_pago_planilla_diaria: {
         Args: {
           p_id: string | null
@@ -9374,6 +9766,13 @@ export type Database = {
         Returns: string
       }
       anular_pago_recibo_honorarios: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      anular_pago_servicio: {
         Args: {
           p_id: string | null
           p_motivo: string | null
@@ -9441,11 +9840,26 @@ export type Database = {
         }
         Returns: string
       }
+      archivo_de_cotizacion_aprobada: {
+        Args: {
+          p_nombre: string | null
+        }
+        Returns: boolean
+      }
       archivo_plano_vinculado: {
         Args: {
           p_ruta: string | null
         }
         Returns: boolean
+      }
+      archivo_subido_por_mi: {
+        Args: {
+          p_bucket: string | null
+          p_ruta: string | null
+          p_carpeta: string | null
+          p_tipos: string[] | null
+        }
+        Returns: string
       }
       armar_ficha_ot: {
         Args: {
@@ -9654,6 +10068,12 @@ export type Database = {
           documento: string | null
           referencia_id: string | null
         }[]
+      }
+      codigo_interno_de_cotizacion: {
+        Args: {
+          p_cotizacion: string | null
+        }
+        Returns: string
       }
       codigo_interno_documentos: {
         Args: {
@@ -10063,6 +10483,23 @@ export type Database = {
           lineas: Json | null
         }[]
       }
+      compras_sin_factura: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          orden_compra_id: string | null
+          numero: string | null
+          proveedor: string | null
+          referencia: string | null
+          moneda: string | null
+          total: number | null
+          sin_precio: boolean | null
+          condicion_pago: string | null
+          numero_ot: string | null
+          creado_en: string | null
+          en_borrador: boolean | null
+          orden_id: string | null
+        }[]
+      }
       confirmar_igv_cotizacion: {
         Args: {
           p_cotizacion: string | null
@@ -10108,6 +10545,36 @@ export type Database = {
           monto: number | null
           tipo_cambio: number | null
           monto_pen: number | null
+        }[]
+      }
+      cotizacion_fue_aprobada: {
+        Args: {
+          p_cotizacion: string | null
+        }
+        Returns: boolean
+      }
+      cotizaciones_para_facturar: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          cotizacion_id: string | null
+          numero: string | null
+          codigo_interno: string | null
+          cliente_id: string | null
+          cliente: string | null
+          cliente_documento: string | null
+          cliente_direccion: string | null
+          carroceria: string | null
+          moneda: string | null
+          monto_venta: number | null
+          incluye_igv: boolean | null
+          en_correccion: boolean | null
+          aprobada_en: string | null
+          archivo_ruta: string | null
+          archivo_mime: string | null
+          archivo_nombre: string | null
+          facturas: number | null
+          facturado: number | null
+          cobrado: number | null
         }[]
       }
       crear_compra_agrupada: {
@@ -10532,6 +10999,13 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: null
       }
+      facturacion_pendientes: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          por_facturar: number | null
+          por_cobrar: number | null
+        }[]
+      }
       fijar_condicion_pago_compra: {
         Args: {
           p_compra: string | null
@@ -10887,6 +11361,12 @@ export type Database = {
       normalizar_codigo_interno: {
         Args: {
           p: string | null
+        }
+        Returns: string
+      }
+      normalizar_numero_factura: {
+        Args: {
+          p_numero: string | null
         }
         Returns: string
       }
@@ -11346,6 +11826,18 @@ export type Database = {
         }
         Returns: number
       }
+      registrar_cobro_factura: {
+        Args: {
+          p_id: string | null
+          p_factura: string | null
+          p_fecha: string | null
+          p_monto: number | null
+          p_cancela: boolean | null
+          p_operacion: string | null
+          p_ruta: string | null
+        }
+        Returns: string
+      }
       registrar_conteo_almacen: {
         Args: {
           p_id: string | null
@@ -11361,6 +11853,21 @@ export type Database = {
           p_tipo_evento: Database["public"]["Enums"]["tipo_evento_ot"] | null
           p_descripcion: string | null
           p_datos?: Json | null
+        }
+        Returns: string
+      }
+      registrar_factura_venta: {
+        Args: {
+          p_id: string | null
+          p_cotizacion: string | null
+          p_numero: string | null
+          p_fecha_emision: string | null
+          p_fecha_vencimiento: string | null
+          p_moneda: string | null
+          p_total: number | null
+          p_concepto: string | null
+          p_ruta: string | null
+          p_nombre_archivo: string | null
         }
         Returns: string
       }
@@ -11448,6 +11955,17 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_pago_factura: {
+        Args: {
+          p_id: string | null
+          p_adquisicion: string | null
+          p_fecha: string | null
+          p_monto: number | null
+          p_referencia: string | null
+          p_ruta: string | null
+        }
+        Returns: string
+      }
       registrar_pago_planilla_diaria: {
         Args: {
           p_id: string | null
@@ -11465,6 +11983,19 @@ export type Database = {
           p_recibo_id: string | null
           p_fecha_pago: string | null
           p_operacion: string | null
+          p_ruta: string | null
+        }
+        Returns: string
+      }
+      registrar_pago_servicio: {
+        Args: {
+          p_id: string | null
+          p_orden_servicio: string | null
+          p_fecha_pago: string | null
+          p_monto: number | null
+          p_cancela: boolean | null
+          p_operacion: string | null
+          p_comprobante: string | null
           p_ruta: string | null
         }
         Returns: string
@@ -12061,6 +12592,32 @@ export type Database = {
         }
         Returns: number
       }
+      servicios_pendientes_de_pago: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      servicios_por_pagar: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          numero: string | null
+          proveedor_id: string | null
+          proveedor: string | null
+          proveedor_documento: string | null
+          codigo_interno: string | null
+          descripcion: string | null
+          moneda: string | null
+          monto: number | null
+          condicion_pago: string | null
+          dias_credito: number | null
+          estado: string | null
+          aprobado_en: string | null
+          conformidad_en: string | null
+          pagado: number | null
+          cancelada: boolean | null
+          ultimo_pago: string | null
+        }[]
+      }
       siguiente_correlativo: {
         Args: {
           p_tipo: Database["public"]["Enums"]["tipo_correlativo"] | null
@@ -12124,6 +12681,12 @@ export type Database = {
       tipo_cambio_venta: {
         Args: {
           p_fecha: string | null
+        }
+        Returns: number
+      }
+      total_orden_compra: {
+        Args: {
+          p_compra: string | null
         }
         Returns: number
       }

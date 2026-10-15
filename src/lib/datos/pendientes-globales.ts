@@ -450,6 +450,54 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
+  // La factura de venta y su cobro cuelgan del código interno (migración
+  // 20261015124000): las dos cuentas salen de una sola lectura, y la base deja
+  // en nulo la que no es de quien mira.
+  const facturacion = (() => {
+    let lectura: Promise<{ por_facturar: number | null; por_cobrar: number | null }> | null = null
+    return () =>
+      (lectura ??= (async () => {
+        const { data, error } = await supabase.rpc('facturacion_pendientes')
+        if (error || !data?.[0]) throw new Error('No se pudo consultar el pendiente.')
+        return data[0]
+      })())
+  })()
+
+  if (puede(perfil, 'contabilidad.facturar')) {
+    tareas.push({
+      clave: 'por_facturar',
+      ruta: '/contabilidad/facturacion',
+      tono: 'acento',
+      texto: (n) => plural(n, 'cotización aprobada por facturar', 'cotizaciones aprobadas por facturar'),
+      contar: async () => (await facturacion()).por_facturar ?? 0,
+    })
+  }
+
+  if (puede(perfil, 'tesoreria.registrar_cobros')) {
+    tareas.push({
+      clave: 'por_cobrar',
+      ruta: '/tesoreria/por-cobrar',
+      tono: 'acento',
+      texto: (n) => plural(n, 'factura por cobrar', 'facturas por cobrar'),
+      contar: async () => (await facturacion()).por_cobrar ?? 0,
+    })
+  }
+
+  // Las órdenes de servicio conformes que Tesorería no ha pagado (migración 20261015120000).
+  if (puede(perfil, 'tesoreria.pagar_servicios')) {
+    tareas.push({
+      clave: 'servicios_por_pagar',
+      ruta: '/tesoreria/pagos-de-servicio',
+      tono: 'aviso',
+      texto: (n) => plural(n, 'servicio conforme por pagar', 'servicios conformes por pagar'),
+      contar: async () => {
+        const { data, error } = await supabase.rpc('servicios_pendientes_de_pago')
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        return data ?? 0
+      },
+    })
+  }
+
   if (puede(perfil, 'cotizaciones.crear')) {
     tareas.push({
       clave: 'pdf_rechazadas',

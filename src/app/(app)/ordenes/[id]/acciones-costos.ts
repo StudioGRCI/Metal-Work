@@ -27,7 +27,7 @@ export async function solicitarTesoreria(_previo: unknown, datos: FormData): Pro
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath(`/ordenes/${v.orden_id}`)
-  revalidatePath('/tesoreria')
+  revalidatePath('/tesoreria/por-cobrar')
   return { ok: true, mensaje: 'Solicitud enviada a Tesorería.' }
 }
 
@@ -50,6 +50,6 @@ export async function responderSolicitudTesoreria(_previo: unknown, datos: FormD
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath(`/ordenes/${v.orden_id}`)
-  revalidatePath('/tesoreria')
+  revalidatePath('/tesoreria/por-cobrar')
   return { ok: true, mensaje: 'Respuesta registrada en la OT.' }
 }

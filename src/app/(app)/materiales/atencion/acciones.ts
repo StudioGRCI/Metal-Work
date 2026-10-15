@@ -123,7 +123,7 @@ export async function fijarCondicionCompra(_previo: unknown, formulario: FormDat
   revalidatePath('/ordenes/[id]', 'page')
   revalidatePath('/compras')
   revalidatePath('/almacen/kardex')
-  revalidatePath('/tesoreria/cuentas')
+  revalidatePath('/tesoreria/por-pagar')
   return { ok: true, mensaje: 'Condición de pago guardada para Tesorería.' }
 }
 
@@ -205,7 +205,7 @@ export async function crearOrdenCompra(_previo: unknown, formulario: FormData): 
   revalidatePath('/compras')
   revalidatePath('/compras/aprobacion')
   revalidatePath('/almacen/kardex')
-  revalidatePath('/tesoreria/cuentas')
+  revalidatePath('/tesoreria/por-pagar')
   if (emitida?.aprobacion === 'POR_APROBAR') {
     return { ok: true, mensaje: 'Compra registrada. Pasa el monto que pide aprobación: queda por aprobar antes de enviarla al proveedor.' }
   }

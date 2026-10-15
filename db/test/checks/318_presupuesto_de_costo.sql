@@ -6,8 +6,10 @@
 -- presupuesto. Confirmado, sale de la regla de la casa: 10,000 ÷ 1.15 =
 -- 8,695.65, gastado el 15.9 %, EN_RANGO. Administración lo fija a mano en
 -- 1,500 (92 % gastado con 40 % de avance: AJUSTADO) y luego en 1,300
--- (EXCEDIDO); Gerencia lo devuelve al de la cotización. Supervisión general lo
--- lee y no lo fija; Costos y Materiales y Ventas no lo ven. Con el costo
+-- (EXCEDIDO); Gerencia lo devuelve al de la cotización. Supervisión general,
+-- Costos y Materiales y Ventas no lo ven: desde la 20261015125000 la cotización
+-- (y el presupuesto, que delata su precio) solo la ven Administración,
+-- Gerencia, Tesorería y Contabilidad. Con el costo
 -- cerrado, el margen y el presupuesto usan el costo del cierre aunque después
 -- llegue un gasto nuevo.
 begin;
@@ -122,13 +124,14 @@ begin
     format('1,380 contra 1,300 es EXCEDIDO (dio %s %%, %s)', p.consumido_pct, p.semaforo));
   reset role;
 
-  -- Supervisión general lo lee y no lo fija.
+  -- Supervisión general ya no ve la cotización (20261015125000): tampoco el
+  -- presupuesto, que delata su precio. Sigue sin poder fijarlo.
   perform test.como_usuario(current_setting('prueba.p.general')::uuid);
   set local role authenticated;
-  select * into p from public.presupuesto_ot(v_orden);
-  perform test.afirmar(p.semaforo = 'EXCEDIDO', 'Supervisión general ve el semáforo');
+  perform test.debe_fallar(format('select * from public.presupuesto_ot(%L)', v_orden),
+    'Supervisión general no ve el presupuesto', 'precio de venta');
   select count(*) into v_n from public.ot_presupuestos where orden_id = v_orden;
-  perform test.afirmar(v_n = 1, 'Supervisión general lee el presupuesto fijado');
+  perform test.afirmar(v_n = 0, 'Supervisión general no lee el presupuesto fijado');
   perform test.debe_fallar(format('select public.fijar_presupuesto_ot(%L, 2000, %L)', v_orden, 'Intento QA de supervisión'),
     'Supervisión general no fija el presupuesto', 'Gerencia o Administración');
   reset role;
