@@ -68,7 +68,6 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   const tramitesMateriales = [
     { permiso: 'diseno.planos', campo: 'por_aprobar', texto: 'materiales propuestos por revisar', ruta: '/ordenes?estado=ABIERTAS' },
     { permiso: 'almacen.recibir', campo: 'por_revisar_stock', texto: 'solicitudes de materiales por revisar en Almacén', ruta: '/ordenes?estado=ABIERTAS' },
-    { permiso: 'compras.crear', campo: 'por_comprar', texto: 'insumos por comprar para las OT', ruta: '/compras' },
     { permiso: 'almacen.recibir', campo: 'por_recibir', texto: 'insumos comprados por recibir', ruta: '/ordenes?estado=ABIERTAS' },
     { permiso: 'almacen.despachar', campo: 'por_despachar', texto: 'materiales por despachar con foto', ruta: '/ordenes?estado=ABIERTAS' },
   ]
@@ -86,15 +85,6 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       contar: () => cabeza(supabase.from('diseno_informes').select('id', { count: 'exact', head: true }).eq('estado', tramite.estado)),
     })
   }
-
-  if (puede(perfil, 'compras.crear')) tareas.push({
-    clave: 'compras_por_entregar', ruta: '/compras', tono: 'aviso',
-    texto: n => plural(n, 'compra por documentar o entregar a Almacén', 'compras por documentar o entregar a Almacén'),
-    contar: () => cabeza(supabase.from('ordenes_compra_materiales')
-      .select('id,requerimientos_materiales!inner(ordenes_trabajo!inner(estado))', { count: 'exact', head: true })
-      .is('entregado_almacen_en', null)
-      .in('requerimientos_materiales.ordenes_trabajo.estado', [...ESTADOS_ACTIVOS_OT])),
-  })
 
   // La gestión de compras (migración 20261015140000): Logística, Contabilidad y
   // el conductor cuentan cosas distintas de la misma lista, que se lee una vez.

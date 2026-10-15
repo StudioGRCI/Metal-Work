@@ -44,7 +44,7 @@ export default async function PaginaAprobacionCompras() {
       <EncabezadoPagina
         titulo="Aprobación de compras y servicios"
         descripcion={resumen}
-        migas={[{ titulo: 'Compras', ruta: puede(perfil, 'compras.crear') ? '/compras' : undefined }, { titulo: 'Aprobación' }]}
+        migas={[{ titulo: 'Compras' }, { titulo: 'Aprobación' }]}
       />
 
       <div className="space-y-6">

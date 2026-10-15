@@ -210,7 +210,7 @@ punto y coma con su nombre delante.
 | --- | --- | --- | --- |
 | Requerimientos | Requerimientos, Vehículos (con la ficha de ingreso y salida y la revisión de Tesorería) | Gasto por código interno | RQ, Vehículos, Gasto, Tablero |
 | Almacén | Por atender: Atención de requerimiento, Materiales por código; Almacenes: Kardex, EPP, Consumibles, Accesorios y Materia prima | — | Atención, Materiales, Kardex, Tablero |
-| Logística | Atención de requerimiento, Órdenes de compra, Órdenes de servicio, Aprobación de compras, Gestión de compras; Proveedores y precios: Proveedores, Valorización del almacén | Compras agrupadas, Adquisiciones | Atención, OC, Aprobar, Gestión |
+| Logística | Atención de requerimiento, Gestión de compras, Órdenes de compra, Órdenes de servicio (sin «Compras agrupadas» desde el 2026-10-15: eran las compras por OT) | Aprobación de compras, Adquisiciones, Proveedores, Valorización del almacén | Atención, Gestión, OC, OS |
 | Conductor de Logística | Recojos | — | Recojos, Tablero |
 | Gerencia | Por aprobar: Cotización, Aprobación de compras, Reporte diario (lo valida); Seguimiento: Códigos internos | Planilla diaria, Horas extras, Subcontratos, Tardanzas, Observaciones, Proveedores | Cotizar, Aprobar, Reporte, Códigos |
 | Supervisor de área | Reporte diario, Planos y etapas (lo que Diseño cargó para su área y las etapas que hace; de cada código, «Materiales y pedidos»), Requerimientos (lo que su área recoge de Almacén) | — | Reporte, Planos, RQ, Tablero |

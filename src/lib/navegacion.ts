@@ -325,14 +325,6 @@ export const NAVEGACION = [
         descripcion: 'El padrón del que se elige en la orden de compra',
         disponible: true,
       },
-      {
-        titulo: 'Compras agrupadas',
-        ruta: '/compras',
-        icono: Receipt,
-        permiso: 'compras.crear',
-        descripcion: 'Las compras por OT agrupadas por proveedor, con facturas y entregas',
-        disponible: true,
-      },
       // Logística fija el precio de lo que nunca se compró por el sistema.
       // Costos la consulta; Almacén también puede, pero no la necesita en su
       // menú. Administración ya no la ve (ver MENU_POR_PUESTO).
@@ -557,23 +549,23 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     ],
     telefono: ['/requerimientos/atencion', '/seguimiento?vista=materiales', '/almacen/kardex', '/'],
   },
-  // Del RQ sin stock a la OC (o la OS), su visto de Gerencia y la gestión de
-  // compras: qué recoge el conductor, en qué orden y con qué peso. «Recojos» la
-  // abre por su dirección: la gestión ya muestra todo lo que el conductor
-  // lleva. El padrón y los precios los lleva sin apuro; las compras agrupadas
-  // por OT solo las consulta.
+  // En el orden que DKS fijó el 2026-10-15: después del tablero, la atención
+  // del RQ sin stock, la gestión de compras (qué recoge el conductor, en qué
+  // orden y con qué peso) y las órdenes de compra y de servicio. Lo demás lo
+  // consulta. «Recojos» la abre por su dirección: la gestión ya muestra todo lo
+  // que el conductor lleva. Sin «Compras agrupadas» desde el 2026-10-15: eran
+  // las compras por OT, y la OT ya no se usa.
   COMPRADOR: {
     grupos: [
       {
         titulo: 'Logística',
-        rutas: ['/requerimientos/atencion', '/compras/ordenes', '/compras/servicios', '/compras/aprobacion', '/compras/gestion'],
+        rutas: ['/requerimientos/atencion', '/compras/gestion', '/compras/ordenes', '/compras/servicios'],
       },
-      { titulo: 'Proveedores y precios', rutas: ['/proveedores', '/compras/valorizacion'] },
-      // Adquisiciones, en lectura: qué OC ya tienen su factura y si calza (2026-10-14).
-      // La OT ya no: solo la consultaba (2026-10-15, el código interno es la referencia).
-      { titulo: 'Consultas', rutas: ['/compras', '/adquisiciones'] },
+      // El visto de Gerencia lo sigue; Adquisiciones, en lectura: qué OC ya
+      // tienen su factura y si calza (2026-10-14). El padrón y los precios, sin apuro.
+      { titulo: 'Consultas', rutas: ['/compras/aprobacion', '/adquisiciones', '/proveedores', '/compras/valorizacion'] },
     ],
-    telefono: ['/requerimientos/atencion', '/compras/ordenes', '/compras/aprobacion', '/compras/gestion'],
+    telefono: ['/requerimientos/atencion', '/compras/gestion', '/compras/ordenes', '/compras/servicios'],
   },
   CONDUCTOR: {
     grupos: [{ titulo: 'Logística', rutas: ['/recojos'] }],
@@ -832,6 +824,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/compras/ordenes', corto: 'OC' },
   { ruta: '/compras/aprobacion', corto: 'Aprobar' },
   { ruta: '/compras/gestion', corto: 'Gestión' },
+  { ruta: '/compras/servicios', corto: 'OS' },
   { ruta: '/requerimientos', corto: 'RQ' },
   { ruta: '/requerimientos/atencion', corto: 'Atención' },
   { ruta: '/vehiculos', corto: 'Vehículos' },

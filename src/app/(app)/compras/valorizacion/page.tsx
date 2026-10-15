@@ -68,7 +68,7 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
       <EncabezadoPagina
         titulo="Valorización del almacén"
         descripcion="El precio unitario de lo que hay en almacén. Lo comprado por el sistema ya trae el de su orden de compra; Logística fija el de los consumibles y saldos que nunca pasaron por una compra."
-        migas={[{ titulo: 'Compras', ruta: puede(perfil, 'compras.crear') ? '/compras' : undefined }, { titulo: 'Valorización' }]}
+        migas={[{ titulo: 'Compras' }, { titulo: 'Valorización' }]}
       />
 
       <dl className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
