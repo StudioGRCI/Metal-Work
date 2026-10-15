@@ -27,6 +27,14 @@ export type ResumenCodigo = {
   servicios_por_aprobar: number
   servicios_por_aprobar_pen: number
   servicios_por_aprobar_usd: number
+  /** Recibos por honorarios vigentes de sus subcontratos, por su bruto: todos suman al costo. */
+  subcontratos: number
+  subcontratos_pen: number
+  subcontratos_usd: number
+  /** Los que esperan el pago de Tesorería: suman igual, y se muestran para saber cuánto falta pagar. */
+  subcontratos_por_pagar: number
+  subcontratos_por_pagar_pen: number
+  subcontratos_por_pagar_usd: number
   ultima_actividad: string | null
   ultimo_reporte: string | null
   trabajos: number
@@ -48,18 +56,22 @@ const n = (v: number | null | undefined) => Number(v ?? 0)
 /** Todos los códigos del sistema, del que tuvo movimiento más reciente al más viejo. */
 export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
   const supabase = await createClient()
-  // El resumen de la base no trae las órdenes de servicio (cambiarle las
-  // columnas exige borrarlo): salen de su propia función, con las mismas
-  // líneas que el costeo de cada código.
-  const [{ data, error }, porServicio] = await Promise.all([
+  // El resumen de la base no trae las órdenes de servicio ni los subcontratos
+  // (cambiarle las columnas exige borrarlo): salen de su propia función, con
+  // las mismas líneas que el costeo de cada código.
+  const [{ data, error }, porServicio, porSubcontrato] = await Promise.all([
     supabase.rpc('codigos_internos_resumen'),
     supabase.rpc('codigos_internos_servicios'),
+    supabase.rpc('codigos_internos_subcontratos'),
   ])
   if (error) throw new Error(`No se pudieron leer los códigos internos: ${error.message}`)
   if (porServicio.error) throw new Error(`No se pudieron leer los servicios de los códigos: ${porServicio.error.message}`)
+  if (porSubcontrato.error) throw new Error(`No se pudieron leer los subcontratos de los códigos: ${porSubcontrato.error.message}`)
   const servicios = new Map((porServicio.data ?? []).flatMap((s) => (s.codigo ? [[s.codigo, s] as const] : [])))
+  const subcontratos = new Map((porSubcontrato.data ?? []).flatMap((s) => (s.codigo ? [[s.codigo, s] as const] : [])))
   return (data ?? []).flatMap((f) => {
     const s = f.codigo ? servicios.get(f.codigo) : undefined
+    const sc = f.codigo ? subcontratos.get(f.codigo) : undefined
     return f.codigo
       ? [
           {
@@ -77,6 +89,12 @@ export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
             servicios_por_aprobar: n(s?.por_aprobar),
             servicios_por_aprobar_pen: n(s?.por_aprobar_pen),
             servicios_por_aprobar_usd: n(s?.por_aprobar_usd),
+            subcontratos: n(sc?.recibos),
+            subcontratos_pen: n(sc?.subcontratos_pen),
+            subcontratos_usd: n(sc?.subcontratos_usd),
+            subcontratos_por_pagar: n(sc?.por_pagar),
+            subcontratos_por_pagar_pen: n(sc?.por_pagar_pen),
+            subcontratos_por_pagar_usd: n(sc?.por_pagar_usd),
             ultima_actividad: f.ultima_actividad,
             ultimo_reporte: f.ultimo_reporte,
             trabajos: n(f.trabajos),
@@ -140,7 +158,9 @@ export async function avanceDelCodigo(codigo: string): Promise<AvanceReportado[]
  * Una línea del costeo. MANO_OBRA lleva horas y costo (cantidad = personas);
  * MANO_OBRA_SIN_COSTO, horas sin costo; MATERIALES y MATERIALES_SIN_PRECIO, cada
  * salida; COMPRAS, cada OC sin IGV, que no va al total; SERVICIOS, cada OS
- * aprobada sin IGV, que sí va; SERVICIOS_POR_APROBAR, la que espera a Gerencia.
+ * aprobada sin IGV, que sí va; SERVICIOS_POR_APROBAR, la que espera a Gerencia;
+ * SUBCONTRATOS, cada recibo por honorarios pagado, por su bruto, y
+ * SUBCONTRATOS_POR_PAGAR, el que espera a Tesorería: los dos van.
  */
 export type LineaCosteo = {
   fuente:
@@ -151,6 +171,8 @@ export type LineaCosteo = {
     | 'COMPRAS'
     | 'SERVICIOS'
     | 'SERVICIOS_POR_APROBAR'
+    | 'SUBCONTRATOS'
+    | 'SUBCONTRATOS_POR_PAGAR'
   fecha: string
   concepto: string
   detalle: string | null
@@ -305,6 +327,12 @@ export function sumarCodigosDeDiseno(
         servicios_por_aprobar: 0,
         servicios_por_aprobar_pen: 0,
         servicios_por_aprobar_usd: 0,
+        subcontratos: 0,
+        subcontratos_pen: 0,
+        subcontratos_usd: 0,
+        subcontratos_por_pagar: 0,
+        subcontratos_por_pagar_pen: 0,
+        subcontratos_por_pagar_usd: 0,
         ultima_actividad: d.ultimo_cambio ? diaDeLima(d.ultimo_cambio) : null,
         ultimo_reporte: null,
         trabajos: 0,

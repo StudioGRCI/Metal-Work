@@ -16,7 +16,10 @@ import { exigirPermiso } from '@/lib/sesion'
 
 export const metadata = { title: 'Códigos internos' }
 
-const tieneCosto = (c: ResumenCodigo) => c.mano_obra + c.materiales_pen + c.materiales_usd + c.servicios_pen + c.servicios_usd > 0
+const tieneCosto = (c: ResumenCodigo) => {
+  const costo = costoDelCodigo(c)
+  return costo.pen + costo.usd > 0
+}
 const porCompletar = (c: ResumenCodigo) => c.horas_sin_costo > 0 || c.materiales_sin_precio > 0 || c.compras_sin_precio > 0
 
 /** Los filtros de la lista. «Parecidos» es lo que Gerencia tiene que verificar a mano. */
@@ -52,7 +55,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Códigos internos"
-        descripcion="Cada código interno que aparece en el sistema —reportes diarios, horas de RR. HH., salidas del almacén, requerimientos, compras, órdenes de servicio, unidades e ingresos a la planta— con cómo va y lo que lleva costado. El costo suma la mano de obra, los materiales que salieron del almacén y las órdenes de servicio aprobadas; las compras se muestran aparte y no se suman, porque lo comprado se cuenta cuando sale del almacén."
+        descripcion="Cada código interno que aparece en el sistema —reportes diarios, horas de RR. HH., salidas del almacén, requerimientos, compras, órdenes de servicio, subcontratos, unidades e ingresos a la planta— con cómo va y lo que lleva costado. El costo suma la mano de obra, los materiales que salieron del almacén, las órdenes de servicio aprobadas y los recibos por honorarios de los subcontratos; las compras se muestran aparte y no se suman, porque lo comprado se cuenta cuando sale del almacén."
         migas={[{ titulo: 'Códigos internos' }]}
       />
 
@@ -174,6 +177,12 @@ function FilaCodigo({ codigo: c, parecidos, diseno }: { codigo: ResumenCodigo; p
             {c.servicios_usd > 0 && <span className="tabular text-texto"> + {moneda(c.servicios_usd, 'USD')}</span>}
           </span>
         )}
+        {(c.subcontratos_pen > 0 || c.subcontratos_usd > 0) && (
+          <span>
+            Subcontratos <span className="tabular text-texto">{moneda(c.subcontratos_pen)}</span>
+            {c.subcontratos_usd > 0 && <span className="tabular text-texto"> + {moneda(c.subcontratos_usd, 'USD')}</span>}
+          </span>
+        )}
         {(c.compras_pen > 0 || c.compras_usd > 0) && (
           <span>
             Compras <span className="tabular">{moneda(c.compras_pen)}</span>
@@ -189,6 +198,11 @@ function FilaCodigo({ codigo: c, parecidos, diseno }: { codigo: ResumenCodigo; p
         {c.servicios_por_aprobar > 0 && (
           <Insignia tono="aviso">
             {c.servicios_por_aprobar} OS por aprobar
+          </Insignia>
+        )}
+        {c.subcontratos_por_pagar > 0 && (
+          <Insignia tono="aviso">
+            {c.subcontratos_por_pagar} RxH por pagar
           </Insignia>
         )}
         {c.compras_sin_precio > 0 && (
