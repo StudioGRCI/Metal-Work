@@ -1,0 +1,13 @@
+-- =============================================================================
+-- EL SUBCONTRATO TIENE NÚMERO
+-- -----------------------------------------------------------------------------
+-- Gerencia pidió (2026-10-15) que Administración lleve los subcontratos: el
+-- trabajo que se le encarga a una persona de fuera para una unidad, que cobra
+-- con recibos por honorarios. Contra cada subcontrato se suben sus recibos, y
+-- Tesorería los paga con su voucher: es un documento que se paga, y como todo
+-- documento así lleva número de la casa (SC-0001-2026) y no se borra nunca.
+--
+-- Va sola porque Postgres no deja usar en la misma transacción un valor de
+-- enum recién agregado: la migración 20261015221000 crea la serie con él.
+-- =============================================================================
+alter type public.tipo_correlativo add value if not exists 'SUBCONTRATO';
