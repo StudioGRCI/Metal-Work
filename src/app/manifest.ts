@@ -4,7 +4,7 @@ import type { MetadataRoute } from 'next'
  * Lo que el teléfono necesita para instalar el sistema como aplicación: nombre,
  * íconos y que se abra sin la barra del navegador (`standalone`).
  *
- * Arranca en el tablero, que lo ve todo el mundo. Los atajos del teléfono
+ * Arranca en el dashboard, que lo ve todo el mundo. Los atajos del teléfono
  * llevan a tareas concretas del taller.
  */
 export default function manifest(): MetadataRoute.Manifest {

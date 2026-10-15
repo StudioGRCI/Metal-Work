@@ -20,7 +20,7 @@ export default function NoEncontradoEnElModulo() {
         deberías verlo, pide al administrador que revise tus permisos.
       </p>
       <EnlaceBoton href="/" className="mt-6">
-        Volver al tablero
+        Volver al dashboard
       </EnlaceBoton>
     </div>
   )

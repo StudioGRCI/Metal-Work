@@ -70,10 +70,10 @@ export const NAVEGACION = [
     titulo: 'Principal',
     items: [
       {
-        titulo: 'Tablero',
+        titulo: 'Dashboard',
         ruta: '/',
         icono: LayoutDashboard,
-        descripcion: 'Estado general del taller',
+        descripcion: 'Lo que te toca hoy y las cifras de tu área',
         disponible: true,
       },
       // Lo que se trabaja hoy va por código interno, no por OT: Gerencia ve cada
@@ -493,7 +493,7 @@ type MenuDePuesto = {
  * El menú de cada puesto, por importancia: arriba lo que espera por él cada
  * día (lo que, si no lo hace, traba a otra área), en el orden en que lo
  * trabaja; después lo que lleva o registra sin apuro; al final lo que solo
- * consulta. El tablero va siempre arriba. Un puesto con muchas pantallas las
+ * consulta. El dashboard va siempre arriba. Un puesto con muchas pantallas las
  * reparte en grupos con nombre, para no leer una lista de diez.
  *
  * Salió de entrar con cada cuenta de producción el 2026-10-14. Hasta entonces
@@ -549,7 +549,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     ],
     telefono: ['/requerimientos/atencion', '/seguimiento?vista=materiales', '/almacen/kardex', '/'],
   },
-  // En el orden que DKS fijó el 2026-10-15: después del tablero, la atención
+  // En el orden que DKS fijó el 2026-10-15: después del dashboard, la atención
   // del RQ sin stock, la gestión de compras (qué recoge el conductor, en qué
   // orden y con qué peso) y las órdenes de compra y de servicio. Lo demás lo
   // consulta. «Recojos» la abre por su dirección: la gestión ya muestra todo lo
@@ -737,7 +737,7 @@ function lePermite(item: ItemNavegacion, permisos: readonly string[], esAdmin: b
 /**
  * El menú de esta persona, por grupos: el de su puesto si lo tiene; si no, el
  * catálogo entero filtrado por su permiso. Lo usan la barra del monitor, el
- * cajón del teléfono y «Tus módulos» del tablero, así que los tres dicen lo
+ * cajón del teléfono y «Tus módulos» del dashboard, así que los tres dicen lo
  * mismo.
  */
 export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo: string): GrupoNavegacion[] {
@@ -815,7 +815,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/costos/gastos-generales', corto: 'Gastos' },
   { ruta: '/compras/valorizacion', corto: 'Precios' },
   { ruta: '/clientes', corto: 'Clientes' },
-  { ruta: '/', corto: 'Tablero' },
+  { ruta: '/', corto: 'Dashboard' },
   { ruta: '/unidades', corto: 'Unidades' },
   { ruta: '/carrocerias', corto: 'Carrocerías' },
   { ruta: '/materiales', corto: 'Materiales' },

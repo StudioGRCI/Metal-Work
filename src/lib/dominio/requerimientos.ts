@@ -1,4 +1,5 @@
 import type { Tono } from '@/components/ui/etiqueta-estado'
+import type { PerfilSesion } from '@/lib/sesion'
 
 type Def = { etiqueta: string; tono: Tono; descripcion: string }
 
@@ -32,6 +33,43 @@ export type TipoRequerimiento = 'OPERACION' | 'ADMINISTRACION'
 
 /** Los que todavía esperan a alguien: lo que la bandeja de atención muestra primero. */
 export const ESTADOS_RQ_ABIERTOS = ['POR_ATENDER', 'SIN_STOCK', 'EN_ATENCION', 'LISTO_EN_ALMACEN'] as const
+
+/** Quién compra cada requerimiento: el de operación, Logística; el de Administración, la administradora. */
+export type CompraDe = Record<TipoRequerimiento, boolean>
+export type QuienAtiende = { recibe: boolean; despacha: boolean; compraDe: CompraDe }
+
+export const tipoDeRequerimiento = (rq: { tipo: string | null }): TipoRequerimiento =>
+  rq.tipo === 'ADMINISTRACION' ? 'ADMINISTRACION' : 'OPERACION'
+
+/**
+ * Qué hace esta persona en la bandeja de atención. Cada uno compra lo suyo, como
+ * exige `rq_exigir` en la base: el RQ de operación, Logística; el de
+ * Administración, la administradora. ADMIN, los dos.
+ */
+export function quienAtiende(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>): QuienAtiende {
+  const esAdmin = perfil.rol.codigo === 'ADMIN'
+  const tiene = (permiso: string) => esAdmin || perfil.permisos.includes(permiso)
+  const administra = tiene('requerimientos.administracion')
+  const conOc = tiene('compras.crear')
+  return {
+    recibe: tiene('almacen.recibir'),
+    despacha: tiene('almacen.despachar'),
+    compraDe: { OPERACION: conOc && (esAdmin || !administra), ADMINISTRACION: conOc && administra },
+  }
+}
+
+/**
+ * Si un requerimiento abierto espera a quien mira en la bandeja de atención: el
+ * que revisa el stock lo recibe por revisar y en compra (para recepcionarlo), el
+ * que compra lo suyo sin stock, y el que despacha lo listo en almacén. La misma
+ * regla para la bandeja y para «Te toca» del dashboard, para que digan lo mismo.
+ */
+export function leTocaAtender(rq: { estado: string | null; tipo: string | null }, p: QuienAtiende): boolean {
+  if (rq.estado === 'POR_ATENDER' || rq.estado === 'EN_ATENCION') return p.recibe
+  if (rq.estado === 'SIN_STOCK') return p.compraDe[tipoDeRequerimiento(rq)] || p.recibe
+  if (rq.estado === 'LISTO_EN_ALMACEN') return p.despacha
+  return false
+}
 
 /**
  * En qué etapa va cada insumo del RQ, con su porcentaje. Lo calcula la base

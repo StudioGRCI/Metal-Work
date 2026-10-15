@@ -17,36 +17,107 @@ import { Insignia, Punto, type Tono } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_OT, ORDEN_ESTADO_OT, PRIORIDAD, definir } from '@/lib/dominio/estados'
-import { trabajaPorCodigo } from '@/lib/dominio/acceso-orden'
 import { situacionDeEntrega } from '@/lib/dominio/expediente'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha, fechaLarga, hoyLima, moneda, porcentaje } from '@/lib/format'
 import { costoDeOrdenes } from '@/lib/datos/costos-ot'
+import { dashboardDelPuesto, type Cifra, type CodigoEnCurso } from '@/lib/datos/dashboard'
 import { indicadoresTablero, ordenesAtrasadas, ordenesPorEntrega } from '@/lib/datos/ordenes'
 import { pendientesGlobales, type PendienteGlobal } from '@/lib/datos/pendientes-globales'
 import { menuDe } from '@/lib/navegacion'
 import { exigirSesion, puede, type PerfilSesion } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
 
-export const metadata = { title: 'Tablero' }
+export const metadata = { title: 'Dashboard' }
 
-export default async function PaginaTablero() {
+/**
+ * El dashboard de cada puesto, de arriba abajo: lo que le toca hoy (cada cosa
+ * con el enlace a donde se atiende), las cifras clave de su área y, para quien
+ * todavía lleva la OT, las órdenes del taller. Al final, en el teléfono, sus
+ * módulos a un toque.
+ */
+export default async function PaginaDashboard() {
   const perfil = await exigirSesion()
+  const hoy = hoyLima()
+  const esAdmin = perfil.rol.codigo === 'ADMIN'
+  // La OT es desde el 2026-10-15 un documento de Diseño: su bloque sale solo a
+  // quien la tiene en su menú (Diseño, su colaborador y Administración).
+  const llevaOrdenes = menuDe(perfil.permisos, esAdmin, perfil.rol.codigo).some((g) => g.items.some((i) => i.ruta === '/ordenes'))
 
-  const pendientes = await pendientesGlobales(perfil)
+  const [pendientes, area] = await Promise.all([pendientesGlobales(perfil), dashboardDelPuesto(perfil)])
 
-  // Sin la OT: el que no la lista y, desde el 2026-10-15, Supervisión, Almacén y
-  // Requerimientos, que trabajan por código interno.
-  if (!puede(perfil, 'ordenes.listar') || trabajaPorCodigo(perfil)) {
-    return (
-      <>
-        <EncabezadoPagina titulo={perfil.puesto} descripcion="Lo que te toca y tus módulos, a un toque." />
-        <TeTocaHoy items={pendientes.items} />
-        <TusModulos perfil={perfil} />
-      </>
-    )
-  }
+  return (
+    <>
+      {/* El puesto y no el nombre (migración 109): la pantalla es del puesto,
+          quien lo ocupe hoy ya sabe cómo se llama. */}
+      <EncabezadoPagina titulo="Dashboard" descripcion={`${perfil.puesto} · ${fechaLarga(hoy)}`} />
+      <TeTocaHoy items={pendientes.items} />
+      {area && area.cifras.length > 0 && <CifrasDelArea titulo={area.titulo} cifras={area.cifras} />}
+      {area?.codigos && area.codigos.length > 0 && <CodigosEnCurso codigos={area.codigos} />}
+      {llevaOrdenes && <OrdenesDelTaller perfil={perfil} />}
+      <TusModulos perfil={perfil} />
+    </>
+  )
+}
 
+/** Las cifras clave del área, cada una con el enlace a la pantalla donde se mira. */
+function CifrasDelArea({ titulo, cifras }: { titulo: string; cifras: Cifra[] }) {
+  return (
+    <section aria-label={titulo} className="mb-4">
+      <h2 className="mb-2 text-sm font-semibold text-texto">{titulo}</h2>
+      {/* Dos columnas ya en el teléfono: apiladas de a una ocupaban una pantalla entera. */}
+      <div className={cn('grid grid-cols-2 gap-3 sm:gap-4', cifras.length >= 5 ? 'lg:grid-cols-5' : cifras.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4')}>
+        {cifras.map((c) => (
+          <Indicador key={c.clave} icono={c.icono} titulo={c.titulo} valor={c.valor} pie={c.pie} tono={c.tono} href={c.href} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/** Gerencia: los códigos que se movieron hace poco, con su avance y lo que llevan costado. */
+function CodigosEnCurso({ codigos }: { codigos: CodigoEnCurso[] }) {
+  return (
+    <Tarjeta className="mb-4">
+      <TarjetaCabecera
+        titulo="Códigos con movimiento reciente"
+        descripcion="Del que se movió hace menos al que se movió hace más, con su avance y su costo a la fecha"
+        acciones={
+          <Link href="/codigos-internos" className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0">
+            Ver todos
+          </Link>
+        }
+      />
+      <TarjetaCuerpo className="p-2 sm:p-3">
+        <ul className="divide-y divide-borde">
+          {codigos.map((c) => (
+            <li key={c.codigo}>
+              <Link
+                href={c.href}
+                className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-x-4 gap-y-1 rounded-[var(--radius-base)] px-2 py-3 hover:bg-superficie-2 sm:grid-cols-[minmax(0,1fr)_8rem_9rem_7rem]"
+              >
+                <p className="truncate text-sm font-medium text-texto">{c.codigo}</p>
+                {c.avance === null ? (
+                  <p className="text-xs text-texto-tenue">No lleva avance</p>
+                ) : (
+                  <Progreso valor={c.avance} mostrarValor alto="sm" etiqueta={`Avance del código ${c.codigo}`} />
+                )}
+                <p className="tabular col-span-2 text-xs text-texto sm:col-span-1 sm:text-right">
+                  <span className="text-texto-tenue sm:hidden">Costo a la fecha: </span>
+                  {c.costo ?? <span className="text-texto-tenue">Sin costo</span>}
+                </p>
+                <p className="hidden text-xs text-texto-tenue sm:block sm:text-right">{c.ultima ? fecha(c.ultima) : ''}</p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </TarjetaCuerpo>
+    </Tarjeta>
+  )
+}
+
+/** Las órdenes del taller: para Diseño, su colaborador y Administración, que todavía llevan la OT. */
+async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
   // Las atrasadas se piden aparte y ordenadas por fecha comprometida: sacarlas
   // de la primera página de abiertas dejaba fuera una orden vieja y muy
   // atrasada, y la tarjeta llegaba a decir «ninguna» con el indicador en tres.
@@ -72,12 +143,8 @@ export default async function PaginaTablero() {
   const hoy = hoyLima()
 
   return (
-    <>
-      {/* El puesto y no el nombre (migración 109): la pantalla es del puesto,
-          quien lo ocupe hoy ya sabe cómo se llama. */}
-      <EncabezadoPagina titulo={perfil.puesto} descripcion={`Estado del taller al ${fechaLarga(hoy)}.`} />
-
-      <TeTocaHoy items={pendientes.items} />
+    <section aria-label="Órdenes de trabajo" className="mb-4">
+      <h2 className="mb-2 text-sm font-semibold text-texto">Órdenes de trabajo</h2>
 
       {/* Dos columnas ya en el teléfono: cinco tarjetas apiladas ocupaban una
           pantalla entera antes de llegar a la lista de órdenes. */}
@@ -343,7 +410,7 @@ export default async function PaginaTablero() {
           </Tarjeta>
         </div>
       </div>
-    </>
+    </section>
   )
 }
 
@@ -387,14 +454,15 @@ function TeTocaHoy({ items }: { items: PendienteGlobal[] }) {
 
   return (
     <Tarjeta className="mb-4">
-      <TarjetaCabecera titulo="Te toca" descripcion="Lo que espera a tu puesto, de lo más urgente a lo demás" />
-      <ul className="grid divide-y divide-borde sm:grid-cols-2 sm:divide-y-0">
+      <TarjetaCabecera titulo="Te toca hoy" descripcion="Lo que espera a tu puesto, de lo más urgente a lo demás. Toca cada uno para atenderlo." />
+      {/* Con uno solo, una columna: en dos quedaba media tarjeta vacía al lado. */}
+      <ul aria-label="Te toca hoy" className={cn('grid divide-y divide-borde', items.length > 1 && 'sm:grid-cols-2 sm:divide-y-0')}>
         {[...items]
           .sort((a, b) => PESO_TONO[a.tono as Tono] - PESO_TONO[b.tono as Tono])
           .map((i) => {
             const error = i.clave.endsWith('_error')
             return (
-              <li key={i.clave} className="sm:border-b sm:border-borde sm:odd:border-r">
+              <li key={i.clave} className={cn(items.length > 1 && 'sm:border-b sm:border-borde sm:odd:border-r')}>
                 <Link
                   href={i.ruta}
                   className="flex min-h-14 items-center gap-3 px-4 py-2.5 text-sm hover:bg-superficie-2"
@@ -429,9 +497,9 @@ function primeraEnMayuscula(texto: string) {
 }
 
 /**
- * Para los puestos que no trabajan con órdenes —Ventas, Tesorería, Recursos
- * Humanos—: sus módulos, a un toque. Antes la pantalla decía «abre el menú» y
- * nada más, y quien llegaba al tablero no tenía a dónde ir desde aquí.
+ * Sus módulos, a un toque, solo en el teléfono: en el monitor ya están en la
+ * barra lateral, al lado. Antes la pantalla decía «abre el menú» y nada más, y
+ * quien llegaba al dashboard desde el teléfono no tenía a dónde ir desde aquí.
  */
 function TusModulos({ perfil }: { perfil: PerfilSesion }) {
   const esAdmin = perfil.rol.codigo === 'ADMIN'
@@ -440,7 +508,7 @@ function TusModulos({ perfil }: { perfil: PerfilSesion }) {
     .filter((i) => i.ruta !== '/')
   if (modulos.length === 0) return null
   return (
-    <section aria-label="Tus módulos">
+    <section aria-label="Tus módulos" className="lg:hidden">
       <h2 className="mb-2 text-sm font-semibold text-texto">Tus módulos</h2>
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {modulos.map((m) => {

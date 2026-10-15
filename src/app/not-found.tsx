@@ -9,7 +9,7 @@ export default function NoEncontrado() {
         La dirección no existe o el registro que buscas fue movido o anulado.
       </p>
       <EnlaceBoton href="/" className="mt-6">
-        Volver al tablero
+        Volver al dashboard
       </EnlaceBoton>
     </main>
   )
