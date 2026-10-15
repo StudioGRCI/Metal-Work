@@ -149,12 +149,14 @@ begin
   perform test.afirmar((select count(*) from public.gastos_generales_mes) = 0, 'ni los gastos del mes');
   perform test.debe_fallar('select * from public.materiales_para_valorizar()', 'ni la valorización del almacén', 'valorización');
   perform test.afirmar((select count(*) from public.conteos_inventario) = 0, 'ni los conteos del almacén');
-  -- La solicitud de pago que manda la ve: el insert devuelve la fila.
-  insert into public.ot_solicitudes_tesoreria (orden_id, tipo, concepto, monto, moneda)
-  values (current_setting('prueba.ot')::uuid, 'MATERIALES', 'Pago de la soldadura de la tolva de prueba', 55.5, 'PEN')
-  returning id into v_id;
-  perform test.afirmar((select count(*) from public.ot_solicitudes_tesoreria where id = v_id) = 1,
-    'Requerimientos ve la solicitud de pago que acaba de mandar');
+  -- Desde la migración 20261016120000 tampoco lee la OT: lo que le pedía a
+  -- Tesorería desde ella va en el vehículo (check 363).
+  perform test.afirmar((select count(*) from public.ordenes_trabajo where id = current_setting('prueba.ot')::uuid) = 0,
+    'Requerimientos ya no lee la OT');
+  perform test.debe_fallar(format(
+    $q$insert into public.ot_solicitudes_tesoreria (orden_id, tipo, concepto, monto, moneda)
+       values (%L, 'MATERIALES', 'Pago de la soldadura de la tolva de prueba', 55.5, 'PEN') returning id$q$,
+    current_setting('prueba.ot')), 'ni manda solicitudes a Tesorería desde la OT', 'row-level security');
   reset role;
 end $$;
 

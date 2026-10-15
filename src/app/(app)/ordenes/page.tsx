@@ -19,7 +19,7 @@ import {
   listarOrdenes,
 } from '@/lib/datos/ordenes'
 import { reemplazoDeLaOrden, trabajaPorCodigo } from '@/lib/dominio/acceso-orden'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { exigirSesion, puede } from '@/lib/sesion'
 
 import { FiltrosOrdenes } from './filtros-ordenes'
 
@@ -33,9 +33,12 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
   // `ordenes.listar` y no `ordenes.ver`: el segundo es la llave de lectura que
   // ventas necesita para sus garantías y sus documentos; entrar al módulo es
   // otra cosa, y ahí ventas no pinta nada.
-  const perfil = await exigirPermiso('ordenes.listar')
-  // Supervisión, Almacén y Requerimientos trabajan por código interno desde el 2026-10-15.
+  const perfil = await exigirSesion()
+  // Supervisión, Almacén y Requerimientos trabajan por código interno desde el
+  // 2026-10-15: van a lo que reemplaza la OT antes de pedirles un permiso que la
+  // base ya no les da (migración 20261016120000).
   if (trabajaPorCodigo(perfil)) redirect(reemplazoDeLaOrden(perfil))
+  if (!puede(perfil, 'ordenes.listar')) redirect('/sin-permiso')
   const params = await searchParams
 
   const filtros = {
