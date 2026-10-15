@@ -28,7 +28,7 @@
 -- ve los materiales y las compras, como antes. Su lista de códigos se filtra
 -- por esas mismas fuentes para que una OS no la mueva.
 --
--- Sin DROP: el conector de producción no deja pasar ninguno.
+-- Nada se borra ni se reemplaza por otra firma: el conector de producción no lo deja pasar.
 -- =============================================================================
 
 -- 1. Las líneas de las órdenes de servicio de un código (o de todos) -------------------
