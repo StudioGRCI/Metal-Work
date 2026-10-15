@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila } from '@/lib/datos/logistica'
+import type { DetraccionDeServicio } from '@/lib/dominio/detraccion'
 import { BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO } from '@/lib/dominio/finanzas'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Tablas, Vistas } from '@/types/database'
@@ -150,9 +152,15 @@ type PagoServicioFila = Pick<
 export type ServicioPorPagar = ServicioFila & {
   pagos: (PagoServicioFila & { url: string | null })[]
   cuentas: Pick<Tablas<'proveedor_cuentas'>, 'id' | 'banco' | 'numero_cuenta' | 'titular' | 'moneda'>[]
+  codigo_interno: string | null
+  detraccion: DetraccionDeServicio
 }
 
-/** Las órdenes de servicio aprobadas por Gerencia, con lo pagado, los comprobantes y las cuentas del proveedor. */
+/**
+ * Las órdenes de servicio aprobadas por Gerencia, con lo pagado, los comprobantes,
+ * las cuentas del proveedor y la detracción que Logística o Contabilidad le
+ * fijaron (migración 20261015141000): esa parte va al Banco de la Nación.
+ */
 export async function serviciosPorPagar(verCuentas: boolean): Promise<ServicioPorPagar[]> {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('servicios_por_pagar')
@@ -160,7 +168,7 @@ export async function serviciosPorPagar(verCuentas: boolean): Promise<ServicioPo
   const filas = data ?? []
   const ids = filas.flatMap((f) => (f.id ? [f.id] : []))
   const proveedores = [...new Set(filas.flatMap((f) => (f.proveedor_id ? [f.proveedor_id] : [])))]
-  const [pagos, cuentas] = await Promise.all([
+  const [pagos, cuentas, detracciones, tipos] = await Promise.all([
     ids.length
       ? supabase
           .from('pagos_orden_servicio')
@@ -171,13 +179,19 @@ export async function serviciosPorPagar(verCuentas: boolean): Promise<ServicioPo
     verCuentas && proveedores.length
       ? supabase.from('proveedor_cuentas').select('id, proveedor_id, banco, numero_cuenta, titular, moneda').in('proveedor_id', proveedores).eq('activo', true)
       : Promise.resolve({ data: [], error: null }),
+    ids.length ? supabase.from('ordenes_servicio').select(COLUMNAS_DETRACCION).in('id', ids) : Promise.resolve({ data: [], error: null }),
+    ids.length ? cargarTiposDetraccion() : Promise.resolve([]),
   ])
   if (pagos.error) throw new Error(`No se pudieron leer los pagos de servicio: ${pagos.error.message}`)
   if (cuentas.error) throw new Error(`No se pudieron leer las cuentas de los proveedores: ${cuentas.error.message}`)
+  if (detracciones.error) throw new Error(`No se pudo leer la detracción de los servicios: ${detracciones.error.message}`)
+  const detraccionDe = new Map((detracciones.data ?? []).map((d) => [d.id, d]))
   const urls = await enlaces(BUCKET_PAGOS_SERVICIO, (pagos.data ?? []).map((p) => p.archivo_ruta))
   return filas.map((f) => ({
     ...f,
     pagos: (pagos.data ?? []).filter((p) => p.orden_servicio_id === f.id).map((p) => ({ ...p, url: urls.get(p.archivo_ruta) ?? null })),
     cuentas: (cuentas.data ?? []).filter((c) => c.proveedor_id === f.proveedor_id).map(({ id, banco, numero_cuenta, titular, moneda }) => ({ id, banco, numero_cuenta, titular, moneda })),
+    codigo_interno: (f.id && detraccionDe.get(f.id)?.codigo_interno) || null,
+    detraccion: detraccionDeFila(f.id ? detraccionDe.get(f.id) : undefined, tipos),
   }))
 }

@@ -4,6 +4,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { serviciosPorPagar, type ServicioPorPagar } from '@/lib/datos/facturacion'
+import { resumenDetraccion } from '@/lib/dominio/detraccion'
 import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
 import { fecha, hoyLima, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -17,7 +18,8 @@ export const metadata = { title: 'Pagos de servicio' }
  * Los trabajos de terceros —arenado, torno, pintura— que Logística encargó con
  * su orden de servicio y Gerencia aprobó (migración 20261015120000). Tesorería
  * los paga contra la factura del proveedor, con el voucher; primero los que ya
- * volvieron conformes.
+ * volvieron conformes. Si la OS lleva detracción, esa parte se deposita en el
+ * Banco de la Nación y al proveedor se le paga el resto (20261015141000).
  */
 export default async function PaginaPagosDeServicio() {
   const perfil = await exigirPermiso(['tesoreria.pagar_servicios', 'tesoreria.ver_documentos'])
@@ -73,6 +75,7 @@ function Servicio({ servicio: s, paga, hoy }: { servicio: ServicioPorPagar; paga
   const m = codigoMoneda(s.moneda)
   const saldo = Math.max(Number(s.monto ?? 0) - Number(s.pagado ?? 0), 0)
   const estado = ESTADO_SERVICIO[s.estado ?? ''] ?? { etiqueta: s.estado ?? '—', tono: 'neutro' as const }
+  const detraccion = resumenDetraccion(s.detraccion)
   return (
     <article className="rounded-[var(--radius-base)] border border-borde p-3">
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
@@ -81,6 +84,7 @@ function Servicio({ servicio: s, paga, hoy }: { servicio: ServicioPorPagar; paga
             <span className="font-medium tabular text-texto">{s.numero}</span>
             <Insignia tono={s.cancelada ? 'exito' : estado.tono}>{s.cancelada ? 'Pagada' : estado.etiqueta}</Insignia>
             {!s.cancelada && Number(s.pagado) > 0 && <Insignia tono="aviso">Pagada en parte</Insignia>}
+            <Insignia tono={detraccion.tono}>{detraccion.texto}</Insignia>
           </p>
           <p className="mt-0.5 text-sm text-texto">
             {s.proveedor}
@@ -90,7 +94,13 @@ function Servicio({ servicio: s, paga, hoy }: { servicio: ServicioPorPagar; paga
             {s.descripcion}
             {s.orden ? ` · OT ${s.orden}` : ''} · {s.condicion_pago === 'CREDITO' ? `crédito a ${s.dias_credito} días` : 'contado'}
             {s.conformidad_en && ` · conforme el ${fecha(s.conformidad_en)}`}
+            {s.codigo_interno && ` · código ${s.codigo_interno}`}
           </p>
+          {s.detraccion.afecta && s.detraccion.monto !== null && !s.cancelada && (
+            <p className="text-xs text-texto-suave">
+              {detraccion.detalle}: la detracción va a la cuenta del proveedor en el Banco de la Nación y a él se le paga el resto.
+            </p>
+          )}
         </div>
         <div className="text-right">
           <p className="tabular text-sm font-semibold text-texto">{moneda(s.monto, m)}</p>

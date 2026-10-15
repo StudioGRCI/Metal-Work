@@ -11,6 +11,9 @@
  *   3. Tesorería ve las dos en Cuentas por pagar (también la de contado), paga
  *      una parte con su voucher, anula ese pago con su motivo y la paga entera.
  *   4. Logística ve la factura pagada y no entra a Cuentas por pagar.
+ *   5. Si están las OS QA-OS-1 (afecta al 12 %, 2 000.00 sin IGV) y QA-OS-2 (no
+ *      sujeta), Tesorería ve en Pagos de servicio cuánto va al Banco de la
+ *      Nación (migración 20261015141000).
  *
  * Necesita en la base del banco las cuentas `*@banco.test` de cada puesto y las
  * OC directas QA-ADQ-1 y QA-ADQ-2 (mismo proveedor, contado, 1 180.00 y 118.00)
@@ -212,6 +215,21 @@ if (!oc3) throw new Error('Faltan las OC QA-ADQ-1, QA-ADQ-2 y QA-ADQ-3 en la bas
   await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   comprobar((await pagina.getByRole('button', { name: 'Registrar pago' }).count()) === 0, 'Logística no paga facturas')
   await contexto.close()
+}
+
+// ------------------------------------------- 5. La detracción en Pagos de servicio
+if ((await consulta(`select 1 from ordenes_servicio where referencia in ('QA-OS-1', 'QA-OS-2')`)).length === 2) {
+  const { pagina, contexto } = await entrar('tesoreria@banco.test')
+  await pagina.goto(`${BASE}/tesoreria/pagos-de-servicio`, { waitUntil: 'networkidle' })
+  const afecta = limpio(await pagina.locator('article', { hasText: 'Arenado y pintado' }).textContent().catch(() => ''))
+  comprobar(afecta.includes('Detracción 12 %: S/ 283.00') && afecta.includes('Banco de la Nación') && afecta.includes('código PLANTA'),
+    'Tesorería ve la detracción de la OS: 12 % de 2 360.00 con IGV, al Banco de la Nación')
+  const noSujeta = limpio(await pagina.locator('article', { hasText: 'Torneado de pines' }).textContent().catch(() => ''))
+  comprobar(noSujeta.includes('No sujeta a detracción') && !noSujeta.includes('Banco de la Nación'), 'y la que no está sujeta lo dice')
+  await pagina.screenshot({ path: join(CAPTURAS, 'pagos-de-servicio-tesoreria.png'), fullPage: true })
+  await contexto.close()
+} else {
+  console.log('· sin las OS QA-OS-1 y QA-OS-2: no se mira la detracción en Pagos de servicio')
 }
 
 await navegador.close()

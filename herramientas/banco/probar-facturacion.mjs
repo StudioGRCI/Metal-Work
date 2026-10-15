@@ -232,7 +232,7 @@ const franja = async (pagina) => limpio(await pagina.locator('main').textContent
   const telefono = await entrar('tesoreria@banco.test', { width: 390, height: 844 })
   const pestanas = (await telefono.pagina.locator('nav[aria-label="Secciones"] li').allTextContents()).map(limpio)
   console.log('     pestañas de Tesorería:', pestanas.join(' · '))
-  comprobar(['Compras', 'Por cobrar', 'Por pagar', 'Servicios'].every((t, i) => pestanas[i]?.startsWith(t)), 'en el teléfono, sus cuatro pestañas en orden')
+  comprobar(['Compras', 'Por cobrar', 'Por pagar', 'Servicios'].every((t, i) => pestanas[i]?.replace(/^\d+/, '').startsWith(t)), 'en el teléfono, sus cuatro pestañas en orden')
   await telefono.pagina.goto(`${BASE}/tesoreria/por-cobrar`, { waitUntil: 'networkidle' })
   const ancho = await telefono.pagina.evaluate(() => document.documentElement.scrollWidth)
   comprobar(ancho <= 390, `Cuentas por cobrar cabe en el teléfono (${ancho}px)`)
