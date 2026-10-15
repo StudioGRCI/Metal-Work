@@ -257,7 +257,8 @@ async function marcarPuntos(pagina, fase, observado) {
   comprobar((await texto(pagina.locator('#ficha [role="alert"]'))).includes('en PDF'), 'un escaneo que no es PDF no entra')
   await pagina.setInputFiles('#fv-escaneo', { name: 'ficha-firmada.pdf', mimeType: 'application/pdf', buffer: PDF })
   await pagina.getByRole('button', { name: 'Adjuntar escaneo' }).click()
-  await pagina.locator('#ficha [role="status"]').filter({ hasText: 'Escaneo firmado adjunto' }).waitFor({ timeout: 30000 })
+  // Al anotarse, el formulario de escaneo se va y queda el enlace: esa es la confirmación.
+  await pagina.getByRole('link', { name: 'Ver escaneo firmado' }).waitFor({ timeout: 30000 })
   await pagina.reload({ waitUntil: 'networkidle' })
   const escaneo = await pagina.getByRole('link', { name: 'Ver escaneo firmado' }).getAttribute('href')
   const r = escaneo ? await contexto.request.get(escaneo) : null
@@ -266,7 +267,7 @@ async function marcarPuntos(pagina, fase, observado) {
 
   await pagina.fill('#fv-concepto', 'Revisar si el cliente pagó el saldo antes de entregarle la unidad')
   await pagina.getByRole('button', { name: 'Pedir revisión a Tesorería' }).click()
-  await pagina.locator('#revision-salida [role="status"]').filter({ hasText: 'Pedido enviado' }).waitFor({ timeout: 30000 })
+  await pagina.locator('#revision-salida').getByText('Pedido enviado: Tesorería tiene el aviso').waitFor({ timeout: 30000 })
   await pagina.reload({ waitUntil: 'networkidle' })
   comprobar(
     (await texto(pagina.locator('#revision-salida'))).includes('Esperando a Tesorería') && (await pagina.locator('#fv-concepto').count()) === 0,
@@ -294,7 +295,11 @@ async function responder(estado, respuesta, mensaje) {
   await pedido.locator('select[name="estado"]').selectOption(estado)
   await pedido.locator('textarea[name="respuesta"]').fill(respuesta)
   await pedido.getByRole('button', { name: 'Responder' }).click()
-  await pagina.locator('[role="status"]').filter({ hasText: mensaje }).waitFor({ timeout: 30000 })
+  // Respondido, el pedido sale de la lista (y su aviso con él, si el refresco llega antes de leerlo).
+  await Promise.race([
+    pagina.locator('[role="status"]').filter({ hasText: mensaje }).waitFor({ timeout: 30000 }),
+    pedido.waitFor({ state: 'detached', timeout: 30000 }),
+  ])
   await pagina.reload({ waitUntil: 'networkidle' })
   comprobar((await pagina.locator('#salidas-por-revisar').count()) === 0, `respondido (${estado}), sale de su lista`)
   if (estado === 'ATENDIDA') await pagina.screenshot({ path: `${CAPTURAS}/363-tesoreria.png`, fullPage: true })
@@ -315,7 +320,7 @@ await responder('OBSERVADA', 'Falta el saldo de la factura', 'Salida observada')
   )
   await pagina.fill('#fv-concepto', 'El cliente ya pagó el saldo')
   await pagina.getByRole('button', { name: 'Pedir revisión a Tesorería' }).click()
-  await pagina.locator('#revision-salida [role="status"]').filter({ hasText: 'Pedido enviado' }).waitFor({ timeout: 30000 })
+  await pagina.locator('#revision-salida').getByText('Pedido enviado: Tesorería tiene el aviso').waitFor({ timeout: 30000 })
   sinErrores('Requerimientos', errores)
   await contexto.close()
 }

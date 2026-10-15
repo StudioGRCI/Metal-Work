@@ -225,6 +225,9 @@ function RevisionDeTesoreria({
         acciones={ultima && <Insignia tono={definirRevisionSalida(ultima.estado).tono}>{definirRevisionSalida(ultima.estado).etiqueta}</Insignia>}
       />
       <TarjetaCuerpo className="space-y-4">
+        {puedePedir && esperando && (
+          <p className="text-sm text-texto">Pedido enviado: Tesorería tiene el aviso. Su respuesta te llega como aviso y queda aquí abajo.</p>
+        )}
         {puedePedir && revisada && (
           <p className="text-sm text-texto">Tesorería la dio por revisada: ya puedes marcar la salida del vehículo.</p>
         )}
