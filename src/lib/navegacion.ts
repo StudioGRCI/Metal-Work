@@ -18,6 +18,7 @@ import {
   FileSpreadsheet,
   FileText,
   HardHat,
+  Handshake,
   Hash,
   Layers,
   LayoutDashboard,
@@ -27,6 +28,7 @@ import {
   NotebookPen,
   Package,
   Receipt,
+  ReceiptText,
   Route,
   Settings,
   Tag,
@@ -354,6 +356,22 @@ export const NAVEGACION = [
       },
     ],
   },
+  // Los trabajos que se le encargan a una persona de fuera, por código interno:
+  // Administración los registra y sube sus recibos por honorarios, que paga
+  // Tesorería (está en Finanzas, con su permiso).
+  {
+    titulo: 'Administración',
+    items: [
+      {
+        titulo: 'Subcontratos',
+        ruta: '/subcontratos',
+        icono: Handshake,
+        permiso: ['subcontratos.gestionar', 'subcontratos.ver'],
+        descripcion: 'Trabajos encargados a terceros por código interno, con sus recibos por honorarios y su pago',
+        disponible: true,
+      },
+    ],
+  },
   {
     titulo: 'Finanzas',
     items: [
@@ -385,6 +403,15 @@ export const NAVEGACION = [
       },
       // La paga Tesorería; la arma RR. HH. (está también en su grupo, con su permiso).
       { titulo: 'Planilla diaria', ruta: '/planilla-diaria', icono: Banknote, permiso: 'planilla_diaria.pagar', descripcion: 'Pagar a cada persona a su cuenta, con comprobante y boleta', disponible: true },
+      // Los sube Administración contra cada subcontrato; Contabilidad los consulta por la retención.
+      {
+        titulo: 'Recibos por honorarios',
+        ruta: '/tesoreria/recibos-por-honorarios',
+        icono: ReceiptText,
+        permiso: ['subcontratos.pagar', 'subcontratos.ver'],
+        descripcion: 'Pagar los recibos de los subcontratos a la cuenta del subcontratista, con su voucher',
+        disponible: true,
+      },
       { titulo: 'Cuentas de Tesorería', ruta: '/tesoreria/cuentas', icono: FileSpreadsheet, permiso: 'tesoreria.ver_documentos', descripcion: 'Cobros por OT y pagos de compras', disponible: true },
       { titulo: 'Gastos del mes', ruta: '/costos/gastos-generales', icono: Wallet, permiso: ['costos.gastos_generales', 'costos.ver'], descripcion: 'Servicios del local y gastos de operación', disponible: true },
       { titulo: 'Tipo de cambio', ruta: '/tesoreria/tipo-de-cambio', icono: ArrowLeftRight, permiso: 'tesoreria.tipo_cambio', descripcion: 'El cambio del dólar de cada día, para el costo en soles', disponible: true },
@@ -537,18 +564,21 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [
       { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'] },
       { titulo: 'Seguimiento', rutas: ['/codigos-internos', '/ordenes'] },
-      { titulo: 'Consultas', rutas: ['/planilla-diaria', '/rrhh/horas-extras', '/rrhh/tardanzas', '/rrhh/observaciones', '/proveedores'] },
+      { titulo: 'Consultas', rutas: ['/planilla-diaria', '/rrhh/horas-extras', '/subcontratos', '/rrhh/tardanzas', '/rrhh/observaciones', '/proveedores'] },
     ],
     telefono: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/codigos-internos'],
   },
   // Cerrado desde #28, como Gerencia.
-  // La planilla diaria espera su pago: va primero.
+  // La planilla diaria y los recibos por honorarios esperan su pago: van primero.
   TESORERIA: {
     grupos: [
-      { titulo: 'Finanzas', rutas: ['/planilla-diaria', '/tesoreria', '/tesoreria/cuentas', '/tesoreria/tipo-de-cambio', '/adquisiciones'] },
+      {
+        titulo: 'Finanzas',
+        rutas: ['/planilla-diaria', '/tesoreria/recibos-por-honorarios', '/tesoreria', '/tesoreria/cuentas', '/tesoreria/tipo-de-cambio', '/adquisiciones'],
+      },
       { titulo: 'Consultas', rutas: ['/ordenes'] },
     ],
-    telefono: ['/planilla-diaria', '/tesoreria', '/tesoreria/cuentas', '/adquisiciones'],
+    telefono: ['/planilla-diaria', '/tesoreria/recibos-por-honorarios', '/tesoreria', '/adquisiciones'],
   },
   // La guía de remisión de cada OC que recoge el conductor espera por
   // Contabilidad: la gestión de compras va primero, y después la detracción de
@@ -559,7 +589,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         titulo: 'Contabilidad',
         rutas: ['/compras/gestion', '/compras/servicios', '/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio'],
       },
-      { titulo: 'Consultas', rutas: ['/ordenes', '/requerimientos'] },
+      // Los recibos por honorarios, por la retención de cuarta categoría que declara cada mes.
+      { titulo: 'Consultas', rutas: ['/ordenes', '/requerimientos', '/tesoreria/recibos-por-honorarios'] },
     ],
     telefono: ['/compras/gestion', '/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio'],
   },
@@ -590,18 +621,19 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // las abre por su dirección, y así no tiene dos «Personal» en el menú.
   // Desde el 2026-10-15 lleva el requerimiento de Administración (lo de
   // oficina): lo registra, Almacén lo revisa y ella hace la OC de lo que falta.
-  // La evaluación de desempeño la recibe de Diseño: es consulta.
+  // La evaluación de desempeño la recibe de Diseño: es consulta. Los
+  // subcontratos son suyos: registra cada uno y sube sus recibos por honorarios.
   ADMINISTRACION: {
     grupos: [
       {
         titulo: 'Administración',
-        rutas: ['/cotizaciones/pdf', '/ordenes', '/clientes', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
+        rutas: ['/cotizaciones/pdf', '/ordenes', '/subcontratos', '/clientes', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
       },
       { titulo: 'Requerimiento de Administración', rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes'] },
       { titulo: 'Consultas', rutas: ['/diseno/evaluaciones', '/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos'] },
       { titulo: 'Administración del sistema', rutas: ['/personal', '/configuracion'] },
     ],
-    telefono: ['/cotizaciones/pdf', '/ordenes', '/requerimientos', '/costos/gastos-generales'],
+    telefono: ['/cotizaciones/pdf', '/ordenes', '/subcontratos', '/requerimientos'],
   },
   // Primero lo que espera por RR. HH. cada día: los reportes diarios por
   // validar, las horas extras por decidir y la planilla diaria por enviar.
@@ -775,4 +807,6 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/rrhh/horas-extras', corto: 'Extras' },
   { ruta: '/tesoreria/tipo-de-cambio', corto: 'Cambio' },
   { ruta: '/proveedores', corto: 'Proveedores' },
+  { ruta: '/subcontratos', corto: 'Subcontratos' },
+  { ruta: '/tesoreria/recibos-por-honorarios', corto: 'Honorarios' },
 ]

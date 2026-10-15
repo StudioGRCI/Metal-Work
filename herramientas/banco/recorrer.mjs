@@ -43,6 +43,8 @@ const plantillaId = await primero(
   'select id from public.plantillas_ficha where activa order by nombre limit 1',
 )
 const evaluacionId = await primero('select id from public.diseno_evaluaciones order by creado_en desc limit 1')
+// La tabla nace en la migración 20261015221000: un banco anterior no la tiene.
+const subcontratoId = await primero('select id from public.subcontratos order by creado_en desc limit 1').catch(() => null)
 
 const RUTAS = [
   ['tablero', '/'],
@@ -87,6 +89,10 @@ const RUTAS = [
   ['rrhh-observaciones', '/rrhh/observaciones'],
   ['rrhh-horas-extras', '/rrhh/horas-extras'],
   ['planilla-diaria', '/planilla-diaria'],
+  ['subcontratos', '/subcontratos'],
+  ['subcontratistas', '/subcontratos?vista=subcontratistas'],
+  subcontratoId && ['subcontrato-detalle', `/subcontratos/${subcontratoId}`],
+  ['recibos-por-honorarios', '/tesoreria/recibos-por-honorarios'],
   ['sin-permiso', '/sin-permiso'],
 ].filter(Boolean)
 

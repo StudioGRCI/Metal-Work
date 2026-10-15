@@ -5587,6 +5587,79 @@ export type Database = {
           }
         ]
       }
+      pagos_recibo_honorarios: {
+        Row: {
+          id: string
+          recibo_id: string
+          fecha_pago: string
+          monto: number
+          operacion: string | null
+          voucher_ruta: string
+          voucher_mime: string
+          voucher_tamano: number
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          recibo_id: string
+          fecha_pago: string
+          monto: number
+          operacion?: string | null
+          voucher_ruta: string
+          voucher_mime: string
+          voucher_tamano: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          recibo_id?: string
+          fecha_pago?: string
+          monto?: number
+          operacion?: string | null
+          voucher_ruta?: string
+          voucher_mime?: string
+          voucher_tamano?: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pagos_recibo_honorarios_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_recibo_honorarios_recibo_id_fkey"
+            columns: ["recibo_id"]
+            isOneToOne: true
+            referencedRelation: "recibos_honorarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_recibo_honorarios_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       permisos: {
         Row: {
           codigo: string
@@ -6582,6 +6655,100 @@ export type Database = {
           actualizado_en?: string
         }
         Relationships: []
+      }
+      recibos_honorarios: {
+        Row: {
+          id: string
+          subcontrato_id: string
+          subcontratista_id: string
+          numero: string
+          fecha_emision: string
+          concepto: string | null
+          moneda: string
+          monto_bruto: number
+          retencion_porcentaje: number
+          retencion_monto: number | null
+          monto_neto: number | null
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          subcontrato_id: string
+          subcontratista_id: string
+          numero: string
+          fecha_emision: string
+          concepto?: string | null
+          moneda: string
+          monto_bruto: number
+          retencion_porcentaje?: number
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          subcontrato_id?: string
+          subcontratista_id?: string
+          numero?: string
+          fecha_emision?: string
+          concepto?: string | null
+          moneda?: string
+          monto_bruto?: number
+          retencion_porcentaje?: number
+          archivo_ruta?: string
+          archivo_mime?: string
+          archivo_tamano?: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recibos_honorarios_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recibos_honorarios_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recibos_honorarios_subcontratista_id_fkey"
+            columns: ["subcontratista_id"]
+            isOneToOne: false
+            referencedRelation: "subcontratistas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recibos_honorarios_subcontrato_id_fkey"
+            columns: ["subcontrato_id"]
+            isOneToOne: false
+            referencedRelation: "subcontratos"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       registro_vehiculo_fotos: {
         Row: {
@@ -7596,6 +7763,148 @@ export type Database = {
             columns: ["sede_id"]
             isOneToOne: false
             referencedRelation: "sedes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      subcontratistas: {
+        Row: {
+          id: string
+          ruc: string
+          nombre: string
+          telefono: string | null
+          banco: string | null
+          numero_cuenta: string | null
+          cci: string | null
+          activo: boolean
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          ruc: string
+          nombre: string
+          telefono?: string | null
+          banco?: string | null
+          numero_cuenta?: string | null
+          cci?: string | null
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          ruc?: string
+          nombre?: string
+          telefono?: string | null
+          banco?: string | null
+          numero_cuenta?: string | null
+          cci?: string | null
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subcontratistas_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      subcontratos: {
+        Row: {
+          id: string
+          numero: string
+          subcontratista_id: string
+          codigo_interno: string
+          descripcion: string
+          moneda: string
+          monto: number
+          fecha_inicio: string | null
+          fecha_fin: string | null
+          estado: string
+          terminado_por: string | null
+          terminado_en: string | null
+          creado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          subcontratista_id: string
+          codigo_interno: string
+          descripcion: string
+          moneda: string
+          monto: number
+          fecha_inicio?: string | null
+          fecha_fin?: string | null
+          estado?: string
+          terminado_por?: string | null
+          terminado_en?: string | null
+          creado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          subcontratista_id?: string
+          codigo_interno?: string
+          descripcion?: string
+          moneda?: string
+          monto?: number
+          fecha_inicio?: string | null
+          fecha_fin?: string | null
+          estado?: string
+          terminado_por?: string | null
+          terminado_en?: string | null
+          creado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subcontratos_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontratos_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontratos_subcontratista_id_fkey"
+            columns: ["subcontratista_id"]
+            isOneToOne: false
+            referencedRelation: "subcontratistas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontratos_terminado_por_fkey"
+            columns: ["terminado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -9064,6 +9373,13 @@ export type Database = {
         }
         Returns: string
       }
+      anular_pago_recibo_honorarios: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       anular_planilla_diaria: {
         Args: {
           p_id: string | null
@@ -9074,6 +9390,13 @@ export type Database = {
       anular_plano_codigo: {
         Args: {
           p_plano: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      anular_recibo_honorarios: {
+        Args: {
+          p_id: string | null
           p_motivo: string | null
         }
         Returns: string
@@ -9093,6 +9416,13 @@ export type Database = {
         Returns: string
       }
       anular_requerimiento: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      anular_subcontrato: {
         Args: {
           p_id: string | null
           p_motivo: string | null
@@ -9199,6 +9529,13 @@ export type Database = {
           p_activo: boolean | null
         }
         Returns: null
+      }
+      cambiar_estado_subcontrato: {
+        Args: {
+          p_id: string | null
+          p_estado: string | null
+        }
+        Returns: string
       }
       cambio_del_dia: {
         Args: {
@@ -9712,6 +10049,17 @@ export type Database = {
           p_codigo_interno: string | null
           p_detraccion: string | null
           p_motivo_detraccion: string | null
+        }
+        Returns: string
+      }
+      corregir_subcontrato: {
+        Args: {
+          p_id: string | null
+          p_codigo_interno: string | null
+          p_descripcion: string | null
+          p_monto: number | null
+          p_fecha_inicio: string | null
+          p_fecha_fin: string | null
         }
         Returns: string
       }
@@ -10269,6 +10617,19 @@ export type Database = {
           p_cantidad: number | null
           p_plano: string | null
           p_observacion: string | null
+        }
+        Returns: string
+      }
+      guardar_subcontratista: {
+        Args: {
+          p_id: string | null
+          p_ruc: string | null
+          p_nombre: string | null
+          p_telefono: string | null
+          p_banco: string | null
+          p_numero_cuenta: string | null
+          p_cci: string | null
+          p_activo: boolean | null
         }
         Returns: string
       }
@@ -10868,6 +11229,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      puede_ver_subcontratos: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       puede_ver_trabajadores: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -11061,6 +11426,16 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_pago_recibo_honorarios: {
+        Args: {
+          p_id: string | null
+          p_recibo_id: string | null
+          p_fecha_pago: string | null
+          p_operacion: string | null
+          p_ruta: string | null
+        }
+        Returns: string
+      }
       registrar_plano_codigo: {
         Args: {
           p_plano: string | null
@@ -11080,6 +11455,19 @@ export type Database = {
           p_orden_compra_detalle_id: string | null
           p_cantidad: number | null
           p_documento_referencia: string | null
+        }
+        Returns: string
+      }
+      registrar_recibo_honorarios: {
+        Args: {
+          p_id: string | null
+          p_subcontrato_id: string | null
+          p_numero: string | null
+          p_fecha_emision: string | null
+          p_concepto: string | null
+          p_monto_bruto: number | null
+          p_retencion: boolean | null
+          p_ruta: string | null
         }
         Returns: string
       }
@@ -11163,6 +11551,19 @@ export type Database = {
           p_salida_en: string | null
           p_observacion: string | null
           p_fotos: Json | null
+        }
+        Returns: string
+      }
+      registrar_subcontrato: {
+        Args: {
+          p_id: string | null
+          p_subcontratista_id: string | null
+          p_codigo_interno: string | null
+          p_descripcion: string | null
+          p_moneda: string | null
+          p_monto: number | null
+          p_fecha_inicio: string | null
+          p_fecha_fin: string | null
         }
         Returns: string
       }
@@ -11635,6 +12036,29 @@ export type Database = {
         }
         Returns: string
       }
+      subcontrato_archivo: {
+        Args: {
+          p_subcontrato: string | null
+          p_ruta: string | null
+        }
+        Returns: string
+      }
+      subcontrato_datos_validos: {
+        Args: {
+          p_codigo_interno: string | null
+          p_descripcion: string | null
+          p_monto: number | null
+          p_fecha_inicio: string | null
+          p_fecha_fin: string | null
+        }
+        Returns: null
+      }
+      subcontratos_codigos_internos: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          codigo: string | null
+        }[]
+      }
       subir_boleta_planilla_diaria: {
         Args: {
           p_persona_id: string | null
@@ -11761,7 +12185,7 @@ export type Database = {
       magnitud_medida: "UNIDAD" | "MASA" | "LONGITUD" | "AREA" | "VOLUMEN"
       moneda: "PEN" | "USD"
       prioridad_ot: "BAJA" | "NORMAL" | "ALTA" | "URGENTE"
-      tipo_correlativo: "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO" | "PLANILLA_DIARIA"
+      tipo_correlativo: "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO" | "PLANILLA_DIARIA" | "SUBCONTRATO"
       tipo_documento_cliente: "RUC" | "DNI" | "CE" | "PASAPORTE"
       tipo_evento_ot: "CREACION" | "CAMBIO_ESTADO" | "AVANCE" | "MATERIAL" | "DOCUMENTO" | "INSPECCION" | "PAUSA" | "REANUDACION" | "COMENTARIO" | "ENTREGA"
       tipo_trabajo_ot: "FABRICACION" | "REPARACION" | "REPOTENCIACION" | "MANTENIMIENTO" | "GARANTIA"
