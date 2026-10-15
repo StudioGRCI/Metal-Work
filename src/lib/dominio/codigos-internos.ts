@@ -203,6 +203,8 @@ export const VISTAS_CODIGO = [
   { valor: 'costeo', etiqueta: 'Costeo' },
   { valor: 'personal', etiqueta: 'Personal' },
   { valor: 'documentos', etiqueta: 'RQ, OT y cotización' },
+  // La factura de venta y su cobro cuelgan del código (migración 20261015124000).
+  { valor: 'facturacion', etiqueta: 'Factura y cobro' },
 ] as const
 
 export type VistaCodigo = (typeof VISTAS_CODIGO)[number]['valor']

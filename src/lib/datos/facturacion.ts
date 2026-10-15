@@ -3,6 +3,7 @@ import 'server-only'
 import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila } from '@/lib/datos/logistica'
 import type { DetraccionDeServicio } from '@/lib/dominio/detraccion'
 import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO } from '@/lib/dominio/finanzas'
+import type { CodigoMoneda } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Tablas, Vistas } from '@/types/database'
 
@@ -51,11 +52,12 @@ export async function enlaces(bucket: string, rutas: (string | null)[], segundos
  * Administración no cargue la OT), el cliente, el total y el enlace al archivo
  * aprobado. La cotización en Word se baja con su nombre; el PDF se abre.
  */
-export async function cotizacionesAprobadas(): Promise<CotizacionAprobada[]> {
+export async function cotizacionesAprobadas(codigo?: string): Promise<CotizacionAprobada[]> {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('cotizaciones_para_facturar')
   if (error) throw new Error(`No se pudieron leer las cotizaciones aprobadas: ${error.message}`)
-  const filas = data ?? []
+  // Con `codigo`, solo las de ese código interno: no se firman enlaces de las demás.
+  const filas = (data ?? []).filter((f) => codigo === undefined || f.codigo_interno === codigo)
   const esPdf = (f: FilaCotizacion) => (f.archivo_mime ?? 'application/pdf') === 'application/pdf'
   const urls = await enlaces('cotizaciones-pdf', filas.filter(esPdf).map((f) => f.archivo_ruta))
   await Promise.all(
@@ -71,6 +73,9 @@ export async function cotizacionesAprobadas(): Promise<CotizacionAprobada[]> {
   return filas.map((f) => ({ ...f, url: (f.archivo_ruta && urls.get(f.archivo_ruta)) ?? null }))
 }
 
+const COLUMNAS_FACTURA =
+  'id, codigo_interno, cotizacion_pdf_id, cotizacion_numero, cliente, numero, fecha_emision, fecha_vencimiento, moneda, total, concepto, ruta_storage, anulada_en, motivo_anulacion, cobrado, cancelada, saldo, creado_en'
+
 /**
  * Las facturas de venta con sus cobros y los enlaces a la factura y a cada
  * voucher. Con `cotizaciones`, solo las de esas cotizaciones (anuladas
@@ -79,14 +84,25 @@ export async function cotizacionesAprobadas(): Promise<CotizacionAprobada[]> {
 export async function facturasDeVenta(cotizaciones?: string[]): Promise<FacturaVenta[]> {
   if (cotizaciones && cotizaciones.length === 0) return []
   const supabase = await createClient()
-  const columnas =
-    'id, codigo_interno, cotizacion_pdf_id, cotizacion_numero, cliente, numero, fecha_emision, fecha_vencimiento, moneda, total, concepto, ruta_storage, anulada_en, motivo_anulacion, cobrado, cancelada, saldo, creado_en'
   const consulta = cotizaciones
-    ? supabase.from('v_facturas_venta').select(columnas).in('cotizacion_pdf_id', cotizaciones).order('creado_en')
-    : supabase.from('v_facturas_venta').select(columnas).is('anulada_en', null).order('fecha_vencimiento').limit(300)
+    ? supabase.from('v_facturas_venta').select(COLUMNAS_FACTURA).in('cotizacion_pdf_id', cotizaciones).order('creado_en')
+    : supabase.from('v_facturas_venta').select(COLUMNAS_FACTURA).is('anulada_en', null).order('fecha_vencimiento').limit(300)
   const { data, error } = await consulta
   if (error) throw new Error(`No se pudieron leer las facturas de venta: ${error.message}`)
-  const filas = data ?? []
+  return conCobros(data ?? [])
+}
+
+/** Las facturas de un código interno, anuladas incluidas, de la más vieja a la más nueva: Gerencia en Códigos internos. */
+export async function facturasDelCodigo(codigo: string): Promise<FacturaVenta[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('v_facturas_venta').select(COLUMNAS_FACTURA).eq('codigo_interno', codigo).order('creado_en')
+  if (error) throw new Error(`No se pudieron leer las facturas del código: ${error.message}`)
+  return conCobros(data ?? [])
+}
+
+/** Le pega a cada factura sus cobros y los enlaces a la factura y a cada voucher. */
+async function conCobros(filas: FilaFactura[]): Promise<FacturaVenta[]> {
+  const supabase = await createClient()
   const ids = filas.flatMap((f) => (f.id ? [f.id] : []))
   const cobros = ids.length
     ? await supabase
@@ -122,6 +138,29 @@ export async function bandejaDeFacturacion(): Promise<CotizacionParaFacturar[]> 
   const turno = (c: CotizacionParaFacturar) =>
     !c.codigo_interno ? 2 : c.facturas.some((f) => !f.anulada_en) ? 1 : 0
   return lista.sort((a, b) => turno(a) - turno(b))
+}
+
+/** Lo facturado de un código, en cada moneda: la línea de arriba en Códigos internos. Sin las anuladas. */
+export type FacturadoDelCodigo = { facturas: number; total: Record<CodigoMoneda, number>; cobrado: Record<CodigoMoneda, number>; saldo: Record<CodigoMoneda, number> }
+
+export async function facturadoDelCodigo(codigo: string): Promise<FacturadoDelCodigo> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('v_facturas_venta')
+    .select('moneda, total, cobrado, saldo')
+    .eq('codigo_interno', codigo)
+    .is('anulada_en', null)
+  if (error) throw new Error(`No se pudo leer lo facturado del código: ${error.message}`)
+  const cero = () => ({ PEN: 0, USD: 0 })
+  const r: FacturadoDelCodigo = { facturas: 0, total: cero(), cobrado: cero(), saldo: cero() }
+  for (const f of data ?? []) {
+    const m: CodigoMoneda = f.moneda === 'USD' ? 'USD' : 'PEN'
+    r.facturas += 1
+    r.total[m] += Number(f.total ?? 0)
+    r.cobrado[m] += Number(f.cobrado ?? 0)
+    r.saldo[m] += Number(f.saldo ?? 0)
+  }
+  return r
 }
 
 type ServicioFila = Funciones<'servicios_por_pagar'>['Returns'][number]

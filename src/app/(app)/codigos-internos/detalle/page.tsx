@@ -1,9 +1,12 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
+import { Download, FileText } from 'lucide-react'
+
 import { LineaDeDiseno } from '@/components/codigo-interno/linea-diseno'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { FacturaDeVenta } from '@/components/finanzas/factura-de-venta'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
@@ -20,6 +23,7 @@ import {
   type ResumenCodigo,
 } from '@/lib/datos/codigos-internos'
 import { codigosDeDiseno } from '@/lib/datos/diseno-codigos'
+import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo, type FacturadoDelCodigo } from '@/lib/datos/facturacion'
 import {
   ESTADO_DOCUMENTO_CODIGO,
   ESTADO_SERVICIO_CODIGO,
@@ -36,11 +40,12 @@ import {
   type VistaCodigo,
 } from '@/lib/dominio/codigos-internos'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { totalConIgv } from '@/lib/dominio/finanzas'
 import { situacionCompra, validacionDeCompra } from '@/lib/dominio/logistica'
 import { ESTADO_REPORTE, type EstadoReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADO_REQUERIMIENTO } from '@/lib/dominio/requerimientos'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { cantidad, fecha, fechaLarga, moneda } from '@/lib/format'
+import { cantidad, fecha, fechaLarga, moneda, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, type PerfilSesion } from '@/lib/sesion'
 
 import { VistaEtapas, VistaMateriales, VistaPlanos } from './vistas-diseno'
@@ -52,9 +57,16 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   const params = await searchParams
   const codigo = typeof params.codigo === 'string' ? normalizarCodigo(params.codigo) : ''
   if (!codigo) notFound()
-  const vista = vistaValida(params.vista)
+  // La factura y el cobro los ve quien lee las cotizaciones aprobadas (Gerencia) o las factura y cobra.
+  const veFacturas = puede(perfil, ['cotizaciones.ver_aprobadas', 'contabilidad.facturar', 'tesoreria.ver_documentos'])
+  const pedida = vistaValida(params.vista)
+  const vista = pedida === 'facturacion' && !veFacturas ? 'avance' : pedida
 
-  const [conDocumentos, deDiseno] = await Promise.all([listarCodigosInternos(), codigosDeDiseno()])
+  const [conDocumentos, deDiseno, facturado] = await Promise.all([
+    listarCodigosInternos(),
+    codigosDeDiseno(),
+    veFacturas ? facturadoDelCodigo(codigo) : Promise.resolve(null),
+  ])
   const todos = sumarCodigosDeDiseno(conDocumentos, deDiseno)
   const resumen = todos.find((c) => c.codigo === codigo)
   const diseno = deDiseno.find((d) => d.codigo === codigo)
@@ -116,7 +128,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
             </Tarjeta>
           )}
 
-          <ComoVa c={resumen} />
+          <ComoVa c={resumen} facturado={facturado} codigo={codigo} />
           <LineaDeDiseno d={diseno} />
 
           <PastillaFiltro
@@ -125,7 +137,10 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
             params={params}
             activo={vista === 'avance' ? null : vista}
             etiqueta="Secciones del código"
-            opciones={VISTAS_CODIGO.map((v) => ({ valor: v.valor === 'avance' ? null : v.valor, etiqueta: v.etiqueta }))}
+            opciones={VISTAS_CODIGO.filter((v) => v.valor !== 'facturacion' || veFacturas).map((v) => ({
+              valor: v.valor === 'avance' ? null : v.valor,
+              etiqueta: v.etiqueta,
+            }))}
           />
 
           <Vista vista={vista} codigo={codigo} perfil={perfil} />
@@ -136,7 +151,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
 }
 
 /** Las cifras de arriba: lo mismo que la fila de la lista, con más aire. */
-function ComoVa({ c }: { c: ResumenCodigo }) {
+function ComoVa({ c, facturado, codigo }: { c: ResumenCodigo; facturado: FacturadoDelCodigo | null; codigo: string }) {
   const costo = costoDelCodigo(c)
   return (
     <div className="space-y-2">
@@ -203,6 +218,7 @@ function ComoVa({ c }: { c: ResumenCodigo }) {
           pie={piesDeSubcontratos(c)}
         />
       </div>
+      {facturado && <LineaFacturado f={facturado} codigo={codigo} />}
       {(c.compras_pen > 0 || c.compras_usd > 0 || c.compras > 0) && (
         <p className="text-xs text-texto-suave">
           Compras con este código: <span className="tabular text-texto">{moneda(c.compras_pen)}</span>
@@ -211,6 +227,38 @@ function ComoVa({ c }: { c: ResumenCodigo }) {
         </p>
       )}
     </div>
+  )
+}
+
+/** «Facturado US$ 29,500.00 en 1 factura · cobrado … · por cobrar …»: lo vendido junto a lo gastado. */
+function LineaFacturado({ f, codigo }: { f: FacturadoDelCodigo; codigo: string }) {
+  const montos = (r: Record<CodigoMoneda, number>) =>
+    (['PEN', 'USD'] as const)
+      .filter((m) => r[m] > 0)
+      .map((m) => moneda(r[m], m))
+      .join(' + ') || moneda(0)
+  const porCobrar = f.saldo.PEN + f.saldo.USD > 0
+  return (
+    <p className="text-xs text-texto-suave" data-facturado>
+      {f.facturas === 0 ? (
+        'Sin factura de venta todavía: la registra Contabilidad sobre la cotización aprobada.'
+      ) : (
+        <>
+          Facturado <span className="tabular text-texto">{montos(f.total)}</span> en {f.facturas} {f.facturas === 1 ? 'factura' : 'facturas'} · cobrado{' '}
+          <span className="tabular text-texto">{montos(f.cobrado)}</span>
+          {porCobrar && (
+            <>
+              {' '}
+              · por cobrar <span className="tabular text-texto">{montos(f.saldo)}</span>
+            </>
+          )}
+          .
+        </>
+      )}{' '}
+      <Link href={enlaceCodigo(codigo, 'facturacion')} className="text-acento hover:underline">
+        Ver factura y cobro
+      </Link>
+    </p>
   )
 }
 
@@ -253,6 +301,7 @@ async function Vista({ vista, codigo, perfil }: { vista: VistaCodigo; codigo: st
   if (vista === 'costeo') return <VistaCosteo codigo={codigo} perfil={perfil} />
   if (vista === 'personal') return <VistaPersonal codigo={codigo} />
   if (vista === 'documentos') return <VistaDocumentos codigo={codigo} perfil={perfil} />
+  if (vista === 'facturacion') return <VistaFacturacion codigo={codigo} />
   return <VistaAvance codigo={codigo} perfil={perfil} />
 }
 
@@ -803,6 +852,78 @@ async function VistaDocumentos({ codigo, perfil }: { codigo: string; perfil: Per
           </Tarjeta>
         )
       })}
+    </>
+  )
+}
+
+/**
+ * La cotización aprobada de este código y sus facturas de venta con cada cobro
+ * y su voucher (migración 20261015124000). Solo lectura: factura Contabilidad y
+ * cobra Tesorería, cada una en su pantalla.
+ */
+async function VistaFacturacion({ codigo }: { codigo: string }) {
+  const [cotizaciones, facturas] = await Promise.all([cotizacionesAprobadas(codigo), facturasDelCodigo(codigo)])
+  const deMoneda = (m: string | null): CodigoMoneda => (m === 'USD' ? 'USD' : 'PEN')
+  return (
+    <>
+      <Tarjeta>
+        <TarjetaCabecera
+          titulo="Cotización aprobada"
+          descripcion="Lo que se le cobra al cliente por este código. Contabilidad factura según ella."
+        />
+        <TarjetaCuerpo>
+          {cotizaciones.length === 0 ? (
+            <p className="text-sm text-texto-suave">
+              Ninguna cotización aprobada lleva este código. Una cotización toma el código cuando Administración carga su OT con la unidad que lo lleva.
+            </p>
+          ) : (
+            <ul className="divide-y divide-borde">
+              {cotizaciones.map((c) => {
+                const m = deMoneda(c.moneda)
+                const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+                const pdf = c.archivo_mime === 'application/pdf'
+                return (
+                  <li key={c.cotizacion_id} className="flex flex-wrap items-start justify-between gap-2 py-2 text-sm first:pt-0 last:pb-0" data-cotizacion={c.numero ?? undefined}>
+                    <div className="min-w-0">
+                      <p className="font-medium text-texto">Cotización {c.numero}</p>
+                      <p className="text-xs text-texto-suave">{c.cliente ?? 'Cliente sin registrar'}</p>
+                      <p className="tabular text-xs text-texto-suave">
+                        {Number(c.facturas) === 0 ? 'Contabilidad aún no la factura' : `Facturado ${moneda(c.facturado, m)} · cobrado ${moneda(c.cobrado, m)}`}
+                      </p>
+                      {c.url && (
+                        <a
+                          href={c.url}
+                          target={pdf ? '_blank' : undefined}
+                          rel="noreferrer"
+                          className="inline-flex min-h-11 items-center gap-1 text-xs text-acento hover:underline sm:min-h-0"
+                        >
+                          {pdf ? <FileText aria-hidden className="size-3.5" /> : <Download aria-hidden className="size-3.5" />}
+                          {pdf ? 'Abrir la cotización' : 'Bajar la cotización'}
+                        </a>
+                      )}
+                    </div>
+                    <strong className="tabular">{total === null ? <span className="font-normal text-texto-suave">Sin total</span> : moneda(total, m)}</strong>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </TarjetaCuerpo>
+      </Tarjeta>
+
+      <Tarjeta>
+        <TarjetaCabecera
+          titulo={`Facturas de venta${facturas.length > 0 ? ` (${facturas.length})` : ''}`}
+          descripcion="Cada factura que registró Contabilidad, con los cobros que registró Tesorería y su voucher. Las anuladas salen tachadas."
+        />
+        <TarjetaCuerpo className="space-y-3">
+          {facturas.length === 0 ? (
+            <p className="text-sm text-texto-suave">Contabilidad todavía no registra una factura de este código.</p>
+          ) : (
+            facturas.map((f) => <FacturaDeVenta key={f.id} factura={f} />)
+          )}
+        </TarjetaCuerpo>
+      </Tarjeta>
     </>
   )
 }
