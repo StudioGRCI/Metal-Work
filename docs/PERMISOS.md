@@ -126,24 +126,33 @@ Desde el 2026-10-14 cada puesto tiene su propio menú (`MENU_POR_PUESTO` en
 que lo hace y al final lo que solo consulta. Las pestañas del teléfono son las
 de la última columna, en ese orden, más «Más». Cada entrada aparece solo si el
 permiso del puesto deja abrir esa pantalla. ADMIN y los puestos sin menú propio
-ven el catálogo entero filtrado por permiso. Se armó entrando con cada cuenta
-de producción.
+ven el catálogo entero filtrado por permiso, con las áreas en el orden del
+circuito (Principal, Ventas, Diseño e Ingeniería, Requerimientos, Almacén,
+Logística, Supervisión, Finanzas, Recursos Humanos, Administración del sistema)
+y cada pantalla compartida una sola vez. Se armó entrando con cada cuenta de
+producción.
+
+Desde el 2026-10-15 el orden va por importancia: arriba lo que espera por el
+puesto cada día (lo que, si no lo hace, traba a otra área), después lo que
+lleva sin apuro y al final lo que consulta. Los puestos con muchas pantallas
+las reparten en grupos con nombre; en la tabla, cada grupo va separado por
+punto y coma con su nombre delante.
 
 | Puesto | Su trabajo, en orden | Consultas | Teléfono |
 | --- | --- | --- | --- |
-| Requerimientos | Requerimientos, Vehículos, Gasto por código interno | Órdenes de trabajo | RQ, Vehículos, Gasto, Órdenes |
-| Almacén | Atención de requerimiento, Órdenes de trabajo, Kardex y debajo EPP, Consumibles, Accesorios y Materia prima | — | Atención, Órdenes, Kardex, Tablero |
-| Logística | Atención de requerimiento, Órdenes de compra, Aprobación de compras, Gestión de compras, Órdenes de servicio, Compras agrupadas, Proveedores, Valorización del almacén | Órdenes de trabajo | Atención, OC, Aprobar, Gestión |
+| Requerimientos | Requerimientos, Vehículos | Gasto por código interno, Órdenes de trabajo | RQ, Vehículos, Gasto, Órdenes |
+| Almacén | Por atender: Atención de requerimiento, Órdenes de trabajo; Almacenes: Kardex, EPP, Consumibles, Accesorios y Materia prima | — | Atención, Órdenes, Kardex, Tablero |
+| Logística | Atención de requerimiento, Órdenes de compra, Órdenes de servicio, Aprobación de compras, Gestión de compras; Proveedores y precios: Proveedores, Valorización del almacén | Compras agrupadas, Órdenes de trabajo | Atención, OC, Aprobar, Gestión |
 | Conductor de Logística | Recojos | — | Recojos, Tablero |
-| Gerencia | Cotización, Aprobación de compras, Reporte diario (lo valida), Códigos internos, Órdenes de trabajo | Planilla diaria, Horas extras, Proveedores, Tardanzas, Observaciones | Cotizar, Aprobar, Reporte, Códigos |
-| Supervisor de área | Reporte diario, Órdenes de trabajo, Requerimientos (lo que su área recoge de Almacén) | — | Reporte, Órdenes, RQ, Tablero |
-| Supervisor General | Órdenes de trabajo, Informe semanal de Diseño; Requerimientos y Vehículos; Kardex con sus cuatro almacenes y Valorización; Cotización, Clientes y Unidades; Gastos del mes, cada bloque con el nombre de su área | — | Órdenes, RQ, Kardex, Cotizar |
-| Administración | Cotización, Órdenes de trabajo, Gastos del mes, Tipo de cambio, Evaluación de desempeño, Clientes; el requerimiento de Administración: Requerimientos, Atención de requerimiento y Órdenes de compra; aparte, Personal y Configuración | Tardanzas, Observaciones, Vehículos | Cotizar, Órdenes, Gastos, Evaluación |
+| Gerencia | Por aprobar: Cotización, Aprobación de compras, Reporte diario (lo valida); Seguimiento: Códigos internos, Órdenes de trabajo | Planilla diaria, Horas extras, Tardanzas, Observaciones, Proveedores | Cotizar, Aprobar, Reporte, Códigos |
+| Supervisor de área | Reporte diario, Requerimientos (lo que su área recoge de Almacén), Órdenes de trabajo | — | Reporte, RQ, Órdenes, Tablero |
+| Supervisor General | Órdenes de trabajo, Informe semanal de Diseño; Cotización, Clientes y Unidades; Requerimientos y Vehículos; Kardex con sus cuatro almacenes y Valorización; Gastos del mes, cada bloque con el nombre de su área y en el orden del circuito | — | Órdenes, RQ, Kardex, Cotizar |
+| Administración | Cotización, Órdenes de trabajo, Clientes, Gastos del mes, Tipo de cambio; Requerimiento de Administración: Requerimientos, Atención de requerimiento, Órdenes de compra; aparte, Administración del sistema: Personal y Configuración | Evaluación de desempeño, Tardanzas, Observaciones, Vehículos | Cotizar, Órdenes, RQ, Gastos |
 | Tesorería | Planilla diaria, Tesorería, Cuentas de Tesorería, Tipo de cambio, Adquisiciones | Órdenes de trabajo | Planilla, Tesorería, Cuentas, Facturas |
 | Contabilidad y Adquisiciones | Gestión de compras (la guía de remisión), Órdenes de servicio (la detracción), Adquisiciones, Proveedores, Tipo de cambio | Órdenes de trabajo, Requerimientos | Gestión, Facturas, Proveedores, Cambio |
-| Diseño e Ingeniería | Órdenes de trabajo, Materiales, Carrocerías, Unidades, Informe semanal, Evaluación de desempeño | Clientes, Requerimientos | Órdenes, Informe, Materiales, Carrocerías |
+| Diseño e Ingeniería | Órdenes de trabajo, Materiales, Informe semanal, Evaluación de desempeño; Catálogos: Carrocerías, Unidades | Requerimientos, Clientes | Órdenes, Informe, Materiales, Carrocerías |
 | Colaborador de Diseño | Informe semanal de Diseño, Órdenes de trabajo | — | Informe, Órdenes, Tablero |
-| Recursos Humanos | Reporte diario (lo valida), Horas extras, Planilla diaria, Personal, Asistencia, Tardanzas, Permisos, Costeo por código interno, Observaciones, Planillas | Órdenes de trabajo | Reporte, Planilla, Personal, Asistencia |
+| Recursos Humanos | Reporte diario (lo valida), Horas extras, Planilla diaria; Control del personal: Personal, Asistencia, Tardanzas, Permisos, Observaciones; Planillas y costeo: Planillas, Costeo por código interno | Órdenes de trabajo | Reporte, Planilla, Personal, Asistencia |
 | Portería | Asistencia | — | Asistencia, Tablero |
 | Agente de Ventas | Cotización, Clientes, Unidades, Carrocerías | — | Cotizar, Clientes, Unidades, Tablero |
 
