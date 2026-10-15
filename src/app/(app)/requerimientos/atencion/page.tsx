@@ -8,7 +8,7 @@ import { GenerarCompraDelRequerimiento } from '@/app/(app)/compras/ordenes/formu
 import { catalogoDeAlmacen, type MaterialParaConteo } from '@/lib/datos/atencion-materiales'
 import { proveedoresParaCompra, type ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { cargarRequerimientos, type RequerimientoListado } from '@/lib/datos/requerimientos'
-import { ESTADO_REQUERIMIENTO } from '@/lib/dominio/requerimientos'
+import { ESTADO_REQUERIMIENTO, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -36,17 +36,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
     'requerimientos.administracion',
     'requerimientos.ver',
   ])
-  const recibe = puede(perfil, 'almacen.recibir')
-  const despacha = puede(perfil, 'almacen.despachar')
-  // Cada uno compra lo suyo, como exige `rq_exigir` en la base: el RQ de
-  // operación, Logística; el de Administración, la administradora. ADMIN, los dos.
-  const esAdmin = perfil.rol.codigo === 'ADMIN'
-  const administra = puede(perfil, 'requerimientos.administracion')
-  const conOc = puede(perfil, 'compras.crear')
-  const compraDe: CompraDe = {
-    OPERACION: conOc && (esAdmin || !administra),
-    ADMINISTRACION: conOc && administra,
-  }
+  const { recibe, despacha, compraDe } = quienAtiende(perfil)
   const compra = compraDe.OPERACION || compraDe.ADMINISTRACION
   const params = await searchParams
   const vista = params.vista === 'todos' ? 'todos' : 'abiertos'
@@ -58,7 +48,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   ])
   const paraComprar = compra ? { proveedores, materiales, puedeRegistrarProveedor: puede(perfil, 'proveedores.editar') } : null
 
-  const meToca = requerimientos.filter((r) => leToca(r, { recibe, despacha, compraDe })).length
+  const meToca = requerimientos.filter((r) => leTocaAtender(r, { recibe, despacha, compraDe })).length
 
   return (
     <>
@@ -114,7 +104,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
                   rq={r}
                   recibe={recibe}
                   despacha={despacha}
-                  compra={compraDe[tipoDe(r)]}
+                  compra={compraDe[tipoDeRequerimiento(r)]}
                   paraComprar={paraComprar}
                 />
               ))
@@ -124,17 +114,6 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
       </Tarjeta>
     </>
   )
-}
-
-type CompraDe = { OPERACION: boolean; ADMINISTRACION: boolean }
-
-const tipoDe = (rq: RequerimientoListado) => (rq.tipo === 'ADMINISTRACION' ? 'ADMINISTRACION' : 'OPERACION')
-
-function leToca(rq: RequerimientoListado, p: { recibe: boolean; despacha: boolean; compraDe: CompraDe }) {
-  if (rq.estado === 'POR_ATENDER' || rq.estado === 'EN_ATENCION') return p.recibe
-  if (rq.estado === 'SIN_STOCK') return p.compraDe[tipoDe(rq)] || p.recibe
-  if (rq.estado === 'LISTO_EN_ALMACEN') return p.despacha
-  return false
 }
 
 /** Lo que falta comprar de un insumo: todo si Almacén no lo revisó, o lo que no tenía. */

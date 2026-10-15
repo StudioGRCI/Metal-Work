@@ -1,15 +1,18 @@
 import 'server-only'
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
-import { trabajaPorCodigo } from '@/lib/dominio/acceso-orden'
+import { planosDeCodigo } from '@/lib/datos/diseno-codigos'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
+import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
+import { ESTADOS_RQ_ABIERTOS, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima, mesLargo } from '@/lib/format'
+import { menuDe } from '@/lib/navegacion'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /**
  * Lo que le toca mover a quien mira, en todo el sistema: es la franja de arriba
- * del Tablero y los globos de la barra del teléfono. Cada cuenta se pide solo si
+ * del Dashboard y los globos de la barra del teléfono. Cada cuenta se pide solo si
  * el puesto tiene el permiso que la resuelve —a quien no puede aprobar no se le
  * cuentan reportes por aprobar— y cada una es un `count` de cabecera sobre las
  * vistas que ya existen, que el RLS filtra solo. Una lectura que falle muestra
@@ -29,7 +32,8 @@ export type PendientesGlobales = {
   porRuta: Record<string, number>
 }
 
-type Cuenta = () => Promise<number>
+/** Cuántos hay; con `ruta`, el enlace afina adónde llevar (el mes del más antiguo, por ejemplo). */
+type Cuenta = () => Promise<number | { cantidad: number; ruta?: string }>
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
 
@@ -544,24 +548,268 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
-  // Supervisión, Almacén y Requerimientos ya no abren la OT (2026-10-15): lo que
-  // solo se resuelve en ella no es su pendiente. Lo suyo lo cuenta su pantalla.
-  if (trabajaPorCodigo(perfil)) {
-    for (let i = tareas.length - 1; i >= 0; i--) if (tareas[i].ruta.startsWith('/ordenes')) tareas.splice(i, 1)
+  // ── Lo que cada puesto atiende desde que el trabajo va por código interno ──
+
+  // Gerencia: las compras y servicios que esperan su visto. Quién aprueba lo
+  // decide la base con la regla de aprobación, como en la pantalla.
+  tareas.push({
+    clave: 'compras_por_aprobar', ruta: '/compras/aprobacion', tono: 'aviso',
+    texto: n => plural(n, 'compra o servicio por aprobar', 'compras y servicios por aprobar'),
+    contar: async () => {
+      const aprueba = await supabase.rpc('es_aprobador_compras')
+      if (aprueba.error) throw new Error('No se pudo consultar el pendiente.')
+      if (aprueba.data !== true) return 0
+      const { data, error } = await supabase.rpc('documentos_por_aprobar')
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      return (data ?? []).filter((d) => d.aprobacion === 'POR_APROBAR').length
+    },
+  })
+
+  // El reporte diario lo validan Gerencia y RR. HH., cada uno su visto: a cada
+  // uno se le cuentan los que esperan el suyo, de cualquier mes. El enlace abre
+  // el mes del más antiguo, que es el primero que hay que validar.
+  for (const lado of [
+    { permiso: 'reporte_diario.validar_gerencia', columna: 'visto_gerencia_en' },
+    { permiso: 'reporte_diario.validar_rrhh', columna: 'visto_rrhh_en' },
+  ] as const) {
+    if (!puede(perfil, lado.permiso) || perfil.rol.codigo === 'ADMIN') continue
+    tareas.push({
+      clave: `reportes_${lado.columna}`,
+      ruta: '/reportes-diarios?estado=por-validar',
+      tono: 'aviso',
+      texto: n => plural(n, 'reporte diario espera tu visto', 'reportes diarios esperan tu visto'),
+      contar: async () => {
+        const { data, error } = await supabase
+          .from('reportes_diarios')
+          .select('fecha')
+          .is('anulado_en', null)
+          .is('observado_en', null)
+          .is(lado.columna, null)
+          .order('fecha')
+          .limit(500)
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        const primero = data?.[0]?.fecha
+        return { cantidad: data?.length ?? 0, ruta: primero ? `/reportes-diarios?mes=${primero.slice(0, 7)}&estado=por-validar` : undefined }
+      },
+    })
   }
 
-  const cantidades = await Promise.all(tareas.map((t) => t.contar().catch(() => null)))
+  // El supervisor: lo que Gerencia o RR. HH. le observó y el reporte de hoy.
+  if (puede(perfil, 'reporte_diario.registrar') && perfil.rol.codigo !== 'ADMIN') {
+    tareas.push({
+      clave: 'reportes_observados', ruta: '/reportes-diarios?estado=observados', tono: 'peligro',
+      texto: n => plural(n, 'reporte diario observado por corregir', 'reportes diarios observados por corregir'),
+      contar: () => cabeza(
+        supabase.from('reportes_diarios').select('id', { count: 'exact', head: true })
+          .eq('registrado_por', perfil.id).is('anulado_en', null).not('observado_en', 'is', null),
+      ),
+    })
+    // El domingo no se trabaja: no se le pide reporte.
+    if (new Date(`${hoy}T12:00:00Z`).getUTCDay() !== 0) tareas.push({
+      clave: 'reporte_de_hoy', ruta: '/reportes-diarios', tono: 'acento',
+      texto: () => 'Tu reporte diario de hoy todavía no está subido',
+      contar: async () => {
+        const n = await cabeza(
+          supabase.from('reportes_diarios').select('id', { count: 'exact', head: true })
+            .eq('registrado_por', perfil.id).eq('fecha', hoy).is('anulado_en', null),
+        )
+        return n > 0 ? 0 : 1
+      },
+    })
+  }
+
+  // Los planos que Diseño cargó para el área del supervisor y él no recibió.
+  if (puede(perfil, 'codigos_internos.area') && perfil.rol.codigo !== 'ADMIN') tareas.push({
+    clave: 'planos_por_recibir', ruta: '/planos?ver=por-recibir', tono: 'aviso',
+    texto: n => plural(n, 'plano de tu área por recibir', 'planos de tu área por recibir'),
+    contar: async () => (await planosDeCodigo(null)).filter((p) => !p.anulado_en && !p.recibido_en).length,
+  })
+
+  // Los requerimientos abiertos se leen una vez: Almacén, Logística, la
+  // administradora y el supervisor cuentan cosas distintas de la misma lista.
+  let abiertos: Promise<{ estado: string; tipo: string | null; area_id: string | null }[]> | null = null
+  const rqAbiertos = () =>
+    (abiertos ??= (async () => {
+      const { data, error } = await supabase
+        .from('requerimientos')
+        .select('estado, tipo, area_id')
+        .in('estado', [...ESTADOS_RQ_ABIERTOS])
+        .limit(1000)
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      return data ?? []
+    })())
+  const atiende = quienAtiende(perfil)
+  const rqQueTeTocan = (estado: string) => async () =>
+    (await rqAbiertos()).filter((r) => r.estado === estado && leTocaAtender(r, atiende)).length
+
+  if (atiende.recibe) tareas.push({
+    clave: 'rq_por_revisar', ruta: '/requerimientos/atencion', tono: 'aviso',
+    texto: n => plural(n, 'requerimiento por revisar insumo por insumo', 'requerimientos por revisar insumo por insumo'),
+    contar: rqQueTeTocan('POR_ATENDER'),
+  })
+  if (atiende.compraDe.OPERACION || atiende.compraDe.ADMINISTRACION) tareas.push({
+    clave: 'rq_por_comprar', ruta: '/requerimientos/atencion', tono: 'aviso',
+    texto: n => plural(n, 'requerimiento sin stock por comprar', 'requerimientos sin stock por comprar'),
+    contar: async () =>
+      (await rqAbiertos()).filter((r) => r.estado === 'SIN_STOCK' && atiende.compraDe[tipoDeRequerimiento(r)]).length,
+  })
+  if (atiende.despacha) tareas.push({
+    clave: 'rq_por_entregar', ruta: '/requerimientos/atencion', tono: 'acento',
+    texto: n => plural(n, 'requerimiento listo por entregar al área', 'requerimientos listos por entregar al área'),
+    contar: rqQueTeTocan('LISTO_EN_ALMACEN'),
+  })
+  // El supervisor recoge de Almacén lo que su área pidió.
+  if (puede(perfil, 'reporte_diario.registrar') && perfil.area_id && perfil.rol.codigo !== 'ADMIN') {
+    const area = perfil.area_id
+    tareas.push({
+      clave: 'rq_por_recoger', ruta: '/requerimientos', tono: 'acento',
+      texto: n => plural(n, 'requerimiento de tu área listo para recoger en almacén', 'requerimientos de tu área listos para recoger en almacén'),
+      contar: async () => (await rqAbiertos()).filter((r) => r.estado === 'LISTO_EN_ALMACEN' && r.area_id === area).length,
+    })
+  }
+
+  // Almacén: lo que el conductor dejó y falta validar, y las salidas de materia
+  // prima y EPP que esperan su formato firmado.
+  if (puede(perfil, 'almacen.recibir')) tareas.push({
+    clave: 'ingresos_por_validar', ruta: '/almacen/kardex', tono: 'aviso',
+    texto: n => plural(n, 'compra dejada en almacén por validar', 'compras dejadas en almacén por validar'),
+    contar: async () => {
+      const { data, error } = await supabase.rpc('ingresos_por_validar')
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      return new Set((data ?? []).map((l) => l.orden_compra_id)).size
+    },
+  })
+  if (puede(perfil, 'almacen.despachar')) tareas.push({
+    clave: 'salidas_por_cerrar', ruta: '/almacen/kardex', tono: 'aviso',
+    texto: n => plural(n, 'salida espera su formato firmado', 'salidas esperan su formato firmado'),
+    contar: () => cabeza(supabase.from('v_kardex_almacen').select('id', { count: 'exact', head: true }).eq('formato_pendiente', true)),
+  })
+
+  // Tesorería: las facturas de compra con saldo (las vencidas aparte), los
+  // recibos por honorarios y las planillas diarias por pagar.
+  if (puede(perfil, 'tesoreria.registrar_pagos')) {
+    let saldos: Promise<{ vencidas: number; resto: number }> | null = null
+    const porPagar = () =>
+      (saldos ??= (async () => {
+        const { data, error } = await supabase.from('v_cuentas_pagar').select('saldo, fecha_vencimiento').gt('saldo', 0).limit(1000)
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        const vencidas = (data ?? []).filter((c) => c.fecha_vencimiento && c.fecha_vencimiento < hoy).length
+        return { vencidas, resto: (data ?? []).length - vencidas }
+      })())
+    tareas.push({
+      clave: 'facturas_vencidas', ruta: '/tesoreria/por-pagar', tono: 'peligro',
+      texto: n => plural(n, 'factura de compra vencida por pagar', 'facturas de compra vencidas por pagar'),
+      contar: async () => (await porPagar()).vencidas,
+    })
+    tareas.push({
+      clave: 'facturas_por_pagar', ruta: '/tesoreria/por-pagar', tono: 'aviso',
+      texto: n => plural(n, 'factura de compra por pagar', 'facturas de compra por pagar'),
+      contar: async () => (await porPagar()).resto,
+    })
+  }
+  if (puede(perfil, 'subcontratos.pagar')) tareas.push({
+    clave: 'recibos_por_pagar', ruta: '/tesoreria/recibos-por-honorarios', tono: 'aviso',
+    texto: n => plural(n, 'recibo por honorarios por pagar', 'recibos por honorarios por pagar'),
+    contar: async () => {
+      const { data, error } = await supabase
+        .from('recibos_honorarios')
+        .select('id, pagos:pagos_recibo_honorarios!pagos_recibo_honorarios_recibo_id_fkey(anulado_en)')
+        .is('anulado_en', null)
+        .limit(1000)
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      // El tipo generado lo da por uno solo; la pantalla lo lee como lista.
+      const pagosDe = (r: { pagos: unknown }) => ([] as { anulado_en: string | null }[]).concat((r.pagos ?? []) as never)
+      return (data ?? []).filter((r) => !pagosDe(r).some((p) => !p.anulado_en)).length
+    },
+  })
+  if (puede(perfil, 'planilla_diaria.pagar')) tareas.push({
+    clave: 'planillas_por_pagar', ruta: '/planilla-diaria', tono: 'aviso',
+    texto: n => plural(n, 'planilla diaria por pagar', 'planillas diarias por pagar'),
+    contar: async () => {
+      const { data, error } = await supabase
+        .from('planillas_diarias')
+        .select('anulado_en, gente:planilla_diaria_personas!planilla_diaria_personas_planilla_id_fkey(pago_id, boleta_entregada_en)')
+        .is('anulado_en', null)
+        .limit(200)
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      return (data ?? []).filter((p) => ['POR_PAGAR', 'PAGO_PARCIAL'].includes(estadoDePlanilla(p.anulado_en, p.gente ?? []))).length
+    },
+  })
+
+  // RR. HH.: las horas extras por decidir y lo que ya puede ir a la planilla diaria.
+  if (puede(perfil, 'planilla_diaria.preparar')) {
+    tareas.push({
+      clave: 'extras_por_decidir', ruta: '/rrhh/horas-extras', tono: 'aviso',
+      texto: n => plural(n, 'día con horas extras por decidir', 'días con horas extras por decidir'),
+      contar: async () => {
+        const { data, error } = await supabase.rpc('horas_extras_por_decidir')
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        return (data ?? []).filter((f) => Number(f.por_decidir ?? 0) > 0).length
+      },
+    })
+    tareas.push({
+      clave: 'planilla_por_enviar', ruta: '/planilla-diaria', tono: 'acento',
+      texto: n => plural(n, 'persona con horas por enviar a la planilla diaria', 'personas con horas por enviar a la planilla diaria'),
+      contar: async () => {
+        const { data, error } = await supabase.rpc('planilla_diaria_por_enviar')
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        return new Set((data ?? []).map((f) => f.trabajador_id)).size
+      },
+    })
+  }
+
+  // Contabilidad: las compras que todavía no tienen su factura registrada.
+  if (puede(perfil, 'adquisiciones.registrar')) tareas.push({
+    clave: 'compras_sin_factura', ruta: '/adquisiciones', tono: 'aviso',
+    texto: n => plural(n, 'compra sin factura registrada', 'compras sin factura registrada'),
+    contar: async () => {
+      const { data, error } = await supabase.rpc('compras_sin_factura')
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      return (data ?? []).length
+    },
+  })
+
+  // Diseño y Supervisión general: los códigos con una etapa que pasó su fecha.
+  for (const de of [
+    { permiso: 'diseno.codigos', ruta: '/diseno/etapas?ver=vencidas' },
+    { permiso: 'supervision.general', ruta: '/seguimiento?ver=vencidas' },
+  ]) {
+    if (!puede(perfil, de.permiso)) continue
+    tareas.push({
+      clave: `etapas_vencidas_${de.permiso}`, ruta: de.ruta, tono: 'peligro',
+      texto: n => plural(n, 'código con etapas vencidas', 'códigos con etapas vencidas'),
+      contar: async () => {
+        const { data, error } = await supabase.rpc('codigos_internos_de_diseno')
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        return (data ?? []).filter((c) => Number(c.etapas_vencidas ?? 0) > 0).length
+      },
+    })
+    break
+  }
+
+  // Un pendiente se cuenta solo si su pantalla está en el menú del puesto: lo
+  // que se resuelve donde el puesto ya no entra no es suyo. Así Supervisión,
+  // Almacén y Requerimientos dejaron de ver lo que se resolvía en la OT (desde
+  // el 2026-10-15), y Tesorería, Gerencia y Contabilidad tampoco lo ven.
+  const enMenu = new Set(
+    menuDe(perfil.permisos, perfil.rol.codigo === 'ADMIN', perfil.rol.codigo).flatMap((g) => g.items.map((i) => i.ruta.split('?')[0])),
+  )
+  const suyas = tareas.filter((t) => enMenu.has(t.ruta.split('?')[0]))
+
+  const cuentas = await Promise.all(suyas.map((t) => t.contar().catch(() => null)))
 
   const items: PendienteGlobal[] = []
   const porRuta: Record<string, number> = {}
-  tareas.forEach((t, i) => {
-    const n = cantidades[i]
-    if (n === null) {
+  suyas.forEach((t, i) => {
+    const cuenta = cuentas[i]
+    if (cuenta === null) {
       items.push({ clave: `${t.clave}_error`, texto: 'No se pudo comprobar un pendiente. Abre el módulo o vuelve a cargar.', ruta: t.ruta, cantidad: 0, tono: 'aviso' })
       return
     }
+    const n = typeof cuenta === 'number' ? cuenta : cuenta.cantidad
     if (n <= 0) return
-    items.push({ clave: t.clave, texto: t.texto(n), ruta: t.ruta, cantidad: n, tono: t.tono })
+    const ruta = (typeof cuenta === 'number' ? undefined : cuenta.ruta) ?? t.ruta
+    items.push({ clave: t.clave, texto: t.texto(n), ruta, cantidad: n, tono: t.tono })
     const base = t.ruta.split('?')[0]
     porRuta[base] = (porRuta[base] ?? 0) + n
   })

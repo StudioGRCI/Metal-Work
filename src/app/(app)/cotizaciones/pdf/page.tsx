@@ -96,7 +96,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const anuladas = cotizaciones.filter((c) => c.estado === 'ANULADA').length
 
   // Los filtros y la búsqueda se resuelven en memoria: la lista ya viene entera
-  // (hasta 200) y así los enlaces del Tablero y de la campana caen en lo suyo.
+  // (hasta 200) y así los enlaces del Dashboard y de la campana caen en lo suyo.
   const filtro = (FILTROS_ESTADO as readonly string[]).includes(String(params.estado))
     ? (params.estado as FiltroEstado)
     : null

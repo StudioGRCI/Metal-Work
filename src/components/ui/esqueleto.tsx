@@ -119,10 +119,10 @@ export function EsqueletoTarjeta({ lineas = 4, className }: { lineas?: number; c
   )
 }
 
-/** Tablero: la fila de indicadores y las dos tarjetas de abajo. */
+/** Dashboard: la fila de indicadores y las dos tarjetas de abajo. */
 export function EsqueletoTablero() {
   return (
-    <div role="status" aria-busy="true" aria-label="Cargando el tablero">
+    <div role="status" aria-busy="true" aria-label="Cargando el dashboard">
       <div className="mb-6 space-y-2">
         <Esqueleto className="h-6 w-48" />
         <Esqueleto className="h-4 w-64" />

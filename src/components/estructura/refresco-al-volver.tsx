@@ -8,7 +8,7 @@ import { startTransition, useEffect, useRef } from 'react'
  * vuelve a la pestaña —o a la ventana, en el monitor de oficina— después de un
  * rato, y cada minuto mientras la mira, se comprueba si le llegaron avisos y,
  * si cambió el número, se repinta todo con `router.refresh()`: la campana, los
- * contadores del Tablero, «Te toca» y las listas a la vez.
+ * contadores del Dashboard, «Te toca» y las listas a la vez.
  *
  * Nunca refresca mientras hay una `Ventana` abierta o un campo con foco: el
  * supervisor escribe reportes largos con guante y un repintado a mitad de

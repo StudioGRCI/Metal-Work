@@ -19,7 +19,7 @@ export default async function PaginaSinPermiso() {
         incluye este permiso. Si necesitas acceso, solicítalo al administrador del sistema.
       </p>
       <EnlaceBoton href="/" variante="secundario" className="mt-6">
-        Volver al tablero
+        Volver al dashboard
       </EnlaceBoton>
     </div>
   )

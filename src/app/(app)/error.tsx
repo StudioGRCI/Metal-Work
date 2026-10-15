@@ -40,7 +40,7 @@ export default function ErrorDelModulo({
           Reintentar
         </Boton>
         <EnlaceBoton href="/" variante="secundario">
-          Ir al tablero
+          Ir al dashboard
         </EnlaceBoton>
       </div>
     </div>
