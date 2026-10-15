@@ -284,6 +284,19 @@ comprobar(
     (await pagina.locator('[data-subir-recibo], [data-corregir-subcontrato], [data-cambiar-estado], [data-anular]').count()) === 0,
     'Gerencia consulta el subcontrato sin botones',
   )
+  // En Códigos internos el recibo suma al costo de su código, por su bruto (migración 20261016100000).
+  const enCodigo = `/codigos-internos/detalle?${new URLSearchParams({ codigo: codigo.toUpperCase() })}`
+  await pagina.goto(`${BASE}/codigos-internos?${new URLSearchParams({ q: codigo })}`, { waitUntil: 'networkidle' })
+  const filaCodigo = limpio(await pagina.locator(`a[href="${enCodigo}"]`).first().textContent().catch(() => ''))
+  comprobar(filaCodigo.includes('Subcontratos S/ 2,000.00'), `la lista de Códigos internos suma el recibo por su bruto (${filaCodigo.slice(0, 160)})`)
+  await pagina.goto(`${BASE}${enCodigo}&vista=costeo`, { waitUntil: 'networkidle' })
+  const reciboEnCodigo = limpio(await pagina.locator(`[data-recibo="${numeroRecibo}"]`).textContent().catch(() => ''))
+  comprobar(
+    reciboEnCodigo.includes('Pagado') && reciboEnCodigo.includes('2,000.00') && reciboEnCodigo.includes(numeroSc) && reciboEnCodigo.includes(nombre),
+    `el costeo del código muestra el recibo pagado, con su subcontrato y su subcontratista (${reciboEnCodigo.slice(0, 160)})`,
+  )
+  const cifrasCodigo = limpio(await pagina.locator('main').textContent())
+  comprobar(cifrasCodigo.includes('1 RxH pagado'), 'arriba, «Subcontratos» dice que el recibo está pagado')
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }

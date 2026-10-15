@@ -135,12 +135,12 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   )
 }
 
-/** Las cuatro cifras de arriba: lo mismo que la fila de la lista, con más aire. */
+/** Las cifras de arriba: lo mismo que la fila de la lista, con más aire. */
 function ComoVa({ c }: { c: ResumenCodigo }) {
   const costo = costoDelCodigo(c)
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <Indicador
           titulo="Avance"
           valor={c.avance_medio === null ? 'Sin reportes' : <Progreso valor={c.avance_medio} mostrarValor etiqueta="Avance del código" />}
@@ -160,7 +160,7 @@ function ComoVa({ c }: { c: ResumenCodigo }) {
               </>
             )
           }
-          pie="Mano de obra, materiales y servicios"
+          pie="Mano de obra, materiales, servicios y subcontratos"
         />
         <Indicador
           titulo="Mano de obra"
@@ -191,6 +191,17 @@ function ComoVa({ c }: { c: ResumenCodigo }) {
           }
           pie={piesDeServicios(c)}
         />
+        <Indicador
+          titulo="Subcontratos"
+          valor={
+            <>
+              {moneda(c.subcontratos_pen)}
+              {c.subcontratos_usd > 0 && <span className="block text-sm">+ {moneda(c.subcontratos_usd, 'USD')}</span>}
+            </>
+          }
+          tono={c.subcontratos_por_pagar > 0 ? 'aviso' : 'neutro'}
+          pie={piesDeSubcontratos(c)}
+        />
       </div>
       {(c.compras_pen > 0 || c.compras_usd > 0 || c.compras > 0) && (
         <p className="text-xs text-texto-suave">
@@ -213,6 +224,23 @@ function piesDeServicios(c: ResumenCodigo) {
       .filter(Boolean)
       .join(' + ')
     partes.push(`${c.servicios_por_aprobar} por aprobar${espera ? ` (${espera})` : ''}`)
+  }
+  return partes.join(' · ')
+}
+
+/** «2 RxH pagados · 1 por pagar (S/ 900.00)»: el que espera a Tesorería ya suma, porque se debe. */
+function piesDeSubcontratos(c: ResumenCodigo) {
+  if (c.subcontratos === 0) return 'Ningún recibo por honorarios'
+  const pagados = c.subcontratos - c.subcontratos_por_pagar
+  const partes = [`${pagados} RxH ${pagados === 1 ? 'pagado' : 'pagados'}`]
+  if (c.subcontratos_por_pagar > 0) {
+    const falta = [
+      c.subcontratos_por_pagar_pen > 0 && moneda(c.subcontratos_por_pagar_pen),
+      c.subcontratos_por_pagar_usd > 0 && moneda(c.subcontratos_por_pagar_usd, 'USD'),
+    ]
+      .filter(Boolean)
+      .join(' + ')
+    partes.push(`${c.subcontratos_por_pagar} por pagar${falta ? ` (${falta})` : ''}`)
   }
   return partes.join(' · ')
 }
@@ -359,10 +387,12 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
   const materiales = lineas.filter((l) => l.fuente === 'MATERIALES' || l.fuente === 'MATERIALES_SIN_PRECIO')
   const servicios = lineas.filter((l) => l.fuente === 'SERVICIOS' || l.fuente === 'SERVICIOS_POR_APROBAR')
   const aprobados = servicios.filter((l) => l.fuente === 'SERVICIOS')
+  const recibos = lineas.filter((l) => l.fuente === 'SUBCONTRATOS' || l.fuente === 'SUBCONTRATOS_POR_PAGAR')
   const suma = (ls: typeof lineas, m: 'PEN' | 'USD') => ls.reduce((n, l) => n + (l.moneda === m ? (l.monto ?? 0) : 0), 0)
   const horasMo = manoObra.reduce((n, l) => n + (l.horas ?? 0), 0)
   const abrePdf = puede(perfil, ['compras.ver', 'almacen.recibir'])
   const abreServicios = puede(perfil, ['compras.crear', 'compras.ver', 'compras.detraccion'])
+  const abreSubcontratos = puede(perfil, ['subcontratos.gestionar', 'subcontratos.ver'])
 
   return (
     <>
@@ -527,6 +557,64 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                   <TD className="tabular text-right whitespace-nowrap">
                     {moneda(suma(aprobados, 'PEN'))}
                     {suma(aprobados, 'USD') > 0 && <p>+ {moneda(suma(aprobados, 'USD'), 'USD')}</p>}
+                  </TD>
+                </TR>
+              </>
+            )}
+          </tbody>
+        </Tabla>
+      </Tarjeta>
+
+      <Tarjeta className="overflow-hidden" data-subcontratos>
+        <TarjetaCabecera
+          titulo="Subcontratos"
+          descripcion="Los recibos por honorarios de los trabajos que Administración encargó a gente de fuera para este código, por su monto bruto: la retención también es parte de lo que cuesta. Todos suman al costo, pagados o no, porque el recibo ya se debe; el que espera a Tesorería se marca para saber cuánto falta pagar. Los anulados no aparecen."
+        />
+        <Tabla>
+          <TablaCabecera>
+            <tr>
+              <TH>Recibo</TH>
+              <TH>Trabajo</TH>
+              <TH className="hidden sm:table-cell">Tesorería</TH>
+              <TH className="text-right">Bruto</TH>
+            </tr>
+          </TablaCabecera>
+          <tbody>
+            {recibos.length === 0 ? (
+              <SinDatos titulo="Ningún recibo por honorarios con este código" descripcion="Administración registra el subcontrato con el código interno y sube cada recibo." />
+            ) : (
+              <>
+                {recibos.map((l) => {
+                  const pagado = l.fuente === 'SUBCONTRATOS'
+                  const estado = <Insignia tono={pagado ? 'exito' : 'aviso'}>{pagado ? 'Pagado' : 'Por pagar'}</Insignia>
+                  return (
+                    <TR key={l.referencia_id ?? l.documento} data-recibo={l.documento}>
+                      <TD className="align-top">
+                        {abreSubcontratos ? (
+                          <Link href={`/subcontratos?codigo=${encodeURIComponent(codigo)}`} className="font-medium text-acento hover:underline">
+                            {l.documento}
+                          </Link>
+                        ) : (
+                          <p className="font-medium text-texto">{l.documento}</p>
+                        )}
+                        <p className="tabular text-xs text-texto-suave">{fecha(l.fecha)}</p>
+                      </TD>
+                      <TD className="align-top">
+                        <p className="text-texto">{l.concepto}</p>
+                        <p className="text-xs text-texto-suave">{l.detalle}</p>
+                        <p className="mt-1 sm:hidden">{estado}</p>
+                      </TD>
+                      <TD className="hidden align-top sm:table-cell">{estado}</TD>
+                      <TD className="tabular text-right align-top whitespace-nowrap">{moneda(l.monto, l.moneda ?? 'PEN')}</TD>
+                    </TR>
+                  )
+                })}
+                <TR className="font-semibold">
+                  <TD colSpan={2}>Total</TD>
+                  <TD className="hidden sm:table-cell" />
+                  <TD className="tabular text-right whitespace-nowrap">
+                    {moneda(suma(recibos, 'PEN'))}
+                    {suma(recibos, 'USD') > 0 && <p>+ {moneda(suma(recibos, 'USD'), 'USD')}</p>}
                   </TD>
                 </TR>
               </>

@@ -36,11 +36,12 @@ export function parecidos(codigos: string[]): Map<string, string[]> {
 }
 
 /**
- * Lo que lleva costado un código: mano de obra, materiales salidos del almacén
- * y órdenes de servicio aprobadas, sin IGV. Las compras NO entran: lo comprado
- * se cuenta cuando sale del almacén para el código (migración 20261014220000).
- * El servicio sí, porque no pasa por el almacén (migración 20261015180000). Los
- * dólares van aparte, sin cambio.
+ * Lo que lleva costado un código: mano de obra, materiales salidos del almacén,
+ * órdenes de servicio aprobadas, sin IGV, y recibos por honorarios de sus
+ * subcontratos, por su bruto. Las compras NO entran: lo comprado se cuenta
+ * cuando sale del almacén para el código (migración 20261014220000). El
+ * servicio y el subcontrato sí, porque no pasan por el almacén (migraciones
+ * 20261015180000 y 20261016100000). Los dólares van aparte, sin cambio.
  */
 export function costoDelCodigo(c: {
   mano_obra: number
@@ -48,8 +49,13 @@ export function costoDelCodigo(c: {
   materiales_usd: number
   servicios_pen: number
   servicios_usd: number
+  subcontratos_pen: number
+  subcontratos_usd: number
 }) {
-  return { pen: c.mano_obra + c.materiales_pen + c.servicios_pen, usd: c.materiales_usd + c.servicios_usd }
+  return {
+    pen: c.mano_obra + c.materiales_pen + c.servicios_pen + c.subcontratos_pen,
+    usd: c.materiales_usd + c.servicios_usd + c.subcontratos_usd,
+  }
 }
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
@@ -64,6 +70,7 @@ export function dondeAparece(
     unidades: number
     ordenes: number
     servicios: number
+    subcontratos: number
     vehiculos: number
     horas: number
   },
@@ -80,6 +87,7 @@ export function dondeAparece(
     c.requerimientos > 0 && plural(c.requerimientos, 'RQ', 'RQ'),
     c.compras > 0 && plural(c.compras, 'OC', 'OC'),
     c.servicios > 0 && plural(c.servicios, 'OS', 'OS'),
+    c.subcontratos > 0 && plural(c.subcontratos, 'recibo por honorarios', 'recibos por honorarios'),
     c.unidades > 0 && plural(c.unidades, 'unidad', 'unidades'),
     c.ordenes > 0 && plural(c.ordenes, 'OT', 'OT'),
     c.vehiculos > 0 && plural(c.vehiculos, 'ingreso a la planta', 'ingresos a la planta'),

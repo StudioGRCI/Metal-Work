@@ -10177,6 +10177,27 @@ export type Database = {
           referencia_id: string | null
         }[]
       }
+      codigo_interno_lineas_subcontrato: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          horas: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+        }[]
+      }
       codigo_interno_lo_pedido: {
         Args: {
           p_codigo: string | null
@@ -10354,6 +10375,18 @@ export type Database = {
           por_aprobar: number | null
           por_aprobar_pen: number | null
           por_aprobar_usd: number | null
+        }[]
+      }
+      codigos_internos_subcontratos: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          codigo: string | null
+          recibos: number | null
+          subcontratos_pen: number | null
+          subcontratos_usd: number | null
+          por_pagar: number | null
+          por_pagar_pen: number | null
+          por_pagar_usd: number | null
         }[]
       }
       completar_cuenta_acceso: {

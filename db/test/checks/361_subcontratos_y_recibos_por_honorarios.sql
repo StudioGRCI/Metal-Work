@@ -13,6 +13,18 @@ do $$
 declare v text; v_id uuid;
 begin
   foreach v in array array['ADMINISTRACION:ADM', 'TESORERIA:TES', 'GERENTE:GGE', 'CONTABILIDAD:CON', 'SUPERVISOR:MTZ', 'COMPRADOR:LOG'] loop
+    -- Cada área tiene una sola Supervisión activa (migración 20260929110100):
+    -- si la base ya tiene la de Maestranza, el check usa esa.
+    if split_part(v, ':', 1) = 'SUPERVISOR' then
+      select u.id into v_id from public.usuarios u
+        join public.roles r on r.id = u.rol_id and r.codigo = 'SUPERVISOR'
+        join public.areas a on a.id = u.area_id and a.codigo = split_part(v, ':', 2)
+       where u.activo limit 1;
+      if found then
+        perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
+        continue;
+      end if;
+    end if;
     v_id := gen_random_uuid();
     insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.360@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
@@ -120,7 +132,7 @@ begin
          'PLA_SR_O4_1_26/28', 'Soldadura de la tolva y refuerzos del piso', 'PEN', 3000, null, null);
   select * into r from public.subcontratos where id = v;
   perform test.afirmar(r.codigo_interno = 'PLA_SR_O4_1_26/28' and r.numero ~ '^SC-[0-9]{4}-[0-9]{4}$' and r.estado = 'VIGENTE'
-    and (select count(*) from public.subcontratos) = 1,
+    and (select count(*) from public.subcontratos where creado_en >= now()) = 1,
     'queda uno, con número SC y el código en mayúsculas: ' || r.numero);
   perform test.debe_fallar(format('update public.subcontratos set monto = 1 where id = %L', v),
     'nadie lo cambia por fuera de la función', 'permission denied');
@@ -185,9 +197,11 @@ begin
   foreach k in array array['tesoreria', 'gerente', 'contabilidad'] loop
     perform pg_temp.como(k);
     set local role authenticated;
-    perform test.afirmar((select count(*) from public.subcontratos) = 1 and (select count(*) from public.recibos_honorarios) = 2
-      and (select count(*) from public.subcontratistas) = 2
-      and (select count(*) from storage.objects where bucket_id = 'subcontratos') = 2,
+    -- Solo lo de este check (now() es el inicio de la transacción), aunque la base traiga otros.
+    perform test.afirmar((select count(*) from public.subcontratos where creado_en >= now()) = 1
+      and (select count(*) from public.recibos_honorarios where creado_en >= now()) = 2
+      and (select count(*) from public.subcontratistas where creado_en >= now()) = 2
+      and (select count(*) from storage.objects where bucket_id = 'subcontratos' and name like current_setting('prueba.sc') || '/%') = 2,
       k || ' ve el subcontrato, sus dos recibos, el padrón y los dos PDF');
     reset role;
   end loop;
