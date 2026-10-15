@@ -16,7 +16,7 @@ import { validarIngresosCompra } from './acciones'
  * La bandeja: una compra por bloque. Al validar, el bloque desaparece con el
  * refresco, así que el aviso de que entró vive aquí y no en el bloque.
  */
-export function BandejaPorValidar({ entregas, puedeValidar }: { entregas: EntregaPorValidar[]; puedeValidar: boolean }) {
+export function BandejaPorValidar({ entregas, puedeValidar, abreOt }: { entregas: EntregaPorValidar[]; puedeValidar: boolean; abreOt: boolean }) {
   const [mensaje, setMensaje] = useState<string | null>(null)
   return (
     <div className="space-y-3">
@@ -24,7 +24,7 @@ export function BandejaPorValidar({ entregas, puedeValidar }: { entregas: Entreg
       {entregas.length === 0 ? (
         <p className="text-sm text-texto-suave">Nada por validar. Cuando el conductor deje una compra en almacén, aparecerá aquí y te llegará un aviso.</p>
       ) : entregas.map((e) => (
-        <EntregaParaValidar key={e.compraId} entrega={e} puedeValidar={puedeValidar} alValidar={setMensaje} />
+        <EntregaParaValidar key={e.compraId} entrega={e} puedeValidar={puedeValidar} abreOt={abreOt} alValidar={setMensaje} />
       ))}
     </div>
   )
@@ -36,9 +36,11 @@ export function BandejaPorValidar({ entregas, puedeValidar }: { entregas: Entreg
  * corrige la cantidad y se cuenta qué faltó; esa línea queda observada para
  * Logística y lo que sí llegó entra igual al kardex.
  */
-function EntregaParaValidar({ entrega, puedeValidar, alValidar }: {
+function EntregaParaValidar({ entrega, puedeValidar, abreOt, alValidar }: {
   entrega: EntregaPorValidar
   puedeValidar: boolean
+  /** Almacén ya no abre la OT (2026-10-15): el número queda como referencia. */
+  abreOt: boolean
   alValidar: (mensaje: string) => void
 }) {
   const { alEnviar, enviando, error } = useEnvio(validarIngresosCompra,
@@ -80,7 +82,7 @@ function EntregaParaValidar({ entrega, puedeValidar, alValidar }: {
                 <p className="text-xs text-texto-suave">
                   <span className="font-mono">{l.codigo}</span> · dejó {cantidad(l.cantidad)} {l.unidad ?? ''}
                   {l.ordenId && l.ordenNumero && (
-                    <> · <Link href={`/ordenes/${l.ordenId}?vista=materiales`} className="text-acento hover:underline">OT {l.ordenNumero}</Link></>
+                    <> · {abreOt ? <Link href={`/ordenes/${l.ordenId}?vista=materiales`} className="text-acento hover:underline">OT {l.ordenNumero}</Link> : `OT ${l.ordenNumero}`}</>
                   )}
                 </p>
                 {conObservacion && (

@@ -7,7 +7,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { codigosDeDiseno, type CodigoDeDiseno } from '@/lib/datos/diseno-codigos'
 import { llaveParecido } from '@/lib/dominio/codigos-internos'
-import { VISTAS_DISENO, enlaceDisenoCodigo, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
+import { VISTAS_DISENO, VISTAS_SEGUIMIENTO, enlaceDisenoCodigo, enlaceSeguimientoCodigo, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
 import { fecha } from '@/lib/format'
 
 import { AbrirCodigo } from './formularios'
@@ -41,13 +41,28 @@ const DESCRIPCION: Record<VistaDiseno, string> = {
     'Las etapas de cada unidad por código interno —diseño, habilitado, armado, arenado y pintura, trámites y entrega— con su fecha comprometida. El supervisor del área marca cuándo empezó y cuándo terminó la suya.',
 }
 
+const DESCRIPCION_SEGUIMIENTO =
+  'Lo que Diseño lleva en cada unidad por su código interno: las etapas con su avance, la lista de materiales contra lo pedido, lo comprado y lo salido del almacén, y los planos de cada área. Para consultar: lo cargan Diseño y el supervisor de cada área.'
+
 /**
  * La lista de códigos de Diseño, la misma para Planos, Gestión de materiales y
- * Control de etapas: cambia qué cuenta cada fila y adónde lleva.
+ * Control de etapas: cambia qué cuenta cada fila y adónde lleva. Con
+ * `seguimiento` es la de Supervisión general y Almacén: una sola pantalla con
+ * las tres secciones, sin abrir códigos nuevos, y cada fila lleva a la ficha de
+ * solo lectura.
  */
-export async function ListaDeCodigosDeDiseno({ vista, params }: { vista: VistaDiseno; params: Record<string, string | string[] | undefined> }) {
-  const titulo = VISTAS_DISENO.find((v) => v.valor === vista)?.titulo ?? 'Códigos internos'
-  const ruta = `/diseno/${vista}`
+export async function ListaDeCodigosDeDiseno({
+  vista,
+  params,
+  seguimiento = false,
+}: {
+  vista: VistaDiseno
+  params: Record<string, string | string[] | undefined>
+  seguimiento?: boolean
+}) {
+  const titulo = seguimiento ? 'Seguimiento por código' : (VISTAS_DISENO.find((v) => v.valor === vista)?.titulo ?? 'Códigos internos')
+  const ruta = seguimiento ? '/seguimiento' : `/diseno/${vista}`
+  const enlace = seguimiento ? enlaceSeguimientoCodigo : enlaceDisenoCodigo
   const q = typeof params.q === 'string' ? params.q.trim() : ''
   const filtros = FILTROS[vista]
   const filtro = filtros.find((f) => f.valor === params.ver) ?? null
@@ -59,14 +74,30 @@ export async function ListaDeCodigosDeDiseno({ vista, params }: { vista: VistaDi
 
   return (
     <>
-      <EncabezadoPagina titulo={titulo} descripcion={DESCRIPCION[vista]} migas={[{ titulo: 'Diseño e Ingeniería' }, { titulo }]} />
+      <EncabezadoPagina
+        titulo={titulo}
+        descripcion={seguimiento ? DESCRIPCION_SEGUIMIENTO : DESCRIPCION[vista]}
+        migas={seguimiento ? [{ titulo }] : [{ titulo: 'Diseño e Ingeniería' }, { titulo }]}
+      />
 
-      <Tarjeta className="mb-4">
-        <TarjetaCabecera titulo="Abrir un código" descripcion="Para una unidad nueva, escribe su código interno tal cual: aparece en la lista apenas cargues algo." />
-        <TarjetaCuerpo>
-          <AbrirCodigo codigos={todos.map((c) => c.codigo)} vista={vista} />
-        </TarjetaCuerpo>
-      </Tarjeta>
+      {seguimiento ? (
+        <PastillaFiltro
+          ruta={ruta}
+          clave="vista"
+          params={params}
+          activo={vista === 'etapas' ? null : vista}
+          etiqueta="Qué mirar de cada código"
+          opciones={VISTAS_SEGUIMIENTO.map((v) => ({ valor: v.valor === 'etapas' ? null : v.valor, etiqueta: v.etiqueta }))}
+          className="mb-4"
+        />
+      ) : (
+        <Tarjeta className="mb-4">
+          <TarjetaCabecera titulo="Abrir un código" descripcion="Para una unidad nueva, escribe su código interno tal cual: aparece en la lista apenas cargues algo." />
+          <TarjetaCuerpo>
+            <AbrirCodigo codigos={todos.map((c) => c.codigo)} vista={vista} />
+          </TarjetaCuerpo>
+        </Tarjeta>
+      )}
 
       <div className="mb-3 space-y-3">
         <BuscadorSimple ruta={ruta} etiqueta="Buscar código interno" marcador="Busca por código, por ejemplo SR_04" />
@@ -89,8 +120,12 @@ export async function ListaDeCodigosDeDiseno({ vista, params }: { vista: VistaDi
             <p className="text-sm font-medium text-texto">{todos.length === 0 ? 'Todavía no hay códigos internos' : 'Ningún código con esta búsqueda o filtro'}</p>
             <p className="text-sm text-texto-suave">
               {todos.length === 0
-                ? 'Escribe el código de la unidad arriba y ábrelo para empezar.'
-                : 'Borra la búsqueda o quita el filtro con «Todos». Si es una unidad nueva, ábrela con su código arriba.'}
+                ? seguimiento
+                  ? 'Aparecen aquí apenas Diseño cargue algo para una unidad o un área pida con su código.'
+                  : 'Escribe el código de la unidad arriba y ábrelo para empezar.'
+                : seguimiento
+                  ? 'Borra la búsqueda o quita el filtro con «Todos».'
+                  : 'Borra la búsqueda o quita el filtro con «Todos». Si es una unidad nueva, ábrela con su código arriba.'}
             </p>
           </TarjetaCuerpo>
         </Tarjeta>
@@ -99,7 +134,7 @@ export async function ListaDeCodigosDeDiseno({ vista, params }: { vista: VistaDi
           {codigos.map((c) => (
             <li key={c.codigo}>
               <Link
-                href={enlaceDisenoCodigo(c.codigo, vista)}
+                href={enlace(c.codigo, vista)}
                 className="block rounded-[var(--radius-base)] border border-borde bg-superficie p-3 hover:border-acento"
                 data-codigo={c.codigo}
               >

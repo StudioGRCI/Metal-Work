@@ -17,6 +17,7 @@ import { Insignia, Punto, type Tono } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_OT, ORDEN_ESTADO_OT, PRIORIDAD, definir } from '@/lib/dominio/estados'
+import { trabajaPorCodigo } from '@/lib/dominio/acceso-orden'
 import { situacionDeEntrega } from '@/lib/dominio/expediente'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha, fechaLarga, hoyLima, moneda, porcentaje } from '@/lib/format'
@@ -34,7 +35,9 @@ export default async function PaginaTablero() {
 
   const pendientes = await pendientesGlobales(perfil)
 
-  if (!puede(perfil, 'ordenes.listar')) {
+  // Sin la OT: el que no la lista y, desde el 2026-10-15, Supervisión, Almacén y
+  // Requerimientos, que trabajan por código interno.
+  if (!puede(perfil, 'ordenes.listar') || trabajaPorCodigo(perfil)) {
     return (
       <>
         <EncabezadoPagina titulo={perfil.puesto} descripcion="Lo que te toca y tus módulos, a un toque." />

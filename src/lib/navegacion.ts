@@ -230,6 +230,17 @@ export const NAVEGACION = [
         descripcion: 'Los RQ por revisar insumo por insumo, por recepcionar y por entregar al área',
         disponible: true,
       },
+      // Sin la OT desde el 2026-10-15 (migración 20261016110000): lo que lleva
+      // cada unidad según Diseño contra lo pedido y lo salido, para tener a
+      // tiempo su material. Es «Seguimiento por código» abierto en Materiales.
+      {
+        titulo: 'Materiales por código',
+        ruta: '/seguimiento?vista=materiales',
+        icono: ListChecks,
+        permiso: 'codigos_internos.seguimiento',
+        descripcion: 'Lo que lleva cada unidad según Diseño, contra lo pedido por RQ, lo comprado y lo salido del almacén',
+        disponible: true,
+      },
       {
         titulo: 'Kardex',
         ruta: '/almacen/kardex',
@@ -354,6 +365,16 @@ export const NAVEGACION = [
         icono: DraftingCompass,
         permiso: 'codigos_internos.area',
         descripcion: 'Los planos que Diseño cargó para tu área, para marcarlos recibidos, y las etapas de tu área',
+        disponible: true,
+      },
+      // Supervisión general sigue todas las áreas sin la OT (2026-10-15): lo que
+      // Diseño lleva en cada código, en solo lectura.
+      {
+        titulo: 'Seguimiento por código',
+        ruta: '/seguimiento',
+        icono: Hash,
+        permiso: 'codigos_internos.seguimiento',
+        descripcion: 'Cada unidad por su código interno: etapas con su avance, materiales contra lo pedido y lo salido, y planos de cada área',
         disponible: true,
       },
     ],
@@ -506,22 +527,23 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // Almacén recepciona y entrega → Supervisión lo recoge.
   // Desde el 2026-10-15 ya no ve el kardex, los gastos del mes ni la
   // valorización del almacén (la base le quitó almacen.ver y costos.ver): ve lo
-  // gastado en cada código interno. La OT la consulta porque de ahí manda la
-  // ficha vehicular y el pedido de pago a Tesorería.
+  // gastado en cada código interno. Sin la OT desde el 2026-10-15: la ficha de
+  // ingreso y salida del vehículo y la revisión de Tesorería para la salida van
+  // en Vehículos.
   REQUERIMIENTOS: {
     grupos: [
       { titulo: 'Requerimientos', rutas: ['/requerimientos', '/vehiculos'] },
-      { titulo: 'Consultas', rutas: ['/requerimientos/gasto-por-codigo', '/ordenes'] },
+      { titulo: 'Consultas', rutas: ['/requerimientos/gasto-por-codigo'] },
     ],
-    telefono: ['/requerimientos', '/vehiculos', '/requerimientos/gasto-por-codigo', '/ordenes'],
+    telefono: ['/requerimientos', '/vehiculos', '/requerimientos/gasto-por-codigo', '/'],
   },
   // Trabaja los RQ desde su bandeja de atención, no desde la lista de
-  // Requerimientos, aunque `requerimientos.ver` le deje leerla. Las órdenes de
-  // trabajo también esperan por él: los materiales de cada OT los revisa,
-  // recibe y despacha ahí. Aparte, el kardex con sus cuatro almacenes.
+  // Requerimientos, aunque `requerimientos.ver` le deje leerla. Sin la OT desde
+  // el 2026-10-15: lo que lleva cada unidad lo ve por código, para tenerlo a
+  // tiempo. Aparte, el kardex con sus cuatro almacenes.
   ALMACENERO: {
     grupos: [
-      { titulo: 'Por atender', rutas: ['/requerimientos/atencion', '/ordenes'] },
+      { titulo: 'Por atender', rutas: ['/requerimientos/atencion', '/seguimiento?vista=materiales'] },
       {
         titulo: 'Almacenes',
         rutas: [
@@ -533,7 +555,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         ],
       },
     ],
-    telefono: ['/requerimientos/atencion', '/ordenes', '/almacen/kardex', '/'],
+    telefono: ['/requerimientos/atencion', '/seguimiento?vista=materiales', '/almacen/kardex', '/'],
   },
   // Del RQ sin stock a la OC (o la OS), su visto de Gerencia y la gestión de
   // compras: qué recoge el conductor, en qué orden y con qué peso. «Recojos» la
@@ -674,22 +696,22 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [{ titulo: 'Portería', rutas: ['/rrhh/asistencia'] }],
     telefono: ['/rrhh/asistencia', '/'],
   },
-  // Sube su reporte diario (mientras la OT no está del todo en el sistema, es
-  // su trabajo de cada día), recoge de Almacén lo que su área pidió (el RQ
-  // «Listo en almacén», al que también lo lleva el aviso) y reporta el avance
-  // de las OT de su área. Desde el 2026-10-15, los planos que Diseño carga para
-  // su área y las etapas que hace su área van justo después de su reporte.
+  // Sube su reporte diario, que es su trabajo de cada día, y recoge de Almacén
+  // lo que su área pidió (el RQ «Listo en almacén», al que también lo lleva el
+  // aviso). Desde el 2026-10-15, los planos que Diseño carga para su área y las
+  // etapas que hace su área van justo después de su reporte, y ya no abre la
+  // OT: su reporte diario reemplaza las tareas con foto.
   SUPERVISOR: {
-    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/planos', '/requerimientos', '/ordenes'] }],
-    telefono: ['/reportes-diarios', '/planos', '/requerimientos', '/ordenes'],
+    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/planos', '/requerimientos'] }],
+    telefono: ['/reportes-diarios', '/planos', '/requerimientos', '/'],
   },
   // Mira todas las áreas sin trabajar en ninguna: cada una con su nombre y en
   // el orden del circuito, después de lo suyo. La cotización ya no: desde el
   // 2026-10-15 la ven solo Administración, Gerencia, Tesorería y Contabilidad
-  // (y Ventas, que la hace).
+  // (y Ventas, que la hace). La OT tampoco: sigue cada unidad por su código.
   SUPERVISOR_GENERAL: {
     grupos: [
-      { titulo: 'Supervisión general', rutas: ['/ordenes', '/diseno/informe-semanal'] },
+      { titulo: 'Supervisión general', rutas: ['/seguimiento', '/diseno/informe-semanal'] },
       { titulo: 'Ventas', rutas: ['/clientes', '/unidades'] },
       { titulo: 'Requerimientos', rutas: ['/requerimientos', '/vehiculos'] },
       {
@@ -705,7 +727,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       },
       { titulo: 'Finanzas', rutas: ['/costos/gastos-generales'] },
     ],
-    telefono: ['/ordenes', '/requerimientos', '/almacen/kardex', '/'],
+    telefono: ['/seguimiento', '/requerimientos', '/almacen/kardex', '/'],
   },
   VENDEDOR: {
     grupos: [{ titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades', '/carrocerias'] }],
@@ -826,6 +848,8 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/diseno/materiales', corto: 'Materiales' },
   { ruta: '/diseno/etapas', corto: 'Etapas' },
   { ruta: '/planos', corto: 'Planos' },
+  { ruta: '/seguimiento', corto: 'Seguimiento' },
+  { ruta: '/seguimiento?vista=materiales', corto: 'Materiales' },
   { ruta: '/planilla-diaria', corto: 'Planilla' },
   { ruta: '/rrhh/horas-extras', corto: 'Extras' },
   { ruta: '/tesoreria/tipo-de-cambio', corto: 'Cambio' },

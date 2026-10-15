@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { seccionesDeOrden } from '@/lib/dominio/acceso-orden'
+import { reemplazoDeLaOrden, seccionesDeOrden, trabajaPorCodigo } from '@/lib/dominio/acceso-orden'
 import type { Metadata } from 'next'
 
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
@@ -90,9 +90,11 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const { id } = await params
   const query = await searchParams
   if (query.vista === 'cumplimiento') redirect(`/ordenes/${id}/planos`)
+  // Supervisión, Almacén y Requerimientos ya no abren la OT (2026-10-15): un
+  // aviso o un enlace viejo los lleva a lo que la reemplaza para su puesto.
+  if (trabajaPorCodigo(perfil)) redirect(reemplazoDeLaOrden(perfil))
   const secciones = seccionesDeOrden(perfil)
-  // Sin pestaña pedida se abre el resumen, o la primera que la persona ve:
-  // a Almacén la OT se le abre directo en Materiales.
+  // Sin pestaña pedida se abre el resumen, o la primera que la persona ve.
   const vista: Vista = VISTAS.includes(query.vista as Vista)
     ? (query.vista as Vista)
     : secciones.includes('resumen') ? 'resumen' : ((secciones[0] ?? 'resumen') as Vista)

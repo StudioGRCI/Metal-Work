@@ -1,7 +1,9 @@
 import 'server-only'
 
+import { BUCKET_FICHAS_VEHICULO } from '@/lib/dominio/ficha-vehiculo'
 import { BUCKET_FOTOS_VEHICULO } from '@/lib/dominio/requerimientos'
 import { createClient } from '@/lib/supabase/server'
+import type { Json } from '@/types/database'
 
 /** Una vez que un vehículo entró a la planta, con su salida si ya salió. */
 export type RegistroVehiculo = {
@@ -92,4 +94,130 @@ async function enlacesDeFotos(rutas: string[]) {
   const enlaces: Record<string, string> = {}
   for (const item of data) if (item.path && item.signedUrl) enlaces[item.path] = item.signedUrl
   return enlaces
+}
+
+// ------------------------------------------------- La ficha y la revisión de salida
+
+/** Un punto del formato de inspección vehicular de Metal Work. */
+export type PuntoDeFicha = { codigo: string; categoria: string; nombre: string; orden: number }
+
+/** La ficha única de ingreso y salida de un ingreso a la planta (migración 20261016110000). */
+export type FichaDeVehiculo = {
+  id: string
+  marca: string
+  conductor_ingreso: string
+  dni_ingreso: string
+  fecha_ingreso: string | null
+  combustible_ingreso: string
+  conductor_salida: string
+  dni_salida: string
+  fecha_salida: string | null
+  combustible_salida: string
+  adicionales: string
+  trabajos: string
+  observacion_ingreso: string
+  observacion_salida: string
+  items: Json
+  ingreso_cerrado_en: string | null
+  salida_cerrada_en: string | null
+  escaneo_ruta: string | null
+  escaneo_nombre: string | null
+}
+
+const COLUMNAS_FICHA =
+  'id, marca, conductor_ingreso, dni_ingreso, fecha_ingreso, combustible_ingreso, conductor_salida, dni_salida, fecha_salida, combustible_salida, adicionales, trabajos, observacion_ingreso, observacion_salida, items, ingreso_cerrado_en, salida_cerrada_en, escaneo_ruta, escaneo_nombre'
+
+/** Los puntos del formato, en el orden del impreso. */
+export async function puntosDeFicha(): Promise<PuntoDeFicha[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('control_vehicular_items').select('codigo, categoria, nombre, orden').order('orden')
+  if (error) throw new Error(`No se pudieron leer los puntos de la ficha: ${error.message}`)
+  return data ?? []
+}
+
+/** La ficha del ingreso, si ya se empezó, con el enlace del escaneo firmado. */
+export async function cargarFichaDeVehiculo(registro: string): Promise<{ ficha: FichaDeVehiculo | null; escaneo: string | null }> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('registro_vehiculo_fichas').select(COLUMNAS_FICHA).eq('registro_id', registro).maybeSingle()
+  if (error) throw new Error(`No se pudo leer la ficha del vehículo: ${error.message}`)
+  if (!data?.escaneo_ruta) return { ficha: data, escaneo: null }
+  const { data: enlace } = await supabase.storage
+    .from(BUCKET_FICHAS_VEHICULO)
+    .createSignedUrl(data.escaneo_ruta, 3600, { download: data.escaneo_nombre ?? 'ficha-firmada.pdf' })
+  return { ficha: data, escaneo: enlace?.signedUrl ?? null }
+}
+
+/** Un pedido de revisión de la salida a Tesorería, con su respuesta. */
+export type RevisionDeSalida = {
+  id: string
+  concepto: string
+  estado: string
+  respuesta: string | null
+  creado_en: string
+  atendido_en: string | null
+  solicitante: string | null
+  atendio: string | null
+}
+
+const nombre = (u: { nombres: string; apellidos: string } | null) => (u ? `${u.nombres} ${u.apellidos}`.trim() : null)
+
+/** Los pedidos del ingreso, del último al primero. */
+export async function revisionesDeSalida(registro: string): Promise<RevisionDeSalida[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('registro_vehiculo_revisiones')
+    .select(
+      'id, concepto, estado, respuesta, creado_en, atendido_en, solicitante:usuarios!registro_vehiculo_revisiones_solicitado_por_fkey(nombres, apellidos), atendio:usuarios!registro_vehiculo_revisiones_atendido_por_fkey(nombres, apellidos)',
+    )
+    .eq('registro_id', registro)
+    .order('creado_en', { ascending: false })
+  if (error) throw new Error(`No se pudieron leer las revisiones de salida: ${error.message}`)
+  return (data ?? []).map((r) => ({ ...r, solicitante: nombre(r.solicitante), atendio: nombre(r.atendio) }))
+}
+
+/** Lo que espera a Tesorería: cada vehículo con su código, quién lo pidió y el escaneo firmado. */
+export type RevisionPendiente = {
+  id: string
+  registro_id: string
+  vehiculo: string
+  codigo_interno: string | null
+  unidad: string
+  empresa: string
+  ingreso_en: string
+  concepto: string
+  solicitante: string | null
+  creado_en: string
+  escaneo: string | null
+}
+
+export async function revisionesDeSalidaPendientes(): Promise<RevisionPendiente[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('revisiones_de_salida_pendientes')
+  if (error) throw new Error(`No se pudieron leer las salidas por revisar: ${error.message}`)
+  const filas = data ?? []
+  const rutas = filas.flatMap((f) => (f.escaneo_ruta ? [f.escaneo_ruta] : []))
+  const enlaces: Record<string, string> = {}
+  if (rutas.length > 0) {
+    const { data: firmados } = await supabase.storage.from(BUCKET_FICHAS_VEHICULO).createSignedUrls(rutas, 3600)
+    for (const f of firmados ?? []) if (f.path && f.signedUrl) enlaces[f.path] = f.signedUrl
+  }
+  return filas.flatMap((f) =>
+    f.id && f.registro_id
+      ? [
+          {
+            id: f.id,
+            registro_id: f.registro_id,
+            vehiculo: f.placa ?? (f.chasis ? `Chasis ${f.chasis}` : (f.codigo_interno ?? 'Vehículo')),
+            codigo_interno: f.codigo_interno,
+            unidad: f.unidad ?? '',
+            empresa: f.empresa ?? '',
+            ingreso_en: f.ingreso_en ?? '',
+            concepto: f.concepto ?? '',
+            solicitante: f.solicitante,
+            creado_en: f.creado_en ?? '',
+            escaneo: f.escaneo_ruta ? (enlaces[f.escaneo_ruta] ?? null) : null,
+          },
+        ]
+      : [],
+  )
 }

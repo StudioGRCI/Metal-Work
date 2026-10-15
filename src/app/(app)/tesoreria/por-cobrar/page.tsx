@@ -6,11 +6,13 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { solicitudesPendientesTesoreria } from '@/lib/datos/costos-ot'
 import { cotizacionesAprobadas, facturasDeVenta } from '@/lib/datos/facturacion'
+import { revisionesDeSalidaPendientes } from '@/lib/datos/vehiculos'
 import { totalConIgv } from '@/lib/dominio/finanzas'
 import { hoyLima, moneda, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularCobro, CobrarFactura } from '../formularios'
+import { RevisionesDeSalida } from '../revisiones-de-salida'
 import { SolicitudesOT } from '../solicitudes-ot'
 
 export const metadata = { title: 'Cuentas por cobrar' }
@@ -21,16 +23,18 @@ const codigo = (m: string | null): CodigoMoneda => (m === 'USD' ? 'USD' : 'PEN')
  * Las facturas de venta que registró Contabilidad (migración 20261015124000):
  * cada una colgada del código interno y de su cotización, con el PDF. Tesorería
  * registra cada cobro con su voucher hasta cancelarla. Debajo, las cotizaciones
- * aprobadas, para saber qué viene por cobrar.
+ * aprobadas, para saber qué viene por cobrar. Arriba, las salidas de vehículos
+ * que Requerimientos pide revisar antes de entregarlos (migración 20261016110000).
  */
 export default async function PaginaPorCobrar() {
   const perfil = await exigirPermiso('tesoreria.ver_documentos')
   const cobra = puede(perfil, 'tesoreria.registrar_cobros')
   const responde = puede(perfil, 'tesoreria.liberar')
-  const [facturas, cotizaciones, solicitudes] = await Promise.all([
+  const [facturas, cotizaciones, solicitudes, salidas] = await Promise.all([
     facturasDeVenta(),
     cotizacionesAprobadas(),
     responde ? solicitudesPendientesTesoreria() : Promise.resolve([]),
+    responde ? revisionesDeSalidaPendientes() : Promise.resolve([]),
   ])
   const hoy = hoyLima()
   const pendientes = facturas.filter((f) => !f.cancelada && Number(f.saldo) > 0)
@@ -55,6 +59,7 @@ export default async function PaginaPorCobrar() {
         </p>
       )}
 
+      {salidas.length > 0 && <RevisionesDeSalida revisiones={salidas} />}
       {solicitudes.length > 0 && <SolicitudesOT solicitudes={solicitudes} />}
 
       <Tarjeta>
