@@ -10,6 +10,7 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { Subcontratista } from '@/lib/datos/subcontratos'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
+import { AREAS_SUBCONTRATO, AYUDA_AREA_SUBCONTRATO } from '@/lib/dominio/subcontratos'
 import { BANCOS_SUGERIDOS, rucEsValido } from '@/lib/dominio/proveedores'
 import { useEnvio } from '@/lib/envio'
 
@@ -41,8 +42,29 @@ export function CampoCodigoInterno({ id, codigos, valor }: { id: string; codigos
 }
 
 /**
- * Registrar un subcontrato: a quién, para qué código interno, qué trabajo y
- * cuánto se pactó. El número SC-… lo pone la base; al salir bien se abre el
+ * Para qué área va el subcontrato: Producción o Acabados. Obligatoria al
+ * registrar; al corregir uno de antes que no la tiene, se puede dejar vacía.
+ */
+export function CampoAreaSubcontrato({ id, valor, opcional = false }: { id: string; valor?: string | null; opcional?: boolean }) {
+  return (
+    <Campo etiqueta="Para qué área va" htmlFor={id} requerido={!opcional} ayuda={AYUDA_AREA_SUBCONTRATO}>
+      <Seleccion id={id} name="area" required={!opcional} defaultValue={valor ?? ''} data-area-subcontrato>
+        <option value="" disabled={!opcional}>
+          {opcional ? 'Sin área todavía' : 'Elige Producción o Acabados'}
+        </option>
+        {AREAS_SUBCONTRATO.map((a) => (
+          <option key={a.codigo} value={a.codigo}>
+            {a.nombre}
+          </option>
+        ))}
+      </Seleccion>
+    </Campo>
+  )
+}
+
+/**
+ * Registrar un subcontrato: a quién, para qué área y código interno, qué
+ * trabajo y cuánto se pactó. El número SC-… lo pone la base; al salir bien se abre el
  * subcontrato para subirle sus recibos.
  */
 export function NuevoSubcontrato({ subcontratistas, codigos }: { subcontratistas: Subcontratista[]; codigos: string[] }) {
@@ -130,6 +152,7 @@ function FormularioSubcontrato({
         />
       </Campo>
       <div className="grid gap-4 sm:grid-cols-2">
+        <CampoAreaSubcontrato id="sc-area" />
         <CampoCodigoInterno id="sc-codigo" codigos={codigos} />
         <Campo etiqueta="Lo pactado" htmlFor="sc-monto" requerido ayuda="El total de honorarios acordado, en bruto: antes de la retención.">
           <div className="flex gap-2">

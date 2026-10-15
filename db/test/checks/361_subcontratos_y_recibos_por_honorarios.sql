@@ -115,23 +115,29 @@ declare v uuid; r public.subcontratos;
 begin
   perform pg_temp.como('tesoreria');
   set local role authenticated;
-  perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, ''PLANTA'', ''Soldadura de la tolva'', ''PEN'', 3000, null, null)',
+  perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, ''PLANTA'', ''Soldadura de la tolva'', ''PEN'', 3000, null, null, ''PRD'')',
       current_setting('prueba.sc'), current_setting('prueba.sub')), 'Tesorería no registra subcontratos', 'subcontratos.gestionar');
   reset role;
 
   perform pg_temp.como('administracion');
   set local role authenticated;
-  perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, '' '', ''Soldadura de la tolva'', ''PEN'', 3000, null, null)',
+  perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, '' '', ''Soldadura de la tolva'', ''PEN'', 3000, null, null, ''PRD'')',
       current_setting('prueba.sc'), current_setting('prueba.sub')), 'sin código interno no se registra', 'código interno');
-  perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, ''PLANTA'', ''Soldadura de la tolva'', ''PEN'', 3000, null, null)',
+  perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, ''PLANTA'', ''Soldadura de la tolva'', ''PEN'', 3000, null, null, ''PRD'')',
       current_setting('prueba.sc'), current_setting('prueba.sub2')), 'un subcontratista dado de baja no recibe trabajo', 'dado de baja');
+  -- Desde la migración 20261017100000 va a Producción o a Acabados: sin área, o con otra, no se registra.
+  perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, ''PLANTA'', ''Soldadura de la tolva'', ''PEN'', 3000, null, null)',
+      current_setting('prueba.sc'), current_setting('prueba.sub')), 'la firma sin área ya no registra', 'Producción o Acabados');
+  perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, ''PLANTA'', ''Soldadura de la tolva'', ''PEN'', 3000, null, null, ''MTZ'')',
+      current_setting('prueba.sc'), current_setting('prueba.sub')), 'Maestranza no recibe subcontratos', 'Producción o Acabados');
   v := public.registrar_subcontrato(current_setting('prueba.sc')::uuid, current_setting('prueba.sub')::uuid,
-         '  pla_sr_o4_1_26/28 ', 'Soldadura de la tolva y refuerzos del piso', 'PEN', 3000, null, null);
+         '  pla_sr_o4_1_26/28 ', 'Soldadura de la tolva y refuerzos del piso', 'PEN', 3000, null, null, 'prd');
   -- El mismo formulario dos veces no registra otro.
   v := public.registrar_subcontrato(current_setting('prueba.sc')::uuid, current_setting('prueba.sub')::uuid,
-         'PLA_SR_O4_1_26/28', 'Soldadura de la tolva y refuerzos del piso', 'PEN', 3000, null, null);
+         'PLA_SR_O4_1_26/28', 'Soldadura de la tolva y refuerzos del piso', 'PEN', 3000, null, null, 'PRD');
   select * into r from public.subcontratos where id = v;
   perform test.afirmar(r.codigo_interno = 'PLA_SR_O4_1_26/28' and r.numero ~ '^SC-[0-9]{4}-[0-9]{4}$' and r.estado = 'VIGENTE'
+    and r.area_id = (select id from public.areas where codigo = 'PRD')
     and (select count(*) from public.subcontratos where creado_en >= now()) = 1,
     'queda uno, con número SC y el código en mayúsculas: ' || r.numero);
   perform test.debe_fallar(format('update public.subcontratos set monto = 1 where id = %L', v),
@@ -284,8 +290,17 @@ begin
     'con un recibo vigente el subcontrato no se anula', 'recibos por honorarios vigentes');
   v := public.corregir_subcontrato(current_setting('prueba.sc')::uuid, 'PLA_SR_O4_2_26/28', 'Soldadura de la tolva y refuerzos del piso',
          3500, null, null);
-  perform test.afirmar((select codigo_interno = 'PLA_SR_O4_2_26/28' and monto = 3500 from public.subcontratos where id = v),
-    'mientras está vigente se corrigen el código y lo pactado');
+  perform test.afirmar((select codigo_interno = 'PLA_SR_O4_2_26/28' and monto = 3500
+                               and area_id = (select id from public.areas where codigo = 'PRD') from public.subcontratos where id = v),
+    'mientras está vigente se corrigen el código y lo pactado; sin área, la que tenía se queda');
+  v := public.corregir_subcontrato(current_setting('prueba.sc')::uuid, 'PLA_SR_O4_2_26/28', 'Soldadura de la tolva y refuerzos del piso',
+         3500, null, null, 'ACB');
+  perform test.afirmar((select area_id = (select id from public.areas where codigo = 'ACB') from public.subcontratos where id = v),
+    'al corregir se cambia el área');
+  perform test.debe_fallar(format('select public.corregir_subcontrato(%L, ''PLANTA'', ''Soldadura de la tolva y refuerzos'', 3500, null, null, ''ALM'')',
+      current_setting('prueba.sc')), 'el área es Producción o Acabados también al corregir', 'Producción o Acabados');
+  v := public.corregir_subcontrato(current_setting('prueba.sc')::uuid, 'PLA_SR_O4_2_26/28', 'Soldadura de la tolva y refuerzos del piso',
+         3500, null, null, 'PRD');
   v := public.cambiar_estado_subcontrato(current_setting('prueba.sc')::uuid, 'TERMINADO');
   perform pg_temp.subir(current_setting('prueba.sc') || '/' || current_setting('prueba.rec3') || '.pdf', 'application/pdf');
   perform test.debe_fallar(format('select public.registrar_recibo_honorarios(%L, %L, ''E001-30'', current_date, null, 500, false, %L)',
@@ -298,7 +313,7 @@ begin
 
   -- Uno registrado por error, sin recibos, se anula y queda congelado.
   v := public.registrar_subcontrato(current_setting('prueba.sc2')::uuid, current_setting('prueba.sub')::uuid,
-         'PLANTA', 'Pintura del portón de la planta', 'USD', 400, null, null);
+         'PLANTA', 'Pintura del portón de la planta', 'USD', 400, null, null, 'ACB');
   v := public.anular_subcontrato(v, 'Se registró en dólares por error');
   perform test.debe_fallar(format('select public.cambiar_estado_subcontrato(%L, ''VIGENTE'')', v), 'anulado no se reabre', 'anulado');
   perform test.debe_fallar(format('select pg_temp.subir(%L, ''application/pdf'')', v || '/' || gen_random_uuid() || '.pdf'),
@@ -329,6 +344,7 @@ begin
                                 'anular_subcontrato', 'registrar_recibo_honorarios', 'anular_recibo_honorarios',
                                 'registrar_pago_recibo_honorarios', 'anular_pago_recibo_honorarios', 'subcontratos_codigos_internos',
                                 'puede_ver_subcontratos', 'subcontrato_archivo', 'subcontrato_datos_validos',
+                                'subcontrato_area', 'avisar_area_del_subcontrato', 'subcontratos_de_mi_area',
                                 'fn_subcontrato_guardia', 'fn_subcontratista_guardia', 'fn_subcontrato_documento_guardia') loop
     perform test.afirmar(not has_function_privilege('anon', f, 'execute'), 'anon no ejecuta ' || f);
   end loop;

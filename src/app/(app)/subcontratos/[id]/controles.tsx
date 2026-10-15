@@ -19,7 +19,7 @@ import { useAccion, useEnvio } from '@/lib/envio'
 import { moneda as formatoMoneda } from '@/lib/format'
 
 import { anularRecibo, anularSubcontrato, cambiarEstadoSubcontrato, corregirSubcontrato, registrarRecibo } from '../acciones'
-import { CampoCodigoInterno } from '../formularios'
+import { CampoAreaSubcontrato, CampoCodigoInterno } from '../formularios'
 
 const ACEPTA = 'application/pdf,image/jpeg,image/png,image/webp'
 
@@ -189,7 +189,17 @@ export function CorregirSubcontrato({
   subcontrato: s,
   codigos,
 }: {
-  subcontrato: { id: string; numero: string; codigo_interno: string; descripcion: string; monto: number; moneda: 'PEN' | 'USD'; fecha_inicio: string | null; fecha_fin: string | null }
+  subcontrato: {
+    id: string
+    numero: string
+    codigo_interno: string
+    area_codigo: string | null
+    descripcion: string
+    monto: number
+    moneda: 'PEN' | 'USD'
+    fecha_inicio: string | null
+    fecha_fin: string | null
+  }
   codigos: string[]
 }) {
   const [abierta, setAbierta] = useState(false)
@@ -213,6 +223,8 @@ export function CorregirSubcontrato({
             <AreaTexto id="corregir-descripcion" name="descripcion" required minLength={10} maxLength={1000} rows={3} defaultValue={s.descripcion} />
           </Campo>
           <div className="grid gap-4 sm:grid-cols-2">
+            {/* Uno de antes sin área se puede dejar así; a uno que ya la tiene no se le quita. */}
+            <CampoAreaSubcontrato id="corregir-area" valor={s.area_codigo} opcional={!s.area_codigo} />
             <CampoCodigoInterno id="corregir-codigo" codigos={codigos} valor={s.codigo_interno} />
             <Campo etiqueta={`Lo pactado (${s.moneda === 'USD' ? 'dólares' : 'soles'})`} htmlFor="corregir-monto" requerido>
               <Entrada

@@ -55,9 +55,9 @@ begin
   perform public.guardar_subcontratista(pg_temp.id('sub'), current_setting('prueba.ruc'), 'Soldador de prueba 362',
                                         null, null, null, null, true);
   perform public.registrar_subcontrato(pg_temp.id('sc'), pg_temp.id('sub'), ' ' || lower(current_setting('prueba.codigo')) || ' ',
-                                       'Soldadura de la tolva y refuerzos del piso', 'PEN', 3500, null, null);
+                                       'Soldadura de la tolva y refuerzos del piso', 'PEN', 3500, null, null, 'PRD');
   perform public.registrar_subcontrato(pg_temp.id('sc2'), pg_temp.id('sub'), current_setting('prueba.codigo'),
-                                       'Instalación eléctrica de la cabina', 'USD', 400, null, null);
+                                       'Instalación eléctrica de la cabina', 'USD', 400, null, null, 'ACB');
   -- Con retención: 2,000 brutos, 1,840 netos.
   perform public.registrar_recibo_honorarios(pg_temp.id('rec1'), pg_temp.id('sc'), 'E001-31', v_hoy - 3, 'Primer avance: tolva',
                                              2000, true, pg_temp.subir('sc', 'application/pdf'));

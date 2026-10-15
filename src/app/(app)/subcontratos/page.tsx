@@ -10,7 +10,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { codigosParaSubcontratos, listarSubcontratistas, listarSubcontratos, type Subcontratista, type SubcontratoListado } from '@/lib/datos/subcontratos'
 import { llaveParecido } from '@/lib/dominio/codigos-internos'
-import { ESTADO_SUBCONTRATO, cuentasDeSubcontrato, estadoDeSubcontrato } from '@/lib/dominio/subcontratos'
+import { ESTADO_SUBCONTRATO, cuentasDeSubcontrato, estadoDeSubcontrato, nombreDeAreaSubcontrato } from '@/lib/dominio/subcontratos'
 import { fecha, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -72,6 +72,8 @@ export default async function PaginaSubcontratos({ searchParams }: { searchParam
   const cuenta = (e: string) => subcontratos.filter((s) => s.estado === e).length
   // Lo que falta pagar, en soles: los subcontratos en dólares, que son raros, se ven en su fila.
   const porPagar = subcontratos.filter((s) => s.moneda === 'PEN').reduce((n, s) => n + cuentasDeSubcontrato(s.monto, s.recibos).porPagar, 0)
+  // Los de antes del área (migración 20261017100000): ni Producción ni Acabados los ven hasta que se les ponga.
+  const sinArea = subcontratos.filter((s) => s.estado !== 'ANULADO' && !s.area_codigo).length
   const recibosPorPagar = subcontratos.reduce(
     (n, s) => n + s.recibos.filter((r) => !r.anulado_en && !r.pagos.some((p) => !p.anulado_en)).length,
     0,
@@ -81,11 +83,18 @@ export default async function PaginaSubcontratos({ searchParams }: { searchParam
     <>
       <EncabezadoPagina
         titulo="Subcontratos"
-        descripcion="Los trabajos que se le encargan a una persona de fuera, por código interno de la unidad. Contra cada uno se suben sus recibos por honorarios; Tesorería los paga y adjunta el voucher."
+        descripcion="Los trabajos que se le encargan a una persona de fuera, por código interno de la unidad y para Producción o Acabados, cuyo supervisor los ve sin montos. Contra cada uno se suben sus recibos por honorarios; Tesorería los paga y adjunta el voucher."
         migas={[{ titulo: 'Administración' }, { titulo: 'Subcontratos' }]}
         acciones={gestiona && <NuevoSubcontrato subcontratistas={subcontratistas} codigos={codigos} />}
       />
       {pestanas}
+
+      {gestiona && sinArea > 0 && (
+        <p className="mb-4 rounded-lg border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-sin-area>
+          {sinArea === 1 ? 'Un subcontrato no tiene' : `${sinArea} subcontratos no tienen`} área: ni Producción ni Acabados{' '}
+          {sinArea === 1 ? 'lo ven' : 'los ven'}. Ábrelo y elige el área con «Corregir».
+        </p>
+      )}
 
       {recibosPorPagar > 0 && (
         <p className="mb-4 rounded-lg border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-por-pagar>
@@ -129,7 +138,7 @@ export default async function PaginaSubcontratos({ searchParams }: { searchParam
           <TablaCabecera>
             <tr>
               <TH>Subcontrato</TH>
-              <TH className="hidden md:table-cell">Código interno</TH>
+              <TH className="hidden md:table-cell">Código y área</TH>
               <TH className="hidden text-right sm:table-cell">Pactado</TH>
               <TH className="hidden text-right lg:table-cell">Recibido</TH>
               <TH className="hidden sm:table-cell">En qué va</TH>
@@ -176,7 +185,7 @@ function FilaSubcontrato({ s }: { s: SubcontratoListado }) {
         )}
         {s.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulado: {s.motivo_anulacion}</p>}
         <p className="tabular mt-1 text-[11px] font-medium text-texto md:hidden" data-codigo>
-          {s.codigo_interno}
+          {s.codigo_interno} · <Area codigo={s.area_codigo} />
         </p>
         {/* En el teléfono, lo pactado y en qué va van aquí: la tabla no cabe con sus columnas. */}
         <div className="mt-2 space-y-1 sm:hidden">
@@ -186,6 +195,9 @@ function FilaSubcontrato({ s }: { s: SubcontratoListado }) {
       </TD>
       <TD className="hidden md:table-cell">
         <p className="tabular font-medium text-texto">{s.codigo_interno}</p>
+        <p className="text-xs" data-area>
+          <Area codigo={s.area_codigo} />
+        </p>
       </TD>
       <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{moneda(s.monto, s.moneda)}</TD>
       <TD className="tabular hidden text-right whitespace-nowrap lg:table-cell">
@@ -199,6 +211,12 @@ function FilaSubcontrato({ s }: { s: SubcontratoListado }) {
       </TD>
     </TR>
   )
+}
+
+/** Para qué área va, o el aviso de que todavía no tiene. */
+function Area({ codigo }: { codigo: string | null }) {
+  const nombre = nombreDeAreaSubcontrato(codigo)
+  return nombre ? <span className="text-texto-suave">{nombre}</span> : <span className="text-aviso">Sin área</span>
 }
 
 function EnQueVa({

@@ -4,7 +4,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { codigosParaSubcontratos, subcontratoDetalle, type ReciboHonorarios } from '@/lib/datos/subcontratos'
-import { ESTADO_RECIBO, ESTADO_SUBCONTRATO, cuentasDeSubcontrato, estadoDeRecibo, estadoDeSubcontrato } from '@/lib/dominio/subcontratos'
+import { ESTADO_RECIBO, ESTADO_SUBCONTRATO, cuentasDeSubcontrato, estadoDeRecibo, estadoDeSubcontrato, nombreDeAreaSubcontrato } from '@/lib/dominio/subcontratos'
 import { fecha, fechaHora, hoyLima, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -29,6 +29,7 @@ export default async function PaginaSubcontrato({ params }: PageProps<'/subcontr
   const c = cuentasDeSubcontrato(s.monto, s.recibos)
   const sub = s.subcontratista
   const conRecibosVigentes = s.recibos.some((r) => !r.anulado_en)
+  const area = nombreDeAreaSubcontrato(s.area_codigo)
 
   return (
     <>
@@ -37,7 +38,7 @@ export default async function PaginaSubcontrato({ params }: PageProps<'/subcontr
         descripcion={
           <>
             {sub?.nombre ?? 'Subcontratista'} · <span className="tabular font-medium text-texto">{s.codigo_interno}</span> ·{' '}
-            {moneda(s.monto, s.moneda)} pactado
+            {area ?? 'sin área'} · {moneda(s.monto, s.moneda)} pactado
           </>
         }
         migas={[{ titulo: 'Subcontratos', ruta: '/subcontratos' }, { titulo: s.numero }]}
@@ -63,6 +64,12 @@ export default async function PaginaSubcontrato({ params }: PageProps<'/subcontr
       {anulado && (
         <p className="mb-4 rounded-lg border border-peligro bg-peligro-suave px-3 py-2 text-sm text-texto">
           Anulado el {fechaHora(s.anulado_en)}: {s.motivo_anulacion}
+        </p>
+      )}
+      {!anulado && !area && (
+        <p className="mb-4 rounded-lg border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-sin-area>
+          Este subcontrato es de antes de que se eligiera el área: ni Producción ni Acabados lo ven.
+          {gestiona && (vigente ? ' Elige para cuál va con «Corregir».' : ' Reábrelo y elige el área con «Corregir».')}
         </p>
       )}
       {estado === 'TERMINADO' && (
@@ -129,6 +136,13 @@ export default async function PaginaSubcontrato({ params }: PageProps<'/subcontr
               <div>
                 <dt className="text-xs text-texto-suave">Código interno</dt>
                 <dd className="tabular font-medium text-texto">{s.codigo_interno}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-texto-suave">Para qué área va</dt>
+                <dd className="text-texto" data-area>
+                  {area ?? <span className="text-aviso">Sin área</span>}
+                  {area && <span className="block text-xs text-texto-suave">Su supervisor lo ve, sin montos.</span>}
+                </dd>
               </div>
               <div>
                 <dt className="text-xs text-texto-suave">Fechas</dt>

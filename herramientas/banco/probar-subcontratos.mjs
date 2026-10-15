@@ -4,7 +4,8 @@
  *
  *   1. Administración da de alta a un subcontratista: un RUC de empresa no lo
  *      deja; uno de persona natural, sí, con su cuenta.
- *   2. Registra un subcontrato con su código interno y lo pactado, y se abre.
+ *   2. Registra un subcontrato con su código interno, su área (Producción; sin
+ *      área el formulario no se envía) y lo pactado, y se abre.
  *   3. Sube un recibo por honorarios de S/ 2,000: la retención del 8 % se marca
  *      sola y la ventana dice que Tesorería paga S/ 1,840.
  *   4. Tesorería lo ve por pagar, con la cuenta del subcontratista, en el
@@ -12,9 +13,14 @@
  *   5. Administración ve el recibo pagado con su voucher, y ya no puede
  *      anularlo; le llegó el aviso.
  *   6. Contabilidad y Gerencia consultan sin botones; Logística no entra.
+ *   7. El supervisor de Producción lo ve en «Subcontratos» de su menú, con su
+ *      recibo pagado y sin un monto; no abre la pantalla de Administración. El
+ *      de Acabados no lo ve, y al de Maestranza le dice que no recibe.
+ *      Administración lo pasa a Acabados y cambia quién lo ve.
  *
  * Necesita en la base del banco las cuentas `*.local@metalwork.test` de
- * Administración, Tesorería, Contabilidad, Gerencia y Logística. El
+ * Administración, Tesorería, Contabilidad, Gerencia, Logística y de Supervisión
+ * de Producción, Acabados y Maestranza (`supervisor.prd.local@…`). El
  * subcontratista lo crea el script, inventado y distinto en cada corrida.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  */
@@ -34,6 +40,9 @@ const CUENTAS = {
   contabilidad: process.env.CONTABILIDAD ?? 'contabilidad.local@metalwork.test',
   gerencia: process.env.GERENCIA ?? 'gerencia.local@metalwork.test',
   logistica: process.env.LOGISTICA ?? 'logistica.local@metalwork.test',
+  supervisorPrd: process.env.SUPERVISOR_PRD ?? 'supervisor.prd.local@metalwork.test',
+  supervisorAcb: process.env.SUPERVISOR_ACB ?? 'supervisor.acb.local@metalwork.test',
+  supervisorMtz: process.env.SUPERVISOR_MTZ ?? 'supervisor.mtz.local@metalwork.test',
 }
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')
@@ -159,6 +168,10 @@ let numeroSc = null
   await v.locator('textarea[name="descripcion"]').fill('Instalación eléctrica del furgón de prueba, con el material de la casa.')
   await v.locator('input[name="codigo_interno"]').fill(codigo)
   await v.locator('input[name="monto"]').fill('3500')
+  // Sin área el navegador no lo deja enviar: es obligatoria.
+  const sinArea = await v.locator('select[name="area"]').evaluate((el) => el.validity.valueMissing)
+  comprobar(sinArea, 'sin elegir el área, el formulario no se envía')
+  await v.locator('select[name="area"]').selectOption('PRD')
   await pagina.screenshot({ path: join(CAPTURAS, 'sc-02-nuevo-subcontrato.png') })
   await v.getByRole('button', { name: 'Registrar subcontrato' }).click()
   await pagina.waitForURL(/\/subcontratos\/[0-9a-f-]{36}$/, { timeout: 30000 }).catch(() => {})
@@ -166,8 +179,16 @@ let numeroSc = null
   subcontratoId = pagina.url().match(/subcontratos\/([0-9a-f-]{36})/)?.[1] ?? null
   numeroSc = limpio(await pagina.locator('h1').textContent().catch(() => ''))
   comprobar(Boolean(subcontratoId) && /^SC-\d{4}-\d{4}$/.test(numeroSc), `registra el subcontrato y lo abre (${numeroSc})`)
-  const [sc] = await consulta('select codigo_interno, monto from subcontratos where id = $1', [subcontratoId])
-  comprobar(sc?.codigo_interno === codigo.toUpperCase() && Number(sc?.monto) === 3500, `en la base: código en mayúsculas y S/ 3,500 (${sc?.codigo_interno})`)
+  const [sc] = await consulta(
+    'select s.codigo_interno, s.monto, a.codigo as area from subcontratos s left join areas a on a.id = s.area_id where s.id = $1',
+    [subcontratoId],
+  )
+  comprobar(
+    sc?.codigo_interno === codigo.toUpperCase() && Number(sc?.monto) === 3500 && sc?.area === 'PRD',
+    `en la base: código en mayúsculas, S/ 3,500 y para Producción (${sc?.codigo_interno}, ${sc?.area})`,
+  )
+  const area = limpio(await pagina.locator('[data-area]').textContent().catch(() => ''))
+  comprobar(area.startsWith('Producción'), `el subcontrato dice para qué área va (${area})`)
 
   // ------------------------------------------------ 3. el recibo
   await pagina.locator('[data-subir-recibo]').click()
@@ -275,7 +296,8 @@ comprobar(
 }
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.gerencia)
-  comprobar((await pagina.locator('nav a[href="/subcontratos"]').count()) > 0, 'Gerencia tiene «Subcontratos» en Consultas')
+  // Desde el 2026-10-15 (#100) Gerencia no lo tiene en el menú, pero conserva el permiso y lo consulta por enlace.
+  comprobar((await pagina.locator('nav a[href="/subcontratos"]').count()) === 0, 'Gerencia no tiene «Subcontratos» en su menú, como pidió')
   await pagina.goto(`${BASE}/subcontratos?estado=todos`, { waitUntil: 'networkidle' })
   comprobar((await pagina.locator(`[data-subcontrato="${numeroSc}"]`).count()) === 1, 'Gerencia ve el subcontrato en la lista')
   comprobar((await pagina.locator('[data-nuevo-subcontrato]').count()) === 0, 'Gerencia no registra subcontratos')
@@ -307,6 +329,86 @@ comprobar(
     await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
     comprobar(pagina.url().includes('/sin-permiso'), `Logística no entra a ${ruta}`)
   }
+  await contexto.close()
+}
+
+// ------------------------------- 7. Supervisión: lo ve su área, sin montos
+const [avisoArea] = await consulta(
+  `select count(*)::int as n from notificaciones n join usuarios u on u.id = n.usuario_id
+    where n.ruta = '/subcontratos/area' and n.origen_id = $1 and u.correo = $2`,
+  [subcontratoId, CUENTAS.supervisorPrd],
+)
+comprobar(avisoArea?.n === 1, 'al supervisor de Producción le llegó el aviso del subcontrato')
+
+/** Lo que el supervisor ve de este subcontrato en su pantalla, o '' si no está. */
+async function loQueVe(pagina) {
+  await pagina.goto(`${BASE}/subcontratos/area?${new URLSearchParams({ codigo })}`, { waitUntil: 'networkidle' })
+  return limpio(await pagina.locator(`[data-subcontrato="${numeroSc}"]`).textContent().catch(() => ''))
+}
+{
+  const { pagina, contexto, errores } = await entrar(CUENTAS.supervisorPrd)
+  const enMenu = limpio(await pagina.locator('nav').first().textContent().catch(() => ''))
+  comprobar((await pagina.locator('nav a[href="/subcontratos/area"]').count()) > 0, 'Supervisión de Producción tiene «Subcontratos» en su menú')
+  comprobar(
+    enMenu.indexOf('Requerimientos') >= 0 && enMenu.indexOf('Subcontratos') > enMenu.indexOf('Requerimientos'),
+    'va al final de Supervisión, después de Requerimientos',
+  )
+  const texto = await loQueVe(pagina)
+  comprobar(texto.includes(nombre) && texto.includes('Instalación eléctrica'), `ve el subcontrato con quién lo hace y qué trabajo es (${texto.slice(0, 120)})`)
+  const recibo = limpio(await pagina.locator(`[data-recibo="${numeroRecibo}"]`).textContent().catch(() => ''))
+  comprobar(recibo.includes('Pagado'), `ve su recibo y que ya se pagó (${recibo})`)
+  const todo = limpio(await pagina.locator('main').textContent())
+  comprobar(todo.includes(codigo.toUpperCase()), 'lo agrupa por su código interno')
+  comprobar(!/S\/|US\$|1,840|3,500|2,000|160\.00/.test(todo), 'no aparece ni un monto: ni lo pactado, ni el recibo, ni lo pagado')
+  await pagina.screenshot({ path: join(CAPTURAS, 'sc-08-supervision-produccion.png'), fullPage: true })
+  for (const ruta of ['/subcontratos', `/subcontratos/${subcontratoId}`, '/tesoreria/recibos-por-honorarios']) {
+    await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
+    comprobar(pagina.url().includes('/sin-permiso'), `Supervisión no entra a ${ruta}`)
+  }
+  comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+{
+  const { pagina, contexto, errores } = await entrar(CUENTAS.supervisorAcb, CELULAR)
+  comprobar((await loQueVe(pagina)) === '', 'Supervisión de Acabados no ve el de Producción')
+  comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+{
+  const { pagina, contexto, errores } = await entrar(CUENTAS.supervisorMtz)
+  await pagina.goto(`${BASE}/subcontratos/area`, { waitUntil: 'networkidle' })
+  const texto = limpio(await pagina.locator('[data-sin-subcontratos]').textContent().catch(() => ''))
+  comprobar(texto.includes('no recibe subcontratos'), `a Maestranza le dice que su área no recibe subcontratos (${texto})`)
+  await pagina.screenshot({ path: join(CAPTURAS, 'sc-09-supervision-maestranza.png'), fullPage: true })
+  comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+// Administración lo pasa a Acabados: ahora lo ve Acabados y ya no Producción.
+{
+  const { pagina, contexto, errores } = await entrar(CUENTAS.administracion)
+  await pagina.goto(`${BASE}/subcontratos/${subcontratoId}`, { waitUntil: 'networkidle' })
+  await pagina.locator('[data-corregir-subcontrato]').click()
+  const v = pagina.locator('[role="dialog"]')
+  comprobar((await v.locator('select[name="area"]').inputValue()) === 'PRD', 'al corregir, el área viene puesta')
+  await v.locator('select[name="area"]').selectOption('ACB')
+  await v.getByRole('button', { name: 'Guardar' }).click()
+  const error = await esperarVentana(pagina)
+  comprobar(!error, `lo pasa a Acabados${error ? `: ${error}` : ''}`)
+  await pagina.waitForLoadState('networkidle')
+  const area = limpio(await pagina.locator('[data-area]').textContent().catch(() => ''))
+  comprobar(area.startsWith('Acabados'), `ahora dice Acabados (${area})`)
+  comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+{
+  const { pagina, contexto } = await entrar(CUENTAS.supervisorAcb)
+  comprobar((await loQueVe(pagina)).includes(nombre), 'Supervisión de Acabados ya lo ve')
+  await pagina.screenshot({ path: join(CAPTURAS, 'sc-10-supervision-acabados.png'), fullPage: true })
+  await contexto.close()
+}
+{
+  const { pagina, contexto } = await entrar(CUENTAS.supervisorPrd)
+  comprobar((await loQueVe(pagina)) === '', 'y Producción ya no')
   await contexto.close()
 }
 

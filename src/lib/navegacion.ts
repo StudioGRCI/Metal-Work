@@ -366,6 +366,16 @@ export const NAVEGACION = [
         descripcion: 'Cuánto hay de cada material en los cuatro almacenes, y de qué código interno es cada accesorio',
         disponible: true,
       },
+      // Los subcontratos que Administración registró para Producción o Acabados
+      // (migración 20261017100000): el supervisor de esa área los consulta, sin montos.
+      {
+        titulo: 'Subcontratos',
+        ruta: '/subcontratos/area',
+        icono: Handshake,
+        permiso: 'subcontratos.area',
+        descripcion: 'Los trabajos de terceros que Administración registró para tu área, por código interno, con sus recibos y si ya se pagaron; sin montos',
+        disponible: true,
+      },
       // Supervisión general sigue todas las áreas sin la OT (2026-10-15): lo que
       // Diseño lleva en cada código, en solo lectura.
       {
@@ -699,8 +709,10 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // OT: su reporte diario reemplaza las tareas con foto. Después de sus
   // requerimientos, el stock de Almacén, que consulta para saber qué hay (lo
   // pidió Maestranza el mismo día); en el teléfono, en lugar del dashboard.
+  // Al final, para consultar, los subcontratos que Administración registró
+  // para su área (Producción o Acabados; a Maestranza le dice que no recibe).
   SUPERVISOR: {
-    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/planos', '/requerimientos', '/almacen/stock'] }],
+    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/planos', '/requerimientos', '/almacen/stock', '/subcontratos/area'] }],
     telefono: ['/reportes-diarios', '/planos', '/requerimientos', '/almacen/stock'],
   },
   // Mira todas las áreas sin trabajar en ninguna: cada una con su nombre y en
