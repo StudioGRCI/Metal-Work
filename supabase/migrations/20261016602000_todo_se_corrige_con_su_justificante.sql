@@ -600,7 +600,7 @@ $$;
 revoke all on function public.compras_sin_factura() from public, anon;
 grant execute on function public.compras_sin_factura() to authenticated;
 
-create or replace view public.v_compras_credito_sin_comprobante as
+create or replace view public.v_compras_credito_sin_comprobante with (security_invoker = true) as
  select c.id as orden_compra_id, r.orden_id, o.numero as numero_ot, c.proveedor, c.referencia,
         c.creado_en::date as fecha_compra, c.creado_en::date + c.dias_credito as fecha_vencimiento,
         case when bool_or(d.precio_unitario is null) then null::numeric
