@@ -561,9 +561,10 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         titulo: 'Logística',
         rutas: ['/requerimientos/atencion', '/compras/gestion', '/compras/ordenes', '/compras/servicios'],
       },
-      // El visto de Gerencia lo sigue; Adquisiciones, en lectura: qué OC ya
-      // tienen su factura y si calza (2026-10-14). El padrón y los precios, sin apuro.
-      { titulo: 'Consultas', rutas: ['/compras/aprobacion', '/adquisiciones', '/proveedores', '/compras/valorizacion'] },
+      // Las tres que DKS nombró el 2026-10-15, en su orden. Adquisiciones, en
+      // lectura: qué OC ya tienen su factura y si calza. «Aprobación de
+      // compras» sale del menú: el visto de cada OC se ve en Órdenes de compra.
+      { titulo: 'Consultas', rutas: ['/adquisiciones', '/proveedores', '/compras/valorizacion'] },
     ],
     telefono: ['/requerimientos/atencion', '/compras/gestion', '/compras/ordenes', '/compras/servicios'],
   },
