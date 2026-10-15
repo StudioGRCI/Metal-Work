@@ -225,10 +225,10 @@ begin
     'con su saldo, el cliente, la cotización y la OT');
   perform test.afirmar((select count(*) from storage.objects where bucket_id = 'facturas-venta' and name = current_setting('prueba.f1_ruta')) = 1,
     'y abre el PDF de la factura');
-  perform test.debe_fallar(format('insert into public.cuentas_cobrar_ot (orden_id, numero_documento, fecha_emision, fecha_vencimiento, moneda, total) values (%L, ''E001-999'', current_date, current_date, ''PEN'', 10)',
+  perform test.debe_fallar(format('insert into public.cuentas_cobrar_ot (orden_id, numero_documento, fecha_emision, fecha_vencimiento, moneda, total) values (%L, ''E001-999'', current_setting(''prueba.hoy'')::date, current_setting(''prueba.hoy'')::date, ''PEN'', 10)',
       current_setting('prueba.ot1')),
     'Tesorería ya no anota facturas a mano', 'permission denied');
-  insert into public.cobros_ot (cuenta_id, fecha, monto, referencia) values (v_cuenta, current_date, 10000, 'OP-QA-345-1');
+  insert into public.cobros_ot (cuenta_id, fecha, monto, referencia) values (v_cuenta, current_setting('prueba.hoy')::date, 10000, 'OP-QA-345-1');
   perform test.afirmar((select saldo from public.v_cuentas_cobrar_ot where id = v_cuenta) = 19500, 'el cobro baja el saldo');
   reset role;
 
@@ -270,7 +270,7 @@ begin
     'la cuenta de la factura anulada deja de salir');
   perform test.afirmar((select count(*) from public.v_cuentas_cobrar_ot where factura_venta_id = current_setting('prueba.f3')::uuid) = 1,
     'la factura corregida entra con el mismo número');
-  perform test.debe_fallar(format('insert into public.cobros_ot (cuenta_id, fecha, monto, referencia) values (%L, current_date, 50, ''OP-QA-345-2'')', v_cuenta),
+  perform test.debe_fallar(format('insert into public.cobros_ot (cuenta_id, fecha, monto, referencia) values (%L, current_setting(''prueba.hoy'')::date, 50, ''OP-QA-345-2'')', v_cuenta),
     'la factura anulada ya no se cobra', 'anulada');
   reset role;
 
@@ -324,15 +324,15 @@ begin
     ('pagos-servicio', current_setting('prueba.os') || '/' || current_setting('prueba.p1') || '.pdf', current_setting('prueba.teso'), '{"mimetype": "application/pdf", "size": 900}'),
     ('pagos-servicio', current_setting('prueba.os') || '/' || current_setting('prueba.p2') || '.jpg', current_setting('prueba.teso'), '{"mimetype": "image/jpeg", "size": 900}'),
     ('pagos-servicio', current_setting('prueba.os') || '/' || current_setting('prueba.p3') || '.pdf', current_setting('prueba.teso'), '{"mimetype": "application/pdf", "size": 900}');
-  perform public.registrar_pago_servicio(current_setting('prueba.p1')::uuid, current_setting('prueba.os')::uuid, current_date, 590, false,
+  perform public.registrar_pago_servicio(current_setting('prueba.p1')::uuid, current_setting('prueba.os')::uuid, current_setting('prueba.hoy')::date, 590, false,
     'OP-1', 'E001-45', current_setting('prueba.os') || '/' || current_setting('prueba.p1') || '.pdf');
   select * into r from public.servicios_por_pagar() where id = current_setting('prueba.os')::uuid;
   perform test.afirmar(r.pagado = 590 and not r.cancelada, 'un pago a cuenta no la cancela');
-  perform public.registrar_pago_servicio(current_setting('prueba.p2')::uuid, current_setting('prueba.os')::uuid, current_date, 590, true,
+  perform public.registrar_pago_servicio(current_setting('prueba.p2')::uuid, current_setting('prueba.os')::uuid, current_setting('prueba.hoy')::date, 590, true,
     'OP-2', 'E001-45', current_setting('prueba.os') || '/' || current_setting('prueba.p2') || '.jpg');
   select * into r from public.servicios_por_pagar() where id = current_setting('prueba.os')::uuid;
   perform test.afirmar(r.pagado = 1180 and r.cancelada, 'el pago que la cancela la deja pagada');
-  perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, current_date, 10, true, null, null, %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, current_setting(''prueba.hoy'')::date, 10, true, null, null, %L)',
       current_setting('prueba.p3'), current_setting('prueba.os'), current_setting('prueba.os') || '/' || current_setting('prueba.p3') || '.pdf'),
     'la OS cancelada no se paga de nuevo', 'ya está cancelada');
   perform test.debe_fallar(format('select public.anular_pago_servicio(%L, ''corto'')', current_setting('prueba.p2')),
@@ -346,7 +346,7 @@ begin
 
   perform test.como_usuario(current_setting('prueba.compras')::uuid);
   set local role authenticated;
-  perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, current_date, 10, true, null, null, %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, current_setting(''prueba.hoy'')::date, 10, true, null, null, %L)',
       current_setting('prueba.p3'), current_setting('prueba.os'), current_setting('prueba.os') || '/' || current_setting('prueba.p3') || '.pdf'),
     'Logística no registra pagos', 'tesoreria.pagar_servicios');
   perform test.afirmar((select count(*) from public.pagos_orden_servicio where orden_servicio_id = current_setting('prueba.os')::uuid) = 2,

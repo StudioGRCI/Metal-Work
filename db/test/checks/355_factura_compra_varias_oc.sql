@@ -302,7 +302,7 @@ begin
   perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 10, ''OP-355-1'', %L)',
       current_setting('prueba.p2'), current_setting('prueba.a1'), current_setting('prueba.hoy'), current_setting('prueba.p2_ruta')),
     'la misma operación no entra dos veces', 'ya está registrada');
-  perform test.debe_fallar(format('insert into public.pagos_adquisicion (adquisicion_id, fecha, monto, referencia, registrado_por) values (%L, current_date, 1, ''OP-A-MANO'', %L)',
+  perform test.debe_fallar(format('insert into public.pagos_adquisicion (adquisicion_id, fecha, monto, referencia, registrado_por) values (%L, current_setting(''prueba.hoy'')::date, 1, ''OP-A-MANO'', %L)',
       current_setting('prueba.a1'), current_setting('prueba.teso')),
     'nadie anota un pago sin voucher por debajo', 'permission denied');
   perform test.debe_fallar(format('delete from public.pagos_adquisicion where id = %L', v), 'un pago no se borra', 'permission denied');
