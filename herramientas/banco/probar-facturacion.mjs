@@ -244,6 +244,20 @@ const ruta = (pagina) => new URL(pagina.url()).pathname
   await pagina.goto(`${BASE}/cotizaciones/pdf`, { waitUntil: 'networkidle' })
   const fila = limpio(await pagina.locator('li', { hasText: '3901-2026' }).first().textContent())
   comprobar(fila.includes('Factura E001-626') && fila.includes('cobro a cuenta'), 'en la cotización, Gerencia ve la factura y en qué va su cobro')
+  // Gerencia ve todo por código: lo vendido junto a lo gastado, y la factura con su cobro.
+  await pagina.goto(`${BASE}/codigos-internos/detalle?codigo=${encodeURIComponent('QA-CI 3901')}`, { waitUntil: 'networkidle' })
+  const linea = limpio(await pagina.locator('[data-facturado]').textContent().catch(() => ''))
+  comprobar(linea.includes('Facturado') && linea.includes('cobrado'), `en Códigos internos, Gerencia ve lo facturado y lo cobrado del código («${linea.slice(0, 110)}»)`)
+  await pagina.getByRole('link', { name: 'Ver factura y cobro' }).click()
+  await pagina.waitForURL((u) => u.searchParams.get('vista') === 'facturacion').catch(() => {})
+  await pagina.waitForLoadState('networkidle')
+  const enCodigo = pagina.locator('article[data-factura="E001-626"]')
+  comprobar((await enCodigo.count()) === 1 && limpio(await enCodigo.textContent()).includes('OP-000123'), 'y en «Factura y cobro», la factura con su cobro')
+  comprobar((await pagina.locator('li[data-cotizacion="3901-2026"]').count()) === 1, 'con la cotización aprobada del código')
+  comprobar((await pagina.locator('main button', { hasText: /Anular|Registrar/ }).count()) === 0, 'sin botones de anular ni registrar: Gerencia solo consulta')
+  const pdfFactura = await enCodigo.getByRole('link', { name: 'Abrir la factura' }).getAttribute('href').catch(() => null)
+  comprobar(Boolean(pdfFactura) && (await fetch(pdfFactura)).status === 200, 'y abre el PDF de la factura')
+  await pagina.screenshot({ path: join(CAPTURAS, 'gerencia-codigo-factura.png'), fullPage: true })
   await contexto.close()
 }
 
