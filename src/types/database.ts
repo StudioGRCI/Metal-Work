@@ -119,6 +119,7 @@ export type Database = {
           creado_en: string
           actualizado_en: string
           jefe_id: string | null
+          requerimiento: string | null
         }
         Insert: {
           id?: string
@@ -130,6 +131,7 @@ export type Database = {
           creado_en?: string
           actualizado_en?: string
           jefe_id?: string | null
+          requerimiento?: string | null
         }
         Update: {
           id?: string
@@ -141,6 +143,7 @@ export type Database = {
           creado_en?: string
           actualizado_en?: string
           jefe_id?: string | null
+          requerimiento?: string | null
         }
         Relationships: [
           {
@@ -6276,6 +6279,50 @@ export type Database = {
         }
         Relationships: []
       }
+      registro_vehiculo_fotos: {
+        Row: {
+          id: string
+          registro_id: string
+          momento: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          registro_id: string
+          momento: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          registro_id?: string
+          momento?: string
+          orden?: number
+          ruta?: string
+          mime_type?: string
+          tamano_bytes?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "registro_vehiculo_fotos_registro_id_fkey"
+            columns: ["registro_id"]
+            isOneToOne: false
+            referencedRelation: "registro_vehiculos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       registro_vehiculos: {
         Row: {
           id: string
@@ -6688,6 +6735,9 @@ export type Database = {
           orden_compra_id: string | null
           atendida_en: string | null
           atendida_por: string | null
+          cantidad_en_stock: number | null
+          stock_revisado_en: string | null
+          stock_revisado_por: string | null
         }
         Insert: {
           id?: string
@@ -6702,6 +6752,9 @@ export type Database = {
           orden_compra_id?: string | null
           atendida_en?: string | null
           atendida_por?: string | null
+          cantidad_en_stock?: number | null
+          stock_revisado_en?: string | null
+          stock_revisado_por?: string | null
         }
         Update: {
           id?: string
@@ -6716,6 +6769,9 @@ export type Database = {
           orden_compra_id?: string | null
           atendida_en?: string | null
           atendida_por?: string | null
+          cantidad_en_stock?: number | null
+          stock_revisado_en?: string | null
+          stock_revisado_por?: string | null
         }
         Relationships: [
           {
@@ -6744,6 +6800,13 @@ export type Database = {
             columns: ["requerimiento_id"]
             isOneToOne: false
             referencedRelation: "requerimientos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_lineas_stock_revisado_por_fkey"
+            columns: ["stock_revisado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           },
           {
@@ -6858,6 +6921,7 @@ export type Database = {
           entregado_en: string | null
           entregado_por: string | null
           nota_entrega: string | null
+          tipo: string
         }
         Insert: {
           id?: string
@@ -6884,6 +6948,7 @@ export type Database = {
           entregado_en?: string | null
           entregado_por?: string | null
           nota_entrega?: string | null
+          tipo?: string
         }
         Update: {
           id?: string
@@ -6910,6 +6975,7 @@ export type Database = {
           entregado_en?: string | null
           entregado_por?: string | null
           nota_entrega?: string | null
+          tipo?: string
         }
         Relationships: [
           {
@@ -8936,6 +9002,49 @@ export type Database = {
           detalle: string | null
         }[]
       }
+      codigo_interno_gasto: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          codigo: string | null
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          horas: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+        }[]
+      }
+      codigo_interno_lineas: {
+        Args: {
+          p_codigo: string | null
+          p_mano_obra: boolean | null
+        }
+        Returns: {
+          codigo: string | null
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          horas: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+        }[]
+      }
       codigo_interno_personal: {
         Args: {
           p_codigo: string | null
@@ -8949,6 +9058,22 @@ export type Database = {
           dias: number | null
           primer_dia: string | null
           ultimo_dia: string | null
+        }[]
+      }
+      codigos_internos_gasto: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          codigo: string | null
+          requerimientos: number | null
+          compras: number | null
+          salidas: number | null
+          ultima_actividad: string | null
+          materiales_pen: number | null
+          materiales_usd: number | null
+          materiales_sin_precio: number | null
+          compras_pen: number | null
+          compras_usd: number | null
+          compras_sin_precio: number | null
         }[]
       }
       codigos_internos_resumen: {
@@ -9456,6 +9581,7 @@ export type Database = {
       emitir_requerimiento: {
         Args: {
           p_id: string | null
+          p_tipo: string | null
           p_area_id: string | null
           p_codigo_interno: string | null
           p_justificacion: string | null
@@ -10341,6 +10467,7 @@ export type Database = {
           p_motivo: string | null
           p_ingreso_en: string | null
           p_observacion: string | null
+          p_fotos: Json | null
         }
         Returns: string
       }
@@ -10443,6 +10570,7 @@ export type Database = {
           p_id: string | null
           p_salida_en: string | null
           p_observacion: string | null
+          p_fotos: Json | null
         }
         Returns: string
       }
@@ -10579,6 +10707,13 @@ export type Database = {
         }
         Returns: string
       }
+      rq_exigir: {
+        Args: {
+          p_tipo: string | null
+          p_paso: string | null
+        }
+        Returns: null
+      }
       rq_marcar_en_atencion: {
         Args: {
           p_id: string | null
@@ -10603,6 +10738,14 @@ export type Database = {
       rq_marcar_sin_stock: {
         Args: {
           p_id: string | null
+          p_nota: string | null
+        }
+        Returns: string
+      }
+      rq_revisar_stock: {
+        Args: {
+          p_id: string | null
+          p_lineas: Json | null
           p_nota: string | null
         }
         Returns: string
@@ -10995,6 +11138,14 @@ export type Database = {
           p_observacion?: string | null
         }
         Returns: string
+      }
+      vehiculo_anotar_fotos: {
+        Args: {
+          p_registro: string | null
+          p_momento: string | null
+          p_fotos: Json | null
+        }
+        Returns: null
       }
     }
     Enums: {

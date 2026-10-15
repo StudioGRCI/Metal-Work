@@ -12,6 +12,7 @@ import {
   Clock,
   ClockAlert,
   Cog,
+  Coins,
   FileSpreadsheet,
   FileText,
   HardHat,
@@ -146,7 +147,7 @@ export const NAVEGACION = [
         titulo: 'Requerimientos',
         ruta: '/requerimientos',
         icono: ClipboardList,
-        permiso: ['requerimientos.emitir', 'requerimientos.ver'],
+        permiso: ['requerimientos.emitir', 'requerimientos.administracion', 'requerimientos.ver'],
         descripcion: 'Lo que cada área necesita, con su número RQ, y por dónde va',
         disponible: true,
       },
@@ -155,7 +156,17 @@ export const NAVEGACION = [
         ruta: '/vehiculos',
         icono: CarFront,
         permiso: ['vehiculos.registrar', 'vehiculos.ver'],
-        descripcion: 'Ingreso y salida de vehículos de la planta',
+        descripcion: 'Ingreso y salida de vehículos de la planta, con sus fotos',
+        disponible: true,
+      },
+      // Requerimientos pide por código interno y ve lo que se lleva gastado en
+      // cada uno, sin la mano de obra (migración 20261015160000).
+      {
+        titulo: 'Gasto por código interno',
+        ruta: '/requerimientos/gasto-por-codigo',
+        icono: Coins,
+        permiso: 'codigos_internos.gasto',
+        descripcion: 'Lo que salió del almacén y lo que se compró para cada código interno',
         disponible: true,
       },
     ],
@@ -168,7 +179,7 @@ export const NAVEGACION = [
         ruta: '/requerimientos/atencion',
         icono: ClipboardList,
         permiso: 'compras.crear',
-        descripcion: 'Los RQ sin stock que hay que comprar, y en qué van',
+        descripcion: 'Lo que Almacén no tiene de cada RQ, para comprarlo, y en qué va',
         disponible: true,
       },
       {
@@ -263,7 +274,7 @@ export const NAVEGACION = [
         ruta: '/requerimientos/atencion',
         icono: ClipboardList,
         permiso: ['almacen.recibir', 'almacen.despachar'],
-        descripcion: 'Los RQ por revisar stock, por recepcionar y por entregar al área',
+        descripcion: 'Los RQ por revisar insumo por insumo, por recepcionar y por entregar al área',
         disponible: true,
       },
       {
@@ -421,13 +432,16 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // El circuito del requerimiento: Requerimientos pide → Almacén revisa el
   // stock → Logística compra → Gerencia aprueba → el conductor recoge →
   // Almacén recepciona y entrega → Supervisión lo recoge.
+  // Desde el 2026-10-15 ya no ve el kardex, los gastos del mes ni la
+  // valorización del almacén (la base le quitó almacen.ver y costos.ver): ve lo
+  // gastado en cada código interno. La OT la consulta porque de ahí manda la
+  // ficha vehicular y el pedido de pago a Tesorería.
   REQUERIMIENTOS: {
     grupos: [
-      { titulo: 'Requerimientos', rutas: ['/requerimientos', '/vehiculos'] },
-      // Lo que heredó de la cuenta de Costeo: lo consulta, no lo trabaja.
-      { titulo: 'Consultas', rutas: ['/almacen/kardex', '/ordenes', '/costos/gastos-generales', '/compras/valorizacion'] },
+      { titulo: 'Requerimientos', rutas: ['/requerimientos', '/vehiculos', '/requerimientos/gasto-por-codigo'] },
+      { titulo: 'Consultas', rutas: ['/ordenes'] },
     ],
-    telefono: ['/requerimientos', '/vehiculos', '/almacen/kardex', '/ordenes'],
+    telefono: ['/requerimientos', '/vehiculos', '/requerimientos/gasto-por-codigo', '/ordenes'],
   },
   // Trabaja los RQ desde su bandeja de atención, no desde la lista de
   // Requerimientos, aunque `requerimientos.ver` le deje leerla. Las órdenes de
@@ -533,12 +547,15 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // también la rechaza) y Unidades y Carrocerías las lleva Diseño. De RR. HH.
   // le toca el resumen de tardanzas, como a Gerencia: la ficha y la asistencia
   // las abre por su dirección, y así no tiene dos «Personal» en el menú.
+  // Desde el 2026-10-15 lleva el requerimiento de Administración (lo de
+  // oficina): lo registra, Almacén lo revisa y ella hace la OC de lo que falta.
   ADMINISTRACION: {
     grupos: [
       {
         titulo: 'Administración',
         rutas: ['/cotizaciones/pdf', '/ordenes', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio', '/diseno/evaluaciones', '/clientes'],
       },
+      { titulo: 'Requerimiento de Administración', rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes'] },
       { titulo: 'Consultas', rutas: ['/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos'] },
       { titulo: 'Administración del sistema', rutas: ['/personal', '/configuracion'] },
     ],
@@ -691,6 +708,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/requerimientos', corto: 'RQ' },
   { ruta: '/requerimientos/atencion', corto: 'Atención' },
   { ruta: '/vehiculos', corto: 'Vehículos' },
+  { ruta: '/requerimientos/gasto-por-codigo', corto: 'Gasto' },
   { ruta: '/rrhh/asistencia', corto: 'Asistencia' },
   { ruta: '/rrhh/personal', corto: 'Personal' },
   { ruta: '/rrhh/tardanzas', corto: 'Tardanzas' },

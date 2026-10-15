@@ -2,7 +2,7 @@ import type { Tono } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import type { LineaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
 import { ETAPA_AVANCE_RQ, resumenDeEtapas } from '@/lib/dominio/requerimientos'
-import { fechaHora } from '@/lib/format'
+import { cantidad, fechaHora } from '@/lib/format'
 
 const COLOR: Record<Tono, string> = {
   neutro: 'text-texto-suave',
@@ -32,16 +32,26 @@ export function AvanceDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
 }
 
 /**
- * La OC del insumo y en qué va. Mientras el RQ está sin stock o en compra cada
- * insumo va por su lado (su OC, su recojo); antes y después van todos juntos y
- * basta la etapa del RQ.
+ * La OC del insumo y en qué va. Mientras el RQ está por comprar o en compra
+ * cada insumo va por su lado (lo que tenía Almacén, su OC, su recojo); antes y
+ * después van todos juntos y basta la etapa del RQ.
  */
 export function CompraDelInsumo({ linea: l, estadoRq }: { linea: LineaRequerimiento; estadoRq: string }) {
   const porInsumo = estadoRq === 'SIN_STOCK' || estadoRq === 'EN_ATENCION'
   const etapa = porInsumo && l.etapa ? ETAPA_AVANCE_RQ[l.etapa] : null
-  if (!l.orden_compra && !etapa) return null
+  // Almacén tenía una parte: se compra solo el resto.
+  const parte = porInsumo && l.en_stock !== null && l.en_stock > 0 && l.por_comprar !== null && l.por_comprar > 0
+  if (!l.orden_compra && !etapa && !parte) return null
   return (
     <>
+      {parte && (
+        <>
+          {' · '}
+          <span className="text-texto">
+            Almacén tiene {cantidad(l.en_stock ?? 0)} {l.unidad}, se compran {cantidad(l.por_comprar ?? 0)}
+          </span>
+        </>
+      )}
       {l.orden_compra && (
         <>
           {' · '}

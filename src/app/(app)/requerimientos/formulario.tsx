@@ -6,16 +6,24 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import type { OpcionCatalogo } from '@/lib/datos/requerimientos'
+import type { AreaParaRequerimiento, OpcionCatalogo } from '@/lib/datos/requerimientos'
+import { TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { useEnvio } from '@/lib/envio'
 import { hoyLima } from '@/lib/format'
 
 import { emitirRequerimiento } from './acciones'
 
-type Catalogos = { areas: OpcionCatalogo[]; unidades: OpcionCatalogo[]; categorias: OpcionCatalogo[] }
+type Catalogos = {
+  areas: AreaParaRequerimiento[]
+  unidades: OpcionCatalogo[]
+  categorias: OpcionCatalogo[]
+  /** Los requerimientos que esta persona registra: el de operación, el de Administración o los dos. */
+  tipos: TipoRequerimiento[]
+}
 
 /** El botón «Nuevo requerimiento» y su ventana. */
 export function NuevoRequerimiento(catalogos: Catalogos) {
+  const soloAdministracion = catalogos.tipos.length === 1 && catalogos.tipos[0] === 'ADMINISTRACION'
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -30,7 +38,7 @@ export function NuevoRequerimiento(catalogos: Catalogos) {
         }}
       >
         <Plus aria-hidden className="size-4" />
-        Nuevo requerimiento
+        {soloAdministracion ? 'Nuevo requerimiento de Administración' : 'Nuevo requerimiento'}
       </Boton>
       {aviso && (
         <p role="status" className="basis-full text-sm text-exito">
@@ -40,8 +48,10 @@ export function NuevoRequerimiento(catalogos: Catalogos) {
       <Ventana
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
-        titulo="Nuevo requerimiento"
-        descripcion="Lo que un área necesita comprar. El número RQ lo pone el sistema y le llega a Logística para atenderlo."
+        titulo={soloAdministracion ? 'Nuevo requerimiento de Administración' : 'Nuevo requerimiento'}
+        descripcion={`Lo que un área necesita. El número lo pone el sistema y le llega primero a Almacén: lo que tiene lo separa y lo que falta lo compra ${
+          soloAdministracion ? 'la administradora' : 'Logística'
+        }.`}
         ancho="xl"
       >
         <FormularioRequerimiento
@@ -61,8 +71,13 @@ function FormularioRequerimiento({
   areas,
   unidades,
   categorias,
+  tipos,
   alTerminar,
 }: Catalogos & { alTerminar: (mensaje: string) => void }) {
+  // Cada área pide en un solo requerimiento: al cambiar el tipo cambia la lista.
+  const [tipo, setTipo] = useState<TipoRequerimiento>(tipos[0] ?? 'OPERACION')
+  const [areaId, setAreaId] = useState('')
+  const delTipo = areas.filter((a) => a.requerimiento === tipo)
   // Decidido aquí: un reintento manda el mismo y la base no duplica el RQ.
   const [id] = useState(() => crypto.randomUUID())
   // Cada fila tiene su llave para que quitar una del medio no mezcle lo escrito.
@@ -73,13 +88,34 @@ function FormularioRequerimiento({
   return (
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="operacion_id" value={id} />
+      {tipos.length === 1 && <input type="hidden" name="tipo" value={tipo} />}
       <div className="grid gap-4 sm:grid-cols-2">
+        {tipos.length > 1 && (
+          <Campo etiqueta="Requerimiento" htmlFor="rq-tipo" requerido ayuda={TIPO_REQUERIMIENTO[tipo]?.descripcion}>
+            <Seleccion
+              id="rq-tipo"
+              name="tipo"
+              required
+              value={tipo}
+              onChange={(e) => {
+                setTipo(e.target.value as TipoRequerimiento)
+                setAreaId('')
+              }}
+            >
+              {tipos.map((t) => (
+                <option key={t} value={t}>
+                  {TIPO_REQUERIMIENTO[t]?.etiqueta ?? t}
+                </option>
+              ))}
+            </Seleccion>
+          </Campo>
+        )}
         <Campo etiqueta="Área que lo necesita" htmlFor="rq-area" requerido>
-          <Seleccion id="rq-area" name="area_id" required defaultValue="">
+          <Seleccion id="rq-area" name="area_id" required value={areaId} onChange={(e) => setAreaId(e.target.value)}>
             <option value="" disabled>
               Elige el área
             </option>
-            {areas.map((a) => (
+            {delTipo.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.nombre}
               </option>
@@ -90,7 +126,11 @@ function FormularioRequerimiento({
           etiqueta="Código interno"
           htmlFor="rq-codigo"
           requerido
-          ayuda="El de la unidad, por ejemplo PLA_SR_O4_1_26/28. Si no es para una unidad, escribe PLANTA."
+          ayuda={
+            tipo === 'ADMINISTRACION'
+              ? 'El de la unidad, si es para una. Si es para la oficina, escribe OFICINA.'
+              : 'El de la unidad, por ejemplo PLA_SR_O4_1_26/28. Si no es para una unidad, escribe PLANTA.'
+          }
         >
           <Entrada id="rq-codigo" name="codigo_interno" required minLength={2} maxLength={60} autoComplete="off" />
         </Campo>
@@ -183,7 +223,7 @@ function FormularioRequerimiento({
       )}
       <div className="flex justify-end">
         <Boton type="submit" cargando={enviando}>
-          Registrar y mandar a Logística
+          Registrar y mandar a Almacén
         </Boton>
       </div>
     </form>

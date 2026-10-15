@@ -45,6 +45,23 @@ export function hayFallidas(fotos: FotoLista[]) {
   return fotos.some((f) => f.error)
 }
 
+/**
+ * Al cerrar sin registrar, las fotos ya subidas quedan sueltas en Storage: se
+ * retiran (la política deja a su dueño quitar las que ningún registro nombra)
+ * y se sueltan sus miniaturas. Sin esperar: si falla, la foto queda suelta y
+ * nadie más la ve.
+ */
+export function quitarFotosSueltas(bucket: string, fotos: FotoLista[]) {
+  const rutas = fotos.flatMap((f) => (f.ruta ? [f.ruta] : []))
+  if (rutas.length > 0) void createClient().storage.from(bucket).remove(rutas)
+  soltarMiniaturas(fotos)
+}
+
+/** Las miniaturas viven en la memoria del navegador hasta que se sueltan. */
+export function soltarMiniaturas(fotos: FotoLista[]) {
+  for (const f of fotos) if (f.vistaPrevia) URL.revokeObjectURL(f.vistaPrevia)
+}
+
 /** Qué le pasó a la subida, en palabras del taller. */
 function explicarFalla(mensaje: string) {
   const m = mensaje.toLowerCase()

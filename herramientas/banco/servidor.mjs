@@ -280,10 +280,14 @@ async function esquema() {
 async function formaDeFuncion(nombre) {
   if (funcionesCache.has(nombre)) return funcionesCache.get(nombre)
   const { rows } = await grupo.query(
+    // Con varias versiones de la función (una vieja que ya no se usa y la nueva
+    // con un parámetro más), un parámetro es JSON si lo es en alguna: Postgres
+    // elige la versión por los nombres que se le pasan, como PostgREST.
     `select p.proretset, t.typtype, t.typname,
-            coalesce((select array_agg(a.nombre)
-                        from unnest(p.proargnames, p.proargtypes::oid[]) as a(nombre, tipo)
-                       where a.tipo in ('json'::regtype, 'jsonb'::regtype)), '{}') as json
+            coalesce((select array_agg(distinct a.nombre)
+                        from pg_proc q, unnest(q.proargnames, q.proargtypes::oid[]) as a(nombre, tipo)
+                       where q.pronamespace = p.pronamespace and q.proname = p.proname
+                         and a.tipo in ('json'::regtype, 'jsonb'::regtype)), '{}') as json
        from pg_proc p join pg_type t on t.oid = p.prorettype
       where p.pronamespace = 'public'::regnamespace and p.proname = $1
       limit 1`,

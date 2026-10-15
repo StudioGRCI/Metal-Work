@@ -9,12 +9,26 @@ type Def = { etiqueta: string; tono: Tono; descripcion: string }
  */
 export const ESTADO_REQUERIMIENTO: Record<string, Def> = {
   POR_ATENDER: { etiqueta: 'Por revisar', tono: 'aviso', descripcion: 'Almacén revisa si hay stock.' },
-  SIN_STOCK: { etiqueta: 'Sin stock', tono: 'peligro', descripcion: 'Almacén no lo tiene; Logística lo compra.' },
-  EN_ATENCION: { etiqueta: 'En compra', tono: 'info', descripcion: 'Logística lo está comprando.' },
+  SIN_STOCK: { etiqueta: 'Por comprar', tono: 'peligro', descripcion: 'Almacén no tiene todo: se compra solo lo que falta.' },
+  EN_ATENCION: { etiqueta: 'En compra', tono: 'info', descripcion: 'Se está comprando lo que falta.' },
   LISTO_EN_ALMACEN: { etiqueta: 'Listo en almacén', tono: 'exito', descripcion: 'El área puede recogerlo.' },
   ENTREGADO: { etiqueta: 'Entregado', tono: 'neutro', descripcion: 'Almacén lo entregó al área.' },
   ANULADO: { etiqueta: 'Anulado', tono: 'peligro', descripcion: 'Anulado con su motivo.' },
 }
+
+/**
+ * Los dos requerimientos (migración 20261015162000). El de operación lo piden
+ * Maestranza, Producción, Acabados y Almacén y su OC la hace Logística; el de
+ * Administración es de oficina, lo lleva la administradora y ella hace su OC.
+ * Los dos pasan primero por Almacén. Qué áreas van en cada uno lo dice
+ * `areas.requerimiento`.
+ */
+export const TIPO_REQUERIMIENTO: Record<string, Def> = {
+  OPERACION: { etiqueta: 'Operación', tono: 'neutro', descripcion: 'Maestranza, Producción, Acabados y Almacén. La OC la hace Logística.' },
+  ADMINISTRACION: { etiqueta: 'Administración', tono: 'acento', descripcion: 'Lo de oficina. Lo lleva la administradora y ella hace su OC.' },
+}
+
+export type TipoRequerimiento = 'OPERACION' | 'ADMINISTRACION'
 
 /** Los que todavía esperan a alguien: lo que la bandeja de atención muestra primero. */
 export const ESTADOS_RQ_ABIERTOS = ['POR_ATENDER', 'SIN_STOCK', 'EN_ATENCION', 'LISTO_EN_ALMACEN'] as const
@@ -23,11 +37,13 @@ export const ESTADOS_RQ_ABIERTOS = ['POR_ATENDER', 'SIN_STOCK', 'EN_ATENCION', '
  * En qué etapa va cada insumo del RQ, con su porcentaje. Lo calcula la base
  * (`avance_de_requerimientos`, migración 20261013121000) a partir del estado
  * del RQ, de la OC del insumo y de su recojo: el RQ va en el promedio de sus
- * insumos y su etapa es la del más atrasado. Las etiquetas viven aquí.
+ * insumos y su etapa es la del más atrasado. Desde la migración 20261015162000
+ * Almacén revisa cada insumo: el que tiene completo va en «Almacén lo tiene» y
+ * no se compra. Las etiquetas viven aquí.
  */
 export const ETAPA_AVANCE_RQ: Record<string, Def> = {
   POR_REVISAR: { etiqueta: 'Almacén revisa el stock', tono: 'aviso', descripcion: 'Almacén todavía no dice si lo tiene.' },
-  POR_COMPRAR: { etiqueta: 'Por comprar', tono: 'aviso', descripcion: 'Sin stock y sin orden de compra viva.' },
+  POR_COMPRAR: { etiqueta: 'Por comprar', tono: 'aviso', descripcion: 'Almacén no lo tiene completo y todavía no va en una orden de compra.' },
   OC_POR_APROBAR: { etiqueta: 'OC por aprobar', tono: 'aviso', descripcion: 'La orden de compra espera a Gerencia.' },
   PENDIENTE_RECOJO: { etiqueta: 'Pendiente de recojo', tono: 'aviso', descripcion: 'Aprobada: el conductor todavía no sale a recogerla.' },
   EN_RECOJO: { etiqueta: 'En recojo', tono: 'info', descripcion: 'El conductor salió a recogerla.' },
@@ -35,6 +51,7 @@ export const ETAPA_AVANCE_RQ: Record<string, Def> = {
   POR_VALIDAR: { etiqueta: 'En almacén, por validar', tono: 'info', descripcion: 'El conductor la dejó; Almacén valida el ingreso.' },
   OBSERVADO: { etiqueta: 'Observado en almacén', tono: 'peligro', descripcion: 'Almacén no la recibió completa.' },
   EN_KARDEX: { etiqueta: 'Ingresó al kardex', tono: 'exito', descripcion: 'Almacén validó el ingreso.' },
+  EN_STOCK: { etiqueta: 'Almacén lo tiene', tono: 'exito', descripcion: 'Había en almacén: no se compra.' },
   LISTO_EN_ALMACEN: { etiqueta: 'Listo en almacén', tono: 'exito', descripcion: 'El área puede recogerlo.' },
   ENTREGADO: { etiqueta: 'Entregado', tono: 'neutro', descripcion: 'Almacén lo entregó al área.' },
 }
@@ -76,3 +93,15 @@ export const MOTIVOS_VEHICULO = Object.keys(MOTIVO_VEHICULO) as [string, ...stri
 export function horaDeLima(valor: string): string | null {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(valor) ? `${valor}:00-05:00` : null
 }
+
+/**
+ * Las fotos del vehículo al entrar y al salir: de 1 a 15 cada vez, como exige
+ * `registrar_ingreso_vehiculo` y `registrar_salida_vehiculo` (migración 20261015161000).
+ */
+export const MAXIMO_FOTOS_VEHICULO = 15
+
+/** El bucket privado de esas fotos: la ruta es `{cuenta}/{registro}/ingreso|salida/{foto}.jpg`. */
+export const BUCKET_FOTOS_VEHICULO = 'fotos-vehiculos'
+
+/** Lo que pesa como máximo una foto ya achicada en el teléfono (el tope del bucket). */
+export const MAXIMO_MB_FOTO_VEHICULO = 5

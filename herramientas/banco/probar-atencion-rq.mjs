@@ -2,9 +2,9 @@
  * Recorre con clic real el circuito del RQ después de emitido, con la cuenta
  * de cada puesto (nunca ADMIN):
  *
- *   1. Requerimientos registra un RQ; su menú tiene «Requerimientos» y «Vehículos».
- *   2. Almacén lo ve en «Atención de requerimiento» y lo marca sin stock.
- *   3. Logística lo ve sin stock y lo marca en compra; su menú arranca por Atención.
+ *   1. Requerimientos registra un RQ; su menú tiene «Requerimientos», «Vehículos» y el gasto.
+ *   2. Almacén lo ve en «Atención de requerimiento» y revisa el stock: no tiene nada.
+ *   3. Logística lo ve por comprar y lo marca en compra; su menú arranca por Atención.
  *   4. Almacén lo deja listo en almacén y lo entrega; pasa al historial.
  *   5. El supervisor del área ve el RQ en Requerimientos, sin botones.
  *
@@ -71,6 +71,22 @@ async function paso(pagina, fila, boton, nota) {
   await pagina.waitForTimeout(800)
 }
 
+/**
+ * «Revisar stock» del RQ: anota cuánto tiene Almacén de cada insumo. `todo` y
+ * `nada` usan los atajos de la ventana; un arreglo pone cada cantidad a mano.
+ */
+async function revisarStock(pagina, fila, cuanto, nota) {
+  await fila.getByRole('button', { name: 'Revisar stock' }).click()
+  const v = pagina.locator('[role="dialog"]')
+  if (cuanto === 'todo') await v.getByRole('button', { name: 'Tengo todo' }).click()
+  else if (cuanto === 'nada') await v.getByRole('button', { name: 'No tengo nada' }).click()
+  else for (const [i, c] of cuanto.entries()) await v.locator('input[type="number"]').nth(i).fill(String(c))
+  if (nota) await v.locator('textarea[name="nota"]').fill(nota)
+  await v.getByRole('button', { name: 'Guardar la revisión' }).click()
+  await v.waitFor({ state: 'detached', timeout: 20000 })
+  await pagina.waitForTimeout(800)
+}
+
 const sello = Date.now().toString().slice(-6)
 const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
 
@@ -79,7 +95,7 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   const { pagina, contexto, errores } = await entrar(CUENTAS.requerimientos)
   const m = await menu(pagina)
   const req = m.find((g) => g.grupo === 'Requerimientos')
-  comprobar(req && req.items.join(',') === 'Requerimientos,Vehículos', `menú de Requerimientos: ${JSON.stringify(req?.items)}`)
+  comprobar(req && req.items.join(',') === 'Requerimientos,Vehículos,Gasto por código interno', `menú de Requerimientos: ${JSON.stringify(req?.items)}`)
   // Hereda el kardex de Costos (almacen.ver), pero la bandeja de atención no es suya.
   comprobar(!m.some((g) => g.items.includes('Atención de requerimiento')), 'Requerimientos no ve «Atención de requerimiento»')
 
@@ -92,7 +108,7 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   await ventana.locator('input[name="descripcion"]').first().fill('Plancha LAF 2 mm 4x8')
   await ventana.locator('input[name="cantidad"]').first().fill('3')
   await ventana.locator('select[name="categoria_id"]').first().selectOption({ index: 1 })
-  await ventana.getByRole('button', { name: 'Registrar y mandar a Logística' }).click()
+  await ventana.getByRole('button', { name: 'Registrar y mandar a Almacén' }).click()
   await pagina.locator('[role="status"]').waitFor({ timeout: 20000 })
   const fila = pagina.locator('tbody tr', { hasText: codigo })
   await fila.waitFor({ timeout: 20000 })
@@ -101,7 +117,7 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   await contexto.close()
 }
 
-// ------------------------------------------------ 2. Almacén: sin stock
+// ------------------------------------------------ 2. Almacén: revisa el stock, no tiene nada
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.almacen)
   const m = await menu(pagina)
@@ -114,10 +130,10 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   await pagina.goto(`${BASE}/requerimientos/atencion`, { waitUntil: 'networkidle' })
   const fila = pagina.locator('tbody tr', { hasText: codigo })
   comprobar((await fila.count()) === 1, 'Almacén ve el RQ por atender')
-  comprobar((await fila.getByRole('button', { name: 'Listo en almacén' }).count()) === 1 && (await fila.getByRole('button', { name: 'Sin stock' }).count()) === 1,
-    'con los botones «Listo en almacén» y «Sin stock»')
-  await paso(pagina, fila, 'Sin stock', 'No queda plancha de 2 mm')
-  comprobar((await pagina.locator('tbody tr', { hasText: codigo }).innerText()).includes('Sin stock'), 'queda «Sin stock»')
+  comprobar((await fila.getByRole('button', { name: 'Revisar stock' }).count()) === 1 && (await fila.getByRole('button', { name: 'Listo en almacén' }).count()) === 0,
+    'con el botón «Revisar stock»')
+  await revisarStock(pagina, fila, 'nada', 'No queda plancha de 2 mm')
+  comprobar((await pagina.locator('tbody tr', { hasText: codigo }).innerText()).includes('Por comprar'), 'queda «Por comprar»')
   await pagina.screenshot({ path: `${CAPTURAS}/atencion-almacen.png`, fullPage: true })
   comprobar(errores.length === 0, `sin errores de consola como Almacén ${errores.join(' | ')}`)
   await contexto.close()
@@ -131,7 +147,7 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   comprobar(log && log.items[0] === 'Atención de requerimiento' && log.items.includes('Órdenes de compra'), `menú de Logística: ${JSON.stringify(log?.items)}`)
   comprobar(!m.some((g) => g.grupo === 'Requerimientos'), 'Logística no ve el grupo de Requerimientos')
   const avisos = await pagina.goto(`${BASE}/avisos`, { waitUntil: 'networkidle' }).then(() => pagina.locator('body').innerText())
-  comprobar(avisos.includes('Requerimiento sin stock'), 'a Logística le llegó el aviso de sin stock')
+  comprobar(avisos.includes('Requerimiento por comprar'), 'a Logística le llegó el aviso de lo que hay que comprar')
 
   await pagina.goto(`${BASE}/requerimientos/atencion`, { waitUntil: 'networkidle' })
   const fila = pagina.locator('tbody tr', { hasText: codigo })

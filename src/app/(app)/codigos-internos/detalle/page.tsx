@@ -556,7 +556,7 @@ async function VistaDocumentos({ codigo, perfil }: { codigo: string; perfil: Per
     SERVICIO: puede(perfil, ['compras.crear', 'compras.ver', 'compras.detraccion'])
       ? () => `/compras/servicios?codigo=${encodeURIComponent(codigo)}`
       : null,
-    VEHICULO: puede(perfil, ['vehiculos.registrar', 'vehiculos.ver']) ? () => '/vehiculos' : null,
+    VEHICULO: puede(perfil, ['vehiculos.registrar', 'vehiculos.ver']) ? (d) => `/vehiculos/${d.id}` : null,
   }
   const estado = (tipo: string, valor: string) =>
     tipo === 'REQUERIMIENTO'

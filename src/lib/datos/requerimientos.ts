@@ -16,6 +16,10 @@ export type LineaRequerimiento = {
   etapa: string | null
   /** Desde cuándo está en esa etapa, si es del recojo (pendiente, en recojo, recogido, dejado). */
   etapa_desde: string | null
+  /** Cuánto tenía Almacén al revisarlo, de 0 a lo pedido; vacío mientras no lo revisa. */
+  en_stock: number | null
+  /** Lo que falta y se compra: lo pedido menos lo que tenía Almacén. Vacío mientras no lo revisa. */
+  por_comprar: number | null
 }
 
 /** En qué porcentaje va el RQ y la etapa de su insumo más atrasado. */
@@ -25,6 +29,8 @@ export type AvanceRequerimiento = { porcentaje: number; etapa: string }
 export type RequerimientoListado = {
   id: string
   numero: string
+  /** OPERACION o ADMINISTRACION (`TIPO_REQUERIMIENTO`). */
+  tipo: string
   area: string
   codigo_interno: string
   justificacion: string
@@ -44,22 +50,37 @@ export type RequerimientoListado = {
   avance: AvanceRequerimiento | null
 }
 
-type LineaDeAvance = { item: number; orden_compra: string | null; rechazada: boolean; etapa: string; desde: string | null }
+type LineaDeAvance = {
+  item: number
+  orden_compra: string | null
+  rechazada: boolean
+  etapa: string
+  desde: string | null
+  en_stock: number | null
+  por_comprar: number | null
+}
 
 export type OpcionCatalogo = { id: string; codigo: string; nombre: string }
 
+/** Un área que puede pedir, con el requerimiento en que va (OPERACION o ADMINISTRACION). */
+export type AreaParaRequerimiento = OpcionCatalogo & { requerimiento: string }
+
 const SELECT_RQ =
-  'id, numero, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(item, descripcion, cantidad, unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion))'
+  'id, numero, tipo, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(item, descripcion, cantidad, cantidad_en_stock, unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion))'
 
 /**
  * Los requerimientos, del más nuevo al más viejo. Con `soloAbiertos`, los que
- * todavía esperan a Almacén, a Logística o a que el área los recoja: es lo que
- * la bandeja de atención muestra.
+ * todavía esperan a Almacén, a quien compra o a que el área los recoja: es lo
+ * que la bandeja de atención muestra. Con `tipo`, solo los de operación o solo
+ * los de Administración.
  */
-export async function cargarRequerimientos(opciones: { soloAbiertos?: boolean } = {}): Promise<RequerimientoListado[]> {
+export async function cargarRequerimientos(
+  opciones: { soloAbiertos?: boolean; tipo?: 'OPERACION' | 'ADMINISTRACION' } = {},
+): Promise<RequerimientoListado[]> {
   const supabase = await createClient()
   let consulta = supabase.from('requerimientos').select(SELECT_RQ)
   if (opciones.soloAbiertos) consulta = consulta.in('estado', ['POR_ATENDER', 'SIN_STOCK', 'EN_ATENCION', 'LISTO_EN_ALMACEN'])
+  if (opciones.tipo) consulta = consulta.eq('tipo', opciones.tipo)
   const { data, error } = await consulta.order('creado_en', { ascending: false }).limit(300)
   if (error) throw new Error(`No se pudieron leer los requerimientos: ${error.message}`)
   // El avance lo calcula la base con la OC y el recojo de cada insumo. Trae
@@ -80,6 +101,7 @@ export async function cargarRequerimientos(opciones: { soloAbiertos?: boolean } 
     return {
       id: r.id,
       numero: r.numero,
+      tipo: r.tipo,
       area: r.area?.nombre ?? '—',
       codigo_interno: r.codigo_interno,
       justificacion: r.justificacion,
@@ -107,6 +129,8 @@ export async function cargarRequerimientos(opciones: { soloAbiertos?: boolean } 
             compra_rechazada: deLinea ? deLinea.rechazada : l.orden_compra?.aprobacion === 'RECHAZADA',
             etapa: deLinea?.etapa ?? null,
             etapa_desde: deLinea?.desde ?? null,
+            en_stock: l.cantidad_en_stock == null ? null : Number(l.cantidad_en_stock),
+            por_comprar: l.cantidad_en_stock == null ? null : Math.max(Number(l.cantidad) - Number(l.cantidad_en_stock), 0),
           }
         })
         .sort((a, b) => a.item - b.item),
@@ -115,11 +139,14 @@ export async function cargarRequerimientos(opciones: { soloAbiertos?: boolean } 
   })
 }
 
-/** Lo que el formulario del requerimiento ofrece para elegir: áreas, unidades y categorías. */
+/**
+ * Lo que el formulario del requerimiento ofrece para elegir: las áreas que
+ * pueden pedir (cada una con el requerimiento en que va), unidades y categorías.
+ */
 export async function catalogosDelRequerimiento() {
   const supabase = await createClient()
   const [areas, unidades, categorias] = await Promise.all([
-    supabase.from('areas').select('id, codigo, nombre').eq('activo', true).order('nombre'),
+    supabase.from('areas').select('id, codigo, nombre, requerimiento').eq('activo', true).not('requerimiento', 'is', null).order('nombre'),
     supabase.from('unidades_medida').select('id, codigo, nombre').eq('activo', true).order('codigo'),
     supabase
       .from('categorias_material')
@@ -138,7 +165,7 @@ export async function catalogosDelRequerimiento() {
   const todas = categorias.data ?? []
   const deAlmacen = todas.filter((c) => c.codigo.startsWith('ALM_'))
   return {
-    areas: areas.data ?? [],
+    areas: (areas.data ?? []).flatMap((a) => (a.requerimiento ? [{ id: a.id, codigo: a.codigo, nombre: a.nombre, requerimiento: a.requerimiento }] : [])),
     unidades: unidades.data ?? [],
     categorias: deAlmacen.length > 0 ? deAlmacen : todas,
   }
