@@ -100,6 +100,9 @@ declare
   v_cat uuid := (select id from public.categorias_material order by 1 limit 1);
   v_um  uuid := (select id from public.unidades_medida order by 1 limit 1);
 begin
+  -- Sin sesión: la OT de la unidad la abre el taller, y el supervisor ya no
+  -- tiene ningún permiso de la OT (migración 20261016120000).
+  perform set_config('request.jwt.claim.sub', '', true);
   insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
   values ('CHK344-1', 'Soldadura de prueba 344', v_cat, v_um) returning id into v_m1;
   insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)

@@ -6,8 +6,9 @@ import type { PerfilSesion } from '../sesion'
  * 20261016110000): Supervisión sube su reporte diario y ve los planos y las
  * etapas de su área; Supervisión general y Almacén siguen cada código en
  * «Seguimiento por código»; Requerimientos lleva la ficha del vehículo y la
- * revisión de Tesorería en Vehículos. La base les conserva el permiso de leer
- * la OT: la cierra la aplicación, aquí.
+ * revisión de Tesorería en Vehículos. Desde la migración 20261016120000 la
+ * base tampoco les da ningún permiso de la OT; aquí se decide adónde van si
+ * llegan a una por un aviso o un enlace viejo.
  */
 export const PUESTOS_POR_CODIGO = ['SUPERVISOR', 'SUPERVISOR_GENERAL', 'ALMACENERO', 'REQUERIMIENTOS'] as const
 

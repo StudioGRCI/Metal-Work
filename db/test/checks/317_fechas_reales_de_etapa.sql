@@ -29,6 +29,14 @@ select test.como_usuario(:'admin_id');
 update public.usuarios set area_id = (select id from public.areas where codigo = 'PRD')
  where id = :'supervisor_id';
 
+-- Desde la migración 20261016120000 el supervisor ya no lee la OT ni le crea
+-- tareas con foto: reporta por código en su reporte diario. El circuito de las
+-- tareas sigue en la base, y la prueba le devuelve el permiso solo mientras
+-- dure, para seguir cuidándolo.
+insert into public.roles_permisos (rol_id, permiso_codigo)
+select id, 'ordenes.ver' from public.roles where codigo = 'SUPERVISOR'
+on conflict do nothing;
+
 insert into public.clientes(tipo_documento,numero_documento,razon_social)
 values ('RUC','20990000317','QA fechas reales de etapa');
 insert into public.ordenes_trabajo(id,numero,cliente_id,sede_id,tipo_trabajo,

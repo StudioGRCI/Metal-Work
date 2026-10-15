@@ -39,7 +39,7 @@ import { pendientesDeOrden } from '@/lib/datos/pendientes-ot'
 import {
   areasDeSuMano,
   areasParaArmar,
-  exigirPermiso,
+  exigirSesion,
   puede,
   puedeCorregirReporte,
   puedeEliminarReporte,
@@ -86,13 +86,15 @@ const VISTAS = [
 type Vista = (typeof VISTAS)[number]
 
 export default async function PaginaOrden({ params, searchParams }: PageProps<'/ordenes/[id]'>) {
-  const perfil = await exigirPermiso('ordenes.ver')
+  const perfil = await exigirSesion()
+  // Supervisión, Almacén y Requerimientos ya no abren la OT (2026-10-15): un
+  // aviso o un enlace viejo los lleva a lo que la reemplaza para su puesto. Va
+  // antes del permiso, que la base ya no les da (migración 20261016120000).
+  if (trabajaPorCodigo(perfil)) redirect(reemplazoDeLaOrden(perfil))
+  if (!puede(perfil, 'ordenes.ver')) redirect('/sin-permiso')
   const { id } = await params
   const query = await searchParams
   if (query.vista === 'cumplimiento') redirect(`/ordenes/${id}/planos`)
-  // Supervisión, Almacén y Requerimientos ya no abren la OT (2026-10-15): un
-  // aviso o un enlace viejo los lleva a lo que la reemplaza para su puesto.
-  if (trabajaPorCodigo(perfil)) redirect(reemplazoDeLaOrden(perfil))
   const secciones = seccionesDeOrden(perfil)
   // Sin pestaña pedida se abre el resumen, o la primera que la persona ve.
   const vista: Vista = VISTAS.includes(query.vista as Vista)
