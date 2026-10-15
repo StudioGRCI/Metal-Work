@@ -493,6 +493,85 @@ export type Database = {
           }
         ]
       }
+      cobros_factura_venta: {
+        Row: {
+          id: string
+          factura_id: string
+          fecha: string
+          moneda: string
+          monto: number
+          cancela: boolean
+          operacion: string | null
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          factura_id: string
+          fecha: string
+          moneda: string
+          monto: number
+          cancela?: boolean
+          operacion?: string | null
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          factura_id?: string
+          fecha?: string
+          moneda?: string
+          monto?: number
+          cancela?: boolean
+          operacion?: string | null
+          archivo_ruta?: string
+          archivo_mime?: string
+          archivo_tamano?: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cobros_factura_venta_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cobros_factura_venta_factura_id_fkey"
+            columns: ["factura_id"]
+            isOneToOne: false
+            referencedRelation: "facturas_venta"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cobros_factura_venta_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       cobros_ot: {
         Row: {
           id: string
@@ -686,58 +765,6 @@ export type Database = {
           actualizado_en?: string
         }
         Relationships: []
-      }
-      cotizaciones_envios_contabilidad: {
-        Row: {
-          id: string
-          cotizacion_pdf_id: string
-          orden_id: string
-          enviado_por: string
-          enviado_en: string
-          creado_en: string
-          actualizado_en: string
-        }
-        Insert: {
-          id?: string
-          cotizacion_pdf_id: string
-          orden_id: string
-          enviado_por?: string
-          enviado_en?: string
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Update: {
-          id?: string
-          cotizacion_pdf_id?: string
-          orden_id?: string
-          enviado_por?: string
-          enviado_en?: string
-          creado_en?: string
-          actualizado_en?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cotizaciones_envios_contabilidad_cotizacion_pdf_id_fkey"
-            columns: ["cotizacion_pdf_id"]
-            isOneToOne: true
-            referencedRelation: "cotizaciones_pdf"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_envios_contabilidad_enviado_por_fkey"
-            columns: ["enviado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cotizaciones_envios_contabilidad_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ordenes_trabajo"
-            referencedColumns: ["id"]
-          }
-        ]
       }
       cotizaciones_pdf: {
         Row: {
@@ -1060,8 +1087,6 @@ export type Database = {
           observacion: string
           registrado_por: string
           creado_en: string
-          factura_venta_id: string | null
-          anulada_en: string | null
         }
         Insert: {
           id?: string
@@ -1074,8 +1099,6 @@ export type Database = {
           observacion?: string
           registrado_por?: string
           creado_en?: string
-          factura_venta_id?: string | null
-          anulada_en?: string | null
         }
         Update: {
           id?: string
@@ -1088,17 +1111,8 @@ export type Database = {
           observacion?: string
           registrado_por?: string
           creado_en?: string
-          factura_venta_id?: string | null
-          anulada_en?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "cuentas_cobrar_ot_factura_venta_id_fkey"
-            columns: ["factura_venta_id"]
-            isOneToOne: true
-            referencedRelation: "facturas_venta"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "cuentas_cobrar_ot_orden_id_fkey"
             columns: ["orden_id"]
@@ -1656,11 +1670,11 @@ export type Database = {
       facturas_venta: {
         Row: {
           id: string
+          codigo_interno: string
           cotizacion_pdf_id: string
-          orden_id: string
+          cotizacion_numero: string
           cliente_id: string | null
           cliente: string
-          cotizacion_numero: string
           numero: string
           fecha_emision: string
           fecha_vencimiento: string
@@ -1670,10 +1684,7 @@ export type Database = {
           ruta_storage: string
           nombre_archivo: string
           tamano_bytes: number
-          estado: string
           registrado_por: string
-          enviada_por: string | null
-          enviada_en: string | null
           anulada_por: string | null
           anulada_en: string | null
           motivo_anulacion: string | null
@@ -1682,11 +1693,11 @@ export type Database = {
         }
         Insert: {
           id?: string
+          codigo_interno: string
           cotizacion_pdf_id: string
-          orden_id: string
+          cotizacion_numero: string
           cliente_id?: string | null
           cliente: string
-          cotizacion_numero: string
           numero: string
           fecha_emision: string
           fecha_vencimiento: string
@@ -1696,10 +1707,7 @@ export type Database = {
           ruta_storage: string
           nombre_archivo: string
           tamano_bytes: number
-          estado?: string
           registrado_por?: string
-          enviada_por?: string | null
-          enviada_en?: string | null
           anulada_por?: string | null
           anulada_en?: string | null
           motivo_anulacion?: string | null
@@ -1708,11 +1716,11 @@ export type Database = {
         }
         Update: {
           id?: string
+          codigo_interno?: string
           cotizacion_pdf_id?: string
-          orden_id?: string
+          cotizacion_numero?: string
           cliente_id?: string | null
           cliente?: string
-          cotizacion_numero?: string
           numero?: string
           fecha_emision?: string
           fecha_vencimiento?: string
@@ -1722,10 +1730,7 @@ export type Database = {
           ruta_storage?: string
           nombre_archivo?: string
           tamano_bytes?: number
-          estado?: string
           registrado_por?: string
-          enviada_por?: string | null
-          enviada_en?: string | null
           anulada_por?: string | null
           anulada_en?: string | null
           motivo_anulacion?: string | null
@@ -1752,20 +1757,6 @@ export type Database = {
             columns: ["cotizacion_pdf_id"]
             isOneToOne: false
             referencedRelation: "cotizaciones_pdf"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "facturas_venta_enviada_por_fkey"
-            columns: ["enviada_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "facturas_venta_orden_id_fkey"
-            columns: ["orden_id"]
-            isOneToOne: false
-            referencedRelation: "ordenes_trabajo"
             referencedColumns: ["id"]
           },
           {
@@ -8588,12 +8579,6 @@ export type Database = {
           total: number | null
           cobrado: number | null
           saldo: number | null
-          factura_venta_id: string | null
-          cliente: string | null
-          cotizacion_numero: string | null
-          concepto: string | null
-          factura_ruta: string | null
-          creado_en: string | null
         }
         Relationships: []
       }
@@ -8724,6 +8709,34 @@ export type Database = {
           disponible: number | null
           almacen: string | null
           categoria: string | null
+        }
+        Relationships: []
+      }
+      v_facturas_venta: {
+        Row: {
+          id: string | null
+          codigo_interno: string | null
+          cotizacion_pdf_id: string | null
+          cotizacion_numero: string | null
+          cliente_id: string | null
+          cliente: string | null
+          numero: string | null
+          fecha_emision: string | null
+          fecha_vencimiento: string | null
+          moneda: string | null
+          total: number | null
+          concepto: string | null
+          ruta_storage: string | null
+          nombre_archivo: string | null
+          registrado_por: string | null
+          registrado_por_puesto: string | null
+          creado_en: string | null
+          anulada_en: string | null
+          motivo_anulacion: string | null
+          cobrado: number | null
+          cancelada: boolean | null
+          saldo: number | null
+          ultimo_cobro: string | null
         }
         Relationships: []
       }
@@ -9090,22 +9103,14 @@ export type Database = {
         }
         Returns: string
       }
-      anexar_factura_venta: {
+      anular_asistencia: {
         Args: {
           p_id: string | null
-          p_cotizacion: string | null
-          p_numero: string | null
-          p_fecha_emision: string | null
-          p_fecha_vencimiento: string | null
-          p_moneda: string | null
-          p_total: number | null
-          p_concepto: string | null
-          p_ruta: string | null
-          p_nombre_archivo: string | null
+          p_motivo: string | null
         }
         Returns: string
       }
-      anular_asistencia: {
+      anular_cobro_factura: {
         Args: {
           p_id: string | null
           p_motivo: string | null
@@ -9194,7 +9199,7 @@ export type Database = {
         }
         Returns: string
       }
-      archivo_de_cotizacion_para_finanzas: {
+      archivo_de_cotizacion_aprobada: {
         Args: {
           p_nombre: string | null
         }
@@ -9396,6 +9401,12 @@ export type Database = {
           documento: string | null
           referencia_id: string | null
         }[]
+      }
+      codigo_interno_de_cotizacion: {
+        Args: {
+          p_cotizacion: string | null
+        }
+        Returns: string
       }
       codigo_interno_documentos: {
         Args: {
@@ -9657,6 +9668,36 @@ export type Database = {
           monto: number | null
           tipo_cambio: number | null
           monto_pen: number | null
+        }[]
+      }
+      cotizacion_fue_aprobada: {
+        Args: {
+          p_cotizacion: string | null
+        }
+        Returns: boolean
+      }
+      cotizaciones_para_facturar: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          cotizacion_id: string | null
+          numero: string | null
+          codigo_interno: string | null
+          cliente_id: string | null
+          cliente: string | null
+          cliente_documento: string | null
+          cliente_direccion: string | null
+          carroceria: string | null
+          moneda: string | null
+          monto_venta: number | null
+          incluye_igv: boolean | null
+          en_correccion: boolean | null
+          aprobada_en: string | null
+          archivo_ruta: string | null
+          archivo_mime: string | null
+          archivo_nombre: string | null
+          facturas: number | null
+          facturado: number | null
+          cobrado: number | null
         }[]
       }
       crear_compra_agrupada: {
@@ -10022,18 +10063,6 @@ export type Database = {
         }
         Returns: string
       }
-      enviar_cotizacion_a_contabilidad: {
-        Args: {
-          p_cotizacion: string | null
-        }
-        Returns: string
-      }
-      enviar_factura_a_tesoreria: {
-        Args: {
-          p_factura: string | null
-        }
-        Returns: string
-      }
       enviar_planilla_diaria: {
         Args: {
           p_id: string | null
@@ -10077,26 +10106,11 @@ export type Database = {
         }
         Returns: null
       }
-      facturacion_bandeja: {
+      facturacion_pendientes: {
         Args: Record<PropertyKey, never>
         Returns: {
-          envio_id: string | null
-          cotizacion_id: string | null
-          numero: string | null
-          cliente_id: string | null
-          cliente: string | null
-          cliente_documento: string | null
-          cliente_direccion: string | null
-          carroceria: string | null
-          monto_venta: number | null
-          moneda: string | null
-          orden_id: string | null
-          orden_numero: string | null
-          enviado_en: string | null
-          enviado_por: string | null
-          archivo_ruta: string | null
-          archivo_mime: string | null
-          archivo_nombre: string | null
+          por_facturar: number | null
+          por_cobrar: number | null
         }[]
       }
       fijar_condicion_pago_compra: {
@@ -10153,15 +10167,6 @@ export type Database = {
           p_minimo: number | null
         }
         Returns: string
-      }
-      finanzas_pendientes: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          por_enviar_contabilidad: number | null
-          por_facturar: number | null
-          facturas_por_enviar: number | null
-          servicios_por_pagar: number | null
-        }[]
       }
       flota_sigue_en_taller: {
         Args: {
@@ -10844,6 +10849,18 @@ export type Database = {
         }
         Returns: number
       }
+      registrar_cobro_factura: {
+        Args: {
+          p_id: string | null
+          p_factura: string | null
+          p_fecha: string | null
+          p_monto: number | null
+          p_cancela: boolean | null
+          p_operacion: string | null
+          p_ruta: string | null
+        }
+        Returns: string
+      }
       registrar_conteo_almacen: {
         Args: {
           p_id: string | null
@@ -10859,6 +10876,21 @@ export type Database = {
           p_tipo_evento: Database["public"]["Enums"]["tipo_evento_ot"] | null
           p_descripcion: string | null
           p_datos?: Json | null
+        }
+        Returns: string
+      }
+      registrar_factura_venta: {
+        Args: {
+          p_id: string | null
+          p_cotizacion: string | null
+          p_numero: string | null
+          p_fecha_emision: string | null
+          p_fecha_vencimiento: string | null
+          p_moneda: string | null
+          p_total: number | null
+          p_concepto: string | null
+          p_ruta: string | null
+          p_nombre_archivo: string | null
         }
         Returns: string
       }
@@ -11534,6 +11566,10 @@ export type Database = {
         }
         Returns: number
       }
+      servicios_pendientes_de_pago: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       servicios_por_pagar: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -11542,7 +11578,7 @@ export type Database = {
           proveedor_id: string | null
           proveedor: string | null
           proveedor_documento: string | null
-          orden: string | null
+          codigo_interno: string | null
           descripcion: string | null
           moneda: string | null
           monto: number | null

@@ -1,13 +1,16 @@
 /**
  * Lo que comparten las pantallas de Facturación (Contabilidad) y de Tesorería.
  * Puro, sin consultas: lo usan el servidor y el navegador. Las mismas cifras
- * las exige la base (migración 20261015120000).
+ * las exige la base (migraciones 20261015120000 a 20261015124000).
  */
 
 type Tono = 'neutro' | 'exito' | 'aviso' | 'peligro' | 'info' | 'acento'
 
 /** El bucket privado de las facturas de venta: la ruta es `{factura}/{archivo}.pdf`. */
 export const BUCKET_FACTURAS_VENTA = 'facturas-venta'
+
+/** El bucket privado de los vouchers de cobro de las facturas de venta: la ruta es `{factura}/{archivo}`. */
+export const BUCKET_COBROS_VENTA = 'cobros-venta'
 
 /** El bucket privado de los comprobantes de pago de servicio: la ruta es `{orden de servicio}/{archivo}`. */
 export const BUCKET_PAGOS_SERVICIO = 'pagos-servicio'
@@ -26,11 +29,19 @@ export const TIPOS_COMPROBANTE_PAGO: Record<string, string> = {
   'image/webp': 'webp',
 }
 
-/** En qué va la factura de venta que anexó Contabilidad. */
-export const ESTADO_FACTURA_VENTA: Record<string, { etiqueta: string; tono: Tono }> = {
-  ANEXADA: { etiqueta: 'Por enviar a Tesorería', tono: 'aviso' },
-  ENVIADA: { etiqueta: 'En Tesorería', tono: 'exito' },
-  ANULADA: { etiqueta: 'Anulada', tono: 'peligro' },
+/**
+ * En qué va una factura de venta (migración 20261015124000): anulada por
+ * Contabilidad, cobrada (un cobro la canceló), con cobros a cuenta o por cobrar.
+ */
+export function estadoFacturaVenta(f: {
+  anulada_en: string | null
+  cancelada: boolean | null
+  cobrado: number | null
+}): { etiqueta: string; tono: Tono } {
+  if (f.anulada_en) return { etiqueta: 'Anulada', tono: 'peligro' }
+  if (f.cancelada) return { etiqueta: 'Cobrada', tono: 'exito' }
+  if (Number(f.cobrado ?? 0) > 0) return { etiqueta: 'Cobro a cuenta', tono: 'info' }
+  return { etiqueta: 'Por cobrar', tono: 'aviso' }
 }
 
 /**
@@ -52,4 +63,13 @@ export const CONTROL_FACTURA_COMPRA: Record<string, { etiqueta: string; tono: To
 export function normalizarNumeroFactura(texto: string): string | null {
   const m = texto.replace(/\s/g, '').toUpperCase().match(/^([A-Z][A-Z0-9]{3})-0*([1-9][0-9]{0,7})$/)
   return m ? `${m[1]}-${Number(m[2])}` : null
+}
+
+/**
+ * El total de la cotización con IGV: si Ventas confirmó que el monto no lo
+ * incluye, se le suma el 18 %. Nulo si la cotización no tiene monto.
+ */
+export function totalConIgv(monto: number | null, incluyeIgv: boolean | null): number | null {
+  if (monto === null) return null
+  return incluyeIgv === false ? Math.round(Number(monto) * 118) / 100 : Number(monto)
 }

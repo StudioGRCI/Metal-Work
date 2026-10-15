@@ -2,28 +2,38 @@ import 'server-only'
 
 import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila } from '@/lib/datos/logistica'
 import type { DetraccionDeServicio } from '@/lib/dominio/detraccion'
-import { BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO } from '@/lib/dominio/finanzas'
+import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO } from '@/lib/dominio/finanzas'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Tablas, Vistas } from '@/types/database'
 
 type Funciones<T extends keyof Database['public']['Functions']> = Database['public']['Functions'][T]
 
 /**
- * La OT pasa por Contabilidad (migración 20261015120000): Administración envía
- * la cotización aprobada con su OT, Contabilidad anexa la factura y la envía a
- * Tesorería, donde entra a las cuentas por cobrar. Tesorería paga además las
- * órdenes de servicio aprobadas.
+ * La factura de venta y su cobro cuelgan del código interno (migración
+ * 20261015124000): Contabilidad ve cada cotización aprobada y registra su
+ * factura con el PDF; la factura entra sola a cuentas por cobrar y Tesorería
+ * registra cada cobro con su voucher. Tesorería paga además las órdenes de
+ * servicio aprobadas (migración 20261015120000).
  */
 
-type FacturaFila = Pick<
-  Tablas<'facturas_venta'>,
-  | 'id' | 'cotizacion_pdf_id' | 'numero' | 'fecha_emision' | 'fecha_vencimiento' | 'moneda' | 'total' | 'concepto'
-  | 'estado' | 'ruta_storage' | 'nombre_archivo' | 'enviada_en' | 'anulada_en' | 'motivo_anulacion' | 'creado_en'
+type FilaCobro = Pick<
+  Tablas<'cobros_factura_venta'>,
+  'id' | 'factura_id' | 'fecha' | 'monto' | 'cancela' | 'operacion' | 'archivo_ruta' | 'archivo_mime' | 'anulado_en' | 'motivo_anulacion'
 >
-export type FacturaVenta = FacturaFila & { url: string | null }
+export type CobroFactura = FilaCobro & { url: string | null }
 
-type FilaBandeja = Funciones<'facturacion_bandeja'>['Returns'][number]
-export type CotizacionPorFacturar = FilaBandeja & { url: string | null; facturas: FacturaVenta[] }
+type FilaFactura = Pick<
+  Vistas<'v_facturas_venta'>,
+  | 'id' | 'codigo_interno' | 'cotizacion_pdf_id' | 'cotizacion_numero' | 'cliente' | 'numero' | 'fecha_emision'
+  | 'fecha_vencimiento' | 'moneda' | 'total' | 'concepto' | 'ruta_storage' | 'anulada_en' | 'motivo_anulacion'
+  | 'cobrado' | 'cancelada' | 'saldo' | 'creado_en'
+>
+export type FacturaVenta = FilaFactura & { url: string | null; cobros: CobroFactura[] }
+
+type FilaCotizacion = Funciones<'cotizaciones_para_facturar'>['Returns'][number]
+export type CotizacionAprobada = FilaCotizacion & { url: string | null }
+/** En la bandeja de Contabilidad, `facturas` deja de ser la cuenta y trae las facturas mismas. */
+export type CotizacionParaFacturar = Omit<CotizacionAprobada, 'facturas'> & { facturas: FacturaVenta[] }
 
 /** Enlaces firmados de un bucket, por ruta. Sin enlace la fila igual se muestra: se ve qué hay aunque no se abra. */
 export async function enlaces(bucket: string, rutas: (string | null)[], segundos = 600): Promise<Map<string, string>> {
@@ -37,110 +47,81 @@ export async function enlaces(bucket: string, rutas: (string | null)[], segundos
 }
 
 /**
- * Lo que Contabilidad tiene por facturar: cada cotización que le envió
- * Administración, con el cliente, la OT, el archivo aprobado y las facturas
- * que ya le anexó. Primero las que no tienen ninguna factura vigente.
+ * Cada cotización aprobada y vigente, con su código interno (nulo mientras
+ * Administración no cargue la OT), el cliente, el total y el enlace al archivo
+ * aprobado. La cotización en Word se baja con su nombre; el PDF se abre.
  */
-export async function bandejaDeFacturacion(): Promise<CotizacionPorFacturar[]> {
+export async function cotizacionesAprobadas(): Promise<CotizacionAprobada[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('facturacion_bandeja')
-  if (error) throw new Error(`No se pudo leer lo que hay por facturar: ${error.message}`)
+  const { data, error } = await supabase.rpc('cotizaciones_para_facturar')
+  if (error) throw new Error(`No se pudieron leer las cotizaciones aprobadas: ${error.message}`)
   const filas = data ?? []
-  if (filas.length === 0) return []
-
-  const ids = filas.flatMap((f) => (f.cotizacion_id ? [f.cotizacion_id] : []))
-  const { data: facturas, error: errorFacturas } = await supabase
-    .from('facturas_venta')
-    .select('id, cotizacion_pdf_id, numero, fecha_emision, fecha_vencimiento, moneda, total, concepto, estado, ruta_storage, nombre_archivo, enviada_en, anulada_en, motivo_anulacion, creado_en')
-    .in('cotizacion_pdf_id', ids)
-    .order('creado_en', { ascending: true })
-  if (errorFacturas) throw new Error(`No se pudieron leer las facturas: ${errorFacturas.message}`)
-
-  // La cotización en Word se baja con su nombre; el PDF se abre en el navegador.
-  const pdfs = filas.filter((f) => (f.archivo_mime ?? 'application/pdf') === 'application/pdf')
-  const [urlsCotizacion, urlsFactura] = await Promise.all([
-    enlaces('cotizaciones-pdf', pdfs.map((f) => f.archivo_ruta)),
-    enlaces(BUCKET_FACTURAS_VENTA, (facturas ?? []).map((f) => f.ruta_storage)),
-  ])
+  const esPdf = (f: FilaCotizacion) => (f.archivo_mime ?? 'application/pdf') === 'application/pdf'
+  const urls = await enlaces('cotizaciones-pdf', filas.filter(esPdf).map((f) => f.archivo_ruta))
   await Promise.all(
     filas
-      .filter((f) => f.archivo_ruta && (f.archivo_mime ?? 'application/pdf') !== 'application/pdf')
+      .filter((f) => f.archivo_ruta && !esPdf(f))
       .map(async (f) => {
         const { data: firmado } = await supabase.storage
           .from('cotizaciones-pdf')
           .createSignedUrl(f.archivo_ruta as string, 600, { download: f.archivo_nombre ?? true })
-        if (firmado?.signedUrl) urlsCotizacion.set(f.archivo_ruta as string, firmado.signedUrl)
+        if (firmado?.signedUrl) urls.set(f.archivo_ruta as string, firmado.signedUrl)
       }),
   )
-
-  const lista = filas.map((f) => ({
-    ...f,
-    url: (f.archivo_ruta && urlsCotizacion.get(f.archivo_ruta)) ?? null,
-    facturas: (facturas ?? [])
-      .filter((x) => x.cotizacion_pdf_id === f.cotizacion_id)
-      .map((x) => ({ ...x, url: urlsFactura.get(x.ruta_storage) ?? null })),
-  }))
-  const sinFactura = (c: CotizacionPorFacturar) => !c.facturas.some((x) => x.estado !== 'ANULADA')
-  return lista.sort((a, b) => Number(sinFactura(b)) - Number(sinFactura(a)))
+  return filas.map((f) => ({ ...f, url: (f.archivo_ruta && urls.get(f.archivo_ruta)) ?? null }))
 }
-
-type FacturaDeCotizacion = Pick<Tablas<'facturas_venta'>, 'cotizacion_pdf_id' | 'numero' | 'estado' | 'total' | 'moneda'>
 
 /**
- * Por cotización, si Administración ya la envió a Contabilidad y qué facturas
- * salieron. El RLS decide qué ve cada uno: Ventas ve el envío pero no las
- * facturas; Administración, las que ya llegaron a Tesorería.
+ * Las facturas de venta con sus cobros y los enlaces a la factura y a cada
+ * voucher. Con `cotizaciones`, solo las de esas cotizaciones (anuladas
+ * incluidas); sin él, las vigentes, de la que vence antes a la que vence después.
  */
-export async function envioYFacturasDe(cotizacionIds: string[]) {
-  const vacio = { envios: new Map<string, string>(), facturas: new Map<string, FacturaDeCotizacion[]>() }
-  if (cotizacionIds.length === 0) return vacio
+export async function facturasDeVenta(cotizaciones?: string[]): Promise<FacturaVenta[]> {
+  if (cotizaciones && cotizaciones.length === 0) return []
   const supabase = await createClient()
-  const [envios, facturas] = await Promise.all([
-    supabase.from('cotizaciones_envios_contabilidad').select('cotizacion_pdf_id, enviado_en').in('cotizacion_pdf_id', cotizacionIds),
-    supabase.from('facturas_venta').select('cotizacion_pdf_id, numero, estado, total, moneda').in('cotizacion_pdf_id', cotizacionIds).order('creado_en'),
-  ])
-  if (envios.error) throw new Error(`No se pudo leer el envío a Contabilidad: ${envios.error.message}`)
-  if (facturas.error) throw new Error(`No se pudieron leer las facturas: ${facturas.error.message}`)
-  for (const e of envios.data ?? []) vacio.envios.set(e.cotizacion_pdf_id, e.enviado_en)
-  for (const f of facturas.data ?? []) {
-    vacio.facturas.set(f.cotizacion_pdf_id, [...(vacio.facturas.get(f.cotizacion_pdf_id) ?? []), f])
-  }
-  return vacio
-}
-
-type CuentaCobrarFila = Pick<
-  Vistas<'v_cuentas_cobrar_ot'>,
-  | 'id' | 'orden_id' | 'numero_ot' | 'numero_documento' | 'fecha_emision' | 'fecha_vencimiento' | 'moneda' | 'total'
-  | 'cobrado' | 'saldo' | 'factura_venta_id' | 'cliente' | 'cotizacion_numero' | 'concepto' | 'factura_ruta' | 'creado_en'
->
-export type CuentaPorCobrar = CuentaCobrarFila & {
-  url: string | null
-  cobros: Pick<Tablas<'cobros_ot'>, 'id' | 'fecha' | 'monto' | 'referencia'>[]
-}
-
-/** Las facturas que Contabilidad envió a Tesorería (y las que se anotaron a mano antes), con sus cobros y el PDF. */
-export async function cuentasPorCobrar(): Promise<CuentaPorCobrar[]> {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('v_cuentas_cobrar_ot')
-    .select('id, orden_id, numero_ot, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, cobrado, saldo, factura_venta_id, cliente, cotizacion_numero, concepto, factura_ruta, creado_en')
-    .order('fecha_vencimiento')
-    .limit(300)
-  if (error) throw new Error(`No se pudieron leer las cuentas por cobrar: ${error.message}`)
+  const columnas =
+    'id, codigo_interno, cotizacion_pdf_id, cotizacion_numero, cliente, numero, fecha_emision, fecha_vencimiento, moneda, total, concepto, ruta_storage, anulada_en, motivo_anulacion, cobrado, cancelada, saldo, creado_en'
+  const consulta = cotizaciones
+    ? supabase.from('v_facturas_venta').select(columnas).in('cotizacion_pdf_id', cotizaciones).order('creado_en')
+    : supabase.from('v_facturas_venta').select(columnas).is('anulada_en', null).order('fecha_vencimiento').limit(300)
+  const { data, error } = await consulta
+  if (error) throw new Error(`No se pudieron leer las facturas de venta: ${error.message}`)
   const filas = data ?? []
   const ids = filas.flatMap((f) => (f.id ? [f.id] : []))
-  const [cobros, urls] = await Promise.all([
-    ids.length
-      ? supabase.from('cobros_ot').select('id, cuenta_id, fecha, monto, referencia').in('cuenta_id', ids).order('fecha')
-      : Promise.resolve({ data: [], error: null }),
-    enlaces(BUCKET_FACTURAS_VENTA, filas.map((f) => f.factura_ruta)),
-  ])
+  const cobros = ids.length
+    ? await supabase
+        .from('cobros_factura_venta')
+        .select('id, factura_id, fecha, monto, cancela, operacion, archivo_ruta, archivo_mime, anulado_en, motivo_anulacion')
+        .in('factura_id', ids)
+        .order('fecha')
+        .order('creado_en')
+    : { data: [], error: null }
   if (cobros.error) throw new Error(`No se pudieron leer los cobros: ${cobros.error.message}`)
+  const [urlsFactura, urlsVoucher] = await Promise.all([
+    enlaces(BUCKET_FACTURAS_VENTA, filas.map((f) => f.ruta_storage)),
+    enlaces(BUCKET_COBROS_VENTA, (cobros.data ?? []).map((c) => c.archivo_ruta)),
+  ])
   return filas.map((f) => ({
     ...f,
-    url: (f.factura_ruta && urls.get(f.factura_ruta)) ?? null,
-    cobros: (cobros.data ?? []).filter((c) => c.cuenta_id === f.id).map(({ id, fecha, monto, referencia }) => ({ id, fecha, monto, referencia })),
+    url: (f.ruta_storage && urlsFactura.get(f.ruta_storage)) ?? null,
+    cobros: (cobros.data ?? [])
+      .filter((c) => c.factura_id === f.id)
+      .map((c) => ({ ...c, url: urlsVoucher.get(c.archivo_ruta) ?? null })),
   }))
+}
+
+/**
+ * Lo que Contabilidad tiene por facturar: cada cotización aprobada con sus
+ * facturas. Primero las que tienen código interno y ninguna factura vigente;
+ * al final, las que esperan que Administración cargue la OT.
+ */
+export async function bandejaDeFacturacion(): Promise<CotizacionParaFacturar[]> {
+  const cotizaciones = await cotizacionesAprobadas()
+  const facturas = await facturasDeVenta(cotizaciones.flatMap((c) => (c.cotizacion_id ? [c.cotizacion_id] : [])))
+  const lista = cotizaciones.map((c) => ({ ...c, facturas: facturas.filter((f) => f.cotizacion_pdf_id === c.cotizacion_id) }))
+  const turno = (c: CotizacionParaFacturar) =>
+    !c.codigo_interno ? 2 : c.facturas.some((f) => !f.anulada_en) ? 1 : 0
+  return lista.sort((a, b) => turno(a) - turno(b))
 }
 
 type ServicioFila = Funciones<'servicios_por_pagar'>['Returns'][number]
@@ -152,7 +133,6 @@ type PagoServicioFila = Pick<
 export type ServicioPorPagar = ServicioFila & {
   pagos: (PagoServicioFila & { url: string | null })[]
   cuentas: Pick<Tablas<'proveedor_cuentas'>, 'id' | 'banco' | 'numero_cuenta' | 'titular' | 'moneda'>[]
-  codigo_interno: string | null
   detraccion: DetraccionDeServicio
 }
 
@@ -191,7 +171,6 @@ export async function serviciosPorPagar(verCuentas: boolean): Promise<ServicioPo
     ...f,
     pagos: (pagos.data ?? []).filter((p) => p.orden_servicio_id === f.id).map((p) => ({ ...p, url: urls.get(p.archivo_ruta) ?? null })),
     cuentas: (cuentas.data ?? []).filter((c) => c.proveedor_id === f.proveedor_id).map(({ id, banco, numero_cuenta, titular, moneda }) => ({ id, banco, numero_cuenta, titular, moneda })),
-    codigo_interno: (f.id && detraccionDe.get(f.id)?.codigo_interno) || null,
     detraccion: detraccionDeFila(f.id ? detraccionDe.get(f.id) : undefined, tipos),
   }))
 }

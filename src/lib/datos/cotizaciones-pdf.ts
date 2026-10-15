@@ -1,8 +1,7 @@
 import 'server-only'
 
-import { envioYFacturasDe } from '@/lib/datos/facturacion'
 import { createClient } from '@/lib/supabase/server'
-import type { Tablas, Vistas } from '@/types/database'
+import type { Vistas } from '@/types/database'
 
 /**
  * La cotización que la casa arma en Word y manda en PDF (migraciones 101 a
@@ -15,13 +14,19 @@ export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & {
   url: string | null
   urlAprobada: string | null
   versiones: VersionCotizacion[]
-  /** Cuándo Administración la envió a Contabilidad para facturarla (migración 20261015120000). */
-  enviadaAContabilidad: string | null
-  /** Las facturas que salieron de ella, las que quien mira puede ver. */
-  facturas: Pick<Tablas<'facturas_venta'>, 'numero' | 'estado' | 'total' | 'moneda'>[]
+  /**
+   * Las facturas de venta que Contabilidad registró por ella, con lo cobrado
+   * (migración 20261015124000). Las ve quien ve facturas; los demás, ninguna.
+   */
+  facturas: FacturaDeCotizacion[]
   /** Semirremolque o carrocería montada, si el catálogo lo sabe: lo propone al emitir la OT (migración 104). */
   tipo_unidad: string | null
 }
+
+type FacturaDeCotizacion = Pick<
+  Vistas<'v_facturas_venta'>,
+  'id' | 'cotizacion_pdf_id' | 'numero' | 'total' | 'moneda' | 'cobrado' | 'cancelada' | 'anulada_en'
+>
 
 const PDF = 'application/pdf'
 
@@ -69,7 +74,13 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
   if (filas.length === 0) return []
 
   const cotizacionIds = filas.flatMap((f) => f.id ? [f.id] : [])
-  const finanzas = await envioYFacturasDe(cotizacionIds)
+  // El RLS decide: a quien no ve facturas le llegan cero filas, no un error.
+  const facturas = await supabase
+    .from('v_facturas_venta')
+    .select('id, cotizacion_pdf_id, numero, total, moneda, cobrado, cancelada, anulada_en')
+    .in('cotizacion_pdf_id', cotizacionIds)
+    .order('creado_en')
+  if (facturas.error) throw new Error(`No se pudieron leer las facturas de las cotizaciones: ${facturas.error.message}`)
 
   // Solo las que tuvieron más de una versión tienen historial que leer.
   const conHistorial = filas.filter((f) => (f.version ?? 1) > 1 && f.id).map((f) => f.id as string)
@@ -99,8 +110,7 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
     const ultimaAprobada = versiones.find((v) => v.cotizacion_id === f.id && v.estado_al_archivar === 'APROBADA')
     return {
       ...f,
-      enviadaAContabilidad: (f.id && finanzas.envios.get(f.id)) ?? null,
-      facturas: ((f.id && finanzas.facturas.get(f.id)) || []).map(({ numero, estado, total, moneda }) => ({ numero, estado, total, moneda })),
+      facturas: (facturas.data ?? []).filter((x) => x.cotizacion_pdf_id === f.id),
       tipo_unidad: (f.tipo_carroceria_id && tipoDe.get(f.tipo_carroceria_id)) ?? null,
       url: (f.ruta_storage && enlaces.get(f.ruta_storage)) ?? null,
       urlAprobada: f.estado === 'APROBADA'

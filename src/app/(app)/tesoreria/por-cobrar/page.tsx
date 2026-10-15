@@ -1,43 +1,47 @@
-import { FileText, HandCoins } from 'lucide-react'
-import Link from 'next/link'
+import { Download, FileText, HandCoins } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { FacturaDeVenta } from '@/components/finanzas/factura-de-venta'
+import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { solicitudesPendientesTesoreria } from '@/lib/datos/costos-ot'
-import { cuentasPorCobrar, type CuentaPorCobrar } from '@/lib/datos/facturacion'
-import { fecha, hoyLima, moneda } from '@/lib/format'
+import { cotizacionesAprobadas, facturasDeVenta } from '@/lib/datos/facturacion'
+import { totalConIgv } from '@/lib/dominio/finanzas'
+import { hoyLima, moneda, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
-import { Movimiento } from '../formularios'
+import { AnularCobro, CobrarFactura } from '../formularios'
 import { SolicitudesOT } from '../solicitudes-ot'
-import { codigoMoneda, Vencimiento } from '../vencimiento'
 
 export const metadata = { title: 'Cuentas por cobrar' }
 
+const codigo = (m: string | null): CodigoMoneda => (m === 'USD' ? 'USD' : 'PEN')
+
 /**
- * Las facturas que Contabilidad envió a Tesorería (migración 20261015120000):
- * cada una nace aquí con su cliente, su OT, su cotización y el PDF. Tesorería
- * registra lo que entra hasta dejar el saldo en cero. Las que se anotaron a
- * mano antes de este circuito siguen aquí, sin PDF.
+ * Las facturas de venta que registró Contabilidad (migración 20261015124000):
+ * cada una colgada del código interno y de su cotización, con el PDF. Tesorería
+ * registra cada cobro con su voucher hasta cancelarla. Debajo, las cotizaciones
+ * aprobadas, para saber qué viene por cobrar.
  */
 export default async function PaginaPorCobrar() {
   const perfil = await exigirPermiso('tesoreria.ver_documentos')
   const cobra = puede(perfil, 'tesoreria.registrar_cobros')
   const responde = puede(perfil, 'tesoreria.liberar')
-  const [cuentas, solicitudes] = await Promise.all([
-    cuentasPorCobrar(),
+  const [facturas, cotizaciones, solicitudes] = await Promise.all([
+    facturasDeVenta(),
+    cotizacionesAprobadas(),
     responde ? solicitudesPendientesTesoreria() : Promise.resolve([]),
   ])
   const hoy = hoyLima()
-  const pendientes = cuentas.filter((c) => Number(c.saldo) > 0)
-  const cobradas = cuentas.filter((c) => Number(c.saldo) <= 0)
-  const saldoPor = (m: 'PEN' | 'USD') => pendientes.filter((c) => codigoMoneda(c.moneda) === m).reduce((n, c) => n + Number(c.saldo), 0)
+  const pendientes = facturas.filter((f) => !f.cancelada && Number(f.saldo) > 0)
+  const cobradas = facturas.filter((f) => !pendientes.includes(f))
+  const saldoPor = (m: CodigoMoneda) => pendientes.filter((f) => codigo(f.moneda) === m).reduce((n, f) => n + Number(f.saldo), 0)
 
   return (
     <>
       <EncabezadoPagina
         titulo="Cuentas por cobrar"
-        descripcion="Las facturas que te envió Contabilidad, de la que vence antes a la que vence después. Registra cada cobro con su referencia bancaria."
+        descripcion="Las facturas que registró Contabilidad, por código interno, de la que vence antes a la que vence después. Registra cada cobro con su voucher."
       />
 
       {pendientes.length > 0 && (
@@ -63,11 +67,30 @@ export default async function PaginaPorCobrar() {
               </span>
               <p className="mt-3 text-sm font-semibold text-texto">No hay facturas por cobrar</p>
               <p className="mt-1 max-w-lg text-sm text-texto-suave">
-                Contabilidad te las envía desde Facturación cuando emite la factura de una OT. Te llega un aviso con cada una.
+                Llegan solas cuando Contabilidad registra la factura de una cotización aprobada. Te llega un aviso con cada una.
               </p>
             </div>
           ) : (
-            pendientes.map((c) => <Cuenta key={c.id} cuenta={c} cobra={cobra} hoy={hoy} />)
+            pendientes.map((f) => (
+              <FacturaDeVenta
+                key={f.id}
+                factura={f}
+                conCotizacion
+                acciones={
+                  cobra && f.id && f.numero ? (
+                    <CobrarFactura
+                      facturaId={f.id}
+                      numero={f.numero}
+                      cliente={f.cliente ?? 'Cliente sin registrar'}
+                      hoy={hoy}
+                      saldo={Number(f.saldo)}
+                      codigoMoneda={codigo(f.moneda)}
+                    />
+                  ) : null
+                }
+                accionCobro={cobra ? (b) => <AnularCobro cobroId={b.id} /> : undefined}
+              />
+            ))
           )}
         </TarjetaCuerpo>
       </Tarjeta>
@@ -78,69 +101,65 @@ export default async function PaginaPorCobrar() {
             Cobradas ({cobradas.length})
           </summary>
           <div className="space-y-3 border-t border-borde p-4">
-            {cobradas.map((c) => (
-              <Cuenta key={c.id} cuenta={c} cobra={false} hoy={hoy} />
+            {cobradas.map((f) => (
+              <FacturaDeVenta key={f.id} factura={f} conCotizacion accionCobro={cobra ? (b) => <AnularCobro cobroId={b.id} /> : undefined} />
             ))}
           </div>
         </details>
       )}
-    </>
-  )
-}
 
-function Cuenta({ cuenta: c, cobra, hoy }: { cuenta: CuentaPorCobrar; cobra: boolean; hoy: string }) {
-  const m = codigoMoneda(c.moneda)
-  const saldo = Number(c.saldo)
-  return (
-    // Con `id`: el aviso de la campana aterriza en esta factura (`#id`).
-    <article
-      id={c.factura_venta_id ?? c.id ?? undefined}
-      className="scroll-mt-20 rounded-[var(--radius-base)] border border-borde p-3 target:border-acento"
-    >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-        <p className="font-medium text-texto">
-          <span className="tabular">Factura {c.numero_documento}</span>
-          {c.cliente && <span className="font-normal"> · {c.cliente}</span>}
-        </p>
-        <p className="tabular text-sm font-semibold text-texto">{saldo > 0 ? `Saldo ${moneda(saldo, m)}` : 'Cobrada'}</p>
-      </div>
-      <p className="mt-0.5 text-xs text-texto-suave">
-        {c.orden_id ? (
-          <Link href={`/ordenes/${c.orden_id}`} className="text-acento hover:underline">
-            OT {c.numero_ot}
-          </Link>
-        ) : (
-          'Sin OT'
-        )}
-        {c.cotizacion_numero && ` · cotización ${c.cotizacion_numero}`}
-        {c.concepto && ` · ${c.concepto}`}
-      </p>
-      <p className="mt-0.5 text-xs text-texto-suave">
-        <Vencimiento dia={c.fecha_vencimiento} saldo={saldo} /> · emitida el {fecha(c.fecha_emision)} · total{' '}
-        <span className="tabular">{moneda(c.total, m)}</span>
-        {Number(c.cobrado) > 0 && (
-          <>
-            {' '}
-            · cobrado <span className="tabular">{moneda(c.cobrado, m)}</span>
-          </>
-        )}
-      </p>
-      {c.url && (
-        <a href={c.url} target="_blank" rel="noreferrer" className="mt-1 inline-flex min-h-11 items-center gap-1.5 text-sm text-acento hover:underline sm:min-h-0">
-          <FileText aria-hidden className="size-4" />
-          Abrir la factura
-        </a>
-      )}
-      {c.cobros.length > 0 && (
-        <ol className="mt-2 space-y-0.5 border-t border-borde pt-2 text-xs text-texto-suave">
-          {c.cobros.map((b) => (
-            <li key={b.id}>
-              Cobro del {fecha(b.fecha)} · <span className="tabular text-texto">{moneda(b.monto, m)}</span> · {b.referencia}
-            </li>
-          ))}
-        </ol>
-      )}
-      {cobra && saldo > 0 && c.id && <Movimiento id={c.id} tipo="cobro" saldo={saldo} hoy={hoy} />}
-    </article>
+      <Tarjeta className="mt-5">
+        <TarjetaCabecera
+          titulo="Cotizaciones aprobadas"
+          descripcion="Lo que Gerencia aprobó, por código interno, con lo que Contabilidad ya facturó y lo cobrado."
+        />
+        <TarjetaCuerpo className="space-y-2">
+          {cotizaciones.length === 0 ? (
+            <p className="text-sm text-texto-suave">Todavía no hay cotizaciones aprobadas.</p>
+          ) : (
+            cotizaciones.map((c) => {
+              const m = codigo(c.moneda)
+              const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+              return (
+                <div
+                  key={c.cotizacion_id}
+                  className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-[var(--radius-base)] border border-borde p-3 text-sm"
+                  data-cotizacion={c.numero ?? undefined}
+                >
+                  <span>
+                    <span className="font-medium text-texto">{c.codigo_interno ? `Código ${c.codigo_interno}` : 'Sin código interno'}</span>
+                    <span className="text-texto-suave">
+                      {' '}
+                      · {c.cliente ?? 'Cliente sin registrar'} · cotización {c.numero}
+                    </span>
+                    <span className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-texto-suave">
+                      {Number(c.facturas) === 0 ? (
+                        <Insignia tono="neutro">{c.codigo_interno ? 'Contabilidad aún no la factura' : 'Falta cargar la OT'}</Insignia>
+                      ) : (
+                        <span className="tabular">
+                          Facturado {moneda(c.facturado, m)} · cobrado {moneda(c.cobrado, m)}
+                        </span>
+                      )}
+                      {c.url && (
+                        <a
+                          href={c.url}
+                          target={c.archivo_mime === 'application/pdf' ? '_blank' : undefined}
+                          rel="noreferrer"
+                          className="inline-flex min-h-11 items-center gap-1 text-acento hover:underline sm:min-h-0"
+                        >
+                          {c.archivo_mime === 'application/pdf' ? <FileText aria-hidden className="size-3.5" /> : <Download aria-hidden className="size-3.5" />}
+                          {c.archivo_mime === 'application/pdf' ? 'Abrir la cotización' : 'Bajar la cotización'}
+                        </a>
+                      )}
+                    </span>
+                  </span>
+                  <strong className="tabular">{total === null ? <span className="font-normal text-texto-suave">Sin total</span> : moneda(total, m)}</strong>
+                </div>
+              )
+            })
+          )}
+        </TarjetaCuerpo>
+      </Tarjeta>
+    </>
   )
 }

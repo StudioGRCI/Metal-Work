@@ -3,8 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
-import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
-import { exigirPermiso, exigirSesion, puede } from '@/lib/sesion'
+import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 function dato(formulario: FormData, nombre: string) {
@@ -12,28 +12,78 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor.trim() : ''
 }
 
-const dinero = z.coerce.number().positive().multipleOf(0.01)
-const movimiento = z.object({ id: z.guid(), fecha: z.iso.date(), monto: dinero, referencia: z.string().trim().min(3).max(120) })
+const NO_COBRA = 'Los cobros los registra Tesorería.'
+const MOTIVO = z.string().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.')
+
+function repintarCobros() {
+  revalidatePath('/tesoreria/por-cobrar')
+  revalidatePath('/contabilidad/facturacion')
+  revalidatePath('/cotizaciones/pdf')
+  revalidatePath('/codigos-internos')
+}
 
 /**
- * Un cobro de una factura por cobrar. La cuenta la crea Contabilidad al enviar
- * la factura (migración 20261015120000); Tesorería registra lo que entra.
- * Mismo permiso que la política de `cobros_ot` (`tesoreria.registrar_cobros`).
+ * Tesorería registra un cobro de una factura de venta, con su voucher ya subido
+ * a `cobros-venta/{factura}/…` (migración 20261015124000). Mismo permiso que
+ * `registrar_cobro_factura` (`tesoreria.registrar_cobros`). El id llega de la
+ * pantalla: un reintento no registra otro.
  */
-export async function registrarCobro(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
-  await exigirPermiso('tesoreria.registrar_cobros')
-  const v = movimiento.safeParse(Object.fromEntries(formulario))
-  if (!v.success) return { ok: false, error: 'Indica la fecha, el importe y la referencia bancaria del cobro.' }
+export async function registrarCobroFactura(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tesoreria.registrar_cobros')) return { ok: false, error: NO_COBRA }
+  const analisis = z
+    .object({
+      id: z.guid(),
+      factura_id: z.guid(),
+      fecha: z.iso.date('Elige el día del cobro.'),
+      monto: z.coerce.number('Escribe lo que se cobró.').positive('Escribe lo que se cobró.').multipleOf(0.01, 'El importe va en dos decimales.'),
+      cancela: z.enum(['si', 'no'], 'Indica si con este cobro la factura queda cancelada.'),
+      operacion: z.string().max(60, 'El número de operación pasa de 60 caracteres.'),
+      ruta: z.string().min(1, 'Adjunta el voucher del cobro.').max(200),
+    })
+    .safeParse({
+      id: dato(formulario, 'id'),
+      factura_id: dato(formulario, 'factura_id'),
+      fecha: dato(formulario, 'fecha'),
+      monto: dato(formulario, 'monto'),
+      cancela: dato(formulario, 'cancela'),
+      operacion: dato(formulario, 'operacion'),
+      ruta: dato(formulario, 'ruta'),
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el cobro.' }
+  const d = analisis.data
+
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('cobros_ot')
-    .insert({ cuenta_id: v.data.id, fecha: v.data.fecha, monto: v.data.monto, referencia: v.data.referencia })
-    .select('id')
-    .maybeSingle()
+  const { data, error } = await supabase.rpc('registrar_cobro_factura', {
+    p_id: d.id,
+    p_factura: d.factura_id,
+    p_fecha: d.fecha,
+    p_monto: d.monto,
+    p_cancela: d.cancela === 'si',
+    p_operacion: d.operacion || null,
+    p_ruta: d.ruta,
+  })
   if (error) return { ok: false, error: mensajeDeError(error) }
-  if (!data) return { ok: false, error: NO_TOCO_NADA }
-  revalidatePath('/tesoreria/por-cobrar')
-  return { ok: true, mensaje: 'Cobro registrado y saldo actualizado.' }
+  if (data !== d.id) return { ok: false, error: 'El cobro no se registró. Recarga la pantalla.' }
+
+  repintarCobros()
+  return { ok: true, mensaje: 'Cobro registrado con su voucher.' }
+}
+
+/** Anular con su motivo un cobro mal registrado: la factura vuelve a su saldo. Mismo permiso que `anular_cobro_factura`. */
+export async function anularCobroFactura(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tesoreria.registrar_cobros')) return { ok: false, error: NO_COBRA }
+  const analisis = z.object({ id: z.guid(), motivo: MOTIVO }).safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('anular_cobro_factura', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'El cobro no se anuló. Recarga la pantalla.' }
+
+  repintarCobros()
+  return { ok: true, mensaje: 'Cobro anulado: la factura vuelve a su saldo.' }
 }
 
 const NO_PAGA_FACTURAS = 'Los pagos de las facturas los registra Tesorería.'

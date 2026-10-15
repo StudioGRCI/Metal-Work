@@ -13,22 +13,25 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor.trim() : ''
 }
 
-const NO_FACTURA = 'La factura la anexa Contabilidad.'
+const NO_FACTURA = 'La factura la registra Contabilidad.'
 const MOTIVO = z.string().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.')
 
 function repintar() {
   revalidatePath('/contabilidad/facturacion')
   revalidatePath('/tesoreria/por-cobrar')
   revalidatePath('/cotizaciones/pdf')
+  revalidatePath('/codigos-internos')
 }
 
 /**
- * Contabilidad anexa la factura que emitió en SUNAT: número, fechas, moneda,
- * total y el PDF, que el navegador ya subió a `facturas-venta/{id}/…`. Mismo
- * permiso que `anexar_factura_venta` (`contabilidad.facturar`). El id llega de
- * la pantalla: un reintento no anexa otra.
+ * Contabilidad registra la factura que emitió en SUNAT: número, fechas, moneda,
+ * total y el PDF, que el navegador ya subió a `facturas-venta/{id}/…`. Queda
+ * colgada del código interno de la cotización y entra sola a las cuentas por
+ * cobrar de Tesorería. Mismo permiso que `registrar_factura_venta`
+ * (`contabilidad.facturar`). El id llega de la pantalla: un reintento no
+ * registra otra.
  */
-export async function anexarFactura(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+export async function registrarFactura(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'contabilidad.facturar')) return { ok: false, error: NO_FACTURA }
   const analisis = z
@@ -65,7 +68,7 @@ export async function anexarFactura(_previo: unknown, formulario: FormData): Pro
   if (d.fecha_vencimiento < d.fecha_emision) return { ok: false, error: 'El vencimiento no puede ser antes de la emisión.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('anexar_factura_venta', {
+  const { data, error } = await supabase.rpc('registrar_factura_venta', {
     p_id: d.id,
     p_cotizacion: d.cotizacion_id,
     p_numero: d.numero,
@@ -78,29 +81,13 @@ export async function anexarFactura(_previo: unknown, formulario: FormData): Pro
     p_nombre_archivo: d.nombre_archivo || null,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
-  if (data !== d.id) return { ok: false, error: 'La factura no se anexó. Recarga la pantalla.' }
+  if (data !== d.id) return { ok: false, error: 'La factura no se registró. Recarga la pantalla.' }
 
   repintar()
-  return { ok: true, mensaje: `Factura ${d.numero} anexada. Envíala a Tesorería para que entre a sus cuentas por cobrar.` }
+  return { ok: true, mensaje: `Factura ${d.numero} registrada: Tesorería ya la tiene por cobrar.` }
 }
 
-/** La factura anexada va a Tesorería y nace su cuenta por cobrar. Mismo permiso que `enviar_factura_a_tesoreria`. */
-export async function enviarFacturaATesoreria(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
-  const perfil = await exigirSesion()
-  if (!puede(perfil, 'contabilidad.facturar')) return { ok: false, error: NO_FACTURA }
-  const id = z.guid().safeParse(dato(formulario, 'id'))
-  if (!id.success) return { ok: false, error: 'Vuelve a cargar la pantalla.' }
-
-  const supabase = await createClient()
-  const { data, error } = await supabase.rpc('enviar_factura_a_tesoreria', { p_factura: id.data })
-  if (error) return { ok: false, error: mensajeDeError(error) }
-  if (data !== id.data) return { ok: false, error: 'La factura no se envió. Recarga la pantalla.' }
-
-  repintar()
-  return { ok: true, mensaje: 'Factura enviada: Tesorería la tiene en sus cuentas por cobrar.' }
-}
-
-/** Anular una factura mal anexada, mientras Tesorería no haya cobrado nada de ella. Mismo permiso que `anular_factura_venta`. */
+/** Anular una factura mal registrada, mientras Tesorería no tenga un cobro vigente de ella. Mismo permiso que `anular_factura_venta`. */
 export async function anularFactura(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'contabilidad.facturar')) return { ok: false, error: NO_FACTURA }
@@ -113,5 +100,5 @@ export async function anularFactura(_previo: unknown, formulario: FormData): Pro
   if (data !== analisis.data.id) return { ok: false, error: 'La factura no se anuló. Recarga la pantalla.' }
 
   repintar()
-  return { ok: true, mensaje: 'Factura anulada: su número queda libre para anexarla bien.' }
+  return { ok: true, mensaje: 'Factura anulada: su número queda libre para registrarla bien.' }
 }

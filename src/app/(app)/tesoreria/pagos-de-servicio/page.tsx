@@ -92,7 +92,8 @@ function Servicio({ servicio: s, paga, hoy }: { servicio: ServicioPorPagar; paga
           </p>
           <p className="text-xs text-texto-suave">
             {s.descripcion}
-            {s.orden ? ` · OT ${s.orden}` : ''} · {s.condicion_pago === 'CREDITO' ? `crédito a ${s.dias_credito} días` : 'contado'}
+            {' · '}
+            {s.condicion_pago === 'CREDITO' ? `crédito a ${s.dias_credito} días` : 'contado'}
             {s.conformidad_en && ` · conforme el ${fecha(s.conformidad_en)}`}
             {s.codigo_interno && ` · código ${s.codigo_interno}`}
           </p>
