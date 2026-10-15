@@ -13,11 +13,11 @@ import {
   type RequerimientoListado,
 } from '@/lib/datos/requerimientos'
 import { ESTADO_REQUERIMIENTO, ESTADOS_RQ_ABIERTOS, TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
-import { cantidad, fecha, fechaHora } from '@/lib/format'
+import { fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { esUuid } from '@/lib/utils'
 
-import { AvanceDelRequerimiento, CompraDelInsumo, MaterialDelInsumo } from './avance'
+import { AvanceDelRequerimiento, InsumosDelRequerimiento } from './avance'
 import { AnularRequerimiento } from './controles'
 import { CorregirRequerimiento } from './corregir'
 import { NuevoRequerimiento } from './formulario'
@@ -51,8 +51,16 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   const vista = pedida ?? (tipos.length === 1 ? tipos[0] : 'todos')
   // `?rq=` muestra un solo RQ: es el enlace con que Adquisiciones abre el RQ de cada OC.
   const soloUno = typeof params.rq === 'string' && esUuid(params.rq) ? params.rq : undefined
+  // `?codigo=` muestra los RQ de un código interno: el que se presiona en cada fila.
+  const codigo = typeof params.codigo === 'string' && params.codigo.trim().length >= 2 ? params.codigo.trim().slice(0, 60) : undefined
+  // El supervisor de área ve primero los RQ de su área, como en su dashboard;
+  // `?area=todas` muestra los de todas. Los de Administración no son de ningún taller.
+  const supervisaArea = perfil.rol.codigo === 'SUPERVISOR' && perfil.area_id !== null
+  const deSuArea = supervisaArea && params.area !== 'todas' ? (perfil.area_id ?? undefined) : undefined
   const [requerimientos, catalogos] = await Promise.all([
-    cargarRequerimientos(soloUno ? { id: soloUno } : { tipo: vista === 'todos' ? undefined : vista }),
+    cargarRequerimientos(
+      soloUno ? { id: soloUno } : { tipo: supervisaArea || vista === 'todos' ? undefined : vista, area: deSuArea, codigo },
+    ),
     emite ? catalogosDelRequerimiento() : Promise.resolve(null),
   ])
   const correcciones = await correccionesDe('REQUERIMIENTO', requerimientos.map((r) => r.id))
@@ -69,28 +77,51 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
         descripcion={
           emite
             ? 'Lo que cada área necesita, con el código interno y su justificación. Al registrarlo lo revisa Almacén insumo por insumo: lo que tiene lo separa y solo lo que falta se compra.'
-            : 'Los requerimientos de operación y de Administración. «Listo en almacén» es lo que el área ya puede recoger.'
+            : supervisaArea
+              ? 'Lo que pidió tu área, y con «Todas las áreas» lo de las demás. Presiona los insumos de cada RQ para ver cuáles da Almacén y cuáles van a compra; el código interno muestra solo los RQ de esa unidad.'
+              : 'Los requerimientos de operación y de Administración. «Listo en almacén» es lo que el área ya puede recoger. Presiona los insumos de cada RQ para ver cuáles da Almacén y cuáles van a compra.'
         }
         migas={[{ titulo: 'Requerimientos' }]}
         acciones={catalogos && <NuevoRequerimiento {...catalogos} tipos={tipos} />}
       />
 
       <nav aria-label="Requerimiento" className="mb-3 flex flex-wrap items-center gap-2">
-        {VISTAS.map((v) => (
+        {(supervisaArea
+          ? [
+              { clave: 'mia', titulo: 'De tu área', href: '/requerimientos', activa: Boolean(deSuArea), descripcion: undefined },
+              { clave: 'todas', titulo: 'Todas las áreas', href: '/requerimientos?area=todas', activa: !deSuArea, descripcion: undefined },
+            ]
+          : VISTAS.map((v) => ({
+              clave: v.valor,
+              titulo: v.titulo,
+              href: `/requerimientos?tipo=${v.valor}`,
+              activa: vista === v.valor,
+              descripcion: v.valor === 'todos' ? undefined : TIPO_REQUERIMIENTO[v.valor]?.descripcion,
+            }))
+        ).map((v) => (
           <Link
-            key={v.valor}
-            href={`/requerimientos?tipo=${v.valor}`}
-            aria-current={!soloUno && vista === v.valor ? 'page' : undefined}
-            title={v.valor === 'todos' ? undefined : TIPO_REQUERIMIENTO[v.valor]?.descripcion}
+            key={v.clave}
+            href={codigo ? `${v.href}${v.href.includes('?') ? '&' : '?'}codigo=${encodeURIComponent(codigo)}` : v.href}
+            aria-current={!soloUno && v.activa ? 'page' : undefined}
+            title={v.descripcion}
             className={`inline-flex min-h-9 items-center rounded-lg border px-3 text-sm font-medium ${
-              !soloUno && vista === v.valor ? 'border-acento bg-acento-suave text-texto' : 'border-borde text-texto-suave hover:text-texto'
+              !soloUno && v.activa ? 'border-acento bg-acento-suave text-texto' : 'border-borde text-texto-suave hover:text-texto'
             }`}
           >
             {v.titulo}
-            {!soloUno && vista === v.valor && <span className="ml-2 tabular text-xs text-texto-suave">{requerimientos.length}</span>}
+            {!soloUno && v.activa && <span className="ml-2 tabular text-xs text-texto-suave">{requerimientos.length}</span>}
           </Link>
         ))}
       </nav>
+
+      {!soloUno && codigo && (
+        <p className="mb-3 text-sm text-texto-suave">
+          Solo los del código interno <span className="font-mono text-texto">{codigo}</span>.{' '}
+          <Link href={supervisaArea && !deSuArea ? '/requerimientos?area=todas' : '/requerimientos'} className="font-medium text-acento hover:underline">
+            Ver todos
+          </Link>
+        </p>
+      )}
 
       {soloUno && (
         <p className="mb-3 text-sm text-texto-suave">
@@ -134,6 +165,9 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
                 <FilaRequerimiento
                   key={r.id}
                   rq={r}
+                  // Quien los lleva los ve abiertos, como siempre; quien consulta, al presionar.
+                  insumosAbiertos={emite || Boolean(soloUno)}
+                  enlaceCodigo={supervisaArea && !deSuArea ? '/requerimientos?area=todas&codigo=' : '/requerimientos?codigo='}
                   anula={tipos.includes(r.tipo as TipoRequerimiento)}
                   materiales={catalogos?.materiales ?? []}
                   correcciones={correcciones.get(r.id)}
@@ -149,11 +183,16 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
 
 function FilaRequerimiento({
   rq,
+  insumosAbiertos,
+  enlaceCodigo,
   anula,
   materiales,
   correcciones,
 }: {
   rq: RequerimientoListado
+  insumosAbiertos: boolean
+  /** A dónde lleva el código interno de la fila: la lista con solo los RQ de ese código. */
+  enlaceCodigo: string
   /** Quien lleva su tipo: lo anula y lo corrige. */
   anula: boolean
   materiales: MaterialParaRequerimiento[]
@@ -172,7 +211,14 @@ function FilaRequerimiento({
           )}
         </p>
         <p className="text-xs text-texto">
-          {rq.area} · <span className="tabular">{rq.codigo_interno}</span>
+          {rq.area} ·{' '}
+          <Link
+            href={`${enlaceCodigo}${encodeURIComponent(rq.codigo_interno)}`}
+            title="Ver los requerimientos de este código interno"
+            className="tabular font-medium text-acento hover:underline"
+          >
+            {rq.codigo_interno}
+          </Link>
         </p>
         <p className="mt-1 max-w-sm text-xs text-texto-suave">{rq.justificacion}</p>
         <p className="text-[11px] text-texto-suave">
@@ -183,22 +229,8 @@ function FilaRequerimiento({
         {rq.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulado: {rq.motivo_anulacion}</p>}
         <HistorialDeCorrecciones correcciones={correcciones} />
       </TD>
-      <TD className="align-top">
-        <ul className="space-y-1 text-xs">
-          {rq.lineas.map((l) => (
-            <li key={l.item}>
-              <span className="tabular font-medium text-texto">
-                {cantidad(l.cantidad)} {l.unidad}
-              </span>{' '}
-              <span className="text-texto">{l.descripcion}</span>
-              <span className="block text-[11px] text-texto-suave">
-                <MaterialDelInsumo linea={l} />
-                {l.categoria}
-                <CompraDelInsumo linea={l} estadoRq={rq.estado} />
-              </span>
-            </li>
-          ))}
-        </ul>
+      <TD className="min-w-56 align-top">
+        <InsumosDelRequerimiento rq={rq} abierto={insumosAbiertos} />
       </TD>
       <TD className="align-top">
         {estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : rq.estado}

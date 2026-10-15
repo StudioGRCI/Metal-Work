@@ -13045,6 +13045,20 @@ export type Database = {
         }
         Returns: string
       }
+      stock_en_almacen: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          material_id: string | null
+          codigo: string | null
+          descripcion: string | null
+          unidad: string | null
+          almacen: string | null
+          categoria: string | null
+          existencia: number | null
+          stock_minimo: number | null
+          por_codigo: Json | null
+        }[]
+      }
       subcontrato_archivo: {
         Args: {
           p_subcontrato: string | null
