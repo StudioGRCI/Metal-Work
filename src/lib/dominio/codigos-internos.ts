@@ -36,12 +36,20 @@ export function parecidos(codigos: string[]): Map<string, string[]> {
 }
 
 /**
- * Lo que lleva costado un código: mano de obra más materiales salidos del
- * almacén. Las compras NO entran: lo comprado se cuenta cuando sale del almacén
- * para el código (migración 20261014220000). Los dólares van aparte, sin cambio.
+ * Lo que lleva costado un código: mano de obra, materiales salidos del almacén
+ * y órdenes de servicio aprobadas, sin IGV. Las compras NO entran: lo comprado
+ * se cuenta cuando sale del almacén para el código (migración 20261014220000).
+ * El servicio sí, porque no pasa por el almacén (migración 20261015180000). Los
+ * dólares van aparte, sin cambio.
  */
-export function costoDelCodigo(c: { mano_obra: number; materiales_pen: number; materiales_usd: number }) {
-  return { pen: c.mano_obra + c.materiales_pen, usd: c.materiales_usd }
+export function costoDelCodigo(c: {
+  mano_obra: number
+  materiales_pen: number
+  materiales_usd: number
+  servicios_pen: number
+  servicios_usd: number
+}) {
+  return { pen: c.mano_obra + c.materiales_pen + c.servicios_pen, usd: c.materiales_usd + c.servicios_usd }
 }
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
