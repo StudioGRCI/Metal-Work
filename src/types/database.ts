@@ -499,6 +499,310 @@ export type Database = {
           }
         ]
       }
+      codigo_etapas: {
+        Row: {
+          id: string
+          codigo_interno: string
+          orden: number
+          nombre: string
+          area_id: string | null
+          inicio_plan: string | null
+          fin_plan: string | null
+          inicio_real: string | null
+          fin_real: string | null
+          nota: string | null
+          creado_por: string
+          creado_en: string
+          actualizado_por: string | null
+          quitada_en: string | null
+          quitada_por: string | null
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo_interno: string
+          orden: number
+          nombre: string
+          area_id?: string | null
+          inicio_plan?: string | null
+          fin_plan?: string | null
+          inicio_real?: string | null
+          fin_real?: string | null
+          nota?: string | null
+          creado_por?: string
+          creado_en?: string
+          actualizado_por?: string | null
+          quitada_en?: string | null
+          quitada_por?: string | null
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo_interno?: string
+          orden?: number
+          nombre?: string
+          area_id?: string | null
+          inicio_plan?: string | null
+          fin_plan?: string | null
+          inicio_real?: string | null
+          fin_real?: string | null
+          nota?: string | null
+          creado_por?: string
+          creado_en?: string
+          actualizado_por?: string | null
+          quitada_en?: string | null
+          quitada_por?: string | null
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "codigo_etapas_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_etapas_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_etapas_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_etapas_quitada_por_fkey"
+            columns: ["quitada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      codigo_materiales: {
+        Row: {
+          id: string
+          codigo_interno: string
+          material_id: string
+          cantidad: number
+          plano_id: string | null
+          observacion: string | null
+          creado_por: string
+          creado_en: string
+          actualizado_por: string | null
+          quitado_en: string | null
+          quitado_por: string | null
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo_interno: string
+          material_id: string
+          cantidad: number
+          plano_id?: string | null
+          observacion?: string | null
+          creado_por?: string
+          creado_en?: string
+          actualizado_por?: string | null
+          quitado_en?: string | null
+          quitado_por?: string | null
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo_interno?: string
+          material_id?: string
+          cantidad?: number
+          plano_id?: string | null
+          observacion?: string | null
+          creado_por?: string
+          creado_en?: string
+          actualizado_por?: string | null
+          quitado_en?: string | null
+          quitado_por?: string | null
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "codigo_materiales_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_materiales_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_materiales_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_materiales_plano_fkey"
+            columns: ["plano_id", "codigo_interno"]
+            isOneToOne: false
+            referencedRelation: "codigo_planos"
+            referencedColumns: ["id", "codigo_interno"]
+          },
+          {
+            foreignKeyName: "codigo_materiales_quitado_por_fkey"
+            columns: ["quitado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      codigo_plano_revisiones: {
+        Row: {
+          id: string
+          plano_id: string
+          revision: number
+          nombre_archivo: string
+          ruta: string
+          tamano_bytes: number
+          cambios: string | null
+          subido_por: string
+          subido_en: string
+          recibido_por: string | null
+          recibido_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id: string
+          plano_id: string
+          revision: number
+          nombre_archivo: string
+          ruta: string
+          tamano_bytes: number
+          cambios?: string | null
+          subido_por?: string
+          subido_en?: string
+          recibido_por?: string | null
+          recibido_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          plano_id?: string
+          revision?: number
+          nombre_archivo?: string
+          ruta?: string
+          tamano_bytes?: number
+          cambios?: string | null
+          subido_por?: string
+          subido_en?: string
+          recibido_por?: string | null
+          recibido_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "codigo_plano_revisiones_plano_id_fkey"
+            columns: ["plano_id"]
+            isOneToOne: false
+            referencedRelation: "codigo_planos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_plano_revisiones_recibido_por_fkey"
+            columns: ["recibido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_plano_revisiones_subido_por_fkey"
+            columns: ["subido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      codigo_planos: {
+        Row: {
+          id: string
+          codigo_interno: string
+          numero: string
+          nombre: string
+          area_id: string
+          observacion: string | null
+          creado_por: string
+          creado_en: string
+          anulado_en: string | null
+          anulado_por: string | null
+          motivo_anulacion: string | null
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo_interno: string
+          numero: string
+          nombre: string
+          area_id: string
+          observacion?: string | null
+          creado_por?: string
+          creado_en?: string
+          anulado_en?: string | null
+          anulado_por?: string | null
+          motivo_anulacion?: string | null
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo_interno?: string
+          numero?: string
+          nombre?: string
+          area_id?: string
+          observacion?: string | null
+          creado_por?: string
+          creado_en?: string
+          anulado_en?: string | null
+          anulado_por?: string | null
+          motivo_anulacion?: string | null
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "codigo_planos_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_planos_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_planos_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       conceptos_gasto_general: {
         Row: {
           codigo: string
@@ -8767,6 +9071,13 @@ export type Database = {
         }
         Returns: string
       }
+      anular_plano_codigo: {
+        Args: {
+          p_plano: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       anular_registro_vehiculo: {
         Args: {
           p_id: string | null
@@ -8845,6 +9156,16 @@ export type Database = {
         }
         Returns: string
       }
+      avisar_a_diseno: {
+        Args: {
+          p_titulo: string | null
+          p_cuerpo: string | null
+          p_ruta: string | null
+          p_tabla: string | null
+          p_id: string | null
+        }
+        Returns: null
+      }
       avisar_a_quien_tiene: {
         Args: {
           p_permiso: string | null
@@ -8853,6 +9174,15 @@ export type Database = {
           p_ruta: string | null
           p_compra: string | null
           p_excepto?: string | null
+        }
+        Returns: null
+      }
+      avisar_area_del_plano: {
+        Args: {
+          p_area: string | null
+          p_titulo: string | null
+          p_cuerpo: string | null
+          p_plano: string | null
         }
         Returns: null
       }
@@ -9002,6 +9332,30 @@ export type Database = {
           detalle: string | null
         }[]
       }
+      codigo_interno_etapas: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          id: string | null
+          codigo: string | null
+          orden: number | null
+          nombre: string | null
+          area_id: string | null
+          area: string | null
+          area_codigo: string | null
+          inicio_plan: string | null
+          fin_plan: string | null
+          inicio_real: string | null
+          fin_real: string | null
+          nota: string | null
+          actualizado_en: string | null
+          reportes: number | null
+          primer_reporte: string | null
+          ultimo_reporte: string | null
+          avance_reportado: number | null
+        }[]
+      }
       codigo_interno_gasto: {
         Args: {
           p_codigo?: string | null
@@ -9066,6 +9420,56 @@ export type Database = {
           referencia_id: string | null
         }[]
       }
+      codigo_interno_lo_pedido: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          requerimiento_id: string | null
+          numero: string | null
+          estado: string | null
+          area: string | null
+          fecha: string | null
+          item: number | null
+          descripcion: string | null
+          cantidad: number | null
+          unidad: string | null
+        }[]
+      }
+      codigo_interno_materiales: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          id: string | null
+          material_id: string | null
+          material_codigo: string | null
+          material: string | null
+          unidad: string | null
+          cantidad: number | null
+          plano_id: string | null
+          plano: string | null
+          plano_anulado: boolean | null
+          observacion: string | null
+          creado_en: string | null
+          actualizado_en: string | null
+        }[]
+      }
+      codigo_interno_materiales_comparados: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          material_id: string | null
+          material_codigo: string | null
+          material: string | null
+          unidad: string | null
+          disenado: number | null
+          comprado: number | null
+          salido: number | null
+          en_la_lista: boolean | null
+        }[]
+      }
       codigo_interno_personal: {
         Args: {
           p_codigo: string | null
@@ -9079,6 +9483,65 @@ export type Database = {
           dias: number | null
           primer_dia: string | null
           ultimo_dia: string | null
+        }[]
+      }
+      codigo_interno_planos: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          id: string | null
+          codigo: string | null
+          numero: string | null
+          nombre: string | null
+          area_id: string | null
+          area: string | null
+          area_codigo: string | null
+          observacion: string | null
+          creado_en: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          revisiones: number | null
+          revision_id: string | null
+          revision: number | null
+          nombre_archivo: string | null
+          tamano_bytes: number | null
+          cambios: string | null
+          subido_en: string | null
+          recibido_en: string | null
+          recibido_por_area: string | null
+        }[]
+      }
+      codigo_plano_historial: {
+        Args: {
+          p_plano: string | null
+        }
+        Returns: {
+          id: string | null
+          revision: number | null
+          nombre_archivo: string | null
+          tamano_bytes: number | null
+          cambios: string | null
+          subido_en: string | null
+          recibido_en: string | null
+          recibido_por_area: string | null
+        }[]
+      }
+      codigos_internos_de_diseno: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          codigo: string | null
+          unidad: string | null
+          planos: number | null
+          planos_por_recibir: number | null
+          materiales: number | null
+          etapas: number | null
+          etapas_terminadas: number | null
+          etapas_vencidas: number | null
+          etapa_actual: string | null
+          etapa_actual_area: string | null
+          etapa_actual_fin: string | null
+          ultimo_cambio: string | null
         }[]
       }
       codigos_internos_gasto: {
@@ -9660,9 +10123,21 @@ export type Database = {
         }
         Returns: Database["public"]["Enums"]["estado_plazo"]
       }
+      etapas_de_siempre_codigo: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: number
+      }
       evaluar_aprobacion_compra: {
         Args: {
           p_compra: string | null
+        }
+        Returns: string
+      }
+      exigir_codigo_de_unidad: {
+        Args: {
+          p_codigo: string | null
         }
         Returns: string
       }
@@ -9670,6 +10145,10 @@ export type Database = {
         Args: {
           p_permiso: string | null
         }
+        Returns: null
+      }
+      exigir_ver_codigos_de_diseno: {
+        Args: Record<PropertyKey, never>
         Returns: null
       }
       fijar_condicion_pago_compra: {
@@ -9749,6 +10228,17 @@ export type Database = {
         }
         Returns: number
       }
+      guardar_etapa_codigo: {
+        Args: {
+          p_id: string | null
+          p_codigo: string | null
+          p_nombre: string | null
+          p_area: string | null
+          p_inicio_plan: string | null
+          p_fin_plan: string | null
+        }
+        Returns: string
+      }
       guardar_etapas_libres: {
         Args: {
           p_orden_id: string | null
@@ -9768,6 +10258,17 @@ export type Database = {
         Args: {
           p_orden: string | null
           p_nombre: string | null
+        }
+        Returns: string
+      }
+      guardar_material_codigo: {
+        Args: {
+          p_id: string | null
+          p_codigo: string | null
+          p_material: string | null
+          p_cantidad: number | null
+          p_plano: string | null
+          p_observacion: string | null
         }
         Returns: string
       }
@@ -9916,6 +10417,15 @@ export type Database = {
         }
         Returns: string
       }
+      marcar_etapa_codigo: {
+        Args: {
+          p_id: string | null
+          p_paso: string | null
+          p_fecha: string | null
+          p_nota: string | null
+        }
+        Returns: string
+      }
       margen_ot: {
         Args: {
           p_orden: string | null
@@ -9965,6 +10475,13 @@ export type Database = {
       }
       mi_usuario: {
         Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      mover_etapa_codigo: {
+        Args: {
+          p_id: string | null
+          p_arriba: boolean | null
+        }
         Returns: string
       }
       nombre_unidad_almacen: {
@@ -10181,6 +10698,13 @@ export type Database = {
           remuneracion_mensual: number | null
         }[]
       }
+      plano_pdf_subido: {
+        Args: {
+          p_ruta: string | null
+          p_nombre_archivo: string | null
+        }
+        Returns: number
+      }
       plantilla_de_la_carroceria: {
         Args: {
           p_tipo: string | null
@@ -10310,6 +10834,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      puede_ver_codigos_de_diseno: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       puede_ver_hoja_de_area: {
         Args: {
           p_area: string | null
@@ -10362,6 +10890,18 @@ export type Database = {
         }
         Returns: string
       }
+      quitar_etapa_codigo: {
+        Args: {
+          p_id: string | null
+        }
+        Returns: string
+      }
+      quitar_material_codigo: {
+        Args: {
+          p_id: string | null
+        }
+        Returns: string
+      }
       quitar_recojo_de_la_lista: {
         Args: {
           p_compra: string | null
@@ -10385,6 +10925,12 @@ export type Database = {
         Args: {
           p_id: string | null
           p_motivo: string | null
+        }
+        Returns: string
+      }
+      recibir_plano_codigo: {
+        Args: {
+          p_revision: string | null
         }
         Returns: string
       }
@@ -10512,6 +11058,19 @@ export type Database = {
           p_fecha_pago: string | null
           p_operacion: string | null
           p_ruta: string | null
+        }
+        Returns: string
+      }
+      registrar_plano_codigo: {
+        Args: {
+          p_plano: string | null
+          p_revision: string | null
+          p_codigo: string | null
+          p_numero: string | null
+          p_nombre: string | null
+          p_area: string | null
+          p_observacion: string | null
+          p_nombre_archivo: string | null
         }
         Returns: string
       }
@@ -11080,6 +11639,15 @@ export type Database = {
         Args: {
           p_persona_id: string | null
           p_ruta: string | null
+        }
+        Returns: string
+      }
+      subir_revision_plano: {
+        Args: {
+          p_plano: string | null
+          p_revision: string | null
+          p_cambios: string | null
+          p_nombre_archivo: string | null
         }
         Returns: string
       }

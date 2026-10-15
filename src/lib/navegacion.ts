@@ -6,6 +6,7 @@ import {
   Calculator,
   Building2,
   CalendarClock,
+  CalendarRange,
   CarFront,
   ClipboardCheck,
   ClipboardList,
@@ -13,12 +14,14 @@ import {
   ClockAlert,
   Cog,
   Coins,
+  DraftingCompass,
   FileSpreadsheet,
   FileText,
   HardHat,
   Hash,
   Layers,
   LayoutDashboard,
+  ListChecks,
   ListOrdered,
   MessageSquareWarning,
   NotebookPen,
@@ -77,7 +80,7 @@ export const NAVEGACION = [
         ruta: '/codigos-internos',
         icono: Hash,
         permiso: 'codigos_internos.ver',
-        descripcion: 'Cada código con su avance y lo que lleva costado: mano de obra, materiales y compras',
+        descripcion: 'Cada código con sus etapas, planos, materiales, avance y lo que lleva costado',
         disponible: true,
       },
       {
@@ -112,6 +115,34 @@ export const NAVEGACION = [
   {
     titulo: 'Diseño e Ingeniería',
     items: [
+      // Sin módulo de OT, Diseño carga por el código interno de la unidad lo
+      // que cargaba en la orden (migración 20261015200000): los planos de cada
+      // área, la lista de materiales y las etapas. Gerencia lo ve en Códigos
+      // internos; el supervisor, en «Planos y etapas».
+      {
+        titulo: 'Planos',
+        ruta: '/diseno/planos',
+        icono: DraftingCompass,
+        permiso: 'diseno.codigos',
+        descripcion: 'Los planos de cada unidad por código interno, con el área de producción a la que va cada uno',
+        disponible: true,
+      },
+      {
+        titulo: 'Gestión de materiales',
+        ruta: '/diseno/materiales',
+        icono: ListChecks,
+        permiso: 'diseno.codigos',
+        descripcion: 'Lo que lleva cada unidad según Diseño, contra lo comprado y lo salido del almacén',
+        disponible: true,
+      },
+      {
+        titulo: 'Control de etapas',
+        ruta: '/diseno/etapas',
+        icono: CalendarRange,
+        permiso: 'diseno.codigos',
+        descripcion: 'Las etapas de cada unidad con su fecha comprometida y cómo van',
+        disponible: true,
+      },
       // El catálogo chico del que Diseño elige al desglosar los materiales de
       // la orden: nombre, unidad y especificación. Sin stock ni almacén.
       {
@@ -311,6 +342,14 @@ export const NAVEGACION = [
         icono: NotebookPen,
         permiso: ['reporte_diario.registrar', 'reporte_diario.ver'],
         descripcion: 'Trabajos del día con su avance, el personal con sus horas y fotos; Gerencia y RR. HH. lo validan',
+        disponible: true,
+      },
+      {
+        titulo: 'Planos y etapas',
+        ruta: '/planos',
+        icono: DraftingCompass,
+        permiso: 'codigos_internos.area',
+        descripcion: 'Los planos que Diseño cargó para tu área, para marcarlos recibidos, y las etapas de tu área',
         disponible: true,
       },
     ],
@@ -527,15 +566,18 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // Unidades y Carrocerías las lleva Diseño e Ingeniería (pedido de la
   // empresa, 2026-10-01). Configuración la alcanza por `configuracion.ver`,
   // pero es de Administración.
-  // Primero la OT que desglosa y el informe de su equipo; después los
-  // catálogos que mantiene. La evaluación es de cada cierto tiempo: al final.
+  // Desde el 2026-10-15 su trabajo va por código interno: los planos de cada
+  // área, la lista de materiales y las etapas, primero. Después la OT, que la
+  // ve solo Diseño, y el informe de su equipo; luego los catálogos que
+  // mantiene. La evaluación es de cada cierto tiempo: al final de su grupo.
   DISENO: {
     grupos: [
+      { titulo: 'Por código interno', rutas: ['/diseno/planos', '/diseno/materiales', '/diseno/etapas'] },
       { titulo: 'Diseño e Ingeniería', rutas: ['/ordenes', '/materiales', '/diseno/informe-semanal', '/diseno/evaluaciones'] },
       { titulo: 'Catálogos', rutas: ['/carrocerias', '/unidades'] },
       { titulo: 'Consultas', rutas: ['/requerimientos', '/clientes'] },
     ],
-    telefono: ['/ordenes', '/diseno/informe-semanal', '/materiales', '/carrocerias'],
+    telefono: ['/diseno/planos', '/diseno/etapas', '/diseno/materiales', '/ordenes'],
   },
   DISENO_COLABORADOR: {
     grupos: [{ titulo: 'Diseño e Ingeniería', rutas: ['/diseno/informe-semanal', '/ordenes'] }],
@@ -584,10 +626,11 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // Sube su reporte diario (mientras la OT no está del todo en el sistema, es
   // su trabajo de cada día), recoge de Almacén lo que su área pidió (el RQ
   // «Listo en almacén», al que también lo lleva el aviso) y reporta el avance
-  // de las OT de su área.
+  // de las OT de su área. Desde el 2026-10-15, los planos que Diseño carga para
+  // su área y las etapas que hace su área van justo después de su reporte.
   SUPERVISOR: {
-    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/requerimientos', '/ordenes'] }],
-    telefono: ['/reportes-diarios', '/requerimientos', '/ordenes', '/'],
+    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/planos', '/requerimientos', '/ordenes'] }],
+    telefono: ['/reportes-diarios', '/planos', '/requerimientos', '/ordenes'],
   },
   // Mira todas las áreas sin trabajar en ninguna: cada una con su nombre y en
   // el orden del circuito, después de lo suyo.
@@ -724,6 +767,10 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/rrhh/observaciones', corto: 'Observaciones' },
   { ruta: '/reportes-diarios', corto: 'Reporte' },
   { ruta: '/codigos-internos', corto: 'Códigos' },
+  { ruta: '/diseno/planos', corto: 'Planos' },
+  { ruta: '/diseno/materiales', corto: 'Materiales' },
+  { ruta: '/diseno/etapas', corto: 'Etapas' },
+  { ruta: '/planos', corto: 'Planos' },
   { ruta: '/planilla-diaria', corto: 'Planilla' },
   { ruta: '/rrhh/horas-extras', corto: 'Extras' },
   { ruta: '/tesoreria/tipo-de-cambio', corto: 'Cambio' },

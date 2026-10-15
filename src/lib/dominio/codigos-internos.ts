@@ -55,18 +55,25 @@ export function costoDelCodigo(c: {
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
 
 /** Dónde aparece un código, en una línea: «4 reportes · 3 salidas del almacén · 1 RQ». */
-export function dondeAparece(c: {
-  reportes: number
-  salidas: number
-  requerimientos: number
-  compras: number
-  unidades: number
-  ordenes: number
-  servicios: number
-  vehiculos: number
-  horas: number
-}): string {
+export function dondeAparece(
+  c: {
+    reportes: number
+    salidas: number
+    requerimientos: number
+    compras: number
+    unidades: number
+    ordenes: number
+    servicios: number
+    vehiculos: number
+    horas: number
+  },
+  /** Lo que Diseño cargó en el código: un código puede tener planos antes que cualquier documento. */
+  diseno?: { planos: number; materiales: number; etapas: number },
+): string {
   const partes = [
+    diseno && diseno.planos > 0 && plural(diseno.planos, 'plano', 'planos'),
+    diseno && diseno.etapas > 0 && plural(diseno.etapas, 'etapa', 'etapas'),
+    diseno && diseno.materiales > 0 && 'lista de materiales',
     c.reportes > 0 && plural(c.reportes, 'reporte diario', 'reportes diarios'),
     c.reportes === 0 && c.horas > 0 && 'horas de RR. HH.',
     c.salidas > 0 && plural(c.salidas, 'salida del almacén', 'salidas del almacén'),
@@ -181,6 +188,10 @@ export const ESTADO_SERVICIO_CODIGO: Record<string, Def> = {
 /** Las pestañas del detalle de un código. */
 export const VISTAS_CODIGO = [
   { valor: 'avance', etiqueta: 'Avance' },
+  // Lo que carga Diseño por código (migración 20261015200000).
+  { valor: 'etapas', etiqueta: 'Etapas' },
+  { valor: 'planos', etiqueta: 'Planos' },
+  { valor: 'materiales', etiqueta: 'Materiales' },
   { valor: 'costeo', etiqueta: 'Costeo' },
   { valor: 'personal', etiqueta: 'Personal' },
   { valor: 'documentos', etiqueta: 'RQ, OT y cotización' },
