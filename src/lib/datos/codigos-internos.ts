@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/server'
  * cada persona. Nada se lee de las tablas: el tareo es solo de RR. HH.
  */
 
-/** Un código en la lista: dónde aparece, su avance y su costeo. */
+/** Un código en la lista: dónde aparece y su costeo. Su avance sale aparte, de `avanceDeLosCodigos`. */
 export type ResumenCodigo = {
   codigo: string
   requerimientos: number
@@ -37,9 +37,6 @@ export type ResumenCodigo = {
   subcontratos_por_pagar_usd: number
   ultima_actividad: string | null
   ultimo_reporte: string | null
-  trabajos: number
-  trabajos_terminados: number
-  avance_medio: number | null
   horas: number
   horas_sin_costo: number
   mano_obra: number
@@ -97,9 +94,6 @@ export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
             subcontratos_por_pagar_usd: n(sc?.por_pagar_usd),
             ultima_actividad: f.ultima_actividad,
             ultimo_reporte: f.ultimo_reporte,
-            trabajos: n(f.trabajos),
-            trabajos_terminados: n(f.trabajos_terminados),
-            avance_medio: f.avance_medio === null ? null : Number(f.avance_medio),
             horas: n(f.horas),
             horas_sin_costo: n(f.horas_sin_costo),
             mano_obra: n(f.mano_obra),
@@ -113,6 +107,53 @@ export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
         ]
       : []
   })
+}
+
+/**
+ * El porcentaje de avance de un código (migración 20261016300000): el promedio
+ * de sus etapas de Diseño, donde la terminada vale 100 y la que no, lo que su
+ * área reporta en el reporte diario. Sin etapas, el promedio del último avance
+ * de cada trabajo del reporte diario, área por área. El código que no tiene ni
+ * lo uno ni lo otro no viene: va en 0 %. PLANTA no viene nunca.
+ */
+export type AvanceDeCodigo = {
+  codigo: string
+  avance: number
+  fuente: 'ETAPAS' | 'REPORTES'
+  etapas: number
+  etapas_terminadas: number
+  /** Los trabajos del reporte diario, cada uno con su área: «Soldadura» de dos áreas son dos. */
+  trabajos: number
+  trabajos_terminados: number
+  ultimo_reporte: string | null
+}
+
+/** El avance de todos los códigos, o de uno, por código. */
+export async function avanceDeLosCodigos(codigo?: string): Promise<Map<string, AvanceDeCodigo>> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('codigos_internos_avance', codigo ? { p_codigo: codigo } : {})
+  if (error) throw new Error(`No se pudo leer el avance de los códigos: ${error.message}`)
+  return new Map(
+    (data ?? []).flatMap((f) =>
+      f.codigo
+        ? [
+            [
+              f.codigo,
+              {
+                codigo: f.codigo,
+                avance: n(f.avance),
+                fuente: f.fuente === 'ETAPAS' ? 'ETAPAS' : 'REPORTES',
+                etapas: n(f.etapas),
+                etapas_terminadas: n(f.etapas_terminadas),
+                trabajos: n(f.trabajos),
+                trabajos_terminados: n(f.trabajos_terminados),
+                ultimo_reporte: f.ultimo_reporte,
+              },
+            ] as const,
+          ]
+        : [],
+    ),
+  )
 }
 
 /** Un trabajo de un reporte diario vigente del código. */
@@ -335,9 +376,6 @@ export function sumarCodigosDeDiseno(
         subcontratos_por_pagar_usd: 0,
         ultima_actividad: d.ultimo_cambio ? diaDeLima(d.ultimo_cambio) : null,
         ultimo_reporte: null,
-        trabajos: 0,
-        trabajos_terminados: 0,
-        avance_medio: null,
         horas: 0,
         horas_sin_costo: 0,
         mano_obra: 0,
