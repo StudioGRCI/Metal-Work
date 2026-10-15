@@ -1,6 +1,6 @@
 'use client'
 
-import { CheckCircle2, FileUp } from 'lucide-react'
+import { CheckCircle2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 
@@ -28,10 +28,12 @@ const NUEVO = 'NUEVO'
  * darlo de alta; después se registra fila por fila, con la fecha en que pasó,
  * y se ve el resultado de cada una. Volver a cargar la misma planilla no
  * duplica nada.
+ *
+ * La abre «Sin internet» (`sin-internet.tsx`), el desplegable de la esquina
+ * del kardex: por eso la ventana no trae su propio botón.
  */
-export function CargarPlanilla() {
+export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerrar: () => void }) {
   const router = useRouter()
-  const [abierta, setAbierta] = useState(false)
   const [leyendo, setLeyendo] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [filas, setFilas] = useState<FilaPlanilla[] | null>(null)
@@ -59,7 +61,7 @@ export function CargarPlanilla() {
 
   function cerrar() {
     if (registrando) return
-    setAbierta(false)
+    alCerrar()
     if (Object.keys(resultados).length > 0) router.refresh()
     reiniciar()
   }
@@ -170,123 +172,118 @@ export function CargarPlanilla() {
   } : null
 
   return (
-    <>
-      <Boton variante="secundario" onClick={() => setAbierta(true)}>
-        <FileUp aria-hidden className="size-4" />Cargar planilla
-      </Boton>
-      <Ventana abierta={abierta} alCerrar={cerrar} titulo="Cargar planilla sin internet" ancho="xl"
-        descripcion="Lo anotado en la planilla de Excel entra al kardex con la fecha en que pasó. En Ingresos basta la descripción y la cantidad. Primero revisas qué se va a registrar; cada salida pide su foto.">
-        <div className="space-y-4">
-          {!filas && (
-            <Campo etiqueta="Planilla de Excel" htmlFor="planilla-archivo" ayuda="La que descargaste con «Descargar planilla», ya llena.">
-              <Entrada id="planilla-archivo" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                disabled={leyendo} onChange={(e) => leer(e.target.files?.[0])} />
-            </Campo>
-          )}
-          {leyendo && <p role="status" className="text-sm text-texto-suave">Leyendo la planilla y revisando cada fila…</p>}
-          {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
+    <Ventana abierta={abierta} alCerrar={cerrar} titulo="Cargar planilla sin internet" ancho="xl"
+      descripcion="Lo anotado en la planilla de Excel entra al kardex con la fecha en que pasó. En Ingresos basta la descripción y la cantidad. Primero revisas qué se va a registrar; cada salida pide su foto.">
+      <div className="space-y-4">
+        {!filas && (
+          <Campo etiqueta="Planilla de Excel" htmlFor="planilla-archivo" ayuda="La que descargaste con «Descargar planilla», ya llena.">
+            <Entrada id="planilla-archivo" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              disabled={leyendo} onChange={(e) => leer(e.target.files?.[0])} />
+          </Campo>
+        )}
+        {leyendo && <p role="status" className="text-sm text-texto-suave">Leyendo la planilla y revisando cada fila…</p>}
+        {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
 
-          {filas && resumen && (
-            <>
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <Insignia tono="exito">{resumen.listas} para registrar</Insignia>
-                {resumen.cargadas > 0 && <Insignia tono="neutro">{resumen.cargadas} ya estaban en el kardex</Insignia>}
-                {resumen.elegir > 0 && <Insignia tono="aviso">{resumen.elegir} por elegir el material</Insignia>}
-                {resumen.errores > 0 && <Insignia tono="peligro">{resumen.errores} no se cargan</Insignia>}
-                {!registrando && !terminado && (
-                  <button type="button" onClick={reiniciar} className="ml-auto text-sm text-acento hover:underline">Elegir otra planilla</button>
-                )}
-              </div>
+        {filas && resumen && (
+          <>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <Insignia tono="exito">{resumen.listas} para registrar</Insignia>
+              {resumen.cargadas > 0 && <Insignia tono="neutro">{resumen.cargadas} ya estaban en el kardex</Insignia>}
+              {resumen.elegir > 0 && <Insignia tono="aviso">{resumen.elegir} por elegir el material</Insignia>}
+              {resumen.errores > 0 && <Insignia tono="peligro">{resumen.errores} no se cargan</Insignia>}
+              {!registrando && !terminado && (
+                <button type="button" onClick={reiniciar} className="ml-auto text-sm text-acento hover:underline">Elegir otra planilla</button>
+              )}
+            </div>
 
-              <ul className="max-h-[55vh] divide-y divide-borde overflow-y-auto rounded-[var(--radius-base)] border border-borde">
-                {filas.map((f) => {
-                  const r = resultados[f.id]
-                  return (
-                    <li key={`${f.hoja}-${f.fila}`} className="grid gap-2 p-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-                      <div className="min-w-0">
-                        <p className="flex flex-wrap items-center gap-2 text-xs text-texto-suave">
-                          <Insignia tono={f.hoja === 'Ingresos' ? 'exito' : 'aviso'}>{f.hoja === 'Ingresos' ? 'Ingreso' : 'Salida'}</Insignia>
-                          <span>Fila {f.fila} · {f.fechaTexto}</span>
-                        </p>
-                        <p className="mt-1 text-sm font-medium text-texto">
-                          {f.cantidad === null ? 'Sin cantidad' : `${cantidad(f.cantidad)} ${f.unidadMedida ?? ''}`} · {f.descripcion ?? (f.descripcionEscrita || f.codigo)}
-                          {f.materialId && <span className="ml-1 font-mono text-[11px] font-normal text-texto-tenue">{f.codigo}</span>}
-                        </p>
-                        {f.descripcionEscrita && f.descripcion && normalizarNombre(f.descripcion) !== normalizarNombre(f.descripcionEscrita) && (
-                          <p className="text-xs text-texto-suave">Escrito en la planilla: {f.descripcionEscrita}</p>
-                        )}
-                        {f.estado === 'LISTA' && f.hoja === 'Ingresos' && !f.materialId && f.nuevo && (
-                          <p className="text-xs text-aviso">No está en el catálogo con ese nombre: se da de alta en «Por clasificar», en {f.nuevo.unidad}.</p>
-                        )}
-                        <p className="text-xs text-texto-suave">
-                          {f.hoja === 'Ingresos'
-                            ? `${f.origen === 'SALDO_INICIAL' ? 'Saldo inicial' : 'Ingreso general'} · ${f.documento}`
-                            : `${f.documento} · ${f.unidadRegistrada ? `a ${f.unidadRegistrada}` : `a ${f.unidad} (código nuevo)`} · recibe ${f.recibe}`}
-                        </p>
-                        {f.avisos.length > 0 && f.estado !== 'CARGADA' && (
-                          <ul className="mt-1 list-disc pl-4 text-xs text-texto-suave">{f.avisos.map((a) => <li key={a}>{a}</li>)}</ul>
-                        )}
-                        {f.errores.length > 0 && (
-                          <ul className="mt-1 list-disc pl-4 text-xs text-peligro">{f.errores.map((e) => <li key={e}>{e}</li>)}</ul>
-                        )}
-                        {f.estado === 'ELEGIR' && r?.estado !== 'ok' && (
-                          <div className="mt-2 max-w-xl">
-                            <label htmlFor={`elegir-${f.id}`} className="text-xs font-medium text-texto">
-                              No está en el catálogo con ese nombre. ¿Es alguno de estos?
-                            </label>
-                            <Seleccion id={`elegir-${f.id}`} value={elecciones[f.id] ?? ''} disabled={registrando}
-                              onChange={(e) => setElecciones((previas) => ({ ...previas, [f.id]: e.target.value }))}>
-                              <option value="">Elige el material…</option>
-                              {f.sugerencias.map((s) => (
-                                <option key={s.id} value={s.id}>{s.descripcion} · {s.codigo}{s.unidad ? ` (${s.unidad})` : ''}</option>
-                              ))}
-                              {f.nuevo && <option value={NUEVO}>Ninguno: darlo de alta en «Por clasificar» ({f.nuevo.unidad})</option>}
-                            </Seleccion>
-                          </div>
-                        )}
-                        {r?.estado === 'error' && <p role="alert" className="mt-1 text-xs text-peligro">{r.mensaje}</p>}
-                      </div>
-                      <div className="flex items-center gap-2 sm:justify-end">
-                        {f.estado === 'CARGADA' && <Insignia tono="neutro">Ya cargada</Insignia>}
-                        {f.estado === 'ERROR' && <Insignia tono="peligro">No se registra</Insignia>}
-                        {r?.estado === 'enviando' && <Insignia tono="info">Registrando…</Insignia>}
-                        {r?.estado === 'ok' && <Insignia tono="exito"><CheckCircle2 aria-hidden className="size-3" />Registrada</Insignia>}
-                        {f.estado === 'LISTA' && f.hoja === 'Salidas' && r?.estado !== 'ok' && (
-                          <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-[var(--radius-base)] border border-borde-fuerte px-3 text-xs font-medium text-texto hover:bg-superficie-2 sm:min-h-9">
-                            {fotos[f.id] ? `Foto: ${fotos[f.id].name.slice(0, 18)}` : 'Adjuntar foto'}
-                            <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={registrando}
-                              aria-label={`Foto de la salida de la fila ${f.fila}`} onChange={(e) => elegirFoto(f, e.target.files?.[0])} />
+            <ul className="max-h-[55vh] divide-y divide-borde overflow-y-auto rounded-[var(--radius-base)] border border-borde">
+              {filas.map((f) => {
+                const r = resultados[f.id]
+                return (
+                  <li key={`${f.hoja}-${f.fila}`} className="grid gap-2 p-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <div className="min-w-0">
+                      <p className="flex flex-wrap items-center gap-2 text-xs text-texto-suave">
+                        <Insignia tono={f.hoja === 'Ingresos' ? 'exito' : 'aviso'}>{f.hoja === 'Ingresos' ? 'Ingreso' : 'Salida'}</Insignia>
+                        <span>Fila {f.fila} · {f.fechaTexto}</span>
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-texto">
+                        {f.cantidad === null ? 'Sin cantidad' : `${cantidad(f.cantidad)} ${f.unidadMedida ?? ''}`} · {f.descripcion ?? (f.descripcionEscrita || f.codigo)}
+                        {f.materialId && <span className="ml-1 font-mono text-[11px] font-normal text-texto-tenue">{f.codigo}</span>}
+                      </p>
+                      {f.descripcionEscrita && f.descripcion && normalizarNombre(f.descripcion) !== normalizarNombre(f.descripcionEscrita) && (
+                        <p className="text-xs text-texto-suave">Escrito en la planilla: {f.descripcionEscrita}</p>
+                      )}
+                      {f.estado === 'LISTA' && f.hoja === 'Ingresos' && !f.materialId && f.nuevo && (
+                        <p className="text-xs text-aviso">No está en el catálogo con ese nombre: se da de alta en «Por clasificar», en {f.nuevo.unidad}.</p>
+                      )}
+                      <p className="text-xs text-texto-suave">
+                        {f.hoja === 'Ingresos'
+                          ? `${f.origen === 'SALDO_INICIAL' ? 'Saldo inicial' : 'Ingreso general'} · ${f.documento}`
+                          : `${f.documento} · ${f.unidadRegistrada ? `a ${f.unidadRegistrada}` : `a ${f.unidad} (código nuevo)`} · recibe ${f.recibe}`}
+                      </p>
+                      {f.avisos.length > 0 && f.estado !== 'CARGADA' && (
+                        <ul className="mt-1 list-disc pl-4 text-xs text-texto-suave">{f.avisos.map((a) => <li key={a}>{a}</li>)}</ul>
+                      )}
+                      {f.errores.length > 0 && (
+                        <ul className="mt-1 list-disc pl-4 text-xs text-peligro">{f.errores.map((e) => <li key={e}>{e}</li>)}</ul>
+                      )}
+                      {f.estado === 'ELEGIR' && r?.estado !== 'ok' && (
+                        <div className="mt-2 max-w-xl">
+                          <label htmlFor={`elegir-${f.id}`} className="text-xs font-medium text-texto">
+                            No está en el catálogo con ese nombre. ¿Es alguno de estos?
                           </label>
-                        )}
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
+                          <Seleccion id={`elegir-${f.id}`} value={elecciones[f.id] ?? ''} disabled={registrando}
+                            onChange={(e) => setElecciones((previas) => ({ ...previas, [f.id]: e.target.value }))}>
+                            <option value="">Elige el material…</option>
+                            {f.sugerencias.map((s) => (
+                              <option key={s.id} value={s.id}>{s.descripcion} · {s.codigo}{s.unidad ? ` (${s.unidad})` : ''}</option>
+                            ))}
+                            {f.nuevo && <option value={NUEVO}>Ninguno: darlo de alta en «Por clasificar» ({f.nuevo.unidad})</option>}
+                          </Seleccion>
+                        </div>
+                      )}
+                      {r?.estado === 'error' && <p role="alert" className="mt-1 text-xs text-peligro">{r.mensaje}</p>}
+                    </div>
+                    <div className="flex items-center gap-2 sm:justify-end">
+                      {f.estado === 'CARGADA' && <Insignia tono="neutro">Ya cargada</Insignia>}
+                      {f.estado === 'ERROR' && <Insignia tono="peligro">No se registra</Insignia>}
+                      {r?.estado === 'enviando' && <Insignia tono="info">Registrando…</Insignia>}
+                      {r?.estado === 'ok' && <Insignia tono="exito"><CheckCircle2 aria-hidden className="size-3" />Registrada</Insignia>}
+                      {f.estado === 'LISTA' && f.hoja === 'Salidas' && r?.estado !== 'ok' && (
+                        <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-[var(--radius-base)] border border-borde-fuerte px-3 text-xs font-medium text-texto hover:bg-superficie-2 sm:min-h-9">
+                          {fotos[f.id] ? `Foto: ${fotos[f.id].name.slice(0, 18)}` : 'Adjuntar foto'}
+                          <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={registrando}
+                            aria-label={`Foto de la salida de la fila ${f.fila}`} onChange={(e) => elegirFoto(f, e.target.files?.[0])} />
+                        </label>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
 
-              {!terminado && sinElegir.length > 0 && (
-                <p className="text-sm text-aviso">{sinElegir.length === 1 ? 'Un ingreso espera' : `${sinElegir.length} ingresos esperan`} que elijas el material; {sinElegir.length === 1 ? 'no se registrará' : 'no se registrarán'} hasta entonces.</p>
+            {!terminado && sinElegir.length > 0 && (
+              <p className="text-sm text-aviso">{sinElegir.length === 1 ? 'Un ingreso espera' : `${sinElegir.length} ingresos esperan`} que elijas el material; {sinElegir.length === 1 ? 'no se registrará' : 'no se registrarán'} hasta entonces.</p>
+            )}
+            {!terminado && sinFoto.length > 0 && (
+              <p className="text-sm text-aviso">{sinFoto.length === 1 ? 'Una salida no tiene foto y no se registrará' : `${sinFoto.length} salidas no tienen foto y no se registrarán`} hasta que la adjuntes.</p>
+            )}
+            {terminado && (
+              <p role="status" className={fallidas ? 'text-sm text-aviso' : 'text-sm text-exito'}>
+                {hechas === 1 ? 'Se registró 1 movimiento' : `Se registraron ${hechas} movimientos`}{fallidas ? `; ${fallidas} no: revisa el mensaje de cada uno.` : '.'}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {!terminado && (
+                <Boton onClick={registrar} cargando={registrando} disabled={porRegistrar.length === 0}>
+                  {porRegistrar.length === 1 ? 'Registrar 1 movimiento' : `Registrar ${porRegistrar.length} movimientos`}
+                </Boton>
               )}
-              {!terminado && sinFoto.length > 0 && (
-                <p className="text-sm text-aviso">{sinFoto.length === 1 ? 'Una salida no tiene foto y no se registrará' : `${sinFoto.length} salidas no tienen foto y no se registrarán`} hasta que la adjuntes.</p>
-              )}
-              {terminado && (
-                <p role="status" className={fallidas ? 'text-sm text-aviso' : 'text-sm text-exito'}>
-                  {hechas === 1 ? 'Se registró 1 movimiento' : `Se registraron ${hechas} movimientos`}{fallidas ? `; ${fallidas} no: revisa el mensaje de cada uno.` : '.'}
-                </p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {!terminado && (
-                  <Boton onClick={registrar} cargando={registrando} disabled={porRegistrar.length === 0}>
-                    {porRegistrar.length === 1 ? 'Registrar 1 movimiento' : `Registrar ${porRegistrar.length} movimientos`}
-                  </Boton>
-                )}
-                {terminado && <Boton onClick={cerrar}>Cerrar</Boton>}
-              </div>
-            </>
-          )}
-        </div>
-      </Ventana>
-    </>
+              {terminado && <Boton onClick={cerrar}>Cerrar</Boton>}
+            </div>
+          </>
+        )}
+      </div>
+    </Ventana>
   )
 }

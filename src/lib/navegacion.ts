@@ -12,14 +12,12 @@ import {
   ClipboardList,
   Clock,
   ClockAlert,
-  Cog,
   Coins,
   CreditCard,
   DraftingCompass,
   FileSpreadsheet,
   FileText,
   HandCoins,
-  HardHat,
   Handshake,
   Hash,
   Layers,
@@ -28,7 +26,6 @@ import {
   ListOrdered,
   MessageSquareWarning,
   NotebookPen,
-  Package,
   Receipt,
   ReceiptText,
   Route,
@@ -215,10 +212,10 @@ export const NAVEGACION = [
       },
     ],
   },
-  // Almacén: primero lo que espera por él, después su kardex y, debajo, los
-  // cuatro almacenes que maneja (EPP, consumibles, accesorios y materia
-  // prima): son el mismo kardex filtrado por `?almacen=`, con el valor en
-  // mayúsculas que lee la pantalla de Almacén.
+  // Almacén: primero lo que espera por él y después su kardex. Los cuatro
+  // almacenes (EPP, consumibles, accesorios y materia prima) ya no van en el
+  // menú desde el 2026-10-15, a pedido de DKS: se abren desde el tablero de
+  // arriba del kardex, que es el mismo kardex filtrado por `?almacen=`.
   {
     titulo: 'Almacén',
     items: [
@@ -249,10 +246,6 @@ export const NAVEGACION = [
         descripcion: 'Saldos, ingresos, egresos por unidad y conteo físico',
         disponible: true,
       },
-      { titulo: 'EPP', ruta: '/almacen/kardex?almacen=EPP', icono: HardHat, permiso: 'almacen.ver', descripcion: 'Equipos de protección: salen con el formato de entrega firmado', disponible: true },
-      { titulo: 'Consumibles', ruta: '/almacen/kardex?almacen=CONSUMIBLES', icono: Package, permiso: 'almacen.ver', descripcion: 'Discos, soldadura, pintura: salen sin más trámite', disponible: true },
-      { titulo: 'Accesorios', ruta: '/almacen/kardex?almacen=ACCESORIOS', icono: Cog, permiso: 'almacen.ver', descripcion: 'Atados a un código interno: solo salen para esa unidad', disponible: true },
-      { titulo: 'Materia prima', ruta: '/almacen/kardex?almacen=MATERIA_PRIMA', icono: Layers, permiso: 'almacen.ver', descripcion: 'Planchas, perfiles y tubos: salen con el formato de recepción firmado', disponible: true },
     ],
   },
   {
@@ -535,20 +528,12 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // Trabaja los RQ desde su bandeja de atención, no desde la lista de
   // Requerimientos, aunque `requerimientos.ver` le deje leerla. Sin la OT desde
   // el 2026-10-15: lo que lleva cada unidad lo ve por código, para tenerlo a
-  // tiempo. Aparte, el kardex con sus cuatro almacenes.
+  // tiempo. Aparte, el kardex: sus cuatro almacenes se abren desde su tablero,
+  // no desde el menú (2026-10-15).
   ALMACENERO: {
     grupos: [
       { titulo: 'Por atender', rutas: ['/requerimientos/atencion', '/seguimiento?vista=materiales'] },
-      {
-        titulo: 'Almacenes',
-        rutas: [
-          '/almacen/kardex',
-          '/almacen/kardex?almacen=EPP',
-          '/almacen/kardex?almacen=CONSUMIBLES',
-          '/almacen/kardex?almacen=ACCESORIOS',
-          '/almacen/kardex?almacen=MATERIA_PRIMA',
-        ],
-      },
+      { titulo: 'Almacén', rutas: ['/almacen/kardex'] },
     ],
     telefono: ['/requerimientos/atencion', '/seguimiento?vista=materiales', '/almacen/kardex', '/'],
   },
@@ -714,14 +699,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       { titulo: 'Requerimientos', rutas: ['/requerimientos', '/vehiculos'] },
       {
         titulo: 'Almacén',
-        rutas: [
-          '/almacen/kardex',
-          '/almacen/kardex?almacen=EPP',
-          '/almacen/kardex?almacen=CONSUMIBLES',
-          '/almacen/kardex?almacen=ACCESORIOS',
-          '/almacen/kardex?almacen=MATERIA_PRIMA',
-          '/compras/valorizacion',
-        ],
+        rutas: ['/almacen/kardex', '/compras/valorizacion'],
       },
       { titulo: 'Finanzas', rutas: ['/costos/gastos-generales'] },
     ],

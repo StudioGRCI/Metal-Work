@@ -1,4 +1,4 @@
-import { Download, FileSpreadsheet } from 'lucide-react'
+import { Download } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -22,8 +22,8 @@ import { ConteoInicial } from './conteo-inicial'
 import { NuevoIngreso } from './ingreso'
 import { SalidasPorCerrar } from './por-cerrar'
 import { BandejaPorValidar } from './por-validar'
-import { CargarPlanilla } from './planilla'
 import { NuevaSalida } from './salida'
+import { SinInternet } from './sin-internet'
 import { FijarStockMinimo } from './stock-minimo'
 
 export const metadata = { title: 'Kardex de Almacén' }
@@ -118,48 +118,42 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
       <EncabezadoPagina
         titulo="Kardex de Almacén"
         descripcion="Ingresos, egresos e historial de movimientos con el saldo de cada material. Toda salida queda vinculada a un vehículo o al código de su unidad."
-        acciones={(puedeSalida || puedeIngreso) && (
-          <div className="flex flex-wrap items-start gap-2">
-            {puedeSalida && (
-              <NuevaSalida
-                materiales={materiales.map((m) => ({ id: m.material_id, codigo: m.codigo, descripcion: m.descripcion, unidad: m.unidad, disponible: m.disponible, almacen: m.almacen }))}
-                lineasRq={lineasRq}
-                rqInicial={rqInicial}
-                unidades={unidades.filter((u): u is typeof u & { id: string } => Boolean(u.id)).map((u) => ({
-                  id: u.id, nombre: u.nombre ?? 'Unidad', vehiculo: u.vehiculo, ordenes: u.ordenes,
-                }))}
-              />
-            )}
-            {puedeIngreso && <ConteoInicial />}
-            {puedeIngreso && catalogo && (
-              <ConteoFisico materiales={catalogo.catalogoAlmacen.map((m) => ({
-                ...m, saldo: saldoPorMaterial.get(m.id) ?? 0,
-              }))} />
-            )}
-            {puedeIngreso && catalogo && (
-              <NuevoIngreso
-                materiales={catalogo.catalogoAlmacen}
-                unidades={unidadesMedida.data ?? []}
-                despachos={(entregas.data ?? []).filter((e) => e.id).map((e) => ({
-                  id: e.id as string,
-                  etiqueta: `${e.material ?? 'Material'} · ${e.codigo_unidad ?? 'sin unidad'} · ${cantidad(e.salida)} ${e.unidad_medida ?? ''} · ${fechaHora(e.fecha)}`,
-                }))}
-              />
-            )}
-          </div>
-        )}
       />
 
+      {/* Las acciones van en su propia fila, a todo el ancho, y no en las del
+          encabezado: así «Sin internet» queda en la esquina derecha. */}
       {(puedeSalida || puedeIngreso) && (
-        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[var(--radius-base)] border border-dashed border-borde-fuerte bg-superficie px-4 py-3">
-          <p className="min-w-0 flex-1 basis-72 text-sm text-texto-suave">
-            <span className="font-medium text-texto">¿Sin internet?</span> Descarga la planilla, anota en Excel los ingresos y las salidas, y cárgala al volver la señal: cada movimiento entra con su fecha.
-          </p>
-          <a href="/almacen/kardex/planilla" download
-            className="inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-base)] border border-borde-fuerte px-3 text-sm font-medium text-texto hover:bg-superficie-2 sm:min-h-9">
-            <FileSpreadsheet aria-hidden className="size-4" />Descargar planilla
-          </a>
-          <CargarPlanilla />
+        <div className="-mt-3 mb-4 flex flex-wrap items-start gap-2">
+          {puedeSalida && (
+            <NuevaSalida
+              materiales={materiales.map((m) => ({ id: m.material_id, codigo: m.codigo, descripcion: m.descripcion, unidad: m.unidad, disponible: m.disponible, almacen: m.almacen }))}
+              lineasRq={lineasRq}
+              rqInicial={rqInicial}
+              unidades={unidades.filter((u): u is typeof u & { id: string } => Boolean(u.id)).map((u) => ({
+                id: u.id, nombre: u.nombre ?? 'Unidad', vehiculo: u.vehiculo, ordenes: u.ordenes,
+              }))}
+            />
+          )}
+          {puedeIngreso && <ConteoInicial />}
+          {puedeIngreso && catalogo && (
+            <ConteoFisico materiales={catalogo.catalogoAlmacen.map((m) => ({
+              ...m, saldo: saldoPorMaterial.get(m.id) ?? 0,
+            }))} />
+          )}
+          {puedeIngreso && catalogo && (
+            <NuevoIngreso
+              materiales={catalogo.catalogoAlmacen}
+              unidades={unidadesMedida.data ?? []}
+              despachos={(entregas.data ?? []).filter((e) => e.id).map((e) => ({
+                id: e.id as string,
+                etiqueta: `${e.material ?? 'Material'} · ${e.codigo_unidad ?? 'sin unidad'} · ${cantidad(e.salida)} ${e.unidad_medida ?? ''} · ${fechaHora(e.fecha)}`,
+              }))}
+            />
+          )}
+          {/* En la esquina, aparte del trabajo diario: se usa solo cuando se cae la señal. */}
+          <div className="ml-auto">
+            <SinInternet />
+          </div>
         </div>
       )}
 
