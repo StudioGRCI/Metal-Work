@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila } from '@/lib/datos/logistica'
+import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, insumosPorCompra } from '@/lib/datos/logistica'
 import type { DetraccionDeServicio } from '@/lib/dominio/detraccion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -44,6 +44,9 @@ export type CompraParaAprobar = {
   lineas: LineaParaAprobar[]
   /** En la orden de servicio: el código de la unidad y su detracción. */
   codigo_interno: string | null
+  /** Los RQ cuyos insumos compra la OC, y el código interno de cada uno. Vacíos si no compra de un RQ. */
+  requerimientos: string[]
+  codigos: string[]
   detraccion: DetraccionDeServicio | null
 }
 
@@ -89,6 +92,11 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
     : [{ data: [], error: null }, []]
   if (extra.error) throw new Error(`No se pudo leer la detracción de las órdenes de servicio: ${extra.error.message}`)
   const porId = new Map((extra.data ?? []).map((f) => [f.id, f]))
+  // Los RQ y los códigos de las OC que compran insumos de requerimientos (#100).
+  const insumos = await insumosPorCompra(
+    supabase,
+    (compras.data ?? []).flatMap((c) => (c.tipo !== 'OS' && c.id ? [c.id] : [])),
+  )
 
   return {
     regla: regla.data
@@ -126,6 +134,8 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
         unidades: c.unidades ?? [],
         lineas: (c.lineas as LineaParaAprobar[] | null) ?? [],
         codigo_interno: c.tipo === 'OS' ? (porId.get(c.id ?? '')?.codigo_interno ?? null) : null,
+        requerimientos: c.tipo === 'OS' ? [] : (insumos.get(c.id ?? '')?.requerimientos ?? []),
+        codigos: c.tipo === 'OS' ? [] : (insumos.get(c.id ?? '')?.codigos ?? []),
         detraccion: c.tipo === 'OS' ? detraccionDeFila(porId.get(c.id ?? ''), tipos) : null,
       }),
     ),

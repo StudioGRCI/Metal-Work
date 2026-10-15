@@ -71,7 +71,8 @@ export default async function PaginaOrdenesCompra() {
               <TH className="text-right">Monto sin IGV</TH>
               <TH>En qué va</TH>
               <TH className="hidden sm:table-cell">Comprobante</TH>
-              <TH className="text-right">
+              {/* Con `relative`, el rótulo oculto queda dentro de la tabla que se desliza y no ensancha la página en el teléfono. */}
+              <TH className="relative text-right">
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
@@ -105,11 +106,14 @@ function FilaCompra({
   emite: boolean
   correcciones: CorreccionVista[] | undefined
 }) {
-  const origen = ORIGEN_COMPRA[c.origen]
+  const origen = ORIGEN_COMPRA[c.origen === 'DIRECTA' && c.requerimientos.length > 0 ? 'RQ' : c.origen]
   const situacion = situacionCompra(c)
   const para = [
-    c.codigo_interno,
-    ...(c.origen === 'DIRECTA' ? ['Almacén'] : [c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, ...c.unidades]),
+    // La OC que junta insumos de varios RQ no tiene un código propio: lleva el de cada uno.
+    c.codigo_interno ?? (c.codigos.length ? c.codigos.join(', ') : null),
+    ...(c.origen === 'DIRECTA'
+      ? [c.requerimientos.length ? null : 'Almacén']
+      : [c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, ...c.unidades]),
     // Qué requerimiento (RQ-0001-2026…) atiende esta compra, si nació de uno.
     c.requerimientos.length ? c.requerimientos.join(', ') : null,
   ]
@@ -151,6 +155,16 @@ function FilaCompra({
           <span className="text-xs text-texto-suave">{c.con_factura ? 'Factura pendiente' : 'Comprobante pendiente'}</span>
         )}
         <p className="text-[11px] text-texto-suave">{comprobante.etiqueta}</p>
+        {c.facturas.length > 0 && (
+          <ul className="mt-1 space-y-0.5 text-[11px] text-texto">
+            {c.facturas.map((f) => (
+              <li key={f.numero} className="tabular whitespace-nowrap">
+                {f.numero}
+                {f.fecha && <span className="text-texto-suave"> · {fecha(f.fecha)}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
       </TD>
       <TD className="text-right">
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -173,6 +187,7 @@ function FilaCompra({
               adjuntar={c.aprobacion !== 'RECHAZADA'}
               conFactura={c.con_factura}
               codigoInterno={c.codigo_interno}
+              codigosDeInsumos={c.codigo_por_insumo ? c.codigos : null}
               tieneComprobante={c.tiene_factura}
               entregada={Boolean(c.entregado_almacen_en)}
               total={c.con_factura ? Math.round((c.monto + igvCompra(c.monto)) * 100) / 100 : c.monto}

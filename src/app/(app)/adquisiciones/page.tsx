@@ -5,11 +5,19 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { comprasSinFactura, tablaDeAdquisiciones, type CompraSinFactura, type FacturaEnTabla, type OcEnTabla } from '@/lib/datos/adquisiciones'
+import {
+  comprasSinFactura,
+  facturasDeLogistica,
+  tablaDeAdquisiciones,
+  type CompraSinFactura,
+  type FacturaDeLogistica,
+  type FacturaEnTabla,
+  type OcEnTabla,
+} from '@/lib/datos/adquisiciones'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { documentosDeCompraParaTesoreria } from '@/lib/datos/tesoreria'
 import { ESTADO_COMPROBANTE, TIPO_COMPROBANTE, definir } from '@/lib/dominio/estados'
-import { CONTROL_FACTURA_COMPRA } from '@/lib/dominio/finanzas'
+import { CONTROL_FACTURA_COMPRA, detalleDelControl } from '@/lib/dominio/finanzas'
 import { fecha, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -60,18 +68,20 @@ export default async function PaginaAdquisiciones({ searchParams }: PageProps<'/
 
   const supabase = await createClient()
   const sinFactura = await comprasSinFactura()
-  const [tabla, ordenes, documentos, documentosCompra] = await Promise.all([
+  const [tabla, ordenes, deLogistica, documentosCompra] = await Promise.all([
     tablaDeAdquisiciones(sinFactura),
     registra
       ? supabase.from('ordenes_trabajo').select('id, numero').neq('estado', 'ANULADA').order('creado_en', { ascending: false }).limit(100)
       : Promise.resolve({ data: [], error: null }),
-    registra
-      ? supabase.from('documentos_compra_material').select('id, nombre_archivo').eq('tipo', 'FACTURA').order('creado_en', { ascending: false }).limit(100)
-      : Promise.resolve({ data: [], error: null }),
+    facturasDeLogistica(),
     verDocumentosCompra ? documentosDeCompraParaTesoreria() : Promise.resolve([]),
   ])
   if (ordenes.error) throw new Error(`No se pudieron leer las OT: ${ordenes.error.message}`)
-  if (documentos.error) throw new Error(`No se pudieron leer las facturas existentes: ${documentos.error.message}`)
+  // Las facturas que Logística anexó y Contabilidad todavía no registra, por OC.
+  const porRegistrar = deLogistica.filter((d) => !d.registrada)
+  const porRegistrarDe = new Map<string, FacturaDeLogistica[]>()
+  for (const d of porRegistrar) porRegistrarDe.set(d.orden_compra_id, [...(porRegistrarDe.get(d.orden_compra_id) ?? []), d])
+  const facturaDe = new Map(deLogistica.map((d) => [d.id, d]))
   const correcciones = await correccionesDe('FACTURA_COMPRA', tabla.facturas.map((f) => f.factura.id))
   // Lo que el detector leyó del papel frente a lo registrado y a sus OC (#98).
   const avisosDe = new Map(
@@ -98,9 +108,12 @@ export default async function PaginaAdquisiciones({ searchParams }: PageProps<'/
 
       {registra && (
         <Tarjeta className="mb-5">
-          <TarjetaCabecera titulo="Nuevo comprobante" descripcion="Marca las OC que cubre la factura y adjunta el PDF." />
+          <TarjetaCabecera
+            titulo="Nuevo comprobante"
+            descripcion="Elige la factura que anexó Logística, que trae su número, su fecha y su OC; o marca las OC que cubre y adjunta el PDF."
+          />
           <TarjetaCuerpo>
-            <FormularioAdquisicion ordenes={ordenes.data ?? []} compras={sinFactura} documentos={documentos.data ?? []} />
+            <FormularioAdquisicion ordenes={ordenes.data ?? []} compras={sinFactura} documentos={porRegistrar} />
           </TarjetaCuerpo>
         </Tarjeta>
       )}
@@ -166,7 +179,9 @@ export default async function PaginaAdquisiciones({ searchParams }: PageProps<'/
                   <tr className="border-b border-borde bg-superficie-2">
                     <th colSpan={8} scope="rowgroup" className="px-3 py-2 text-left text-xs font-semibold text-texto">
                       OC que esperan su factura <span className="tabular font-normal text-texto-suave">({esperan.length})</span>
-                      <span className="block font-normal text-texto-suave">Aprobadas, van con factura y todavía no están en ninguna factura registrada.</span>
+                      <span className="block font-normal text-texto-suave">
+                        Aprobadas, van con factura y ninguna factura registrada las completa. Una OC puede ir en varias facturas.
+                      </span>
                     </th>
                   </tr>
                   {esperan.map(({ compra, orden }) => (
@@ -174,18 +189,29 @@ export default async function PaginaAdquisiciones({ searchParams }: PageProps<'/
                       <CeldaRq orden={orden} acceso={acceso} />
                       <CeldaOc orden={orden} acceso={acceso} />
                       <TD className="align-top">
-                        <Insignia tono="neutro">Sin factura</Insignia>
+                        <Insignia tono="neutro">{compra.facturas.length > 0 ? 'Facturada en parte' : 'Sin factura'}</Insignia>
                         {compra.en_borrador && (
                           <Insignia tono="aviso" className="ml-1">
                             En un borrador
                           </Insignia>
                         )}
+                        {compra.facturas.length > 0 && (
+                          <p className="mt-1 text-[11px] text-texto-suave">
+                            {compra.facturas.join(', ')}: {moneda(compra.facturado, codigo(compra.moneda))}
+                          </p>
+                        )}
+                        <AnexadasPorRegistrar facturas={porRegistrarDe.get(compra.orden_compra_id) ?? []} />
                       </TD>
                       <TD className="align-top text-xs text-texto-suave">OC del {fecha(compra.creado_en)}</TD>
                       <CeldaProveedor proveedor={compra.proveedor} acceso={acceso} />
                       <CeldaCodigo orden={orden} acceso={acceso} />
                       <TD className="text-right align-top tabular whitespace-nowrap">
                         {compra.sin_precio ? <span className="text-aviso">Precio pendiente</span> : moneda(compra.total, codigo(compra.moneda))}
+                        {!compra.sin_precio && compra.facturado > 0 && (
+                          <p className="text-[11px] font-normal text-texto-suave">
+                            Falta {moneda(Math.max(compra.total - compra.facturado, 0), codigo(compra.moneda))}
+                          </p>
+                        )}
                       </TD>
                       <TD className="align-top text-xs text-texto-suave">{compra.condicion_pago === 'CREDITO' ? 'A crédito' : 'Al contado'}</TD>
                     </TR>
@@ -197,8 +223,23 @@ export default async function PaginaAdquisiciones({ searchParams }: PageProps<'/
         </Tabla>
       </Tarjeta>
 
-      {verDocumentosCompra && <DocumentosDeCompras documentos={documentosCompra} />}
+      {verDocumentosCompra && <DocumentosDeCompras documentos={documentosCompra} facturas={facturaDe} />}
     </>
+  )
+}
+
+/** Lo que Logística anexó a la OC y espera que Contabilidad lo registre. */
+function AnexadasPorRegistrar({ facturas }: { facturas: FacturaDeLogistica[] }) {
+  if (facturas.length === 0) return null
+  return (
+    <ul className="mt-1 space-y-0.5 text-[11px] text-aviso">
+      {facturas.map((d) => (
+        <li key={d.id}>
+          Logística anexó <span className="tabular">{d.numero ?? d.nombre_archivo}</span>
+          {d.fecha && ` del ${fecha(d.fecha)}`}: falta registrarla.
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -281,9 +322,9 @@ function GrupoFactura({
                   )}
                   <InsigniaDelDetector avisos={avisos} />
                 </p>
-                {f.control?.control === 'NO_CALZA' && f.control.total_oc !== null && f.control.diferencia !== null && (
-                  <p className="mt-1 max-w-56 text-xs text-aviso">
-                    Sus OC suman {moneda(f.control.total_oc, m)}: {f.control.diferencia > 0 ? 'sobran' : 'faltan'} {moneda(Math.abs(f.control.diferencia), m)}.
+                {f.control && detalleDelControl(f.control, (n) => moneda(n, m)) && (
+                  <p className={`mt-1 max-w-56 text-xs ${f.control.control === 'NO_CALZA' ? 'text-aviso' : 'text-texto-suave'}`}>
+                    {detalleDelControl(f.control, (n) => moneda(n, m))}
                   </p>
                 )}
                 <div className="max-w-64">
@@ -393,18 +434,29 @@ function CeldaProveedor({ proveedor, acceso, alto }: { proveedor: string; acceso
 }
 
 function CeldaCodigo({ orden, acceso }: { orden: OcEnTabla; acceso: Acceso }) {
-  const c = orden.codigo_interno
-  return (
-    <TD className="align-top whitespace-nowrap">
-      {!c ? (
+  if (orden.codigos.length === 0) {
+    return (
+      <TD className="align-top">
         <span className="text-texto-suave">—</span>
-      ) : acceso.codigo && c !== 'PLANTA' ? (
-        <Link href={`/codigos-internos/detalle?codigo=${encodeURIComponent(c)}`} className={`tabular ${enlace}`}>
-          {c}
-        </Link>
-      ) : (
-        <span className="tabular">{c}</span>
-      )}
+      </TD>
+    )
+  }
+  // La OC que junta insumos de varios RQ lleva el código de cada uno.
+  return (
+    <TD className="align-top">
+      <ul className="space-y-0.5">
+        {orden.codigos.map((c) => (
+          <li key={c} className="whitespace-nowrap">
+            {acceso.codigo && c !== 'PLANTA' ? (
+              <Link href={`/codigos-internos/detalle?codigo=${encodeURIComponent(c)}`} className={`tabular ${enlace}`}>
+                {c}
+              </Link>
+            ) : (
+              <span className="tabular">{c}</span>
+            )}
+          </li>
+        ))}
+      </ul>
     </TD>
   )
 }

@@ -1,28 +1,44 @@
+import { ShoppingCart } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
-import { GenerarCompraDelRequerimiento } from '@/app/(app)/compras/ordenes/formulario-directa'
 import { catalogoDeAlmacen, type MaterialParaConteo } from '@/lib/datos/atencion-materiales'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { proveedoresParaCompra, type ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { cargarRequerimientos, catalogoParaRequerimiento, type MaterialParaRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
-import { ESTADO_REQUERIMIENTO, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
+import { ESTADO_REQUERIMIENTO, leTocaAtender, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AvanceDelRequerimiento, CompraDelInsumo, MaterialDelInsumo } from '../avance'
 import { PasoRequerimiento, RevisarStock } from './controles'
+import { PorComprar, type GrupoPorComprar } from './por-comprar'
 
 export const metadata = { title: 'Atención de requerimiento' }
 
 const VISTAS = [
   { valor: 'abiertos', titulo: 'Por atender' },
+  { valor: 'comprar', titulo: 'Por comprar' },
   { valor: 'todos', titulo: 'Historial' },
 ] as const
+
+const TITULO_POR_COMPRAR: Record<string, { titulo: string; descripcion: string }> = {
+  OPERACION: {
+    titulo: 'Por comprar · requerimientos de operación',
+    descripcion:
+      'Lo que Almacén no tiene de cada RQ. Marca lo de uno o varios RQ que le compras al mismo proveedor y genera una sola orden: cada insumo sigue con su RQ y su código interno.',
+  },
+  ADMINISTRACION: {
+    titulo: 'Por comprar · requerimientos de Administración',
+    descripcion:
+      'Lo que Almacén no tiene de cada RQA. Marca lo de uno o varios que le compras al mismo proveedor y genera una sola orden: cada insumo sigue con su RQA y su código interno.',
+  },
+}
 
 /**
  * La bandeja que comparten Almacén, Logística y la administradora. Cada RQ
@@ -41,10 +57,11 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   const { recibe, despacha, compraDe } = quienAtiende(perfil)
   const compra = compraDe.OPERACION || compraDe.ADMINISTRACION
   const params = await searchParams
-  const vista = params.vista === 'todos' ? 'todos' : 'abiertos'
+  const vista = params.vista === 'todos' ? 'todos' : params.vista === 'comprar' && compra ? 'comprar' : 'abiertos'
+  const preseleccion = typeof params.rq === 'string' ? params.rq : null
   // Logística genera la OC desde aquí: necesita el padrón y el catálogo de Almacén.
   const [requerimientos, proveedores, materiales] = await Promise.all([
-    cargarRequerimientos({ soloAbiertos: vista === 'abiertos' }),
+    cargarRequerimientos({ soloAbiertos: vista !== 'todos' }),
     compra ? proveedoresParaCompra() : Promise.resolve([]),
     compra ? catalogoDeAlmacen() : Promise.resolve([]),
   ])
@@ -56,6 +73,9 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   const correcciones = await correccionesDe('REQUERIMIENTO', requerimientos.map((r) => r.id))
 
   const meToca = requerimientos.filter((r) => leTocaAtender(r, { recibe, despacha, compraDe })).length
+  const grupos = compra ? insumosPorComprar(requerimientos, compraDe) : []
+  const porComprar = grupos.reduce((suma, g) => suma + g.insumos.length, 0)
+  const cuenta = { abiertos: requerimientos.length, comprar: porComprar, todos: requerimientos.length }
 
   return (
     <>
@@ -66,7 +86,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
       />
 
       <nav aria-label="Vista" className="mb-3 flex items-center gap-2">
-        {VISTAS.map((v) => (
+        {VISTAS.filter((v) => v.valor !== 'comprar' || compra).map((v) => (
           <Link
             key={v.valor}
             href={v.valor === 'abiertos' ? '/requerimientos/atencion' : `/requerimientos/atencion?vista=${v.valor}`}
@@ -76,7 +96,9 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
             }`}
           >
             {v.titulo}
-            {vista === v.valor && <span className="ml-2 tabular text-xs text-texto-suave">{requerimientos.length}</span>}
+            {(vista === v.valor || v.valor === 'comprar') && (
+              <span className="ml-2 tabular text-xs text-texto-suave">{cuenta[v.valor]}</span>
+            )}
           </Link>
         ))}
         {vista === 'abiertos' && requerimientos.length > 0 && (recibe || despacha || compra) && (
@@ -86,41 +108,45 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
         )}
       </nav>
 
-      <Tarjeta className="overflow-hidden">
-        <Tabla>
-          <TablaCabecera>
-            <tr>
-              <TH>Requerimiento</TH>
-              <TH>Insumos</TH>
-              <TH>En qué va</TH>
-              <TH className="text-right">
-                <span className="sr-only">Acciones</span>
-              </TH>
-            </tr>
-          </TablaCabecera>
-          <tbody>
-            {requerimientos.length === 0 ? (
-              <SinDatos
-                titulo={vista === 'abiertos' ? 'Nada por atender' : 'Todavía no hay requerimientos'}
-                descripcion="Cuando se registre un requerimiento, aparece aquí y te llega un aviso."
-              />
-            ) : (
-              requerimientos.map((r) => (
-                <Fila
-                  key={r.id}
-                  rq={r}
-                  recibe={recibe}
-                  despacha={despacha}
-                  compra={compraDe[tipoDeRequerimiento(r)]}
-                  paraComprar={paraComprar}
-                  catalogo={catalogo}
-                  correcciones={correcciones.get(r.id)}
+      {vista === 'comprar' && paraComprar ? (
+        <PorComprar grupos={grupos} preseleccion={preseleccion} {...paraComprar} />
+      ) : (
+        <Tarjeta className="overflow-hidden">
+          <Tabla>
+            <TablaCabecera>
+              <tr>
+                <TH>Requerimiento</TH>
+                <TH>Insumos</TH>
+                <TH>En qué va</TH>
+                <TH className="text-right">
+                  <span className="sr-only">Acciones</span>
+                </TH>
+              </tr>
+            </TablaCabecera>
+            <tbody>
+              {requerimientos.length === 0 ? (
+                <SinDatos
+                  titulo={vista === 'abiertos' ? 'Nada por atender' : 'Todavía no hay requerimientos'}
+                  descripcion="Cuando se registre un requerimiento, aparece aquí y te llega un aviso."
                 />
-              ))
-            )}
-          </tbody>
-        </Tabla>
-      </Tarjeta>
+              ) : (
+                requerimientos.map((r) => (
+                  <Fila
+                    key={r.id}
+                    rq={r}
+                    recibe={recibe}
+                    despacha={despacha}
+                    compra={compraDe[tipoDeRequerimiento(r)]}
+                    paraComprar={paraComprar}
+                    catalogo={catalogo}
+                    correcciones={correcciones.get(r.id)}
+                  />
+                ))
+              )}
+            </tbody>
+          </Tabla>
+        </Tarjeta>
+      )}
     </>
   )
 }
@@ -128,6 +154,40 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
 /** Lo que falta comprar de un insumo: todo si Almacén no lo revisó, o lo que no tenía. */
 function faltaComprar(l: RequerimientoListado['lineas'][number]) {
   return l.en_stock === null || l.en_stock < l.cantidad
+}
+
+/**
+ * Los insumos que esperan su compra, por tipo de RQ: los de los RQ que Almacén
+ * ya revisó, que no tenía completos y que no van en una OC viva. Solo los del
+ * tipo que compra quien mira.
+ */
+function insumosPorComprar(requerimientos: RequerimientoListado[], compraDe: CompraDe): GrupoPorComprar[] {
+  return (['OPERACION', 'ADMINISTRACION'] as const)
+    .filter((tipo) => compraDe[tipo])
+    .map((tipo) => ({
+      tipo,
+      ...TITULO_POR_COMPRAR[tipo],
+      insumos: requerimientos
+        .filter((r) => tipoDeRequerimiento(r) === tipo && (r.estado === 'SIN_STOCK' || r.estado === 'EN_ATENCION'))
+        .flatMap((r) =>
+          r.lineas
+            .filter((l) => l.en_stock !== null && l.en_stock < l.cantidad && (!l.orden_compra || l.compra_rechazada))
+            .map((l) => ({
+              id: l.id,
+              requerimiento_id: r.id,
+              requerimiento: r.numero,
+              area: r.area,
+              codigo_interno: r.codigo_interno,
+              descripcion: l.descripcion,
+              falta: Math.round((l.cantidad - (l.en_stock ?? 0)) * 1000) / 1000,
+              unidad: l.unidad,
+              material_id: l.material_id,
+              material: l.material_nombre ?? l.descripcion,
+              codigo_material: l.material_codigo,
+              fecha_requerida: r.fecha_requerida,
+            })),
+        ),
+    }))
 }
 
 type ParaComprar = { proveedores: ProveedorParaCompra[]; materiales: MaterialParaConteo[]; puedeRegistrarProveedor: boolean }
@@ -231,26 +291,10 @@ function Fila({
             />
           )}
           {generaOc && (
-            <GenerarCompraDelRequerimiento
-              requerimiento={{
-                id: rq.id,
-                numero: rq.numero,
-                area: rq.area,
-                codigo_interno: rq.codigo_interno,
-                justificacion: rq.justificacion,
-                lineas: rq.lineas.map((l) => ({
-                  item: l.item,
-                  descripcion: l.descripcion,
-                  cantidad: l.cantidad,
-                  unidad: l.unidad,
-                  orden_compra: l.orden_compra,
-                  compra_rechazada: l.compra_rechazada,
-                  en_stock: l.en_stock,
-                  material_id: l.material_id,
-                })),
-              }}
-              {...paraComprar}
-            />
+            <EnlaceBoton href={`/requerimientos/atencion?vista=comprar&rq=${rq.id}`} tamano="sm">
+              <ShoppingCart aria-hidden className="size-4" />
+              Generar OC
+            </EnlaceBoton>
           )}
           {compra && rq.estado === 'SIN_STOCK' && <PasoRequerimiento id={rq.id} numero={rq.numero} paso="en_atencion" />}
           {recibe && (rq.estado === 'SIN_STOCK' || rq.estado === 'EN_ATENCION') && (

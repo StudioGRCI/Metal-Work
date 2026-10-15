@@ -4,10 +4,10 @@ import { useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
-import type { CompraSinFactura } from '@/lib/datos/adquisiciones'
+import type { CompraSinFactura, FacturaDeLogistica } from '@/lib/datos/adquisiciones'
 import { avisosDelDetector, numeroDeOc, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { useEnvio } from '@/lib/envio'
-import { moneda as dinero } from '@/lib/format'
+import { fecha as dia, moneda as dinero } from '@/lib/format'
 import { ACEPTA_XML_FACTURA, camposDeLectura, leerFactura, leerFacturaDeEnlace } from '@/lib/leer-factura'
 
 import { completarAdquisicion, enlaceDeFacturaDeLogistica, registrarAdquisicion } from './acciones'
@@ -17,17 +17,25 @@ type Fuente = 'xml' | 'pdf' | 'logistica'
 type Props = {
   ordenes: { id: string; numero: string }[]
   compras: CompraSinFactura[]
-  documentos: { id: string; nombre_archivo: string }[]
+  /** Las facturas que Logística anexó a sus OC y todavía nadie registra. */
+  documentos: FacturaDeLogistica[]
 }
 
 const mismoNombre = (a: string, b: string) => a.trim().toUpperCase() === b.trim().toUpperCase()
 const codigo = (m: string) => (m === 'USD' ? 'USD' : 'PEN')
 
+/** Lo que falta facturar de una OC: su total menos lo que ya cubren otras facturas. */
+const pendiente = (c: CompraSinFactura) => Math.max(Math.round((Number(c.total) - c.facturado) * 100) / 100, 0)
+
 /**
  * Contabilidad registra una factura o un recibo. Una factura de compra cubre una
- * o varias OC del mismo proveedor y con la misma condición de pago; mientras se
- * llena, se ve si el total calza con el de las OC marcadas. Es solo un aviso: la
- * factura se registra igual.
+ * o varias OC del mismo proveedor y con la misma condición de pago, y una OC
+ * puede ir en varias facturas: la que cubre solo una parte se marca como
+ * parcial. Mientras se llena, se ve si el total calza con lo que falta facturar
+ * de las OC marcadas. Es solo un aviso: la factura se registra igual.
+ *
+ * La factura que Logística anexó a la OC trae su número y su fecha: al elegirla
+ * se llenan, y se marca su OC.
  *
  * El detector lee la factura apenas se adjunta (el XML de SUNAT, el PDF o la que
  * subió Logística): llena el total, el número, la fecha y las OC que menciona si
@@ -65,6 +73,7 @@ function Formulario({
   alEscribir,
 }: Props & { alRegistrar: (mensaje: string) => void; alEscribir: () => void }) {
   const [marcadas, setMarcadas] = useState<string[]>([])
+  const [parciales, setParciales] = useState<string[]>([])
   const [proveedor, setProveedor] = useState('')
   const [condicion, setCondicion] = useState('CONTADO')
   const [monedaFactura, setMonedaFactura] = useState('PEN')
@@ -79,6 +88,7 @@ function Formulario({
   const { alEnviar, enviando, error } = useEnvio(registrarAdquisicion, (r) => alRegistrar(r.mensaje ?? 'Comprobante registrado.'))
 
   const elegidas = compras.filter((c) => marcadas.includes(c.orden_compra_id))
+  const enParte = elegidas.filter((c) => parciales.includes(c.orden_compra_id))
   const base = elegidas[0]
   const encaja = (c: CompraSinFactura) => !base || (mismoNombre(c.proveedor, base.proveedor) && c.condicion_pago === base.condicion_pago)
   const lectura = lecturas.xml ?? lecturas.pdf ?? lecturas.logistica ?? null
@@ -128,14 +138,35 @@ function Formulario({
 
   function marcar(c: CompraSinFactura, si: boolean) {
     alEscribir()
-    if (!si) return setMarcadas((m) => m.filter((id) => id !== c.orden_compra_id))
+    if (!si) {
+      setParciales((p) => p.filter((id) => id !== c.orden_compra_id))
+      return setMarcadas((m) => m.filter((id) => id !== c.orden_compra_id))
+    }
     if (marcadas.length === 0) {
       if (!proveedor.trim()) setProveedor(c.proveedor)
       setCondicion(c.condicion_pago)
       setMonedaFactura(c.moneda)
       if (!ot && c.orden_id) setOt(c.orden_id)
     }
-    setMarcadas((m) => [...m, c.orden_compra_id])
+    setMarcadas((m) => (m.includes(c.orden_compra_id) ? m : [...m, c.orden_compra_id]))
+  }
+
+  /** La factura de Logística trae su número, su fecha y su OC: se llenan si están vacíos. */
+  function elegirDeLogistica(id: string) {
+    const d = documentos.find((x) => x.id === id)
+    if (d?.numero) setNumero((n) => n || d.numero!)
+    if (d?.fecha) setEmision((e) => e || d.fecha!)
+    const c = d && compras.find((x) => x.orden_compra_id === d.orden_compra_id)
+    if (c && !marcadas.includes(c.orden_compra_id) && encaja(c)) marcar(c, true)
+    void detectar(
+      'logistica',
+      id
+        ? async () => {
+            const url = await enlaceDeFacturaDeLogistica(id)
+            return url ? leerFacturaDeEnlace(url, setLeyendo) : null
+          }
+        : null,
+    )
   }
 
   return (
@@ -202,10 +233,33 @@ function Formulario({
                         {c.en_borrador && ' · ya está en un borrador'}
                       </span>
                     </span>
-                    <span className="tabular text-sm text-texto">
+                    <span className="text-right tabular text-sm text-texto">
                       {c.sin_precio ? <span className="text-aviso">Sin precio</span> : dinero(c.total, codigo(c.moneda))}
+                      {!c.sin_precio && c.facturado > 0 && (
+                        <span className="block text-xs text-texto-suave">falta {dinero(pendiente(c), codigo(c.moneda))}</span>
+                      )}
                     </span>
                   </label>
+                  {c.facturas.length > 0 && (
+                    <p className="ml-9 text-xs text-texto-suave">
+                      Ya va en {c.facturas.join(', ')} por {dinero(c.facturado, codigo(c.moneda))}.
+                    </p>
+                  )}
+                  {marcada && (
+                    <label className="ml-9 flex min-h-11 cursor-pointer items-center gap-2 text-xs text-texto sm:min-h-0">
+                      <input
+                        type="checkbox"
+                        name="parciales"
+                        value={c.orden_compra_id}
+                        checked={parciales.includes(c.orden_compra_id)}
+                        onChange={(e) =>
+                          setParciales((p) => (e.target.checked ? [...p, c.orden_compra_id] : p.filter((id) => id !== c.orden_compra_id)))
+                        }
+                        className="size-4 accent-[var(--acento)]"
+                      />
+                      Esta factura cubre solo una parte de la OC: el resto va en otra factura
+                    </label>
+                  )}
                 </li>
               )
             })}
@@ -260,7 +314,7 @@ function Formulario({
           onChange={(e) => setTotal(e.target.value)}
         />
       </Campo>
-      <AvisoDeMonto elegidas={elegidas} total={total} monedaFactura={monedaFactura} />
+      <AvisoDeMonto elegidas={elegidas} enParte={enParte} total={total} monedaFactura={monedaFactura} />
       <DetectorDeFactura
         lectura={lectura}
         leyendo={leyendo}
@@ -275,28 +329,16 @@ function Formulario({
         <input key={nombre} type="hidden" name={nombre} value={valor} />
       ))}
 
-      <Campo etiqueta="Factura ya subida por Logística" htmlFor="adq-documento">
-        <Seleccion
-          id="adq-documento"
-          name="documento_compra_id"
-          defaultValue=""
-          onChange={(e) => {
-            const id = e.target.value
-            void detectar(
-              'logistica',
-              id
-                ? async () => {
-                    const url = await enlaceDeFacturaDeLogistica(id)
-                    return url ? leerFacturaDeEnlace(url, setLeyendo) : null
-                  }
-                : null,
-            )
-          }}
-        >
+      <Campo
+        etiqueta="Factura que anexó Logística"
+        htmlFor="adq-documento"
+        ayuda={documentos.length > 0 ? 'Al elegirla se llenan su número, su fecha y su OC.' : 'Ninguna espera su registro.'}
+      >
+        <Seleccion id="adq-documento" name="documento_compra_id" defaultValue="" onChange={(e) => elegirDeLogistica(e.target.value)}>
           <option value="">Ninguna; subiré un PDF</option>
           {documentos.map((d) => (
             <option key={d.id} value={d.id}>
-              {d.nombre_archivo}
+              {[d.numero ?? d.nombre_archivo, d.fecha ? dia(d.fecha) : null, d.oc, d.proveedor].filter(Boolean).join(' · ')}
             </option>
           ))}
         </Seleccion>
@@ -407,8 +449,22 @@ function DetectorDeFactura({
   )
 }
 
-/** Cuánto suman las OC marcadas frente al total de la factura. No frena nada. */
-function AvisoDeMonto({ elegidas, total, monedaFactura }: { elegidas: CompraSinFactura[]; total: string; monedaFactura: string }) {
+/**
+ * Cuánto falta facturar de las OC marcadas frente al total de la factura: de
+ * una OC que ya va en otra factura, solo lo que queda. No frena nada.
+ */
+function AvisoDeMonto({
+  elegidas,
+  enParte,
+  total,
+  monedaFactura,
+}: {
+  elegidas: CompraSinFactura[]
+  /** Las marcadas que esta factura cubre solo en parte. */
+  enParte: CompraSinFactura[]
+  total: string
+  monedaFactura: string
+}) {
   if (elegidas.length === 0) return null
   const clase = 'self-end text-sm sm:col-span-2 xl:col-span-3'
   if (elegidas.some((c) => c.sin_precio || c.moneda !== monedaFactura)) {
@@ -419,19 +475,35 @@ function AvisoDeMonto({ elegidas, total, monedaFactura }: { elegidas: CompraSinF
     )
   }
   const m = codigo(monedaFactura)
-  const suma = Math.round(elegidas.reduce((n, c) => n + Number(c.total), 0) * 100) / 100
+  const suma = Math.round(elegidas.reduce((n, c) => n + pendiente(c), 0) * 100) / 100
+  const yaFacturado = elegidas.some((c) => c.facturado > 0)
+  const queda = yaFacturado ? `De las OC marcadas falta facturar ${dinero(suma, m)}` : `Las OC marcadas suman ${dinero(suma, m)}`
   const escrito = Number(total)
   if (!total || !Number.isFinite(escrito) || escrito <= 0) {
-    return <p className={`${clase} text-texto-suave`}>Las OC marcadas suman {dinero(suma, m)}, con IGV si van con factura.</p>
+    return <p className={`${clase} text-texto-suave`}>{queda}, con IGV si van con factura.</p>
   }
   const diferencia = Math.round((escrito - suma) * 100) / 100
   if (Math.abs(diferencia) <= 1) {
-    return <p className={`${clase} text-exito`}>Calza con las OC marcadas: suman {dinero(suma, m)}.</p>
+    return (
+      <p className={`${clase} ${enParte.length > 0 ? 'text-aviso' : 'text-exito'}`}>
+        Calza con lo que falta facturar de las OC marcadas: {dinero(suma, m)}.
+        {enParte.length > 0 && ' La completa: no hace falta marcarla como parcial.'}
+      </p>
+    )
+  }
+  if (enParte.length > 0 && diferencia < 0) {
+    return (
+      <p className={`${clase} text-texto-suave`}>
+        Factura parcial: {queda.charAt(0).toLowerCase() + queda.slice(1)} y esta cubre {dinero(escrito, m)}. Quedan{' '}
+        {dinero(Math.abs(diferencia), m)} para otra factura.
+      </p>
+    )
   }
   return (
     <p role="status" className={`${clase} text-aviso`}>
-      Las OC marcadas suman {dinero(suma, m)} y la factura dice {dinero(escrito, m)}: {diferencia > 0 ? 'sobran' : 'faltan'}{' '}
-      {dinero(Math.abs(diferencia), m)}. Es solo un aviso: si la factura cubre otra cosa o falta una OC, puedes registrarla igual.
+      {queda} y la factura dice {dinero(escrito, m)}: {diferencia > 0 ? 'sobran' : 'faltan'} {dinero(Math.abs(diferencia), m)}. Es solo un aviso:
+      {diferencia < 0 ? ' si la factura cubre solo una parte de la OC, márcala como parcial; si' : ' si'} cubre otra cosa o falta una OC, puedes
+      registrarla igual.
     </p>
   )
 }

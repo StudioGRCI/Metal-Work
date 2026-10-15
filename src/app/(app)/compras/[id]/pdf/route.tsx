@@ -53,7 +53,7 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
   // compra directa, que va al almacén y nombra el material sin pasar por una OT.
   const ids = (detalles.data ?? []).flatMap((d) => (d.requerimiento_detalle_id ? [d.requerimiento_detalle_id] : []))
   const directos = (detalles.data ?? []).flatMap((d) => (!d.requerimiento_detalle_id && d.material_id ? [d.material_id] : []))
-  const [lineas, materiales, cuentas] = await Promise.all([
+  const [lineas, materiales, cuentas, insumos] = await Promise.all([
     ids.length
       ? db.from('v_atencion_materiales').select('detalle_id, numero_ot, material, material_codigo, unidad').in('detalle_id', ids)
       : Promise.resolve({ data: [], error: null }),
@@ -64,8 +64,10 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
     c.proveedor_id
       ? db.from('proveedor_cuentas').select('banco, numero_cuenta, titular, moneda').eq('proveedor_id', c.proveedor_id).eq('activo', true).order('creado_en')
       : Promise.resolve({ data: [], error: null }),
+    // Los insumos de RQ que compra cada línea: el destino es el código de cada uno.
+    db.rpc('insumos_de_compras', { p_ids: [c.id] }),
   ])
-  if (lineas.error || materiales.error || cuentas.error) {
+  if (lineas.error || materiales.error || cuentas.error || insumos.error) {
     return NextResponse.json({ error: 'No se pudieron identificar los insumos.' }, { status: 500 })
   }
   const porId = new Map((lineas.data ?? []).map((l) => [l.detalle_id, l]))
@@ -75,6 +77,19 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
   }
 
   const codigo = c.codigo_interno?.trim() || null
+  // «CÓDIGO · RQ-…» por cada código de los insumos de la línea, si la OC junta varios RQ.
+  const destinoPorLinea = new Map<string, Map<string, Set<string>>>()
+  for (const i of insumos.data ?? []) {
+    if (!i.detalle_id || !i.codigo_interno || !i.requerimiento) continue
+    const porCodigo = destinoPorLinea.get(i.detalle_id) ?? new Map<string, Set<string>>()
+    porCodigo.set(i.codigo_interno, (porCodigo.get(i.codigo_interno) ?? new Set()).add(i.requerimiento))
+    destinoPorLinea.set(i.detalle_id, porCodigo)
+  }
+  const destinoDeInsumos = (detalle: string) => {
+    const porCodigo = destinoPorLinea.get(detalle)
+    if (!porCodigo) return null
+    return [...porCodigo].map(([cod, rqs]) => `${cod} · ${[...rqs].sort().join(', ')}`).join('; ')
+  }
   const filas: LineaCompraPdf[] = (detalles.data ?? []).map((d) => {
     if (d.requerimiento_detalle_id) {
       const l = porId.get(d.requerimiento_detalle_id)
@@ -96,7 +111,7 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
       unidad: m?.unidad?.codigo ?? '',
       cantidad: Number(d.cantidad),
       precio: d.precio_unitario === null ? null : Number(d.precio_unitario),
-      destino: codigo ?? 'ALMACÉN',
+      destino: destinoDeInsumos(d.id) ?? codigo ?? 'ALMACÉN',
     }
   })
 

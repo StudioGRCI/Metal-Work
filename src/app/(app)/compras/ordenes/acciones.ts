@@ -57,9 +57,9 @@ type FormularioDeCompra = {
 }
 
 /**
- * Lo que traen los dos formularios de compra (la directa y la que nace del
- * requerimiento), leído una sola vez. En la del requerimiento el motivo y el
- * código interno salen del RQ en la base, así que no se exigen aquí.
+ * Lo que traen los dos formularios de compra (la directa y la que junta los
+ * insumos de los RQ), leído una sola vez. En la de los RQ el motivo y el
+ * código interno salen de los RQ en la base, así que no se exigen aquí.
  */
 function leerFormularioDeCompra(formulario: FormData, delRequerimiento: boolean): { ok: true; datos: FormularioDeCompra } | { ok: false; error: string } {
   const cabecera = z
@@ -163,34 +163,43 @@ export async function emitirCompraDirecta(_previo: unknown, formulario: FormData
   }
 }
 
+const INSUMOS_DE_LINEAS = z
+  .array(
+    z.object({
+      insumos: z
+        .array(z.guid('No se reconocieron los insumos marcados. Vuelve a cargar la pantalla.'))
+        .min(1, 'Cada material de la orden cubre al menos un insumo de un requerimiento.')
+        .max(300, 'Una orden cubre hasta 300 insumos.'),
+    }),
+  )
+  .min(1)
+
 /**
- * La orden de compra que nace del requerimiento que Almacén dejó sin stock:
- * los mismos datos que la directa más el RQ y qué insumos cubre. El motivo y
- * el código interno los toma la base del RQ (`emitir_compra_del_requerimiento`,
- * permiso `compras.crear`), y el RQ pasa a «En compra» con la misma función.
+ * La orden de compra con los insumos que faltan de uno o varios RQ del mismo
+ * tipo: una línea por material, y cada línea con los insumos que cubre. El
+ * motivo y el código interno los pone la base desde los RQ
+ * (`emitir_compra_de_requerimientos`, permiso `compras.crear`); cada RQ que
+ * esperaba su compra pasa a «En compra».
  */
-export async function emitirCompraDelRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+export async function emitirCompraDeInsumos(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Generar la orden de compra del requerimiento corresponde a Logística.' }
-  const rq = z.guid().safeParse(dato(formulario, 'requerimiento_id'))
-  if (!rq.success) return { ok: false, error: 'No se reconoció el requerimiento. Vuelve a cargar la pantalla.' }
-  const items = z
-    .array(z.coerce.number().int().min(1).max(100))
-    .min(1, 'Marca al menos un insumo del requerimiento que cubre esta orden.')
-    .safeParse(formulario.getAll('item').filter((v): v is string => typeof v === 'string'))
-  if (!items.success) return { ok: false, error: items.error.issues[0]?.message ?? 'Revisa los insumos marcados.' }
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Generar la orden de compra de los requerimientos corresponde a Logística.' }
   const leido = leerFormularioDeCompra(formulario, true)
   if (!leido.ok) return leido
   const d = leido.datos
+  const insumos = INSUMOS_DE_LINEAS.safeParse(JSON.parse(dato(formulario, 'lineas') || '[]'))
+  if (!insumos.success || insumos.data.length !== d.lineas.length) {
+    return { ok: false, error: insumos.success ? 'Vuelve a cargar la pantalla.' : (insumos.error.issues[0]?.message ?? 'Revisa los insumos marcados.') }
+  }
+  const todos = insumos.data.flatMap((l) => l.insumos)
+  if (new Set(todos).size !== todos.length) return { ok: false, error: 'Un insumo va en una sola línea de la orden.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('emitir_compra_del_requerimiento', {
+  const { data, error } = await supabase.rpc('emitir_compra_de_requerimientos', {
     p_id: d.operacion_id,
-    p_requerimiento_id: rq.data,
-    p_items: items.data,
+    p_lineas: d.lineas.map((l, i) => ({ ...l, insumos: insumos.data[i].insumos })),
     p_proveedor_id: d.proveedor_id,
     p_referencia: d.referencia || null,
-    p_detalles: d.lineas,
     p_fecha: d.fecha_estimada ?? null,
     p_condicion: d.condicion,
     p_dias: d.dias,
@@ -206,7 +215,7 @@ export async function emitirCompraDelRequerimiento(_previo: unknown, formulario:
   revalidatePath('/requerimientos/atencion')
   return {
     ok: true,
-    mensaje: `Orden ${numero} emitida para el requerimiento. Espera la aprobación de Gerencia; aprobada, prográmala en Gestión de compras con su peso y el conductor la recoge y la deja en almacén.`,
+    mensaje: `Orden ${numero} emitida con ${todos.length} ${todos.length === 1 ? 'insumo' : 'insumos'}. Espera la aprobación de Gerencia; aprobada, prográmala en Gestión de compras con su peso y el conductor la recoge y la deja en almacén.`,
   }
 }
 

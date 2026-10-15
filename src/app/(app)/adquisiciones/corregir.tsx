@@ -31,8 +31,21 @@ export type FacturaParaCorregir = {
   pagado: number
 }
 
-/** Una OC que se puede marcar en la corrección: las de la factura y las que esperan la suya. */
-type OcElegible = { id: string; numero: string; proveedor: string | null; total: number | null; moneda: string; condicion: string | null }
+/**
+ * Una OC que se puede marcar en la corrección: las de la factura y las que
+ * esperan la suya. `pendiente` es lo que falta facturar de ella sin contar esta.
+ */
+type OcElegible = {
+  id: string
+  numero: string
+  proveedor: string | null
+  total: number | null
+  pendiente: number | null
+  moneda: string
+  condicion: string | null
+}
+
+const mismas = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x))
 
 const mismoNombre = (a: string, b: string) => a.trim().toUpperCase() === b.trim().toUpperCase()
 const codigo = (m: string) => (m === 'USD' ? 'USD' : 'PEN')
@@ -91,6 +104,7 @@ function Formulario({
   const [condicion, setCondicion] = useState(f.condicion_pago)
   const [observacion, setObservacion] = useState(f.observacion)
   const [marcadas, setMarcadas] = useState<string[]>(() => ordenes.map((o) => o.id))
+  const [parciales, setParciales] = useState<string[]>(() => ordenes.filter((o) => o.parcial).map((o) => o.id))
   const [pdf, setPdf] = useState<File | null>(null)
   const [pdfId] = useState(() => crypto.randomUUID())
   const [lectura, setLectura] = useState<LecturaFactura | null>(null)
@@ -126,6 +140,7 @@ function Formulario({
       numero: o.numero ?? o.referencia,
       proveedor: null,
       total: o.sin_precio ? null : o.total,
+      pendiente: o.sin_precio ? null : Math.max(o.total - o.facturado_otras, 0),
       moneda: o.moneda,
       condicion: null,
     })),
@@ -136,6 +151,7 @@ function Formulario({
         numero: c.numero ?? c.referencia,
         proveedor: c.proveedor,
         total: c.sin_precio ? null : c.total,
+        pendiente: c.sin_precio ? null : Math.max(c.total - c.facturado, 0),
         moneda: c.moneda,
         condicion: c.condicion_pago,
       })),
@@ -153,7 +169,9 @@ function Formulario({
   if (condicion !== f.condicion_pago) cambios.condicion_pago = condicion
   if (observacion.trim() !== f.observacion.trim()) cambios.observacion = observacion.trim()
   const actuales = ordenes.map((o) => o.id)
-  if (marcadas.length !== actuales.length || marcadas.some((id) => !actuales.includes(id))) cambios.ordenes = marcadas
+  if (!mismas(marcadas, actuales)) cambios.ordenes = marcadas
+  const enParte = parciales.filter((p) => marcadas.includes(p))
+  if (!mismas(enParte, ordenes.filter((o) => o.parcial).map((o) => o.id))) cambios.parciales = enParte
   if (pdf) {
     cambios.pdf_ruta = rutaPdf
     if (lecturaUtil(lectura)) cambios.lectura = lectura
@@ -171,9 +189,10 @@ function Formulario({
         disponibles: elegibles.map((o) => ({ numero: o.numero, referencia: o.numero })),
       }).map((a) => textoDelAviso(a, (n, m) => dinero(n, m)))
     : []
-  const suma = elegidas.every((o) => o.total !== null && o.moneda === monedaFactura)
-    ? Math.round(elegidas.reduce((n, o) => n + (o.total ?? 0), 0) * 100) / 100
+  const suma = elegidas.every((o) => o.pendiente !== null && o.moneda === monedaFactura)
+    ? Math.round(elegidas.reduce((n, o) => n + (o.pendiente ?? 0), 0) * 100) / 100
     : null
+  const enOtras = elegidas.some((o) => o.pendiente !== null && o.total !== null && o.pendiente < o.total)
 
   async function leerPdf(archivo: File | undefined) {
     const vez = ++turno.current
@@ -268,32 +287,47 @@ function Formulario({
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium text-texto">OC que cubre</legend>
           <p className="text-xs text-texto-suave">
-            Desmarca la que no es de esta factura: queda anotada como quitada y vuelve a esperar la suya. Se ofrecen las del mismo proveedor que esperan factura.
+            Desmarca la que no es de esta factura: queda anotada como quitada y vuelve a esperar la suya. Se ofrecen las del mismo proveedor que esperan
+            factura. Si la factura cubre solo una parte de una OC, márcala como parcial.
           </p>
           {elegibles.length === 0 ? (
             <p className="text-sm text-texto-suave">No hay OC del proveedor {proveedor} esperando factura.</p>
           ) : (
             <ul className="grid gap-2 sm:grid-cols-2">
               {elegibles.map((o) => (
-                <li key={o.id}>
-                  <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-[var(--radius-base)] border border-borde px-3 py-2 text-sm">
+                <li key={o.id} className="rounded-[var(--radius-base)] border border-borde px-3 py-2">
+                  <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:min-h-0">
                     <input
                       type="checkbox"
                       checked={marcadas.includes(o.id)}
                       onChange={(e) => setMarcadas((m) => (e.target.checked ? [...m, o.id] : m.filter((x) => x !== o.id)))}
                     />
                     <span className="tabular text-texto">{o.numero}</span>
-                    <span className="ml-auto tabular text-texto-suave">
+                    <span className="ml-auto text-right tabular text-texto-suave">
                       {o.total === null ? 'sin precio' : dinero(o.total, codigo(o.moneda))}
+                      {o.pendiente !== null && o.total !== null && o.pendiente < o.total && (
+                        <span className="block text-xs">falta {dinero(o.pendiente, codigo(o.moneda))}</span>
+                      )}
                     </span>
                   </label>
+                  {marcadas.includes(o.id) && (
+                    <label className="mt-1 flex min-h-11 cursor-pointer items-center gap-2 text-xs text-texto sm:min-h-0">
+                      <input
+                        type="checkbox"
+                        checked={parciales.includes(o.id)}
+                        onChange={(e) => setParciales((p) => (e.target.checked ? [...p, o.id] : p.filter((x) => x !== o.id)))}
+                      />
+                      Cubre solo una parte de esta OC
+                    </label>
+                  )}
                 </li>
               ))}
             </ul>
           )}
           {suma !== null && elegidas.length > 0 && Number(total) > 0 && (
             <p className={`text-xs ${Math.abs(Number(total) - suma) <= 1 ? 'text-exito' : 'text-aviso'}`}>
-              Las OC marcadas suman {dinero(suma, codigo(monedaFactura))} y la factura dice {dinero(Number(total), codigo(monedaFactura))}.
+              {enOtras ? 'De las OC marcadas falta facturar' : 'Las OC marcadas suman'} {dinero(suma, codigo(monedaFactura))} y la factura dice{' '}
+              {dinero(Number(total), codigo(monedaFactura))}.
             </p>
           )}
         </fieldset>

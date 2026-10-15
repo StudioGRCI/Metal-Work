@@ -35,8 +35,40 @@ export type OrdenCompraListada = {
   codigo_interno: string | null
   /** Los RQ (RQ-0001-2026…) que esta compra atiende; vacío en las que no nacen de uno. */
   requerimientos: string[]
+  /** Los códigos internos de esos RQ: la OC que junta varios no tiene uno propio. */
+  codigos: string[]
+  /** Compra insumos de RQ línea por línea: su código es el de cada insumo y se corrige en el RQ. */
+  codigo_por_insumo: boolean
+  /** Las facturas que Logística le anexó, con su número y su fecha; una OC puede ir en varias. */
+  facturas: { numero: string; fecha: string | null }[]
   /** Lo que hizo Almacén con lo que dejó el conductor; null mientras no lo deja. */
   validacion: ValidacionIngreso
+}
+
+type InsumosDeLaCompra = { requerimientos: string[]; codigos: string[]; porInsumo: boolean }
+
+/**
+ * Los RQ y los códigos internos de cada compra, de `insumos_de_compras`: la ve
+ * quien ve las compras, aunque no lea los requerimientos.
+ */
+export async function insumosPorCompra(supabase: Awaited<ReturnType<typeof createClient>>, ids: string[]) {
+  const porCompra = new Map<string, InsumosDeLaCompra>()
+  if (ids.length === 0) return porCompra
+  const { data, error } = await supabase.rpc('insumos_de_compras', { p_ids: ids })
+  if (error) throw new Error(`No se pudo leer qué requerimiento atiende cada compra: ${error.message}`)
+  const juntos = new Map<string, { requerimientos: Set<string>; codigos: Set<string>; porInsumo: boolean }>()
+  for (const fila of data ?? []) {
+    if (!fila.orden_compra_id) continue
+    const j = juntos.get(fila.orden_compra_id) ?? { requerimientos: new Set<string>(), codigos: new Set<string>(), porInsumo: false }
+    if (fila.requerimiento) j.requerimientos.add(fila.requerimiento)
+    if (fila.codigo_interno) j.codigos.add(fila.codigo_interno)
+    if (fila.detalle_id) j.porInsumo = true
+    juntos.set(fila.orden_compra_id, j)
+  }
+  for (const [id, j] of juntos) {
+    porCompra.set(id, { requerimientos: [...j.requerimientos].sort(), codigos: [...j.codigos].sort(), porInsumo: j.porInsumo })
+  }
+  return porCompra
 }
 
 export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
@@ -53,24 +85,29 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
   // borrarla); se leen aparte, de a tandas para no alargar la URL.
   const ids = (data ?? []).map((c) => c.id).filter((id): id is string => Boolean(id))
   const datosCompra = new Map<string, { con_factura: boolean; codigo_interno: string | null }>()
+  const facturasDe = new Map<string, { numero: string; fecha: string | null }[]>()
   for (let i = 0; i < ids.length; i += 150) {
-    const tanda = await supabase.from('ordenes_compra_materiales').select('id, con_factura, codigo_interno').in('id', ids.slice(i, i + 150))
+    const [tanda, facturas] = await Promise.all([
+      supabase.from('ordenes_compra_materiales').select('id, con_factura, codigo_interno').in('id', ids.slice(i, i + 150)),
+      supabase
+        .from('documentos_compra_material')
+        .select('orden_compra_id, numero_documento, fecha_emision')
+        .eq('tipo', 'FACTURA')
+        .not('numero_documento', 'is', null)
+        .in('orden_compra_id', ids.slice(i, i + 150))
+        .order('fecha_emision'),
+    ])
     if (tanda.error) throw new Error(`No se pudo leer el comprobante de las compras: ${tanda.error.message}`)
+    if (facturas.error) throw new Error(`No se pudieron leer las facturas anexadas a las compras: ${facturas.error.message}`)
     for (const fila of tanda.data ?? []) datosCompra.set(fila.id, fila)
-  }
-  // Qué RQ atiende cada compra: también aparte, con la misma tanda.
-  const rqPorCompra = new Map<string, Set<string>>()
-  for (let i = 0; i < ids.length; i += 150) {
-    const tanda = await supabase
-      .from('requerimiento_lineas')
-      .select('orden_compra_id, requerimiento:requerimientos(numero)')
-      .in('orden_compra_id', ids.slice(i, i + 150))
-    if (tanda.error) throw new Error(`No se pudo leer qué requerimiento atiende cada compra: ${tanda.error.message}`)
-    for (const fila of tanda.data ?? []) {
-      if (!fila.orden_compra_id || !fila.requerimiento?.numero) continue
-      rqPorCompra.set(fila.orden_compra_id, (rqPorCompra.get(fila.orden_compra_id) ?? new Set()).add(fila.requerimiento.numero))
+    for (const f of facturas.data ?? []) {
+      if (!f.numero_documento) continue
+      facturasDe.set(f.orden_compra_id, [...(facturasDe.get(f.orden_compra_id) ?? []), { numero: f.numero_documento, fecha: f.fecha_emision }])
     }
   }
+  // Qué RQ atiende cada compra y con qué código interno: la OC que junta
+  // insumos de varios RQ los nombra a todos.
+  const insumos = await insumosPorCompra(supabase, ids)
   const estadosPorCompra = new Map<string, string[]>()
   for (const fila of pendientes.data ?? []) {
     estadosPorCompra.set(fila.orden_compra_id, [...(estadosPorCompra.get(fila.orden_compra_id) ?? []), fila.estado])
@@ -100,7 +137,10 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
     tiene_factura: c.tiene_factura === true,
     con_factura: datosCompra.get(c.id ?? '')?.con_factura ?? true,
     codigo_interno: datosCompra.get(c.id ?? '')?.codigo_interno ?? null,
-    requerimientos: [...(rqPorCompra.get(c.id ?? '') ?? [])].sort(),
+    requerimientos: insumos.get(c.id ?? '')?.requerimientos ?? [],
+    codigos: insumos.get(c.id ?? '')?.codigos ?? [],
+    codigo_por_insumo: insumos.get(c.id ?? '')?.porInsumo ?? false,
+    facturas: facturasDe.get(c.id ?? '') ?? [],
     validacion: validacionDeCompra(estadosPorCompra.get(c.id ?? '') ?? []),
   }))
 }
@@ -132,6 +172,8 @@ export type CompraParaRecojo = {
   ordenes: string[]
   /** Los RQ (RQ-0001-2026…) que esta compra atiende. */
   requerimientos: string[]
+  /** Los códigos internos de esos RQ: la OC que junta varios no tiene uno propio. */
+  codigos: string[]
   lineas: LineaRecojo[]
   /** Con factura se pide la factura; sin factura, boleta, nota de venta o recibo. */
   con_factura: boolean
@@ -157,6 +199,7 @@ export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('compras_en_gestion')
   if (error) throw new Error(`No se pudieron leer los recojos: ${error.message}`)
+  const insumos = await insumosPorCompra(supabase, (data ?? []).flatMap((c) => (c.id && !c.codigo_interno ? [c.id] : [])))
   return (data ?? []).map((c) => ({
     id: c.id ?? '',
     numero: c.numero ?? '',
@@ -176,6 +219,7 @@ export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
     creado_en: c.creado_en,
     ordenes: c.ordenes ?? [],
     requerimientos: c.requerimientos ?? [],
+    codigos: insumos.get(c.id ?? '')?.codigos ?? [],
     lineas: ((c.lineas as LineaRecojo[] | null) ?? []).map((l) => ({ ...l, cantidad: Number(l.cantidad) })),
     con_factura: c.con_factura ?? true,
     comprobante_adjunto: c.comprobante_adjunto === true,

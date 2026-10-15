@@ -54,6 +54,38 @@ export const CONTROL_FACTURA_COMPRA: Record<string, { etiqueta: string; tono: To
   SIN_OC: { etiqueta: 'Sin OC', tono: 'neutro' },
   OTRA_MONEDA: { etiqueta: 'OC en otra moneda', tono: 'neutro' },
   SIN_PRECIO: { etiqueta: 'OC sin precio', tono: 'aviso' },
+  // Cubre solo una parte de sus OC: las demás partes van en otras facturas (migración 20261016701000).
+  PARCIAL: { etiqueta: 'Factura parcial', tono: 'info' },
+}
+
+/** Lo que trae `adquisiciones_control` de una factura, lo justo para explicarlo. */
+type ControlParaTexto = {
+  control: string
+  total_oc: number | null
+  diferencia: number | null
+  ordenes: { parcial: boolean; facturado_otras: number; otras_facturas: { numero_documento: string }[] }[]
+}
+
+/**
+ * La línea que explica el control de una factura frente a lo que faltaba
+ * facturar de sus OC. Una OC puede ir en varias facturas: lo que ya cubren las
+ * otras no se le cuenta a esta. Nulo si no hay nada que explicar.
+ */
+export function detalleDelControl(c: ControlParaTexto, dinero: (monto: number) => string): string | null {
+  if (c.total_oc === null || c.diferencia === null) return null
+  const otras = [...new Set(c.ordenes.flatMap((o) => o.otras_facturas.map((f) => f.numero_documento)))]
+  const yaFacturado = c.ordenes.some((o) => o.facturado_otras > 0)
+  if (c.control === 'PARCIAL') {
+    return `Cubre una parte: de sus OC faltaba facturar ${dinero(c.total_oc)} y quedan ${dinero(Math.abs(c.diferencia))} para otra factura.`
+  }
+  if (c.control === 'CALZA') return otras.length > 0 ? `Completa sus OC junto con ${otras.join(', ')}.` : null
+  if (c.control !== 'NO_CALZA') return null
+  const sobra = c.diferencia > 0
+  const base = yaFacturado
+    ? `De sus OC faltaba facturar ${dinero(c.total_oc)}${otras.length > 0 ? ` (ya van en ${otras.join(', ')})` : ''}`
+    : `Sus OC suman ${dinero(c.total_oc)}`
+  const marcarParcial = !sobra && !c.ordenes.some((o) => o.parcial) ? ' Si cubre solo una parte, corrígela y márcala como parcial.' : ''
+  return `${base}: ${sobra ? 'sobran' : 'faltan'} ${dinero(Math.abs(c.diferencia))}.${marcarParcial}`
 }
 
 /**

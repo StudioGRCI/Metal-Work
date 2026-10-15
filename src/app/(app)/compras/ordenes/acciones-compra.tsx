@@ -25,6 +25,7 @@ export function AccionesCompra({
   adjuntar,
   conFactura,
   codigoInterno,
+  codigosDeInsumos,
   tieneComprobante,
   total,
   moneda,
@@ -40,6 +41,8 @@ export function AccionesCompra({
   adjuntar: boolean
   conFactura: boolean
   codigoInterno: string | null
+  /** Compra insumos de RQ: el código es el de cada insumo y se corrige en su RQ, no aquí. */
+  codigosDeInsumos: string[] | null
   /** Con el comprobante ya adjunto, lo de la factura queda fijo; el código interno no. */
   tieneComprobante: boolean
   /** El conductor ya la dejó en almacén: lo que entró no cambia de cantidad ni de precio. */
@@ -128,6 +131,7 @@ export function AccionesCompra({
             id={id}
             conFactura={conFactura}
             codigoInterno={codigoInterno}
+            codigosDeInsumos={codigosDeInsumos}
             tieneComprobante={tieneComprobante}
             moneda={moneda}
             entregada={entregada}
@@ -144,6 +148,7 @@ function CorregirCompra({
   id,
   conFactura,
   codigoInterno,
+  codigosDeInsumos,
   tieneComprobante,
   moneda,
   entregada,
@@ -153,6 +158,7 @@ function CorregirCompra({
   id: string
   conFactura: boolean
   codigoInterno: string | null
+  codigosDeInsumos: string[] | null
   tieneComprobante: boolean
   moneda: string
   entregada: boolean
@@ -175,7 +181,7 @@ function CorregirCompra({
   // Solo viaja lo que cambió: la base anota antes y después.
   const cambios: Record<string, unknown> = {}
   if (factura !== conFactura) cambios.con_factura = factura
-  if (codigo.trim() !== (codigoInterno ?? '')) cambios.codigo_interno = codigo.trim()
+  if (!codigosDeInsumos && codigo.trim() !== (codigoInterno ?? '')) cambios.codigo_interno = codigo.trim()
   const lineasCambiadas = lista.flatMap((l) => {
     const v = valor(l)
     const c: { detalle_id: string; cantidad?: number; precio_unitario?: number } = { detalle_id: l.detalle_id }
@@ -190,17 +196,25 @@ function CorregirCompra({
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="cambios" value={JSON.stringify(cambios)} />
-      <Campo etiqueta="Código interno" htmlFor={`corregir-codigo-${id}`} requerido ayuda={AYUDA_CODIGO_INTERNO}>
-        <Entrada
-          id={`corregir-codigo-${id}`}
-          value={codigo}
-          onChange={(e) => setCodigo(e.target.value)}
-          required
-          minLength={2}
-          maxLength={60}
-          autoComplete="off"
-        />
-      </Campo>
+      {codigosDeInsumos ? (
+        <div className="text-sm">
+          <p className="font-medium text-texto">Código interno</p>
+          <p className="tabular text-texto">{codigosDeInsumos.join(', ') || '—'}</p>
+          <p className="text-xs text-texto-suave">Cada insumo lleva el código de su requerimiento: si está mal, corrige el requerimiento.</p>
+        </div>
+      ) : (
+        <Campo etiqueta="Código interno" htmlFor={`corregir-codigo-${id}`} requerido ayuda={AYUDA_CODIGO_INTERNO}>
+          <Entrada
+            id={`corregir-codigo-${id}`}
+            value={codigo}
+            onChange={(e) => setCodigo(e.target.value)}
+            required
+            minLength={2}
+            maxLength={60}
+            autoComplete="off"
+          />
+        </Campo>
+      )}
       <Campo
         etiqueta="Comprobante"
         htmlFor={`corregir-factura-${id}`}

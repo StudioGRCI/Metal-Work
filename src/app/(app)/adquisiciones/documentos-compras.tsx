@@ -2,6 +2,7 @@ import { FileText, FolderOpen, ReceiptText } from 'lucide-react'
 
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import type { FacturaDeLogistica } from '@/lib/datos/adquisiciones'
 import type { DocumentoCompraTesoreria } from '@/lib/datos/tesoreria'
 import { fecha } from '@/lib/format'
 
@@ -10,6 +11,7 @@ const TIPO_DOCUMENTO: Record<string, string> = {
   ORDEN_PAGO: 'Orden de pago',
   ORDEN_SERVICIO: 'Orden de servicio',
   FACTURA: 'Factura',
+  COMPROBANTE: 'Boleta, nota de venta o recibo',
   OTRO: 'Otro documento',
 }
 
@@ -18,9 +20,17 @@ const AREA: Record<string, string> = { MTZ: 'Maestranza', PRD: 'Producción', AC
 /**
  * Los PDF que Logística adjuntó a cada compra: órdenes de compra, de pago, de
  * servicio y facturas. Antes estaban en la portada de Tesorería; desde el
- * 2026-10-14 van en Adquisiciones, donde Tesorería ve todo lo comprado.
+ * 2026-10-14 van en Adquisiciones, donde Tesorería ve todo lo comprado. Cada
+ * factura dice su número, su fecha y si Contabilidad ya la registró.
  */
-export function DocumentosDeCompras({ documentos }: { documentos: DocumentoCompraTesoreria[] }) {
+export function DocumentosDeCompras({
+  documentos,
+  facturas,
+}: {
+  documentos: DocumentoCompraTesoreria[]
+  /** Las facturas anexadas, por su id: su número, su fecha y si ya se registraron. */
+  facturas: Map<string, FacturaDeLogistica>
+}) {
   return (
     <Tarjeta className="mt-5">
       <TarjetaCabecera titulo="Documentos de compras de Logística" descripcion="Los PDF de órdenes de compra, de pago, de servicio y las facturas que Logística adjuntó a cada compra." />
@@ -36,7 +46,9 @@ export function DocumentosDeCompras({ documentos }: { documentos: DocumentoCompr
             </p>
           </div>
         ) : (
-          documentos.map((documento) => (
+          documentos.map((documento) => {
+            const factura = documento.id ? facturas.get(documento.id) : undefined
+            return (
             <article
               key={documento.id}
               className="flex flex-col gap-2 rounded-[var(--radius-base)] border border-borde p-3 sm:flex-row sm:items-center sm:justify-between"
@@ -44,7 +56,16 @@ export function DocumentosDeCompras({ documentos }: { documentos: DocumentoCompr
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <ReceiptText aria-hidden className="size-4 shrink-0 text-acento" />
-                  <p className="font-medium text-texto">{TIPO_DOCUMENTO[documento.tipo ?? ''] ?? 'Documento de compra'}</p>
+                  <p className="font-medium text-texto">
+                    {TIPO_DOCUMENTO[documento.tipo ?? ''] ?? 'Documento de compra'}
+                    {factura?.numero && <span className="tabular"> {factura.numero}</span>}
+                    {factura?.fecha && <span className="font-normal text-texto-suave"> del {fecha(factura.fecha)}</span>}
+                  </p>
+                  {factura && (
+                    <Insignia tono={factura.registrada ? 'exito' : 'aviso'}>
+                      {factura.registrada ? 'Registrada por Contabilidad' : 'Falta registrarla'}
+                    </Insignia>
+                  )}
                   {documento.ordenes.length > 0 ? (
                     documento.ordenes.map((o) => (
                       <Insignia key={`${o.orden_id}-${o.area_destino}`} tono="neutro">
@@ -77,7 +98,8 @@ export function DocumentosDeCompras({ documentos }: { documentos: DocumentoCompr
                 </p>
               )}
             </article>
-          ))
+            )
+          })
         )}
       </TarjetaCuerpo>
     </Tarjeta>

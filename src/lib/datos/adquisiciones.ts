@@ -24,6 +24,11 @@ const esquemaOrdenes = z.array(
     sin_precio: z.boolean(),
     con_factura: z.boolean(),
     numero_ot: z.string().nullable(),
+    /** Esta factura cubre solo una parte de la OC (migración 20261016701000). */
+    parcial: z.boolean().default(false),
+    /** Lo que ya está facturado de la OC en otras facturas registradas. */
+    facturado_otras: z.coerce.number().default(0),
+    otras_facturas: z.array(z.object({ numero_documento: z.string(), parcial: z.boolean() })).default([]),
   }),
 )
 export type OrdenDeFactura = z.infer<typeof esquemaOrdenes>[number]
@@ -62,13 +67,32 @@ export type CompraSinFactura = {
   orden_id: string | null
   creado_en: string
   en_borrador: boolean
+  /** Lo que ya está facturado de ella en facturas que la cubren en parte (migración 20261016701000). */
+  facturado: number
+  /** Las facturas registradas que ya la cubren en parte. */
+  facturas: string[]
 }
 
-/** Las OC aprobadas que van con factura y todavía no están en ninguna factura registrada. */
+const esquemaFacturadas = z.array(z.object({ numero_documento: z.string() }))
+
+/**
+ * Las OC aprobadas que van con factura y esperan su factura: ninguna factura
+ * registrada las cubre, o las que hay las cubren solo en parte.
+ */
 export async function comprasSinFactura(): Promise<CompraSinFactura[]> {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('compras_sin_factura')
   if (error) throw new Error(`No se pudieron leer las OC que esperan su factura: ${error.message}`)
+  const ids = (data ?? []).flatMap((c) => (c.orden_compra_id ? [c.orden_compra_id] : []))
+  const facturadas = ids.length ? await supabase.rpc('facturado_de_compras', { p_ids: ids }) : { data: [], error: null }
+  if (facturadas.error) throw new Error(`No se pudo leer lo facturado de cada OC: ${facturadas.error.message}`)
+  const facturadoDe = new Map(
+    (facturadas.data ?? []).flatMap((f) =>
+      f.orden_compra_id
+        ? [[f.orden_compra_id, { facturado: Number(f.facturado ?? 0), facturas: esquemaFacturadas.catch([]).parse(f.facturas).map((x) => x.numero_documento) }] as const]
+        : [],
+    ),
+  )
   return (data ?? []).flatMap((c) =>
     c.orden_compra_id
       ? [{
@@ -84,9 +108,73 @@ export async function comprasSinFactura(): Promise<CompraSinFactura[]> {
           orden_id: c.orden_id,
           creado_en: c.creado_en ?? '',
           en_borrador: Boolean(c.en_borrador),
+          facturado: facturadoDe.get(c.orden_compra_id)?.facturado ?? 0,
+          facturas: facturadoDe.get(c.orden_compra_id)?.facturas ?? [],
         }]
       : [],
   )
+}
+
+/** Una factura que Logística anexó a una OC, con su número y su fecha (migración 20261016702000). */
+export type FacturaDeLogistica = {
+  id: string
+  orden_compra_id: string
+  /** El número de la OC, o su referencia si todavía no lo tiene. */
+  oc: string
+  proveedor: string
+  nombre_archivo: string
+  /** Null en las anexadas antes del 2026-10-16, que se subieron sin número. */
+  numero: string | null
+  fecha: string | null
+  /** Contabilidad ya la registró: la eligió, o registró una factura con su número para el mismo proveedor. */
+  registrada: boolean
+}
+
+const mismoProveedor = (a: string | null | undefined, b: string | null | undefined) =>
+  (a ?? '').trim().toUpperCase() === (b ?? '').trim().toUpperCase()
+
+/**
+ * Las facturas que Logística anexó a sus OC, de la más nueva a la más vieja,
+ * y si Contabilidad ya las registró en Adquisiciones. Las que esperan su
+ * registro son las que Contabilidad elige al registrar el comprobante.
+ */
+export async function facturasDeLogistica(): Promise<FacturaDeLogistica[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('documentos_compra_material')
+    .select('id, orden_compra_id, nombre_archivo, numero_documento, fecha_emision, oc:ordenes_compra_materiales(numero, referencia, proveedor)')
+    .eq('tipo', 'FACTURA')
+    .order('creado_en', { ascending: false })
+    .limit(300)
+  if (error) throw new Error(`No se pudieron leer las facturas que anexó Logística: ${error.message}`)
+  const documentos = data ?? []
+  const ids = documentos.map((d) => d.id)
+  const numeros = [...new Set(documentos.flatMap((d) => (d.numero_documento ? [d.numero_documento] : [])))]
+  const [porDocumento, porNumero] = await Promise.all([
+    enTandas(ids, async (tanda) => {
+      const r = await supabase.from('adquisiciones').select('documento_compra_id').in('documento_compra_id', tanda)
+      if (r.error) throw new Error(`No se pudo ver qué facturas de Logística ya se registraron: ${r.error.message}`)
+      return r.data ?? []
+    }),
+    enTandas(numeros, async (tanda) => {
+      const r = await supabase.from('adquisiciones').select('numero_documento, proveedor').in('numero_documento', tanda)
+      if (r.error) throw new Error(`No se pudo ver qué facturas de Logística ya se registraron: ${r.error.message}`)
+      return r.data ?? []
+    }),
+  ])
+  const usadas = new Set(porDocumento.map((a) => a.documento_compra_id))
+  return documentos.map((d) => ({
+    id: d.id,
+    orden_compra_id: d.orden_compra_id,
+    oc: d.oc?.numero ?? d.oc?.referencia ?? 'OC',
+    proveedor: d.oc?.proveedor ?? '',
+    nombre_archivo: d.nombre_archivo,
+    numero: d.numero_documento,
+    fecha: d.fecha_emision,
+    registrada:
+      usadas.has(d.id) ||
+      (d.numero_documento !== null && porNumero.some((a) => a.numero_documento === d.numero_documento && mismoProveedor(a.proveedor, d.oc?.proveedor))),
+  }))
 }
 
 /** El PDF de cada comprobante: el que subió Contabilidad o la factura que adjuntó Logística a la compra. */
@@ -127,7 +215,8 @@ export type OcEnTabla = {
   total: number
   sin_precio: boolean
   numero_ot: string | null
-  codigo_interno: string | null
+  /** El de la OC o, si junta insumos de varios RQ, el de cada uno. */
+  codigos: string[]
   requerimientos: RqDeCompra[]
 }
 
@@ -207,31 +296,27 @@ export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Prom
   const idsOc = [
     ...new Set([...[...controles.values()].flatMap((c) => c.ordenes.map((o) => o.id)), ...sinFactura.map((c) => c.orden_compra_id)]),
   ]
-  const [codigos, lineas] = await Promise.all([
+  const [codigos, insumos] = await Promise.all([
     enTandas(idsOc, async (tanda) => {
       const r = await supabase.from('ordenes_compra_materiales').select('id, codigo_interno').in('id', tanda)
       if (r.error) throw new Error(`No se pudo leer el código interno de las OC: ${r.error.message}`)
       return r.data ?? []
     }),
-    enTandas(idsOc, async (tanda) => {
-      const r = await supabase
-        .from('requerimiento_lineas')
-        .select('orden_compra_id, requerimiento:requerimientos(id, numero, codigo_interno)')
-        .in('orden_compra_id', tanda)
-      if (r.error) throw new Error(`No se pudo leer qué requerimiento atiende cada OC: ${r.error.message}`)
-      return r.data ?? []
-    }),
+    // Los RQ de cada OC con su código, también para quien no lee los requerimientos.
+    idsOc.length ? supabase.rpc('insumos_de_compras', { p_ids: idsOc }) : Promise.resolve({ data: [], error: null }),
   ])
+  if (insumos.error) throw new Error(`No se pudo leer qué requerimiento atiende cada OC: ${insumos.error.message}`)
   const codigoDe = new Map(codigos.map((c) => [c.id, c.codigo_interno]))
   const rqDe = new Map<string, Map<string, RqDeCompra>>()
-  for (const l of lineas) {
-    if (!l.orden_compra_id || !l.requerimiento) continue
+  for (const l of insumos.data ?? []) {
+    if (!l.orden_compra_id || !l.requerimiento_id || !l.requerimiento) continue
     const deLaOc = rqDe.get(l.orden_compra_id) ?? new Map<string, RqDeCompra>()
-    deLaOc.set(l.requerimiento.id, l.requerimiento)
+    deLaOc.set(l.requerimiento_id, { id: l.requerimiento_id, numero: l.requerimiento, codigo_interno: l.codigo_interno ?? '' })
     rqDe.set(l.orden_compra_id, deLaOc)
   }
   const oc = (o: { id: string; numero: string | null; referencia: string; moneda: string; total: number; sin_precio: boolean; numero_ot: string | null }): OcEnTabla => {
     const requerimientos = [...(rqDe.get(o.id)?.values() ?? [])].sort((a, b) => a.numero.localeCompare(b.numero))
+    const propio = codigoDe.get(o.id)
     return {
       id: o.id,
       numero: o.numero ?? o.referencia,
@@ -239,7 +324,7 @@ export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Prom
       total: o.total,
       sin_precio: o.sin_precio,
       numero_ot: o.numero_ot,
-      codigo_interno: codigoDe.get(o.id) ?? requerimientos[0]?.codigo_interno ?? null,
+      codigos: propio ? [propio] : [...new Set(requerimientos.map((r) => r.codigo_interno).filter(Boolean))].sort(),
       requerimientos,
     }
   }
@@ -273,7 +358,9 @@ export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Prom
       ordenes: (control?.ordenes ?? []).map(oc),
     }
   })
-  const listadas = new Set(facturas.flatMap((f) => f.ordenes.map((o) => o.id)))
+  // La OC que está en un borrador sale bajo él; la que una factura registrada
+  // cubre solo en parte sigue también entre las que esperan su factura.
+  const listadas = new Set(facturas.filter((f) => f.factura.estado === 'BORRADOR').flatMap((f) => f.ordenes.map((o) => o.id)))
   return {
     facturas,
     sinFactura: sinFactura

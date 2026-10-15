@@ -135,6 +135,7 @@ export type Database = {
           actualizado_en: string
           quitada_en: string | null
           quitada_por: string | null
+          parcial: boolean
         }
         Insert: {
           id?: string
@@ -144,6 +145,7 @@ export type Database = {
           actualizado_en?: string
           quitada_en?: string | null
           quitada_por?: string | null
+          parcial?: boolean
         }
         Update: {
           id?: string
@@ -153,6 +155,7 @@ export type Database = {
           actualizado_en?: string
           quitada_en?: string | null
           quitada_por?: string | null
+          parcial?: boolean
         }
         Relationships: [
           {
@@ -1906,6 +1909,8 @@ export type Database = {
           subido_por: string
           creado_en: string
           actualizado_en: string
+          numero_documento: string | null
+          fecha_emision: string | null
         }
         Insert: {
           id?: string
@@ -1918,6 +1923,8 @@ export type Database = {
           subido_por?: string
           creado_en?: string
           actualizado_en?: string
+          numero_documento?: string | null
+          fecha_emision?: string | null
         }
         Update: {
           id?: string
@@ -1930,6 +1937,8 @@ export type Database = {
           subido_por?: string
           creado_en?: string
           actualizado_en?: string
+          numero_documento?: string | null
+          fecha_emision?: string | null
         }
         Relationships: [
           {
@@ -7794,6 +7803,7 @@ export type Database = {
           stock_revisado_por: string | null
           material_id: string | null
           material_nuevo: boolean
+          orden_compra_detalle_id: string | null
         }
         Insert: {
           id?: string
@@ -7813,6 +7823,7 @@ export type Database = {
           stock_revisado_por?: string | null
           material_id?: string | null
           material_nuevo?: boolean
+          orden_compra_detalle_id?: string | null
         }
         Update: {
           id?: string
@@ -7832,6 +7843,7 @@ export type Database = {
           stock_revisado_por?: string | null
           material_id?: string | null
           material_nuevo?: boolean
+          orden_compra_detalle_id?: string | null
         }
         Relationships: [
           {
@@ -7853,6 +7865,13 @@ export type Database = {
             columns: ["material_id"]
             isOneToOne: false
             referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_lineas_orden_compra_detalle_id_fkey"
+            columns: ["orden_compra_detalle_id"]
+            isOneToOne: false
+            referencedRelation: "orden_compra_material_detalles"
             referencedColumns: ["id"]
           },
           {
@@ -10765,6 +10784,19 @@ export type Database = {
           guias_anuladas: number | null
         }[]
       }
+      compras_facturadas: {
+        Args: {
+          p_ids: string[] | null
+          p_sin: string | null
+        }
+        Returns: {
+          orden_compra_id: string | null
+          total: number | null
+          facturado: number | null
+          completa: boolean | null
+          facturas: Json | null
+        }[]
+      }
       compras_para_aprobar: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -11215,6 +11247,20 @@ export type Database = {
         }
         Returns: string
       }
+      emitir_compra_de_requerimientos: {
+        Args: {
+          p_id: string | null
+          p_lineas: Json | null
+          p_proveedor_id: string | null
+          p_referencia: string | null
+          p_fecha: string | null
+          p_condicion: string | null
+          p_dias: number | null
+          p_moneda: string | null
+          p_con_factura: boolean | null
+        }
+        Returns: string
+      }
       emitir_compra_del_requerimiento: {
         Args: {
           p_id: string | null
@@ -11365,6 +11411,18 @@ export type Database = {
         Returns: {
           por_facturar: number | null
           por_cobrar: number | null
+        }[]
+      }
+      facturado_de_compras: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          orden_compra_id: string | null
+          total: number | null
+          facturado: number | null
+          completa: boolean | null
+          facturas: Json | null
         }[]
       }
       fijar_condicion_pago_compra: {
@@ -11583,6 +11641,21 @@ export type Database = {
           dejado_en: string | null
           dejado_por_nombre: string | null
           recogido_en: string | null
+        }[]
+      }
+      insumos_de_compras: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          orden_compra_id: string | null
+          detalle_id: string | null
+          requerimiento_id: string | null
+          requerimiento: string | null
+          area: string | null
+          codigo_interno: string | null
+          item: number | null
+          cantidad: number | null
         }[]
       }
       jornadas_validadas: {

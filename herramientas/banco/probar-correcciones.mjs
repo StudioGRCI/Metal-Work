@@ -325,7 +325,8 @@ try {
     comprobar(/\/correccion-[0-9a-f-]{36}\.pdf$/.test(a.ruta_storage ?? ''), 'el PDF nuevo reemplaza al anterior, en su ruta de corrección')
     comprobar(a.lectura_total === 1185.9 && (a.lectura_ordenes ?? []).length === 2, 'lo que el detector leyó del PDF nuevo queda con la factura')
     await pagina.reload({ waitUntil: 'networkidle' })
-    const tarjeta = pagina.locator('article', { hasText: numeroFactura })
+    // Desde #99 Adquisiciones es una tabla: cada factura, con sus OC, va en su propio tbody.
+    const tarjeta = pagina.locator('tbody', { hasText: numeroFactura })
     await tarjeta.getByText('Corregido una vez').click()
     comprobar((await tarjeta.getByText(new RegExp(`Se sumó la ${oc[1].numero}`)).count()) === 1, 'el historial de la factura dice qué OC se sumó')
     await pagina.screenshot({ path: `${CAPTURAS}/correccion-factura.png`, fullPage: true })

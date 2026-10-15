@@ -73,6 +73,11 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   if (!entrada.success) return { ok: false, error: entrada.error.issues[0]?.message ?? 'Revisa el comprobante.' }
   const marcadas = esquemaOrdenes.safeParse([...new Set(formulario.getAll('ordenes_compra').filter((v) => v !== ''))])
   if (!marcadas.success) return { ok: false, error: marcadas.error.issues[0]?.message ?? 'Vuelve a marcar las OC de la factura.' }
+  // Las OC que esta factura cubre solo en parte (migración 20261016701000): el resto va en otra factura.
+  const enParte = esquemaOrdenes.safeParse([...new Set(formulario.getAll('parciales').filter((v) => v !== ''))])
+  if (!enParte.success || enParte.data.some((o) => !marcadas.data.includes(o))) {
+    return { ok: false, error: 'Vuelve a marcar qué OC cubre solo en parte esta factura.' }
+  }
   const archivo = formulario.get('pdf')
   const v = entrada.data
   const tieneArchivo = archivo instanceof File && archivo.size > 0
@@ -141,6 +146,13 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
     if (errorEnlace) return { ok: false, error: `El comprobante quedó en borrador sin todas sus OC: ${mensajeDeError(errorEnlace)}` }
     if ((enlazadas ?? []).length !== resto.length) return { ok: false, error: NO_TOCO_NADA }
   }
+  // Las que cubre en parte, mientras sigue en borrador: registrada, solo se cambia con una corrección.
+  if (enParte.data.length > 0) {
+    const { data: parciales, error: errorParcial } = await supabase.from('adquisiciones_ordenes_compra')
+      .update({ parcial: true }).eq('adquisicion_id', id).in('orden_compra_id', enParte.data).select('id')
+    if (errorParcial) return { ok: false, error: `El comprobante quedó en borrador sin marcar las OC parciales: ${mensajeDeError(errorParcial)}` }
+    if ((parciales ?? []).length !== enParte.data.length) return { ok: false, error: NO_TOCO_NADA }
+  }
   const ruta = bytes ? `adquisiciones/${id}/comprobante.pdf` : null
   if (ruta && bytes) {
     const { error: errorArchivo } = await supabase.storage.from('comprobantes-financieros')
@@ -154,7 +166,8 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
   const cuantas = ordenes.length
-  return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado${cuantas > 1 ? ` con ${cuantas} OC` : cuantas === 1 ? ' con su OC' : ''}.` }
+  const parcial = enParte.data.length > 0 ? ', como factura parcial: sus OC siguen esperando el resto' : ''
+  return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado${cuantas > 1 ? ` con ${cuantas} OC` : cuantas === 1 ? ' con su OC' : ''}${parcial}.` }
 }
 
 export async function completarAdquisicion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
@@ -234,6 +247,8 @@ const CAMBIOS_FACTURA = z.object({
   condicion_pago: z.enum(['CONTADO', 'CREDITO']).optional(),
   observacion: z.string().trim().max(1000).optional(),
   ordenes: esquemaOrdenes.optional(),
+  /** Las OC que la factura cubre solo en parte, de las que quedan en ella. */
+  parciales: esquemaOrdenes.optional(),
   pdf_ruta: z
     .string()
     .regex(/^adquisiciones\/[0-9a-f-]{36}\/correccion-[0-9a-f-]{36}\.pdf$/, 'Vuelve a adjuntar el PDF corregido de la factura.')

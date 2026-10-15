@@ -9,10 +9,10 @@ set local role authenticated;
 do $$ declare v_id uuid; begin
  if not exists(select 1 from storage.objects where name='compra/'||current_setting('prueba.compra')||'/'||current_setting('prueba.documento')||'.pdf') then raise exception 'FAIL: Logística no puede comprobar su archivo'; end if;
  begin
- insert into public.documentos_compra_material(id,orden_compra_id,tipo,nombre_archivo,ruta_storage,mime_type,tamano_bytes,subido_por) values(current_setting('prueba.documento')::uuid,current_setting('prueba.compra')::uuid,'FACTURA','Prueba.pdf','compra/'||current_setting('prueba.compra')||'/'||current_setting('prueba.documento')||'.pdf','application/pdf',6,public.usuario_actual());
+ insert into public.documentos_compra_material(id,orden_compra_id,tipo,nombre_archivo,ruta_storage,mime_type,tamano_bytes,subido_por,numero_documento,fecha_emision) values(current_setting('prueba.documento')::uuid,current_setting('prueba.compra')::uuid,'FACTURA','Prueba.pdf','compra/'||current_setting('prueba.compra')||'/'||current_setting('prueba.documento')||'.pdf','application/pdf',6,public.usuario_actual(),'F001-1',current_date);
  raise exception 'FAIL: aceptó tamaño falso';
  exception when others then if sqlerrm like 'FAIL:%' then raise; end if; if sqlerrm not like 'El tamaño o tipo%' then raise; end if; end;
- insert into public.documentos_compra_material(id,orden_compra_id,tipo,nombre_archivo,ruta_storage,mime_type,tamano_bytes,subido_por) values(current_setting('prueba.documento')::uuid,current_setting('prueba.compra')::uuid,'FACTURA','Prueba.pdf','compra/'||current_setting('prueba.compra')||'/'||current_setting('prueba.documento')||'.pdf','application/pdf',5,public.usuario_actual()) returning id into v_id;
+ insert into public.documentos_compra_material(id,orden_compra_id,tipo,nombre_archivo,ruta_storage,mime_type,tamano_bytes,subido_por,numero_documento,fecha_emision) values(current_setting('prueba.documento')::uuid,current_setting('prueba.compra')::uuid,'FACTURA','Prueba.pdf','compra/'||current_setting('prueba.compra')||'/'||current_setting('prueba.documento')||'.pdf','application/pdf',5,public.usuario_actual(),'F001-1',current_date) returning id into v_id;
  if v_id is null then raise exception 'FAIL: no registró factura'; end if;
 end $$;
 reset role;

@@ -3,6 +3,8 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 
 export type LineaRequerimiento = {
+  /** El insumo: la OC que junta varios RQ enlaza cada uno por aquí. */
+  id: string
   item: number
   /** Lo que se pidió: el nombre del catálogo, o el que escribió el área si era un material nuevo. */
   descripcion: string
@@ -76,7 +78,7 @@ export type OpcionCatalogo = { id: string; codigo: string; nombre: string }
 export type AreaParaRequerimiento = OpcionCatalogo & { requerimiento: string }
 
 const SELECT_RQ =
-  'id, numero, tipo, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(item, descripcion, cantidad, cantidad_en_stock, material_id, material_nuevo, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion))'
+  'id, numero, tipo, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, material_id, material_nuevo, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion))'
 
 /**
  * Los requerimientos, del más nuevo al más viejo. Con `soloAbiertos`, los que
@@ -135,6 +137,7 @@ export async function cargarRequerimientos(
         .map((l) => {
           const deLinea = avance?.lineas.get(l.item)
           return {
+            id: l.id,
             item: l.item,
             descripcion: l.descripcion,
             cantidad: Number(l.cantidad),
