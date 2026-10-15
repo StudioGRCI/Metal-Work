@@ -15,6 +15,7 @@ import {
 import { ESTADO_REQUERIMIENTO, ESTADOS_RQ_ABIERTOS, TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
+import { esUuid } from '@/lib/utils'
 
 import { AvanceDelRequerimiento, CompraDelInsumo, MaterialDelInsumo } from './avance'
 import { AnularRequerimiento } from './controles'
@@ -48,8 +49,10 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   const params = await searchParams
   const pedida = VISTAS.find((v) => v.valor === params.tipo)?.valor
   const vista = pedida ?? (tipos.length === 1 ? tipos[0] : 'todos')
+  // `?rq=` muestra un solo RQ: es el enlace con que Adquisiciones abre el RQ de cada OC.
+  const soloUno = typeof params.rq === 'string' && esUuid(params.rq) ? params.rq : undefined
   const [requerimientos, catalogos] = await Promise.all([
-    cargarRequerimientos({ tipo: vista === 'todos' ? undefined : vista }),
+    cargarRequerimientos(soloUno ? { id: soloUno } : { tipo: vista === 'todos' ? undefined : vista }),
     emite ? catalogosDelRequerimiento() : Promise.resolve(null),
   ])
   const correcciones = await correccionesDe('REQUERIMIENTO', requerimientos.map((r) => r.id))
@@ -77,19 +80,28 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
           <Link
             key={v.valor}
             href={`/requerimientos?tipo=${v.valor}`}
-            aria-current={vista === v.valor ? 'page' : undefined}
+            aria-current={!soloUno && vista === v.valor ? 'page' : undefined}
             title={v.valor === 'todos' ? undefined : TIPO_REQUERIMIENTO[v.valor]?.descripcion}
             className={`inline-flex min-h-9 items-center rounded-lg border px-3 text-sm font-medium ${
-              vista === v.valor ? 'border-acento bg-acento-suave text-texto' : 'border-borde text-texto-suave hover:text-texto'
+              !soloUno && vista === v.valor ? 'border-acento bg-acento-suave text-texto' : 'border-borde text-texto-suave hover:text-texto'
             }`}
           >
             {v.titulo}
-            {vista === v.valor && <span className="ml-2 tabular text-xs text-texto-suave">{requerimientos.length}</span>}
+            {!soloUno && vista === v.valor && <span className="ml-2 tabular text-xs text-texto-suave">{requerimientos.length}</span>}
           </Link>
         ))}
       </nav>
 
-      {requerimientos.length > 0 && (
+      {soloUno && (
+        <p className="mb-3 text-sm text-texto-suave">
+          {requerimientos.length === 1 ? `Solo el ${requerimientos[0].numero}.` : 'Ese requerimiento no está o no lo puedes ver.'}{' '}
+          <Link href="/requerimientos" className="font-medium text-acento hover:underline">
+            Ver todos
+          </Link>
+        </p>
+      )}
+
+      {!soloUno && requerimientos.length > 0 && (
         <p className="mb-3 text-sm text-texto-suave">
           {abiertos === 0 ? 'Ninguno en camino.' : `${abiertos} en camino`}
           {pendientesDeRecojo > 0 && ` · ${pendientesDeRecojo} con insumos pendientes de recojo`}
