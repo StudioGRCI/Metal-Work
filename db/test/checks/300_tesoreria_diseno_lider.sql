@@ -32,11 +32,8 @@ select gen_random_uuid() as documento_id \gset
 
 insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, estado, nombre_archivo, ruta_storage, mime_type, tamano_bytes, registrado_por)
 values (:'cotizacion_id', 'QA-PDF-300', :'cliente_id', :'carroceria_id', 'POR_REVISAR', 'qa-300.pdf', 'cot/'||:'cotizacion_id'||'/qa-300.pdf', 'application/pdf', 120, :'vendedor_id');
-select test.como_usuario(:'gerente_id');
-set local role authenticated;
-update public.cotizaciones_pdf set estado='APROBADA' where id=:'cotizacion_id';
-reset role;
-
+-- La OT va antes que la aprobación: desde la migración 20261016900000 una
+-- cotización sin OT no se aprueba.
 select test.como_usuario(:'admin_id');
 set local role authenticated;
 insert into public.ordenes_trabajo (id, numero, cliente_id, sede_id, tipo_trabajo, prioridad, descripcion, estado, monto_presupuestado, cotizacion_pdf_id)
@@ -44,6 +41,11 @@ select :'orden_id', 'QA-OT-300', :'cliente_id', s.id, 'FABRICACION', 'NORMAL', '
 from public.sedes s where s.codigo='QA42';
 insert into public.ot_planos (id, orden_id, orden_secuencia, numero_plano, nombre, creado_por)
 values (:'plano_id', :'orden_id', 1, 'QA-300-01', 'Plano de prueba', :'diseno_id');
+reset role;
+
+select test.como_usuario(:'gerente_id');
+set local role authenticated;
+update public.cotizaciones_pdf set estado='APROBADA' where id=:'cotizacion_id';
 reset role;
 
 select set_config('prueba.cotizacion', :'cotizacion_id', true);

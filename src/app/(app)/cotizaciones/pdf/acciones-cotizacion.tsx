@@ -1,6 +1,6 @@
 'use client'
 
-import { AlertTriangle, Check, FileSearch, FileUp, MessageSquareWarning, RefreshCw, Trash2, Truck } from 'lucide-react'
+import { AlertTriangle, Check, FileSearch, FileUp, Hash, MessageSquareWarning, RefreshCw, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useRef, useState, useTransition, type FormEvent } from 'react'
 
@@ -16,7 +16,7 @@ import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
 import { useEnvio } from '@/lib/envio'
 import { createClient } from '@/lib/supabase/client'
 
-import { corregirCotizacionPdf, emitirOrdenDeCotizacion, quitarCotizacionPdf, revisarCotizacionPdf } from './acciones'
+import { aprobarCotizacionConOt, corregirCotizacionPdf, quitarCotizacionPdf, revisarCotizacionPdf } from './acciones'
 
 function Falla({ texto }: { texto: string | null }) {
   if (!texto) return null
@@ -27,8 +27,22 @@ function Falla({ texto }: { texto: string | null }) {
   )
 }
 
-/** Gerencia: aprobar la cotización, o rechazarla diciendo por qué. */
-export function RevisarCotizacion({ id }: { id: string }) {
+/**
+ * Gerencia: aprobar la cotización, o rechazarla diciendo por qué. La que no
+ * tiene OT se aprueba con su código interno y su OT, en la misma ventana; la
+ * corrección de una que ya tiene OT se aprueba con un toque, como antes.
+ */
+export function RevisarCotizacion({
+  id,
+  numero,
+  tipoUnidad,
+  conOrden,
+}: {
+  id: string
+  numero: string
+  tipoUnidad?: string | null
+  conOrden: boolean
+}) {
   const [rechazando, setRechazando] = useState(false)
   const aprobar = useEnvio(revisarCotizacionPdf)
   const rechazar = useEnvio(revisarCotizacionPdf, () => setRechazando(false))
@@ -63,14 +77,18 @@ export function RevisarCotizacion({ id }: { id: string }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <form onSubmit={aprobar.alEnviar} className="contents">
-        <input type="hidden" name="id" value={id} />
-        <input type="hidden" name="decision" value="APROBADA" />
-        <Boton type="submit" tamano="sm" cargando={aprobar.enviando}>
-          <Check aria-hidden className="size-3.5" />
-          Aprobar
-        </Boton>
-      </form>
+      {conOrden ? (
+        <form onSubmit={aprobar.alEnviar} className="contents">
+          <input type="hidden" name="id" value={id} />
+          <input type="hidden" name="decision" value="APROBADA" />
+          <Boton type="submit" tamano="sm" cargando={aprobar.enviando}>
+            <Check aria-hidden className="size-3.5" />
+            Aprobar la corrección
+          </Boton>
+        </form>
+      ) : (
+        <AprobarConOt cotizacionId={id} numero={numero} tipoUnidad={tipoUnidad} yaAprobada={false} />
+      )}
       <Boton
         type="button"
         tamano="sm"
@@ -89,8 +107,8 @@ export function RevisarCotizacion({ id }: { id: string }) {
 }
 
 /**
- * Ventas reemplaza el documento y corrige datos antes de emitir OT o liberar
- * a Tesorería. La versión previa queda en el historial y Gerencia revisa otra vez.
+ * Ventas reemplaza el documento y corrige datos. La versión previa queda en el
+ * historial y Gerencia revisa otra vez; si ya tenía OT, conserva su código y su OT.
  *
  * Antes de subir se lee el número del archivo: si dice otra cotización, se
  * avisa. No se impide —el vendedor puede haber corregido justo el número—,
@@ -393,20 +411,26 @@ const TIPOS_UNIDAD = [
 ] as const
 
 /**
- * Administración emite la orden desde la cotización aprobada: si es un
- * semirremolque o una carrocería montada, el código interno de la unidad, la fecha
- * prometida y el PDF de la orden. El tipo viene propuesto por la carrocería de
- * la cotización cuando el catálogo lo sabe. La base crea la orden aprobada,
- * con sus etapas y con el PDF pegado; de ahí en adelante el taller ya trabaja.
+ * Gerencia aprueba la cotización dando el código interno que tendrá la unidad
+ * —nuevo, o uno que ya existe del mismo cliente— y subiendo la OT: su PDF, su
+ * número, si es semirremolque o carrocería montada y la fecha prometida. El
+ * tipo viene propuesto por la carrocería de la cotización cuando el catálogo lo
+ * sabe. La base hace todo junto o nada (migración 20261016900000): desde ahí
+ * Diseño ve la OT dentro del código y Contabilidad ya la puede facturar.
+ *
+ * `yaAprobada` es la que Gerencia aprobó antes de este cambio y quedó sin OT:
+ * la misma ventana le da su código y su OT.
  */
-export function EmitirOrden({
+export function AprobarConOt({
   cotizacionId,
   numero,
   tipoUnidad,
+  yaAprobada,
 }: {
   cotizacionId: string
   numero: string
   tipoUnidad?: string | null
+  yaAprobada: boolean
 }) {
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
@@ -414,6 +438,7 @@ export function EmitirOrden({
   const [leyendo, setLeyendo] = useState(false)
   const [avisoLectura, setAvisoLectura] = useState('')
   const [numeroOrden, setNumeroOrden] = useState('')
+  const [codigo, setCodigo] = useState('')
   const [tipo, setTipo] = useState(tipoUnidad ?? '')
   const [fechaEntrega, setFechaEntrega] = useState('')
   const [datosLeidos, setDatosLeidos] = useState<DatosOrdenPdf | null>(null)
@@ -425,6 +450,7 @@ export function EmitirOrden({
     setArchivo(null)
     setAvisoLectura('')
     setNumeroOrden('')
+    setCodigo('')
     setTipo(tipoUnidad ?? '')
     setFechaEntrega('')
     setDatosLeidos(null)
@@ -454,7 +480,7 @@ export function EmitirOrden({
       if (datos.numero) setNumeroOrden(datos.numero)
       if (datos.fechaEntrega) setFechaEntrega(datos.fechaEntrega)
       if (datos.tipoUnidad) setTipo(datos.tipoUnidad)
-      setAvisoLectura(datos.numero || datos.fechaEntrega ? 'Datos leídos del PDF. Confírmalos antes de emitir.' : 'No se reconocieron los datos. Complétalos mirando el PDF.')
+      setAvisoLectura(datos.numero || datos.fechaEntrega ? 'Datos leídos del PDF. Confírmalos antes de aprobar.' : 'No se reconocieron los datos. Complétalos mirando el PDF.')
     } catch {
       setAvisoLectura('No se pudo leer el PDF. Completa los datos mirando la vista previa.')
     } finally {
@@ -467,6 +493,10 @@ export function EmitirOrden({
     if (enCurso.current) return
 
     const datos = new FormData(evento.currentTarget)
+    if (codigo.trim().length < 2) {
+      setError('Escribe el código interno que tendrá la unidad.')
+      return
+    }
     if (!archivo) {
       setError('Elige el PDF de la orden de trabajo.')
       return
@@ -505,7 +535,7 @@ export function EmitirOrden({
         datos.set('nombre_pdf', archivo.name.slice(0, 200))
         datos.set('tamano_pdf', String(archivo.size))
 
-        const r = await emitirOrdenDeCotizacion(null, datos)
+        const r = await aprobarCotizacionConOt(null, datos)
         if (!r.ok) {
           await supabase.storage.from('adjuntos-ot').remove([ruta])
           subido = false
@@ -514,12 +544,12 @@ export function EmitirOrden({
         }
         subido = false
         setAbierto(false)
-        if (r.datos) router.push(`/ordenes/${r.datos.id}`)
+        iniciar(() => router.refresh())
       } catch {
-        // La orden no se emitió: el PDF que ya viajó se quita, para que no
-        // quede un archivo que ninguna orden nombra.
+        // No se aprobó: el PDF que ya viajó se quita, para que no quede un
+        // archivo que ninguna OT nombra.
         if (subido) await supabase.storage.from('adjuntos-ot').remove([ruta])
-        setError('No se pudo emitir la orden. Vuelve a intentar.')
+        setError('No se pudo aprobar con la OT. Vuelve a intentar.')
       } finally {
         enCurso.current = false
       }
@@ -529,22 +559,46 @@ export function EmitirOrden({
   return (
     <>
       <Boton type="button" tamano="sm" onClick={abrir}>
-        <Truck aria-hidden className="size-3.5" />
-        Emitir la OT
+        {yaAprobada ? <Hash aria-hidden className="size-3.5" /> : <Check aria-hidden className="size-3.5" />}
+        {yaAprobada ? 'Dar código y cargar la OT' : 'Aprobar'}
       </Boton>
 
       <Ventana
         abierta={abierto}
         alCerrar={() => setAbierto(false)}
-        titulo={`Emitir la orden de la ${numero}`}
-        descripcion="El cliente y la carrocería salen de la cotización. Falta el número de la orden —el de su papel—, si es semirremolque o carrocería montada, el código interno, la fecha prometida y el PDF. Al emitirla queda aprobada, con sus etapas, y el taller ya puede armar su lista."
+        titulo={yaAprobada ? `Código interno y OT de la ${numero}` : `Aprobar la ${numero}`}
+        descripcion={
+          yaAprobada
+            ? 'Ya está aprobada pero no tiene OT. Escribe el código interno que tendrá la unidad y sube la OT: desde ahí Diseño la ve dentro del código y Contabilidad ya la puede facturar.'
+            : 'Se aprueba con el código interno que tendrá la unidad y su OT, todo junto. El cliente y la carrocería salen de la cotización. Desde ahí Diseño ve la OT dentro del código y Contabilidad ya la puede facturar.'
+        }
         ancho="panoramico"
       >
         <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">
           <div className="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-2">
+          <Campo
+            etiqueta="Código interno"
+            htmlFor="eo-codigo-interno"
+            ayuda="El que tendrá la unidad, como VSC_SR_O4_6_26/30. Si ya existe para este cliente, la OT se suma a esa unidad."
+            requerido
+          >
+            <Entrada
+              id="eo-codigo-interno"
+              name="codigo_interno"
+              autoComplete="off"
+              autoCapitalize="characters"
+              required
+              minLength={2}
+              maxLength={40}
+              value={codigo}
+              onChange={(e) => setCodigo(e.target.value)}
+              className="font-mono"
+            />
+          </Campo>
+
           <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2">
             <FileUp aria-hidden className="size-6" />
-            <span className="font-medium text-texto">{archivo ? archivo.name : 'Elegir el PDF de la orden'}</span>
+            <span className="font-medium text-texto">{archivo ? archivo.name : 'Elegir el PDF de la OT'}</span>
             <span className="text-xs">Hasta {MAXIMO_ADJUNTO_MB} MB</span>
             <input
               type="file"
@@ -568,7 +622,7 @@ export function EmitirOrden({
               pone otro, para que la OT en la mano y la de la pantalla sean la
               misma. */}
           <Campo
-            etiqueta="N.º de la orden"
+            etiqueta="N.º de la OT"
             htmlFor="eo-numero"
             ayuda="El que trae su PDF: 2922, o 2922-2026 si quieres escribir el año"
             requerido
@@ -586,7 +640,7 @@ export function EmitirOrden({
             />
           </Campo>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4">
             <Campo
               etiqueta="Tipo"
               htmlFor="eo-tipo"
@@ -609,9 +663,6 @@ export function EmitirOrden({
                   </option>
                 ))}
               </Seleccion>
-            </Campo>
-            <Campo etiqueta="Código interno" htmlFor="eo-codigo-interno" ayuda="Identifica la unidad dentro del taller">
-              <Entrada id="eo-codigo-interno" name="codigo_interno" autoComplete="off" autoCapitalize="characters" maxLength={40} />
             </Campo>
           </div>
 
@@ -641,7 +692,7 @@ export function EmitirOrden({
               Cancelar
             </Boton>
             <Boton type="submit" tamano="lg" cargando={enviando} disabled={leyendo} className="w-full sm:w-auto">
-              Emitir la orden
+              {yaAprobada ? 'Guardar código y OT' : 'Aprobar con código y OT'}
             </Boton>
           </div>
           </div>

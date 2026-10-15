@@ -133,12 +133,14 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
-  if (puede(perfil, 'ordenes.crear')) {
+  // Las aprobadas antes de que la aprobación trajera código y OT (migración
+  // 20261016900000): Gerencia les da su código y les carga la OT.
+  if (puede(perfil, 'cotizaciones.revisar')) {
     tareas.push({
       clave: 'pdf_sin_ot',
       ruta: '/cotizaciones/pdf?estado=APROBADA_SIN_OT',
       tono: 'acento',
-      texto: (n) => plural(n, 'cotización aprobada sin OT', 'cotizaciones aprobadas sin OT'),
+      texto: (n) => plural(n, 'cotización aprobada sin código ni OT', 'cotizaciones aprobadas sin código ni OT'),
       contar: () =>
         cabeza(
           supabase

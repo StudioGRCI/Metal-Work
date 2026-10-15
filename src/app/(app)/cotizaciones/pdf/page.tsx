@@ -1,4 +1,4 @@
-import { Download, FileText, History, Hourglass, MessageSquareWarning, ReceiptText } from 'lucide-react'
+import { Download, FileText, Hash, History, Hourglass, MessageSquareWarning, ReceiptText } from 'lucide-react'
 import Link from 'next/link'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
@@ -14,7 +14,7 @@ import { estadoFacturaVenta } from '@/lib/dominio/finanzas'
 import { fecha as fmtFecha, hora, moneda as formatoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, puedeCorregirCotizacion, puedeQuitarCotizacion } from '@/lib/sesion'
 
-import { CorregirCotizacion, EmitirOrden, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
+import { AprobarConOt, CorregirCotizacion, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
 import { SubirCotizacion } from './subir-cotizacion'
 
 export const metadata = { title: 'Cotización' }
@@ -48,9 +48,10 @@ function EnlaceArchivo({ url, mime, nombre }: { url: string; mime: string | null
 
 /**
  * El camino corto de la cotización (migraciones 101 a 103): el vendedor sube la
- * que ya le mandó al cliente, en PDF o en Word; Gerencia la aprueba o la
- * rechaza con su observación, y el vendedor sube ahí mismo la corrección; con
- * ella aprobada, Administración emite la orden de trabajo con su propio PDF.
+ * que ya le mandó al cliente, en PDF o en Word; Gerencia la rechaza con su
+ * observación —y el vendedor sube ahí mismo la corrección— o la aprueba dando
+ * el código interno de la unidad y subiendo la OT, todo junto (migración
+ * 20261016900000). Desde ahí el código interno es la referencia del trabajo.
  *
  * La cotización se arma en Word: rehacerla dentro del sistema era escribir dos
  * veces lo mismo. Lo que el sistema sí guarda es la traza —quién la subió, qué
@@ -82,7 +83,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
 
   const puedeSubir = puede(perfil, 'cotizaciones.crear')
   const revisa = puede(perfil, 'cotizaciones.revisar')
-  const emite = puede(perfil, 'ordenes.crear')
+  const veCodigos = puede(perfil, 'codigos_internos.ver')
 
   const [cotizaciones, catalogos] = await Promise.all([
     listarCotizacionesPdf(),
@@ -104,11 +105,10 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const coincide = (c: (typeof cotizaciones)[number]) =>
     !busqueda || [c.numero, c.cliente, c.carroceria].some((v) => (v ?? '').toLowerCase().includes(busqueda))
   // Sin filtro, primero lo que quien mira puede mover: Gerencia ve arriba las
-  // que esperan su visto; Administración, las aprobadas sin orden; Ventas, las
-  // suyas rechazadas. El orden por fecha se conserva dentro de cada grupo.
+  // que esperan su visto y las aprobadas de antes que quedaron sin código;
+  // Ventas, las suyas rechazadas. El orden por fecha se conserva dentro de cada grupo.
   const meToca = (c: (typeof cotizaciones)[number]) =>
-    (revisa && c.estado === 'POR_REVISAR') ||
-    (emite && c.estado === 'APROBADA' && !c.orden_id) ||
+    (revisa && (c.estado === 'POR_REVISAR' || (c.estado === 'APROBADA' && !c.orden_id))) ||
     puedeCorregirCotizacion(perfil, c)
   const visibles = cotizaciones
     .filter((c) => enFiltro(c, filtro) && coincide(c))
@@ -117,9 +117,9 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const opciones = [
     { valor: null, etiqueta: `Vigentes (${cotizaciones.length - anuladas})` },
     { valor: 'POR_REVISAR', etiqueta: `Por revisar (${porRevisar})` },
-    { valor: 'APROBADA_SIN_OT', etiqueta: `Aprobadas sin OT (${sinOrden})` },
+    { valor: 'APROBADA_SIN_OT', etiqueta: `Aprobadas sin código (${sinOrden})` },
     { valor: 'RECHAZADA', etiqueta: `Rechazadas (${rechazadas})` },
-    { valor: 'CON_OT', etiqueta: `Con OT (${conOrden})` },
+    { valor: 'CON_OT', etiqueta: `Con código y OT (${conOrden})` },
     { valor: 'ANULADA', etiqueta: `Anuladas (${anuladas})` },
   ]
 
@@ -127,7 +127,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Cotización"
-        descripcion="Gerencia aprueba el documento y Administración carga la OT con el código interno de la unidad. Aprobada, la ven también Contabilidad, que la factura, y Tesorería, que la cobra."
+        descripcion="Ventas sube la cotización y Gerencia la aprueba dando el código interno de la unidad y subiendo su OT. Aprobada, la ven también Contabilidad, que la factura, y Tesorería, que la cobra."
         acciones={puedeSubir && <SubirCotizacion clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />}
       />
 
@@ -289,33 +289,48 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       </details>
                     )}
 
-                    {/* Quien no emite la orden —Diseño, Ventas, el taller— tiene que
-                        saber por qué no puede avanzar y dónde va a seguir. */}
-                    {!emite && c.estado === 'APROBADA' && !c.orden_id && (
+                    {/* Una aprobada de antes que quedó sin OT: quien no es Gerencia
+                        tiene que saber por qué no avanza y quién la destraba. */}
+                    {!revisa && c.estado === 'APROBADA' && !c.orden_id && (
                       <p className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-aviso-suave px-2.5 py-1.5 text-xs text-aviso">
                         <Hourglass aria-hidden className="mt-0.5 size-3.5 shrink-0" />
                         <span>
-                          <span className="font-medium">Falta que Administración emita la orden de trabajo.</span>{' '}
-                          En la orden se arman los planos, los materiales y las actividades de cada área.
+                          <span className="font-medium">Falta que Gerencia le dé su código interno y cargue la OT.</span>{' '}
+                          Sin código no se factura ni Diseño empieza.
                         </span>
                       </p>
                     )}
 
                     {c.orden_id && (
-                      <p className="flex flex-wrap items-center gap-2 text-sm">
-                        <Link href={`/ordenes/${c.orden_id}`} className="font-medium text-acento hover:underline">
-                          Orden {c.orden_numero}
-                        </Link>
+                      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                        <Hash aria-hidden className="size-4 text-texto-suave" />
+                        {c.codigo_interno ? (
+                          veCodigos ? (
+                            <Link
+                              href={`/codigos-internos/detalle?codigo=${encodeURIComponent(c.codigo_interno)}`}
+                              className="font-mono font-medium break-all text-acento hover:underline"
+                            >
+                              {c.codigo_interno}
+                            </Link>
+                          ) : (
+                            <span className="font-mono font-medium break-all text-texto">{c.codigo_interno}</span>
+                          )
+                        ) : (
+                          <span className="text-texto-suave">Sin código interno</span>
+                        )}
+                        <span className="text-texto-suave">· OT {c.orden_numero}</span>
                         <Insignia tono={definir(ESTADO_OT, c.orden_estado).tono}>
                           {definir(ESTADO_OT, c.orden_estado).etiqueta}
                         </Insignia>
                       </p>
                     )}
-                    {(revisa && c.estado === 'POR_REVISAR' || emite && c.estado === 'APROBADA' && !c.orden_id || corrige || quitable) && (
+                    {(revisa && c.estado === 'POR_REVISAR' || revisa && c.estado === 'APROBADA' && !c.orden_id || corrige || quitable) && (
                       <div className="flex flex-wrap items-center gap-2">
-                        {revisa && c.estado === 'POR_REVISAR' && c.id && <RevisarCotizacion id={c.id} />}
-                        {!c.orden_id && emite && c.estado === 'APROBADA' && c.id && (
-                          <EmitirOrden cotizacionId={c.id} numero={c.numero ?? 'cotización'} tipoUnidad={c.tipo_unidad} />
+                        {revisa && c.estado === 'POR_REVISAR' && c.id && (
+                          <RevisarCotizacion id={c.id} numero={c.numero ?? 'cotización'} tipoUnidad={c.tipo_unidad} conOrden={Boolean(c.orden_id)} />
+                        )}
+                        {!c.orden_id && revisa && c.estado === 'APROBADA' && c.id && (
+                          <AprobarConOt cotizacionId={c.id} numero={c.numero ?? 'cotización'} tipoUnidad={c.tipo_unidad} yaAprobada />
                         )}
                         {corrige && c.id && (
                           <CorregirCotizacion id={c.id} numero={c.numero ?? ''} observacion={c.observacion}
