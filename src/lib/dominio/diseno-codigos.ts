@@ -39,6 +39,27 @@ export function enlaceDisenoCodigo(codigo: string, vista?: VistaDiseno) {
   return `/diseno/codigo?${query}`
 }
 
+/**
+ * Las mismas secciones para quien sigue el código sin cambiar nada
+ * (Supervisión general y Almacén, `codigos_internos.seguimiento`; migración
+ * 20261016110000), con las etapas primero: es lo que más se mira.
+ */
+export const VISTAS_SEGUIMIENTO = [
+  { valor: 'etapas', etiqueta: 'Etapas' },
+  { valor: 'materiales', etiqueta: 'Materiales' },
+  { valor: 'planos', etiqueta: 'Planos' },
+] as const satisfies readonly { valor: VistaDiseno; etiqueta: string }[]
+
+export function vistaSeguimientoValida(valor: unknown): VistaDiseno {
+  return VISTAS_SEGUIMIENTO.some((v) => v.valor === valor) ? (valor as VistaDiseno) : 'etapas'
+}
+
+export function enlaceSeguimientoCodigo(codigo: string, vista?: VistaDiseno) {
+  const query = new URLSearchParams({ codigo })
+  if (vista && vista !== 'etapas') query.set('vista', vista)
+  return `/seguimiento/codigo?${query}`
+}
+
 /** El tamaño de un PDF para leerlo de un vistazo: «2.4 MB», «350 KB». */
 export function tamanoArchivo(bytes: number | null): string {
   if (!bytes) return ''

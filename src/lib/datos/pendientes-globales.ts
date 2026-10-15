@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
+import { trabajaPorCodigo } from '@/lib/dominio/acceso-orden'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
 import { hoyLima, mesLargo } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
@@ -498,6 +499,44 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
+  // La salida de un vehículo de la planta (migración 20261016110000): Requerimientos
+  // pide la revisión con la ficha cerrada y escaneada, y Tesorería la responde.
+  if (puede(perfil, 'tesoreria.liberar') && puede(perfil, 'tesoreria.registrar_cobros')) {
+    tareas.push({
+      clave: 'salidas_por_revisar',
+      ruta: '/tesoreria/por-cobrar',
+      tono: 'aviso',
+      texto: (n) => plural(n, 'salida de vehículo por revisar', 'salidas de vehículo por revisar'),
+      contar: async () => {
+        const { data, error } = await supabase.rpc('revisiones_de_salida_pendientes')
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        return (data ?? []).length
+      },
+    })
+  }
+  if (puede(perfil, 'vehiculos.registrar')) {
+    tareas.push({
+      clave: 'salidas_observadas',
+      ruta: '/vehiculos',
+      tono: 'peligro',
+      texto: (n) => plural(n, 'salida de vehículo observada por Tesorería', 'salidas de vehículo observadas por Tesorería'),
+      contar: async () => {
+        // El último pedido de cada vehículo que sigue en la planta: cuenta si Tesorería lo observó.
+        const { data, error } = await supabase
+          .from('registro_vehiculo_revisiones')
+          .select('registro_id, estado, registro_vehiculos!inner(salida_en, anulado_en)')
+          .is('registro_vehiculos.salida_en', null)
+          .is('registro_vehiculos.anulado_en', null)
+          .order('creado_en', { ascending: false })
+          .limit(300)
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        const ultimo = new Map<string, string>()
+        for (const r of data ?? []) if (!ultimo.has(r.registro_id)) ultimo.set(r.registro_id, r.estado)
+        return [...ultimo.values()].filter((e) => e === 'OBSERVADA').length
+      },
+    })
+  }
+
   if (puede(perfil, 'cotizaciones.crear')) {
     tareas.push({
       clave: 'pdf_rechazadas',
@@ -513,6 +552,12 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
             .eq('registrado_por', perfil.id),
         ),
     })
+  }
+
+  // Supervisión, Almacén y Requerimientos ya no abren la OT (2026-10-15): lo que
+  // solo se resuelve en ella no es su pendiente. Lo suyo lo cuenta su pantalla.
+  if (trabajaPorCodigo(perfil)) {
+    for (let i = tareas.length - 1; i >= 0; i--) if (tareas[i].ruta.startsWith('/ordenes')) tareas.splice(i, 1)
   }
 
   const cantidades = await Promise.all(tareas.map((t) => t.contar().catch(() => null)))

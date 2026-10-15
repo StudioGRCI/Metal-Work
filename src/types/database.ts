@@ -7079,6 +7079,109 @@ export type Database = {
           }
         ]
       }
+      registro_vehiculo_fichas: {
+        Row: {
+          id: string
+          registro_id: string
+          marca: string
+          conductor_ingreso: string
+          dni_ingreso: string
+          fecha_ingreso: string | null
+          combustible_ingreso: string
+          conductor_salida: string
+          dni_salida: string
+          fecha_salida: string | null
+          combustible_salida: string
+          adicionales: string
+          trabajos: string
+          observacion_ingreso: string
+          observacion_salida: string
+          items: Json
+          ingreso_cerrado_en: string | null
+          salida_cerrada_en: string | null
+          escaneo_ruta: string | null
+          escaneo_nombre: string | null
+          registrado_por: string
+          actualizado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          registro_id: string
+          marca?: string
+          conductor_ingreso?: string
+          dni_ingreso?: string
+          fecha_ingreso?: string | null
+          combustible_ingreso?: string
+          conductor_salida?: string
+          dni_salida?: string
+          fecha_salida?: string | null
+          combustible_salida?: string
+          adicionales?: string
+          trabajos?: string
+          observacion_ingreso?: string
+          observacion_salida?: string
+          items?: Json
+          ingreso_cerrado_en?: string | null
+          salida_cerrada_en?: string | null
+          escaneo_ruta?: string | null
+          escaneo_nombre?: string | null
+          registrado_por?: string
+          actualizado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          registro_id?: string
+          marca?: string
+          conductor_ingreso?: string
+          dni_ingreso?: string
+          fecha_ingreso?: string | null
+          combustible_ingreso?: string
+          conductor_salida?: string
+          dni_salida?: string
+          fecha_salida?: string | null
+          combustible_salida?: string
+          adicionales?: string
+          trabajos?: string
+          observacion_ingreso?: string
+          observacion_salida?: string
+          items?: Json
+          ingreso_cerrado_en?: string | null
+          salida_cerrada_en?: string | null
+          escaneo_ruta?: string | null
+          escaneo_nombre?: string | null
+          registrado_por?: string
+          actualizado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "registro_vehiculo_fichas_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registro_vehiculo_fichas_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registro_vehiculo_fichas_registro_id_fkey"
+            columns: ["registro_id"]
+            isOneToOne: true
+            referencedRelation: "registro_vehiculos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       registro_vehiculo_fotos: {
         Row: {
           id: string
@@ -7119,6 +7222,67 @@ export type Database = {
             columns: ["registro_id"]
             isOneToOne: false
             referencedRelation: "registro_vehiculos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      registro_vehiculo_revisiones: {
+        Row: {
+          id: string
+          registro_id: string
+          concepto: string
+          estado: string
+          respuesta: string | null
+          solicitado_por: string
+          atendido_por: string | null
+          atendido_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          registro_id: string
+          concepto: string
+          estado?: string
+          respuesta?: string | null
+          solicitado_por?: string
+          atendido_por?: string | null
+          atendido_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          registro_id?: string
+          concepto?: string
+          estado?: string
+          respuesta?: string | null
+          solicitado_por?: string
+          atendido_por?: string | null
+          atendido_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "registro_vehiculo_revisiones_atendido_por_fkey"
+            columns: ["atendido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registro_vehiculo_revisiones_registro_id_fkey"
+            columns: ["registro_id"]
+            isOneToOne: true
+            referencedRelation: "registro_vehiculos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registro_vehiculo_revisiones_solicitado_por_fkey"
+            columns: ["solicitado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -9698,6 +9862,14 @@ export type Database = {
         }
         Returns: null
       }
+      adjuntar_ficha_vehiculo_firmada: {
+        Args: {
+          p_registro: string | null
+          p_ruta: string | null
+          p_nombre: string | null
+        }
+        Returns: string
+      }
       adquisiciones_control: {
         Args: {
           p_ids: string[] | null
@@ -11124,6 +11296,14 @@ export type Database = {
         }
         Returns: string
       }
+      guardar_ficha_vehiculo: {
+        Args: {
+          p_registro: string | null
+          p_accion: string | null
+          p_datos: Json | null
+        }
+        Returns: string
+      }
       guardar_lider_entrega_planos: {
         Args: {
           p_orden: string | null
@@ -12235,6 +12415,14 @@ export type Database = {
         }
         Returns: string
       }
+      responder_revision_salida: {
+        Args: {
+          p_id: string | null
+          p_estado: string | null
+          p_respuesta: string | null
+        }
+        Returns: string
+      }
       restar_dias_habiles: {
         Args: {
           p_desde: string | null
@@ -12278,6 +12466,23 @@ export type Database = {
           p_observacion?: string | null
         }
         Returns: string
+      }
+      revisiones_de_salida_pendientes: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          registro_id: string | null
+          placa: string | null
+          chasis: string | null
+          codigo_interno: string | null
+          unidad: string | null
+          empresa: string | null
+          ingreso_en: string | null
+          concepto: string | null
+          solicitante: string | null
+          creado_en: string | null
+          escaneo_ruta: string | null
+        }[]
       }
       rq_exigir: {
         Args: {
@@ -12638,6 +12843,14 @@ export type Database = {
           p_tipo: Database["public"]["Enums"]["tipo_correlativo"] | null
           p_serie?: string | null
           p_sede?: string | null
+        }
+        Returns: string
+      }
+      solicitar_revision_salida: {
+        Args: {
+          p_id: string | null
+          p_registro: string | null
+          p_concepto: string | null
         }
         Returns: string
       }

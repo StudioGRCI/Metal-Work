@@ -1,17 +1,43 @@
 import type { PerfilSesion } from '../sesion'
 
+/**
+ * Los puestos que desde el 2026-10-15 trabajan por código interno y ya no abren
+ * la OT, que queda como documento de Diseño (decisión de Gerencia, migración
+ * 20261016110000): Supervisión sube su reporte diario y ve los planos y las
+ * etapas de su área; Supervisión general y Almacén siguen cada código en
+ * «Seguimiento por código»; Requerimientos lleva la ficha del vehículo y la
+ * revisión de Tesorería en Vehículos. La base les conserva el permiso de leer
+ * la OT: la cierra la aplicación, aquí.
+ */
+export const PUESTOS_POR_CODIGO = ['SUPERVISOR', 'SUPERVISOR_GENERAL', 'ALMACENERO', 'REQUERIMIENTOS'] as const
+
+export function trabajaPorCodigo(perfil: Pick<PerfilSesion, 'rol'>): boolean {
+  return (PUESTOS_POR_CODIGO as readonly string[]).includes(perfil.rol.codigo)
+}
+
+/** Adónde va quien trabaja por código si llega a una OT: lo que la reemplaza para su puesto. */
+export function reemplazoDeLaOrden(perfil: Pick<PerfilSesion, 'rol'>): string {
+  switch (perfil.rol.codigo) {
+    case 'SUPERVISOR':
+      return '/planos'
+    case 'ALMACENERO':
+      return '/seguimiento?vista=materiales'
+    case 'REQUERIMIENTOS':
+      return '/vehiculos'
+    default:
+      return '/seguimiento'
+  }
+}
+
 /** Un mismo criterio para los enlaces de la OT y la entrada por URL.
  * La lectura de filas y archivos continúa sometida a RLS y al área asignada.
  */
 export function seccionesDeOrden(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>): string[] {
   const tiene = (...permisos: string[]) =>
     perfil.rol.codigo === 'ADMIN' || permisos.some(p => perfil.permisos.includes(p))
-  if (!tiene('ordenes.ver')) return []
-  // Almacén entra a la OT solo a atender sus materiales: revisar stock,
-  // despachar y recibir. Lo demás de la orden no es su trabajo (2026-10-01).
-  if (perfil.rol.codigo === 'ALMACENERO') return ['materiales']
+  if (!tiene('ordenes.ver') || trabajaPorCodigo(perfil)) return []
   const tecnico = tiene('diseno.planos', 'diseno.revisar', 'diseno.subir_pdf', 'produccion.registrar', 'produccion.cualquier_area', 'supervision.general')
-    || ['ALMACENERO', 'COMPRADOR', 'CALIDAD'].includes(perfil.rol.codigo)
+    || ['COMPRADOR', 'CALIDAD'].includes(perfil.rol.codigo)
   return [
     'resumen',
     // El expediente lo ve quien ve la orden: cada bloque se lee con su propio

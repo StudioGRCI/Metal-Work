@@ -3,7 +3,9 @@ import { ListaPlanos } from '@/components/codigo-interno/planos'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { etapasDeCodigo, planosDeCodigo } from '@/lib/datos/diseno-codigos'
+import { enlaceSeguimientoCodigo } from '@/lib/dominio/diseno-codigos'
 import { hoyLima } from '@/lib/format'
 import { exigirPermiso, puede, puedeHojaDeArea } from '@/lib/sesion'
 
@@ -14,7 +16,9 @@ export const metadata = { title: 'Planos y etapas' }
 /**
  * Lo que Diseño le dejó al área, por código interno: los planos que van a su
  * área, para abrirlos y marcar que los recibió, y las etapas que hace su área,
- * para marcar cuándo empezó y cuándo terminó. El supervisor ve solo lo de su
+ * para marcar cuándo empezó y cuándo terminó. Desde el 2026-10-15 el supervisor
+ * ya no abre la OT: los materiales y lo pedido de cada código los ve en
+ * «Materiales y pedidos». El supervisor ve solo lo de su
  * área (la base lo filtra); con `produccion.cualquier_area`, el de todas.
  */
 export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/planos'>) {
@@ -76,7 +80,15 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
             return (
               <li key={codigo} data-codigo={codigo}>
                 <Tarjeta>
-                  <TarjetaCabecera titulo={<span className="font-mono break-all">{codigo}</span>} />
+                  <TarjetaCabecera
+                    titulo={<span className="font-mono break-all">{codigo}</span>}
+                    acciones={
+                      // Lo que Diseño puso en la lista y lo que las áreas pidieron por RQ para este código.
+                      <EnlaceBoton href={enlaceSeguimientoCodigo(codigo, 'materiales')} variante="secundario" tamano="sm">
+                        Materiales y pedidos
+                      </EnlaceBoton>
+                    }
+                  />
                   <TarjetaCuerpo className="space-y-4">
                     {deCodigo.length > 0 && (
                       <ListaPlanos

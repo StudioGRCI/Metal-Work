@@ -2,11 +2,14 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import { NextResponse } from 'next/server'
 
 import { DocumentoControlVehicular } from '@/lib/documentos/control-vehicular'
+import { trabajaPorCodigo } from '@/lib/dominio/acceso-orden'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 export async function GET(_request: Request, context: RouteContext<'/ordenes/[id]/control-vehicular/pdf'>) {
-  await exigirPermiso(['costos.controlar_ot', 'costos.ver'])
+  const perfil = await exigirPermiso(['costos.controlar_ot', 'costos.ver'])
+  // Requerimientos ya no abre la OT (2026-10-15): su ficha va en cada vehículo.
+  if (trabajaPorCodigo(perfil)) return NextResponse.json({ error: 'La ficha del vehículo está en Vehículos, no en la OT.' }, { status: 403 })
   const { id } = await context.params
   const db = await createClient()
   const [orden, control, items] = await Promise.all([
@@ -17,7 +20,7 @@ export async function GET(_request: Request, context: RouteContext<'/ordenes/[id
   if (orden.error || control.error || items.error) return NextResponse.json({ error: 'No se pudo leer la ficha de esta OT.' }, { status: 500 })
   if (!orden.data) return NextResponse.json({ error: 'No se encontró la OT.' }, { status: 404 })
   const buffer = await renderToBuffer(<DocumentoControlVehicular
-    numeroOt={orden.data.numero}
+    referencia={{ etiqueta: 'OT', valor: orden.data.numero }}
     cliente={orden.data.cliente?.razon_social ?? ''}
     items={items.data ?? []}
     control={control.data}

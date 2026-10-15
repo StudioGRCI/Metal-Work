@@ -9,11 +9,11 @@ import { createClient } from '@/lib/supabase/server'
  * Abrir el PDF de una revisión de un plano. El enlace firmado se pide en el
  * momento del toque y no al pintar la lista: el supervisor deja la pantalla
  * abierta toda la mañana, y un enlace de hace una hora ya no abriría. Quién lo
- * ve lo deciden la política de la revisión y la de su PDF: Diseño, Gerencia y
- * el supervisor del área a la que va el plano.
+ * ve lo deciden la política de la revisión y la de su PDF: Diseño, Gerencia,
+ * Supervisión general, Almacén y el supervisor del área a la que va el plano.
  */
 export async function GET(_request: Request, context: RouteContext<'/planos/archivo/[revision]'>) {
-  await exigirPermiso(['diseno.codigos', 'codigos_internos.ver', 'codigos_internos.area'])
+  await exigirPermiso(['diseno.codigos', 'codigos_internos.ver', 'codigos_internos.area', 'codigos_internos.seguimiento'])
   const { revision } = await context.params
   if (!z.guid().safeParse(revision).success) return NextResponse.json({ error: 'El plano no está disponible.' }, { status: 404 })
   const supabase = await createClient()

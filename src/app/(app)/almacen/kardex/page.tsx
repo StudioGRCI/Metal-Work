@@ -13,6 +13,7 @@ import { ingresosPorValidar } from '@/lib/datos/ingresos-por-validar'
 import { cargarKardex, FILAS_POR_PAGINA, filtrosDeKardex, lineasDeRequerimientoParaSalida, materialesDelKardex, minimosDeStock, salidasPorCerrar, unidadesParaSalida } from '@/lib/datos/kardex'
 import { ALMACENES, MOVIMIENTO_KARDEX, ORDEN_ALMACENES, ORIGEN_KARDEX, almacenEnFrase, exigeFormato } from '@/lib/dominio/almacen'
 import { cantidad, fechaHora } from '@/lib/format'
+import { seccionesDeOrden } from '@/lib/dominio/acceso-orden'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -50,6 +51,8 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
 
   const puedeSalida = puede(perfil, 'almacen.despachar')
   const puedeIngreso = puede(perfil, 'almacen.recibir')
+  // Almacén y Supervisión general ya no abren la OT (2026-10-15): el número queda como referencia.
+  const abreOt = seccionesDeOrden(perfil).length > 0
   const db = await createClient()
 
   const [kardex, materiales, unidades, catalogo, entregas, minimos, unidadesMedida, porValidar, porCerrar, lineasRq] = await Promise.all([
@@ -238,7 +241,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
             acciones={lineasPorValidar > 0 ? <Insignia tono="aviso">{lineasPorValidar === 1 ? '1 material' : `${lineasPorValidar} materiales`}</Insignia> : undefined}
           />
           <TarjetaCuerpo>
-            <BandejaPorValidar entregas={porValidar} puedeValidar={puedeIngreso} />
+            <BandejaPorValidar entregas={porValidar} puedeValidar={puedeIngreso} abreOt={abreOt} />
           </TarjetaCuerpo>
         </Tarjeta>
       )}
@@ -376,9 +379,9 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                     {f.codigo_unidad
                       ? <span className="block text-sm font-medium break-words">{f.codigo_unidad}</span>
                       : <span className="text-xs text-texto-tenue">—</span>}
-                    {f.orden_id && f.orden_numero && (
-                      <Link href={`/ordenes/${f.orden_id}?vista=materiales`} className="text-[11px] text-acento hover:underline">OT {f.orden_numero}</Link>
-                    )}
+                    {f.orden_id && f.orden_numero && (abreOt
+                      ? <Link href={`/ordenes/${f.orden_id}?vista=materiales`} className="text-[11px] text-acento hover:underline">OT {f.orden_numero}</Link>
+                      : <span className="block text-[11px] text-texto-suave">OT {f.orden_numero}</span>)}
                     {f.requerimiento_numero && (
                       <span className="block text-[11px] text-texto-suave">{f.requerimiento_numero}</span>
                     )}

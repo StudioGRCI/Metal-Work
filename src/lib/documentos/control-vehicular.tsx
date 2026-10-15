@@ -54,16 +54,22 @@ function Columna({ items, control }: { items: Item[]; control: Control | null })
   </View>
 }
 
-export function DocumentoControlVehicular({ numeroOt, cliente, items, control }: {
-  numeroOt: string; cliente: string; items: Item[]; control: Control | null
+/**
+ * La ficha única de ingreso y salida (SIG-FCLIV-001). `referencia` es de qué
+ * cuelga: la OT en las fichas viejas, el código interno del vehículo desde el
+ * 2026-10-15 (migración 20261016110000).
+ */
+export function DocumentoControlVehicular({ referencia, cliente, items, control }: {
+  referencia: { etiqueta: string; valor: string }; cliente: string; items: Item[]; control: Control | null
 }) {
   const mitad = Math.ceil(items.length / 2)
-  return <Document title={'Ficha de ingreso y salida OT ' + numeroOt}>
+  const ref = referencia.valor ? referencia.etiqueta + ' ' + referencia.valor : ''
+  return <Document title={'Ficha de ingreso y salida' + (ref ? ' ' + ref : '')}>
     <Page size="A4" orientation="landscape" style={s.page}>
       <Text style={s.title}>METAL WORK · CHECK LIST DE INSPECCIÓN VEHICULAR</Text>
-      <Text style={s.small}>SIG-FCLIV-001 · Ficha única de ingreso y salida · OT {numeroOt} · C: Conforme, N: No tiene, O: Observado</Text>
+      <Text style={s.small}>SIG-FCLIV-001 · Ficha única de ingreso y salida{ref ? ' · ' + ref : ''} · C: Conforme, N: No tiene, O: Observado</Text>
       <View style={[s.row, { marginTop: 8 }]}>
-        <Dato titulo="CLIENTE" valor={cliente} /><Dato titulo="OT" valor={numeroOt} />
+        <Dato titulo="CLIENTE" valor={cliente} /><Dato titulo={referencia.etiqueta.toUpperCase()} valor={referencia.valor} />
         <Dato titulo="PLACA" valor={control?.placa ?? ''} /><Dato titulo="MARCA" valor={control?.marca ?? ''} />
       </View>
       <View style={[s.row, { marginTop: 4 }]}>

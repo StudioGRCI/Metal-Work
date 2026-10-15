@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { Plus } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -17,6 +18,7 @@ import {
   comoPrioridad,
   listarOrdenes,
 } from '@/lib/datos/ordenes'
+import { reemplazoDeLaOrden, trabajaPorCodigo } from '@/lib/dominio/acceso-orden'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { FiltrosOrdenes } from './filtros-ordenes'
@@ -32,6 +34,8 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
   // ventas necesita para sus garantías y sus documentos; entrar al módulo es
   // otra cosa, y ahí ventas no pinta nada.
   const perfil = await exigirPermiso('ordenes.listar')
+  // Supervisión, Almacén y Requerimientos trabajan por código interno desde el 2026-10-15.
+  if (trabajaPorCodigo(perfil)) redirect(reemplazoDeLaOrden(perfil))
   const params = await searchParams
 
   const filtros = {
