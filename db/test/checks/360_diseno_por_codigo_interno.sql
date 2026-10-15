@@ -10,8 +10,21 @@ begin;
 do $$
 declare v text; v_id uuid;
 begin
-  foreach v in array array['DISENO:DIS', 'DISENO_COLABORADOR:DIS', 'SUPERVISOR:MTZ', 'SUPERVISOR:PRD', 'JEFE_PRODUCCION:PRD',
+  -- Sin jefatura de taller: la migración 20260929110100 ya no deja activar esas
+  -- cuentas. Y cada área tiene una sola Supervisión activa: si la base ya tiene
+  -- la de Maestranza o la de Producción, el check usa esa.
+  foreach v in array array['DISENO:DIS', 'DISENO_COLABORADOR:DIS', 'SUPERVISOR:MTZ', 'SUPERVISOR:PRD',
                            'GERENTE:GGE', 'COMPRADOR:LOG', 'REQUERIMIENTOS:REQ', 'ALMACENERO:ALM'] loop
+    if split_part(v, ':', 1) = 'SUPERVISOR' then
+      select u.id into v_id from public.usuarios u
+        join public.roles r on r.id = u.rol_id and r.codigo = 'SUPERVISOR'
+        join public.areas a on a.id = u.area_id and a.codigo = split_part(v, ':', 2)
+       where u.activo limit 1;
+      if found then
+        perform set_config('prueba.' || lower(replace(v, ':', '_')), v_id::text, true);
+        continue;
+      end if;
+    end if;
     v_id := gen_random_uuid();
     insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.360@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
@@ -64,7 +77,17 @@ create or replace function pg_temp.subir(p_plano text, p_rev text, p_dueno text)
 $$;
 create or replace function pg_temp.avisos(p_clave text, p_titulo text) returns integer language sql as $$
   select count(*)::integer from public.notificaciones
-   where usuario_id = pg_temp.id(p_clave) and titulo like p_titulo || '%';
+   where usuario_id = pg_temp.id(p_clave) and titulo like p_titulo || '%' and creado_en >= now();
+$$;
+
+-- Lo que el que mira alcanza de este código, aunque la base ya traiga otros planos.
+create or replace function pg_temp.planos() returns integer language sql as $$
+  select count(*)::integer from public.codigo_planos where codigo_interno = current_setting('prueba.codigo');
+$$;
+create or replace function pg_temp.pdfs() returns integer language sql as $$
+  select count(*)::integer from storage.objects
+   where bucket_id = 'planos-codigo'
+     and split_part(name, '/', 1) in (current_setting('prueba.p1'), current_setting('prueba.p2'), current_setting('prueba.p3'));
 $$;
 
 alter table storage.objects enable row level security;
@@ -87,10 +110,10 @@ select test.afirmar(
           and tamano_bytes = 81234 and ruta = pg_temp.ruta('p1', 'r1')) = 1,
   'el plano queda con el código escrito siempre igual, su área y su R1, una sola vez aunque se reintente');
 select test.afirmar(
-  pg_temp.avisos('supervisor_mtz', 'Plano nuevo para') = 1 and pg_temp.avisos('jefe_produccion_prd', 'Plano nuevo para') = 1
+  pg_temp.avisos('supervisor_mtz', 'Plano nuevo para') = 1
   and pg_temp.avisos('supervisor_prd', 'Plano nuevo') = 0 and pg_temp.avisos('diseno_dis', 'Plano nuevo') = 0
   and pg_temp.avisos('gerente_gge', 'Plano nuevo') = 0,
-  'le avisa al supervisor de Maestranza y al jefe de producción, no al de Producción ni a quien lo cargó');
+  'le avisa al supervisor de Maestranza, no al de Producción, ni a Gerencia ni a quien lo cargó');
 
 -- El mismo número para la misma área no entra otra vez; para Producción sí.
 select pg_temp.como('diseno_dis');
@@ -129,8 +152,9 @@ reset role;
 select pg_temp.como('supervisor_mtz');
 set local role authenticated;
 select test.afirmar(
-  (select count(*) from public.codigo_planos) = 1 and (select count(*) from public.codigo_plano_revisiones) = 1
-  and (select count(*) from public.codigo_interno_planos(null)) = 1
+  pg_temp.planos() = 1
+  and (select count(*) from public.codigo_plano_revisiones where plano_id in (pg_temp.id('p1'), pg_temp.id('p2'))) = 1
+  and (select count(*) from public.codigo_interno_planos(null) where codigo = current_setting('prueba.codigo')) = 1
   and (select area_codigo from public.codigo_interno_planos(current_setting('prueba.codigo'))) = 'MTZ'
   and (select count(*) from storage.objects where bucket_id = 'planos-codigo' and name = pg_temp.ruta('p1', 'r1')) = 1
   and (select count(*) from storage.objects where bucket_id = 'planos-codigo' and name = pg_temp.ruta('p2', 'r2')) = 0,
@@ -149,19 +173,15 @@ select test.afirmar(
   and pg_temp.avisos('diseno_dis', 'Plano recibido por Maestranza') = 1,
   'queda recibido una vez, y Diseño se entera de qué área lo recibió');
 
-select pg_temp.como('jefe_produccion_prd');
-set local role authenticated;
-select test.afirmar((select count(*) from public.codigo_interno_planos(null)) = 2
-  and (select count(*) from storage.objects where bucket_id = 'planos-codigo') = 2,
-  'el jefe de producción ve los planos de todas las áreas');
-reset role;
 select pg_temp.como('gerente_gge');
 set local role authenticated;
-select test.afirmar((select count(*) from public.codigo_planos) = 2
+select test.afirmar(pg_temp.planos() = 2
+  and (select count(*) from public.codigo_interno_planos(null) where codigo = current_setting('prueba.codigo')) = 2
+  and pg_temp.pdfs() = 2
   and (select recibido_por_area from public.codigo_interno_planos(current_setting('prueba.codigo')) where id = pg_temp.id('p1')) = 'Maestranza'
   and (select planos from public.codigos_internos_de_diseno() where codigo = current_setting('prueba.codigo')) = 2
   and (select planos_por_recibir from public.codigos_internos_de_diseno() where codigo = current_setting('prueba.codigo')) = 1,
-  'Gerencia ve los dos planos, quién los recibió por área y cuántos faltan recibir');
+  'Gerencia ve los dos planos de todas las áreas con sus PDF, quién los recibió por área y cuántos faltan recibir');
 select test.debe_fallar($q$select public.recibir_plano_codigo(pg_temp.id('r2'))$q$, 'Gerencia mira, no recibe', 'codigos_internos.area');
 reset role;
 
@@ -204,7 +224,7 @@ select pg_temp.como('diseno_dis');
 set local role authenticated;
 select pg_temp.subir('p3', 'suelto', 'diseno_dis');
 delete from storage.objects where bucket_id = 'planos-codigo' and name in (pg_temp.ruta('p3', 'suelto'), pg_temp.ruta('p1', 'r1'));
-select test.afirmar((select count(*) from storage.objects where bucket_id = 'planos-codigo') = 3,
+select test.afirmar(pg_temp.pdfs() = 3,
   'el suelto se retira y el que nombra una revisión se queda');
 
 select test.debe_fallar($q$select public.anular_plano_codigo(pg_temp.id('p2'), 'no')$q$, 'se anula con motivo', 'por qué se anula');
