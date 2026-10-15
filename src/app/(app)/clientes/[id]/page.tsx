@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
-import { Pencil, Plus } from 'lucide-react'
+import { Pencil } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
@@ -51,8 +51,6 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
   // La persona del cliente se da de alta desde acá: antes solo desde la
   // cotización nueva, y la ficha ni siquiera mostraba la tarjeta sin contactos.
   const registraContactos = puede(perfil, ['clientes.crear', 'clientes.editar'])
-  // El estado vacío de las órdenes solo ofrece abrir una a quien puede abrirla.
-  const abreOrdenes = puede(perfil, 'ordenes.crear')
 
   return (
     <>
@@ -192,16 +190,8 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
             {ordenes.length === 0 ? (
               <div className="px-4 py-10 text-center">
                 <p className="text-sm text-texto-suave">
-                  Todavía no se ha abierto ninguna orden para este cliente.
+                  Todavía no se ha abierto ninguna orden para este cliente. La OT llega cuando Gerencia aprueba su cotización con el código interno.
                 </p>
-                {abreOrdenes && (
-                  <div className="mt-4 flex justify-center">
-                    <EnlaceBoton href="/cotizaciones/pdf?estado=APROBADA_SIN_OT" variante="contorno">
-                      <Plus aria-hidden className="size-4" />
-                      Emitir OT desde una cotización
-                    </EnlaceBoton>
-                  </div>
-                )}
               </div>
             ) : (
               <ul className="divide-y divide-[var(--borde)]">

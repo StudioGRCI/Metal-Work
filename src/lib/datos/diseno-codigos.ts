@@ -351,3 +351,46 @@ export async function materialesParaElegir(): Promise<MaterialParaElegir[]> {
     unidad: (m.unidad as { codigo: string } | null)?.codigo ?? null,
   }))
 }
+
+/** Una OT vigente del código, con su PDF si quien mira puede abrirlo. */
+export type OrdenDelCodigo = {
+  id: string
+  numero: string
+  estado: string
+  descripcion: string | null
+  fecha_entrega: string | null
+  cliente: string | null
+  pdf_nombre: string | null
+  url: string | null
+}
+
+/**
+ * Las OT de un código interno (migración 20261016900000): Gerencia las carga al
+ * aprobar la cotización y Diseño las ve dentro del código. Corre con los
+ * permisos de quien mira: el PDF solo le llega a Diseño (`puede_ver_pdf_ot`).
+ */
+export async function ordenesDelCodigo(codigo: string): Promise<OrdenDelCodigo[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ordenes_de_codigo_interno', { p_codigo: codigo })
+  if (error) throw new Error(`No se pudo leer la OT del código: ${error.message}`)
+  const filas = (data ?? []).flatMap((f) => (f.id && f.numero ? [{ ...f, id: f.id, numero: f.numero }] : []))
+
+  const rutas = filas.flatMap((f) => (f.pdf_ruta ? [f.pdf_ruta] : []))
+  const enlaces = new Map<string, string>()
+  if (rutas.length > 0) {
+    // Sin enlace la OT igual se ve: se sabe que está aunque no se pueda abrir.
+    const { data: firmados } = await supabase.storage.from('adjuntos-ot').createSignedUrls(rutas, 600)
+    for (const f of firmados ?? []) if (f.path && f.signedUrl) enlaces.set(f.path, f.signedUrl)
+  }
+
+  return filas.map((f) => ({
+    id: f.id,
+    numero: f.numero,
+    estado: f.estado ?? '',
+    descripcion: f.descripcion,
+    fecha_entrega: f.fecha_entrega,
+    cliente: f.cliente,
+    pdf_nombre: f.pdf_ruta ? f.pdf_nombre : null,
+    url: (f.pdf_ruta && enlaces.get(f.pdf_ruta)) ?? null,
+  }))
+}

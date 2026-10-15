@@ -12,9 +12,10 @@ import { createClient } from '@/lib/supabase/server'
  *
  *   · El vendedor la sube (`cotizaciones.crear`). El archivo ya viajó del
  *     navegador a Storage; acá se anota con lo poco que el sistema necesita.
- *   · Gerencia la aprueba o la rechaza (`cotizaciones.revisar`).
- *   · Administración emite la orden (`ordenes.crear`): la base la crea
- *     aprobada, con sus etapas y con su PDF pegado, de una vez.
+ *   · Gerencia la aprueba dando el código interno y subiendo la OT, o la
+ *     rechaza (`cotizaciones.revisar`). La base crea la OT aprobada, con sus
+ *     etapas y su PDF, y deja la cotización aprobada, de una vez (migración
+ *     20261016900000). Administración ya no emite la OT.
  *
  * Cada permiso es exactamente el que pide la política o la función de la base.
  */
@@ -133,7 +134,7 @@ export async function revisarCotizacionPdf(_previo: unknown, datos: FormData): P
   revalidatePath('/cotizaciones/pdf')
   return {
     ok: true,
-    mensaje: v.decision === 'APROBADA' ? 'Aprobada. Administración ya puede emitir la orden.' : 'Rechazada.',
+    mensaje: v.decision === 'APROBADA' ? 'Aprobada: la corrección queda con su código y su OT.' : 'Rechazada.',
   }
 }
 
@@ -256,19 +257,24 @@ export async function quitarCotizacionPdf(_previo: unknown, datos: FormData): Pr
   return { ok: true, mensaje: rutas.length > 1 ? 'Cotización quitada, con todas sus versiones.' : 'Cotización quitada, con su archivo.' }
 }
 
-const esquemaEmitir = z.object({
+const esquemaAprobarConOt = z.object({
   cotizacion_id: z.guid(),
   orden_id: z.guid(),
+  // El código interno es lo que nace con la aprobación: la referencia del
+  // trabajo para Diseño, Contabilidad y Gerencia (migración 20261016900000).
+  codigo_interno: z
+    .string()
+    .trim()
+    .min(2, 'Escribe el código interno que tendrá la unidad.')
+    .max(40, 'El código interno no pasa de 40 caracteres.')
+    .regex(/[A-Za-z0-9]/, 'El código interno debe tener letras o números.'),
   // Migración 108: el número lo trae el papel de la orden, como el de la
   // cotización. Se acepta «2922» o «2922-2026»; la base normaliza y comprueba
   // que no se repita.
   numero: z
     .string()
     .trim()
-    .regex(/^\d{1,6}(-\d{4})?$/, 'El número de la orden es el que trae su papel: 2922 o 2922-2026'),
-  // La unidad se identifica con el código interno del taller. Se conserva el
-  // nombre del argumento RPC por compatibilidad con la función ya instalada.
-  codigo_interno: z.string().trim().max(40).optional(),
+    .regex(/^\d{1,6}(-\d{4})?$/, 'El número de la OT es el que trae su papel: 2922 o 2922-2026'),
   tipo_unidad: z.enum(['SEMIRREMOLQUE', 'CARROCERIA_MONTADA'], {
     message: 'Elige si es un semirremolque o una carrocería montada.',
   }),
@@ -281,45 +287,44 @@ const esquemaEmitir = z.object({
 })
 
 /**
- * Administración emite la orden desde la cotización aprobada. La base la crea
- * aprobada —Gerencia ya dijo que sí—, con sus etapas, sus plazos y su PDF; si
- * algo falla no queda ni orden ni papel.
+ * Gerencia aprueba la cotización dando el código interno de la unidad y
+ * subiendo la OT, en un solo paso (migración 20261016900000). También sirve
+ * para la que quedó aprobada antes sin OT. La base crea la unidad o reusa la
+ * del código, crea la OT aprobada con su PDF y deja la cotización aprobada:
+ * todo o nada.
  */
-export async function emitirOrdenDeCotizacion(
+export async function aprobarCotizacionConOt(
   _previo: unknown,
   datos: FormData,
-): Promise<ResultadoAccion<{ id: string }>> {
+): Promise<ResultadoAccion<{ codigo: string }>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'ordenes.crear')) {
-    return { ok: false, error: 'La orden de trabajo la emite Administración.' }
+  if (!puede(perfil, 'cotizaciones.revisar')) {
+    return { ok: false, error: 'La cotización la aprueba Gerencia, con su código interno y su OT.' }
   }
 
-  const analisis = esquemaEmitir.safeParse(Object.fromEntries(datos))
+  const analisis = esquemaAprobarConOt.safeParse(Object.fromEntries(datos))
   if (!analisis.success) {
-    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los datos de la orden.' }
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el código interno y los datos de la OT.' }
   }
   const v = analisis.data
 
-  if (!v.codigo_interno && !v.marca && !v.modelo) {
-    return { ok: false, error: 'Escribe el código interno o los datos del chasis si todavía no tiene código.' }
-  }
   if (!v.ruta_pdf.startsWith(`ot/${v.orden_id}/`)) {
-    return { ok: false, error: 'El PDF de la orden no llegó en su sitio: vuelve a elegirlo.' }
+    return { ok: false, error: 'El PDF de la OT no llegó en su sitio: vuelve a elegirlo.' }
   }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('emitir_orden_de_cotizacion', {
+  const { data, error } = await supabase.rpc('aprobar_cotizacion_con_ot', {
     p_cotizacion: v.cotizacion_id,
     p_orden: v.orden_id,
-    p_numero: v.numero,
-    p_numero_fmi: v.codigo_interno ?? '',
+    p_codigo_interno: v.codigo_interno,
+    p_numero_ot: v.numero,
     p_tipo_unidad: v.tipo_unidad,
-    p_marca: v.marca ?? '',
-    p_modelo: v.modelo ?? '',
     p_fecha_entrega: v.fecha_entrega,
     p_ruta_pdf: v.ruta_pdf,
     p_nombre_pdf: v.nombre_pdf,
     p_tamano_pdf: v.tamano_pdf ?? 0,
+    p_marca: v.marca ?? '',
+    p_modelo: v.modelo ?? '',
   })
 
   if (error) {
@@ -329,9 +334,14 @@ export async function emitirOrdenDeCotizacion(
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/cotizaciones/pdf')
-  revalidatePath('/ordenes')
-  revalidatePath('/avance')
-  return { ok: true, mensaje: 'Orden emitida.', datos: { id: data as string } }
+  revalidatePath('/codigos-internos')
+  revalidatePath('/contabilidad/facturacion')
+  revalidatePath('/diseno/codigo')
+  return {
+    ok: true,
+    mensaje: `Aprobada con el código ${v.codigo_interno.toUpperCase()}. Diseño ya tiene su OT y Contabilidad ya la puede facturar.`,
+    datos: { codigo: v.codigo_interno },
+  }
 }
 
 /**

@@ -6,8 +6,9 @@
 --
 -- Cada cuenta activa hace su parte con sus propias funciones, con su sesión y
 -- `set local role authenticated` (nunca como ADMIN):
---   Ventas sube la cotización → Gerencia la aprueba → Administración carga la OT
---   con el código → Diseño arma las etapas, la lista de materiales y un plano →
+--   Ventas sube la cotización → Gerencia la aprueba con el código interno y la
+--   OT (sin ellos no se aprueba; Administración ya no emite la OT) → Diseño ve
+--   la OT dentro del código y arma las etapas, la lista de materiales y un plano →
 --   el supervisor de Maestranza recibe el plano → RR. HH. registra al personal
 --   y carga horas → los supervisores de Maestranza y Producción suben su reporte
 --   diario → Gerencia y RR. HH. los validan → Requerimientos pide insumos y
@@ -131,16 +132,37 @@ begin
     get diagnostics v_n = row_count;
     if v_n <> 1 then raise exception 'Ventas no pudo subir la cotización'; end if;
 
-    v_paso := 'Gerencia aprueba la cotización';
+    v_paso := 'Gerencia no aprueba sin código ni OT';
     reset role; perform pg_temp.ensayo_como((k->>'GERENTE')::uuid);
-    update public.cotizaciones_pdf set estado = 'APROBADA' where id = v_cot;
-    get diagnostics v_n = row_count;
-    if v_n <> 1 then raise exception 'Gerencia aprobó % filas', v_n; end if;
+    begin
+      update public.cotizaciones_pdf set estado = 'APROBADA' where id = v_cot;
+      raise exception 'Gerencia aprobó la cotización sin código interno ni OT';
+    exception when check_violation then null;
+    end;
 
-    v_paso := 'Administración carga la OT con el código interno';
+    v_paso := 'Administración ya no emite la OT de la cotización';
     reset role; perform pg_temp.ensayo_como((k->>'ADMINISTRACION')::uuid);
-    perform public.emitir_orden_de_cotizacion(v_cot, v_ot, '9999-2099', c, 'SEMIRREMOLQUE', null, null, v_hoy + 30,
-                                              'ot/' || v_ot || '/ensayo.pdf', 'ensayo.pdf', 100);
+    begin
+      perform public.emitir_orden_de_cotizacion(v_cot, v_ot, '9999-2099', c, 'SEMIRREMOLQUE', null, null, v_hoy + 30,
+                                                'ot/' || v_ot || '/ensayo.pdf', 'ensayo.pdf', 100);
+      raise exception 'Administración emitió la OT de la cotización';
+    exception when insufficient_privilege then null;
+    end;
+
+    v_paso := 'Gerencia aprueba la cotización con el código interno y la OT';
+    reset role; perform pg_temp.ensayo_como((k->>'GERENTE')::uuid);
+    perform public.aprobar_cotizacion_con_ot(v_cot, v_ot, c, '9999-2099', 'SEMIRREMOLQUE', v_hoy + 30,
+                                             'ot/' || v_ot || '/ensayo.pdf', 'ensayo.pdf', 100);
+    if (select estado::text from public.cotizaciones_pdf where id = v_cot) <> 'APROBADA'
+       or public.codigo_interno_de_cotizacion(v_cot) is distinct from c then
+      raise exception 'La cotización no quedó aprobada con el código %', c;
+    end if;
+
+    v_paso := 'Diseño ve la OT dentro del código, con su PDF';
+    reset role; perform pg_temp.ensayo_como((k->>'DISENO')::uuid);
+    if (select count(*) from public.ordenes_de_codigo_interno(c) where id = v_ot and pdf_ruta is not null) <> 1 then
+      raise exception 'Diseño no ve la OT del código con su PDF';
+    end if;
 
     v_paso := 'Diseño arma las etapas';
     reset role; perform pg_temp.ensayo_como((k->>'DISENO')::uuid);

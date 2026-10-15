@@ -7,7 +7,9 @@ import type { Vistas } from '@/types/database'
  * La cotización que la casa arma en Word y manda en PDF (migraciones 101 a
  * 103). El sistema guarda lo poco que necesita y la traza: quién la subió,
  * quién la aprobó, qué orden salió de ella y, si Gerencia la rechazó, cada
- * versión con la observación que le hizo.
+ * versión con la observación que le hizo. Desde la migración 20261016900000
+ * Gerencia la aprueba con el código interno y la OT: `codigo_interno` es el de
+ * la unidad de su OT.
  */
 export type VersionCotizacion = Vistas<'v_cotizaciones_pdf_versiones'> & { url: string | null }
 export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & {
@@ -64,7 +66,7 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
   const { data, error } = await supabase
     .from('v_cotizaciones_pdf')
     .select(
-      'id, numero, estado, observacion, cliente_id, cliente, tipo_carroceria_id, carroceria, nombre_archivo, ruta_storage, tamano_bytes, creado_en, registrado_por, registrado_por_nombre, revisado_en, revisado_por_nombre, orden_id, orden_numero, orden_estado, tuvo_orden, version, mime_type, archivo_subido_en, monto_venta, moneda',
+      'id, numero, estado, observacion, cliente_id, cliente, tipo_carroceria_id, carroceria, nombre_archivo, ruta_storage, tamano_bytes, creado_en, registrado_por, registrado_por_nombre, revisado_en, revisado_por_nombre, orden_id, orden_numero, orden_estado, tuvo_orden, version, mime_type, archivo_subido_en, monto_venta, moneda, codigo_interno',
     )
     .order('creado_en', { ascending: false })
     .limit(limite)
