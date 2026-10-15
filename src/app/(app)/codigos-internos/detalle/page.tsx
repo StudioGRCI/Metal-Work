@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
+import { LineaDeDiseno } from '@/components/codigo-interno/linea-diseno'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -15,8 +16,10 @@ import {
   documentosDelCodigo,
   listarCodigosInternos,
   personalDelCodigo,
+  sumarCodigosDeDiseno,
   type ResumenCodigo,
 } from '@/lib/datos/codigos-internos'
+import { codigosDeDiseno } from '@/lib/datos/diseno-codigos'
 import {
   ESTADO_DOCUMENTO_CODIGO,
   ESTADO_SERVICIO_CODIGO,
@@ -40,6 +43,8 @@ import { horasCortas } from '@/lib/dominio/rrhh'
 import { cantidad, fecha, fechaLarga, moneda } from '@/lib/format'
 import { exigirPermiso, puede, type PerfilSesion } from '@/lib/sesion'
 
+import { VistaEtapas, VistaMateriales, VistaPlanos } from './vistas-diseno'
+
 export const metadata = { title: 'Código interno' }
 
 export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/codigos-internos/detalle'>) {
@@ -49,8 +54,10 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   if (!codigo) notFound()
   const vista = vistaValida(params.vista)
 
-  const todos = await listarCodigosInternos()
+  const [conDocumentos, deDiseno] = await Promise.all([listarCodigosInternos(), codigosDeDiseno()])
+  const todos = sumarCodigosDeDiseno(conDocumentos, deDiseno)
   const resumen = todos.find((c) => c.codigo === codigo)
+  const diseno = deDiseno.find((d) => d.codigo === codigo)
   const otros = parecidos(todos.map((c) => c.codigo)).get(codigo) ?? []
   // Un código que no está en el sistema puede ser uno mal escrito: se ofrecen los parecidos.
   const sugeridos = resumen ? [] : (parecidos([...todos.map((c) => c.codigo), codigo]).get(codigo) ?? [])
@@ -59,7 +66,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
     <>
       <EncabezadoPagina
         titulo={<span className="font-mono break-all">{codigo}</span>}
-        descripcion={resumen ? `Aparece en ${dondeAparece(resumen)}.` : undefined}
+        descripcion={resumen ? `${diseno?.unidad ? `${diseno.unidad} · ` : ''}Aparece en ${dondeAparece(resumen, diseno)}.` : undefined}
         migas={[{ titulo: 'Códigos internos', ruta: '/codigos-internos' }, { titulo: codigo }]}
       />
 
@@ -68,7 +75,8 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
           <TarjetaCuerpo>
             <p className="text-sm font-medium text-texto">Este código no aparece en el sistema</p>
             <p className="text-sm text-texto-suave">
-              Ningún reporte diario, salida del almacén, requerimiento, compra, unidad ni carga de horas lo lleva.
+              Ningún reporte diario, salida del almacén, requerimiento, compra, unidad ni carga de horas lo lleva, y Diseño no le cargó planos,
+              materiales ni etapas.
             </p>
             {sugeridos.length > 0 && (
               <p className="mt-2 text-sm text-texto">
@@ -109,6 +117,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
           )}
 
           <ComoVa c={resumen} />
+          <LineaDeDiseno d={diseno} />
 
           <PastillaFiltro
             ruta="/codigos-internos/detalle"
@@ -210,6 +219,9 @@ function piesDeServicios(c: ResumenCodigo) {
 
 /** Cada pestaña carga solo lo suyo. */
 async function Vista({ vista, codigo, perfil }: { vista: VistaCodigo; codigo: string; perfil: PerfilSesion }) {
+  if (vista === 'etapas') return <VistaEtapas codigo={codigo} />
+  if (vista === 'planos') return <VistaPlanos codigo={codigo} />
+  if (vista === 'materiales') return <VistaMateriales codigo={codigo} />
   if (vista === 'costeo') return <VistaCosteo codigo={codigo} perfil={perfil} />
   if (vista === 'personal') return <VistaPersonal codigo={codigo} />
   if (vista === 'documentos') return <VistaDocumentos codigo={codigo} perfil={perfil} />

@@ -275,3 +275,63 @@ export async function documentosDelCodigo(codigo: string): Promise<DocumentoDelC
     detalle: f.detalle,
   }))
 }
+
+/**
+ * Suma a la lista los códigos que solo tiene Diseño: los planos, la lista de
+ * materiales o las etapas se pueden cargar antes del primer requerimiento de
+ * la unidad, y Gerencia tiene que verlos igual. Entran en cero, con la fecha
+ * del último cambio de Diseño como su última actividad.
+ */
+export function sumarCodigosDeDiseno(
+  todos: ResumenCodigo[],
+  deDiseno: { codigo: string; planos: number; materiales: number; etapas: number; ultimo_cambio: string | null }[],
+): ResumenCodigo[] {
+  const conocidos = new Set(todos.map((c) => c.codigo))
+  const nuevos = deDiseno
+    .filter((d) => !conocidos.has(d.codigo) && d.planos + d.materiales + d.etapas > 0)
+    .map(
+      (d): ResumenCodigo => ({
+        codigo: d.codigo,
+        requerimientos: 0,
+        compras: 0,
+        salidas: 0,
+        reportes: 0,
+        vehiculos: 0,
+        unidades: 0,
+        ordenes: 0,
+        servicios: 0,
+        servicios_pen: 0,
+        servicios_usd: 0,
+        servicios_por_aprobar: 0,
+        servicios_por_aprobar_pen: 0,
+        servicios_por_aprobar_usd: 0,
+        ultima_actividad: d.ultimo_cambio ? diaDeLima(d.ultimo_cambio) : null,
+        ultimo_reporte: null,
+        trabajos: 0,
+        trabajos_terminados: 0,
+        avance_medio: null,
+        horas: 0,
+        horas_sin_costo: 0,
+        mano_obra: 0,
+        materiales_pen: 0,
+        materiales_usd: 0,
+        materiales_sin_precio: 0,
+        compras_pen: 0,
+        compras_usd: 0,
+        compras_sin_precio: 0,
+      }),
+    )
+  if (nuevos.length === 0) return todos
+  // El mismo orden que `codigos_internos_resumen`: la actividad más reciente primero, sin fecha al final.
+  return [...todos, ...nuevos].sort(
+    (a, b) =>
+      (a.ultima_actividad === null ? 1 : 0) - (b.ultima_actividad === null ? 1 : 0) ||
+      (b.ultima_actividad ?? '').localeCompare(a.ultima_actividad ?? '') ||
+      a.codigo.localeCompare(b.codigo),
+  )
+}
+
+/** El día de Lima de un instante: la última actividad de la lista es una fecha, no una hora. */
+function diaDeLima(instante: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(instante))
+}
