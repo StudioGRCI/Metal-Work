@@ -16,7 +16,7 @@
  *
  * Arma sus propios datos ficticios (QA-COT-…) y las cuentas `*.cot@banco.test`
  * con la clave local; la cuenta ADMIN solo arma la aprobada de antes, como en
- * el check 390, y no entra a la aplicación. Variables: BANCO_CLAVE, BASE
+ * el check 391, y no entra a la aplicación. Variables: BANCO_CLAVE, BASE
  * (http://localhost:3111), BANCO_BASE (mw_demo), BANCO_ARCHIVOS (el mismo del
  * servidor del banco), CAPTURAS.
  */
