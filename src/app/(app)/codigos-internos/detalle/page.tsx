@@ -13,6 +13,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import {
+  avanceDeLosCodigos,
   avanceDelCodigo,
   comprasDelCodigo,
   costeoDelCodigo,
@@ -20,11 +21,13 @@ import {
   listarCodigosInternos,
   personalDelCodigo,
   sumarCodigosDeDiseno,
+  type AvanceDeCodigo,
   type ResumenCodigo,
 } from '@/lib/datos/codigos-internos'
-import { codigosDeDiseno } from '@/lib/datos/diseno-codigos'
+import { codigosDeDiseno, etapasDeCodigo } from '@/lib/datos/diseno-codigos'
 import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo, type FacturadoDelCodigo } from '@/lib/datos/facturacion'
 import {
+  CODIGO_SIN_AVANCE,
   ESTADO_DOCUMENTO_CODIGO,
   ESTADO_SERVICIO_CODIGO,
   TIPO_DOCUMENTO_CODIGO,
@@ -34,6 +37,7 @@ import {
   enlaceCodigo,
   faltaElPrecio,
   normalizarCodigo,
+  origenDelAvance,
   parecidos,
   ultimoAvancePorTrabajo,
   vistaValida,
@@ -62,11 +66,13 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   const pedida = vistaValida(params.vista)
   const vista = pedida === 'facturacion' && !veFacturas ? 'avance' : pedida
 
-  const [conDocumentos, deDiseno, facturado] = await Promise.all([
+  const [conDocumentos, deDiseno, avances, facturado] = await Promise.all([
     listarCodigosInternos(),
     codigosDeDiseno(),
+    avanceDeLosCodigos(codigo),
     veFacturas ? facturadoDelCodigo(codigo) : Promise.resolve(null),
   ])
+  const avance = avances.get(codigo)
   const todos = sumarCodigosDeDiseno(conDocumentos, deDiseno)
   const resumen = todos.find((c) => c.codigo === codigo)
   const diseno = deDiseno.find((d) => d.codigo === codigo)
@@ -128,7 +134,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
             </Tarjeta>
           )}
 
-          <ComoVa c={resumen} facturado={facturado} codigo={codigo} />
+          <ComoVa c={resumen} avance={avance} facturado={facturado} codigo={codigo} />
           <LineaDeDiseno d={diseno} />
 
           <PastillaFiltro
@@ -143,7 +149,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
             }))}
           />
 
-          <Vista vista={vista} codigo={codigo} perfil={perfil} />
+          <Vista vista={vista} codigo={codigo} perfil={perfil} avance={avance} />
         </div>
       )}
     </>
@@ -151,19 +157,33 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
 }
 
 /** Las cifras de arriba: lo mismo que la fila de la lista, con más aire. */
-function ComoVa({ c, facturado, codigo }: { c: ResumenCodigo; facturado: FacturadoDelCodigo | null; codigo: string }) {
+function ComoVa({
+  c,
+  avance,
+  facturado,
+  codigo,
+}: {
+  c: ResumenCodigo
+  avance: AvanceDeCodigo | undefined
+  facturado: FacturadoDelCodigo | null
+  codigo: string
+}) {
   const costo = costoDelCodigo(c)
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <Indicador
           titulo="Avance"
-          valor={c.avance_medio === null ? 'Sin reportes' : <Progreso valor={c.avance_medio} mostrarValor etiqueta="Avance del código" />}
-          pie={
-            c.trabajos > 0
-              ? `${c.trabajos_terminados} de ${c.trabajos} ${c.trabajos === 1 ? 'trabajo terminado' : 'trabajos terminados'}`
-              : 'Nadie subió un reporte diario'
+          valor={
+            codigo === CODIGO_SIN_AVANCE ? (
+              'No aplica'
+            ) : (
+              <span data-avance={avance?.avance ?? 0}>
+                <Progreso valor={avance?.avance ?? 0} mostrarValor etiqueta="Avance del código" />
+              </span>
+            )
           }
+          pie={origenDelAvance(codigo, avance)}
         />
         <Indicador
           titulo="Costo hasta hoy"
@@ -294,7 +314,17 @@ function piesDeSubcontratos(c: ResumenCodigo) {
 }
 
 /** Cada pestaña carga solo lo suyo. */
-async function Vista({ vista, codigo, perfil }: { vista: VistaCodigo; codigo: string; perfil: PerfilSesion }) {
+async function Vista({
+  vista,
+  codigo,
+  perfil,
+  avance,
+}: {
+  vista: VistaCodigo
+  codigo: string
+  perfil: PerfilSesion
+  avance: AvanceDeCodigo | undefined
+}) {
   if (vista === 'etapas') return <VistaEtapas codigo={codigo} />
   if (vista === 'planos') return <VistaPlanos codigo={codigo} />
   if (vista === 'materiales') return <VistaMateriales codigo={codigo} />
@@ -302,10 +332,90 @@ async function Vista({ vista, codigo, perfil }: { vista: VistaCodigo; codigo: st
   if (vista === 'personal') return <VistaPersonal codigo={codigo} />
   if (vista === 'documentos') return <VistaDocumentos codigo={codigo} perfil={perfil} />
   if (vista === 'facturacion') return <VistaFacturacion codigo={codigo} />
-  return <VistaAvance codigo={codigo} perfil={perfil} />
+  return <VistaAvance codigo={codigo} perfil={perfil} avance={avance} />
 }
 
-async function VistaAvance({ codigo, perfil }: { codigo: string; perfil: PerfilSesion }) {
+/**
+ * Cómo sale el porcentaje de arriba, con las mismas filas que la pestaña
+ * «Etapas»: cada etapa con lo que vale. El número lo da la base
+ * (`codigos_internos_avance`); aquí solo se muestra de dónde sale.
+ */
+async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: AvanceDeCodigo | undefined }) {
+  if (codigo === CODIGO_SIN_AVANCE) {
+    return (
+      <Tarjeta>
+        <TarjetaCuerpo>
+          <p className="text-sm font-medium text-texto">PLANTA no lleva avance</p>
+          <p className="text-sm text-texto-suave">
+            Agrupa el trabajo de la planta que no es de una unidad. Sus reportes diarios suman horas al costeo, pero no tiene etapas ni un final.
+          </p>
+        </TarjetaCuerpo>
+      </Tarjeta>
+    )
+  }
+  if (!avance) {
+    return (
+      <Tarjeta>
+        <TarjetaCuerpo>
+          <p className="text-sm font-medium text-texto">Avance en 0 %</p>
+          <p className="text-sm text-texto-suave">
+            Diseño todavía no armó las etapas de este código y ningún supervisor subió un reporte diario de él. El avance sale de las etapas que
+            Diseño carga en «Control de etapas» y de lo que cada área reporta.
+          </p>
+        </TarjetaCuerpo>
+      </Tarjeta>
+    )
+  }
+  if (avance.fuente === 'REPORTES') {
+    return (
+      <Tarjeta>
+        <TarjetaCuerpo>
+          <p className="text-sm font-medium text-texto">Cómo sale el {avance.avance} %</p>
+          <p className="text-sm text-texto-suave">
+            Diseño todavía no armó las etapas de este código, así que el avance es el promedio del último avance de cada trabajo del reporte
+            diario, área por área (abajo). Cuando Diseño las arme, el avance saldrá de ellas.
+          </p>
+        </TarjetaCuerpo>
+      </Tarjeta>
+    )
+  }
+  const etapas = await etapasDeCodigo(codigo)
+  return (
+    <Tarjeta data-como-sale>
+      <TarjetaCabecera
+        titulo={`Cómo sale el ${avance.avance} %`}
+        descripcion="Es el promedio de las etapas que armó Diseño, todas con el mismo peso. La etapa terminada vale 100 %; la que no, lo que su área reporta de este código en el reporte diario (el promedio del último avance de cada uno de sus trabajos); sin reporte, 0 %."
+      />
+      <TarjetaCuerpo>
+        <ul className="space-y-2">
+          {etapas.map((e, i) => {
+            const vale = e.fin_real ? 100 : (e.avance_reportado ?? 0)
+            return (
+              <li key={e.id} className="grid grid-cols-[1fr_8rem] items-center gap-3 text-sm" data-etapa={e.nombre} data-vale={Math.round(vale)}>
+                <span className="min-w-0">
+                  <span className="text-texto">
+                    {i + 1}. {e.nombre}
+                  </span>{' '}
+                  <span className="text-xs text-texto-suave">
+                    {e.area ?? 'Sin área del taller'} ·{' '}
+                    {e.fin_real
+                      ? `terminada el ${fecha(e.fin_real)}`
+                      : e.avance_reportado !== null
+                        ? 'sin terminar: lo que reporta su área'
+                        : 'sin terminar y sin reporte diario'}
+                  </span>
+                </span>
+                <Progreso valor={vale} mostrarValor etiqueta={`Lo que vale ${e.nombre}`} />
+              </li>
+            )
+          })}
+        </ul>
+      </TarjetaCuerpo>
+    </Tarjeta>
+  )
+}
+
+async function VistaAvance({ codigo, perfil, avance }: { codigo: string; perfil: PerfilSesion; avance: AvanceDeCodigo | undefined }) {
   const filas = await avanceDelCodigo(codigo)
   const trabajos = ultimoAvancePorTrabajo(filas)
   const abreReporte = puede(perfil, ['reporte_diario.ver', 'reporte_diario.registrar'])
@@ -329,32 +439,46 @@ async function VistaAvance({ codigo, perfil }: { codigo: string; perfil: PerfilS
   }
   const lista = [...reportes.values()].sort((a, b) => b.fecha.localeCompare(a.fecha) || b.creado_en.localeCompare(a.creado_en))
 
+  const comoSale = <ComoSaleElAvance codigo={codigo} avance={avance} />
+
   if (lista.length === 0) {
     return (
-      <Tarjeta>
-        <TarjetaCuerpo>
-          <p className="text-sm font-medium text-texto">Sin reportes diarios de este código</p>
-          <p className="text-sm text-texto-suave">
-            El avance sale del reporte diario que sube cada supervisor por código interno. Mientras no haya uno, en «Costeo» se ve lo que ya se gastó.
-          </p>
-        </TarjetaCuerpo>
-      </Tarjeta>
+      <>
+        {comoSale}
+        {avance && (
+          <Tarjeta>
+            <TarjetaCuerpo>
+              <p className="text-sm font-medium text-texto">Sin reportes diarios de este código</p>
+              <p className="text-sm text-texto-suave">
+                Ningún supervisor subió un reporte diario de este código: las etapas sin terminar cuentan 0 %. En «Costeo» se ve lo que ya se gastó.
+              </p>
+            </TarjetaCuerpo>
+          </Tarjeta>
+        )}
+      </>
     )
   }
 
   return (
     <>
+      {comoSale}
       <Tarjeta>
         <TarjetaCabecera
           titulo="Cada trabajo con su último avance"
-          descripcion="El porcentaje que el supervisor puso la última vez que reportó cada trabajo. El avance del código es el promedio de estos."
+          descripcion={`El porcentaje que el supervisor de cada área puso la última vez que reportó cada trabajo. ${
+            avance?.fuente === 'ETAPAS'
+              ? 'Su promedio, área por área, es lo que vale la etapa de esa área mientras no termine.'
+              : 'El avance del código es el promedio de estos.'
+          }`}
         />
         <TarjetaCuerpo>
           <ul className="space-y-3">
             {trabajos.map((t) => (
-              <li key={t.trabajo} className="text-sm" data-trabajo={t.trabajo}>
+              <li key={`${t.area ?? ''}|${t.trabajo}`} className="text-sm" data-trabajo={t.trabajo} data-area={t.area ?? ''}>
                 <div className="grid grid-cols-[1fr_8rem] items-center gap-3">
-                  <span className="text-texto">{t.trabajo}</span>
+                  <span className="text-texto">
+                    {t.trabajo} <span className="text-xs text-texto-suave">· {t.area ?? 'Sin área'}</span>
+                  </span>
                   <Progreso valor={t.avance} mostrarValor etiqueta={`Avance de ${t.trabajo}`} />
                 </div>
                 <p className="text-xs text-texto-suave">

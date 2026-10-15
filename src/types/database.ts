@@ -10477,6 +10477,21 @@ export type Database = {
           recibido_por_area: string | null
         }[]
       }
+      codigos_internos_avance: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          codigo: string | null
+          avance: number | null
+          fuente: string | null
+          etapas: number | null
+          etapas_terminadas: number | null
+          trabajos: number | null
+          trabajos_terminados: number | null
+          ultimo_reporte: string | null
+        }[]
+      }
       codigos_internos_de_diseno: {
         Args: Record<PropertyKey, never>
         Returns: {

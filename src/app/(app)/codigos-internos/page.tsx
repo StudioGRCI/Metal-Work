@@ -7,9 +7,18 @@ import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { listarCodigosInternos, sumarCodigosDeDiseno, type ResumenCodigo } from '@/lib/datos/codigos-internos'
+import { avanceDeLosCodigos, listarCodigosInternos, sumarCodigosDeDiseno, type AvanceDeCodigo, type ResumenCodigo } from '@/lib/datos/codigos-internos'
 import { codigosDeDiseno, type CodigoDeDiseno } from '@/lib/datos/diseno-codigos'
-import { costoDelCodigo, dondeAparece, enlaceCodigo, faltaElPrecio, llaveParecido, parecidos } from '@/lib/dominio/codigos-internos'
+import {
+  CODIGO_SIN_AVANCE,
+  costoDelCodigo,
+  dondeAparece,
+  enlaceCodigo,
+  faltaElPrecio,
+  llaveParecido,
+  origenDelAvance,
+  parecidos,
+} from '@/lib/dominio/codigos-internos'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import { fecha, moneda } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
@@ -36,7 +45,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
   const q = typeof params.q === 'string' ? params.q.trim() : ''
   const filtro = typeof params.ver === 'string' && params.ver in FILTROS ? params.ver : null
 
-  const [conDocumentos, deDiseno] = await Promise.all([listarCodigosInternos(), codigosDeDiseno()])
+  const [conDocumentos, deDiseno, avances] = await Promise.all([listarCodigosInternos(), codigosDeDiseno(), avanceDeLosCodigos()])
   // Un código puede tener planos o etapas de Diseño antes que cualquier documento.
   const todos = sumarCodigosDeDiseno(conDocumentos, deDiseno)
   const diseno = new Map(deDiseno.map((d) => [d.codigo, d]))
@@ -55,7 +64,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Códigos internos"
-        descripcion="Cada código interno que aparece en el sistema —reportes diarios, horas de RR. HH., salidas del almacén, requerimientos, compras, órdenes de servicio, subcontratos, unidades e ingresos a la planta— con cómo va y lo que lleva costado. El costo suma la mano de obra, los materiales que salieron del almacén, las órdenes de servicio aprobadas y los recibos por honorarios de los subcontratos; las compras se muestran aparte y no se suman, porque lo comprado se cuenta cuando sale del almacén."
+        descripcion="Cada código interno que aparece en el sistema —reportes diarios, horas de RR. HH., salidas del almacén, requerimientos, compras, órdenes de servicio, subcontratos, unidades e ingresos a la planta— con cómo va y lo que lleva costado. El avance es el promedio de las etapas que arma Diseño: la terminada vale 100 % y la que no, lo que su área reporta en el reporte diario; sin etapas, sale del reporte diario. El costo suma la mano de obra, los materiales que salieron del almacén, las órdenes de servicio aprobadas y los recibos por honorarios de los subcontratos; las compras se muestran aparte y no se suman, porque lo comprado se cuenta cuando sale del almacén."
         migas={[{ titulo: 'Códigos internos' }]}
       />
 
@@ -105,7 +114,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
         <ul className="space-y-3">
           {codigos.map((c) => (
             <li key={c.codigo}>
-              <FilaCodigo codigo={c} parecidos={parecidosDe.get(c.codigo) ?? []} diseno={diseno.get(c.codigo)} />
+              <FilaCodigo codigo={c} parecidos={parecidosDe.get(c.codigo) ?? []} diseno={diseno.get(c.codigo)} avance={avances.get(c.codigo)} />
             </li>
           ))}
         </ul>
@@ -114,7 +123,17 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
   )
 }
 
-function FilaCodigo({ codigo: c, parecidos, diseno }: { codigo: ResumenCodigo; parecidos: string[]; diseno: CodigoDeDiseno | undefined }) {
+function FilaCodigo({
+  codigo: c,
+  parecidos,
+  diseno,
+  avance,
+}: {
+  codigo: ResumenCodigo
+  parecidos: string[]
+  diseno: CodigoDeDiseno | undefined
+  avance: AvanceDeCodigo | undefined
+}) {
   const costo = costoDelCodigo(c)
   return (
     <Link
@@ -147,16 +166,16 @@ function FilaCodigo({ codigo: c, parecidos, diseno }: { codigo: ResumenCodigo; p
         <LineaDeDiseno d={diseno} />
       </div>
 
-      {c.trabajos > 0 ? (
-        <div className="mt-2 grid grid-cols-[1fr_6.5rem] items-center gap-3 text-xs">
-          <span className="text-texto">
-            {c.trabajos_terminados} de {c.trabajos} {c.trabajos === 1 ? 'trabajo terminado' : 'trabajos terminados'}
+      {c.codigo === CODIGO_SIN_AVANCE ? (
+        <p className="mt-2 text-xs text-texto-suave">{origenDelAvance(c.codigo, avance)}.</p>
+      ) : (
+        <div className="mt-2 grid grid-cols-[1fr_6.5rem] items-center gap-3 text-xs" data-avance={avance?.avance ?? 0}>
+          <span className={avance ? 'text-texto' : 'text-texto-suave'}>
+            {origenDelAvance(c.codigo, avance)}
             {c.ultimo_reporte && <span className="text-texto-suave"> · último reporte el {fecha(c.ultimo_reporte)}</span>}
           </span>
-          <Progreso valor={c.avance_medio} alto="sm" mostrarValor etiqueta={`Avance de ${c.codigo}`} />
+          <Progreso valor={avance?.avance ?? 0} alto="sm" mostrarValor etiqueta={`Avance de ${c.codigo}`} />
         </div>
-      ) : (
-        <p className="mt-2 text-xs text-texto-suave">Sin reporte diario: todavía no se sabe cómo va.</p>
       )}
 
       <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-texto-suave">
