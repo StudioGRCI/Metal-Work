@@ -314,7 +314,7 @@ begin
            ('subcontratos', v_ruta2, k->>'ADMINISTRACION', jsonb_build_object('mimetype', 'application/pdf', 'size', 84000));
     perform pg_temp.ensayo_como((k->>'ADMINISTRACION')::uuid);
     perform public.guardar_subcontratista(v_sub, v_ruc_sub, 'Soldador del ensayo', null, null, null, null, true);
-    perform public.registrar_subcontrato(v_sc, v_sub, c, 'Soldadura de refuerzos del chasis por terceros', 'PEN', 2000, v_ayer, v_hoy + 10);
+    perform public.registrar_subcontrato(v_sc, v_sub, c, 'Soldadura de refuerzos del chasis por terceros', 'PEN', 2000, v_ayer, v_hoy + 10, 'PRD');
     perform public.registrar_recibo_honorarios(v_rh1, v_sc, 'E001-1', v_ayer, 'Primer avance', 1000, true, v_ruta);
     perform public.registrar_recibo_honorarios(v_rh2, v_sc, 'E001-2', v_hoy, 'Segundo avance', 500, false, v_ruta2);
 

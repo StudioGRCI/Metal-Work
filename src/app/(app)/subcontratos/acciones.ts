@@ -9,7 +9,8 @@ import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /*
- * Lo que hace Administración con los subcontratos (migración 20261015221000).
+ * Lo que hace Administración con los subcontratos (migraciones 20261015221000
+ * y 20261017100000, la del área: Producción o Acabados).
  * Todas exigen `subcontratos.gestionar`, el mismo permiso que piden las
  * funciones de la base, y comprueban que la función devolvió el id: si no
  * vuelve, no se hizo, y la pantalla no dice «listo».
@@ -23,6 +24,7 @@ const MONTO = z.coerce
   .max(999999999, 'El monto es demasiado grande.')
   .multipleOf(0.01, 'El monto lleva como máximo dos decimales.')
 const CODIGO = z.string().trim().min(2, FALTA_CODIGO_INTERNO).max(60, CODIGO_INTERNO_LARGO)
+const AREA = z.enum(['PRD', 'ACB'], { message: 'Elige para qué área va el subcontrato: Producción o Acabados.' })
 const DESCRIPCION = z
   .string()
   .trim()
@@ -38,6 +40,7 @@ function repintar(subcontratoId?: string) {
   revalidatePath('/subcontratos')
   if (subcontratoId) revalidatePath(`/subcontratos/${subcontratoId}`)
   revalidatePath('/tesoreria/recibos-por-honorarios')
+  revalidatePath('/subcontratos/area')
 }
 
 async function puedeGestionar() {
@@ -99,6 +102,7 @@ export async function registrarSubcontrato(_previo: unknown, formulario: FormDat
       subcontratista_id: z.guid('Elige el subcontratista del padrón. Si es nuevo, dalo de alta primero.'),
       codigo_interno: CODIGO,
       descripcion: DESCRIPCION,
+      area: AREA,
       moneda: z.enum(['PEN', 'USD'], { message: 'Elige la moneda de lo pactado.' }),
       monto: MONTO,
       fecha_inicio: z.iso.date().optional(),
@@ -107,6 +111,7 @@ export async function registrarSubcontrato(_previo: unknown, formulario: FormDat
     .safeParse({
       id: dato(formulario, 'id'),
       subcontratista_id: dato(formulario, 'subcontratista_id'),
+      area: dato(formulario, 'area'),
       codigo_interno: dato(formulario, 'codigo_interno'),
       descripcion: dato(formulario, 'descripcion'),
       moneda: dato(formulario, 'moneda'),
@@ -127,6 +132,7 @@ export async function registrarSubcontrato(_previo: unknown, formulario: FormDat
     p_monto: d.monto,
     p_fecha_inicio: d.fecha_inicio ?? null,
     p_fecha_fin: d.fecha_fin ?? null,
+    p_area: d.area,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El subcontrato no quedó registrado. Recarga la pantalla.' }
@@ -135,13 +141,18 @@ export async function registrarSubcontrato(_previo: unknown, formulario: FormDat
   return { ok: true, mensaje: 'Subcontrato registrado: ya puedes subir sus recibos por honorarios.', datos: { id: d.id } }
 }
 
-/** Corregir el código, el trabajo, lo pactado o las fechas mientras está vigente. Mismo permiso que `corregir_subcontrato`. */
+/**
+ * Corregir el código, el área, el trabajo, lo pactado o las fechas mientras está
+ * vigente. Sin área, la que tenía se queda (un subcontrato de antes puede no
+ * tenerla todavía). Mismo permiso que `corregir_subcontrato`.
+ */
 export async function corregirSubcontrato(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   if (!(await puedeGestionar())) return { ok: false, error: NO_GESTIONA }
   const analisis = z
     .object({
       id: z.guid(),
       codigo_interno: CODIGO,
+      area: AREA.optional(),
       descripcion: DESCRIPCION,
       monto: MONTO,
       fecha_inicio: z.iso.date().optional(),
@@ -150,6 +161,7 @@ export async function corregirSubcontrato(_previo: unknown, formulario: FormData
     .safeParse({
       id: dato(formulario, 'id'),
       codigo_interno: dato(formulario, 'codigo_interno'),
+      area: dato(formulario, 'area') || undefined,
       descripcion: dato(formulario, 'descripcion'),
       monto: dato(formulario, 'monto'),
       fecha_inicio: dato(formulario, 'fecha_inicio') || undefined,
@@ -166,6 +178,7 @@ export async function corregirSubcontrato(_previo: unknown, formulario: FormData
     p_monto: d.monto,
     p_fecha_inicio: d.fecha_inicio ?? null,
     p_fecha_fin: d.fecha_fin ?? null,
+    p_area: d.area ?? null,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El subcontrato no se corrigió. Recarga la pantalla.' }

@@ -8433,6 +8433,7 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          area_id: string | null
         }
         Insert: {
           id?: string
@@ -8453,6 +8454,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          area_id?: string | null
         }
         Update: {
           id?: string
@@ -8473,6 +8475,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          area_id?: string | null
         }
         Relationships: [
           {
@@ -8480,6 +8483,13 @@ export type Database = {
             columns: ["anulado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontratos_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
             referencedColumns: ["id"]
           },
           {
@@ -10223,6 +10233,15 @@ export type Database = {
         }
         Returns: null
       }
+      avisar_area_del_subcontrato: {
+        Args: {
+          p_area: string | null
+          p_titulo: string | null
+          p_cuerpo: string | null
+          p_subcontrato: string | null
+        }
+        Returns: null
+      }
       cambiar_clave_personal: {
         Args: {
           p_usuario: string | null
@@ -10871,6 +10890,7 @@ export type Database = {
           p_monto: number | null
           p_fecha_inicio: string | null
           p_fecha_fin: string | null
+          p_area: string | null
         }
         Returns: string
       }
@@ -12514,6 +12534,7 @@ export type Database = {
           p_monto: number | null
           p_fecha_inicio: string | null
           p_fecha_fin: string | null
+          p_area: string | null
         }
         Returns: string
       }
@@ -13066,6 +13087,12 @@ export type Database = {
         }
         Returns: string
       }
+      subcontrato_area: {
+        Args: {
+          p_area: string | null
+        }
+        Returns: string
+      }
       subcontrato_datos_validos: {
         Args: {
           p_codigo_interno: string | null
@@ -13080,6 +13107,24 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: {
           codigo: string | null
+        }[]
+      }
+      subcontratos_de_mi_area: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          numero: string | null
+          codigo_interno: string | null
+          descripcion: string | null
+          estado: string | null
+          area_codigo: string | null
+          area_nombre: string | null
+          subcontratista: string | null
+          fecha_inicio: string | null
+          fecha_fin: string | null
+          creado_en: string | null
+          terminado_en: string | null
+          recibos: Json | null
         }[]
       }
       subir_boleta_planilla_diaria: {
