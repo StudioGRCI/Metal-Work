@@ -82,16 +82,20 @@ const SELECT_RQ =
  * Los requerimientos, del más nuevo al más viejo. Con `soloAbiertos`, los que
  * todavía esperan a Almacén, a quien compra o a que el área los recoja: es lo
  * que la bandeja de atención muestra. Con `tipo`, solo los de operación o solo
- * los de Administración. Con `id`, solo ese: es el que abre Adquisiciones.
+ * los de Administración. Con `id`, solo ese: es el que abre Adquisiciones. Con
+ * `area`, los que pidió esa área (el supervisor ve primero los de la suya); con
+ * `codigo`, los de ese código interno.
  */
 export async function cargarRequerimientos(
-  opciones: { soloAbiertos?: boolean; tipo?: 'OPERACION' | 'ADMINISTRACION'; id?: string } = {},
+  opciones: { soloAbiertos?: boolean; tipo?: 'OPERACION' | 'ADMINISTRACION'; id?: string; area?: string; codigo?: string } = {},
 ): Promise<RequerimientoListado[]> {
   const supabase = await createClient()
   let consulta = supabase.from('requerimientos').select(SELECT_RQ)
   if (opciones.soloAbiertos) consulta = consulta.in('estado', ['POR_ATENDER', 'SIN_STOCK', 'EN_ATENCION', 'LISTO_EN_ALMACEN'])
   if (opciones.tipo) consulta = consulta.eq('tipo', opciones.tipo)
   if (opciones.id) consulta = consulta.eq('id', opciones.id)
+  if (opciones.area) consulta = consulta.eq('area_id', opciones.area)
+  if (opciones.codigo) consulta = consulta.eq('codigo_interno', opciones.codigo)
   const { data, error } = await consulta.order('creado_en', { ascending: false }).limit(300)
   if (error) throw new Error(`No se pudieron leer los requerimientos: ${error.message}`)
   // El avance lo calcula la base con la OC y el recojo de cada insumo. Trae

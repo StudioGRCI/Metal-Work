@@ -35,6 +35,7 @@ import {
   UserCog,
   Users,
   Wallet,
+  Warehouse,
   Wrench,
 } from 'lucide-react'
 
@@ -351,6 +352,18 @@ export const NAVEGACION = [
         icono: DraftingCompass,
         permiso: 'codigos_internos.area',
         descripcion: 'Los planos que Diseño cargó para tu área, para marcarlos recibidos, y las etapas de tu área',
+        disponible: true,
+      },
+      // Maestranza pidió el 2026-10-15 ver lo que Almacén tiene antes de
+      // pedirlo: el stock de cada material, sin precios ni el kardex
+      // (migración 20261016950000). Almacén también la abre, pero lo suyo es el
+      // kardex.
+      {
+        titulo: 'Stock en almacén',
+        ruta: '/almacen/stock',
+        icono: Warehouse,
+        permiso: 'almacen.stock',
+        descripcion: 'Cuánto hay de cada material en los cuatro almacenes, y de qué código interno es cada accesorio',
         disponible: true,
       },
       // Supervisión general sigue todas las áreas sin la OT (2026-10-15): lo que
@@ -683,10 +696,12 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // lo que su área pidió (el RQ «Listo en almacén», al que también lo lleva el
   // aviso). Desde el 2026-10-15, los planos que Diseño carga para su área y las
   // etapas que hace su área van justo después de su reporte, y ya no abre la
-  // OT: su reporte diario reemplaza las tareas con foto.
+  // OT: su reporte diario reemplaza las tareas con foto. Después de sus
+  // requerimientos, el stock de Almacén, que consulta para saber qué hay (lo
+  // pidió Maestranza el mismo día); en el teléfono, en lugar del dashboard.
   SUPERVISOR: {
-    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/planos', '/requerimientos'] }],
-    telefono: ['/reportes-diarios', '/planos', '/requerimientos', '/'],
+    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/planos', '/requerimientos', '/almacen/stock'] }],
+    telefono: ['/reportes-diarios', '/planos', '/requerimientos', '/almacen/stock'],
   },
   // Mira todas las áreas sin trabajar en ninguna: cada una con su nombre y en
   // el orden del circuito, después de lo suyo. La cotización ya no: desde el
@@ -833,4 +848,6 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/proveedores', corto: 'Proveedores' },
   { ruta: '/subcontratos', corto: 'Subcontratos' },
   { ruta: '/tesoreria/recibos-por-honorarios', corto: 'Honorarios' },
+  // Al final: así no le quita la pestaña a nadie que no tenga menú propio.
+  { ruta: '/almacen/stock', corto: 'Stock' },
 ]

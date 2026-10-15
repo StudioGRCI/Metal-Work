@@ -94,6 +94,57 @@ export const ETAPA_AVANCE_RQ: Record<string, Def> = {
   ENTREGADO: { etiqueta: 'Entregado', tono: 'neutro', descripcion: 'Almacén lo entregó al área.' },
 }
 
+/**
+ * Quién da cada insumo del RQ. Almacén revisa el RQ insumo por insumo
+ * (migración 20261015162000): lo que tiene lo separa de su stock y lo demás se
+ * compra con una OC. En un mismo RQ unos insumos los da Almacén y otros van a
+ * compra, y el supervisor quiere saber cuál es cuál.
+ */
+export type AtencionDelInsumo = 'POR_REVISAR' | 'ALMACEN' | 'ALMACEN_Y_COMPRA' | 'COMPRA'
+
+export const ATENCION_INSUMO: Record<AtencionDelInsumo, Def> = {
+  POR_REVISAR: { etiqueta: 'Almacén lo revisa', tono: 'aviso', descripcion: 'Almacén todavía no dice si lo tiene.' },
+  ALMACEN: { etiqueta: 'Lo da Almacén', tono: 'exito', descripcion: 'Almacén lo tiene completo en su stock: no se compra.' },
+  ALMACEN_Y_COMPRA: { etiqueta: 'Almacén y compra', tono: 'info', descripcion: 'Almacén tiene una parte; el resto se compra.' },
+  COMPRA: { etiqueta: 'Va a compra', tono: 'info', descripcion: 'Almacén no lo tiene: se compra con una orden de compra.' },
+}
+
+/**
+ * Quién da el insumo, por lo que Almacén dijo al revisarlo y por su OC. Los RQ
+ * de antes de la revisión por insumo no dicen cuánto tenía Almacén: ahí cuenta
+ * si el insumo tiene OC y en qué va el RQ. Vacío en un RQ anulado.
+ */
+export function atencionDelInsumo(
+  l: { cantidad: number; en_stock: number | null; orden_compra: string | null },
+  estadoRq: string,
+): AtencionDelInsumo | null {
+  if (estadoRq === 'ANULADO') return null
+  if (estadoRq === 'POR_ATENDER') return 'POR_REVISAR'
+  if (l.en_stock === null) {
+    if (l.orden_compra) return 'COMPRA'
+    return estadoRq === 'LISTO_EN_ALMACEN' || estadoRq === 'ENTREGADO' ? 'ALMACEN' : 'COMPRA'
+  }
+  if (l.en_stock >= l.cantidad) return 'ALMACEN'
+  return l.en_stock > 0 ? 'ALMACEN_Y_COMPRA' : 'COMPRA'
+}
+
+/**
+ * Cuántos insumos hay de cada clase: «1 lo da Almacén · 1 en parte Almacén y en
+ * parte compra · 1 va a compra». Suman el total del RQ.
+ */
+export function resumenDeAtencion(atenciones: (AtencionDelInsumo | null)[]): string {
+  const n = (a: AtencionDelInsumo) => atenciones.filter((x) => x === a).length
+  const [revisa, almacen, partido, compra] = [n('POR_REVISAR'), n('ALMACEN'), n('ALMACEN_Y_COMPRA'), n('COMPRA')]
+  return [
+    revisa > 0 ? `${revisa} por revisar en Almacén` : null,
+    almacen > 0 ? `${almacen} ${almacen === 1 ? 'lo da' : 'los da'} Almacén` : null,
+    partido > 0 ? `${partido} en parte Almacén y en parte compra` : null,
+    compra > 0 ? `${compra} ${compra === 1 ? 'va' : 'van'} a compra` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
 /** Las dos etapas del recojo que Gerencia quiere distinguir de un vistazo. */
 export const ETAPAS_DE_RECOJO = ['PENDIENTE_RECOJO', 'EN_RECOJO'] as const
 
