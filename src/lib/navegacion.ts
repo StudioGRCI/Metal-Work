@@ -6,6 +6,7 @@ import {
   Calculator,
   Building2,
   CalendarClock,
+  CalendarRange,
   CarFront,
   ClipboardCheck,
   ClipboardList,
@@ -14,13 +15,16 @@ import {
   Cog,
   Coins,
   CreditCard,
+  DraftingCompass,
   FileSpreadsheet,
   FileText,
   HandCoins,
   HardHat,
+  Handshake,
   Hash,
   Layers,
   LayoutDashboard,
+  ListChecks,
   ListOrdered,
   MessageSquareWarning,
   NotebookPen,
@@ -80,7 +84,7 @@ export const NAVEGACION = [
         ruta: '/codigos-internos',
         icono: Hash,
         permiso: 'codigos_internos.ver',
-        descripcion: 'Cada código con su avance y lo que lleva costado: mano de obra, materiales y compras',
+        descripcion: 'Cada código con sus etapas, planos, materiales, avance y lo que lleva costado',
         disponible: true,
       },
       {
@@ -115,6 +119,34 @@ export const NAVEGACION = [
   {
     titulo: 'Diseño e Ingeniería',
     items: [
+      // Sin módulo de OT, Diseño carga por el código interno de la unidad lo
+      // que cargaba en la orden (migración 20261015200000): los planos de cada
+      // área, la lista de materiales y las etapas. Gerencia lo ve en Códigos
+      // internos; el supervisor, en «Planos y etapas».
+      {
+        titulo: 'Planos',
+        ruta: '/diseno/planos',
+        icono: DraftingCompass,
+        permiso: 'diseno.codigos',
+        descripcion: 'Los planos de cada unidad por código interno, con el área de producción a la que va cada uno',
+        disponible: true,
+      },
+      {
+        titulo: 'Gestión de materiales',
+        ruta: '/diseno/materiales',
+        icono: ListChecks,
+        permiso: 'diseno.codigos',
+        descripcion: 'Lo que lleva cada unidad según Diseño, contra lo comprado y lo salido del almacén',
+        disponible: true,
+      },
+      {
+        titulo: 'Control de etapas',
+        ruta: '/diseno/etapas',
+        icono: CalendarRange,
+        permiso: 'diseno.codigos',
+        descripcion: 'Las etapas de cada unidad con su fecha comprometida y cómo van',
+        disponible: true,
+      },
       // El catálogo chico del que Diseño elige al desglosar los materiales de
       // la orden: nombre, unidad y especificación. Sin stock ni almacén.
       {
@@ -316,6 +348,30 @@ export const NAVEGACION = [
         descripcion: 'Trabajos del día con su avance, el personal con sus horas y fotos; Gerencia y RR. HH. lo validan',
         disponible: true,
       },
+      {
+        titulo: 'Planos y etapas',
+        ruta: '/planos',
+        icono: DraftingCompass,
+        permiso: 'codigos_internos.area',
+        descripcion: 'Los planos que Diseño cargó para tu área, para marcarlos recibidos, y las etapas de tu área',
+        disponible: true,
+      },
+    ],
+  },
+  // Los trabajos que se le encargan a una persona de fuera, por código interno:
+  // Administración los registra y sube sus recibos por honorarios, que paga
+  // Tesorería (está en Finanzas, con su permiso).
+  {
+    titulo: 'Administración',
+    items: [
+      {
+        titulo: 'Subcontratos',
+        ruta: '/subcontratos',
+        icono: Handshake,
+        permiso: ['subcontratos.gestionar', 'subcontratos.ver'],
+        descripcion: 'Trabajos encargados a terceros por código interno, con sus recibos por honorarios y su pago',
+        disponible: true,
+      },
     ],
   },
   // La factura de venta cuelga del código interno (migración 20261015124000):
@@ -350,6 +406,15 @@ export const NAVEGACION = [
       { titulo: 'Pagos de servicio', ruta: '/tesoreria/pagos-de-servicio', icono: Wrench, permiso: ['tesoreria.pagar_servicios', 'tesoreria.ver_documentos'], descripcion: 'Las órdenes de servicio aprobadas, pagadas al proveedor con su voucher', disponible: true },
       // La paga Tesorería; la arma RR. HH. (está también en su grupo, con su permiso).
       { titulo: 'Planilla diaria', ruta: '/planilla-diaria', icono: Banknote, permiso: 'planilla_diaria.pagar', descripcion: 'Pagar a cada persona a su cuenta, con comprobante y boleta', disponible: true },
+      // Los sube Administración contra cada subcontrato; Contabilidad los consulta por la retención.
+      {
+        titulo: 'Recibos por honorarios',
+        ruta: '/tesoreria/recibos-por-honorarios',
+        icono: ReceiptText,
+        permiso: ['subcontratos.pagar', 'subcontratos.ver'],
+        descripcion: 'Pagar los recibos de los subcontratos a la cuenta del subcontratista, con su voucher',
+        disponible: true,
+      },
       { titulo: 'Gastos del mes', ruta: '/costos/gastos-generales', icono: Wallet, permiso: ['costos.gastos_generales', 'costos.ver'], descripcion: 'Servicios del local y gastos de operación', disponible: true },
       { titulo: 'Tipo de cambio', ruta: '/tesoreria/tipo-de-cambio', icono: ArrowLeftRight, permiso: 'tesoreria.tipo_cambio', descripcion: 'El cambio del dólar de cada día, para el costo en soles', disponible: true },
     ],
@@ -504,20 +569,29 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'] },
       // Sin la OT desde el 2026-10-15: cada trabajo lo ve en Códigos internos.
       { titulo: 'Seguimiento', rutas: ['/codigos-internos'] },
-      { titulo: 'Consultas', rutas: ['/planilla-diaria', '/rrhh/horas-extras', '/rrhh/tardanzas', '/rrhh/observaciones', '/proveedores'] },
+      { titulo: 'Consultas', rutas: ['/planilla-diaria', '/rrhh/horas-extras', '/subcontratos', '/rrhh/tardanzas', '/rrhh/observaciones', '/proveedores'] },
     ],
     telefono: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/codigos-internos'],
   },
   // Cerrado desde #28, como Gerencia.
   // Sus cuatro, en el orden en que Gerencia las nombró el 2026-10-14:
   // Adquisiciones, Cuentas por cobrar, Cuentas por pagar y Pagos de servicio.
-  // Después la planilla diaria que paga y el tipo de cambio. Consulta la
+  // Después los otros pagos que esperan por ella (los recibos por honorarios de
+  // los subcontratos y la planilla diaria) y el tipo de cambio. Consulta la
   // cotización aprobada; la OT ya no (2026-10-15).
   TESORERIA: {
     grupos: [
       {
         titulo: 'Tesorería',
-        rutas: ['/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/tesoreria/pagos-de-servicio', '/planilla-diaria', '/tesoreria/tipo-de-cambio'],
+        rutas: [
+          '/adquisiciones',
+          '/tesoreria/por-cobrar',
+          '/tesoreria/por-pagar',
+          '/tesoreria/pagos-de-servicio',
+          '/tesoreria/recibos-por-honorarios',
+          '/planilla-diaria',
+          '/tesoreria/tipo-de-cambio',
+        ],
       },
       { titulo: 'Consultas', rutas: ['/cotizaciones/pdf'] },
     ],
@@ -534,22 +608,26 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         titulo: 'Contabilidad',
         rutas: ['/contabilidad/facturacion', '/compras/gestion', '/compras/servicios', '/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio'],
       },
-      { titulo: 'Consultas', rutas: ['/almacen/kardex', '/cotizaciones/pdf', '/requerimientos'] },
+      // Los recibos por honorarios, por la retención de cuarta categoría que declara cada mes.
+      { titulo: 'Consultas', rutas: ['/almacen/kardex', '/cotizaciones/pdf', '/requerimientos', '/tesoreria/recibos-por-honorarios'] },
     ],
     telefono: ['/contabilidad/facturacion', '/compras/gestion', '/adquisiciones', '/almacen/kardex'],
   },
   // Unidades y Carrocerías las lleva Diseño e Ingeniería (pedido de la
   // empresa, 2026-10-01). Configuración la alcanza por `configuracion.ver`,
   // pero es de Administración.
-  // Primero la OT que desglosa y el informe de su equipo; después los
-  // catálogos que mantiene. La evaluación es de cada cierto tiempo: al final.
+  // Desde el 2026-10-15 su trabajo va por código interno: los planos de cada
+  // área, la lista de materiales y las etapas, primero. Después la OT, que la
+  // ve solo Diseño, y el informe de su equipo; luego los catálogos que
+  // mantiene. La evaluación es de cada cierto tiempo: al final de su grupo.
   DISENO: {
     grupos: [
+      { titulo: 'Por código interno', rutas: ['/diseno/planos', '/diseno/materiales', '/diseno/etapas'] },
       { titulo: 'Diseño e Ingeniería', rutas: ['/ordenes', '/materiales', '/diseno/informe-semanal', '/diseno/evaluaciones'] },
       { titulo: 'Catálogos', rutas: ['/carrocerias', '/unidades'] },
       { titulo: 'Consultas', rutas: ['/requerimientos', '/clientes'] },
     ],
-    telefono: ['/ordenes', '/diseno/informe-semanal', '/materiales', '/carrocerias'],
+    telefono: ['/diseno/planos', '/diseno/etapas', '/diseno/materiales', '/ordenes'],
   },
   DISENO_COLABORADOR: {
     grupos: [{ titulo: 'Diseño e Ingeniería', rutas: ['/diseno/informe-semanal', '/ordenes'] }],
@@ -562,18 +640,19 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // las abre por su dirección, y así no tiene dos «Personal» en el menú.
   // Desde el 2026-10-15 lleva el requerimiento de Administración (lo de
   // oficina): lo registra, Almacén lo revisa y ella hace la OC de lo que falta.
-  // La evaluación de desempeño la recibe de Diseño: es consulta.
+  // La evaluación de desempeño la recibe de Diseño: es consulta. Los
+  // subcontratos son suyos: registra cada uno y sube sus recibos por honorarios.
   ADMINISTRACION: {
     grupos: [
       {
         titulo: 'Administración',
-        rutas: ['/cotizaciones/pdf', '/ordenes', '/clientes', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
+        rutas: ['/cotizaciones/pdf', '/ordenes', '/subcontratos', '/clientes', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
       },
       { titulo: 'Requerimiento de Administración', rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes'] },
       { titulo: 'Consultas', rutas: ['/diseno/evaluaciones', '/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos'] },
       { titulo: 'Administración del sistema', rutas: ['/personal', '/configuracion'] },
     ],
-    telefono: ['/cotizaciones/pdf', '/ordenes', '/requerimientos', '/costos/gastos-generales'],
+    telefono: ['/cotizaciones/pdf', '/ordenes', '/subcontratos', '/requerimientos'],
   },
   // Primero lo que espera por RR. HH. cada día: los reportes diarios por
   // validar, las horas extras por decidir y la planilla diaria por enviar.
@@ -598,10 +677,11 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // Sube su reporte diario (mientras la OT no está del todo en el sistema, es
   // su trabajo de cada día), recoge de Almacén lo que su área pidió (el RQ
   // «Listo en almacén», al que también lo lleva el aviso) y reporta el avance
-  // de las OT de su área.
+  // de las OT de su área. Desde el 2026-10-15, los planos que Diseño carga para
+  // su área y las etapas que hace su área van justo después de su reporte.
   SUPERVISOR: {
-    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/requerimientos', '/ordenes'] }],
-    telefono: ['/reportes-diarios', '/requerimientos', '/ordenes', '/'],
+    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/planos', '/requerimientos', '/ordenes'] }],
+    telefono: ['/reportes-diarios', '/planos', '/requerimientos', '/ordenes'],
   },
   // Mira todas las áreas sin trabajar en ninguna: cada una con su nombre y en
   // el orden del circuito, después de lo suyo. La cotización ya no: desde el
@@ -742,8 +822,14 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/rrhh/observaciones', corto: 'Observaciones' },
   { ruta: '/reportes-diarios', corto: 'Reporte' },
   { ruta: '/codigos-internos', corto: 'Códigos' },
+  { ruta: '/diseno/planos', corto: 'Planos' },
+  { ruta: '/diseno/materiales', corto: 'Materiales' },
+  { ruta: '/diseno/etapas', corto: 'Etapas' },
+  { ruta: '/planos', corto: 'Planos' },
   { ruta: '/planilla-diaria', corto: 'Planilla' },
   { ruta: '/rrhh/horas-extras', corto: 'Extras' },
   { ruta: '/tesoreria/tipo-de-cambio', corto: 'Cambio' },
   { ruta: '/proveedores', corto: 'Proveedores' },
+  { ruta: '/subcontratos', corto: 'Subcontratos' },
+  { ruta: '/tesoreria/recibos-por-honorarios', corto: 'Honorarios' },
 ]

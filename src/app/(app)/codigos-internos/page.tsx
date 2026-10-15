@@ -1,12 +1,14 @@
 import Link from 'next/link'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
+import { LineaDeDiseno } from '@/components/codigo-interno/linea-diseno'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { listarCodigosInternos, type ResumenCodigo } from '@/lib/datos/codigos-internos'
+import { listarCodigosInternos, sumarCodigosDeDiseno, type ResumenCodigo } from '@/lib/datos/codigos-internos'
+import { codigosDeDiseno, type CodigoDeDiseno } from '@/lib/datos/diseno-codigos'
 import { costoDelCodigo, dondeAparece, enlaceCodigo, faltaElPrecio, llaveParecido, parecidos } from '@/lib/dominio/codigos-internos'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import { fecha, moneda } from '@/lib/format'
@@ -31,7 +33,10 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
   const q = typeof params.q === 'string' ? params.q.trim() : ''
   const filtro = typeof params.ver === 'string' && params.ver in FILTROS ? params.ver : null
 
-  const todos = await listarCodigosInternos()
+  const [conDocumentos, deDiseno] = await Promise.all([listarCodigosInternos(), codigosDeDiseno()])
+  // Un código puede tener planos o etapas de Diseño antes que cualquier documento.
+  const todos = sumarCodigosDeDiseno(conDocumentos, deDiseno)
+  const diseno = new Map(deDiseno.map((d) => [d.codigo, d]))
   // Los parecidos se buscan entre todos, no solo entre los que deja la búsqueda.
   const parecidosDe = parecidos(todos.map((c) => c.codigo))
   const llave = llaveParecido(q)
@@ -97,7 +102,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
         <ul className="space-y-3">
           {codigos.map((c) => (
             <li key={c.codigo}>
-              <FilaCodigo codigo={c} parecidos={parecidosDe.get(c.codigo) ?? []} />
+              <FilaCodigo codigo={c} parecidos={parecidosDe.get(c.codigo) ?? []} diseno={diseno.get(c.codigo)} />
             </li>
           ))}
         </ul>
@@ -106,7 +111,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
   )
 }
 
-function FilaCodigo({ codigo: c, parecidos }: { codigo: ResumenCodigo; parecidos: string[] }) {
+function FilaCodigo({ codigo: c, parecidos, diseno }: { codigo: ResumenCodigo; parecidos: string[]; diseno: CodigoDeDiseno | undefined }) {
   const costo = costoDelCodigo(c)
   return (
     <Link
@@ -117,7 +122,8 @@ function FilaCodigo({ codigo: c, parecidos }: { codigo: ResumenCodigo; parecidos
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-mono font-semibold break-all text-texto">{c.codigo}</p>
-          <p className="text-xs text-texto-suave">{dondeAparece(c)}</p>
+          {diseno?.unidad && <p className="text-xs text-texto">{diseno.unidad}</p>}
+          <p className="text-xs text-texto-suave">{dondeAparece(c, diseno)}</p>
         </div>
         <div className="text-right">
           <p className="tabular font-semibold text-texto">
@@ -133,6 +139,10 @@ function FilaCodigo({ codigo: c, parecidos }: { codigo: ResumenCodigo; parecidos
           Se escribe casi igual que <span className="font-mono">{parecidos.join(', ')}</span>: ¿es el mismo código?
         </p>
       )}
+
+      <div className="mt-2">
+        <LineaDeDiseno d={diseno} />
+      </div>
 
       {c.trabajos > 0 ? (
         <div className="mt-2 grid grid-cols-[1fr_6.5rem] items-center gap-3 text-xs">
