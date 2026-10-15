@@ -1,12 +1,13 @@
 'use client'
 
-import { Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { PackagePlus, Plus, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
-import type { AreaParaRequerimiento, OpcionCatalogo } from '@/lib/datos/requerimientos'
+import type { AreaParaRequerimiento, MaterialParaRequerimiento, OpcionCatalogo } from '@/lib/datos/requerimientos'
 import { TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { useEnvio } from '@/lib/envio'
 import { hoyLima } from '@/lib/format'
@@ -17,6 +18,8 @@ type Catalogos = {
   areas: AreaParaRequerimiento[]
   unidades: OpcionCatalogo[]
   categorias: OpcionCatalogo[]
+  /** El catálogo de Almacén: cada insumo se pide con uno de estos nombres. */
+  materiales: MaterialParaRequerimiento[]
   /** Los requerimientos que esta persona registra: el de operación, el de Administración o los dos. */
   tipos: TipoRequerimiento[]
 }
@@ -67,10 +70,26 @@ export function NuevoRequerimiento(catalogos: Catalogos) {
   )
 }
 
+/** Un insumo mientras se llena: del catálogo, o un material nuevo con su nombre. */
+type Insumo = {
+  clave: string
+  material_id: string
+  nuevo: boolean
+  descripcion: string
+  cantidad: string
+  unidad_medida_id: string
+  categoria_id: string
+}
+
+function insumoVacio(): Insumo {
+  return { clave: crypto.randomUUID(), material_id: '', nuevo: false, descripcion: '', cantidad: '', unidad_medida_id: '', categoria_id: '' }
+}
+
 function FormularioRequerimiento({
   areas,
   unidades,
   categorias,
+  materiales,
   tipos,
   alTerminar,
 }: Catalogos & { alTerminar: (mensaje: string) => void }) {
@@ -81,13 +100,43 @@ function FormularioRequerimiento({
   // Decidido aquí: un reintento manda el mismo y la base no duplica el RQ.
   const [id] = useState(() => crypto.randomUUID())
   // Cada fila tiene su llave para que quitar una del medio no mezcle lo escrito.
-  const [filas, setFilas] = useState<string[]>(() => [crypto.randomUUID()])
+  const [insumos, setInsumos] = useState<Insumo[]>(() => [insumoVacio()])
   const { alEnviar, enviando, error } = useEnvio(emitirRequerimiento, (r) => alTerminar(r.mensaje ?? 'Requerimiento registrado.'))
   const und = unidades.find((u) => u.codigo === 'UND')?.id ?? ''
+
+  const porId = useMemo(() => new Map(materiales.map((m) => [m.id, m])), [materiales])
+  const opciones = useMemo(
+    () =>
+      materiales.map((m) => ({
+        valor: m.id,
+        etiqueta: m.descripcion,
+        detalle: [m.codigo, m.unidad_pendiente ? 'unidad por confirmar' : m.unidad, m.categoria].filter(Boolean).join(' · '),
+      })),
+    [materiales],
+  )
+
+  function cambiar(clave: string, cambios: Partial<Insumo>) {
+    setInsumos((lista) => lista.map((x) => (x.clave === clave ? { ...x, ...cambios } : x)))
+  }
+
+  const completos = insumos.every((x) =>
+    Number(x.cantidad) > 0 && (x.nuevo ? x.descripcion.trim().length >= 3 && x.unidad_medida_id && x.categoria_id : x.material_id),
+  )
 
   return (
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="operacion_id" value={id} />
+      <input
+        type="hidden"
+        name="lineas"
+        value={JSON.stringify(
+          insumos.map((x) =>
+            x.nuevo
+              ? { nuevo: true, descripcion: x.descripcion, cantidad: x.cantidad, unidad_medida_id: x.unidad_medida_id, categoria_id: x.categoria_id }
+              : { material_id: x.material_id, cantidad: x.cantidad, unidad_medida_id: x.unidad_medida_id || null },
+          ),
+        )}
+      />
       {tipos.length === 1 && <input type="hidden" name="tipo" value={tipo} />}
       <div className="grid gap-4 sm:grid-cols-2">
         {tipos.length > 1 && (
@@ -152,68 +201,152 @@ function FormularioRequerimiento({
 
       <fieldset className="space-y-3">
         <legend className="text-sm font-semibold text-texto">Insumos</legend>
-        {filas.map((clave, i) => (
-          <div key={clave} className="grid gap-2 rounded-lg border border-borde p-3 sm:grid-cols-[2fr_7rem_7rem_1.5fr_auto] sm:items-end">
-            <Campo etiqueta={`Insumo ${i + 1}`} htmlFor={`rq-desc-${clave}`} requerido>
-              <Entrada
-                id={`rq-desc-${clave}`}
-                name="descripcion"
-                required
-                minLength={3}
-                maxLength={300}
-                placeholder="Plancha LAF 2 mm 4x8"
-                autoComplete="off"
-              />
-            </Campo>
-            <Campo etiqueta="Cantidad" htmlFor={`rq-cant-${clave}`} requerido>
-              <Entrada id={`rq-cant-${clave}`} name="cantidad" type="number" inputMode="decimal" min={0.001} step="0.001" required />
-            </Campo>
-            <Campo etiqueta="Unidad" htmlFor={`rq-und-${clave}`} requerido>
-              <Seleccion id={`rq-und-${clave}`} name="unidad_medida_id" required defaultValue={und}>
-                <option value="" disabled>
-                  —
-                </option>
-                {unidades.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.codigo}
-                  </option>
-                ))}
-              </Seleccion>
-            </Campo>
-            <Campo etiqueta="Categoría" htmlFor={`rq-cat-${clave}`} requerido>
-              <Seleccion id={`rq-cat-${clave}`} name="categoria_id" required defaultValue="">
-                <option value="" disabled>
-                  Elige la categoría
-                </option>
-                {categorias.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre}
-                  </option>
-                ))}
-              </Seleccion>
-            </Campo>
-            <Boton
-              type="button"
-              variante="fantasma"
-              tamano="icono"
-              aria-label={`Quitar el insumo ${i + 1}`}
-              disabled={filas.length === 1}
-              onClick={() => setFilas((f) => f.filter((x) => x !== clave))}
-            >
-              <Trash2 aria-hidden className="size-4" />
-            </Boton>
-          </div>
-        ))}
+        <p className="text-xs text-texto-suave">
+          Elige cada insumo del catálogo de Almacén, con el nombre que usa Almacén. Si no está, pídelo como material nuevo: Almacén lo da de alta al revisarlo.
+        </p>
+        {insumos.map((x, i) => {
+          const material = porId.get(x.material_id)
+          // Solo se elige la unidad de un material nuevo o de uno con la unidad provisional.
+          const eligeUnidad = x.nuevo || Boolean(material?.unidad_pendiente)
+          return (
+            <div key={x.clave} className="space-y-2 rounded-lg border border-borde p-3">
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,2fr)_7rem_7rem_auto] sm:items-end">
+                {x.nuevo ? (
+                  <Campo etiqueta={`Insumo ${i + 1} · material nuevo`} htmlFor={`rq-desc-${x.clave}`} requerido>
+                    <Entrada
+                      id={`rq-desc-${x.clave}`}
+                      required
+                      minLength={3}
+                      maxLength={300}
+                      placeholder="Nombre del material, como lo pediría a un proveedor"
+                      autoComplete="off"
+                      value={x.descripcion}
+                      onChange={(e) => cambiar(x.clave, { descripcion: e.target.value })}
+                    />
+                  </Campo>
+                ) : (
+                  <Campo etiqueta={`Insumo ${i + 1}`} htmlFor={`rq-mat-${x.clave}`} requerido>
+                    <SeleccionBuscable
+                      id={`rq-mat-${x.clave}`}
+                      requerido
+                      valor={x.material_id}
+                      onChange={(v) => cambiar(x.clave, { material_id: v, unidad_medida_id: porId.get(v)?.unidad_id ?? '' })}
+                      marcador="Elige del catálogo de Almacén…"
+                      marcadorBusqueda="Nombre o código del material…"
+                      opciones={opciones.filter((o) => o.valor === x.material_id || !insumos.some((y) => y.material_id === o.valor))}
+                    />
+                  </Campo>
+                )}
+                <Campo etiqueta="Cantidad" htmlFor={`rq-cant-${x.clave}`} requerido>
+                  <Entrada
+                    id={`rq-cant-${x.clave}`}
+                    type="number"
+                    inputMode="decimal"
+                    min={0.001}
+                    step="0.001"
+                    required
+                    value={x.cantidad}
+                    onChange={(e) => cambiar(x.clave, { cantidad: e.target.value })}
+                  />
+                </Campo>
+                <Campo etiqueta="Unidad" htmlFor={`rq-und-${x.clave}`} requerido={eligeUnidad}>
+                  {eligeUnidad ? (
+                    <Seleccion
+                      id={`rq-und-${x.clave}`}
+                      required
+                      value={x.unidad_medida_id}
+                      onChange={(e) => cambiar(x.clave, { unidad_medida_id: e.target.value })}
+                    >
+                      <option value="" disabled>
+                        —
+                      </option>
+                      {unidades.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.codigo}
+                        </option>
+                      ))}
+                    </Seleccion>
+                  ) : (
+                    <p id={`rq-und-${x.clave}`} className="tabular flex min-h-10 items-center text-sm text-texto">
+                      {material?.unidad || '—'}
+                    </p>
+                  )}
+                </Campo>
+                <Boton
+                  type="button"
+                  variante="fantasma"
+                  tamano="icono"
+                  aria-label={`Quitar el insumo ${i + 1}`}
+                  disabled={insumos.length === 1}
+                  onClick={() => setInsumos((lista) => lista.filter((y) => y.clave !== x.clave))}
+                >
+                  <Trash2 aria-hidden className="size-4" />
+                </Boton>
+              </div>
+              {x.nuevo ? (
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,2fr)_auto] sm:items-end">
+                  <Campo etiqueta="Categoría" htmlFor={`rq-cat-${x.clave}`} requerido>
+                    <Seleccion
+                      id={`rq-cat-${x.clave}`}
+                      required
+                      value={x.categoria_id}
+                      onChange={(e) => cambiar(x.clave, { categoria_id: e.target.value })}
+                    >
+                      <option value="" disabled>
+                        Elige la categoría
+                      </option>
+                      {categorias.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre}
+                        </option>
+                      ))}
+                    </Seleccion>
+                  </Campo>
+                  <Boton
+                    type="button"
+                    variante="contorno"
+                    tamano="sm"
+                    onClick={() => cambiar(x.clave, { nuevo: false, descripcion: '', categoria_id: '', unidad_medida_id: '' })}
+                  >
+                    Buscar en el catálogo
+                  </Boton>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-texto-suave">
+                  <span>
+                    {material
+                      ? [material.codigo, material.categoria, material.unidad_pendiente ? 'unidad por confirmar: elige en cuál lo necesitas' : null]
+                          .filter(Boolean)
+                          .join(' · ')
+                      : '¿No está en el catálogo?'}
+                  </span>
+                  <Boton
+                    type="button"
+                    variante="fantasma"
+                    tamano="sm"
+                    onClick={() => cambiar(x.clave, { nuevo: true, material_id: '', unidad_medida_id: und })}
+                  >
+                    <PackagePlus aria-hidden className="size-4" />
+                    Pedirlo como material nuevo
+                  </Boton>
+                </div>
+              )}
+            </div>
+          )
+        })}
         <Boton
           type="button"
           variante="contorno"
           tamano="sm"
-          disabled={filas.length >= 100}
-          onClick={() => setFilas((f) => [...f, crypto.randomUUID()])}
+          disabled={insumos.length >= 100}
+          onClick={() => setInsumos((lista) => [...lista, insumoVacio()])}
         >
           <Plus aria-hidden className="size-4" />
           Agregar insumo
         </Boton>
+        {materiales.length === 0 && (
+          <p className="text-sm text-texto-suave">El catálogo de Almacén está vacío: pide cada insumo como material nuevo.</p>
+        )}
       </fieldset>
 
       {error && (
@@ -222,7 +355,7 @@ function FormularioRequerimiento({
         </p>
       )}
       <div className="flex justify-end">
-        <Boton type="submit" cargando={enviando}>
+        <Boton type="submit" cargando={enviando} disabled={!completos}>
           Registrar y mandar a Almacén
         </Boton>
       </div>

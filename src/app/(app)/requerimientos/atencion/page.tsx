@@ -7,12 +7,12 @@ import { Tarjeta } from '@/components/ui/tarjeta'
 import { GenerarCompraDelRequerimiento } from '@/app/(app)/compras/ordenes/formulario-directa'
 import { catalogoDeAlmacen, type MaterialParaConteo } from '@/lib/datos/atencion-materiales'
 import { proveedoresParaCompra, type ProveedorParaCompra } from '@/lib/datos/proveedores'
-import { cargarRequerimientos, type RequerimientoListado } from '@/lib/datos/requerimientos'
+import { cargarRequerimientos, catalogoParaRequerimiento, type MaterialParaRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { ESTADO_REQUERIMIENTO, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
-import { AvanceDelRequerimiento, CompraDelInsumo } from '../avance'
+import { AvanceDelRequerimiento, CompraDelInsumo, MaterialDelInsumo } from '../avance'
 import { PasoRequerimiento, RevisarStock } from './controles'
 
 export const metadata = { title: 'Atención de requerimiento' }
@@ -47,6 +47,10 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
     compra ? catalogoDeAlmacen() : Promise.resolve([]),
   ])
   const paraComprar = compra ? { proveedores, materiales, puedeRegistrarProveedor: puede(perfil, 'proveedores.editar') } : null
+  // Almacén asocia o da de alta el material nuevo al revisar el stock: el catálogo
+  // solo se carga si hay alguno por revisar.
+  const hayNuevos = recibe && requerimientos.some((r) => r.estado === 'POR_ATENDER' && r.lineas.some((l) => l.material_nuevo && !l.material_id))
+  const catalogo: MaterialParaRequerimiento[] = hayNuevos ? await catalogoParaRequerimiento() : []
 
   const meToca = requerimientos.filter((r) => leTocaAtender(r, { recibe, despacha, compraDe })).length
 
@@ -106,6 +110,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
                   despacha={despacha}
                   compra={compraDe[tipoDeRequerimiento(r)]}
                   paraComprar={paraComprar}
+                  catalogo={catalogo}
                 />
               ))
             )}
@@ -129,12 +134,15 @@ function Fila({
   despacha,
   compra,
   paraComprar,
+  catalogo,
 }: {
   rq: RequerimientoListado
   recibe: boolean
   despacha: boolean
   compra: boolean
   paraComprar: ParaComprar | null
+  /** El catálogo de Almacén para asociar los materiales nuevos al revisar el stock. */
+  catalogo: MaterialParaRequerimiento[]
 }) {
   const estado = ESTADO_REQUERIMIENTO[rq.estado]
   const administracion = rq.tipo === 'ADMINISTRACION'
@@ -179,6 +187,7 @@ function Fila({
               </span>{' '}
               <span className="text-texto">{l.descripcion}</span>
               <span className="block text-[11px] text-texto-suave">
+                <MaterialDelInsumo linea={l} />
                 {l.categoria}
                 <CompraDelInsumo linea={l} estadoRq={rq.estado} />
               </span>
@@ -202,7 +211,16 @@ function Fila({
               id={rq.id}
               numero={rq.numero}
               compra={quienCompra}
-              insumos={rq.lineas.map((l) => ({ item: l.item, descripcion: l.descripcion, cantidad: l.cantidad, unidad: l.unidad }))}
+              insumos={rq.lineas.map((l) => ({
+                item: l.item,
+                descripcion: l.descripcion,
+                cantidad: l.cantidad,
+                unidad: l.unidad,
+                nuevo: l.material_nuevo && !l.material_id,
+                codigo: l.material_codigo,
+                unidad_pendiente: l.material_unidad_pendiente,
+              }))}
+              materiales={rq.lineas.some((l) => l.material_nuevo && !l.material_id) ? catalogo : []}
             />
           )}
           {generaOc && (
@@ -221,6 +239,7 @@ function Fila({
                   orden_compra: l.orden_compra,
                   compra_rechazada: l.compra_rechazada,
                   en_stock: l.en_stock,
+                  material_id: l.material_id,
                 })),
               }}
               {...paraComprar}

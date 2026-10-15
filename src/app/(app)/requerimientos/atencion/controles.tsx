@@ -1,11 +1,13 @@
 'use client'
 
 import { Check, ClipboardCheck, PackageCheck, ShoppingCart } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
+import type { MaterialParaRequerimiento } from '@/lib/datos/requerimientos'
 import { useEnvio } from '@/lib/envio'
 import { cantidad as formatoCantidad } from '@/lib/format'
 
@@ -84,24 +86,39 @@ export function PasoRequerimiento({ id, numero, paso }: { id: string; numero: st
   )
 }
 
-type InsumoPorRevisar = { item: number; descripcion: string; cantidad: number; unidad: string }
+type InsumoPorRevisar = {
+  item: number
+  descripcion: string
+  cantidad: number
+  unidad: string
+  /** Se pidió como material nuevo y todavía no tiene material del catálogo. */
+  nuevo: boolean
+  /** El código del material del catálogo, si ya lo tiene. */
+  codigo: string | null
+  /** La unidad del material es provisional: esta revisión la confirma con la del insumo. */
+  unidad_pendiente: boolean
+}
 
 /**
  * Almacén revisa el requerimiento insumo por insumo: cuánto tiene de cada uno.
  * Lo que tiene completo no se compra; de lo demás, a quien compra le llega
- * solo lo que falta. Si tiene todo, el RQ queda listo para recoger.
+ * solo lo que falta. Si tiene todo, el RQ queda listo para recoger. El insumo
+ * pedido como material nuevo se asocia a uno del catálogo o se da de alta aquí.
  */
 export function RevisarStock({
   id,
   numero,
   compra,
   insumos,
+  materiales,
 }: {
   id: string
   numero: string
   /** Quién compra lo que falta: «Logística» o «la administradora». */
   compra: string
   insumos: InsumoPorRevisar[]
+  /** El catálogo de Almacén; solo hace falta si algún insumo es un material nuevo. */
+  materiales: MaterialParaRequerimiento[]
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
@@ -125,7 +142,7 @@ export function RevisarStock({
         descripcion={`Anota cuánto tienes de cada insumo. Lo que tienes completo no se compra; lo que falta le llega a ${compra}.`}
         ancho="lg"
       >
-        <FormularioStock key={vez} id={id} compra={compra} insumos={insumos} alTerminar={() => setAbierta(false)} />
+        <FormularioStock key={vez} id={id} compra={compra} insumos={insumos} materiales={materiales} alTerminar={() => setAbierta(false)} />
       </Ventana>
     </>
   )
@@ -135,14 +152,30 @@ function FormularioStock({
   id,
   compra,
   insumos,
+  materiales,
   alTerminar,
 }: {
   id: string
   compra: string
   insumos: InsumoPorRevisar[]
+  materiales: MaterialParaRequerimiento[]
   alTerminar: () => void
 }) {
   const [valores, setValores] = useState<Record<number, string>>({})
+  // El material del catálogo que Almacén elige para cada material nuevo; vacío, se da de alta.
+  const [elegidos, setElegidos] = useState<Record<number, string>>({})
+  const opciones = useMemo(
+    () =>
+      materiales.map((m) => ({
+        valor: m.id,
+        etiqueta: m.descripcion,
+        detalle: [m.codigo, m.unidad_pendiente ? 'unidad por confirmar' : m.unidad, m.categoria].filter(Boolean).join(' · '),
+        unidad: m.unidad,
+        unidad_pendiente: m.unidad_pendiente,
+      })),
+    [materiales],
+  )
+  const nuevos = insumos.filter((l) => l.nuevo).length
   const { alEnviar, enviando, error } = useEnvio(revisarStockRequerimiento, alTerminar)
   const anotados = insumos.filter((l) => (valores[l.item] ?? '') !== '')
   const faltan = anotados.filter((l) => Number(valores[l.item]) < l.cantidad).length
@@ -156,7 +189,9 @@ function FormularioStock({
       <input
         type="hidden"
         name="lineas"
-        value={JSON.stringify(insumos.map((l) => ({ item: l.item, en_stock: valores[l.item] ?? '' })))}
+        value={JSON.stringify(
+          insumos.map((l) => ({ item: l.item, en_stock: valores[l.item] ?? '', material_id: (l.nuevo && elegidos[l.item]) || null })),
+        )}
       />
       <div className="flex flex-wrap gap-2">
         <Boton type="button" variante="contorno" tamano="sm" onClick={() => llenar((l) => String(l.cantidad))}>
@@ -166,6 +201,12 @@ function FormularioStock({
           No tengo nada
         </Boton>
       </div>
+      {nuevos > 0 && (
+        <p className="text-sm text-texto-suave">
+          {nuevos === 1 ? 'Un insumo se pidió como material nuevo' : `${nuevos} insumos se pidieron como materiales nuevos`}: si ya
+          está en el catálogo con otro nombre, elígelo; si no, se da de alta con el nombre pedido y un código provisional.
+        </p>
+      )}
       <ul className="space-y-2">
         {insumos.map((l) => {
           const valor = valores[l.item] ?? ''
@@ -173,12 +214,18 @@ function FormularioStock({
           return (
             <li key={l.item} className="grid gap-2 rounded-lg border border-borde p-3 sm:grid-cols-[1fr_9rem] sm:items-end">
               <div className="text-sm">
-                <p className="text-texto">{l.descripcion}</p>
+                <p className="text-texto">
+                  {l.descripcion}
+                  {l.codigo && <span className="tabular text-xs text-texto-suave"> · {l.codigo}</span>}
+                </p>
                 <p className="tabular text-xs text-texto-suave">
                   Pide {formatoCantidad(l.cantidad)} {l.unidad}
                   {falta !== null &&
                     (falta === 0 ? ' · lo tienes completo' : ` · se compran ${formatoCantidad(falta)} ${l.unidad}`)}
                 </p>
+                {l.unidad_pendiente && (
+                  <p className="text-xs text-texto-suave">La unidad de este material era provisional: queda en {l.unidad}.</p>
+                )}
               </div>
               <Campo etiqueta={`Tienes (${l.unidad || 'cantidad'})`} htmlFor={`rq-stock-${id}-${l.item}`} requerido>
                 <Entrada
@@ -193,6 +240,32 @@ function FormularioStock({
                   onChange={(e) => setValores((v) => ({ ...v, [l.item]: e.target.value }))}
                 />
               </Campo>
+              {l.nuevo && (
+                <Campo
+                  etiqueta="Material nuevo: en el catálogo es…"
+                  htmlFor={`rq-mat-${id}-${l.item}`}
+                  className="sm:col-span-2"
+                  ayuda={
+                    elegidos[l.item]
+                      ? 'El insumo queda con este material del catálogo.'
+                      : `Sin elegir, se da de alta «${l.descripcion}» en ${l.unidad} con un código provisional.`
+                  }
+                >
+                  <SeleccionBuscable
+                    id={`rq-mat-${id}-${l.item}`}
+                    valor={elegidos[l.item] ?? ''}
+                    onChange={(v) => setElegidos((e) => ({ ...e, [l.item]: v }))}
+                    marcador="No está: darlo de alta como material nuevo"
+                    marcadorBusqueda="Nombre o código del material…"
+                    // Solo los que se cuentan en la unidad pedida, o tienen la unidad por confirmar.
+                    opciones={opciones.filter(
+                      (o) =>
+                        (o.unidad_pendiente || o.unidad === l.unidad) &&
+                        (o.valor === elegidos[l.item] || !Object.entries(elegidos).some(([item, v]) => v === o.valor && Number(item) !== l.item)),
+                    )}
+                  />
+                </Campo>
+              )}
             </li>
           )
         })}

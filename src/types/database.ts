@@ -7702,6 +7702,8 @@ export type Database = {
           cantidad_en_stock: number | null
           stock_revisado_en: string | null
           stock_revisado_por: string | null
+          material_id: string | null
+          material_nuevo: boolean
         }
         Insert: {
           id?: string
@@ -7719,6 +7721,8 @@ export type Database = {
           cantidad_en_stock?: number | null
           stock_revisado_en?: string | null
           stock_revisado_por?: string | null
+          material_id?: string | null
+          material_nuevo?: boolean
         }
         Update: {
           id?: string
@@ -7736,6 +7740,8 @@ export type Database = {
           cantidad_en_stock?: number | null
           stock_revisado_en?: string | null
           stock_revisado_por?: string | null
+          material_id?: string | null
+          material_nuevo?: boolean
         }
         Relationships: [
           {
@@ -7750,6 +7756,13 @@ export type Database = {
             columns: ["categoria_id"]
             isOneToOne: false
             referencedRelation: "categorias_material"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_lineas_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
             referencedColumns: ["id"]
           },
           {
@@ -9827,6 +9840,7 @@ export type Database = {
           almacen: string | null
           entregado: number | null
           pendiente: number | null
+          material_id: string | null
         }
         Relationships: []
       }
@@ -11544,6 +11558,12 @@ export type Database = {
         Args: {
           p_id: string | null
           p_arriba: boolean | null
+        }
+        Returns: string
+      }
+      nombre_de_material: {
+        Args: {
+          p_texto: string | null
         }
         Returns: string
       }

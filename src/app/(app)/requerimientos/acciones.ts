@@ -12,23 +12,52 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor : ''
 }
 
-function todos(formulario: FormData, nombre: string) {
-  return formulario.getAll(nombre).map((v) => (typeof v === 'string' ? v : ''))
-}
+const CANTIDAD = z.coerce
+  .number({ message: 'Indica la cantidad de cada insumo.' })
+  .positive('La cantidad de cada insumo debe ser mayor que cero.')
+  .max(999999999, 'Una cantidad es demasiado grande.')
 
-const LINEA = z.object({
+/**
+ * Cada insumo sale del catálogo de Almacén con su material; el que no está se
+ * pide como material nuevo, con su nombre, unidad y categoría, y Almacén lo da
+ * de alta al revisarlo. El nombre de un material del catálogo lo pone la base.
+ */
+const DEL_CATALOGO = z.object({
+  material_id: z.guid('Elige cada insumo del catálogo de Almacén.'),
+  cantidad: CANTIDAD,
+  unidad_medida_id: z.guid('Elige la unidad de cada insumo.').nullish(),
+})
+
+const MATERIAL_NUEVO = z.object({
+  nuevo: z.literal(true),
   descripcion: z
     .string()
     .trim()
-    .min(3, 'Describe cada insumo en al menos 3 caracteres.')
-    .max(300, 'La descripción de un insumo pasa de 300 caracteres.'),
-  cantidad: z.coerce
-    .number({ message: 'Indica la cantidad de cada insumo.' })
-    .positive('La cantidad de cada insumo debe ser mayor que cero.')
-    .max(999999999, 'Una cantidad es demasiado grande.'),
-  unidad_medida_id: z.guid('Elige la unidad de cada insumo.'),
-  categoria_id: z.guid('Elige la categoría de cada insumo.'),
+    .min(3, 'Escribe el nombre de cada material nuevo en al menos 3 caracteres.')
+    .max(300, 'El nombre de un material nuevo pasa de 300 caracteres.'),
+  cantidad: CANTIDAD,
+  unidad_medida_id: z.guid('Elige la unidad de cada material nuevo.'),
+  categoria_id: z.guid('Elige la categoría de cada material nuevo.'),
 })
+
+/** Una unión de zod responde «Invalid input» en inglés: cada insumo se mira con su forma. */
+const LINEA = z.custom<unknown>().transform((linea, ctx) => {
+  const esNuevo = typeof linea === 'object' && linea !== null && (linea as { nuevo?: unknown }).nuevo === true
+  const r = (esNuevo ? MATERIAL_NUEVO : DEL_CATALOGO).safeParse(linea)
+  if (!r.success) {
+    ctx.addIssue({ code: 'custom', message: r.error.issues[0]?.message ?? 'Revisa los insumos.' })
+    return z.NEVER
+  }
+  return r.data
+})
+
+function lineasDelFormulario(formulario: FormData): unknown {
+  try {
+    return JSON.parse(dato(formulario, 'lineas') || '[]')
+  } catch {
+    return null
+  }
+}
 
 /**
  * El permiso de cada requerimiento, el mismo que exige `rq_exigir` en la base
@@ -76,22 +105,11 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
     })
   if (!cabecera.success) return { ok: false, error: cabecera.error.issues[0]?.message ?? 'Revisa el requerimiento.' }
 
-  const descripciones = todos(formulario, 'descripcion')
-  const cantidades = todos(formulario, 'cantidad')
-  const unidades = todos(formulario, 'unidad_medida_id')
-  const categorias = todos(formulario, 'categoria_id')
   const lineas = z
-    .array(LINEA)
+    .array(LINEA, { message: 'Revisa los insumos y vuelve a intentarlo.' })
     .min(1, 'Agrega al menos un insumo.')
     .max(100, 'Un requerimiento lleva hasta 100 insumos. Divídelo en dos.')
-    .safeParse(
-      descripciones.map((descripcion, i) => ({
-        descripcion,
-        cantidad: cantidades[i] ?? '',
-        unidad_medida_id: unidades[i] ?? '',
-        categoria_id: categorias[i] ?? '',
-      })),
-    )
+    .safeParse(lineasDelFormulario(formulario))
   if (!lineas.success) return { ok: false, error: lineas.error.issues[0]?.message ?? 'Revisa los insumos.' }
 
   const supabase = await createClient()

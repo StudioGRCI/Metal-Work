@@ -9,7 +9,7 @@ import { ESTADO_REQUERIMIENTO, ESTADOS_RQ_ABIERTOS, TIPO_REQUERIMIENTO, type Tip
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
-import { AvanceDelRequerimiento, CompraDelInsumo } from './avance'
+import { AvanceDelRequerimiento, CompraDelInsumo, MaterialDelInsumo } from './avance'
 import { AnularRequerimiento } from './controles'
 import { NuevoRequerimiento } from './formulario'
 
@@ -151,6 +151,7 @@ function FilaRequerimiento({ rq, anula }: { rq: RequerimientoListado; anula: boo
               </span>{' '}
               <span className="text-texto">{l.descripcion}</span>
               <span className="block text-[11px] text-texto-suave">
+                <MaterialDelInsumo linea={l} />
                 {l.categoria}
                 <CompraDelInsumo linea={l} estadoRq={rq.estado} />
               </span>
