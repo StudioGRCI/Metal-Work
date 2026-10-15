@@ -206,6 +206,54 @@ let previas = 0
   await telefono.pagina.screenshot({ path: `${CAPTURAS}/servicios-contabilidad-telefono.png`, fullPage: true })
 }
 
+// ============================================ 4b. Gerencia aprueba una y la ve en el costeo del código
+{
+  const { pagina, errores } = await entrar(CUENTAS.gerencia)
+  await pagina.goto(`${BASE}/compras/aprobacion`, { waitUntil: 'networkidle' })
+  const carta = pagina
+    .locator('div')
+    .filter({ has: pagina.getByText(`${os1} · `) })
+    .filter({ has: pagina.getByRole('button', { name: 'Aprobar' }) })
+    .last()
+  await carta.getByRole('button', { name: 'Aprobar' }).click()
+  await pagina.getByText(`${os1} · `).first().waitFor({ state: 'detached', timeout: 30000 }).catch(() => {})
+
+  await pagina.goto(`${BASE}/codigos-internos/detalle?codigo=${encodeURIComponent(CODIGO)}&vista=costeo`, { waitUntil: 'networkidle' })
+  const tarjeta = pagina.locator('[data-servicios]')
+  const f1 = await texto(tarjeta.locator(`tr[data-servicio="${os1}"]`))
+  comprobar(f1.includes('Aprobada') && f1.includes('S/ 1,000.00') && !f1.includes('no suma'), `${os1} aprobada suma al costeo: «${f1.replace(/\s+/g, ' ')}»`)
+  const f2 = await texto(tarjeta.locator(`tr[data-servicio="${os2}"]`))
+  comprobar(f2.includes('Por aprobar') && f2.includes('no suma') && f2.includes('S/ 500.00'), `${os2} por aprobar se muestra y no suma: «${f2.replace(/\s+/g, ' ')}»`)
+  const cifras = await tarjeta.evaluate((el) => {
+    const num = (t) => Number((t.split('\n')[0] ?? '').replace(/[^0-9.]/g, ''))
+    const ultima = (tr) => [...tr.querySelectorAll('td')].at(-1).innerText
+    let suma = 0
+    for (const tr of el.querySelectorAll('tr[data-servicio]')) if (!tr.innerText.includes('no suma')) suma += num(ultima(tr))
+    const total = [...el.querySelectorAll('tr')].find((tr) => tr.innerText.includes('Total aprobado'))
+    return { suma: Math.round(suma * 100) / 100, total: total ? num(ultima(total)) : -1 }
+  })
+  comprobar(cifras.suma > 0 && cifras.suma === cifras.total, `el total aprobado es la suma de las aprobadas (${cifras.suma} = ${cifras.total})`)
+  const principal = await texto(pagina.locator('main'))
+  const cifra = (re) => Number((principal.match(re)?.[1] ?? '-1').replace(/,/g, ''))
+  const indicador = cifra(/servicios\s*S\/\s*([\d,]+\.\d{2})/i)
+  const costo = cifra(/costo hasta hoy\s*S\/\s*([\d,]+\.\d{2})/i)
+  comprobar(indicador === cifras.total, `la cifra «Servicios» de arriba dice lo mismo que la tarjeta (${indicador})`)
+  comprobar(costo === cifras.total, `el costo hasta hoy suma los servicios aprobados (${costo}; el código no tiene horas ni materiales)`)
+  comprobar(/por aprobar \(S\/ [\d,]+\.\d{2}\)/.test(principal), 'arriba dice cuánto espera a Gerencia')
+  await pagina.screenshot({ path: `${CAPTURAS}/servicios-costeo.png`, fullPage: true })
+
+  await pagina.goto(`${BASE}/codigos-internos`, { waitUntil: 'networkidle' })
+  const filaCodigo = await texto(pagina.locator(`a[data-codigo="${CODIGO}"]`))
+  comprobar(filaCodigo.includes('Servicios S/') && filaCodigo.includes('OS por aprobar'), `la lista de códigos muestra los servicios: «${filaCodigo.replace(/\s+/g, ' ').slice(0, 200)}»`)
+  comprobar(errores.length === 0, `sin errores de consola en el costeo${errores.length ? `: ${errores[0]}` : ''}`)
+
+  const telefono = await entrar(CUENTAS.gerencia, 390)
+  await telefono.pagina.goto(`${BASE}/codigos-internos/detalle?codigo=${encodeURIComponent(CODIGO)}&vista=costeo`, { waitUntil: 'networkidle' })
+  const ancho = await telefono.pagina.evaluate(() => document.documentElement.scrollWidth)
+  comprobar(ancho <= 390, `el costeo cabe en el teléfono (${ancho}px)`)
+  await telefono.pagina.screenshot({ path: `${CAPTURAS}/servicios-costeo-telefono.png`, fullPage: true })
+}
+
 // ============================================ 5. Un supervisor no entra
 {
   const { pagina } = await entrar(CUENTAS.supervisor)

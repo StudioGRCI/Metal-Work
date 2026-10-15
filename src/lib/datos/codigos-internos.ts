@@ -18,8 +18,15 @@ export type ResumenCodigo = {
   vehiculos: number
   unidades: number
   ordenes: number
-  /** Órdenes de servicio vigentes con el código. */
+  /** Órdenes de servicio vigentes con el código: aprobadas y por aprobar. */
   servicios: number
+  /** Las aprobadas, sin IGV: suman al costo. */
+  servicios_pen: number
+  servicios_usd: number
+  /** Las que esperan a Gerencia: se muestran aparte y no suman. */
+  servicios_por_aprobar: number
+  servicios_por_aprobar_pen: number
+  servicios_por_aprobar_usd: number
   ultima_actividad: string | null
   ultimo_reporte: string | null
   trabajos: number
@@ -41,20 +48,19 @@ const n = (v: number | null | undefined) => Number(v ?? 0)
 /** Todos los códigos del sistema, del que tuvo movimiento más reciente al más viejo. */
 export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
   const supabase = await createClient()
-  // El resumen de la base no cuenta las órdenes de servicio (cambiarle las
-  // columnas exige borrarlo); salen de sus documentos.
-  const [{ data, error }, documentos] = await Promise.all([
+  // El resumen de la base no trae las órdenes de servicio (cambiarle las
+  // columnas exige borrarlo): salen de su propia función, con las mismas
+  // líneas que el costeo de cada código.
+  const [{ data, error }, porServicio] = await Promise.all([
     supabase.rpc('codigos_internos_resumen'),
-    supabase.rpc('codigo_interno_documentos', { p_codigo: null }),
+    supabase.rpc('codigos_internos_servicios'),
   ])
   if (error) throw new Error(`No se pudieron leer los códigos internos: ${error.message}`)
-  if (documentos.error) throw new Error(`No se pudieron leer los documentos de los códigos: ${documentos.error.message}`)
-  const servicios = new Map<string, number>()
-  for (const d of documentos.data ?? []) {
-    if (d.tipo === 'SERVICIO' && d.estado !== 'ANULADA' && d.codigo) servicios.set(d.codigo, (servicios.get(d.codigo) ?? 0) + 1)
-  }
-  return (data ?? []).flatMap((f) =>
-    f.codigo
+  if (porServicio.error) throw new Error(`No se pudieron leer los servicios de los códigos: ${porServicio.error.message}`)
+  const servicios = new Map((porServicio.data ?? []).flatMap((s) => (s.codigo ? [[s.codigo, s] as const] : [])))
+  return (data ?? []).flatMap((f) => {
+    const s = f.codigo ? servicios.get(f.codigo) : undefined
+    return f.codigo
       ? [
           {
             codigo: f.codigo,
@@ -65,7 +71,12 @@ export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
             vehiculos: n(f.vehiculos),
             unidades: n(f.unidades),
             ordenes: n(f.ordenes),
-            servicios: servicios.get(f.codigo) ?? 0,
+            servicios: n(s?.servicios) + n(s?.por_aprobar),
+            servicios_pen: n(s?.servicios_pen),
+            servicios_usd: n(s?.servicios_usd),
+            servicios_por_aprobar: n(s?.por_aprobar),
+            servicios_por_aprobar_pen: n(s?.por_aprobar_pen),
+            servicios_por_aprobar_usd: n(s?.por_aprobar_usd),
             ultima_actividad: f.ultima_actividad,
             ultimo_reporte: f.ultimo_reporte,
             trabajos: n(f.trabajos),
@@ -82,8 +93,8 @@ export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
             compras_sin_precio: n(f.compras_sin_precio),
           },
         ]
-      : [],
-  )
+      : []
+  })
 }
 
 /** Un trabajo de un reporte diario vigente del código. */
@@ -128,10 +139,18 @@ export async function avanceDelCodigo(codigo: string): Promise<AvanceReportado[]
 /**
  * Una línea del costeo. MANO_OBRA lleva horas y costo (cantidad = personas);
  * MANO_OBRA_SIN_COSTO, horas sin costo; MATERIALES y MATERIALES_SIN_PRECIO, cada
- * salida; COMPRAS, cada OC sin IGV, que no va al total.
+ * salida; COMPRAS, cada OC sin IGV, que no va al total; SERVICIOS, cada OS
+ * aprobada sin IGV, que sí va; SERVICIOS_POR_APROBAR, la que espera a Gerencia.
  */
 export type LineaCosteo = {
-  fuente: 'MANO_OBRA' | 'MANO_OBRA_SIN_COSTO' | 'MATERIALES' | 'MATERIALES_SIN_PRECIO' | 'COMPRAS'
+  fuente:
+    | 'MANO_OBRA'
+    | 'MANO_OBRA_SIN_COSTO'
+    | 'MATERIALES'
+    | 'MATERIALES_SIN_PRECIO'
+    | 'COMPRAS'
+    | 'SERVICIOS'
+    | 'SERVICIOS_POR_APROBAR'
   fecha: string
   concepto: string
   detalle: string | null

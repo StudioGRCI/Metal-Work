@@ -18,6 +18,8 @@ select test.crear_usuario('Coni', 'Contable', 'contabilidad357@demo.pe', 'CONTAB
 select test.crear_usuario('Teo', 'Tesoro', 'tesoreria357@demo.pe', 'TESORERIA', (select id from public.sedes where codigo = 'QA57')) as teso_id \gset
 select test.crear_usuario('Lalo', 'Logística', 'logistica357@demo.pe', 'COMPRADOR', (select id from public.sedes where codigo = 'QA57')) as compras_id \gset
 select test.crear_usuario('Rita', 'Requerimientos', 'req357@demo.pe', 'REQUERIMIENTOS', (select id from public.sedes where codigo = 'QA57')) as req_id \gset
+select test.crear_usuario('Gino', 'General', 'general357@demo.pe', 'SUPERVISOR_GENERAL', (select id from public.sedes where codigo = 'QA57')) as general_id \gset
+select test.crear_usuario('Dina', 'Diseño', 'diseno357@demo.pe', 'DISENO', (select id from public.sedes where codigo = 'QA57')) as diseno_id \gset
 
 insert into public.clientes (tipo_documento, numero_documento, razon_social, direccion_fiscal, distrito)
 values ('RUC', '20990000357', 'QA CLIENTE FACTURA', 'Av. de Prueba 357', 'Trujillo');
@@ -60,6 +62,8 @@ select set_config('prueba.conta', :'conta_id', true);
 select set_config('prueba.teso', :'teso_id', true);
 select set_config('prueba.compras', :'compras_id', true);
 select set_config('prueba.req', :'req_id', true);
+select set_config('prueba.general', :'general_id', true);
+select set_config('prueba.diseno', :'diseno_id', true);
 select set_config('prueba.hoy', ((now() at time zone 'America/Lima')::date)::text, true);
 select set_config('prueba.f1', gen_random_uuid()::text, true);
 select set_config('prueba.f2', gen_random_uuid()::text, true);
@@ -294,6 +298,32 @@ do $$ begin
     and (select count(*) from public.cotizaciones_pdf where id = current_setting('prueba.cot1')::uuid) = 0,
     'Requerimientos no ve facturas ni cotizaciones');
   perform test.afirmar((select por_facturar is null and por_cobrar is null from public.facturacion_pendientes()), 'ni los pendientes');
+  reset role;
+
+  -- La cotización la ven Administración, Gerencia, Tesorería y Contabilidad (y
+  -- Ventas, que la hace); Supervisión General y Diseño ya no (20261015125000).
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  perform test.afirmar((select count(*) from public.cotizaciones_pdf where id = current_setting('prueba.cot3')::uuid) = 1,
+    'Gerencia ve también la cotización que falta aprobar');
+  reset role;
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
+  perform test.afirmar((select count(*) from public.cotizaciones_pdf where id = current_setting('prueba.cot1')::uuid) = 1,
+    'Administración ve la cotización');
+  reset role;
+  perform test.como_usuario(current_setting('prueba.general')::uuid);
+  set local role authenticated;
+  perform test.afirmar((select count(*) from public.cotizaciones_pdf where id in (current_setting('prueba.cot1')::uuid, current_setting('prueba.cot3')::uuid)) = 0
+    and (select count(*) from public.cotizaciones_pdf_versiones where cotizacion_id = current_setting('prueba.cot1')::uuid) = 0
+    and (select count(*) from public.facturas_venta) = 0,
+    'Supervisión General ya no ve la cotización ni sus facturas');
+  perform test.debe_fallar('select * from public.cotizaciones_para_facturar()', 'ni la bandeja de facturación', 'Contabilidad y Tesorería');
+  reset role;
+  perform test.como_usuario(current_setting('prueba.diseno')::uuid);
+  set local role authenticated;
+  perform test.afirmar((select count(*) from public.cotizaciones_pdf where id = current_setting('prueba.cot1')::uuid) = 0,
+    'Diseño ve la OT, no la cotización');
   reset role;
 end $$;
 

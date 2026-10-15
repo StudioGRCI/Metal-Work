@@ -51,9 +51,10 @@ export type ItemNavegacion = {
 export type GrupoNavegacion = { titulo: string; items: readonly ItemNavegacion[] }
 
 /**
- * El catálogo de módulos, agrupado por el área que los lleva: cotización PDF →
- * Gerencia aprueba → Administración carga la orden → Diseño desglosa →
- * almacén y logística atienden → el taller reporta.
+ * El catálogo de módulos, agrupado por el área que los lleva y con las áreas en
+ * el orden del circuito: Ventas cotiza → Gerencia aprueba → Diseño desglosa →
+ * Requerimientos pide → Almacén revisa → Logística compra → el taller reporta →
+ * Finanzas y RR. HH. pagan.
  *
  * No es el menú de nadie en particular: cada puesto ve el suyo, en el orden de
  * su trabajo (`MENU_POR_PUESTO`, más abajo). Este catálogo completo, filtrado
@@ -71,16 +72,9 @@ export const NAVEGACION = [
         descripcion: 'Estado general del taller',
         disponible: true,
       },
-      {
-        titulo: 'Órdenes de trabajo',
-        ruta: '/ordenes',
-        icono: FileSpreadsheet,
-        permiso: 'ordenes.listar',
-        descripcion: 'Todas las OT y su avance',
-        disponible: true,
-      },
       // Lo que se trabaja hoy va por código interno, no por OT: Gerencia ve cada
       // código con sus reportes de avance y su costeo (migración 20261014220000).
+      // Por eso va antes que la OT.
       {
         titulo: 'Códigos internos',
         ruta: '/codigos-internos',
@@ -89,10 +83,21 @@ export const NAVEGACION = [
         descripcion: 'Cada código con su avance y lo que lleva costado: mano de obra, materiales y compras',
         disponible: true,
       },
+      {
+        titulo: 'Órdenes de trabajo',
+        ruta: '/ordenes',
+        icono: FileSpreadsheet,
+        permiso: 'ordenes.listar',
+        descripcion: 'Todas las OT y su avance',
+        disponible: true,
+      },
     ],
   },
+  // Ventas abre el circuito: la cotización y, con ella, el cliente, su unidad y
+  // la carrocería que se le cotiza. Antes eran dos grupos, «Agente de Ventas»
+  // arriba y «Ventas» casi al final.
   {
-    titulo: 'Agente de Ventas',
+    titulo: 'Ventas',
     items: [
       {
         titulo: 'Cotización',
@@ -102,10 +107,13 @@ export const NAVEGACION = [
         descripcion: 'El PDF que se le mandó al cliente, y su visto de Gerencia',
         disponible: true,
       },
+      { titulo: 'Clientes', ruta: '/clientes', icono: Users, permiso: 'clientes.ver', descripcion: 'Empresas y personas, con sus contactos y sus órdenes', disponible: true },
+      { titulo: 'Unidades', ruta: '/unidades', icono: Truck, permiso: 'clientes.ver', descripcion: 'Los vehículos de los clientes que pasan por el taller', disponible: true },
+      { titulo: 'Carrocerías', ruta: '/carrocerias', icono: Layers, permiso: ['diseno.planos', 'configuracion.ver', 'cotizaciones.crear'], descripcion: 'Los tipos de carrocería que se cotizan, con su ficha técnica', disponible: true },
     ],
   },
   {
-    titulo: 'Preparación técnica',
+    titulo: 'Diseño e Ingeniería',
     items: [
       // El catálogo chico del que Diseño elige al desglosar los materiales de
       // la orden: nombre, unidad y especificación. Sin stock ni almacén.
@@ -142,7 +150,8 @@ export const NAVEGACION = [
   // El menú va por área, en el orden del circuito de materiales: Requerimientos
   // pide → Almacén revisa el stock → Logística compra → el conductor recoge →
   // Almacén recepciona y entrega. «Atención de requerimiento» es la misma
-  // bandeja para Logística y Almacén, y por eso cuelga de las dos.
+  // bandeja para Logística y Almacén, y por eso cuelga de las dos; a ADMIN, que
+  // ve el catálogo entero, le sale una vez, en Almacén, que la revisa primero.
   {
     titulo: 'Requerimientos',
     items: [
@@ -172,6 +181,35 @@ export const NAVEGACION = [
         descripcion: 'Lo que salió del almacén y lo que se compró para cada código interno',
         disponible: true,
       },
+    ],
+  },
+  // Almacén: primero lo que espera por él, después su kardex y, debajo, los
+  // cuatro almacenes que maneja (EPP, consumibles, accesorios y materia
+  // prima): son el mismo kardex filtrado por `?almacen=`, con el valor en
+  // mayúsculas que lee la pantalla de Almacén.
+  {
+    titulo: 'Almacén',
+    items: [
+      {
+        titulo: 'Atención de requerimiento',
+        ruta: '/requerimientos/atencion',
+        icono: ClipboardList,
+        permiso: ['almacen.recibir', 'almacen.despachar'],
+        descripcion: 'Los RQ por revisar insumo por insumo, por recepcionar y por entregar al área',
+        disponible: true,
+      },
+      {
+        titulo: 'Kardex',
+        ruta: '/almacen/kardex',
+        icono: ListOrdered,
+        permiso: 'almacen.ver',
+        descripcion: 'Saldos, ingresos, egresos por unidad y conteo físico',
+        disponible: true,
+      },
+      { titulo: 'EPP', ruta: '/almacen/kardex?almacen=EPP', icono: HardHat, permiso: 'almacen.ver', descripcion: 'Equipos de protección: salen con el formato de entrega firmado', disponible: true },
+      { titulo: 'Consumibles', ruta: '/almacen/kardex?almacen=CONSUMIBLES', icono: Package, permiso: 'almacen.ver', descripcion: 'Discos, soldadura, pintura: salen sin más trámite', disponible: true },
+      { titulo: 'Accesorios', ruta: '/almacen/kardex?almacen=ACCESORIOS', icono: Cog, permiso: 'almacen.ver', descripcion: 'Atados a un código interno: solo salen para esa unidad', disponible: true },
+      { titulo: 'Materia prima', ruta: '/almacen/kardex?almacen=MATERIA_PRIMA', icono: Layers, permiso: 'almacen.ver', descripcion: 'Planchas, perfiles y tubos: salen con el formato de recepción firmado', disponible: true },
     ],
   },
   {
@@ -265,35 +303,6 @@ export const NAVEGACION = [
       },
     ],
   },
-  // Almacén: primero lo que espera por él, después su kardex y, debajo, los
-  // cuatro almacenes que maneja (EPP, consumibles, accesorios y materia
-  // prima): son el mismo kardex filtrado por `?almacen=`, con el valor en
-  // mayúsculas que lee la pantalla de Almacén.
-  {
-    titulo: 'Almacén',
-    items: [
-      {
-        titulo: 'Atención de requerimiento',
-        ruta: '/requerimientos/atencion',
-        icono: ClipboardList,
-        permiso: ['almacen.recibir', 'almacen.despachar'],
-        descripcion: 'Los RQ por revisar insumo por insumo, por recepcionar y por entregar al área',
-        disponible: true,
-      },
-      {
-        titulo: 'Kardex',
-        ruta: '/almacen/kardex',
-        icono: ListOrdered,
-        permiso: 'almacen.ver',
-        descripcion: 'Saldos, ingresos, egresos por unidad y conteo físico',
-        disponible: true,
-      },
-      { titulo: 'EPP', ruta: '/almacen/kardex?almacen=EPP', icono: HardHat, permiso: 'almacen.ver', descripcion: 'Equipos de protección: salen con el formato de entrega firmado', disponible: true },
-      { titulo: 'Consumibles', ruta: '/almacen/kardex?almacen=CONSUMIBLES', icono: Package, permiso: 'almacen.ver', descripcion: 'Discos, soldadura, pintura: salen sin más trámite', disponible: true },
-      { titulo: 'Accesorios', ruta: '/almacen/kardex?almacen=ACCESORIOS', icono: Cog, permiso: 'almacen.ver', descripcion: 'Atados a un código interno: solo salen para esa unidad', disponible: true },
-      { titulo: 'Materia prima', ruta: '/almacen/kardex?almacen=MATERIA_PRIMA', icono: Layers, permiso: 'almacen.ver', descripcion: 'Planchas, perfiles y tubos: salen con el formato de recepción firmado', disponible: true },
-    ],
-  },
   // El taller reporta: mientras la OT no está del todo en el sistema, cada
   // supervisor sube su día por código interno y sus horas van al costeo.
   {
@@ -367,14 +376,6 @@ export const NAVEGACION = [
     ],
   },
   {
-    titulo: 'Ventas',
-    items: [
-      { titulo: 'Clientes', ruta: '/clientes', icono: Users, permiso: 'clientes.ver', descripcion: 'Empresas y personas, con sus contactos y sus órdenes', disponible: true },
-      { titulo: 'Unidades', ruta: '/unidades', icono: Truck, permiso: 'clientes.ver', descripcion: 'Los vehículos de los clientes que pasan por el taller', disponible: true },
-      { titulo: 'Carrocerías', ruta: '/carrocerias', icono: Layers, permiso: ['diseno.planos', 'configuracion.ver', 'cotizaciones.crear'], descripcion: 'Los tipos de carrocería que se cotizan, con su ficha técnica', disponible: true },
-    ],
-  },
-  {
     titulo: 'Administración del sistema',
     items: [
       {
@@ -411,8 +412,11 @@ type MenuDePuesto = {
 }
 
 /**
- * El menú de cada puesto: primero lo que espera por él, en el orden en que lo
- * trabaja, y al final lo que solo consulta. El tablero va siempre arriba.
+ * El menú de cada puesto, por importancia: arriba lo que espera por él cada
+ * día (lo que, si no lo hace, traba a otra área), en el orden en que lo
+ * trabaja; después lo que lleva o registra sin apuro; al final lo que solo
+ * consulta. El tablero va siempre arriba. Un puesto con muchas pantallas las
+ * reparte en grupos con nombre, para no leer una lista de diez.
  *
  * Salió de entrar con cada cuenta de producción el 2026-10-14. Hasta entonces
  * el menú era el catálogo filtrado por permiso, y cada permiso de lectura
@@ -441,22 +445,21 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // ficha vehicular y el pedido de pago a Tesorería.
   REQUERIMIENTOS: {
     grupos: [
-      { titulo: 'Requerimientos', rutas: ['/requerimientos', '/vehiculos', '/requerimientos/gasto-por-codigo'] },
-      { titulo: 'Consultas', rutas: ['/ordenes'] },
+      { titulo: 'Requerimientos', rutas: ['/requerimientos', '/vehiculos'] },
+      { titulo: 'Consultas', rutas: ['/requerimientos/gasto-por-codigo', '/ordenes'] },
     ],
     telefono: ['/requerimientos', '/vehiculos', '/requerimientos/gasto-por-codigo', '/ordenes'],
   },
   // Trabaja los RQ desde su bandeja de atención, no desde la lista de
   // Requerimientos, aunque `requerimientos.ver` le deje leerla. Las órdenes de
   // trabajo también esperan por él: los materiales de cada OT los revisa,
-  // recibe y despacha ahí. Debajo del kardex, sus cuatro almacenes.
+  // recibe y despacha ahí. Aparte, el kardex con sus cuatro almacenes.
   ALMACENERO: {
     grupos: [
+      { titulo: 'Por atender', rutas: ['/requerimientos/atencion', '/ordenes'] },
       {
-        titulo: 'Almacén',
+        titulo: 'Almacenes',
         rutas: [
-          '/requerimientos/atencion',
-          '/ordenes',
           '/almacen/kardex',
           '/almacen/kardex?almacen=EPP',
           '/almacen/kardex?almacen=CONSUMIBLES',
@@ -467,27 +470,21 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     ],
     telefono: ['/requerimientos/atencion', '/ordenes', '/almacen/kardex', '/'],
   },
-  // Del RQ sin stock a la OC, su visto de Gerencia y la gestión de compras:
-  // qué recoge el conductor, en qué orden y con qué peso. «Recojos» la abre
-  // por su dirección: la gestión ya muestra todo lo que el conductor lleva.
+  // Del RQ sin stock a la OC (o la OS), su visto de Gerencia y la gestión de
+  // compras: qué recoge el conductor, en qué orden y con qué peso. «Recojos» la
+  // abre por su dirección: la gestión ya muestra todo lo que el conductor
+  // lleva. El padrón y los precios los lleva sin apuro; las compras agrupadas
+  // por OT solo las consulta.
   COMPRADOR: {
     grupos: [
       {
         titulo: 'Logística',
-        rutas: [
-          '/requerimientos/atencion',
-          '/compras/ordenes',
-          '/compras/aprobacion',
-          '/compras/gestion',
-          '/compras/servicios',
-          '/compras',
-          '/proveedores',
-          '/compras/valorizacion',
-        ],
+        rutas: ['/requerimientos/atencion', '/compras/ordenes', '/compras/servicios', '/compras/aprobacion', '/compras/gestion'],
       },
+      { titulo: 'Proveedores y precios', rutas: ['/proveedores', '/compras/valorizacion'] },
       // Adquisiciones, en lectura: qué OC ya tienen su factura y si calza (2026-10-14).
       // La OT ya no: solo la consultaba (2026-10-15, el código interno es la referencia).
-      { titulo: 'Consultas', rutas: ['/adquisiciones'] },
+      { titulo: 'Consultas', rutas: ['/compras', '/adquisiciones'] },
     ],
     telefono: ['/requerimientos/atencion', '/compras/ordenes', '/compras/aprobacion', '/compras/gestion'],
   },
@@ -498,14 +495,16 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // Cerrado desde #28: lo que Gerencia decide y poco más. Lo demás que su
   // permiso le deja ver (Requerimientos, el kardex, Personal) lo abre desde el
   // enlace del aviso o por su dirección.
-  // Los reportes diarios esperan su visto bueno: pasaron de Consultas a su trabajo.
-  // Los códigos internos van junto a ellos y, en el teléfono, en lugar de las OT:
-  // el taller trabaja por código mientras la OT no está del todo en el sistema.
+  // Arriba lo que espera su visto, en el orden del circuito: la cotización, las
+  // compras y los reportes diarios. Después el seguimiento de cada trabajo, por
+  // código interno antes que por OT: el código es desde el 2026-10-15 el centro
+  // de todo lo que se hace para una unidad.
   GERENTE: {
     grupos: [
+      { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'] },
       // Sin la OT desde el 2026-10-15: cada trabajo lo ve en Códigos internos.
-      { titulo: 'Gerencia', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/codigos-internos'] },
-      { titulo: 'Consultas', rutas: ['/planilla-diaria', '/rrhh/horas-extras', '/proveedores', '/rrhh/tardanzas', '/rrhh/observaciones'] },
+      { titulo: 'Seguimiento', rutas: ['/codigos-internos'] },
+      { titulo: 'Consultas', rutas: ['/planilla-diaria', '/rrhh/horas-extras', '/rrhh/tardanzas', '/rrhh/observaciones', '/proveedores'] },
     ],
     telefono: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/codigos-internos'],
   },
@@ -542,13 +541,13 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // Unidades y Carrocerías las lleva Diseño e Ingeniería (pedido de la
   // empresa, 2026-10-01). Configuración la alcanza por `configuracion.ver`,
   // pero es de Administración.
+  // Primero la OT que desglosa y el informe de su equipo; después los
+  // catálogos que mantiene. La evaluación es de cada cierto tiempo: al final.
   DISENO: {
     grupos: [
-      {
-        titulo: 'Diseño e Ingeniería',
-        rutas: ['/ordenes', '/materiales', '/carrocerias', '/unidades', '/diseno/informe-semanal', '/diseno/evaluaciones'],
-      },
-      { titulo: 'Consultas', rutas: ['/clientes', '/requerimientos'] },
+      { titulo: 'Diseño e Ingeniería', rutas: ['/ordenes', '/materiales', '/diseno/informe-semanal', '/diseno/evaluaciones'] },
+      { titulo: 'Catálogos', rutas: ['/carrocerias', '/unidades'] },
+      { titulo: 'Consultas', rutas: ['/requerimientos', '/clientes'] },
     ],
     telefono: ['/ordenes', '/diseno/informe-semanal', '/materiales', '/carrocerias'],
   },
@@ -563,38 +562,32 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // las abre por su dirección, y así no tiene dos «Personal» en el menú.
   // Desde el 2026-10-15 lleva el requerimiento de Administración (lo de
   // oficina): lo registra, Almacén lo revisa y ella hace la OC de lo que falta.
+  // La evaluación de desempeño la recibe de Diseño: es consulta.
   ADMINISTRACION: {
     grupos: [
       {
         titulo: 'Administración',
-        rutas: ['/cotizaciones/pdf', '/ordenes', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio', '/diseno/evaluaciones', '/clientes'],
+        rutas: ['/cotizaciones/pdf', '/ordenes', '/clientes', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
       },
       { titulo: 'Requerimiento de Administración', rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes'] },
-      { titulo: 'Consultas', rutas: ['/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos'] },
+      { titulo: 'Consultas', rutas: ['/diseno/evaluaciones', '/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos'] },
       { titulo: 'Administración del sistema', rutas: ['/personal', '/configuracion'] },
     ],
-    telefono: ['/cotizaciones/pdf', '/ordenes', '/costos/gastos-generales', '/diseno/evaluaciones'],
+    telefono: ['/cotizaciones/pdf', '/ordenes', '/requerimientos', '/costos/gastos-generales'],
   },
-  // Primero lo que espera por RR. HH.: los reportes diarios por validar, las
-  // horas extras por decidir y la planilla diaria por enviar. La OT ya no está
-  // en su menú: solo la consultaba (2026-10-15).
+  // Primero lo que espera por RR. HH. cada día: los reportes diarios por
+  // validar, las horas extras por decidir y la planilla diaria por enviar.
+  // Después el control del personal y, al final, lo del mes: las planillas y
+  // el costeo por código. La OT ya no está en su menú: solo la consultaba
+  // (2026-10-15).
   RECURSOS_HUMANOS: {
     grupos: [
+      { titulo: 'Recursos Humanos', rutas: ['/reportes-diarios', '/rrhh/horas-extras', '/planilla-diaria'] },
       {
-        titulo: 'Recursos Humanos',
-        rutas: [
-          '/reportes-diarios',
-          '/rrhh/horas-extras',
-          '/planilla-diaria',
-          '/rrhh/personal',
-          '/rrhh/asistencia',
-          '/rrhh/tardanzas',
-          '/rrhh/permisos',
-          '/rrhh/costeo',
-          '/rrhh/observaciones',
-          '/rrhh',
-        ],
+        titulo: 'Control del personal',
+        rutas: ['/rrhh/personal', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh/permisos', '/rrhh/observaciones'],
       },
+      { titulo: 'Planillas y costeo', rutas: ['/rrhh', '/rrhh/costeo'] },
     ],
     telefono: ['/reportes-diarios', '/planilla-diaria', '/rrhh/personal', '/rrhh/asistencia'],
   },
@@ -603,17 +596,21 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     telefono: ['/rrhh/asistencia', '/'],
   },
   // Sube su reporte diario (mientras la OT no está del todo en el sistema, es
-  // su trabajo de cada día), reporta el avance de las OT de su área y recoge de
-  // Almacén lo que su área pidió: el RQ «Listo en almacén», al que también lo
-  // lleva el aviso.
+  // su trabajo de cada día), recoge de Almacén lo que su área pidió (el RQ
+  // «Listo en almacén», al que también lo lleva el aviso) y reporta el avance
+  // de las OT de su área.
   SUPERVISOR: {
-    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/ordenes', '/requerimientos'] }],
-    telefono: ['/reportes-diarios', '/ordenes', '/requerimientos', '/'],
+    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/requerimientos', '/ordenes'] }],
+    telefono: ['/reportes-diarios', '/requerimientos', '/ordenes', '/'],
   },
-  // Mira todas las áreas sin trabajar en ninguna: cada una con su nombre.
+  // Mira todas las áreas sin trabajar en ninguna: cada una con su nombre y en
+  // el orden del circuito, después de lo suyo. La cotización ya no: desde el
+  // 2026-10-15 la ven solo Administración, Gerencia, Tesorería y Contabilidad
+  // (y Ventas, que la hace).
   SUPERVISOR_GENERAL: {
     grupos: [
       { titulo: 'Supervisión general', rutas: ['/ordenes', '/diseno/informe-semanal'] },
+      { titulo: 'Ventas', rutas: ['/clientes', '/unidades'] },
       { titulo: 'Requerimientos', rutas: ['/requerimientos', '/vehiculos'] },
       {
         titulo: 'Almacén',
@@ -626,10 +623,9 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/compras/valorizacion',
         ],
       },
-      { titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades'] },
       { titulo: 'Finanzas', rutas: ['/costos/gastos-generales'] },
     ],
-    telefono: ['/ordenes', '/requerimientos', '/almacen/kardex', '/cotizaciones/pdf'],
+    telefono: ['/ordenes', '/requerimientos', '/almacen/kardex', '/'],
   },
   VENDEDOR: {
     grupos: [{ titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades', '/carrocerias'] }],
@@ -659,7 +655,20 @@ export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo:
         items: g.rutas.flatMap((r) => CATALOGO.find((i) => i.ruta === r && i.disponible && lePermite(i, permisos, esAdmin)) ?? []),
       }))
     : GRUPOS.map((g) => ({ titulo: g.titulo, items: g.items.filter((i) => i.disponible && lePermite(i, permisos, esAdmin)) }))
-  return grupos.filter((g) => g.items.length > 0)
+  // Una pantalla compartida sale una sola vez, en el primer grupo que la
+  // muestra: a ADMIN, que lo ve todo, le salían dos «Atención de
+  // requerimiento», dos «Gestión de compras» y dos «Planilla diaria».
+  const vistas = new Set<string>()
+  return grupos
+    .map((g) => ({
+      titulo: g.titulo,
+      items: g.items.filter((i) => {
+        if (vistas.has(i.ruta)) return false
+        vistas.add(i.ruta)
+        return true
+      }),
+    }))
+    .filter((g) => g.items.length > 0)
 }
 
 /**
