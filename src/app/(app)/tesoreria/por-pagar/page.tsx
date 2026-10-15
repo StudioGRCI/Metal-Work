@@ -147,7 +147,8 @@ function Factura({
   const aviso = control ? (CONTROL_FACTURA_COMPRA[control.control] ?? { etiqueta: control.control, tono: 'neutro' as const }) : null
   const avisos = avisosDeFacturaRegistrada(c, control)
   return (
-    <article className="rounded-[var(--radius-base)] border border-borde p-3">
+    // El id es el ancla con que Adquisiciones salta a esta factura.
+    <article id={`factura-${c.id}`} className="scroll-mt-20 rounded-[var(--radius-base)] border border-borde p-3 target:border-acento">
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
         <div>
           <p className="flex flex-wrap items-center gap-2">

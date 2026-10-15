@@ -1,7 +1,8 @@
 /**
  * Recorre con clic real la factura de compra con varias OC, el aviso de monto
- * y el pago con voucher (migración 20261015122000), con la cuenta de cada
- * puesto (nunca ADMIN):
+ * y el pago con voucher (migración 20261015122000), y la tabla de
+ * Adquisiciones con el enlace a cada documento, con la cuenta de cada puesto
+ * (nunca ADMIN):
  *
  *   1. Logística tiene Adquisiciones en «Consultas», ve las OC que esperan su
  *      factura y no tiene el formulario.
@@ -11,13 +12,21 @@
  *   3. Tesorería ve las dos en Cuentas por pagar (también la de contado), paga
  *      una parte con su voucher, anula ese pago con su motivo y la paga entera.
  *   4. Logística ve la factura pagada y no entra a Cuentas por pagar.
+ *   4b. La tabla: cada fila va RQ → OC → factura (número y fecha) → pago, y cada
+ *      código abre su documento (el RQ solo, el PDF de la OC, el de la factura,
+ *      el voucher, el proveedor y, si falta pagarla, la factura en Cuentas por
+ *      pagar). Logística
+ *      no tiene el enlace a Cuentas por pagar; Ventas no entra. En el teléfono
+ *      la tabla se desliza sin ensanchar la página.
  *   5. Si están las OS QA-OS-1 (afecta al 12 %, 2 000.00 sin IGV) y QA-OS-2 (no
  *      sujeta), Tesorería ve en Pagos de servicio cuánto va al Banco de la
  *      Nación (migración 20261015141000).
  *
  * Necesita en la base del banco las cuentas `*@banco.test` de cada puesto y las
  * OC directas QA-ADQ-1 y QA-ADQ-2 (mismo proveedor, contado, 1 180.00 y 118.00)
- * y QA-ADQ-3 (otro proveedor, crédito, 590.00). Variables: BANCO_CLAVE, BASE
+ * y QA-ADQ-3 (otro proveedor, crédito, 590.00). Si los RQ RQ-0901-2026 (con
+ * QA-ADQ-1) y RQ-0902-2026 (con QA-ADQ-2 y QA-ADQ-3) están, mira también sus
+ * enlaces. Variables: BANCO_CLAVE, BASE
  * (http://localhost:3111), CAPTURAS, BANCO_BASE, ARCHIVOS (con minimo.pdf y
  * voucher.pdf).
  */
@@ -81,6 +90,22 @@ async function esperarVentana(pagina) {
   return limpio(await v.locator('[role="alert"]').textContent({ timeout: 500 }).catch(() => ''))
 }
 
+/** El texto de todas las filas de una factura: la primera la nombra y las demás siguen hasta su rowspan. */
+async function grupo(pagina, numero) {
+  const primera = pagina.locator('tbody tr', { hasText: numero }).first()
+  if ((await primera.count()) === 0) return ''
+  const alto = Number((await primera.locator('td[rowspan]').first().getAttribute('rowspan').catch(() => '1')) ?? 1)
+  const textos = [await primera.textContent()]
+  for (let i = 1; i < alto; i++) textos.push(await primera.locator(`xpath=following-sibling::tr[${i}]`).textContent())
+  return textos.join(' ')
+}
+
+/** Lo que devuelve un enlace con la sesión de la página: estado y tipo. */
+async function abrir(pagina, href) {
+  const r = await pagina.request.get(new URL(href, BASE).toString())
+  return { estado: r.status(), tipo: r.headers()['content-type'] ?? '' }
+}
+
 const menu = async (pagina) => (await pagina.locator('nav[aria-label="Menú principal"] a').allTextContents()).map((t) => limpio(t).replace(/\d+$/, ''))
 const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date())
 const [oc1, oc2, oc3] = await consulta(
@@ -93,7 +118,8 @@ if (!oc3) throw new Error('Faltan las OC QA-ADQ-1, QA-ADQ-2 y QA-ADQ-3 en la bas
   const { pagina, contexto } = await entrar('logistica@banco.test')
   const items = await menu(pagina)
   console.log('     menú de Logística:', items.join(' · '))
-  comprobar(items.includes('Adquisiciones') && items.indexOf('Adquisiciones') > items.indexOf('Valorización del almacén') && items.indexOf('Valorización del almacén') > 0,
+  // Desde #96 sus Consultas van Adquisiciones, Proveedores y Valorización, después de su trabajo.
+  comprobar(items.includes('Adquisiciones') && items.indexOf('Adquisiciones') > items.indexOf('Órdenes de servicio') && items.indexOf('Órdenes de servicio') > 0,
     'Logística tiene Adquisiciones en Consultas, después de su trabajo')
   await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
   const cuerpo = limpio(await pagina.locator('main').textContent())
@@ -126,10 +152,9 @@ if (!oc3) throw new Error('Faltan las OC QA-ADQ-1, QA-ADQ-2 y QA-ADQ-3 en la bas
   await pagina.getByText('Comprobante F001-9001 registrado').waitFor({ timeout: 30000 }).catch(() => {})
   const error = limpio(await pagina.locator('form [role="alert"]').textContent({ timeout: 500 }).catch(() => ''))
   comprobar(!error && (await pagina.getByText('Comprobante F001-9001 registrado con 2 OC').count()) === 1, `la factura entra con sus dos OC${error ? ` (dijo «${error}»)` : ''}`)
-  const fila = pagina.locator('article', { hasText: 'F001-9001' })
-  const textoFila = limpio(await fila.textContent())
-  comprobar(textoFila.includes('Calza con sus OC') && textoFila.includes('2 OC') && textoFila.includes(oc1.numero) && textoFila.includes(oc2.numero),
-    'la lista la muestra con sus dos OC y «Calza con sus OC»')
+  const textoFila = limpio(await grupo(pagina, 'F001-9001'))
+  comprobar(textoFila.includes('Calza con sus OC') && textoFila.includes(oc1.numero) && textoFila.includes(oc2.numero),
+    'la tabla la muestra con sus dos OC y «Calza con sus OC»')
   comprobar((await pagina.locator(`input[name="ordenes_compra"][value="${oc1.id}"]`).count()) === 0, 'sus OC ya no esperan factura')
   const enlaces = await consulta(
     `select count(*)::int as n from adquisiciones_ordenes_compra l join adquisiciones a on a.id = l.adquisicion_id
@@ -148,7 +173,8 @@ if (!oc3) throw new Error('Faltan las OC QA-ADQ-1, QA-ADQ-2 y QA-ADQ-3 en la bas
   await pagina.locator('#adq-pdf').setInputFiles(join(ARCHIVOS, 'minimo.pdf'))
   await pagina.getByRole('button', { name: 'Registrar comprobante' }).click()
   await pagina.getByText('Comprobante F002-77 registrado').waitFor({ timeout: 30000 }).catch(() => {})
-  const fila2 = limpio(await pagina.locator('article', { hasText: 'F002-77' }).textContent().catch(() => ''))
+  await pagina.locator('tbody tr', { hasText: 'F002-77' }).first().waitFor({ timeout: 15000 }).catch(() => {})
+  const fila2 = limpio(await grupo(pagina, 'F002-77'))
   comprobar(fila2.includes('No calza con sus OC') && fila2.includes('sobran') && fila2.includes('10.00'),
     'la que no calza entra igual y dice cuánto sobra')
   await pagina.screenshot({ path: join(CAPTURAS, 'adquisiciones-contabilidad.png'), fullPage: true })
@@ -211,9 +237,94 @@ if (!oc3) throw new Error('Faltan las OC QA-ADQ-1, QA-ADQ-2 y QA-ADQ-3 en la bas
 {
   const { pagina, contexto } = await entrar('logistica@banco.test')
   await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
-  comprobar(limpio(await pagina.locator('article', { hasText: 'F001-9001' }).textContent()).includes('Pagada'), 'Logística ve la factura pagada')
+  comprobar(limpio(await grupo(pagina, 'F001-9001')).includes('Pagada'), 'Logística ve la factura pagada')
   await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   comprobar((await pagina.getByRole('button', { name: 'Registrar pago' }).count()) === 0, 'Logística no paga facturas')
+  await contexto.close()
+}
+
+// --------------------------------------------- 4b. La tabla y sus enlaces
+const [rq1, rq2] = await consulta("select id, numero from requerimientos where numero in ('RQ-0901-2026', 'RQ-0902-2026') order by numero")
+{
+  const { pagina, contexto } = await entrar('tesoreria@banco.test')
+  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  const cabeza = (await pagina.locator('thead th').allTextContents()).map(limpio)
+  console.log('     columnas:', cabeza.join(' · '))
+  comprobar(cabeza.slice(0, 4).join('|') === 'RQ|OC|Factura|Fecha de factura', 'las columnas van RQ, OC, factura y su fecha')
+  const primera = pagina.locator('tbody tr', { hasText: 'F001-9001' }).first()
+  const celdas = (await primera.locator('td').allTextContents()).map(limpio)
+  console.log('     fila de F001-9001:', celdas.join(' | '))
+  comprobar(celdas[1].startsWith(oc1.numero) && celdas[2].startsWith('F001-9001') && /^\d{2}\/\d{2}\/\d{4}/.test(celdas[3]),
+    'la fila va OC, factura con su número y la fecha de la factura')
+  comprobar((await primera.locator('td[rowspan="2"]').count()) >= 4, 'las celdas de la factura abarcan sus dos OC')
+
+  const ocHref = await primera.getByRole('link', { name: oc1.numero }).getAttribute('href')
+  const oc = await abrir(pagina, ocHref)
+  comprobar(oc.estado === 200 && oc.tipo.includes('pdf'), `la OC abre su PDF (${oc.estado} ${oc.tipo})`)
+  const facturaHref = await primera.getByRole('link', { name: 'F001-9001' }).getAttribute('href')
+  const factura = await abrir(pagina, facturaHref)
+  comprobar(factura.estado === 200, `la factura abre su PDF (${factura.estado})`)
+  const voucherHref = await primera.getByRole('link', { name: 'Voucher' }).first().getAttribute('href').catch(() => null)
+  comprobar(Boolean(voucherHref) && (await abrir(pagina, voucherHref)).estado === 200, 'el voucher del pago se abre')
+  comprobar(!limpio(await primera.textContent()).includes('Anulado'), 'el pago anulado no sale en la tabla')
+
+  // La pagada ya trae sus vouchers: solo la que falta pagar lleva a Cuentas por pagar.
+  comprobar((await primera.getByRole('link', { name: 'Pagar en Cuentas por pagar' }).count()) === 0, 'la factura pagada no manda a pagarla')
+  const aPagar = await pagina.locator('tbody tr', { hasText: 'F002-77' }).first().getByRole('link', { name: 'Pagar en Cuentas por pagar' }).getAttribute('href')
+  await pagina.goto(new URL(aPagar, BASE).toString(), { waitUntil: 'networkidle' })
+  const destino = decodeURIComponent(new URL(pagina.url()).hash.slice(1))
+  comprobar(destino.startsWith('factura-') && limpio(await pagina.locator(`[id="${destino}"]`).textContent().catch(() => '')).includes('F002-77'),
+    'Tesorería salta a pagar la que falta en Cuentas por pagar')
+
+  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  await pagina.locator('tbody tr', { hasText: 'F001-9001' }).first().getByRole('link', { name: 'FERRETERÍA DE PRUEBA S.A.C.' }).click()
+  await pagina.getByText('RUC 20100055008').waitFor({ timeout: 15000 }).catch(() => {})
+  comprobar(limpio(await pagina.locator('main').textContent()).includes('20100055008'), 'el proveedor abre su ficha en Proveedores')
+
+  if (rq2) {
+    await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+    const texto = limpio(await grupo(pagina, 'F001-9001'))
+    comprobar(texto.includes(rq1.numero) && texto.includes(rq2.numero), 'la factura muestra los dos RQ que cubre')
+    const credito = pagina.locator('tbody tr', { hasText: 'F002-77' }).first()
+    comprobar(limpio(await credito.locator('td').first().textContent()) === rq2.numero, 'la OC a crédito muestra su RQ')
+    await pagina.locator('tbody tr', { hasText: 'F001-9001' }).first().getByRole('link', { name: rq1.numero }).click()
+    await pagina.getByText(`Solo el ${rq1.numero}`).waitFor({ timeout: 15000 }).catch(() => {})
+    const filas = await pagina.locator('tbody tr').count()
+    const rq = limpio(await pagina.locator('main').textContent())
+    comprobar(filas === 1 && rq.includes(rq1.numero) && rq.includes(`Solo el ${rq1.numero}`), `el RQ abre solo ese RQ (${filas} filas)`)
+  }
+  await pagina.goto(`${BASE}/adquisiciones?vista=sin-factura`, { waitUntil: 'networkidle' })
+  const sinFactura = limpio(await pagina.locator('table').textContent())
+  comprobar(sinFactura.includes('OC que esperan su factura') && !sinFactura.includes('F001-9001'), '«Sin factura» deja solo las OC que esperan su factura')
+  await pagina.goto(`${BASE}/adquisiciones?vista=no-calzan`, { waitUntil: 'networkidle' })
+  const noCalzan = limpio(await pagina.locator('table').textContent())
+  comprobar(noCalzan.includes('F002-77') && !noCalzan.includes('F001-9001'), '«No calzan» deja solo la que no calza')
+  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  await pagina.screenshot({ path: join(CAPTURAS, 'adquisiciones-tabla-tesoreria.png'), fullPage: true })
+  await contexto.close()
+}
+{
+  const { pagina, contexto } = await entrar('logistica@banco.test')
+  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  const primera = pagina.locator('tbody tr', { hasText: 'F001-9001' }).first()
+  comprobar((await pagina.getByRole('link', { name: 'Pagar en Cuentas por pagar' }).count()) === 0, 'Logística no tiene el enlace a Cuentas por pagar')
+  const oc = await abrir(pagina, await primera.getByRole('link', { name: oc1.numero }).getAttribute('href'))
+  comprobar(oc.estado === 200 && oc.tipo.includes('pdf'), 'Logística abre el PDF de la OC')
+  if (rq1) comprobar((await primera.getByRole('link', { name: rq1.numero }).count()) === 1, 'y el RQ')
+  await contexto.close()
+}
+{
+  const { pagina, contexto } = await entrar('logistica@banco.test', { width: 390, height: 844 })
+  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  const ancho = await pagina.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth])
+  comprobar(ancho[0] <= ancho[1], `en el teléfono la página no se ensancha (${ancho[0]} de ${ancho[1]} px)`)
+  await pagina.screenshot({ path: join(CAPTURAS, 'adquisiciones-tabla-telefono.png'), fullPage: true })
+  await contexto.close()
+}
+if ((await consulta("select 1 from usuarios where correo = 'ventas@banco.test'")).length) {
+  const { pagina, contexto } = await entrar('ventas@banco.test')
+  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  comprobar(pagina.url().includes('/sin-permiso'), 'Ventas no entra a Adquisiciones')
   await contexto.close()
 }
 
