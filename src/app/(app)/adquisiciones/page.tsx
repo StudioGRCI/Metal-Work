@@ -1,7 +1,9 @@
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { comprasSinFactura, controlDeFacturas, enlacesDeComprobantes, type ControlDeFactura } from '@/lib/datos/adquisiciones'
+import { correccionesDe } from '@/lib/datos/correcciones'
 import { documentosDeCompraParaTesoreria } from '@/lib/datos/tesoreria'
 import { ESTADO_COMPROBANTE, TIPO_COMPROBANTE, definir } from '@/lib/dominio/estados'
 import { CONTROL_FACTURA_COMPRA } from '@/lib/dominio/finanzas'
@@ -10,6 +12,7 @@ import { fecha, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
+import { CorregirFactura } from './corregir'
 import { AvisosDelDetector, avisosDeFacturaRegistrada, InsigniaDelDetector } from './detector'
 import { DocumentosDeCompras } from './documentos-compras'
 import { CompletarAdquisicion, FormularioAdquisicion } from './formulario'
@@ -33,7 +36,7 @@ export default async function PaginaAdquisiciones() {
     supabase
       .from('adquisiciones')
       .select(
-        'id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, estado, registrado_por, ruta_storage, documento_compra_id, lectura_fuente, lectura_total, lectura_moneda, lectura_numero, lectura_ordenes',
+        'id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, estado, registrado_por, observacion, ruta_storage, documento_compra_id, lectura_fuente, lectura_total, lectura_moneda, lectura_numero, lectura_ordenes',
       )
       .order('creado_en', { ascending: false })
       .limit(100),
@@ -52,10 +55,11 @@ export default async function PaginaAdquisiciones() {
 
   const filas = adquisiciones.data ?? []
   const ids = filas.map((a) => a.id)
-  const [controles, urls, saldos] = await Promise.all([
+  const [controles, urls, saldos, correcciones] = await Promise.all([
     controlDeFacturas(ids),
     enlacesDeComprobantes(filas),
     ids.length ? supabase.from('v_cuentas_pagar').select('id, pagado, saldo').in('id', ids) : Promise.resolve({ data: [], error: null }),
+    correccionesDe('FACTURA_COMPRA', ids),
   ])
   if (saldos.error) throw new Error(`No se pudo leer lo pagado de cada factura: ${saldos.error.message}`)
   const saldoDe = new Map((saldos.data ?? []).map((s) => [s.id, s]))
@@ -119,6 +123,7 @@ export default async function PaginaAdquisiciones() {
                     {control && <OrdenesDeLaFactura control={control} total={Number(a.total)} monedaFactura={a.moneda} />}
                     <AvisosDelDetector avisos={avisos} />
                     {a.estado === 'BORRADOR' && a.registrado_por === perfil.id && <CompletarAdquisicion id={a.id} />}
+                    <HistorialDeCorrecciones correcciones={correcciones.get(a.id)} />
                     {url && (
                       <a href={url} target="_blank" rel="noreferrer" className="mt-1 inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0">
                         Abrir PDF
@@ -127,6 +132,25 @@ export default async function PaginaAdquisiciones() {
                   </div>
                   <div className="text-right">
                     <p className="tabular font-semibold text-texto">{moneda(a.total, codigo(a.moneda))}</p>
+                    {registra && a.estado === 'REGISTRADA' && (
+                      <CorregirFactura
+                        factura={{
+                          id: a.id,
+                          tipo: a.tipo,
+                          proveedor: a.proveedor,
+                          numero_documento: a.numero_documento,
+                          fecha_emision: a.fecha_emision,
+                          fecha_vencimiento: a.fecha_vencimiento,
+                          moneda: a.moneda,
+                          total: Number(a.total),
+                          condicion_pago: a.condicion_pago,
+                          observacion: a.observacion ?? '',
+                          pagado: Number(cuenta?.pagado ?? 0),
+                        }}
+                        ordenes={control?.ordenes ?? []}
+                        disponibles={sinFactura}
+                      />
+                    )}
                     {cuenta &&
                       (Number(cuenta.saldo) <= 0 ? (
                         <p className="text-xs text-exito">Pagada</p>

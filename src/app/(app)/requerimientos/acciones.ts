@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { cambiosDelFormulario, datosDeCorreccion } from '@/lib/correccion-accion'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -162,4 +163,56 @@ export async function anularRequerimiento(_previo: unknown, formulario: FormData
   revalidatePath('/requerimientos')
   revalidatePath('/requerimientos/atencion')
   return { ok: true, mensaje: 'Requerimiento anulado. Queda con su número y su motivo.' }
+}
+
+const CAMBIOS_RQ = z.object({
+  codigo_interno: z.string().trim().min(2, 'El código interno va de 2 a 60 caracteres.').max(60, 'El código interno va de 2 a 60 caracteres.').optional(),
+  justificacion: z.string().trim().min(10, 'La justificación va de 10 a 1000 caracteres.').max(1000, 'La justificación va de 10 a 1000 caracteres.').optional(),
+  fecha_requerida: z.union([z.iso.date({ message: 'Revisa la fecha en que se necesita.' }), z.literal('')]).optional(),
+  lineas: z
+    .array(
+      z.object({
+        item: z.number().int().positive(),
+        cantidad: CANTIDAD.optional(),
+        material_id: z.guid('Elige cada insumo del catálogo de Almacén.').optional(),
+      }),
+    )
+    .max(100)
+    .optional(),
+})
+
+/**
+ * Corregir un requerimiento registrado: el código, la justificación, la fecha y
+ * la cantidad o el material de cada insumo, siempre con su motivo y su
+ * justificante. Lo corrige quien lleva su tipo, igual que en la base
+ * (`corregir_requerimiento` → `rq_exigir`), y a Almacén le llega el aviso.
+ */
+export async function corregirRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ['requerimientos.emitir', 'requerimientos.administracion'])) {
+    return { ok: false, error: 'Los requerimientos los corrige quien los registra: Requerimientos o la administradora.' }
+  }
+  const id = z.guid().safeParse(formulario.get('id'))
+  if (!id.success) return { ok: false, error: 'No se reconoció el requerimiento. Vuelve a cargar la pantalla.' }
+  const correccion = datosDeCorreccion(formulario)
+  if (!correccion.ok) return correccion
+  const cambios = CAMBIOS_RQ.safeParse(cambiosDelFormulario(formulario))
+  if (!cambios.success) return { ok: false, error: cambios.error.issues[0]?.message ?? 'Revisa lo que corriges.' }
+
+  const supabase = await createClient()
+  const c = correccion.datos
+  const { data, error } = await supabase.rpc('corregir_requerimiento', {
+    p_correccion: c.correccion_id,
+    p_id: id.data,
+    p_motivo: c.motivo,
+    p_justificante: c.justificante_ruta,
+    p_nombre: c.justificante_nombre,
+    p_cambios: cambios.data,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== id.data) return { ok: false, error: 'El requerimiento no se corrigió. Recarga la pantalla.' }
+
+  revalidatePath('/requerimientos')
+  revalidatePath('/requerimientos/atencion')
+  return { ok: true, mensaje: 'Requerimiento corregido, con su justificante. A Almacén le llegó el aviso.' }
 }

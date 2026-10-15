@@ -4,8 +4,10 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
+import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { GenerarCompraDelRequerimiento } from '@/app/(app)/compras/ordenes/formulario-directa'
 import { catalogoDeAlmacen, type MaterialParaConteo } from '@/lib/datos/atencion-materiales'
+import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { proveedoresParaCompra, type ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { cargarRequerimientos, catalogoParaRequerimiento, type MaterialParaRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { ESTADO_REQUERIMIENTO, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
@@ -51,6 +53,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   // solo se carga si hay alguno por revisar.
   const hayNuevos = recibe && requerimientos.some((r) => r.estado === 'POR_ATENDER' && r.lineas.some((l) => l.material_nuevo && !l.material_id))
   const catalogo: MaterialParaRequerimiento[] = hayNuevos ? await catalogoParaRequerimiento() : []
+  const correcciones = await correccionesDe('REQUERIMIENTO', requerimientos.map((r) => r.id))
 
   const meToca = requerimientos.filter((r) => leTocaAtender(r, { recibe, despacha, compraDe })).length
 
@@ -111,6 +114,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
                   compra={compraDe[tipoDeRequerimiento(r)]}
                   paraComprar={paraComprar}
                   catalogo={catalogo}
+                  correcciones={correcciones.get(r.id)}
                 />
               ))
             )}
@@ -135,6 +139,7 @@ function Fila({
   compra,
   paraComprar,
   catalogo,
+  correcciones,
 }: {
   rq: RequerimientoListado
   recibe: boolean
@@ -143,6 +148,7 @@ function Fila({
   paraComprar: ParaComprar | null
   /** El catálogo de Almacén para asociar los materiales nuevos al revisar el stock. */
   catalogo: MaterialParaRequerimiento[]
+  correcciones: CorreccionVista[] | undefined
 }) {
   const estado = ESTADO_REQUERIMIENTO[rq.estado]
   const administracion = rq.tipo === 'ADMINISTRACION'
@@ -177,6 +183,7 @@ function Fila({
           {rq.area} · <span className="tabular">{rq.codigo_interno}</span>
         </p>
         <p className="mt-1 max-w-sm text-xs text-texto-suave">{rq.justificacion}</p>
+        <HistorialDeCorrecciones correcciones={correcciones} />
       </TD>
       <TD className="align-top">
         <ul className="space-y-1 text-xs">

@@ -43,13 +43,19 @@ begin
   if tg_op = 'DELETE' then
     raise exception 'Un insumo del requerimiento no se borra: se anula el requerimiento.' using errcode = 'check_violation';
   end if;
+  -- La corrección con su justificante (`corregir_requerimiento`, migración
+  -- 20261016602000) es la única que cambia lo pedido; ella hace sus propias revisiones.
+  if current_setting('metalwork.corrigiendo', true) = 'requerimiento' and new.requerimiento_id = old.requerimiento_id
+     and new.item = old.item and new.material_nuevo = old.material_nuevo then
+    return new;
+  end if;
   if row(new.requerimiento_id, new.item, new.descripcion, new.cantidad, new.unidad_medida_id, new.categoria_id, new.material_nuevo)
      is distinct from row(old.requerimiento_id, old.item, old.descripcion, old.cantidad, old.unidad_medida_id, old.categoria_id, old.material_nuevo) then
-    raise exception 'Lo que se pidió en el requerimiento no cambia: si cambió, anúlalo y registra otro.'
+    raise exception 'Lo que se pidió en el requerimiento no cambia por aquí: corrígelo con su justificante.'
       using errcode = 'check_violation';
   end if;
   if new.material_id is distinct from old.material_id and not (old.material_id is null and old.material_nuevo) then
-    raise exception 'El material de este insumo ya quedó: si cambió, anula el requerimiento y registra otro.'
+    raise exception 'El material de este insumo ya quedó: si cambió, corrige el requerimiento con su justificante.'
       using errcode = 'check_violation';
   end if;
   if old.stock_revisado_en is not null

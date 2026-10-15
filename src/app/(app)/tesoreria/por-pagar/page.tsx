@@ -3,8 +3,10 @@ import { FileText, Receipt } from 'lucide-react'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { AvisosDelDetector, avisosDeFacturaRegistrada, InsigniaDelDetector } from '@/app/(app)/adquisiciones/detector'
 import { cuentasPorPagar, type CuentaPorPagar } from '@/lib/datos/adquisiciones'
+import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { TIPO_COMPROBANTE, TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
 import { CONTROL_FACTURA_COMPRA } from '@/lib/dominio/finanzas'
 import { fecha, hoyLima, moneda, periodo } from '@/lib/format'
@@ -35,6 +37,8 @@ export default async function PaginaPorPagar() {
   ])
   for (const r of [pendientes, planillas]) if (r.error) throw new Error(`No se pudieron cargar las cuentas por pagar: ${r.error.message}`)
   const hoy = hoyLima()
+  // Las correcciones de cada factura, con su justificante: Tesorería paga lo que quedó.
+  const correcciones = await correccionesDe('FACTURA_COMPRA', cuentas.flatMap((c) => (c.id ? [c.id] : [])))
   const porPagar = cuentas.filter((c) => Number(c.saldo) > 0)
   const pagadas = cuentas.filter((c) => Number(c.saldo) <= 0)
 
@@ -57,7 +61,7 @@ export default async function PaginaPorPagar() {
               <p className="mt-1 max-w-lg text-sm text-texto-suave">Aparecen cuando Contabilidad registra una factura de compra en Adquisiciones.</p>
             </div>
           ) : (
-            porPagar.map((c) => <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} />)
+            porPagar.map((c) => <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} />)
           )}
         </TarjetaCuerpo>
       </Tarjeta>
@@ -95,7 +99,7 @@ export default async function PaginaPorPagar() {
           <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm font-medium text-texto">Pagadas ({pagadas.length})</summary>
           <div className="space-y-3 border-t border-borde p-4">
             {pagadas.map((c) => (
-              <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} />
+              <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} />
             ))}
           </div>
         </details>
@@ -126,7 +130,17 @@ export default async function PaginaPorPagar() {
 }
 
 /** Una factura de compra: sus OC, el aviso de monto, lo pagado con cada voucher y el botón para pagar. */
-function Factura({ cuenta: c, paga, hoy }: { cuenta: CuentaPorPagar; paga: boolean; hoy: string }) {
+function Factura({
+  cuenta: c,
+  paga,
+  hoy,
+  correcciones,
+}: {
+  cuenta: CuentaPorPagar
+  paga: boolean
+  hoy: string
+  correcciones: CorreccionVista[] | undefined
+}) {
   const m = codigoMoneda(c.moneda)
   const saldo = Number(c.saldo)
   const control = c.control
@@ -163,6 +177,7 @@ function Factura({ cuenta: c, paga, hoy }: { cuenta: CuentaPorPagar; paga: boole
             </p>
           )}
           <AvisosDelDetector avisos={avisos} />
+          <HistorialDeCorrecciones correcciones={correcciones} />
           {c.url && (
             <a href={c.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 text-xs font-medium text-acento hover:underline sm:min-h-0">
               <FileText aria-hidden className="size-3.5" />

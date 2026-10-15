@@ -4,6 +4,8 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
+import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
+import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { catalogoDeAlmacen } from '@/lib/datos/atencion-materiales'
 import { cargarOrdenesCompra, type OrdenCompraListada } from '@/lib/datos/logistica'
 import { proveedoresParaCompra } from '@/lib/datos/proveedores'
@@ -30,6 +32,8 @@ export default async function PaginaOrdenesCompra() {
     emite ? proveedoresParaCompra() : Promise.resolve([]),
     emite ? catalogoDeAlmacen() : Promise.resolve([]),
   ])
+  const monedaDe = new Map(compras.map((c) => [c.id, c.moneda]))
+  const correcciones = await correccionesDe('ORDEN_COMPRA', compras.map((c) => c.id), (id) => monedaDe.get(id) ?? null)
   const sinComprobante = compras.filter((c) => !c.tiene_factura && c.aprobacion !== 'RECHAZADA').length
 
   return (
@@ -83,7 +87,7 @@ export default async function PaginaOrdenesCompra() {
                 }
               />
             ) : (
-              compras.map((c) => <FilaCompra key={c.id} compra={c} emite={emite} />)
+              compras.map((c) => <FilaCompra key={c.id} compra={c} emite={emite} correcciones={correcciones.get(c.id)} />)
             )}
           </tbody>
         </Tabla>
@@ -92,7 +96,15 @@ export default async function PaginaOrdenesCompra() {
   )
 }
 
-function FilaCompra({ compra: c, emite }: { compra: OrdenCompraListada; emite: boolean }) {
+function FilaCompra({
+  compra: c,
+  emite,
+  correcciones,
+}: {
+  compra: OrdenCompraListada
+  emite: boolean
+  correcciones: CorreccionVista[] | undefined
+}) {
   const origen = ORIGEN_COMPRA[c.origen]
   const situacion = situacionCompra(c)
   const para = [
@@ -125,6 +137,7 @@ function FilaCompra({ compra: c, emite }: { compra: OrdenCompraListada; emite: b
         {c.motivo && <p className="mt-1 text-xs text-texto-suave">Motivo: {c.motivo}</p>}
         {c.motivo_rechazo && <p className="mt-1 text-xs text-peligro">Rechazada: {c.motivo_rechazo}</p>}
         <p className="text-[11px] text-texto-suave md:hidden">Para {para || '—'}</p>
+        <HistorialDeCorrecciones correcciones={correcciones} />
       </TD>
       <TD className="hidden text-texto-suave md:table-cell">{para || '—'}</TD>
       <TD className="tabular text-right whitespace-nowrap">{moneda(c.monto, divisa(c.moneda))}</TD>
@@ -161,6 +174,7 @@ function FilaCompra({ compra: c, emite }: { compra: OrdenCompraListada; emite: b
               conFactura={c.con_factura}
               codigoInterno={c.codigo_interno}
               tieneComprobante={c.tiene_factura}
+              entregada={Boolean(c.entregado_almacen_en)}
               total={c.con_factura ? Math.round((c.monto + igvCompra(c.monto)) * 100) / 100 : c.monto}
               moneda={c.moneda}
             />

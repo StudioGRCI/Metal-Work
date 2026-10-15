@@ -133,6 +133,8 @@ export type Database = {
           orden_compra_id: string
           creado_en: string
           actualizado_en: string
+          quitada_en: string | null
+          quitada_por: string | null
         }
         Insert: {
           id?: string
@@ -140,6 +142,8 @@ export type Database = {
           orden_compra_id: string
           creado_en?: string
           actualizado_en?: string
+          quitada_en?: string | null
+          quitada_por?: string | null
         }
         Update: {
           id?: string
@@ -147,6 +151,8 @@ export type Database = {
           orden_compra_id?: string
           creado_en?: string
           actualizado_en?: string
+          quitada_en?: string | null
+          quitada_por?: string | null
         }
         Relationships: [
           {
@@ -161,6 +167,13 @@ export type Database = {
             columns: ["orden_compra_id"]
             isOneToOne: false
             referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "adquisiciones_ordenes_compra_quitada_por_fkey"
+            columns: ["quitada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -1087,6 +1100,65 @@ export type Database = {
           actualizado_en?: string
         }
         Relationships: []
+      }
+      correcciones: {
+        Row: {
+          id: string
+          documento: string
+          documento_id: string
+          numero: string
+          motivo: string
+          antes: Json
+          despues: Json
+          justificante_ruta: string
+          justificante_nombre: string
+          justificante_mime: string
+          justificante_tamano: number
+          corregido_por: string
+          corregido_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          documento: string
+          documento_id: string
+          numero: string
+          motivo: string
+          antes: Json
+          despues: Json
+          justificante_ruta: string
+          justificante_nombre: string
+          justificante_mime: string
+          justificante_tamano: number
+          corregido_por: string
+          corregido_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          documento?: string
+          documento_id?: string
+          numero?: string
+          motivo?: string
+          antes?: Json
+          despues?: Json
+          justificante_ruta?: string
+          justificante_nombre?: string
+          justificante_mime?: string
+          justificante_tamano?: number
+          corregido_por?: string
+          corregido_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "correcciones_corregido_por_fkey"
+            columns: ["corregido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       cotizaciones_pdf: {
         Row: {
@@ -10732,12 +10804,45 @@ export type Database = {
         }
         Returns: null
       }
+      corregir_factura_compra: {
+        Args: {
+          p_correccion: string | null
+          p_id: string | null
+          p_motivo: string | null
+          p_justificante: string | null
+          p_nombre: string | null
+          p_cambios: Json | null
+        }
+        Returns: string
+      }
+      corregir_orden_compra: {
+        Args: {
+          p_correccion: string | null
+          p_id: string | null
+          p_motivo: string | null
+          p_justificante: string | null
+          p_nombre: string | null
+          p_cambios: Json | null
+        }
+        Returns: string
+      }
       corregir_orden_servicio: {
         Args: {
           p_id: string | null
           p_codigo_interno: string | null
           p_detraccion: string | null
           p_motivo_detraccion: string | null
+        }
+        Returns: string
+      }
+      corregir_requerimiento: {
+        Args: {
+          p_correccion: string | null
+          p_id: string | null
+          p_motivo: string | null
+          p_justificante: string | null
+          p_nombre: string | null
+          p_cambios: Json | null
         }
         Returns: string
       }
@@ -12079,6 +12184,20 @@ export type Database = {
           p_motivo: string | null
         }
         Returns: string
+      }
+      registrar_correccion: {
+        Args: {
+          p_id: string | null
+          p_documento: string | null
+          p_documento_id: string | null
+          p_numero: string | null
+          p_motivo: string | null
+          p_ruta: string | null
+          p_nombre: string | null
+          p_antes: Json | null
+          p_despues: Json | null
+        }
+        Returns: null
       }
       registrar_evento_ot: {
         Args: {

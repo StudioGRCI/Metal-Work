@@ -1,0 +1,12 @@
+-- La OC se corrige solo con su justificante (DKS, 15/10: «todo se puede corregir
+-- pero siempre debe anexar el justificante de la corrección»).
+--
+-- Hasta la 20261016602000, Logística corregía si la compra venía con factura y
+-- su código interno con `fijar_datos_compra`, sin motivo ni justificante. Desde
+-- esa migración la pantalla corrige con `corregir_orden_compra`, que pide los
+-- dos y deja la corrección en el historial. Esta migración cierra la vía vieja.
+--
+-- Va aparte y se aplica DESPUÉS de que la pantalla nueva esté desplegada: si se
+-- cerrara antes, el botón «Corregir» de la versión anterior fallaría mientras
+-- tanto. La función queda (no se borra nada); solo deja de poder llamarla la gente.
+revoke all on function public.fijar_datos_compra(uuid, boolean, text) from public, anon, authenticated;
