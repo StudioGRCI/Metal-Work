@@ -163,7 +163,7 @@ const ruta = (pagina) => new URL(pagina.url()).pathname
   const { pagina, contexto } = await entrar('tesoreria@banco.test')
   const items = await menu(pagina)
   console.log('     menú de Tesorería:', items.join(' · '))
-  const orden = ['Adquisiciones', 'Cuentas por cobrar', 'Cuentas por pagar', 'Pagos de servicio', 'Planilla diaria', 'Tipo de cambio']
+  const orden = ['Adquisiciones', 'Cuentas por cobrar', 'Cuentas por pagar', 'Pagos de servicio', 'Recibos por honorarios', 'Planilla diaria', 'Tipo de cambio']
   comprobar(orden.every((t, i) => items.indexOf(t) === i + 1), 'el menú de Tesorería va Adquisiciones, por cobrar, por pagar, pagos de servicio')
   comprobar(items.includes('Cotización') && !items.includes('Órdenes de trabajo'), 'con la Cotización en Consultas, y sin la OT')
   const tablero = await franja(pagina)
