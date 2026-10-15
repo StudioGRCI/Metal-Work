@@ -315,8 +315,9 @@ export const NAVEGACION = [
         disponible: true,
       },
       // Lo ven también Almacén, Costos y Supervisión (`proveedores.ver`), pero
-      // en el menú solo de quienes llevan el padrón: Logística, Contabilidad y
-      // Gerencia.
+      // en el menú solo de quienes llevan el padrón: Logística y Contabilidad.
+      // Gerencia también lo edita, pero desde el 2026-10-15 no lo tiene en su
+      // menú: lo abre por su dirección.
       {
         titulo: 'Proveedores',
         ruta: '/proveedores',
@@ -484,6 +485,8 @@ const CATALOGO: readonly ItemNavegacion[] = GRUPOS.flatMap((g) => g.items)
 type RutaDeModulo = (typeof NAVEGACION)[number]['items'][number]['ruta']
 
 type MenuDePuesto = {
+  /** Lo que va arriba de todo, junto al dashboard y en su mismo grupo. */
+  principal?: readonly RutaDeModulo[]
   grupos: readonly { titulo: string; rutas: readonly RutaDeModulo[] }[]
   /** Las pestañas de abajo en el teléfono, en orden: van las cuatro primeras que la persona ve. */
   telefono: readonly RutaDeModulo[]
@@ -575,18 +578,20 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // Cerrado desde #28: lo que Gerencia decide y poco más. Lo demás que su
   // permiso le deja ver (Requerimientos, el kardex, Personal) lo abre desde el
   // enlace del aviso o por su dirección.
-  // Arriba lo que espera su visto, en el orden del circuito: la cotización, las
-  // compras y los reportes diarios. Después el seguimiento de cada trabajo, por
-  // código interno antes que por OT: el código es desde el 2026-10-15 el centro
-  // de todo lo que se hace para una unidad.
+  // Como lo pidió Gerencia el 2026-10-15: Códigos internos va segundo, justo
+  // después del dashboard (el código es el centro de todo lo que se hace para
+  // una unidad; la OT ya no está). Después lo que espera su visto, en el orden
+  // del circuito, y lo que consulta de Tesorería: lo que se cobra y lo que se
+  // paga, sin registrar cobros ni pagos. La planilla diaria, las horas extras,
+  // los subcontratos, las tardanzas, las observaciones y los proveedores
+  // salieron de su menú ese día: su permiso sigue, y los abre por su dirección.
   GERENTE: {
+    principal: ['/codigos-internos'],
     grupos: [
       { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'] },
-      // Sin la OT desde el 2026-10-15: cada trabajo lo ve en Códigos internos.
-      { titulo: 'Seguimiento', rutas: ['/codigos-internos'] },
-      { titulo: 'Consultas', rutas: ['/planilla-diaria', '/rrhh/horas-extras', '/subcontratos', '/rrhh/tardanzas', '/rrhh/observaciones', '/proveedores'] },
+      { titulo: 'Consultas', rutas: ['/tesoreria/por-cobrar', '/tesoreria/por-pagar'] },
     ],
-    telefono: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/codigos-internos'],
+    telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
   },
   // Cerrado desde #28, como Gerencia.
   // Sus cuatro, en el orden en que Gerencia las nombró el 2026-10-14:
@@ -651,7 +656,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // Administración lee clientes, unidades, catálogos y costos porque carga la
   // OT y ve su costo; pero la valorización es de Logística (la pantalla
   // también la rechaza) y Unidades y Carrocerías las lleva Diseño. De RR. HH.
-  // le toca el resumen de tardanzas, como a Gerencia: la ficha y la asistencia
+  // le tocan las tardanzas y las observaciones: la ficha y la asistencia
   // las abre por su dirección, y así no tiene dos «Personal» en el menú.
   // Desde el 2026-10-15 lleva el requerimiento de Administración (lo de
   // oficina): lo registra, Almacén lo revisa y ella hace la OC de lo que falta.
@@ -743,7 +748,7 @@ function lePermite(item: ItemNavegacion, permisos: readonly string[], esAdmin: b
 export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo: string): GrupoNavegacion[] {
   const propio = esAdmin ? undefined : MENU_POR_PUESTO[rolCodigo]
   const grupos: GrupoNavegacion[] = propio
-    ? [{ titulo: 'Principal', rutas: ['/'] }, ...propio.grupos].map((g) => ({
+    ? [{ titulo: 'Principal', rutas: ['/', ...(propio.principal ?? [])] }, ...propio.grupos].map((g) => ({
         titulo: g.titulo,
         // Una pantalla compartida está en el catálogo una vez por cada área que
         // la usa, con el permiso de esa área: vale la que esta persona ve.
