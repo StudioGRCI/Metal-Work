@@ -343,6 +343,56 @@ export type Database = {
         }
         Relationships: []
       }
+      cajas: {
+        Row: {
+          id: string
+          nombre: string
+          tipo: string
+          banco: string | null
+          moneda: string
+          saldo_inicial: number
+          fecha_inicio: string
+          activa: boolean
+          creado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          nombre: string
+          tipo: string
+          banco?: string | null
+          moneda: string
+          saldo_inicial: number
+          fecha_inicio: string
+          activa?: boolean
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          nombre?: string
+          tipo?: string
+          banco?: string | null
+          moneda?: string
+          saldo_inicial?: number
+          fecha_inicio?: string
+          activa?: boolean
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cajas_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       catalogo_almacen_fuente: {
         Row: {
           fila_excel: number
@@ -430,6 +480,83 @@ export type Database = {
             columns: ["categoria_padre_id"]
             isOneToOne: false
             referencedRelation: "categorias_material"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      cierres_caja: {
+        Row: {
+          id: string
+          caja_id: string
+          fecha: string
+          saldo_inicial: number
+          ingresos: number
+          egresos: number
+          saldo_final: number
+          saldo_banco: number
+          diferencia: number | null
+          observaciones: string | null
+          cerrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          caja_id: string
+          fecha: string
+          saldo_inicial: number
+          ingresos: number
+          egresos: number
+          saldo_final: number
+          saldo_banco: number
+          observaciones?: string | null
+          cerrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          caja_id?: string
+          fecha?: string
+          saldo_inicial?: number
+          ingresos?: number
+          egresos?: number
+          saldo_final?: number
+          saldo_banco?: number
+          observaciones?: string | null
+          cerrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cierres_caja_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cierres_caja_caja_id_fkey"
+            columns: ["caja_id"]
+            isOneToOne: false
+            referencedRelation: "cajas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cierres_caja_cerrado_por_fkey"
+            columns: ["cerrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -2975,6 +3102,88 @@ export type Database = {
             columns: ["unidad_medida_id"]
             isOneToOne: false
             referencedRelation: "unidades_medida"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      movimientos_caja: {
+        Row: {
+          id: string
+          caja_id: string
+          fecha: string
+          tipo: string
+          monto: number
+          descripcion: string
+          codigo_interno: string | null
+          operacion: string | null
+          tipo_cambio: number | null
+          origen: string
+          origen_id: string | null
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          caja_id: string
+          fecha: string
+          tipo: string
+          monto: number
+          descripcion: string
+          codigo_interno?: string | null
+          operacion?: string | null
+          tipo_cambio?: number | null
+          origen?: string
+          origen_id?: string | null
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          caja_id?: string
+          fecha?: string
+          tipo?: string
+          monto?: number
+          descripcion?: string
+          codigo_interno?: string | null
+          operacion?: string | null
+          tipo_cambio?: number | null
+          origen?: string
+          origen_id?: string | null
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "movimientos_caja_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_caja_caja_id_fkey"
+            columns: ["caja_id"]
+            isOneToOne: false
+            referencedRelation: "cajas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_caja_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -10057,6 +10266,13 @@ export type Database = {
         }
         Returns: string
       }
+      anular_movimiento_caja: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       anular_pago_factura: {
         Args: {
           p_id: string | null
@@ -10261,6 +10477,68 @@ export type Database = {
         }
         Returns: null
       }
+      caja_codigos_internos: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          codigo: string | null
+        }[]
+      }
+      caja_del_dia: {
+        Args: {
+          p_fecha: string | null
+        }
+        Returns: {
+          caja_id: string | null
+          nombre: string | null
+          tipo: string | null
+          banco: string | null
+          moneda: string | null
+          activa: boolean | null
+          fecha_inicio: string | null
+          saldo_alta: number | null
+          saldo_inicial: number | null
+          ingresos: number | null
+          egresos: number | null
+          saldo_final: number | null
+          movimientos: number | null
+          cierre_id: string | null
+          saldo_banco: number | null
+          diferencia: number | null
+          observaciones: string | null
+          cerrado_en: string | null
+          cerrado_por: string | null
+          ultimo_cierre: string | null
+          primer_dia_sin_cerrar: string | null
+          con_movimientos: boolean | null
+        }[]
+      }
+      caja_dia_abierto: {
+        Args: {
+          p_caja: string | null
+          p_fecha: string | null
+        }
+        Returns: string
+      }
+      caja_saldo_al_empezar: {
+        Args: {
+          p_caja: string | null
+          p_fecha: string | null
+        }
+        Returns: number
+      }
+      caja_texto_fecha: {
+        Args: {
+          p_fecha: string | null
+        }
+        Returns: string
+      }
+      caja_texto_monto: {
+        Args: {
+          p_monto: number | null
+          p_moneda: string | null
+        }
+        Returns: string
+      }
       cambiar_clave_personal: {
         Args: {
           p_usuario: string | null
@@ -10313,6 +10591,16 @@ export type Database = {
         }
         Returns: string
       }
+      cerrar_dia_caja: {
+        Args: {
+          p_id: string | null
+          p_caja_id: string | null
+          p_fecha: string | null
+          p_saldo_banco: number | null
+          p_observaciones: string | null
+        }
+        Returns: string
+      }
       cerrar_planilla: {
         Args: {
           p_planilla: string | null
@@ -10325,6 +10613,22 @@ export type Database = {
           p_ruta: string | null
         }
         Returns: string
+      }
+      cierres_caja_reabiertos: {
+        Args: {
+          p_fecha: string | null
+        }
+        Returns: {
+          id: string | null
+          caja_id: string | null
+          saldo_final: number | null
+          saldo_banco: number | null
+          cerrado_por: string | null
+          creado_en: string | null
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+        }[]
       }
       cifrar_clave: {
         Args: {
@@ -11495,6 +11799,19 @@ export type Database = {
         }
         Returns: null
       }
+      guardar_caja: {
+        Args: {
+          p_id: string | null
+          p_nombre: string | null
+          p_tipo: string | null
+          p_banco: string | null
+          p_moneda: string | null
+          p_saldo_inicial: number | null
+          p_fecha_inicio: string | null
+          p_activa: boolean | null
+        }
+        Returns: string
+      }
       guardar_cuentas_proveedor: {
         Args: {
           p_proveedor: string | null
@@ -11793,6 +12110,29 @@ export type Database = {
           p_arriba: boolean | null
         }
         Returns: string
+      }
+      movimientos_caja_del_dia: {
+        Args: {
+          p_fecha: string | null
+        }
+        Returns: {
+          id: string | null
+          caja_id: string | null
+          tipo: string | null
+          monto: number | null
+          descripcion: string | null
+          codigo_interno: string | null
+          operacion: string | null
+          tipo_cambio: number | null
+          origen: string | null
+          origen_id: string | null
+          otra_cuenta: string | null
+          registrado_por: string | null
+          creado_en: string | null
+          anulado_en: string | null
+          anulado_por: string | null
+          motivo_anulacion: string | null
+        }[]
       }
       nombre_de_material: {
         Args: {
@@ -12251,6 +12591,13 @@ export type Database = {
         }
         Returns: string
       }
+      reabrir_dia_caja: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       recalcular_etapa_desde_actividades: {
         Args: {
           p_etapa_id: string | null
@@ -12434,6 +12781,20 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_movimiento_caja: {
+        Args: {
+          p_id: string | null
+          p_caja_id: string | null
+          p_fecha: string | null
+          p_tipo: string | null
+          p_monto: number | null
+          p_descripcion: string | null
+          p_codigo_interno: string | null
+          p_operacion: string | null
+          p_tipo_cambio: number | null
+        }
+        Returns: string
+      }
       registrar_pago_factura: {
         Args: {
           p_id: string | null
@@ -12608,6 +12969,19 @@ export type Database = {
           p_fecha_inicio: string | null
           p_fecha_fin: string | null
           p_area: string | null
+        }
+        Returns: string
+      }
+      registrar_transferencia_caja: {
+        Args: {
+          p_id: string | null
+          p_origen: string | null
+          p_destino: string | null
+          p_fecha: string | null
+          p_monto: number | null
+          p_monto_destino: number | null
+          p_descripcion: string | null
+          p_operacion: string | null
         }
         Returns: string
       }

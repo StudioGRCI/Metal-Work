@@ -20,6 +20,7 @@ import {
   HandCoins,
   Handshake,
   Hash,
+  Landmark,
   Layers,
   LayoutDashboard,
   ListChecks,
@@ -445,6 +446,16 @@ export const NAVEGACION = [
         descripcion: 'Pagar los recibos de los subcontratos a la cuenta del subcontratista, con su voucher',
         disponible: true,
       },
+      // Donde termina cada pago y cada cobro: el saldo de cada cuenta día por día,
+      // con el cierre contra el estado de cuenta (migración 20261017200000).
+      {
+        titulo: 'Caja diaria',
+        ruta: '/tesoreria/caja-diaria',
+        icono: Landmark,
+        permiso: 'tesoreria.caja',
+        descripcion: 'El saldo de cada cuenta día por día: ingresos, egresos y el cierre contra el estado de cuenta',
+        disponible: true,
+      },
       { titulo: 'Gastos del mes', ruta: '/costos/gastos-generales', icono: Wallet, permiso: ['costos.gastos_generales', 'costos.ver'], descripcion: 'Servicios del local y gastos de operación', disponible: true },
       { titulo: 'Tipo de cambio', ruta: '/tesoreria/tipo-de-cambio', icono: ArrowLeftRight, permiso: 'tesoreria.tipo_cambio', descripcion: 'El cambio del dólar de cada día, para el costo en soles', disponible: true },
     ],
@@ -602,7 +613,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
   },
   // Cerrado desde #28, como Gerencia.
-  // Sus cuatro, en el orden en que Gerencia las nombró el 2026-10-14:
+  // Primero la caja diaria, con la que abre y cierra cada día (2026-10-16).
+  // Después sus cuatro, en el orden en que Gerencia las nombró el 2026-10-14:
   // Adquisiciones, Cuentas por cobrar, Cuentas por pagar y Pagos de servicio.
   // Después los otros pagos que esperan por ella (los recibos por honorarios de
   // los subcontratos y la planilla diaria) y el tipo de cambio. Consulta la
@@ -612,6 +624,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       {
         titulo: 'Tesorería',
         rutas: [
+          '/tesoreria/caja-diaria',
           '/adquisiciones',
           '/tesoreria/por-cobrar',
           '/tesoreria/por-pagar',
@@ -860,6 +873,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/proveedores', corto: 'Proveedores' },
   { ruta: '/subcontratos', corto: 'Subcontratos' },
   { ruta: '/tesoreria/recibos-por-honorarios', corto: 'Honorarios' },
+  { ruta: '/tesoreria/caja-diaria', corto: 'Caja' },
   // Al final: así no le quita la pestaña a nadie que no tenga menú propio.
   { ruta: '/almacen/stock', corto: 'Stock' },
 ]
