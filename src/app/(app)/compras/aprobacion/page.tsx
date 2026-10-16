@@ -130,6 +130,8 @@ export default async function PaginaAprobacionCompras() {
 
 /** Para qué es: la OT y su unidad, o el almacén en la compra directa. */
 function destino(c: CompraParaAprobar) {
+  // La que compra insumos de RQ va al código interno de cada uno.
+  if (c.requerimientos.length > 0) return [c.codigos.join(', '), c.requerimientos.join(', ')].filter(Boolean).join(' · ')
   if (c.origen === 'DIRECTA') return 'Para el almacén'
   const partes = [c.codigo_interno, c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, ...c.unidades].filter(Boolean)
   return partes.length ? partes.join(' · ') : c.tipo === 'OS' ? 'Sin OT' : 'OT —'
@@ -137,7 +139,8 @@ function destino(c: CompraParaAprobar) {
 
 function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; aprueba: boolean }) {
   const enDolares = c.moneda === 'USD'
-  const origen = ORIGEN_COMPRA[c.origen]
+  const deRq = c.requerimientos.length > 0
+  const origen = ORIGEN_COMPRA[c.origen === 'DIRECTA' && deRq ? 'RQ' : c.origen]
   return (
     <Tarjeta>
       <TarjetaCabecera
@@ -161,7 +164,7 @@ function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; a
       <TarjetaCuerpo className="space-y-4">
         {c.motivo && (
           <p className="text-sm text-texto">
-            <span className="text-xs text-texto-suave">{c.tipo === 'OS' ? 'Qué se hace: ' : 'Por qué sin requerimiento: '}</span>
+            <span className="text-xs text-texto-suave">{c.tipo === 'OS' ? 'Qué se hace: ' : deRq ? 'Para qué: ' : 'Por qué sin requerimiento: '}</span>
             {c.motivo}
           </p>
         )}
@@ -205,11 +208,11 @@ function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; a
                     <p className="text-texto">{l.material}</p>
                     <p className="text-[11px] text-texto-suave">
                       {l.material_codigo}
-                      <span className="sm:hidden"> · {l.orden ? `OT ${l.orden}` : 'Almacén'}</span>
+                      <span className="sm:hidden"> · {l.orden ? `OT ${l.orden}` : deRq ? 'De RQ' : 'Almacén'}</span>
                     </p>
                   </TD>
                   <TD className="hidden text-texto-suave sm:table-cell">
-                    {l.orden ?? 'Almacén'}
+                    {l.orden ?? (deRq ? '—' : 'Almacén')}
                     {l.area && <p className="text-[11px]">{NOMBRE_AREA[l.area] ?? l.area}</p>}
                   </TD>
                   <TD className="tabular text-right whitespace-nowrap">

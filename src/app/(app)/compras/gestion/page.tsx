@@ -128,7 +128,7 @@ function TarjetaGestion({ compra: c, quien, cuantas }: { compra: CompraParaRecoj
         titulo={titulo}
         descripcion={[
           c.proveedor_documento ? `RUC ${c.proveedor_documento}` : null,
-          c.codigo_interno ? `Para ${c.codigo_interno}` : null,
+          c.codigo_interno ? `Para ${c.codigo_interno}` : c.codigos.length ? `Para ${c.codigos.join(', ')}` : null,
           c.requerimientos.length ? c.requerimientos.join(', ') : c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null,
           c.pedido_en ? `Aprobada ${fecha(c.pedido_en)}` : null,
         ]

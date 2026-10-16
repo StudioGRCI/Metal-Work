@@ -3,7 +3,13 @@
 import { FileUp } from 'lucide-react'
 import { useState } from 'react'
 
-import { AvisoFacturaDeLaOrden, useDetectorDeFactura } from '@/app/(app)/compras/ordenes/detector-oc'
+import {
+  AvisoFacturaDeLaOrden,
+  CamposDeLaFactura,
+  faltaEnLaFactura,
+  useDatosDeFactura,
+  useDetectorDeFactura,
+} from '@/app/(app)/compras/ordenes/detector-oc'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { useEnvio } from '@/lib/envio'
@@ -31,6 +37,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
   const [id, setId] = useState(solicitudId)
   const [tipo, setTipo] = useState<string>(tipoInicial ?? '')
   const detector = useDetectorDeFactura()
+  const factura = useDatosDeFactura()
   const [mensaje, setMensaje] = useState<string | null>(null)
   const { alEnviar, enviando, error } = useEnvio(async (_previo, datos) => {
     setMensaje(null)
@@ -38,6 +45,9 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     if (!(archivo instanceof File) || archivo.size < 1 || archivo.size > 20 * 1024 * 1024 || await archivo.slice(0, 5).text() !== '%PDF-') {
       return { ok: false, error: 'Selecciona un PDF válido de hasta 20 MB.' }
     }
+    // El número y la fecha se revisan antes de subir el PDF, no después.
+    const falta = tipo === 'FACTURA' ? faltaEnLaFactura(factura.numero, factura.fecha) : null
+    if (falta) return { ok: false, error: falta }
     datos.delete('archivo')
     datos.set('nombre_archivo', archivo.name.trim().slice(0, 200))
     return subirArchivoPrivado({
@@ -47,6 +57,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
   }, (r) => {
     setMensaje(r.mensaje ?? 'Documento adjuntado.')
     setId(crypto.randomUUID())
+    factura.vaciar()
     void detector.leer(undefined)
   })
   return <form key={id} onSubmit={alEnviar} className="grid min-w-0 gap-4 rounded-xl border border-borde bg-superficie p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto] sm:items-end">
@@ -60,16 +71,21 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     </Campo>
     <Campo etiqueta="Documento PDF" htmlFor={`archivo-compra-${ordenCompraId}`} ayuda="Hasta 20 MB. Se conserva en la compra y queda disponible para Contabilidad y Tesorería.">
       <Entrada id={`archivo-compra-${ordenCompraId}`} name="archivo" type="file" accept="application/pdf,.pdf" required disabled={enviando}
-        onChange={(e) => void detector.leer(e.target.files?.[0])} />
+        onChange={(e) => void detector.leer(e.target.files?.[0]).then(factura.completar)} />
     </Campo>
     <Boton type="submit" variante="secundario" tamano="sm" cargando={enviando}>
       <FileUp aria-hidden className="size-4" />Adjuntar
     </Boton>
     {tipo === 'FACTURA' && (
-      <div className="sm:col-span-3">
-        <AvisoFacturaDeLaOrden lectura={detector.lectura} leyendo={detector.leyendo} total={orden?.total ?? null}
-          moneda={orden?.moneda ?? 'PEN'} numero={orden?.numero} />
-      </div>
+      <>
+        <div className="grid gap-4 sm:col-span-3 sm:grid-cols-2">
+          <CamposDeLaFactura id={`factura-compra-${ordenCompraId}`} datos={factura} requerido disabled={enviando} />
+        </div>
+        <div className="sm:col-span-3">
+          <AvisoFacturaDeLaOrden lectura={detector.lectura} leyendo={detector.leyendo} total={orden?.total ?? null}
+            moneda={orden?.moneda ?? 'PEN'} numero={orden?.numero} parcialPosible />
+        </div>
+      </>
     )}
     {error && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
     {mensaje && <p role="status" className="text-xs text-exito sm:col-span-3">{mensaje}</p>}

@@ -18,34 +18,50 @@ import { cantidad as formatoCantidad, moneda as formatoMoneda } from '@/lib/form
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 
 import { SelectorProveedor } from '../selector-proveedor'
-import { emitirCompraDelRequerimiento, emitirCompraDirecta } from './acciones'
-import { AvisoFacturaDeLaOrden, useDetectorDeFactura } from './detector-oc'
+import { emitirCompraDeInsumos, emitirCompraDirecta } from './acciones'
+import { AvisoFacturaDeLaOrden, CamposDeLaFactura, faltaEnLaFactura, useDatosDeFactura, useDetectorDeFactura } from './detector-oc'
 
-type Linea = { clave: string; material_id: string; cantidad: string; precio: string }
+/** Una línea de la orden: un material, y los insumos de RQ que compra (vacío en la directa). */
+type Linea = { clave: string; material_id: string; cantidad: string; precio: string; insumos: InsumoParaCompra[] }
 
-/** El requerimiento del que nace la OC: lo que el formulario muestra y los insumos que ofrece marcar. */
-export type RequerimientoParaCompra = {
+/** Un insumo de un RQ que espera su compra: lo que falta de él, y de qué RQ y código interno es. */
+export type InsumoParaCompra = {
+  /** El insumo (`requerimiento_lineas.id`). */
   id: string
-  numero: string
+  requerimiento_id: string
+  requerimiento: string
   area: string
   codigo_interno: string
-  justificacion: string
-  lineas: {
-    item: number
-    descripcion: string
-    cantidad: number
-    unidad: string
-    orden_compra: string | null
-    compra_rechazada: boolean
-    /** Cuánto tenía Almacén al revisarlo; vacío si no lo revisó. Lo que tiene completo no se compra. */
-    en_stock: number | null
-    /** El material del catálogo de Almacén con que se pidió: la orden lo trae puesto. */
-    material_id: string | null
-  }[]
+  descripcion: string
+  /** Lo que falta: lo pedido menos lo que Almacén tenía. */
+  falta: number
+  unidad: string
+  /** El material del catálogo de Almacén con que se pidió: la línea de la orden lo trae puesto. */
+  material_id: string | null
 }
 
 function lineaVacia(): Linea {
-  return { clave: crypto.randomUUID(), material_id: '', cantidad: '', precio: '' }
+  return { clave: crypto.randomUUID(), material_id: '', cantidad: '', precio: '', insumos: [] }
+}
+
+const redondeo = (n: number) => Math.round(n * 1000) / 1000
+
+/**
+ * Las líneas de la orden que junta insumos: una por material, con lo que falta
+ * de él en cada RQ sumado. El insumo sin material del catálogo va en su propia
+ * línea, para que se elija qué se compra.
+ */
+function lineasDeInsumos(insumos: InsumoParaCompra[], delCatalogo: Set<string>): Linea[] {
+  const porMaterial = new Map<string, Linea>()
+  for (const i of insumos) {
+    const material = i.material_id && delCatalogo.has(i.material_id) ? i.material_id : ''
+    const clave = material || `sin-material-${i.id}`
+    const linea = porMaterial.get(clave) ?? { ...lineaVacia(), material_id: material }
+    linea.insumos = [...linea.insumos, i]
+    linea.cantidad = String(redondeo(linea.insumos.reduce((suma, x) => suma + x.falta, 0)))
+    porMaterial.set(clave, linea)
+  }
+  return [...porMaterial.values()]
 }
 
 async function esPdf(archivo: File) {
@@ -113,61 +129,63 @@ export function NuevaCompraDirecta({
 }
 
 /**
- * «Generar OC» desde un requerimiento al que Almacén le encontró faltantes: el
- * mismo formulario de la directa, con el código interno y el motivo tomados del
- * RQ y la lista de insumos que esta orden cubre. Solo se ofrece lo que falta:
- * lo que Almacén tiene completo no se compra, y de lo que tenía en parte se
- * compra el resto.
+ * «Generar OC» con los insumos marcados en «Por comprar»: de uno o de varios RQ
+ * del mismo tipo, para un proveedor. El mismo formulario de la directa, con una
+ * línea por material y lo que falta de él ya puesto: queda el precio. Cada
+ * insumo sigue con su RQ y su código interno; el motivo lo pone la base.
  */
-export function GenerarCompraDelRequerimiento({
-  requerimiento,
+export function GenerarCompraDeInsumos({
+  insumos,
   proveedores,
   materiales,
   puedeRegistrarProveedor,
+  alEmitir,
 }: {
-  requerimiento: RequerimientoParaCompra
+  insumos: InsumoParaCompra[]
   proveedores: ProveedorParaCompra[]
   materiales: MaterialParaConteo[]
   puedeRegistrarProveedor: boolean
+  /** Al emitirla: la lista desmarca lo que ya va en la orden. */
+  alEmitir: (mensaje: string) => void
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
-  const [aviso, setAviso] = useState<string | null>(null)
+  const rqs = new Set(insumos.map((i) => i.requerimiento_id)).size
   return (
     <>
       <Boton
         type="button"
-        tamano="sm"
+        disabled={insumos.length === 0}
         onClick={() => {
-          setAviso(null)
           setVez((v) => v + 1)
           setAbierta(true)
         }}
       >
         <ShoppingCart aria-hidden className="size-4" />
         Generar OC
+        {insumos.length > 0 && (
+          <span className="tabular text-xs font-normal">
+            · {insumos.length} {insumos.length === 1 ? 'insumo' : 'insumos'}
+            {rqs > 1 ? ` de ${rqs} RQ` : ''}
+          </span>
+        )}
       </Boton>
-      {aviso && (
-        <p role="status" className="max-w-xs text-right text-xs text-exito">
-          {aviso}
-        </p>
-      )}
       <Ventana
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
-        titulo={`Generar OC del ${requerimiento.numero}`}
-        descripcion="Marca qué insumos del requerimiento cubre esta orden y elige del catálogo lo que se compra. Gerencia la aprueba y el conductor la deja en almacén; Almacén la recepciona y el requerimiento queda listo."
+        titulo={rqs > 1 ? `Generar OC de ${rqs} requerimientos` : `Generar OC del ${insumos[0]?.requerimiento ?? 'requerimiento'}`}
+        descripcion="Una línea por material, con lo que falta de él en cada requerimiento. Gerencia la aprueba y el conductor la deja en almacén; Almacén la recepciona y cada requerimiento queda listo."
         ancho="xl"
       >
         <FormularioCompraDirecta
           key={vez}
-          requerimiento={requerimiento}
+          insumos={insumos}
           proveedores={proveedores}
           materiales={materiales}
           puedeRegistrarProveedor={puedeRegistrarProveedor}
           alTerminar={(mensaje) => {
             setAbierta(false)
-            setAviso(mensaje)
+            alEmitir(mensaje)
           }}
         />
       </Ventana>
@@ -176,13 +194,14 @@ export function GenerarCompraDelRequerimiento({
 }
 
 function FormularioCompraDirecta({
-  requerimiento,
+  insumos,
   proveedores,
   materiales,
   puedeRegistrarProveedor,
   alTerminar,
 }: {
-  requerimiento?: RequerimientoParaCompra
+  /** Los insumos de RQ que compra la orden; sin ellos, es la directa. */
+  insumos?: InsumoParaCompra[]
   proveedores: ProveedorParaCompra[]
   materiales: MaterialParaConteo[]
   puedeRegistrarProveedor: boolean
@@ -197,19 +216,17 @@ function FormularioCompraDirecta({
   const [dias, setDias] = useState(0)
   const [divisa, setDivisa] = useState<'PEN' | 'USD'>('PEN')
   const [conFactura, setConFactura] = useState(true)
-  // La orden de un requerimiento trae puestos los materiales que faltan, con lo
-  // que falta de cada uno: solo queda el precio.
-  const [lineas, setLineas] = useState<Linea[]>(() => {
-    const delCatalogo = new Set(materiales.map((m) => m.id))
-    const porComprar = (requerimiento?.lineas ?? []).flatMap((l) => {
-      const falta = l.cantidad - (l.en_stock ?? 0)
-      const ocupado = falta <= 0 || (Boolean(l.orden_compra) && !l.compra_rechazada)
-      return !ocupado && l.material_id && delCatalogo.has(l.material_id)
-        ? [{ ...lineaVacia(), material_id: l.material_id, cantidad: String(Math.round(falta * 1000) / 1000) }]
-        : []
-    })
-    return porComprar.length > 0 ? porComprar : [lineaVacia()]
-  })
+  // La orden de insumos trae puestos los materiales que faltan, con lo que
+  // falta de cada uno: solo queda el precio.
+  const [lineas, setLineas] = useState<Linea[]>(() =>
+    insumos && insumos.length > 0 ? lineasDeInsumos(insumos, new Set(materiales.map((m) => m.id))) : [lineaVacia()],
+  )
+  const deInsumos = Boolean(insumos)
+  const requerimientos = useMemo(() => {
+    const vistos = new Map<string, InsumoParaCompra>()
+    for (const i of insumos ?? []) if (!vistos.has(i.requerimiento_id)) vistos.set(i.requerimiento_id, i)
+    return [...vistos.values()]
+  }, [insumos])
 
   const opcionesMaterial = useMemo(
     () => materiales.map((m) => ({ valor: m.id, etiqueta: m.descripcion, detalle: [m.codigo, m.unidad].filter(Boolean).join(' · ') })),
@@ -218,6 +235,9 @@ function FormularioCompraDirecta({
   const unidadDe = useMemo(() => new Map(materiales.map((m) => [m.id, m.unidad])), [materiales])
   const total = lineas.reduce((suma, l) => suma + (Number(l.cantidad) || 0) * (Number(l.precio) || 0), 0)
   const detector = useDetectorDeFactura()
+  const datosFactura = useDatosDeFactura()
+  // Con la factura elegida, su número y su fecha son obligatorios.
+  const [hayFactura, setHayFactura] = useState(false)
 
   function elegirProveedor(p: ProveedorParaCompra | undefined) {
     setProveedorId(p?.id ?? '')
@@ -234,16 +254,28 @@ function FormularioCompraDirecta({
     async (_previo, datos) => {
       const factura = datos.get('factura')
       datos.delete('factura')
+      datos.delete('factura_numero')
+      datos.delete('factura_fecha')
       const nombre = conFactura ? 'La factura' : 'El comprobante'
       const adjuntando = factura instanceof File && factura.size > 0
       if (adjuntando && !(await esPdf(factura))) {
         return { ok: false, error: `${nombre} debe ser un PDF de hasta 20 MB. Quítalo para adjuntarlo después.` }
       }
+      // Antes de emitir: la orden no sale con una factura sin su número o su fecha.
+      const falta = adjuntando && conFactura ? faltaEnLaFactura(datosFactura.numero, datosFactura.fecha) : null
+      if (falta) return { ok: false, error: `${falta} O quita el PDF para adjuntarlo después.` }
       datos.set(
         'lineas',
-        JSON.stringify(lineas.map((l) => ({ material_id: l.material_id, cantidad: l.cantidad, precio: l.precio }))),
+        JSON.stringify(
+          lineas.map((l) => ({
+            material_id: l.material_id,
+            cantidad: l.cantidad,
+            precio: l.precio,
+            ...(deInsumos ? { insumos: l.insumos.map((i) => i.id) } : {}),
+          })),
+        ),
       )
-      const emitida = requerimiento ? await emitirCompraDelRequerimiento(null, datos) : await emitirCompraDirecta(null, datos)
+      const emitida = deInsumos ? await emitirCompraDeInsumos(null, datos) : await emitirCompraDirecta(null, datos)
       if (!emitida.ok || !adjuntando) return emitida
 
       const documento = new FormData()
@@ -251,6 +283,10 @@ function FormularioCompraDirecta({
       documento.set('orden_compra_id', id)
       documento.set('tipo', conFactura ? 'FACTURA' : 'COMPROBANTE')
       documento.set('nombre_archivo', factura.name.trim().slice(0, 200))
+      if (conFactura) {
+        documento.set('factura_numero', datosFactura.numero)
+        documento.set('factura_fecha', datosFactura.fecha)
+      }
       const adjunta = await subirArchivoPrivado({
         bucket: 'documentos-compras',
         ruta: `compra/${id}/${idFactura}.pdf`,
@@ -283,15 +319,22 @@ function FormularioCompraDirecta({
           <Campo etiqueta="Referencia del proveedor" htmlFor="ocd-referencia" ayuda="Su cotización o proforma. Si la dejas vacía, se usa el número de la orden.">
             <Entrada id="ocd-referencia" name="referencia" maxLength={100} placeholder="COT-0123" />
           </Campo>
-          {requerimiento ? (
+          {deInsumos ? (
             <div className="rounded-xl border border-borde bg-superficie-2 p-3 text-sm sm:col-span-2">
-              <input type="hidden" name="requerimiento_id" value={requerimiento.id} />
-              <p className="text-texto">
-                <span className="font-semibold">{requerimiento.numero}</span> · {requerimiento.area} · código interno{' '}
-                <span className="tabular font-semibold">{requerimiento.codigo_interno}</span>
+              <p className="font-semibold text-texto">
+                Atiende {requerimientos.length === 1 ? 'el requerimiento' : `${requerimientos.length} requerimientos`}
               </p>
-              <p className="mt-1 text-texto-suave">{requerimiento.justificacion}</p>
-              <p className="mt-1 text-xs text-texto-suave">El código interno y el motivo de la orden salen del requerimiento.</p>
+              <ul className="mt-1 space-y-0.5 text-texto">
+                {requerimientos.map((r) => (
+                  <li key={r.requerimiento_id}>
+                    <span className="tabular font-medium">{r.requerimiento}</span> · {r.area} · código interno{' '}
+                    <span className="tabular font-medium">{r.codigo_interno}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-xs text-texto-suave">
+                Cada insumo lleva el código interno de su requerimiento: el costo de la orden se reparte entre ellos. El motivo de la orden sale de los requerimientos.
+              </p>
             </div>
           ) : (
             <>
@@ -358,42 +401,6 @@ function FormularioCompraDirecta({
           </Campo>
         </div>
 
-        {requerimiento && (
-          <fieldset className="space-y-2">
-            <legend className="mb-2 font-semibold text-texto">Insumos del requerimiento que cubre esta orden</legend>
-            {requerimiento.lineas.map((l) => {
-              const enStock = l.en_stock ?? 0
-              const loTiene = l.en_stock !== null && enStock >= l.cantidad
-              const ocupado = loTiene || (Boolean(l.orden_compra) && !l.compra_rechazada)
-              return (
-                <label key={l.item} className={`flex items-start gap-2 text-sm ${ocupado ? 'text-texto-suave' : 'text-texto'}`}>
-                  <input type="checkbox" name="item" value={l.item} defaultChecked={!ocupado} disabled={ocupado} className="mt-1" />
-                  <span>
-                    <span className="tabular font-medium">
-                      {formatoCantidad(loTiene ? l.cantidad : l.cantidad - enStock)} {l.unidad}
-                    </span>{' '}
-                    {l.descripcion}
-                    {loTiene ? (
-                      <span className="block text-xs text-texto-suave">Almacén lo tiene: no se compra.</span>
-                    ) : (
-                      enStock > 0 && (
-                        <span className="block text-xs text-texto-suave">
-                          Pidieron {formatoCantidad(l.cantidad)}; Almacén tiene {formatoCantidad(enStock)}: se compra el resto.
-                        </span>
-                      )
-                    )}
-                    {!loTiene && l.orden_compra && (
-                      <span className="block text-xs text-texto-suave">
-                        {l.compra_rechazada ? `La ${l.orden_compra} se rechazó: vuelve a comprarse.` : `Ya va en la ${l.orden_compra}.`}
-                      </span>
-                    )}
-                  </span>
-                </label>
-              )
-            })}
-          </fieldset>
-        )}
-
         <fieldset className="space-y-3">
           <legend className="mb-3 font-semibold text-texto">Materiales · {lineas.length}</legend>
           {lineas.map((l, i) => (
@@ -437,19 +444,36 @@ function FormularioCompraDirecta({
                 type="button"
                 variante="fantasma"
                 tamano="icono"
-                aria-label={`Quitar el material ${i + 1}`}
+                aria-label={`Quitar el material ${i + 1}${l.insumos.length > 0 ? ' y sus insumos' : ''}`}
                 disabled={lineas.length === 1}
                 onClick={() => setLineas((ls) => ls.filter((x) => x.clave !== l.clave))}
               >
                 <Trash2 aria-hidden className="size-4" />
               </Boton>
+              {l.insumos.length > 0 && (
+                <ul className="space-y-0.5 text-xs text-texto-suave sm:col-span-4">
+                  {l.insumos.map((x) => (
+                    <li key={x.id}>
+                      <span className="tabular font-medium text-texto">
+                        {formatoCantidad(x.falta)} {x.unidad}
+                      </span>{' '}
+                      {x.descripcion} · <span className="tabular">{x.requerimiento}</span> · {x.area} ·{' '}
+                      <span className="tabular">{x.codigo_interno}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           ))}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <Boton type="button" variante="contorno" tamano="sm" disabled={lineas.length >= 100} onClick={() => setLineas((ls) => [...ls, lineaVacia()])}>
-              <Plus aria-hidden className="size-4" />
-              Agregar material
-            </Boton>
+            {deInsumos ? (
+              <p className="text-xs text-texto-suave">Para comprar otro insumo, márcalo en la lista y vuelve a abrir la orden.</p>
+            ) : (
+              <Boton type="button" variante="contorno" tamano="sm" disabled={lineas.length >= 100} onClick={() => setLineas((ls) => [...ls, lineaVacia()])}>
+                <Plus aria-hidden className="size-4" />
+                Agregar material
+              </Boton>
+            )}
             <p className="text-sm text-texto">
               {conFactura ? 'Subtotal sin IGV' : 'Total'} <span className="tabular font-semibold">{formatoMoneda(total, divisa)}</span>
               {conFactura && (
@@ -477,9 +501,18 @@ function FormularioCompraDirecta({
             type="file"
             accept="application/pdf,.pdf"
             disabled={enviando}
-            onChange={(e) => void detector.leer(conFactura ? e.target.files?.[0] : undefined)}
+            onChange={(e) => {
+              const archivo = e.target.files?.[0]
+              setHayFactura(Boolean(archivo))
+              void detector.leer(conFactura ? archivo : undefined).then(datosFactura.completar)
+            }}
           />
         </Campo>
+        {conFactura && hayFactura && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <CamposDeLaFactura id="ocd-factura" datos={datosFactura} requerido disabled={enviando} />
+          </div>
+        )}
         {conFactura && (
           <AvisoFacturaDeLaOrden
             lectura={detector.lectura}

@@ -8,7 +8,7 @@ import { AvisosDelDetector, avisosDeFacturaRegistrada, InsigniaDelDetector } fro
 import { cuentasPorPagar, type CuentaPorPagar } from '@/lib/datos/adquisiciones'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { TIPO_COMPROBANTE, TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
-import { CONTROL_FACTURA_COMPRA } from '@/lib/dominio/finanzas'
+import { CONTROL_FACTURA_COMPRA, detalleDelControl } from '@/lib/dominio/finanzas'
 import { fecha, hoyLima, moneda, periodo } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -174,7 +174,11 @@ function Factura({
                   {o.numero_ot && ` (OT ${o.numero_ot})`}
                 </span>
               ))}
-              {control.control === 'NO_CALZA' && control.total_oc !== null && ` · suman ${moneda(control.total_oc, m)}`}
+            </p>
+          )}
+          {control && detalleDelControl(control, (n) => moneda(n, m)) && (
+            <p className={`text-xs ${control.control === 'NO_CALZA' ? 'text-aviso' : 'text-texto-suave'}`}>
+              {detalleDelControl(control, (n) => moneda(n, m))}
             </p>
           )}
           <AvisosDelDetector avisos={avisos} />

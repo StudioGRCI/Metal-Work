@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { normalizarNumeroFactura } from '@/lib/dominio/finanzas'
+import { hoyLima } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -12,7 +14,16 @@ const FORMATO = z.object({
   orden_compra_id: z.guid(),
   tipo: z.enum(['ORDEN_COMPRA', 'ORDEN_PAGO', 'ORDEN_SERVICIO', 'FACTURA', 'COMPROBANTE', 'OTRO']),
   nombre_archivo: z.string().trim().min(1).max(200),
+  // La factura anexada lleva su número y su fecha (migración 20261016702000):
+  // Contabilidad la registra con ellos.
+  factura_numero: z.string().trim().max(40).optional(),
+  factura_fecha: z.union([z.literal(''), z.iso.date()]).optional(),
 })
+
+const campo = (formulario: FormData, nombre: string) => {
+  const v = formulario.get(nombre)
+  return typeof v === 'string' ? v : undefined
+}
 
 export async function registrarDocumentoCompra(
   _previo: unknown,
@@ -26,10 +37,21 @@ export async function registrarDocumentoCompra(
     orden_compra_id: formulario.get('orden_compra_id'),
     tipo: formulario.get('tipo'),
     nombre_archivo: formulario.get('nombre_archivo'),
+    factura_numero: campo(formulario, 'factura_numero'),
+    factura_fecha: campo(formulario, 'factura_fecha'),
   })
   if (!datos.success) {
-    return { ok: false, error: 'Selecciona el tipo de documento y un PDF.' }
+    return {
+      ok: false,
+      error: datos.error.issues[0]?.path[0] === 'factura_fecha' ? 'Revisa la fecha de la factura.' : 'Selecciona el tipo de documento y un PDF.',
+    }
   }
+  const esFactura = datos.data.tipo === 'FACTURA'
+  const numeroFactura = esFactura ? normalizarNumeroFactura(datos.data.factura_numero ?? '') : null
+  const fechaFactura = esFactura ? datos.data.factura_fecha || null : null
+  if (esFactura && !numeroFactura) return { ok: false, error: 'Escribe el número de la factura con su serie y su número, como F001-123.' }
+  if (esFactura && !fechaFactura) return { ok: false, error: 'Escribe la fecha de la factura.' }
+  if (fechaFactura && fechaFactura > hoyLima()) return { ok: false, error: 'La fecha de la factura no puede ser posterior a hoy.' }
 
   const supabase = await createClient()
   const ruta = `compra/${datos.data.orden_compra_id}/${datos.data.id}.pdf`
@@ -65,6 +87,8 @@ export async function registrarDocumentoCompra(
     mime_type: 'application/pdf',
     tamano_bytes: archivo.size,
     subido_por: perfil.id,
+    numero_documento: numeroFactura,
+    fecha_emision: fechaFactura,
   }).select('id').maybeSingle()
   if (error) {
     if (error.code === '23505') {
@@ -88,5 +112,10 @@ export async function registrarDocumentoCompra(
   revalidatePath('/compras')
   revalidatePath('/almacen/kardex')
   revalidatePath('/adquisiciones')
-  return { ok: true, mensaje: 'Documento adjuntado a la compra y disponible para Tesorería.' }
+  return {
+    ok: true,
+    mensaje: numeroFactura
+      ? `Factura ${numeroFactura} adjuntada a la compra: Contabilidad la registra con su número y su fecha.`
+      : 'Documento adjuntado a la compra y disponible para Tesorería.',
+  }
 }
