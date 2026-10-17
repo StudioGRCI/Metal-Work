@@ -97,6 +97,7 @@ const RUTAS = [
   subcontratoId && ['subcontrato-detalle', `/subcontratos/${subcontratoId}`],
   ['subcontratos-del-area', '/subcontratos/area'],
   ['recibos-por-honorarios', '/tesoreria/recibos-por-honorarios'],
+  ['caja-diaria', '/tesoreria/caja-diaria'],
   ['sin-permiso', '/sin-permiso'],
 ].filter(Boolean)
 
