@@ -179,10 +179,8 @@ sirven para **revisar** lo que se construye con esta skill, no para reemplazarla
   formularios y formatos no se cambian desde ellas; una sugerencia de otra letra,
   otra paleta u otros íconos va a DKS como sugerencia, no al código.
 - Toda pantalla de la aplicación es modo **Operate** de `impeccable`: sirven
-  `critique`, `audit`, `harden`, `clarify`, `adapt`, `layout`, `distill` y
-  `polish`.
-- Si una herramienta pide perillas de estilo, aquí son: variación 2, movimiento
-  2, densidad 8 de 10. Se marca y se consulta rápido; no se admira.
+  `critique`, `audit`, `harden`, `clarify`, `adapt`, `layout`, `distill`,
+  `quieter` y `polish`. Se marca y se consulta rápido; no se admira.
 - La revisión con ojos frescos la hace `auditor-diseno` (skill `auditar`).
 
 ## Comprobación visual

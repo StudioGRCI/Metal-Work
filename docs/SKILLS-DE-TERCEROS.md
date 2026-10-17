@@ -37,7 +37,9 @@ sobre el resto del archivo.
   Work» al principio y las referencias `superpowers:…` cambiadas por las
   equivalentes de aquí (checks de `db/test/checks/` y `probar-*.mjs`). De
   `systematic-debugging` se trajeron `SKILL.md`, `root-cause-tracing.md`,
-  `defense-in-depth.md` y `condition-based-waiting.md`.
+  `defense-in-depth.md` y `condition-based-waiting.md`; no `find-polluter.sh`
+  ni `condition-based-waiting-example.ts`, que esos textos citan y que son para
+  pruebas unitarias que aquí no hay.
 - **react-best-practices**: `SKILL.md` y `rules/`; no el `AGENTS.md` compilado,
   que repite `rules/`. Bloque «Metal Work» al principio.
 

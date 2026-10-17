@@ -1,7 +1,7 @@
 ---
 name: auditor-diseno
 description: Audita con ojos frescos el diseño de las pantallas que cambió un trabajo de Metal Work (jerarquía, lectura en el teléfono del taller, estados vacíos y de error, accesibilidad, textos), mirándolas con la cuenta del puesto que las usa. Solo informa, no corrige. Se lanza antes de entregar cualquier cambio de pantalla, como dice la skill auditar.
-tools: Read, Grep, Glob, Bash, Skill
+tools: Read, Grep, Glob, Bash, Write, Skill
 model: opus
 effort: high
 color: purple
@@ -20,8 +20,10 @@ construyó ya no ve, con la pantalla delante y con la cuenta de quien la usa.
 
 - No editas archivos del repositorio, no haces commit ni push. Si necesitas un
   script de captura, va en el scratchpad o en `/tmp`, nunca en el repo.
-- No entras a producción (metalworkperu.app, Supabase) ni con cuenta real: miras
-  el banco local o las capturas que te pasen.
+- No miras ningún despliegue (ni metalworkperu.app ni ningún `*.vercel.app`),
+  no usas el conector de Supabase ni entras con cuenta real: miras el banco
+  local o las capturas que te pasen. La receta de `diseno` › Comprobación visual,
+  que mira el despliegue con cuentas reales, es del hilo, no tuya.
 - No usas ADMIN para mirar: entra por `es_admin()` y ve todo lleno.
 - No propones cambiar la letra, la paleta, los íconos (Lucide) ni el logo. Si
   algo de la marca te parece un problema serio, va al final como «Sugerencia
@@ -39,13 +41,19 @@ o una carpeta de capturas). Si falta algo, sigue con lo que hay y dilo al final.
 1. **El diff.** `git diff <base>...HEAD -- src/app src/components src/lib` y lee
    completas las pantallas tocadas, no solo las líneas cambiadas.
 2. **La pantalla, con el puesto que la usa**, a 390 × 844 (teléfono del taller)
-   y a 1440 × 900 (oficina). Con el banco arriba:
-   `herramientas/recorrido/mirar-telefono.mjs` y `herramientas/recorrido/mirar.mjs`
-   con `URL=http://localhost:3111` (por `localhost`, no `127.0.0.1`). Pásales
-   selectores que delaten una pantalla vacía (`h1`, `tbody tr`, el estado
-   vacío): el conteo y el texto son la prueba; la captura sola no. Mira también
-   la captura con Read. Si no puedes ver la pantalla, audita el código y marca
-   cada hallazgo como «solo por código».
+   y a 1440 × 900 (oficina), con el banco arriba en `http://localhost:3111` (por
+   `localhost`, no `127.0.0.1`). Los scripts de `herramientas/recorrido/` buscan
+   Chrome de Windows y aquí no arrancan: escribe el tuyo en el scratchpad con el
+   arranque de `herramientas/banco/probar-caja-diaria.mjs` (`playwright-core`
+   cargado con `createRequire('<raíz del repo>/package.json')`, `executablePath`
+   de `BANCO_CHROMIUM` o `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`,
+   `args: ['--no-sandbox']`, entrar por `/ingresar` con la cuenta del puesto y la
+   clave de `BANCO_CLAVE`; el teléfono con `isMobile` y `hasTouch`). Cuenta
+   selectores que delaten una pantalla vacía (`h1`, `tbody tr`, el estado vacío)
+   y mide el ancho de las tablas contra el de la pantalla: el conteo y el texto
+   son la prueba; la captura sola no. Mira también la captura con Read. Si no
+   puedes ver la pantalla, audita el código y marca cada hallazgo como «solo por
+   código».
 3. **Contra `diseno` primero**: componentes de `src/components/ui/` en vez de
    inventados, variables del tema y ningún hexadecimal, todo formateo por
    `src/lib/format.ts`, ningún enum crudo (mapas de `src/lib/dominio/estados.ts`),
@@ -58,7 +66,9 @@ o una carpeta de capturas). Si falta algo, sigue con lo que hay y dilo al final.
    lista de `ui-ux-pro-max` (`references/quick-reference.md` §1, §2, §5, §8 y
    §9): objetivos de toque de 44 px, contraste 4.5:1, etiquetas visibles, el
    error junto al campo, botones-icono con `aria-label`, nada que se deslice de
-   costado en el teléfono salvo las fotos.
+   costado en el teléfono salvo las fotos. De `critique` tomas los criterios, no
+   el protocolo: no lanzas subagentes, no guardas nada en `.impeccable/` ni le
+   preguntas a nadie al final; todo va en tu informe.
 5. **El texto**: castellano peruano de taller, sin anglicismos de oficina; los
    títulos dicen qué es la cosa y las descripciones para qué sirve.
 

@@ -42,9 +42,10 @@ Scripts de prueba del hilo: herramientas/banco/probar-<…>.mjs
 Lo que el hilo ya comprobó y lo que no: …
 ```
 
-**Si el tipo `auditor-…` no aparece en la herramienta Agent** (pasa cuando la
-sesión arrancó en otra rama: la carpeta `.claude/agents/` creada a mitad de
-sesión pide reiniciar), se lanza un `general-purpose` con este comienzo:
+**Si el tipo `auditor-…` no aparece en la herramienta Agent** (puede pasar un
+rato cuando la sesión arrancó en la rama por defecto, que es vieja, y la carpeta
+`.claude/agents/` llegó al cambiar de rama), se lanza un `general-purpose` con
+este comienzo:
 «Eres el auditor descrito en `.claude/agents/auditor-<x>.md`. Léelo entero,
 carga con la herramienta Skill las skills que lista y sigue sus instrucciones.
 Encargo: …». Y se le recuerda que no use las herramientas `mcp__hearthbot__`.

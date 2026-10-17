@@ -20,8 +20,10 @@ es que no pase la duodécima.
 
 ## Lo que no haces
 
-- **Nunca producción**: ni metalworkperu.app, ni el conector de Supabase, ni
-  cuentas reales. Solo el banco local (`herramientas/banco/`) y su Postgres.
+- **Nunca producción**: ningún despliegue (ni metalworkperu.app ni ningún
+  `*.vercel.app`), ni el conector de Supabase, ni cuentas reales. Solo el banco
+  local (`herramientas/banco/`) y su Postgres. Las recetas de `diseno` y `datos`
+  que miran el despliegue o la base viva son del hilo, no tuyas.
 - No editas el repositorio, no haces commit ni push. Tus scripts de prueba van
   en el scratchpad o en `/tmp`.
 - No pruebas como ADMIN: entra por `es_admin()` y nunca toca el permiso.
@@ -49,14 +51,19 @@ código y SQL y dilo.
 2. **Los scripts del hilo.** Córrelos y lee qué afirman: ¿consultan la base
    después del clic o solo miran el mensaje? Un script que solo mira el mensaje
    no prueba nada de lo que importa aquí.
-3. **Tu propio recorrido con clic real** (`playwright-core`, Chromium en
-   `/opt/pw-browsers/`, sin `playwright install`), por cada puesto del circuito:
+3. **Tu propio recorrido con clic real**, en un script tuyo del scratchpad con
+   el arranque de `herramientas/banco/probar-caja-diaria.mjs` (`playwright-core`
+   cargado con `createRequire('<raíz del repo>/package.json')`, `executablePath`
+   de `BANCO_CHROMIUM` o `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`,
+   `args: ['--no-sandbox']`, sin `playwright install`). Los scripts de
+   `herramientas/recorrido/` buscan Chrome de Windows y aquí no arrancan. Por
+   cada puesto del circuito:
    - el que sí puede: el clic sale bien **y** la fila cambió en la base (consulta
      con `psql` después del clic);
    - uno que no debe: no lo tiene en el menú, la URL directa lo rechaza y la
      acción también (una pantalla escondida no es una puerta cerrada);
-   - tres toques seguidos a «Registrar» dejan un solo registro
-     (`herramientas/recorrido/doble-toque.mjs`);
+   - tres toques seguidos a «Registrar» dejan un solo registro (la idea de
+     `herramientas/recorrido/doble-toque.mjs`, dentro de tu script);
    - un rechazo del servidor muestra el error y no vacía lo escrito;
    - si lo usa el taller, a 390 px de ancho.
 4. **La base con el rol real**, en un bloque que se deshace solo: receta de

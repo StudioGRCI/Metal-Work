@@ -14,6 +14,8 @@ description: Use when encountering any bug, test failure, or unexpected behavior
 > que exige la acción y el que acepta la política de la tabla no coinciden, y el
 > UPDATE afecta cero filas sin error (`CLAUDE.md` › Las tres que más caro han
 > costado). Una pantalla vacía tiene su propio diagnóstico en `datos`.
+> `find-polluter.sh` y `condition-based-waiting-example.ts`, que citan
+> `root-cause-tracing.md` y `condition-based-waiting.md`, no se trajeron.
 
 ## Overview
 

@@ -89,8 +89,8 @@ Eso no ve la pantalla ni la base. **Terminado aquí son seis cosas:**
 3. `get_advisors`, si se tocó el esquema.
 4. La pantalla vista en el despliegue con `herramientas/recorrido/mirar.mjs`
    (aquí el banco local no corre; el mando exacto, en la skill `diseno`).
-5. Los auditores de la skill `auditar` (diseño, funcionamiento y realización)
-   revisaron con ojos frescos, y lo grave que encontraron está arreglado.
+5. Los auditores que pida la skill `auditar` según lo que cambió revisaron con
+   ojos frescos, y lo grave que encontraron está arreglado.
 6. Dicho en voz alta qué de eso **no** se pudo comprobar, y por qué.
 
 **Los bloques largos se escriben con `Write`, no con heredoc de bash.** Un
