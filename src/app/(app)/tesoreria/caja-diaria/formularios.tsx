@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import { DESCRIPCIONES_FRECUENTES, monedaDeCuenta, nombreMoneda } from '@/lib/dominio/caja'
+import { DESCRIPCIONES_FRECUENTES, monedaDeCuenta, nombreMoneda, normalizarMonto, SALDO } from '@/lib/dominio/caja'
 import { useEnvio } from '@/lib/envio'
 import { fecha, moneda } from '@/lib/format'
 
@@ -70,7 +70,14 @@ export function RegistrarMovimiento({ cuentas, cuentaId, dia, codigos, compacto 
   const cuenta = cuentas.find((c) => c.id === cuentaId)
   return (
     <>
-      <Boton type="button" tamano="sm" variante={compacto ? 'contorno' : 'primario'} onClick={v.abrir} data-registrar-movimiento={cuenta?.nombre ?? 'caja'}>
+      <Boton
+        type="button"
+        tamano="sm"
+        variante={compacto ? 'contorno' : 'primario'}
+        onClick={v.abrir}
+        aria-label={cuenta ? `Registrar en ${cuenta.nombre}` : undefined}
+        data-registrar-movimiento={cuenta?.nombre ?? 'caja'}
+      >
         <Plus aria-hidden className="size-4" />
         {compacto ? (
           'Registrar'
@@ -130,17 +137,9 @@ function FormularioMovimiento({ cuentas, cuentaId, dia, codigos, alTerminar }: {
           </Seleccion>
         </Campo>
       </div>
-      <Campo etiqueta="Descripción" htmlFor={`${p}-descripcion`} requerido ayuda="La OC u OS, el proveedor, la planilla, el ITF…">
-        <Entrada
-          id={`${p}-descripcion`}
-          name="descripcion"
-          list={`${p}-frecuentes`}
-          required
-          minLength={3}
-          maxLength={300}
-          autoComplete="off"
-          placeholder="OC-5581-MW Ferretería Industrial"
-        />
+      {/* Sin ejemplos dentro de los campos: se leían como si ya estuvieran escritos. Van en la ayuda. */}
+      <Campo etiqueta="Descripción" htmlFor={`${p}-descripcion`} requerido ayuda="Como en el estado de cuenta: la OC u OS y el proveedor, la planilla, el ITF…">
+        <Entrada id={`${p}-descripcion`} name="descripcion" list={`${p}-frecuentes`} required minLength={3} maxLength={300} autoComplete="off" />
         <datalist id={`${p}-frecuentes`}>
           {DESCRIPCIONES_FRECUENTES.map((d) => (
             <option key={d} value={d} />
@@ -148,19 +147,11 @@ function FormularioMovimiento({ cuentas, cuentaId, dia, codigos, alTerminar }: {
         </datalist>
       </Campo>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Campo etiqueta={`Monto en ${nombreMoneda(m)}`} htmlFor={`${p}-monto`} requerido>
-          <Entrada id={`${p}-monto`} name="monto" inputMode="decimal" required autoComplete="off" placeholder="1250.50" className="tabular" />
+        <Campo etiqueta={`Monto en ${nombreMoneda(m)}`} htmlFor={`${p}-monto`} requerido ayuda="Con sus decimales, como en el estado de cuenta.">
+          <Entrada id={`${p}-monto`} name="monto" inputMode="decimal" required autoComplete="off" className="tabular" />
         </Campo>
         <Campo etiqueta="Código interno" htmlFor={`${p}-codigo`} ayuda="Si es de una unidad. Elige uno de la lista.">
-          <Entrada
-            id={`${p}-codigo`}
-            name="codigo_interno"
-            list={`${p}-codigos`}
-            maxLength={60}
-            autoComplete="off"
-            autoCapitalize="characters"
-            placeholder="PLA_SR_O4_1_26/28"
-          />
+          <Entrada id={`${p}-codigo`} name="codigo_interno" list={`${p}-codigos`} maxLength={60} autoComplete="off" autoCapitalize="characters" />
           <datalist id={`${p}-codigos`}>
             {codigos.map((c) => (
               <option key={c} value={c} />
@@ -170,8 +161,8 @@ function FormularioMovimiento({ cuentas, cuentaId, dia, codigos, alTerminar }: {
         <Campo etiqueta="N.º de operación" htmlFor={`${p}-operacion`} ayuda="El del banco, si lo hay.">
           <Entrada id={`${p}-operacion`} name="operacion" maxLength={60} autoComplete="off" className="tabular" />
         </Campo>
-        <Campo etiqueta="Tipo de cambio" htmlFor={`${p}-cambio`} ayuda="Solo si se pactó en la otra moneda.">
-          <Entrada id={`${p}-cambio`} name="tipo_cambio" inputMode="decimal" autoComplete="off" placeholder="3.745" className="tabular" />
+        <Campo etiqueta="Tipo de cambio" htmlFor={`${p}-cambio`} ayuda="Solo si se pactó en la otra moneda: soles por dólar.">
+          <Entrada id={`${p}-cambio`} name="tipo_cambio" inputMode="decimal" autoComplete="off" className="tabular" />
         </Campo>
       </div>
       <Pie error={error} enviando={enviando} alCancelar={alTerminar} texto="Registrar" />
@@ -297,7 +288,7 @@ export function CerrarDia({ cuenta, dia, saldoFinal }: { cuenta: CuentaElegible;
   const v = useVentana()
   return (
     <>
-      <Boton type="button" tamano="sm" onClick={v.abrir} data-cerrar-dia={cuenta.nombre}>
+      <Boton type="button" tamano="sm" onClick={v.abrir} aria-label={`Cerrar el día de ${cuenta.nombre}`} data-cerrar-dia={cuenta.nombre}>
         <Lock aria-hidden className="size-4" />
         Cerrar el día
       </Boton>
@@ -324,8 +315,10 @@ function FormularioCierre({ cuenta, dia, saldoFinal, alTerminar }: {
   const [banco, setBanco] = useState('')
   const { alEnviar, enviando, error } = useEnvio(cerrarDia, alTerminar)
   const m = monedaDeCuenta(cuenta.moneda)
-  const leido = Number(banco.replace(/,/g, ''))
-  const diferencia = banco.trim() !== '' && Number.isFinite(leido) ? Math.round((leido - saldoFinal) * 100) / 100 : null
+  // Se lee igual que en el servidor: «-508,61» es -508.61, no -50 861.
+  const escrito = normalizarMonto(banco)
+  const diferencia = SALDO.test(escrito) ? Math.round((Number(escrito) - saldoFinal) * 100) / 100 : null
+  const conObservaciones = diferencia !== null && diferencia !== 0
   const p = `cierre-${id.slice(0, 8)}`
 
   return (
@@ -352,11 +345,11 @@ function FormularioCierre({ cuenta, dia, saldoFinal, alTerminar }: {
       </Campo>
       {diferencia !== null && (
         <p role="status" className={diferencia === 0 ? 'text-sm text-exito' : 'text-sm text-aviso'}>
-          {diferencia === 0 ? 'Cuadra con la caja.' : `Diferencia de ${moneda(diferencia, m)}: cuenta en las observaciones por qué.`}
+          {diferencia === 0 ? 'Cuadra con la caja.' : `Diferencia de ${moneda(diferencia, m)}: cuenta en las observaciones por qué, en 10 caracteres como mínimo.`}
         </p>
       )}
-      <Campo etiqueta="Observaciones" htmlFor={`${p}-obs`} requerido={diferencia !== null && diferencia !== 0}>
-        <AreaTexto id={`${p}-obs`} name="observaciones" maxLength={500} />
+      <Campo etiqueta="Observaciones" htmlFor={`${p}-obs`} requerido={conObservaciones}>
+        <AreaTexto id={`${p}-obs`} name="observaciones" required={conObservaciones} minLength={conObservaciones ? 10 : undefined} maxLength={500} />
       </Campo>
       <Pie error={error} enviando={enviando} alCancelar={alTerminar} texto="Cerrar el día" />
     </form>
@@ -368,7 +361,7 @@ export function ReabrirDia({ cierreId, cuenta, dia }: { cierreId: string; cuenta
   const { alEnviar, enviando, error } = useEnvio(reabrirDia, v.cerrar)
   return (
     <>
-      <Boton type="button" tamano="sm" variante="contorno" onClick={v.abrir} data-reabrir-dia={cuenta}>
+      <Boton type="button" tamano="sm" variante="contorno" onClick={v.abrir} aria-label={`Reabrir el día de ${cuenta}`} data-reabrir-dia={cuenta}>
         <LockOpen aria-hidden className="size-4" />
         Reabrir
       </Boton>
@@ -410,7 +403,7 @@ export function EditarCuenta({ cuenta, hoy, primera = false }: { cuenta?: Cuenta
   return (
     <>
       {cuenta ? (
-        <Boton type="button" tamano="sm" variante="fantasma" onClick={v.abrir} data-editar-cuenta={cuenta.nombre}>
+        <Boton type="button" tamano="sm" variante="fantasma" onClick={v.abrir} aria-label={`Corregir ${cuenta.nombre}`} data-editar-cuenta={cuenta.nombre}>
           <Pencil aria-hidden className="size-4" />
           Corregir
         </Boton>
@@ -488,7 +481,7 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
           <Campo etiqueta="Estado" htmlFor={`${p}-activa`}>
             <Seleccion id={`${p}-activa`} name="activa" defaultValue={cuenta.activa ? 'si' : 'no'}>
               <option value="si">Activa</option>
-              <option value="no">Desactivada: ya no recibe movimientos</option>
+              <option value="no">Desactivada: ya no recibe movimientos (antes, pasa su saldo a otra cuenta)</option>
             </Seleccion>
           </Campo>
         )}

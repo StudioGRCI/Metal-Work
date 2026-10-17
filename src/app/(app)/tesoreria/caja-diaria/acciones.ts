@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { MONTO, SALDO } from '@/lib/dominio/caja'
+import { MONTO, normalizarMonto, SALDO } from '@/lib/dominio/caja'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -23,12 +23,9 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor.trim() : ''
 }
 
-/** «1,250.50» o «1250,50» → «1250.50»: la gente copia los montos del estado de cuenta. */
+/** El monto como lo escribió la persona, con su coma o su punto (`normalizarMonto`). */
 function montoEscrito(formulario: FormData, nombre: string) {
-  const texto = dato(formulario, nombre).replace(/\s/g, '')
-  if (/^-?\d{1,3}(,\d{3})+(\.\d{1,2})?$/.test(texto)) return texto.replace(/,/g, '')
-  if (/^-?\d+,\d{1,2}$/.test(texto)) return texto.replace(',', '.')
-  return texto
+  return normalizarMonto(dato(formulario, nombre))
 }
 
 function primerError(e: z.ZodError, porDefecto: string) {
@@ -99,7 +96,7 @@ export async function registrarMovimiento(_previo: unknown, formulario: FormData
       descripcion: z.string().min(3, 'Describe el movimiento como en el estado de cuenta.').max(300, 'La descripción pasa de 300 caracteres.'),
       codigo_interno: z.string().max(60, 'El código interno pasa de 60 caracteres.'),
       operacion: z.string().max(60, 'El número de operación pasa de 60 caracteres.'),
-      tipo_cambio: z.string().regex(/^(\d{1,2}(\.\d{1,4})?)?$/, 'El tipo de cambio va en soles por dólar, como 3.745.'),
+      tipo_cambio: z.string().regex(/^(\d{1,2}(\.\d{1,4})?)?$/, 'El tipo de cambio va en soles por dólar, como 3.750.'),
     })
     .safeParse({
       id: dato(formulario, 'id'),
@@ -212,7 +209,7 @@ export async function cerrarDia(_previo: unknown, formulario: FormData): Promise
       id: z.guid(),
       caja_id: z.guid(),
       fecha: z.iso.date('Vuelve a cargar el día.'),
-      saldo_banco: z.string().regex(SALDO, 'Escribe el saldo del estado de cuenta con números, como 40356.71.'),
+      saldo_banco: z.string().regex(SALDO, 'Escribe el saldo del estado de cuenta con números, como 18500.00.'),
       observaciones: z.string().max(500, 'Las observaciones pasan de 500 caracteres.'),
     })
     .safeParse({

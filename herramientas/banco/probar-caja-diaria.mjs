@@ -204,7 +204,7 @@ const movimientos = (caja, fecha) =>
   }
   comprobar(Object.keys(ids).length === 3, 'las tres cuentas quedan en la base')
   const repetida = await darDeAlta(pagina, { nombre: BCP.toUpperCase(), tipo: 'BANCO', banco: 'BCP', moneda: 'PEN', saldo: '1' })
-  comprobar(repetida.length > 0, `no deja dos cuentas con el mismo nombre (${repetida})`)
+  comprobar(repetida.includes('Ya hay una cuenta'), `no deja dos cuentas con el mismo nombre, y lo dice con su mensaje (${repetida})`)
   await pagina.locator('[role="dialog"]').getByRole('button', { name: 'Cancelar' }).click()
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
@@ -243,8 +243,11 @@ const movimientos = (caja, fecha) =>
   comprobar(usd[3] === 'US$ 3,000.00', `BCP dólares termina con US$ 3,000 (${usd[3]})`)
   const chica = await hasta(() => saldos(pagina, CHICA), (c) => c[3] === 'S/ 800.00')
   comprobar(chica[3] === 'S/ 800.00', `la caja chica termina con S/ 800 (${chica[3]})`)
+  // El cambio de compra de la base, no uno fijo: el banco local puede tener otro.
+  const [{ c: compraDelDia } = {}] = await consulta("select public.cambio_del_dia($1::date, 'COMPRA')::float as c", [ayer])
   const pie = limpio(await pagina.locator('main').textContent())
-  comprobar(pie.includes('Todo en soles') && pie.includes('dólar a 3.745'), 'el consolidado pasa los dólares a soles con el cambio de compra')
+  comprobar(pie.includes('Todo en soles') && !!compraDelDia && pie.includes(`dólar a ${compraDelDia.toFixed(3)}`),
+    `el consolidado pasa los dólares a soles con el cambio de compra (${compraDelDia})`)
 
   const fila = limpio(await pagina.locator(`#cuenta-${ids[BCP]} tr`, { hasText: 'Compra de dólares' }).textContent())
   comprobar(fila.includes(`Transferencia a ${USD}`), `la transferencia dice a qué cuenta fue (${fila.slice(0, 90)})`)
@@ -289,12 +292,22 @@ const movimientos = (caja, fecha) =>
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.tesoreria)
   await pagina.goto(delDia(ayer), { waitUntil: 'networkidle' })
-  let r = await cerrar(pagina, BCP, '9704.50')
-  comprobar(r.aviso === 'Cuadra con la caja.' && !r.error, `el banco cuadra y cierra${r.error ? `: ${r.error}` : ''}`)
-  r = await cerrar(pagina, CHICA, '790')
-  comprobar(r.aviso.includes('Diferencia de S/ -10.00') && r.error.length > 0, `con S/ 10 de menos y sin observaciones no cierra (${r.error})`)
+  // Con coma decimal, como lo copian del estado de cuenta: la vista previa y la base leen lo mismo.
+  let r = await cerrar(pagina, BCP, '9704,50')
+  comprobar(r.aviso === 'Cuadra con la caja.' && !r.error, `con coma decimal, el banco cuadra y cierra (${r.aviso}${r.error ? `: ${r.error}` : ''})`)
+  // Sin observaciones, o muy cortas, el navegador no deja enviar: la ventana sigue abierta.
+  await pagina.locator(`[data-cerrar-dia="${CHICA}"]`).click()
   const v = pagina.locator('[role="dialog"]')
-  await v.locator('textarea[name="observaciones"]').fill('Faltan S/ 10 de un vale sin rendir.')
+  await v.locator('input[name="saldo_banco"]').fill('790')
+  const aviso = limpio(await v.locator('[role="status"]').textContent())
+  const obs = v.locator('textarea[name="observaciones"]')
+  await v.getByRole('button', { name: 'Cerrar el día' }).click()
+  comprobar(aviso.includes('Diferencia de S/ -10.00') && aviso.includes('10 caracteres') && (await obs.evaluate((e) => e.validity.valueMissing)) && (await v.isVisible()),
+    `con S/ 10 de menos y sin observaciones no cierra (${aviso})`)
+  await obs.fill('vale')
+  await v.getByRole('button', { name: 'Cerrar el día' }).click()
+  comprobar((await obs.evaluate((e) => e.validity.tooShort)) && (await v.isVisible()), 'con una observación de cuatro letras tampoco')
+  await obs.fill('Faltan S/ 10 de un vale sin rendir.')
   await v.getByRole('button', { name: 'Cerrar el día' }).click()
   const error = await esperarVentana(pagina)
   comprobar(!error, `con observaciones, cierra la caja chica con su diferencia${error ? `: ${error}` : ''}`)
@@ -303,7 +316,9 @@ const movimientos = (caja, fecha) =>
 
   const bcp = await hasta(() => saldos(pagina, BCP), (c) => c[6] === 'Cerrado')
   comprobar(bcp[4] === 'S/ 9,704.50' && bcp[5] === 'S/ 0.00' && bcp[6] === 'Cerrado', `la tabla dice según el banco, sin diferencia y cerrado (${bcp.slice(4).join(' | ')})`)
-  const chica = await saldos(pagina, CHICA)
+  // Cada lectura espera a que la pantalla traiga lo último: el refresco llega después de cerrar la ventana.
+  const chica = await hasta(() => saldos(pagina, CHICA), (c) => c[6] === 'Cerrado')
+  await hasta(() => saldos(pagina, USD), (c) => c[6] === 'Cerrado')
   comprobar(chica[5] === 'S/ -10.00', `la caja chica muestra su diferencia (${chica[5]})`)
   const bloque = pagina.locator(`#cuenta-${ids[BCP]}`)
   comprobar(limpio(await bloque.textContent()).includes('Cerrado por'), 'el bloque dice quién lo cerró')
@@ -371,6 +386,15 @@ const movimientos = (caja, fecha) =>
   comprobar(!error, `corrige el nombre${error ? `: ${error}` : ''}`)
   const [c] = await consulta('select nombre, saldo_inicial::float as s from cajas where id = $1', [ids[CHICA]])
   comprobar(c?.nombre === `${CHICA} planta` && c?.s === 500, `en la base: nombre nuevo y el mismo saldo inicial (${c?.s})`)
+  // Con plata adentro no se desactiva: saldría del consolidado sin que nadie la moviera.
+  await pagina.locator(`[data-editar-cuenta="${CHICA} planta"]`).click()
+  await v.locator('select[name="activa"]').selectOption('no')
+  await v.getByRole('button', { name: 'Guardar' }).click()
+  const rechazo = await esperarVentana(pagina)
+  comprobar(rechazo.includes('todavía tiene S/ ') && rechazo.includes('transferencia'), `con saldo no se desactiva (${rechazo})`)
+  await v.getByRole('button', { name: 'Cancelar' }).click()
+  const [sigue] = await consulta('select activa from cajas where id = $1', [ids[CHICA]])
+  comprobar(sigue?.activa === true, 'en la base sigue activa')
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
@@ -382,6 +406,22 @@ const movimientos = (caja, fecha) =>
   const ancho = await pagina.evaluate(() => document.documentElement.scrollWidth)
   comprobar(ancho <= CELULAR.width, `en el teléfono no se desborda (${ancho}px)`)
   comprobar((await pagina.locator(`[data-registrar-movimiento="caja"]`).count()) === 1, 'y tiene a mano «Registrar ingreso o egreso»')
+  const pestanas = await pagina.locator('nav[aria-label="Secciones"] a').evaluateAll((as) => as.map((a) => a.getAttribute('href')))
+  comprobar(pestanas[0] === '/tesoreria/caja-diaria', `la caja es la primera pestaña del teléfono (${pestanas.join(', ')})`)
+  // Ayer tiene egresos, ingresos y una transferencia: cada monto se ve, con su signo, y nada queda fuera de la tabla.
+  await pagina.goto(delDia(ayer), { waitUntil: 'networkidle' })
+  const anchoAyer = await pagina.evaluate(() => document.documentElement.scrollWidth)
+  const tablas = await pagina.locator('table').evaluateAll((ts) => ts.map((t) => [t.scrollWidth, t.parentElement.clientWidth]))
+  comprobar(anchoAyer <= CELULAR.width && tablas.every(([t, caja]) => t <= caja + 1), `ninguna tabla se corta en el teléfono (${JSON.stringify(tablas)})`)
+  const ingreso = pagina.locator(`#cuenta-${ids[BCP]} tr`, { hasText: `Cobro de prueba ${sello}` }).locator('[data-monto-telefono]')
+  comprobar((await ingreso.isVisible()) && limpio(await ingreso.textContent()).startsWith('+S/ 5,000.00'), `un ingreso muestra su monto en el teléfono (${limpio(await ingreso.textContent())})`)
+  const saldoFinal = pagina.locator('table').first().locator('tr', { hasText: BCP }).locator('td').nth(4)
+  comprobar((await saldoFinal.isVisible()) && limpio(await saldoFinal.textContent()).startsWith('S/ 9,704.50'), 'y la tabla de saldos deja ver el saldo final')
+  await pagina.screenshot({ path: join(CAPTURAS, 'caja-05-telefono-ayer.png'), fullPage: true })
+  // Un día que no existe no tumba la pantalla: abre hoy.
+  await pagina.goto(`${RUTA}?fecha=2026-02-30`, { waitUntil: 'networkidle' })
+  comprobar(limpio(await pagina.locator('h1').first().textContent()) === 'Caja diaria' && (await pagina.locator('#caja-dia').inputValue()) === hoy,
+    'un día que no existe en la URL abre la caja de hoy')
   await pagina.screenshot({ path: join(CAPTURAS, 'caja-04-telefono.png'), fullPage: true })
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
