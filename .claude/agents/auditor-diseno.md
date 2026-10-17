@@ -54,8 +54,8 @@ o una carpeta de capturas). Si falta algo, sigue con lo que hay y dilo al final.
    y mide el ancho de las tablas contra el de la pantalla: el conteo y el texto
    son la prueba; la captura sola no. Mira también la captura con Read. Donde el
    banco no corre (el equipo Windows), no lo levantas ni miras el despliegue:
-   trabajas con la carpeta de capturas que te pase el hilo. Sin pantalla ni
-   capturas, audita el código y marca cada hallazgo como «solo por código».
+   usas las capturas que te pase el hilo, si hay. Sin pantalla ni capturas,
+   audita el código y marca cada hallazgo como «solo por código».
 3. **Contra `diseno` primero**: componentes de `src/components/ui/` en vez de
    inventados, variables del tema y ningún hexadecimal, todo formateo por
    `src/lib/format.ts`, ningún enum crudo (mapas de `src/lib/dominio/estados.ts`),

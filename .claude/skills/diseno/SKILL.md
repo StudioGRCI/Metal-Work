@@ -185,31 +185,39 @@ sirven para **revisar** lo que se construye con esta skill, no para reemplazarla
 
 ## Comprobación visual
 
-**En esta máquina el banco local no corre** —no hay Postgres ni `psql`—, así que
-`recorrer.mjs` y `probar-cotizacion.mjs` no son una opción aquí. La comprobación
-que sí funciona es mirar la pantalla **en el despliegue**, después de `git push`
-(Vercel tarda 2–3 min):
+Dónde se mira depende de la máquina. En las dos, con la cuenta del puesto que
+usa la pantalla, nunca ADMIN.
+
+**En la nube** (contenedor Linux con Postgres 16 y Chromium en `/opt/pw-browsers/`)
+el banco local corre (`herramientas/banco/README.md`) y es donde se mira, antes
+del PR: `node herramientas/banco/recorrer.mjs` visita cada pantalla con sesión
+iniciada, junta los errores de consola y guarda captura —pantalla nueva →
+sumarla a `RUTAS`—, y los `herramientas/banco/probar-*.mjs` prueban los botones
+con clic real contra `localhost:3111` y miran la base después; interacción nueva
+de peso → su `probar-*.mjs`, con el arranque de `probar-caja-diaria.mjs`
+(`BANCO_CHROMIUM`, `--no-sandbox`, cuentas `*.local@metalwork.test`). Los scripts
+de `herramientas/recorrido/` aquí no arrancan: buscan Chrome de Windows.
+
+**En el equipo Windows** el banco no corre (no hay Postgres ni `psql`). Las vistas
+previas de cada rama en Vercel piden iniciar sesión en Vercel antes de abrir, así
+que `mirar.mjs` no entra; el único despliegue que abre es **metalworkperu.app**,
+que es producción y solo cambia al unir a `main`. Ahí se mira después de unir:
 
 ```bash
-MSYS_NO_PATHCONV=1 URL=https://metal-work-sandy.vercel.app USUARIO=studiogrci@gmail.com \
-CLAVE='<la clave de prueba>' CAPTURAS="<carpeta del scratchpad>" \
+MSYS_NO_PATHCONV=1 URL=https://metalworkperu.app USUARIO='<cuenta del puesto>' \
+CLAVE='<su clave>' CAPTURAS="<carpeta del scratchpad>" \
 "/c/Program Files/nodejs/node.exe" herramientas/recorrido/mirar.mjs /carrocerias carrocerias 'h1' 'tbody tr'
 ```
+
+La clave la pone quien corre el mando; nunca va al repositorio ni a la memoria.
 
 Los selectores que se le pasan **se cuentan y se listan por texto**, y eso es la
 prueba: cuántas filas trajo la tabla y qué dicen. La captura PNG no vale como
 comprobación —no siempre se puede abrir—, así que una pantalla no se da por vista
 sin el conteo y el texto. Sin selectores, `mirar.mjs` solo dice que la página
 cargó, que es casi nada. Pantalla nueva → mirarla con los selectores que la
-delatan si viene vacía (`tbody tr`, el `h1`, el estado vacío).
-
-Donde el banco sí corre (Linux con Postgres local) el recorrido sigue siendo el
-bueno: `node herramientas/banco/recorrer.mjs` visita cada pantalla con sesión
-iniciada, junta los errores de consola y guarda captura —pantalla nueva →
-sumarla a `RUTAS`—, y `node herramientas/banco/probar-cotizacion.mjs` cubre las
-interacciones con botones (emitir, descargar, anular); interacción nueva de peso
-→ sumarle sus comprobaciones ahí, con clic real vía `playwright-core` contra
-`localhost:3111` (patrón en `herramientas/presentacion/capturar.mjs`).
+delatan si viene vacía (`tbody tr`, el `h1`, el estado vacío). Lo mismo vale para
+los scripts del banco.
 
 ## Trampas
 

@@ -87,8 +87,10 @@ Eso no ve la pantalla ni la base. **Terminado aquí son seis cosas:**
    **con el rol real y `set local role authenticated`** — nunca como ADMIN, que
    entra por `es_admin()` y no toca el permiso. La receta, en la skill `datos`.
 3. `get_advisors`, si se tocó el esquema.
-4. La pantalla vista en el despliegue con `herramientas/recorrido/mirar.mjs`
-   (aquí el banco local no corre; el mando exacto, en la skill `diseno`).
+4. La pantalla vista con la cuenta del puesto: en la nube, en el banco local
+   (`herramientas/banco/`) antes del PR; en el equipo Windows, donde el banco no
+   corre, en metalworkperu.app con `herramientas/recorrido/mirar.mjs` después de
+   unir. Los mandos, en la skill `diseno` › Comprobación visual.
 5. Los auditores que pida la skill `auditar` según lo que cambió revisaron con
    ojos frescos, y lo grave que encontraron está arreglado.
 6. Dicho en voz alta qué de eso **no** se pudo comprobar, y por qué.
