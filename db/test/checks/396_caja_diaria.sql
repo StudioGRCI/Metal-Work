@@ -1,5 +1,5 @@
--- La caja diaria de Tesorería (migración 20261017200000): las cuentas con su
--- saldo inicial, los ingresos y egresos de cada día, las transferencias entre
+-- La caja diaria de Tesorería (migraciones 20261017200000 y 20261017210000):
+-- las cuentas con su saldo inicial, los ingresos y egresos de cada día, las transferencias entre
 -- cuentas y el cierre contra el estado de cuenta. Cada paso con el rol que lo
 -- da —Tesorería, nunca ADMIN— y `set local role authenticated`; Gerencia y
 -- Contabilidad no la ven ni la escriben. Termina en rollback.
@@ -16,7 +16,7 @@ begin
       from public.roles r where r.codigo = split_part(v, ':', 2);
     perform set_config('prueba.' || split_part(v, ':', 1), v_id::text, true);
   end loop;
-  foreach v in array array['bcp_pen', 'bcp_usd', 'chica', 'otra', 'm1', 'm2', 'm3', 'm4', 't1', 't2', 'c1', 'c2', 'c3'] loop
+  foreach v in array array['bcp_pen', 'bcp_usd', 'chica', 'otra', 'm1', 'm2', 'm3', 'm4', 't1', 't2', 't3', 'c1', 'c2', 'c3'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
   -- Los días en Lima: la base rechaza el futuro con la fecha de Lima.
@@ -74,6 +74,13 @@ begin
                        'la caja chica en efectivo no lleva banco');
   perform test.debe_fallar(format('select public.guardar_caja(%L, ''bcp SOLES 396'', ''BANCO'', ''BCP'', ''PEN'', 0, %L, true)',
       pg_temp.id('otra'), pg_temp.dia('d3')), 'dos cuentas no se llaman igual', 'Ya hay una cuenta');
+  -- check_violation: un unique_violation llegaría a la persona como «Ya existe un registro con esos datos».
+  begin
+    perform public.guardar_caja(pg_temp.id('otra'), 'bcp SOLES 396', 'BANCO', 'BCP', 'PEN', 0, pg_temp.dia('d3'), true);
+    perform test.afirmar(false, 'el nombre repetido se rechaza');
+  exception when check_violation then
+    perform test.afirmar(sqlerrm like 'Ya hay una cuenta que se llama BCP soles 396%', 'el nombre repetido llega con su propio mensaje');
+  end;
   perform test.debe_fallar(format('select public.guardar_caja(%L, ''Interbank 396'', ''BANCO'', '''', ''PEN'', 0, %L, true)',
       pg_temp.id('otra'), pg_temp.dia('d3')), 'una cuenta de banco dice su banco', 'Escribe el banco');
   perform test.debe_fallar(format('select public.guardar_caja(%L, ''Interbank 396'', ''BANCO'', ''Interbank'', ''PEN'', 0, %L, true)',
@@ -167,6 +174,9 @@ begin
                           from public.movimientos_caja_del_dia(pg_temp.dia('d2'))
                          where origen_id = pg_temp.id('t2') and tipo = 'EGRESO'),
                        'la caja del día dice a qué cuenta fue la transferencia y qué puesto la registró');
+  perform test.debe_fallar(format('select public.registrar_transferencia_caja(%L, %L, %L, %L, 100, 100, null, null)',
+      gen_random_uuid(), pg_temp.id('bcp_pen'), pg_temp.id('bcp_usd'), pg_temp.dia('d2')),
+      'un dólar a S/ 1.00 es un monto mal escrito', 'el dólar sale a S/ 1');
   perform test.debe_fallar(format('select public.registrar_transferencia_caja(%L, %L, %L, %L, 1000, 3750, null, null)',
       gen_random_uuid(), pg_temp.id('bcp_pen'), pg_temp.id('bcp_usd'), pg_temp.dia('d2')),
       'los montos al revés no pasan', 'el dólar sale a');
@@ -210,8 +220,10 @@ begin
   set local role authenticated;
   perform test.debe_fallar(format('select public.cerrar_dia_caja(%L, %L, %L, 9949.85, null)',
       pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d2')), 'los días se cierran en orden', 'Primero cierra el');
+  perform test.debe_fallar(format('select public.cerrar_dia_caja(%L, %L, %L, 13900, null)',
+      pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3')), 'si no cuadra, se dice por qué', 'cuenta en las observaciones');
   perform test.debe_fallar(format('select public.cerrar_dia_caja(%L, %L, %L, 13900, ''no'')',
-      pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3')), 'si no cuadra, se dice por qué', 'no cuadra');
+      pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3')), 'una observación corta pide los 10 caracteres', '10 caracteres');
   perform public.cerrar_dia_caja(pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3'), 13900,
                                  'Comisión del banco que falta registrar');
   select * into r from public.cierres_caja where id = pg_temp.id('c1');
@@ -292,13 +304,39 @@ begin
   perform public.guardar_caja(pg_temp.id('bcp_pen'), 'BCP soles principal 396', 'BANCO', 'BCP', 'PEN', 10000, pg_temp.dia('d3'), true);
   perform test.afirmar((select nombre from public.cajas where id = pg_temp.id('bcp_pen')) = 'BCP soles principal 396',
                        'el nombre sí se corrige');
+  -- Con plata adentro no se desactiva: saldría del consolidado sin que nadie la moviera.
+  perform test.debe_fallar(format('select public.guardar_caja(%L, ''Caja chica 396'', ''EFECTIVO'', null, ''PEN'', 500, %L, false)',
+      pg_temp.id('chica'), pg_temp.dia('d3')), 'una cuenta con saldo no se desactiva', 'todavía tiene S/ ');
+  perform public.registrar_transferencia_caja(pg_temp.id('t3'), pg_temp.id('chica'), pg_temp.id('bcp_pen'), pg_temp.dia('hoy'),
+      (select saldo_final from public.caja_del_dia(pg_temp.dia('hoy')) where caja_id = pg_temp.id('chica')), null, 'Cierre de la caja chica', null);
+  perform test.afirmar((select saldo_final from public.caja_del_dia(pg_temp.dia('hoy')) where caja_id = pg_temp.id('chica')) = 0,
+                       'la caja chica queda en cero después de pasar su saldo');
   perform public.guardar_caja(pg_temp.id('chica'), 'Caja chica 396', 'EFECTIVO', null, 'PEN', 500, pg_temp.dia('d3'), false);
+  perform test.afirmar(not (select activa from public.cajas where id = pg_temp.id('chica')), 'en cero, sí se desactiva');
+  perform test.debe_fallar(format('select public.anular_movimiento_caja(%L, ''Prueba: anular con la cuenta desactivada'')',
+      (select id from public.movimientos_caja where origen_id = pg_temp.id('t3') and tipo = 'INGRESO')),
+      'anular la transferencia no le devuelve el saldo a una cuenta ya desactivada', 'está desactivada');
+  perform test.debe_fallar(format('select public.registrar_movimiento_caja(%L, %L, %L, ''EGRESO'', 10, ''Pago en dólares'', null, null, 1)',
+      gen_random_uuid(), pg_temp.id('bcp_pen'), pg_temp.dia('hoy')), 'un tipo de cambio de 1.00 no entra', 'entre 2 y 6');
   perform test.debe_fallar(format('select public.registrar_movimiento_caja(%L, %L, %L, ''EGRESO'', 10, ''Almuerzo'', null, null, null)',
       gen_random_uuid(), pg_temp.id('chica'), pg_temp.dia('hoy')), 'una cuenta desactivada no recibe movimientos', 'desactivada');
   reset role;
 end $$;
 
--- ============================================ 10. Nada se borra
+-- ============================================ 10. Cada banco con los soles antes que los dólares
+do $$
+begin
+  perform pg_temp.como('tesoreria');
+  set local role authenticated;
+  perform test.afirmar((select array_agg(caja_id order by n) from (
+                          select caja_id, row_number() over () as n from public.caja_del_dia(pg_temp.dia('hoy'))
+                           where caja_id in (pg_temp.id('bcp_pen'), pg_temp.id('bcp_usd'))) x)
+                       = array[pg_temp.id('bcp_pen'), pg_temp.id('bcp_usd')],
+                       'la caja del día pone BCP soles antes que BCP dólares, como el estado de caja');
+  reset role;
+end $$;
+
+-- ============================================ 11. Nada se borra
 do $$
 begin
   perform test.debe_fallar(format('delete from public.movimientos_caja where id = %L', pg_temp.id('m1')),

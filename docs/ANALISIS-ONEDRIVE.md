@@ -31,20 +31,21 @@ empresa numera de otra forma. Los últimos números emitidos que se encontraron:
 | --- | --- | --- |
 | Orden de trabajo | `2909-2026` — correlativo global y año | **2920** |
 | Cotización | `3567 – 2025` — correlativo global y año | **3567** |
-| Orden de compra | `OC-5580-MW` — prefijo, número y sigla | **5580** |
+| Orden de compra | `OC-0001-MW` — prefijo, número y sigla | en la semilla de la serie |
 
 El correlativo de OT es **global y continuo**, no se reinicia cada año: la OT
 2879 es de enero de 2026 y la 2920 de junio de 2026.
 
 Las órdenes de compra tienen una carpeta por número en
-`7. ALMACEN/1. CONTROL DE RECEPCION - ALMACEN/COMPRAS 2026/1. METAL WORK PERU/OC-5580-MW`,
+`7. ALMACEN/1. CONTROL DE RECEPCION - ALMACEN/COMPRAS 2026/1. METAL WORK PERU/OC-NNNN-MW` (una carpeta por OC),
 con la evidencia de recepción dentro.
 
 Las cotizaciones se archivan por mes: `1. COTIZACIONES METAL WORK/8.AGOSTO`.
 
 > Implementado: `series_documentarias.formato` con plantilla
 > (`{prefijo} {serie} {numero} {anio}`) y los correlativos puestos al día. El
-> sistema ya emite `2921-2026`, `3568-2026` y `OC-5581-MW`.
+> sistema ya emite `2921-2026`, `3568-2026` y las OC como `OC-0001-MW`. Los
+> números de OC del repositorio son inventados: es público.
 
 ---
 
@@ -720,7 +721,7 @@ de esa carrocería ya nace con ella.
 | `PROYECTO SIG - MWP/CODIFICACION DE AREAS.xlsx` | Organigrama, tipos SIG y codificación documental |
 | `FLUJOGRAMA DE JAMISA (1).pdf` | Flujo del documento y responsables |
 | `ORDEN DE SERVICIO - 2026.xlsm` | Datos fiscales de la empresa |
-| `.../COMPRAS 2026/1. METAL WORK PERU/OC-5580-MW` | Numeración de órdenes de compra |
+| `.../COMPRAS 2026/1. METAL WORK PERU/OC-NNNN-MW` | Numeración de órdenes de compra |
 | `SEGUIMIENTO DE FABRICACIÓN - MWP.xlsx` | Codificación de unidades fabricadas |
 | `PROYECTO CODIFICACION ALMACEN -MWP.xlsx` | Codificación de materiales y de producto terminado |
 | `PROYECTO SIG - MWP/9) Almacén ( ALM)` | Los siete formatos del área de almacén |
