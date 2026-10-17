@@ -1,4 +1,5 @@
 import { CheckCircle2, Circle, Clock, Coins, FileText, Gauge, Truck } from 'lucide-react'
+import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 
@@ -11,6 +12,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
+import { costoDeOrdenes } from '@/lib/datos/costos-ot'
 import { expedienteDeOrden, type Expediente, type LineaCosto, type PresupuestoExpediente } from '@/lib/datos/expediente'
 import { observacionesDeOrden } from '@/lib/datos/observaciones'
 import { obtenerOrden, timelineDeOrden } from '@/lib/datos/ordenes'
@@ -33,6 +35,7 @@ import {
   situacionDeEntrega,
   tiempoEnTaller,
 } from '@/lib/dominio/expediente'
+import { enlaceCodigo } from '@/lib/dominio/codigos-internos'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { cantidad, fecha, fechaHora, fechaLarga, hora, hoyLima, moneda, numero, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -115,6 +118,12 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
     numero_chasis: string | null
   } | null
   const tipoCarroceria = orden.tipo_carroceria as unknown as { nombre: string } | null
+  // Con código interno, el costo de la unidad es el de su código (el mismo de
+  // Códigos internos); lo de la tarjeta de costo es solo lo cargado a esta OT.
+  const delCodigo =
+    verCosteo && unidad?.codigo_interno
+      ? ((await costoDeOrdenes([{ id: orden.id, codigo_interno: unidad.codigo_interno }], { conMargen: verMargen })).get(orden.id) ?? null)
+      : null
 
   const terminadas = expediente.etapas.filter((e) => e.estado === 'TERMINADA').length
   const entregaReal = expediente.acta?.fecha_entrega ?? null
@@ -220,7 +229,21 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
             valor={fecha(entregaReal ?? orden.fecha_entrega_comprometida)}
             pie={entrega.pie}
           />
-          {composicion ? (
+          {delCodigo?.codigo ? (
+            <Indicador
+              titulo="Costo acumulado"
+              icono={Coins}
+              valor={<span data-costo-codigo={delCodigo.pen}>{moneda(delCodigo.pen)}</span>}
+              pie={
+                delCodigo.sinPrecio + delCodigo.sinCosto + delCodigo.sinCambio > 0
+                  ? 'Incompleto: hay salidas sin precio, horas sin costo o dólares sin cambio'
+                  : delCodigo.margenPct !== null
+                    ? `Margen ${porcentaje(delCodigo.margenPct, 1)} · el costo del código ${delCodigo.codigo}`
+                    : `El costo del código ${delCodigo.codigo}`
+              }
+              tono={delCodigo.sinPrecio + delCodigo.sinCosto + delCodigo.sinCambio > 0 ? 'aviso' : 'neutro'}
+            />
+          ) : composicion ? (
             <Indicador
               titulo="Costo acumulado"
               icono={Coins}
@@ -446,6 +469,20 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
               descripcion="Material despachado a precio de compra, mano de obra de la planilla cerrada y gastos aprobados de las áreas. Se calcula en vivo."
             />
             <TarjetaCuerpo className="space-y-5">
+              {delCodigo?.codigo && (
+                <p role="status" className="rounded-[var(--radius-base)] border border-acento px-3 py-2 text-sm text-texto" data-costo-del-codigo>
+                  El costo de esta unidad es el de su código interno <strong>{delCodigo.codigo}</strong>:{' '}
+                  <strong className="tabular">{moneda(delCodigo.pen)}</strong>
+                  {delCodigo.margenPct !== null && <> con un margen de <strong className="tabular">{porcentaje(delCodigo.margenPct, 1)}</strong></>}, con la
+                  mano de obra del reporte diario, las salidas del almacén, las OS, los subcontratos, los gastos del mes y la caja.{' '}
+                  {puede(perfil, 'codigos_internos.ver') && (
+                    <Link href={enlaceCodigo(delCodigo.codigo, 'costeo')} className="font-medium text-acento hover:underline">
+                      Ver el costeo del código
+                    </Link>
+                  )}{' '}
+                  Lo de abajo es solo lo que se cargó a esta OT.
+                </p>
+              )}
               {composicion.sinPrecio > 0 && (
                 <p role="status" className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso">
                   {composicion.sinPrecio === 1 ? 'Un despacho no tiene' : `${composicion.sinPrecio} despachos no tienen`} precio de

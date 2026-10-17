@@ -20,7 +20,7 @@ import {
   parecidos,
 } from '@/lib/dominio/codigos-internos'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { fecha, moneda } from '@/lib/format'
+import { fecha, moneda, porcentaje } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
 export const metadata = { title: 'Códigos internos' }
@@ -29,7 +29,8 @@ const tieneCosto = (c: ResumenCodigo) => {
   const costo = costoDelCodigo(c)
   return costo.pen + costo.usd > 0
 }
-const porCompletar = (c: ResumenCodigo) => c.horas_sin_costo > 0 || c.materiales_sin_precio > 0 || c.compras_sin_precio > 0
+const porCompletar = (c: ResumenCodigo) =>
+  c.horas_sin_costo > 0 || c.materiales_sin_precio > 0 || c.compras_sin_precio > 0 || c.lineas_sin_cambio > 0
 
 /** Los filtros de la lista. «Parecidos» es lo que Gerencia tiene que verificar a mano. */
 const FILTROS: Record<string, (c: ResumenCodigo, parecido: boolean) => boolean> = {
@@ -64,7 +65,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Códigos internos"
-        descripcion="Cada código interno que aparece en el sistema —reportes diarios, horas de RR. HH., salidas del almacén, requerimientos, compras, órdenes de servicio, subcontratos, unidades e ingresos a la planta— con cómo va y lo que lleva costado. El avance es el promedio de las etapas que arma Diseño: la terminada vale 100 % y la que no, lo que su área reporta en el reporte diario; sin etapas, sale del reporte diario. El costo suma la mano de obra, los materiales que salieron del almacén, las órdenes de servicio aprobadas y los recibos por honorarios de los subcontratos; las compras se muestran aparte y no se suman, porque lo comprado se cuenta cuando sale del almacén."
+        descripcion="Cada código interno que aparece en el sistema —reportes diarios, horas de RR. HH., salidas del almacén, requerimientos, compras, órdenes de servicio, subcontratos, unidades e ingresos a la planta— con cómo va y lo que lleva costado. El avance es el promedio de las etapas que arma Diseño: la terminada vale 100 % y la que no, lo que su área reporta en el reporte diario; sin etapas, sale del reporte diario. El costo suma, en soles, la mano de obra con el recargo de sus horas extras, los materiales que salieron del almacén, las órdenes de servicio aprobadas, los recibos por honorarios de los subcontratos, los gastos del mes y los egresos de caja con el código; las compras se muestran aparte y no se suman, porque lo comprado se cuenta cuando sale del almacén. El margen es la cotización aprobada sin IGV menos ese costo."
         migas={[{ titulo: 'Códigos internos' }]}
       />
 
@@ -81,7 +82,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
             { valor: 'reportes', etiqueta: `Con reporte diario (${cuantos('reportes')})` },
             { valor: 'costo', etiqueta: `Con costo (${cuantos('costo')})` },
             { valor: 'parecidos', etiqueta: `Parecidos a otro (${cuantos('parecidos')})` },
-            { valor: 'por-completar', etiqueta: `Sin precio o sin costo (${cuantos('por-completar')})` },
+            { valor: 'por-completar', etiqueta: `Sin precio, sin costo o sin cambio (${cuantos('por-completar')})` },
           ]}
         />
         <p className="text-xs text-texto-suave">
@@ -90,7 +91,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
           {dolares > 0 && (
             <>
               {' '}
-              + <span className="tabular">{moneda(dolares, 'USD')}</span>
+              + <span className="tabular">{moneda(dolares, 'USD')}</span> sin tipo de cambio
             </>
           )}{' '}
           costados · <span className="tabular">{horasCortas(horas)}</span> de personal
@@ -151,8 +152,18 @@ function FilaCodigo({
           <p className="tabular font-semibold text-texto">
             {faltaElPrecio(costo.pen + costo.usd, c.materiales_sin_precio + c.horas_sin_costo) ?? moneda(costo.pen)}
           </p>
-          {costo.usd > 0 && <p className="tabular text-xs text-texto">+ {moneda(costo.usd, 'USD')}</p>}
+          {costo.usd > 0 && <p className="tabular text-xs text-texto">+ {moneda(costo.usd, 'USD')} sin cambio</p>}
           <p className="text-[11px] text-texto-suave">costo hasta hoy</p>
+          {c.venta?.margen_pct !== null && c.venta?.margen_pct !== undefined && (
+            <p className={`tabular text-xs ${c.venta.margen_pct < 0 ? 'text-peligro' : 'text-texto'}`} data-margen={c.venta.margen_pct}>
+              Margen {porcentaje(c.venta.margen_pct, 1)}
+            </p>
+          )}
+          {c.cierre && (
+            <p className="mt-0.5">
+              <Insignia tono="exito">Costeo cerrado</Insignia>
+            </p>
+          )}
         </div>
       </div>
 
@@ -180,7 +191,10 @@ function FilaCodigo({
 
       <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-texto-suave">
         <span>
-          Mano de obra <span className="tabular text-texto">{faltaElPrecio(c.mano_obra, c.horas_sin_costo, 'sin costo') ?? moneda(c.mano_obra)}</span>
+          Mano de obra{' '}
+          <span className="tabular text-texto">
+            {faltaElPrecio(c.mano_obra + c.recargo_extras, c.horas_sin_costo, 'sin costo') ?? moneda(c.mano_obra + c.recargo_extras)}
+          </span>
           {c.horas > 0 && <span className="tabular"> ({horasCortas(c.horas)})</span>}
         </span>
         <span>
@@ -200,6 +214,18 @@ function FilaCodigo({
           <span>
             Subcontratos <span className="tabular text-texto">{moneda(c.subcontratos_pen)}</span>
             {c.subcontratos_usd > 0 && <span className="tabular text-texto"> + {moneda(c.subcontratos_usd, 'USD')}</span>}
+          </span>
+        )}
+        {(c.gastos_mes_pen > 0 || c.gastos_mes_usd > 0) && (
+          <span>
+            Gastos del mes <span className="tabular text-texto">{moneda(c.gastos_mes_pen)}</span>
+            {c.gastos_mes_usd > 0 && <span className="tabular text-texto"> + {moneda(c.gastos_mes_usd, 'USD')}</span>}
+          </span>
+        )}
+        {(c.caja_pen > 0 || c.caja_usd > 0) && (
+          <span>
+            Caja <span className="tabular text-texto">{moneda(c.caja_pen)}</span>
+            {c.caja_usd > 0 && <span className="tabular text-texto"> + {moneda(c.caja_usd, 'USD')}</span>}
           </span>
         )}
         {(c.compras_pen > 0 || c.compras_usd > 0) && (
@@ -229,6 +255,7 @@ function FilaCodigo({
             {c.compras_sin_precio} {c.compras_sin_precio === 1 ? 'línea de OC sin precio' : 'líneas de OC sin precio'}
           </Insignia>
         )}
+        {c.lineas_sin_cambio > 0 && <Insignia tono="aviso">Dólares sin tipo de cambio</Insignia>}
       </p>
     </Link>
   )

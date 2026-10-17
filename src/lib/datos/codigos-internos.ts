@@ -46,20 +46,151 @@ export type ResumenCodigo = {
   compras_pen: number
   compras_usd: number
   compras_sin_precio: number
+} & CostoCompleto
+
+/**
+ * Lo que el resumen no trae y sale de `codigos_internos_costo` (migración
+ * 20261017300000): el recargo de las horas extras, los gastos del mes, los
+ * egresos de caja, el costo total en soles, lo vendido y el cierre.
+ */
+export type CostoCompleto = {
+  /** Lo que la planilla diaria pagó de más por las horas extras: es mano de obra. */
+  recargo_extras: number
+  /** Luz, agua, celulares… de «Gastos del mes», con su tasa o en partes iguales. */
+  gastos_mes_pen: number
+  gastos_mes_usd: number
+  /** Los egresos que Tesorería escribió a mano en la caja diaria con el código. */
+  caja_pen: number
+  caja_usd: number
+  egresos_caja: number
+  /** Todo lo que suma, en soles: los dólares al cambio de venta del día de cada línea. */
+  costo_pen: number
+  /** Los dólares de las líneas sin tipo de cambio cargado: no suman hasta que Tesorería lo cargue. */
+  usd_sin_cambio: number
+  lineas_sin_cambio: number
+  /** Para quien ve el precio de venta y si el código tiene cotización aprobada; si no, `null`. */
+  venta: VentaDelCodigo | null
+  cierre: CierreDelCodigo | null
+}
+
+export type SemaforoCosto = 'EN_RANGO' | 'AJUSTADO' | 'EXCEDIDO'
+
+/** La cotización aprobada del código y lo que queda entre ella y el costo. */
+export type VentaDelCodigo = {
+  cotizaciones: number
+  /** «PEN», «USD» o «PEN+USD» si hay cotizaciones en las dos monedas. */
+  moneda: string
+  precio_pen: number
+  precio_usd: number
+  /** Cotizaciones a las que Ventas no les confirmó si el monto incluye IGV. */
+  sin_igv: number
+  /** Cotizaciones en dólares sin tipo de cambio del día en que se aprobaron. */
+  sin_cambio: number
+  /** El precio sin IGV en soles; `null` si falta el IGV o el cambio de alguna. */
+  precio_neto_pen: number | null
+  margen_pen: number | null
+  margen_pct: number | null
+  /** El precio sin IGV menos la utilidad estándar del 15 % de la hoja RESUMEN. */
+  presupuesto_pen: number | null
+  consumido_pct: number | null
+  semaforo: SemaforoCosto | null
+}
+
+/** El costeo cerrado: lo que valía al entregar la unidad. */
+export type CierreDelCodigo = {
+  cerrado_en: string
+  cerrado_por: string | null
+  costo_pen: number
+  margen_pen: number | null
+  margen_pct: number | null
 }
 
 const n = (v: number | null | undefined) => Number(v ?? 0)
+const nulo = (v: number | null | undefined) => (v === null || v === undefined ? null : Number(v))
+
+/** Sin costo de la base: un código que solo tiene Diseño, o que la base todavía no costeó. */
+export const SIN_COSTO_COMPLETO: CostoCompleto = {
+  recargo_extras: 0,
+  gastos_mes_pen: 0,
+  gastos_mes_usd: 0,
+  caja_pen: 0,
+  caja_usd: 0,
+  egresos_caja: 0,
+  costo_pen: 0,
+  usd_sin_cambio: 0,
+  lineas_sin_cambio: 0,
+  venta: null,
+  cierre: null,
+}
+
+/**
+ * El costo completo de cada código (o de uno), por código. Lo llaman Gerencia
+ * (`codigos_internos.ver`) y quien ve el costo de las OT (`costos.ver`, el
+ * Dashboard de Administración); el precio y el margen llegan solo a quien ve
+ * el precio de venta.
+ */
+export async function costoCompletoDeLosCodigos(codigo?: string): Promise<Map<string, CostoCompleto>> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('codigos_internos_costo', codigo ? { p_codigo: codigo } : {})
+  if (error) throw new Error(`No se pudo leer el costo de los códigos: ${error.message}`)
+  return new Map(
+    (data ?? []).flatMap((f) => {
+      if (!f.codigo) return []
+      const semaforo = f.semaforo === 'EN_RANGO' || f.semaforo === 'AJUSTADO' || f.semaforo === 'EXCEDIDO' ? f.semaforo : null
+      const costo: CostoCompleto = {
+        recargo_extras: n(f.recargo_extras),
+        gastos_mes_pen: n(f.gastos_mes_pen),
+        gastos_mes_usd: n(f.gastos_mes_usd),
+        caja_pen: n(f.caja_pen),
+        caja_usd: n(f.caja_usd),
+        egresos_caja: n(f.egresos_caja),
+        costo_pen: n(f.costo_pen),
+        usd_sin_cambio: n(f.usd_sin_cambio),
+        lineas_sin_cambio: n(f.lineas_sin_cambio),
+        venta:
+          f.cotizaciones && f.cotizaciones > 0
+            ? {
+                cotizaciones: n(f.cotizaciones),
+                moneda: f.moneda_venta ?? 'PEN',
+                precio_pen: n(f.precio_venta_pen),
+                precio_usd: n(f.precio_venta_usd),
+                sin_igv: n(f.venta_sin_igv_confirmado),
+                sin_cambio: n(f.venta_sin_cambio),
+                precio_neto_pen: nulo(f.precio_neto_pen),
+                margen_pen: nulo(f.margen_pen),
+                margen_pct: nulo(f.margen_pct),
+                presupuesto_pen: nulo(f.presupuesto_pen),
+                consumido_pct: nulo(f.consumido_pct),
+                semaforo,
+              }
+            : null,
+        cierre:
+          f.cierre_id && f.cerrado_en
+            ? {
+                cerrado_en: f.cerrado_en,
+                cerrado_por: f.cerrado_por,
+                costo_pen: n(f.costo_cerrado_pen),
+                margen_pen: nulo(f.margen_cerrado_pen),
+                margen_pct: nulo(f.margen_cerrado_pct),
+              }
+            : null,
+      }
+      return [[f.codigo, costo] as const]
+    }),
+  )
+}
 
 /** Todos los códigos del sistema, del que tuvo movimiento más reciente al más viejo. */
 export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
   const supabase = await createClient()
-  // El resumen de la base no trae las órdenes de servicio ni los subcontratos
-  // (cambiarle las columnas exige borrarlo): salen de su propia función, con
-  // las mismas líneas que el costeo de cada código.
-  const [{ data, error }, porServicio, porSubcontrato] = await Promise.all([
+  // El resumen de la base no trae las órdenes de servicio, los subcontratos ni
+  // el costo completo (cambiarle las columnas exige borrarlo): salen de su
+  // propia función, con las mismas líneas que el costeo de cada código.
+  const [{ data, error }, porServicio, porSubcontrato, completo] = await Promise.all([
     supabase.rpc('codigos_internos_resumen'),
     supabase.rpc('codigos_internos_servicios'),
     supabase.rpc('codigos_internos_subcontratos'),
+    costoCompletoDeLosCodigos(),
   ])
   if (error) throw new Error(`No se pudieron leer los códigos internos: ${error.message}`)
   if (porServicio.error) throw new Error(`No se pudieron leer los servicios de los códigos: ${porServicio.error.message}`)
@@ -103,6 +234,7 @@ export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
             compras_pen: n(f.compras_pen),
             compras_usd: n(f.compras_usd),
             compras_sin_precio: n(f.compras_sin_precio),
+            ...(completo.get(f.codigo) ?? SIN_COSTO_COMPLETO),
           },
         ]
       : []
@@ -202,6 +334,9 @@ export async function avanceDelCodigo(codigo: string): Promise<AvanceReportado[]
  * aprobada sin IGV, que sí va; SERVICIOS_POR_APROBAR, la que espera a Gerencia;
  * SUBCONTRATOS, cada recibo por honorarios pagado, por su bruto, y
  * SUBCONTRATOS_POR_PAGAR, el que espera a Tesorería: los dos van.
+ * RECARGO_EXTRAS, lo que la planilla diaria pagó de más por las horas extras;
+ * GASTOS_DEL_MES, la parte del código de cada gasto del mes; CAJA, cada egreso
+ * de la caja diaria con el código: los tres van.
  */
 export type LineaCosteo = {
   fuente:
@@ -214,6 +349,9 @@ export type LineaCosteo = {
     | 'SERVICIOS_POR_APROBAR'
     | 'SUBCONTRATOS'
     | 'SUBCONTRATOS_POR_PAGAR'
+    | 'RECARGO_EXTRAS'
+    | 'GASTOS_DEL_MES'
+    | 'CAJA'
   fecha: string
   concepto: string
   detalle: string | null
@@ -385,6 +523,7 @@ export function sumarCodigosDeDiseno(
         compras_pen: 0,
         compras_usd: 0,
         compras_sin_precio: 0,
+        ...SIN_COSTO_COMPLETO,
       }),
     )
   if (nuevos.length === 0) return todos

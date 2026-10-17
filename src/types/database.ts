@@ -864,6 +864,75 @@ export type Database = {
           }
         ]
       }
+      codigo_interno_cierres: {
+        Row: {
+          id: string
+          codigo: string
+          costo_pen: number
+          precio_neto_pen: number | null
+          margen_pen: number | null
+          margen_pct: number | null
+          por_fuente: Json
+          observacion: string | null
+          cerrado_por: string
+          cerrado_en: string
+          reabierto_por: string | null
+          reabierto_en: string | null
+          motivo_reapertura: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo: string
+          costo_pen: number
+          precio_neto_pen?: number | null
+          margen_pen?: number | null
+          margen_pct?: number | null
+          por_fuente: Json
+          observacion?: string | null
+          cerrado_por?: string
+          cerrado_en?: string
+          reabierto_por?: string | null
+          reabierto_en?: string | null
+          motivo_reapertura?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo?: string
+          costo_pen?: number
+          precio_neto_pen?: number | null
+          margen_pen?: number | null
+          margen_pct?: number | null
+          por_fuente?: Json
+          observacion?: string | null
+          cerrado_por?: string
+          cerrado_en?: string
+          reabierto_por?: string | null
+          reabierto_en?: string | null
+          motivo_reapertura?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "codigo_interno_cierres_cerrado_por_fkey"
+            columns: ["cerrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_interno_cierres_reabierto_por_fkey"
+            columns: ["reabierto_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       codigo_materiales: {
         Row: {
           id: string
@@ -10584,6 +10653,13 @@ export type Database = {
         }
         Returns: string
       }
+      cerrar_costeo_codigo: {
+        Args: {
+          p_codigo: string | null
+          p_observacion?: string | null
+        }
+        Returns: string
+      }
       cerrar_costo_ot: {
         Args: {
           p_orden: string | null
@@ -10791,6 +10867,48 @@ export type Database = {
           referencia_id: string | null
         }[]
       }
+      codigo_interno_lineas_caja: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          horas: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+        }[]
+      }
+      codigo_interno_lineas_recargo: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          horas: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+        }[]
+      }
       codigo_interno_lineas_servicio: {
         Args: {
           p_codigo: string | null
@@ -10953,6 +11071,82 @@ export type Database = {
           trabajos: number | null
           trabajos_terminados: number | null
           ultimo_reporte: string | null
+        }[]
+      }
+      codigos_internos_costo: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          codigo: string | null
+          mano_obra: number | null
+          recargo_extras: number | null
+          gastos_mes_pen: number | null
+          gastos_mes_usd: number | null
+          caja_pen: number | null
+          caja_usd: number | null
+          egresos_caja: number | null
+          costo_pen: number | null
+          usd_sin_cambio: number | null
+          lineas_sin_cambio: number | null
+          materiales_sin_precio: number | null
+          horas_sin_costo: number | null
+          cotizaciones: number | null
+          moneda_venta: string | null
+          precio_venta_pen: number | null
+          precio_venta_usd: number | null
+          venta_sin_igv_confirmado: number | null
+          venta_sin_cambio: number | null
+          precio_neto_pen: number | null
+          margen_pen: number | null
+          margen_pct: number | null
+          presupuesto_pen: number | null
+          consumido_pct: number | null
+          semaforo: string | null
+          cierre_id: string | null
+          cerrado_en: string | null
+          cerrado_por: string | null
+          costo_cerrado_pen: number | null
+          margen_cerrado_pen: number | null
+          margen_cerrado_pct: number | null
+        }[]
+      }
+      codigos_internos_costo_calculado: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          mano_obra: number | null
+          recargo_extras: number | null
+          gastos_mes_pen: number | null
+          gastos_mes_usd: number | null
+          caja_pen: number | null
+          caja_usd: number | null
+          egresos_caja: number | null
+          costo_pen: number | null
+          usd_sin_cambio: number | null
+          lineas_sin_cambio: number | null
+          materiales_sin_precio: number | null
+          horas_sin_costo: number | null
+          cotizaciones: number | null
+          moneda_venta: string | null
+          precio_venta_pen: number | null
+          precio_venta_usd: number | null
+          venta_sin_igv_confirmado: number | null
+          venta_sin_cambio: number | null
+          precio_neto_pen: number | null
+          margen_pen: number | null
+          margen_pct: number | null
+          presupuesto_pen: number | null
+          consumido_pct: number | null
+          semaforo: string | null
+          cierre_id: string | null
+          cerrado_en: string | null
+          cerrado_por: string | null
+          costo_cerrado_pen: number | null
+          margen_cerrado_pen: number | null
+          margen_cerrado_pct: number | null
         }[]
       }
       codigos_internos_de_diseno: {
@@ -12588,6 +12782,13 @@ export type Database = {
       quitar_recojo_de_la_lista: {
         Args: {
           p_compra: string | null
+        }
+        Returns: string
+      }
+      reabrir_costeo_codigo: {
+        Args: {
+          p_codigo: string | null
+          p_motivo: string | null
         }
         Returns: string
       }

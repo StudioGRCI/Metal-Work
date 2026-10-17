@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { createClient } from '@/lib/supabase/server'
 
 export async function controlesYSolicitudesDeOrden(ordenId: string, verCosteo: boolean) {
@@ -51,17 +52,70 @@ export async function solicitudesPendientesTesoreria() {
   return data ?? []
 }
 
+export type CostoDeOrden = {
+  pen: number
+  sinPrecio: number
+  sinCambio: number
+  /** Horas del reporte de quien todavía no tiene costo: solo en el costo del código. */
+  sinCosto: number
+  margenPct: number | null
+  consumidoPct: number | null
+  semaforo: 'EN_RANGO' | 'AJUSTADO' | 'EXCEDIDO' | null
+  /** El código interno cuyo costo es este; `null` si la orden no tiene unidad con código y se costea sola. */
+  codigo: string | null
+}
+
 /**
  * Lo que lleva costado cada orden, en soles, para ponerlo al lado de su avance
- * en el tablero: lo comprado en dólares entra al cambio de su fecha. Una llamada
- * por orden —son pocas, las que caben en el tablero—; si una falla, esa orden
- * sale sin cifra en vez de tumbar la pantalla. Solo se llama con `costos.ver`;
- * el margen y el presupuesto, además, solo con el precio a la vista (`conMargen`).
+ * en el tablero. Desde el 15/10 el código interno es el centro: la orden cuya
+ * unidad tiene código muestra el costo y el margen **del código**, el mismo que
+ * ve Gerencia en Códigos internos (`codigos_internos_costo`), y no otro que se
+ * le separe. Solo la orden sin código se costea sola, con su costeo de siempre
+ * (lo comprado en dólares al cambio de su fecha). Una llamada por código o por
+ * orden —son pocas, las que caben en el tablero—; si una falla, esa orden sale
+ * sin cifra en vez de tumbar la pantalla. Solo se llama con `costos.ver`; el
+ * margen y el presupuesto, además, solo con el precio a la vista (`conMargen`).
  */
-export async function costoDeOrdenes(ids: string[], opciones: { conMargen?: boolean } = {}) {
+export async function costoDeOrdenes(
+  ordenes: { id: string; codigo_interno?: string | null }[],
+  opciones: { conMargen?: boolean } = {},
+) {
   const supabase = await createClient()
+  const codigoDe = new Map(ordenes.map((o) => [o.id, normalizarCodigo(o.codigo_interno ?? '') || null]))
+  const codigos = [...new Set([...codigoDe.values()].filter((c): c is string => c !== null && c !== CODIGO_SIN_AVANCE))]
+
+  const porCodigo = new Map(
+    await Promise.all(
+      codigos.map(async (codigo) => {
+        const { data, error } = await supabase.rpc('codigos_internos_costo', { p_codigo: codigo })
+        if (error) return [codigo, null] as const
+        // Un código sin nada cargado no trae fila: todavía no cuesta nada.
+        const f = data?.[0]
+        const total: CostoDeOrden = {
+          pen: Number(f?.costo_pen ?? 0),
+          sinPrecio: Number(f?.materiales_sin_precio ?? 0),
+          sinCambio: Number(f?.lineas_sin_cambio ?? 0),
+          sinCosto: Number(f?.horas_sin_costo ?? 0),
+          margenPct: null,
+          consumidoPct: null,
+          semaforo: null,
+          codigo,
+        }
+        // Sin costo cargado el margen saldría 100 %: no se muestra hasta que haya costo.
+        if (opciones.conMargen && f && total.pen > 0) {
+          total.margenPct = f.margen_pct === null ? null : Number(f.margen_pct)
+          total.consumidoPct = f.consumido_pct === null ? null : Number(f.consumido_pct)
+          total.semaforo = f.semaforo === 'EN_RANGO' || f.semaforo === 'AJUSTADO' || f.semaforo === 'EXCEDIDO' ? f.semaforo : null
+        }
+        return [codigo, total] as const
+      }),
+    ),
+  )
+
   const filas = await Promise.all(
-    ids.map(async (id) => {
+    ordenes.map(async ({ id }) => {
+      const codigo = codigoDe.get(id) ?? null
+      if (codigo && codigo !== CODIGO_SIN_AVANCE) return [id, porCodigo.get(codigo) ?? null] as const
       // `presupuesto_ot` trae el margen y el semáforo del presupuesto en una llamada.
       const [costo, presupuesto] = await Promise.all([
         supabase.rpc('costeo_ot_en_soles', { p_orden: id }),
@@ -70,13 +124,15 @@ export async function costoDeOrdenes(ids: string[], opciones: { conMargen?: bool
           : Promise.resolve({ data: null, error: null }),
       ])
       if (costo.error || !costo.data) return [id, null] as const
-      const total = {
+      const total: CostoDeOrden = {
         pen: 0,
         sinPrecio: 0,
         sinCambio: 0,
-        margenPct: null as number | null,
-        consumidoPct: null as number | null,
-        semaforo: null as 'EN_RANGO' | 'AJUSTADO' | 'EXCEDIDO' | null,
+        sinCosto: 0,
+        margenPct: null,
+        consumidoPct: null,
+        semaforo: null,
+        codigo: null,
       }
       for (const l of costo.data) {
         if (l.fuente === 'MATERIALES_SIN_PRECIO') total.sinPrecio += 1

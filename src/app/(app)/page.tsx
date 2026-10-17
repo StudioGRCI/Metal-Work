@@ -129,10 +129,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
   // El margen se ve solo con el precio de venta a la vista: la misma llave que `margen_ot`.
   const verMargen = verCosteo && puede(perfil, 'cotizaciones.ver_pdf_comercial')
   const costos = verCosteo
-    ? await costoDeOrdenes(
-        enTaller.ordenes.map((o) => o.id),
-        { conMargen: verMargen },
-      )
+    ? await costoDeOrdenes(enTaller.ordenes, { conMargen: verMargen })
     : null
   // Para el pie de «Órdenes abiertas»: un número suelto no dice si son muchas
   // o pocas hasta que se ve contra el total registrado.
@@ -292,8 +289,11 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
                               <span className="text-texto-tenue" title="No se pudo calcular el costo de esta orden">—</span>
                             ) : (
                               <>
-                                {/* Todo en soles: lo comprado en dólares entra al cambio de su fecha. */}
-                                <span className={cn('sm:block', costo.pen > 0 ? 'font-medium text-texto' : 'text-texto-tenue')}>
+                                {/* Todo en soles, y con código el costo es el del código: el mismo que ve Gerencia. */}
+                                <span
+                                  className={cn('sm:block', costo.pen > 0 ? 'font-medium text-texto' : 'text-texto-tenue')}
+                                  title={costo.codigo ? `El costo del código ${costo.codigo}, el mismo de Códigos internos` : undefined}
+                                >
                                   {moneda(costo.pen)}
                                 </span>
                                 {costo.margenPct !== null && (
@@ -320,6 +320,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
                                     {costo.sinPrecio} {costo.sinPrecio === 1 ? 'despacho' : 'despachos'} sin precio
                                   </span>
                                 )}
+                                {costo.sinCosto > 0 && <span className="block text-aviso">Horas sin costo</span>}
                                 {costo.sinCambio > 0 && <span className="block text-aviso">Falta tipo de cambio</span>}
                               </>
                             )}
