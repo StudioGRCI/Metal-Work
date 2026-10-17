@@ -342,15 +342,16 @@ const CIFRAS = {
       const codigos = await c.una('codigos', () => listarCodigosInternos())
       const pen = codigos.reduce((n, k) => n + costoDelCodigo(k).pen, 0)
       const usd = codigos.reduce((n, k) => n + costoDelCodigo(k).usd, 0)
-      return { titulo: 'Costo acumulado', ...soles(pen, usd, 'mano de obra, materiales, servicios y subcontratos'), icono: Coins }
+      const pie = usd > 0 ? `y ${moneda(usd, 'USD')} sin tipo de cambio · todo lo que suma cada código` : 'todo lo que suma cada código, en soles'
+      return { titulo: 'Costo acumulado', valor: moneda(pen), pie, icono: Coins }
     },
   },
   codigos_por_completar: {
     ruta: '/codigos-internos?ver=por-completar',
     calcular: async (c) => {
       const codigos = await c.una('codigos', () => listarCodigosInternos())
-      const n = codigos.filter((k) => k.horas_sin_costo > 0 || k.materiales_sin_precio > 0 || k.compras_sin_precio > 0).length
-      return { titulo: 'Costo por completar', valor: String(n), pie: 'horas sin costo o materiales sin precio', icono: AlertTriangle, tono: n > 0 ? 'aviso' : 'exito' }
+      const n = codigos.filter((k) => k.horas_sin_costo > 0 || k.materiales_sin_precio > 0 || k.compras_sin_precio > 0 || k.lineas_sin_cambio > 0).length
+      return { titulo: 'Costo por completar', valor: String(n), pie: 'horas sin costo, materiales sin precio o dólares sin cambio', icono: AlertTriangle, tono: n > 0 ? 'aviso' : 'exito' }
     },
   },
   facturado_y_cobrado: {
@@ -739,7 +740,10 @@ async function codigosEnCurso(c: Contexto): Promise<CodigoEnCurso[]> {
           href: enlaceCodigo(k.codigo),
           // PLANTA es el trabajo de la planta, no una unidad: no lleva avance.
           avance: k.codigo === CODIGO_SIN_AVANCE ? null : (avances.get(k.codigo)?.avance ?? 0),
-          costo: costo.pen + costo.usd > 0 ? [costo.pen > 0 ? moneda(costo.pen) : null, costo.usd > 0 ? moneda(costo.usd, 'USD') : null].filter(Boolean).join(' y ') : null,
+          costo:
+            costo.pen + costo.usd > 0
+              ? [costo.pen > 0 ? moneda(costo.pen) : null, costo.usd > 0 ? `${moneda(costo.usd, 'USD')} sin cambio` : null].filter(Boolean).join(' y ')
+              : null,
           ultima: k.ultima_actividad,
         }
       })

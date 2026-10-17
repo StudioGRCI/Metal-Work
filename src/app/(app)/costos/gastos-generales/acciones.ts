@@ -16,7 +16,7 @@ const SOLO_ADMINISTRACION = 'Los gastos del local y de operación los registra A
 
 /**
  * Un gasto del mes que no es de una OT —luz, agua, internet, depreciación— y
- * cómo se reparte entre las OT trabajadas ese mes. `registrar_gasto_general`
+ * cómo se reparte entre los códigos internos que trabajaron ese mes. `registrar_gasto_general`
  * exige `costos.gastos_generales`, el mismo permiso que se pide aquí.
  */
 export async function registrarGastoGeneral(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
@@ -63,7 +63,7 @@ export async function registrarGastoGeneral(_previo: unknown, formulario: FormDa
   if (data !== v.data.operacion_id) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/costos/gastos-generales')
-  return { ok: true, mensaje: 'Gasto registrado. Llega al costeo de cada OT trabajada ese mes cuando RR.HH. cierra su planilla.' }
+  return { ok: true, mensaje: 'Gasto registrado: ya entra al costo de cada código interno que trabajó ese mes.' }
 }
 
 /** Anular, nunca borrar: el gasto queda a la vista con el motivo, quién y cuándo. */
@@ -83,5 +83,5 @@ export async function anularGastoGeneral(_previo: unknown, formulario: FormData)
   if (data !== v.data.id) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/costos/gastos-generales')
-  return { ok: true, mensaje: 'Gasto anulado. Deja de sumar en el costeo de las OT.' }
+  return { ok: true, mensaje: 'Gasto anulado: deja de sumar en el costo de los códigos internos.' }
 }

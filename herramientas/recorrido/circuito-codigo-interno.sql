@@ -23,6 +23,15 @@
 -- suyo del mismo código, y tiene que decir lo mismo. Ninguna otra cuenta abre
 -- Códigos internos.
 --
+-- El costeo completo (migración 20261017300000): Administración registra la
+-- luz del mes al 8 %, Tesorería paga S/ 300 por caja chica con el código,
+-- Producción reporta horas de más, Diseño evalúa la merma y Gerencia fija el
+-- presupuesto. Gerencia, Administración y Supervisión general leen el mismo
+-- costo (Supervisión general sin precio ni margen); Gerencia no puede cerrar con
+-- horas sin costo y Administración no puede cerrar; Supervisión general no lee
+-- los cierres, ni en la tabla ni en la auditoría. Solo las cuentas con
+-- codigos_internos.ver o costos.ver leen el costo completo.
+--
 -- Lo único que se arma como dueño de la base: el material nuevo del catálogo y
 -- las filas de storage.objects de los archivos (la subida real la hace el
 -- navegador). Supervisión general, Diseño colaborador y Portería no tocan el
@@ -66,6 +75,13 @@ declare
   o_diseno jsonb; o_etapas_diseno jsonb; o_etapas_area jsonb := '{}'; o_gasto jsonb;
   v_vio   text[] := '{}';
   f       text[] := '{}';
+  -- Lo que se agrega para medir lo que NO llega al código.
+  v_caja  uuid := gen_random_uuid();  v_r3 uuid := gen_random_uuid();
+  b_antes jsonb; b_despues jsonb; b_ot jsonb; b_ot_admin jsonb; b_margen jsonb; b_tareo_extra jsonb;
+  -- El costeo completo (migración 20261017300000).
+  n_gerencia jsonb; n_admin jsonb; n_general jsonb; n_gasto jsonb; n_cierre text; n_admin_cierre text;
+  n_cierres_general integer; n_cierres_admin integer; n_auditoria_general integer;
+  n_leen text[] := '{}'; n_deben text[]; n_lineas jsonb;
 begin
   -- ------------------------------------------------------------ las cuentas
   select jsonb_object_agg(llave, id) into k from (
@@ -127,10 +143,12 @@ begin
     -- ======================================================== 1. EL CIRCUITO
     v_paso := 'Ventas sube la cotización';
     perform pg_temp.ensayo_como((k->>'VENDEDOR')::uuid);
-    insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, nombre_archivo, ruta_storage, mime_type)
-    values (v_cot, 'ENSAYO-' || v_cot, v_cliente, v_tipo, 'ensayo.pdf', 'cot/' || v_cot || '/ensayo.pdf', 'application/pdf');
+    -- S/ 29,500 con IGV: S/ 25,000 sin IGV (lo mismo que después se factura).
+    insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, nombre_archivo, ruta_storage, mime_type, moneda, monto_venta)
+    values (v_cot, 'ENSAYO-' || v_cot, v_cliente, v_tipo, 'ensayo.pdf', 'cot/' || v_cot || '/ensayo.pdf', 'application/pdf', 'PEN', 29500);
     get diagnostics v_n = row_count;
     if v_n <> 1 then raise exception 'Ventas no pudo subir la cotización'; end if;
+    perform public.confirmar_igv_cotizacion(v_cot, true);
 
     v_paso := 'Gerencia no aprueba sin código ni OT';
     reset role; perform pg_temp.ensayo_como((k->>'GERENTE')::uuid);
@@ -417,6 +435,119 @@ begin
       end;
     end loop;
     reset role;
+
+    -- ================================= 6. LO QUE NO LLEGA AL COSTEO DEL CÓDIGO
+    v_paso := 'Gerencia lee el costeo antes de las brechas';
+    reset role; perform pg_temp.ensayo_como((k->>'GERENTE')::uuid);
+    select jsonb_object_agg(x.fuente, x.monto) into b_antes
+      from (select l.fuente, coalesce(sum(l.monto), 0) as monto from public.codigo_interno_costeo(c) l group by l.fuente) x;
+
+    v_paso := 'Administración registra la luz del mes (8 % por unidad, como la hoja RESUMEN)';
+    reset role; perform pg_temp.ensayo_como((k->>'ADMINISTRACION')::uuid);
+    perform public.registrar_gasto_general(gen_random_uuid(), v_hoy, 'ELECTRICIDAD', 'Recibo de luz del ensayo', 1000, 'PEN', 'TASA', 8);
+
+    v_paso := 'Tesorería paga S/ 300 de movilidad por caja chica con el código';
+    reset role; perform pg_temp.ensayo_como((k->>'TESORERIA')::uuid);
+    perform public.guardar_caja(v_caja, 'Caja chica del ensayo 2699', 'EFECTIVO', null, 'PEN', 1000, v_hoy, true);
+    perform public.registrar_movimiento_caja(gen_random_uuid(), v_caja, v_hoy, 'EGRESO', 300,
+                                             'Movilidad para recoger las planchas del ensayo', c, null, null);
+
+    v_paso := 'Producción reporta 5 h más del soldador hoy (10 h en el día: 2 h extras)';
+    reset role; perform pg_temp.ensayo_como((k->>'SUPERVISOR_PRD')::uuid);
+    perform public.registrar_reporte_diario(v_r3, v_hoy, c, 'Soldadura de largueros por la tarde', 'Se siguió soldando hasta la noche',
+      jsonb_build_array(
+        jsonb_build_object('descripcion', 'Soldadura', 'avance', 60,
+                           'personal', jsonb_build_array(jsonb_build_object('trabajador_id', v_t1, 'horas', 5)))),
+      null, null);
+    reset role;
+    select jsonb_build_object('horas', sum(t.horas), 'costo_hora', min(t.costo_hora), 'costo', sum(t.costo))
+      into b_tareo_extra
+      from public.tareos t join public.reporte_diario_personal l on l.id = t.reporte_linea_id where l.reporte_id = v_r3;
+
+    v_paso := 'Gerencia lee el costeo después de las brechas';
+    reset role; perform pg_temp.ensayo_como((k->>'GERENTE')::uuid);
+    select jsonb_object_agg(x.fuente, x.monto) into b_despues
+      from (select l.fuente, coalesce(sum(l.monto), 0) as monto from public.codigo_interno_costeo(c) l group by l.fuente) x;
+    -- El margen y el costo que da la OT del mismo código (expediente y Dashboard).
+    select to_jsonb(m) into b_margen from public.margen_ot(v_ot) m;
+    select jsonb_object_agg(x.fuente, x.monto) into b_ot
+      from (select s.fuente, coalesce(sum(s.monto_pen), 0) as monto from public.costeo_ot_en_soles(v_ot) s group by s.fuente) x;
+
+    v_paso := 'Administración lee el costo de la OT';
+    reset role; perform pg_temp.ensayo_como((k->>'ADMINISTRACION')::uuid);
+    select jsonb_object_agg(x.fuente, x.monto) into b_ot_admin
+      from (select s.fuente, coalesce(sum(s.monto_pen), 0) as monto from public.costeo_ot_en_soles(v_ot) s group by s.fuente) x;
+    reset role;
+
+    -- ================================= 7. EL COSTEO COMPLETO, CON CADA PUESTO
+    v_paso := 'Diseño evalúa la merma de la OT en 5 %';
+    reset role; perform pg_temp.ensayo_como((k->>'DISENO')::uuid);
+    perform public.fijar_merma_ot(v_ot, 5, 'Cortes de los largueros del ensayo');
+    reset role;
+
+    v_paso := 'Gerencia fija a mano el presupuesto de la OT';
+    perform pg_temp.ensayo_como((k->>'GERENTE')::uuid);
+    perform public.fijar_presupuesto_ot(v_ot, 20000, 'Presupuesto acordado en el ensayo');
+
+    v_paso := 'Gerencia lee el costo completo y el margen del código';
+    select to_jsonb(x) into n_gerencia from public.codigos_internos_costo(c) x;
+    select jsonb_object_agg(x.fuente, x.monto) into n_lineas
+      from (select l.fuente, coalesce(sum(l.monto), 0) as monto from public.codigo_interno_costeo(c) l group by l.fuente) x;
+    v_paso := 'Gerencia intenta cerrar el costeo con 2 h sin costo';
+    begin
+      perform public.cerrar_costeo_codigo(c, 'Unidad entregada en el ensayo con su acta');
+      n_cierre := 'CERRÓ';
+    exception when others then n_cierre := sqlerrm;
+    end;
+    reset role;
+
+    v_paso := 'Administración lee el mismo costo e intenta cerrar';
+    perform pg_temp.ensayo_como((k->>'ADMINISTRACION')::uuid);
+    select to_jsonb(x) into n_admin from public.codigos_internos_costo(c) x;
+    begin
+      perform public.cerrar_costeo_codigo(c, 'Unidad entregada en el ensayo con su acta');
+      n_admin_cierre := 'CERRÓ';
+    exception when others then n_admin_cierre := sqlstate;
+    end;
+    reset role;
+
+    v_paso := 'Supervisión general lee el costo sin el precio';
+    perform pg_temp.ensayo_como((k->>'SUPERVISOR_GENERAL')::uuid);
+    select to_jsonb(x) into n_general from public.codigos_internos_costo(c) x;
+    reset role;
+
+    -- El cierre guarda el margen: un cierre del ensayo, escrito como dueño de la
+    -- tabla (se deshace con todo), lo lee Administración y no Supervisión general.
+    v_paso := 'Quién lee la tabla de cierres';
+    insert into public.codigo_interno_cierres (codigo, costo_pen, precio_neto_pen, margen_pen, margen_pct, por_fuente, observacion, cerrado_por)
+    values (c, 1, 2, 1, 50, '{}'::jsonb, 'Cierre del ensayo para probar quién lo lee', (k->>'GERENTE')::uuid);
+    perform pg_temp.ensayo_como((k->>'SUPERVISOR_GENERAL')::uuid);
+    select count(*) into n_cierres_general from public.codigo_interno_cierres where codigo = c;
+    -- Supervisión general lee la auditoría (auditoria.ver): el cierre no se copia ahí.
+    select count(*) into n_auditoria_general from public.audit_log where tabla = 'codigo_interno_cierres';
+    reset role;
+    perform pg_temp.ensayo_como((k->>'ADMINISTRACION')::uuid);
+    select count(*) into n_cierres_admin from public.codigo_interno_cierres where codigo = c;
+    reset role;
+
+    v_paso := 'Requerimientos lee su gasto por código';
+    perform pg_temp.ensayo_como((k->>'REQUERIMIENTOS')::uuid);
+    select to_jsonb(g) into n_gasto from public.codigos_internos_gasto() g where g.codigo = c;
+    reset role;
+
+    v_paso := 'Quién lee el costo completo';
+    foreach v_txt in array v_puestos loop
+      perform pg_temp.ensayo_como((k->>v_txt)::uuid);
+      begin
+        perform 1 from public.codigos_internos_costo(c);
+        n_leen := n_leen || v_txt;
+      exception when insufficient_privilege then null;
+      end;
+      reset role;
+    end loop;
+    select array_agg(p order by p) into n_deben from unnest(v_puestos) p
+     where exists (select 1 from public.usuarios u join public.roles_permisos rp on rp.rol_id = u.rol_id
+                    where u.id = (k->>p)::uuid and rp.permiso_codigo in ('codigos_internos.ver', 'costos.ver'));
   exception when others then
     get stacked diagnostics v_ctx = pg_exception_context;
     raise exception 'FALLO en «%»: % [%]', v_paso, sqlerrm, split_part(v_ctx, E'\n', 1);
@@ -529,17 +660,45 @@ begin
          || pg_temp.ensayo_dif('Requerimientos y Gerencia: materiales', (o_gasto->>'materiales_pen')::numeric, (g_resumen->>'materiales_pen')::numeric)
          || pg_temp.ensayo_dif('Requerimientos y Gerencia: compras', (o_gasto->>'compras_pen')::numeric, (g_resumen->>'compras_pen')::numeric)
          || pg_temp.ensayo_dif('Requerimientos y Gerencia: RQ', (o_gasto->>'requerimientos')::numeric, (g_resumen->>'requerimientos')::numeric);
+  -- El costeo completo: la luz al 8 %, la caja de S/ 300 y la venta sin IGV.
+  f := f || pg_temp.ensayo_dif('gastos del mes (8 % de S/ 1,000)', (n_gerencia->>'gastos_mes_pen')::numeric, 80::numeric)
+         || pg_temp.ensayo_dif('caja con el código', (n_gerencia->>'caja_pen')::numeric, 300::numeric)
+         || pg_temp.ensayo_dif('egresos de caja', (n_gerencia->>'egresos_caja')::numeric, 1::numeric)
+         || pg_temp.ensayo_dif('costo completo = lo que suma el costeo',
+                                (n_gerencia->>'costo_pen')::numeric,
+                                (select sum(e.monto::numeric) from jsonb_each_text(n_lineas) e(fuente, monto)
+                                  where e.fuente in ('MANO_OBRA', 'RECARGO_EXTRAS', 'MATERIALES', 'SERVICIOS', 'SUBCONTRATOS',
+                                              'SUBCONTRATOS_POR_PAGAR', 'GASTOS_DEL_MES', 'CAJA', 'GASTOS_OT', 'MERMA')))
+         || pg_temp.ensayo_dif('merma de la OT (5 % de S/ 65 de materiales)', (n_gerencia->>'merma_pen')::numeric, 3.25::numeric)
+         || pg_temp.ensayo_dif('el presupuesto fijado en la OT es el del código', (n_gerencia->>'presupuesto_pen')::numeric, 20000::numeric)
+         || pg_temp.ensayo_dif('y la base dice que es fijado', (n_gerencia->>'presupuesto_fijado')::boolean, true)
+         || pg_temp.ensayo_dif('precio sin IGV', (n_gerencia->>'precio_neto_pen')::numeric, 25000::numeric)
+         || pg_temp.ensayo_dif('margen', (n_gerencia->>'margen_pen')::numeric, 25000 - (n_gerencia->>'costo_pen')::numeric)
+         || pg_temp.ensayo_dif('el cierre con 2 h sin costo', n_cierre like '%todavía no está completo%', true)
+         || pg_temp.ensayo_dif('Administración: el mismo costo', n_admin->>'costo_pen', n_gerencia->>'costo_pen')
+         || pg_temp.ensayo_dif('Administración: el mismo margen', n_admin->>'margen_pct', n_gerencia->>'margen_pct')
+         || pg_temp.ensayo_dif('Administración no cierra', n_admin_cierre, '42501'::text)
+         || pg_temp.ensayo_dif('Supervisión general: el mismo costo', n_general->>'costo_pen', n_gerencia->>'costo_pen')
+         || pg_temp.ensayo_dif('Supervisión general: sin precio ni margen', coalesce(n_general->>'precio_neto_pen', n_general->>'margen_pct'), null::text)
+         || pg_temp.ensayo_dif('Supervisión general no lee los cierres, que guardan el margen', n_cierres_general::numeric, 0::numeric)
+         || pg_temp.ensayo_dif('Administración sí lee los cierres', n_cierres_admin::numeric, 1::numeric)
+         || pg_temp.ensayo_dif('ni por la auditoría', n_auditoria_general::numeric, 0::numeric)
+         || pg_temp.ensayo_dif('Requerimientos: su gasto no cambia con la luz ni la caja', n_gasto - 'ultima_actividad', o_gasto - 'ultima_actividad')
+         || pg_temp.ensayo_dif('quién lee el costo completo', (select array_agg(x order by x) from unnest(n_leen) x), n_deben);
   f := f || v_vio;
   f := array_remove(f, null);
 
   if cardinality(f) > 0 then
     raise exception 'FALLO: % desfases: %', cardinality(f), array_to_string(f, ' | ');
   end if;
-  raise exception 'ROLLBACK OK :: % cuentas, 16 sin acceso a Códigos internos. % al % %% (antes % %%), costo S/ % (mano de obra %, materiales %, servicios %, subcontratos %), compras aparte %, facturado % y cobrado %.',
+  raise exception 'ROLLBACK OK :: % cuentas, 16 sin acceso a Códigos internos. % al % %% (antes % %%), costo S/ % (mano de obra %, materiales %, servicios %, subcontratos %), compras aparte %, facturado % y cobrado %. BRECHAS :: costeo del código antes % / después % | tareo de las 5 h de la tarde % | costo de la OT según Gerencia % y según Administración % | margen_ot % || COSTEO COMPLETO :: Gerencia % | cierre: % | lo leen %',
     cardinality(v_puestos), c, g_avance->>'avance', g_resumen->>'avance_medio',
     (g_resumen->>'mano_obra')::numeric + (g_resumen->>'materiales_pen')::numeric + (g_servicios->>'servicios_pen')::numeric
       + (g_subcontratos->>'subcontratos_pen')::numeric,
     g_resumen->>'mano_obra', g_resumen->>'materiales_pen', g_servicios->>'servicios_pen', g_subcontratos->>'subcontratos_pen',
-    g_resumen->>'compras_pen', g_facturas->0->>'total', g_facturas->0->>'cobrado';
+    g_resumen->>'compras_pen', g_facturas->0->>'total', g_facturas->0->>'cobrado',
+    b_antes, b_despues, b_tareo_extra, b_ot, b_ot_admin, b_margen,
+    n_gerencia - array['cierre_id', 'cerrado_en', 'cerrado_por', 'costo_cerrado_pen', 'margen_cerrado_pen', 'margen_cerrado_pct'],
+    n_cierre, n_leen;
 end
 $circuito$;

@@ -6,9 +6,12 @@ import { ComposicionDelCosto } from '@/components/expediente/composicion-costo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Indicador } from '@/components/ui/indicador'
+import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import type { controlesYSolicitudesDeOrden } from '@/lib/datos/costos-ot'
+import type { CostoDeOrden, controlesYSolicitudesDeOrden } from '@/lib/datos/costos-ot'
 import { ESTADO_GASTO_AREA, ESTADO_SOLICITUD_TESORERIA, TIPO_GASTO_AREA, definir } from '@/lib/dominio/estados'
+import { faltanteDelCosto } from '@/lib/dominio/codigos-internos'
 import { composicionDelCosto } from '@/lib/dominio/expediente'
 import { fecha, fechaHora, moneda } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
@@ -16,7 +19,11 @@ import { solicitarTesoreria } from './acciones-costos'
 import { adjuntarControlFirmado, guardarControlVehicular, registrarGastoArea, revisarGastoArea } from './acciones-control-y-gastos'
 
 type Datos = Awaited<ReturnType<typeof controlesYSolicitudesDeOrden>>
-export function CostosYControles({ ordenId, datos, puedeRegistrarGasto, puedeRevisarGasto, puedeVerCosteo, ordenCerrada, esAdministracion = false }: {
+
+/** El costo del código de la unidad, que es el costo de verdad cuando la OT tiene código. `costo` nulo: no se pudo leer. */
+export type CostoDelCodigoEnOt = { codigo: string; costo: CostoDeOrden | null; enlace: string | null }
+
+export function CostosYControles({ ordenId, datos, puedeRegistrarGasto, puedeRevisarGasto, puedeVerCosteo, ordenCerrada, esAdministracion = false, delCodigo = null, conCodigo = false }: {
   ordenId: string
   datos: Datos
   puedeRegistrarGasto: boolean
@@ -25,10 +32,13 @@ export function CostosYControles({ ordenId, datos, puedeRegistrarGasto, puedeRev
   ordenCerrada: boolean
   /** Administración además carga los trámites de placas y la comisión de venta de la OT. */
   esAdministracion?: boolean
+  delCodigo?: CostoDelCodigoEnOt | null
+  /** La unidad tiene código interno (no PLANTA): sus OS y recibos ya suman a ese código. Va aparte de `delCodigo`, que solo llega con `costos.ver`. */
+  conCodigo?: boolean
 }) {
   return <div className="space-y-5">
-    {puedeVerCosteo && <ResumenCosteo ordenId={ordenId} lineas={datos.costeo} />}
-    <GastosDeAreas ordenId={ordenId} datos={datos} puedeRegistrar={puedeRegistrarGasto && !ordenCerrada} puedeRevisar={puedeRevisarGasto} esAdministracion={esAdministracion} />
+    {puedeVerCosteo && <ResumenCosteo ordenId={ordenId} lineas={datos.costeo} delCodigo={delCodigo} />}
+    <GastosDeAreas ordenId={ordenId} datos={datos} puedeRegistrar={puedeRegistrarGasto && !ordenCerrada} puedeRevisar={puedeRevisarGasto} esAdministracion={esAdministracion} conCodigo={conCodigo} />
   </div>
 }
 
@@ -84,27 +94,58 @@ function RevisionDeSalida({ ordenId, datos, puedeSolicitar, salidaCompleta }: {
  * El costo a la fecha, con la misma barra repartida del expediente: antes eran
  * dos cajas fijas —soles y dólares— con cada fuente en renglones, y la de
  * dólares salía llena de ceros en casi todas las órdenes. El detalle línea por
- * línea vive en el expediente.
+ * línea vive en el expediente. Con código interno, lo grande es el costo del
+ * código, que es el de la unidad; lo de la OT queda plegado debajo, como en el
+ * expediente, para que nadie se lleve esa parte como el costo.
  */
-function ResumenCosteo({ ordenId, lineas }: { ordenId: string; lineas: Datos['costeo'] }) {
+function ResumenCosteo({ ordenId, lineas, delCodigo }: { ordenId: string; lineas: Datos['costeo']; delCodigo: CostoDelCodigoEnOt | null }) {
   const { monedas, sinPrecio } = composicionDelCosto(lineas)
+  const enlaceDetalle = <Link href={`/ordenes/${ordenId}/expediente#costo`} className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0">Ver el detalle línea por línea</Link>
+  const deLaOt = <>
+    {monedas.length === 0
+      ? <p className="text-sm text-texto-suave">Todavía no hay costo: se suma al despachar o sacar material a la unidad, al cerrar la planilla del mes, al aprobar un gasto de área y al cargar los gastos del mes.</p>
+      : monedas.map(c => <ComposicionDelCosto key={c.moneda} composicion={c} rotulo={delCodigo ? 'Cargado a esta OT' : undefined} />)}
+    {sinPrecio > 0 && <p role="status" className="text-sm text-aviso">
+      {sinPrecio === 1 ? 'Un material entregado sigue sin precio' : `${sinPrecio} materiales entregados siguen sin precio`}: el costo está incompleto hasta que Logística los valorice.
+    </p>}
+    <p className="text-xs text-texto-suave">El material vale su último precio de compra al momento de la entrega; si no tiene compra, el precio que fijó Logística en la valorización del almacén.</p>
+  </>
+  if (!delCodigo) {
+    return <Tarjeta>
+      <TarjetaCabecera titulo="Costo acumulado de la OT" descripcion="Material despachado y sacado a la unidad, merma de Diseño, planilla repartida por RR. HH., gastos aprobados de las áreas, servicios del local y gastos de operación de Administración."
+        acciones={enlaceDetalle} />
+      <TarjetaCuerpo className="space-y-4">{deLaOt}</TarjetaCuerpo>
+    </Tarjeta>
+  }
+  const c = delCodigo.costo
+  const falta = c ? faltanteDelCosto({ sinPrecio: c.sinPrecio, horasSinCosto: c.sinCosto, sinCambio: c.sinCambio }) : null
   return <Tarjeta>
-    <TarjetaCabecera titulo="Costo acumulado de la OT" descripcion="Material despachado y sacado a la unidad, merma de Diseño, planilla repartida por RR. HH., gastos aprobados de las áreas, servicios del local y gastos de operación de Administración."
-      acciones={<Link href={`/ordenes/${ordenId}/expediente#costo`} className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0">Ver el detalle línea por línea</Link>} />
+    <TarjetaCabecera titulo="Costo de la unidad"
+      descripcion={`Se costea por su código interno, ${delCodigo.codigo}: la mano de obra del reporte diario, las salidas del almacén con su merma, las OS, los subcontratos, los gastos del mes, los gastos aprobados en esta OT y la caja. Es el mismo costo que ve Gerencia en Códigos internos.`}
+      acciones={delCodigo.enlace ? <Link href={delCodigo.enlace} className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0">Ver el costo del código</Link> : undefined} />
     <TarjetaCuerpo className="space-y-4">
-      {monedas.length === 0
-        ? <p className="text-sm text-texto-suave">Todavía no hay costo: se suma al despachar o sacar material a la unidad, al cerrar la planilla del mes, al aprobar un gasto de área y al cargar los gastos del mes.</p>
-        : monedas.map(c => <ComposicionDelCosto key={c.moneda} composicion={c} />)}
-      {sinPrecio > 0 && <p role="status" className="text-sm text-aviso">
-        {sinPrecio === 1 ? 'Un material entregado sigue sin precio' : `${sinPrecio} materiales entregados siguen sin precio`}: el costo está incompleto hasta que Logística los valorice.
-      </p>}
-      <p className="text-xs text-texto-suave">El material vale su último precio de compra al momento de la entrega; si no tiene compra, el precio que fijó Logística en la valorización del almacén.</p>
+      {c
+        ? <Indicador className="sm:max-w-sm" titulo="Costo hasta hoy" tono={falta ? 'aviso' : 'neutro'}
+            valor={<span data-costo-del-codigo-en-ot={c.pen}>{moneda(c.pen)}</span>}
+            pie={falta
+              ?? (c.cierre
+                ? `Cerrado el ${fecha(c.cierre.en)} en ${moneda(c.cierre.costo)}`
+                : c.pen <= 0
+                  ? 'Todavía nada costeado: suma con el reporte diario, las salidas del almacén, las OS y los gastos'
+                  : 'Todo en soles, con lo que está en dólares al cambio de Tesorería')} />
+        : <p role="status" className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso">
+            No se pudo leer el costo del código {delCodigo.codigo}. Recarga la pantalla; si sigue igual, avisa a Sistemas.
+          </p>}
+      <SeccionDesplegable titulo="Lo cargado solo a esta OT"
+        descripcion="Como se costeaba la OT antes del código. No es el costo de la unidad: los gastos aprobados y la merma de esta OT ya están en el del código, y la planilla repartida no, porque el código cuenta las horas de cada persona.">
+        <div className="space-y-4">{deLaOt}{enlaceDetalle}</div>
+      </SeccionDesplegable>
     </TarjetaCuerpo>
   </Tarjeta>
 }
 
-function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdministracion }: {
-  ordenId: string; datos: Datos; puedeRegistrar: boolean; puedeRevisar: boolean; esAdministracion: boolean
+function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdministracion, conCodigo }: {
+  ordenId: string; datos: Datos; puedeRegistrar: boolean; puedeRevisar: boolean; esAdministracion: boolean; conCodigo: boolean
 }) {
   const [id, setId] = useState(() => crypto.randomUUID())
   const { alEnviar, enviando, resultado, error } = useEnvio(registrarGastoArea, () => setId(crypto.randomUUID()))
@@ -115,6 +156,7 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
         <summary className="cursor-pointer font-medium">Registrar gasto de mi área</summary>
         <form onSubmit={alEnviar} className="mt-4 grid gap-3 sm:grid-cols-2">
           <input type="hidden" name="id" value={id} /><input type="hidden" name="orden_id" value={ordenId} />
+          {conCodigo && <p className="sm:col-span-2 text-sm text-texto-suave">Un servicio que ya tiene su orden de servicio, o un subcontrato con su recibo por honorarios registrado, ya suma al costo del código: no lo registres aquí, que se contaría dos veces.</p>}
           <Campo etiqueta="Tipo" htmlFor="gasto-tipo" requerido><Seleccion id="gasto-tipo" name="tipo" defaultValue="SERVICIO"><option value="SERVICIO">Servicio</option><option value="TRANSPORTE">Transporte</option><option value="VIATICO">Viático</option><option value="SUBCONTRATO">Subcontrato</option><option value="OTRO">Otro</option>{esAdministracion && <><option value="TRAMITE">Trámites de placas y documentación</option><option value="COMISION">Comisión de venta</option></>}</Seleccion></Campo>
           <Campo etiqueta="Fecha" htmlFor="gasto-fecha" requerido><Entrada id="gasto-fecha" type="date" name="fecha" required /></Campo>
           <Campo etiqueta="Importe" htmlFor="gasto-monto" requerido ayuda="Sin el IGV si el comprobante es factura; completo si es boleta, ticket o recibo por honorarios."><Entrada id="gasto-monto" type="number" min="0.01" step="0.01" name="monto" required /></Campo>
@@ -132,6 +174,8 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
           <p className="mt-1 text-texto-suave">{g.area?.nombre ?? 'Área'} · {definir(TIPO_GASTO_AREA, g.tipo).etiqueta} · {fecha(g.fecha)} · {moneda(g.monto, g.moneda === 'USD' ? 'USD' : 'PEN')}</p>
           {g.url && <a className="text-acento underline" href={g.url} target="_blank" rel="noopener noreferrer">Ver comprobante</a>}
           {g.observacion_revision && <p className="mt-2 text-peligro">Observación: {g.observacion_revision}</p>}
+          {conCodigo && puedeRevisar && g.estado === 'PENDIENTE' && (g.tipo === 'SERVICIO' || g.tipo === 'SUBCONTRATO') &&
+            <p className="mt-2 text-aviso" data-aviso-doble-conteo>Antes de aprobar: si este {g.tipo === 'SERVICIO' ? 'servicio ya tiene su orden de servicio' : 'subcontrato ya tiene su recibo por honorarios registrado'}, obsérvalo; aprobado, se sumaría dos veces al costo del código.</p>}
           {puedeRevisar && g.estado === 'PENDIENTE' && <RevisionGasto id={g.id} ordenId={ordenId} />}
         </li>)}</ol>}
     </TarjetaCuerpo>

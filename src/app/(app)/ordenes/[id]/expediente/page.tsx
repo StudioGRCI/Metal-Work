@@ -1,4 +1,5 @@
 import { CheckCircle2, Circle, Clock, Coins, FileText, Gauge, Truck } from 'lucide-react'
+import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 
@@ -8,9 +9,11 @@ import { PlanContraReal } from '@/components/expediente/plan-contra-real'
 import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
+import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
+import { costoDeOrdenes, type CostoDeOrden } from '@/lib/datos/costos-ot'
 import { expedienteDeOrden, type Expediente, type LineaCosto, type PresupuestoExpediente } from '@/lib/datos/expediente'
 import { observacionesDeOrden } from '@/lib/datos/observaciones'
 import { obtenerOrden, timelineDeOrden } from '@/lib/datos/ordenes'
@@ -33,6 +36,7 @@ import {
   situacionDeEntrega,
   tiempoEnTaller,
 } from '@/lib/dominio/expediente'
+import { CODIGO_SIN_AVANCE, enlaceCodigo, faltanteDelCosto, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { cantidad, fecha, fechaHora, fechaLarga, hora, hoyLima, moneda, numero, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -89,13 +93,23 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   // abren Gerencia, Administración y Tesorería.
   const verCotizacion = ['GERENTE', 'ADMINISTRACION', 'TESORERIA', 'ADMIN'].includes(perfil.rol.codigo)
 
-  const [orden, pendientes, expediente, eventos, observaciones, cotizacion] = await Promise.all([
-    obtenerOrden(id),
+  // Con código interno, el costo de la unidad es el de su código (el mismo de
+  // Códigos internos); lo de la tarjeta de costo es solo lo cargado a esta OT.
+  // Solo depende de la orden: se lee junto con lo demás, no después.
+  const leyendoOrden = obtenerOrden(id)
+  const [orden, pendientes, expediente, eventos, observaciones, cotizacion, costoDelCodigo] = await Promise.all([
+    leyendoOrden,
     pendientesDeOrden(id),
     expedienteDeOrden(id, { verCosteo, verMargen }),
     timelineDeOrden(id, 300),
     observacionesDeOrden(id),
     verCotizacion ? cotizacionPdfDeOrden(id) : Promise.resolve(null),
+    leyendoOrden.then((o) => {
+      const codigo = normalizarCodigo((o?.unidad as unknown as { codigo_interno: string | null } | null)?.codigo_interno ?? '')
+      return o && verCosteo && codigo !== '' && codigo !== CODIGO_SIN_AVANCE
+        ? costoDeOrdenes([{ id: o.id, codigo_interno: codigo }], { conMargen: verMargen }).then((m) => m.get(o.id) ?? null)
+        : null
+    }),
   ])
   if (!orden) notFound()
 
@@ -115,6 +129,9 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
     numero_chasis: string | null
   } | null
   const tipoCarroceria = orden.tipo_carroceria as unknown as { nombre: string } | null
+  const codigoDeLaUnidad = normalizarCodigo(unidad?.codigo_interno ?? '')
+  const porCodigo = verCosteo && codigoDeLaUnidad !== '' && codigoDeLaUnidad !== CODIGO_SIN_AVANCE
+  const delCodigo = porCodigo ? costoDelCodigo : null
 
   const terminadas = expediente.etapas.filter((e) => e.estado === 'TERMINADA').length
   const entregaReal = expediente.acta?.fecha_entrega ?? null
@@ -220,7 +237,22 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
             valor={fecha(entregaReal ?? orden.fecha_entrega_comprometida)}
             pie={entrega.pie}
           />
-          {composicion ? (
+          {delCodigo?.codigo ? (
+            <Indicador
+              titulo="Costo hasta hoy"
+              icono={Coins}
+              valor={<span data-costo-codigo={delCodigo.pen}>{moneda(delCodigo.pen)}</span>}
+              pie={
+                faltanteDelCosto({ sinPrecio: delCodigo.sinPrecio, horasSinCosto: delCodigo.sinCosto, sinCambio: delCodigo.sinCambio })
+                  ?? (delCodigo.margenPct !== null
+                    ? `Margen ${porcentaje(delCodigo.margenPct, 1)} · el costo del código ${delCodigo.codigo}`
+                    : `El costo del código ${delCodigo.codigo}`)
+              }
+              tono={delCodigo.sinPrecio + delCodigo.sinCosto + delCodigo.sinCambio > 0 ? 'aviso' : 'neutro'}
+            />
+          ) : porCodigo ? (
+            <Indicador titulo="Costo hasta hoy" icono={Coins} valor="—" tono="aviso" pie={`No se pudo leer el costo del código ${codigoDeLaUnidad}: recarga la pantalla`} />
+          ) : composicion ? (
             <Indicador
               titulo="Costo acumulado"
               icono={Coins}
@@ -439,7 +471,72 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
         </div>
 
         {/* ------------------------------------------------- el costo */}
-        {expediente.costo && composicion && (
+        {expediente.costo && composicion && delCodigo?.codigo && (
+          <Tarjeta id="costo" className="scroll-mt-20" data-costo-del-codigo>
+            <TarjetaCabecera
+              titulo="Costo de la unidad"
+              descripcion={`La unidad se costea por su código interno, ${delCodigo.codigo}: la mano de obra del reporte diario, las salidas del almacén con su merma, las OS, los subcontratos, los gastos del mes, los gastos aprobados en esta OT y la caja. Es el mismo costo que ve Gerencia en Códigos internos.`}
+            />
+            <TarjetaCuerpo className="space-y-5">
+              <CostoDelCodigo costo={delCodigo} verMargen={verMargen} />
+              {expediente.margen && expediente.margen.precio_venta !== null && expediente.margen.incluye_igv === null && (
+                // Sin saber si la cotización trae IGV, el código no tiene margen: aquí se confirma, como antes del código.
+                <section aria-label="IGV de la cotización" className="no-partir space-y-2 rounded-[var(--radius-base)] border border-aviso p-4" data-confirmar-igv>
+                  <p className="text-sm text-texto-suave">
+                    Precio de venta según la cotización:{' '}
+                    <strong className="tabular text-texto">
+                      {moneda(expediente.margen.precio_venta, expediente.margen.moneda_venta === 'USD' ? 'USD' : 'PEN')}
+                    </strong>
+                    . Para sacar el margen del código hay que saber si ese monto incluye IGV.
+                  </p>
+                  {puedeConfirmarIgv && expediente.cotizacionId ? (
+                    <ConfirmarIgv cotizacionId={expediente.cotizacionId} ordenId={orden.id} />
+                  ) : (
+                    <p className="text-sm text-aviso">Falta que Gerencia o Administración lo confirmen aquí, o Ventas al corregir la cotización.</p>
+                  )}
+                </section>
+              )}
+              {puedeFijarPresupuesto && !delCodigo.cierre && (
+                <FijarPresupuesto ordenId={orden.id} manual={expediente.presupuesto?.origen === 'MANUAL'} />
+              )}
+              {puede(perfil, 'codigos_internos.ver') && (
+                <p className="text-sm">
+                  <Link href={enlaceCodigo(delCodigo.codigo, 'costeo')} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline">
+                    Ver el costeo del código, línea por línea
+                  </Link>
+                </p>
+              )}
+              {expediente.costo.lineas.length > 0 && (
+                <SeccionDesplegable
+                  titulo="Lo cargado solo a esta OT"
+                  descripcion="Como se costeaba la OT antes del código: despachos de su requerimiento, la planilla del mes que RR. HH. repartió a la OT y los gastos de las áreas. No es el costo de la unidad, que es el de su código: los gastos aprobados y la merma de esta OT ya están en él, y la planilla repartida no, porque el código cuenta las horas de cada persona."
+                >
+                  <div className="space-y-5">
+                    {composicion.monedas.length > 0 && (
+                      <div className={composicion.monedas.length > 1 ? 'grid gap-6 lg:grid-cols-2' : undefined}>
+                        {composicion.monedas.map((m) => (
+                          <ComposicionDelCosto key={m.moneda} composicion={m} rotulo="Cargado a esta OT" />
+                        ))}
+                      </div>
+                    )}
+                    <DetalleDelCosto lineas={expediente.costo.lineas} />
+                  </div>
+                </SeccionDesplegable>
+              )}
+            </TarjetaCuerpo>
+          </Tarjeta>
+        )}
+        {porCodigo && !delCodigo && (
+          <Tarjeta id="costo" className="scroll-mt-20">
+            <TarjetaCabecera titulo="Costo de la unidad" />
+            <TarjetaCuerpo>
+              <p role="status" className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso">
+                No se pudo leer el costo del código {codigoDeLaUnidad}. Recarga la pantalla; si sigue igual, avisa a Sistemas.
+              </p>
+            </TarjetaCuerpo>
+          </Tarjeta>
+        )}
+        {expediente.costo && composicion && !porCodigo && (
           <Tarjeta id="costo" className="scroll-mt-20">
             <TarjetaCabecera
               titulo="Costo de la carrocería"
@@ -1063,6 +1160,53 @@ function PresupuestoDeLaCarroceria({
       )}
       {puedeFijar && <FijarPresupuesto ordenId={ordenId} manual={presupuesto.origen === 'MANUAL'} />}
     </section>
+  )
+}
+
+/** El costo del código de la unidad: lo mismo que la lista de Códigos internos, con su cierre. */
+function CostoDelCodigo({ costo, verMargen }: { costo: CostoDeOrden; verMargen: boolean }) {
+  const falta = faltanteDelCosto({ sinPrecio: costo.sinPrecio, horasSinCosto: costo.sinCosto, sinCambio: costo.sinCambio })
+  return (
+    <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <CifraMargen
+        etiqueta="Costo hasta hoy"
+        valor={moneda(costo.pen)}
+        pie={falta ?? 'Todo en soles'}
+      />
+      {verMargen && (
+        <CifraMargen
+          etiqueta="Margen"
+          valor={costo.margenPct === null ? '—' : porcentaje(costo.margenPct, 1)}
+          pie={costo.margenPct === null ? 'Sin cotización aprobada con precio, o sin costo todavía' : 'Sobre la cotización aprobada sin IGV'}
+          tono={costo.margenPct !== null && costo.margenPct < 0 ? 'peligro' : undefined}
+        />
+      )}
+      {verMargen && (
+        <CifraMargen
+          etiqueta="Presupuesto"
+          valor={costo.consumidoPct === null ? '—' : `${porcentaje(costo.consumidoPct, 0)} gastado`}
+          pie={[
+            costo.semaforo === 'EXCEDIDO' ? 'Pasó el presupuesto' : costo.semaforo === 'AJUSTADO' ? 'Ajustado, del 90 % en adelante' : null,
+            costo.presupuestoFijado ? 'el fijado a mano en la OT' : 'la venta sin IGV ÷ 1.15, la utilidad estándar',
+          ]
+            .filter(Boolean)
+            .join(' · ')
+            .replace(/^./, (l) => l.toUpperCase())}
+          tono={costo.semaforo === 'EXCEDIDO' ? 'peligro' : undefined}
+        />
+      )}
+      <CifraMargen
+        etiqueta="Cierre"
+        valor={costo.cierre ? moneda(costo.cierre.costo) : 'Abierto'}
+        pie={
+          costo.cierre
+            ? `Cerrado el ${fecha(costo.cierre.en)}${costo.cierre.por ? ` por ${costo.cierre.por}` : ''}`
+            : costo.entregadaEl
+              ? `Entregada el ${fecha(costo.entregadaEl)}: falta que Gerencia lo cierre en Códigos internos`
+              : 'Gerencia lo cierra en Códigos internos al entregar la unidad'
+        }
+      />
+    </dl>
   )
 }
 

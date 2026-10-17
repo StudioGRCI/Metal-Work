@@ -10,6 +10,7 @@ import { costoDeOrdenes } from '@/lib/datos/costos-ot'
 import { historiaDeUnidad, obtenerUnidad, type HistoriaDeUnidad } from '@/lib/datos/unidades'
 import { TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { dias, diasEntre } from '@/lib/dominio/expediente'
+import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { fecha, hoyLima, moneda, numero, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -40,13 +41,18 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
   const verMargen = verCosto && puede(perfil, 'cotizaciones.ver_pdf_comercial')
 
   const historia = await historiaDeUnidad(unidad)
+  // Con código interno, la unidad tiene un solo costo, el de su código: todas
+  // sus órdenes, garantías incluidas, cargan al mismo código y no se reparten.
+  const codigo = normalizarCodigo(unidad.codigo_interno ?? '') || null
+  const porCodigo = codigo !== null && codigo !== CODIGO_SIN_AVANCE
   const costos =
     verCosto && historia.ordenes.length > 0
       ? await costoDeOrdenes(
-          historia.ordenes.map((o) => o.id),
+          historia.ordenes.map((o) => ({ id: o.id, codigo_interno: unidad.codigo_interno })),
           { conMargen: verMargen },
         )
       : null
+  const delCodigo = porCodigo && historia.ordenes[0] ? (costos?.get(historia.ordenes[0].id) ?? null) : null
 
   const hoy = hoyLima()
   const nombre = nombreDeUnidad(unidad)
@@ -64,7 +70,7 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
   let costoTotal = 0
   let costoGarantias = 0
   let sinCosto = 0
-  for (const o of historia.ordenes) {
+  for (const o of porCodigo ? [] : historia.ordenes) {
     const c = costos?.get(o.id)
     if (!c) {
       sinCosto += 1
@@ -106,7 +112,38 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
         <div className="min-w-0 space-y-4 lg:col-span-2">
           {verOrdenes && <Garantia historia={historia} hoy={hoy} />}
 
-          {verCosto && historia.ordenes.length > 0 && (
+          {verCosto && historia.ordenes.length > 0 && porCodigo && (
+            <section aria-label="Costo de la unidad" className={cn('grid grid-cols-2 gap-3', verMargen && 'sm:grid-cols-3')}>
+              <Cifra
+                etiqueta="Costo hasta hoy"
+                valor={delCodigo ? moneda(delCodigo.pen) : '—'}
+                pie={
+                  !delCodigo
+                    ? 'No se pudo calcular el costo del código'
+                    : delCodigo.cierre
+                      ? `Lo cargado al código ${codigo}. Cerrado el ${fecha(delCodigo.cierre.en)} en ${moneda(delCodigo.cierre.costo)}`
+                      : delCodigo.sinPrecio + delCodigo.sinCambio + delCodigo.sinCosto > 0
+                        ? 'Incompleto: hay salidas sin precio, horas sin costo o dólares sin cambio'
+                        : `Lo cargado al código ${codigo}, garantías incluidas`
+                }
+                tono={!delCodigo || delCodigo.sinPrecio + delCodigo.sinCambio + delCodigo.sinCosto > 0 ? 'aviso' : undefined}
+              />
+              {verMargen && (
+                <Cifra
+                  etiqueta="Margen"
+                  valor={delCodigo?.margenPct != null ? porcentaje(delCodigo.margenPct, 1) : '—'}
+                  pie={delCodigo?.margenPct != null ? 'Sobre la cotización aprobada sin IGV' : 'Sin cotización aprobada con precio, o sin costo todavía'}
+                  tono={delCodigo?.margenPct != null && delCodigo.margenPct < 0 ? 'peligro' : undefined}
+                />
+              )}
+              <Cifra
+                etiqueta="Órdenes"
+                valor={String(historia.ordenes.length)}
+                pie={garantias === 0 ? 'Ninguna garantía' : `${garantias} ${garantias === 1 ? 'garantía' : 'garantías'}, en el mismo código`}
+              />
+            </section>
+          )}
+          {verCosto && historia.ordenes.length > 0 && !porCodigo && (
             <section aria-label="Costo en el taller" className={cn('grid grid-cols-2 gap-3', sinCosto > 0 && 'sm:grid-cols-3')}>
               <Cifra etiqueta="Costo en el taller" valor={moneda(costoTotal)} pie={`${historia.ordenes.length} ${historia.ordenes.length === 1 ? 'orden' : 'órdenes'}, en soles`} />
               <Cifra
@@ -138,13 +175,13 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
                     <TH>Trabajo</TH>
                     <TH className="hidden sm:table-cell">Entrega</TH>
                     <TH className="text-right">Avance</TH>
-                    {verCosto && <TH className="text-right">Costo</TH>}
+                    {verCosto && !porCodigo && <TH className="text-right">Costo</TH>}
                   </tr>
                 </TablaCabecera>
                 <tbody>
                   {historia.ordenes.length === 0 ? (
                     <SinDatos
-                      colSpan={verCosto ? 5 : 4}
+                      colSpan={verCosto && !porCodigo ? 5 : 4}
                       titulo="Todavía sin órdenes"
                       descripcion="Cuando se le abra una orden de trabajo, aparece aquí con su avance y su entrega."
                     />
@@ -181,7 +218,7 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
                             )}
                           </TD>
                           <TD className="tabular text-right whitespace-nowrap">{porcentaje(o.avance_porcentaje ?? 0, 0)}</TD>
-                          {verCosto && (
+                          {verCosto && !porCodigo && (
                             <TD className="tabular whitespace-nowrap text-right">
                               {costo ? (
                                 <>
@@ -281,11 +318,11 @@ function Garantia({ historia, hoy }: { historia: HistoriaDeUnidad; hoy: string }
   )
 }
 
-function Cifra({ etiqueta, valor, pie, tono }: { etiqueta: string; valor: string; pie: string; tono?: 'aviso' }) {
+function Cifra({ etiqueta, valor, pie, tono }: { etiqueta: string; valor: string; pie: string; tono?: 'aviso' | 'peligro' }) {
   return (
     <div className="rounded-[var(--radius-base)] border border-borde bg-superficie p-4">
       <p className="text-xs text-texto-suave">{etiqueta}</p>
-      <p className={cn('tabular mt-1 text-lg font-semibold', tono === 'aviso' ? 'text-aviso' : 'text-texto')}>{valor}</p>
+      <p className={cn('tabular mt-1 text-lg font-semibold', tono === 'aviso' ? 'text-aviso' : tono === 'peligro' ? 'text-peligro' : 'text-texto')}>{valor}</p>
       <p className="text-xs text-texto-tenue">{pie}</p>
     </div>
   )

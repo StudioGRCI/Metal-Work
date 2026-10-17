@@ -33,9 +33,11 @@ import {
   TIPO_DOCUMENTO_CODIGO,
   VISTAS_CODIGO,
   costoDelCodigo,
+  dolaresAlCambio,
   dondeAparece,
   enlaceCodigo,
   faltaElPrecio,
+  montoMixto,
   normalizarCodigo,
   origenDelAvance,
   parecidos,
@@ -49,9 +51,10 @@ import { situacionCompra, validacionDeCompra } from '@/lib/dominio/logistica'
 import { ESTADO_REPORTE, type EstadoReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADO_REQUERIMIENTO } from '@/lib/dominio/requerimientos'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { cantidad, fecha, fechaLarga, moneda, type CodigoMoneda } from '@/lib/format'
+import { cantidad, fecha, fechaLarga, moneda, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, type PerfilSesion } from '@/lib/sesion'
 
+import { CerrarCosteo, ReabrirCosteo } from './cierre-costeo'
 import { VistaEtapas, VistaMateriales, VistaPlanos } from './vistas-diseno'
 
 export const metadata = { title: 'Código interno' }
@@ -134,7 +137,14 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
             </Tarjeta>
           )}
 
-          <ComoVa c={resumen} avance={avance} facturado={facturado} codigo={codigo} />
+          <ComoVa
+            c={resumen}
+            avance={avance}
+            facturado={facturado}
+            codigo={codigo}
+            verPrecio={puede(perfil, 'cotizaciones.ver_pdf_comercial')}
+            cierra={puede(perfil, 'codigos_internos.cerrar')}
+          />
           <LineaDeDiseno d={diseno} />
 
           <PastillaFiltro
@@ -162,17 +172,28 @@ function ComoVa({
   avance,
   facturado,
   codigo,
+  verPrecio,
+  cierra,
 }: {
   c: ResumenCodigo
   avance: AvanceDeCodigo | undefined
   facturado: FacturadoDelCodigo | null
   codigo: string
+  /** Quien ve el precio de venta (`cotizaciones.ver_pdf_comercial`) ve el margen. */
+  verPrecio: boolean
+  /** Quien cierra el costeo (`codigos_internos.cerrar`). */
+  cierra: boolean
 }) {
   const costo = costoDelCodigo(c)
+  const manoObra = c.mano_obra + c.recargo_extras
+  const gastosPen = c.gastos_mes_pen + c.gastos_ot_pen + c.caja_pen
+  const gastosUsd = c.gastos_mes_usd + c.gastos_ot_usd + c.caja_usd
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      {/* Primero cómo va y cuánto deja; debajo, de qué está hecho el costo. */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <Indicador
+          className="col-span-2 lg:col-span-1"
           titulo="Avance"
           valor={
             codigo === CODIGO_SIN_AVANCE ? (
@@ -186,35 +207,60 @@ function ComoVa({
           pie={origenDelAvance(codigo, avance)}
         />
         <Indicador
+          className={verPrecio ? undefined : 'col-span-2 lg:col-span-1'}
           titulo="Costo hasta hoy"
           valor={
             faltaElPrecio(costo.pen + costo.usd, c.materiales_sin_precio + c.horas_sin_costo) ?? (
-              <>
+              <span data-costo={costo.pen}>
                 {moneda(costo.pen)}
-                {costo.usd > 0 && <span className="block text-sm">+ {moneda(costo.usd, 'USD')}</span>}
-              </>
+                {costo.usd > 0 && <span className="block text-sm">+ {moneda(costo.usd, 'USD')} sin cambio</span>}
+              </span>
             )
           }
-          pie="Mano de obra, materiales, servicios y subcontratos"
+          tono={c.lineas_sin_cambio > 0 ? 'aviso' : 'neutro'}
+          pie={
+            c.lineas_sin_cambio > 0
+              ? 'Falta el tipo de cambio de Tesorería para pasar los dólares a soles'
+              : costo.pen === 0
+                ? 'Todavía nada costeado'
+                : c.usd_al_cambio > 0
+                  ? `En soles, con ${moneda(c.usd_al_cambio, 'USD')} pasados al cambio de Tesorería`
+                  : 'Todo en soles'
+          }
         />
+        {verPrecio && <IndicadorMargen c={c} codigo={codigo} />}
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Indicador
           titulo="Mano de obra"
-          valor={faltaElPrecio(c.mano_obra, c.horas_sin_costo, 'Sin costo') ?? moneda(c.mano_obra)}
+          valor={faltaElPrecio(manoObra, c.horas_sin_costo, 'Sin costo') ?? moneda(manoObra)}
           tono={c.horas_sin_costo > 0 ? 'aviso' : 'neutro'}
-          pie={`${horasCortas(c.horas)} de personal${c.horas_sin_costo > 0 ? ` · ${horasCortas(c.horas_sin_costo)} sin costo` : ''}`}
+          pie={[
+            `${horasCortas(c.horas)} de personal`,
+            c.horas_sin_costo > 0 && `${horasCortas(c.horas_sin_costo)} sin costo`,
+            c.recargo_extras > 0 && `${moneda(c.recargo_extras)} de recargo de extras`,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         />
         <Indicador
           titulo="Materiales"
           valor={
             faltaElPrecio(c.materiales_pen + c.materiales_usd, c.materiales_sin_precio) ?? (
               <>
-                {moneda(c.materiales_pen)}
-                {c.materiales_usd > 0 && <span className="block text-sm">+ {moneda(c.materiales_usd, 'USD')}</span>}
+                {moneda(c.materiales_pen + c.merma_pen)}
+                {c.materiales_usd + c.merma_usd > 0 && <span className="block text-sm">+ {moneda(c.materiales_usd + c.merma_usd, 'USD')}</span>}
               </>
             )
           }
           tono={c.materiales_sin_precio > 0 ? 'aviso' : 'neutro'}
-          pie={`${c.salidas} ${c.salidas === 1 ? 'salida' : 'salidas'} del almacén${c.materiales_sin_precio > 0 ? ` · ${c.materiales_sin_precio} sin precio` : ''}`}
+          pie={[
+            `${c.salidas} ${c.salidas === 1 ? 'salida' : 'salidas'} del almacén`,
+            c.materiales_sin_precio > 0 && `${c.materiales_sin_precio} sin precio`,
+            c.merma_pen + c.merma_usd > 0 && `${montoMixto(c.merma_pen, c.merma_usd)} de merma`,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         />
         <Indicador
           titulo="Servicios"
@@ -237,7 +283,34 @@ function ComoVa({
           tono={c.subcontratos_por_pagar > 0 ? 'aviso' : 'neutro'}
           pie={piesDeSubcontratos(c)}
         />
+        <Indicador
+          className="col-span-2 lg:col-span-1"
+          titulo="Gastos y caja"
+          valor={
+            <>
+              {moneda(gastosPen)}
+              {gastosUsd > 0 && <span className="block text-sm">+ {moneda(gastosUsd, 'USD')}</span>}
+            </>
+          }
+          pie={
+            gastosPen + gastosUsd === 0
+              ? 'Gastos del mes, trámites aprobados en la OT y egresos de caja con este código'
+              : [
+                  c.gastos_mes_pen + c.gastos_mes_usd > 0 && `${montoMixto(c.gastos_mes_pen, c.gastos_mes_usd)} de gastos del mes`,
+                  c.gastos_ot_pen + c.gastos_ot_usd > 0 && `${montoMixto(c.gastos_ot_pen, c.gastos_ot_usd)} aprobados en la OT`,
+                  c.egresos_caja > 0 &&
+                    `${montoMixto(c.caja_pen, c.caja_usd)} en ${c.egresos_caja} ${c.egresos_caja === 1 ? 'egreso' : 'egresos'} de caja`,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+          }
+        />
       </div>
+      {dolaresAlCambio(c) && (
+        <p className="text-xs text-texto-suave" data-dolares-al-cambio={c.usd_en_soles}>
+          {dolaresAlCambio(c)}
+        </p>
+      )}
       {facturado && <LineaFacturado f={facturado} codigo={codigo} />}
       {(c.compras_pen > 0 || c.compras_usd > 0 || c.compras > 0) && (
         <p className="text-xs text-texto-suave">
@@ -246,6 +319,149 @@ function ComoVa({
           {c.compras === 1 ? 'OC' : 'OC'}. No se suman al costo: lo comprado entra al almacén y se cuenta cuando sale para este código.
         </p>
       )}
+      {codigo !== CODIGO_SIN_AVANCE && <LineaCierre c={c} codigo={codigo} verPrecio={verPrecio} cierra={cierra} />}
+    </div>
+  )
+}
+
+/** El margen: la cotización aprobada sin IGV menos el costo, con el presupuesto de la hoja. */
+function IndicadorMargen({ c, codigo }: { c: ResumenCodigo; codigo: string }) {
+  const v = c.venta
+  if (codigo === CODIGO_SIN_AVANCE) return <Indicador titulo="Margen" valor="No aplica" pie="PLANTA no se vende" />
+  if (!v) return <Indicador titulo="Margen" valor="Sin cotización" pie="Sale cuando Gerencia aprueba la cotización con este código" />
+  if (v.precio_neto_pen !== null && c.costo_pen <= 0) {
+    // Sin nada costeado saldría 100 %: la base no da margen hasta que algo cueste.
+    return (
+      <Indicador
+        titulo="Margen"
+        valor={<span data-margen="sin-costo">Sin costo todavía</span>}
+        pie={`Vendido en ${moneda(v.precio_neto_pen)} sin IGV; el margen sale con el primer costo`}
+      />
+    )
+  }
+  if (v.precio_neto_pen === null || v.margen_pct === null) {
+    return (
+      <Indicador
+        titulo="Margen"
+        valor="Falta el precio"
+        tono="aviso"
+        pie={
+          v.sin_igv > 0
+            ? 'Falta confirmar si la cotización incluye IGV'
+            : v.sin_cambio > 0
+              ? 'Falta el tipo de cambio del día en que se aprobó la cotización'
+              : 'La cotización no tiene monto de venta'
+        }
+      />
+    )
+  }
+  const incompleto = c.materiales_sin_precio > 0 || c.horas_sin_costo > 0 || c.lineas_sin_cambio > 0
+  const tono = v.margen_pct < 0 || v.semaforo === 'EXCEDIDO' ? 'peligro' : v.semaforo === 'AJUSTADO' || incompleto ? 'aviso' : 'exito'
+  return (
+    <Indicador
+      titulo="Margen"
+      valor={<span data-margen={v.margen_pct}>{porcentaje(v.margen_pct, 1)}</span>}
+      tono={tono}
+      pie={[
+        `${moneda(v.margen_pen)} de ${moneda(v.precio_neto_pen)} sin IGV`,
+        v.consumido_pct !== null && `${porcentaje(v.consumido_pct, 0)} gastado del presupuesto${v.presupuesto_fijado ? ' fijado en la OT' : ''}`,
+        incompleto && 'con el costo incompleto',
+      ]
+        .filter(Boolean)
+        .join(' · ')}
+    />
+  )
+}
+
+/** El cierre del costeo: congelado al entregar la unidad, o el botón para cerrarlo. */
+function LineaCierre({ c, codigo, verPrecio, cierra }: { c: ResumenCodigo; codigo: string; verPrecio: boolean; cierra: boolean }) {
+  const z = c.cierre
+  if (!z) {
+    if (!cierra) return null
+    const falta = [
+      c.materiales_sin_precio > 0 && `${c.materiales_sin_precio} ${c.materiales_sin_precio === 1 ? 'salida' : 'salidas'} del almacén sin precio`,
+      c.horas_sin_costo > 0 && `${horasCortas(c.horas_sin_costo)} de personal sin costo`,
+      c.lineas_sin_cambio > 0 && `${c.lineas_sin_cambio} ${c.lineas_sin_cambio === 1 ? 'línea' : 'líneas'} en dólares sin tipo de cambio`,
+      // Con cotización, el cierre congela el margen: sin el IGV o el cambio de la venta saldría sin él.
+      c.venta && c.venta.sin_igv > 0 &&
+        `${c.venta.sin_igv === 1 ? 'confirmar si la cotización incluye IGV' : `confirmar si ${c.venta.sin_igv} cotizaciones incluyen IGV`} (Gerencia o Administración en el expediente de la OT, o Ventas al corregir la cotización)`,
+      c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo carga Tesorería)',
+    ].filter(Boolean)
+    if (falta.length > 0) {
+      return (
+        <div className="space-y-1 rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="incompleto">
+          <p>El costeo se cierra al entregar la unidad, con todo completo. Hoy falta: {falta.join(', ')}.</p>
+          {c.venta && c.venta.sin_igv > 0 && (
+            <Link href={enlaceCodigo(codigo, 'documentos')} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
+              Abrir la OT desde «RQ, OT y cotización»
+            </Link>
+          )}
+        </div>
+      )
+    }
+    if (c.costo_pen <= 0) {
+      return (
+        <p className="rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="sin-costo">
+          El costeo se cierra al entregar la unidad. Todavía no tiene nada costeado: no hay qué congelar.
+        </p>
+      )
+    }
+    const precio = verPrecio && c.venta?.margen_pct !== null && c.venta?.margen_pct !== undefined
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="abierto">
+        <div className="space-y-1">
+          <p>
+            {c.entregada_el
+              ? `Se entregó el ${fecha(c.entregada_el)}. Al cerrar el costeo, el costo y el margen de hoy quedan congelados como el costo de la unidad.`
+              : 'Cuando se entregue la unidad, cierra el costeo: el costo y el margen de ese día quedan congelados como el costo de la unidad.'}
+          </p>
+          <p data-acta={c.entregada_el ?? 'pendiente'}>
+            {c.entregada_el ? (
+              <Insignia tono="exito">Acta de entrega del {fecha(c.entregada_el)}</Insignia>
+            ) : (
+              <>
+                <Insignia tono="aviso">Acta de entrega pendiente</Insignia> El taller todavía no registró la entrega en la OT.
+              </>
+            )}
+          </p>
+        </div>
+        <CerrarCosteo
+          codigo={codigo}
+          resumen={`Hoy suma ${moneda(c.costo_pen)}${precio ? ` y deja un margen de ${porcentaje(c.venta?.margen_pct, 1)}` : ''}.${
+            verPrecio && !c.venta ? ' Se congela sin margen: el código no tiene cotización aprobada.' : ''
+          }`}
+          sugerida={c.entregada_el ? `Entregada al cliente con su acta del ${fecha(c.entregada_el)}.` : ''}
+        />
+      </div>
+    )
+  }
+  const diferencia = Math.round((c.costo_pen - z.costo_pen) * 100) / 100
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-base)] border border-exito p-3 text-xs" data-cierre="cerrado">
+      <div>
+        <p className="text-texto">
+          <Insignia tono="exito">Costeo cerrado</Insignia> el {fechaLarga(z.cerrado_en)}
+          {z.cerrado_por && ` por ${z.cerrado_por}`}: <span className="tabular font-medium">{moneda(z.costo_pen)}</span>
+          {verPrecio && z.margen_pct !== null && (
+            <>
+              , margen <span className="tabular font-medium">{porcentaje(z.margen_pct, 1)}</span>
+            </>
+          )}
+          .
+        </p>
+        {verPrecio && z.margen_pct === null && c.venta?.margen_pct != null && (
+          <p className="mt-1 text-aviso" data-margen-despues-del-cierre>
+            La cotización tiene precio desde después del cierre, que quedó sin margen: reabre el costeo y ciérralo otra vez para congelarlo.
+          </p>
+        )}
+        {diferencia !== 0 && (
+          <p className="mt-1 text-aviso" data-despues-del-cierre={diferencia}>
+            Desde el cierre el costo {diferencia > 0 ? 'subió' : 'bajó'} <span className="tabular">{moneda(Math.abs(diferencia))}</span>: hoy suma{' '}
+            <span className="tabular">{moneda(c.costo_pen)}</span>. Si ese cambio es de la unidad, reabre el costeo y ciérralo otra vez.
+          </p>
+        )}
+      </div>
+      {cierra && <ReabrirCosteo codigo={codigo} />}
     </div>
   )
 }
@@ -556,13 +772,15 @@ async function VistaAvance({ codigo, perfil, avance }: { codigo: string; perfil:
 
 async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilSesion }) {
   const [lineas, compras] = await Promise.all([costeoDelCodigo(codigo), comprasDelCodigo(codigo)])
-  const manoObra = lineas.filter((l) => l.fuente === 'MANO_OBRA' || l.fuente === 'MANO_OBRA_SIN_COSTO')
-  const materiales = lineas.filter((l) => l.fuente === 'MATERIALES' || l.fuente === 'MATERIALES_SIN_PRECIO')
+  const manoObra = lineas.filter((l) => l.fuente === 'MANO_OBRA' || l.fuente === 'MANO_OBRA_SIN_COSTO' || l.fuente === 'RECARGO_EXTRAS')
+  const materiales = lineas.filter((l) => l.fuente === 'MATERIALES' || l.fuente === 'MATERIALES_SIN_PRECIO' || l.fuente === 'MERMA')
   const servicios = lineas.filter((l) => l.fuente === 'SERVICIOS' || l.fuente === 'SERVICIOS_POR_APROBAR')
   const aprobados = servicios.filter((l) => l.fuente === 'SERVICIOS')
   const recibos = lineas.filter((l) => l.fuente === 'SUBCONTRATOS' || l.fuente === 'SUBCONTRATOS_POR_PAGAR')
+  const gastos = lineas.filter((l) => l.fuente === 'GASTOS_DEL_MES' || l.fuente === 'GASTOS_OT' || l.fuente === 'CAJA')
   const suma = (ls: typeof lineas, m: 'PEN' | 'USD') => ls.reduce((n, l) => n + (l.moneda === m ? (l.monto ?? 0) : 0), 0)
-  const horasMo = manoObra.reduce((n, l) => n + (l.horas ?? 0), 0)
+  // Las horas del recargo ya están en las del reporte: el recargo solo suma soles.
+  const horasMo = manoObra.reduce((n, l) => n + (l.fuente === 'RECARGO_EXTRAS' ? 0 : (l.horas ?? 0)), 0)
   const abrePdf = puede(perfil, ['compras.ver', 'almacen.recibir'])
   const abreServicios = puede(perfil, ['compras.crear', 'compras.ver', 'compras.detraccion'])
   const abreSubcontratos = puede(perfil, ['subcontratos.gestionar', 'subcontratos.ver'])
@@ -572,7 +790,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo="Mano de obra"
-          descripcion="Las horas del reporte diario y las que carga Recursos Humanos, a lo que cuesta la hora de cada persona. Las horas de quien todavía no tiene costo se muestran sin sumar hasta que RR. HH. se lo ponga."
+          descripcion="Las horas del reporte diario y las que carga Recursos Humanos, a lo que cuesta la hora de cada persona, y el recargo que la planilla diaria pagó por las horas extras, repartido entre los códigos que esa persona trabajó ese día. Las horas de quien todavía no tiene costo se muestran sin sumar hasta que RR. HH. se lo ponga."
         />
         <Tabla>
           <TablaCabecera>
@@ -596,18 +814,25 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                       <p className="text-xs text-texto-suave">
                         {l.detalle}
                         {l.cantidad > 0 && ` · ${l.cantidad} ${l.cantidad === 1 ? 'persona' : 'personas'}`}
+                        {/* Sus horas ya están en las del reporte: aquí solo se dicen, no se suman. */}
+                        {l.fuente === 'RECARGO_EXTRAS' && ` · por ${horasCortas(l.horas ?? 0)} extras`}
                       </p>
                     </TD>
-                    <TD className="tabular text-right align-top">{horasCortas(l.horas ?? 0)}</TD>
-                    <TD className="tabular text-right align-top">
+                    <TD className="tabular text-right align-top whitespace-nowrap">
+                      {l.fuente === 'RECARGO_EXTRAS' ? <span className="text-texto-tenue">—</span> : horasCortas(l.horas ?? 0)}
+                    </TD>
+                    <TD
+                      className="tabular text-right align-top whitespace-nowrap"
+                      data-recargo={l.fuente === 'RECARGO_EXTRAS' ? l.monto : undefined}
+                    >
                       {l.fuente === 'MANO_OBRA_SIN_COSTO' ? <Insignia tono="aviso">Sin costo</Insignia> : moneda(l.monto)}
                     </TD>
                   </TR>
                 ))}
                 <TR className="font-semibold">
                   <TD colSpan={2}>Total</TD>
-                  <TD className="tabular text-right">{horasCortas(horasMo)}</TD>
-                  <TD className="tabular text-right">
+                  <TD className="tabular text-right whitespace-nowrap">{horasCortas(horasMo)}</TD>
+                  <TD className="tabular text-right whitespace-nowrap">
                     {faltaElPrecio(suma(manoObra, 'PEN'), manoObra.filter((l) => l.fuente === 'MANO_OBRA_SIN_COSTO').length, 'Sin costo') ??
                       moneda(suma(manoObra, 'PEN'))}
                   </TD>
@@ -621,7 +846,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo="Materiales salidos del almacén"
-          descripcion="Cada salida para este código a su precio: el que quedó en la salida, o el de la última compra del material hasta ese día, o el de la valorización del almacén. Lo que no tiene ninguno sale «Sin precio» y no se suma como cero."
+          descripcion="Cada salida para este código a su precio: el que quedó en la salida, o el de la última compra del material hasta ese día, o el de la valorización del almacén. Lo que no tiene ninguno sale «Sin precio» y no se suma como cero. La merma que Diseño evaluó en la OT se suma sobre lo que tiene precio."
         />
         <Tabla>
           <TablaCabecera>
@@ -639,7 +864,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
             ) : (
               <>
                 {materiales.map((l, i) => (
-                  <TR key={`${l.referencia_id ?? i}`}>
+                  <TR key={`${l.fuente}-${l.referencia_id ?? i}-${l.moneda ?? ''}`} data-material={l.fuente}>
                     <TD className="tabular align-top whitespace-nowrap">{fecha(l.fecha)}</TD>
                     <TD className="align-top">
                       <p className="text-texto">{l.concepto}</p>
@@ -648,7 +873,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                       </p>
                     </TD>
                     <TD className="tabular text-right align-top whitespace-nowrap">
-                      {cantidad(l.cantidad)} {l.unidad}
+                      {l.fuente === 'MERMA' ? '—' : `${cantidad(l.cantidad)} ${l.unidad ?? ''}`.trim()}
                     </TD>
                     <TD className="tabular hidden text-right align-top sm:table-cell">
                       {l.precio_unitario === null ? '—' : moneda(l.precio_unitario, l.moneda ?? 'PEN')}
@@ -788,6 +1013,57 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                   <TD className="tabular text-right whitespace-nowrap">
                     {moneda(suma(recibos, 'PEN'))}
                     {suma(recibos, 'USD') > 0 && <p>+ {moneda(suma(recibos, 'USD'), 'USD')}</p>}
+                  </TD>
+                </TR>
+              </>
+            )}
+          </tbody>
+        </Tabla>
+      </Tarjeta>
+
+      <Tarjeta className="overflow-hidden" data-gastos-y-caja>
+        <TarjetaCabecera
+          titulo="Gastos y caja"
+          descripcion="La parte de este código en los gastos del mes que registra Administración —luz, agua, celulares—: con su tasa, o en partes iguales entre los códigos que trabajaron ese mes. Los trámites, comisiones y viáticos que Administración aprobó en la OT de la unidad. Y los egresos que Tesorería escribió en la caja diaria con este código. Los pagos de OC, OS y recibos no entran aquí, porque ya se cuentan arriba."
+        />
+        <Tabla>
+          <TablaCabecera>
+            <tr>
+              <TH>Fecha</TH>
+              <TH>Gasto</TH>
+              <TH className="hidden text-right sm:table-cell">Total</TH>
+              <TH className="text-right">A este código</TH>
+            </tr>
+          </TablaCabecera>
+          <tbody>
+            {gastos.length === 0 ? (
+              <SinDatos
+                titulo="Ningún gasto ni egreso de caja en este código"
+                descripcion="Los gastos del mes se reparten entre los códigos que trabajaron ese mes; los de la OT entran cuando Administración los aprueba, y los egresos de caja cuando Tesorería les pone el código."
+              />
+            ) : (
+              <>
+                {gastos.map((l, i) => (
+                  <TR key={`${l.fuente}-${l.referencia_id ?? i}`} data-gasto={l.fuente}>
+                    <TD className="tabular align-top whitespace-nowrap">{fecha(l.fecha)}</TD>
+                    <TD className="align-top">
+                      <p className="text-texto">{l.concepto}</p>
+                      <p className="text-xs text-texto-suave">
+                        {l.fuente === 'CAJA' ? ['Caja diaria', l.detalle, l.documento].filter(Boolean).join(' · ') : l.detalle}
+                      </p>
+                    </TD>
+                    <TD className="tabular hidden text-right align-top whitespace-nowrap text-texto-suave sm:table-cell">
+                      {l.precio_unitario === null ? '—' : moneda(l.precio_unitario, l.moneda ?? 'PEN')}
+                    </TD>
+                    <TD className="tabular text-right align-top whitespace-nowrap">{moneda(l.monto, l.moneda ?? 'PEN')}</TD>
+                  </TR>
+                ))}
+                <TR className="font-semibold">
+                  <TD colSpan={2}>Total</TD>
+                  <TD className="hidden sm:table-cell" />
+                  <TD className="tabular text-right whitespace-nowrap">
+                    {moneda(suma(gastos, 'PEN'))}
+                    {suma(gastos, 'USD') > 0 && <p>+ {moneda(suma(gastos, 'USD'), 'USD')}</p>}
                   </TD>
                 </TR>
               </>
