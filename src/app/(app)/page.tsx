@@ -101,7 +101,7 @@ function CodigosEnCurso({ codigos }: { codigos: CodigoEnCurso[] }) {
                   <Progreso valor={c.avance} mostrarValor alto="sm" etiqueta={`Avance del código ${c.codigo}`} />
                 )}
                 <p className="tabular col-span-2 text-xs text-texto sm:col-span-1 sm:text-right">
-                  <span className="text-texto-tenue sm:hidden">Costo a la fecha: </span>
+                  <span className="text-texto-tenue sm:hidden">Costo hasta hoy: </span>
                   {c.costo ?? <span className="text-texto-tenue">Sin costo</span>}
                 </p>
                 <p className="hidden text-xs text-texto-tenue sm:block sm:text-right">{c.ultima ? fecha(c.ultima) : ''}</p>
@@ -284,7 +284,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
 
                         {costos && (
                           <p className="tabular col-span-2 text-xs sm:col-span-1 sm:text-right">
-                            <span className="text-texto-tenue sm:hidden">Costo a la fecha: </span>
+                            <span className="text-texto-tenue sm:hidden">Costo hasta hoy: </span>
                             {!costo ? (
                               <span className="text-texto-tenue" title="No se pudo calcular el costo de esta orden">—</span>
                             ) : (

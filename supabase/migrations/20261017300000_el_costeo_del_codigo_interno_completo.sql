@@ -712,7 +712,7 @@ begin
   if k.cotizaciones > 0 and k.venta_sin_igv_confirmado > 0 then
     v_falta := v_falta || (case when k.venta_sin_igv_confirmado = 1 then 'confirmar si la cotización incluye IGV'
                                 else 'confirmar si ' || k.venta_sin_igv_confirmado || ' cotizaciones incluyen IGV' end
-                           || ' (Ventas, Gerencia o Administración, en el expediente de la OT)');
+                           || ' (Gerencia o Administración en el expediente de la OT, o Ventas al corregir la cotización)');
   end if;
   if k.cotizaciones > 0 and k.venta_sin_cambio > 0 then
     v_falta := v_falta || 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo carga Tesorería)'::text;

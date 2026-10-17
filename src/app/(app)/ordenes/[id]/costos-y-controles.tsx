@@ -11,6 +11,7 @@ import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { CostoDeOrden, controlesYSolicitudesDeOrden } from '@/lib/datos/costos-ot'
 import { ESTADO_GASTO_AREA, ESTADO_SOLICITUD_TESORERIA, TIPO_GASTO_AREA, definir } from '@/lib/dominio/estados'
+import { faltanteDelCosto } from '@/lib/dominio/codigos-internos'
 import { composicionDelCosto } from '@/lib/dominio/expediente'
 import { fecha, fechaHora, moneda } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
@@ -117,20 +118,21 @@ function ResumenCosteo({ ordenId, lineas, delCodigo }: { ordenId: string; lineas
     </Tarjeta>
   }
   const c = delCodigo.costo
-  const incompleto = c !== null && c.sinPrecio + c.sinCambio + c.sinCosto > 0
+  const falta = c ? faltanteDelCosto({ sinPrecio: c.sinPrecio, horasSinCosto: c.sinCosto, sinCambio: c.sinCambio }) : null
   return <Tarjeta>
     <TarjetaCabecera titulo="Costo de la unidad"
       descripcion={`Se costea por su código interno, ${delCodigo.codigo}: la mano de obra del reporte diario, las salidas del almacén con su merma, las OS, los subcontratos, los gastos del mes, los gastos aprobados en esta OT y la caja. Es el mismo costo que ve Gerencia en Códigos internos.`}
       acciones={delCodigo.enlace ? <Link href={delCodigo.enlace} className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0">Ver el costo del código</Link> : undefined} />
     <TarjetaCuerpo className="space-y-4">
       {c
-        ? <Indicador className="sm:max-w-sm" titulo="Costo hasta hoy" tono={incompleto ? 'aviso' : 'neutro'}
+        ? <Indicador className="sm:max-w-sm" titulo="Costo hasta hoy" tono={falta ? 'aviso' : 'neutro'}
             valor={<span data-costo-del-codigo-en-ot={c.pen}>{moneda(c.pen)}</span>}
-            pie={incompleto
-              ? 'Incompleto: hay salidas sin precio, horas sin costo o dólares sin cambio'
-              : c.cierre
+            pie={falta
+              ?? (c.cierre
                 ? `Cerrado el ${fecha(c.cierre.en)} en ${moneda(c.cierre.costo)}`
-                : 'Todo en soles, con lo que está en dólares al cambio de Tesorería'} />
+                : c.pen <= 0
+                  ? 'Todavía nada costeado: suma con el reporte diario, las salidas del almacén, las OS y los gastos'
+                  : 'Todo en soles, con lo que está en dólares al cambio de Tesorería')} />
         : <p role="status" className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso">
             No se pudo leer el costo del código {delCodigo.codigo}. Recarga la pantalla; si sigue igual, avisa a Sistemas.
           </p>}

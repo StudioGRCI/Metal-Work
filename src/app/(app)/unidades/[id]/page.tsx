@@ -113,9 +113,9 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
           {verOrdenes && <Garantia historia={historia} hoy={hoy} />}
 
           {verCosto && historia.ordenes.length > 0 && porCodigo && (
-            <section aria-label="Costo en el taller" className={cn('grid grid-cols-2 gap-3', verMargen && 'sm:grid-cols-3')}>
+            <section aria-label="Costo de la unidad" className={cn('grid grid-cols-2 gap-3', verMargen && 'sm:grid-cols-3')}>
               <Cifra
-                etiqueta="Costo en el taller"
+                etiqueta="Costo hasta hoy"
                 valor={delCodigo ? moneda(delCodigo.pen) : '—'}
                 pie={
                   !delCodigo

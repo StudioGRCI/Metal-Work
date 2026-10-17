@@ -51,7 +51,7 @@ import { situacionCompra, validacionDeCompra } from '@/lib/dominio/logistica'
 import { ESTADO_REPORTE, type EstadoReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADO_REQUERIMIENTO } from '@/lib/dominio/requerimientos'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { cantidad, fecha, fechaLarga, moneda, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
+import { cantidad, fecha, fechaLarga, moneda, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, type PerfilSesion } from '@/lib/sesion'
 
 import { CerrarCosteo, ReabrirCosteo } from './cierre-costeo'
@@ -347,7 +347,7 @@ function IndicadorMargen({ c, codigo }: { c: ResumenCodigo; codigo: string }) {
         tono="aviso"
         pie={
           v.sin_igv > 0
-            ? 'Ventas no confirmó si la cotización incluye IGV'
+            ? 'Falta confirmar si la cotización incluye IGV'
             : v.sin_cambio > 0
               ? 'Falta el tipo de cambio del día en que se aprobó la cotización'
               : 'La cotización no tiene monto de venta'
@@ -384,14 +384,19 @@ function LineaCierre({ c, codigo, verPrecio, cierra }: { c: ResumenCodigo; codig
       c.lineas_sin_cambio > 0 && `${c.lineas_sin_cambio} ${c.lineas_sin_cambio === 1 ? 'línea' : 'líneas'} en dólares sin tipo de cambio`,
       // Con cotización, el cierre congela el margen: sin el IGV o el cambio de la venta saldría sin él.
       c.venta && c.venta.sin_igv > 0 &&
-        (c.venta.sin_igv === 1 ? 'confirmar si la cotización incluye IGV' : `confirmar si ${c.venta.sin_igv} cotizaciones incluyen IGV`),
-      c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares',
+        `${c.venta.sin_igv === 1 ? 'confirmar si la cotización incluye IGV' : `confirmar si ${c.venta.sin_igv} cotizaciones incluyen IGV`} (Gerencia o Administración en el expediente de la OT, o Ventas al corregir la cotización)`,
+      c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo carga Tesorería)',
     ].filter(Boolean)
     if (falta.length > 0) {
       return (
-        <p className="rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="incompleto">
-          El costeo se cierra al entregar la unidad, con todo completo. Hoy falta: {falta.join(', ')}.
-        </p>
+        <div className="space-y-1 rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="incompleto">
+          <p>El costeo se cierra al entregar la unidad, con todo completo. Hoy falta: {falta.join(', ')}.</p>
+          {c.venta && c.venta.sin_igv > 0 && (
+            <Link href={enlaceCodigo(codigo, 'documentos')} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
+              Abrir la OT desde «RQ, OT y cotización»
+            </Link>
+          )}
+        </div>
       )
     }
     if (c.costo_pen <= 0) {
@@ -407,7 +412,7 @@ function LineaCierre({ c, codigo, verPrecio, cierra }: { c: ResumenCodigo; codig
         <div className="space-y-1">
           <p>
             {c.entregada_el
-              ? `La unidad se entregó el ${fecha(c.entregada_el)}: cierra el costeo y el costo y el margen de hoy quedan congelados como el costo de la unidad.`
+              ? `Se entregó el ${fecha(c.entregada_el)}. Al cerrar el costeo, el costo y el margen de hoy quedan congelados como el costo de la unidad.`
               : 'Cuando se entregue la unidad, cierra el costeo: el costo y el margen de ese día quedan congelados como el costo de la unidad.'}
           </p>
           <p data-acta={c.entregada_el ?? 'pendiente'}>
@@ -444,6 +449,11 @@ function LineaCierre({ c, codigo, verPrecio, cierra }: { c: ResumenCodigo; codig
           )}
           .
         </p>
+        {verPrecio && z.margen_pct === null && c.venta?.margen_pct != null && (
+          <p className="mt-1 text-aviso" data-margen-despues-del-cierre>
+            La cotización tiene precio desde después del cierre, que quedó sin margen: reabre el costeo y ciérralo otra vez para congelarlo.
+          </p>
+        )}
         {diferencia !== 0 && (
           <p className="mt-1 text-aviso" data-despues-del-cierre={diferencia}>
             Desde el cierre el costo {diferencia > 0 ? 'subió' : 'bajó'} <span className="tabular">{moneda(Math.abs(diferencia))}</span>: hoy suma{' '}
@@ -1035,7 +1045,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
               <>
                 {gastos.map((l, i) => (
                   <TR key={`${l.fuente}-${l.referencia_id ?? i}`} data-gasto={l.fuente}>
-                    <TD className="tabular align-top whitespace-nowrap">{l.fuente === 'GASTOS_DEL_MES' ? periodo(l.fecha) : fecha(l.fecha)}</TD>
+                    <TD className="tabular align-top whitespace-nowrap">{fecha(l.fecha)}</TD>
                     <TD className="align-top">
                       <p className="text-texto">{l.concepto}</p>
                       <p className="text-xs text-texto-suave">

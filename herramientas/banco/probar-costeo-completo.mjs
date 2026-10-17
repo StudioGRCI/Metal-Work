@@ -279,7 +279,7 @@ const [ahora] = await consulta(`select costo_pen::float as costo from public.cod
   comprobar(enExpediente !== null && numero(enExpediente) === luego.costo, `el expediente de la OT dice el costo del código: S/ ${enExpediente}`)
 
   await pagina.goto(`${BASE}/unidades/${ot?.unidad_id}`, { waitUntil: 'networkidle' })
-  const cifra = limpio(await pagina.locator('section[aria-label="Costo en el taller"]').textContent({ timeout: 5000 }).catch(() => ''))
+  const cifra = limpio(await pagina.locator('section[aria-label="Costo de la unidad"]').textContent({ timeout: 5000 }).catch(() => ''))
   comprobar(cifra.includes(solesLuego) && cifra.includes(CODIGO), `la ficha de la unidad: «${cifra.slice(0, 160)}»`)
 
   // La pestaña Costos de la OT: arriba el costo del código; lo de la OT, como una parte.

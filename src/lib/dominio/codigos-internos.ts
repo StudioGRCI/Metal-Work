@@ -1,5 +1,6 @@
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { moneda } from '@/lib/format'
+import { horasCortas } from './rrhh'
 
 /**
  * Lo que comparten las pantallas de los códigos internos de Gerencia. Puro, sin
@@ -60,6 +61,16 @@ export function montoMixto(pen: number, usd: number) {
  * Por qué las partes no dan el total a ojo: cada parte va en su moneda y el
  * total en soles. Con la línea, Gerencia suma y cuadra. `null` sin dólares.
  */
+/** Lo que deja incompleto un costo, contado («2 salidas sin precio · 8 h sin costo»); `null` si nada. */
+export function faltanteDelCosto(f: { sinPrecio: number; horasSinCosto: number; sinCambio: number }) {
+  const partes = [
+    f.sinPrecio > 0 && `${f.sinPrecio} ${f.sinPrecio === 1 ? 'salida' : 'salidas'} sin precio`,
+    f.horasSinCosto > 0 && `${horasCortas(f.horasSinCosto)} sin costo`,
+    f.sinCambio > 0 && `${f.sinCambio} ${f.sinCambio === 1 ? 'línea' : 'líneas'} en dólares sin cambio`,
+  ].filter(Boolean)
+  return partes.length > 0 ? `Incompleto: ${partes.join(' · ')}` : null
+}
+
 export function dolaresAlCambio(c: { usd_al_cambio: number; usd_en_soles: number }) {
   if (c.usd_al_cambio <= 0) return null
   return `Lo que está en dólares (${moneda(c.usd_al_cambio, 'USD')}) suma ${moneda(c.usd_en_soles)} al cambio de Tesorería del día de cada línea: con eso, las partes en soles dan el costo hasta hoy.`
