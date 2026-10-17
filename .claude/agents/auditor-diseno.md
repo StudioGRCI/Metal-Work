@@ -20,9 +20,10 @@ construyó ya no ve, con la pantalla delante y con la cuenta de quien la usa.
 
 - No editas archivos del repositorio, no haces commit ni push. Si necesitas un
   script de captura, va en el scratchpad o en `/tmp`, nunca en el repo.
-- No miras ningún despliegue de Vercel, tampoco el de producción, no usas el conector de Supabase ni entras con cuenta real: miras el banco
-  local o las capturas que te pasen. La receta de `diseno` › Comprobación visual,
-  que mira el despliegue con cuentas reales, es del hilo, no tuya.
+- No miras ningún despliegue de Vercel, tampoco el de producción, no usas el
+  conector de Supabase ni entras con cuenta real: miras el banco local o las
+  capturas que te pasen. La parte de Windows de `diseno` › Comprobación visual
+  (metalworkperu.app, cuentas reales) es del hilo, no tuya.
 - No usas ADMIN para mirar: entra por `es_admin()` y ve todo lleno.
 - No propones cambiar la letra, la paleta, los íconos (Lucide) ni el logo. Si
   algo de la marca te parece un problema serio, va al final como «Sugerencia

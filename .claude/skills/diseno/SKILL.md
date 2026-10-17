@@ -103,8 +103,9 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   después de la acción. Y React vacía un `<form action>` al terminar aunque
   haya fallado: lo escrito se perdía con el primer rechazo.
 - **Se comprueba tocando, no leyendo:** `herramientas/recorrido/doble-toque.mjs`
-  toca «Registrar» tres veces con un texto que el servidor rechaza, y tiene que
-  dar un envío, el botón desactivado y el texto todavía en el campo.
+  (en la nube, la misma prueba dentro de un `probar-*.mjs`) toca «Registrar»
+  tres veces con un texto que el servidor rechaza, y tiene que dar un envío, el
+  botón desactivado y el texto todavía en el campo.
 - `useActionState` sí desactiva su botón a tiempo, pero también vacía el
   formulario tras un rechazo. En formularios largos o del taller, `useEnvio`.
 - **Prohibido cerrar o resetear con `useEffect` sobre el resultado** — la
@@ -190,13 +191,15 @@ usa la pantalla, nunca ADMIN.
 
 **En la nube** (contenedor Linux con Postgres 16 y Chromium en `/opt/pw-browsers/`)
 el banco local corre (`herramientas/banco/README.md`) y es donde se mira, antes
-del PR: `node herramientas/banco/recorrer.mjs` visita cada pantalla con sesión
-iniciada, junta los errores de consola y guarda captura —pantalla nueva →
-sumarla a `RUTAS`—, y los `herramientas/banco/probar-*.mjs` prueban los botones
-con clic real contra `localhost:3111` y miran la base después; interacción nueva
-de peso → su `probar-*.mjs`, con el arranque de `probar-caja-diaria.mjs`
-(`BANCO_CHROMIUM`, `--no-sandbox`, cuentas `*.local@metalwork.test`). Los scripts
-de `herramientas/recorrido/` aquí no arrancan: buscan Chrome de Windows.
+del PR. `BANCO_CORREO='<puesto>.local@metalwork.test' BANCO_CLAVE=… node
+herramientas/banco/recorrer.mjs` visita cada pantalla con sesión iniciada, junta
+los errores de consola y guarda captura —pantalla nueva → sumarla a `RUTAS`—;
+sin `BANCO_CORREO` entra como ADMIN y no prueba nada. Los botones se prueban con
+clic real contra `localhost:3111` en un `herramientas/banco/probar-*.mjs`:
+interacción nueva de peso → su `probar-*.mjs`, que consulta la base después del
+clic, con el arranque de `probar-caja-diaria.mjs` (`BANCO_CHROMIUM`,
+`--no-sandbox`, cuentas `*.local@metalwork.test`). Los scripts de
+`herramientas/recorrido/` aquí no arrancan: buscan Chrome de Windows.
 
 **En el equipo Windows** el banco no corre (no hay Postgres ni `psql`). Las vistas
 previas de cada rama en Vercel piden iniciar sesión en Vercel antes de abrir, así
@@ -209,7 +212,12 @@ CLAVE='<su clave>' CAPTURAS="<carpeta del scratchpad>" \
 "/c/Program Files/nodejs/node.exe" herramientas/recorrido/mirar.mjs /carrocerias carrocerias 'h1' 'tbody tr'
 ```
 
-La clave la pone quien corre el mando; nunca va al repositorio ni a la memoria.
+La clave la pone quien corre el mando; nunca va al repositorio ni a la memoria,
+y **nunca es la clave temporal común**: las cuentas de producción son de gente
+real. Si DKS no le dio al hilo una cuenta propia para ese puesto, el mando lo
+corre DKS o se dice que la pantalla no se vio. El PR dice que esta mirada queda
+para después de unir; si al mirar algo falla, se arregla o se revierte en el
+acto y se avisa en el hilo.
 
 Los selectores que se le pasan **se cuentan y se listan por texto**, y eso es la
 prueba: cuántas filas trajo la tabla y qué dicen. La captura PNG no vale como
