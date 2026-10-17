@@ -47,12 +47,20 @@ export function detalleDeCuenta(c: { tipo: string; banco: string | null; moneda:
 
 export type EstadoDelDia = { etiqueta: string; tono: Tono }
 
-/** Cómo está el día de una cuenta: antes de que empiece, cerrado o abierto. */
-export function estadoDelDia(c: { fecha_inicio: string; cierre_id: string | null; ultimo_cierre: string | null }, dia: string): EstadoDelDia {
+/**
+ * Cómo está el día de una cuenta: antes de que empiece, cerrado o abierto. Un
+ * día abierto es lo normal mientras se trabaja; solo avisa en amarillo el de
+ * un día que ya pasó con movimientos sin cerrar.
+ */
+export function estadoDelDia(
+  c: { fecha_inicio: string; cierre_id: string | null; ultimo_cierre: string | null; movimientos: number },
+  dia: string,
+  hoy: string,
+): EstadoDelDia {
   if (dia < c.fecha_inicio) return { etiqueta: 'Todavía no empieza', tono: 'neutro' }
   if (c.cierre_id) return { etiqueta: 'Cerrado', tono: 'exito' }
   if (c.ultimo_cierre && dia <= c.ultimo_cierre) return { etiqueta: 'Cerrado', tono: 'exito' }
-  return { etiqueta: 'Abierto', tono: 'aviso' }
+  return { etiqueta: 'Abierto', tono: dia < hoy && c.movimientos > 0 ? 'aviso' : 'neutro' }
 }
 
 /**
@@ -78,6 +86,19 @@ export function consolidado(
     dolares: redondear(dolares),
     totalEnSoles: cambioCompra ? redondear(soles + dolares * cambioCompra) : dolares === 0 ? redondear(soles) : null,
   }
+}
+
+/**
+ * «1,250.50» o «1250,50» → «1250.50»: la gente copia los montos del estado de
+ * cuenta. La usan la acción, que manda el monto a la base, y la vista previa
+ * del cierre, que calcula la diferencia: si leyeran distinto, la pantalla
+ * pediría observaciones por una diferencia que no existe.
+ */
+export function normalizarMonto(texto: string) {
+  const t = texto.replace(/\s/g, '')
+  if (/^-?\d{1,3}(,\d{3})+(\.\d{1,2})?$/.test(t)) return t.replace(/,/g, '')
+  if (/^-?\d+,\d{1,2}$/.test(t)) return t.replace(',', '.')
+  return t
 }
 
 /** Un monto de la caja como lo escribe la gente: dígitos, punto decimal y hasta dos decimales. */

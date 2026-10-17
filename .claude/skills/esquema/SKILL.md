@@ -84,7 +84,8 @@ npx tsc --noEmit && npx eslint && npx next build
 ## Numeración y datos reales
 
 Los correlativos son los de la empresa (OT `2921-2026` global y continuo,
-cotización `3568-2026`, compra `OC-5581-MW`) vía `series_documentarias`.
+cotización `3568-2026`, compra `OC-0001-MW`, con número inventado: el de una
+OC real no se escribe en el repositorio, que es público) vía `series_documentarias`.
 Jamás burlarlos insertando números a mano: `siguiente_correlativo` está
 cerrado a propósito y el check lo vigila.
 

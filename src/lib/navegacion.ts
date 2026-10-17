@@ -636,7 +636,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       },
       { titulo: 'Consultas', rutas: ['/cotizaciones/pdf'] },
     ],
-    telefono: ['/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/tesoreria/pagos-de-servicio'],
+    // En el teléfono también va primero la caja, con la que abre y cierra el día; los pagos de servicio pasan a «Más» (2026-10-17).
+    telefono: ['/tesoreria/caja-diaria', '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar'],
   },
   // Primero lo que espera por ella: las cotizaciones por facturar. Después las
   // compras en su orden: la guía de remisión de cada OC que recoge el conductor,

@@ -3,7 +3,7 @@
 -- -----------------------------------------------------------------------------
 -- Gerencia lo pidió el 2026-10-16: la caja diaria de Tesorería «según lo de
 -- acá», el libro ESTADO DE CAJA DIARIA que hoy se lleva en Excel con una hoja
--- por día. Cada hoja tiene, por cada cuenta (BCP y BBVA, en soles y en
+-- por día. Cada hoja tiene, por cada cuenta (cada banco, en soles y en
 -- dólares), el saldo inicial, lo que salió y lo que entró en el día con su
 -- descripción (la OC o la OS que se pagó, la planilla, la caja chica, el ITF,
 -- la comisión de mantenimiento, un retiro), el saldo final y la COMPROBACIÓN:
@@ -387,7 +387,7 @@ begin
     raise exception 'El monto va mayor que cero, con dos decimales como máximo.' using errcode = 'check_violation';
   end if;
   if char_length(v_desc) not between 3 and 300 then
-    raise exception 'Describe el movimiento como en el estado de cuenta, de 3 a 300 caracteres: «ITF», «OC-5581-MW Ferretería…».'
+    raise exception 'Describe el movimiento como en el estado de cuenta, de 3 a 300 caracteres: «ITF», «OC-0001-MW Ferretería…».'
       using errcode = 'check_violation';
   end if;
   if v_codigo is not null and char_length(v_codigo) not between 2 and 60 then
@@ -415,7 +415,7 @@ revoke all on function public.registrar_movimiento_caja(uuid, uuid, date, text, 
 grant execute on function public.registrar_movimiento_caja(uuid, uuid, date, text, numeric, text, text, text, numeric) to authenticated;
 
 -- 10. Pasar dinero de una cuenta a otra -----------------------------------------------------------
--- La reposición de la caja chica, el paso del BCP al BBVA o la compra de
+-- La reposición de la caja chica, el paso de un banco a otro o la compra de
 -- dólares: un egreso en una y un ingreso en la otra, el mismo día, con el
 -- mismo `origen_id`. Entre monedas distintas se escribe lo que salió y lo que
 -- entró, como dice el voucher, y la base saca el cambio.

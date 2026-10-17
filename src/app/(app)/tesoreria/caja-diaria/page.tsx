@@ -19,13 +19,17 @@ import { AnularMovimiento, CerrarDia, EditarCuenta, ReabrirDia, RegistrarMovimie
 export const metadata = { title: 'Caja diaria' }
 
 const RUTA = '/tesoreria/caja-diaria'
+/** Antes de esto no hay caja que mirar, y el año 0000 que acepta JavaScript la base no lo acepta. */
+const PRIMER_DIA = '2020-01-01'
 const enlaceDia = (dia: string, hoy: string, cuenta?: string) =>
   `${dia === hoy ? RUTA : `${RUTA}?fecha=${dia}`}${cuenta ? `#cuenta-${cuenta}` : ''}`
 
+/** El día de la URL, si es uno de verdad y no es futuro. «2026-02-30» no lo es: Date lo pasaría al 2 de marzo y la base lo rechaza. */
 function diaPedido(texto: string | string[] | undefined, hoy: string) {
   const d = typeof texto === 'string' ? texto : ''
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(`${d}T12:00:00Z`)) || d > hoy) return hoy
-  return d
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d > hoy || d < PRIMER_DIA) return hoy
+  const leido = new Date(`${d}T12:00:00Z`)
+  return Number.isNaN(leido.getTime()) || leido.toISOString().slice(0, 10) !== d ? hoy : d
 }
 
 /**
@@ -41,13 +45,14 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
   const dia = diaPedido((await searchParams).fecha, hoy)
   const caja = await cajaDelDia(dia)
 
-  const visibles = caja.cuentas.filter((c) => c.activa || c.movimientos > 0 || c.cierre_id)
+  // Una cuenta desactivada sigue a la vista mientras tenga saldo, o el consolidado bajaría sin que nadie moviera la plata.
+  const visibles = caja.cuentas.filter((c) => c.activa || c.movimientos > 0 || c.cierre_id || (c.saldo_final ?? 0) !== 0)
   const empezadas = visibles.filter((c) => dia >= c.fecha_inicio)
   // A las que hoy se les puede registrar: activas, ya empezadas y con el día abierto.
   const abiertas: CuentaElegible[] = empezadas
     .filter((c) => c.activa && !c.cierre_id && !(c.ultimo_cierre && dia <= c.ultimo_cierre))
     .map((c) => ({ id: c.id, nombre: c.nombre, moneda: c.moneda, tipo: c.tipo }))
-  const pendientes = visibles.filter((c) => c.primer_dia_sin_cerrar && c.primer_dia_sin_cerrar < hoy)
+  const pendientes = caja.cuentas.filter((c) => c.primer_dia_sin_cerrar && c.primer_dia_sin_cerrar < hoy)
   const total = consolidado(empezadas, caja.cambioCompra)
   const movimientosDe = (id: string) => caja.movimientos.filter((m) => m.caja_id === id)
   const reabiertosDe = (id: string) => caja.reabiertos.filter((k) => k.caja_id === id)
@@ -68,7 +73,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
             </span>
             <p className="mt-3 text-sm font-semibold text-texto">Todavía no hay cuentas en la caja</p>
             <p className="mt-1 mb-4 max-w-lg text-sm text-texto-suave">
-              Da de alta cada cuenta como está en el estado de caja —BCP soles, BCP dólares, BBVA soles, BBVA dólares y la caja chica si la llevas aquí— con el saldo con el que empieza.
+              Da de alta cada cuenta como está en el estado de caja —cada banco en soles y en dólares, y la caja chica si la llevas aquí— con el saldo con el que empieza.
             </p>
             <EditarCuenta hoy={hoy} primera />
           </TarjetaCuerpo>
@@ -107,20 +112,21 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
             />
             <Tabla>
               <TablaCabecera>
+                {/* En el teléfono quedan la cuenta, con su estado debajo, y el saldo final, con la diferencia debajo: lo demás está en el bloque de cada cuenta. */}
                 <TR>
                   <TH>Cuenta</TH>
-                  <TH className="text-right">Saldo inicial</TH>
-                  <TH className="text-right">Egresos</TH>
-                  <TH className="text-right">Ingresos</TH>
+                  <TH className="hidden text-right sm:table-cell">Saldo inicial</TH>
+                  <TH className="hidden text-right sm:table-cell">Egresos</TH>
+                  <TH className="hidden text-right sm:table-cell">Ingresos</TH>
                   <TH className="text-right">Saldo final</TH>
-                  <TH className="text-right">Según el banco</TH>
-                  <TH className="text-right">Diferencia</TH>
-                  <TH>Día</TH>
+                  <TH className="hidden text-right sm:table-cell">Según el banco</TH>
+                  <TH className="hidden text-right sm:table-cell">Diferencia</TH>
+                  <TH className="hidden sm:table-cell">Día</TH>
                 </TR>
               </TablaCabecera>
               <tbody>
                 {visibles.map((c) => (
-                  <FilaDeSaldo key={c.id} cuenta={c} dia={dia} />
+                  <FilaDeSaldo key={c.id} cuenta={c} dia={dia} hoy={hoy} />
                 ))}
               </tbody>
             </Tabla>
@@ -212,13 +218,15 @@ function SelectorDeDia({ dia, hoy }: { dia: string; hoy: string }) {
   const siguiente = sumarDias(dia, 1)
   return (
     <form method="get" action={RUTA} className="flex flex-wrap items-center gap-2">
-      <EnlaceBoton href={enlaceDia(sumarDias(dia, -1), hoy)} variante="contorno" tamano="icono" aria-label="Día anterior">
-        <ChevronLeft aria-hidden className="size-4" />
-      </EnlaceBoton>
+      {dia > PRIMER_DIA && (
+        <EnlaceBoton href={enlaceDia(sumarDias(dia, -1), hoy)} variante="contorno" tamano="icono" aria-label="Día anterior">
+          <ChevronLeft aria-hidden className="size-4" />
+        </EnlaceBoton>
+      )}
       <label htmlFor="caja-dia" className="sr-only">
         Día de la caja
       </label>
-      <Entrada id="caja-dia" type="date" name="fecha" defaultValue={dia} max={hoy} className="w-auto" />
+      <Entrada id="caja-dia" type="date" name="fecha" defaultValue={dia} min={PRIMER_DIA} max={hoy} className="w-auto" />
       <Boton type="submit" variante="secundario" tamano="sm">
         Ver
       </Boton>
@@ -236,9 +244,9 @@ function SelectorDeDia({ dia, hoy }: { dia: string; hoy: string }) {
   )
 }
 
-function FilaDeSaldo({ cuenta: c, dia }: { cuenta: CuentaDelDia; dia: string }) {
+function FilaDeSaldo({ cuenta: c, dia, hoy }: { cuenta: CuentaDelDia; dia: string; hoy: string }) {
   const m = monedaDeCuenta(c.moneda)
-  const estado = estadoDelDia(c, dia)
+  const estado = estadoDelDia(c, dia, hoy)
   const empezada = dia >= c.fecha_inicio
   return (
     <TR>
@@ -250,23 +258,34 @@ function FilaDeSaldo({ cuenta: c, dia }: { cuenta: CuentaDelDia; dia: string }) 
         ) : (
           <span className="font-medium text-texto">{c.nombre}</span>
         )}
-        <span className="block text-xs text-texto-suave">{detalleDeCuenta(c)}</span>
+        <span className="block text-xs text-texto-suave">
+          {detalleDeCuenta(c)}
+          {!c.activa && ' · desactivada'}
+        </span>
+        <span className="mt-1 block sm:hidden">
+          <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+        </span>
       </TD>
       {empezada ? (
         <>
-          <TD className="tabular text-right">{moneda(c.saldo_inicial, m)}</TD>
-          <TD className="tabular text-right">{c.egresos > 0 ? moneda(c.egresos, m) : '—'}</TD>
-          <TD className="tabular text-right">{c.ingresos > 0 ? moneda(c.ingresos, m) : '—'}</TD>
-          <TD className={`tabular text-right font-semibold ${(c.saldo_final ?? 0) < 0 ? 'text-peligro' : ''}`}>{moneda(c.saldo_final, m)}</TD>
-          <TD className="tabular text-right">{c.saldo_banco !== null ? moneda(c.saldo_banco, m) : '—'}</TD>
-          <TD className={`tabular text-right ${c.diferencia ? 'text-aviso' : ''}`}>{c.diferencia !== null ? moneda(c.diferencia, m) : '—'}</TD>
+          <TD className="tabular hidden text-right sm:table-cell">{moneda(c.saldo_inicial, m)}</TD>
+          <TD className="tabular hidden text-right sm:table-cell">{c.egresos > 0 ? moneda(c.egresos, m) : '—'}</TD>
+          <TD className="tabular hidden text-right sm:table-cell">{c.ingresos > 0 ? moneda(c.ingresos, m) : '—'}</TD>
+          <TD className="tabular text-right whitespace-nowrap">
+            <span className={`font-semibold ${(c.saldo_final ?? 0) < 0 ? 'text-peligro' : ''}`}>{moneda(c.saldo_final, m)}</span>
+            {c.diferencia ? (
+              <span className="block text-xs font-normal text-aviso sm:hidden">Diferencia {moneda(c.diferencia, m)}</span>
+            ) : null}
+          </TD>
+          <TD className="tabular hidden text-right sm:table-cell">{c.saldo_banco !== null ? moneda(c.saldo_banco, m) : '—'}</TD>
+          <TD className={`tabular hidden text-right sm:table-cell ${c.diferencia ? 'text-aviso' : ''}`}>{c.diferencia !== null ? moneda(c.diferencia, m) : '—'}</TD>
         </>
       ) : (
         <TD colSpan={6} className="text-xs text-texto-suave">
           Empieza el {fecha(c.fecha_inicio)}.
         </TD>
       )}
-      <TD>
+      <TD className="hidden sm:table-cell">
         <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
       </TD>
     </TR>
@@ -283,7 +302,7 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
   codigos: string[]
 }) {
   const m = monedaDeCuenta(c.moneda)
-  const estado = estadoDelDia(c, dia)
+  const estado = estadoDelDia(c, dia, hoy)
   const abierta = abiertas.some((a) => a.id === c.id)
   // Cerrado sin un cierre propio: el día quedó dentro del cierre de un día posterior.
   const dentroDeOtroCierre = !c.cierre_id && !!c.ultimo_cierre && dia <= c.ultimo_cierre
@@ -304,43 +323,54 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
         descripcion={`${detalleDeCuenta(c)} · empieza el día con ${moneda(c.saldo_inicial, m)} y termina con ${moneda(c.saldo_final, m)}`}
         acciones={abierta ? <RegistrarMovimiento cuentas={abiertas} cuentaId={c.id} dia={dia} codigos={codigos} compacto /> : undefined}
       />
-      <Tabla>
-        <TablaCabecera>
-          <TR>
-            <TH>Descripción</TH>
-            <TH>Código interno</TH>
-            <TH>N.º operación</TH>
-            <TH className="text-right">Egreso</TH>
-            <TH className="text-right">Ingreso</TH>
-            <TH>Registró</TH>
-            {/* `relative`: sin él, el texto oculto se posiciona contra la página y la ensancha en el teléfono. */}
-            <TH className="relative">
-              <span className="sr-only">Anular</span>
-            </TH>
-          </TR>
-        </TablaCabecera>
-        <tbody>
-          {movimientos.length === 0 ? (
-            <tr>
-              <td colSpan={7} className="px-3 py-6 text-center text-sm text-texto-suave">
-                Sin movimientos este día.{abierta ? ' Regístralos con el botón de arriba.' : ''}
-              </td>
-            </tr>
-          ) : (
-            movimientos.map((mov) => <FilaDeMovimiento key={mov.id} movimiento={mov} moneda={m} abierta={abierta} />)
-          )}
-          {movimientos.length > 0 && (
-            <tr className="border-t border-borde bg-superficie-2 font-semibold">
+      {movimientos.length === 0 ? (
+        <TarjetaCuerpo className="border-t border-borde text-sm text-texto-suave">
+          Sin movimientos este día.{abierta ? ' Regístralos con el botón de arriba.' : ''}
+        </TarjetaCuerpo>
+      ) : (
+        <Tabla>
+          {/* En el teléfono no caben siete columnas: el código, la operación y quién registró van bajo la descripción, y egreso o ingreso en una sola columna con su signo. */}
+          <TablaCabecera>
+            <TR>
+              <TH>Descripción</TH>
+              <TH className="hidden sm:table-cell">Código interno</TH>
+              <TH className="hidden sm:table-cell">N.º operación</TH>
+              <TH className="hidden text-right sm:table-cell">Egreso</TH>
+              <TH className="hidden text-right sm:table-cell">Ingreso</TH>
+              <TH className="text-right sm:hidden">Monto</TH>
+              <TH className="hidden sm:table-cell">Registró</TH>
+              {/* Solo en un día abierto: cerrado, la columna vacía corría los montos al medio. */}
+              {abierta && (
+                // `relative`: sin él, el texto oculto se posiciona contra la página y la ensancha en el teléfono.
+                <TH className="relative">
+                  <span className="sr-only">Anular</span>
+                </TH>
+              )}
+            </TR>
+          </TablaCabecera>
+          <tbody>
+            {movimientos.map((mov) => (
+              <FilaDeMovimiento key={mov.id} movimiento={mov} moneda={m} cuenta={c.nombre} abierta={abierta} />
+            ))}
+            <tr className="hidden border-t border-borde bg-superficie-2 font-semibold sm:table-row">
               <td colSpan={3} className="px-3 py-2 text-right text-xs text-texto-suave uppercase">
                 Total del día
               </td>
               <td className="tabular px-3 py-2 text-right">{moneda(c.egresos, m)}</td>
               <td className="tabular px-3 py-2 text-right">{moneda(c.ingresos, m)}</td>
-              <td colSpan={2} />
+              <td colSpan={abierta ? 2 : 1} />
             </tr>
-          )}
-        </tbody>
-      </Tabla>
+            <tr className="border-t border-borde bg-superficie-2 sm:hidden">
+              <td colSpan={abierta ? 3 : 2} className="px-3 py-2 text-xs text-texto-suave">
+                <span className="block font-semibold uppercase">Total del día</span>
+                <span className="tabular">
+                  Salió {moneda(c.egresos, m)} · entró {moneda(c.ingresos, m)}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </Tabla>
+      )}
 
       <TarjetaCuerpo className="space-y-2 border-t border-borde text-sm">
         {c.cierre_id ? (
@@ -397,14 +427,17 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
   )
 }
 
-function FilaDeMovimiento({ movimiento: mov, moneda: m, abierta }: {
+function FilaDeMovimiento({ movimiento: mov, moneda: m, cuenta, abierta }: {
   movimiento: MovimientoDelDia
   moneda: 'PEN' | 'USD'
+  cuenta: string
   abierta: boolean
 }) {
   const anulado = !!mov.anulado_en
   const transferencia = mov.origen === 'TRANSFERENCIA'
   const anulable = !anulado && abierta && (mov.origen === 'MANUAL' || transferencia)
+  const enElTelefono = [mov.codigo_interno, mov.operacion && `Op. ${mov.operacion}`, mov.registrado_por].filter(Boolean).join(' · ')
+  const tachado = anulado ? 'line-through' : ''
   return (
     <TR className={anulado ? 'text-texto-suave' : undefined}>
       <TD className="max-w-xs">
@@ -423,15 +456,25 @@ function FilaDeMovimiento({ movimiento: mov, moneda: m, abierta }: {
             Anulado por {mov.anulado_por ?? '—'}: {mov.motivo_anulacion}
           </span>
         )}
+        {enElTelefono && <span className="tabular block text-xs text-texto-suave sm:hidden">{enElTelefono}</span>}
       </TD>
-      <TD className="tabular text-xs">{mov.codigo_interno ?? '—'}</TD>
-      <TD className="tabular text-xs">{mov.operacion ?? '—'}</TD>
-      <TD className={`tabular text-right ${anulado ? 'line-through' : ''}`}>{mov.tipo === 'EGRESO' ? moneda(mov.monto, m) : ''}</TD>
-      <TD className={`tabular text-right ${anulado ? 'line-through' : ''}`}>{mov.tipo === 'INGRESO' ? moneda(mov.monto, m) : ''}</TD>
-      <TD className="text-xs text-texto-suave">{mov.registrado_por ?? '—'}</TD>
-      <TD className="w-12 text-right">
-        {anulable && <AnularMovimiento id={mov.id} descripcion={mov.descripcion} otraCuenta={transferencia ? mov.otra_cuenta : null} />}
+      <TD className="tabular hidden text-xs sm:table-cell">{mov.codigo_interno ?? '—'}</TD>
+      <TD className="tabular hidden text-xs sm:table-cell">{mov.operacion ?? '—'}</TD>
+      <TD className={`tabular hidden text-right whitespace-nowrap sm:table-cell ${tachado}`}>{mov.tipo === 'EGRESO' ? moneda(mov.monto, m) : ''}</TD>
+      <TD className={`tabular hidden text-right whitespace-nowrap sm:table-cell ${tachado}`}>{mov.tipo === 'INGRESO' ? moneda(mov.monto, m) : ''}</TD>
+      <TD className="text-right whitespace-nowrap sm:hidden" data-monto-telefono>
+        <span className={`tabular block ${tachado} ${mov.tipo === 'INGRESO' ? 'text-exito' : ''}`}>
+          {mov.tipo === 'EGRESO' ? '−' : '+'}
+          {moneda(mov.monto, m)}
+        </span>
+        <span className="block text-[11px] text-texto-suave">{mov.tipo === 'EGRESO' ? 'Egreso' : 'Ingreso'}</span>
       </TD>
+      <TD className="hidden text-xs text-texto-suave sm:table-cell">{mov.registrado_por ?? '—'}</TD>
+      {abierta && (
+        <TD className="w-12 text-right">
+          {anulable && <AnularMovimiento id={mov.id} descripcion={mov.descripcion} cuenta={cuenta} otraCuenta={transferencia ? mov.otra_cuenta : null} />}
+        </TD>
+      )}
     </TR>
   )
 }
