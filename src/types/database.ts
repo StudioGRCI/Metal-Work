@@ -11114,6 +11114,8 @@ export type Database = {
           costo_pen: number | null
           usd_sin_cambio: number | null
           lineas_sin_cambio: number | null
+          usd_al_cambio: number | null
+          usd_en_soles: number | null
           materiales_sin_precio: number | null
           horas_sin_costo: number | null
           cotizaciones: number | null
@@ -11129,6 +11131,7 @@ export type Database = {
           presupuesto_fijado: boolean | null
           consumido_pct: number | null
           semaforo: string | null
+          entregada_el: string | null
           cierre_id: string | null
           cerrado_en: string | null
           cerrado_por: string | null
@@ -11157,6 +11160,8 @@ export type Database = {
           costo_pen: number | null
           usd_sin_cambio: number | null
           lineas_sin_cambio: number | null
+          usd_al_cambio: number | null
+          usd_en_soles: number | null
           materiales_sin_precio: number | null
           horas_sin_costo: number | null
           cotizaciones: number | null
@@ -11172,6 +11177,7 @@ export type Database = {
           presupuesto_fijado: boolean | null
           consumido_pct: number | null
           semaforo: string | null
+          entregada_el: string | null
           cierre_id: string | null
           cerrado_en: string | null
           cerrado_por: string | null

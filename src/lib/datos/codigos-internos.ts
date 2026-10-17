@@ -64,7 +64,7 @@ export type CostoCompleto = {
   caja_pen: number
   caja_usd: number
   egresos_caja: number
-  /** Los trámites, comisiones y viáticos que Gerencia aprobó en la OT del código. */
+  /** Los trámites, comisiones y viáticos que Administración aprobó en la OT del código. */
   gastos_ot_pen: number
   gastos_ot_usd: number
   /** La merma que Diseño evaluó en la OT, sobre los materiales del código. */
@@ -75,6 +75,11 @@ export type CostoCompleto = {
   /** Los dólares de las líneas sin tipo de cambio cargado: no suman hasta que Tesorería lo cargue. */
   usd_sin_cambio: number
   lineas_sin_cambio: number
+  /** Los dólares de las partes que sí pasaron a soles, y en cuánto: con eso las partes cuadran con el total. */
+  usd_al_cambio: number
+  usd_en_soles: number
+  /** La fecha del acta de entrega de su OT, si el taller la registró. */
+  entregada_el: string | null
   /** Para quien ve el precio de venta y si el código tiene cotización aprobada; si no, `null`. */
   venta: VentaDelCodigo | null
   cierre: CierreDelCodigo | null
@@ -131,6 +136,9 @@ export const SIN_COSTO_COMPLETO: CostoCompleto = {
   costo_pen: 0,
   usd_sin_cambio: 0,
   lineas_sin_cambio: 0,
+  usd_al_cambio: 0,
+  usd_en_soles: 0,
+  entregada_el: null,
   venta: null,
   cierre: null,
 }
@@ -163,6 +171,9 @@ export async function costoCompletoDeLosCodigos(codigo?: string): Promise<Map<st
         costo_pen: n(f.costo_pen),
         usd_sin_cambio: n(f.usd_sin_cambio),
         lineas_sin_cambio: n(f.lineas_sin_cambio),
+        usd_al_cambio: n(f.usd_al_cambio),
+        usd_en_soles: n(f.usd_en_soles),
+        entregada_el: f.entregada_el,
         venta:
           f.cotizaciones && f.cotizaciones > 0
             ? {

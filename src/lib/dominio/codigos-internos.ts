@@ -1,4 +1,5 @@
 import type { Tono } from '@/components/ui/etiqueta-estado'
+import { moneda } from '@/lib/format'
 
 /**
  * Lo que comparten las pantallas de los códigos internos de Gerencia. Puro, sin
@@ -47,6 +48,21 @@ export function parecidos(codigos: string[]): Map<string, string[]> {
  */
 export function costoDelCodigo(c: { costo_pen: number; usd_sin_cambio: number }) {
   return { pen: c.costo_pen, usd: c.usd_sin_cambio }
+}
+
+/** «S/ 230.00 + US$ 10.00», o una sola moneda cuando la otra está en cero. */
+export function montoMixto(pen: number, usd: number) {
+  if (usd > 0 && pen === 0) return moneda(usd, 'USD')
+  return usd > 0 ? `${moneda(pen)} + ${moneda(usd, 'USD')}` : moneda(pen)
+}
+
+/**
+ * Por qué las partes no dan el total a ojo: cada parte va en su moneda y el
+ * total en soles. Con la línea, Gerencia suma y cuadra. `null` sin dólares.
+ */
+export function dolaresAlCambio(c: { usd_al_cambio: number; usd_en_soles: number }) {
+  if (c.usd_al_cambio <= 0) return null
+  return `Lo que está en dólares (${moneda(c.usd_al_cambio, 'USD')}) suma ${moneda(c.usd_en_soles)} al cambio de Tesorería del día de cada línea: con eso, las partes en soles dan el costo hasta hoy.`
 }
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`

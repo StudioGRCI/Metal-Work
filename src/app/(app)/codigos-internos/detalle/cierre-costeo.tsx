@@ -44,8 +44,12 @@ function Pie({ error, enviando, alCancelar, texto }: { error: string | null; env
   )
 }
 
-/** Gerencia cierra el costeo al entregar la unidad: el costo y el margen de hoy quedan congelados. */
-export function CerrarCosteo({ codigo, resumen }: { codigo: string; resumen: string }) {
+/**
+ * Gerencia cierra el costeo al entregar la unidad: el costo y el margen de hoy
+ * quedan congelados. Con acta de entrega en la OT, la observación ya viene
+ * escrita con su fecha (`sugerida`) y se corrige si hace falta.
+ */
+export function CerrarCosteo({ codigo, resumen, sugerida }: { codigo: string; resumen: string; sugerida: string }) {
   const v = useVentana()
   const { alEnviar, enviando, error } = useEnvio(cerrarCosteo, v.cerrar)
   return (
@@ -68,9 +72,13 @@ export function CerrarCosteo({ codigo, resumen }: { codigo: string; resumen: str
             htmlFor="cierre-observacion"
             requerido
             ayudaEnIcono={false}
-            ayuda="El sistema todavía no sabe cuándo se entrega: «Entregada al cliente el 20/10 con su acta», por ejemplo. De 10 caracteres en adelante."
+            ayuda={
+              sugerida
+                ? 'Viene con la fecha del acta de entrega de la OT: corrígela si la unidad salió de otra forma. De 10 caracteres en adelante.'
+                : 'La OT todavía no tiene acta de entrega: escribe cuándo y cómo salió, por ejemplo «Entregada al cliente el 20/10, acta firmada en papel». De 10 caracteres en adelante.'
+            }
           >
-            <AreaTexto id="cierre-observacion" name="observacion" required minLength={10} maxLength={500} />
+            <AreaTexto id="cierre-observacion" name="observacion" required minLength={10} maxLength={500} defaultValue={sugerida} />
           </Campo>
           <Pie error={error} enviando={enviando} alCancelar={v.cerrar} texto="Cerrar el costeo" />
         </form>

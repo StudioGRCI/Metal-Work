@@ -133,7 +133,7 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
                   etiqueta="Margen"
                   valor={delCodigo?.margenPct != null ? porcentaje(delCodigo.margenPct, 1) : '—'}
                   pie={delCodigo?.margenPct != null ? 'Sobre la cotización aprobada sin IGV' : 'Sin cotización aprobada con precio, o sin costo todavía'}
-                  tono={delCodigo?.margenPct != null && delCodigo.margenPct < 0 ? 'aviso' : undefined}
+                  tono={delCodigo?.margenPct != null && delCodigo.margenPct < 0 ? 'peligro' : undefined}
                 />
               )}
               <Cifra
@@ -318,11 +318,11 @@ function Garantia({ historia, hoy }: { historia: HistoriaDeUnidad; hoy: string }
   )
 }
 
-function Cifra({ etiqueta, valor, pie, tono }: { etiqueta: string; valor: string; pie: string; tono?: 'aviso' }) {
+function Cifra({ etiqueta, valor, pie, tono }: { etiqueta: string; valor: string; pie: string; tono?: 'aviso' | 'peligro' }) {
   return (
     <div className="rounded-[var(--radius-base)] border border-borde bg-superficie p-4">
       <p className="text-xs text-texto-suave">{etiqueta}</p>
-      <p className={cn('tabular mt-1 text-lg font-semibold', tono === 'aviso' ? 'text-aviso' : 'text-texto')}>{valor}</p>
+      <p className={cn('tabular mt-1 text-lg font-semibold', tono === 'aviso' ? 'text-aviso' : tono === 'peligro' ? 'text-peligro' : 'text-texto')}>{valor}</p>
       <p className="text-xs text-texto-tenue">{pie}</p>
     </div>
   )

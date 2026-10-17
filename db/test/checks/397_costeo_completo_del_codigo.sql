@@ -249,6 +249,9 @@ begin
   perform test.afirmar((k->>'costo_pen')::numeric = v_esperado,
     format('el costo de A en soles: %s, salió %s', v_esperado, k->>'costo_pen'));
   perform test.afirmar((k->>'lineas_sin_cambio')::integer = 0, 'con el cambio cargado, nada queda sin convertir');
+  perform test.afirmar((k->>'usd_al_cambio')::numeric = 10 and (k->>'usd_en_soles')::numeric = 37.50,
+    'los dólares que pasan a soles se ven aparte (US$ 10 = S/ 37.50), para que las partes cuadren con el total');
+  perform test.afirmar((k->>'entregada_el') is null, 'sin acta de entrega en su OT, no hay fecha de entrega');
   perform test.afirmar((k->>'precio_neto_pen')::numeric = 37000,
     'el precio: US$ 11,800 con IGV = US$ 10,000 sin IGV × 3.70 (compra) = S/ 37,000; salió ' || (k->>'precio_neto_pen'));
   perform test.afirmar((k->>'margen_pen')::numeric = 37000 - v_esperado
@@ -518,6 +521,22 @@ begin
   perform test.afirmar(v2 <> v and (pg_temp.costo('CHK397_A_26/01')->>'costo_cerrado_pen')::numeric
                                    = (pg_temp.costo('CHK397_A_26/01')->>'costo_pen')::numeric,
     'y se vuelve a cerrar con el costo de ahora');
+  reset role;
+
+  -- El cierre guarda el precio y el margen: el Supervisor General ve el costo
+  -- (costos.ver) pero no el precio de venta, así que no lee la tabla.
+  perform test.como_usuario(current_setting('prueba.general')::uuid);
+  set local role authenticated;
+  perform test.afirmar((select count(*) from public.codigo_interno_cierres) = 0,
+    'quien ve el costo sin el precio de venta no lee los cierres, que guardan el margen');
+  perform test.afirmar((pg_temp.costo('CHK397_A_26/01')->>'margen_cerrado_pct') is null
+                       and (pg_temp.costo('CHK397_A_26/01')->>'costo_cerrado_pen') is not null,
+    'y por la función ve el costo cerrado sin el margen');
+  reset role;
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
+  perform test.afirmar((select count(*) from public.codigo_interno_cierres where codigo = 'CHK397_A_26/01') = 2,
+    'Administración, que ve el costo y el precio, sí lee los cierres');
   reset role;
 end $$;
 

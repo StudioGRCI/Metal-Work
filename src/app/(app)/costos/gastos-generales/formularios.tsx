@@ -114,14 +114,14 @@ export function NuevoGastoGeneral({ conceptos, mes }: { conceptos: ConceptoParaE
               </Boton>
             </div>
             {reparto === 'TASA' ? (
-              <Campo etiqueta="Tasa por código (%)" htmlFor="gg-tasa" requerido
+              <Campo etiqueta="Tasa por código (%)" htmlFor="gg-tasa" requerido ayudaEnIcono={false}
                 ayuda="Qué porcentaje del gasto del mes se carga a cada código que trabajó ese mes, como en la hoja RESUMEN.">
                 <Entrada id="gg-tasa" name="tasa" type="number" inputMode="decimal" min={0.001} max={100} step="0.001"
                   value={tasa} onChange={(e) => setTasa(e.target.value)} required />
               </Campo>
             ) : (
               <p className="text-sm text-texto-suave">
-                El gasto se divide en partes iguales entre los códigos internos que trabajaron ese mes: con horas en el reporte diario o salidas del almacén.
+                El gasto se divide en partes iguales entre los códigos internos que trabajaron ese mes: con horas en el reporte diario o en el tareo de RR. HH., o con salidas del almacén.
               </p>
             )}
           </fieldset>
@@ -145,7 +145,7 @@ export function AnularGastoGeneral({ id, nombre }: { id: string; nombre: string 
         <Ban aria-hidden className="size-4" />Anular
       </Boton>
       <Ventana abierta={abierta} alCerrar={() => setAbierta(false)} titulo={`Anular ${nombre}`}
-        descripcion="Deja de sumar en el costeo de las OT. No se borra: queda a la vista con el motivo.">
+        descripcion="Deja de sumar en el costo de los códigos internos. No se borra: queda a la vista con el motivo.">
         <form onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={id} />
           <Campo etiqueta="Motivo" htmlFor={`anular-${id}`} requerido>

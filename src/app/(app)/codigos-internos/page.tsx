@@ -17,6 +17,7 @@ import {
   enlaceCodigo,
   faltaElPrecio,
   llaveParecido,
+  montoMixto,
   origenDelAvance,
   parecidos,
 } from '@/lib/dominio/codigos-internos'
@@ -82,9 +83,10 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
           </p>
           <p>
             <strong className="text-texto">El costo</strong> suma, en soles, la mano de obra con el recargo de sus horas extras, los
-            materiales que salieron del almacén, las órdenes de servicio aprobadas, los recibos por honorarios de los subcontratos, los gastos
-            del mes y los egresos de caja con el código. Las compras se muestran aparte y no se suman: lo comprado se cuenta cuando sale del
-            almacén.
+            materiales que salieron del almacén con la merma que Diseño evaluó en la OT, las órdenes de servicio aprobadas, los recibos por
+            honorarios de los subcontratos, los gastos del mes, los gastos que Administración aprobó en la OT y los egresos de caja con el
+            código. Lo que está en dólares pasa a soles con el tipo de cambio que Tesorería cargó para el día de cada línea. Las compras se
+            muestran aparte y no se suman: lo comprado se cuenta cuando sale del almacén.
           </p>
           <p>
             <strong className="text-texto">El margen</strong> es la cotización aprobada sin IGV menos ese costo.
@@ -223,9 +225,10 @@ function FilaCodigo({
         <span>
           Materiales{' '}
           <span className="tabular text-texto">
-            {faltaElPrecio(c.materiales_pen + c.materiales_usd, c.materiales_sin_precio, 'sin precio') ?? moneda(c.materiales_pen)}
+            {faltaElPrecio(c.materiales_pen + c.materiales_usd, c.materiales_sin_precio, 'sin precio') ??
+              montoMixto(c.materiales_pen + c.merma_pen, c.materiales_usd + c.merma_usd)}
           </span>
-          {c.materiales_usd > 0 && <span className="tabular text-texto"> + {moneda(c.materiales_usd, 'USD')}</span>}
+          {c.merma_pen + c.merma_usd > 0 && <span> con su merma</span>}
         </span>
         {(c.servicios_pen > 0 || c.servicios_usd > 0) && (
           <span>
@@ -239,16 +242,18 @@ function FilaCodigo({
             {c.subcontratos_usd > 0 && <span className="tabular text-texto"> + {moneda(c.subcontratos_usd, 'USD')}</span>}
           </span>
         )}
-        {(c.gastos_mes_pen > 0 || c.gastos_mes_usd > 0) && (
+        {c.gastos_mes_pen + c.gastos_mes_usd + c.gastos_ot_pen + c.gastos_ot_usd + c.caja_pen + c.caja_usd > 0 && (
           <span>
-            Gastos del mes <span className="tabular text-texto">{moneda(c.gastos_mes_pen)}</span>
-            {c.gastos_mes_usd > 0 && <span className="tabular text-texto"> + {moneda(c.gastos_mes_usd, 'USD')}</span>}
+            Gastos y caja{' '}
+            <span className="tabular text-texto">
+              {montoMixto(c.gastos_mes_pen + c.gastos_ot_pen + c.caja_pen, c.gastos_mes_usd + c.gastos_ot_usd + c.caja_usd)}
+            </span>
           </span>
         )}
-        {(c.caja_pen > 0 || c.caja_usd > 0) && (
+        {c.usd_al_cambio > 0 && (
           <span>
-            Caja <span className="tabular text-texto">{moneda(c.caja_pen)}</span>
-            {c.caja_usd > 0 && <span className="tabular text-texto"> + {moneda(c.caja_usd, 'USD')}</span>}
+            Los <span className="tabular">{moneda(c.usd_al_cambio, 'USD')}</span> suman{' '}
+            <span className="tabular text-texto">{moneda(c.usd_en_soles)}</span> al cambio
           </span>
         )}
         {(c.compras_pen > 0 || c.compras_usd > 0) && (

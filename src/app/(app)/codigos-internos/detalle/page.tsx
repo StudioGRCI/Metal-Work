@@ -33,9 +33,11 @@ import {
   TIPO_DOCUMENTO_CODIGO,
   VISTAS_CODIGO,
   costoDelCodigo,
+  dolaresAlCambio,
   dondeAparece,
   enlaceCodigo,
   faltaElPrecio,
+  montoMixto,
   normalizarCodigo,
   origenDelAvance,
   parecidos,
@@ -191,6 +193,7 @@ function ComoVa({
       {/* Primero cómo va y cuánto deja; debajo, de qué está hecho el costo. */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <Indicador
+          className="col-span-2 lg:col-span-1"
           titulo="Avance"
           valor={
             codigo === CODIGO_SIN_AVANCE ? (
@@ -204,6 +207,7 @@ function ComoVa({
           pie={origenDelAvance(codigo, avance)}
         />
         <Indicador
+          className={verPrecio ? undefined : 'col-span-2 lg:col-span-1'}
           titulo="Costo hasta hoy"
           valor={
             faltaElPrecio(costo.pen + costo.usd, c.materiales_sin_precio + c.horas_sin_costo) ?? (
@@ -217,7 +221,11 @@ function ComoVa({
           pie={
             c.lineas_sin_cambio > 0
               ? 'Falta el tipo de cambio de Tesorería para pasar los dólares a soles'
-              : 'Todo en soles: lo que está en dólares en cada parte, al cambio del día de cada línea'
+              : costo.pen === 0
+                ? 'Todavía nada costeado'
+                : c.usd_al_cambio > 0
+                  ? `En soles, con ${moneda(c.usd_al_cambio, 'USD')} pasados al cambio de Tesorería`
+                  : 'Todo en soles'
           }
         />
         {verPrecio && <IndicadorMargen c={c} codigo={codigo} />}
@@ -249,7 +257,7 @@ function ComoVa({
           pie={[
             `${c.salidas} ${c.salidas === 1 ? 'salida' : 'salidas'} del almacén`,
             c.materiales_sin_precio > 0 && `${c.materiales_sin_precio} sin precio`,
-            c.merma_pen + c.merma_usd > 0 && `${c.merma_usd > 0 && c.merma_pen === 0 ? moneda(c.merma_usd, 'USD') : moneda(c.merma_pen)} de merma`,
+            c.merma_pen + c.merma_usd > 0 && `${montoMixto(c.merma_pen, c.merma_usd)} de merma`,
           ]
             .filter(Boolean)
             .join(' · ')}
@@ -276,6 +284,7 @@ function ComoVa({
           pie={piesDeSubcontratos(c)}
         />
         <Indicador
+          className="col-span-2 lg:col-span-1"
           titulo="Gastos y caja"
           valor={
             <>
@@ -287,15 +296,21 @@ function ComoVa({
             gastosPen + gastosUsd === 0
               ? 'Gastos del mes, trámites aprobados en la OT y egresos de caja con este código'
               : [
-                  c.gastos_mes_pen + c.gastos_mes_usd > 0 && `${moneda(c.gastos_mes_pen)} de gastos del mes`,
-                  c.gastos_ot_pen + c.gastos_ot_usd > 0 && `${moneda(c.gastos_ot_pen)} aprobados en la OT`,
-                  c.egresos_caja > 0 && `${moneda(c.caja_pen)} en ${c.egresos_caja} ${c.egresos_caja === 1 ? 'egreso' : 'egresos'} de caja`,
+                  c.gastos_mes_pen + c.gastos_mes_usd > 0 && `${montoMixto(c.gastos_mes_pen, c.gastos_mes_usd)} de gastos del mes`,
+                  c.gastos_ot_pen + c.gastos_ot_usd > 0 && `${montoMixto(c.gastos_ot_pen, c.gastos_ot_usd)} aprobados en la OT`,
+                  c.egresos_caja > 0 &&
+                    `${montoMixto(c.caja_pen, c.caja_usd)} en ${c.egresos_caja} ${c.egresos_caja === 1 ? 'egreso' : 'egresos'} de caja`,
                 ]
                   .filter(Boolean)
                   .join(' · ')
           }
         />
       </div>
+      {dolaresAlCambio(c) && (
+        <p className="text-xs text-texto-suave" data-dolares-al-cambio={c.usd_en_soles}>
+          {dolaresAlCambio(c)}
+        </p>
+      )}
       {facturado && <LineaFacturado f={facturado} codigo={codigo} />}
       {(c.compras_pen > 0 || c.compras_usd > 0 || c.compras > 0) && (
         <p className="text-xs text-texto-suave">
@@ -349,7 +364,7 @@ function IndicadorMargen({ c, codigo }: { c: ResumenCodigo; codigo: string }) {
       tono={tono}
       pie={[
         `${moneda(v.margen_pen)} de ${moneda(v.precio_neto_pen)} sin IGV`,
-        v.consumido_pct !== null && `${porcentaje(v.consumido_pct, 0)} del presupuesto${v.presupuesto_fijado ? ' fijado en la OT' : ''}`,
+        v.consumido_pct !== null && `${porcentaje(v.consumido_pct, 0)} gastado del presupuesto${v.presupuesto_fijado ? ' fijado en la OT' : ''}`,
         incompleto && 'con el costo incompleto',
       ]
         .filter(Boolean)
@@ -385,10 +400,22 @@ function LineaCierre({ c, codigo, verPrecio, cierra }: { c: ResumenCodigo; codig
     const precio = verPrecio && c.venta?.margen_pct !== null && c.venta?.margen_pct !== undefined
     return (
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="abierto">
-        <p>Cuando se entregue la unidad, cierra el costeo: el costo y el margen de ese día quedan congelados como el costo de la unidad.</p>
+        <div className="space-y-1">
+          <p>Cuando se entregue la unidad, cierra el costeo: el costo y el margen de ese día quedan congelados como el costo de la unidad.</p>
+          <p data-acta={c.entregada_el ?? 'pendiente'}>
+            {c.entregada_el ? (
+              <Insignia tono="exito">Acta de entrega del {fecha(c.entregada_el)}</Insignia>
+            ) : (
+              <>
+                <Insignia tono="aviso">Acta de entrega pendiente</Insignia> El taller todavía no registró la entrega en la OT.
+              </>
+            )}
+          </p>
+        </div>
         <CerrarCosteo
           codigo={codigo}
           resumen={`Hoy suma ${moneda(c.costo_pen)}${precio ? ` y deja un margen de ${porcentaje(c.venta?.margen_pct, 1)}` : ''}.`}
+          sugerida={c.entregada_el ? `Entregada al cliente con su acta del ${fecha(c.entregada_el)}.` : ''}
         />
       </div>
     )

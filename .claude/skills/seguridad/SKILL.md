@@ -72,6 +72,16 @@ En la misma migración que la crea, sin excepción:
   toca el permiso, así que las pantallas salen llenas en la prueba y vacías
   para la gente. Todo check y todo recorrido mira al menos una vez con los ojos
   del rol que hace ese trabajo.
+- **La tabla deja ver lo que la función tapa.** Si una función devuelve una
+  columna en `null` sin cierto permiso (el precio y el margen sin
+  `cotizaciones.ver_pdf_comercial`), la tabla donde esa columna se guarda pide
+  **el mismo permiso** en su política de lectura, o no tiene `grant select`.
+  Si no, quien tiene el permiso más ancho lee la tabla directo por la API y ve
+  lo que la pantalla le esconde. Pasó con `codigo_interno_cierres` (migración
+  `20261017300000`): `costos.ver` bastaba para leer el margen congelado que
+  `codigos_internos_costo` le tapaba al Supervisor General; lo cazó el auditor
+  de realización antes del PR. El check de la tabla prueba con un rol que tiene
+  el permiso ancho y no el angosto, y espera cero filas.
 
 - **El blindaje reescribe funciones.** `20260101000013_blindaje.sql` reescribe
   `fn_ot_despues_update` para que use la bitácora interna. Si otra migración

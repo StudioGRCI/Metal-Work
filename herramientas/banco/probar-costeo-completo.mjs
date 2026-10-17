@@ -4,8 +4,9 @@
  *
  *   1. Gerencia ve en la lista de Códigos internos el margen del código.
  *   2. En su detalle ve el costo en soles, el margen, los gastos del mes y la
- *      caja, y en el Costeo el recargo de las extras y la tarjeta «Gastos y
- *      caja».
+ *      caja, cuánto suman en soles las partes en dólares (para que cuadren con
+ *      el total) y si la OT tiene acta de entrega; en el Costeo, el recargo de
+ *      las extras y la tarjeta «Gastos y caja».
  *   3. Cierra el costeo: sin escribir cómo se entregó la unidad no se envía;
  *      con eso, queda congelado con su puesto. Tesorería registra otro egreso
  *      con el código y la pantalla muestra la diferencia desde el cierre.
@@ -13,7 +14,10 @@
  *   4. Administración ve el mismo costo del código en su Dashboard, en el
  *      expediente de la OT y en la ficha de la unidad: un solo costo. Y que
  *      está completo, no solo que es el mismo: un trámite que se aprueba en la
- *      OT sube esa cifra del Dashboard en lo que vale.
+ *      OT sube esa cifra del Dashboard en lo que vale. En la pestaña Costos de
+ *      la OT ve arriba el costo del código y lo de la OT como «lo cargado solo
+ *      a esta OT», con el aviso de no registrar un servicio con OS. Y confirma
+ *      en el expediente si la cotización de otro código incluye IGV.
  *   5. Tesorería ve en el formulario de la caja que el pago de una OC u OS no
  *      lleva el código.
  *
@@ -34,6 +38,8 @@ const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
 const CODIGO = process.env.CODIGO ?? 'CHK397_A_26/01'
+// Una cotización aprobada con su OT, a la que se le quita el IGV confirmado para confirmarlo con clic.
+const COTIZACION_SIN_IGV = process.env.COTIZACION_SIN_IGV ?? 'QA-397C'
 const CUENTAS = {
   gerencia: process.env.GERENCIA ?? 'gerencia397@demo.pe',
   administracion: process.env.ADMINISTRACION ?? 'oficina397@demo.pe',
@@ -96,7 +102,8 @@ const detalle = (vista) => `${BASE}/codigos-internos/detalle?${new URLSearchPara
 
 const [esperado] = await consulta(
   `select costo_pen::float as costo, margen_pct::float as margen, recargo_extras::float as recargo,
-          (gastos_mes_pen + caja_pen)::float as gastos_y_caja
+          (gastos_mes_pen + caja_pen)::float as gastos_y_caja, usd_al_cambio::float as usd_al_cambio,
+          usd_en_soles::float as usd_en_soles, entregada_el::text as entregada_el
      from public.codigos_internos_costo_calculado($1)`,
   [CODIGO],
 )
@@ -130,6 +137,13 @@ const [ot] = await consulta(
   const gastos = limpio(await pagina.getByText('Gastos y caja', { exact: true }).first().locator('..').textContent().catch(() => ''))
   comprobar(gastos.includes('egreso'), `el indicador «Gastos y caja» dice: «${gastos.slice(0, 120)}»`)
   comprobar((await pagina.locator('[data-cierre="abierto"] [data-cerrar-costeo]').count()) === 1, 'Gerencia tiene el botón «Cerrar el costeo»')
+  const enSoles = await pagina.locator('[data-dolares-al-cambio]').first().getAttribute('data-dolares-al-cambio', { timeout: 2000 }).catch(() => null)
+  comprobar(
+    esperado.usd_al_cambio > 0 ? enSoles !== null && numero(enSoles) === esperado.usd_en_soles : enSoles === null,
+    `la línea de los dólares al cambio dice S/ ${enSoles} (base US$ ${esperado.usd_al_cambio} = S/ ${esperado.usd_en_soles})`,
+  )
+  const acta = await pagina.locator('[data-cierre="abierto"] [data-acta]').getAttribute('data-acta', { timeout: 2000 }).catch(() => null)
+  comprobar(acta === (esperado.entregada_el ?? 'pendiente'), `la línea del cierre dice el acta de entrega: ${acta} (base ${esperado.entregada_el ?? 'sin acta'})`)
 
   await pagina.goto(detalle('costeo'), { waitUntil: 'networkidle' })
   const recargo = await pagina.locator('[data-recargo]').first().getAttribute('data-recargo').catch(() => null)
@@ -142,6 +156,10 @@ const [ot] = await consulta(
   // ---------------------------------------------------------- 3. el cierre
   await pagina.goto(detalle(), { waitUntil: 'networkidle' })
   await pagina.click('[data-cerrar-costeo]')
+  // Con acta, la observación viene escrita con su fecha; sin acta, vacía. Se vacía para probar que se exige.
+  const sugerida = await pagina.locator('#cierre-observacion').inputValue()
+  comprobar(esperado.entregada_el ? sugerida.includes('acta') : sugerida === '', `la observación del cierre viene ${sugerida ? `escrita: «${sugerida}»` : 'vacía, sin acta'}`)
+  await pagina.fill('#cierre-observacion', '')
   await pagina.locator('[role="dialog"] button[type="submit"]').click()
   await pagina.waitForTimeout(800)
   const pideObservacion = await pagina.locator('[role="dialog"]').isVisible()
@@ -240,6 +258,34 @@ const [ahora] = await consulta(`select costo_pen::float as costo from public.cod
   await pagina.goto(`${BASE}/unidades/${ot?.unidad_id}`, { waitUntil: 'networkidle' })
   const cifra = limpio(await pagina.locator('section[aria-label="Costo en el taller"]').textContent({ timeout: 5000 }).catch(() => ''))
   comprobar(cifra.includes(solesLuego) && cifra.includes(CODIGO), `la ficha de la unidad: «${cifra.slice(0, 160)}»`)
+
+  // La pestaña Costos de la OT: arriba el costo del código; lo de la OT, como una parte.
+  await pagina.goto(`${BASE}/ordenes/${ot?.id}?vista=costos`, { waitUntil: 'networkidle' })
+  const enCostos = await pagina.locator('[data-costo-del-codigo-en-ot]').first().getAttribute('data-costo-del-codigo-en-ot', { timeout: 5000 }).catch(() => null)
+  comprobar(enCostos !== null && numero(enCostos) === luego.costo, `la pestaña Costos de la OT dice el costo del código: S/ ${enCostos}`)
+  comprobar((await pagina.getByText('Lo cargado solo a esta OT', { exact: true }).count()) === 1, 'y lo de la OT sale como «Lo cargado solo a esta OT»')
+  await pagina.getByText('Registrar gasto de mi área').click()
+  comprobar((await pagina.getByText('se contaría dos veces', { exact: false }).count()) >= 1, 'el formulario de gastos de la OT avisa que un servicio con OS no se registra ahí')
+
+  // El IGV de una cotización con código se confirma en el expediente, como antes del código.
+  const [sinIgv] = await consulta(
+    `select c.id as cotizacion, o.id as orden from public.cotizaciones_pdf c join public.ordenes_trabajo o on o.cotizacion_pdf_id = c.id
+      where c.numero = $1 limit 1`,
+    [COTIZACION_SIN_IGV],
+  )
+  if (!sinIgv) {
+    comprobar(false, `no está la cotización ${COTIZACION_SIN_IGV} con OT para confirmar su IGV: siémbrala`)
+  } else {
+    await base.query('delete from public.cotizaciones_pdf_igv where cotizacion_id = $1', [sinIgv.cotizacion])
+    await pagina.goto(`${BASE}/ordenes/${sinIgv.orden}/expediente`, { waitUntil: 'networkidle' })
+    comprobar((await pagina.locator('[data-costo-del-codigo] [data-confirmar-igv]').count()) === 1, 'sin el IGV confirmado, el expediente del código ofrece confirmarlo')
+    await pagina.locator('[data-confirmar-igv] button[value="si"]').click()
+    await pagina.waitForTimeout(2500)
+    const [igv] = await consulta('select incluye_igv from public.cotizaciones_pdf_igv where cotizacion_id = $1', [sinIgv.cotizacion])
+    comprobar(igv?.incluye_igv === true, `al tocar «Sí, incluye IGV» la base lo guarda: ${igv?.incluye_igv}`)
+    await pagina.reload({ waitUntil: 'networkidle' })
+    comprobar((await pagina.locator('[data-confirmar-igv]').count()) === 0, 'y el expediente deja de pedirlo')
+  }
   comprobar(errores.length === 0, `Administración sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }

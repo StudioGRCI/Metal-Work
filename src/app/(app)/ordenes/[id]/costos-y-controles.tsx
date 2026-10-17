@@ -16,7 +16,11 @@ import { solicitarTesoreria } from './acciones-costos'
 import { adjuntarControlFirmado, guardarControlVehicular, registrarGastoArea, revisarGastoArea } from './acciones-control-y-gastos'
 
 type Datos = Awaited<ReturnType<typeof controlesYSolicitudesDeOrden>>
-export function CostosYControles({ ordenId, datos, puedeRegistrarGasto, puedeRevisarGasto, puedeVerCosteo, ordenCerrada, esAdministracion = false }: {
+
+/** El costo del código de la unidad, que es el costo de verdad cuando la OT tiene código. `costo` nulo: no se pudo leer. */
+export type CostoDelCodigoEnOt = { codigo: string; costo: { pen: number; usdSinCambio: number } | null; enlace: string | null }
+
+export function CostosYControles({ ordenId, datos, puedeRegistrarGasto, puedeRevisarGasto, puedeVerCosteo, ordenCerrada, esAdministracion = false, delCodigo = null }: {
   ordenId: string
   datos: Datos
   puedeRegistrarGasto: boolean
@@ -25,9 +29,10 @@ export function CostosYControles({ ordenId, datos, puedeRegistrarGasto, puedeRev
   ordenCerrada: boolean
   /** Administración además carga los trámites de placas y la comisión de venta de la OT. */
   esAdministracion?: boolean
+  delCodigo?: CostoDelCodigoEnOt | null
 }) {
   return <div className="space-y-5">
-    {puedeVerCosteo && <ResumenCosteo ordenId={ordenId} lineas={datos.costeo} />}
+    {puedeVerCosteo && <ResumenCosteo ordenId={ordenId} lineas={datos.costeo} delCodigo={delCodigo} />}
     <GastosDeAreas ordenId={ordenId} datos={datos} puedeRegistrar={puedeRegistrarGasto && !ordenCerrada} puedeRevisar={puedeRevisarGasto} esAdministracion={esAdministracion} />
   </div>
 }
@@ -86,12 +91,28 @@ function RevisionDeSalida({ ordenId, datos, puedeSolicitar, salidaCompleta }: {
  * dólares salía llena de ceros en casi todas las órdenes. El detalle línea por
  * línea vive en el expediente.
  */
-function ResumenCosteo({ ordenId, lineas }: { ordenId: string; lineas: Datos['costeo'] }) {
+function ResumenCosteo({ ordenId, lineas, delCodigo }: { ordenId: string; lineas: Datos['costeo']; delCodigo: CostoDelCodigoEnOt | null }) {
   const { monedas, sinPrecio } = composicionDelCosto(lineas)
   return <Tarjeta>
-    <TarjetaCabecera titulo="Costo acumulado de la OT" descripcion="Material despachado y sacado a la unidad, merma de Diseño, planilla repartida por RR. HH., gastos aprobados de las áreas, servicios del local y gastos de operación de Administración."
+    <TarjetaCabecera
+      titulo={delCodigo ? 'Lo cargado solo a esta OT' : 'Costo acumulado de la OT'}
+      descripcion={delCodigo
+        ? `Una parte del costo de la unidad, como se costeaba la OT antes del código. El costo de la unidad es el de su código interno, ${delCodigo.codigo}: los gastos aprobados y la merma de esta OT ya están en él, y la planilla repartida no, porque el código cuenta las horas de cada persona.`
+        : 'Material despachado y sacado a la unidad, merma de Diseño, planilla repartida por RR. HH., gastos aprobados de las áreas, servicios del local y gastos de operación de Administración.'}
       acciones={<Link href={`/ordenes/${ordenId}/expediente#costo`} className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0">Ver el detalle línea por línea</Link>} />
     <TarjetaCuerpo className="space-y-4">
+      {delCodigo && (delCodigo.costo
+        ? <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-base)] bg-superficie-2 p-3 text-sm" data-costo-del-codigo-en-ot={delCodigo.costo.pen}>
+            <p>
+              Costo del código <span className="font-mono">{delCodigo.codigo}</span> hasta hoy:{' '}
+              <strong className="tabular">{moneda(delCodigo.costo.pen)}</strong>
+              {delCodigo.costo.usdSinCambio > 0 && <span className="tabular"> + {moneda(delCodigo.costo.usdSinCambio, 'USD')} sin tipo de cambio</span>}
+            </p>
+            {delCodigo.enlace && <Link href={delCodigo.enlace} className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0">Ver el costo del código</Link>}
+          </div>
+        : <p role="status" className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso">
+            No se pudo leer el costo del código {delCodigo.codigo}. Recarga la pantalla; si sigue igual, avisa a Sistemas.
+          </p>)}
       {monedas.length === 0
         ? <p className="text-sm text-texto-suave">Todavía no hay costo: se suma al despachar o sacar material a la unidad, al cerrar la planilla del mes, al aprobar un gasto de área y al cargar los gastos del mes.</p>
         : monedas.map(c => <ComposicionDelCosto key={c.moneda} composicion={c} />)}
@@ -115,6 +136,7 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
         <summary className="cursor-pointer font-medium">Registrar gasto de mi área</summary>
         <form onSubmit={alEnviar} className="mt-4 grid gap-3 sm:grid-cols-2">
           <input type="hidden" name="id" value={id} /><input type="hidden" name="orden_id" value={ordenId} />
+          <p className="sm:col-span-2 text-sm text-texto-suave">Un servicio que ya tiene su orden de servicio, o un subcontrato con su recibo por honorarios registrado, ya suma al costo del código: no lo registres aquí, que se contaría dos veces.</p>
           <Campo etiqueta="Tipo" htmlFor="gasto-tipo" requerido><Seleccion id="gasto-tipo" name="tipo" defaultValue="SERVICIO"><option value="SERVICIO">Servicio</option><option value="TRANSPORTE">Transporte</option><option value="VIATICO">Viático</option><option value="SUBCONTRATO">Subcontrato</option><option value="OTRO">Otro</option>{esAdministracion && <><option value="TRAMITE">Trámites de placas y documentación</option><option value="COMISION">Comisión de venta</option></>}</Seleccion></Campo>
           <Campo etiqueta="Fecha" htmlFor="gasto-fecha" requerido><Entrada id="gasto-fecha" type="date" name="fecha" required /></Campo>
           <Campo etiqueta="Importe" htmlFor="gasto-monto" requerido ayuda="Sin el IGV si el comprobante es factura; completo si es boleta, ticket o recibo por honorarios."><Entrada id="gasto-monto" type="number" min="0.01" step="0.01" name="monto" required /></Campo>
@@ -132,6 +154,8 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
           <p className="mt-1 text-texto-suave">{g.area?.nombre ?? 'Área'} · {definir(TIPO_GASTO_AREA, g.tipo).etiqueta} · {fecha(g.fecha)} · {moneda(g.monto, g.moneda === 'USD' ? 'USD' : 'PEN')}</p>
           {g.url && <a className="text-acento underline" href={g.url} target="_blank" rel="noopener noreferrer">Ver comprobante</a>}
           {g.observacion_revision && <p className="mt-2 text-peligro">Observación: {g.observacion_revision}</p>}
+          {puedeRevisar && g.estado === 'PENDIENTE' && (g.tipo === 'SERVICIO' || g.tipo === 'SUBCONTRATO') &&
+            <p className="mt-2 text-aviso" data-aviso-doble-conteo>Antes de aprobar: si este {g.tipo === 'SERVICIO' ? 'servicio ya tiene su orden de servicio' : 'subcontrato ya tiene su recibo por honorarios registrado'}, obsérvalo; aprobado, se sumaría dos veces al costo del código.</p>}
           {puedeRevisar && g.estado === 'PENDIENTE' && <RevisionGasto id={g.id} ordenId={ordenId} />}
         </li>)}</ol>}
     </TarjetaCuerpo>

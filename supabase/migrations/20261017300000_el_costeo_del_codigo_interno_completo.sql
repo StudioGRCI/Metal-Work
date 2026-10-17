@@ -27,7 +27,9 @@
 --     si el código lo ignorara, desaparecería del costo ahora que el Dashboard y
 --     la unidad muestran el del código. Solo los aprobados, y no los de una OT
 --     anulada. Lo mismo la merma que Diseño evalúa en la OT: va sobre los
---     materiales del código.
+--     materiales del código. Un servicio con su OS o un subcontrato con su
+--     recibo ya cuentan por su lado: el formulario de la OT y la revisión de
+--     Administración avisan que no se registren también ahí.
 --   * RECARGO DE LAS HORAS EXTRAS. El tareo cuesta cada hora igual. Lo que la
 --     planilla diaria paga de más por las extras (25 % las dos primeras del
 --     día, 35 % las demás, o lo que fije RR. HH.) entra como mano de obra de
@@ -46,8 +48,10 @@
 --     entrega: queda congelado el costo y el margen de ese momento, con quién
 --     y cuándo. Lo que llegue después (un recibo tardío, un precio nuevo de
 --     Logística) se ve como diferencia contra lo cerrado. Se reabre con motivo.
---     El cierre pide escribir cómo y cuándo se entregó la unidad: el sistema
---     todavía no lo sabe por sí solo. El acta de entrega de la OT exige el
+--     El cierre guarda el precio y el margen: lo lee quien ve el costo y además
+--     el precio de venta, como el presupuesto de la OT.
+--     El cierre pide escribir cómo y cuándo se entregó la unidad, y muestra la
+--     fecha del acta de entrega de la OT cuando la hay; no la exige. El acta exige el
 --     permiso `ordenes.entregar`, que solo tiene un puesto sin cuentas, y una OT
 --     TERMINADA, que ya no se alcanza desde que el código es el centro; y la
 --     salida de portería no es entrega (un vehículo sale al arenado externo y
@@ -423,11 +427,21 @@ create unique index if not exists uq_codigo_interno_cierre_vigente
 alter table public.codigo_interno_cierres enable row level security;
 revoke all on public.codigo_interno_cierres from public, anon, authenticated;
 grant select on public.codigo_interno_cierres to authenticated;
+-- El cierre guarda el precio y el margen: se lee con los mismos permisos que
+-- codigos_internos_costo pide para mostrarlos (como ot_presupuestos_lectura).
+-- Sin `drop policy`, que cuelga el conector: se crea y, si ya estaba, se corrige.
 do $$ begin
   if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'codigo_interno_cierres'
                     and policyname = 'ver_codigo_interno_cierres') then
     create policy ver_codigo_interno_cierres on public.codigo_interno_cierres for select to authenticated using (
-      public.es_admin() or public.tiene_permiso('codigos_internos.ver') or public.tiene_permiso('costos.ver'));
+      public.es_admin()
+      or ((public.tiene_permiso('codigos_internos.ver') or public.tiene_permiso('costos.ver'))
+          and public.tiene_permiso('cotizaciones.ver_pdf_comercial')));
+  else
+    alter policy ver_codigo_interno_cierres on public.codigo_interno_cierres using (
+      public.es_admin()
+      or ((public.tiene_permiso('codigos_internos.ver') or public.tiene_permiso('costos.ver'))
+          and public.tiene_permiso('cotizaciones.ver_pdf_comercial')));
   end if;
 end $$;
 select public.activar_timestamps('codigo_interno_cierres');
@@ -446,12 +460,13 @@ returns table (
   gastos_mes_pen numeric, gastos_mes_usd numeric,
   caja_pen numeric, caja_usd numeric, egresos_caja integer,
   gastos_ot_pen numeric, gastos_ot_usd numeric, merma_pen numeric, merma_usd numeric,
-  costo_pen numeric, usd_sin_cambio numeric, lineas_sin_cambio integer,
+  costo_pen numeric, usd_sin_cambio numeric, lineas_sin_cambio integer, usd_al_cambio numeric, usd_en_soles numeric,
   materiales_sin_precio integer, horas_sin_costo numeric,
   cotizaciones integer, moneda_venta text, precio_venta_pen numeric, precio_venta_usd numeric,
   venta_sin_igv_confirmado integer, venta_sin_cambio integer, precio_neto_pen numeric,
   margen_pen numeric, margen_pct numeric,
   presupuesto_pen numeric, presupuesto_fijado boolean, consumido_pct numeric, semaforo text,
+  entregada_el date,
   cierre_id uuid, cerrado_en timestamptz, cerrado_por text,
   costo_cerrado_pen numeric, margen_cerrado_pen numeric, margen_cerrado_pct numeric
 )
@@ -488,6 +503,9 @@ begin
                       filter (where l.suma and (l.moneda = 'PEN' or l.cambio is not null)), 0)::numeric as costo_pen,
            coalesce(sum(l.monto) filter (where l.suma and l.moneda = 'USD' and l.cambio is null), 0)::numeric as usd_sin_cambio,
            count(*) filter (where l.suma and l.moneda = 'USD' and l.cambio is null)::integer as sin_cambio,
+           -- Los dólares que sí pasan a soles, y en cuánto: con eso las partes cuadran con el total.
+           coalesce(sum(l.monto) filter (where l.suma and l.moneda = 'USD' and l.cambio is not null), 0)::numeric as usd_al_cambio,
+           coalesce(sum(round(l.monto * l.cambio, 2)) filter (where l.suma and l.moneda = 'USD' and l.cambio is not null), 0)::numeric as usd_en_soles,
            count(*) filter (where l.fuente = 'MATERIALES_SIN_PRECIO')::integer as sin_precio,
            coalesce(sum(l.horas) filter (where l.fuente = 'MANO_OBRA_SIN_COSTO'), 0)::numeric as horas_sin_costo
       from linea l
@@ -529,6 +547,15 @@ begin
        and public.normalizar_codigo_interno(u.codigo_interno) is not null
        and (v_codigo is null or public.normalizar_codigo_interno(u.codigo_interno) = v_codigo)
      group by 1
+  ), entrega as (
+    -- El acta de entrega más reciente de las OT del código (la registra el taller).
+    select public.normalizar_codigo_interno(u.codigo_interno) as codigo, max(e.fecha_entrega) as fecha
+      from public.ot_entregas e
+      join public.ordenes_trabajo o on o.id = e.orden_id
+      join public.unidades u on u.id = o.unidad_id
+     where o.estado::text <> 'ANULADA' and public.normalizar_codigo_interno(u.codigo_interno) is not null
+       and (v_codigo is null or public.normalizar_codigo_interno(u.codigo_interno) = v_codigo)
+     group by 1
   ), cierre as (
     select z.* from public.codigo_interno_cierres z
      where z.reabierto_en is null and (v_codigo is null or z.codigo = v_codigo)
@@ -541,6 +568,7 @@ begin
          coalesce(k.caja_pen, 0), coalesce(k.caja_usd, 0), coalesce(k.egresos_caja, 0),
          coalesce(k.gastos_ot_pen, 0), coalesce(k.gastos_ot_usd, 0), coalesce(k.merma_pen, 0), coalesce(k.merma_usd, 0),
          coalesce(k.costo_pen, 0), coalesce(k.usd_sin_cambio, 0), coalesce(k.sin_cambio, 0),
+         coalesce(k.usd_al_cambio, 0), coalesce(k.usd_en_soles, 0),
          coalesce(k.sin_precio, 0), coalesce(k.horas_sin_costo, 0),
          coalesce(v.cotizaciones, 0), v.moneda, v.pen, v.usd,
          coalesce(v.sin_igv, 0), coalesce(v.sin_cambio, 0), v.neto_pen,
@@ -554,19 +582,21 @@ begin
               when coalesce(k.costo_pen, 0) > p.presupuesto then 'EXCEDIDO'
               when coalesce(k.costo_pen, 0) >= p.presupuesto * 0.9 then 'AJUSTADO'
               else 'EN_RANGO' end,
+         en.fecha,
          z.id, z.cerrado_en, public.puesto_de(z.cerrado_por), z.costo_pen, z.margen_pen, z.margen_pct
     from codigos c
     left join costo k on k.codigo = c.codigo
     left join venta v on v.codigo = c.codigo
     left join cierre z on z.codigo = c.codigo
     left join fijado f on f.codigo = c.codigo
+    left join entrega en on en.codigo = c.codigo
     cross join lateral (select coalesce(f.monto, round(v.neto_pen / (1 + c_utilidad), 2)) as presupuesto) p
    where c.codigo is not null
    order by 1;
 end;
 $$;
 comment on function public.codigos_internos_costo_calculado(text) is
-  'El costo completo de cada código interno (o de uno) en soles, con lo que falta para que esté completo, el precio de su cotización aprobada sin IGV, el margen (solo con costo), el presupuesto (el fijado a mano en su OT o el de la hoja) con su semáforo y el cierre vigente. Sin pedir permiso: la llaman codigos_internos_costo y cerrar_costeo_codigo.';
+  'El costo completo de cada código interno (o de uno) en soles, con lo que falta para que esté completo, el precio de su cotización aprobada sin IGV, el margen (solo con costo), el presupuesto (el fijado a mano en su OT o el de la hoja) con su semáforo, la fecha del acta de entrega de su OT y el cierre vigente. Sin pedir permiso: la llaman codigos_internos_costo y cerrar_costeo_codigo.';
 revoke all on function public.codigos_internos_costo_calculado(text) from public, anon, authenticated;
 
 -- 7. Lo mismo, por su puerta -----------------------------------------------------------------
@@ -580,12 +610,13 @@ returns table (
   gastos_mes_pen numeric, gastos_mes_usd numeric,
   caja_pen numeric, caja_usd numeric, egresos_caja integer,
   gastos_ot_pen numeric, gastos_ot_usd numeric, merma_pen numeric, merma_usd numeric,
-  costo_pen numeric, usd_sin_cambio numeric, lineas_sin_cambio integer,
+  costo_pen numeric, usd_sin_cambio numeric, lineas_sin_cambio integer, usd_al_cambio numeric, usd_en_soles numeric,
   materiales_sin_precio integer, horas_sin_costo numeric,
   cotizaciones integer, moneda_venta text, precio_venta_pen numeric, precio_venta_usd numeric,
   venta_sin_igv_confirmado integer, venta_sin_cambio integer, precio_neto_pen numeric,
   margen_pen numeric, margen_pct numeric,
   presupuesto_pen numeric, presupuesto_fijado boolean, consumido_pct numeric, semaforo text,
+  entregada_el date,
   cierre_id uuid, cerrado_en timestamptz, cerrado_por text,
   costo_cerrado_pen numeric, margen_cerrado_pen numeric, margen_cerrado_pct numeric
 )
@@ -601,7 +632,8 @@ begin
   v_precio := public.es_admin() or public.tiene_permiso('cotizaciones.ver_pdf_comercial');
   return query
   select k.codigo, k.mano_obra, k.recargo_extras, k.gastos_mes_pen, k.gastos_mes_usd,
-         k.caja_pen, k.caja_usd, k.egresos_caja, k.gastos_ot_pen, k.gastos_ot_usd, k.merma_pen, k.merma_usd, k.costo_pen, k.usd_sin_cambio, k.lineas_sin_cambio,
+         k.caja_pen, k.caja_usd, k.egresos_caja, k.gastos_ot_pen, k.gastos_ot_usd, k.merma_pen, k.merma_usd,
+         k.costo_pen, k.usd_sin_cambio, k.lineas_sin_cambio, k.usd_al_cambio, k.usd_en_soles,
          k.materiales_sin_precio, k.horas_sin_costo,
          case when v_precio then k.cotizaciones end, case when v_precio then k.moneda_venta end,
          case when v_precio then k.precio_venta_pen end, case when v_precio then k.precio_venta_usd end,
@@ -611,6 +643,7 @@ begin
          case when v_precio then k.presupuesto_pen end, case when v_precio then k.presupuesto_fijado end,
          case when v_precio then k.consumido_pct end,
          case when v_precio then k.semaforo end,
+         k.entregada_el,
          k.cierre_id, k.cerrado_en, k.cerrado_por, k.costo_cerrado_pen,
          case when v_precio then k.margen_cerrado_pen end, case when v_precio then k.margen_cerrado_pct end
     from public.codigos_internos_costo_calculado(p_codigo) k;

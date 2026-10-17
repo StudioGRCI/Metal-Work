@@ -28,6 +28,8 @@ import { adjuntosDeOrden } from '@/lib/datos/adjuntos'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
 import { controlesYSolicitudesDeOrden, mermaDeOrden } from '@/lib/datos/costos-ot'
+import { costoCompletoDeLosCodigos } from '@/lib/datos/codigos-internos'
+import { CODIGO_SIN_AVANCE, enlaceCodigo, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import {
   accesoriosDeOrden,
   personalDelTaller,
@@ -60,7 +62,7 @@ import { ActividadesDeOrden } from './actividades'
 import { MaterialesDeOrden } from './materiales'
 import { AtencionMaterialesDeOrden } from './atencion-materiales'
 import { MermaDeOrden } from './merma'
-import { CostosYControles, ControlDeSalida } from './costos-y-controles'
+import { CostosYControles, ControlDeSalida, type CostoDelCodigoEnOt } from './costos-y-controles'
 import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
 import { FechasClave, SalidaDeUnidad } from './salida-y-plazos'
@@ -270,6 +272,22 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     numero_chasis: string | null
   } | null
   const sede = orden.sede as unknown as { nombre: string }
+  // Con código interno, la pestaña Costos muestra arriba el costo del código,
+  // que es el de la unidad: lo de la OT es solo una parte.
+  const codigoDeLaUnidad = unidad?.codigo_interno ? normalizarCodigo(unidad.codigo_interno) : null
+  const delCodigoEnOt: CostoDelCodigoEnOt | null =
+    vista === 'costos' && puede(perfil, 'costos.ver') && codigoDeLaUnidad && codigoDeLaUnidad !== CODIGO_SIN_AVANCE
+      ? {
+          codigo: codigoDeLaUnidad,
+          costo: await costoCompletoDeLosCodigos(codigoDeLaUnidad)
+            .then((m) => {
+              const k = m.get(codigoDeLaUnidad)
+              return { pen: k?.costo_pen ?? 0, usdSinCambio: k?.usd_sin_cambio ?? 0 }
+            })
+            .catch(() => null),
+          enlace: puede(perfil, 'codigos_internos.ver') ? enlaceCodigo(codigoDeLaUnidad, 'costeo') : null,
+        }
+      : null
   const responsable = orden.responsable as unknown as { puesto: string | null } | null
   const tipoCarroceria = orden.tipo_carroceria as unknown as { nombre: string } | null
 
@@ -543,7 +561,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           puedeRevisarGasto={puede(perfil, 'costos.revisar_gasto')}
           puedeVerCosteo={puede(perfil, 'costos.ver')}
           ordenCerrada={ESTADOS_CERRADOS.includes(orden.estado)}
-          esAdministracion={perfil.rol.codigo === 'ADMINISTRACION'} />
+          esAdministracion={perfil.rol.codigo === 'ADMINISTRACION'}
+          delCodigo={delCodigoEnOt} />
       )}
 
       {vista === 'entrega' && (

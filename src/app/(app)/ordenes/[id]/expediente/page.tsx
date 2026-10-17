@@ -470,16 +470,33 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
           <Tarjeta id="costo" className="scroll-mt-20" data-costo-del-codigo>
             <TarjetaCabecera
               titulo="Costo de la carrocería"
-              descripcion={`Desde el 15/10 la unidad se costea por su código interno, ${delCodigo.codigo}: la mano de obra del reporte diario, las salidas del almacén con su merma, las OS, los subcontratos, los gastos del mes, los gastos aprobados en esta OT y la caja. Es el mismo costo que ve Gerencia en Códigos internos.`}
+              descripcion={`La unidad se costea por su código interno, ${delCodigo.codigo}: la mano de obra del reporte diario, las salidas del almacén con su merma, las OS, los subcontratos, los gastos del mes, los gastos aprobados en esta OT y la caja. Es el mismo costo que ve Gerencia en Códigos internos.`}
             />
             <TarjetaCuerpo className="space-y-5">
               <CostoDelCodigo costo={delCodigo} verMargen={verMargen} />
+              {expediente.margen && expediente.margen.precio_venta !== null && expediente.margen.incluye_igv === null && (
+                // Sin saber si la cotización trae IGV, el código no tiene margen: aquí se confirma, como antes del código.
+                <section aria-label="IGV de la cotización" className="no-partir space-y-2 rounded-[var(--radius-base)] border border-aviso p-4" data-confirmar-igv>
+                  <p className="text-sm text-texto-suave">
+                    Precio de venta según la cotización:{' '}
+                    <strong className="tabular text-texto">
+                      {moneda(expediente.margen.precio_venta, expediente.margen.moneda_venta === 'USD' ? 'USD' : 'PEN')}
+                    </strong>
+                    . Para sacar el margen del código hay que saber si ese monto incluye IGV.
+                  </p>
+                  {puedeConfirmarIgv && expediente.cotizacionId ? (
+                    <ConfirmarIgv cotizacionId={expediente.cotizacionId} ordenId={orden.id} />
+                  ) : (
+                    <p className="text-sm text-aviso">Falta que Ventas, Gerencia o Administración lo confirmen.</p>
+                  )}
+                </section>
+              )}
               {puedeFijarPresupuesto && !delCodigo.cierre && (
                 <FijarPresupuesto ordenId={orden.id} manual={expediente.presupuesto?.origen === 'MANUAL'} />
               )}
               {puede(perfil, 'codigos_internos.ver') && (
                 <p className="text-sm">
-                  <Link href={enlaceCodigo(delCodigo.codigo, 'costeo')} className="font-medium text-acento hover:underline">
+                  <Link href={enlaceCodigo(delCodigo.codigo, 'costeo')} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline">
                     Ver el costeo del código, línea por línea
                   </Link>
                 </p>
@@ -1164,11 +1181,11 @@ function CostoDelCodigo({ costo, verMargen }: { costo: CostoDeOrden; verMargen: 
           etiqueta="Presupuesto"
           valor={costo.consumidoPct === null ? '—' : `${porcentaje(costo.consumidoPct, 0)} gastado`}
           pie={[
-            costo.semaforo === 'EXCEDIDO' ? 'Pasó el presupuesto' : costo.semaforo === 'AJUSTADO' ? 'Del 90 % en adelante: ajustado' : null,
+            costo.semaforo === 'EXCEDIDO' ? 'Pasó el presupuesto' : costo.semaforo === 'AJUSTADO' ? 'Ajustado, del 90 % en adelante' : null,
             costo.presupuestoFijado ? 'el fijado a mano en la OT' : 'la venta sin IGV ÷ 1.15, la utilidad estándar',
           ]
             .filter(Boolean)
-            .join(': ')
+            .join(' · ')
             .replace(/^./, (l) => l.toUpperCase())}
           tono={costo.semaforo === 'EXCEDIDO' ? 'peligro' : undefined}
         />

@@ -137,7 +137,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
                   </TD>
                   <TD>
                     {g.reparto === 'TASA'
-                      ? <span className="tabular block text-sm">{cantidad(g.tasa)} % por OT</span>
+                      ? <span className="tabular block text-sm">{cantidad(g.tasa)} % por código</span>
                       : <span className="block text-sm">Partes iguales</span>}
                     {anulado && <Insignia tono="peligro" className="mt-1 flex w-fit md:hidden">Anulado</Insignia>}
                   </TD>
