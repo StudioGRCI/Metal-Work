@@ -433,7 +433,7 @@ revoke all on public.codigo_interno_cierres from public, anon, authenticated;
 grant select on public.codigo_interno_cierres to authenticated;
 -- El cierre guarda el precio y el margen: se lee con los mismos permisos que
 -- codigos_internos_costo pide para mostrarlos (como ot_presupuestos_lectura).
--- Sin `drop policy`, que cuelga el conector: se crea y, si ya estaba, se corrige.
+-- Sin borrar la política, que cuelga el conector de producción: se crea y, si ya estaba, se corrige.
 do $$ begin
   if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'codigo_interno_cierres'
                     and policyname = 'ver_codigo_interno_cierres') then
