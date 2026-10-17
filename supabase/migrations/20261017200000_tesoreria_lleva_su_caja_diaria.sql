@@ -415,7 +415,7 @@ revoke all on function public.registrar_movimiento_caja(uuid, uuid, date, text, 
 grant execute on function public.registrar_movimiento_caja(uuid, uuid, date, text, numeric, text, text, text, numeric) to authenticated;
 
 -- 10. Pasar dinero de una cuenta a otra -----------------------------------------------------------
--- La reposición de la caja chica, el paso del BCP al BBVA o la compra de
+-- La reposición de la caja chica, el paso de un banco a otro o la compra de
 -- dólares: un egreso en una y un ingreso en la otra, el mismo día, con el
 -- mismo `origen_id`. Entre monedas distintas se escribe lo que salió y lo que
 -- entró, como dice el voucher, y la base saca el cambio.

@@ -313,6 +313,11 @@ begin
                        'la caja chica queda en cero después de pasar su saldo');
   perform public.guardar_caja(pg_temp.id('chica'), 'Caja chica 396', 'EFECTIVO', null, 'PEN', 500, pg_temp.dia('d3'), false);
   perform test.afirmar(not (select activa from public.cajas where id = pg_temp.id('chica')), 'en cero, sí se desactiva');
+  perform test.debe_fallar(format('select public.anular_movimiento_caja(%L, ''Prueba: anular con la cuenta desactivada'')',
+      (select id from public.movimientos_caja where origen_id = pg_temp.id('t3') and tipo = 'INGRESO')),
+      'anular la transferencia no le devuelve el saldo a una cuenta ya desactivada', 'está desactivada');
+  perform test.debe_fallar(format('select public.registrar_movimiento_caja(%L, %L, %L, ''EGRESO'', 10, ''Pago en dólares'', null, null, 1)',
+      gen_random_uuid(), pg_temp.id('bcp_pen'), pg_temp.dia('hoy')), 'un tipo de cambio de 1.00 no entra', 'entre 2 y 6');
   perform test.debe_fallar(format('select public.registrar_movimiento_caja(%L, %L, %L, ''EGRESO'', 10, ''Almuerzo'', null, null, null)',
       gen_random_uuid(), pg_temp.id('chica'), pg_temp.dia('hoy')), 'una cuenta desactivada no recibe movimientos', 'desactivada');
   reset role;

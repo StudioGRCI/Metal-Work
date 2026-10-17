@@ -10,8 +10,12 @@
 --   * `guardar_caja` no desactiva una cuenta que todavía tiene saldo: primero
 --     se pasa con una transferencia. Y el nombre repetido se dice con su
 --     propio mensaje, no con el genérico de «ya existe un registro».
---   * `registrar_transferencia_caja` no acepta un dólar fuera de S/ 2 a S/ 6:
---     un cambio de 1.00 era un error de tipeo que entraba igual.
+--   * `registrar_transferencia_caja` y `registrar_movimiento_caja` no aceptan
+--     un dólar fuera de S/ 2 a S/ 6: un cambio de 1.00 era un error de tipeo
+--     que entraba igual.
+--   * `anular_movimiento_caja` no toca una cuenta desactivada: anular la
+--     transferencia con la que se vació le devolvía el saldo después de
+--     desactivada, y la regla de arriba se saltaba por ahí.
 --   * `cerrar_dia_caja` dice que las observaciones van de 10 caracteres cuando
 --     se escribió algo más corto, en vez de pedirlas como si estuvieran vacías.
 --   * `caja_del_dia` ordena cada banco con los soles antes que los dólares,
@@ -90,9 +94,12 @@ begin
       select sum(case when m.tipo = 'INGRESO' then m.monto else -m.monto end)
         from public.movimientos_caja m
        where m.caja_id = p_id and m.anulado_en is null), 0);
-    if v_saldo <> 0 then
+    if v_saldo > 0 then
       raise exception 'La cuenta % todavía tiene %: pásalo a otra cuenta con una transferencia y después desactívala.',
         coalesce(v_previa.nombre, v_nombre), public.caja_texto_monto(v_saldo, v_moneda) using errcode = 'check_violation';
+    elsif v_saldo < 0 then
+      raise exception 'La cuenta % está sobregirada en %: cúbrelo con una transferencia desde otra cuenta y después desactívala.',
+        coalesce(v_previa.nombre, v_nombre), public.caja_texto_monto(-v_saldo, v_moneda) using errcode = 'check_violation';
     end if;
   end if;
 
@@ -146,8 +153,8 @@ begin
   if v_op is not null and char_length(v_op) > 60 then
     raise exception 'El número de operación pasa de 60 caracteres.' using errcode = 'check_violation';
   end if;
-  if p_tipo_cambio is not null and (p_tipo_cambio <= 0 or p_tipo_cambio >= 100) then
-    raise exception 'El tipo de cambio va en soles por dólar, como 3.750.' using errcode = 'check_violation';
+  if p_tipo_cambio is not null and p_tipo_cambio not between 2 and 6 then
+    raise exception 'El tipo de cambio va en soles por dólar, entre 2 y 6, como 3.750.' using errcode = 'check_violation';
   end if;
   v_caja := public.caja_dia_abierto(p_caja_id, p_fecha);
   if not v_caja.activa then
@@ -219,7 +226,7 @@ begin
     v_cambio := round(case when v_sale.moneda = 'PEN' then p_monto / p_monto_destino else p_monto_destino / p_monto end, 4);
     -- Un dólar fuera de S/ 2 a S/ 6 es un monto mal escrito, no un cambio.
     if v_cambio not between 2 and 6 then
-      raise exception 'Con esos montos el dólar sale a S/ %: revisa cuánto salió y cuánto entró.', v_cambio
+      raise exception 'Con esos montos el dólar sale a S/ %: revisa cuánto salió y cuánto entró.', round(v_cambio, 3)
         using errcode = 'check_violation';
     end if;
   end if;
@@ -236,7 +243,55 @@ comment on function public.registrar_transferencia_caja(uuid, uuid, uuid, date, 
 revoke all on function public.registrar_transferencia_caja(uuid, uuid, uuid, date, numeric, numeric, text, text) from public, anon;
 grant execute on function public.registrar_transferencia_caja(uuid, uuid, uuid, date, numeric, numeric, text, text) to authenticated;
 
--- 4. Cerrar el día contra el estado de cuenta ---------------------------------------------------------
+-- 4. Anular un movimiento mal registrado ------------------------------------------------------------
+-- Como en la 20261017200000, y además ninguna de sus cuentas puede estar
+-- desactivada: la plata que vuelve tiene que entrar a una cuenta a la vista.
+create or replace function public.anular_movimiento_caja(p_id uuid, p_motivo text)
+returns uuid language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_mov   public.movimientos_caja%rowtype;
+  v_pata  record;
+  v_caja  public.cajas%rowtype;
+begin
+  perform public.exigir_permiso('tesoreria.caja');
+  if char_length(btrim(coalesce(p_motivo, ''))) not between 10 and 500 then
+    raise exception 'Cuenta por qué se anula, en 10 a 500 caracteres.' using errcode = 'check_violation';
+  end if;
+  select * into v_mov from public.movimientos_caja where id = p_id;
+  if not found then raise exception 'Ese movimiento no existe.' using errcode = 'check_violation'; end if;
+  if v_mov.anulado_en is not null then return p_id; end if;
+  if v_mov.origen not in ('MANUAL', 'TRANSFERENCIA') then
+    raise exception 'Este movimiento lo dejó un pago o un cobro del sistema: se anula anulando ese pago o ese cobro.'
+      using errcode = 'check_violation';
+  end if;
+
+  -- Cada cuenta que toca, bloqueada, activa y con su día abierto, siempre en el mismo orden.
+  for v_pata in
+    select m.caja_id, m.fecha from public.movimientos_caja m
+     where m.anulado_en is null
+       and (m.id = p_id or (v_mov.origen = 'TRANSFERENCIA' and m.origen = 'TRANSFERENCIA' and m.origen_id = v_mov.origen_id))
+     order by m.caja_id
+  loop
+    v_caja := public.caja_dia_abierto(v_pata.caja_id, v_pata.fecha);
+    if not v_caja.activa then
+      raise exception 'La cuenta % está desactivada: actívala para anular este movimiento.', v_caja.nombre
+        using errcode = 'check_violation';
+    end if;
+  end loop;
+
+  update public.movimientos_caja
+     set anulado_por = public.usuario_actual(), anulado_en = now(), motivo_anulacion = btrim(p_motivo)
+   where anulado_en is null
+     and (id = p_id or (v_mov.origen = 'TRANSFERENCIA' and origen = 'TRANSFERENCIA' and origen_id = v_mov.origen_id));
+  return p_id;
+end;
+$$;
+comment on function public.anular_movimiento_caja(uuid, text) is
+  'Tesorería anula con su motivo un movimiento manual o una transferencia entera, en un día abierto y en cuentas activas. Exige tesoreria.caja.';
+revoke all on function public.anular_movimiento_caja(uuid, text) from public, anon;
+grant execute on function public.anular_movimiento_caja(uuid, text) to authenticated;
+
+-- 5. Cerrar el día contra el estado de cuenta ---------------------------------------------------------
 create or replace function public.cerrar_dia_caja(
   p_id uuid, p_caja_id uuid, p_fecha date, p_saldo_banco numeric, p_observaciones text
 ) returns uuid language plpgsql security definer set search_path to 'public' as $$
@@ -299,7 +354,7 @@ comment on function public.cerrar_dia_caja(uuid, uuid, date, numeric, text) is
 revoke all on function public.cerrar_dia_caja(uuid, uuid, date, numeric, text) from public, anon;
 grant execute on function public.cerrar_dia_caja(uuid, uuid, date, numeric, text) to authenticated;
 
--- 5. La caja de un día: cada banco con los soles antes que los dólares -------------------------------
+-- 6. La caja de un día: cada banco con los soles antes que los dólares -------------------------------
 create or replace function public.caja_del_dia(p_fecha date)
 returns table (
   caja_id uuid, nombre text, tipo text, banco text, moneda text, activa boolean, fecha_inicio date, saldo_alta numeric,

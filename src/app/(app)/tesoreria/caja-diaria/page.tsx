@@ -19,13 +19,15 @@ import { AnularMovimiento, CerrarDia, EditarCuenta, ReabrirDia, RegistrarMovimie
 export const metadata = { title: 'Caja diaria' }
 
 const RUTA = '/tesoreria/caja-diaria'
+/** Antes de esto no hay caja que mirar, y el año 0000 que acepta JavaScript la base no lo acepta. */
+const PRIMER_DIA = '2020-01-01'
 const enlaceDia = (dia: string, hoy: string, cuenta?: string) =>
   `${dia === hoy ? RUTA : `${RUTA}?fecha=${dia}`}${cuenta ? `#cuenta-${cuenta}` : ''}`
 
 /** El día de la URL, si es uno de verdad y no es futuro. «2026-02-30» no lo es: Date lo pasaría al 2 de marzo y la base lo rechaza. */
 function diaPedido(texto: string | string[] | undefined, hoy: string) {
   const d = typeof texto === 'string' ? texto : ''
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d > hoy) return hoy
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d > hoy || d < PRIMER_DIA) return hoy
   const leido = new Date(`${d}T12:00:00Z`)
   return Number.isNaN(leido.getTime()) || leido.toISOString().slice(0, 10) !== d ? hoy : d
 }
@@ -216,13 +218,15 @@ function SelectorDeDia({ dia, hoy }: { dia: string; hoy: string }) {
   const siguiente = sumarDias(dia, 1)
   return (
     <form method="get" action={RUTA} className="flex flex-wrap items-center gap-2">
-      <EnlaceBoton href={enlaceDia(sumarDias(dia, -1), hoy)} variante="contorno" tamano="icono" aria-label="Día anterior">
-        <ChevronLeft aria-hidden className="size-4" />
-      </EnlaceBoton>
+      {dia > PRIMER_DIA && (
+        <EnlaceBoton href={enlaceDia(sumarDias(dia, -1), hoy)} variante="contorno" tamano="icono" aria-label="Día anterior">
+          <ChevronLeft aria-hidden className="size-4" />
+        </EnlaceBoton>
+      )}
       <label htmlFor="caja-dia" className="sr-only">
         Día de la caja
       </label>
-      <Entrada id="caja-dia" type="date" name="fecha" defaultValue={dia} max={hoy} className="w-auto" />
+      <Entrada id="caja-dia" type="date" name="fecha" defaultValue={dia} min={PRIMER_DIA} max={hoy} className="w-auto" />
       <Boton type="submit" variante="secundario" tamano="sm">
         Ver
       </Boton>
@@ -335,15 +339,18 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
               <TH className="hidden text-right sm:table-cell">Ingreso</TH>
               <TH className="text-right sm:hidden">Monto</TH>
               <TH className="hidden sm:table-cell">Registró</TH>
-              {/* `relative`: sin él, el texto oculto se posiciona contra la página y la ensancha en el teléfono. */}
-              <TH className="relative">
-                <span className="sr-only">Anular</span>
-              </TH>
+              {/* Solo en un día abierto: cerrado, la columna vacía corría los montos al medio. */}
+              {abierta && (
+                // `relative`: sin él, el texto oculto se posiciona contra la página y la ensancha en el teléfono.
+                <TH className="relative">
+                  <span className="sr-only">Anular</span>
+                </TH>
+              )}
             </TR>
           </TablaCabecera>
           <tbody>
             {movimientos.map((mov) => (
-              <FilaDeMovimiento key={mov.id} movimiento={mov} moneda={m} abierta={abierta} />
+              <FilaDeMovimiento key={mov.id} movimiento={mov} moneda={m} cuenta={c.nombre} abierta={abierta} />
             ))}
             <tr className="hidden border-t border-borde bg-superficie-2 font-semibold sm:table-row">
               <td colSpan={3} className="px-3 py-2 text-right text-xs text-texto-suave uppercase">
@@ -351,10 +358,10 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
               </td>
               <td className="tabular px-3 py-2 text-right">{moneda(c.egresos, m)}</td>
               <td className="tabular px-3 py-2 text-right">{moneda(c.ingresos, m)}</td>
-              <td colSpan={2} />
+              <td colSpan={abierta ? 2 : 1} />
             </tr>
             <tr className="border-t border-borde bg-superficie-2 sm:hidden">
-              <td colSpan={3} className="px-3 py-2 text-xs text-texto-suave">
+              <td colSpan={abierta ? 3 : 2} className="px-3 py-2 text-xs text-texto-suave">
                 <span className="block font-semibold uppercase">Total del día</span>
                 <span className="tabular">
                   Salió {moneda(c.egresos, m)} · entró {moneda(c.ingresos, m)}
@@ -420,9 +427,10 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
   )
 }
 
-function FilaDeMovimiento({ movimiento: mov, moneda: m, abierta }: {
+function FilaDeMovimiento({ movimiento: mov, moneda: m, cuenta, abierta }: {
   movimiento: MovimientoDelDia
   moneda: 'PEN' | 'USD'
+  cuenta: string
   abierta: boolean
 }) {
   const anulado = !!mov.anulado_en
@@ -462,9 +470,11 @@ function FilaDeMovimiento({ movimiento: mov, moneda: m, abierta }: {
         <span className="block text-[11px] text-texto-suave">{mov.tipo === 'EGRESO' ? 'Egreso' : 'Ingreso'}</span>
       </TD>
       <TD className="hidden text-xs text-texto-suave sm:table-cell">{mov.registrado_por ?? '—'}</TD>
-      <TD className="w-12 text-right">
-        {anulable && <AnularMovimiento id={mov.id} descripcion={mov.descripcion} otraCuenta={transferencia ? mov.otra_cuenta : null} />}
-      </TD>
+      {abierta && (
+        <TD className="w-12 text-right">
+          {anulable && <AnularMovimiento id={mov.id} descripcion={mov.descripcion} cuenta={cuenta} otraCuenta={transferencia ? mov.otra_cuenta : null} />}
+        </TD>
+      )}
     </TR>
   )
 }

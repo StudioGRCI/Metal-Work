@@ -137,8 +137,8 @@ function FormularioMovimiento({ cuentas, cuentaId, dia, codigos, alTerminar }: {
           </Seleccion>
         </Campo>
       </div>
-      {/* Sin ejemplos dentro de los campos: se leían como si ya estuvieran escritos. Van en la ayuda. */}
-      <Campo etiqueta="Descripción" htmlFor={`${p}-descripcion`} requerido ayuda="Como en el estado de cuenta: la OC u OS y el proveedor, la planilla, el ITF…">
+      {/* Sin ejemplos dentro de los campos de la caja: se leían como si ya estuvieran escritos. Van en la ayuda, corta para que se vea entera. */}
+      <Campo etiqueta="Descripción" htmlFor={`${p}-descripcion`} requerido ayuda="Como en el estado de cuenta: la OC u OS, la planilla, el ITF…">
         <Entrada id={`${p}-descripcion`} name="descripcion" list={`${p}-frecuentes`} required minLength={3} maxLength={300} autoComplete="off" />
         <datalist id={`${p}-frecuentes`}>
           {DESCRIPCIONES_FRECUENTES.map((d) => (
@@ -228,7 +228,7 @@ function FormularioTransferencia({ cuentas, dia, alTerminar }: { cuentas: Cuenta
           </Seleccion>
         </Campo>
         <Campo etiqueta={`Sale, en ${nombreMoneda(sale?.moneda)}`} htmlFor={`${p}-monto`} requerido>
-          <Entrada id={`${p}-monto`} name="monto" inputMode="decimal" required autoComplete="off" placeholder="1000" className="tabular" />
+          <Entrada id={`${p}-monto`} name="monto" inputMode="decimal" required autoComplete="off" className="tabular" />
         </Campo>
         {otraMoneda ? (
           <Campo etiqueta={`Entra, en ${nombreMoneda(entra?.moneda)}`} htmlFor={`${p}-destino-monto`} requerido ayuda="Lo que dice el voucher; la base saca el cambio.">
@@ -242,7 +242,7 @@ function FormularioTransferencia({ cuentas, dia, alTerminar }: { cuentas: Cuenta
         <Entrada id={`${p}-operacion`} name="operacion" maxLength={60} autoComplete="off" className="tabular" />
       </Campo>
       <Campo etiqueta="Descripción" htmlFor={`${p}-descripcion`} ayuda="Si la dejas vacía, dice «Transferencia entre cuentas».">
-        <Entrada id={`${p}-descripcion`} name="descripcion" maxLength={300} autoComplete="off" placeholder="Reposición de caja chica" />
+        <Entrada id={`${p}-descripcion`} name="descripcion" maxLength={300} autoComplete="off" />
       </Campo>
       <Pie error={error} enviando={enviando} alCancelar={alTerminar} texto="Registrar la transferencia" />
     </form>
@@ -251,12 +251,17 @@ function FormularioTransferencia({ cuentas, dia, alTerminar }: { cuentas: Cuenta
 
 // ---------------------------------------------------------------- anular
 
-export function AnularMovimiento({ id, descripcion, otraCuenta }: { id: string; descripcion: string; otraCuenta: string | null }) {
+export function AnularMovimiento({ id, descripcion, cuenta, otraCuenta }: {
+  id: string
+  descripcion: string
+  cuenta: string
+  otraCuenta: string | null
+}) {
   const v = useVentana()
   const { alEnviar, enviando, error } = useEnvio(anularMovimiento, v.cerrar)
   return (
     <>
-      <Boton type="button" tamano="icono" variante="fantasma" onClick={v.abrir} aria-label={`Anular «${descripcion}»`} data-anular-movimiento={descripcion}>
+      <Boton type="button" tamano="icono" variante="fantasma" onClick={v.abrir} aria-label={`Anular «${descripcion}» de ${cuenta}`} data-anular-movimiento={descripcion}>
         <Ban aria-hidden className="size-4" />
       </Boton>
       <Ventana
@@ -478,10 +483,10 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
           </Seleccion>
         </Campo>
         {cuenta && (
-          <Campo etiqueta="Estado" htmlFor={`${p}-activa`}>
+          <Campo etiqueta="Estado" htmlFor={`${p}-activa`} ayuda="Para desactivarla, antes pasa su saldo a otra cuenta.">
             <Seleccion id={`${p}-activa`} name="activa" defaultValue={cuenta.activa ? 'si' : 'no'}>
               <option value="si">Activa</option>
-              <option value="no">Desactivada: ya no recibe movimientos (antes, pasa su saldo a otra cuenta)</option>
+              <option value="no">Desactivada: ya no recibe movimientos</option>
             </Seleccion>
           </Campo>
         )}
@@ -495,7 +500,6 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
             defaultValue={cuenta ? String(cuenta.saldo_inicial) : ''}
             autoComplete="off"
             className="tabular"
-            placeholder="25000.00"
           />
         </Campo>
         <Campo etiqueta="Día de ese saldo" htmlFor={`${p}-fecha`} requerido>

@@ -419,9 +419,11 @@ const movimientos = (caja, fecha) =>
   comprobar((await saldoFinal.isVisible()) && limpio(await saldoFinal.textContent()).startsWith('S/ 9,704.50'), 'y la tabla de saldos deja ver el saldo final')
   await pagina.screenshot({ path: join(CAPTURAS, 'caja-05-telefono-ayer.png'), fullPage: true })
   // Un día que no existe no tumba la pantalla: abre hoy.
-  await pagina.goto(`${RUTA}?fecha=2026-02-30`, { waitUntil: 'networkidle' })
-  comprobar(limpio(await pagina.locator('h1').first().textContent()) === 'Caja diaria' && (await pagina.locator('#caja-dia').inputValue()) === hoy,
-    'un día que no existe en la URL abre la caja de hoy')
+  for (const raro of ['2026-02-30', '0000-01-01']) {
+    await pagina.goto(`${RUTA}?fecha=${raro}`, { waitUntil: 'networkidle' })
+    comprobar(limpio(await pagina.locator('h1').first().textContent()) === 'Caja diaria' && (await pagina.locator('#caja-dia').inputValue()) === hoy,
+      `un día que no existe en la URL (${raro}) abre la caja de hoy`)
+  }
   await pagina.screenshot({ path: join(CAPTURAS, 'caja-04-telefono.png'), fullPage: true })
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
