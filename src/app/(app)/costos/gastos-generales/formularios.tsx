@@ -20,8 +20,8 @@ const GRUPOS = [
 /**
  * Registrar un gasto del mes. Cada concepto trae la tasa de la hoja RESUMEN de
  * la empresa —luz 8 %, agua 10 %…—: el porcentaje del gasto que se carga a
- * cada OT trabajada ese mes. Si el gasto se reparte mejor por igual entre
- * todas, se elige «Partes iguales».
+ * cada código interno que trabajó ese mes. Si el gasto se reparte mejor por
+ * igual entre todos, se elige «Partes iguales».
  */
 export function NuevoGastoGeneral({ conceptos, mes }: { conceptos: ConceptoParaElegir[]; mes: string }) {
   const [abierta, setAbierta] = useState(false)
@@ -60,7 +60,7 @@ export function NuevoGastoGeneral({ conceptos, mes }: { conceptos: ConceptoParaE
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo="Gasto del mes"
-        descripcion="Servicios del local y gastos de operación que no son de una OT. Se reparten entre las OT trabajadas ese mes."
+        descripcion="Servicios del local y gastos de operación que no son de una unidad. Se reparten entre los códigos internos que trabajaron ese mes."
         ancho="lg"
       >
         <form key={id} onSubmit={alEnviar} className="space-y-4">
@@ -102,11 +102,11 @@ export function NuevoGastoGeneral({ conceptos, mes }: { conceptos: ConceptoParaE
           </div>
 
           <fieldset className="space-y-3 rounded-[var(--radius-base)] border border-borde p-3">
-            <legend className="px-1 text-sm font-medium text-texto">¿Cómo se reparte entre las OT? <span className="text-peligro">*</span></legend>
+            <legend className="px-1 text-sm font-medium text-texto">¿Cómo se reparte entre los códigos? <span className="text-peligro">*</span></legend>
             <div role="group" aria-label="Forma de reparto" className="flex flex-wrap gap-2">
               <Boton type="button" tamano="sm" variante={reparto === 'TASA' ? 'primario' : 'contorno'}
                 aria-pressed={reparto === 'TASA'} onClick={() => setReparto('TASA')}>
-                Tasa por OT
+                Tasa por código
               </Boton>
               <Boton type="button" tamano="sm" variante={reparto === 'PARTES_IGUALES' ? 'primario' : 'contorno'}
                 aria-pressed={reparto === 'PARTES_IGUALES'} onClick={() => setReparto('PARTES_IGUALES')}>
@@ -114,14 +114,14 @@ export function NuevoGastoGeneral({ conceptos, mes }: { conceptos: ConceptoParaE
               </Boton>
             </div>
             {reparto === 'TASA' ? (
-              <Campo etiqueta="Tasa por OT (%)" htmlFor="gg-tasa" requerido
-                ayuda="Qué porcentaje del gasto del mes se carga a cada OT trabajada ese mes, como en la hoja RESUMEN.">
+              <Campo etiqueta="Tasa por código (%)" htmlFor="gg-tasa" requerido
+                ayuda="Qué porcentaje del gasto del mes se carga a cada código que trabajó ese mes, como en la hoja RESUMEN.">
                 <Entrada id="gg-tasa" name="tasa" type="number" inputMode="decimal" min={0.001} max={100} step="0.001"
                   value={tasa} onChange={(e) => setTasa(e.target.value)} required />
               </Campo>
             ) : (
               <p className="text-sm text-texto-suave">
-                El gasto se divide en partes iguales entre las OT que figuran en las planillas cerradas de ese mes.
+                El gasto se divide en partes iguales entre los códigos internos que trabajaron ese mes: con horas en el reporte diario o salidas del almacén.
               </p>
             )}
           </fieldset>

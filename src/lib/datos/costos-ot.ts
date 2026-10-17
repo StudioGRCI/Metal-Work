@@ -61,8 +61,12 @@ export type CostoDeOrden = {
   margenPct: number | null
   consumidoPct: number | null
   semaforo: 'EN_RANGO' | 'AJUSTADO' | 'EXCEDIDO' | null
+  /** El presupuesto lo fijó Gerencia a mano en la OT; si no, es el de la hoja (la venta sin IGV ÷ 1.15). */
+  presupuestoFijado: boolean
   /** El código interno cuyo costo es este; `null` si la orden no tiene unidad con código y se costea sola. */
   codigo: string | null
+  /** El costeo del código cerrado al entregar la unidad: con qué cifra, cuándo y qué puesto lo cerró. */
+  cierre: { costo: number; en: string; por: string | null } | null
 }
 
 /**
@@ -71,9 +75,9 @@ export type CostoDeOrden = {
  * unidad tiene código muestra el costo y el margen **del código**, el mismo que
  * ve Gerencia en Códigos internos (`codigos_internos_costo`), y no otro que se
  * le separe. Solo la orden sin código se costea sola, con su costeo de siempre
- * (lo comprado en dólares al cambio de su fecha). Una llamada por código o por
- * orden —son pocas, las que caben en el tablero—; si una falla, esa orden sale
- * sin cifra en vez de tumbar la pantalla. Solo se llama con `costos.ver`; el
+ * (lo comprado en dólares al cambio de su fecha). Los códigos van en una sola
+ * llamada (la base calcula todos igual), y las órdenes sin código, una cada una,
+ * a la vez; si una falla, esa orden sale sin cifra en vez de tumbar la pantalla. Solo se llama con `costos.ver`; el
  * margen y el presupuesto, además, solo con el precio a la vista (`conMargen`).
  */
 export async function costoDeOrdenes(
@@ -84,13 +88,16 @@ export async function costoDeOrdenes(
   const codigoDe = new Map(ordenes.map((o) => [o.id, normalizarCodigo(o.codigo_interno ?? '') || null]))
   const codigos = [...new Set([...codigoDe.values()].filter((c): c is string => c !== null && c !== CODIGO_SIN_AVANCE))]
 
-  const porCodigo = new Map(
-    await Promise.all(
-      codigos.map(async (codigo) => {
-        const { data, error } = await supabase.rpc('codigos_internos_costo', { p_codigo: codigo })
-        if (error) return [codigo, null] as const
+  // Un código, con su filtro; varios, en una sola llamada sin filtro.
+  const deLosCodigos = async (): Promise<Map<string, CostoDeOrden | null>> => {
+    if (codigos.length === 0) return new Map()
+    const { data, error } = await supabase.rpc('codigos_internos_costo', codigos.length === 1 ? { p_codigo: codigos[0] } : {})
+    if (error) return new Map(codigos.map((c) => [c, null]))
+    const filaDe = new Map((data ?? []).flatMap((f) => (f.codigo ? [[f.codigo, f] as const] : [])))
+    return new Map(
+      codigos.map((codigo) => {
         // Un código sin nada cargado no trae fila: todavía no cuesta nada.
-        const f = data?.[0]
+        const f = filaDe.get(codigo)
         const total: CostoDeOrden = {
           pen: Number(f?.costo_pen ?? 0),
           sinPrecio: Number(f?.materiales_sin_precio ?? 0),
@@ -99,9 +106,14 @@ export async function costoDeOrdenes(
           margenPct: null,
           consumidoPct: null,
           semaforo: null,
+          presupuestoFijado: f?.presupuesto_fijado === true,
           codigo,
+          cierre:
+            f?.cierre_id && f.cerrado_en
+              ? { costo: Number(f.costo_cerrado_pen ?? 0), en: f.cerrado_en, por: f.cerrado_por ?? null }
+              : null,
         }
-        // Sin costo cargado el margen saldría 100 %: no se muestra hasta que haya costo.
+        // Sin costo cargado la base no da margen (saldría 100 %).
         if (opciones.conMargen && f && total.pen > 0) {
           total.margenPct = f.margen_pct === null ? null : Number(f.margen_pct)
           total.consumidoPct = f.consumido_pct === null ? null : Number(f.consumido_pct)
@@ -109,47 +121,62 @@ export async function costoDeOrdenes(
         }
         return [codigo, total] as const
       }),
-    ),
-  )
+    )
+  }
 
-  const filas = await Promise.all(
-    ordenes.map(async ({ id }) => {
+  const [porCodigo, sueltas] = await Promise.all([
+    deLosCodigos(),
+    Promise.all(
+      ordenes
+        .filter(({ id }) => {
+          const codigo = codigoDe.get(id) ?? null
+          return !codigo || codigo === CODIGO_SIN_AVANCE
+        })
+        .map(async ({ id }) => {
+          // `presupuesto_ot` trae el margen y el semáforo del presupuesto en una llamada.
+          const [costo, presupuesto] = await Promise.all([
+            supabase.rpc('costeo_ot_en_soles', { p_orden: id }),
+            opciones.conMargen
+              ? supabase.rpc('presupuesto_ot', { p_orden: id }).maybeSingle()
+              : Promise.resolve({ data: null, error: null }),
+          ])
+          if (costo.error || !costo.data) return [id, null] as const
+          const total: CostoDeOrden = {
+            pen: 0,
+            sinPrecio: 0,
+            sinCambio: 0,
+            sinCosto: 0,
+            margenPct: null,
+            consumidoPct: null,
+            semaforo: null,
+            presupuestoFijado: false,
+            codigo: null,
+            cierre: null,
+          }
+          for (const l of costo.data) {
+            if (l.fuente === 'MATERIALES_SIN_PRECIO') total.sinPrecio += 1
+            else if (l.monto_pen === null && l.moneda === 'USD') total.sinCambio += 1
+            else total.pen += Number(l.monto_pen ?? 0)
+          }
+          // Sin costo cargado el margen saldría 100 %: no se muestra hasta que haya costo.
+          const p = presupuesto.data as { margen_pct: number | null; consumido_pct: number | null; semaforo: string | null; origen: string | null } | null
+          if (p && total.pen > 0) {
+            total.margenPct = p.margen_pct === null ? null : Number(p.margen_pct)
+            total.consumidoPct = p.consumido_pct === null ? null : Number(p.consumido_pct)
+            total.semaforo = (p.semaforo as typeof total.semaforo) ?? null
+            total.presupuestoFijado = p.origen === 'MANUAL'
+          }
+          return [id, total] as const
+        }),
+    ),
+  ])
+  const deSuOt = new Map(sueltas)
+  return new Map(
+    ordenes.map(({ id }) => {
       const codigo = codigoDe.get(id) ?? null
-      if (codigo && codigo !== CODIGO_SIN_AVANCE) return [id, porCodigo.get(codigo) ?? null] as const
-      // `presupuesto_ot` trae el margen y el semáforo del presupuesto en una llamada.
-      const [costo, presupuesto] = await Promise.all([
-        supabase.rpc('costeo_ot_en_soles', { p_orden: id }),
-        opciones.conMargen
-          ? supabase.rpc('presupuesto_ot', { p_orden: id }).maybeSingle()
-          : Promise.resolve({ data: null, error: null }),
-      ])
-      if (costo.error || !costo.data) return [id, null] as const
-      const total: CostoDeOrden = {
-        pen: 0,
-        sinPrecio: 0,
-        sinCambio: 0,
-        sinCosto: 0,
-        margenPct: null,
-        consumidoPct: null,
-        semaforo: null,
-        codigo: null,
-      }
-      for (const l of costo.data) {
-        if (l.fuente === 'MATERIALES_SIN_PRECIO') total.sinPrecio += 1
-        else if (l.monto_pen === null && l.moneda === 'USD') total.sinCambio += 1
-        else total.pen += Number(l.monto_pen ?? 0)
-      }
-      // Sin costo cargado el margen saldría 100 %: no se muestra hasta que haya costo.
-      const p = presupuesto.data as { margen_pct: number | null; consumido_pct: number | null; semaforo: string | null } | null
-      if (p && total.pen > 0) {
-        total.margenPct = p.margen_pct === null ? null : Number(p.margen_pct)
-        total.consumidoPct = p.consumido_pct === null ? null : Number(p.consumido_pct)
-        total.semaforo = (p.semaforo as typeof total.semaforo) ?? null
-      }
-      return [id, total] as const
+      return [id, codigo && codigo !== CODIGO_SIN_AVANCE ? (porCodigo.get(codigo) ?? null) : (deSuOt.get(id) ?? null)] as const
     }),
   )
-  return new Map(filas)
 }
 
 /**

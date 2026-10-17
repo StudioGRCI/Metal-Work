@@ -29,8 +29,10 @@ const nombreDe = (u: { nombres: string; apellidos: string } | null) => (u ? `${u
 /**
  * Lo que Administración paga cada mes y no es de una OT: los servicios del
  * local (luz, agua, internet…) y los gastos de operación (depreciación de
- * maquinaria y equipos). Cada uno se reparte entre las OT trabajadas ese mes
- * —las que figuran en una planilla cerrada— y llega a su costeo.
+ * maquinaria y equipos). Desde la migración 20261017300000 cada uno se reparte
+ * entre los códigos internos que trabajaron ese mes —con horas o salidas del
+ * almacén— y llega a su costo; la OT sin código lo sigue recibiendo por la
+ * planilla cerrada, como antes.
  *
  * Escribe `costos.gastos_generales` (Administración); lee también `costos.ver`,
  * igual que la política `ver_gastos_generales_mes`.
@@ -59,7 +61,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Gastos del mes"
-        descripcion="Servicios del local y gastos de operación que paga Administración. Cada uno se reparte entre las OT trabajadas ese mes y llega a su costeo cuando RR.HH. cierra la planilla."
+        descripcion="Servicios del local y gastos de operación que paga Administración. Cada uno se reparte entre los códigos internos que trabajaron ese mes (con horas en el reporte diario o salidas del almacén) y llega a su costo al registrarlo."
         acciones={puedeRegistrar && (
           <NuevoGastoGeneral mes={mes}
             conceptos={conceptos.map((c) => ({ codigo: c.codigo, nombre: c.nombre, grupo: c.grupo, tasa: c.tasa_sugerida === null ? null : Number(c.tasa_sugerida) }))} />
@@ -92,7 +94,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo={`Gastos de ${mesLargo(`${mes}-01`)}`}
-          descripcion="Con tasa, cada OT trabajada en el mes carga ese porcentaje del gasto; con partes iguales, el gasto se divide entre todas. Un gasto anulado deja de sumar y queda a la vista."
+          descripcion="Con tasa, cada código que trabajó en el mes carga ese porcentaje del gasto; con partes iguales, el gasto se divide entre todos. PLANTA no recibe. Un gasto anulado deja de sumar y queda a la vista."
         />
         <Tabla>
           <TablaCabecera>

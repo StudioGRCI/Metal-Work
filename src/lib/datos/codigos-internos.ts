@@ -51,7 +51,8 @@ export type ResumenCodigo = {
 /**
  * Lo que el resumen no trae y sale de `codigos_internos_costo` (migración
  * 20261017300000): el recargo de las horas extras, los gastos del mes, los
- * egresos de caja, el costo total en soles, lo vendido y el cierre.
+ * egresos de caja, los gastos aprobados en la OT y su merma, el costo total en
+ * soles, lo vendido y el cierre.
  */
 export type CostoCompleto = {
   /** Lo que la planilla diaria pagó de más por las horas extras: es mano de obra. */
@@ -63,6 +64,12 @@ export type CostoCompleto = {
   caja_pen: number
   caja_usd: number
   egresos_caja: number
+  /** Los trámites, comisiones y viáticos que Gerencia aprobó en la OT del código. */
+  gastos_ot_pen: number
+  gastos_ot_usd: number
+  /** La merma que Diseño evaluó en la OT, sobre los materiales del código. */
+  merma_pen: number
+  merma_usd: number
   /** Todo lo que suma, en soles: los dólares al cambio de venta del día de cada línea. */
   costo_pen: number
   /** Los dólares de las líneas sin tipo de cambio cargado: no suman hasta que Tesorería lo cargue. */
@@ -90,8 +97,9 @@ export type VentaDelCodigo = {
   precio_neto_pen: number | null
   margen_pen: number | null
   margen_pct: number | null
-  /** El precio sin IGV menos la utilidad estándar del 15 % de la hoja RESUMEN. */
+  /** El que Gerencia fijó a mano en la OT o, si no, el precio sin IGV menos la utilidad estándar del 15 % de la hoja RESUMEN. */
   presupuesto_pen: number | null
+  presupuesto_fijado: boolean
   consumido_pct: number | null
   semaforo: SemaforoCosto | null
 }
@@ -116,6 +124,10 @@ export const SIN_COSTO_COMPLETO: CostoCompleto = {
   caja_pen: 0,
   caja_usd: 0,
   egresos_caja: 0,
+  gastos_ot_pen: 0,
+  gastos_ot_usd: 0,
+  merma_pen: 0,
+  merma_usd: 0,
   costo_pen: 0,
   usd_sin_cambio: 0,
   lineas_sin_cambio: 0,
@@ -144,6 +156,10 @@ export async function costoCompletoDeLosCodigos(codigo?: string): Promise<Map<st
         caja_pen: n(f.caja_pen),
         caja_usd: n(f.caja_usd),
         egresos_caja: n(f.egresos_caja),
+        gastos_ot_pen: n(f.gastos_ot_pen),
+        gastos_ot_usd: n(f.gastos_ot_usd),
+        merma_pen: n(f.merma_pen),
+        merma_usd: n(f.merma_usd),
         costo_pen: n(f.costo_pen),
         usd_sin_cambio: n(f.usd_sin_cambio),
         lineas_sin_cambio: n(f.lineas_sin_cambio),
@@ -160,6 +176,7 @@ export async function costoCompletoDeLosCodigos(codigo?: string): Promise<Map<st
                 margen_pen: nulo(f.margen_pen),
                 margen_pct: nulo(f.margen_pct),
                 presupuesto_pen: nulo(f.presupuesto_pen),
+                presupuesto_fijado: f.presupuesto_fijado === true,
                 consumido_pct: nulo(f.consumido_pct),
                 semaforo,
               }
@@ -197,7 +214,7 @@ export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
   if (porSubcontrato.error) throw new Error(`No se pudieron leer los subcontratos de los códigos: ${porSubcontrato.error.message}`)
   const servicios = new Map((porServicio.data ?? []).flatMap((s) => (s.codigo ? [[s.codigo, s] as const] : [])))
   const subcontratos = new Map((porSubcontrato.data ?? []).flatMap((s) => (s.codigo ? [[s.codigo, s] as const] : [])))
-  return (data ?? []).flatMap((f) => {
+  const filas = (data ?? []).flatMap((f): ResumenCodigo[] => {
     const s = f.codigo ? servicios.get(f.codigo) : undefined
     const sc = f.codigo ? subcontratos.get(f.codigo) : undefined
     return f.codigo
@@ -239,6 +256,13 @@ export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
         ]
       : []
   })
+  // Un código que solo está en la caja o en un gasto de la OT también cuesta, y
+  // casi siempre es uno mal escrito: tiene que verse para que salte su parecido.
+  const conocidos = new Set(filas.map((c) => c.codigo))
+  const sueltos = [...completo.entries()]
+    .filter(([codigo, k]) => !conocidos.has(codigo) && (k.costo_pen > 0 || k.usd_sin_cambio > 0))
+    .map(([codigo, k]) => resumenVacio(codigo, null, k))
+  return [...filas, ...sueltos]
 }
 
 /**
@@ -336,7 +360,9 @@ export async function avanceDelCodigo(codigo: string): Promise<AvanceReportado[]
  * SUBCONTRATOS_POR_PAGAR, el que espera a Tesorería: los dos van.
  * RECARGO_EXTRAS, lo que la planilla diaria pagó de más por las horas extras;
  * GASTOS_DEL_MES, la parte del código de cada gasto del mes; CAJA, cada egreso
- * de la caja diaria con el código: los tres van.
+ * de la caja diaria con el código; GASTOS_OT, cada trámite, comisión o viático
+ * aprobado en la OT del código; MERMA, la merma de la OT sobre los materiales
+ * del código: los cinco van.
  */
 export type LineaCosteo = {
   fuente:
@@ -352,6 +378,8 @@ export type LineaCosteo = {
     | 'RECARGO_EXTRAS'
     | 'GASTOS_DEL_MES'
     | 'CAJA'
+    | 'GASTOS_OT'
+    | 'MERMA'
   fecha: string
   concepto: string
   detalle: string | null
@@ -477,6 +505,44 @@ export async function documentosDelCodigo(codigo: string): Promise<DocumentoDelC
   }))
 }
 
+/** Un código que el resumen no trae: todo en cero, salvo el costo completo que tenga. */
+function resumenVacio(codigo: string, ultima: string | null, completo: CostoCompleto = SIN_COSTO_COMPLETO): ResumenCodigo {
+  return {
+    codigo,
+    requerimientos: 0,
+    compras: 0,
+    salidas: 0,
+    reportes: 0,
+    vehiculos: 0,
+    unidades: 0,
+    ordenes: 0,
+    servicios: 0,
+    servicios_pen: 0,
+    servicios_usd: 0,
+    servicios_por_aprobar: 0,
+    servicios_por_aprobar_pen: 0,
+    servicios_por_aprobar_usd: 0,
+    subcontratos: 0,
+    subcontratos_pen: 0,
+    subcontratos_usd: 0,
+    subcontratos_por_pagar: 0,
+    subcontratos_por_pagar_pen: 0,
+    subcontratos_por_pagar_usd: 0,
+    ultima_actividad: ultima,
+    ultimo_reporte: null,
+    horas: 0,
+    horas_sin_costo: 0,
+    mano_obra: 0,
+    materiales_pen: 0,
+    materiales_usd: 0,
+    materiales_sin_precio: 0,
+    compras_pen: 0,
+    compras_usd: 0,
+    compras_sin_precio: 0,
+    ...completo,
+  }
+}
+
 /**
  * Suma a la lista los códigos que solo tiene Diseño: los planos, la lista de
  * materiales o las etapas se pueden cargar antes del primer requerimiento de
@@ -490,42 +556,7 @@ export function sumarCodigosDeDiseno(
   const conocidos = new Set(todos.map((c) => c.codigo))
   const nuevos = deDiseno
     .filter((d) => !conocidos.has(d.codigo) && d.planos + d.materiales + d.etapas > 0)
-    .map(
-      (d): ResumenCodigo => ({
-        codigo: d.codigo,
-        requerimientos: 0,
-        compras: 0,
-        salidas: 0,
-        reportes: 0,
-        vehiculos: 0,
-        unidades: 0,
-        ordenes: 0,
-        servicios: 0,
-        servicios_pen: 0,
-        servicios_usd: 0,
-        servicios_por_aprobar: 0,
-        servicios_por_aprobar_pen: 0,
-        servicios_por_aprobar_usd: 0,
-        subcontratos: 0,
-        subcontratos_pen: 0,
-        subcontratos_usd: 0,
-        subcontratos_por_pagar: 0,
-        subcontratos_por_pagar_pen: 0,
-        subcontratos_por_pagar_usd: 0,
-        ultima_actividad: d.ultimo_cambio ? diaDeLima(d.ultimo_cambio) : null,
-        ultimo_reporte: null,
-        horas: 0,
-        horas_sin_costo: 0,
-        mano_obra: 0,
-        materiales_pen: 0,
-        materiales_usd: 0,
-        materiales_sin_precio: 0,
-        compras_pen: 0,
-        compras_usd: 0,
-        compras_sin_precio: 0,
-        ...SIN_COSTO_COMPLETO,
-      }),
-    )
+    .map((d) => resumenVacio(d.codigo, d.ultimo_cambio ? diaDeLima(d.ultimo_cambio) : null))
   if (nuevos.length === 0) return todos
   // El mismo orden que `codigos_internos_resumen`: la actividad más reciente primero, sin fecha al final.
   return [...todos, ...nuevos].sort(

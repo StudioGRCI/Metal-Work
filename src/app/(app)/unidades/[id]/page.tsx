@@ -120,9 +120,11 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
                 pie={
                   !delCodigo
                     ? 'No se pudo calcular el costo del código'
-                    : delCodigo.sinPrecio + delCodigo.sinCambio + delCodigo.sinCosto > 0
-                      ? 'Incompleto: hay salidas sin precio, horas sin costo o dólares sin cambio'
-                      : `Lo cargado al código ${codigo}, garantías incluidas`
+                    : delCodigo.cierre
+                      ? `Lo cargado al código ${codigo}. Cerrado el ${fecha(delCodigo.cierre.en)} en ${moneda(delCodigo.cierre.costo)}`
+                      : delCodigo.sinPrecio + delCodigo.sinCambio + delCodigo.sinCosto > 0
+                        ? 'Incompleto: hay salidas sin precio, horas sin costo o dólares sin cambio'
+                        : `Lo cargado al código ${codigo}, garantías incluidas`
                 }
                 tono={!delCodigo || delCodigo.sinPrecio + delCodigo.sinCambio + delCodigo.sinCosto > 0 ? 'aviso' : undefined}
               />

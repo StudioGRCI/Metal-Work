@@ -293,6 +293,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
                                 <span
                                   className={cn('sm:block', costo.pen > 0 ? 'font-medium text-texto' : 'text-texto-tenue')}
                                   title={costo.codigo ? `El costo del código ${costo.codigo}, el mismo de Códigos internos` : undefined}
+                                  data-costo-orden={costo.pen}
                                 >
                                   {moneda(costo.pen)}
                                 </span>
@@ -320,6 +321,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
                                     {costo.sinPrecio} {costo.sinPrecio === 1 ? 'despacho' : 'despachos'} sin precio
                                   </span>
                                 )}
+                                {costo.cierre && <span className="block text-texto-suave">Costeo cerrado en {moneda(costo.cierre.costo)}</span>}
                                 {costo.sinCosto > 0 && <span className="block text-aviso">Horas sin costo</span>}
                                 {costo.sinCambio > 0 && <span className="block text-aviso">Falta tipo de cambio</span>}
                               </>

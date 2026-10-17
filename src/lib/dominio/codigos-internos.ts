@@ -38,8 +38,9 @@ export function parecidos(codigos: string[]): Map<string, string[]> {
 /**
  * Lo que lleva costado un código, en soles: mano de obra con el recargo de sus
  * horas extras, materiales salidos del almacén, órdenes de servicio aprobadas
- * sin IGV, recibos por honorarios por su bruto, gastos del mes y egresos de
- * caja con el código (migración 20261017300000). Las compras NO entran: lo
+ * sin IGV, recibos por honorarios por su bruto, gastos del mes, egresos de
+ * caja con el código, gastos aprobados en la OT y su merma (migración
+ * 20261017300000). Las compras NO entran: lo
  * comprado se cuenta cuando sale del almacén para el código. Los dólares van a
  * soles al cambio de Tesorería; los de una línea sin cambio cargado quedan
  * aparte (`usd`) y no suman, porque sin cambio no se adivinan.
@@ -63,6 +64,10 @@ export function dondeAparece(
     subcontratos: number
     vehiculos: number
     horas: number
+    /** Del costo completo: un código que solo está en la caja o en un gasto de la OT no está «solo en anulados». */
+    egresos_caja?: number
+    gastos_ot_pen?: number
+    gastos_ot_usd?: number
   },
   /** Lo que Diseño cargó en el código: un código puede tener planos antes que cualquier documento. */
   diseno?: { planos: number; materiales: number; etapas: number },
@@ -81,6 +86,8 @@ export function dondeAparece(
     c.unidades > 0 && plural(c.unidades, 'unidad', 'unidades'),
     c.ordenes > 0 && plural(c.ordenes, 'OT', 'OT'),
     c.vehiculos > 0 && plural(c.vehiculos, 'ingreso a la planta', 'ingresos a la planta'),
+    (c.gastos_ot_pen ?? 0) + (c.gastos_ot_usd ?? 0) > 0 && 'gastos aprobados en la OT',
+    (c.egresos_caja ?? 0) > 0 && plural(c.egresos_caja ?? 0, 'egreso de caja', 'egresos de caja'),
   ].filter(Boolean)
   return partes.length > 0 ? partes.join(' · ') : 'Solo en documentos anulados'
 }

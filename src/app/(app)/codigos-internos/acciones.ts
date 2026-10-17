@@ -38,14 +38,20 @@ function revalidar() {
 export async function cerrarCosteo(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   if (!(await permitido())) return { ok: false, error: NO_CIERRA }
   const analisis = z
-    .object({ codigo, observacion: z.string().max(500, 'La observación pasa de 500 caracteres.') })
+    .object({
+      codigo,
+      observacion: z
+        .string()
+        .min(10, 'Escribe cómo y cuándo se entregó la unidad, en 10 caracteres o más.')
+        .max(500, 'La observación pasa de 500 caracteres.'),
+    })
     .safeParse({ codigo: dato(formulario, 'codigo'), observacion: dato(formulario, 'observacion') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar el código.' }
 
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('cerrar_costeo_codigo', {
     p_codigo: analisis.data.codigo,
-    p_observacion: analisis.data.observacion || null,
+    p_observacion: analisis.data.observacion,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: 'El costeo no quedó cerrado. Recarga la pantalla.' }

@@ -151,7 +151,7 @@ function FormularioMovimiento({ cuentas, cuentaId, dia, codigos, alTerminar }: {
         <Campo etiqueta={`Monto en ${nombreMoneda(m)}`} htmlFor={`${p}-monto`} requerido>
           <Entrada id={`${p}-monto`} name="monto" inputMode="decimal" required autoComplete="off" placeholder="1250.50" className="tabular" />
         </Campo>
-        <Campo etiqueta="Código interno" htmlFor={`${p}-codigo`} ayuda="Un egreso con código entra al costo de esa unidad: trámites, comisión, viáticos, compras chicas. No lo pongas en el pago de una OC, OS, recibo o planilla: ese ya está en su costo.">
+        <Campo etiqueta="Código interno" htmlFor={`${p}-codigo`} ayudaEnIcono={false} ayuda="Un egreso con código entra al costo de esa unidad: trámites, comisión, viáticos, compras chicas. No lo pongas en el pago de una OC, OS, recibo o planilla, ni en un gasto que Administración ya aprobó en la OT: ese ya está en su costo.">
           <Entrada
             id={`${p}-codigo`}
             name="codigo_interno"

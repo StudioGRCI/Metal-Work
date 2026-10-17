@@ -6,6 +6,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
+import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { avanceDeLosCodigos, listarCodigosInternos, sumarCodigosDeDiseno, type AvanceDeCodigo, type ResumenCodigo } from '@/lib/datos/codigos-internos'
 import { codigosDeDiseno, type CodigoDeDiseno } from '@/lib/datos/diseno-codigos'
@@ -65,9 +66,31 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Códigos internos"
-        descripcion="Cada código interno que aparece en el sistema —reportes diarios, horas de RR. HH., salidas del almacén, requerimientos, compras, órdenes de servicio, subcontratos, unidades e ingresos a la planta— con cómo va y lo que lleva costado. El avance es el promedio de las etapas que arma Diseño: la terminada vale 100 % y la que no, lo que su área reporta en el reporte diario; sin etapas, sale del reporte diario. El costo suma, en soles, la mano de obra con el recargo de sus horas extras, los materiales que salieron del almacén, las órdenes de servicio aprobadas, los recibos por honorarios de los subcontratos, los gastos del mes y los egresos de caja con el código; las compras se muestran aparte y no se suman, porque lo comprado se cuenta cuando sale del almacén. El margen es la cotización aprobada sin IGV menos ese costo."
+        descripcion="Cada código interno con cómo va, lo que lleva costado y lo que deja de margen."
         migas={[{ titulo: 'Códigos internos' }]}
       />
+
+      <SeccionDesplegable titulo="Cómo se calcula" className="mb-3">
+        <div className="space-y-2 text-sm text-texto-suave">
+          <p>
+            Aparece cada código que está en el sistema: reportes diarios, horas de RR. HH., salidas del almacén, requerimientos, compras,
+            órdenes de servicio, subcontratos, unidades e ingresos a la planta.
+          </p>
+          <p>
+            <strong className="text-texto">El avance</strong> es el promedio de las etapas que arma Diseño: la terminada vale 100 % y la que
+            no, lo que su área reporta en el reporte diario. Sin etapas, sale del reporte diario.
+          </p>
+          <p>
+            <strong className="text-texto">El costo</strong> suma, en soles, la mano de obra con el recargo de sus horas extras, los
+            materiales que salieron del almacén, las órdenes de servicio aprobadas, los recibos por honorarios de los subcontratos, los gastos
+            del mes y los egresos de caja con el código. Las compras se muestran aparte y no se suman: lo comprado se cuenta cuando sale del
+            almacén.
+          </p>
+          <p>
+            <strong className="text-texto">El margen</strong> es la cotización aprobada sin IGV menos ese costo.
+          </p>
+        </div>
+      </SeccionDesplegable>
 
       <div className="mb-3 space-y-3">
         <BuscadorSimple ruta="/codigos-internos" etiqueta="Buscar código interno" marcador="Busca por código, por ejemplo SR_04" />

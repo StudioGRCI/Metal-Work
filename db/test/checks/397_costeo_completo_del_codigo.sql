@@ -3,7 +3,10 @@
 -- tasa, o en partes iguales entre los códigos que trabajaron ese mes; PLANTA no
 -- recibe), los egresos de caja escritos a mano con el código (no los anulados,
 -- ni los ingresos, ni el que deja un pago del sistema) y el recargo de las horas
--- extras que pagó la planilla diaria, repartido por las horas de cada código.
+-- extras que pagó la planilla diaria, repartido por las horas de cada código,
+-- los gastos que Administración aprobó en la OT de la unidad y la merma que
+-- Diseño evaluó en ella. El presupuesto fijado a mano en la OT manda sobre el
+-- de la hoja; sin costo todavía no hay margen ni cierre.
 -- Los dólares van a soles al tipo de cambio de Tesorería, y sin cambio no se
 -- adivinan. El margen sale de la cotización aprobada sin IGV. Gerencia cierra
 -- el costeo solo cuando está completo, y lo reabre con motivo.
@@ -204,7 +207,7 @@ begin
     'sin tipo de cambio no hay precio en soles ni margen');
   perform test.afirmar((k->>'cotizaciones')::integer = 1 and k->>'moneda_venta' = 'USD' and (k->>'precio_venta_usd')::numeric = 11800,
     'la cotización aprobada del código, en dólares');
-  perform test.debe_fallar(format('select public.cerrar_costeo_codigo(%L)', 'CHK397_A_26/01'),
+  perform test.debe_fallar(format('select public.cerrar_costeo_codigo(%L, %L)', 'CHK397_A_26/01', 'Unidad entregada al cliente'),
     'no se cierra con dólares sin cambio', 'sin tipo de cambio');
   reset role;
 end $$;
@@ -262,6 +265,173 @@ begin
   reset role;
 end $$;
 
+-- ============================================ 2b. Los gastos aprobados en la OT de la unidad
+-- Lo que Administración aprobó en la pestaña Costos de la OT (un trámite de
+-- S/ 450) entra al código; el pendiente, no. Se arma como ADMIN porque aquí se
+-- prueba el costeo, no el registro del gasto (eso es del check del expediente).
+select test.como_usuario(:'admin_id');
+select set_config('prueba.gasto_ot', gen_random_uuid()::text, true);
+select set_config('prueba.gasto_ot_pend', gen_random_uuid()::text, true);
+select set_config('prueba.costo_antes', (select (x.costo_pen)::text from public.codigos_internos_costo_calculado('CHK397_A_26/01') x), true);
+insert into public.ot_gastos_areas (id, orden_id, area_id, tipo, descripcion, fecha, monto, moneda, comprobante_ruta, comprobante_nombre,
+                                    estado, registrado_por, revisado_por, revisado_en)
+select g.id, current_setting('prueba.ot')::uuid, (select id from public.areas where codigo = 'ADM'), g.tipo, g.descripcion,
+       current_setting('prueba.d1')::date, g.monto, 'PEN',
+       'ot/' || current_setting('prueba.ot') || '/gastos/' || g.id || '.pdf', 'gasto.pdf', g.estado,
+       :'oficina_id', case when g.estado = 'APROBADO' then :'oficina_id'::uuid end, case when g.estado = 'APROBADO' then now() end
+  from (values (current_setting('prueba.gasto_ot')::uuid, 'TRAMITE', 'Trámite de placas de la unidad A', 450, 'APROBADO'),
+               (current_setting('prueba.gasto_ot_pend')::uuid, 'COMISION', 'Comisión que todavía no se aprueba', 999, 'PENDIENTE')) g(id, tipo, descripcion, monto, estado);
+
+do $$
+declare k jsonb;
+begin
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  k := pg_temp.costo('CHK397_A_26/01');
+  perform test.afirmar((k->>'gastos_ot_pen')::numeric = 450 and (k->>'costo_pen')::numeric = current_setting('prueba.costo_antes')::numeric + 450,
+    'el trámite aprobado en la OT suma al código (450) y el pendiente no; salió ' || (k->>'gastos_ot_pen'));
+  perform test.afirmar(pg_temp.lineas('CHK397_A_26/01', 'GASTOS_OT') = 450, 'y el costeo de Gerencia lo lista');
+  reset role;
+end $$;
+
+-- ============================================ 2c. El IGV es el de la versión que se cobra
+-- Ventas corrige la cotización (versión 2, por revisar) sin confirmar el IGV:
+-- el código no adivina el precio. Al confirmarlo, vuelve el margen.
+do $$
+declare k jsonb;
+begin
+  perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
+  set local role authenticated;
+  update public.cotizaciones_pdf
+     set ruta_storage = 'cot/' || id || '/QA-397-v2.pdf', nombre_archivo = 'QA-397-v2.pdf', monto_venta = 23600,
+         motivo_correccion = 'El cliente pidió otra tolva'
+   where id = current_setting('prueba.cot')::uuid;
+  reset role;
+
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  k := pg_temp.costo('CHK397_A_26/01');
+  perform test.afirmar((k->>'precio_neto_pen') is null and (k->>'margen_pct') is null and (k->>'venta_sin_igv_confirmado')::integer = 1,
+    'una corrección sin su IGV confirmado no tiene precio ni margen (como margen_ot); salió ' || coalesce(k->>'precio_neto_pen', 'nada'));
+  reset role;
+
+  perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
+  set local role authenticated;
+  perform public.confirmar_igv_cotizacion(current_setting('prueba.cot')::uuid, true);
+  reset role;
+
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  k := pg_temp.costo('CHK397_A_26/01');
+  perform test.afirmar((k->>'precio_neto_pen')::numeric = 74000,
+    'confirmado el IGV de la versión 2: US$ 23,600 con IGV = US$ 20,000 × 3.70 = S/ 74,000; salió ' || (k->>'precio_neto_pen'));
+  reset role;
+end $$;
+
+-- ============================================ 2d. La merma, el presupuesto fijado y la caja en dólares
+-- Almacén saca 10 planchas de S/ 20 al código A (se arma como dueño: lo que se
+-- prueba es el costeo, no la salida) y Diseño evalúa la merma de su OT en 5 %.
+select test.crear_usuario('Dina', 'Diseño', 'diseno397@demo.pe', 'DISENO', (select id from public.sedes where codigo = 'QA97')) as diseno_id \gset
+select set_config('prueba.diseno', :'diseno_id', true);
+select set_config('prueba.costo_antes', (select (x.costo_pen)::text from public.codigos_internos_costo_calculado('CHK397_A_26/01') x), true);
+do $$
+declare
+  v_m uuid;
+  v_cat uuid := (select id from public.categorias_material order by 1 limit 1);
+  v_um  uuid := (select id from public.unidades_medida order by 1 limit 1);
+begin
+  insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
+  values ('CHK397-1', 'Plancha de prueba 397', v_cat, v_um) returning id into v_m;
+  insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por,
+                                             precio_unitario, moneda, registrado_en)
+  values (gen_random_uuid(), 'INGRESO', v_m, 20, 'INGRESO_GENERAL', 'Compra en tienda', current_setting('prueba.oficina')::uuid,
+          20, 'PEN', now() - interval '3 days');
+  insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por,
+                                             recibido_por_nombre, codigo_unidad, codigo_interno, cantidad_de_stock)
+  values (gen_random_uuid(), 'SALIDA', v_m, 10, 'SALIDA_GENERAL', 'Para la tolva', current_setting('prueba.oficina')::uuid,
+          'Área de Maestranza', 'CHK397_A_26/01', 'CHK397_A_26/01', 10);
+end $$;
+
+do $$
+declare k jsonb; v uuid;
+begin
+  perform test.como_usuario(current_setting('prueba.diseno')::uuid);
+  set local role authenticated;
+  v := public.fijar_merma_ot(current_setting('prueba.ot')::uuid, 5, 'Cortes de la tolva evaluados en planta');
+  reset role;
+
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  k := pg_temp.costo('CHK397_A_26/01');
+  perform test.afirmar((k->>'merma_pen')::numeric = 10 and pg_temp.lineas('CHK397_A_26/01', 'MERMA') = 10,
+    'la merma de la OT va sobre los materiales del código: 5 % de S/ 200 = 10; salió ' || (k->>'merma_pen'));
+  perform test.afirmar((k->>'costo_pen')::numeric = current_setting('prueba.costo_antes')::numeric + 200 + 10,
+    'el costo suma las planchas (200) y su merma (10)');
+  perform test.afirmar(not (k->>'presupuesto_fijado')::boolean and (k->>'presupuesto_pen')::numeric = round(74000 / 1.15, 2),
+    'sin presupuesto fijado, el de la hoja');
+
+  -- Gerencia fija a mano el presupuesto de la OT: manda sobre el de la hoja.
+  perform public.fijar_presupuesto_ot(current_setting('prueba.ot')::uuid, 1000, 'Presupuesto acordado en la reunión de obra');
+  k := pg_temp.costo('CHK397_A_26/01');
+  perform test.afirmar((k->>'presupuesto_fijado')::boolean and (k->>'presupuesto_pen')::numeric = 1000 and k->>'semaforo' = 'EXCEDIDO'
+                       and (k->>'consumido_pct')::numeric = round((k->>'costo_pen')::numeric / 1000 * 100, 1),
+    'el presupuesto fijado en la OT es el del código, con su semáforo: ' || coalesce(k->>'semaforo', 'nada'));
+  perform public.fijar_presupuesto_ot(current_setting('prueba.ot')::uuid, null, null);
+  perform test.afirmar(not (pg_temp.costo('CHK397_A_26/01')->>'presupuesto_fijado')::boolean,
+    'y al devolverlo a la cotización vuelve el de la hoja');
+  reset role;
+
+  -- Tesorería paga US$ 50 de una cuenta en dólares al cambio pactado de 3.80: entran S/ 190, no al cambio del día.
+  perform test.como_usuario(current_setting('prueba.tesoreria')::uuid);
+  set local role authenticated;
+  perform set_config('prueba.caja_usd', gen_random_uuid()::text, true);
+  v := public.guardar_caja(current_setting('prueba.caja_usd')::uuid, 'Cuenta en dólares QA', 'BANCO', 'BCP', 'USD', 500,
+                           current_setting('prueba.d1')::date, true);
+  v := public.registrar_movimiento_caja(gen_random_uuid(), current_setting('prueba.caja_usd')::uuid, current_setting('prueba.d1')::date,
+                                        'EGRESO', 50, 'Repuesto importado de la unidad B', 'CHK397_B_26/02', null, 3.80);
+  reset role;
+
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  k := pg_temp.costo('CHK397_B_26/02');
+  perform test.afirmar((k->>'caja_pen')::numeric = 190 and (k->>'caja_usd')::numeric = 0,
+    'el egreso en dólares con su propio cambio entra en soles a ese cambio: 190; salió ' || (k->>'caja_pen') || ' y US$ ' || (k->>'caja_usd'));
+  reset role;
+end $$;
+
+-- ============================================ 2e. Sin costo no hay margen ni cierre
+-- Una cotización aprobada hoy con un código nuevo: todavía no cuesta nada.
+select set_config('prueba.cot_c', gen_random_uuid()::text, true);
+select set_config('prueba.ot_c', gen_random_uuid()::text, true);
+do $$
+declare k jsonb;
+begin
+  perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
+  set local role authenticated;
+  insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, nombre_archivo, ruta_storage,
+                                       mime_type, tamano_bytes, registrado_por, monto_venta, moneda)
+  values (current_setting('prueba.cot_c')::uuid, 'QA-397C', current_setting('prueba.cliente')::uuid,
+          current_setting('prueba.carroceria')::uuid, 'QA-397C.pdf', 'cot/' || current_setting('prueba.cot_c') || '/QA-397C.pdf',
+          'application/pdf', 120, current_setting('prueba.vendedor')::uuid, 59000, 'PEN');
+  perform public.confirmar_igv_cotizacion(current_setting('prueba.cot_c')::uuid, true);
+  reset role;
+
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  perform public.aprobar_cotizacion_con_ot(
+    current_setting('prueba.cot_c')::uuid, current_setting('prueba.ot_c')::uuid, 'CHK397_C_26/03', '397-2098',
+    'SEMIRREMOLQUE', current_setting('prueba.hoy')::date + 30, 'ot/' || current_setting('prueba.ot_c') || '/orden.pdf',
+    'orden.pdf', 100);
+  k := pg_temp.costo('CHK397_C_26/03');
+  perform test.afirmar((k->>'precio_neto_pen')::numeric = 50000 and (k->>'costo_pen')::numeric = 0,
+    'el código nuevo tiene precio (S/ 59,000 con IGV = 50,000) y nada de costo');
+  perform test.afirmar((k->>'margen_pct') is null and (k->>'margen_pen') is null,
+    'sin costo todavía no hay margen (saldría 100 %); salió ' || coalesce(k->>'margen_pct', 'nada'));
+  perform test.debe_fallar(format('select public.cerrar_costeo_codigo(%L, %L)', 'CHK397_C_26/03', 'Unidad entregada al cliente'),
+    'ni se cierra un costeo sin costo', 'no tiene costo cargado');
+  reset role;
+end $$;
+
 -- ============================================ 3. Quién lo ve
 do $$
 declare k jsonb;
@@ -271,7 +441,7 @@ begin
   set local role authenticated;
   k := pg_temp.costo('CHK397_A_26/01');
   perform test.afirmar(k is not null and (k->>'margen_pct') is not null, 'Administración ve el costo y el margen del código');
-  perform test.debe_fallar(format('select public.cerrar_costeo_codigo(%L)', 'CHK397_A_26/01'),
+  perform test.debe_fallar(format('select public.cerrar_costeo_codigo(%L, %L)', 'CHK397_A_26/01', 'Unidad entregada al cliente'),
     'Administración no cierra el costeo', 'codigos_internos.cerrar');
   perform test.debe_fallar(format('select * from public.codigo_interno_costeo(%L)', 'CHK397_A_26/01'),
     'ni lee el detalle línea por línea de Gerencia', 'codigos_internos.ver');
@@ -295,8 +465,8 @@ begin
   set local role authenticated;
   perform test.debe_fallar('select * from public.codigos_internos_costo()', 'Requerimientos no lee el costo completo', 'costos.ver');
   perform test.afirmar(not exists (select 1 from public.codigo_interno_gasto('CHK397_A_26/01') l
-                                    where l.fuente in ('CAJA', 'GASTOS_DEL_MES', 'RECARGO_EXTRAS')),
-    'su gasto por código sigue sin la caja, los gastos del mes ni el recargo');
+                                    where l.fuente in ('CAJA', 'GASTOS_DEL_MES', 'RECARGO_EXTRAS', 'GASTOS_OT', 'MERMA')),
+    'su gasto por código sigue sin la caja, los gastos del mes, el recargo, los gastos de la OT ni la merma');
   perform test.afirmar(not exists (select 1 from public.codigos_internos_gasto() g where g.codigo = 'PLANTA'
                                     and g.salidas = 0 and g.requerimientos = 0 and g.compras = 0),
     'ni le aparecen códigos que solo tienen horas');
@@ -310,8 +480,12 @@ begin
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
   set local role authenticated;
   perform test.debe_fallar(format('select public.cerrar_costeo_codigo(%L)', 'PLANTA'), 'PLANTA no se cierra', 'PLANTA');
-  v := public.cerrar_costeo_codigo('CHK397_A_26/01', 'Unidad entregada');
-  v2 := public.cerrar_costeo_codigo('CHK397_A_26/01');
+  perform test.debe_fallar(format('select public.cerrar_costeo_codigo(%L)', 'CHK397_A_26/01'),
+    'no se cierra sin decir cómo se entregó la unidad', 'cómo y cuándo');
+  perform test.debe_fallar(format('select public.cerrar_costeo_codigo(%L, %L)', 'CHK397_A_26/01', 'Listo'),
+    'ni con una observación de 5 letras', 'cómo y cuándo');
+  v := public.cerrar_costeo_codigo('CHK397_A_26/01', 'Unidad entregada al cliente con su acta');
+  v2 := public.cerrar_costeo_codigo('CHK397_A_26/01', 'Unidad entregada al cliente con su acta');
   perform test.afirmar(v = v2, 'un reintento devuelve el mismo cierre');
   k := pg_temp.costo('CHK397_A_26/01');
   perform test.afirmar((k->>'cierre_id')::uuid = v and (k->>'costo_cerrado_pen')::numeric = (k->>'costo_pen')::numeric
@@ -354,7 +528,8 @@ begin
     'anon no llama al costo');
   perform test.afirmar(not has_function_privilege('authenticated', 'public.codigos_internos_costo_calculado(text)', 'execute')
                        and not has_function_privilege('authenticated', 'public.codigo_interno_lineas_caja(text)', 'execute')
-                       and not has_function_privilege('authenticated', 'public.codigo_interno_lineas_recargo(text)', 'execute'),
+                       and not has_function_privilege('authenticated', 'public.codigo_interno_lineas_recargo(text)', 'execute')
+                       and not has_function_privilege('authenticated', 'public.codigo_interno_lineas_gastos_ot(text)', 'execute'),
     'las funciones internas, sin permiso, no las llama nadie desde fuera');
 end $$;
 

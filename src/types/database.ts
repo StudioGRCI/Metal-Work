@@ -10888,6 +10888,27 @@ export type Database = {
           referencia_id: string | null
         }[]
       }
+      codigo_interno_lineas_gastos_ot: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          horas: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+        }[]
+      }
       codigo_interno_lineas_recargo: {
         Args: {
           p_codigo: string | null
@@ -11086,6 +11107,10 @@ export type Database = {
           caja_pen: number | null
           caja_usd: number | null
           egresos_caja: number | null
+          gastos_ot_pen: number | null
+          gastos_ot_usd: number | null
+          merma_pen: number | null
+          merma_usd: number | null
           costo_pen: number | null
           usd_sin_cambio: number | null
           lineas_sin_cambio: number | null
@@ -11101,6 +11126,7 @@ export type Database = {
           margen_pen: number | null
           margen_pct: number | null
           presupuesto_pen: number | null
+          presupuesto_fijado: boolean | null
           consumido_pct: number | null
           semaforo: string | null
           cierre_id: string | null
@@ -11124,6 +11150,10 @@ export type Database = {
           caja_pen: number | null
           caja_usd: number | null
           egresos_caja: number | null
+          gastos_ot_pen: number | null
+          gastos_ot_usd: number | null
+          merma_pen: number | null
+          merma_usd: number | null
           costo_pen: number | null
           usd_sin_cambio: number | null
           lineas_sin_cambio: number | null
@@ -11139,6 +11169,7 @@ export type Database = {
           margen_pen: number | null
           margen_pct: number | null
           presupuesto_pen: number | null
+          presupuesto_fijado: boolean | null
           consumido_pct: number | null
           semaforo: string | null
           cierre_id: string | null

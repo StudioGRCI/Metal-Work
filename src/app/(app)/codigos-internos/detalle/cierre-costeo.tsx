@@ -63,8 +63,14 @@ export function CerrarCosteo({ codigo, resumen }: { codigo: string; resumen: str
       >
         <form key={v.vez} onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="codigo" value={codigo} />
-          <Campo etiqueta="Observación" htmlFor="cierre-observacion" ayuda="Opcional: «Unidad entregada con su acta», por ejemplo.">
-            <AreaTexto id="cierre-observacion" name="observacion" maxLength={500} />
+          <Campo
+            etiqueta="Cómo y cuándo se entregó la unidad"
+            htmlFor="cierre-observacion"
+            requerido
+            ayudaEnIcono={false}
+            ayuda="El sistema todavía no sabe cuándo se entrega: «Entregada al cliente el 20/10 con su acta», por ejemplo. De 10 caracteres en adelante."
+          >
+            <AreaTexto id="cierre-observacion" name="observacion" required minLength={10} maxLength={500} />
           </Campo>
           <Pie error={error} enviando={enviando} alCancelar={v.cerrar} texto="Cerrar el costeo" />
         </form>
@@ -92,7 +98,7 @@ export function ReabrirCosteo({ codigo }: { codigo: string }) {
       >
         <form key={v.vez} onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="codigo" value={codigo} />
-          <Campo etiqueta="Motivo" htmlFor="reabrir-motivo" requerido>
+          <Campo etiqueta="Motivo" htmlFor="reabrir-motivo" requerido ayuda="Qué cambió después de la entrega, en 10 caracteres o más.">
             <AreaTexto id="reabrir-motivo" name="motivo" required minLength={10} maxLength={500} />
           </Campo>
           <Pie error={error} enviando={enviando} alCancelar={v.cerrar} texto="Reabrir el costeo" />

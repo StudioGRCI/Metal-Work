@@ -4,20 +4,24 @@
  *
  *   1. Gerencia ve en la lista de Códigos internos el margen del código.
  *   2. En su detalle ve el costo en soles, el margen, los gastos del mes y la
- *      caja, y en el Costeo el recargo de las extras y la tarjeta «Gastos del
- *      mes y caja».
- *   3. Cierra el costeo: queda congelado con su puesto. Tesorería registra otro
- *      egreso con el código y la pantalla muestra la diferencia desde el
- *      cierre. Reabrir sin motivo no deja; con motivo, sí.
+ *      caja, y en el Costeo el recargo de las extras y la tarjeta «Gastos y
+ *      caja».
+ *   3. Cierra el costeo: sin escribir cómo se entregó la unidad no se envía;
+ *      con eso, queda congelado con su puesto. Tesorería registra otro egreso
+ *      con el código y la pantalla muestra la diferencia desde el cierre.
+ *      Reabrir sin motivo no deja; con motivo, sí.
  *   4. Administración ve el mismo costo del código en su Dashboard, en el
- *      expediente de la OT y en la ficha de la unidad: un solo costo.
+ *      expediente de la OT y en la ficha de la unidad: un solo costo. Y que
+ *      está completo, no solo que es el mismo: un trámite que se aprueba en la
+ *      OT sube esa cifra del Dashboard en lo que vale.
  *   5. Tesorería ve en el formulario de la caja que el pago de una OC u OS no
  *      lleva el código.
  *
  * Necesita la base sembrada con la parte de armado del check 397 (hasta el tipo
  * de cambio) y con clave en las cuentas `gerencia397@`, `oficina397@` y
- * `tesoreria397@demo.pe`. Variables: BANCO_CLAVE, BASE (http://localhost:3111),
- * CAPTURAS, BANCO_BASE.
+ * `tesoreria397@demo.pe`. Cada corrida deja un egreso de caja, un trámite
+ * aprobado y un cierre reabierto más en el código: se puede volver a correr.
+ * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  */
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -97,6 +101,13 @@ const [esperado] = await consulta(
   [CODIGO],
 )
 if (!esperado) throw new Error(`La base no tiene costo para ${CODIGO}: siembra el armado del check 397.`)
+const [antes] = await consulta(
+  `select count(*)::int as n, count(*) filter (where motivo_reapertura is not null)::int as reabiertos,
+          count(*) filter (where reabierto_en is null)::int as vigentes
+     from public.codigo_interno_cierres where codigo = $1`,
+  [CODIGO],
+)
+if (antes.vigentes > 0) throw new Error(`${CODIGO} tiene un cierre vigente de otra corrida: reábrelo antes de probar.`)
 const [ot] = await consulta(
   `select o.id, u.id as unidad_id from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
     where public.normalizar_codigo_interno(u.codigo_interno) = $1 limit 1`,
@@ -116,8 +127,8 @@ const [ot] = await consulta(
   comprobar(costo !== null && numero(costo) === esperado.costo, `«Costo hasta hoy» del detalle: S/ ${costo} (base ${esperado.costo})`)
   const margen = await pagina.locator('main [data-margen]').first().getAttribute('data-margen').catch(() => null)
   comprobar(margen !== null && numero(margen) === esperado.margen, `el indicador «Margen»: ${margen} %`)
-  const gastos = limpio(await pagina.getByText('Gastos del mes y caja', { exact: true }).first().locator('..').textContent().catch(() => ''))
-  comprobar(gastos.includes('egreso'), `el indicador «Gastos del mes y caja» dice: «${gastos.slice(0, 120)}»`)
+  const gastos = limpio(await pagina.getByText('Gastos y caja', { exact: true }).first().locator('..').textContent().catch(() => ''))
+  comprobar(gastos.includes('egreso'), `el indicador «Gastos y caja» dice: «${gastos.slice(0, 120)}»`)
   comprobar((await pagina.locator('[data-cierre="abierto"] [data-cerrar-costeo]').count()) === 1, 'Gerencia tiene el botón «Cerrar el costeo»')
 
   await pagina.goto(detalle('costeo'), { waitUntil: 'networkidle' })
@@ -125,12 +136,17 @@ const [ot] = await consulta(
   comprobar(recargo !== null && numero(recargo) === esperado.recargo, `el Costeo trae el recargo de las extras en mano de obra: S/ ${recargo}`)
   const filasGasto = await pagina.locator('[data-gastos-y-caja] [data-gasto]').count()
   const filasCaja = await pagina.locator('[data-gastos-y-caja] [data-gasto="CAJA"]').count()
-  comprobar(filasGasto >= 2 && filasCaja === 1, `la tarjeta «Gastos del mes y caja» tiene ${filasGasto} filas, ${filasCaja} de caja`)
+  comprobar(filasGasto >= 2 && filasCaja >= 1, `la tarjeta «Gastos y caja» tiene ${filasGasto} filas, ${filasCaja} de caja`)
   await pagina.screenshot({ path: join(CAPTURAS, 'costeo-gastos-y-caja.png'), fullPage: true })
 
   // ---------------------------------------------------------- 3. el cierre
   await pagina.goto(detalle(), { waitUntil: 'networkidle' })
   await pagina.click('[data-cerrar-costeo]')
+  await pagina.locator('[role="dialog"] button[type="submit"]').click()
+  await pagina.waitForTimeout(800)
+  const pideObservacion = await pagina.locator('[role="dialog"]').isVisible()
+  const [sinCerrar] = await consulta(`select count(*)::int as n from public.codigo_interno_cierres where codigo = $1`, [CODIGO])
+  comprobar(pideObservacion && sinCerrar.n === antes.n, 'sin escribir cómo se entregó la unidad, el cierre no se envía')
   await pagina.fill('#cierre-observacion', 'Unidad entregada con su acta (prueba del banco)')
   await pagina.locator('[role="dialog"] button[type="submit"]').click()
   const errorCierre = await esperarVentana(pagina)
@@ -177,14 +193,14 @@ const [ot] = await consulta(
   comprobar((await pagina.locator('[data-cierre="abierto"]').count()) === 1, 'el código vuelve a costearse en vivo')
   const [historia] = await consulta(`select count(*)::int as n, count(*) filter (where motivo_reapertura is not null)::int as reabiertos
                                        from public.codigo_interno_cierres where codigo = $1`, [CODIGO])
-  comprobar(historia.n === 1 && historia.reabiertos === 1, 'el cierre anterior quedó como evidencia, con su motivo')
+  comprobar(historia.n === antes.n + 1 && historia.reabiertos === antes.reabiertos + 1, 'el cierre anterior quedó como evidencia, con su motivo')
   comprobar(errores.length === 0, `Gerencia sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 
 const [ahora] = await consulta(`select costo_pen::float as costo from public.codigos_internos_costo_calculado($1)`, [CODIGO])
 
-// ------------------------------------------------- 4. Administración, un solo costo
+// ------------------------------------------------- 4. Administración, un solo costo y completo
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.administracion)
   await pagina.goto(`${BASE}/`, { waitUntil: 'networkidle' })
@@ -192,13 +208,38 @@ const [ahora] = await consulta(`select costo_pen::float as costo from public.cod
   const soles = `S/ ${ahora.costo.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
   comprobar(fila.includes(soles.replace('S/ ', '')), `el Dashboard de Administración dice el costo del código en la OT: «${fila.slice(-90)}» (base ${soles})`)
 
+  // Completo, no solo el mismo: un trámite de S/ 37.25 aprobado en la OT sube la cifra del Dashboard en eso.
+  const enPantalla = async () => {
+    const t = await pagina.locator(`a[href="/ordenes/${ot?.id}"] [data-costo-orden]`).first().getAttribute('data-costo-orden', { timeout: 5000 }).catch(() => null)
+    return t === null ? null : numero(t)
+  }
+  const cifraAntes = await enPantalla()
+  const [{ id: oficinaId }] = await consulta(`select id from public.usuarios where correo = $1`, [CUENTAS.administracion])
+  await base.query(
+    `insert into public.ot_gastos_areas (id, orden_id, area_id, tipo, descripcion, fecha, monto, moneda, comprobante_ruta, comprobante_nombre,
+                                         estado, registrado_por, revisado_por, revisado_en)
+     select g.id, $1::uuid, (select id from public.areas where codigo = 'ADM'), 'TRAMITE', 'Trámite de placas (prueba del banco)',
+            (now() at time zone 'America/Lima')::date, 37.25, 'PEN', 'ot/' || $1::text || '/gastos/' || g.id || '.pdf', 'banco.pdf',
+            'APROBADO', $2::uuid, $2::uuid, now()
+       from (select gen_random_uuid() as id) g`,
+    [ot?.id, oficinaId],
+  )
+  await pagina.reload({ waitUntil: 'networkidle' })
+  const cifraDespues = await enPantalla()
+  comprobar(
+    cifraAntes !== null && cifraDespues !== null && Math.round((cifraDespues - cifraAntes) * 100) === 3725,
+    `el trámite aprobado en la OT sube el costo del Dashboard de ${cifraAntes} a ${cifraDespues} (S/ 37.25)`,
+  )
+  const [luego] = await consulta(`select costo_pen::float as costo from public.codigos_internos_costo_calculado($1)`, [CODIGO])
+  const solesLuego = luego.costo.toLocaleString('en-US', { minimumFractionDigits: 2 })
+
   await pagina.goto(`${BASE}/ordenes/${ot?.id}/expediente`, { waitUntil: 'networkidle' })
   const enExpediente = await pagina.locator('[data-costo-codigo]').first().getAttribute('data-costo-codigo').catch(() => null)
-  comprobar(enExpediente !== null && numero(enExpediente) === ahora.costo, `el expediente de la OT dice el costo del código: S/ ${enExpediente}`)
+  comprobar(enExpediente !== null && numero(enExpediente) === luego.costo, `el expediente de la OT dice el costo del código: S/ ${enExpediente}`)
 
   await pagina.goto(`${BASE}/unidades/${ot?.unidad_id}`, { waitUntil: 'networkidle' })
   const cifra = limpio(await pagina.locator('section[aria-label="Costo en el taller"]').textContent({ timeout: 5000 }).catch(() => ''))
-  comprobar(cifra.includes(soles.replace('S/ ', '')) && cifra.includes(CODIGO), `la ficha de la unidad: «${cifra.slice(0, 160)}»`)
+  comprobar(cifra.includes(solesLuego) && cifra.includes(CODIGO), `la ficha de la unidad: «${cifra.slice(0, 160)}»`)
   comprobar(errores.length === 0, `Administración sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
@@ -209,7 +250,10 @@ const [ahora] = await consulta(`select costo_pen::float as costo from public.cod
   await pagina.goto(`${BASE}/tesoreria/caja-diaria`, { waitUntil: 'networkidle' })
   await pagina.locator('[data-registrar-movimiento]').first().click()
   const ventana = limpio(await pagina.locator('[role="dialog"]').textContent({ timeout: 5000 }).catch(() => ''))
-  comprobar(ventana.includes('No lo pongas en el pago de una OC, OS'), 'el formulario de la caja avisa que el pago de una OC u OS no lleva el código')
+  comprobar(
+    ventana.includes('No lo pongas en el pago de una OC, OS') && ventana.includes('ya aprobó en la OT'),
+    'el formulario de la caja avisa que el pago de una OC u OS, o un gasto ya aprobado en la OT, no lleva el código',
+  )
   comprobar(errores.length === 0, `Tesorería sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
