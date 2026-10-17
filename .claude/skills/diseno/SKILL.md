@@ -170,6 +170,19 @@ Castellano peruano de taller, sin anglicismos de oficina: «dar de alta»,
 descripciones, para qué sirve. Los estados vacíos siempre dicen cuál es el
 siguiente paso («Da de alta el primero con el botón de arriba»).
 
+## Skills de diseño de terceros
+
+`impeccable` y `ui-ux-pro-max` (origen y cambios en `docs/SKILLS-DE-TERCEROS.md`)
+sirven para **revisar** lo que se construye con esta skill, no para reemplazarla:
+
+- Esta skill manda. Componentes, tema, marca (logo, letra, íconos Lucide),
+  formularios y formatos no se cambian desde ellas; una sugerencia de otra letra,
+  otra paleta u otros íconos va a DKS como sugerencia, no al código.
+- Toda pantalla de la aplicación es modo **Operate** de `impeccable`: sirven
+  `critique`, `audit`, `harden`, `clarify`, `adapt`, `layout`, `distill`,
+  `quieter` y `polish`. Se marca y se consulta rápido; no se admira.
+- La revisión con ojos frescos la hace `auditor-diseno` (skill `auditar`).
+
 ## Comprobación visual
 
 **En esta máquina el banco local no corre** —no hay Postgres ni `psql`—, así que
