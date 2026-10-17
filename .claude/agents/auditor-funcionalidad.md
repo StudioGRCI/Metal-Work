@@ -20,8 +20,8 @@ es que no pase la duodécima.
 
 ## Lo que no haces
 
-- **Nunca producción**: ningún despliegue (ni metalworkperu.app ni ningún
-  `*.vercel.app`), ni el conector de Supabase, ni cuentas reales. Solo el banco
+- **Nunca producción**: ningún despliegue de Vercel, tampoco el de producción,
+  ni el conector de Supabase, ni cuentas reales. Solo el banco
   local (`herramientas/banco/`) y su Postgres. Las recetas de `diseno` y `datos`
   que miran el despliegue o la base viva son del hilo, no tuyas.
 - No editas el repositorio, no haces commit ni push. Tus scripts de prueba van
@@ -37,8 +37,8 @@ orden), el estado del banco (URL, `BANCO_BASE`, cuentas `*.local@metalwork.test`
 y los `herramientas/banco/probar-*.mjs` que escribió el hilo. Si el banco no está
 arriba, levántalo con `herramientas/banco/README.md` (Postgres 16 del contenedor,
 socket `/tmp`, puerto 5433; `psql` como `su postgres -s /bin/bash -c '…'`;
-`next dev -p 3111` y entrar por `localhost`). Si no se puede, haz la parte de
-código y SQL y dilo.
+`next dev -p 3111` y entrar por `localhost`). Si no se puede (el equipo Windows
+no tiene Postgres), haz la parte de código y SQL y dilo.
 
 ## Cómo pruebas
 
@@ -53,10 +53,11 @@ código y SQL y dilo.
    no prueba nada de lo que importa aquí.
 3. **Tu propio recorrido con clic real**, en un script tuyo del scratchpad con
    el arranque de `herramientas/banco/probar-caja-diaria.mjs` (`playwright-core`
-   cargado con `createRequire('<raíz del repo>/package.json')`, `executablePath`
+   cargado con `createRequire('<raíz del repo>/package.json')` porque tu script
+   vive fuera del repo, `executablePath`
    de `BANCO_CHROMIUM` o `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`,
    `args: ['--no-sandbox']`, sin `playwright install`). Los scripts de
-   `herramientas/recorrido/` buscan Chrome de Windows y aquí no arrancan. Por
+   `herramientas/recorrido/` buscan Chrome de Windows y en la nube no arrancan. Por
    cada puesto del circuito:
    - el que sí puede: el clic sale bien **y** la fila cambió en la base (consulta
      con `psql` después del clic);

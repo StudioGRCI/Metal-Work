@@ -8,8 +8,8 @@ description: Use when about to claim work is complete, fixed, or passing, before
 > **Metal Work — copia adaptada** (MIT; origen en `docs/SKILLS-DE-TERCEROS.md`).
 > La evidencia mínima es lo que pide `CLAUDE.md` › Verificar, con la cuenta del
 > puesto que hace el trabajo y nunca ADMIN. Antes de decirle a DKS que algo está
-> terminado, los auditores de la skill `auditar` revisan diseño, funcionamiento y
-> realización con ojos frescos; lo que encuentren se arregla o se le dice. Lo que
+> terminado, los auditores que pida la skill `auditar` según lo que cambió
+> revisan con ojos frescos; lo que encuentren se arregla o se le dice. Lo que
 > no se pudo comprobar se nombra, con el porqué.
 
 ## Overview

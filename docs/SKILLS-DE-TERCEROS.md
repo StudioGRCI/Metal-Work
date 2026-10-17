@@ -31,6 +31,9 @@ sobre el resto del archivo.
   (`scripts/search.py`, `core.py`, `design_system.py`, `reasoning_contract.py`,
   solo biblioteca estándar de Python, sin red). Quedaron fuera el validador de
   mantenimiento (`validate_data.py`), sus pruebas y los datos que solo él lee.
+  `data/` se dejó entero a propósito, aunque buena parte (paletas, letras,
+  estilos, otras tecnologías) solo la usa lo que el bloque prohíbe: así se
+  actualiza desde el origen sin tener que recortar cada vez.
   La ruta del buscador pasó de `${CLAUDE_PLUGIN_ROOT}/…` a
   `$CLAUDE_PROJECT_DIR/…` con `python3`, y se agregó el bloque «Metal Work».
 - **verification-before-completion** y **systematic-debugging**: bloque «Metal
@@ -79,5 +82,5 @@ Work; toman tres ideas de afuera:
 | **addyosmani/agent-skills** · MIT | Muy completas pero genéricas (24 skills de 10 a 20 KB); se pisan con las propias y con las elegidas. |
 | **anthropics/skills** | Las de documentos (Word, PDF, Excel, PowerPoint) y `skill-creator` ya están disponibles en las sesiones como `anthropic-skills:*`; las de Word, PDF, Excel y PowerPoint además no son de código abierto. `frontend-design` quedó absorbida por `impeccable`. |
 | **vercel-labs/agent-skills** (el resto) | `web-design-guidelines` baja sus reglas de internet en cada uso: instrucciones que cambian sin que nadie las revise. Las de despliegue duplican el conector de Vercel. |
-| **21st.dev** (registro de componentes y su generador Magic) | Sus componentes son de shadcn/ui con Radix, Tailwind y a menudo framer-motion, publicados por la comunidad sin una licencia clara por componente. Aquí hay un juego propio (`src/components/ui/`) con las variables del tema; cada pieza de 21st habría que reescribirla a ese tema y sumaría dependencias que el teléfono del taller paga en cada carga. Magic manda los pedidos a un servicio de pago de 21st.dev con una clave de la cuenta de DKS y devuelve el mismo estilo de componentes. Sirve como inspiración puntual para una pieza que falte, no como fuente. |
+| **21st.dev** (registro de componentes y su generador Magic) | Sus componentes son de shadcn/ui con Radix, Tailwind y a menudo framer-motion, publicados por la comunidad sin una licencia clara por componente. Aquí hay un juego propio (`src/components/ui/`) con las variables del tema; cada pieza de 21st habría que reescribirla a ese tema y sumaría dependencias que el teléfono del taller paga en cada carga. Magic manda los pedidos a un servicio externo de 21st.dev con una clave de la cuenta de DKS y su cupo y devuelve el mismo estilo de componentes. Sirve como inspiración puntual para una pieza que falte, no como fuente. |
 | **superpowers** (el resto) | `brainstorming` exige una conversación de diseño antes de cada cambio y su gancho de inicio obliga a revisar skills antes de todo; no calza con hilos que trabajan solos mientras DKS no está. `test-driven-development` supone pruebas unitarias, que aquí son checks en SQL y recorridos con clic. |

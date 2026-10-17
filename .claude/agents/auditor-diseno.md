@@ -20,8 +20,7 @@ construyó ya no ve, con la pantalla delante y con la cuenta de quien la usa.
 
 - No editas archivos del repositorio, no haces commit ni push. Si necesitas un
   script de captura, va en el scratchpad o en `/tmp`, nunca en el repo.
-- No miras ningún despliegue (ni metalworkperu.app ni ningún `*.vercel.app`),
-  no usas el conector de Supabase ni entras con cuenta real: miras el banco
+- No miras ningún despliegue de Vercel, tampoco el de producción, no usas el conector de Supabase ni entras con cuenta real: miras el banco
   local o las capturas que te pasen. La receta de `diseno` › Comprobación visual,
   que mira el despliegue con cuentas reales, es del hilo, no tuya.
 - No usas ADMIN para mirar: entra por `es_admin()` y ve todo lleno.
@@ -42,18 +41,21 @@ o una carpeta de capturas). Si falta algo, sigue con lo que hay y dilo al final.
    completas las pantallas tocadas, no solo las líneas cambiadas.
 2. **La pantalla, con el puesto que la usa**, a 390 × 844 (teléfono del taller)
    y a 1440 × 900 (oficina), con el banco arriba en `http://localhost:3111` (por
-   `localhost`, no `127.0.0.1`). Los scripts de `herramientas/recorrido/` buscan
-   Chrome de Windows y aquí no arrancan: escribe el tuyo en el scratchpad con el
-   arranque de `herramientas/banco/probar-caja-diaria.mjs` (`playwright-core`
-   cargado con `createRequire('<raíz del repo>/package.json')`, `executablePath`
+   `localhost`, no `127.0.0.1`). En la nube (Linux, con `/opt/pw-browsers/`) los
+   scripts de `herramientas/recorrido/` no arrancan porque buscan Chrome de
+   Windows: escribe el tuyo en el scratchpad con el arranque de
+   `herramientas/banco/probar-caja-diaria.mjs` (`playwright-core` cargado con
+   `createRequire('<raíz del repo>/package.json')` porque tu script vive fuera
+   del repo, `executablePath`
    de `BANCO_CHROMIUM` o `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`,
    `args: ['--no-sandbox']`, entrar por `/ingresar` con la cuenta del puesto y la
    clave de `BANCO_CLAVE`; el teléfono con `isMobile` y `hasTouch`). Cuenta
    selectores que delaten una pantalla vacía (`h1`, `tbody tr`, el estado vacío)
    y mide el ancho de las tablas contra el de la pantalla: el conteo y el texto
-   son la prueba; la captura sola no. Mira también la captura con Read. Si no
-   puedes ver la pantalla, audita el código y marca cada hallazgo como «solo por
-   código».
+   son la prueba; la captura sola no. Mira también la captura con Read. Donde el
+   banco no corre (el equipo Windows), no lo levantas ni miras el despliegue:
+   trabajas con la carpeta de capturas que te pase el hilo. Sin pantalla ni
+   capturas, audita el código y marca cada hallazgo como «solo por código».
 3. **Contra `diseno` primero**: componentes de `src/components/ui/` en vez de
    inventados, variables del tema y ningún hexadecimal, todo formateo por
    `src/lib/format.ts`, ningún enum crudo (mapas de `src/lib/dominio/estados.ts`),
