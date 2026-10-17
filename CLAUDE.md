@@ -22,6 +22,13 @@ aquí. Cargarla **antes** de escribir sale más barato que descubrirlo después.
 | Consultar o diagnosticar la base viva | `datos` |
 | Índices, rendimiento, avisos de `get_advisors`, políticas | `datos` |
 | El usuario te corrigió | `aprender` |
+| Revisar o pulir una pantalla | `diseno`, después `impeccable` y `ui-ux-pro-max` |
+| Algo falla o no cuadra | `systematic-debugging` |
+| Rendimiento de pantallas en React y Next | `react-best-practices` |
+| Antes de decir «terminado» o abrir el PR | `verification-before-completion` y `auditar` |
+
+Las de terceros llevan arriba un bloque «Metal Work» que manda sobre el resto, y
+las propias ganan siempre (`docs/SKILLS-DE-TERCEROS.md`).
 
 ## Mapa
 
@@ -37,6 +44,8 @@ db/test/checks/               checks en begin/rollback
 docs/ANALISIS-ONEDRIVE.md     fuente de verdad de formatos, numeración y códigos reales
 docs/PERMISOS.md              qué permiso tiene cada rol, sacado de la base
 herramientas/banco/           PostgREST propio para probar pantallas sin Supabase
+.claude/agents/               los tres auditores; cómo se lanzan, en la skill auditar
+docs/SKILLS-DE-TERCEROS.md    origen, licencia y cambios de cada skill de terceros
 ```
 
 Una columna nueva no se ve en la pantalla hasta que se agrega **también** al
@@ -71,7 +80,7 @@ esté en el PATH y da los tres pasos en el orden correcto:
 ./scripts/verificar.sh    # tipos de Next, TypeScript, ESLint
 ```
 
-Eso no ve la pantalla ni la base. **Terminado aquí son cinco cosas:**
+Eso no ve la pantalla ni la base. **Terminado aquí son seis cosas:**
 
 1. `./scripts/verificar.sh` en verde.
 2. La base probada en SQL, en una transacción que termina en `raise exception`,
@@ -80,7 +89,9 @@ Eso no ve la pantalla ni la base. **Terminado aquí son cinco cosas:**
 3. `get_advisors`, si se tocó el esquema.
 4. La pantalla vista en el despliegue con `herramientas/recorrido/mirar.mjs`
    (aquí el banco local no corre; el mando exacto, en la skill `diseno`).
-5. Dicho en voz alta qué de eso **no** se pudo comprobar, y por qué.
+5. Los auditores de la skill `auditar` (diseño, funcionamiento y realización)
+   revisaron con ojos frescos, y lo grave que encontraron está arreglado.
+6. Dicho en voz alta qué de eso **no** se pudo comprobar, y por qué.
 
 **Los bloques largos se escriben con `Write`, no con heredoc de bash.** Un
 `cat <<'EOF'` de doscientas líneas con `$$` y comillas muere con «unexpected EOF»
