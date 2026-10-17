@@ -26,9 +26,10 @@ cuando el hilo ya vio funcionar su trabajo.
 1. Antes: `./scripts/verificar.sh` en verde y, si hay pantallas o permisos, el
    banco local arriba con las cuentas `*.local@metalwork.test` de cada puesto.
    Los auditores reusan ese banco; si cada uno lo levanta por su cuenta se pisan.
-   Donde el banco no corre (el equipo Windows), el hilo saca antes las capturas
-   con `mirar.mjs` como dice `diseno` y le pasa la carpeta a `auditor-diseno`;
-   `auditor-funcionalidad` hace entonces solo código y SQL, y se dice.
+   Donde el banco no corre (el equipo Windows) no hay pantalla que mirar antes
+   de unir: `auditor-diseno` audita por código y `auditor-funcionalidad` hace
+   código y SQL leído, y se dice. Después de unir, el hilo mira la pantalla en
+   metalworkperu.app como dice `diseno` › Comprobación visual.
 2. Los que tocan, **en paralelo, en un solo mensaje**, con la herramienta Agent
    y `subagent_type` igual al nombre del auditor. El hilo espera los informes
    de todos los que lanzó antes de abrir el PR.
