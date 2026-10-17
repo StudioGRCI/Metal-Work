@@ -61,7 +61,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Gastos del mes"
-        descripcion="Servicios del local y gastos de operación que paga Administración. Cada uno se reparte entre los códigos internos que trabajaron ese mes (con horas en el reporte diario o salidas del almacén) y llega a su costo al registrarlo."
+        descripcion="Servicios del local y gastos de operación que paga Administración. Cada uno se reparte entre los códigos internos que trabajaron ese mes (con horas en el reporte diario o en el tareo de RR. HH., o con salidas del almacén) y llega a su costo al registrarlo."
         acciones={puedeRegistrar && (
           <NuevoGastoGeneral mes={mes}
             conceptos={conceptos.map((c) => ({ codigo: c.codigo, nombre: c.nombre, grupo: c.grupo, tasa: c.tasa_sugerida === null ? null : Number(c.tasa_sugerida) }))} />

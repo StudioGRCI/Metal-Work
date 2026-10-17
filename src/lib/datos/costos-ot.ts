@@ -67,6 +67,8 @@ export type CostoDeOrden = {
   codigo: string | null
   /** El costeo del código cerrado al entregar la unidad: con qué cifra, cuándo y qué puesto lo cerró. */
   cierre: { costo: number; en: string; por: string | null } | null
+  /** La fecha del acta de entrega de la OT del código, si el taller la registró. */
+  entregadaEl: string | null
 }
 
 /**
@@ -92,7 +94,11 @@ export async function costoDeOrdenes(
   const deLosCodigos = async (): Promise<Map<string, CostoDeOrden | null>> => {
     if (codigos.length === 0) return new Map()
     const { data, error } = await supabase.rpc('codigos_internos_costo', codigos.length === 1 ? { p_codigo: codigos[0] } : {})
-    if (error) return new Map(codigos.map((c) => [c, null]))
+    if (error) {
+      // La pantalla dice «No se pudo leer el costo»; el motivo queda en el registro del servidor.
+      console.error('No se pudo leer el costo de los códigos internos:', error.message)
+      return new Map(codigos.map((c) => [c, null]))
+    }
     const filaDe = new Map((data ?? []).flatMap((f) => (f.codigo ? [[f.codigo, f] as const] : [])))
     return new Map(
       codigos.map((codigo) => {
@@ -108,6 +114,7 @@ export async function costoDeOrdenes(
           semaforo: null,
           presupuestoFijado: f?.presupuesto_fijado === true,
           codigo,
+          entregadaEl: f?.entregada_el ?? null,
           cierre:
             f?.cierre_id && f.cerrado_en
               ? { costo: Number(f.costo_cerrado_pen ?? 0), en: f.cerrado_en, por: f.cerrado_por ?? null }
@@ -152,6 +159,7 @@ export async function costoDeOrdenes(
             presupuestoFijado: false,
             codigo: null,
             cierre: null,
+            entregadaEl: null,
           }
           for (const l of costo.data) {
             if (l.fuente === 'MATERIALES_SIN_PRECIO') total.sinPrecio += 1

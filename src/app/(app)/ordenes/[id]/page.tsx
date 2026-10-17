@@ -27,8 +27,7 @@ import { actividadesDeOrden, areasDelTaller, despachosParaReporte } from '@/lib/
 import { adjuntosDeOrden } from '@/lib/datos/adjuntos'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
-import { controlesYSolicitudesDeOrden, mermaDeOrden } from '@/lib/datos/costos-ot'
-import { costoCompletoDeLosCodigos } from '@/lib/datos/codigos-internos'
+import { controlesYSolicitudesDeOrden, costoDeOrdenes, mermaDeOrden } from '@/lib/datos/costos-ot'
 import { CODIGO_SIN_AVANCE, enlaceCodigo, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import {
   accesoriosDeOrden,
@@ -183,8 +182,17 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const verMerma = vista === 'materiales' && puede(perfil, ['diseno.merma', 'diseno.planos', 'costos.ver'])
   const merma = verMerma ? await mermaDeOrden(id) : null
   const puedeVerControlEntrega = puede(perfil, 'costos.controlar_ot') || puede(perfil, 'costos.ver') || puede(perfil, 'costos.solicitar_pago')
-  const datosCostos = vista === 'costos' || (vista === 'entrega' && puedeVerControlEntrega)
-    ? await controlesYSolicitudesDeOrden(id, puede(perfil, 'costos.ver')) : null
+  // Con código interno, la pestaña Costos muestra arriba el costo del código,
+  // que es el de la unidad: lo de la OT es solo una parte. Las dos lecturas van a la vez.
+  const codigoDeLaUnidad =
+    normalizarCodigo((orden.unidad as unknown as { codigo_interno: string | null } | null)?.codigo_interno ?? '') || null
+  const conCodigo = codigoDeLaUnidad !== null && codigoDeLaUnidad !== CODIGO_SIN_AVANCE
+  const [datosCostos, costoDelCodigo] = await Promise.all([
+    vista === 'costos' || (vista === 'entrega' && puedeVerControlEntrega)
+      ? controlesYSolicitudesDeOrden(id, puede(perfil, 'costos.ver')) : null,
+    vista === 'costos' && puede(perfil, 'costos.ver') && conCodigo && codigoDeLaUnidad
+      ? costoDeOrdenes([{ id, codigo_interno: codigoDeLaUnidad }]).then((m) => m.get(id) ?? null) : undefined,
+  ])
   const areaPropiaMaterial =
     vista === 'materiales' && perfil.area_id && !puede(perfil, 'diseno.planos')
       ? ((await areasDelTaller()).find((a) => a.id === perfil.area_id)?.codigo ?? null)
@@ -272,19 +280,11 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     numero_chasis: string | null
   } | null
   const sede = orden.sede as unknown as { nombre: string }
-  // Con código interno, la pestaña Costos muestra arriba el costo del código,
-  // que es el de la unidad: lo de la OT es solo una parte.
-  const codigoDeLaUnidad = unidad?.codigo_interno ? normalizarCodigo(unidad.codigo_interno) : null
   const delCodigoEnOt: CostoDelCodigoEnOt | null =
-    vista === 'costos' && puede(perfil, 'costos.ver') && codigoDeLaUnidad && codigoDeLaUnidad !== CODIGO_SIN_AVANCE
+    costoDelCodigo !== undefined && codigoDeLaUnidad
       ? {
           codigo: codigoDeLaUnidad,
-          costo: await costoCompletoDeLosCodigos(codigoDeLaUnidad)
-            .then((m) => {
-              const k = m.get(codigoDeLaUnidad)
-              return { pen: k?.costo_pen ?? 0, usdSinCambio: k?.usd_sin_cambio ?? 0 }
-            })
-            .catch(() => null),
+          costo: costoDelCodigo,
           enlace: puede(perfil, 'codigos_internos.ver') ? enlaceCodigo(codigoDeLaUnidad, 'costeo') : null,
         }
       : null
@@ -562,7 +562,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           puedeVerCosteo={puede(perfil, 'costos.ver')}
           ordenCerrada={ESTADOS_CERRADOS.includes(orden.estado)}
           esAdministracion={perfil.rol.codigo === 'ADMINISTRACION'}
-          delCodigo={delCodigoEnOt} />
+          delCodigo={delCodigoEnOt}
+          conCodigo={conCodigo} />
       )}
 
       {vista === 'entrega' && (

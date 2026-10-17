@@ -316,6 +316,8 @@ begin
   k := pg_temp.costo('CHK397_A_26/01');
   perform test.afirmar((k->>'precio_neto_pen') is null and (k->>'margen_pct') is null and (k->>'venta_sin_igv_confirmado')::integer = 1,
     'una corrección sin su IGV confirmado no tiene precio ni margen (como margen_ot); salió ' || coalesce(k->>'precio_neto_pen', 'nada'));
+  perform test.debe_fallar(format('select public.cerrar_costeo_codigo(%L, %L)', 'CHK397_A_26/01', 'Unidad entregada al cliente'),
+    'y no se cierra así: el cierre quedaría congelado sin margen', 'incluye IGV');
   reset role;
 
   perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
@@ -524,11 +526,16 @@ begin
   reset role;
 
   -- El cierre guarda el precio y el margen: el Supervisor General ve el costo
-  -- (costos.ver) pero no el precio de venta, así que no lee la tabla.
+  -- (costos.ver) pero no el precio de venta, así que no lee la tabla. Tampoco por
+  -- la auditoría, que él lee (auditoria.ver) y que copiaría la fila entera.
+  perform test.afirmar(not exists (select 1 from public.audit_log where tabla = 'codigo_interno_cierres'),
+    'el cierre no se copia a la auditoría, que se lee sin el precio de venta');
   perform test.como_usuario(current_setting('prueba.general')::uuid);
   set local role authenticated;
   perform test.afirmar((select count(*) from public.codigo_interno_cierres) = 0,
     'quien ve el costo sin el precio de venta no lee los cierres, que guardan el margen');
+  perform test.afirmar((select count(*) from public.audit_log where tabla = 'codigo_interno_cierres') = 0,
+    'ni los lee por la auditoría');
   perform test.afirmar((pg_temp.costo('CHK397_A_26/01')->>'margen_cerrado_pct') is null
                        and (pg_temp.costo('CHK397_A_26/01')->>'costo_cerrado_pen') is not null,
     'y por la función ve el costo cerrado sin el margen');

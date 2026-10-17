@@ -153,6 +153,29 @@ const [ot] = await consulta(
   comprobar(filasGasto >= 2 && filasCaja >= 1, `la tarjeta «Gastos y caja» tiene ${filasGasto} filas, ${filasCaja} de caja`)
   await pagina.screenshot({ path: join(CAPTURAS, 'costeo-gastos-y-caja.png'), fullPage: true })
 
+  // Sin el IGV de la cotización confirmado, el cierre congelaría el costeo sin
+  // margen: la línea lo pide y no ofrece el botón. Se corre la versión del IGV
+  // un momento para que no calce, y se devuelve.
+  const [igvA] = await consulta(
+    `select ig.id from public.cotizaciones_pdf_igv ig
+       join public.cotizaciones_pdf c on c.id = ig.cotizacion_id and ig.version = c.version
+      where public.codigo_interno_de_cotizacion(c.id) = $1 limit 1`,
+    [CODIGO],
+  )
+  if (!igvA) {
+    comprobar(false, `la cotización de ${CODIGO} no tiene su IGV confirmado: siembra el armado del check 397`)
+  } else {
+    await base.query('update public.cotizaciones_pdf_igv set version = version + 1000 where id = $1', [igvA.id])
+    try {
+      await pagina.goto(detalle(), { waitUntil: 'networkidle' })
+      const linea = limpio(await pagina.locator('[data-cierre="incompleto"]').textContent({ timeout: 5000 }).catch(() => ''))
+      const boton = await pagina.locator('[data-cerrar-costeo]').count()
+      comprobar(linea.includes('incluye IGV') && boton === 0, `sin el IGV de la cotización, el cierre no se ofrece: «${linea.slice(0, 160)}»`)
+    } finally {
+      await base.query('update public.cotizaciones_pdf_igv set version = version - 1000 where id = $1', [igvA.id])
+    }
+  }
+
   // ---------------------------------------------------------- 3. el cierre
   await pagina.goto(detalle(), { waitUntil: 'networkidle' })
   await pagina.click('[data-cerrar-costeo]')

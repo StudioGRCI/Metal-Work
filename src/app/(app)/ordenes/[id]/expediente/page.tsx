@@ -510,7 +510,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                     {composicion.monedas.length > 0 && (
                       <div className={composicion.monedas.length > 1 ? 'grid gap-6 lg:grid-cols-2' : undefined}>
                         {composicion.monedas.map((m) => (
-                          <ComposicionDelCosto key={m.moneda} composicion={m} />
+                          <ComposicionDelCosto key={m.moneda} composicion={m} rotulo="Cargado a esta OT" />
                         ))}
                       </div>
                     )}
@@ -1196,7 +1196,9 @@ function CostoDelCodigo({ costo, verMargen }: { costo: CostoDeOrden; verMargen: 
         pie={
           costo.cierre
             ? `Cerrado el ${fecha(costo.cierre.en)}${costo.cierre.por ? ` por ${costo.cierre.por}` : ''}`
-            : 'Gerencia lo cierra en Códigos internos al entregar la unidad'
+            : costo.entregadaEl
+              ? `Entregada el ${fecha(costo.entregadaEl)}: falta que Gerencia lo cierre en Códigos internos`
+              : 'Gerencia lo cierra en Códigos internos al entregar la unidad'
         }
       />
     </dl>

@@ -301,7 +301,11 @@ begin
      where p_mano_obra and s.codigo is not null and s.codigo <> 'PLANTA' and s.cantidad > 0
   ), gasto_mes as (
     -- Con TASA, cada código lleva esa tasa del gasto; en partes iguales, su parte.
-    select m.codigo, g.id, g.periodo, g.descripcion, g.monto, g.moneda, g.reparto, g.tasa, c.nombre,
+    -- La línea lleva el día en que se registró el gasto, no el 1 del mes: el
+    -- gasto en dólares toma el cambio de Tesorería de ese día, y cambio_del_dia
+    -- solo mira diez días atrás (con el día 1 quedaba sin cambio y trababa el cierre).
+    select m.codigo, g.id, g.periodo, (g.creado_en at time zone 'America/Lima')::date as registrado,
+           g.descripcion, g.monto, g.moneda, g.reparto, g.tasa, c.nombre,
            count(*) over (partition by g.id) as n
       from public.gastos_generales_mes g
       join public.conceptos_gasto_general c on c.codigo = g.concepto
@@ -351,7 +355,7 @@ begin
     from compra c
    where c.codigo is not null and (v_codigo is null or c.codigo = v_codigo)
   union all
-  select g.codigo, 'GASTOS_DEL_MES', g.periodo, (g.nombre || ' ' || to_char(g.periodo, 'MM/YYYY'))::text,
+  select g.codigo, 'GASTOS_DEL_MES', g.registrado, (g.nombre || ' ' || to_char(g.periodo, 'MM/YYYY'))::text,
          (case when g.reparto = 'TASA' then trim(trailing '.' from to_char(g.tasa, 'FM990.999')) || ' % de ' || g.descripcion
                when g.n = 1 then 'Todo a este código, el único que trabajó ese mes · ' || g.descripcion
                else 'Partes iguales entre los ' || g.n || ' códigos que trabajaron ese mes · ' || g.descripcion end)::text,
@@ -445,7 +449,10 @@ do $$ begin
   end if;
 end $$;
 select public.activar_timestamps('codigo_interno_cierres');
-select public.activar_auditoria('codigo_interno_cierres');
+-- Sin activar_auditoria, a propósito: la fila ya guarda su historia (quién cerró
+-- y cuándo, quién reabrió y por qué), y la auditoría genérica copia la fila entera
+-- a audit_log, que se lee con auditoria.ver sin pedir el precio de venta: dejaría
+-- ver el margen congelado a quien la política de arriba se lo tapa.
 select public.activar_registro_de_prueba('codigo_interno_cierres');
 
 -- 6. El costo completo y el margen de cada código, sin pedir permiso ---------------------------
@@ -699,6 +706,17 @@ begin
     v_falta := v_falta || (k.lineas_sin_cambio || case when k.lineas_sin_cambio = 1 then ' línea en dólares sin tipo de cambio' else ' líneas en dólares sin tipo de cambio' end
                            || ' (lo carga Tesorería)');
   end if;
+  -- Con cotización aprobada, el cierre congela también el margen: sin el IGV
+  -- confirmado o sin el cambio del día de la venta en dólares quedaría congelado
+  -- sin margen, y nada empujaría después a reabrirlo.
+  if k.cotizaciones > 0 and k.venta_sin_igv_confirmado > 0 then
+    v_falta := v_falta || (case when k.venta_sin_igv_confirmado = 1 then 'confirmar si la cotización incluye IGV'
+                                else 'confirmar si ' || k.venta_sin_igv_confirmado || ' cotizaciones incluyen IGV' end
+                           || ' (Ventas, Gerencia o Administración, en el expediente de la OT)');
+  end if;
+  if k.cotizaciones > 0 and k.venta_sin_cambio > 0 then
+    v_falta := v_falta || 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo carga Tesorería)'::text;
+  end if;
   if cardinality(v_falta) > 0 then
     raise exception 'El costeo de % todavía no está completo: falta %.', v_codigo, array_to_string(v_falta, '; ')
       using errcode = 'check_violation';
@@ -723,7 +741,7 @@ begin
 end;
 $$;
 comment on function public.cerrar_costeo_codigo(text, text) is
-  'Gerencia cierra el costeo de un código interno al entregar la unidad: congela su costo, su precio sin IGV y su margen, con quién, cuándo y cómo se entregó (la observación, obligatoria). Solo con todo lo que suma completo. Un reintento devuelve el cierre vigente. Exige codigos_internos.cerrar.';
+  'Gerencia cierra el costeo de un código interno al entregar la unidad: congela su costo, su precio sin IGV y su margen, con quién, cuándo y cómo se entregó (la observación, obligatoria). Solo con todo lo que suma completo y, si tiene cotización, con su precio sin IGV en soles. Un reintento devuelve el cierre vigente. Exige codigos_internos.cerrar.';
 revoke all on function public.cerrar_costeo_codigo(text, text) from public, anon;
 grant execute on function public.cerrar_costeo_codigo(text, text) to authenticated;
 

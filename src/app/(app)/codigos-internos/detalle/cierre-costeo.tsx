@@ -62,7 +62,7 @@ export function CerrarCosteo({ codigo, resumen, sugerida }: { codigo: string; re
         abierta={v.abierta}
         alCerrar={v.cerrar}
         titulo={`Cerrar el costeo de ${codigo}`}
-        descripcion={`${resumen} Queda congelado con tu puesto y la fecha; lo que llegue después se verá como diferencia. Solo se cierra con todo completo: sin salidas sin precio, horas sin costo ni dólares sin tipo de cambio.`}
+        descripcion={`${resumen} Queda congelado con tu puesto y la fecha; lo que llegue después se verá como diferencia. Solo se cierra con todo completo: sin salidas sin precio, horas sin costo, dólares sin tipo de cambio ni cotización sin su IGV confirmado.`}
         ancho="md"
       >
         <form key={v.vez} onSubmit={alEnviar} className="space-y-4">

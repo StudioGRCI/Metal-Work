@@ -382,6 +382,10 @@ function LineaCierre({ c, codigo, verPrecio, cierra }: { c: ResumenCodigo; codig
       c.materiales_sin_precio > 0 && `${c.materiales_sin_precio} ${c.materiales_sin_precio === 1 ? 'salida' : 'salidas'} del almacén sin precio`,
       c.horas_sin_costo > 0 && `${horasCortas(c.horas_sin_costo)} de personal sin costo`,
       c.lineas_sin_cambio > 0 && `${c.lineas_sin_cambio} ${c.lineas_sin_cambio === 1 ? 'línea' : 'líneas'} en dólares sin tipo de cambio`,
+      // Con cotización, el cierre congela el margen: sin el IGV o el cambio de la venta saldría sin él.
+      c.venta && c.venta.sin_igv > 0 &&
+        (c.venta.sin_igv === 1 ? 'confirmar si la cotización incluye IGV' : `confirmar si ${c.venta.sin_igv} cotizaciones incluyen IGV`),
+      c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares',
     ].filter(Boolean)
     if (falta.length > 0) {
       return (
@@ -401,7 +405,11 @@ function LineaCierre({ c, codigo, verPrecio, cierra }: { c: ResumenCodigo; codig
     return (
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="abierto">
         <div className="space-y-1">
-          <p>Cuando se entregue la unidad, cierra el costeo: el costo y el margen de ese día quedan congelados como el costo de la unidad.</p>
+          <p>
+            {c.entregada_el
+              ? `La unidad se entregó el ${fecha(c.entregada_el)}: cierra el costeo y el costo y el margen de hoy quedan congelados como el costo de la unidad.`
+              : 'Cuando se entregue la unidad, cierra el costeo: el costo y el margen de ese día quedan congelados como el costo de la unidad.'}
+          </p>
           <p data-acta={c.entregada_el ?? 'pendiente'}>
             {c.entregada_el ? (
               <Insignia tono="exito">Acta de entrega del {fecha(c.entregada_el)}</Insignia>
@@ -414,7 +422,9 @@ function LineaCierre({ c, codigo, verPrecio, cierra }: { c: ResumenCodigo; codig
         </div>
         <CerrarCosteo
           codigo={codigo}
-          resumen={`Hoy suma ${moneda(c.costo_pen)}${precio ? ` y deja un margen de ${porcentaje(c.venta?.margen_pct, 1)}` : ''}.`}
+          resumen={`Hoy suma ${moneda(c.costo_pen)}${precio ? ` y deja un margen de ${porcentaje(c.venta?.margen_pct, 1)}` : ''}.${
+            verPrecio && !c.venta ? ' Se congela sin margen: el código no tiene cotización aprobada.' : ''
+          }`}
           sugerida={c.entregada_el ? `Entregada al cliente con su acta del ${fecha(c.entregada_el)}.` : ''}
         />
       </div>
