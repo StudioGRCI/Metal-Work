@@ -163,3 +163,11 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   `v_compras_credito_sin_comprobante` en la `20261016602000` y solo lo vio
   `get_advisors` («Security Definer View») ya en producción. Al redefinir una
   vista, copiar también su `with (...)`; el check `98` falla si alguna queda sin él.
+
+- **Cambiar qué significa una columna cambia la pantalla que la formatea.** La
+  fecha de la línea del gasto del mes en `codigo_interno_lineas` pasó del 1 del
+  mes al día de registro (para el tipo de cambio, migración `20261017300000`), y
+  el Costeo seguía mostrándola con `periodo()`: decía «10/2026» junto a un gasto
+  de setiembre. Ninguna verificación lo ve, porque el tipo no cambió. Antes de
+  cambiar el valor de una columna que ya se muestra, buscar en `src/` quién la
+  lee (`grep -n "l.fecha\|'GASTOS_DEL_MES'"`) y mirar esa pantalla.

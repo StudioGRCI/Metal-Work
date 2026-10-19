@@ -1,4 +1,6 @@
 import type { Tono } from '@/components/ui/etiqueta-estado'
+import { moneda } from '@/lib/format'
+import { horasCortas } from './rrhh'
 
 /**
  * Lo que comparten las pantallas de los códigos internos de Gerencia. Puro, sin
@@ -36,26 +38,42 @@ export function parecidos(codigos: string[]): Map<string, string[]> {
 }
 
 /**
- * Lo que lleva costado un código: mano de obra, materiales salidos del almacén,
- * órdenes de servicio aprobadas, sin IGV, y recibos por honorarios de sus
- * subcontratos, por su bruto. Las compras NO entran: lo comprado se cuenta
- * cuando sale del almacén para el código (migración 20261014220000). El
- * servicio y el subcontrato sí, porque no pasan por el almacén (migraciones
- * 20261015180000 y 20261016100000). Los dólares van aparte, sin cambio.
+ * Lo que lleva costado un código, en soles: mano de obra con el recargo de sus
+ * horas extras, materiales salidos del almacén, órdenes de servicio aprobadas
+ * sin IGV, recibos por honorarios por su bruto, gastos del mes, egresos de
+ * caja con el código, gastos aprobados en la OT y su merma (migración
+ * 20261017300000). Las compras NO entran: lo
+ * comprado se cuenta cuando sale del almacén para el código. Los dólares van a
+ * soles al cambio de Tesorería; los de una línea sin cambio cargado quedan
+ * aparte (`usd`) y no suman, porque sin cambio no se adivinan.
  */
-export function costoDelCodigo(c: {
-  mano_obra: number
-  materiales_pen: number
-  materiales_usd: number
-  servicios_pen: number
-  servicios_usd: number
-  subcontratos_pen: number
-  subcontratos_usd: number
-}) {
-  return {
-    pen: c.mano_obra + c.materiales_pen + c.servicios_pen + c.subcontratos_pen,
-    usd: c.materiales_usd + c.servicios_usd + c.subcontratos_usd,
-  }
+export function costoDelCodigo(c: { costo_pen: number; usd_sin_cambio: number }) {
+  return { pen: c.costo_pen, usd: c.usd_sin_cambio }
+}
+
+/** «S/ 230.00 + US$ 10.00», o una sola moneda cuando la otra está en cero. */
+export function montoMixto(pen: number, usd: number) {
+  if (usd > 0 && pen === 0) return moneda(usd, 'USD')
+  return usd > 0 ? `${moneda(pen)} + ${moneda(usd, 'USD')}` : moneda(pen)
+}
+
+/**
+ * Por qué las partes no dan el total a ojo: cada parte va en su moneda y el
+ * total en soles. Con la línea, Gerencia suma y cuadra. `null` sin dólares.
+ */
+/** Lo que deja incompleto un costo, contado («2 salidas sin precio · 8 h sin costo»); `null` si nada. */
+export function faltanteDelCosto(f: { sinPrecio: number; horasSinCosto: number; sinCambio: number }) {
+  const partes = [
+    f.sinPrecio > 0 && `${f.sinPrecio} ${f.sinPrecio === 1 ? 'salida' : 'salidas'} sin precio`,
+    f.horasSinCosto > 0 && `${horasCortas(f.horasSinCosto)} sin costo`,
+    f.sinCambio > 0 && `${f.sinCambio} ${f.sinCambio === 1 ? 'línea' : 'líneas'} en dólares sin cambio`,
+  ].filter(Boolean)
+  return partes.length > 0 ? `Incompleto: ${partes.join(' · ')}` : null
+}
+
+export function dolaresAlCambio(c: { usd_al_cambio: number; usd_en_soles: number }) {
+  if (c.usd_al_cambio <= 0) return null
+  return `Lo que está en dólares (${moneda(c.usd_al_cambio, 'USD')}) suma ${moneda(c.usd_en_soles)} al cambio de Tesorería del día de cada línea: con eso, las partes en soles dan el costo hasta hoy.`
 }
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
@@ -73,6 +91,10 @@ export function dondeAparece(
     subcontratos: number
     vehiculos: number
     horas: number
+    /** Del costo completo: un código que solo está en la caja o en un gasto de la OT no está «solo en anulados». */
+    egresos_caja?: number
+    gastos_ot_pen?: number
+    gastos_ot_usd?: number
   },
   /** Lo que Diseño cargó en el código: un código puede tener planos antes que cualquier documento. */
   diseno?: { planos: number; materiales: number; etapas: number },
@@ -91,6 +113,8 @@ export function dondeAparece(
     c.unidades > 0 && plural(c.unidades, 'unidad', 'unidades'),
     c.ordenes > 0 && plural(c.ordenes, 'OT', 'OT'),
     c.vehiculos > 0 && plural(c.vehiculos, 'ingreso a la planta', 'ingresos a la planta'),
+    (c.gastos_ot_pen ?? 0) + (c.gastos_ot_usd ?? 0) > 0 && 'gastos aprobados en la OT',
+    (c.egresos_caja ?? 0) > 0 && plural(c.egresos_caja ?? 0, 'egreso de caja', 'egresos de caja'),
   ].filter(Boolean)
   return partes.length > 0 ? partes.join(' · ') : 'Solo en documentos anulados'
 }

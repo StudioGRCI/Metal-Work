@@ -11,15 +11,16 @@ import { cn } from '@/lib/utils'
  * borde. Las cifras van en la leyenda —con texto, nunca del color de la serie—
  * y en la tabla del detalle.
  */
-export function ComposicionDelCosto({ composicion }: { composicion: ComposicionCosto }) {
+export function ComposicionDelCosto({ composicion, rotulo }: { composicion: ComposicionCosto; rotulo?: string }) {
   const visibles = composicion.partes.filter((p) => p.monto > 0)
   const resumen = visibles.map((p) => `${p.etiqueta} ${porcentaje(p.pct)}`).join(', ')
 
   return (
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-xs text-texto-suave">Costo acumulado en {composicion.moneda === 'USD' ? 'dólares' : 'soles'}</span>
-        <strong className="text-2xl font-semibold text-texto">{moneda(composicion.total, composicion.moneda)}</strong>
+        <span className="text-xs text-texto-suave">{rotulo ?? 'Costo acumulado'} en {composicion.moneda === 'USD' ? 'dólares' : 'soles'}</span>
+        {/* Con rótulo es una parte (lo cargado a una OT): no puede verse más grande que el costo de la unidad. */}
+        <strong className={cn('font-semibold text-texto', rotulo ? 'text-lg' : 'text-2xl')}>{moneda(composicion.total, composicion.moneda)}</strong>
       </div>
 
       <div role="img" aria-label={`Reparto del costo: ${resumen}`} className="mt-3 flex h-3 w-full gap-0.5">
