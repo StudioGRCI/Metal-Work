@@ -9,7 +9,7 @@ import { useContextoOrden } from './contexto-orden'
 import { InstalarApp } from '@/components/estructura/instalar-app'
 import { Ventana } from '@/components/ui/ventana'
 import { NavegacionLista } from '@/components/estructura/navegacion-lista'
-import { menuDe, pestanasDe, rutaActiva } from '@/lib/navegacion'
+import { menuDe, pendientesEnPalabras, pestanasDe, rutaActiva } from '@/lib/navegacion'
 import { cn } from '@/lib/utils'
 
 /**
@@ -86,7 +86,7 @@ export function BarraInferior({
                 <Link
                   href={p.ruta}
                   aria-current={activo ? 'page' : undefined}
-                  aria-label={falla ? `${p.corto}, un pendiente no se pudo comprobar` : n > 0 ? `${p.corto}, ${n} pendientes` : undefined}
+                  aria-label={falla ? `${p.corto}, un pendiente no se pudo comprobar` : n > 0 ? `${p.corto}, ${pendientesEnPalabras(n)}` : undefined}
                   className={clasePestana(activo)}
                 >
                   <span className={cn(claseIcono(activo), 'relative')}>
@@ -110,7 +110,7 @@ export function BarraInferior({
               onClick={() => setAbierto(true)}
               aria-expanded={abierto}
               aria-haspopup="dialog"
-              aria-label={fallaEnOtros ? 'Más, un pendiente no se pudo comprobar' : enOtros > 0 ? `Más, ${enOtros} pendientes` : undefined}
+              aria-label={fallaEnOtros ? 'Más, un pendiente no se pudo comprobar' : enOtros > 0 ? `Más, ${pendientesEnPalabras(enOtros)}` : undefined}
               className={clasePestana(enMas || abierto)}
             >
               <span className={cn(claseIcono(enMas || abierto), 'relative')}>
@@ -128,7 +128,7 @@ export function BarraInferior({
       </nav>
 
       <Ventana abierta={abierto} alCerrar={()=>setAbierto(false)} titulo="Tus secciones" ancho="sm" cerrarAlTocarFuera>
-        <NavegacionLista permisos={permisos} esAdmin={esAdmin} rolCodigo={rolCodigo} pendientes={pendientes} alNavegar={()=>setAbierto(false)}/>
+        <NavegacionLista permisos={permisos} esAdmin={esAdmin} rolCodigo={rolCodigo} pendientes={pendientes} sinComprobar={sinComprobar} alNavegar={()=>setAbierto(false)}/>
         {children}
         <div className="border-t border-borde px-3 py-4"><InstalarApp/></div>
       </Ventana>

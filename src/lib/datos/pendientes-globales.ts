@@ -21,16 +21,7 @@ import { createClient } from '@/lib/supabase/server'
  * lectura que falle deja su ruta en `sinComprobar` y el globo sale con «!»:
  * nunca se presenta como si no hubiera nada pendiente.
  */
-export type PendienteGlobal = {
-  clave: string
-  texto: string
-  ruta: string
-  cantidad: number
-  tono: Tono
-}
-
 export type PendientesGlobales = {
-  items: PendienteGlobal[]
   /** Cuántos pendientes cuelgan de cada módulo del menú, por su ruta base. */
   porRuta: Record<string, number>
   /** Las rutas con alguna cuenta que no se pudo leer: su globo dice «!», no cero. */
@@ -55,13 +46,15 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   // Las terminadas que esperan a tesorería o el acta se cruzan en memoria: son
   // pocas y no hay vista que las junte.
   const terminadas = async () => {
-    const { data } = await supabase.from('ordenes_trabajo').select('id').eq('estado', 'TERMINADA').limit(500)
+    const { data, error } = await supabase.from('ordenes_trabajo').select('id').eq('estado', 'TERMINADA').limit(500)
+    if (error) throw new Error('No se pudieron leer las órdenes terminadas.')
     const ids = (data ?? []).map((o) => o.id)
     if (ids.length === 0) return { ids, liberadas: new Set<string>(), entregadas: new Set<string>() }
     const [lib, ent] = await Promise.all([
       supabase.from('liberaciones_tesoreria').select('orden_id').in('orden_id', ids),
       supabase.from('ot_entregas').select('orden_id').in('orden_id', ids),
     ])
+    if (lib.error || ent.error) throw new Error('No se pudieron leer las liberaciones y entregas.')
     return {
       ids,
       liberadas: new Set((lib.data ?? []).map((l) => l.orden_id)),
@@ -266,12 +259,13 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       tono: 'aviso',
       texto: (n) => plural(n, 'hoja de tu área sin reporte de hoy', 'hojas de tu área sin reporte de hoy'),
       contar: async () => {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('v_ot_avance_areas')
           .select('ultimo_reporte, orden_estado')
           .eq('area_id', area)
           .in('orden_estado', [...ESTADOS_ACTIVOS_OT])
           .limit(200)
+        if (error) throw new Error('No se pudo leer el avance por área.')
         return (data ?? []).filter((h) => !h.ultimo_reporte || h.ultimo_reporte < hoy).length
       },
     })
@@ -301,14 +295,16 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       tono: 'acento',
       texto: (n) => plural(n, 'orden sin planos que desglosar', 'órdenes sin planos que desglosar'),
       contar: async () => {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('ordenes_trabajo')
           .select('id')
           .in('estado', [...ESTADOS_ACTIVOS_OT])
           .limit(500)
+        if (error) throw new Error('No se pudieron leer las órdenes activas.')
         const ids = (data ?? []).map((o) => o.id)
         if (ids.length === 0) return 0
-        const { data: con } = await supabase.from('v_cumplimiento_ot').select('orden_id').in('orden_id', ids).gt('planos', 0)
+        const { data: con, error: errorPlanos } = await supabase.from('v_cumplimiento_ot').select('orden_id').in('orden_id', ids).gt('planos', 0)
+        if (errorPlanos) throw new Error('No se pudo leer el cumplimiento de planos.')
         const conPlanos = new Set((con ?? []).map((c) => c.orden_id))
         return ids.filter((id) => !conPlanos.has(id)).length
       },
@@ -805,25 +801,21 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
 
   const cuentas = await Promise.all(suyas.map((t) => t.contar().catch(() => null)))
 
-  const items: PendienteGlobal[] = []
   const porRuta: Record<string, number> = {}
   const sinComprobar = new Set<string>()
   suyas.forEach((t, i) => {
     const cuenta = cuentas[i]
     if (cuenta === null) {
-      items.push({ clave: `${t.clave}_error`, texto: 'No se pudo comprobar un pendiente. Abre el módulo o vuelve a cargar.', ruta: t.ruta, cantidad: 0, tono: 'aviso' })
       sinComprobar.add(t.ruta.split('?')[0])
       return
     }
     const n = typeof cuenta === 'number' ? cuenta : cuenta.cantidad
     if (n <= 0) return
-    const ruta = (typeof cuenta === 'number' ? undefined : cuenta.ruta) ?? t.ruta
-    items.push({ clave: t.clave, texto: t.texto(n), ruta, cantidad: n, tono: t.tono })
     const base = t.ruta.split('?')[0]
     porRuta[base] = (porRuta[base] ?? 0) + n
   })
 
-  return { items, porRuta, sinComprobar: [...sinComprobar] }
+  return { porRuta, sinComprobar: [...sinComprobar] }
 }
 
 /** El día 1 del mes anterior a `dia` (YYYY-MM-DD), que es como la base guarda el periodo de una planilla. */

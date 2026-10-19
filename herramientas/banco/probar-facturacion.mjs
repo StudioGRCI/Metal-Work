@@ -103,7 +103,7 @@ const ruta = (pagina) => new URL(pagina.url()).pathname
   console.log('     menú de Contabilidad:', items.join(' · '))
   comprobar(items.indexOf('Facturación') === 1, 'el menú de Contabilidad trae Facturación primero')
   comprobar(items.includes('Kardex') && items.includes('Cotización') && !items.includes('Órdenes de trabajo'), 'con el Kardex y la Cotización en Consultas, y sin la OT')
-  comprobar((await globo(pagina, '/contabilidad/facturacion')).includes('1 pendientes'), 'el menú de Contabilidad cuenta la cotización por facturar')
+  comprobar(/, 1 pendiente$/.test(await globo(pagina, '/contabilidad/facturacion')), 'el menú de Contabilidad cuenta la cotización por facturar')
 
   await pagina.goto(`${BASE}/contabilidad/facturacion`, { waitUntil: 'networkidle' })
   const tarjeta = pagina.locator('li[data-cotizacion="3901-2026"]')
@@ -170,7 +170,7 @@ const ruta = (pagina) => new URL(pagina.url()).pathname
   comprobar(orden.every((t, i) => items.indexOf(t) === i + 1), 'el menú de Tesorería va Adquisiciones, por cobrar, por pagar, pagos de servicio')
   comprobar(items.includes('Cotización') && !items.includes('Órdenes de trabajo'), 'con la Cotización en Consultas, y sin la OT')
   comprobar(
-    (await globo(pagina, '/tesoreria/por-cobrar')).includes('1 pendientes') && (await globo(pagina, '/tesoreria/pagos-de-servicio')).includes('1 pendientes'),
+    /, 1 pendiente$/.test(await globo(pagina, '/tesoreria/por-cobrar')) && /, 1 pendiente$/.test(await globo(pagina, '/tesoreria/pagos-de-servicio')),
     'el menú de Tesorería cuenta la factura por cobrar y el servicio por pagar',
   )
 

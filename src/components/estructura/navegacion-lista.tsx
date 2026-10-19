@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-import { menuDe, rutaActiva } from '@/lib/navegacion'
+import { menuDe, rutaActiva, pendientesEnPalabras } from '@/lib/navegacion'
 import { cn } from '@/lib/utils'
 import { useContextoOrden } from './contexto-orden'
 
@@ -84,7 +84,7 @@ export function NavegacionLista({
                     href={item.ruta}
                     onClick={alNavegar}
                     aria-current={activo ? 'page' : undefined}
-                    aria-label={falla ? `${item.titulo}, un pendiente no se pudo comprobar` : n > 0 ? `${item.titulo}, ${n} pendientes` : undefined}
+                    aria-label={falla ? `${item.titulo}, un pendiente no se pudo comprobar` : n > 0 ? `${item.titulo}, ${pendientesEnPalabras(n)}` : undefined}
                     className={cn(
                       'flex min-h-11 items-center gap-3 rounded-xl border px-3 py-2.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento',
                       activo
