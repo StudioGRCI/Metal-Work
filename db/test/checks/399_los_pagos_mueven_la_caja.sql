@@ -393,6 +393,8 @@ begin
   perform test.debe_fallar(format('select public.registrar_pago_factura(gen_random_uuid(), %L, %L, 10, ''OP-398-S'', %L, %L, null)',
       current_setting('prueba.adq1'), current_setting('prueba.hoy'), v_ruta, current_setting('prueba.cpen')),
     'sin tesoreria.caja no se paga desde una cuenta', 'tesoreria.caja');
+  perform test.debe_fallar(format('select public.anular_pago_servicio(%L, ''El proveedor devolvió el pago'')', current_setting('prueba.pago9')),
+    'ni se anula un pago que movió la caja', 'tesoreria.caja');
   reset role;
 end $$;
 

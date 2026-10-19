@@ -129,6 +129,8 @@ begin
      where m.origen = p_origen and m.origen_id = p_origen_id and m.anulado_en is null
      order by m.caja_id
   loop
+    -- El mismo permiso que pide moverla: quien no lleva la caja no la toca, ni al anular.
+    perform public.exigir_permiso('tesoreria.caja');
     select * into v_caja from public.cajas where id = v_mov.caja_id for update;
     if not v_caja.activa then
       raise exception 'Este % está en la cuenta %, que está desactivada: actívala para anularlo.', p_que, v_caja.nombre
