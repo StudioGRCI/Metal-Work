@@ -36,7 +36,7 @@ export function ListaAvisos({ avisos, sinLeer }: { avisos: Notificacion[]; sinLe
 
       {avisos.length === 0 ? (
         <p className="px-4 py-10 text-center text-sm text-texto-suave">
-          No hay avisos. Acá llega lo que te toca mover.
+          No hay avisos. Acá llega lo que pasa en tu área.
         </p>
       ) : (
         <ul className="divide-y divide-borde">
