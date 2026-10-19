@@ -3,7 +3,9 @@ import { FileText, Wrench } from 'lucide-react'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { cuentasParaPagar } from '@/lib/datos/caja'
 import { serviciosPorPagar, type ServicioPorPagar } from '@/lib/datos/facturacion'
+import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { resumenDetraccion } from '@/lib/dominio/detraccion'
 import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
 import { fecha, hoyLima, moneda } from '@/lib/format'
@@ -24,7 +26,11 @@ export const metadata = { title: 'Pagos de servicio' }
 export default async function PaginaPagosDeServicio() {
   const perfil = await exigirPermiso(['tesoreria.pagar_servicios', 'tesoreria.ver_documentos'])
   const paga = puede(perfil, 'tesoreria.pagar_servicios')
-  const servicios = await serviciosPorPagar(puede(perfil, 'proveedores.ver_cuentas'))
+  const [servicios, cuentasCaja] = await Promise.all([
+    serviciosPorPagar(puede(perfil, 'proveedores.ver_cuentas')),
+    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261017220000).
+    paga ? cuentasParaPagar() : Promise.resolve([]),
+  ])
   const hoy = hoyLima()
   const porPagar = servicios
     .filter((s) => !s.cancelada)
@@ -52,7 +58,7 @@ export default async function PaginaPagosDeServicio() {
               </p>
             </div>
           ) : (
-            porPagar.map((s) => <Servicio key={s.id} servicio={s} paga={paga} hoy={hoy} />)
+            porPagar.map((s) => <Servicio key={s.id} servicio={s} paga={paga} hoy={hoy} cuentasCaja={cuentasCaja} />)
           )}
         </TarjetaCuerpo>
       </Tarjeta>
@@ -62,7 +68,7 @@ export default async function PaginaPagosDeServicio() {
           <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm font-medium text-texto">Pagados ({pagados.length})</summary>
           <div className="space-y-3 border-t border-borde p-4">
             {pagados.map((s) => (
-              <Servicio key={s.id} servicio={s} paga={paga} hoy={hoy} />
+              <Servicio key={s.id} servicio={s} paga={paga} hoy={hoy} cuentasCaja={cuentasCaja} />
             ))}
           </div>
         </details>
@@ -71,7 +77,17 @@ export default async function PaginaPagosDeServicio() {
   )
 }
 
-function Servicio({ servicio: s, paga, hoy }: { servicio: ServicioPorPagar; paga: boolean; hoy: string }) {
+function Servicio({
+  servicio: s,
+  paga,
+  hoy,
+  cuentasCaja,
+}: {
+  servicio: ServicioPorPagar
+  paga: boolean
+  hoy: string
+  cuentasCaja: CuentaParaPagar[]
+}) {
   const m = codigoMoneda(s.moneda)
   const saldo = Math.max(Number(s.monto ?? 0) - Number(s.pagado ?? 0), 0)
   const estado = ESTADO_SERVICIO[s.estado ?? ''] ?? { etiqueta: s.estado ?? '—', tono: 'neutro' as const }
@@ -153,6 +169,7 @@ function Servicio({ servicio: s, paga, hoy }: { servicio: ServicioPorPagar; paga
             hoy={hoy}
             saldo={saldo}
             codigoMoneda={m}
+            cuentas={cuentasCaja}
           />
         </div>
       )}

@@ -9,7 +9,7 @@ import type { CodigoMoneda } from '@/lib/format'
 
 export const TIPO_CUENTA: Record<string, string> = { BANCO: 'Banco', EFECTIVO: 'Efectivo' }
 
-/** De dónde viene cada movimiento. Los del sistema llegarán cuando se conecten sus pagos. */
+/** De dónde viene cada movimiento. Los del sistema los deja su pago o su cobro (migración 20261017220000). */
 export const ORIGEN_MOVIMIENTO: Record<string, string> = {
   MANUAL: 'Registrado en la caja',
   TRANSFERENCIA: 'Transferencia',
@@ -18,6 +18,31 @@ export const ORIGEN_MOVIMIENTO: Record<string, string> = {
   PAGO_RECIBO_HONORARIOS: 'Pago de recibo por honorarios',
   PAGO_PLANILLA_DIARIA: 'Pago de planilla diaria',
   COBRO_FACTURA_VENTA: 'Cobro de factura de venta',
+}
+
+/**
+ * Dónde se anula el movimiento que dejó un pago o un cobro: en la caja no se
+ * anula suelto, se anula su pago (y el pago anulado lo saca de la caja).
+ */
+export const PANTALLA_DEL_ORIGEN: Record<string, { ruta: string; nombre: string }> = {
+  PAGO_ADQUISICION: { ruta: '/tesoreria/por-pagar', nombre: 'Cuentas por pagar' },
+  PAGO_ORDEN_SERVICIO: { ruta: '/tesoreria/pagos-de-servicio', nombre: 'Pagos de servicio' },
+  PAGO_RECIBO_HONORARIOS: { ruta: '/tesoreria/recibos-por-honorarios', nombre: 'Recibos por honorarios' },
+  PAGO_PLANILLA_DIARIA: { ruta: '/planilla-diaria', nombre: 'Planilla diaria' },
+  COBRO_FACTURA_VENTA: { ruta: '/tesoreria/por-cobrar', nombre: 'Cuentas por cobrar' },
+}
+
+/** Una cuenta activa de la caja, para elegir de cuál salió un pago o a cuál entró un cobro. */
+export type CuentaParaPagar = {
+  id: string
+  nombre: string
+  tipo: string
+  banco: string | null
+  moneda: CodigoMoneda
+  /** El día de su saldo inicial: un pago de antes ya está en ese saldo y no la mueve. */
+  fecha_inicio: string
+  /** El último día cerrado: un pago de ese día o de antes ya no entra. */
+  cerrada_hasta: string | null
 }
 
 /** Lo que se repite cada día en el estado de cuenta, para escribirlo igual siempre. */

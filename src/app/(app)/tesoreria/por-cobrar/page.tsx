@@ -4,6 +4,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { FacturaDeVenta } from '@/components/finanzas/factura-de-venta'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { cuentasParaPagar } from '@/lib/datos/caja'
 import { solicitudesPendientesTesoreria } from '@/lib/datos/costos-ot'
 import { cotizacionesAprobadas, facturasDeVenta } from '@/lib/datos/facturacion'
 import { revisionesDeSalidaPendientes } from '@/lib/datos/vehiculos'
@@ -30,11 +31,13 @@ export default async function PaginaPorCobrar() {
   const perfil = await exigirPermiso('tesoreria.ver_documentos')
   const cobra = puede(perfil, 'tesoreria.registrar_cobros')
   const responde = puede(perfil, 'tesoreria.liberar')
-  const [facturas, cotizaciones, solicitudes, salidas] = await Promise.all([
+  const [facturas, cotizaciones, solicitudes, salidas, cuentasCaja] = await Promise.all([
     facturasDeVenta(),
     cotizacionesAprobadas(),
     responde ? solicitudesPendientesTesoreria() : Promise.resolve([]),
     responde ? revisionesDeSalidaPendientes() : Promise.resolve([]),
+    // La cuenta a la que entra cada cobro: la caja diaria se mueve sola (20261017220000).
+    cobra ? cuentasParaPagar() : Promise.resolve([]),
   ])
   const hoy = hoyLima()
   const pendientes = facturas.filter((f) => !f.cancelada && Number(f.saldo) > 0)
@@ -90,6 +93,7 @@ export default async function PaginaPorCobrar() {
                       hoy={hoy}
                       saldo={Number(f.saldo)}
                       codigoMoneda={codigo(f.moneda)}
+                      cuentas={cuentasCaja}
                     />
                   ) : null
                 }

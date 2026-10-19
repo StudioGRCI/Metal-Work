@@ -46,6 +46,7 @@ begin
   perform set_config('prueba.voucher1', current_setting('prueba.sc') || '/' || gen_random_uuid() || '.jpg', true);
   perform set_config('prueba.voucher2', current_setting('prueba.sc') || '/' || gen_random_uuid() || '.pdf', true);
 end $$;
+select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261017220000 todo pago pide su cuenta
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
 begin
@@ -229,7 +230,7 @@ declare v uuid; p public.pagos_recibo_honorarios;
 begin
   perform pg_temp.como('administracion');
   set local role authenticated;
-  perform test.debe_fallar(format('select public.registrar_pago_recibo_honorarios(%L, %L, current_date, null, %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_recibo_honorarios(%L, %L, current_date, null, %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.pago1'), current_setting('prueba.rec1'), current_setting('prueba.arch1')),
     'Administración no paga', 'subcontratos.pagar');
   reset role;
@@ -237,16 +238,16 @@ begin
   perform pg_temp.como('tesoreria');
   set local role authenticated;
   perform pg_temp.subir(current_setting('prueba.voucher1'), 'image/jpeg');
-  perform test.debe_fallar(format('select public.registrar_pago_recibo_honorarios(%L, %L, current_date - 10, null, %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_recibo_honorarios(%L, %L, current_date - 10, null, %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.pago1'), current_setting('prueba.rec1'), current_setting('prueba.voucher1')),
     'no se paga antes de la fecha del recibo', 'desde la fecha del recibo');
   v := public.registrar_pago_recibo_honorarios(current_setting('prueba.pago1')::uuid, current_setting('prueba.rec1')::uuid,
-         (now() at time zone 'America/Lima')::date, ' 00123456 ', current_setting('prueba.voucher1'));
+         (now() at time zone 'America/Lima')::date, ' 00123456 ', current_setting('prueba.voucher1'), current_setting('prueba.caja')::uuid, null);
   select * into p from public.pagos_recibo_honorarios where id = v;
   perform test.afirmar(p.monto = 1840 and p.operacion = '00123456' and p.voucher_mime = 'image/jpeg',
     'paga el neto, 1,840, con su voucher y su operación');
   perform pg_temp.subir(current_setting('prueba.voucher2'), 'application/pdf');
-  perform test.debe_fallar(format('select public.registrar_pago_recibo_honorarios(%L, %L, current_date, null, %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_recibo_honorarios(%L, %L, current_date, null, %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.pago2'), current_setting('prueba.rec1'), current_setting('prueba.voucher2')),
     'un recibo pagado no se paga dos veces', 'ya está pagado');
   reset role;
@@ -271,7 +272,7 @@ begin
   perform test.debe_fallar(format('select public.anular_pago_recibo_honorarios(%L, ''corto'')', v), 'anular pide motivo', 'por qué se anula');
   v := public.anular_pago_recibo_honorarios(current_setting('prueba.pago1')::uuid, 'El voucher era de otra transferencia');
   v := public.registrar_pago_recibo_honorarios(current_setting('prueba.pago2')::uuid, current_setting('prueba.rec1')::uuid,
-         (now() at time zone 'America/Lima')::date, null, current_setting('prueba.voucher2'));
+         (now() at time zone 'America/Lima')::date, null, current_setting('prueba.voucher2'), current_setting('prueba.caja')::uuid, null);
   perform test.afirmar((select count(*) from public.pagos_recibo_honorarios where recibo_id = current_setting('prueba.rec1')::uuid) = 2
     and (select count(*) from public.pagos_recibo_honorarios where recibo_id = current_setting('prueba.rec1')::uuid and anulado_en is null) = 1,
     'quedan los dos pagos: el anulado, como evidencia, y el vigente');

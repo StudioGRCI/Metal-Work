@@ -6,8 +6,10 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { AvisosDelDetector, avisosDeFacturaRegistrada, InsigniaDelDetector } from '@/app/(app)/adquisiciones/detector'
 import { cuentasPorPagar, type CuentaPorPagar } from '@/lib/datos/adquisiciones'
+import { cuentasParaPagar } from '@/lib/datos/caja'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { TIPO_COMPROBANTE, TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
+import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl } from '@/lib/dominio/finanzas'
 import { fecha, hoyLima, moneda, periodo } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -30,10 +32,12 @@ export default async function PaginaPorPagar() {
   const perfil = await exigirPermiso('tesoreria.ver_documentos')
   const paga = puede(perfil, 'tesoreria.registrar_pagos')
   const db = await createClient()
-  const [cuentas, pendientes, planillas] = await Promise.all([
+  const [cuentas, pendientes, planillas, cuentasCaja] = await Promise.all([
     cuentasPorPagar(),
     db.from('v_compras_credito_sin_comprobante').select('orden_compra_id,numero,numero_ot,proveedor,referencia,fecha_compra,fecha_vencimiento,moneda,total_estimado').order('fecha_vencimiento').limit(100),
     db.rpc('resumen_planilla_por_ot'),
+    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261017220000).
+    paga ? cuentasParaPagar() : Promise.resolve([]),
   ])
   for (const r of [pendientes, planillas]) if (r.error) throw new Error(`No se pudieron cargar las cuentas por pagar: ${r.error.message}`)
   const hoy = hoyLima()
@@ -61,7 +65,7 @@ export default async function PaginaPorPagar() {
               <p className="mt-1 max-w-lg text-sm text-texto-suave">Aparecen cuando Contabilidad registra una factura de compra en Adquisiciones.</p>
             </div>
           ) : (
-            porPagar.map((c) => <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} />)
+            porPagar.map((c) => <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} cuentasCaja={cuentasCaja} />)
           )}
         </TarjetaCuerpo>
       </Tarjeta>
@@ -99,7 +103,7 @@ export default async function PaginaPorPagar() {
           <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm font-medium text-texto">Pagadas ({pagadas.length})</summary>
           <div className="space-y-3 border-t border-borde p-4">
             {pagadas.map((c) => (
-              <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} />
+              <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} cuentasCaja={cuentasCaja} />
             ))}
           </div>
         </details>
@@ -135,11 +139,13 @@ function Factura({
   paga,
   hoy,
   correcciones,
+  cuentasCaja,
 }: {
   cuenta: CuentaPorPagar
   paga: boolean
   hoy: string
   correcciones: CorreccionVista[] | undefined
+  cuentasCaja: CuentaParaPagar[]
 }) {
   const m = codigoMoneda(c.moneda)
   const saldo = Number(c.saldo)
@@ -231,6 +237,7 @@ function Factura({
             hoy={hoy}
             saldo={saldo}
             codigoMoneda={m}
+            cuentas={cuentasCaja}
           />
         </div>
       )}

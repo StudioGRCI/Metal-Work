@@ -4,7 +4,9 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta } from '@/components/ui/tarjeta'
+import { cuentasParaPagar } from '@/lib/datos/caja'
 import { recibosParaTesoreria, type ReciboParaPagar } from '@/lib/datos/subcontratos'
+import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { fecha, fechaHora, hoyLima, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -24,7 +26,11 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
   const params = await searchParams
   const ver = params.ver === 'pagados' ? 'pagados' : 'por-pagar'
 
-  const recibos = await recibosParaTesoreria()
+  const [recibos, cuentasCaja] = await Promise.all([
+    recibosParaTesoreria(),
+    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261017220000).
+    paga ? cuentasParaPagar() : Promise.resolve([]),
+  ])
   const pagoDe = (r: ReciboParaPagar) => r.pagos.find((p) => !p.anulado_en) ?? null
   const porPagar = recibos.filter((r) => !pagoDe(r))
   // Los pagados, del pago más reciente al más viejo.
@@ -84,7 +90,7 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
         ) : (
           <ul className="divide-y divide-borde">
             {lista.map((r) => (
-              <Fila key={r.id} r={r} paga={paga} hoy={hoy} />
+              <Fila key={r.id} r={r} paga={paga} hoy={hoy} cuentasCaja={cuentasCaja} />
             ))}
           </ul>
         )}
@@ -93,7 +99,7 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
   )
 }
 
-function Fila({ r, paga, hoy }: { r: ReciboParaPagar; paga: boolean; hoy: string }) {
+function Fila({ r, paga, hoy, cuentasCaja }: { r: ReciboParaPagar; paga: boolean; hoy: string; cuentasCaja: CuentaParaPagar[] }) {
   const pago = r.pagos.find((p) => !p.anulado_en) ?? null
   const sub = r.subcontratista
   const sc = r.subcontrato
@@ -159,6 +165,7 @@ function Fila({ r, paga, hoy }: { r: ReciboParaPagar; paga: boolean; hoy: string
         {paga && !pago && (
           <PagarRecibo
             hoy={hoy}
+            cuentas={cuentasCaja}
             recibo={{
               id: r.id,
               numero: r.numero,

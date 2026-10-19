@@ -32,6 +32,8 @@ import { join } from 'node:path'
 import pg from 'pg'
 import { chromium } from 'playwright-core'
 
+import { crearCajaDePrueba, elegirCuenta } from './caja-de-prueba.mjs'
+
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -160,6 +162,9 @@ const ruta = (pagina) => new URL(pagina.url()).pathname
 
 // -------------------------------------------------------------- 2. Tesorería
 {
+  // Cada pago y cada cobro pide su cuenta de la caja (migración 20261017220000): la factura es en dólares.
+  const cajaSoles = await crearCajaDePrueba(consulta, 'tesoreria@banco.test')
+  const cajaDolares = await crearCajaDePrueba(consulta, 'tesoreria@banco.test', 'USD')
   const { pagina, contexto } = await entrar('tesoreria@banco.test')
   const items = await menu(pagina)
   console.log('     menú de Tesorería:', items.join(' · '))
@@ -184,6 +189,7 @@ const ruta = (pagina) => new URL(pagina.url()).pathname
   await v.locator('input[name="monto"]').fill('10000')
   await v.locator('input[name="operacion"]').fill('OP-000123')
   await v.locator('input[name="archivo"]').setInputFiles(join(ARCHIVOS, 'voucher.pdf'))
+  await elegirCuenta(v, cajaDolares)
   await v.getByRole('button', { name: 'Registrar el cobro' }).click()
   const e1 = await esperarVentana(pagina)
   comprobar(e1 === '', `el cobro a cuenta entra con su voucher${e1 ? ` (dijo: ${e1})` : ''}`)
@@ -209,6 +215,7 @@ const ruta = (pagina) => new URL(pagina.url()).pathname
   await v.locator('select[name="cancela"]').selectOption('no')
   await v.locator('input[name="operacion"]').fill('OP-777')
   await v.locator('input[name="archivo"]').setInputFiles(join(ARCHIVOS, 'voucher.pdf'))
+  await elegirCuenta(v, cajaSoles)
   await v.getByRole('button', { name: 'Registrar el pago' }).click()
   const e2 = await esperarVentana(pagina)
   comprobar(e2 === '', `el pago a cuenta de la OS entra${e2 ? ` (dijo: ${e2})` : ''}`)

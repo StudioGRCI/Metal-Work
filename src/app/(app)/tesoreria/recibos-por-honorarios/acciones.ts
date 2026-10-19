@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { cajaTrasAnular, cajaTrasElPago, camposDeLaCuenta, leerCuenta, montoDeLaCuenta } from '@/lib/caja-del-pago'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -24,11 +25,13 @@ function repintar(subcontratoId: string) {
   revalidatePath('/tesoreria/recibos-por-honorarios')
   revalidatePath('/subcontratos')
   revalidatePath(`/subcontratos/${subcontratoId}`)
+  revalidatePath('/tesoreria/caja-diaria')
 }
 
 /**
- * Registrar el pago del neto de un recibo con su voucher, ya subido a Storage:
- * a Administración le llega el aviso. Mismo permiso que
+ * Registrar el pago del neto de un recibo con su voucher, ya subido a Storage,
+ * desde la cuenta de la caja que eligió: la base deja ahí su egreso (migración
+ * 20261017220000) y a Administración le llega el aviso. Mismo permiso que
  * `registrar_pago_recibo_honorarios`. El id llega de la pantalla: un reintento
  * no registra otro.
  */
@@ -43,6 +46,7 @@ export async function registrarPagoRecibo(_previo: unknown, formulario: FormData
       fecha_pago: z.iso.date('Elige el día del pago.'),
       operacion: z.string().max(60, 'El número de operación pasa de 60 caracteres.'),
       ruta: z.string().min(1, 'Adjunta el voucher.').max(200),
+      ...camposDeLaCuenta('pago'),
     })
     .safeParse({
       id: dato(formulario, 'id'),
@@ -51,6 +55,7 @@ export async function registrarPagoRecibo(_previo: unknown, formulario: FormData
       fecha_pago: dato(formulario, 'fecha_pago'),
       operacion: dato(formulario, 'operacion'),
       ruta: dato(formulario, 'ruta'),
+      ...leerCuenta(formulario),
     })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el pago.' }
   const d = analisis.data
@@ -62,12 +67,15 @@ export async function registrarPagoRecibo(_previo: unknown, formulario: FormData
     p_fecha_pago: d.fecha_pago,
     p_operacion: d.operacion || null,
     p_ruta: d.ruta,
+    p_caja: d.caja_id,
+    p_monto_cuenta: montoDeLaCuenta(d.monto_cuenta),
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El pago no quedó registrado. Recarga la pantalla.' }
 
+  const caja = await cajaTrasElPago(supabase, 'PAGO_RECIBO_HONORARIOS', d.id, d.caja_id, d.fecha_pago, 'pago')
   repintar(d.subcontrato_id)
-  return { ok: true, mensaje: 'Pago registrado con su voucher: Administración recibe el aviso.' }
+  return { ok: true, mensaje: `Pago registrado con su voucher: Administración recibe el aviso. ${caja}`.trim() }
 }
 
 /** Anular un pago mal registrado: el recibo vuelve a quedar por pagar. Mismo permiso que `anular_pago_recibo_honorarios`. */
@@ -88,6 +96,7 @@ export async function anularPagoRecibo(_previo: unknown, formulario: FormData): 
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== analisis.data.id) return { ok: false, error: 'El pago no se anuló. Recarga la pantalla.' }
 
+  const caja = await cajaTrasAnular(supabase, 'PAGO_RECIBO_HONORARIOS', analisis.data.id, 'pago')
   repintar(analisis.data.subcontrato_id)
-  return { ok: true, mensaje: 'Pago anulado: el recibo vuelve a quedar por pagar.' }
+  return { ok: true, mensaje: `Pago anulado: el recibo vuelve a quedar por pagar. ${caja}`.trim() }
 }

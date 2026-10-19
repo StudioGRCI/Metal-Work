@@ -30,6 +30,7 @@ begin
   end loop;
   perform set_config('prueba.codigo', 'CHK362_SR_O4_1_26/28', true);
 end $$;
+select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261017220000 todo pago pide su cuenta
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
 begin
@@ -73,10 +74,10 @@ begin
   perform pg_temp.como('tesoreria');
   set local role authenticated;
   perform public.registrar_pago_recibo_honorarios(pg_temp.id('pago1'), pg_temp.id('rec1'), v_hoy, '00123456',
-                                                  pg_temp.subir('sc', 'application/pdf'));
+                                                  pg_temp.subir('sc', 'application/pdf'), current_setting('prueba.caja')::uuid, null);
   -- El segundo se paga y el pago se anula: vuelve a esperar.
   perform public.registrar_pago_recibo_honorarios(pg_temp.id('pago2'), pg_temp.id('rec2'), v_hoy, null,
-                                                  pg_temp.subir('sc', 'application/pdf'));
+                                                  pg_temp.subir('sc', 'application/pdf'), current_setting('prueba.caja')::uuid, null);
   perform public.anular_pago_recibo_honorarios(pg_temp.id('pago2'), 'Se pagó a otra cuenta por error');
   reset role;
 end $$;

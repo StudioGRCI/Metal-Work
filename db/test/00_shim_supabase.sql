@@ -166,6 +166,26 @@ begin
 end;
 $$;
 
+-- Una cuenta de la caja diaria para los checks que pagan o cobran: desde la
+-- migración 20261017220000 todo pago y todo cobro piden la cuenta de la que
+-- sale o a la que entra. Empieza hace 30 días, sin saldo; la crea el último
+-- usuario de Tesorería (el del check).
+create or replace function test.crear_caja(p_moneda text default 'PEN', p_inicio date default null)
+returns uuid language plpgsql as $$
+declare v_id uuid := gen_random_uuid();
+begin
+  insert into public.cajas (id, nombre, tipo, banco, moneda, saldo_inicial, fecha_inicio, creado_por)
+  select v_id, 'Cuenta de prueba ' || left(v_id::text, 8), 'BANCO', 'BANCO DE PRUEBA', p_moneda, 0,
+         coalesce(p_inicio, (now() at time zone 'America/Lima')::date - 30), u.id
+    from public.usuarios u join public.roles r on r.id = u.rol_id
+   where r.codigo = 'TESORERIA'
+   order by u.creado_en desc
+   limit 1;
+  if not found then raise exception 'test.crear_caja: crea antes el usuario de Tesorería del check'; end if;
+  return v_id;
+end;
+$$;
+
 -- Las pruebas de RLS se ejecutan con "set role authenticated", así que ese rol
 -- necesita poder llamar a los ayudantes de prueba.
 grant usage on schema test to authenticated;

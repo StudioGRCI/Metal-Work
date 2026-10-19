@@ -32,6 +32,8 @@ import { join } from 'node:path'
 import pg from 'pg'
 import { chromium } from 'playwright-core'
 
+import { crearCajaDePrueba, elegirCuenta } from './caja-de-prueba.mjs'
+
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -138,6 +140,8 @@ mkdirSync(archivos, { recursive: true })
 
 const inicio = new Date()
 const sello = Date.now().toString().slice(-5)
+// El pago pide la cuenta de la caja de la que salió (migración 20261017220000).
+const caja = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
 const codigo = `PRB_SR_O4_1_26/${sello.slice(-2)}`
 const asuntoA = `Tolva de volquete ${sello}`
 const asuntoB = `Pintura del chasis ${sello}`
@@ -435,6 +439,7 @@ let numeroPlanilla = null
 
   await pagina.locator('[data-registrar-pago]').click()
   const v = pagina.locator('[role="dialog"]')
+  await elegirCuenta(v, caja)
   await v.locator('input[name="operacion"]').fill(`OP-${sello}`)
   await v.locator('input[name="archivo"]').setInputFiles(join(archivos, 'comprobante.pdf'))
   await pagina.screenshot({ path: join(CAPTURAS, 'pd-12-tesoreria-pago.png') })
@@ -507,7 +512,8 @@ let numeroPlanilla = null
 // ------------------------------------ 9. Gerencia consulta; los demás no entran
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.gerencia)
-  comprobar((await pagina.locator('nav a[href="/planilla-diaria"]').count()) >= 1, 'el menú de Gerencia trae «Planilla diaria» en Consultas')
+  // Desde el menú de Gerencia del 15/10 (decisión 17) la planilla no está en su menú: la abre por su dirección.
+  comprobar((await pagina.locator('nav a[href="/planilla-diaria"]').count()) === 0, 'el menú de Gerencia ya no trae «Planilla diaria»: la abre por su dirección')
   await pagina.goto(`${BASE}/planilla-diaria/${idPlanilla}`, { waitUntil: 'networkidle' })
   const texto = limpio(await pagina.locator('main').textContent())
   comprobar(texto.includes(elena) && texto.includes('S/ 105.00'), 'Gerencia ve la planilla con lo que se pagó')

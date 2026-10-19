@@ -62,6 +62,7 @@ select set_config('prueba.oficina', :'oficina_id', true);
 select set_config('prueba.gerente', :'gerente_id', true);
 select set_config('prueba.conta', :'conta_id', true);
 select set_config('prueba.teso', :'teso_id', true);
+select set_config('prueba.caja', test.crear_caja('USD')::text, true);  -- desde la 20261017220000 todo cobro pide su cuenta; las facturas son en dólares
 select set_config('prueba.compras', :'compras_id', true);
 select set_config('prueba.req', :'req_id', true);
 select set_config('prueba.general', :'general_id', true);
@@ -183,19 +184,19 @@ begin
     ('cobros-venta', current_setting('prueba.c1_ruta'), current_setting('prueba.teso'), '{"mimetype": "image/jpeg", "size": 900}'),
     ('cobros-venta', current_setting('prueba.c2_ruta'), current_setting('prueba.teso'), '{"mimetype": "application/pdf", "size": 900}'),
     ('cobros-venta', current_setting('prueba.c3_ruta'), current_setting('prueba.teso'), '{"mimetype": "application/pdf", "size": 900}');
-  perform test.debe_fallar(format('select public.registrar_cobro_factura(%L, %L, current_setting(''prueba.hoy'')::date, 29500.01, false, null, %L)',
+  perform test.debe_fallar(format('select public.registrar_cobro_factura(%L, %L, current_setting(''prueba.hoy'')::date, 29500.01, false, null, %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.c1'), current_setting('prueba.f1'), current_setting('prueba.c1_ruta')),
     'no se cobra más que la factura', 'pasaría de su total');
-  perform test.debe_fallar(format('select public.registrar_cobro_factura(%L, %L, current_setting(''prueba.hoy'')::date + 1, 100, false, null, %L)',
+  perform test.debe_fallar(format('select public.registrar_cobro_factura(%L, %L, current_setting(''prueba.hoy'')::date + 1, 100, false, null, %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.c1'), current_setting('prueba.f1'), current_setting('prueba.c1_ruta')),
     'el cobro no es de mañana', 'de hoy hacia atrás');
-  perform test.debe_fallar(format('select public.registrar_cobro_factura(%L, %L, current_setting(''prueba.hoy'')::date, 100, false, null, %L)',
+  perform test.debe_fallar(format('select public.registrar_cobro_factura(%L, %L, current_setting(''prueba.hoy'')::date, 100, false, null, %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.c1'), current_setting('prueba.f1'), gen_random_uuid() || '/' || gen_random_uuid() || '.jpg'),
     'el voucher va en la carpeta de su factura', 'Vuelve a adjuntar');
   perform public.registrar_cobro_factura(current_setting('prueba.c1')::uuid, current_setting('prueba.f1')::uuid,
-    current_setting('prueba.hoy')::date, 10000, false, 'OP-357-1', current_setting('prueba.c1_ruta'));
+    current_setting('prueba.hoy')::date, 10000, false, 'OP-357-1', current_setting('prueba.c1_ruta'), current_setting('prueba.caja')::uuid, null);
   perform test.afirmar(public.registrar_cobro_factura(current_setting('prueba.c1')::uuid, current_setting('prueba.f1')::uuid,
-    current_setting('prueba.hoy')::date, 10000, false, 'OP-357-1', current_setting('prueba.c1_ruta')) = current_setting('prueba.c1')::uuid,
+    current_setting('prueba.hoy')::date, 10000, false, 'OP-357-1', current_setting('prueba.c1_ruta'), current_setting('prueba.caja')::uuid, null) = current_setting('prueba.c1')::uuid,
     'un reintento no registra otro cobro');
   select * into r from public.v_facturas_venta where id = current_setting('prueba.f1')::uuid;
   perform test.afirmar(r.cobrado = 10000 and r.saldo = 19500 and not r.cancelada, 'un cobro a cuenta baja el saldo');
@@ -217,10 +218,10 @@ begin
   set local role authenticated;
   -- La detracción: lo cobrado no llega al total y Tesorería la da por cancelada.
   perform public.registrar_cobro_factura(current_setting('prueba.c2')::uuid, current_setting('prueba.f1')::uuid,
-    current_setting('prueba.hoy')::date, 16550, true, 'OP-357-2', current_setting('prueba.c2_ruta'));
+    current_setting('prueba.hoy')::date, 16550, true, 'OP-357-2', current_setting('prueba.c2_ruta'), current_setting('prueba.caja')::uuid, null);
   select * into r from public.v_facturas_venta where id = current_setting('prueba.f1')::uuid;
   perform test.afirmar(r.cobrado = 26550 and r.saldo = 0 and r.cancelada, 'el cobro que la cancela la deja cobrada');
-  perform test.debe_fallar(format('select public.registrar_cobro_factura(%L, %L, current_setting(''prueba.hoy'')::date, 10, false, null, %L)',
+  perform test.debe_fallar(format('select public.registrar_cobro_factura(%L, %L, current_setting(''prueba.hoy'')::date, 10, false, null, %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.c3'), current_setting('prueba.f1'), current_setting('prueba.c3_ruta')),
     'la factura cobrada no se cobra otra vez', 'ya está cobrada');
   perform test.debe_fallar(format('select public.anular_cobro_factura(%L, ''corto'')', current_setting('prueba.c2')),
@@ -230,7 +231,7 @@ begin
   perform test.afirmar(r.cobrado = 10000 and r.saldo = 19500 and not r.cancelada, 'anulado el cobro, la factura vuelve a quedar por cobrar');
   -- Llegar al total la cancela sola.
   perform public.registrar_cobro_factura(current_setting('prueba.c3')::uuid, current_setting('prueba.f1')::uuid,
-    current_setting('prueba.hoy')::date, 19500, false, 'OP-357-3', current_setting('prueba.c3_ruta'));
+    current_setting('prueba.hoy')::date, 19500, false, 'OP-357-3', current_setting('prueba.c3_ruta'), current_setting('prueba.caja')::uuid, null);
   select * into r from public.v_facturas_venta where id = current_setting('prueba.f1')::uuid;
   perform test.afirmar(r.cobrado = 29500 and r.saldo = 0 and r.cancelada, 'el cobro que completa el total la cancela');
   perform test.debe_fallar(format('delete from public.cobros_factura_venta where id = %L', current_setting('prueba.c1')),

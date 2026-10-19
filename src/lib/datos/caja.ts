@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { monedaDeCuenta, type CuentaParaPagar } from '@/lib/dominio/caja'
+import { hoyLima } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 
 /*
@@ -172,4 +174,30 @@ export async function cajaDelDia(dia: string): Promise<CajaDelDia> {
     cambioCompra: o(cambio.data),
     codigos: (codigos.data ?? []).flatMap((c) => (c.codigo ? [c.codigo] : [])),
   }
+}
+
+/**
+ * Las cuentas activas de la caja, en el orden de la caja diaria, para que
+ * Tesorería elija de cuál salió un pago o a cuál entró un cobro (migración
+ * 20261017220000). Sin `tesoreria.caja` sale vacía.
+ */
+export async function cuentasParaPagar(): Promise<CuentaParaPagar[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('caja_del_dia', { p_fecha: hoyLima() })
+  if (error) throw new Error(`No se pudieron leer las cuentas de la caja: ${error.message}`)
+  return (data ?? []).flatMap((c) =>
+    c.caja_id && c.activa
+      ? [
+          {
+            id: c.caja_id,
+            nombre: c.nombre ?? '',
+            tipo: c.tipo ?? 'BANCO',
+            banco: c.banco,
+            moneda: monedaDeCuenta(c.moneda),
+            fecha_inicio: c.fecha_inicio ?? '',
+            cerrada_hasta: c.ultimo_cierre,
+          },
+        ]
+      : [],
+  )
 }

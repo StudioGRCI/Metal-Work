@@ -44,6 +44,7 @@ begin
   perform set_config('prueba.arch2', current_setting('prueba.sc_prd') || '/' || gen_random_uuid() || '.pdf', true);
   perform set_config('prueba.voucher1', current_setting('prueba.sc_prd') || '/' || gen_random_uuid() || '.jpg', true);
 end $$;
+select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261017220000 todo pago pide su cuenta
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
 begin
@@ -101,7 +102,7 @@ begin
   set local role authenticated;
   perform pg_temp.subir(current_setting('prueba.voucher1'), 'image/jpeg');
   perform public.registrar_pago_recibo_honorarios(pg_temp.id('pago1'), pg_temp.id('rec1'),
-         (now() at time zone 'America/Lima')::date, null, current_setting('prueba.voucher1'));
+         (now() at time zone 'America/Lima')::date, null, current_setting('prueba.voucher1'), current_setting('prueba.caja')::uuid, null);
   reset role;
 
   perform test.afirmar((select area_id = (select id from public.areas where codigo = 'PRD') from public.subcontratos where id = pg_temp.id('sc_prd'))

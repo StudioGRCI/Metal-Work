@@ -3,11 +3,13 @@
 import { Ban, Wallet } from 'lucide-react'
 import { useState } from 'react'
 
+import { CuentaDeLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoSubcontrato } from '@/lib/archivos-subcontratos'
+import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { MAXIMO_MB_SUBCONTRATOS } from '@/lib/dominio/subcontratos'
 import { useEnvio } from '@/lib/envio'
 import { fecha, moneda } from '@/lib/format'
@@ -34,18 +36,22 @@ type ReciboAPagar = {
 }
 
 /**
- * Tesorería paga el neto de un recibo y adjunta el voucher. El voucher sube
- * primero a Storage y, si el pago no entra, se retira.
+ * Tesorería paga el neto de un recibo desde una cuenta de la caja —la caja
+ * diaria se mueve sola— y adjunta el voucher. El voucher sube primero a Storage
+ * y, si el pago no entra, se retira.
  */
-export function PagarRecibo({ recibo, hoy }: { recibo: ReciboAPagar; hoy: string }) {
+export function PagarRecibo({ recibo, hoy, cuentas }: { recibo: ReciboAPagar; hoy: string; cuentas: CuentaParaPagar[] }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
+  // De qué cuenta salió, o por qué la caja no se movió: la ventana ya se cerró.
+  const [aviso, setAviso] = useState<string | null>(null)
   return (
     <>
       <Boton
         type="button"
         tamano="sm"
         onClick={() => {
+          setAviso(null)
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -54,6 +60,11 @@ export function PagarRecibo({ recibo, hoy }: { recibo: ReciboAPagar; hoy: string
         <Wallet aria-hidden className="size-4" />
         Registrar pago
       </Boton>
+      {aviso && (
+        <span role="status" className="mt-1 block max-w-60 text-xs text-texto-suave">
+          {aviso}
+        </span>
+      )}
       <Ventana
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
@@ -61,13 +72,35 @@ export function PagarRecibo({ recibo, hoy }: { recibo: ReciboAPagar; hoy: string
         descripcion={`${recibo.subcontratista}: se paga el neto, ${moneda(recibo.neto, recibo.moneda)}. Administración recibe el aviso y ve el voucher.`}
         ancho="sm"
       >
-        <FormularioPago key={vez} recibo={recibo} hoy={hoy} alTerminar={() => setAbierta(false)} />
+        <FormularioPago
+          key={vez}
+          recibo={recibo}
+          hoy={hoy}
+          cuentas={cuentas}
+          alCerrar={() => setAbierta(false)}
+          alPagar={(mensaje) => {
+            setAbierta(false)
+            setAviso(mensaje)
+          }}
+        />
       </Ventana>
     </>
   )
 }
 
-function FormularioPago({ recibo, hoy, alTerminar }: { recibo: ReciboAPagar; hoy: string; alTerminar: () => void }) {
+function FormularioPago({
+  recibo,
+  hoy,
+  cuentas,
+  alCerrar,
+  alPagar,
+}: {
+  recibo: ReciboAPagar
+  hoy: string
+  cuentas: CuentaParaPagar[]
+  alCerrar: () => void
+  alPagar: (mensaje: string | null) => void
+}) {
   // Decidido aquí: un reintento manda el mismo y la base no registra otro pago.
   const [id] = useState(() => crypto.randomUUID())
 
@@ -79,7 +112,7 @@ function FormularioPago({ recibo, hoy, alTerminar }: { recibo: ReciboAPagar; hoy
       return registrarPagoRecibo(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(pagar, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(pagar, (r) => alPagar(r.mensaje ?? null))
   const prefijo = `pago-${id.slice(0, 8)}`
 
   return (
@@ -94,6 +127,7 @@ function FormularioPago({ recibo, hoy, alTerminar }: { recibo: ReciboAPagar; hoy
         <Campo etiqueta="N.º de operación" htmlFor={`${prefijo}-operacion`} ayuda="El que da el banco, si lo hay.">
           <Entrada id={`${prefijo}-operacion`} name="operacion" maxLength={60} autoComplete="off" className="tabular" />
         </Campo>
+        <CuentaDeLaCaja cuentas={cuentas} monedaDocumento={recibo.moneda} tipo="pago" prefijo={prefijo} />
       </div>
       <Campo etiqueta="Voucher" htmlFor={`${prefijo}-archivo`} requerido ayuda={`PDF o foto, hasta ${MAXIMO_MB_SUBCONTRATOS} MB.`}>
         <Entrada id={`${prefijo}-archivo`} name="archivo" type="file" accept={ACEPTA} required />
@@ -104,7 +138,7 @@ function FormularioPago({ recibo, hoy, alTerminar }: { recibo: ReciboAPagar; hoy
         </p>
       )}
       <div className="flex justify-end gap-2">
-        <Boton type="button" variante="contorno" onClick={alTerminar}>
+        <Boton type="button" variante="contorno" onClick={alCerrar}>
           Cancelar
         </Boton>
         <Boton type="submit" cargando={enviando}>
@@ -129,7 +163,7 @@ export function AnularPago({ pagoId, subcontratoId, numero }: { pagoId: string; 
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`Anular el pago del recibo ${numero}`}
-        descripcion="No se borra: queda con su motivo y su voucher, y el recibo vuelve a quedar por pagar. Administración recibe el aviso."
+        descripcion="No se borra: queda con su motivo y su voucher, y el recibo vuelve a quedar por pagar. La caja diaria anula su egreso y Administración recibe el aviso."
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">

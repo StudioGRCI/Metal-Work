@@ -5,6 +5,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { cuentasParaPagar } from '@/lib/datos/caja'
 import { planillaDiaria, type PagoPlanilla, type PersonaPlanilla } from '@/lib/datos/planilla-diaria'
 import { ESTADO_PLANILLA, estadoDePlanilla, personasTexto } from '@/lib/dominio/planilla-diaria'
 import { TIPO_CUENTA, horasCortas } from '@/lib/dominio/rrhh'
@@ -23,7 +24,11 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
   const paga = puede(perfil, 'planilla_diaria.pagar')
   const { id } = await params
   if (!GUID.test(id)) notFound()
-  const p = await planillaDiaria(id, arma || paga)
+  const [p, cuentasCaja] = await Promise.all([
+    planillaDiaria(id, arma || paga),
+    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261017220000).
+    paga ? cuentasParaPagar() : Promise.resolve([]),
+  ])
   if (!p) notFound()
 
   const anulada = p.anulado_en !== null
@@ -48,6 +53,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
                 pagoId={crypto.randomUUID()}
                 hoy={hoy}
                 porPagar={porPagar.map((g) => ({ id: g.id, nombre: g.nombre, total: g.total }))}
+                cuentas={cuentasCaja}
               />
             )}
             {arma && !anulada && pagosVigentes.length === 0 && (
@@ -128,7 +134,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
                           id={g.id}
                           planillaId={p.id}
                           titulo="Anular el pago"
-                          descripcion="No se borra: queda con su motivo y su comprobante, y esas personas vuelven a quedar por pagar."
+                          descripcion="No se borra: queda con su motivo y su comprobante, y esas personas vuelven a quedar por pagar. La caja diaria anula su egreso."
                         />
                       )}
                     </div>
