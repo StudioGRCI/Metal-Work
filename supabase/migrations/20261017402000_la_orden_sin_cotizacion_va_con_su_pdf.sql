@@ -21,6 +21,9 @@
 --     registrarla sin PDF por la API. Queda solo para el administrador del
 --     sistema; las demás entradas (esta función, la de Gerencia al aprobar la
 --     cotización y la del taller) son funciones que validan lo suyo.
+--   · Ninguna orden se queda sin su PDF una vez que lo tiene: el último no se
+--     quita, ni de la tabla ni de Storage. Hasta aquí eso solo se cuidaba en la
+--     OT de una cotización (migración 101).
 --   · Quien sube el PDF de una orden lo ve. Hasta aquí el PDF de la OT solo lo
 --     veían Diseño y Supervisión de Producción, Maestranza y Acabados
 --     (`puede_ver_pdf_ot`, migración 20260929221000): Administración subía la
@@ -111,8 +114,8 @@ grant execute on function public.registrar_orden_sin_cotizacion(uuid, uuid, uuid
   public.prioridad_ot, text, text, date, date, date, uuid, text, text, text, bigint) to authenticated;
 
 -- La orden sin PDF ya no entra por la API: solo el administrador del sistema
--- inserta directo. Se cambia con `alter policy` porque el conector de
--- producción no deja pasar un `drop`.
+-- inserta directo. Se cambia con `alter policy`, que el conector de producción
+-- deja pasar sin pedir confirmación.
 alter policy crear_ordenes_trabajo on public.ordenes_trabajo
   with check (public.es_admin());
 
@@ -140,3 +143,45 @@ comment on function public.orden_tiene_pdf(uuid) is
   'Si la orden que se puede ver ya tiene su PDF, sin mostrarlo a quien no lo abre (migración 20261017402000).';
 revoke all on function public.orden_tiene_pdf(uuid) from public, anon;
 grant execute on function public.orden_tiene_pdf(uuid) to authenticated;
+
+-- La orden va siempre con su PDF: el último no se quita, venga o no de una
+-- cotización. Hasta aquí solo se cuidaba el de la OT de una cotización
+-- (migración 101), y con la orden sin cotización Administración, que ahora ve
+-- su PDF, lo podía quitar con un toque. Para cambiarlo se sube el nuevo y
+-- después se quita el viejo, como ya decía el mensaje.
+create or replace function public.fn_el_pdf_de_la_orden_se_queda()
+returns trigger
+language plpgsql
+set search_path to 'public'
+as $$
+declare
+  v_numero text;
+begin
+  if old.tipo <> 'ORDEN' then
+    return old;
+  end if;
+
+  select o.numero into v_numero
+    from public.ordenes_trabajo o
+   where o.id = old.orden_id;
+
+  if v_numero is not null
+     and not exists (select 1 from public.ot_adjuntos a
+                      where a.orden_id = old.orden_id and a.tipo = 'ORDEN' and a.id <> old.id) then
+    raise exception 'La orden % no se queda sin su PDF: sube el nuevo antes de quitar este.', v_numero
+      using errcode = 'check_violation';
+  end if;
+
+  return old;
+end;
+$$;
+revoke all on function public.fn_el_pdf_de_la_orden_se_queda() from public, anon, authenticated;
+
+-- Y el archivo tampoco se borra por la API de Storage mientras una orden lo
+-- nombra: quitar un archivo de la orden quita primero su fila, que es la que
+-- dice si se puede.
+alter policy mw_borrar_adjuntos_ot on storage.objects
+  using (bucket_id = 'adjuntos-ot'
+         and (public.es_admin() or owner_id = (auth.uid())::text
+              or public.tiene_permiso('ordenes.editar') or public.tiene_permiso('produccion.cualquier_area'))
+         and not exists (select 1 from public.ot_adjuntos a where a.ruta_storage = objects.name));

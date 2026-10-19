@@ -9,7 +9,7 @@
 --      sale del almacén se reparte en partes iguales entre los códigos que
 --      trabajaron ese mes; PLANTA y OFICINA no reciben; si ese mes no trabajó
 --      ninguno, se queda en TODOS LOS ACTIVOS. El de operación no se carga así.
---      OFICINA tampoco recibe los gastos del mes.
+--      Los gastos del mes se reparten como antes; TODOS LOS ACTIVOS no recibe.
 --   3. La orden sin cotización nace con su PDF ya subido, o no nace, y no entra
 --      directo a la tabla. Quien la sube ve su PDF; Gerencia no, Diseño sí;
 --      Ventas no la registra.
@@ -206,18 +206,21 @@ begin
     'sin códigos que trabajaran ese mes, la salida espera en TODOS LOS ACTIVOS');
 end $$;
 
--- Un gasto del mes en partes iguales: OFICINA ya no recibe.
+-- Un gasto del mes en partes iguales: como en la 20261017300000, y TODOS LOS ACTIVOS no recibe.
 select pg_temp.como('administracion');
 set local role authenticated;
 select public.registrar_gasto_general(current_setting('prueba.gasto')::uuid, current_setting('prueba.periodo')::date, 'AGUA',
   'Recibo de agua de prueba 398', 300, 'PEN', 'PARTES_IGUALES', null);
 reset role;
-select test.afirmar(pg_temp.gasto('OFICINA') = 0 and pg_temp.gasto('PLANTA') = 0 and pg_temp.gasto('TODOS LOS ACTIVOS') = 0,
-  'OFICINA, PLANTA y TODOS LOS ACTIVOS no reciben gastos del mes');
+select test.afirmar(pg_temp.gasto('PLANTA') = 0 and pg_temp.gasto('TODOS LOS ACTIVOS') = 0,
+  'PLANTA y TODOS LOS ACTIVOS no reciben gastos del mes');
+select test.afirmar(pg_temp.gasto('OFICINA') = pg_temp.gasto('CHK398_A'),
+  'OFICINA, con su salida del mes, recibe su parte como hasta hoy (migración 20261017300000)');
 select test.afirmar(pg_temp.gasto('CHK398_A') > 0 and pg_temp.gasto('CHK398_A') = pg_temp.gasto('CHK398_B'),
   format('las unidades reciben partes iguales del gasto: A %s, B %s', pg_temp.gasto('CHK398_A'), pg_temp.gasto('CHK398_B')));
-select test.afirmar(abs((select sum(l.monto) from public.codigo_interno_lineas(null, true) l
-                          where l.fuente = 'GASTOS_DEL_MES' and l.referencia_id = current_setting('prueba.gasto')::uuid) - 300) < 0.05,
+-- Cada parte se redondea al céntimo: el total se aleja de 300 a lo más medio céntimo por parte.
+select test.afirmar((select abs(sum(l.monto) - 300) <= count(*) * 0.005 from public.codigo_interno_lineas(null, true) l
+                      where l.fuente = 'GASTOS_DEL_MES' and l.referencia_id = current_setting('prueba.gasto')::uuid),
   'el gasto entero queda repartido');
 
 -- Administración ve los códigos y su costeo, pero no cierra.
@@ -243,6 +246,11 @@ select test.afirmar(exists (select 1 from public.codigo_interno_reparto_a_todos(
 select test.afirmar(not exists (select 1 from public.codigo_interno_reparto_a_todos() r where r.codigo in ('PLANTA', 'OFICINA')),
   'PLANTA y OFICINA no reciben nada de lo cargado a todos');
 reset role;
+-- El costeo de TODOS LOS ACTIVOS no se cierra: lo guarda la tabla, aunque
+-- `cerrar_costeo_codigo` llegara a la escritura con todo completo.
+select test.debe_fallar($q$insert into public.codigo_interno_cierres (codigo, costo_pen, por_fuente, cerrado_por)
+                          values ('TODOS LOS ACTIVOS', 0, '{}'::jsonb, current_setting('prueba.administracion')::uuid)$q$,
+  'el costeo de TODOS LOS ACTIVOS no se cierra', 'no es una unidad');
 select pg_temp.como('requerimientos');
 set local role authenticated;
 select test.debe_fallar($q$select * from public.codigo_interno_reparto_a_todos()$q$,
@@ -286,6 +294,30 @@ select test.afirmar((select count(*) from public.ot_adjuntos where orden_id = cu
   'Administración ve el PDF que subió');
 select test.afirmar((select count(*) from storage.objects where bucket_id = 'adjuntos-ot' and name = current_setting('prueba.ruta')) = 1,
   'Administración puede abrir el archivo');
+-- Y la orden no se queda sin su PDF: ni quitando la fila ni borrando el archivo.
+select test.debe_fallar(format('delete from public.ot_adjuntos where orden_id = %L and tipo = %L', current_setting('prueba.ot'), 'ORDEN'),
+  'Administración no deja la orden sin su PDF', 'no se queda sin su PDF');
+do $$
+declare
+  v integer;
+begin
+  delete from storage.objects where bucket_id = 'adjuntos-ot' and name = current_setting('prueba.ruta');
+  get diagnostics v = row_count;
+  perform test.afirmar(v = 0, 'ni borrando el archivo en Storage mientras la orden lo nombra');
+end $$;
+-- Para cambiarlo se sube el nuevo y se quita el viejo.
+do $$
+declare
+  v_ruta text := 'ot/' || current_setting('prueba.ot') || '/' || gen_random_uuid() || '.pdf';
+  v integer;
+begin
+  insert into public.ot_adjuntos (orden_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por)
+  values (current_setting('prueba.ot')::uuid, 'ORDEN', 'orden-corregida.pdf', v_ruta, 'application/pdf', 1000,
+          current_setting('prueba.administracion')::uuid);
+  delete from public.ot_adjuntos where orden_id = current_setting('prueba.ot')::uuid and ruta_storage = current_setting('prueba.ruta');
+  get diagnostics v = row_count;
+  perform test.afirmar(v = 1, 'con el PDF nuevo subido, el viejo sí se quita');
+end $$;
 reset role;
 select test.afirmar((select estado::text from public.ordenes_trabajo where id = current_setting('prueba.ot')::uuid) = 'BORRADOR'
                     and (select numero from public.ordenes_trabajo where id = current_setting('prueba.ot')::uuid) is not null

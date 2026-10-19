@@ -23,8 +23,8 @@
 --
 -- Se mueven al puesto ADMIN en vez de borrarse: ADMIN entra por `es_admin()` y
 -- no los necesita, pero así la tabla de permisos dice de quién son, y el
--- conector de producción no deja pasar un `delete`. Si ADMIN ya tuviera alguno,
--- la migración se detiene en vez de dejárselo a Administración.
+-- conector de producción se cuelga con los borrados. Si ADMIN ya tuviera
+-- alguno, la migración se detiene en vez de dejárselo a Administración.
 --
 -- Gana codigos_internos.ver: la lista de códigos y el detalle de cada uno
 -- —avance, costeo, compras, documentos y planos—, en lectura. El costo y el

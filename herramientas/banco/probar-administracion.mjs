@@ -290,9 +290,14 @@ let ordenId = ''
     guardado = statSync(join(ARCHIVOS, 'adjuntos-ot', orden?.ruta_storage ?? 'x')).size > 0
   } catch {}
   comprobar(guardado, 'el PDF quedó guardado en la carpeta de la orden')
+  // El banco borra solo la fila al quitar un archivo: lo que dice si el PDF sigue es storage.objects.
+  await pagina.waitForTimeout(1500)
+  const objeto = await uno(`select count(*)::int as n from storage.objects where bucket_id = 'adjuntos-ot' and name = $1`, [orden?.ruta_storage ?? ''])
+  comprobar(objeto?.n === 1, 'y sigue en Storage después de registrar (nadie lo quitó al ir a la orden)')
   const vista = limpio(await pagina.locator('main').innerText())
   comprobar(vista.includes('Orden registrada con su PDF'), 'la orden dice que se registró con su PDF')
   comprobar(vista.includes(`OT-banco-${sello}.pdf`), 'y Administración ve su PDF en la orden')
+  comprobar((await pagina.getByRole('button', { name: `Quitar OT-banco-${sello}.pdf` }).count()) === 0, 'sin botón para quitar el único PDF de la orden')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-orden-registrada.png`, fullPage: true })
   await contexto.close()
 }

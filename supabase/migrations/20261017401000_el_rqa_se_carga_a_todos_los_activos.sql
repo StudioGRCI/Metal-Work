@@ -15,7 +15,8 @@
 -- Qué es «activo»: el mismo criterio con que ya se reparten los gastos del mes
 -- (migración 20261017300000): un código que trabajó ese mes, con horas en el
 -- reporte diario o en el tareo de RR. HH., o con una salida del almacén. PLANTA y
--- OFICINA no son una unidad y no reciben; TODOS LOS ACTIVOS tampoco, claro.
+-- OFICINA no son una unidad y no reciben de lo cargado a todos; TODOS LOS ACTIVOS
+-- tampoco, claro.
 --
 -- Cómo entra al costo: lo comprado se cuenta cuando sale del almacén, y así
 -- también aquí. Cada salida con el código TODOS LOS ACTIVOS se reparte en partes
@@ -26,9 +27,8 @@
 -- sola en cuanto alguno trabaje. La OC del requerimiento se sigue mostrando en
 -- TODOS LOS ACTIVOS: las compras no se suman al costo de nadie.
 --
--- Al mismo tiempo, OFICINA deja de recibir gastos del mes: hasta aquí solo se
--- excluía PLANTA, y una salida para la oficina la volvía «un código que
--- trabajó» y le tocaba su parte de la luz.
+-- Los gastos del mes se siguen repartiendo como en la 20261017300000, entre los
+-- mismos códigos; lo único nuevo es que TODOS LOS ACTIVOS no recibe.
 --
 -- Es la misma función de la 20261017300000, con sus servicios, subcontratos,
 -- caja, recargo, gastos de la OT y merma al final, que se conservan.
@@ -91,14 +91,24 @@ begin
       from public.reporte_diario_personal l
       join public.reportes_diarios r on r.id = l.reporte_id
      where r.anulado_en is null
+       and not exists (select 1 from public.tareos t where t.reporte_linea_id = l.id)
     union
     select distinct s.periodo, s.codigo
       from salida_base s
      where s.cantidad > 0
   ), activo as (
+    -- Entre quiénes se reparte lo cargado a todos: las unidades. PLANTA y OFICINA
+    -- no lo son.
     select t.periodo, t.codigo, count(*) over (partition by t.periodo) as n
       from trabajo t
      where t.codigo is not null and t.codigo not in ('PLANTA', 'OFICINA', 'TODOS LOS ACTIVOS')
+  ), movido as (
+    -- Entre quiénes se reparten los gastos del mes: los mismos de la
+    -- 20261017300000, todos menos PLANTA. TODOS LOS ACTIVOS no recibe: lo suyo ya
+    -- está repartido.
+    select t.periodo, t.codigo
+      from trabajo t
+     where t.codigo is not null and t.codigo not in ('PLANTA', 'TODOS LOS ACTIVOS')
   ), salida as (
     select s.id, s.registrado_en, s.material_id, s.precio_unitario, s.moneda, s.documento_referencia, s.rq_numero,
            s.codigo, s.cantidad, null::bigint as entre, false as a_todos
@@ -180,7 +190,7 @@ begin
            count(*) over (partition by g.id) as n
       from public.gastos_generales_mes g
       join public.conceptos_gasto_general c on c.codigo = g.concepto
-      join activo m on m.periodo = g.periodo
+      join movido m on m.periodo = g.periodo
      where p_mano_obra and g.estado = 'ACTIVO'
   ), merma as (
     -- La merma que Diseño evaluó en la OT de la unidad va sobre los materiales
@@ -316,3 +326,21 @@ comment on function public.codigo_interno_reparto_a_todos() is
   'Lo que salió del almacén con el código TODOS LOS ACTIVOS, por mes y por código que lo recibió; lo que sigue en TODOS LOS ACTIVOS espera un mes con trabajo (migración 20261017401000).';
 revoke all on function public.codigo_interno_reparto_a_todos() from public, anon;
 grant execute on function public.codigo_interno_reparto_a_todos() to authenticated;
+
+-- TODOS LOS ACTIVOS no es una unidad: su costeo no se cierra. Lo que se cargó a
+-- todos ya está en el costeo de cada código que recibió su parte.
+create or replace function public.fn_cierre_no_de_todos_los_activos()
+returns trigger language plpgsql set search_path to 'public' as $$
+begin
+  if public.normalizar_codigo_interno(new.codigo) = 'TODOS LOS ACTIVOS' then
+    raise exception 'TODOS LOS ACTIVOS no es una unidad: su costeo no se cierra. Lo cargado a todos ya está en el costeo de cada código.'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.fn_cierre_no_de_todos_los_activos() from public, anon, authenticated;
+
+create or replace trigger trg_cierre_no_de_todos_los_activos
+  before insert on public.codigo_interno_cierres
+  for each row execute function public.fn_cierre_no_de_todos_los_activos();

@@ -1,7 +1,6 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
 import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
@@ -35,7 +34,7 @@ function opcional(valor: FormDataEntryValue | null) {
   return t === '' ? null : t
 }
 
-export async function crearOrden(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+export async function crearOrden(_previo: unknown, datos: FormData): Promise<ResultadoAccion<{ id: string }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'ordenes.crear')) return { ok: false, error: 'No tienes permiso para crear órdenes.' }
 
@@ -74,7 +73,9 @@ export async function crearOrden(_previo: unknown, datos: FormData): Promise<Res
   if (data !== v.orden_id) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/ordenes')
-  redirect(`/ordenes/${data}?creada=1`)
+  // Sin `redirect`: la promesa de una acción que redirige llega rechazada al
+  // formulario, y el formulario quita el PDF cuando la orden no se registró.
+  return { ok: true, datos: { id: data } }
 }
 
 const esquemaCambioEstado = z.object({

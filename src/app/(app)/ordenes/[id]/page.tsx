@@ -232,11 +232,14 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     ? hojaAreas[0].diario.filter((reporte) => idsAreasVisibles.has(reporte.area_id))
     : []
 
-  // Las observaciones van con la orden en papel, con las áreas a las que se dirigen.
-  const [observaciones, areasParaObservar] =
-    vista === 'resumen' ? await Promise.all([observacionesDeOrden(id), areasDelTaller()]) : [[], []]
+  // Las observaciones van con la orden en papel, con las áreas a las que se
+  // dirigen, y con los archivos de la orden (099) y si ya tiene su PDF aunque
+  // este puesto no lo abra. Todo a la vez.
+  const [observaciones, areasParaObservar, tienePdf, adjuntos] =
+    vista === 'resumen'
+      ? await Promise.all([observacionesDeOrden(id), areasDelTaller(), ordenTienePdf(id), adjuntosDeOrden(id)])
+      : [[], [], false, null]
 
-  // Los archivos de la orden (099), en el resumen junto a sus observaciones.
   // Quitarlos es de quien los subió, la oficina o el jefe: lo mismo que dice
   // la política. La orden sin cotización la registra Administración y su PDF
   // también lo sube ella (2026-10-19); la de una cotización nace con el suyo.
@@ -245,20 +248,19 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       puede(perfil, ['produccion.actividades', 'ordenes.editar', 'ordenes.crear', 'ordenes.abrir_taller'])) ||
     (!orden.cotizacion_pdf_id && puede(perfil, 'ordenes.crear'))
   const quitaCualquiera = puede(perfil, ['ordenes.editar', 'produccion.cualquier_area'])
-  // Quien no ve el PDF de la orden no lo encuentra en la lista: que no se le diga que falta.
-  const tienePdf = vista === 'resumen' ? await ordenTienePdf(id) : false
-  const archivos: AdjuntoEnPantalla[] | null =
-    vista === 'resumen'
-      ? (await adjuntosDeOrden(id)).map((a) => ({
-          id: a.id,
-          tipo: a.tipo,
-          nombre_archivo: a.nombre_archivo,
-          tamano_bytes: a.tamano_bytes,
-          creado_en: a.creado_en,
-          url: a.url,
-          quitable: quitaCualquiera || a.subido_por === perfil.id,
-        }))
-      : null
+  // El último PDF de la orden no se quita: la base lo rechaza (migración 20261017402000).
+  const pdfsDeOrden = adjuntos?.filter((a) => a.tipo === 'ORDEN').length ?? 0
+  const archivos: AdjuntoEnPantalla[] | null = adjuntos
+    ? adjuntos.map((a) => ({
+        id: a.id,
+        tipo: a.tipo,
+        nombre_archivo: a.nombre_archivo,
+        tamano_bytes: a.tamano_bytes,
+        creado_en: a.creado_en,
+        url: a.url,
+        quitable: (quitaCualquiera || a.subido_por === perfil.id) && (a.tipo !== 'ORDEN' || pdfsDeOrden > 1),
+      }))
+    : null
 
   // Puede venir vacío: quien no tiene `clientes.ver` abre la orden igual, pero
   // sin los datos del cliente.

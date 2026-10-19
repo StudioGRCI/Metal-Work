@@ -1,6 +1,7 @@
 'use client'
 
 import { FileText, FileUp } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 
 import { Boton } from '@/components/ui/boton'
@@ -38,6 +39,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   const [archivo, setArchivo] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pendiente, iniciar] = useTransition()
+  const router = useRouter()
   const enCurso = useRef(false)
   const [clienteId, setClienteId] = useState('')
   const [unidadId, setUnidadId] = useState('')
@@ -147,6 +149,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
       // registra la orden y su PDF juntos, o ninguno.
       const ruta = `ot/${ordenId}/${crypto.randomUUID()}.pdf`
       let subido = false
+      let listo = false
       try {
         const { error: falla } = await supabase.storage
           .from('adjuntos-ot')
@@ -161,20 +164,27 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         datos.set('ruta_pdf', ruta)
         datos.set('nombre_pdf', archivo.name.slice(0, 200))
         datos.set('tamano_pdf', String(archivo.size))
-        // Si la registra, la acción lleva a la orden y no vuelve.
         const r = await crearOrden(null, datos)
-        if (r && !r.ok) {
+        if (!r.ok) {
+          // La base dijo que no: la orden no existe y el PDF que ya viajó se
+          // quita, para que no quede un archivo que ninguna orden nombra.
           await supabase.storage.from('adjuntos-ot').remove([ruta])
-          subido = false
           setError(r.error)
+          return
         }
+        // Registrada: el formulario queda trabado hasta que se abre la orden.
+        listo = true
+        router.push(`/ordenes/${r.datos?.id ?? ordenId}?creada=1`)
       } catch {
-        // No se registró: el PDF que ya viajó se quita, para que no quede un
-        // archivo que ninguna orden nombra.
-        if (subido) await supabase.storage.from('adjuntos-ot').remove([ruta])
-        setError('No se pudo registrar la orden. Vuelve a intentar.')
+        // Sin respuesta no se sabe si quedó registrada: el PDF no se toca. Si
+        // quedó, reintentar no la duplica (la base reconoce la misma orden).
+        setError(
+          subido
+            ? 'No llegó la respuesta. Revisa en Órdenes de trabajo si la orden quedó registrada antes de volver a intentar.'
+            : 'No se pudo subir el PDF de la orden. Revisa la señal y vuelve a intentar.',
+        )
       } finally {
-        enCurso.current = false
+        if (!listo) enCurso.current = false
       }
     })
   }
