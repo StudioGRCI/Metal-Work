@@ -10,9 +10,11 @@
 -- El puesto SUPERVISOR_GENERAL queda sin cuentas y deja de ofrecerse al dar de
 -- alta personal. No se borra, porque el historial de la auditoría lo nombra.
 --
--- Solo se mueve si hay exactamente una cuenta activa de Supervisión general:
--- con más de una, darle a cualquiera el puesto de administración lo tiene que
--- decidir una persona, y la migración solo avisa. Sin ninguna, no hace nada.
+-- Solo actúa una vez: si la base ya tiene una cuenta activa de administración,
+-- o no tiene ninguna de Supervisión general, no hace nada. Así, aplicarla de
+-- nuevo nunca le da el puesto de administración a otra cuenta. Con más de una
+-- cuenta de Supervisión general se detiene: cuál administra lo decide una
+-- persona.
 -- =============================================================================
 do $$
 declare
@@ -26,7 +28,8 @@ begin
   if v_admin is null then
     raise exception 'Falta el puesto ADMIN en la tabla de roles.';
   end if;
-  if v_puesto is null then
+  if v_puesto is null
+     or exists (select 1 from public.usuarios where rol_id = v_admin and activo) then
     return;
   end if;
 
@@ -36,8 +39,7 @@ begin
     return;
   end if;
   if v_cuentas > 1 then
-    raise notice 'Hay % cuentas activas de Supervisión general: ninguna pasó a administración. Decide a mano cuál.', v_cuentas;
-    return;
+    raise exception 'Hay % cuentas activas de Supervisión general y ninguna de administración: decide a mano cuál pasa a administrar el sistema.', v_cuentas;
   end if;
 
   -- `trg_usuario_proteger_rol` exige una sesión de administrador, y una

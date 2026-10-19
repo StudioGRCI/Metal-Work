@@ -62,7 +62,7 @@ export async function catalogosDePersonal() {
   if (fallo) throw new Error(`No se pudieron cargar los catálogos: ${fallo.message}`)
 
   return {
-    // Puestos que ya no existen en la planta: no se ofrecen para cuentas nuevas.
+    // Puestos que ya no existen en la planta: no se ofrecen en la ficha de Personal.
     roles: (roles.data ?? []).filter(
       (r) => !['JEFE_PRODUCCION', 'JEFE_TALLER', 'SUPERVISOR_GENERAL'].includes(r.codigo),
     ),
