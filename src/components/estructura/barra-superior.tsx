@@ -15,10 +15,11 @@ export async function BarraSuperior() {
         <div className="col-start-1 row-start-1 justify-self-start lg:static">
           <CambiarTema />
         </div>
-        <div className="col-start-3 row-start-1 flex items-center gap-1 justify-self-end lg:static lg:gap-2">
-          {/* Aquí aparece el «i» de la caja después de un pago (`AvisoDeLaCaja`):
+        <div className="col-start-3 row-start-1 flex items-center gap-1 justify-self-end lg:contents">
+          {/* Aquí aparece el aviso de la caja después de un pago (`AvisoDeLaCaja`):
               en la barra y no flotando sobre la lista. Columnas de 5.75rem para
-              que quepan dos botones y el logo siga al centro. */}
+              que quepan dos botones y el logo siga al centro; en el monitor,
+              `lg:contents` deja que el aviso entre a la izquierda del tema. */}
           <div id="ranura-aviso-caja" className="contents" />
           <Campana avisos={avisos} sinLeer={sinLeer} />
         </div>

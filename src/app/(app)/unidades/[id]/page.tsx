@@ -161,11 +161,10 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
           <Tarjeta className="overflow-hidden">
             <TarjetaCabecera
               titulo="Historia en el taller"
-              ayuda={
-                verOrdenes
-                  ? 'Cada trabajo que se le hizo, del más reciente al primero.'
-                  : 'Las órdenes de trabajo las ve quien tiene acceso a órdenes.'
-              }
+              // Sin acceso a órdenes la tarjeta no trae lista: el porqué va a la
+              // vista, o se lee como una unidad sin historia.
+              ayuda={verOrdenes ? 'Cada trabajo que se le hizo, del más reciente al primero.' : undefined}
+              descripcion={verOrdenes ? undefined : 'Las órdenes de trabajo las ve quien tiene acceso a órdenes.'}
             />
             {verOrdenes && (
               <Tabla>

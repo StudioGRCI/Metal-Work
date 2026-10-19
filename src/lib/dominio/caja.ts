@@ -44,6 +44,18 @@ export function esDevolucion(origen: string, tipo: 'INGRESO' | 'EGRESO') {
 }
 
 /** Una cuenta activa de la caja, para elegir de cuál salió un pago o a cuál entró un cobro. */
+/**
+ * Los dos avisos de la caja que Tesorería tiene que leer sin ir a buscarlos
+ * (`cajaTrasElPago`, `cajaTrasAnular`). La acción los pega detrás de su
+ * confirmación, así que `AvisoDeLaCaja` los busca dentro del mensaje.
+ */
+export const CAJA_SIN_LEER = 'No se pudo leer cómo quedó la caja: revísala en Caja diaria.'
+export const CAJA_NO_SE_MOVIO = 'La caja no se movió'
+
+export function avisoDeCajaPideAtencion(mensaje: string) {
+  return mensaje.includes(CAJA_SIN_LEER) || mensaje.includes(CAJA_NO_SE_MOVIO)
+}
+
 export type CuentaParaPagar = {
   id: string
   nombre: string

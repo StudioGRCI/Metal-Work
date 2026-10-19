@@ -292,7 +292,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
 
         {/* ------------------------------------------------- la unidad */}
         <Tarjeta className="no-partir">
-          <TarjetaCabecera titulo="La unidad" />
+          <TarjetaCabecera titulo="La unidad" ayuda="Qué se fabricó y para quién." />
           <TarjetaCuerpo>
             <dl className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
               <Dato etiqueta="Cliente" valor={cliente?.razon_social} />
