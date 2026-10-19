@@ -1,6 +1,7 @@
 import { Download, FileText, HandCoins } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { FacturaDeVenta } from '@/components/finanzas/factura-de-venta'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -37,7 +38,8 @@ export default async function PaginaPorCobrar() {
     responde ? solicitudesPendientesTesoreria() : Promise.resolve([]),
     responde ? revisionesDeSalidaPendientes() : Promise.resolve([]),
     // La cuenta a la que entra cada cobro: la caja diaria se mueve sola (20261017220000).
-    cobra ? cuentasParaPagar() : Promise.resolve([]),
+    // Sin `tesoreria.caja` no hay cuentas que ver (null): el formulario lo dice y no se ofrece activo.
+    cobra && puede(perfil, 'tesoreria.caja') ? cuentasParaPagar() : Promise.resolve(null),
   ])
   const hoy = hoyLima()
   const pendientes = facturas.filter((f) => !f.cancelada && Number(f.saldo) > 0)
@@ -45,7 +47,7 @@ export default async function PaginaPorCobrar() {
   const saldoPor = (m: CodigoMoneda) => pendientes.filter((f) => codigo(f.moneda) === m).reduce((n, f) => n + Number(f.saldo), 0)
 
   return (
-    <>
+    <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Cuentas por cobrar"
         descripcion="Las facturas que registró Contabilidad, por código interno, de la que vence antes a la que vence después. Registra cada cobro con su voucher."
@@ -169,6 +171,6 @@ export default async function PaginaPorCobrar() {
           )}
         </TarjetaCuerpo>
       </Tarjeta>
-    </>
+    </AvisoDeLaCaja>
   )
 }

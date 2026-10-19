@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { cajaTrasAnular, cajaTrasElPago, camposDeLaCuenta, leerCuenta, montoDeLaCuenta } from '@/lib/caja-del-pago'
+import { cajaTrasAnular, cajaTrasElPago, camposDeLaCuenta, leerCuenta, montoDeLaCuenta, SIN_CAJA } from '@/lib/caja-del-pago'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -34,6 +34,7 @@ function repintarCobros() {
 export async function registrarCobroFactura(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'tesoreria.registrar_cobros')) return { ok: false, error: NO_COBRA }
+  if (!puede(perfil, 'tesoreria.caja')) return { ok: false, error: SIN_CAJA }
   const analisis = z
     .object({
       id: z.guid(),
@@ -108,6 +109,7 @@ const NO_PAGA_FACTURAS = 'Los pagos de las facturas los registra Tesorería.'
 export async function registrarPagoFactura(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'tesoreria.registrar_pagos')) return { ok: false, error: NO_PAGA_FACTURAS }
+  if (!puede(perfil, 'tesoreria.caja')) return { ok: false, error: SIN_CAJA }
   const analisis = z
     .object({
       id: z.guid(),
@@ -184,6 +186,7 @@ const NO_PAGA_SERVICIOS = 'Los pagos de servicio los registra Tesorería.'
 export async function registrarPagoServicio(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'tesoreria.pagar_servicios')) return { ok: false, error: NO_PAGA_SERVICIOS }
+  if (!puede(perfil, 'tesoreria.caja')) return { ok: false, error: SIN_CAJA }
   const analisis = z
     .object({
       id: z.guid(),

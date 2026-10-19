@@ -20,16 +20,22 @@
 --   · La cuenta es obligatoria y tiene que estar activa, y quien paga tiene
 --     que llevar la caja (`tesoreria.caja`).
 --   · El día de la cuenta tiene que estar abierto: un día cerrado ya cuadró con
---     el banco. Lo que se pagó ese día y faltó va en un día abierto, o se reabre
---     el cierre.
+--     el banco. El pago se registra con un día posterior, o se reabre el cierre.
 --   · Un pago o cobro de antes del saldo inicial de la cuenta no la mueve: ese
 --     dinero ya está en el saldo con el que empezó. El pago queda registrado.
 --   · Si la cuenta es de otra moneda que el documento, se escribe lo que salió
 --     o entró en la cuenta, como en el estado de cuenta; el dólar tiene que
 --     salir entre S/ 2 y S/ 6, como en una transferencia.
 --   · Anular el pago o el cobro anula también su movimiento, con el mismo
---     motivo, si su día sigue abierto y la cuenta activa. En la caja ese
---     movimiento no se anula suelto (`anular_movimiento_caja` ya lo rechaza).
+--     motivo, si su día sigue abierto y la cuenta activa. Si su día ya se
+--     cerró, ese día no se toca: la devolución entra hoy, como en el libro,
+--     donde lo que se corrige va en un día abierto. En la caja ese movimiento
+--     no se anula suelto (`anular_movimiento_caja` ya lo rechaza).
+--   · Lo mismo no se cuenta dos veces: un egreso o ingreso anotado a mano con
+--     la misma operación y el mismo monto que un pago o cobro del sistema, en
+--     la misma cuenta, se rechaza, entre en el orden que entre.
+--   · La auditoría de las tres tablas de la caja tampoco la lee quien no lleva
+--     la caja: con cada pago pasa por ahí todo lo que sale de cada cuenta.
 --
 -- El costeo del código interno (20261017300000) suma solo los egresos MANUAL de
 -- la caja: estos movimientos no se cuentan dos veces.
@@ -39,7 +45,7 @@
 -- dice que vuelvan a cargar la pantalla: así una pantalla abierta desde antes
 -- no paga sin mover la caja, y la migración no necesita `drop`.
 --
--- Idempotente: solo `create or replace`, `revoke` y `grant`.
+-- Idempotente: solo `create or replace`, `revoke`, `grant` y `alter policy`.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -56,6 +62,7 @@ declare
   v_cambio  numeric;
   v_id      uuid;
   v_cobro   boolean := p_tipo = 'INGRESO';
+  v_cierre  date;
 begin
   -- Quien paga desde una cuenta tiene que poder verla: hoy los dos permisos
   -- son de Tesorería, y si mañana otro puesto paga, no mueve a ciegas la caja.
@@ -76,6 +83,14 @@ begin
   -- Antes del saldo inicial: ese dinero ya está en el saldo con que empezó la cuenta.
   if p_fecha < v_caja.fecha_inicio then return null; end if;
 
+  -- Un día cerrado ya cuadró con el banco: el pago va con un día posterior.
+  select max(fecha) into v_cierre from public.cierres_caja where caja_id = p_caja and anulado_en is null;
+  if v_cierre is not null and p_fecha <= v_cierre then
+    raise exception 'La cuenta % está cerrada hasta el %: registra el % con un día posterior, o reabre ese cierre en Caja diaria.',
+      v_caja.nombre, public.caja_texto_fecha(v_cierre), case when v_cobro then 'cobro' else 'pago' end
+      using errcode = 'check_violation';
+  end if;
+
   -- El día tiene que estar abierto (y no ser futuro).
   v_caja := public.caja_dia_abierto(p_caja, p_fecha);
 
@@ -93,8 +108,8 @@ begin
     v_cambio := round(case when v_caja.moneda = 'PEN' then p_monto_cuenta / p_monto else p_monto / p_monto_cuenta end, 4);
     -- Un dólar fuera de S/ 2 a S/ 6 es un monto mal escrito, no un cambio.
     if v_cambio not between 2 and 6 then
-      raise exception 'Con esos montos el dólar sale a S/ %: revisa cuánto % de la cuenta.', round(v_cambio, 3),
-        case when v_cobro then 'entró a' else 'salió' end using errcode = 'check_violation';
+      raise exception 'Con esos montos el dólar sale a S/ %: revisa cuánto % la cuenta.', round(v_cambio, 3),
+        case when v_cobro then 'entró a' else 'salió de' end using errcode = 'check_violation';
     end if;
   end if;
 
@@ -120,33 +135,48 @@ revoke all on function public.caja_mover_por_pago(text, uuid, text, uuid, date, 
 create or replace function public.caja_anular_por_pago(p_origen text, p_origen_id uuid, p_motivo text, p_que text)
 returns void language plpgsql set search_path to 'public' as $$
 declare
-  v_mov     record;
+  v_mov     public.movimientos_caja%rowtype;
   v_caja    public.cajas%rowtype;
   v_cierre  date;
+  v_hoy     date := (now() at time zone 'America/Lima')::date;
 begin
+  -- Solo el movimiento que dejó el pago o el cobro (egreso del pago, ingreso del
+  -- cobro): la devolución que entra abajo es del otro tipo y no se vuelve a tocar.
   for v_mov in
-    select m.id, m.caja_id, m.fecha from public.movimientos_caja m
+    select m.* from public.movimientos_caja m
      where m.origen = p_origen and m.origen_id = p_origen_id and m.anulado_en is null
+       and m.tipo = case when p_origen = 'COBRO_FACTURA_VENTA' then 'INGRESO' else 'EGRESO' end
      order by m.caja_id
   loop
+    -- Devolver dinero a una cuenta, o sacarlo, es llevar la caja.
+    perform public.exigir_permiso('tesoreria.caja');
     select * into v_caja from public.cajas where id = v_mov.caja_id for update;
     if not v_caja.activa then
       raise exception 'Este % está en la cuenta %, que está desactivada: actívala para anularlo.', p_que, v_caja.nombre
         using errcode = 'check_violation';
     end if;
     select max(fecha) into v_cierre from public.cierres_caja where caja_id = v_mov.caja_id and anulado_en is null;
-    if v_cierre is not null and v_mov.fecha <= v_cierre then
-      raise exception 'Este % está en la cuenta % el %, y ese día ya está cerrado: reabre el cierre para anularlo.',
-        p_que, v_caja.nombre, public.caja_texto_fecha(v_mov.fecha) using errcode = 'check_violation';
+    if v_cierre is null or v_mov.fecha > v_cierre then
+      update public.movimientos_caja
+         set anulado_por = public.usuario_actual(), anulado_en = now(), motivo_anulacion = btrim(p_motivo)
+       where id = v_mov.id;
+    else
+      -- Su día ya cuadró con el banco y no se toca: la devolución entra hoy.
+      if v_hoy <= v_cierre then
+        raise exception 'Este % está en la cuenta % el %, y la cuenta ya está cerrada hasta hoy: reabre el cierre de hoy para anularlo.',
+          p_que, v_caja.nombre, public.caja_texto_fecha(v_mov.fecha) using errcode = 'check_violation';
+      end if;
+      insert into public.movimientos_caja (caja_id, fecha, tipo, monto, descripcion, codigo_interno, operacion,
+                                           tipo_cambio, origen, origen_id)
+      values (v_mov.caja_id, v_hoy, case when v_mov.tipo = 'EGRESO' then 'INGRESO' else 'EGRESO' end, v_mov.monto,
+              left('Anulación del ' || p_que || ' del ' || public.caja_texto_fecha(v_mov.fecha) || ': ' || v_mov.descripcion, 300),
+              v_mov.codigo_interno, null, v_mov.tipo_cambio, v_mov.origen, v_mov.origen_id);
     end if;
-    update public.movimientos_caja
-       set anulado_por = public.usuario_actual(), anulado_en = now(), motivo_anulacion = btrim(p_motivo)
-     where id = v_mov.id;
   end loop;
 end;
 $$;
 comment on function public.caja_anular_por_pago(text, uuid, text, text) is
-  'Anula, con el motivo del pago o del cobro, su movimiento de caja, si su día sigue abierto. La llaman las funciones de anular.';
+  'Anula, con el motivo del pago o del cobro, su movimiento de caja; si su día ya se cerró, deja hoy la devolución. La llaman las funciones de anular.';
 revoke all on function public.caja_anular_por_pago(text, uuid, text, text) from public, anon, authenticated;
 
 -- -----------------------------------------------------------------------------
@@ -624,3 +654,59 @@ begin
   return p_id;
 end;
 $$;
+
+-- -----------------------------------------------------------------------------
+-- 8. Lo mismo no se cuenta dos veces
+-- -----------------------------------------------------------------------------
+-- La caja lleva desde el 17/10 egresos e ingresos anotados a mano. Si Tesorería
+-- anotó a mano un pago y después lo registra en su pantalla —o al revés—, el
+-- saldo lo descontaría dos veces y, con código interno, también el costeo. Misma
+-- cuenta, mismo tipo, mismo monto y misma operación del banco, uno a mano y el
+-- otro del sistema: es el mismo dinero. Dos pagos del sistema con la misma
+-- operación sí pueden ir (una transferencia que paga dos facturas).
+create or replace function public.fn_caja_sin_contar_dos_veces()
+returns trigger language plpgsql set search_path to 'public' as $$
+declare v_otro record;
+begin
+  if new.operacion is null or new.origen = 'TRANSFERENCIA' then return new; end if;
+  select m.fecha, m.origen into v_otro
+    from public.movimientos_caja m
+   where m.caja_id = new.caja_id and m.tipo = new.tipo and m.monto = new.monto and m.anulado_en is null
+     and m.origen <> 'TRANSFERENCIA' and (m.origen = 'MANUAL') <> (new.origen = 'MANUAL')
+     and lower(btrim(m.operacion)) = lower(btrim(new.operacion))
+   limit 1;
+  if not found then return new; end if;
+  if new.origen = 'MANUAL' then
+    raise exception 'Ese % ya está en la caja: lo dejó el % con la operación % el %. Los pagos y cobros del sistema entran solos.',
+      lower(new.tipo),
+      case v_otro.origen when 'PAGO_ADQUISICION' then 'pago de una factura de compra'
+                         when 'PAGO_ORDEN_SERVICIO' then 'pago de una orden de servicio'
+                         when 'PAGO_RECIBO_HONORARIOS' then 'pago de un recibo por honorarios'
+                         when 'PAGO_PLANILLA_DIARIA' then 'pago de la planilla diaria'
+                         else 'cobro de una factura de venta' end,
+      btrim(new.operacion), public.caja_texto_fecha(v_otro.fecha) using errcode = 'check_violation';
+  end if;
+  raise exception 'En esa cuenta ya está anotado a mano un % del mismo monto con la operación % el %: es este mismo %. Anúlalo en Caja diaria y vuelve a registrarlo aquí, que la caja lo toma sola.',
+    lower(new.tipo), btrim(new.operacion), public.caja_texto_fecha(v_otro.fecha),
+    case when new.origen = 'COBRO_FACTURA_VENTA' then 'cobro' else 'pago' end using errcode = 'check_violation';
+end;
+$$;
+comment on function public.fn_caja_sin_contar_dos_veces() is
+  'Rechaza un movimiento a mano igual a uno de un pago o cobro del sistema (misma cuenta, tipo, monto y operación), y al revés.';
+revoke all on function public.fn_caja_sin_contar_dos_veces() from public, anon, authenticated;
+create or replace trigger trg_caja_sin_contar_dos_veces
+  before insert on public.movimientos_caja
+  for each row execute function public.fn_caja_sin_contar_dos_veces();
+
+-- -----------------------------------------------------------------------------
+-- 9. La caja tampoco se lee por la auditoría
+-- -----------------------------------------------------------------------------
+-- `auditoria.ver` (Gerencia y Supervisión general) lee todo `audit_log`, y las
+-- tres tablas de la caja dejan ahí cada fila con su monto, su descripción y el
+-- nombre de la cuenta. La caja es solo de Tesorería (`tesoreria.caja`): esas
+-- filas piden también ese permiso. El resto de la auditoría queda igual.
+alter policy ver_audit_log on public.audit_log using (
+  public.es_admin()
+  or (public.tiene_permiso('auditoria.ver')
+      and (tabla not in ('cajas', 'movimientos_caja', 'cierres_caja') or public.tiene_permiso('tesoreria.caja')))
+);

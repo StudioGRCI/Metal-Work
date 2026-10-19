@@ -2,7 +2,8 @@
 -- 20261017220000, «Conectar ya» de DKS el 19/10). Tesorería paga una factura de
 -- compra, una orden de servicio, un recibo por honorarios y la planilla diaria,
 -- y cobra una factura de venta: cada uno pide la cuenta y deja su movimiento ahí.
--- Anular el pago anula su movimiento; un día cerrado no se toca; lo de antes del
+-- Anular el pago anula su movimiento; un día cerrado no se toca (la devolución
+-- entra hoy); lo anotado a mano no se cuenta dos veces; lo de antes del
 -- saldo inicial no mueve la cuenta; otra moneda pide lo que salió de la cuenta.
 -- Todo con la cuenta de Tesorería y `set local role authenticated`; Gerencia,
 -- que consulta, no paga. Termina en rollback.
@@ -45,9 +46,11 @@ begin
   return v_ruta;
 end $$;
 
--- El movimiento vigente que dejó un pago o un cobro.
+-- El movimiento vigente que dejó un pago (egreso) o un cobro (ingreso); la
+-- devolución de una anulación en un día cerrado es del otro tipo.
 create or replace function pg_temp.mov(p_origen text, p_id text) returns public.movimientos_caja language sql as $$
   select * from public.movimientos_caja where origen = p_origen and origen_id = p_id::uuid and anulado_en is null
+     and tipo = case when p_origen = 'COBRO_FACTURA_VENTA' then 'INGRESO' else 'EGRESO' end
 $$;
 
 -- ------------------------------------------------------------------ armazón
@@ -360,11 +363,69 @@ begin
   perform public.registrar_pago_servicio(current_setting('prueba.pago9')::uuid, current_setting('prueba.os')::uuid, v_hoy - 1, 500, true,
     'OP-398-9', null, v_ruta, current_setting('prueba.ccierre')::uuid, null);
   perform public.cerrar_dia_caja(gen_random_uuid(), current_setting('prueba.ccierre')::uuid, v_hoy - 1, -500, null);
-  perform test.debe_fallar(format('select public.anular_pago_servicio(%L, ''El proveedor devolvió el pago'')', current_setting('prueba.pago9')),
-    'un pago cuyo egreso está en un día cerrado no se anula', 'ese día ya está cerrado');
-  perform test.afirmar((select anulado_en is null from public.pagos_orden_servicio where id = current_setting('prueba.pago9')::uuid)
-      and (pg_temp.mov('PAGO_ORDEN_SERVICIO', current_setting('prueba.pago9'))).id is not null,
-    'el pago y su egreso siguen vigentes');
+
+  -- Anular un pago cuyo día ya se cerró: ese día no se toca y la devolución entra hoy.
+  perform public.anular_pago_servicio(current_setting('prueba.pago9')::uuid, 'El proveedor devolvió el pago');
+  perform test.afirmar((select anulado_en is not null from public.pagos_orden_servicio where id = current_setting('prueba.pago9')::uuid),
+    'un pago cuyo egreso está en un día cerrado sí se anula');
+  perform test.afirmar((pg_temp.mov('PAGO_ORDEN_SERVICIO', current_setting('prueba.pago9'))).fecha = v_hoy - 1,
+    'su egreso se queda en el día cerrado, que ya cuadró con el banco');
+  perform test.afirmar((select count(*) = 1 and min(fecha) = v_hoy and min(monto) = 500 and bool_and(operacion is null)
+                               and bool_and(descripcion like 'Anulación del pago del %')
+                          from public.movimientos_caja
+                         where origen = 'PAGO_ORDEN_SERVICIO' and origen_id = current_setting('prueba.pago9')::uuid
+                           and tipo = 'INGRESO' and anulado_en is null),
+    'y la devolución, del mismo monto, entra hoy como ingreso');
+  perform test.afirmar((select saldo_final = 0 from public.caja_del_dia(v_hoy) where caja_id = current_setting('prueba.ccierre')::uuid),
+    'con la devolución la cuenta vuelve a su saldo');
+
+  -- Con la cuenta cerrada también hoy no hay dónde dejar la devolución.
+  perform set_config('prueba.pago11', gen_random_uuid()::text, true);
+  v_ruta := pg_temp.voucher('pagos-servicio', current_setting('prueba.os'));
+  perform public.registrar_pago_servicio(current_setting('prueba.pago11')::uuid, current_setting('prueba.os')::uuid, v_hoy, 500, true,
+    'OP-398-11', null, v_ruta, current_setting('prueba.ccierre')::uuid, null);
+  perform public.cerrar_dia_caja(gen_random_uuid(), current_setting('prueba.ccierre')::uuid, v_hoy, -500, null);
+  perform test.debe_fallar(format('select public.anular_pago_servicio(%L, ''El proveedor devolvió el pago'')', current_setting('prueba.pago11')),
+    'con la cuenta cerrada hasta hoy el pago no se anula', 'reabre el cierre de hoy');
+  perform test.afirmar((select anulado_en is null from public.pagos_orden_servicio where id = current_setting('prueba.pago11')::uuid)
+      and (pg_temp.mov('PAGO_ORDEN_SERVICIO', current_setting('prueba.pago11'))).id is not null,
+    'y el pago y su egreso siguen vigentes');
+  reset role;
+  perform test.afirmar((select count(*) from public.codigo_interno_lineas_caja('QA398-OS')) =
+                       (select count(*) from public.movimientos_caja where origen = 'MANUAL' and tipo = 'EGRESO'
+                           and codigo_interno = 'QA398-OS' and anulado_en is null),
+    'la devolución no entra al costeo del código: el costeo cuenta solo lo anotado a mano (la función es del costeo, no de Tesorería)');
+end $$;
+
+-- ------------------------------------------- 5b. Lo mismo no se cuenta dos veces
+do $$
+declare
+  v_hoy  date := current_setting('prueba.hoy')::date;
+  v_ruta text;
+begin
+  perform pg_temp.como('teso');
+  set local role authenticated;
+  -- Anotado a mano primero, registrado después en Cuentas por pagar.
+  perform public.registrar_movimiento_caja(gen_random_uuid(), current_setting('prueba.cpen')::uuid, v_hoy, 'EGRESO', 77,
+    'Pago al proveedor 398, anotado a mano', null, 'op-398-dup', null);
+  v_ruta := pg_temp.voucher('pagos-facturas', current_setting('prueba.adq1'));
+  perform test.debe_fallar(format('select public.registrar_pago_factura(gen_random_uuid(), %L, %L, 77, ''OP-398-DUP'', %L, %L, null)',
+      current_setting('prueba.adq1'), v_hoy, v_ruta, current_setting('prueba.cpen')),
+    'un pago ya anotado a mano con su operación y su monto no se descuenta dos veces', 'ya está anotado a mano');
+  -- Con otro monto es otro dinero, y desde otra cuenta también.
+  perform public.registrar_pago_factura(gen_random_uuid(), current_setting('prueba.adq1')::uuid, v_hoy, 78,
+    'OP-398-DUP', v_ruta, current_setting('prueba.cpen')::uuid, null);
+  -- Registrado primero, anotado a mano después.
+  perform test.debe_fallar(format('select public.registrar_movimiento_caja(gen_random_uuid(), %L, %L, ''EGRESO'', 78, ''Lo mismo, a mano'', null, ''OP-398-DUP'', null)',
+      current_setting('prueba.cpen'), v_hoy),
+    'lo que dejó un pago no se vuelve a anotar a mano', 'Los pagos y cobros del sistema entran solos');
+  -- Dos pagos del sistema con la misma operación (una transferencia que paga dos facturas) sí van:
+  -- la de dólares, US$ 20 que salieron como S/ 78 de la misma cuenta.
+  v_ruta := pg_temp.voucher('pagos-facturas', current_setting('prueba.adq2'));
+  perform public.registrar_pago_factura(gen_random_uuid(), current_setting('prueba.adq2')::uuid, v_hoy, 20,
+    'OP-398-DUP', v_ruta, current_setting('prueba.cpen')::uuid, 78);
+  perform test.afirmar((select count(*) from public.movimientos_caja where operacion = 'OP-398-DUP' and origen = 'PAGO_ADQUISICION') = 2,
+    'dos pagos del sistema con la misma operación entran los dos');
   reset role;
 end $$;
 
@@ -378,8 +439,14 @@ begin
       current_setting('prueba.adq1'), v_hoy, current_setting('prueba.cpen')),
     'Gerencia consulta, no paga', 'tesoreria.registrar_pagos');
   perform test.afirmar((select count(*) from public.movimientos_caja) = 0, 'ni ve los movimientos de la caja');
+  perform test.afirmar((select count(*) from public.audit_log where tabla in ('cajas', 'movimientos_caja', 'cierres_caja')) = 0,
+    'ni los lee por la auditoría, aunque tenga auditoria.ver');
+  perform test.afirmar((select count(*) from public.audit_log where tabla = 'pagos_adquisicion') > 0,
+    'el resto de la auditoría lo sigue viendo');
   reset role;
 end $$;
+select test.afirmar((select count(*) from public.audit_log where tabla = 'movimientos_caja') > 0,
+  'y la auditoría de la caja sí está: es la política la que la guarda');
 
 -- Quien paga sin llevar la caja no la mueve (hoy los dos permisos son de Tesorería).
 delete from public.roles_permisos
@@ -393,6 +460,8 @@ begin
   perform test.debe_fallar(format('select public.registrar_pago_factura(gen_random_uuid(), %L, %L, 10, ''OP-398-S'', %L, %L, null)',
       current_setting('prueba.adq1'), current_setting('prueba.hoy'), v_ruta, current_setting('prueba.cpen')),
     'sin tesoreria.caja no se paga desde una cuenta', 'tesoreria.caja');
+  perform test.debe_fallar(format('select public.anular_pago_factura(%L, ''Se anula sin llevar la caja'')', current_setting('prueba.pago1')),
+    'ni se anula un pago que movió una cuenta', 'tesoreria.caja');
   reset role;
 end $$;
 

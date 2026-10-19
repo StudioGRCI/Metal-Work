@@ -5,7 +5,9 @@
  *
  *   1. Paga a cuenta una factura de compra en soles: el formulario pide la
  *      cuenta (sin elegirla no deja enviar); tres toques dejan un solo pago y
- *      un solo egreso, y al lado del botón dice de qué cuenta salió.
+ *      un solo egreso, y abajo de la pantalla dice de qué cuenta salió (también
+ *      cuando el pago cancela el documento y su botón desaparece). Con un día
+ *      de antes del inicio de la cuenta, dice que no la mueve.
  *   2. Paga una factura en dólares desde la cuenta en soles: aparece «Lo que
  *      salió de la cuenta, en soles» y la caja guarda su tipo de cambio.
  *   3. Paga una orden de servicio, cobra una factura de venta en dólares a la
@@ -191,7 +193,7 @@ try {
   ids.fv = (await consulta(
     `insert into facturas_venta (codigo_interno, cotizacion_pdf_id, cotizacion_numero, cliente, cliente_id, numero, fecha_emision, fecha_vencimiento,
                                  moneda, total, ruta_storage, nombre_archivo, tamano_bytes, registrado_por)
-     values ('PRB-CAJA', $1, $2, 'CLIENTE PRUEBA CAJA', $3, $4, $5::date, $5::date + 30, 'USD', 1000, 'fv/prueba-caja.pdf', 'prueba.pdf', 120, $6) returning id`,
+     values ('PRB-CAJA', $1, $2, 'CLIENTE PRUEBA CAJA', $3, $4, $5::date, $5::date + 30, 'USD', 1000, 'fv/prueba-caja-' || $2 || '.pdf', 'prueba.pdf', 120, $6) returning id`,
     [cot.id, `QA-CAJA-${sello}`, clienteId, N.fv, hoy, teso.id],
   ))[0].id
   const [sub] = await consulta(
@@ -262,7 +264,12 @@ const movimiento = async (origen, documento, campo) =>
   comprobar(!valido && (await v.isVisible()), 'sin elegir la cuenta no deja enviar')
   await elegirCuenta(v, SOLES)
   comprobar((await v.locator('input[name="monto_cuenta"]').count()) === 0, 'con la cuenta en soles no pide otro monto')
-  comprobar(limpio(await v.textContent()).includes('Empieza el'), 'dice desde qué día lleva la caja esa cuenta')
+  const campoDia = v.locator('input[name="fecha"]')
+  const haceCuarenta = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date(Date.now() - 40 * 86400000))
+  await campoDia.fill(haceCuarenta)
+  comprobar(limpio(await v.textContent()).includes('se registra sin moverla'), 'con un día de antes del inicio de la cuenta, dice que el pago no la mueve')
+  await campoDia.fill(hoy)
+  comprobar(!limpio(await v.textContent()).includes('se registra sin moverla'), 'con el día de hoy ya no lo dice')
   const boton = v.getByRole('button', { name: 'Registrar el pago' })
   await boton.click()
   await boton.click({ timeout: 1000 }).catch(() => {})
@@ -273,8 +280,9 @@ const movimiento = async (origen, documento, campo) =>
   const pagos = await consulta('select count(*)::int as n from pagos_adquisicion where adquisicion_id = $1', [ids.adqPen])
   comprobar(pagos[0].n === 1 && movPen.length === 1, `tres toques dejan un pago y un egreso (${pagos[0].n} pagos, ${movPen.length} egresos)`)
   comprobar(movPen[0]?.tipo === 'EGRESO' && movPen[0]?.monto === 500 && movPen[0]?.caja_id === ids.pen, 'el egreso es de S/ 500.00 en la cuenta en soles')
-  const aviso = limpio(await factura.locator('[role="status"]').textContent({ timeout: 5000 }).catch(() => ''))
-  comprobar(aviso.includes(`Salió de ${SOLES}`), `al lado del botón dice de qué cuenta salió («${aviso}»)`)
+  const leerAviso = async () => limpio(await pagina.locator('[data-aviso-caja]').textContent({ timeout: 8000 }).catch(() => ''))
+  const aviso = await leerAviso()
+  comprobar(aviso.includes(`Salió de ${SOLES}`), `abajo de la pantalla dice de qué cuenta salió («${aviso}»)`)
 
   // 2. Factura en dólares desde la cuenta en soles.
   const facturaUsd = pagina.locator('article', { hasText: N.adqUsd })
@@ -331,6 +339,8 @@ const movimiento = async (origen, documento, campo) =>
   comprobar(!error, `paga el recibo por honorarios${error ? ` (dijo «${error}»)` : ''}`)
   const movRec = await hasta(() => movimiento('PAGO_RECIBO_HONORARIOS', ids.rec, { tabla: 'pagos_recibo_honorarios', columna: 'recibo_id' }), (r) => r.length > 0)
   comprobar(movRec[0]?.monto === 920, 'sale el neto del recibo, S/ 920.00, sin la retención')
+  const avisoRecibo = await leerAviso()
+  comprobar(avisoRecibo.includes(`Salió de ${SOLES}`), `el recibo pagado sale de la lista y el aviso se queda («${avisoRecibo}»)`)
 
   // 3d. Planilla diaria: dos personas, un egreso.
   await pagina.goto(`${BASE}/planilla-diaria/${ids.pd}`, { waitUntil: 'networkidle' })
@@ -343,6 +353,8 @@ const movimiento = async (origen, documento, campo) =>
   comprobar(!error, `paga la planilla diaria${error ? ` (dijo «${error}»)` : ''}`)
   const movPd = await hasta(() => movimiento('PAGO_PLANILLA_DIARIA', ids.pd, { tabla: 'planilla_diaria_pagos', columna: 'planilla_id' }), (r) => r.length > 0)
   comprobar(movPd.length === 1 && movPd[0]?.monto === 300, 'las dos personas salen en un solo egreso de S/ 300.00')
+  const avisoPlanilla = await leerAviso()
+  comprobar(avisoPlanilla.includes(`Salió de ${SOLES}`), `pagada toda la planilla, el aviso se queda («${avisoPlanilla}»)`)
 
   // 4. La caja diaria.
   await pagina.goto(`${BASE}/tesoreria/caja-diaria`, { waitUntil: 'networkidle' })
@@ -353,6 +365,9 @@ const movimiento = async (origen, documento, campo) =>
   comprobar((await fila.locator('button').count()) === 0, 'y sin botón para anularlo suelto')
   const enlace = await fila.locator('a', { hasText: 'Cuentas por pagar' }).getAttribute('href').catch(() => null)
   comprobar(enlace === '/tesoreria/por-pagar', 'el enlace lleva a Cuentas por pagar')
+  const filaPd = pagina.locator('tr', { hasText: 'Pago de planilla diaria' }).filter({ hasText: N.pd })
+  const enlacePd = await filaPd.locator('a', { hasText: 'su planilla' }).first().getAttribute('href').catch(() => null)
+  comprobar(enlacePd === `/planilla-diaria/${ids.pd}`, `el de la planilla lleva a su planilla (${enlacePd})`)
   const filaSaldo = limpio(await pagina.locator('table').first().locator('tr', { hasText: SOLES }).textContent().catch(() => ''))
   comprobar(filaSaldo.includes('2,290.00') && filaSaldo.includes('7,710.00'), `de la cuenta en soles salen S/ 2,290.00 y queda en S/ 7,710.00 («${filaSaldo}»)`)
   await pagina.screenshot({ path: join(CAPTURAS, 'pagos-caja-diaria.png'), fullPage: true })
@@ -368,6 +383,8 @@ const movimiento = async (origen, documento, campo) =>
   comprobar(!error, `anula el pago${error ? ` (dijo «${error}»)` : ''}`)
   const anulado = await hasta(() => movimiento('PAGO_ADQUISICION', ids.adqPen, { tabla: 'pagos_adquisicion', columna: 'adquisicion_id' }), (r) => !!r[0]?.anulado_en)
   comprobar(!!anulado[0]?.anulado_en, 'su egreso en la caja queda anulado')
+  const avisoAnular = await leerAviso()
+  comprobar(avisoAnular.includes('también quedó anulado'), `y la pantalla lo dice («${avisoAnular}»)`)
 
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.join(' | ')}` : ''}`)
   await contexto.close()

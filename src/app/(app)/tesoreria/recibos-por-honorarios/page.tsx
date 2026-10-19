@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta } from '@/components/ui/tarjeta'
@@ -29,7 +30,8 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
   const [recibos, cuentasCaja] = await Promise.all([
     recibosParaTesoreria(),
     // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261017220000).
-    paga ? cuentasParaPagar() : Promise.resolve([]),
+    // Sin `tesoreria.caja` no hay cuentas que ver (null): el pago lo dice y no se ofrece activo.
+    paga && puede(perfil, 'tesoreria.caja') ? cuentasParaPagar() : Promise.resolve(null),
   ])
   const pagoDe = (r: ReciboParaPagar) => r.pagos.find((p) => !p.anulado_en) ?? null
   const porPagar = recibos.filter((r) => !pagoDe(r))
@@ -43,7 +45,7 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
   const hoy = hoyLima()
 
   return (
-    <>
+    <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Recibos por honorarios"
         descripcion={
@@ -95,11 +97,11 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
           </ul>
         )}
       </Tarjeta>
-    </>
+    </AvisoDeLaCaja>
   )
 }
 
-function Fila({ r, paga, hoy, cuentasCaja }: { r: ReciboParaPagar; paga: boolean; hoy: string; cuentasCaja: CuentaParaPagar[] }) {
+function Fila({ r, paga, hoy, cuentasCaja }: { r: ReciboParaPagar; paga: boolean; hoy: string; cuentasCaja: CuentaParaPagar[] | null }) {
   const pago = r.pagos.find((p) => !p.anulado_en) ?? null
   const sub = r.subcontratista
   const sc = r.subcontrato

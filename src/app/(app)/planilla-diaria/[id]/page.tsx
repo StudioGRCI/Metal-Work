@@ -2,6 +2,7 @@ import { FileText } from 'lucide-react'
 import { notFound } from 'next/navigation'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -22,12 +23,14 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
   const perfil = await exigirPermiso(['planilla_diaria.preparar', 'planilla_diaria.pagar', 'planilla_diaria.ver'])
   const arma = puede(perfil, 'planilla_diaria.preparar')
   const paga = puede(perfil, 'planilla_diaria.pagar')
+  // Pagar mueve la caja: sin `tesoreria.caja` no hay cuentas que ver (null) y el pago no se ofrece activo.
+  const llevaCaja = puede(perfil, 'tesoreria.caja')
   const { id } = await params
   if (!GUID.test(id)) notFound()
   const [p, cuentasCaja] = await Promise.all([
     planillaDiaria(id, arma || paga),
     // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261017220000).
-    paga ? cuentasParaPagar() : Promise.resolve([]),
+    paga && llevaCaja ? cuentasParaPagar() : Promise.resolve(null),
   ])
   if (!p) notFound()
 
@@ -39,7 +42,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
   const hoy = hoyLima()
 
   return (
-    <>
+    <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo={<span className={`font-mono ${anulada ? 'line-through' : ''}`}>{p.numero}</span>}
         descripcion={`Enviada por Recursos Humanos el ${fecha(p.fecha)} · ${personasTexto(p.personas)} · ${moneda(p.total)}`}
@@ -49,6 +52,8 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
             <Insignia tono={ESTADO_PLANILLA[estado].tono}>{ESTADO_PLANILLA[estado].etiqueta}</Insignia>
             {paga && !anulada && porPagar.length > 0 && (
               <RegistrarPago
+                // Con otra gente por pagar es otro formulario: vuelve a marcar a todos los que faltan.
+                key={porPagar.map((g) => g.id).join()}
                 planillaId={p.id}
                 pagoId={crypto.randomUUID()}
                 hoy={hoy}
@@ -145,7 +150,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
           )}
         </Tarjeta>
       </div>
-    </>
+    </AvisoDeLaCaja>
   )
 }
 

@@ -32,6 +32,16 @@ export const PANTALLA_DEL_ORIGEN: Record<string, { ruta: string; nombre: string 
   COBRO_FACTURA_VENTA: { ruta: '/tesoreria/por-cobrar', nombre: 'Cuentas por cobrar' },
 }
 
+/**
+ * El movimiento que deja cada pago es un egreso y el de cada cobro un ingreso.
+ * Uno del otro tipo con el mismo origen es la devolución que entra hoy al anular
+ * un pago o un cobro cuyo día ya estaba cerrado.
+ */
+export function esDevolucion(origen: string, tipo: 'INGRESO' | 'EGRESO') {
+  if (!PANTALLA_DEL_ORIGEN[origen]) return false
+  return tipo !== (origen === 'COBRO_FACTURA_VENTA' ? 'INGRESO' : 'EGRESO')
+}
+
 /** Una cuenta activa de la caja, para elegir de cuál salió un pago o a cuál entró un cobro. */
 export type CuentaParaPagar = {
   id: string
@@ -52,7 +62,7 @@ export const DESCRIPCIONES_FRECUENTES = [
   'Envío de estado de cuenta',
   'Reposición de caja chica',
   'Retiro en ventanilla',
-  'Planilla',
+  'Planilla mensual',
   'Recibo por honorarios',
   'Letra',
 ]

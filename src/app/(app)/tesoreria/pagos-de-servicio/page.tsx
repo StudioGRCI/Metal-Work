@@ -1,6 +1,7 @@
 import { FileText, Wrench } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cuentasParaPagar } from '@/lib/datos/caja'
@@ -29,7 +30,8 @@ export default async function PaginaPagosDeServicio() {
   const [servicios, cuentasCaja] = await Promise.all([
     serviciosPorPagar(puede(perfil, 'proveedores.ver_cuentas')),
     // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261017220000).
-    paga ? cuentasParaPagar() : Promise.resolve([]),
+    // Sin `tesoreria.caja` no hay cuentas que ver (null): el formulario lo dice y no se ofrece activo.
+    paga && puede(perfil, 'tesoreria.caja') ? cuentasParaPagar() : Promise.resolve(null),
   ])
   const hoy = hoyLima()
   const porPagar = servicios
@@ -38,7 +40,7 @@ export default async function PaginaPagosDeServicio() {
   const pagados = servicios.filter((s) => s.cancelada)
 
   return (
-    <>
+    <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Pagos de servicio"
         descripcion="Las órdenes de servicio que aprobó Gerencia: paga cada una al proveedor con su voucher. Primero las que ya volvieron conformes."
@@ -73,7 +75,7 @@ export default async function PaginaPagosDeServicio() {
           </div>
         </details>
       )}
-    </>
+    </AvisoDeLaCaja>
   )
 }
 
@@ -86,7 +88,7 @@ function Servicio({
   servicio: ServicioPorPagar
   paga: boolean
   hoy: string
-  cuentasCaja: CuentaParaPagar[]
+  cuentasCaja: CuentaParaPagar[] | null
 }) {
   const m = codigoMoneda(s.moneda)
   const saldo = Math.max(Number(s.monto ?? 0) - Number(s.pagado ?? 0), 0)

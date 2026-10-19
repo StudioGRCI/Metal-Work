@@ -1,6 +1,7 @@
 import { FileText, Receipt } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
@@ -37,7 +38,8 @@ export default async function PaginaPorPagar() {
     db.from('v_compras_credito_sin_comprobante').select('orden_compra_id,numero,numero_ot,proveedor,referencia,fecha_compra,fecha_vencimiento,moneda,total_estimado').order('fecha_vencimiento').limit(100),
     db.rpc('resumen_planilla_por_ot'),
     // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261017220000).
-    paga ? cuentasParaPagar() : Promise.resolve([]),
+    // Sin `tesoreria.caja` no hay cuentas que ver (null): el formulario lo dice y no se ofrece activo.
+    paga && puede(perfil, 'tesoreria.caja') ? cuentasParaPagar() : Promise.resolve(null),
   ])
   for (const r of [pendientes, planillas]) if (r.error) throw new Error(`No se pudieron cargar las cuentas por pagar: ${r.error.message}`)
   const hoy = hoyLima()
@@ -47,7 +49,7 @@ export default async function PaginaPorPagar() {
   const pagadas = cuentas.filter((c) => Number(c.saldo) <= 0)
 
   return (
-    <>
+    <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Cuentas por pagar"
         descripcion="Las facturas de compra que registró Contabilidad, al contado o a crédito, de la que vence antes a la que vence después. Cada pago va con su voucher."
@@ -129,7 +131,7 @@ export default async function PaginaPorPagar() {
           )}
         </TarjetaCuerpo>
       </Tarjeta>
-    </>
+    </AvisoDeLaCaja>
   )
 }
 
@@ -145,7 +147,7 @@ function Factura({
   paga: boolean
   hoy: string
   correcciones: CorreccionVista[] | undefined
-  cuentasCaja: CuentaParaPagar[]
+  cuentasCaja: CuentaParaPagar[] | null
 }) {
   const m = codigoMoneda(c.moneda)
   const saldo = Number(c.saldo)

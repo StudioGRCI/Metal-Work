@@ -10,7 +10,7 @@ import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cajaDelDia, type CierreReabierto, type CuentaDelDia, type MovimientoDelDia } from '@/lib/datos/caja'
-import { consolidado, detalleDeCuenta, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO, PANTALLA_DEL_ORIGEN } from '@/lib/dominio/caja'
+import { consolidado, detalleDeCuenta, esDevolucion, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO, PANTALLA_DEL_ORIGEN } from '@/lib/dominio/caja'
 import { fecha, fechaHora, fechaLarga, hoyLima, moneda, numero, sumarDias } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
@@ -452,13 +452,25 @@ function FilaDeMovimiento({ movimiento: mov, moneda: m, cuenta, abierta }: {
         {!transferencia && mov.origen !== 'MANUAL' && (
           <span className="block text-xs text-texto-suave">
             {ORIGEN_MOVIMIENTO[mov.origen] ?? mov.origen}
-            {!anulado && PANTALLA_DEL_ORIGEN[mov.origen] && (
-              <>
-                {' · se anula en '}
-                <Link href={PANTALLA_DEL_ORIGEN[mov.origen].ruta} className="text-acento underline underline-offset-2">
-                  {PANTALLA_DEL_ORIGEN[mov.origen].nombre}
-                </Link>
-              </>
+            {esDevolucion(mov.origen, mov.tipo) ? (
+              ' · devolución de uno anulado, cuyo día ya estaba cerrado'
+            ) : (
+              !anulado &&
+              mov.enlace &&
+              PANTALLA_DEL_ORIGEN[mov.origen] && (
+                <>
+                  {' · se anula en '}
+                  {/* En el teléfono, alto de dedo: es lo único que se toca en la fila. */}
+                  <Link
+                    href={mov.enlace}
+                    className="inline-flex min-h-11 items-center text-acento underline underline-offset-2 sm:min-h-0"
+                  >
+                    {mov.origen === 'PAGO_PLANILLA_DIARIA' && mov.enlace !== PANTALLA_DEL_ORIGEN[mov.origen].ruta
+                      ? 'su planilla'
+                      : PANTALLA_DEL_ORIGEN[mov.origen].nombre}
+                  </Link>
+                </>
+              )
             )}
           </span>
         )}

@@ -3,7 +3,8 @@
 import { Ban, CheckCheck, FileUp, Wallet } from 'lucide-react'
 import { useState } from 'react'
 
-import { CuentaDeLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
+import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
+import { CuentaDeLaCaja, hayCuentas, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
@@ -42,11 +43,13 @@ export function RegistrarPago({
   pagoId: string
   hoy: string
   porPagar: { id: string; nombre: string; total: number }[]
-  cuentas: CuentaParaPagar[]
+  cuentas: CuentaParaPagar[] | null
 }) {
   const [abierta, setAbierta] = useState(false)
-  // De qué cuenta salió, o por qué la caja no se movió: la ventana ya se cerró.
-  const [aviso, setAviso] = useState<string | null>(null)
+  // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
+  const [dia, setDia] = useState(hoy)
+  // De qué cuenta salió, o por qué la caja no se movió: lo dice la página, porque este botón desaparece al pagar a todos.
+  const avisar = useAvisoDeLaCaja()
   const [marcadas, setMarcadas] = useState<string[]>(() => porPagar.map((p) => p.id))
   const total = porPagar.filter((p) => marcadas.includes(p.id)).reduce((n, p) => n + p.total, 0)
 
@@ -61,20 +64,16 @@ export function RegistrarPago({
   }
   const { alEnviar, enviando, error } = useEnvio(pagar, (r) => {
     setAbierta(false)
-    setAviso(r.mensaje ?? null)
+    avisar(r.mensaje ?? null)
   })
 
   return (
     <>
-      {aviso && (
-        <span role="status" className="max-w-60 text-xs text-texto-suave">
-          {aviso}
-        </span>
-      )}
       <Boton
         type="button"
         onClick={() => {
-          setAviso(null)
+          avisar(null)
+          setDia(hoy)
           setAbierta(true)
         }}
         data-registrar-pago
@@ -90,6 +89,7 @@ export function RegistrarPago({
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
+          <SinCuentasEnLaCaja cuentas={cuentas} tipo="pago" />
           <input type="hidden" name="id" value={pagoId} />
           <input type="hidden" name="planilla_id" value={planillaId} />
           <fieldset className="space-y-1">
@@ -116,12 +116,12 @@ export function RegistrarPago({
           </fieldset>
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Día del pago" htmlFor={`pago-fecha-${pagoId}`} requerido>
-              <Entrada id={`pago-fecha-${pagoId}`} name="fecha_pago" type="date" required defaultValue={hoy} max={hoy} />
+              <Entrada id={`pago-fecha-${pagoId}`} name="fecha_pago" type="date" required value={dia} onChange={(e) => setDia(e.target.value)} max={hoy} />
             </Campo>
             <Campo etiqueta="N.º de operación" htmlFor={`pago-operacion-${pagoId}`} ayuda="El que da el banco, si lo hay.">
               <Entrada id={`pago-operacion-${pagoId}`} name="operacion" maxLength={60} autoComplete="off" className="tabular" />
             </Campo>
-            <CuentaDeLaCaja cuentas={cuentas} monedaDocumento="PEN" tipo="pago" prefijo={`planilla-${pagoId}`} />
+            <CuentaDeLaCaja cuentas={cuentas} monedaDocumento="PEN" tipo="pago" dia={dia} prefijo={`planilla-${pagoId}`} />
           </div>
           <Campo etiqueta="Comprobante" htmlFor={`pago-archivo-${pagoId}`} requerido ayuda={`PDF o foto, hasta ${MAXIMO_MB_PLANILLA} MB.`}>
             <Entrada id={`pago-archivo-${pagoId}`} name="archivo" type="file" accept={ACEPTA} required />
@@ -135,7 +135,7 @@ export function RegistrarPago({
             <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
               Cancelar
             </Boton>
-            <Boton type="submit" cargando={enviando} disabled={marcadas.length === 0}>
+            <Boton type="submit" cargando={enviando} disabled={marcadas.length === 0 || !hayCuentas(cuentas)}>
               Registrar el pago
             </Boton>
           </div>
@@ -236,7 +236,11 @@ export function AnularConMotivo({
   descripcion: string
 }) {
   const [abierta, setAbierta] = useState(false)
-  const { alEnviar, enviando, error } = useEnvio(tipo === 'planilla' ? anularPlanillaDiaria : anularPagoPlanilla, () => setAbierta(false))
+  const avisar = useAvisoDeLaCaja()
+  const { alEnviar, enviando, error } = useEnvio(tipo === 'planilla' ? anularPlanillaDiaria : anularPagoPlanilla, (r) => {
+    setAbierta(false)
+    if (tipo === 'pago') avisar(r.mensaje ?? null)
+  })
   return (
     <>
       <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} data-anular={tipo}>

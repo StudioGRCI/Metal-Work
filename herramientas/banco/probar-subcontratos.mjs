@@ -30,7 +30,7 @@ import { join } from 'node:path'
 import pg from 'pg'
 import { chromium } from 'playwright-core'
 
-import { crearCajaDePrueba, elegirCuenta } from './caja-de-prueba.mjs'
+import { crearCajaDePrueba, elegirCuenta, movimientosDeLaCaja } from './caja-de-prueba.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -248,6 +248,9 @@ comprobar(archivo?.n === 1, 'el recibo está en Storage, en el bucket de subcont
   await v.getByRole('button', { name: 'Registrar el pago' }).click()
   const error = await esperarVentana(pagina)
   comprobar(!error, `registra el pago con su voucher${error ? `: ${error}` : ''}`)
+  const movs = await movimientosDeLaCaja(consulta, caja)
+  comprobar(movs.length === 1 && movs[0].origen === 'PAGO_RECIBO_HONORARIOS' && movs[0].tipo === 'EGRESO' && movs[0].monto === 1840,
+    `el neto sale de la cuenta elegida en la caja diaria (${JSON.stringify(movs)})`)
   await pagina.waitForLoadState('networkidle')
   comprobar((await pagina.locator(`[data-recibo="${numeroRecibo}"]`).count()) === 0, 'sale de «Por pagar»')
   await pagina.goto(`${BASE}/tesoreria/recibos-por-honorarios?ver=pagados`, { waitUntil: 'networkidle' })

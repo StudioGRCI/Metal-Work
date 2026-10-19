@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { monedaDeCuenta, type CuentaParaPagar } from '@/lib/dominio/caja'
+import { monedaDeCuenta, PANTALLA_DEL_ORIGEN, type CuentaParaPagar } from '@/lib/dominio/caja'
 import { hoyLima } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 
@@ -51,6 +51,8 @@ export type MovimientoDelDia = {
   tipo_cambio: number | null
   origen: string
   origen_id: string | null
+  /** Dónde se anula el pago o el cobro que lo dejó: su pantalla, o la planilla misma. */
+  enlace: string | null
   /** La otra cuenta de una transferencia. */
   otra_cuenta: string | null
   registrado_por: string | null
@@ -99,6 +101,18 @@ export async function cajaDelDia(dia: string): Promise<CajaDelDia> {
   if (cambio.error) throw new Error(`No se pudo leer el tipo de cambio: ${cambio.error.message}`)
   if (codigos.error) throw new Error(`No se pudieron leer los códigos internos: ${codigos.error.message}`)
 
+  // El pago de la planilla se anula en su planilla: se busca cuál es. Si no se
+  // puede leer, el enlace lleva a la lista, que también sirve.
+  const pagosPlanilla = (movimientos.data ?? []).flatMap((m) => (m.origen === 'PAGO_PLANILLA_DIARIA' && m.origen_id ? [m.origen_id] : []))
+  const planillas = pagosPlanilla.length
+    ? await supabase.from('planilla_diaria_pagos').select('id, planilla_id').in('id', pagosPlanilla)
+    : { data: [] as { id: string; planilla_id: string }[] }
+  const planillaDelPago = new Map((planillas.data ?? []).map((g) => [g.id, g.planilla_id]))
+  const enlace = (origen: string, origenId: string | null) => {
+    const planilla = origen === 'PAGO_PLANILLA_DIARIA' && origenId ? planillaDelPago.get(origenId) : undefined
+    return planilla ? `/planilla-diaria/${planilla}` : (PANTALLA_DEL_ORIGEN[origen]?.ruta ?? null)
+  }
+
   return {
     cuentas: (cuentas.data ?? []).flatMap((c) =>
       c.caja_id
@@ -144,6 +158,7 @@ export async function cajaDelDia(dia: string): Promise<CajaDelDia> {
               tipo_cambio: o(m.tipo_cambio),
               origen: m.origen ?? 'MANUAL',
               origen_id: m.origen_id,
+              enlace: enlace(m.origen ?? 'MANUAL', m.origen_id),
               otra_cuenta: m.otra_cuenta,
               registrado_por: m.registrado_por,
               creado_en: m.creado_en ?? '',

@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { cajaTrasAnular, cajaTrasElPago, camposDeLaCuenta, leerCuenta, montoDeLaCuenta } from '@/lib/caja-del-pago'
+import { cajaTrasAnular, cajaTrasElPago, camposDeLaCuenta, leerCuenta, montoDeLaCuenta, SIN_CAJA } from '@/lib/caja-del-pago'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -70,6 +70,7 @@ export async function anularPlanillaDiaria(_previo: unknown, formulario: FormDat
 export async function registrarPagoPlanilla(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'planilla_diaria.pagar')) return { ok: false, error: NO_PAGA }
+  if (!puede(perfil, 'tesoreria.caja')) return { ok: false, error: SIN_CAJA }
   const analisis = z
     .object({
       id: z.guid(),

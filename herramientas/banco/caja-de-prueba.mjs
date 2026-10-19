@@ -25,3 +25,12 @@ export async function elegirCuenta(ventana, nombre) {
   const valor = await ventana.locator('select[name="caja_id"] option', { hasText: nombre }).getAttribute('value')
   await ventana.locator('select[name="caja_id"]').selectOption(valor)
 }
+
+/** Los movimientos vigentes de esa cuenta de prueba, para comprobar que el pago la movió. */
+export async function movimientosDeLaCaja(consulta, nombre) {
+  return consulta(
+    `select m.origen, m.tipo, m.monto::float as monto from movimientos_caja m join cajas c on c.id = m.caja_id
+      where c.nombre = $1 and m.anulado_en is null order by m.creado_en`,
+    [nombre],
+  )
+}

@@ -32,7 +32,7 @@ import { join } from 'node:path'
 import pg from 'pg'
 import { chromium } from 'playwright-core'
 
-import { crearCajaDePrueba, elegirCuenta } from './caja-de-prueba.mjs'
+import { crearCajaDePrueba, elegirCuenta, movimientosDeLaCaja } from './caja-de-prueba.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -446,6 +446,9 @@ let numeroPlanilla = null
   await v.getByRole('button', { name: 'Registrar el pago' }).click()
   let error = await esperarVentana(pagina)
   comprobar(!error, `registra el pago en lote${error ? `: ${error}` : ''}`)
+  const movs = await movimientosDeLaCaja(consulta, caja)
+  comprobar(movs.length === 1 && movs[0].origen === 'PAGO_PLANILLA_DIARIA' && movs[0].tipo === 'EGRESO' && movs[0].monto === 165,
+    `el lote sale en un solo egreso de la cuenta elegida (${JSON.stringify(movs)})`)
   const pagos = await consulta(
     `select g.operacion, g.comprobante_ruta as ruta, (select count(*)::int from planilla_diaria_personas p where p.pago_id = g.id) as personas
        from planilla_diaria_pagos g where g.planilla_id = $1 and g.anulado_en is null`,
