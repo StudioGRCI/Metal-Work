@@ -167,7 +167,7 @@ end;
 $$;
 
 -- Una cuenta de la caja diaria para los checks que pagan o cobran: desde la
--- migración 20261017220000 todo pago y todo cobro piden la cuenta de la que
+-- migración 20261019100000 todo pago y todo cobro piden la cuenta de la que
 -- sale o a la que entra. Empieza hace 30 días, sin saldo; la crea el último
 -- usuario de Tesorería (el del check).
 create or replace function test.crear_caja(p_moneda text default 'PEN', p_inicio date default null)

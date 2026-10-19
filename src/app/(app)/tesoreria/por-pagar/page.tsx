@@ -5,9 +5,10 @@ import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
+import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { AvisosDelDetector, avisosDeFacturaRegistrada, InsigniaDelDetector } from '@/app/(app)/adquisiciones/detector'
 import { cuentasPorPagar, type CuentaPorPagar } from '@/lib/datos/adquisiciones'
-import { cuentasParaPagar } from '@/lib/datos/caja'
+import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/caja'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { TIPO_COMPROBANTE, TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
@@ -31,20 +32,24 @@ export const metadata = { title: 'Cuentas por pagar' }
  */
 export default async function PaginaPorPagar() {
   const perfil = await exigirPermiso('tesoreria.ver_documentos')
-  const paga = puede(perfil, 'tesoreria.registrar_pagos')
+  // Paga quien lleva la caja: el pago sale de una de sus cuentas (la base pide los dos permisos).
+  const paga = puede(perfil, 'tesoreria.registrar_pagos') && puede(perfil, 'tesoreria.caja')
   const db = await createClient()
   const [cuentas, pendientes, planillas, cuentasCaja] = await Promise.all([
     cuentasPorPagar(),
     db.from('v_compras_credito_sin_comprobante').select('orden_compra_id,numero,numero_ot,proveedor,referencia,fecha_compra,fecha_vencimiento,moneda,total_estimado').order('fecha_vencimiento').limit(100),
     db.rpc('resumen_planilla_por_ot'),
-    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261017220000).
-    // Sin `tesoreria.caja` no hay cuentas que ver (null): el formulario lo dice y no se ofrece activo.
-    paga && puede(perfil, 'tesoreria.caja') ? cuentasParaPagar() : Promise.resolve(null),
+    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
+    paga ? cuentasParaPagar() : Promise.resolve([]),
   ])
   for (const r of [pendientes, planillas]) if (r.error) throw new Error(`No se pudieron cargar las cuentas por pagar: ${r.error.message}`)
   const hoy = hoyLima()
   // Las correcciones de cada factura, con su justificante: Tesorería paga lo que quedó.
-  const correcciones = await correccionesDe('FACTURA_COMPRA', cuentas.flatMap((c) => (c.id ? [c.id] : [])))
+  // Y, para quien lleva la caja, de qué cuenta salió cada pago.
+  const [correcciones, cajas] = await Promise.all([
+    correccionesDe('FACTURA_COMPRA', cuentas.flatMap((c) => (c.id ? [c.id] : []))),
+    puede(perfil, 'tesoreria.caja') ? cajaDeLosPagos('PAGO_ADQUISICION', cuentas.flatMap((c) => c.pagos.map((p) => p.id))) : undefined,
+  ])
   const porPagar = cuentas.filter((c) => Number(c.saldo) > 0)
   const pagadas = cuentas.filter((c) => Number(c.saldo) <= 0)
 
@@ -67,7 +72,7 @@ export default async function PaginaPorPagar() {
               <p className="mt-1 max-w-lg text-sm text-texto-suave">Aparecen cuando Contabilidad registra una factura de compra en Adquisiciones.</p>
             </div>
           ) : (
-            porPagar.map((c) => <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} cuentasCaja={cuentasCaja} />)
+            porPagar.map((c) => <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} cuentasCaja={cuentasCaja} cajas={cajas} />)
           )}
         </TarjetaCuerpo>
       </Tarjeta>
@@ -105,7 +110,7 @@ export default async function PaginaPorPagar() {
           <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm font-medium text-texto">Pagadas ({pagadas.length})</summary>
           <div className="space-y-3 border-t border-borde p-4">
             {pagadas.map((c) => (
-              <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} cuentasCaja={cuentasCaja} />
+              <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} cuentasCaja={cuentasCaja} cajas={cajas} />
             ))}
           </div>
         </details>
@@ -142,12 +147,14 @@ function Factura({
   hoy,
   correcciones,
   cuentasCaja,
+  cajas,
 }: {
   cuenta: CuentaPorPagar
   paga: boolean
   hoy: string
   correcciones: CorreccionVista[] | undefined
-  cuentasCaja: CuentaParaPagar[] | null
+  cuentasCaja: CuentaParaPagar[]
+  cajas: Map<string, CajaDelPago> | undefined
 }) {
   const m = codigoMoneda(c.moneda)
   const saldo = Number(c.saldo)
@@ -211,8 +218,12 @@ function Factura({
         <ol className="mt-2 space-y-1.5 border-t border-borde pt-2">
           {c.pagos.map((p) => (
             <li key={p.id} className="flex flex-col gap-1 text-xs sm:flex-row sm:items-center sm:justify-between">
-              <span className={p.anulado_en ? 'text-texto-suave line-through' : 'text-texto-suave'}>
-                Pago del {fecha(p.fecha)} · <span className="tabular text-texto">{moneda(p.monto, m)}</span> · op. {p.referencia}
+              <span className="text-texto-suave">
+                <span className={p.anulado_en ? 'line-through' : undefined}>
+                  Pago del {fecha(p.fecha)} · <span className="tabular text-texto">{moneda(p.monto, m)}</span> · op. {p.referencia}
+                </span>
+                {/* Fuera del tachado: que su egreso también se anuló es lo que se tiene que leer. */}
+                <CajaDeLaLinea cajas={cajas} id={p.id} tipo="pago" monedaDocumento={m} />
               </span>
               <span className="flex flex-wrap items-center gap-2">
                 {p.anulado_en && <span className="text-peligro">Anulado: {p.motivo_anulacion}</span>}

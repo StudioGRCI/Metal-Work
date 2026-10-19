@@ -38,7 +38,7 @@ function diaPedido(texto: string | string[] | undefined, hoy: string) {
  * salió y lo que entró, su saldo final y el cierre contra el estado de cuenta,
  * y arriba el consolidado de todas. Tesorería registra a mano lo que no pasa
  * por el sistema; cada pago y cobro del sistema deja el suyo en la cuenta que
- * se eligió al registrarlo (migración 20261017220000), y se anula anulando ese
+ * se eligió al registrarlo (migración 20261019100000), y se anula anulando ese
  * pago.
  */
 export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tesoreria/caja-diaria'>) {
@@ -456,20 +456,17 @@ function FilaDeMovimiento({ movimiento: mov, moneda: m, cuenta, abierta }: {
               ' · devolución de uno anulado, cuyo día ya estaba cerrado'
             ) : (
               !anulado &&
-              mov.enlace &&
               PANTALLA_DEL_ORIGEN[mov.origen] && (
-                <>
-                  {' · se anula en '}
-                  {/* En el teléfono, alto de dedo: es lo único que se toca en la fila. */}
+                // En su propio renglón: con 44 px para tocarlo, metido en la frase la partía en renglones altos.
+                <span className="flex min-h-11 items-center sm:block sm:min-h-0">
+                  Se anula en:&nbsp;
                   <Link
-                    href={mov.enlace}
-                    className="inline-flex min-h-11 items-center text-acento underline underline-offset-2 sm:min-h-0"
+                    href={mov.planilla_id ? `/planilla-diaria/${mov.planilla_id}` : PANTALLA_DEL_ORIGEN[mov.origen].ruta}
+                    className="text-acento underline underline-offset-2"
                   >
-                    {mov.origen === 'PAGO_PLANILLA_DIARIA' && mov.enlace !== PANTALLA_DEL_ORIGEN[mov.origen].ruta
-                      ? 'su planilla'
-                      : PANTALLA_DEL_ORIGEN[mov.origen].nombre}
+                    {mov.planilla_id ? 'su planilla' : PANTALLA_DEL_ORIGEN[mov.origen].nombre}
                   </Link>
-                </>
+                </span>
               )
             )}
           </span>

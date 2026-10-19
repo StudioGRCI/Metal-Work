@@ -9,7 +9,7 @@ import type { CodigoMoneda } from '@/lib/format'
 
 export const TIPO_CUENTA: Record<string, string> = { BANCO: 'Banco', EFECTIVO: 'Efectivo' }
 
-/** De dónde viene cada movimiento. Los del sistema los deja su pago o su cobro (migración 20261017220000). */
+/** De dónde viene cada movimiento. Los del sistema los deja su pago o su cobro (migración 20261019100000). */
 export const ORIGEN_MOVIMIENTO: Record<string, string> = {
   MANUAL: 'Registrado en la caja',
   TRANSFERENCIA: 'Transferencia',
@@ -27,7 +27,8 @@ export const ORIGEN_MOVIMIENTO: Record<string, string> = {
 export const PANTALLA_DEL_ORIGEN: Record<string, { ruta: string; nombre: string }> = {
   PAGO_ADQUISICION: { ruta: '/tesoreria/por-pagar', nombre: 'Cuentas por pagar' },
   PAGO_ORDEN_SERVICIO: { ruta: '/tesoreria/pagos-de-servicio', nombre: 'Pagos de servicio' },
-  PAGO_RECIBO_HONORARIOS: { ruta: '/tesoreria/recibos-por-honorarios', nombre: 'Recibos por honorarios' },
+  // Un recibo pagado sale, con su botón de anular, en la vista de pagados.
+  PAGO_RECIBO_HONORARIOS: { ruta: '/tesoreria/recibos-por-honorarios?ver=pagados', nombre: 'Recibos por honorarios' },
   PAGO_PLANILLA_DIARIA: { ruta: '/planilla-diaria', nombre: 'Planilla diaria' },
   COBRO_FACTURA_VENTA: { ruta: '/tesoreria/por-cobrar', nombre: 'Cuentas por cobrar' },
 }

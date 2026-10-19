@@ -3,10 +3,11 @@ import { notFound } from 'next/navigation'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
+import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { cuentasParaPagar } from '@/lib/datos/caja'
+import { cajaDeLosPagos, cuentasParaPagar } from '@/lib/datos/caja'
 import { planillaDiaria, type PagoPlanilla, type PersonaPlanilla } from '@/lib/datos/planilla-diaria'
 import { ESTADO_PLANILLA, estadoDePlanilla, personasTexto } from '@/lib/dominio/planilla-diaria'
 import { TIPO_CUENTA, horasCortas } from '@/lib/dominio/rrhh'
@@ -23,16 +24,18 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
   const perfil = await exigirPermiso(['planilla_diaria.preparar', 'planilla_diaria.pagar', 'planilla_diaria.ver'])
   const arma = puede(perfil, 'planilla_diaria.preparar')
   const paga = puede(perfil, 'planilla_diaria.pagar')
-  // Pagar mueve la caja: sin `tesoreria.caja` no hay cuentas que ver (null) y el pago no se ofrece activo.
-  const llevaCaja = puede(perfil, 'tesoreria.caja')
+  // Registra y anula pagos quien además lleva la caja: el pago sale de una de sus cuentas (la base pide los dos permisos).
+  const pagaDeLaCaja = paga && puede(perfil, 'tesoreria.caja')
   const { id } = await params
   if (!GUID.test(id)) notFound()
   const [p, cuentasCaja] = await Promise.all([
     planillaDiaria(id, arma || paga),
-    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261017220000).
-    paga && llevaCaja ? cuentasParaPagar() : Promise.resolve(null),
+    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
+    pagaDeLaCaja ? cuentasParaPagar() : Promise.resolve([]),
   ])
   if (!p) notFound()
+  // Para quien lleva la caja, de qué cuenta salió cada pago.
+  const cajas = puede(perfil, 'tesoreria.caja') ? await cajaDeLosPagos('PAGO_PLANILLA_DIARIA', p.pagos.map((g) => g.id)) : undefined
 
   const anulada = p.anulado_en !== null
   const estado = estadoDePlanilla(p.anulado_en, p.gente)
@@ -50,7 +53,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
         acciones={
           <>
             <Insignia tono={ESTADO_PLANILLA[estado].tono}>{ESTADO_PLANILLA[estado].etiqueta}</Insignia>
-            {paga && !anulada && porPagar.length > 0 && (
+            {pagaDeLaCaja && !anulada && porPagar.length > 0 && (
               <RegistrarPago
                 // Con otra gente por pagar es otro formulario: vuelve a marcar a todos los que faltan.
                 key={porPagar.map((g) => g.id).join()}
@@ -124,6 +127,9 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
                       <p className="font-medium text-texto">
                         Pagado el {fecha(g.fecha_pago)}
                         {g.operacion && <span className="tabular font-normal text-texto-suave"> · Op. {g.operacion}</span>}
+                        <span className="font-normal text-texto-suave">
+                          <CajaDeLaLinea cajas={cajas} id={g.id} tipo="pago" monedaDocumento="PEN" />
+                        </span>
                       </p>
                       <p className="text-xs text-texto-suave">
                         {g.anulado_en
@@ -133,7 +139,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
                     </div>
                     <div className="flex items-center gap-2">
                       <EnlaceArchivo enlace={g.enlace} texto="Comprobante" />
-                      {paga && !g.anulado_en && (
+                      {pagaDeLaCaja && !g.anulado_en && (
                         <AnularConMotivo
                           tipo="pago"
                           id={g.id}

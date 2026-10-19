@@ -4,7 +4,7 @@ import { Ban, HandCoins, Wallet } from 'lucide-react'
 import { useState } from 'react'
 
 import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
-import { CuentaDeLaCaja, hayCuentas, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
+import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
@@ -49,7 +49,7 @@ export function CobrarFactura({
   hoy: string
   saldo: number
   codigoMoneda: CodigoMoneda
-  cuentas: CuentaParaPagar[] | null
+  cuentas: CuentaParaPagar[]
 }) {
   const [cobroId, setCobroId] = useState<string | null>(null)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
@@ -145,7 +145,7 @@ export function CobrarFactura({
             <Boton type="button" variante="contorno" onClick={() => setCobroId(null)}>
               Cancelar
             </Boton>
-            <Boton type="submit" cargando={enviando} disabled={!hayCuentas(cuentas)}>
+            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
               Registrar el cobro
             </Boton>
           </div>
@@ -223,7 +223,7 @@ export function PagarServicio({
   hoy: string
   saldo: number
   codigoMoneda: CodigoMoneda
-  cuentas: CuentaParaPagar[] | null
+  cuentas: CuentaParaPagar[]
 }) {
   const [pagoId, setPagoId] = useState<string | null>(null)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
@@ -316,7 +316,7 @@ export function PagarServicio({
             <Boton type="button" variante="contorno" onClick={() => setPagoId(null)}>
               Cancelar
             </Boton>
-            <Boton type="submit" cargando={enviando} disabled={!hayCuentas(cuentas)}>
+            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
               Registrar el pago
             </Boton>
           </div>
@@ -393,7 +393,7 @@ export function PagarFactura({
   hoy: string
   saldo: number
   codigoMoneda: CodigoMoneda
-  cuentas: CuentaParaPagar[] | null
+  cuentas: CuentaParaPagar[]
 }) {
   const [pagoId, setPagoId] = useState<string | null>(null)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
@@ -478,7 +478,7 @@ export function PagarFactura({
             <Boton type="button" variante="contorno" onClick={() => setPagoId(null)}>
               Cancelar
             </Boton>
-            <Boton type="submit" cargando={enviando} disabled={!hayCuentas(cuentas)}>
+            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
               Registrar el pago
             </Boton>
           </div>

@@ -6,7 +6,7 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 /*
  * Lo que dijo el último pago o cobro sobre la caja diaria: de qué cuenta salió,
  * por qué no se movió, o que su movimiento quedó anulado (migración
- * 20261017220000). Vive en la página y no en el botón del documento porque ese
+ * 20261019100000). Vive en la página y no en el botón del documento porque ese
  * botón desaparece justo cuando el pago lo cancela, que es lo más común: al
  * contado, un recibo, la última persona de la planilla. Se queda abajo de la
  * pantalla, encima de las pestañas del teléfono, hasta que lo cierran o llega

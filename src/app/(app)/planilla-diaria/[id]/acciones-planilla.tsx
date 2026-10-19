@@ -4,7 +4,7 @@ import { Ban, CheckCheck, FileUp, Wallet } from 'lucide-react'
 import { useState } from 'react'
 
 import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
-import { CuentaDeLaCaja, hayCuentas, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
+import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
@@ -43,7 +43,7 @@ export function RegistrarPago({
   pagoId: string
   hoy: string
   porPagar: { id: string; nombre: string; total: number }[]
-  cuentas: CuentaParaPagar[] | null
+  cuentas: CuentaParaPagar[]
 }) {
   const [abierta, setAbierta] = useState(false)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
@@ -135,7 +135,7 @@ export function RegistrarPago({
             <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
               Cancelar
             </Boton>
-            <Boton type="submit" cargando={enviando} disabled={marcadas.length === 0 || !hayCuentas(cuentas)}>
+            <Boton type="submit" cargando={enviando} disabled={marcadas.length === 0 || cuentas.length === 0}>
               Registrar el pago
             </Boton>
           </div>

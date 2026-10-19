@@ -1,5 +1,5 @@
 /**
- * Desde la migración 20261017220000 cada pago y cada cobro pide la cuenta de la
+ * Desde la migración 20261019100000 cada pago y cada cobro pide la cuenta de la
  * caja diaria de la que salió o a la que entró, y con varias cuentas activas no
  * viene ninguna elegida. Las pruebas de clic que pagan o cobran dan de alta la
  * suya —con un mes de antigüedad, para que el pago de hoy la mueva— y la eligen

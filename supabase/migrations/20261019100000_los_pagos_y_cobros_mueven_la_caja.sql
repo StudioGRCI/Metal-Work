@@ -148,7 +148,7 @@ begin
        and m.tipo = case when p_origen = 'COBRO_FACTURA_VENTA' then 'INGRESO' else 'EGRESO' end
      order by m.caja_id
   loop
-    -- Devolver dinero a una cuenta, o sacarlo, es llevar la caja.
+    -- El mismo permiso que pide moverla: quien no lleva la caja no la toca, ni al anular.
     perform public.exigir_permiso('tesoreria.caja');
     select * into v_caja from public.cajas where id = v_mov.caja_id for update;
     if not v_caja.activa then
@@ -247,7 +247,7 @@ begin
 end;
 $$;
 comment on function public.registrar_pago_factura(uuid, uuid, date, numeric, text, text) is
-  'Versión vieja, sin la cuenta de la caja: ya no paga (migración 20261017220000).';
+  'Versión vieja, sin la cuenta de la caja: ya no paga (migración 20261019100000).';
 
 create or replace function public.anular_pago_factura(p_id uuid, p_motivo text)
 returns uuid language plpgsql security definer set search_path to 'public' as $$
@@ -339,7 +339,7 @@ begin
 end;
 $$;
 comment on function public.registrar_pago_servicio(uuid, uuid, date, numeric, boolean, text, text, text) is
-  'Versión vieja, sin la cuenta de la caja: ya no paga (migración 20261017220000).';
+  'Versión vieja, sin la cuenta de la caja: ya no paga (migración 20261019100000).';
 
 create or replace function public.anular_pago_servicio(p_id uuid, p_motivo text)
 returns uuid language plpgsql security definer set search_path to 'public' as $$
@@ -436,7 +436,7 @@ begin
 end;
 $$;
 comment on function public.registrar_cobro_factura(uuid, uuid, date, numeric, boolean, text, text) is
-  'Versión vieja, sin la cuenta de la caja: ya no cobra (migración 20261017220000).';
+  'Versión vieja, sin la cuenta de la caja: ya no cobra (migración 20261019100000).';
 
 create or replace function public.anular_cobro_factura(p_id uuid, p_motivo text)
 returns uuid language plpgsql security definer set search_path to 'public' as $$
@@ -524,7 +524,7 @@ begin
 end;
 $$;
 comment on function public.registrar_pago_recibo_honorarios(uuid, uuid, date, text, text) is
-  'Versión vieja, sin la cuenta de la caja: ya no paga (migración 20261017220000).';
+  'Versión vieja, sin la cuenta de la caja: ya no paga (migración 20261019100000).';
 
 create or replace function public.anular_pago_recibo_honorarios(p_id uuid, p_motivo text)
 returns uuid language plpgsql security definer set search_path to 'public' as $$
@@ -633,7 +633,7 @@ begin
 end;
 $$;
 comment on function public.registrar_pago_planilla_diaria(uuid, uuid, uuid[], date, text, text) is
-  'Versión vieja, sin la cuenta de la caja: ya no paga (migración 20261017220000).';
+  'Versión vieja, sin la cuenta de la caja: ya no paga (migración 20261019100000).';
 
 create or replace function public.anular_pago_planilla_diaria(p_id uuid, p_motivo text)
 returns uuid language plpgsql security definer set search_path to 'public' as $$

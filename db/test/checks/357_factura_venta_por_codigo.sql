@@ -62,7 +62,7 @@ select set_config('prueba.oficina', :'oficina_id', true);
 select set_config('prueba.gerente', :'gerente_id', true);
 select set_config('prueba.conta', :'conta_id', true);
 select set_config('prueba.teso', :'teso_id', true);
-select set_config('prueba.caja', test.crear_caja('USD')::text, true);  -- desde la 20261017220000 todo cobro pide su cuenta; las facturas son en dólares
+select set_config('prueba.caja', test.crear_caja('USD')::text, true);  -- desde la 20261019100000 todo cobro pide su cuenta; las facturas son en dólares
 select set_config('prueba.compras', :'compras_id', true);
 select set_config('prueba.req', :'req_id', true);
 select set_config('prueba.general', :'general_id', true);

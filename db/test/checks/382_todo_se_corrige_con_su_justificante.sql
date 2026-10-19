@@ -54,7 +54,7 @@ begin
     (current_setting('prueba.oc2')::uuid, 1, 50.00, current_setting('prueba.m1')::uuid),
     (current_setting('prueba.oc3')::uuid, 1, 50.00, current_setting('prueba.m1')::uuid);
 end $$;
-select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261017220000 todo pago pide su cuenta
+select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261019100000 todo pago pide su cuenta
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
 begin

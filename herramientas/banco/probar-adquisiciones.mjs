@@ -114,7 +114,7 @@ const [oc1, oc2, oc3] = await consulta(
   "select id, numero from ordenes_compra_materiales where referencia in ('QA-ADQ-1', 'QA-ADQ-2', 'QA-ADQ-3') order by referencia",
 )
 if (!oc3) throw new Error('Faltan las OC QA-ADQ-1, QA-ADQ-2 y QA-ADQ-3 en la base del banco.')
-// Cada pago pide la cuenta de la caja de la que salió (migración 20261017220000).
+// Cada pago pide la cuenta de la caja de la que salió (migración 20261019100000).
 const CAJA = await crearCajaDePrueba(consulta, 'tesoreria@banco.test')
 
 // ---------------------------------------------------------------- 1. Logística

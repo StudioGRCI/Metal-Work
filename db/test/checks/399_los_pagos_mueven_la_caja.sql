@@ -1,5 +1,5 @@
 -- Los pagos y los cobros del sistema mueven la caja diaria solos (migración
--- 20261017220000, «Conectar ya» de DKS el 19/10). Tesorería paga una factura de
+-- 20261019100000, «Conectar ya» de DKS el 19/10). Tesorería paga una factura de
 -- compra, una orden de servicio, un recibo por honorarios y la planilla diaria,
 -- y cobra una factura de venta: cada uno pide la cuenta y deja su movimiento ahí.
 -- Anular el pago anula su movimiento; un día cerrado no se toca (la devolución
@@ -91,7 +91,7 @@ begin
   -- Una orden de servicio aprobada, con su código interno.
   insert into public.ordenes_servicio (id, numero, proveedor_id, proveedor, descripcion, monto, moneda, codigo_interno,
                                        aprobacion, aprobado_por, aprobado_en)
-  values (current_setting('prueba.os')::uuid, 'QA-OS-398', v_prov, 'PROVEEDOR 398', 'Servicio de prueba del check 398',
+  values (current_setting('prueba.os')::uuid, 'QA-OS-398', v_prov, 'PROVEEDOR 398', 'Servicio de prueba del check 399',
           500, 'PEN', 'QA398-OS', 'APROBADA', current_setting('prueba.gerente')::uuid, now());
 
   -- Una factura de venta en dólares, de una cotización.
@@ -114,7 +114,7 @@ begin
   select v_sub, '1071239800' || d, 'SUBCONTRATISTA 398' from generate_series(0, 9) d
    where public.ruc_es_valido('1071239800' || d) limit 1;
   insert into public.subcontratos (id, numero, subcontratista_id, codigo_interno, descripcion, moneda, monto)
-  values (current_setting('prueba.sc')::uuid, 'QA-SC-398', v_sub, 'QA398-SC', 'Subcontrato de prueba del check 398', 'PEN', 1000);
+  values (current_setting('prueba.sc')::uuid, 'QA-SC-398', v_sub, 'QA398-SC', 'Subcontrato de prueba del check 399', 'PEN', 1000);
   insert into public.recibos_honorarios (id, subcontrato_id, subcontratista_id, numero, fecha_emision, moneda, monto_bruto,
                                          retencion_porcentaje, archivo_ruta, archivo_mime, archivo_tamano)
   values (current_setting('prueba.rec')::uuid, current_setting('prueba.sc')::uuid, v_sub, 'E001-398', v_hoy - 3, 'PEN', 1000, 8,

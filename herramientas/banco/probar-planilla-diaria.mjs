@@ -140,7 +140,7 @@ mkdirSync(archivos, { recursive: true })
 
 const inicio = new Date()
 const sello = Date.now().toString().slice(-5)
-// El pago pide la cuenta de la caja de la que salió (migración 20261017220000).
+// El pago pide la cuenta de la caja de la que salió (migración 20261019100000).
 const caja = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
 const codigo = `PRB_SR_O4_1_26/${sello.slice(-2)}`
 const asuntoA = `Tolva de volquete ${sello}`

@@ -80,6 +80,12 @@ esté en el PATH y da los tres pasos en el orden correcto:
 ./scripts/verificar.sh    # tipos de Next, TypeScript, ESLint
 ```
 
+Su veredicto es su código de salida: no se lee por `| tail` encadenado con `&&`
+a un commit, porque el código que vale es el de `tail` y el commit sale aunque
+diga «1 de 3 fallan» (pasó el 2026-10-19). Con `next dev` corriendo, o recién
+parado, TypeScript puede fallar en `.next/dev/types/validator.ts` a medio
+escribir: parar `next dev`, borrar `.next/dev` y volver a correrlo.
+
 Eso no ve la pantalla ni la base. **Terminado aquí son seis cosas:**
 
 1. `./scripts/verificar.sh` en verde.

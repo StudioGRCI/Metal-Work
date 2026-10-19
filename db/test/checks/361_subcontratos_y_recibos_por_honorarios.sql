@@ -46,7 +46,7 @@ begin
   perform set_config('prueba.voucher1', current_setting('prueba.sc') || '/' || gen_random_uuid() || '.jpg', true);
   perform set_config('prueba.voucher2', current_setting('prueba.sc') || '/' || gen_random_uuid() || '.pdf', true);
 end $$;
-select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261017220000 todo pago pide su cuenta
+select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261019100000 todo pago pide su cuenta
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
 begin

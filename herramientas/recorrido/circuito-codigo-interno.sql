@@ -32,10 +32,14 @@
 -- los cierres, ni en la tabla ni en la auditoría. Solo las cuentas con
 -- codigos_internos.ver o costos.ver leen el costo completo.
 --
+-- Desde el 2026-10-19 (migración 20261017310000) no hay Supervisión general: la
+-- cuenta que la tenía es la del administrador del sistema. Lo de Supervisión
+-- general se prueba solo si alguna cuenta activa vuelve a tener ese puesto.
+--
 -- Lo único que se arma como dueño de la base: el material nuevo del catálogo y
 -- las filas de storage.objects de los archivos (la subida real la hace el
--- navegador). Supervisión general, Diseño colaborador y Portería no tocan el
--- código: con ellas se prueba que no lo ven.
+-- navegador). Diseño colaborador y Portería (y Supervisión general, si tiene
+-- cuenta) no tocan el código: con ellas se prueba que no lo ven.
 do $circuito$
 declare
   c          constant text := 'ENSAYO_GERENCIA_26/99';
@@ -43,7 +47,10 @@ declare
   v_ayer     constant date := (now() at time zone 'America/Lima')::date - 1;
   v_puestos  constant text[] := array['GERENTE', 'ADMINISTRACION', 'ALMACENERO', 'COMPRADOR', 'CONDUCTOR', 'CONTABILIDAD',
     'DISENO', 'DISENO_COLABORADOR', 'PORTERO', 'RECURSOS_HUMANOS', 'REQUERIMIENTOS', 'SUPERVISOR_MTZ', 'SUPERVISOR_PRD',
-    'SUPERVISOR_ACB', 'SUPERVISOR_GENERAL', 'TESORERIA', 'VENDEDOR'];
+    'SUPERVISOR_ACB', 'TESORERIA', 'VENDEDOR'];
+  -- Puestos que se prueban solo si tienen una cuenta activa.
+  v_opcionales constant text[] := array['SUPERVISOR_GENERAL'];
+  v_puestos_vistos text[];
   k          jsonb;
   v_mtz uuid; v_prd uuid; v_acb uuid;
   v_cliente uuid; v_tipo uuid; v_cat uuid; v_um uuid;
@@ -77,7 +84,7 @@ declare
   f       text[] := '{}';
   -- Lo que se agrega para medir lo que NO llega al código.
   v_caja  uuid := gen_random_uuid();  v_r3 uuid := gen_random_uuid();
-  -- La cuenta de la que Tesorería paga y a la que cobra (migración 20261017220000).
+  -- La cuenta de la que Tesorería paga y a la que cobra (migración 20261019100000).
   v_banco uuid := gen_random_uuid();
   b_antes jsonb; b_despues jsonb; b_ot jsonb; b_ot_admin jsonb; b_margen jsonb; b_tareo_extra jsonb;
   -- El costeo completo (migración 20261017300000).
@@ -96,6 +103,7 @@ begin
     raise exception 'FALLO: faltan cuentas activas de: %',
       (select string_agg(p, ', ') from unnest(v_puestos) p where not coalesce(k ? p, false));
   end if;
+  v_puestos_vistos := v_puestos || array(select p from unnest(v_opcionales) p where k ? p);
 
   -- ------------------------------------------- lo que el ensayo no puede pisar
   if exists (select 1 from public.unidades where upper(regexp_replace(coalesce(codigo_interno, ''), '[^A-Za-z0-9]', '', 'g')) = 'ENSAYOGERENCIA2699')
@@ -344,7 +352,7 @@ begin
     insert into storage.objects (bucket_id, name, owner_id, metadata)
     values ('subcontratos', v_ruta, k->>'TESORERIA', jsonb_build_object('mimetype', 'image/jpeg', 'size', 60000));
     perform pg_temp.ensayo_como((k->>'TESORERIA')::uuid);
-    -- Desde la 20261017220000 todo pago y cobro pide su cuenta de la caja.
+    -- Desde la 20261019100000 todo pago y cobro pide su cuenta de la caja.
     perform public.guardar_caja(v_banco, 'Banco del ensayo 2699', 'BANCO', 'BANCO DEL ENSAYO', 'PEN', 0, v_hoy, true);
     perform public.registrar_pago_recibo_honorarios(v_pago, v_rh1, v_hoy, 'OP-ENSAYO-1', v_ruta, v_banco, null);
 
@@ -419,7 +427,7 @@ begin
 
     -- ===================================== 4. NADIE MÁS ABRE CÓDIGOS INTERNOS
     v_paso := 'Las demás cuentas no ven Códigos internos';
-    foreach v_txt in array v_puestos loop
+    foreach v_txt in array v_puestos_vistos loop
       continue when v_txt = 'GERENTE';
       reset role; perform pg_temp.ensayo_como((k->>v_txt)::uuid);
       begin
@@ -515,21 +523,25 @@ begin
     end;
     reset role;
 
-    v_paso := 'Supervisión general lee el costo sin el precio';
-    perform pg_temp.ensayo_como((k->>'SUPERVISOR_GENERAL')::uuid);
-    select to_jsonb(x) into n_general from public.codigos_internos_costo(c) x;
-    reset role;
+    if k ? 'SUPERVISOR_GENERAL' then
+      v_paso := 'Supervisión general lee el costo sin el precio';
+      perform pg_temp.ensayo_como((k->>'SUPERVISOR_GENERAL')::uuid);
+      select to_jsonb(x) into n_general from public.codigos_internos_costo(c) x;
+      reset role;
+    end if;
 
     -- El cierre guarda el margen: un cierre del ensayo, escrito como dueño de la
     -- tabla (se deshace con todo), lo lee Administración y no Supervisión general.
     v_paso := 'Quién lee la tabla de cierres';
     insert into public.codigo_interno_cierres (codigo, costo_pen, precio_neto_pen, margen_pen, margen_pct, por_fuente, observacion, cerrado_por)
     values (c, 1, 2, 1, 50, '{}'::jsonb, 'Cierre del ensayo para probar quién lo lee', (k->>'GERENTE')::uuid);
-    perform pg_temp.ensayo_como((k->>'SUPERVISOR_GENERAL')::uuid);
-    select count(*) into n_cierres_general from public.codigo_interno_cierres where codigo = c;
-    -- Supervisión general lee la auditoría (auditoria.ver): el cierre no se copia ahí.
-    select count(*) into n_auditoria_general from public.audit_log where tabla = 'codigo_interno_cierres';
-    reset role;
+    if k ? 'SUPERVISOR_GENERAL' then
+      perform pg_temp.ensayo_como((k->>'SUPERVISOR_GENERAL')::uuid);
+      select count(*) into n_cierres_general from public.codigo_interno_cierres where codigo = c;
+      -- Supervisión general lee la auditoría (auditoria.ver): el cierre no se copia ahí.
+      select count(*) into n_auditoria_general from public.audit_log where tabla = 'codigo_interno_cierres';
+      reset role;
+    end if;
     perform pg_temp.ensayo_como((k->>'ADMINISTRACION')::uuid);
     select count(*) into n_cierres_admin from public.codigo_interno_cierres where codigo = c;
     reset role;
@@ -540,7 +552,7 @@ begin
     reset role;
 
     v_paso := 'Quién lee el costo completo';
-    foreach v_txt in array v_puestos loop
+    foreach v_txt in array v_puestos_vistos loop
       perform pg_temp.ensayo_como((k->>v_txt)::uuid);
       begin
         perform 1 from public.codigos_internos_costo(c);
@@ -549,7 +561,7 @@ begin
       end;
       reset role;
     end loop;
-    select array_agg(p order by p) into n_deben from unnest(v_puestos) p
+    select array_agg(p order by p) into n_deben from unnest(v_puestos_vistos) p
      where exists (select 1 from public.usuarios u join public.roles_permisos rp on rp.rol_id = u.rol_id
                     where u.id = (k->>p)::uuid and rp.permiso_codigo in ('codigos_internos.ver', 'costos.ver'));
   exception when others then
@@ -682,21 +694,23 @@ begin
          || pg_temp.ensayo_dif('Administración: el mismo costo', n_admin->>'costo_pen', n_gerencia->>'costo_pen')
          || pg_temp.ensayo_dif('Administración: el mismo margen', n_admin->>'margen_pct', n_gerencia->>'margen_pct')
          || pg_temp.ensayo_dif('Administración no cierra', n_admin_cierre, '42501'::text)
-         || pg_temp.ensayo_dif('Supervisión general: el mismo costo', n_general->>'costo_pen', n_gerencia->>'costo_pen')
-         || pg_temp.ensayo_dif('Supervisión general: sin precio ni margen', coalesce(n_general->>'precio_neto_pen', n_general->>'margen_pct'), null::text)
-         || pg_temp.ensayo_dif('Supervisión general no lee los cierres, que guardan el margen', n_cierres_general::numeric, 0::numeric)
          || pg_temp.ensayo_dif('Administración sí lee los cierres', n_cierres_admin::numeric, 1::numeric)
-         || pg_temp.ensayo_dif('ni por la auditoría', n_auditoria_general::numeric, 0::numeric)
          || pg_temp.ensayo_dif('Requerimientos: su gasto no cambia con la luz ni la caja', n_gasto - 'ultima_actividad', o_gasto - 'ultima_actividad')
          || pg_temp.ensayo_dif('quién lee el costo completo', (select array_agg(x order by x) from unnest(n_leen) x), n_deben);
+  if k ? 'SUPERVISOR_GENERAL' then
+    f := f || pg_temp.ensayo_dif('Supervisión general: el mismo costo', n_general->>'costo_pen', n_gerencia->>'costo_pen')
+           || pg_temp.ensayo_dif('Supervisión general: sin precio ni margen', coalesce(n_general->>'precio_neto_pen', n_general->>'margen_pct'), null::text)
+           || pg_temp.ensayo_dif('Supervisión general no lee los cierres, que guardan el margen', n_cierres_general::numeric, 0::numeric)
+           || pg_temp.ensayo_dif('ni por la auditoría', n_auditoria_general::numeric, 0::numeric);
+  end if;
   f := f || v_vio;
   f := array_remove(f, null);
 
   if cardinality(f) > 0 then
     raise exception 'FALLO: % desfases: %', cardinality(f), array_to_string(f, ' | ');
   end if;
-  raise exception 'ROLLBACK OK :: % cuentas, 16 sin acceso a Códigos internos. % al % %% (antes % %%), costo S/ % (mano de obra %, materiales %, servicios %, subcontratos %), compras aparte %, facturado % y cobrado %. BRECHAS :: costeo del código antes % / después % | tareo de las 5 h de la tarde % | costo de la OT según Gerencia % y según Administración % | margen_ot % || COSTEO COMPLETO :: Gerencia % | cierre: % | lo leen %',
-    cardinality(v_puestos), c, g_avance->>'avance', g_resumen->>'avance_medio',
+  raise exception 'ROLLBACK OK :: % cuentas, % sin acceso a Códigos internos. % al % %% (antes % %%), costo S/ % (mano de obra %, materiales %, servicios %, subcontratos %), compras aparte %, facturado % y cobrado %. BRECHAS :: costeo del código antes % / después % | tareo de las 5 h de la tarde % | costo de la OT según Gerencia % y según Administración % | margen_ot % || COSTEO COMPLETO :: Gerencia % | cierre: % | lo leen %',
+    cardinality(v_puestos_vistos), cardinality(v_puestos_vistos) - 1, c, g_avance->>'avance', g_resumen->>'avance_medio',
     (g_resumen->>'mano_obra')::numeric + (g_resumen->>'materiales_pen')::numeric + (g_servicios->>'servicios_pen')::numeric
       + (g_subcontratos->>'subcontratos_pen')::numeric,
     g_resumen->>'mano_obra', g_resumen->>'materiales_pen', g_servicios->>'servicios_pen', g_subcontratos->>'subcontratos_pen',

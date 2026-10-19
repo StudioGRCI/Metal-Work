@@ -4,7 +4,7 @@ import { Ban, Wallet } from 'lucide-react'
 import { useState } from 'react'
 
 import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
-import { CuentaDeLaCaja, hayCuentas, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
+import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
@@ -41,7 +41,7 @@ type ReciboAPagar = {
  * diaria se mueve sola— y adjunta el voucher. El voucher sube primero a Storage
  * y, si el pago no entra, se retira.
  */
-export function PagarRecibo({ recibo, hoy, cuentas }: { recibo: ReciboAPagar; hoy: string; cuentas: CuentaParaPagar[] | null }) {
+export function PagarRecibo({ recibo, hoy, cuentas }: { recibo: ReciboAPagar; hoy: string; cuentas: CuentaParaPagar[] }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   // De qué cuenta salió, o por qué la caja no se movió: lo dice la página, porque el recibo pagado sale de la lista con su botón.
@@ -93,7 +93,7 @@ function FormularioPago({
 }: {
   recibo: ReciboAPagar
   hoy: string
-  cuentas: CuentaParaPagar[] | null
+  cuentas: CuentaParaPagar[]
   alCerrar: () => void
   alPagar: (mensaje: string | null) => void
 }) {
@@ -140,7 +140,7 @@ function FormularioPago({
         <Boton type="button" variante="contorno" onClick={alCerrar}>
           Cancelar
         </Boton>
-        <Boton type="submit" cargando={enviando} disabled={!hayCuentas(cuentas)}>
+        <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
           Registrar el pago
         </Boton>
       </div>

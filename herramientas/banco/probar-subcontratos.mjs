@@ -125,7 +125,7 @@ mkdirSync(archivos, { recursive: true })
 }
 
 const sello = Date.now().toString().slice(-6)
-// El pago pide la cuenta de la caja de la que salió (migración 20261017220000).
+// El pago pide la cuenta de la caja de la que salió (migración 20261019100000).
 const caja = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
 const ruc = rucDePrueba(sello.padStart(8, '7'))
 const nombre = `Subcontratista de prueba ${sello}`

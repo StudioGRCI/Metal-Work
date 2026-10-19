@@ -1,6 +1,6 @@
 /**
  * Recorre con clic real los pagos y cobros que mueven la caja diaria
- * (migración 20261017220000, «Conectar ya» de DKS el 19/10), con la cuenta de
+ * (migración 20261019100000, «Conectar ya» de DKS el 19/10), con la cuenta de
  * Tesorería (nunca ADMIN):
  *
  *   1. Paga a cuenta una factura de compra en soles: el formulario pide la
@@ -15,7 +15,10 @@
  *      diaria de dos personas: cada uno deja su movimiento en la base.
  *   4. La caja diaria los muestra con su origen y dónde se anulan, sin botón
  *      para anularlos sueltos, y el saldo de la cuenta baja.
- *   5. Anula el pago de la factura: su egreso queda anulado.
+ *   5. Anula el pago de la factura: su egreso queda anulado. Después paga
+ *      ayer otra factura, Tesorería cierra ayer, y al anular ese pago su
+ *      egreso se queda en el día cerrado y hoy vuelve lo que salió; el
+ *      formulario avisa antes que la cuenta está cerrada ese día.
  *   6. En el teléfono, la ventana de pago y la caja entran sin desbordarse.
  *   7. Gerencia ve Cuentas por pagar sin el botón de pagar.
  *
@@ -124,6 +127,7 @@ const DOLARES = `Banco prueba dólares ${sello}`
 const N = {
   adqPen: `F998-1${sello}`,
   adqUsd: `F998-2${sello}`,
+  adqCierre: `F998-3${sello}`,
   os: `QA-OS-${sello}`,
   fv: `E998-1${sello}`,
   rec: `E998-${sello}`,
@@ -134,20 +138,23 @@ const [teso] = await consulta(`select id from usuarios where correo = $1`, [TESO
 const [gere] = await consulta(`select id from usuarios where correo = $1`, [GERENCIA])
 if (!teso || !gere) throw new Error('Faltan las cuentas locales de Tesorería o Gerencia en la base del banco.')
 
-const ids = (
-  await consulta(
-    `with
-      caja_pen as (insert into cajas (nombre, tipo, banco, moneda, saldo_inicial, fecha_inicio, creado_por)
-                   values ($1, 'BANCO', 'BANCO DE PRUEBA', 'PEN', 10000, $3::date - 30, $4) returning id),
-      caja_usd as (insert into cajas (nombre, tipo, banco, moneda, saldo_inicial, fecha_inicio, creado_por)
-                   values ($2, 'BANCO', 'BANCO DE PRUEBA', 'USD', 5000, $3::date - 30, $4) returning id)
-     select (select id from caja_pen) as pen, (select id from caja_usd) as usd`,
-    [SOLES, DOLARES, hoy, teso.id],
-  )
-)[0]
-
+// Las cuentas van dentro de la transacción: si algo falla, no quedan sueltas en
+// los desplegables (una cuenta con saldo ya no se borra).
+let ids
 await base.query('begin')
 try {
+  ids = (
+    await consulta(
+      `with
+        caja_pen as (insert into cajas (nombre, tipo, banco, moneda, saldo_inicial, fecha_inicio, creado_por)
+                     values ($1, 'BANCO', 'BANCO DE PRUEBA', 'PEN', 10000, $3::date - 30, $4) returning id),
+        caja_usd as (insert into cajas (nombre, tipo, banco, moneda, saldo_inicial, fecha_inicio, creado_por)
+                     values ($2, 'BANCO', 'BANCO DE PRUEBA', 'USD', 5000, $3::date - 30, $4) returning id)
+       select (select id from caja_pen) as pen, (select id from caja_usd) as usd`,
+      [SOLES, DOLARES, hoy, teso.id],
+    )
+  )[0]
+
   const [prov] = await consulta(
     `insert into proveedores (numero_documento, razon_social)
      select '2010099' || $1::text || d, 'PROVEEDOR PRUEBA CAJA' from generate_series(0, 9) d where ruc_es_valido('2010099' || $1::text || d) limit 1
@@ -156,7 +163,12 @@ try {
     [sello.slice(0, 3)],
   )
   // La factura registrada lleva su PDF en el almacenamiento (fn_proteger_adquisicion).
-  for (const [clave, numero, monedaFactura, total] of [['adqPen', N.adqPen, 'PEN', 1180], ['adqUsd', N.adqUsd, 'USD', 100]]) {
+  // La tercera es de hace cinco días: se paga ayer, y ayer se cierra antes de anular el pago.
+  for (const [clave, numero, monedaFactura, total, dias] of [
+    ['adqPen', N.adqPen, 'PEN', 1180, 0],
+    ['adqUsd', N.adqUsd, 'USD', 100, 0],
+    ['adqCierre', N.adqCierre, 'PEN', 100, 5],
+  ]) {
     const [{ id }] = await consulta('select gen_random_uuid() as id')
     await consulta(
       `insert into storage.objects (bucket_id, name, owner_id, metadata)
@@ -165,8 +177,8 @@ try {
     )
     await consulta(
       `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, estado, ruta_storage, registrado_por)
-       values ($1::uuid, 'FACTURA_COMPRA', 'PROVEEDOR PRUEBA CAJA', $2, $3::date, $3::date, $4, $5, 'CONTADO', 'REGISTRADA', 'adquisiciones/' || $1::text || '/comprobante.pdf', $6)`,
-      [id, numero, hoy, monedaFactura, total, teso.id],
+       values ($1::uuid, 'FACTURA_COMPRA', 'PROVEEDOR PRUEBA CAJA', $2, $3::date - $7::int, $3::date - $7::int, $4, $5, 'CONTADO', 'REGISTRADA', 'adquisiciones/' || $1::text || '/comprobante.pdf', $6)`,
+      [id, numero, hoy, monedaFactura, total, teso.id, dias],
     )
     ids[clave] = id
   }
@@ -193,8 +205,8 @@ try {
   ids.fv = (await consulta(
     `insert into facturas_venta (codigo_interno, cotizacion_pdf_id, cotizacion_numero, cliente, cliente_id, numero, fecha_emision, fecha_vencimiento,
                                  moneda, total, ruta_storage, nombre_archivo, tamano_bytes, registrado_por)
-     values ('PRB-CAJA', $1, $2, 'CLIENTE PRUEBA CAJA', $3, $4, $5::date, $5::date + 30, 'USD', 1000, 'fv/prueba-caja-' || $2 || '.pdf', 'prueba.pdf', 120, $6) returning id`,
-    [cot.id, `QA-CAJA-${sello}`, clienteId, N.fv, hoy, teso.id],
+     values ('PRB-CAJA', $1, $2, 'CLIENTE PRUEBA CAJA', $3, $4, $5::date, $5::date + 30, 'USD', 1000, $7, 'prueba.pdf', 120, $6) returning id`,
+    [cot.id, `QA-CAJA-${sello}`, clienteId, N.fv, hoy, teso.id, `fv/prueba-caja-${sello}.pdf`],
   ))[0].id
   const [sub] = await consulta(
     `insert into subcontratistas (ruc, nombre)
@@ -299,6 +311,10 @@ const movimiento = async (origen, documento, campo) =>
   comprobar(!error, `paga la factura en dólares desde soles${error ? ` (dijo «${error}»)` : ''}`)
   const movUsd = await hasta(() => movimiento('PAGO_ADQUISICION', ids.adqUsd, { tabla: 'pagos_adquisicion', columna: 'adquisicion_id' }), (r) => r.length > 0)
   comprobar(movUsd[0]?.monto === 370 && movUsd[0]?.cambio === 3.7, 'sale S/ 370.00 de la cuenta, al cambio de 3.70')
+  // Saldada, la factura pasa a «Pagadas» sin su botón: su línea dice de qué cuenta salió y cuánto en soles.
+  await pagina.reload({ waitUntil: 'networkidle' })
+  const textoUsd = limpio(await pagina.locator('article', { hasText: N.adqUsd }).first().textContent().catch(() => ''))
+  comprobar(textoUsd.includes(`salió de ${SOLES}: S/ 370.00`), `la factura saldada dice que salió S/ 370.00 de la cuenta en soles («${textoUsd.slice(0, 160)}»)`)
 
   // 3a. Orden de servicio, a cuenta (queda otra por pagar para mirarla en el teléfono).
   await pagina.goto(`${BASE}/tesoreria/pagos-de-servicio`, { waitUntil: 'networkidle' })
@@ -356,18 +372,25 @@ const movimiento = async (origen, documento, campo) =>
   const avisoPlanilla = await leerAviso()
   comprobar(avisoPlanilla.includes(`Salió de ${SOLES}`), `pagada toda la planilla, el aviso se queda («${avisoPlanilla}»)`)
 
+  // Pagar el total saca el botón y su aviso: la línea del pago dice de qué cuenta salió.
+  await pagina.reload({ waitUntil: 'networkidle' })
+  const textoPlanilla = limpio(await pagina.locator('main').textContent().catch(() => ''))
+  comprobar(textoPlanilla.includes(`salió de ${SOLES}`), 'la planilla ya pagada dice en su pago de qué cuenta salió')
+  await pagina.goto(`${BASE}/tesoreria/recibos-por-honorarios?ver=pagados`, { waitUntil: 'networkidle' })
+  const textoRecibo = limpio(await pagina.locator('li', { hasText: N.rec }).first().textContent().catch(() => ''))
+  comprobar(textoRecibo.includes(`Salió de ${SOLES}`), 'el recibo pagado dice de qué cuenta salió')
+
   // 4. La caja diaria.
   await pagina.goto(`${BASE}/tesoreria/caja-diaria`, { waitUntil: 'networkidle' })
   const fila = pagina.locator('tr', { hasText: `Pago de la factura ${N.adqPen}` })
   const textoFila = limpio(await fila.textContent().catch(() => ''))
-  comprobar(textoFila.includes('Pago de factura de compra') && textoFila.includes('se anula en Cuentas por pagar'),
+  comprobar(textoFila.includes('Pago de factura de compra') && textoFila.includes('Se anula en: Cuentas por pagar'),
     'la caja muestra el pago con su origen y dónde se anula')
   comprobar((await fila.locator('button').count()) === 0, 'y sin botón para anularlo suelto')
   const enlace = await fila.locator('a', { hasText: 'Cuentas por pagar' }).getAttribute('href').catch(() => null)
   comprobar(enlace === '/tesoreria/por-pagar', 'el enlace lleva a Cuentas por pagar')
-  const filaPd = pagina.locator('tr', { hasText: 'Pago de planilla diaria' }).filter({ hasText: N.pd })
-  const enlacePd = await filaPd.locator('a', { hasText: 'su planilla' }).first().getAttribute('href').catch(() => null)
-  comprobar(enlacePd === `/planilla-diaria/${ids.pd}`, `el de la planilla lleva a su planilla (${enlacePd})`)
+  const enlacePlanilla = await pagina.locator('tr', { hasText: N.pd }).locator('a', { hasText: 'su planilla' }).getAttribute('href').catch(() => null)
+  comprobar(enlacePlanilla === `/planilla-diaria/${ids.pd}`, 'el pago de la planilla se anula en su planilla, no en la lista')
   const filaSaldo = limpio(await pagina.locator('table').first().locator('tr', { hasText: SOLES }).textContent().catch(() => ''))
   comprobar(filaSaldo.includes('2,290.00') && filaSaldo.includes('7,710.00'), `de la cuenta en soles salen S/ 2,290.00 y queda en S/ 7,710.00 («${filaSaldo}»)`)
   await pagina.screenshot({ path: join(CAPTURAS, 'pagos-caja-diaria.png'), fullPage: true })
@@ -385,6 +408,66 @@ const movimiento = async (origen, documento, campo) =>
   comprobar(!!anulado[0]?.anulado_en, 'su egreso en la caja queda anulado')
   const avisoAnular = await leerAviso()
   comprobar(avisoAnular.includes('también quedó anulado'), `y la pantalla lo dice («${avisoAnular}»)`)
+
+  // 5b. Un pago cuyo día ya se cerró: anularlo deja su egreso en ese día y devuelve hoy lo que salió.
+  const ayer = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date(Date.now() - 86400000))
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const facturaCierre = pagina.locator('article', { hasText: N.adqCierre })
+  await facturaCierre.getByRole('button', { name: 'Registrar pago' }).click()
+  v = pagina.locator('[role="dialog"]')
+  await v.locator('input[name="monto"]').fill('50')
+  await v.locator('input[name="referencia"]').fill(`OP-${sello}-3`)
+  await v.locator('input[name="archivo"]').setInputFiles(VOUCHER)
+  await elegirCuenta(v, SOLES)
+  await v.locator('input[name="fecha"]').fill(ayer)
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  error = await esperarVentana(pagina)
+  comprobar(!error, `paga ayer la tercera factura${error ? ` (dijo «${error}»)` : ''}`)
+  const delCierre = { tabla: 'pagos_adquisicion', columna: 'adquisicion_id' }
+  await hasta(() => movimiento('PAGO_ADQUISICION', ids.adqCierre, delCierre), (r) => r.length > 0)
+  // Tesorería cierra ayer en la cuenta en soles: con su sesión, como en el cierre de Caja diaria.
+  await base.query('begin')
+  try {
+    await consulta('select test.como_usuario($1)', [teso.id])
+    await base.query('set local role authenticated')
+    const [{ saldo }] = await consulta(
+      `select coalesce(saldo_final, 0)::float as saldo from caja_del_dia($1::date) where caja_id = $2`,
+      [ayer, ids.pen],
+    )
+    await consulta('select cerrar_dia_caja(gen_random_uuid(), $1, $2::date, $3, null)', [ids.pen, ayer, saldo])
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback')
+    throw e
+  }
+  await pagina.reload({ waitUntil: 'networkidle' })
+  await facturaCierre.getByRole('button', { name: 'Registrar pago' }).click()
+  v = pagina.locator('[role="dialog"]')
+  await elegirCuenta(v, SOLES)
+  await v.locator('input[name="fecha"]').fill(ayer)
+  comprobar(limpio(await v.textContent()).includes('La cuenta está cerrada hasta el'), 'con el día cerrado, el formulario lo dice antes de enviar')
+  await pagina.keyboard.press('Escape')
+  await v.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
+  await facturaCierre.getByRole('button', { name: 'Anular' }).first().click()
+  v = pagina.locator('[role="dialog"]')
+  await v.locator('textarea[name="motivo"]').fill('Se pagó dos veces al proveedor.')
+  await v.getByRole('button', { name: 'Anular' }).click()
+  error = await esperarVentana(pagina)
+  comprobar(!error, `anula el pago de un día cerrado${error ? ` (dijo «${error}»)` : ''}`)
+  const tras = await hasta(() => movimiento('PAGO_ADQUISICION', ids.adqCierre, delCierre), (r) => r.length > 1)
+  const propio = tras.find((m) => m.tipo === 'EGRESO')
+  const devolucion = tras.find((m) => m.tipo === 'INGRESO')
+  comprobar(!!propio && !propio.anulado_en, 'su egreso se queda en el día cerrado')
+  comprobar(!!devolucion && !devolucion.anulado_en && devolucion.monto === 50 && devolucion.caja_id === ids.pen,
+    'y hoy vuelven S/ 50.00 a la misma cuenta')
+  const avisoCierre = await leerAviso()
+  comprobar(avisoCierre.includes(`hoy vuelve a ${SOLES}`), `la pantalla dice que hoy vuelve a la cuenta («${avisoCierre}»)`)
+  await pagina.reload({ waitUntil: 'networkidle' })
+  const lineaCierre = limpio(await pagina.locator('article', { hasText: N.adqCierre }).textContent().catch(() => ''))
+  comprobar(lineaCierre.includes(`salió de ${SOLES}`) && lineaCierre.includes('y volvió el'), `la línea del pago dice que salió y volvió («${lineaCierre}»)`)
+  await pagina.goto(`${BASE}/tesoreria/caja-diaria`, { waitUntil: 'networkidle' })
+  const filaDevolucion = limpio(await pagina.locator('tr', { hasText: `Anulación del pago` }).filter({ hasText: N.adqCierre }).textContent().catch(() => ''))
+  comprobar(filaDevolucion.includes('devolución de uno anulado'), `la caja de hoy muestra la devolución y por qué («${filaDevolucion}»)`)
 
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.join(' | ')}` : ''}`)
   await contexto.close()
