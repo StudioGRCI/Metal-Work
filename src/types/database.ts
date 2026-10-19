@@ -11064,6 +11064,17 @@ export type Database = {
           recibido_por_area: string | null
         }[]
       }
+      codigo_interno_reparto_a_todos: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          periodo: string | null
+          codigo: string | null
+          salidas: number | null
+          monto_pen: number | null
+          monto_usd: number | null
+          sin_precio: number | null
+        }[]
+      }
       codigo_plano_historial: {
         Args: {
           p_plano: string | null
@@ -12438,6 +12449,12 @@ export type Database = {
           p_ruta: string | null
         }
         Returns: string
+      }
+      orden_tiene_pdf: {
+        Args: {
+          p_orden: string | null
+        }
+        Returns: boolean
       }
       ordenes_compra_listado: {
         Args: Record<PropertyKey, never>

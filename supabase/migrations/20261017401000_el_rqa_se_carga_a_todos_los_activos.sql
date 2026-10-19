@@ -285,3 +285,34 @@ revoke all on function public.fn_requerimientos_todos_los_activos() from public,
 create or replace trigger trg_requerimientos_todos_los_activos
   before insert or update of codigo_interno, tipo on public.requerimientos
   for each row execute function public.fn_requerimientos_todos_los_activos();
+
+-- A dónde fue lo cargado a todos: cuánto le tocó a cada código cada mes, y lo
+-- que espera en TODOS LOS ACTIVOS porque ese mes no trabajó ninguno. Sale de las
+-- mismas líneas del costeo de cada código, no de otra cuenta. Lo leen quienes
+-- ven los códigos internos (Gerencia y Administración).
+create or replace function public.codigo_interno_reparto_a_todos()
+returns table (periodo date, codigo text, salidas integer, monto_pen numeric, monto_usd numeric, sin_precio integer)
+language plpgsql stable security definer set search_path to 'public' as $$
+#variable_conflict use_column
+begin
+  perform public.exigir_permiso('codigos_internos.ver');
+  return query
+  select date_trunc('month', l.fecha)::date, l.codigo, count(distinct l.referencia_id)::integer,
+         coalesce(sum(l.monto) filter (where l.moneda = 'PEN'), 0), coalesce(sum(l.monto) filter (where l.moneda = 'USD'), 0),
+         coalesce(sum(l.sin_precio), 0)::integer
+    from public.codigo_interno_lineas(null, false) l
+   where l.fuente in ('MATERIALES', 'MATERIALES_SIN_PRECIO')
+     and l.referencia_id in (select m.id
+                               from public.movimientos_materiales m
+                               left join public.requerimiento_lineas rl on rl.id = m.requerimiento_linea_id
+                               left join public.requerimientos rq on rq.id = rl.requerimiento_id
+                              where m.tipo in ('SALIDA', 'DESPACHO')
+                                and public.normalizar_codigo_interno(coalesce(m.codigo_interno, rq.codigo_interno)) = 'TODOS LOS ACTIVOS')
+   group by 1, 2
+   order by 1 desc, 2;
+end;
+$$;
+comment on function public.codigo_interno_reparto_a_todos() is
+  'Lo que salió del almacén con el código TODOS LOS ACTIVOS, por mes y por código que lo recibió; lo que sigue en TODOS LOS ACTIVOS espera un mes con trabajo (migración 20261017401000).';
+revoke all on function public.codigo_interno_reparto_a_todos() from public, anon;
+grant execute on function public.codigo_interno_reparto_a_todos() to authenticated;

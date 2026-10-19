@@ -16,6 +16,11 @@
 \set ON_ERROR_STOP on
 begin;
 
+-- Lo que la base ya tenga cargado «a todos los activos» este mes se repartiría
+-- también entre los códigos de esta prueba y movería sus montos: se saca del mes.
+update public.movimientos_materiales set registrado_en = registrado_en - interval '50 years'
+ where public.normalizar_codigo_interno(codigo_interno) = 'TODOS LOS ACTIVOS';
+
 insert into public.empresa (ruc, razon_social)
 select '20100000398', 'PRUEBAS ADMINISTRACION S.A.C.' where not exists (select 1 from public.empresa);
 
@@ -186,15 +191,17 @@ reset role;
 
 -- Una salida a todos de un mes en que nadie trabajó se queda en TODOS LOS ACTIVOS.
 do $$
+declare
+  v_salida uuid := gen_random_uuid();
 begin
   insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por,
                                              recibido_por_nombre, codigo_unidad, codigo_interno, cantidad_de_stock, registrado_en,
                                              precio_unitario, moneda)
-  values (gen_random_uuid(), 'SALIDA', current_setting('prueba.m1')::uuid, 2, 'SALIDA_GENERAL', 'Mes sin trabajo 398',
+  values (v_salida, 'SALIDA', current_setting('prueba.m1')::uuid, 2, 'SALIDA_GENERAL', 'Mes sin trabajo 398',
           current_setting('prueba.almacenero')::uuid, 'Administración', 'TODOS LOS ACTIVOS', 'TODOS LOS ACTIVOS', 2,
           timestamptz '2020-01-15 10:00-05', 10, 'PEN');
   perform test.afirmar((select sum(l.cantidad) from public.codigo_interno_lineas('TODOS LOS ACTIVOS', true) l
-                         where l.fuente in ('MATERIALES', 'MATERIALES_SIN_PRECIO')
+                         where l.fuente in ('MATERIALES', 'MATERIALES_SIN_PRECIO') and l.referencia_id = v_salida
                            and l.detalle like 'Cargado a todos los activos: ningún código trabajó%') = 2,
     'sin códigos que trabajaran ese mes, la salida espera en TODOS LOS ACTIVOS');
 end $$;
@@ -223,6 +230,23 @@ select test.afirmar((select count(*) from public.codigo_interno_costeo('CHK398_A
 select test.afirmar((select costo_pen from public.codigos_internos_costo('CHK398_A')) > 0, 'Administración ve el costo del código');
 select test.debe_fallar($q$select public.cerrar_costeo_codigo('CHK398_A', 'Entregada en planta el día de la prueba')$q$,
   'Administración no cierra el costeo', 'codigos_internos.cerrar');
+-- La ficha de TODOS LOS ACTIVOS dice a dónde fue: lo mismo que suma el costeo de cada código.
+select test.afirmar((select r.monto_pen from public.codigo_interno_reparto_a_todos() r
+                      where r.codigo = 'CHK398_A' and r.periodo = date_trunc('month', current_date)::date)
+                    = (select sum(l.monto) from public.codigo_interno_costeo('CHK398_A') l
+                        where l.fuente = 'MATERIALES' and l.detalle like 'Cargado a todos los activos:%')
+                    and (select r.monto_pen from public.codigo_interno_reparto_a_todos() r where r.codigo = 'CHK398_A' and r.periodo = date_trunc('month', current_date)::date)
+                      = (select r.monto_pen from public.codigo_interno_reparto_a_todos() r where r.codigo = 'CHK398_B' and r.periodo = date_trunc('month', current_date)::date),
+  'el reparto de TODOS LOS ACTIVOS dice lo que le tocó a cada código, igual que su costeo');
+select test.afirmar(exists (select 1 from public.codigo_interno_reparto_a_todos() r where r.codigo = 'TODOS LOS ACTIVOS' and r.periodo = date '2020-01-01'),
+  'y lo que espera, en el mes en que nadie trabajó');
+select test.afirmar(not exists (select 1 from public.codigo_interno_reparto_a_todos() r where r.codigo in ('PLANTA', 'OFICINA')),
+  'PLANTA y OFICINA no reciben nada de lo cargado a todos');
+reset role;
+select pg_temp.como('requerimientos');
+set local role authenticated;
+select test.debe_fallar($q$select * from public.codigo_interno_reparto_a_todos()$q$,
+  'el reparto lo leen solo quienes ven los códigos internos', 'codigos_internos.ver');
 reset role;
 
 -- ============================================ 3. La orden sin cotización con su PDF
@@ -273,6 +297,10 @@ set local role authenticated;
 select test.afirmar((select count(*) from public.ordenes_trabajo where id = current_setting('prueba.ot')::uuid) = 1
                     and (select count(*) from public.ot_adjuntos where orden_id = current_setting('prueba.ot')::uuid and tipo = 'ORDEN') = 0,
   'Gerencia ve la orden para aprobarla, pero no el PDF de la OT');
+select test.afirmar(public.orden_tiene_pdf(current_setting('prueba.ot')::uuid),
+  'pero sabe que la orden tiene su PDF');
+select test.afirmar(not public.orden_tiene_pdf(current_setting('prueba.ot_mal')::uuid),
+  'y que una orden que no existe no lo tiene');
 reset role;
 select pg_temp.como('diseno');
 set local role authenticated;
@@ -283,6 +311,11 @@ select pg_temp.como('vendedor');
 set local role authenticated;
 select test.debe_fallar(pg_temp.registrar('ot_vendedor', 'ot/' || current_setting('prueba.ot_vendedor') || '/x.pdf'),
   'Ventas no registra órdenes sin cotización', 'ordenes.crear');
+reset role;
+select pg_temp.como('almacenero');
+set local role authenticated;
+select test.afirmar(not public.orden_tiene_pdf(current_setting('prueba.ot')::uuid),
+  'quien no ve la orden no sabe si tiene PDF');
 reset role;
 
 rollback;

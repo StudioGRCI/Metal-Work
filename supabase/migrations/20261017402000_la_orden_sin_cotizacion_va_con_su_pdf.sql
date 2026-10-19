@@ -122,3 +122,21 @@ alter policy ver_ot_adjuntos on public.ot_adjuntos
          and (tipo <> 'ORDEN'
               or (select public.puede_ver_pdf_ot())
               or subido_por = (select public.usuario_actual())));
+
+-- Si la orden ya tiene su PDF, aunque quien mira no lo pueda abrir: Gerencia la
+-- aprueba sabiendo que el papel está, y otra cuenta de Administración no sube uno
+-- repetido creyendo que falta. Solo dice sí o no, nunca el archivo.
+create or replace function public.orden_tiene_pdf(p_orden uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path to 'public'
+as $$
+  select public.puede_ver_orden(p_orden)
+     and exists (select 1 from public.ot_adjuntos a where a.orden_id = p_orden and a.tipo = 'ORDEN');
+$$;
+comment on function public.orden_tiene_pdf(uuid) is
+  'Si la orden que se puede ver ya tiene su PDF, sin mostrarlo a quien no lo abre (migración 20261017402000).';
+revoke all on function public.orden_tiene_pdf(uuid) from public, anon;
+grant execute on function public.orden_tiene_pdf(uuid) to authenticated;

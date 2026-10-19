@@ -15,10 +15,15 @@ import { cn } from '@/lib/utils'
  * al final, porque es un degradado anclado al contenido —`background-attachment:
  * local` para el fondo blanco y `scroll` para la sombra—: no hace falta
  * JavaScript ni escuchar el desplazamiento.
+ *
+ * Va `relative` para que lo que se posiciona en absoluto dentro de la tabla —el
+ * `sr-only` de una cabecera sin título visible— quede contenido en ella: sin eso
+ * se medía contra la página y la ensanchaba en el teléfono (la lista de
+ * requerimientos medía 685 px en una pantalla de 390).
  */
 export function Tabla({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="tabla-con-corte w-full overflow-x-auto">
+    <div className="tabla-con-corte relative w-full overflow-x-auto">
       <table className={cn('w-full border-collapse text-sm', className)} {...props} />
     </div>
   )

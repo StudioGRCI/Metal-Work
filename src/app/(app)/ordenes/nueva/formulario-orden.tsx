@@ -1,6 +1,6 @@
 'use client'
 
-import { FileUp } from 'lucide-react'
+import { FileText, FileUp } from 'lucide-react'
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 
 import { Boton } from '@/components/ui/boton'
@@ -13,6 +13,7 @@ import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { createClient } from '@/lib/supabase/client'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { etiquetasDePuesto } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { NuevaUnidad } from '@/app/(app)/clientes/nueva-unidad'
 import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
 import { NuevoCliente } from '@/components/comercial/nuevo-cliente'
@@ -372,10 +373,16 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
           descripcion="La orden de trabajo firmada, la misma que se imprime. Sin su PDF la orden no se registra."
         />
         <TarjetaCuerpo>
-          <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2">
-            <FileUp aria-hidden className="size-6" />
-            <span className="font-medium text-texto">{archivo ? archivo.name : 'Elegir el PDF de la orden'}</span>
-            <span className="text-xs">Obligatorio · PDF hasta {MAXIMO_ADJUNTO_MB} MB</span>
+          <label
+            className={cn(
+              'flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2',
+              'focus-within:border-acento focus-within:ring-2 focus-within:ring-acento/25',
+              archivo ? 'border-solid border-exito' : 'border-borde',
+            )}
+          >
+            {archivo ? <FileText aria-hidden className="size-6 text-exito" /> : <FileUp aria-hidden className="size-6" />}
+            <span className="font-medium break-all text-texto">{archivo ? archivo.name : 'Elegir el PDF de la orden'}</span>
+            <span className="text-xs">{archivo ? 'Listo · toca para cambiarlo' : `Obligatorio · PDF hasta ${MAXIMO_ADJUNTO_MB} MB`}</span>
             {/* Sin `name`: el archivo va a Storage, no dentro del formulario a la acción. */}
             <input
               type="file"

@@ -24,7 +24,7 @@ import {
   timelineDeOrden,
 } from '@/lib/datos/ordenes'
 import { actividadesDeOrden, areasDelTaller, despachosParaReporte } from '@/lib/datos/actividades'
-import { adjuntosDeOrden, vePdfDeOrden } from '@/lib/datos/adjuntos'
+import { adjuntosDeOrden, ordenTienePdf } from '@/lib/datos/adjuntos'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
 import { controlesYSolicitudesDeOrden, costoDeOrdenes, mermaDeOrden } from '@/lib/datos/costos-ot'
@@ -246,7 +246,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     (!orden.cotizacion_pdf_id && puede(perfil, 'ordenes.crear'))
   const quitaCualquiera = puede(perfil, ['ordenes.editar', 'produccion.cualquier_area'])
   // Quien no ve el PDF de la orden no lo encuentra en la lista: que no se le diga que falta.
-  const vePdfOrden = vista === 'resumen' ? await vePdfDeOrden() : false
+  const tienePdf = vista === 'resumen' ? await ordenTienePdf(id) : false
   const archivos: AdjuntoEnPantalla[] | null =
     vista === 'resumen'
       ? (await adjuntosDeOrden(id)).map((a) => ({
@@ -316,7 +316,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               error; en el monitor queda a la derecha. */}
           <div className="grid items-start gap-4 lg:grid-cols-3 *:min-w-0">
             <div className="space-y-4 lg:col-start-3 lg:row-start-1">
-              <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos ?? []} puedeSubir={puedeSubirArchivos} vePdf={vePdfOrden}>
+              <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos ?? []} puedeSubir={puedeSubirArchivos} tienePdf={tienePdf}>
                 <Observaciones
                   ordenId={orden.id}
                   observaciones={observaciones.map((o) => ({ ...o, resoluble: puedeResolverObservacion(perfil, o) }))}

@@ -50,13 +50,13 @@ export async function adjuntosDeOrden(ordenId: string): Promise<Adjunto[]> {
 }
 
 /**
- * Si quien mira ve el PDF de las órdenes (`puede_ver_pdf_ot`: Diseño y
- * Supervisión de Producción, Maestranza y Acabados). Quien no, solo ve el que
- * subió él (migración 20261017402000).
+ * Si la orden ya tiene su PDF, lo pueda abrir quien mira o no: el PDF lo abren
+ * Diseño, Supervisión de Producción, Maestranza y Acabados y quien lo subió
+ * (migración 20261017402000); Gerencia necesita saber que está para aprobarla.
  */
-export async function vePdfDeOrden(): Promise<boolean> {
+export async function ordenTienePdf(ordenId: string): Promise<boolean> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('puede_ver_pdf_ot')
-  if (error) throw new Error(`No se pudo saber si ves el PDF de la orden: ${error.message}`)
+  const { data, error } = await supabase.rpc('orden_tiene_pdf', { p_orden: ordenId })
+  if (error) throw new Error(`No se pudo saber si la orden tiene su PDF: ${error.message}`)
   return data === true
 }

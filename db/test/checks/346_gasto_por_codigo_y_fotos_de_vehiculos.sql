@@ -8,6 +8,11 @@
 \set ON_ERROR_STOP on
 begin;
 
+-- Lo que la base ya tenga cargado «a todos los activos» este mes se repartiría
+-- también entre los códigos de esta prueba y movería sus montos: se saca del mes.
+update public.movimientos_materiales set registrado_en = registrado_en - interval '50 years'
+ where public.normalizar_codigo_interno(codigo_interno) = 'TODOS LOS ACTIVOS';
+
 insert into public.empresa (ruc, razon_social)
 select '20100000046', 'PRUEBAS GASTO S.A.C.' where not exists (select 1 from public.empresa);
 insert into public.sedes (codigo, nombre) values ('T46', 'Taller de pruebas del gasto') on conflict (codigo) do nothing;

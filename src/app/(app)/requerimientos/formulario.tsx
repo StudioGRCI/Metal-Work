@@ -99,6 +99,8 @@ function FormularioRequerimiento({
   const [areaId, setAreaId] = useState('')
   // El de Administración puede ir a un código o a todos los que trabajan.
   const [aTodos, setATodos] = useState(false)
+  // Lo escrito en el código vuelve si pasa a «Todos» y regresa a «Un código».
+  const [codigoEscrito, setCodigoEscrito] = useState('')
   const delTipo = areas.filter((a) => a.requerimiento === tipo)
   // Decidido aquí: un reintento manda el mismo y la base no duplica el RQ.
   const [id] = useState(() => crypto.randomUUID())
@@ -201,7 +203,16 @@ function FormularioRequerimiento({
                 : 'El de la unidad, por ejemplo PLA_SR_O4_1_26/28. Si no es para una unidad, escribe PLANTA.'
             }
           >
-            <Entrada id="rq-codigo" name="codigo_interno" required minLength={2} maxLength={60} autoComplete="off" />
+            <Entrada
+              id="rq-codigo"
+              name="codigo_interno"
+              required
+              minLength={2}
+              maxLength={60}
+              autoComplete="off"
+              defaultValue={codigoEscrito}
+              onChange={(e) => setCodigoEscrito(e.target.value)}
+            />
           </Campo>
         )}
         <Campo etiqueta="Se necesita para el" htmlFor="rq-fecha" ayuda="Opcional: el día en que el área lo necesita.">

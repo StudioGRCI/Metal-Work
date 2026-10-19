@@ -13,7 +13,7 @@
  *      uno, y sin el botón de cerrar el costeo.
  *   4. La orden sin cotización no se registra sin su PDF; con él, nace en
  *      borrador y ella ve su PDF en la orden.
- *   5. Gerencia abre la orden y no ve el PDF (se le dice quién lo ve); Diseño sí.
+ *   5. Gerencia abre la orden y no ve el PDF, pero sabe que lo tiene; Diseño sí lo ve.
  *
  * Arma sus propios datos ficticios (QA_ADM_…) y las cuentas `*.adm@banco.test`
  * con la clave local. Variables: BANCO_CLAVE, BASE (http://localhost:3111),
@@ -200,6 +200,10 @@ let ordenId = ''
   const v = pagina.locator('[role="dialog"]')
   await v.locator('#rq-area').selectOption({ index: 1 })
   comprobar((await v.locator('#rq-codigo').count()) === 1, 'de entrada pide un código interno')
+  await v.locator('#rq-codigo').fill('OFICINA')
+  await v.locator('#rq-cargo').selectOption('TODOS')
+  await v.locator('#rq-cargo').selectOption('UNO')
+  comprobar((await v.locator('#rq-codigo').inputValue()) === 'OFICINA', 'si va y vuelve de «Todos», el código escrito sigue ahí')
   await v.locator('#rq-cargo').selectOption('TODOS')
   comprobar((await v.locator('#rq-codigo').count()) === 0, 'con «Todos los códigos activos» ya no pide el código')
   comprobar(await v.getByText('Partes iguales entre los códigos que trabajaron ese mes.').isVisible(), 'y dice a la vista cómo se reparte')
@@ -217,6 +221,12 @@ let ordenId = ''
   await pagina.waitForTimeout(800)
   comprobar(limpio(await pagina.locator('main').innerText()).includes('TODOS LOS ACTIVOS'), 'y la lista lo dice')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-rqa-lista.png`, fullPage: true })
+  // En el teléfono la lista no ensancha la página (la ventana del RQA se salía por la derecha).
+  await pagina.setViewportSize({ width: 390, height: 844 })
+  await pagina.goto(`${BASE}/requerimientos`, { waitUntil: 'networkidle' })
+  const ancho = await pagina.evaluate(() => document.documentElement.scrollWidth)
+  comprobar(ancho <= 390, `en el teléfono la lista de requerimientos cabe en la pantalla (${ancho} px de 390)`)
+  await pagina.setViewportSize({ width: 1280, height: 900 })
 
   // Almacén entrega los seis por el RQ (como en el kardex; aquí por la base, con su cuenta).
   const salida = (await uno('select gen_random_uuid() as id')).id
@@ -238,7 +248,12 @@ let ordenId = ''
   comprobar((await pagina.getByRole('button', { name: 'Cerrar el costeo' }).count()) === 0, 'y no tiene el botón de cerrar el costeo')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-costeo-a.png`, fullPage: true })
   await pagina.goto(`${BASE}/codigos-internos/detalle?${new URLSearchParams({ codigo: 'TODOS LOS ACTIVOS' })}`, { waitUntil: 'networkidle' })
-  comprobar(limpio(await pagina.locator('main').innerText()).includes('TODOS LOS ACTIVOS no lleva avance'), 'TODOS LOS ACTIVOS explica que no es una unidad')
+  const todos = limpio(await pagina.locator('main').innerText())
+  comprobar(todos.includes('TODOS LOS ACTIVOS no lleva avance'), 'TODOS LOS ACTIVOS explica que no es una unidad')
+  comprobar((await pagina.locator(`[data-reparto="${A}"]`).count()) === 1 && (await pagina.locator('[data-repartido]').count()) === 1,
+    `y dice a dónde fue: cuánto se repartió y lo que le tocó a ${A}`)
+  const secciones = await pagina.locator('[role="group"][aria-label="Secciones del código"] a').allInnerTexts()
+  comprobar(!secciones.some((x) => /Etapas|Planos|Factura/.test(x)), `sin las secciones de una unidad (${secciones.join(', ')})`)
   await pagina.screenshot({ path: `${CAPTURAS}/adm-todos-los-activos.png`, fullPage: true })
 
   // ---------------------------------------------- 4. La orden sin cotización con su PDF
@@ -257,6 +272,7 @@ let ordenId = ''
   writeFileSync(archivo, pdfConTexto([`ORDEN DE TRABAJO de banco ${sello}`, `CLIENTE: ${cliente}`, 'Reparación de tolva']))
   await pagina.locator('input[type="file"]').setInputFiles(archivo)
   await pagina.getByText(`OT-banco-${sello}.pdf`).waitFor({ timeout: 5000 })
+  comprobar(await pagina.getByText('Listo · toca para cambiarlo').isVisible(), 'el PDF elegido se distingue de la zona vacía')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-orden-con-pdf.png`, fullPage: true })
   await Promise.all([
     pagina.waitForURL(/\/ordenes\/[0-9a-f-]{36}/, { timeout: 30000 }),
@@ -288,7 +304,8 @@ let ordenId = ''
   await pagina.getByText('Orden de trabajo', { exact: true }).first().waitFor({ timeout: 60000 }).catch(() => {})
   const t = limpio(await pagina.locator('main').innerText())
   comprobar(!t.includes(`OT-banco-${sello}.pdf`), 'Gerencia abre la orden y no ve el PDF')
-  comprobar(t.includes('El PDF de la orden lo ven Diseño y Supervisión'), 'y se le dice quién lo ve, no que falta')
+  comprobar(t.includes('La orden tiene su PDF. Lo abren Diseño y Supervisión'), 'pero sabe que la orden tiene su PDF, y quién lo abre')
+  comprobar((await pagina.getByText('Subir PDF').count()) === 0, 'y no se le ofrece subir otro')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-orden-gerencia.png`, fullPage: true })
   await contexto.close()
 }

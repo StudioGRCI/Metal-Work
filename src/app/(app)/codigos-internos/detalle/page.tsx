@@ -20,6 +20,7 @@ import {
   documentosDelCodigo,
   listarCodigosInternos,
   personalDelCodigo,
+  repartoATodosLosActivos,
   sumarCodigosDeDiseno,
   type AvanceDeCodigo,
   type ResumenCodigo,
@@ -53,7 +54,7 @@ import { situacionCompra, validacionDeCompra } from '@/lib/dominio/logistica'
 import { ESTADO_REPORTE, type EstadoReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADO_REQUERIMIENTO } from '@/lib/dominio/requerimientos'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { cantidad, fecha, fechaLarga, moneda, porcentaje, type CodigoMoneda } from '@/lib/format'
+import { cantidad, fecha, fechaLarga, moneda, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, type PerfilSesion } from '@/lib/sesion'
 
 import { CerrarCosteo, ReabrirCosteo } from './cierre-costeo'
@@ -68,14 +69,19 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   if (!codigo) notFound()
   // La factura y el cobro los ve quien lee las cotizaciones aprobadas (Gerencia) o las factura y cobra.
   const veFacturas = puede(perfil, ['cotizaciones.ver_aprobadas', 'contabilidad.facturar', 'tesoreria.ver_documentos'])
+  // TODOS LOS ACTIVOS no es una unidad: no tiene etapas, planos, lista de materiales ni factura.
+  const aTodos = codigo === CODIGO_TODOS_LOS_ACTIVOS
+  const vistas = VISTAS_CODIGO.filter(
+    (v) => (v.valor !== 'facturacion' || (veFacturas && !aTodos)) && !(aTodos && ['etapas', 'planos', 'materiales'].includes(v.valor)),
+  )
   const pedida = vistaValida(params.vista)
-  const vista = pedida === 'facturacion' && !veFacturas ? 'avance' : pedida
+  const vista = vistas.some((v) => v.valor === pedida) ? pedida : 'avance'
 
   const [conDocumentos, deDiseno, avances, facturado] = await Promise.all([
     listarCodigosInternos(),
     codigosDeDiseno(),
     avanceDeLosCodigos(codigo),
-    veFacturas ? facturadoDelCodigo(codigo) : Promise.resolve(null),
+    veFacturas && !aTodos ? facturadoDelCodigo(codigo) : Promise.resolve(null),
   ])
   const avance = avances.get(codigo)
   const todos = sumarCodigosDeDiseno(conDocumentos, deDiseno)
@@ -139,15 +145,21 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
             </Tarjeta>
           )}
 
-          <ComoVa
-            c={resumen}
-            avance={avance}
-            facturado={facturado}
-            codigo={codigo}
-            verPrecio={puede(perfil, 'cotizaciones.ver_pdf_comercial')}
-            cierra={puede(perfil, 'codigos_internos.cerrar')}
-          />
-          <LineaDeDiseno d={diseno} />
+          {aTodos ? (
+            <RepartoATodos c={resumen} />
+          ) : (
+            <>
+              <ComoVa
+                c={resumen}
+                avance={avance}
+                facturado={facturado}
+                codigo={codigo}
+                verPrecio={puede(perfil, 'cotizaciones.ver_pdf_comercial')}
+                cierra={puede(perfil, 'codigos_internos.cerrar')}
+              />
+              <LineaDeDiseno d={diseno} />
+            </>
+          )}
 
           <PastillaFiltro
             ruta="/codigos-internos/detalle"
@@ -155,7 +167,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
             params={params}
             activo={vista === 'avance' ? null : vista}
             etiqueta="Secciones del código"
-            opciones={VISTAS_CODIGO.filter((v) => v.valor !== 'facturacion' || veFacturas).map((v) => ({
+            opciones={vistas.map((v) => ({
               valor: v.valor === 'avance' ? null : v.valor,
               etiqueta: v.etiqueta,
             }))}
@@ -322,6 +334,99 @@ function ComoVa({
         </p>
       )}
       {!noEsUnidad(codigo) && <LineaCierre c={c} codigo={codigo} verPrecio={verPrecio} cierra={cierra} />}
+    </div>
+  )
+}
+
+/**
+ * TODOS LOS ACTIVOS no guarda costo: cada salida del almacén con él se reparte
+ * entre los códigos que trabajaron ese mes. Aquí se ve a dónde fue y lo que
+ * espera porque ese mes no trabajó ninguno (migración 20261017401000).
+ */
+async function RepartoATodos({ c }: { c: ResumenCodigo }) {
+  const filas = await repartoATodosLosActivos()
+  const repartido = filas.filter((f) => f.codigo !== CODIGO_TODOS_LOS_ACTIVOS)
+  const enEspera = filas.filter((f) => f.codigo === CODIGO_TODOS_LOS_ACTIVOS)
+  const suma = (lista: typeof filas, campo: 'monto_pen' | 'monto_usd' | 'sin_precio') => lista.reduce((n, f) => n + f[campo], 0)
+  const codigos = new Set(repartido.map((f) => f.codigo)).size
+  const esperaPen = suma(enEspera, 'monto_pen')
+  const esperaUsd = suma(enEspera, 'monto_usd')
+  const sinPrecio = suma(filas, 'sin_precio')
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <Indicador
+          titulo="Repartido"
+          valor={
+            <span data-repartido={suma(repartido, 'monto_pen')}>
+              {moneda(suma(repartido, 'monto_pen'))}
+              {suma(repartido, 'monto_usd') > 0 && <span className="block text-sm">+ {moneda(suma(repartido, 'monto_usd'), 'USD')}</span>}
+            </span>
+          }
+          pie={codigos === 0 ? 'Todavía nada' : `Entre ${codigos} ${codigos === 1 ? 'código' : 'códigos'}, cada uno en su costeo`}
+        />
+        <Indicador
+          titulo="Por repartir"
+          valor={montoMixto(esperaPen, esperaUsd)}
+          tono={esperaPen + esperaUsd > 0 || enEspera.some((f) => f.sin_precio > 0) ? 'aviso' : 'neutro'}
+          pie={enEspera.length === 0 ? 'Nada esperando' : 'De un mes en que todavía no trabajó ningún código'}
+        />
+      </div>
+      <Tarjeta className="overflow-hidden">
+        <TarjetaCabecera
+          titulo="A dónde fue"
+          descripcion="Lo que salió del almacén con este código se reparte en partes iguales entre los códigos que trabajaron ese mes: con horas en el reporte diario o el tareo, o con una salida del almacén. PLANTA y OFICINA no reciben."
+        />
+        <Tabla>
+          <TablaCabecera>
+            <tr>
+              <TH>Mes</TH>
+              <TH>Código</TH>
+              <TH className="text-right">Salidas</TH>
+              <TH className="text-right">Le tocó</TH>
+            </tr>
+          </TablaCabecera>
+          <tbody>
+            {filas.length === 0 ? (
+              <SinDatos
+                titulo="Todavía no salió nada con este código"
+                descripcion="Se reparte cuando Almacén entrega lo de un requerimiento de Administración cargado a todos los activos."
+              />
+            ) : (
+              filas.map((f) => (
+                <TR key={`${f.periodo}-${f.codigo}`} data-reparto={f.codigo}>
+                  <TD className="tabular align-top">{periodo(f.periodo)}</TD>
+                  <TD className="align-top">
+                    {f.codigo === CODIGO_TODOS_LOS_ACTIVOS ? (
+                      <span className="text-aviso">Esperando un código que trabaje ese mes</span>
+                    ) : (
+                      <Link href={enlaceCodigo(f.codigo, 'costeo')} className="font-mono text-acento hover:underline">
+                        {f.codigo}
+                      </Link>
+                    )}
+                  </TD>
+                  <TD className="tabular text-right align-top">{f.salidas}</TD>
+                  <TD className="tabular text-right align-top">
+                    {montoMixto(f.monto_pen, f.monto_usd)}
+                    {f.sin_precio > 0 && <p className="text-xs text-aviso">{f.sin_precio} sin precio</p>}
+                  </TD>
+                </TR>
+              ))
+            )}
+          </tbody>
+        </Tabla>
+      </Tarjeta>
+      {sinPrecio > 0 && (
+        <p className="text-xs text-texto-suave">
+          Lo que sale sin precio se cuenta en cuanto Logística le pone uno o entra con precio al almacén.
+        </p>
+      )}
+      {(c.compras_pen > 0 || c.compras_usd > 0 || c.compras > 0) && (
+        <p className="text-xs text-texto-suave">
+          Compras con este código: <span className="tabular text-texto">{montoMixto(c.compras_pen, c.compras_usd)}</span> sin IGV en {c.compras} OC.
+          No se suman a nadie: lo comprado entra al almacén y se reparte cuando sale.
+        </p>
+      )}
     </div>
   )
 }
