@@ -657,7 +657,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   },
   // Unidades y Carrocerías las lleva Diseño e Ingeniería (pedido de la
   // empresa, 2026-10-01). Configuración la alcanza por `configuracion.ver`,
-  // pero es de Administración.
+  // pero es del administrador del sistema.
   // Desde el 2026-10-15 su trabajo va por código interno: los planos de cada
   // área, la lista de materiales y las etapas, primero. Después la OT, que la
   // ve solo Diseño, y el informe de su equipo; luego los catálogos que
@@ -684,15 +684,19 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // oficina): lo registra, Almacén lo revisa y ella hace la OC de lo que falta.
   // La evaluación de desempeño la recibe de Diseño: es consulta. Los
   // subcontratos son suyos: registra cada uno y sube sus recibos por honorarios.
+  // Desde el 2026-10-19 ve los códigos internos en lectura (cerrar el costeo es
+  // de Gerencia), Clientes pasa al final de Consultas, y Personal y
+  // Configuración son del administrador del sistema: ya no los tiene ni en el
+  // menú ni en la base (migración 20261017400000).
   ADMINISTRACION: {
+    principal: ['/codigos-internos'],
     grupos: [
       {
         titulo: 'Administración',
-        rutas: ['/cotizaciones/pdf', '/ordenes', '/subcontratos', '/clientes', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
+        rutas: ['/cotizaciones/pdf', '/ordenes', '/subcontratos', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
       },
       { titulo: 'Requerimiento de Administración', rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes'] },
-      { titulo: 'Consultas', rutas: ['/diseno/evaluaciones', '/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos'] },
-      { titulo: 'Administración del sistema', rutas: ['/personal', '/configuracion'] },
+      { titulo: 'Consultas', rutas: ['/diseno/evaluaciones', '/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos', '/clientes'] },
     ],
     telefono: ['/cotizaciones/pdf', '/ordenes', '/subcontratos', '/requerimientos'],
   },

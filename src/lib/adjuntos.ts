@@ -46,15 +46,16 @@ export async function subirAdjunto(
   datos.set('mime_type', contentType)
   datos.set('tamano_bytes', String(archivo.size))
 
-  // Si la anotación no entra —o se cae por el camino— el archivo se quita: un
-  // archivo en Storage que ninguna fila nombra no lo ve nadie y no lo borra
-  // nadie. Pasó una vez con el Excel de un cronograma.
+  // Si la base dice que no, el archivo se quita: un archivo en Storage que
+  // ninguna fila nombra no lo ve nadie más que quien lo subió. Pasó una vez con
+  // el Excel de un cronograma.
   try {
     const resultado = await registrarAdjunto(null, datos)
     if (!resultado.ok) await supabase.storage.from('adjuntos-ot').remove([ruta])
     return resultado
   } catch {
-    await supabase.storage.from('adjuntos-ot').remove([ruta])
-    return { ok: false, error: 'No se pudo anotar el archivo en la orden. Vuelve a intentar.' }
+    // Sin respuesta no se sabe si quedó anotado: el archivo no se toca, y
+    // reintentar a ciegas lo subiría dos veces.
+    return { ok: false, error: 'No llegó la respuesta. Recarga la orden y mira si el archivo quedó antes de volver a subirlo.' }
   }
 }

@@ -15,6 +15,11 @@
 \set ON_ERROR_STOP on
 begin;
 
+-- Lo que la base ya tenga cargado «a todos los activos» este mes se repartiría
+-- también entre los códigos de esta prueba y movería sus montos: se saca del mes.
+update public.movimientos_materiales set registrado_en = registrado_en - interval '50 years'
+ where public.normalizar_codigo_interno(codigo_interno) = 'TODOS LOS ACTIVOS';
+
 insert into public.empresa (ruc, razon_social)
 select '20100000397', 'PRUEBAS COSTEO S.A.C.' where not exists (select 1 from public.empresa);
 insert into public.sedes (codigo, nombre) values ('QA97', 'Taller prueba de costeo') on conflict (codigo) do nothing;
@@ -225,7 +230,7 @@ end $$;
 
 -- ============================================ 2. El costo completo y el margen
 do $$
-declare k jsonb; v_agua numeric; v_luz numeric; v_suma_agua numeric; v_esperado numeric;
+declare k jsonb; v_agua numeric; v_luz numeric; v_suma_agua numeric; v_partes integer; v_esperado numeric;
 begin
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
   set local role authenticated;
@@ -233,9 +238,10 @@ begin
   v_luz := pg_temp.lineas('CHK397_A_26/01', 'GASTOS_DEL_MES');
   select coalesce(sum(l.monto) filter (where l.concepto like 'Agua%'), 0) into v_agua
     from public.codigo_interno_costeo('CHK397_A_26/01') l where l.fuente = 'GASTOS_DEL_MES';
-  select coalesce(sum(l.monto), 0) into v_suma_agua
+  -- Cada parte se redondea al céntimo: entre muchos códigos, el total se aparta medio céntimo por parte.
+  select coalesce(sum(l.monto), 0), count(*) into v_suma_agua, v_partes
     from public.codigo_interno_costeo(null) l where l.fuente = 'GASTOS_DEL_MES' and l.concepto like 'Agua%';
-  perform test.afirmar(abs(v_suma_agua - 300) < 0.05, 'el agua en partes iguales se reparte entera: 300, salió ' || v_suma_agua);
+  perform test.afirmar(abs(v_suma_agua - 300) <= v_partes * 0.005, 'el agua en partes iguales se reparte entera: 300, salió ' || v_suma_agua);
   perform test.afirmar(v_agua = (select sum(l.monto) from public.codigo_interno_costeo('CHK397_B_26/02') l
                                   where l.fuente = 'GASTOS_DEL_MES' and l.concepto like 'Agua%'),
     'A y B, que trabajaron ese mes, llevan la misma parte del agua');
@@ -448,8 +454,9 @@ begin
   perform test.afirmar(k is not null and (k->>'margen_pct') is not null, 'Administración ve el costo y el margen del código');
   perform test.debe_fallar(format('select public.cerrar_costeo_codigo(%L, %L)', 'CHK397_A_26/01', 'Unidad entregada al cliente'),
     'Administración no cierra el costeo', 'codigos_internos.cerrar');
-  perform test.debe_fallar(format('select * from public.codigo_interno_costeo(%L)', 'CHK397_A_26/01'),
-    'ni lee el detalle línea por línea de Gerencia', 'codigos_internos.ver');
+  -- Desde el 2026-10-19 (migración 20261017400000) lee el detalle, en lectura.
+  perform test.afirmar(exists (select 1 from public.codigo_interno_costeo('CHK397_A_26/01')),
+    'y lee el detalle línea por línea, como Gerencia');
   reset role;
 
   -- Supervisión general ve el costo, no el precio.

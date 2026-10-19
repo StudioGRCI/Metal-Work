@@ -8,6 +8,11 @@
 \set ON_ERROR_STOP on
 begin;
 
+-- Lo que la base ya tenga cargado «a todos los activos» este mes se repartiría
+-- también entre los códigos de esta prueba y movería sus montos: se saca del mes.
+update public.movimientos_materiales set registrado_en = registrado_en - interval '50 years'
+ where public.normalizar_codigo_interno(codigo_interno) = 'TODOS LOS ACTIVOS';
+
 insert into public.empresa (ruc, razon_social)
 select '20100000044', 'PRUEBAS CODIGOS S.A.C.' where not exists (select 1 from public.empresa);
 insert into public.sedes (codigo, nombre) values ('T44', 'Taller de pruebas de los códigos') on conflict (codigo) do nothing;
@@ -207,11 +212,10 @@ select test.afirmar(not has_function_privilege('anon', 'public.codigo_interno_co
   'el anónimo no ejecuta el costeo de un código');
 select test.afirmar(not has_function_privilege('authenticated', 'public.normalizar_codigo_interno(text)', 'execute'),
   'normalizar el código es interno: ni la aplicación lo llama');
-select test.afirmar((select count(*) from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
-                      where rp.permiso_codigo = 'codigos_internos.ver') = 1
-                    and exists (select 1 from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
-                                 where rp.permiso_codigo = 'codigos_internos.ver' and r.codigo = 'GERENTE'),
-  'el permiso lo tiene Gerencia y nadie más');
+-- Desde el 2026-10-19 (migración 20261017400000) también Administración, en lectura.
+select test.afirmar((select array_agg(r.codigo order by r.codigo) from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
+                      where rp.permiso_codigo = 'codigos_internos.ver') = array['ADMINISTRACION', 'GERENTE'],
+  'el permiso lo tienen Gerencia y Administración, y nadie más');
 
 -- ============================================== 2. GERENCIA VE TODOS LOS CÓDIGOS
 do $$

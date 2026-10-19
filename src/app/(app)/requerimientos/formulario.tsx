@@ -8,6 +8,7 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { AreaParaRequerimiento, MaterialParaRequerimiento, OpcionCatalogo } from '@/lib/datos/requerimientos'
+import { CODIGO_TODOS_LOS_ACTIVOS } from '@/lib/dominio/codigos-internos'
 import { TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { useEnvio } from '@/lib/envio'
 import { hoyLima } from '@/lib/format'
@@ -96,6 +97,10 @@ function FormularioRequerimiento({
   // Cada área pide en un solo requerimiento: al cambiar el tipo cambia la lista.
   const [tipo, setTipo] = useState<TipoRequerimiento>(tipos[0] ?? 'OPERACION')
   const [areaId, setAreaId] = useState('')
+  // El de Administración puede ir a un código o a todos los que trabajan.
+  const [aTodos, setATodos] = useState(false)
+  // Lo escrito en el código vuelve si pasa a «Todos» y regresa a «Un código».
+  const [codigoEscrito, setCodigoEscrito] = useState('')
   const delTipo = areas.filter((a) => a.requerimiento === tipo)
   // Decidido aquí: un reintento manda el mismo y la base no duplica el RQ.
   const [id] = useState(() => crypto.randomUUID())
@@ -171,18 +176,45 @@ function FormularioRequerimiento({
             ))}
           </Seleccion>
         </Campo>
-        <Campo
-          etiqueta="Código interno"
-          htmlFor="rq-codigo"
-          requerido
-          ayuda={
-            tipo === 'ADMINISTRACION'
-              ? 'El de la unidad, si es para una. Si es para la oficina, escribe OFICINA.'
-              : 'El de la unidad, por ejemplo PLA_SR_O4_1_26/28. Si no es para una unidad, escribe PLANTA.'
-          }
-        >
-          <Entrada id="rq-codigo" name="codigo_interno" required minLength={2} maxLength={60} autoComplete="off" />
-        </Campo>
+        {tipo === 'ADMINISTRACION' && (
+          <Campo
+            etiqueta="Se carga a"
+            htmlFor="rq-cargo"
+            requerido
+            ayuda={aTodos ? 'Partes iguales entre los códigos que trabajaron ese mes.' : 'Un solo código: el de la unidad, o OFICINA.'}
+            ayudaEnIcono={false}
+          >
+            <Seleccion id="rq-cargo" value={aTodos ? 'TODOS' : 'UNO'} onChange={(e) => setATodos(e.target.value === 'TODOS')}>
+              <option value="UNO">Un código interno</option>
+              <option value="TODOS">Todos los códigos activos</option>
+            </Seleccion>
+          </Campo>
+        )}
+        {tipo === 'ADMINISTRACION' && aTodos ? (
+          <input type="hidden" name="codigo_interno" value={CODIGO_TODOS_LOS_ACTIVOS} />
+        ) : (
+          <Campo
+            etiqueta="Código interno"
+            htmlFor="rq-codigo"
+            requerido
+            ayuda={
+              tipo === 'ADMINISTRACION'
+                ? 'El de la unidad, si es para una. Si es para la oficina, escribe OFICINA.'
+                : 'El de la unidad, por ejemplo PLA_SR_O4_1_26/28. Si no es para una unidad, escribe PLANTA.'
+            }
+          >
+            <Entrada
+              id="rq-codigo"
+              name="codigo_interno"
+              required
+              minLength={2}
+              maxLength={60}
+              autoComplete="off"
+              defaultValue={codigoEscrito}
+              onChange={(e) => setCodigoEscrito(e.target.value)}
+            />
+          </Campo>
+        )}
         <Campo etiqueta="Se necesita para el" htmlFor="rq-fecha" ayuda="Opcional: el día en que el área lo necesita.">
           <Entrada id="rq-fecha" name="fecha_requerida" type="date" min={hoyLima()} />
         </Campo>

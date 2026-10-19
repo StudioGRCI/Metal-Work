@@ -426,6 +426,30 @@ export async function costeoDelCodigo(codigo: string): Promise<LineaCosteo[]> {
   }))
 }
 
+/** Lo que le tocó a cada código de lo cargado a TODOS LOS ACTIVOS, por mes. */
+export type RepartoATodos = {
+  periodo: string
+  codigo: string
+  salidas: number
+  monto_pen: number
+  monto_usd: number
+  sin_precio: number
+}
+
+export async function repartoATodosLosActivos(): Promise<RepartoATodos[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('codigo_interno_reparto_a_todos')
+  if (error) throw new Error(`No se pudo leer a dónde fue lo cargado a todos los activos: ${error.message}`)
+  return (data ?? []).map((f) => ({
+    periodo: f.periodo ?? '',
+    codigo: f.codigo ?? '',
+    salidas: n(f.salidas),
+    monto_pen: n(f.monto_pen),
+    monto_usd: n(f.monto_usd),
+    sin_precio: n(f.sin_precio),
+  }))
+}
+
 /** Una orden de compra del código, con lo que hace falta para decir en qué va. */
 export type CompraDelCodigo = {
   id: string

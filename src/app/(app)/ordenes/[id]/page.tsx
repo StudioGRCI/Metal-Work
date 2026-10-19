@@ -24,7 +24,7 @@ import {
   timelineDeOrden,
 } from '@/lib/datos/ordenes'
 import { actividadesDeOrden, areasDelTaller, despachosParaReporte } from '@/lib/datos/actividades'
-import { adjuntosDeOrden } from '@/lib/datos/adjuntos'
+import { adjuntosDeOrden, ordenTienePdf } from '@/lib/datos/adjuntos'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
 import { controlesYSolicitudesDeOrden, costoDeOrdenes, mermaDeOrden } from '@/lib/datos/costos-ot'
@@ -232,32 +232,38 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     ? hojaAreas[0].diario.filter((reporte) => idsAreasVisibles.has(reporte.area_id))
     : []
 
-  // Las observaciones van con la orden en papel, con las áreas a las que se dirigen.
-  const [observaciones, areasParaObservar] =
-    vista === 'resumen' ? await Promise.all([observacionesDeOrden(id), areasDelTaller()]) : [[], []]
-
-  // Los archivos de la orden (099), en el resumen junto a sus observaciones.
-  // Quitarlos es de quien los subió, la oficina o el jefe: lo mismo que dice
-  // la política.
-  const puedeSubirArchivos = perfil.rol.codigo === 'SUPERVISOR' && puede(perfil, [
-    'produccion.actividades',
-    'ordenes.editar',
-    'ordenes.crear',
-    'ordenes.abrir_taller',
-  ])
-  const quitaCualquiera = puede(perfil, ['ordenes.editar', 'produccion.cualquier_area'])
-  const archivos: AdjuntoEnPantalla[] | null =
+  // Las observaciones van con la orden en papel, con las áreas a las que se
+  // dirigen, y con los archivos de la orden (099) y si ya tiene su PDF aunque
+  // este puesto no lo abra. Todo a la vez.
+  const [observaciones, areasParaObservar, tienePdf, adjuntos] =
     vista === 'resumen'
-      ? (await adjuntosDeOrden(id)).map((a) => ({
-          id: a.id,
-          tipo: a.tipo,
-          nombre_archivo: a.nombre_archivo,
-          tamano_bytes: a.tamano_bytes,
-          creado_en: a.creado_en,
-          url: a.url,
-          quitable: quitaCualquiera || a.subido_por === perfil.id,
-        }))
-      : null
+      ? await Promise.all([observacionesDeOrden(id), areasDelTaller(), ordenTienePdf(id), adjuntosDeOrden(id)])
+      : [[], [], false, null]
+
+  // Quitarlos es de quien los subió, la oficina o el jefe: lo mismo que dice
+  // la política. La orden sin cotización la registra Administración y su PDF
+  // también lo sube ella (2026-10-19); la de una cotización nace con el suyo.
+  // La orden anulada queda como evidencia: su PDF ya no cambia (migración 20261017402000).
+  const anulada = orden.estado === 'ANULADA'
+  const puedeSubirArchivos =
+    !anulada &&
+    ((perfil.rol.codigo === 'SUPERVISOR' &&
+      puede(perfil, ['produccion.actividades', 'ordenes.editar', 'ordenes.crear', 'ordenes.abrir_taller'])) ||
+      (!orden.cotizacion_pdf_id && puede(perfil, 'ordenes.crear')))
+  const quitaCualquiera = puede(perfil, ['ordenes.editar', 'produccion.cualquier_area'])
+  // El último PDF de la orden no se quita: la base lo rechaza (migración 20261017402000).
+  const pdfsDeOrden = adjuntos?.filter((a) => a.tipo === 'ORDEN').length ?? 0
+  const archivos: AdjuntoEnPantalla[] | null = adjuntos
+    ? adjuntos.map((a) => ({
+        id: a.id,
+        tipo: a.tipo,
+        nombre_archivo: a.nombre_archivo,
+        tamano_bytes: a.tamano_bytes,
+        creado_en: a.creado_en,
+        url: a.url,
+        quitable: (quitaCualquiera || a.subido_por === perfil.id) && (a.tipo !== 'ORDEN' || (pdfsDeOrden > 1 && !anulada)),
+      }))
+    : null
 
   // Puede venir vacío: quien no tiene `clientes.ver` abre la orden igual, pero
   // sin los datos del cliente.
@@ -315,7 +321,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               error; en el monitor queda a la derecha. */}
           <div className="grid items-start gap-4 lg:grid-cols-3 *:min-w-0">
             <div className="space-y-4 lg:col-start-3 lg:row-start-1">
-              <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos ?? []} puedeSubir={puedeSubirArchivos}>
+              <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos ?? []} puedeSubir={puedeSubirArchivos} tienePdf={tienePdf}>
                 <Observaciones
                   ordenId={orden.id}
                   observaciones={observaciones.map((o) => ({ ...o, resoluble: puedeResolverObservacion(perfil, o) }))}

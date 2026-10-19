@@ -11,13 +11,13 @@ import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { avanceDeLosCodigos, listarCodigosInternos, sumarCodigosDeDiseno, type AvanceDeCodigo, type ResumenCodigo } from '@/lib/datos/codigos-internos'
 import { codigosDeDiseno, type CodigoDeDiseno } from '@/lib/datos/diseno-codigos'
 import {
-  CODIGO_SIN_AVANCE,
   costoDelCodigo,
   dondeAparece,
   enlaceCodigo,
   faltaElPrecio,
   llaveParecido,
   montoMixto,
+  noEsUnidad,
   origenDelAvance,
   parecidos,
 } from '@/lib/dominio/codigos-internos'
@@ -202,7 +202,7 @@ function FilaCodigo({
         <LineaDeDiseno d={diseno} />
       </div>
 
-      {c.codigo === CODIGO_SIN_AVANCE ? (
+      {noEsUnidad(c.codigo) ? (
         <p className="mt-2 text-xs text-texto-suave">{origenDelAvance(c.codigo, avance)}.</p>
       ) : (
         <div className="mt-2 grid grid-cols-[1fr_6.5rem] items-center gap-3 text-xs" data-avance={avance?.avance ?? 0}>

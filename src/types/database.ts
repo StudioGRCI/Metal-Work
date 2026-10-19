@@ -10453,6 +10453,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      archivo_ot_vinculado: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
       archivo_plano_vinculado: {
         Args: {
           p_ruta: string | null
@@ -11087,6 +11093,17 @@ export type Database = {
           subido_en: string | null
           recibido_en: string | null
           recibido_por_area: string | null
+        }[]
+      }
+      codigo_interno_reparto_a_todos: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          periodo: string | null
+          codigo: string | null
+          salidas: number | null
+          monto_pen: number | null
+          monto_usd: number | null
+          sin_precio: number | null
         }[]
       }
       codigo_plano_historial: {
@@ -12464,6 +12481,12 @@ export type Database = {
         }
         Returns: string
       }
+      orden_tiene_pdf: {
+        Args: {
+          p_orden: string | null
+        }
+        Returns: boolean
+      }
       ordenes_compra_listado: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -13057,6 +13080,28 @@ export type Database = {
           p_codigo_interno: string | null
           p_operacion: string | null
           p_tipo_cambio: number | null
+        }
+        Returns: string
+      }
+      registrar_orden_sin_cotizacion: {
+        Args: {
+          p_orden: string | null
+          p_cliente: string | null
+          p_unidad: string | null
+          p_sede: string | null
+          p_tipo_carroceria: string | null
+          p_tipo_trabajo: Database["public"]["Enums"]["tipo_trabajo_ot"] | null
+          p_prioridad: Database["public"]["Enums"]["prioridad_ot"] | null
+          p_descripcion: string | null
+          p_especificaciones: string | null
+          p_inicio: string | null
+          p_fin: string | null
+          p_entrega: string | null
+          p_responsable: string | null
+          p_observaciones: string | null
+          p_ruta_pdf: string | null
+          p_nombre_pdf: string | null
+          p_tamano_pdf: number | null
         }
         Returns: string
       }

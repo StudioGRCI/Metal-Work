@@ -8,6 +8,7 @@ import { Campo, Entrada } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import { type Almacen, ALMACENES, exigeFormato } from '@/lib/dominio/almacen'
+import { CODIGO_TODOS_LOS_ACTIVOS, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { useEnvio } from '@/lib/envio'
 import { cantidad } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
@@ -161,8 +162,17 @@ export function NuevaSalida({ materiales, unidades, lineasRq = [], rqInicial }: 
 
           {destinoDelRq ? (
             <p className="rounded-[var(--radius-base)] border border-borde px-3 py-2 text-sm">
-              <span className="text-texto-suave">Va a la unidad </span><span className="font-medium">{destinoDelRq}</span>
-              <span className="text-texto-suave">, la del requerimiento {linea?.numero}.</span>
+              {normalizarCodigo(destinoDelRq) === CODIGO_TODOS_LOS_ACTIVOS ? (
+                <>
+                  <span className="text-texto-suave">Va a </span><span className="font-medium">todos los códigos activos</span>
+                  <span className="text-texto-suave">, como dice el requerimiento {linea?.numero}: se reparte en partes iguales entre los que trabajaron este mes.</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-texto-suave">Va a la unidad </span><span className="font-medium">{destinoDelRq}</span>
+                  <span className="text-texto-suave">, la del requerimiento {linea?.numero}.</span>
+                </>
+              )}
             </p>
           ) : (
           <fieldset className="space-y-3 rounded-[var(--radius-base)] border border-borde p-3">

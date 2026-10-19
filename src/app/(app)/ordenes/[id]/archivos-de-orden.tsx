@@ -44,11 +44,14 @@ export function ArchivosDeOrden({
   ordenId,
   adjuntos,
   puedeSubir,
+  tienePdf,
   children,
 }: {
   ordenId: string
   adjuntos: AdjuntoEnPantalla[]
   puedeSubir: boolean
+  /** Si la orden ya tiene su PDF, aunque este puesto no lo abra (`orden_tiene_pdf`). */
+  tienePdf: boolean
   children?: ReactNode
 }) {
   const router = useRouter()
@@ -57,6 +60,9 @@ export function ArchivosDeOrden({
   const [aviso, setAviso] = useState<string | null>(null)
   const [, iniciar] = useTransition()
   const enCurso = useRef(false)
+  // El PDF está pero este puesto no lo abre: se dice que está y no se ofrece subir otro.
+  const pdfOculto = tienePdf && !adjuntos.some((a) => a.tipo === 'ORDEN')
+  const sube = puedeSubir && !pdfOculto
 
   async function subir(archivo: File | undefined) {
     if (!archivo || enCurso.current) return
@@ -86,7 +92,7 @@ export function ArchivosDeOrden({
         titulo="Orden de trabajo"
         descripcion="El PDF de la orden para tenerlo a mano en el taller, y lo que alguien encontró mal en ella."
         acciones={
-          puedeSubir && (
+          sube && (
             <label
               className={cn(
                 BASE_BOTON,
@@ -113,10 +119,15 @@ export function ArchivosDeOrden({
         }
       />
       <TarjetaCuerpo className="space-y-4">
-        {adjuntos.length === 0 ? (
+        {pdfOculto && (
+          <p className="text-sm text-texto" data-pdf-oculto>
+            La orden tiene su PDF. Lo abren Diseño y Supervisión de Producción, Maestranza y Acabados.
+          </p>
+        )}
+        {pdfOculto && adjuntos.length === 0 ? null : adjuntos.length === 0 ? (
           <p className="text-sm text-texto-suave">
             Todavía no se subió el PDF de la orden.{' '}
-            {puedeSubir
+            {sube
               ? `Sube el PDF de la orden con el botón de arriba (hasta ${MAXIMO_ADJUNTO_MB} MB).`
               : 'Los sube la oficina o el supervisor.'}
           </p>
@@ -126,6 +137,10 @@ export function ArchivosDeOrden({
               <FilaAdjunto key={a.id} adjunto={a} ordenId={ordenId} />
             ))}
           </ul>
+        )}
+        {/* El último PDF no se quita (lo cuida la base): se dice cómo se cambia. */}
+        {sube && adjuntos.filter((a) => a.tipo === 'ORDEN').length === 1 && (
+          <p className="text-xs text-texto-suave">Para cambiarlo, sube el correcto y después quita este.</p>
         )}
 
         {error && (
