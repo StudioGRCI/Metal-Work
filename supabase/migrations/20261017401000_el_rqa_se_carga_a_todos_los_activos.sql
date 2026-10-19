@@ -344,3 +344,30 @@ revoke all on function public.fn_cierre_no_de_todos_los_activos() from public, a
 create or replace trigger trg_cierre_no_de_todos_los_activos
   before insert on public.codigo_interno_cierres
   for each row execute function public.fn_cierre_no_de_todos_los_activos();
+
+-- Y en el almacén: una salida va a todos los activos solo si sale de un
+-- requerimiento de Administración cargado así. Escrito a mano en una salida
+-- general, el código se repartiría entre todas las unidades sin que nadie lo
+-- haya pedido.
+create or replace function public.fn_salida_todos_los_activos()
+returns trigger language plpgsql set search_path to 'public' as $$
+begin
+  if new.tipo in ('SALIDA', 'DESPACHO') and new.devolucion_de is null
+     and public.normalizar_codigo_interno(coalesce(new.codigo_interno, case when new.unidad_id is null then new.codigo_unidad end)) = 'TODOS LOS ACTIVOS'
+     and not exists (select 1
+                       from public.requerimiento_lineas rl
+                       join public.requerimientos rq on rq.id = rl.requerimiento_id
+                      where rl.id = new.requerimiento_linea_id
+                        and rq.tipo = 'ADMINISTRACION'
+                        and public.normalizar_codigo_interno(rq.codigo_interno) = 'TODOS LOS ACTIVOS') then
+    raise exception 'TODOS LOS ACTIVOS es solo para lo que sale de un requerimiento de Administración cargado a todos: elige ese requerimiento o escribe el código de la unidad.'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.fn_salida_todos_los_activos() from public, anon, authenticated;
+
+create or replace trigger trg_salida_todos_los_activos
+  before insert on public.movimientos_materiales
+  for each row execute function public.fn_salida_todos_los_activos();

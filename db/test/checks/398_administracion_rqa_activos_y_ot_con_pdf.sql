@@ -189,6 +189,20 @@ select test.afirmar((select sum(g.cantidad) from public.codigo_interno_gasto('CH
   'Requerimientos ve la misma parte en el gasto del código');
 reset role;
 
+-- Escrito a mano en una salida general, sin el RQA, no se acepta.
+select set_config('prueba.sal_mano', gen_random_uuid()::text, true);
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values ('evidencias-almacen', current_setting('prueba.almacenero') || '/' || current_setting('prueba.sal_mano') || '.jpg',
+        current_setting('prueba.almacenero'), '{"mimetype":"image/jpeg","size":100}'::jsonb);
+select pg_temp.como('almacenero');
+set local role authenticated;
+select test.debe_fallar(format($q$select public.registrar_salida_material(%L::uuid, %L::uuid, 1, null, 'todos los activos',
+                                   'Salida general 398', 'Administración', %L, null)$q$,
+                               current_setting('prueba.sal_mano'), current_setting('prueba.m1'),
+                               current_setting('prueba.almacenero') || '/' || current_setting('prueba.sal_mano') || '.jpg'),
+  'Almacén no carga a todos los activos una salida general escrita a mano', 'es solo para lo que sale de un requerimiento de Administración');
+reset role;
+
 -- Una salida a todos de un mes en que nadie trabajó se queda en TODOS LOS ACTIVOS.
 do $$
 declare
@@ -196,10 +210,11 @@ declare
 begin
   insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por,
                                              recibido_por_nombre, codigo_unidad, codigo_interno, cantidad_de_stock, registrado_en,
-                                             precio_unitario, moneda)
+                                             precio_unitario, moneda, requerimiento_linea_id)
   values (v_salida, 'SALIDA', current_setting('prueba.m1')::uuid, 2, 'SALIDA_GENERAL', 'Mes sin trabajo 398',
           current_setting('prueba.almacenero')::uuid, 'Administración', 'TODOS LOS ACTIVOS', 'TODOS LOS ACTIVOS', 2,
-          timestamptz '2020-01-15 10:00-05', 10, 'PEN');
+          timestamptz '2020-01-15 10:00-05', 10, 'PEN',
+          (select id from public.requerimiento_lineas where requerimiento_id = current_setting('prueba.rqa')::uuid and item = 1));
   perform test.afirmar((select sum(l.cantidad) from public.codigo_interno_lineas('TODOS LOS ACTIVOS', true) l
                          where l.fuente in ('MATERIALES', 'MATERIALES_SIN_PRECIO') and l.referencia_id = v_salida
                            and l.detalle like 'Cargado a todos los activos: ningún código trabajó%') = 2,
