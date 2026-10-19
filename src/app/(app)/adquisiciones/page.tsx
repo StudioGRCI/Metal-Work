@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -118,21 +119,17 @@ export default async function PaginaAdquisiciones({ searchParams }: PageProps<'/
         </Tarjeta>
       )}
 
-      <nav aria-label="Qué compras ver" className="mb-3 flex flex-wrap items-center gap-2">
-        {VISTAS.map((v) => (
-          <Link
-            key={v.valor}
-            href={v.valor === 'todas' ? '/adquisiciones' : `/adquisiciones?vista=${v.valor}`}
-            aria-current={vista === v.valor ? 'page' : undefined}
-            className={`inline-flex min-h-9 items-center rounded-lg border px-3 text-sm font-medium ${
-              vista === v.valor ? 'border-acento bg-acento-suave text-texto' : 'border-borde text-texto-suave hover:text-texto'
-            }`}
-          >
-            {v.titulo}
-            <span className="ml-2 tabular text-xs text-texto-suave">{cuenta[v.valor]}</span>
-          </Link>
-        ))}
-      </nav>
+      <Vistas
+        etiqueta="Qué compras ver"
+        className="mb-3"
+        vistas={VISTAS.map((v) => ({
+          clave: v.valor,
+          titulo: v.titulo,
+          href: v.valor === 'todas' ? '/adquisiciones' : `/adquisiciones?vista=${v.valor}`,
+          activa: vista === v.valor,
+          cuenta: cuenta[v.valor],
+        }))}
+      />
 
       {noCalzan.length > 0 && vista !== 'sin-factura' && (
         <p className="mb-3 text-sm text-aviso">

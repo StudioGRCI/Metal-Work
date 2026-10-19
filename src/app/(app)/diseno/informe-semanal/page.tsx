@@ -100,7 +100,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
             <label htmlFor="semana-diseno" className="grid gap-1 text-sm font-medium text-texto">
               Día de la semana
               <input id="semana-diseno" name="semana" type="date" defaultValue={inicio}
-                className="rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2 text-texto" />
+                className="rounded-[var(--radius-base)] border border-borde-fuerte bg-superficie px-3 py-2 text-texto" />
             </label>
             <Boton type="submit">Ver semana</Boton>
           </form>

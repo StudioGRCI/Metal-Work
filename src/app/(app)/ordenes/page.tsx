@@ -176,7 +176,9 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                       {orden.etapas_terminadas ?? 0} de {orden.etapas_total ?? 0} etapas
                     </p>
                   </div>
-                  <div className="shrink-0 text-right">
+                  {/* Ancho fijo: si la columna medía lo que su texto, cada
+                      tarjeta tenía la barra de avance de otro largo. */}
+                  <div className="w-32 shrink-0 text-right">
                     <p className="text-sm text-texto">{fecha(orden.fecha_entrega_comprometida)}</p>
                     {plazo && <p className={`text-[11px] ${plazo.clase}`}>{plazo.texto}</p>}
                   </div>

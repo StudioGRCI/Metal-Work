@@ -52,12 +52,21 @@ export type PropsPastillaFiltro = ConEnlaces | ConBotones
 // Alto táctil en el teléfono —44 px se marcan con el guante puesto— y el de
 // siempre en el monitor. `min-height` le gana a `height`, así que en `sm:` hay
 // que soltarlo o el escritorio se quedaría con la altura del teléfono.
-const PASTILLA =
-  'inline-flex min-h-11 items-center justify-center rounded-[var(--radius-base)] px-3 text-sm whitespace-nowrap transition-colors sm:h-8 sm:min-h-0'
+// Las que no están puestas llevan su caja, con el contorno de 3:1 que
+// `globals.css` pide para todo control: sin ella, en el teléfono «Validados» se
+// leía como texto suelto y no como algo que se toca.
+export const PASTILLA =
+  'inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-base)] border px-3 text-sm whitespace-nowrap transition-colors sm:h-8 sm:min-h-0'
 
 // El relleno sólido y el subrayado distinguen la selección incluso sin color.
-const ACTIVA = 'bg-acento font-semibold text-acento-texto underline underline-offset-4'
-const INACTIVA = 'text-texto-suave hover:bg-superficie-2 hover:text-texto'
+export const ACTIVA = 'border-acento bg-acento font-semibold text-acento-texto underline underline-offset-4'
+export const INACTIVA = 'border-borde-fuerte bg-superficie text-texto-suave hover:bg-superficie-2 hover:text-texto'
+
+// El grupo parte línea también en el teléfono: deslizado de costado dejaba
+// filtros fuera de la vista —en /codigos-internos se veían dos de cinco— y
+// dentro de una fila flex ensanchaba la página entera (/subcontratos medía
+// 438 px en 390). `min-w-0` para que un padre flex nunca lo estire.
+export const GRUPO_PASTILLAS = 'flex min-w-0 flex-wrap gap-2 sm:gap-1'
 
 /** Vacío, `null` y ausente son la misma cosa: no hay filtro puesto. */
 function mismo(a: string | null | undefined, b: string | null | undefined) {
@@ -83,11 +92,7 @@ export function PastillaFiltro(props: PropsPastillaFiltro) {
   for (const opcion of opciones) if (opcion.clave) claves.add(opcion.clave)
 
   return (
-    <div
-      role="group"
-      aria-label={etiqueta}
-      className={cn('flex flex-wrap gap-2 sm:gap-1', className)}
-    >
+    <div role="group" aria-label={etiqueta} className={cn(GRUPO_PASTILLAS, className)}>
       {opciones.map((opcion) => {
         const activa = mismo(activo, opcion.valor)
         const clases = cn(PASTILLA, activa ? ACTIVA : INACTIVA)
