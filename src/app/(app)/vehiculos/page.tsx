@@ -2,6 +2,7 @@ import { Camera } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
@@ -36,21 +37,17 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
         acciones={registra && <NuevoIngresoVehiculo cuentaId={perfil.id} />}
       />
 
-      <nav aria-label="Vista" className="mb-3 flex gap-2">
-        {VISTAS.map((v) => (
-          <Link
-            key={v.valor}
-            href={v.valor === 'en_planta' ? '/vehiculos' : `/vehiculos?vista=${v.valor}`}
-            aria-current={vista === v.valor ? 'page' : undefined}
-            className={`inline-flex min-h-9 items-center rounded-lg border px-3 text-sm font-medium ${
-              vista === v.valor ? 'border-acento bg-acento-suave text-texto' : 'border-borde text-texto-suave hover:text-texto'
-            }`}
-          >
-            {v.titulo}
-            {vista === v.valor && <span className="ml-2 tabular text-xs text-texto-suave">{registros.length}</span>}
-          </Link>
-        ))}
-      </nav>
+      <Vistas
+        etiqueta="Vista"
+        className="mb-3"
+        vistas={VISTAS.map((v) => ({
+          clave: v.valor,
+          titulo: v.titulo,
+          href: v.valor === 'en_planta' ? '/vehiculos' : `/vehiculos?vista=${v.valor}`,
+          activa: vista === v.valor,
+          cuenta: vista === v.valor ? registros.length : undefined,
+        }))}
+      />
 
       <Tarjeta className="overflow-hidden">
         <Tabla>

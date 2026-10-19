@@ -207,7 +207,7 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
                   key={d}
                   href={`/rrhh/costeo?mes=${mes}&dia=${d}#dia`}
                   aria-current={d === dia ? 'page' : undefined}
-                  className={`tabular inline-flex min-h-8 min-w-8 items-center justify-center rounded-md border px-2 text-xs font-medium ${
+                  className={`tabular inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border px-2 text-xs font-medium sm:min-h-8 sm:min-w-8 ${
                     d === dia ? 'border-acento bg-acento-suave text-texto' : 'border-borde text-texto-suave hover:text-texto'
                   }`}
                 >

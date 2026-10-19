@@ -353,7 +353,12 @@ h1, h2, h3 {
   background-attachment: local, local, scroll, scroll;
 }
 
+/* `relative` porque el `sr-only` de una cabecera sin título visible —la
+   columna «Acciones»— se posiciona en absoluto: sin una caja que lo contenga
+   se medía contra la página, la ensanchaba hasta 682 px en un teléfono de 390
+   y la barra de pestañas de abajo quedaba fuera de la pantalla. */
 .tabla-con-corte {
+  position: relative;
   background:
     linear-gradient(to right, var(--superficie) 30%, transparent) left center,
     linear-gradient(to left,  var(--superficie) 30%, transparent) right center,

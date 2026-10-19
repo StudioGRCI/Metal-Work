@@ -62,10 +62,12 @@ export default async function PaginaDashboard() {
 /** Las cifras clave del área, cada una con el enlace a la pantalla donde se mira. */
 function CifrasDelArea({ titulo, cifras }: { titulo: string; cifras: Cifra[] }) {
   return (
-    <section aria-label={titulo} className="mb-4">
-      <h2 className="mb-2 text-sm font-semibold text-texto">{titulo}</h2>
-      {/* Dos columnas ya en el teléfono: apiladas de a una ocupaban una pantalla entera. */}
-      <div className={cn('grid grid-cols-2 gap-3 sm:gap-4', cifras.length >= 5 ? 'lg:grid-cols-5' : cifras.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4')}>
+    <section aria-label={titulo} className="mb-6">
+      <h2 className="mb-2 text-base font-semibold text-texto">{titulo}</h2>
+      {/* Dos columnas ya en el teléfono: apiladas de a una ocupaban una pantalla entera.
+          Con un número impar, la última toma la fila entera en vez de quedar
+          sola con un hueco al lado. */}
+      <div className={cn('grid grid-cols-2 gap-3 sm:gap-4 max-lg:[&>:last-child:nth-child(odd)]:col-span-2 [&>:last-child:nth-child(odd)_.rotulo-indicador]:min-h-0', cifras.length >= 5 ? 'lg:grid-cols-5' : cifras.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4')}>
         {cifras.map((c) => (
           <Indicador key={c.clave} icono={c.icono} titulo={c.titulo} valor={c.valor} pie={c.pie} tono={c.tono} href={c.href} />
         ))}
@@ -138,12 +140,12 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
   const hoy = hoyLima()
 
   return (
-    <section aria-label="Órdenes de trabajo" className="mb-4">
-      <h2 className="mb-2 text-sm font-semibold text-texto">Órdenes de trabajo</h2>
+    <section aria-label="Órdenes de trabajo" className="mb-6">
+      <h2 className="mb-2 text-base font-semibold text-texto">Órdenes de trabajo</h2>
 
       {/* Dos columnas ya en el teléfono: cinco tarjetas apiladas ocupaban una
           pantalla entera antes de llegar a la lista de órdenes. */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5 max-lg:[&>:last-child:nth-child(odd)]:col-span-2 [&>:last-child:nth-child(odd)_.rotulo-indicador]:min-h-0">
         <Indicador
           icono={ClipboardList}
           titulo="Órdenes abiertas"
@@ -429,7 +431,7 @@ function TusModulos({ perfil }: { perfil: PerfilSesion }) {
   if (modulos.length === 0) return null
   return (
     <section aria-label="Tus módulos" className="lg:hidden">
-      <h2 className="mb-2 text-sm font-semibold text-texto">Tus módulos</h2>
+      <h2 className="mb-2 text-base font-semibold text-texto">Tus módulos</h2>
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {modulos.map((m) => {
           const Icono = m.icono

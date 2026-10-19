@@ -6,8 +6,13 @@ import { cn } from '@/lib/utils'
 // el Safari del iPhone acerca la pantalla en cada foco y le descuadra la vista
 // al que está en la cancha, con el equipo en la mano. En `sm:` —ratón y monitor—
 // vuelve a los 14 px de siempre.
+//
+// El contorno es `borde-fuerte` (3.39:1), como pide `globals.css` para todo
+// control: con el `borde` de las tarjetas (1.26:1) un campo blanco dentro de una
+// tarjeta blanca era una caja que casi no se veía, y en el taller, con la luz
+// de la nave, no se sabía dónde tocar para escribir.
 const BASE_CONTROL =
-  'w-full rounded-[var(--radius-base)] border border-borde bg-superficie px-3 text-base sm:text-sm text-texto ' +
+  'w-full rounded-[var(--radius-base)] border border-borde-fuerte bg-superficie px-3 text-base sm:text-sm text-texto ' +
   'placeholder:text-texto-tenue focus:border-acento focus:ring-2 focus:ring-acento/25 disabled:cursor-not-allowed disabled:opacity-60'
 
 // 44 px de alto en el teléfono, que es lo que ocupa un dedo —y con guante

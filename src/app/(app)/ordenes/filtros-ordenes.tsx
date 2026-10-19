@@ -44,8 +44,12 @@ export function FiltrosOrdenes() {
   const buscando = pendiente || busqueda !== (params.get('q') ?? '')
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="relative min-w-56 flex-1">
+    // En el teléfono, una rejilla de dos: el buscador y el estado a todo lo
+    // ancho —«Todos excepto anuladas» no entra en media fila— y debajo la
+    // prioridad junto a «Solo atrasadas». Con `flex-wrap` cada uno medía lo que
+    // su texto y la fila quedaba en dientes de sierra.
+    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+      <div className="relative col-span-2 sm:min-w-56 sm:flex-1">
         {buscando ? (
           <Loader2
             aria-hidden
@@ -72,7 +76,7 @@ export function FiltrosOrdenes() {
       </p>
 
       <Seleccion
-        className="w-auto"
+        className="col-span-2 min-w-0 sm:w-auto"
         aria-label="Filtrar por estado"
         value={params.get('estado') ?? ''}
         onChange={(e) => navegar({ estado: e.target.value || null })}
@@ -87,7 +91,7 @@ export function FiltrosOrdenes() {
       </Seleccion>
 
       <Seleccion
-        className="w-auto"
+        className="min-w-0 sm:w-auto"
         aria-label="Filtrar por prioridad"
         value={params.get('prioridad') ?? ''}
         onChange={(e) => navegar({ prioridad: e.target.value || null })}
@@ -102,7 +106,7 @@ export function FiltrosOrdenes() {
 
       {/* Alto de dedo en el teléfono y el de siempre en el monitor: la casilla
           y su rótulo son un solo blanco de 44 px, que es lo que ocupa un guante. */}
-      <label className="flex h-11 cursor-pointer items-center gap-2 rounded-[var(--radius-base)] border border-borde bg-superficie px-3 text-sm text-texto-suave sm:h-9">
+      <label className="flex h-11 cursor-pointer items-center gap-2 rounded-[var(--radius-base)] border border-borde-fuerte bg-superficie px-3 text-sm text-texto-suave sm:h-9">
         <input
           type="checkbox"
           className="size-5 accent-[var(--acento)] sm:size-3.5"

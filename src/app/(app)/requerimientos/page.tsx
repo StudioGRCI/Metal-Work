@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
@@ -85,8 +86,10 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
         acciones={catalogos && <NuevoRequerimiento {...catalogos} tipos={tipos} />}
       />
 
-      <nav aria-label="Requerimiento" className="mb-3 flex flex-wrap items-center gap-2">
-        {(supervisaArea
+      <Vistas
+        etiqueta="Requerimiento"
+        className="mb-3"
+        vistas={(supervisaArea
           ? [
               { clave: 'mia', titulo: 'De tu área', href: '/requerimientos', activa: Boolean(deSuArea), descripcion: undefined },
               { clave: 'todas', titulo: 'Todas las áreas', href: '/requerimientos?area=todas', activa: !deSuArea, descripcion: undefined },
@@ -98,21 +101,13 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
               activa: vista === v.valor,
               descripcion: v.valor === 'todos' ? undefined : TIPO_REQUERIMIENTO[v.valor]?.descripcion,
             }))
-        ).map((v) => (
-          <Link
-            key={v.clave}
-            href={codigo ? `${v.href}${v.href.includes('?') ? '&' : '?'}codigo=${encodeURIComponent(codigo)}` : v.href}
-            aria-current={!soloUno && v.activa ? 'page' : undefined}
-            title={v.descripcion}
-            className={`inline-flex min-h-9 items-center rounded-lg border px-3 text-sm font-medium ${
-              !soloUno && v.activa ? 'border-acento bg-acento-suave text-texto' : 'border-borde text-texto-suave hover:text-texto'
-            }`}
-          >
-            {v.titulo}
-            {!soloUno && v.activa && <span className="ml-2 tabular text-xs text-texto-suave">{requerimientos.length}</span>}
-          </Link>
-        ))}
-      </nav>
+        ).map((v) => ({
+          ...v,
+          href: codigo ? `${v.href}${v.href.includes('?') ? '&' : '?'}codigo=${encodeURIComponent(codigo)}` : v.href,
+          activa: !soloUno && v.activa,
+          cuenta: !soloUno && v.activa ? requerimientos.length : undefined,
+        }))}
+      />
 
       {!soloUno && codigo && (
         <p className="mb-3 text-sm text-texto-suave">

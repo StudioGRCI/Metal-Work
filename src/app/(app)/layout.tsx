@@ -32,7 +32,10 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
             pestañas, más el borde del iPhone: así la última fila de una lista
             nunca queda debajo de la barra. */}
         <main className="min-w-0 flex-1 px-4 pt-6 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:px-6 lg:pb-6 print:p-0">
-          {children}
+          {/* Tope de ancho para los monitores grandes: a 2560 px una tabla de
+              seis columnas dejaba metro y medio entre el número de la OT y su
+              estado, y el ojo perdía la fila. En 1440 y 1920 no cambia nada. */}
+          <div className="mx-auto w-full max-w-[100rem]">{children}</div>
         </main>
       </div>
       <BarraInferior permisos={perfil.permisos} esAdmin={esAdmin} rolCodigo={perfil.rol.codigo} pendientes={pendientes.porRuta} sinComprobar={pendientes.sinComprobar}>

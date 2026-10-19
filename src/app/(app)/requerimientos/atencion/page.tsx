@@ -2,6 +2,7 @@ import { ShoppingCart } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { Vistas } from '@/components/estructura/vistas'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
@@ -85,28 +86,23 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
         migas={[{ titulo: 'Requerimientos', ruta: '/requerimientos' }, { titulo: 'Atención' }]}
       />
 
-      <nav aria-label="Vista" className="mb-3 flex items-center gap-2">
-        {VISTAS.filter((v) => v.valor !== 'comprar' || compra).map((v) => (
-          <Link
-            key={v.valor}
-            href={v.valor === 'abiertos' ? '/requerimientos/atencion' : `/requerimientos/atencion?vista=${v.valor}`}
-            aria-current={vista === v.valor ? 'page' : undefined}
-            className={`inline-flex min-h-9 items-center rounded-lg border px-3 text-sm font-medium ${
-              vista === v.valor ? 'border-acento bg-acento-suave text-texto' : 'border-borde text-texto-suave hover:text-texto'
-            }`}
-          >
-            {v.titulo}
-            {(vista === v.valor || v.valor === 'comprar') && (
-              <span className="ml-2 tabular text-xs text-texto-suave">{cuenta[v.valor]}</span>
-            )}
-          </Link>
-        ))}
+      <Vistas
+        etiqueta="Vista"
+        className="mb-3"
+        vistas={VISTAS.filter((v) => v.valor !== 'comprar' || compra).map((v) => ({
+          clave: v.valor,
+          titulo: v.titulo,
+          href: v.valor === 'abiertos' ? '/requerimientos/atencion' : `/requerimientos/atencion?vista=${v.valor}`,
+          activa: vista === v.valor,
+          cuenta: vista === v.valor || v.valor === 'comprar' ? cuenta[v.valor] : undefined,
+        }))}
+      >
         {vista === 'abiertos' && requerimientos.length > 0 && (recibe || despacha || compra) && (
-          <p className="ml-auto text-sm text-texto-suave">
+          <p className="text-sm text-texto-suave sm:ml-auto">
             {meToca === 0 ? 'Ninguno espera por ti.' : `${meToca} ${meToca === 1 ? 'espera' : 'esperan'} por ti.`}
           </p>
         )}
-      </nav>
+      </Vistas>
 
       {vista === 'comprar' && paraComprar ? (
         <PorComprar grupos={grupos} preseleccion={preseleccion} {...paraComprar} />
