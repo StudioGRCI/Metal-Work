@@ -1,8 +1,6 @@
 import Link from 'next/link'
 import {
   AlertTriangle,
-  CheckCircle2,
-  ChevronRight,
   ClipboardList,
   Factory,
   PauseCircle,
@@ -21,7 +19,6 @@ import { fecha, fechaLarga, hoyLima, moneda, porcentaje } from '@/lib/format'
 import { costoDeOrdenes } from '@/lib/datos/costos-ot'
 import { dashboardDelPuesto, type Cifra, type CodigoEnCurso } from '@/lib/datos/dashboard'
 import { indicadoresTablero, ordenesAtrasadas, ordenesPorEntrega } from '@/lib/datos/ordenes'
-import { pendientesGlobales, type PendienteGlobal } from '@/lib/datos/pendientes-globales'
 import { menuDe } from '@/lib/navegacion'
 import { exigirSesion, puede, type PerfilSesion } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
@@ -29,10 +26,15 @@ import { cn } from '@/lib/utils'
 export const metadata = { title: 'Dashboard' }
 
 /**
- * El dashboard de cada puesto, de arriba abajo: lo que le toca hoy (cada cosa
- * con el enlace a donde se atiende), las cifras clave de su área y, para quien
- * todavía lleva la OT, las órdenes del taller. Al final, en el teléfono, sus
- * módulos a un toque.
+ * El dashboard de cada puesto, de arriba abajo: las cifras clave de su área,
+ * cada una con el enlace a la pantalla donde se mira, y, para quien todavía
+ * lleva la OT, las órdenes del taller. Al final, en el teléfono, sus módulos a
+ * un toque.
+ *
+ * No lleva una lista de «lo que te toca hoy»: el sistema no le dice a nadie
+ * qué tiene que hacer, le muestra cómo va su área y le deja cada pantalla a un
+ * toque (decisión del 2026-10-19). Los globos del menú siguen contando lo que
+ * espera en cada pantalla.
  */
 export default async function PaginaDashboard() {
   const perfil = await exigirSesion()
@@ -42,14 +44,13 @@ export default async function PaginaDashboard() {
   // quien la tiene en su menú (Diseño, su colaborador y Administración).
   const llevaOrdenes = menuDe(perfil.permisos, esAdmin, perfil.rol.codigo).some((g) => g.items.some((i) => i.ruta === '/ordenes'))
 
-  const [pendientes, area] = await Promise.all([pendientesGlobales(perfil), dashboardDelPuesto(perfil)])
+  const area = await dashboardDelPuesto(perfil)
 
   return (
     <>
       {/* El puesto y no el nombre (migración 109): la pantalla es del puesto,
           quien lo ocupe hoy ya sabe cómo se llama. */}
       <EncabezadoPagina titulo="Dashboard" descripcion={`${perfil.puesto} · ${fechaLarga(hoy)}`} />
-      <TeTocaHoy items={pendientes.items} />
       {area && area.cifras.length > 0 && <CifrasDelArea titulo={area.titulo} cifras={area.cifras} />}
       {area?.codigos && area.codigos.length > 0 && <CodigosEnCurso codigos={area.codigos} />}
       {llevaOrdenes && <OrdenesDelTaller perfil={perfil} />}
@@ -413,78 +414,6 @@ const TONO_TEXTO: Record<Tono, string> = {
   peligro: 'text-peligro',
   info: 'text-info',
   acento: 'text-acento',
-}
-
-const TONO_CIFRA: Record<Tono, string> = {
-  neutro: 'bg-neutro-suave text-texto',
-  exito: 'bg-exito-suave text-exito',
-  aviso: 'bg-aviso-suave text-aviso',
-  peligro: 'bg-peligro-suave text-peligro',
-  info: 'bg-info-suave text-info',
-  acento: 'bg-acento-suave text-acento',
-}
-
-/**
- * Lo que le toca a este puesto: una bandeja, una tarea por renglón, con su
- * cantidad y el enlace a donde se resuelve.
- *
- * Eran tarjetas de indicador con la frase entera en mayúsculas —«REPORTES
- * POR APROBAR», «ÓRDENES SIN PLANOS QUE DESGLOSAR»— y se leían como un letrero,
- * no como algo que hacer. Si no hay nada, se dice en una línea y no se ocupa
- * media pantalla.
- */
-function TeTocaHoy({ items }: { items: PendienteGlobal[] }) {
-  if (items.length === 0) {
-    return (
-      <p className="mb-4 flex items-center gap-2 text-sm text-texto-suave">
-        <CheckCircle2 aria-hidden className="size-4 text-exito" />
-        Nada pendiente para tu puesto ahora mismo.
-      </p>
-    )
-  }
-
-  return (
-    <Tarjeta className="mb-4">
-      <TarjetaCabecera titulo="Te toca hoy" descripcion="Lo que espera a tu puesto, de lo más urgente a lo demás. Toca cada uno para atenderlo." />
-      {/* Con uno solo, una columna: en dos quedaba media tarjeta vacía al lado. */}
-      <ul aria-label="Te toca hoy" className={cn('grid divide-y divide-borde', items.length > 1 && 'sm:grid-cols-2 sm:divide-y-0')}>
-        {[...items]
-          .sort((a, b) => PESO_TONO[a.tono as Tono] - PESO_TONO[b.tono as Tono])
-          .map((i) => {
-            const error = i.clave.endsWith('_error')
-            return (
-              <li key={i.clave} className={cn(items.length > 1 && 'sm:border-b sm:border-borde sm:odd:border-r')}>
-                <Link
-                  href={i.ruta}
-                  className="flex min-h-14 items-center gap-3 px-4 py-2.5 text-sm hover:bg-superficie-2"
-                >
-                  <span
-                    className={cn(
-                      'tabular inline-flex h-7 min-w-9 shrink-0 items-center justify-center rounded-full px-2 text-sm font-semibold',
-                      TONO_CIFRA[(error ? 'aviso' : i.tono) as Tono] ?? TONO_CIFRA.neutro,
-                    )}
-                  >
-                    {error ? '!' : i.cantidad}
-                  </span>
-                  <span className="min-w-0 flex-1 text-texto">
-                    {/* La cifra ya va en la burbuja: la frase empieza en lo que es. */}
-                    {error ? i.texto : primeraEnMayuscula(i.texto.replace(/^\d+\s/, ''))}
-                  </span>
-                  <ChevronRight aria-hidden className="size-4 shrink-0 text-texto-tenue" />
-                </Link>
-              </li>
-            )
-          })}
-      </ul>
-    </Tarjeta>
-  )
-}
-
-/** Lo rojo primero, después lo amarillo; el resto en el orden en que llegó. */
-const PESO_TONO: Record<Tono, number> = { peligro: 0, aviso: 1, acento: 2, info: 3, exito: 4, neutro: 5 }
-
-function primeraEnMayuscula(texto: string) {
-  return texto.charAt(0).toUpperCase() + texto.slice(1)
 }
 
 /**

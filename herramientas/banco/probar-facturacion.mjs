@@ -78,7 +78,7 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
     pagina.click('button[type="submit"]'),
   ])
   if (pagina.url().includes('/ingresar')) throw new Error(`No se pudo entrar como ${correo}`)
-  // El tablero llega por partes: «Te toca» puede pintarse después de la URL.
+  // El dashboard llega por partes: las cifras pueden pintarse después de la URL.
   await pagina.waitForLoadState('networkidle')
   return { pagina, contexto }
 }
@@ -93,6 +93,9 @@ async function esperarVentana(pagina) {
 // El globo de pendientes va pegado al nombre del módulo («Facturación1»): se quita.
 const menu = async (pagina) => (await pagina.locator('nav[aria-label="Menú principal"] a').allTextContents()).map((t) => limpio(t).replace(/\d+$/, ''))
 const franja = async (pagina) => limpio(await pagina.locator('main').textContent())
+// Lo que espera en un módulo ya no se lista en el Dashboard (2026-10-19): se lee
+// del globo del menú, que lleva la cantidad en su etiqueta accesible.
+const globo = async (pagina, ruta) => (await pagina.locator(`nav a[href="${ruta}"]`).first().getAttribute('aria-label')) ?? ''
 const ruta = (pagina) => new URL(pagina.url()).pathname
 
 // ---------------------------------------------------------- 1. Contabilidad
@@ -102,7 +105,7 @@ const ruta = (pagina) => new URL(pagina.url()).pathname
   console.log('     menú de Contabilidad:', items.join(' · '))
   comprobar(items.indexOf('Facturación') === 1, 'el menú de Contabilidad trae Facturación primero')
   comprobar(items.includes('Kardex') && items.includes('Cotización') && !items.includes('Órdenes de trabajo'), 'con el Kardex y la Cotización en Consultas, y sin la OT')
-  comprobar((await franja(pagina)).includes('1Cotización aprobada por facturar'), 'el tablero de Contabilidad cuenta la cotización por facturar')
+  comprobar(/, 1 pendiente$/.test(await globo(pagina, '/contabilidad/facturacion')), 'el menú de Contabilidad cuenta la cotización por facturar')
 
   await pagina.goto(`${BASE}/contabilidad/facturacion`, { waitUntil: 'networkidle' })
   const tarjeta = pagina.locator('li[data-cotizacion="3901-2026"]')
@@ -171,8 +174,10 @@ const ruta = (pagina) => new URL(pagina.url()).pathname
   const orden = ['Adquisiciones', 'Cuentas por cobrar', 'Cuentas por pagar', 'Pagos de servicio', 'Recibos por honorarios', 'Planilla diaria', 'Tipo de cambio']
   comprobar(orden.every((t, i) => items.indexOf(t) === i + 1), 'el menú de Tesorería va Adquisiciones, por cobrar, por pagar, pagos de servicio')
   comprobar(items.includes('Cotización') && !items.includes('Órdenes de trabajo'), 'con la Cotización en Consultas, y sin la OT')
-  const tablero = await franja(pagina)
-  comprobar(tablero.includes('1Factura por cobrar') && tablero.includes('1Servicio conforme por pagar'), 'el tablero de Tesorería cuenta la factura por cobrar y el servicio por pagar')
+  comprobar(
+    /, 1 pendiente$/.test(await globo(pagina, '/tesoreria/por-cobrar')) && /, 1 pendiente$/.test(await globo(pagina, '/tesoreria/pagos-de-servicio')),
+    'el menú de Tesorería cuenta la factura por cobrar y el servicio por pagar',
+  )
 
   await pagina.goto(`${BASE}/tesoreria`, { waitUntil: 'networkidle' })
   comprobar(ruta(pagina) === '/tesoreria/por-cobrar', 'la dirección vieja lleva a Cuentas por cobrar')
