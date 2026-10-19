@@ -41,14 +41,14 @@ import { puede, puedeHojaDeArea, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /**
- * Las cifras clave del dashboard de cada puesto: debajo de «Te toca», lo que
- * dice cómo va su área, cada una con el enlace a la pantalla donde se mira o
+ * Las cifras clave del dashboard de cada puesto: lo que dice cómo va su área, cada una con el enlace a la pantalla donde se mira o
  * se atiende. Cada puesto tiene las suyas (`CIFRAS_POR_PUESTO`), en el orden de
  * su trabajo, como su menú.
  *
  * Dos reglas para no abrir lo que el puesto no ve:
  *   1. Una cifra sale solo si la pantalla a la que lleva está en el menú del
- *      puesto, que ya se filtra por su permiso. Es la misma regla de «Te toca».
+ *      puesto, que ya se filtra por su permiso. Es la misma regla de los globos
+ *      del menú.
  *   2. Todo se lee con la sesión de quien mira: el RLS y las funciones de la
  *      base filtran lo que no es suyo. Ningún monto sale de una lectura que el
  *      puesto no podría hacer en su pantalla.
@@ -663,8 +663,8 @@ const CIFRAS = {
 type ClaveCifra = keyof typeof CIFRAS
 
 /**
- * Las cifras de cada puesto, en el orden de su trabajo. Lo que tiene pendiente
- * va arriba, en «Te toca»; aquí, cómo va su área.
+ * Las cifras de cada puesto, en el orden de su trabajo: cómo va su área, no lo
+ * que tiene que hacer (el dashboard no manda; eso lo decidió DKS el 2026-10-19).
  */
 const CIFRAS_POR_PUESTO: Record<string, { titulo: string; cifras: ClaveCifra[] }> = {
   REQUERIMIENTOS: { titulo: 'Requerimientos', cifras: ['rq_abiertos', 'rq_por_comprar', 'vehiculos_en_planta', 'gasto_por_codigo'] },

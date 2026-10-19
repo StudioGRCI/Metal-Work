@@ -72,7 +72,7 @@ export const NAVEGACION = [
         titulo: 'Dashboard',
         ruta: '/',
         icono: LayoutDashboard,
-        descripcion: 'Lo que te toca hoy y las cifras de tu área',
+        descripcion: 'Las cifras de tu área y tus módulos a un toque',
         disponible: true,
       },
       // Lo que se trabaja hoy va por código interno, no por OT: Gerencia ve cada
@@ -788,6 +788,11 @@ export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo:
       }),
     }))
     .filter((g) => g.items.length > 0)
+}
+
+/** «1 pendiente», «3 pendientes»: la etiqueta de los globos del menú, para el lector de pantalla. */
+export function pendientesEnPalabras(n: number) {
+  return `${n} ${n === 1 ? 'pendiente' : 'pendientes'}`
 }
 
 /**
