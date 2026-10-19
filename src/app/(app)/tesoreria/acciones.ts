@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { cajaTrasAnular, cajaTrasElPago, camposDeLaCuenta, leerCuenta, montoDeLaCuenta } from '@/lib/caja-del-pago'
+import { camposDeLaCuenta, leerCuenta, montoDeLaCuenta } from '@/lib/caja-del-pago'
+import { cajaTrasElPago } from '@/lib/datos/caja'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -73,7 +74,7 @@ export async function registrarCobroFactura(_previo: unknown, formulario: FormDa
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El cobro no se registró. Recarga la pantalla.' }
 
-  const caja = await cajaTrasElPago(supabase, 'COBRO_FACTURA_VENTA', d.id, d.caja_id, d.fecha, 'cobro')
+  const caja = await cajaTrasElPago('COBRO_FACTURA_VENTA', d.id, d.caja_id, d.fecha, 'cobro')
   repintarCobros()
   return { ok: true, mensaje: `Cobro registrado con su voucher. ${caja}`.trim() }
 }
@@ -89,10 +90,8 @@ export async function anularCobroFactura(_previo: unknown, formulario: FormData)
   const { data, error } = await supabase.rpc('anular_cobro_factura', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== analisis.data.id) return { ok: false, error: 'El cobro no se anuló. Recarga la pantalla.' }
-
-  const caja = await cajaTrasAnular(supabase, 'COBRO_FACTURA_VENTA', analisis.data.id, 'cobro')
   repintarCobros()
-  return { ok: true, mensaje: `Cobro anulado: la factura vuelve a su saldo. ${caja}`.trim() }
+  return { ok: true, mensaje: 'Cobro anulado: la factura vuelve a su saldo.' }
 }
 
 const NO_PAGA_FACTURAS = 'Los pagos de las facturas los registra Tesorería.'
@@ -144,7 +143,7 @@ export async function registrarPagoFactura(_previo: unknown, formulario: FormDat
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El pago no se registró. Recarga la pantalla.' }
 
-  const caja = await cajaTrasElPago(supabase, 'PAGO_ADQUISICION', d.id, d.caja_id, d.fecha, 'pago')
+  const caja = await cajaTrasElPago('PAGO_ADQUISICION', d.id, d.caja_id, d.fecha, 'pago')
   revalidatePath('/tesoreria/por-pagar')
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/caja-diaria')
@@ -167,9 +166,8 @@ export async function anularPagoFactura(_previo: unknown, formulario: FormData):
 
   revalidatePath('/tesoreria/por-pagar')
   revalidatePath('/adquisiciones')
-  const caja = await cajaTrasAnular(supabase, 'PAGO_ADQUISICION', analisis.data.id, 'pago')
   revalidatePath('/tesoreria/caja-diaria')
-  return { ok: true, mensaje: `Pago anulado: la factura vuelve a su saldo. ${caja}`.trim() }
+  return { ok: true, mensaje: 'Pago anulado: la factura vuelve a su saldo.' }
 }
 
 const NO_PAGA_SERVICIOS = 'Los pagos de servicio los registra Tesorería.'
@@ -226,7 +224,7 @@ export async function registrarPagoServicio(_previo: unknown, formulario: FormDa
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El pago no se registró. Recarga la pantalla.' }
 
-  const caja = await cajaTrasElPago(supabase, 'PAGO_ORDEN_SERVICIO', d.id, d.caja_id, d.fecha_pago, 'pago')
+  const caja = await cajaTrasElPago('PAGO_ORDEN_SERVICIO', d.id, d.caja_id, d.fecha_pago, 'pago')
   revalidatePath('/tesoreria/pagos-de-servicio')
   revalidatePath('/compras/servicios')
   revalidatePath('/tesoreria/caja-diaria')
@@ -250,7 +248,6 @@ export async function anularPagoServicio(_previo: unknown, formulario: FormData)
 
   revalidatePath('/tesoreria/pagos-de-servicio')
   revalidatePath('/compras/servicios')
-  const caja = await cajaTrasAnular(supabase, 'PAGO_ORDEN_SERVICIO', analisis.data.id, 'pago')
   revalidatePath('/tesoreria/caja-diaria')
-  return { ok: true, mensaje: `Pago anulado: la orden de servicio vuelve a quedar por pagar. ${caja}`.trim() }
+  return { ok: true, mensaje: 'Pago anulado: la orden de servicio vuelve a quedar por pagar.' }
 }

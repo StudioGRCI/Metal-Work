@@ -132,20 +132,23 @@ const [teso] = await consulta(`select id from usuarios where correo = $1`, [TESO
 const [gere] = await consulta(`select id from usuarios where correo = $1`, [GERENCIA])
 if (!teso || !gere) throw new Error('Faltan las cuentas locales de Tesorería o Gerencia en la base del banco.')
 
-const ids = (
-  await consulta(
-    `with
-      caja_pen as (insert into cajas (nombre, tipo, banco, moneda, saldo_inicial, fecha_inicio, creado_por)
-                   values ($1, 'BANCO', 'BANCO DE PRUEBA', 'PEN', 10000, $3::date - 30, $4) returning id),
-      caja_usd as (insert into cajas (nombre, tipo, banco, moneda, saldo_inicial, fecha_inicio, creado_por)
-                   values ($2, 'BANCO', 'BANCO DE PRUEBA', 'USD', 5000, $3::date - 30, $4) returning id)
-     select (select id from caja_pen) as pen, (select id from caja_usd) as usd`,
-    [SOLES, DOLARES, hoy, teso.id],
-  )
-)[0]
-
+// Las cuentas van dentro de la transacción: si algo falla, no quedan sueltas en
+// los desplegables (una cuenta con saldo ya no se borra).
+let ids
 await base.query('begin')
 try {
+  ids = (
+    await consulta(
+      `with
+        caja_pen as (insert into cajas (nombre, tipo, banco, moneda, saldo_inicial, fecha_inicio, creado_por)
+                     values ($1, 'BANCO', 'BANCO DE PRUEBA', 'PEN', 10000, $3::date - 30, $4) returning id),
+        caja_usd as (insert into cajas (nombre, tipo, banco, moneda, saldo_inicial, fecha_inicio, creado_por)
+                     values ($2, 'BANCO', 'BANCO DE PRUEBA', 'USD', 5000, $3::date - 30, $4) returning id)
+       select (select id from caja_pen) as pen, (select id from caja_usd) as usd`,
+      [SOLES, DOLARES, hoy, teso.id],
+    )
+  )[0]
+
   const [prov] = await consulta(
     `insert into proveedores (numero_documento, razon_social)
      select '2010099' || $1::text || d, 'PROVEEDOR PRUEBA CAJA' from generate_series(0, 9) d where ruc_es_valido('2010099' || $1::text || d) limit 1
@@ -191,8 +194,8 @@ try {
   ids.fv = (await consulta(
     `insert into facturas_venta (codigo_interno, cotizacion_pdf_id, cotizacion_numero, cliente, cliente_id, numero, fecha_emision, fecha_vencimiento,
                                  moneda, total, ruta_storage, nombre_archivo, tamano_bytes, registrado_por)
-     values ('PRB-CAJA', $1, $2, 'CLIENTE PRUEBA CAJA', $3, $4, $5::date, $5::date + 30, 'USD', 1000, 'fv/prueba-caja.pdf', 'prueba.pdf', 120, $6) returning id`,
-    [cot.id, `QA-CAJA-${sello}`, clienteId, N.fv, hoy, teso.id],
+     values ('PRB-CAJA', $1, $2, 'CLIENTE PRUEBA CAJA', $3, $4, $5::date, $5::date + 30, 'USD', 1000, $7, 'prueba.pdf', 120, $6) returning id`,
+    [cot.id, `QA-CAJA-${sello}`, clienteId, N.fv, hoy, teso.id, `fv/prueba-caja-${sello}.pdf`],
   ))[0].id
   const [sub] = await consulta(
     `insert into subcontratistas (ruc, nombre)
@@ -344,6 +347,14 @@ const movimiento = async (origen, documento, campo) =>
   const movPd = await hasta(() => movimiento('PAGO_PLANILLA_DIARIA', ids.pd, { tabla: 'planilla_diaria_pagos', columna: 'planilla_id' }), (r) => r.length > 0)
   comprobar(movPd.length === 1 && movPd[0]?.monto === 300, 'las dos personas salen en un solo egreso de S/ 300.00')
 
+  // Pagar el total saca el botón y su aviso: la línea del pago dice de qué cuenta salió.
+  await pagina.reload({ waitUntil: 'networkidle' })
+  const textoPlanilla = limpio(await pagina.locator('main').textContent().catch(() => ''))
+  comprobar(textoPlanilla.includes(`salió de ${SOLES}`), 'la planilla ya pagada dice en su pago de qué cuenta salió')
+  await pagina.goto(`${BASE}/tesoreria/recibos-por-honorarios?ver=pagados`, { waitUntil: 'networkidle' })
+  const textoRecibo = limpio(await pagina.locator('li', { hasText: N.rec }).first().textContent().catch(() => ''))
+  comprobar(textoRecibo.includes(`salió de ${SOLES}`), 'el recibo pagado dice de qué cuenta salió')
+
   // 4. La caja diaria.
   await pagina.goto(`${BASE}/tesoreria/caja-diaria`, { waitUntil: 'networkidle' })
   const fila = pagina.locator('tr', { hasText: `Pago de la factura ${N.adqPen}` })
@@ -353,6 +364,8 @@ const movimiento = async (origen, documento, campo) =>
   comprobar((await fila.locator('button').count()) === 0, 'y sin botón para anularlo suelto')
   const enlace = await fila.locator('a', { hasText: 'Cuentas por pagar' }).getAttribute('href').catch(() => null)
   comprobar(enlace === '/tesoreria/por-pagar', 'el enlace lleva a Cuentas por pagar')
+  const enlacePlanilla = await pagina.locator('tr', { hasText: N.pd }).locator('a', { hasText: 'su planilla' }).getAttribute('href').catch(() => null)
+  comprobar(enlacePlanilla === `/planilla-diaria/${ids.pd}`, 'el pago de la planilla se anula en su planilla, no en la lista')
   const filaSaldo = limpio(await pagina.locator('table').first().locator('tr', { hasText: SOLES }).textContent().catch(() => ''))
   comprobar(filaSaldo.includes('2,290.00') && filaSaldo.includes('7,710.00'), `de la cuenta en soles salen S/ 2,290.00 y queda en S/ 7,710.00 («${filaSaldo}»)`)
   await pagina.screenshot({ path: join(CAPTURAS, 'pagos-caja-diaria.png'), fullPage: true })

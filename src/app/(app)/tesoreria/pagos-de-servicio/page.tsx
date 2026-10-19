@@ -1,9 +1,10 @@
 import { FileText, Wrench } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { cuentasParaPagar } from '@/lib/datos/caja'
+import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/caja'
 import { serviciosPorPagar, type ServicioPorPagar } from '@/lib/datos/facturacion'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { resumenDetraccion } from '@/lib/dominio/detraccion'
@@ -31,6 +32,10 @@ export default async function PaginaPagosDeServicio() {
     // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
     paga ? cuentasParaPagar() : Promise.resolve([]),
   ])
+  // Para quien lleva la caja, de qué cuenta salió cada pago.
+  const cajas = puede(perfil, 'tesoreria.caja')
+    ? await cajaDeLosPagos('PAGO_ORDEN_SERVICIO', servicios.flatMap((s) => s.pagos.map((p) => p.id)))
+    : undefined
   const hoy = hoyLima()
   const porPagar = servicios
     .filter((s) => !s.cancelada)
@@ -58,7 +63,7 @@ export default async function PaginaPagosDeServicio() {
               </p>
             </div>
           ) : (
-            porPagar.map((s) => <Servicio key={s.id} servicio={s} paga={paga} hoy={hoy} cuentasCaja={cuentasCaja} />)
+            porPagar.map((s) => <Servicio key={s.id} servicio={s} paga={paga} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajas} />)
           )}
         </TarjetaCuerpo>
       </Tarjeta>
@@ -68,7 +73,7 @@ export default async function PaginaPagosDeServicio() {
           <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm font-medium text-texto">Pagados ({pagados.length})</summary>
           <div className="space-y-3 border-t border-borde p-4">
             {pagados.map((s) => (
-              <Servicio key={s.id} servicio={s} paga={paga} hoy={hoy} cuentasCaja={cuentasCaja} />
+              <Servicio key={s.id} servicio={s} paga={paga} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajas} />
             ))}
           </div>
         </details>
@@ -82,11 +87,13 @@ function Servicio({
   paga,
   hoy,
   cuentasCaja,
+  cajas,
 }: {
   servicio: ServicioPorPagar
   paga: boolean
   hoy: string
   cuentasCaja: CuentaParaPagar[]
+  cajas: Map<string, CajaDelPago> | undefined
 }) {
   const m = codigoMoneda(s.moneda)
   const saldo = Math.max(Number(s.monto ?? 0) - Number(s.pagado ?? 0), 0)
@@ -144,6 +151,7 @@ function Servicio({
                 {p.cancela ? ' · cancela la orden' : ' · a cuenta'}
                 {p.operacion && ` · op. ${p.operacion}`}
                 {p.comprobante_proveedor && ` · comprobante ${p.comprobante_proveedor}`}
+                <CajaDeLaLinea cajas={cajas} id={p.id} tipo="pago" />
               </span>
               <span className="flex flex-wrap items-center gap-2">
                 {p.anulado_en && <span className="text-peligro">Anulado: {p.motivo_anulacion}</span>}

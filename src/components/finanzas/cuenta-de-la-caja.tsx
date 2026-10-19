@@ -12,7 +12,7 @@ import { fecha, type CodigoMoneda } from '@/lib/format'
  * (migración 20261019100000): al registrarlo, la caja diaria se mueve sola.
  * Si la cuenta es de otra moneda que el documento, pide además lo que salió o
  * entró en ella, como dice el estado de cuenta. Va dentro de la rejilla de dos
- * columnas del formulario.
+ * columnas del formulario, y la cuenta ocupa las dos.
  *
  * Con una sola cuenta activa la deja elegida; con varias no elige ninguna:
  * una cuenta puesta por omisión es la que se queda sin cambiar cuando era otra.
@@ -44,7 +44,8 @@ export function CuentaDeLaCaja({
 
   return (
     <>
-      <div className="space-y-1">
+      {/* Las dos columnas: el nombre de la cuenta y su moneda se leen enteros, que es lo que distingue dos cuentas del mismo banco. */}
+      <div className="space-y-1 sm:col-span-2">
         <Campo
           etiqueta={cobro ? 'Cuenta a la que entró' : 'Cuenta de la que salió'}
           htmlFor={id('caja')}
@@ -87,7 +88,7 @@ export function CuentaDeLaCaja({
             required
             autoComplete="off"
             className="tabular"
-            placeholder={cuenta.moneda === 'USD' ? '1000.00' : '3750.00'}
+            placeholder="0.00"
           />
         </Campo>
       )}

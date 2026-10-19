@@ -455,8 +455,11 @@ function FilaDeMovimiento({ movimiento: mov, moneda: m, cuenta, abierta }: {
             {!anulado && PANTALLA_DEL_ORIGEN[mov.origen] && (
               <>
                 {' · se anula en '}
-                <Link href={PANTALLA_DEL_ORIGEN[mov.origen].ruta} className="text-acento underline underline-offset-2">
-                  {PANTALLA_DEL_ORIGEN[mov.origen].nombre}
+                <Link
+                  href={mov.planilla_id ? `/planilla-diaria/${mov.planilla_id}` : PANTALLA_DEL_ORIGEN[mov.origen].ruta}
+                  className="inline-flex min-h-11 items-center text-acento underline underline-offset-2 sm:min-h-0"
+                >
+                  {mov.planilla_id ? 'su planilla' : PANTALLA_DEL_ORIGEN[mov.origen].nombre}
                 </Link>
               </>
             )}

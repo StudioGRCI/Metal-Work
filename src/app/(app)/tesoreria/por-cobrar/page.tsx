@@ -4,7 +4,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { FacturaDeVenta } from '@/components/finanzas/factura-de-venta'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { cuentasParaPagar } from '@/lib/datos/caja'
+import { cajaDeLosPagos, cuentasParaPagar } from '@/lib/datos/caja'
 import { solicitudesPendientesTesoreria } from '@/lib/datos/costos-ot'
 import { cotizacionesAprobadas, facturasDeVenta } from '@/lib/datos/facturacion'
 import { revisionesDeSalidaPendientes } from '@/lib/datos/vehiculos'
@@ -39,6 +39,10 @@ export default async function PaginaPorCobrar() {
     // La cuenta a la que entra cada cobro: la caja diaria se mueve sola (20261019100000).
     cobra ? cuentasParaPagar() : Promise.resolve([]),
   ])
+  // Para quien lleva la caja, a qué cuenta entró cada cobro.
+  const cajas = puede(perfil, 'tesoreria.caja')
+    ? await cajaDeLosPagos('COBRO_FACTURA_VENTA', facturas.flatMap((f) => f.cobros.map((b) => b.id)))
+    : undefined
   const hoy = hoyLima()
   const pendientes = facturas.filter((f) => !f.cancelada && Number(f.saldo) > 0)
   const cobradas = facturas.filter((f) => !pendientes.includes(f))
@@ -98,6 +102,7 @@ export default async function PaginaPorCobrar() {
                   ) : null
                 }
                 accionCobro={cobra ? (b) => <AnularCobro cobroId={b.id} /> : undefined}
+                cajas={cajas}
               />
             ))
           )}
@@ -111,7 +116,13 @@ export default async function PaginaPorCobrar() {
           </summary>
           <div className="space-y-3 border-t border-borde p-4">
             {cobradas.map((f) => (
-              <FacturaDeVenta key={f.id} factura={f} conCotizacion accionCobro={cobra ? (b) => <AnularCobro cobroId={b.id} /> : undefined} />
+              <FacturaDeVenta
+                key={f.id}
+                factura={f}
+                conCotizacion
+                accionCobro={cobra ? (b) => <AnularCobro cobroId={b.id} /> : undefined}
+                cajas={cajas}
+              />
             ))}
           </div>
         </details>

@@ -4,9 +4,10 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
+import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { AvisosDelDetector, avisosDeFacturaRegistrada, InsigniaDelDetector } from '@/app/(app)/adquisiciones/detector'
 import { cuentasPorPagar, type CuentaPorPagar } from '@/lib/datos/adquisiciones'
-import { cuentasParaPagar } from '@/lib/datos/caja'
+import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/caja'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { TIPO_COMPROBANTE, TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
@@ -42,7 +43,11 @@ export default async function PaginaPorPagar() {
   for (const r of [pendientes, planillas]) if (r.error) throw new Error(`No se pudieron cargar las cuentas por pagar: ${r.error.message}`)
   const hoy = hoyLima()
   // Las correcciones de cada factura, con su justificante: Tesorería paga lo que quedó.
-  const correcciones = await correccionesDe('FACTURA_COMPRA', cuentas.flatMap((c) => (c.id ? [c.id] : [])))
+  // Y, para quien lleva la caja, de qué cuenta salió cada pago.
+  const [correcciones, cajas] = await Promise.all([
+    correccionesDe('FACTURA_COMPRA', cuentas.flatMap((c) => (c.id ? [c.id] : []))),
+    puede(perfil, 'tesoreria.caja') ? cajaDeLosPagos('PAGO_ADQUISICION', cuentas.flatMap((c) => c.pagos.map((p) => p.id))) : undefined,
+  ])
   const porPagar = cuentas.filter((c) => Number(c.saldo) > 0)
   const pagadas = cuentas.filter((c) => Number(c.saldo) <= 0)
 
@@ -65,7 +70,7 @@ export default async function PaginaPorPagar() {
               <p className="mt-1 max-w-lg text-sm text-texto-suave">Aparecen cuando Contabilidad registra una factura de compra en Adquisiciones.</p>
             </div>
           ) : (
-            porPagar.map((c) => <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} cuentasCaja={cuentasCaja} />)
+            porPagar.map((c) => <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} cuentasCaja={cuentasCaja} cajas={cajas} />)
           )}
         </TarjetaCuerpo>
       </Tarjeta>
@@ -103,7 +108,7 @@ export default async function PaginaPorPagar() {
           <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm font-medium text-texto">Pagadas ({pagadas.length})</summary>
           <div className="space-y-3 border-t border-borde p-4">
             {pagadas.map((c) => (
-              <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} cuentasCaja={cuentasCaja} />
+              <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} cuentasCaja={cuentasCaja} cajas={cajas} />
             ))}
           </div>
         </details>
@@ -140,12 +145,14 @@ function Factura({
   hoy,
   correcciones,
   cuentasCaja,
+  cajas,
 }: {
   cuenta: CuentaPorPagar
   paga: boolean
   hoy: string
   correcciones: CorreccionVista[] | undefined
   cuentasCaja: CuentaParaPagar[]
+  cajas: Map<string, CajaDelPago> | undefined
 }) {
   const m = codigoMoneda(c.moneda)
   const saldo = Number(c.saldo)
@@ -211,6 +218,7 @@ function Factura({
             <li key={p.id} className="flex flex-col gap-1 text-xs sm:flex-row sm:items-center sm:justify-between">
               <span className={p.anulado_en ? 'text-texto-suave line-through' : 'text-texto-suave'}>
                 Pago del {fecha(p.fecha)} · <span className="tabular text-texto">{moneda(p.monto, m)}</span> · op. {p.referencia}
+                <CajaDeLaLinea cajas={cajas} id={p.id} tipo="pago" />
               </span>
               <span className="flex flex-wrap items-center gap-2">
                 {p.anulado_en && <span className="text-peligro">Anulado: {p.motivo_anulacion}</span>}

@@ -1,10 +1,11 @@
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { cuentasParaPagar } from '@/lib/datos/caja'
+import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/caja'
 import { recibosParaTesoreria, type ReciboParaPagar } from '@/lib/datos/subcontratos'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { fecha, fechaHora, hoyLima, moneda } from '@/lib/format'
@@ -31,6 +32,10 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
     // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
     paga ? cuentasParaPagar() : Promise.resolve([]),
   ])
+  // Para quien lleva la caja, de qué cuenta salió cada pago.
+  const cajas = puede(perfil, 'tesoreria.caja')
+    ? await cajaDeLosPagos('PAGO_RECIBO_HONORARIOS', recibos.flatMap((r) => r.pagos.map((p) => p.id)))
+    : undefined
   const pagoDe = (r: ReciboParaPagar) => r.pagos.find((p) => !p.anulado_en) ?? null
   const porPagar = recibos.filter((r) => !pagoDe(r))
   // Los pagados, del pago más reciente al más viejo.
@@ -90,7 +95,7 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
         ) : (
           <ul className="divide-y divide-borde">
             {lista.map((r) => (
-              <Fila key={r.id} r={r} paga={paga} hoy={hoy} cuentasCaja={cuentasCaja} />
+              <Fila key={r.id} r={r} paga={paga} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajas} />
             ))}
           </ul>
         )}
@@ -99,7 +104,19 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
   )
 }
 
-function Fila({ r, paga, hoy, cuentasCaja }: { r: ReciboParaPagar; paga: boolean; hoy: string; cuentasCaja: CuentaParaPagar[] }) {
+function Fila({
+  r,
+  paga,
+  hoy,
+  cuentasCaja,
+  cajas,
+}: {
+  r: ReciboParaPagar
+  paga: boolean
+  hoy: string
+  cuentasCaja: CuentaParaPagar[]
+  cajas: Map<string, CajaDelPago> | undefined
+}) {
   const pago = r.pagos.find((p) => !p.anulado_en) ?? null
   const sub = r.subcontratista
   const sc = r.subcontrato
@@ -160,6 +177,11 @@ function Fila({ r, paga, hoy, cuentasCaja }: { r: ReciboParaPagar; paga: boolean
           <>
             <EnlaceArchivo enlace={pago.enlace} texto="Voucher" />
             {pago.operacion && <span className="tabular text-texto-suave">Op. {pago.operacion}</span>}
+            {cajas && (
+              <span className="text-texto-suave">
+                <CajaDeLaLinea cajas={cajas} id={pago.id} tipo="pago" />
+              </span>
+            )}
           </>
         )}
         {paga && !pago && (
@@ -184,6 +206,7 @@ function Fila({ r, paga, hoy, cuentasCaja }: { r: ReciboParaPagar; paga: boolean
         .map((p) => (
           <p key={p.id} className="text-xs text-texto-suave">
             Pago del {fecha(p.fecha_pago)} anulado el {fechaHora(p.anulado_en)}: {p.motivo_anulacion}
+            <CajaDeLaLinea cajas={cajas} id={p.id} tipo="pago" />
           </p>
         ))}
     </li>

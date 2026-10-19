@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { monedaDeCuenta, type CuentaParaPagar } from '@/lib/dominio/caja'
-import { hoyLima } from '@/lib/format'
+import { fecha as textoFecha, hoyLima } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 
 /*
@@ -51,6 +51,8 @@ export type MovimientoDelDia = {
   tipo_cambio: number | null
   origen: string
   origen_id: string | null
+  /** La planilla del pago, si es de la planilla diaria: «se anula en» lleva a ella y no a la lista. */
+  planilla_id: string | null
   /** La otra cuenta de una transferencia. */
   otra_cuenta: string | null
   registrado_por: string | null
@@ -99,6 +101,15 @@ export async function cajaDelDia(dia: string): Promise<CajaDelDia> {
   if (cambio.error) throw new Error(`No se pudo leer el tipo de cambio: ${cambio.error.message}`)
   if (codigos.error) throw new Error(`No se pudieron leer los códigos internos: ${codigos.error.message}`)
 
+  // La planilla de cada pago de la planilla diaria. Si no se puede leer, el
+  // enlace lleva a la lista de planillas: no dice nada falso, solo es más largo.
+  const pagosPlanilla = (movimientos.data ?? []).flatMap((m) => (m.origen === 'PAGO_PLANILLA_DIARIA' && m.origen_id ? [m.origen_id] : []))
+  const planillaDe = new Map<string, string>()
+  if (pagosPlanilla.length > 0) {
+    const { data } = await supabase.from('planilla_diaria_pagos').select('id, planilla_id').in('id', pagosPlanilla)
+    for (const g of data ?? []) planillaDe.set(g.id, g.planilla_id)
+  }
+
   return {
     cuentas: (cuentas.data ?? []).flatMap((c) =>
       c.caja_id
@@ -144,6 +155,7 @@ export async function cajaDelDia(dia: string): Promise<CajaDelDia> {
               tipo_cambio: o(m.tipo_cambio),
               origen: m.origen ?? 'MANUAL',
               origen_id: m.origen_id,
+              planilla_id: (m.origen_id && planillaDe.get(m.origen_id)) ?? null,
               otra_cuenta: m.otra_cuenta,
               registrado_por: m.registrado_por,
               creado_en: m.creado_en ?? '',
@@ -200,4 +212,53 @@ export async function cuentasParaPagar(): Promise<CuentaParaPagar[]> {
         ]
       : [],
   )
+}
+
+/** La cuenta que movió un pago o un cobro del sistema, y si ese movimiento ya se anuló. */
+export type CajaDelPago = { cuenta: string; anulado: boolean }
+
+/**
+ * La cuenta de la caja que movió cada pago o cobro (migración 20261019100000),
+ * para decirlo en la línea del pago: ahí se ve aunque el documento quede
+ * saldado y su botón desaparezca. Sin `tesoreria.caja` el RLS no deja ver
+ * ningún movimiento, así que a quien no lleva la caja no se le pregunta.
+ */
+export async function cajaDeLosPagos(origen: string, ids: string[]): Promise<Map<string, CajaDelPago>> {
+  const mapa = new Map<string, CajaDelPago>()
+  if (ids.length === 0) return mapa
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('movimientos_caja')
+    .select('origen_id, anulado_en, caja:cajas!movimientos_caja_caja_id_fkey(nombre)')
+    .eq('origen', origen)
+    .in('origen_id', ids)
+  if (error) throw new Error(`No se pudo leer la caja de los pagos: ${error.message}`)
+  for (const m of data ?? []) {
+    if (!m.origen_id) continue
+    const previo = mapa.get(m.origen_id)
+    // Uno vigente manda sobre uno anulado.
+    if (previo && !previo.anulado) continue
+    mapa.set(m.origen_id, { cuenta: m.caja?.nombre ?? 'una cuenta', anulado: !!m.anulado_en })
+  }
+  return mapa
+}
+
+/**
+ * Cómo quedó la caja después del pago o el cobro, para decirlo en el aviso: de
+ * qué cuenta salió —la del movimiento, no la del formulario: un reintento con
+ * otra cuenta devuelve el pago que ya estaba— o por qué no se movió. Si no se
+ * puede leer, lo dice en vez de callar.
+ */
+export async function cajaTrasElPago(origen: string, id: string, cajaId: string, dia: string, tipo: 'pago' | 'cobro'): Promise<string> {
+  const supabase = await createClient()
+  const [movimientos, caja] = await Promise.all([
+    cajaDeLosPagos(origen, [id]).catch(() => null),
+    supabase.from('cajas').select('nombre, fecha_inicio').eq('id', cajaId).maybeSingle(),
+  ])
+  if (!movimientos || caja.error) return 'No se pudo leer cómo quedó la caja: revísala en Caja diaria.'
+  const mov = movimientos.get(id)
+  if (mov && !mov.anulado) return tipo === 'cobro' ? `Entró a ${mov.cuenta}.` : `Salió de ${mov.cuenta}.`
+  const inicio = caja.data?.fecha_inicio
+  if (!caja.data || !inicio || dia >= inicio) return ''
+  return `La caja no se movió: la cuenta ${caja.data.nombre} empieza el ${textoFecha(inicio)} y este ${tipo} ya está en su saldo inicial.`
 }

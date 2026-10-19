@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { cajaTrasAnular, cajaTrasElPago, camposDeLaCuenta, leerCuenta, montoDeLaCuenta } from '@/lib/caja-del-pago'
+import { camposDeLaCuenta, leerCuenta, montoDeLaCuenta } from '@/lib/caja-del-pago'
+import { cajaTrasElPago } from '@/lib/datos/caja'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -73,7 +74,7 @@ export async function registrarPagoRecibo(_previo: unknown, formulario: FormData
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El pago no quedó registrado. Recarga la pantalla.' }
 
-  const caja = await cajaTrasElPago(supabase, 'PAGO_RECIBO_HONORARIOS', d.id, d.caja_id, d.fecha_pago, 'pago')
+  const caja = await cajaTrasElPago('PAGO_RECIBO_HONORARIOS', d.id, d.caja_id, d.fecha_pago, 'pago')
   repintar(d.subcontrato_id)
   return { ok: true, mensaje: `Pago registrado con su voucher: Administración recibe el aviso. ${caja}`.trim() }
 }
@@ -95,8 +96,6 @@ export async function anularPagoRecibo(_previo: unknown, formulario: FormData): 
   const { data, error } = await supabase.rpc('anular_pago_recibo_honorarios', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== analisis.data.id) return { ok: false, error: 'El pago no se anuló. Recarga la pantalla.' }
-
-  const caja = await cajaTrasAnular(supabase, 'PAGO_RECIBO_HONORARIOS', analisis.data.id, 'pago')
   repintar(analisis.data.subcontrato_id)
-  return { ok: true, mensaje: `Pago anulado: el recibo vuelve a quedar por pagar. ${caja}`.trim() }
+  return { ok: true, mensaje: 'Pago anulado: el recibo vuelve a quedar por pagar.' }
 }

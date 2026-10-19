@@ -2,10 +2,11 @@ import { FileText } from 'lucide-react'
 import { notFound } from 'next/navigation'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { cuentasParaPagar } from '@/lib/datos/caja'
+import { cajaDeLosPagos, cuentasParaPagar } from '@/lib/datos/caja'
 import { planillaDiaria, type PagoPlanilla, type PersonaPlanilla } from '@/lib/datos/planilla-diaria'
 import { ESTADO_PLANILLA, estadoDePlanilla, personasTexto } from '@/lib/dominio/planilla-diaria'
 import { TIPO_CUENTA, horasCortas } from '@/lib/dominio/rrhh'
@@ -30,6 +31,8 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
     paga ? cuentasParaPagar() : Promise.resolve([]),
   ])
   if (!p) notFound()
+  // Para quien lleva la caja, de qué cuenta salió cada pago.
+  const cajas = puede(perfil, 'tesoreria.caja') ? await cajaDeLosPagos('PAGO_PLANILLA_DIARIA', p.pagos.map((g) => g.id)) : undefined
 
   const anulada = p.anulado_en !== null
   const estado = estadoDePlanilla(p.anulado_en, p.gente)
@@ -119,6 +122,9 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
                       <p className="font-medium text-texto">
                         Pagado el {fecha(g.fecha_pago)}
                         {g.operacion && <span className="tabular font-normal text-texto-suave"> · Op. {g.operacion}</span>}
+                        <span className="font-normal text-texto-suave">
+                          <CajaDeLaLinea cajas={cajas} id={g.id} tipo="pago" />
+                        </span>
                       </p>
                       <p className="text-xs text-texto-suave">
                         {g.anulado_en

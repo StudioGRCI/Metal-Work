@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { cajaTrasAnular, cajaTrasElPago, camposDeLaCuenta, leerCuenta, montoDeLaCuenta } from '@/lib/caja-del-pago'
+import { camposDeLaCuenta, leerCuenta, montoDeLaCuenta } from '@/lib/caja-del-pago'
+import { cajaTrasElPago } from '@/lib/datos/caja'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -106,7 +107,7 @@ export async function registrarPagoPlanilla(_previo: unknown, formulario: FormDa
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El pago no quedó registrado. Recarga la pantalla.' }
 
-  const caja = await cajaTrasElPago(supabase, 'PAGO_PLANILLA_DIARIA', d.id, d.caja_id, d.fecha_pago, 'pago')
+  const caja = await cajaTrasElPago('PAGO_PLANILLA_DIARIA', d.id, d.caja_id, d.fecha_pago, 'pago')
   repintar(d.planilla_id)
   const pagado = d.personas.length === 1 ? 'Pago registrado con su comprobante.' : `Pago de ${d.personas.length} personas registrado con su comprobante.`
   return { ok: true, mensaje: `${pagado} ${caja}`.trim() }
@@ -125,10 +126,8 @@ export async function anularPagoPlanilla(_previo: unknown, formulario: FormData)
   const { data, error } = await supabase.rpc('anular_pago_planilla_diaria', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== analisis.data.id) return { ok: false, error: 'El pago no se anuló. Recarga la pantalla.' }
-
-  const caja = await cajaTrasAnular(supabase, 'PAGO_PLANILLA_DIARIA', analisis.data.id, 'pago')
   repintar(analisis.data.planilla_id)
-  return { ok: true, mensaje: `Pago anulado: esas personas vuelven a quedar por pagar. ${caja}`.trim() }
+  return { ok: true, mensaje: 'Pago anulado: esas personas vuelven a quedar por pagar.' }
 }
 
 /** Tesorería adjunta la boleta de pago de una persona, ya subida a Storage. Mismo permiso que `subir_boleta_planilla_diaria`. */
