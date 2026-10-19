@@ -20,7 +20,7 @@ const TONOS: Record<TonoIndicador, { valor: string; icono: string }> = {
 }
 
 export interface IndicadorProps {
-  /** Rótulo corto de lo que se está contando. Se muestra en versalitas. */
+  /** Rótulo corto de lo que se está contando. */
   titulo: string
   /**
    * La cifra. Acepta nodo, no solo texto, para los casos que ya existen: una
@@ -59,14 +59,20 @@ export function Indicador({
 
   const cuerpo = (
     <TarjetaCuerpo>
-      <p className="flex items-center gap-1.5 text-xs leading-tight font-medium tracking-wide text-texto-suave uppercase sm:text-[11px]">
-        {Icono && <Icono aria-hidden className={cn('size-4 shrink-0 sm:size-3.5', color.icono)} />}
+      {/* En minúsculas y no en versalitas: en mayúsculas espaciadas, en la
+          media columna del teléfono «REQUERIMIENTOS ABIERTOS» se partía en tres
+          renglones y empujaba la cifra hacia abajo, cada tarjeta a otra altura. */}
+      <p className="flex items-start gap-1.5 text-[13px] leading-snug font-medium text-texto-suave sm:text-xs">
+        {Icono && <Icono aria-hidden className={cn('mt-px size-4 shrink-0 sm:size-3.5', color.icono)} />}
         {titulo}
       </p>
       {/* Va en <div> y no en <p>: `valor` puede traer una barra de progreso, y
           un <div> dentro de un <p> el navegador lo saca de sitio al analizarlo
           y React lo denuncia como error de hidratación. */}
-      <div className={cn('tabular mt-1 text-2xl leading-tight font-semibold sm:text-lg', color.valor)}>
+      {/* La cifra es lo que se viene a mirar: en el monitor salía apenas más
+          grande que su rótulo. `text-xl` y no más, para que un monto de siete
+          cifras entre en la quinta parte de la fila. */}
+      <div className={cn('tabular mt-1.5 text-2xl leading-tight font-semibold sm:text-xl', color.valor)}>
         {valor}
       </div>
       {pie && <p className="mt-0.5 text-xs text-texto-tenue">{pie}</p>}

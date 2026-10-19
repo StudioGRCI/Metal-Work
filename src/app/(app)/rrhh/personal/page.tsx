@@ -1,6 +1,6 @@
-import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
@@ -37,21 +37,17 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
         acciones={gestiona && <NuevoTrabajador areas={areas} />}
       />
 
-      <nav aria-label="Filtro" className="mb-3 flex gap-2">
-        {FILTROS.map((f) => (
-          <Link
-            key={f.valor}
-            href={f.valor === 'activos' ? '/rrhh/personal' : `/rrhh/personal?estado=${f.valor}`}
-            aria-current={filtro === f.valor ? 'page' : undefined}
-            className={`inline-flex min-h-9 items-center rounded-lg border px-3 text-sm font-medium ${
-              filtro === f.valor ? 'border-acento bg-acento-suave text-texto' : 'border-borde text-texto-suave hover:text-texto'
-            }`}
-          >
-            {f.titulo}
-            {filtro === f.valor && <span className="ml-2 tabular text-xs text-texto-suave">{personal.length}</span>}
-          </Link>
-        ))}
-      </nav>
+      <Vistas
+        etiqueta="Filtro"
+        className="mb-3"
+        vistas={FILTROS.map((f) => ({
+          clave: f.valor,
+          titulo: f.titulo,
+          href: f.valor === 'activos' ? '/rrhh/personal' : `/rrhh/personal?estado=${f.valor}`,
+          activa: filtro === f.valor,
+          cuenta: filtro === f.valor ? personal.length : undefined,
+        }))}
+      />
 
       <Tarjeta className="overflow-hidden">
         <Tabla>
