@@ -11,12 +11,15 @@ import { puede, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /**
- * Lo que le toca mover a quien mira, en todo el sistema: es la franja de arriba
- * del Dashboard y los globos de la barra del teléfono. Cada cuenta se pide solo si
- * el puesto tiene el permiso que la resuelve —a quien no puede aprobar no se le
- * cuentan reportes por aprobar— y cada una es un `count` de cabecera sobre las
- * vistas que ya existen, que el RLS filtra solo. Una lectura que falle muestra
- * un aviso: nunca se presenta como si no hubiera nada pendiente.
+ * Lo que espera a quien mira en cada módulo, en todo el sistema: los globos del
+ * menú y de la barra del teléfono. Hasta el 2026-10-19 también era la lista
+ * «Te toca hoy» del Dashboard; se quitó porque el sistema no le dice a nadie
+ * qué hacer, le muestra lo que espera en cada pantalla que puede abrir. Cada
+ * cuenta se pide solo si el puesto tiene el permiso que la resuelve —a quien no
+ * puede aprobar no se le cuentan reportes por aprobar— y cada una es un `count`
+ * de cabecera sobre las vistas que ya existen, que el RLS filtra solo. Una
+ * lectura que falle deja su ruta en `sinComprobar` y el globo sale con «!»:
+ * nunca se presenta como si no hubiera nada pendiente.
  */
 export type PendienteGlobal = {
   clave: string
@@ -30,6 +33,8 @@ export type PendientesGlobales = {
   items: PendienteGlobal[]
   /** Cuántos pendientes cuelgan de cada módulo del menú, por su ruta base. */
   porRuta: Record<string, number>
+  /** Las rutas con alguna cuenta que no se pudo leer: su globo dice «!», no cero. */
+  sinComprobar: string[]
 }
 
 /** Cuántos hay; con `ruta`, el enlace afina adónde llevar (el mes del más antiguo, por ejemplo). */
@@ -802,10 +807,12 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
 
   const items: PendienteGlobal[] = []
   const porRuta: Record<string, number> = {}
+  const sinComprobar = new Set<string>()
   suyas.forEach((t, i) => {
     const cuenta = cuentas[i]
     if (cuenta === null) {
       items.push({ clave: `${t.clave}_error`, texto: 'No se pudo comprobar un pendiente. Abre el módulo o vuelve a cargar.', ruta: t.ruta, cantidad: 0, tono: 'aviso' })
+      sinComprobar.add(t.ruta.split('?')[0])
       return
     }
     const n = typeof cuenta === 'number' ? cuenta : cuenta.cantidad
@@ -816,7 +823,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     porRuta[base] = (porRuta[base] ?? 0) + n
   })
 
-  return { items, porRuta }
+  return { items, porRuta, sinComprobar: [...sinComprobar] }
 }
 
 /** El día 1 del mes anterior a `dia` (YYYY-MM-DD), que es como la base guarda el periodo de una planilla. */

@@ -248,34 +248,38 @@ arriba abajo:
 Hasta el 2026-10-19 arriba iba un bloque **«Te toca hoy»** con la lista de lo
 que esperaba al puesto. Se quitó por decisión de DKS: el sistema no le dice al
 usuario qué debe hacer, lo guía en cada cosa que puede hacer. Lo que espera en
-cada pantalla sigue en los globos del menú (`src/lib/datos/pendientes-globales.ts`),
-que son los mismos números de antes.
+cada pantalla sigue en los **globos del menú**
+(`src/lib/datos/pendientes-globales.ts`): al lado del nombre en la barra
+lateral, sobre la pestaña en el teléfono y, sumado, sobre «Más» cuando cuelga de
+un módulo sin pestaña. Un pendiente que no se pudo contar sale como «!», nunca
+como cero.
 
-Las cifras siguen una regla: una cifra sale **solo si la pantalla a la que lleva
-está en el menú del puesto**, que ya se filtra por su permiso. Todo se lee con
-la sesión de quien mira, así que el RLS y las funciones de la base dejan fuera
-lo que no es suyo: el dashboard no abre nada que el puesto no vea en su
-pantalla.
+Las cifras y los globos siguen la misma regla: salen **solo si la pantalla a la
+que llevan está en el menú del puesto**, que ya se filtra por su permiso. Todo
+se lee con la sesión de quien mira, así que el RLS y las funciones de la base
+dejan fuera lo que no es suyo: el dashboard no abre nada que el puesto no vea
+en su pantalla. Lo que se resolvía en la OT ya no se le cuenta a quien no tiene
+la OT en su menú.
 
-| Puesto | Cifras |
-| --- | --- |
-| Requerimientos | Requerimientos abiertos (y listos en almacén), Esperan compra, Vehículos en la planta, Salido del almacén por código |
-| Almacén | Por llegar al almacén, Bajo su stock mínimo, Materiales con saldo, Salidas este mes |
-| Logística | OC en Gerencia, Con el conductor, Servicios en curso, Comprado este mes |
-| Conductor | Por recoger, En camino, Dejadas este mes |
-| Gerencia | Códigos con movimiento, Costo acumulado, Facturado y cobrado, Costo por completar; y los seis códigos más recientes |
-| Tesorería | Por cobrar, Por pagar, Servicios por pagar, Honorarios por pagar |
-| Contabilidad | Facturado este mes, Facturas de compra del mes, Guías cargadas este mes |
-| Diseño | Códigos en curso, Sin etapas, Planos sin recibir, Sin lista de materiales; y el bloque de la OT |
-| Administración | Requerimientos abiertos, Subcontratos vigentes, Gastos generales del mes, Clientes; y el bloque de la OT |
-| Recursos Humanos | Personal activo, Marcaron ingreso hoy, Tardanzas del mes, Reportes diarios del mes |
-| Portería | Marcaron ingreso hoy, Marcaron salida hoy, Tardanzas de hoy |
-| Supervisor de área | Reportes diarios del mes, Planos de su área (y etapas abiertas), Requerimientos de su área |
-| Supervisor General | Códigos en curso, Requerimientos abiertos, Vehículos en la planta, Bajo su stock mínimo |
-| Agente de Ventas | En revisión de Gerencia, Aprobadas este mes, Clientes |
+| Puesto | Globos del menú | Cifras |
+| --- | --- | --- |
+| Requerimientos | Salidas de vehículo observadas por Tesorería | Requerimientos abiertos (y listos en almacén), Esperan compra, Vehículos en la planta, Salido del almacén por código |
+| Almacén | Requerimientos por revisar, Requerimientos listos por entregar, Compras dejadas por validar, Salidas que esperan su formato firmado | Por llegar al almacén, Bajo su stock mínimo, Materiales con saldo, Salidas este mes |
+| Logística | Requerimientos sin stock por comprar, Compras aprobadas por programar | OC en Gerencia, Con el conductor, Servicios en curso, Comprado este mes |
+| Conductor | Compras por recoger o dejar | Por recoger, En camino, Dejadas este mes |
+| Gerencia | Cotizaciones por revisar, Cotizaciones aprobadas sin código ni OT, Compras y servicios por aprobar (si la regla la hace aprobadora), Reportes diarios que esperan su visto | Códigos con movimiento, Costo acumulado, Facturado y cobrado, Costo por completar; y los seis códigos más recientes |
+| Tesorería | Facturas por cobrar, Facturas de compra vencidas y por pagar, Servicios por pagar, Recibos por honorarios por pagar, Planillas diarias por pagar, Salidas de vehículo por revisar | Por cobrar, Por pagar, Servicios por pagar, Honorarios por pagar |
+| Contabilidad | Cotizaciones por facturar, Guías de remisión por cargar, Compras sin factura registrada | Facturado este mes, Facturas de compra del mes, Guías cargadas este mes |
+| Diseño | Informes por revisar, Códigos con etapas vencidas y lo de la OT | Códigos en curso, Sin etapas, Planos sin recibir, Sin lista de materiales; y el bloque de la OT |
+| Administración | Requerimientos de Administración por comprar y lo de la OT | Requerimientos abiertos, Subcontratos vigentes, Gastos generales del mes, Clientes; y el bloque de la OT |
+| Recursos Humanos | Reportes diarios que esperan su visto, Días con horas extras por decidir, Personas por enviar a la planilla diaria, Planilla del mes por cerrar | Personal activo, Marcaron ingreso hoy, Tardanzas del mes, Reportes diarios del mes |
+| Portería | — | Marcaron ingreso hoy, Marcaron salida hoy, Tardanzas de hoy |
+| Supervisor de área | Su reporte de hoy por subir (no el domingo), Reportes observados por corregir, Planos de su área por recibir, Requerimientos de su área listos para recoger | Reportes diarios del mes, Planos de su área (y etapas abiertas), Requerimientos de su área |
+| Supervisor General | Códigos con etapas vencidas | Códigos en curso, Requerimientos abiertos, Vehículos en la planta, Bajo su stock mínimo |
+| Agente de Ventas | Cotizaciones rechazadas por corregir | En revisión de Gerencia, Aprobadas este mes, Clientes |
 
-ADMIN ve las cifras de Gerencia. Una cifra que no se pudo leer sale con «—» y
-lo dice; nunca como si fuera cero.
+ADMIN ve las cifras de Gerencia y todos los globos. Una cifra que no se pudo
+leer sale con «—» y lo dice; nunca como si fuera cero.
 
 ## Visibilidad de documentos
 

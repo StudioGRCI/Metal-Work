@@ -28,6 +28,7 @@ export function BarraInferior({
   esAdmin,
   rolCodigo,
   pendientes = {},
+  sinComprobar = [],
   children,
 }: {
   permisos: string[]
@@ -35,6 +36,8 @@ export function BarraInferior({
   rolCodigo: string
   /** Cuántos pendientes cuelgan de cada módulo, por su ruta: el globo sobre el icono. */
   pendientes?: Record<string, number>
+  /** Rutas con un pendiente que no se pudo contar: el globo dice «!», nunca cero. */
+  sinComprobar?: string[]
   children: ReactNode
 }) {
   const ruta = usePathname()
@@ -48,6 +51,12 @@ export function BarraInferior({
     visibles.map((i) => i.ruta),
   )
   const enMas = activa !== undefined && !pestanas.some((p) => p.ruta === activa)
+  // Lo que espera en los módulos que no tienen pestaña: sin este globo, en el
+  // teléfono nadie se enteraba de un servicio o una planilla por pagar hasta
+  // abrir «Más». El Dashboard ya no lo lista (2026-10-19); el menú sí lo cuenta.
+  const otros = visibles.filter((i) => !pestanas.some((p) => p.ruta === i.ruta))
+  const enOtros = otros.reduce((suma, i) => suma + (pendientes[i.ruta] ?? 0), 0)
+  const fallaEnOtros = otros.some((i) => sinComprobar.includes(i.ruta))
 
   const clasePestana = (activo: boolean) =>
     cn(
@@ -71,21 +80,22 @@ export function BarraInferior({
             const Icono = p.icono
             const activo = p.ruta === activa
             const n = pendientes[p.ruta] ?? 0
+            const falla = sinComprobar.includes(p.ruta)
             return (
               <li key={p.ruta}>
                 <Link
                   href={p.ruta}
                   aria-current={activo ? 'page' : undefined}
-                  aria-label={n > 0 ? `${p.corto}, ${n} pendientes` : undefined}
+                  aria-label={falla ? `${p.corto}, un pendiente no se pudo comprobar` : n > 0 ? `${p.corto}, ${n} pendientes` : undefined}
                   className={clasePestana(activo)}
                 >
                   <span className={cn(claseIcono(activo), 'relative')}>
                     <Icono aria-hidden className="size-5" />
                     {/* El mismo globo de la campana: lo que le toca a este
                         puesto en ese módulo, sin tener que entrar a mirar. */}
-                    {n > 0 && (
+                    {(falla || n > 0) && (
                       <span className="absolute -top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-peligro px-1 text-[10px] leading-4 font-semibold text-peligro-texto">
-                        {n > 9 ? '9+' : n}
+                        {falla ? '!' : n > 9 ? '9+' : n}
                       </span>
                     )}
                   </span>
@@ -100,10 +110,16 @@ export function BarraInferior({
               onClick={() => setAbierto(true)}
               aria-expanded={abierto}
               aria-haspopup="dialog"
+              aria-label={fallaEnOtros ? 'Más, un pendiente no se pudo comprobar' : enOtros > 0 ? `Más, ${enOtros} pendientes` : undefined}
               className={clasePestana(enMas || abierto)}
             >
-              <span className={claseIcono(enMas || abierto)}>
+              <span className={cn(claseIcono(enMas || abierto), 'relative')}>
                 <LayoutGrid aria-hidden className="size-5" />
+                {(fallaEnOtros || enOtros > 0) && (
+                  <span className="absolute -top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-peligro px-1 text-[10px] leading-4 font-semibold text-peligro-texto">
+                    {fallaEnOtros ? '!' : enOtros > 9 ? '9+' : enOtros}
+                  </span>
+                )}
               </span>
               Más
             </button>

@@ -282,7 +282,8 @@ async function marcarPuntos(pagina, fase, observado) {
 async function responder(estado, respuesta, mensaje) {
   const { pagina, contexto, errores } = await entrar('tesoreria@local.test')
   await pagina.goto(`${BASE}/`, { waitUntil: 'networkidle' })
-  comprobar(/salida de vehículo por revisar/i.test(await texto(pagina.locator('main'))), 'Tesorería tiene el pendiente en su tablero')
+  // El Dashboard ya no lista pendientes (2026-10-19): el globo del menú los cuenta.
+  comprobar(/1 pendientes/.test((await pagina.locator('nav a[href="/tesoreria/por-cobrar"]').first().getAttribute('aria-label')) ?? ''), 'Tesorería tiene el pendiente en su menú')
   await pagina.goto(`${BASE}/tesoreria/por-cobrar`, { waitUntil: 'networkidle' })
   const pedido = pagina.locator('#salidas-por-revisar [data-revision]')
   comprobar(
@@ -311,7 +312,7 @@ await responder('OBSERVADA', 'Falta el saldo de la factura', 'Salida observada')
 {
   const { pagina, contexto, errores } = await entrar('requerimientos@local.test')
   await pagina.goto(`${BASE}/`, { waitUntil: 'networkidle' })
-  comprobar(/salida de vehículo observada por Tesorería/i.test(await texto(pagina.locator('main'))), 'Requerimientos tiene la observación en su tablero')
+  comprobar(/1 pendientes/.test((await pagina.locator('nav a[href="/vehiculos"]').first().getAttribute('aria-label')) ?? ''), 'Requerimientos tiene la observación en su menú')
   await pagina.goto(vehiculo, { waitUntil: 'networkidle' })
   const revision = pagina.locator('#revision-salida')
   comprobar(

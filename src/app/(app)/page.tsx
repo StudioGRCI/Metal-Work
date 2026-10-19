@@ -416,7 +416,6 @@ const TONO_TEXTO: Record<Tono, string> = {
   acento: 'text-acento',
 }
 
-
 /**
  * Sus módulos, a un toque, solo en el teléfono: en el monitor ya están en la
  * barra lateral, al lado. Antes la pantalla decía «abre el menú» y nada más, y
