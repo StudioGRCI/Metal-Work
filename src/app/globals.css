@@ -369,6 +369,19 @@ h1, h2, h3 {
   background-attachment: local, local, scroll, scroll;
 }
 
+/* Una rejilla sin columnas en el teléfono (`grid sm:grid-cols-2`) tiene una
+   sola columna `auto`, y esa columna crece hasta el texto más largo que no se
+   parte: el nombre de un insumo con `truncate`, un cliente con razón social
+   larga. En producción el 2026-10-19 la tarjeta de Gestión de compras medía
+   493 px en un teléfono de 390 y el Cliente de la orden sin cotización se
+   salía de su tarjeta. `minmax(0, 1fr)` es lo que pone `grid-cols-1`, y va en
+   `base` para que cualquier `grid-cols-*` de la misma etiqueta le gane. */
+@layer base {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* -----------------------------------------------------------------------------
    AL IMPRIMIR
    El expediente de fabricación se imprime o se guarda en PDF desde el
