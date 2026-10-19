@@ -78,7 +78,7 @@ export function Campana({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: 
 
             {avisos.length === 0 ? (
               <p className="px-3 py-6 text-center text-xs text-texto-suave">
-                No hay avisos. Acá llega lo que te toca mover.
+                No hay avisos. Acá llega lo que pasa en tu área.
               </p>
             ) : (
               <ul>

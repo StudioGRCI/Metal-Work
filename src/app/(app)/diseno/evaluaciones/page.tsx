@@ -21,7 +21,7 @@ export default async function PaginaEvaluacionesDiseno() {
 
   const porRecibir = evaluaciones.filter((e) => e.estado === 'ENVIADA')
   const mias = evaluaciones.filter((e) => e.evaluador_id === perfil.id)
-  const teToca = mias.filter((e) => e.estado === 'BORRADOR' || e.estado === 'OBSERVADA')
+  const borradoresYDevueltas = mias.filter((e) => e.estado === 'BORRADOR' || e.estado === 'OBSERVADA')
   // Administración ya tiene arriba las que esperan su recibo; abajo, su historial.
   const soloRecibe = recibe && !evalua
   const soloEvalua = evalua && !recibe
@@ -54,14 +54,14 @@ export default async function PaginaEvaluacionesDiseno() {
             </TarjetaCuerpo>
           </Tarjeta>
         )}
-        {evalua && teToca.length > 0 && (
+        {evalua && borradoresYDevueltas.length > 0 && (
           <Tarjeta>
             <TarjetaCabecera
-              titulo="Te toca"
-              descripcion="Borradores sin enviar y evaluaciones que Administración te devolvió para corregir."
+              titulo="Borradores y devueltas"
+              descripcion="Las que todavía no enviaste y las que Administración te devolvió con observaciones."
             />
             <TarjetaCuerpo className="p-0">
-              <ListaEvaluaciones filas={teToca} vacio={{ titulo: '' }} />
+              <ListaEvaluaciones filas={borradoresYDevueltas} vacio={{ titulo: '' }} />
             </TarjetaCuerpo>
           </Tarjeta>
         )}
