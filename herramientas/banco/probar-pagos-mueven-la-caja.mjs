@@ -9,7 +9,7 @@
  *      cuenta salió (también cuando el pago cancela el documento y su botón
  *      desaparece): está cerrado, se abre al tocarlo y se cierra con Escape. Con un día
  *      de antes del inicio de la cuenta, dice que no la mueve; pagada así otra
- *      factura, «La caja no se movió» se ve en la página sin tocar nada.
+ *      factura, «La caja no se movió» llega abierto en la barra, sin tocar nada.
  *   2. Paga una factura en dólares desde la cuenta en soles: aparece «Lo que
  *      salió de la cuenta, en soles» y la caja guarda su tipo de cambio.
  *   3. Paga una orden de servicio, cobra una factura de venta en dólares a la
@@ -309,7 +309,8 @@ const movimiento = async (origen, documento, campo) =>
     await pagina.keyboard.press('Escape')
     return texto
   }
-  comprobar(await cuadroAviso.isHidden().catch(() => true), 'el detalle del aviso llega cerrado, sin cuadro encima de la lista')
+  await botonAviso.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {})
+  comprobar((await botonAviso.isVisible()) && (await cuadroAviso.isHidden()), 'el aviso llega a la barra con su detalle cerrado, sin cuadro encima de la lista')
   const aviso = await leerAviso()
   comprobar(aviso.includes(`Salió de ${SOLES}`), `el aviso de la barra dice de qué cuenta salió («${aviso}»)`)
   comprobar((await cuadroAviso.isHidden()) && (await botonAviso.isVisible()), 'Escape cierra el detalle y el aviso se queda en la barra')
@@ -326,11 +327,15 @@ const movimiento = async (origen, documento, campo) =>
   await v.getByRole('button', { name: 'Registrar el pago' }).click()
   error = await esperarVentana(pagina)
   comprobar(!error, `paga la factura de antes del inicio de la cuenta${error ? ` (dijo «${error}»)` : ''}`)
-  const alertaCaja = pagina.locator('main p[role="alert"]')
-  await alertaCaja.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {})
-  const textoAlerta = limpio(await alertaCaja.textContent().catch(() => ''))
-  comprobar(textoAlerta.includes('La caja no se movió'), `que la caja no se movió se ve en la página sin tocar nada («${textoAlerta}»)`)
+  // Llega abierto en la barra, que siempre se ve: una alerta arriba de la
+  // página quedaba fuera de la vista en el teléfono.
+  await cuadroAviso.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {})
+  const textoAlerta = limpio(await cuadroAviso.textContent().catch(() => ''))
+  const enVista = await cuadroAviso.evaluate((el) => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight }).catch(() => false)
+  comprobar(textoAlerta.includes('La caja no se movió') && enVista, `que la caja no se movió llega abierto y a la vista, sin tocar nada («${textoAlerta}»)`)
   comprobar(((await botonAviso.getAttribute('class')) ?? '').includes('text-aviso'), 'y el botón de la barra va en tono de aviso')
+  await pagina.keyboard.press('Escape')
+  comprobar(await cuadroAviso.isHidden(), 'Escape lo cierra')
   const movAntes = await movimiento('PAGO_ADQUISICION', ids.adqAntes, { tabla: 'pagos_adquisicion', columna: 'adquisicion_id' })
   comprobar(movAntes.length === 0, `ese pago no deja movimiento en la caja (${movAntes.length})`)
 

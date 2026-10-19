@@ -258,7 +258,10 @@ lo que dependa de una política de Storage se prueba en un check con
   espacio». Había un párrafo de «para qué sirve» bajo cada título y cada
   tarjeta, y un aviso con sombra que se quedaba flotando en Tesorería después
   de cada pago. La explicación va en `ayuda` (botón «i», se abre en su lugar) y
-  el detalle de un aviso, detrás de un botón «i» (`AvisoDeLaCaja`). Antes de
+  el aviso de la caja, en un botón de la barra que se abre al tocarlo
+  (`AvisoDeLaCaja`), salvo lo que pide atención («La caja no se movió»), que
+  se abre solo: en el teléfono, una alerta arriba de la página queda miles de
+  píxeles por encima de la factura que se acaba de pagar. Antes de
   escribir un párrafo bajo un título o un cuadro `fixed`, preguntarse si cambia
   con los datos: si no cambia, es `ayuda`. Ojo al partir: la cifra o la regla
   vigente se quedan en `descripcion`, o la tarjeta sale vacía para quien no

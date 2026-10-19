@@ -1,7 +1,7 @@
 'use client'
 
 import { Landmark, X } from 'lucide-react'
-import { createContext, useCallback, useContext, useId, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 import { avisoDeCajaPideAtencion } from '@/lib/dominio/caja'
@@ -22,9 +22,11 @@ import { cn } from '@/lib/utils'
  * tocarlo y se cierra como el de la campana: tocando fuera o con Escape. El
  * lector de pantalla lo anuncia igual, por la región `status`.
  *
- * Lo que pide algo o es una excepción —que no se pudo leer la caja, que no se
- * movió— no se esconde: además del botón en tono de aviso, sale escrito arriba
- * de la página, en su lugar.
+ * Lo que es una excepción —que no se pudo leer la caja, que no se movió— no se
+ * esconde: el botón va en tono de aviso y su detalle llega abierto. Abierto en
+ * la barra y no escrito arriba de la página, porque en el teléfono la factura
+ * que se acaba de pagar puede estar miles de píxeles más abajo y la alerta
+ * quedaba fuera de la vista. Se cierra igual, tocando fuera.
  */
 
 const Avisar = createContext<(mensaje: string | null) => void>(() => {})
@@ -41,17 +43,31 @@ export function AvisoDeLaCaja({ children }: { children: ReactNode }) {
   const boton = useRef<HTMLButtonElement>(null)
   const id = useId()
 
-  // Cada aviso nuevo llega cerrado y marcado como nuevo.
+  // Cada aviso nuevo llega marcado como nuevo, y cerrado salvo que pida atención.
   const setAviso = useCallback((mensaje: string | null) => {
+    const abrir = mensaje ? avisoDeCajaPideAtencion(mensaje) : false
     setAvisoCrudo(mensaje)
-    setAbierto(false)
-    setVisto(false)
+    setAbierto(abrir)
+    setVisto(abrir)
   }, [])
 
   const cerrar = () => {
     setAbierto(false)
     boton.current?.focus()
   }
+
+  // Escape se escucha en el documento y no en el botón: cuando el detalle se
+  // abre solo, el foco sigue donde estaba (la ventana del pago ya se cerró).
+  useEffect(() => {
+    if (!abierto) return
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setAbierto(false)
+      boton.current?.focus()
+    }
+    document.addEventListener('keydown', alTeclear)
+    return () => document.removeEventListener('keydown', alTeclear)
+  }, [abierto])
 
   // Solo hay aviso después de un pago, ya en el navegador: el servidor nunca
   // lo pinta, así que buscar la ranura aquí no descuadra la hidratación.
@@ -60,22 +76,20 @@ export function AvisoDeLaCaja({ children }: { children: ReactNode }) {
 
   return (
     <Avisar.Provider value={setAviso}>
-      {aviso && atencion && (
-        <p role="alert" className="mb-4 rounded-[var(--radius-base)] bg-aviso-suave px-4 py-3 text-sm text-texto">
-          {aviso}
-        </p>
-      )}
       {children}
-      {/* La región existe siempre: un lector de pantalla anuncia lo que entra en ella, no la región que aparece. */}
+      {/* Las regiones existen siempre: un lector de pantalla anuncia lo que entra en ellas, no la región que aparece. */}
       <p role="status" aria-live="polite" className="sr-only">
         {atencion ? null : aviso}
+      </p>
+      <p role="alert" className="sr-only">
+        {atencion ? aviso : null}
       </p>
       {aviso &&
         ranura &&
         createPortal(
           // `lg:order-first`: en el monitor entra a la izquierda del tema y la
           // campana, y esos dos no se mueven de sitio al aparecer.
-          <div className="relative lg:order-first" onKeyDown={(e) => { if (e.key === 'Escape') cerrar() }}>
+          <div className="relative lg:order-first">
             <button
               type="button"
               ref={boton}
@@ -88,10 +102,10 @@ export function AvisoDeLaCaja({ children }: { children: ReactNode }) {
               }}
               className={cn(
                 'relative flex size-11 items-center justify-center rounded-full border transition-colors',
-                abierto
-                  ? 'border-acento bg-acento-suave text-acento'
-                  : atencion
-                    ? 'border-aviso bg-aviso-suave text-aviso'
+                atencion
+                  ? 'border-aviso bg-aviso-suave text-aviso'
+                  : abierto
+                    ? 'border-acento bg-acento-suave text-acento'
                     : 'border-borde bg-superficie text-acento hover:bg-superficie-2',
               )}
             >
@@ -106,7 +120,8 @@ export function AvisoDeLaCaja({ children }: { children: ReactNode }) {
               id={id}
               data-aviso-caja
               className={cn(
-                'fixed inset-x-3 z-50 mt-2 items-start gap-2 rounded-2xl border border-borde bg-superficie py-2 pr-1 pl-4 text-sm text-texto shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:w-80',
+                'fixed inset-x-3 z-50 mt-2 items-start gap-2 rounded-2xl border py-2 pr-1 pl-4 text-sm text-texto shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:w-80',
+                atencion ? 'border-aviso bg-aviso-suave' : 'border-borde bg-superficie',
                 abierto ? 'flex' : 'hidden',
               )}
             >
