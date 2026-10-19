@@ -130,7 +130,7 @@ function OrdenesDelCodigo({ ordenes }: { ordenes: OrdenDelCodigo[] }) {
     <Tarjeta>
       <TarjetaCabecera
         titulo={ordenes.length === 1 ? 'Orden de trabajo' : 'Órdenes de trabajo'}
-        descripcion="La que Gerencia cargó al aprobar la cotización. Es la guía para los planos, los materiales y las etapas."
+        ayuda="La que Gerencia cargó al aprobar la cotización. Es la guía para los planos, los materiales y las etapas."
       />
       <TarjetaCuerpo>
         <ul className="divide-y divide-borde">
@@ -183,7 +183,7 @@ async function VistaPlanos({ codigo }: { codigo: string }) {
       <Tarjeta>
         <TarjetaCabecera
           titulo="Cargar un plano"
-          descripcion="Cada plano va a un área de producción. Si el mismo número va a dos áreas, cárgalo una vez para cada una. Para corregir uno ya cargado, súbele una revisión."
+          ayuda="Cada plano va a un área de producción. Si el mismo número va a dos áreas, cárgalo una vez para cada una. Para corregir uno ya cargado, súbele una revisión."
         />
         <TarjetaCuerpo>
           <CargarPlano codigo={codigo} areas={areas} solicitud={{ plano: crypto.randomUUID(), revision: crypto.randomUUID() }} />
@@ -191,7 +191,7 @@ async function VistaPlanos({ codigo }: { codigo: string }) {
       </Tarjeta>
 
       <Tarjeta>
-        <TarjetaCabecera titulo="Planos del código" descripcion="La revisión vigente de cada plano, y si el supervisor del área ya la recibió." />
+        <TarjetaCabecera titulo="Planos del código" ayuda="La revisión vigente de cada plano, y si el supervisor del área ya la recibió." />
         <TarjetaCuerpo>
           {planos.length === 0 ? (
             <p className="text-sm text-texto-suave">Todavía no hay planos. Carga el primero con el formulario de arriba.</p>
@@ -230,7 +230,7 @@ async function VistaMateriales({ codigo }: { codigo: string }) {
       <Tarjeta>
         <TarjetaCabecera
           titulo="Agregar a la lista"
-          descripcion="El material del catálogo, cuánto lleva la unidad y, si sale de uno, el plano. Si un material no está en el catálogo, dalo de alta en Materiales."
+          ayuda="El material del catálogo, cuánto lleva la unidad y, si sale de uno, el plano. Si un material no está en el catálogo, dalo de alta en Materiales."
         />
         <TarjetaCuerpo>
           <FormularioMaterial codigo={codigo} materiales={opciones} planos={planosVigentes} />
@@ -238,7 +238,7 @@ async function VistaMateriales({ codigo }: { codigo: string }) {
       </Tarjeta>
 
       <Tarjeta className="overflow-hidden">
-        <TarjetaCabecera titulo="Lista de materiales" descripcion="Lo que lleva la unidad según Diseño. Es referencia: no genera requerimientos." />
+        <TarjetaCabecera titulo="Lista de materiales" ayuda="Lo que lleva la unidad según Diseño. Es referencia: no genera requerimientos." />
         <TablaListaDiseno
           lineas={lineas}
           acciones={(l) => (
@@ -253,13 +253,13 @@ async function VistaMateriales({ codigo }: { codigo: string }) {
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo="La lista contra lo comprado y lo salido"
-          descripcion="Lo comprado son las OC con este código, menos las rechazadas. Lo salido, las salidas del almacén para el código menos lo devuelto."
+          ayuda="Lo comprado son las OC con este código, menos las rechazadas. Lo salido, las salidas del almacén para el código menos lo devuelto."
         />
         <TablaComparada materiales={comparados} />
       </Tarjeta>
 
       <Tarjeta className="overflow-hidden">
-        <TarjetaCabecera titulo="Lo que pidieron las áreas" descripcion="Los requerimientos con este código, menos los anulados, con el insumo como lo escribió cada área." />
+        <TarjetaCabecera titulo="Lo que pidieron las áreas" ayuda="Los requerimientos con este código, menos los anulados, con el insumo como lo escribió cada área." />
         <TablaLoPedido lineas={pedido} />
       </Tarjeta>
     </>
@@ -275,7 +275,7 @@ async function VistaEtapas({ codigo }: { codigo: string }) {
         <Tarjeta>
           <TarjetaCabecera
             titulo="Todavía no hay etapas"
-            descripcion="Carga las de siempre —Diseño y planos, Habilitado (Maestranza), Armado (Producción), Arenado y pintura (Acabados), Trámites y Entrega— y ponles sus fechas, o agrégalas una por una."
+            ayuda="Carga las de siempre —Diseño y planos, Habilitado (Maestranza), Armado (Producción), Arenado y pintura (Acabados), Trámites y Entrega— y ponles sus fechas, o agrégalas una por una."
           />
           <TarjetaCuerpo>
             <EtapasDeSiempre codigo={codigo} />
@@ -285,7 +285,8 @@ async function VistaEtapas({ codigo }: { codigo: string }) {
         <Tarjeta>
           <TarjetaCabecera
             titulo="Etapas de la unidad"
-            descripcion={`${resumenEtapas(etapas, hoy)}. El supervisor de cada área marca cuándo empezó y terminó la suya; el avance sale de su reporte diario.`}
+            descripcion={`${resumenEtapas(etapas, hoy)}.`}
+            ayuda="El supervisor de cada área marca cuándo empezó y terminó la suya; el avance sale de su reporte diario."
           />
           <TarjetaCuerpo>
             <ListaEtapas
@@ -305,7 +306,7 @@ async function VistaEtapas({ codigo }: { codigo: string }) {
       )}
 
       <Tarjeta>
-        <TarjetaCabecera titulo="Agregar una etapa" descripcion="Va al final; súbela con las flechas. La fecha comprometida es contra la que se mide si va a tiempo." />
+        <TarjetaCabecera titulo="Agregar una etapa" ayuda="Va al final; súbela con las flechas. La fecha comprometida es contra la que se mide si va a tiempo." />
         <TarjetaCuerpo>
           <FormularioEtapa codigo={codigo} areas={areas} />
         </TarjetaCuerpo>

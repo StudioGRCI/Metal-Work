@@ -58,7 +58,7 @@ export default async function PaginaStockEnAlmacen({ searchParams }: PageProps<'
     <>
       <EncabezadoPagina
         titulo="Stock en almacén"
-        descripcion="Cuánto hay de cada material en los cuatro almacenes, tal como lo reporta Almacén en su kardex. Los accesorios dicen de qué código interno es cada uno: solo salen para esa unidad."
+        ayuda="Cuánto hay de cada material en los cuatro almacenes, tal como lo reporta Almacén en su kardex. Los accesorios dicen de qué código interno es cada uno: solo salen para esa unidad."
         migas={[{ titulo: abreKardex ? 'Almacén' : 'Supervisión' }, { titulo: 'Stock en almacén' }]}
         acciones={
           abreKardex && (
@@ -103,7 +103,7 @@ export default async function PaginaStockEnAlmacen({ searchParams }: PageProps<'
             <Tarjeta key={g.almacen} className="overflow-hidden" data-almacen={g.almacen}>
               <TarjetaCabecera
                 titulo={g.almacen === POR_CLASIFICAR ? 'Por clasificar' : ALMACENES[g.almacen].etiqueta}
-                descripcion={
+                ayuda={
                   g.almacen === POR_CLASIFICAR
                     ? 'Entraron sin familia de almacén: Almacén todavía no los ordena en uno de los cuatro.'
                     : ALMACENES[g.almacen].descripcion

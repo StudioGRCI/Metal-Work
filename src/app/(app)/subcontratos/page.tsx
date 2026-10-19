@@ -47,7 +47,7 @@ export default async function PaginaSubcontratos({ searchParams }: { searchParam
       <>
         <EncabezadoPagina
           titulo="Subcontratistas"
-          descripcion="Las personas de fuera que hacen trabajos para la casa y cobran con recibos por honorarios, con la cuenta donde Tesorería les paga."
+          ayuda="Las personas de fuera que hacen trabajos para la casa y cobran con recibos por honorarios, con la cuenta donde Tesorería les paga."
           migas={[{ titulo: 'Administración' }, { titulo: 'Subcontratos', ruta: '/subcontratos' }, { titulo: 'Subcontratistas' }]}
           acciones={gestiona && <FormularioSubcontratista />}
         />
@@ -83,7 +83,7 @@ export default async function PaginaSubcontratos({ searchParams }: { searchParam
     <>
       <EncabezadoPagina
         titulo="Subcontratos"
-        descripcion="Los trabajos que se le encargan a una persona de fuera, por código interno de la unidad y para Producción o Acabados, cuyo supervisor los ve sin montos. Contra cada uno se suben sus recibos por honorarios; Tesorería los paga y adjunta el voucher."
+        ayuda="Los trabajos que se le encargan a una persona de fuera, por código interno de la unidad y para Producción o Acabados, cuyo supervisor los ve sin montos. Contra cada uno se suben sus recibos por honorarios; Tesorería los paga y adjunta el voucher."
         migas={[{ titulo: 'Administración' }, { titulo: 'Subcontratos' }]}
         acciones={gestiona && <NuevoSubcontrato subcontratistas={subcontratistas} codigos={codigos} />}
       />

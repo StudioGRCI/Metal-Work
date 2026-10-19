@@ -48,11 +48,11 @@ export default async function PaginaPagosDeServicio() {
     <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Pagos de servicio"
-        descripcion="Las órdenes de servicio que aprobó Gerencia: paga cada una al proveedor con su voucher. Primero las que ya volvieron conformes."
+        ayuda="Las órdenes de servicio que aprobó Gerencia: paga cada una al proveedor con su voucher. Primero las que ya volvieron conformes."
       />
 
       <Tarjeta>
-        <TarjetaCabecera titulo="Por pagar" descripcion="Una orden a cuenta sigue aquí hasta que registres el pago que la cancela." />
+        <TarjetaCabecera titulo="Por pagar" ayuda="Una orden a cuenta sigue aquí hasta que registres el pago que la cancela." />
         <TarjetaCuerpo className="space-y-3">
           {porPagar.length === 0 ? (
             <div className="flex flex-col items-center py-8 text-center">

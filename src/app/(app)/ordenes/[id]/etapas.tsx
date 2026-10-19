@@ -73,10 +73,13 @@ export function Etapas({
       <TarjetaCabecera
         titulo="Etapas de producción"
         descripcion={etapas.length === 0
+          ? undefined
+          : `${etapas.length} ${etapas.length === 1 ? 'etapa' : 'etapas'} · ${terminadas} ${terminadas === 1 ? 'terminada' : 'terminadas'}`}
+        ayuda={etapas.length === 0
           ? 'Diseño define las etapas y sus porcentajes. Administración programa las fechas después.'
-          : `${etapas.length} ${etapas.length === 1 ? 'etapa' : 'etapas'} · ${terminadas} ${terminadas === 1 ? 'terminada' : 'terminadas'}. ${esNueva
+          : esNueva
             ? 'El avance sale de los reportes de tareas y de las revisiones de planos.'
-            : 'Esta OT conserva su plan histórico: el avance se pondera por las horas estimadas de cada etapa.'}`}
+            : 'Esta OT conserva su plan histórico: el avance se pondera por las horas estimadas de cada etapa.'}
         acciones={
           <div className="flex flex-wrap items-center gap-2">
             {vencidas > 0 && <Insignia tono="peligro">{vencidas} {vencidas === 1 ? 'vencida' : 'vencidas'}</Insignia>}

@@ -13,15 +13,15 @@ rápido, no para admirarla.
 
 En `src/components/ui/`:
 
-- `Tarjeta`, `TarjetaCabecera` (con `titulo`, `descripcion`, `acciones`),
-  `TarjetaCuerpo`
+- `Tarjeta`, `TarjetaCabecera` (con `titulo`, `descripcion`, `ayuda`,
+  `acciones`), `TarjetaCuerpo`
 - `Tabla`, `TablaCabecera`, `TH`, `TD`, `TR`, `SinDatos` (estado vacío con
   título y descripción)
 - `Campo` (etiqueta + ayuda + requerido), `Entrada`, `Seleccion`, `AreaTexto`
 - `Boton` (`variante` primario/secundario/peligro, `tamano`, `cargando`)
 - `Insignia` y `Punto` con `tono` (exito/aviso/peligro/neutro), `Progreso`
 
-Estructura: `EncabezadoPagina` (migas, título, descripción, acciones) arriba
+Estructura: `EncabezadoPagina` (migas, título, descripción, ayuda, acciones) arriba
 de toda pantalla; las secciones de un detalle van por pestañas con
 `?vista=` en la URL (ver `ordenes/[id]/pestanas.tsx`), y cada pestaña carga
 **solo sus datos** en el server component.
@@ -177,9 +177,12 @@ línea siguiente.
 ## Texto
 
 Castellano peruano de taller, sin anglicismos de oficina: «dar de alta»,
-«visto bueno», «no se pudo». Los títulos dicen qué es la cosa; las
-descripciones, para qué sirve. Los estados vacíos siempre dicen cuál es el
-siguiente paso («Da de alta el primero con el botón de arriba»).
+«visto bueno», «no se pudo». Los títulos dicen qué es la cosa. Para qué sirve
+va en `ayuda`, detrás del botón «i» (`TituloConAyuda`); la `descripcion`, a la
+vista, es solo para lo que cambia: la fecha, el total, cuántos hay, la regla
+vigente. Un aviso que pide algo dice su motivo a la vista. Los estados vacíos
+siempre dicen cuál es el siguiente paso («Da de alta el primero con el botón de
+arriba»).
 
 ## Skills de diseño de terceros
 
@@ -248,6 +251,21 @@ lo que dependa de una política de Storage se prueba en un check con
 ## Trampas
 
 *(Sección viva: aquí se anota lo que salió mal al construir pantallas. Ver `aprender`.)*
+
+- **Lo que solo explica no va a la vista, y nada flota sin que lo pidan.** El
+  2026-10-19 DKS lo corrigió por segunda vez: «cuadros flotantes que no dan o
+  aportan… puede ser un botón de una información para que no ocupe mucho
+  espacio». Había un párrafo de «para qué sirve» bajo cada título y cada
+  tarjeta, y un aviso con sombra que se quedaba flotando en Tesorería después
+  de cada pago. La explicación va en `ayuda` (botón «i», se abre en su lugar) y
+  el aviso de la caja, en un botón de la barra que se abre al tocarlo
+  (`AvisoDeLaCaja`), salvo lo que pide atención («La caja no se movió»), que
+  se abre solo: en el teléfono, una alerta arriba de la página queda miles de
+  píxeles por encima de la factura que se acaba de pagar. Antes de
+  escribir un párrafo bajo un título o un cuadro `fixed`, preguntarse si cambia
+  con los datos: si no cambia, es `ayuda`. Ojo al partir: la cifra o la regla
+  vigente se quedan en `descripcion`, o la tarjeta sale vacía para quien no
+  edita (pasó con «La regla de tardanza»).
 
 - **Una OT manual y una OT histórica comparten rutas, pero no responsables.**
   En el flujo nuevo Diseño define etapas y planos; Supervisión crea las tareas

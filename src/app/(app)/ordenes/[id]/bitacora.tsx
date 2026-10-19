@@ -47,7 +47,7 @@ export function Bitacora({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Historial de la OT"
-        descripcion="Cambios de la OT, etapas, planos, materiales, solicitudes y reportes, con fecha y persona que actuó."
+        ayuda="Cambios de la OT, etapas, planos, materiales, solicitudes y reportes, con fecha y persona que actuó."
       />
 
       {puedeComentar && (

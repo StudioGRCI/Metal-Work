@@ -28,7 +28,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
     <>
       <EncabezadoPagina
         titulo="Unidades"
-        descripcion="Vehículos de los clientes sobre los que trabaja el taller. Se registran desde la ficha de cada cliente."
+        ayuda="Vehículos de los clientes sobre los que trabaja el taller. Se registran desde la ficha de cada cliente."
       />
 
       <BuscadorSimple

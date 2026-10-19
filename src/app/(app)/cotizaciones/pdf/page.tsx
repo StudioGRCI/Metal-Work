@@ -127,7 +127,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Cotización"
-        descripcion="Ventas sube la cotización y Gerencia la aprueba dando el código interno de la unidad y subiendo su OT. Aprobada, la ven también Contabilidad, que la factura, y Tesorería, que la cobra."
+        ayuda="Ventas sube la cotización y Gerencia la aprueba dando el código interno de la unidad y subiendo su OT. Aprobada, la ven también Contabilidad, que la factura, y Tesorería, que la cobra."
         acciones={puedeSubir && <SubirCotizacion clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />}
       />
 

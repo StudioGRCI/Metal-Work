@@ -24,7 +24,7 @@ export default async function PaginaNuevoTrabajo() {
           { titulo: 'Nuevo' },
         ]}
         titulo="Nuevo trabajo sin orden"
-        descripcion="Lo mínimo para que exista: qué es y qué se va a hacer. Si es una unidad de un cliente, su placa. Lo demás se escribe día a día, con foto."
+        ayuda="Lo mínimo para que exista: qué es y qué se va a hacer. Si es una unidad de un cliente, su placa. Lo demás se escribe día a día, con foto."
       />
 
       <Tarjeta className="max-w-3xl">

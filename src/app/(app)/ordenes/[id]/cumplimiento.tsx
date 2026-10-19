@@ -124,7 +124,7 @@ export function Cumplimiento({
       <Tarjeta>
         <TarjetaCabecera
           titulo={planos.some(p => p.lista.length > 0) ? 'Planos y avance histórico de piezas' : 'Planos de la OT'}
-          descripcion={planos.some(p => p.lista.length > 0) ? 'Diseño repartió los planos con su peso. Las piezas históricas se muestran para consulta.' : 'Diseño agrega los planos y los vincula con su etapa. Los materiales se definen en la pestaña Materiales.'}
+          ayuda={planos.some(p => p.lista.length > 0) ? 'Diseño repartió los planos con su peso. Las piezas históricas se muestran para consulta.' : 'Diseño agrega los planos y los vincula con su etapa. Los materiales se definen en la pestaña Materiales.'}
         />
         <TarjetaCuerpo>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -371,7 +371,7 @@ function NuevoPlano({
     <Tarjeta className="border-acento">
       <TarjetaCabecera
         titulo="Nuevo plano"
-        descripcion="Diseño crea el plano y elige la etapa de la OT que lo utilizará. Los materiales se definen en su pestaña."
+        ayuda="Diseño crea el plano y elige la etapa de la OT que lo utilizará. Los materiales se definen en su pestaña."
       />
       <TarjetaCuerpo>
         <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">

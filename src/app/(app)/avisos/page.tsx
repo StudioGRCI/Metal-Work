@@ -30,7 +30,7 @@ export default async function PaginaAvisos({ searchParams }: PageProps<'/avisos'
       <EncabezadoPagina
         migas={[{ titulo: 'Avisos' }]}
         titulo="Avisos"
-        descripcion="Lo que el circuito te fue dejando: cada uno lleva a la pantalla donde se resuelve."
+        ayuda="Lo que el circuito te fue dejando: cada uno lleva a la pantalla donde se resuelve."
       />
 
       <PastillaFiltro

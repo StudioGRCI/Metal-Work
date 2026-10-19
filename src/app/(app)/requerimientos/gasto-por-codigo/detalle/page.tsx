@@ -31,7 +31,7 @@ export default async function PaginaGastoDeCodigo({ searchParams }: PageProps<'/
     <>
       <EncabezadoPagina
         titulo={<span className="font-mono break-all">{codigo}</span>}
-        descripcion="Lo que salió del almacén para este código y lo que se compró con él. Sin la mano de obra."
+        ayuda="Lo que salió del almacén para este código y lo que se compró con él. Sin la mano de obra."
         migas={[
           { titulo: 'Requerimientos', ruta: '/requerimientos' },
           { titulo: 'Gasto por código', ruta: '/requerimientos/gasto-por-codigo' },
@@ -130,7 +130,7 @@ async function Materiales({ codigo }: { codigo: string }) {
     <Tarjeta className="overflow-hidden">
       <TarjetaCabecera
         titulo="Materiales salidos del almacén"
-        descripcion="Cada salida para este código, con lo que vale. Lo que todavía no tiene precio sale «Sin precio» y no se suma como cero."
+        ayuda="Cada salida para este código, con lo que vale. Lo que todavía no tiene precio sale «Sin precio» y no se suma como cero."
       />
       <Tabla>
         <TablaCabecera>
@@ -182,7 +182,7 @@ async function Compras({ codigo, abrePdf }: { codigo: string; abrePdf: boolean }
     <Tarjeta className="overflow-hidden">
       <TarjetaCabecera
         titulo="Compras con este código"
-        descripcion="Las órdenes de compra sin IGV, menos las rechazadas. No se suman al gasto: lo comprado entra al almacén y se cuenta cuando sale para este código."
+        ayuda="Las órdenes de compra sin IGV, menos las rechazadas. No se suman al gasto: lo comprado entra al almacén y se cuenta cuando sale para este código."
       />
       <Tabla>
         <TablaCabecera>

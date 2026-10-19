@@ -44,7 +44,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
     <>
       <EncabezadoPagina
         titulo="Planos y etapas"
-        descripcion={`Los planos que Diseño cargó para ${todasLasAreas ? 'cada área' : 'tu área'} en cada código interno: ábrelos y marca «Recibido». Y las etapas que hace ${todasLasAreas ? 'cada área' : 'tu área'}: marca cuándo empezó y cuándo terminó.`}
+        ayuda={`Los planos que Diseño cargó para ${todasLasAreas ? 'cada área' : 'tu área'} en cada código interno: ábrelos y marca «Recibido». Y las etapas que hace ${todasLasAreas ? 'cada área' : 'tu área'}: marca cuándo empezó y cuándo terminó.`}
         migas={[{ titulo: 'Supervisión' }, { titulo: 'Planos y etapas' }]}
       />
 

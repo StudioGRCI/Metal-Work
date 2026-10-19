@@ -394,7 +394,7 @@ function RepartoPorMes({ filas, c }: { filas: RepartoATodosFila[]; c: ResumenCod
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo="A dónde fue"
-          descripcion="Lo que salió del almacén con este código se reparte en partes iguales entre los códigos que trabajaron ese mes: con horas en el reporte diario o el tareo, o con una salida del almacén. PLANTA y OFICINA no reciben."
+          ayuda="Lo que salió del almacén con este código se reparte en partes iguales entre los códigos que trabajaron ese mes: con horas en el reporte diario o el tareo, o con una salida del almacén. PLANTA y OFICINA no reciben."
         />
         <Tabla>
           <TablaCabecera>
@@ -743,7 +743,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
     <Tarjeta data-como-sale>
       <TarjetaCabecera
         titulo={`Cómo sale el ${avance.avance} %`}
-        descripcion="Es el promedio de las etapas que armó Diseño, todas con el mismo peso. La etapa terminada vale 100 %; la que no, lo que su área reporta de este código en el reporte diario (el promedio del último avance de cada uno de sus trabajos); sin reporte, 0 %."
+        ayuda="Es el promedio de las etapas que armó Diseño, todas con el mismo peso. La etapa terminada vale 100 %; la que no, lo que su área reporta de este código en el reporte diario (el promedio del último avance de cada uno de sus trabajos); sin reporte, 0 %."
       />
       <TarjetaCuerpo>
         <ul className="space-y-2">
@@ -824,7 +824,7 @@ async function VistaAvance({ codigo, perfil, avance }: { codigo: string; perfil:
       <Tarjeta>
         <TarjetaCabecera
           titulo="Cada trabajo con su último avance"
-          descripcion={`El porcentaje que el supervisor de cada área puso la última vez que reportó cada trabajo. ${
+          ayuda={`El porcentaje que el supervisor de cada área puso la última vez que reportó cada trabajo. ${
             avance?.fuente === 'ETAPAS'
               ? 'Su promedio, área por área, es lo que vale la etapa de esa área mientras no termine.'
               : 'El avance del código es el promedio de estos.'
@@ -854,7 +854,7 @@ async function VistaAvance({ codigo, perfil, avance }: { codigo: string; perfil:
       <Tarjeta>
         <TarjetaCabecera
           titulo="Reportes diarios"
-          descripcion="Los reportes vigentes de este código, del más nuevo al más viejo. Los anulados no cuentan para el avance ni para las horas."
+          ayuda="Los reportes vigentes de este código, del más nuevo al más viejo. Los anulados no cuentan para el avance ni para las horas."
         />
         <TarjetaCuerpo>
           <ul className="space-y-3">
@@ -933,7 +933,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo="Mano de obra"
-          descripcion="Las horas del reporte diario y las que carga Recursos Humanos, a lo que cuesta la hora de cada persona, y el recargo que la planilla diaria pagó por las horas extras, repartido entre los códigos que esa persona trabajó ese día. Las horas de quien todavía no tiene costo se muestran sin sumar hasta que RR. HH. se lo ponga."
+          ayuda="Las horas del reporte diario y las que carga Recursos Humanos, a lo que cuesta la hora de cada persona, y el recargo que la planilla diaria pagó por las horas extras, repartido entre los códigos que esa persona trabajó ese día. Las horas de quien todavía no tiene costo se muestran sin sumar hasta que RR. HH. se lo ponga."
         />
         <Tabla>
           <TablaCabecera>
@@ -989,7 +989,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo="Materiales salidos del almacén"
-          descripcion="Cada salida para este código a su precio: el que quedó en la salida, o el de la última compra del material hasta ese día, o el de la valorización del almacén. Lo que no tiene ninguno sale «Sin precio» y no se suma como cero. La merma que Diseño evaluó en la OT se suma sobre lo que tiene precio."
+          ayuda="Cada salida para este código a su precio: el que quedó en la salida, o el de la última compra del material hasta ese día, o el de la valorización del almacén. Lo que no tiene ninguno sale «Sin precio» y no se suma como cero. La merma que Diseño evaluó en la OT se suma sobre lo que tiene precio."
         />
         <Tabla>
           <TablaCabecera>
@@ -1045,7 +1045,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden" data-servicios>
         <TarjetaCabecera
           titulo="Órdenes de servicio"
-          descripcion="Los trabajos de terceros para este código —torno, pintura, flete—, sin IGV. La aprobada por Gerencia suma al costo, porque no pasa por el almacén; la que espera su aprobación se muestra y no se suma todavía. Las rechazadas y las anuladas no aparecen."
+          ayuda="Los trabajos de terceros para este código —torno, pintura, flete—, sin IGV. La aprobada por Gerencia suma al costo, porque no pasa por el almacén; la que espera su aprobación se muestra y no se suma todavía. Las rechazadas y las anuladas no aparecen."
         />
         <Tabla>
           <TablaCabecera>
@@ -1109,7 +1109,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden" data-subcontratos>
         <TarjetaCabecera
           titulo="Subcontratos"
-          descripcion="Los recibos por honorarios de los trabajos que Administración encargó a gente de fuera para este código, por su monto bruto: la retención también es parte de lo que cuesta. Todos suman al costo, pagados o no, porque el recibo ya se debe; el que espera a Tesorería se marca para saber cuánto falta pagar. Los anulados no aparecen."
+          ayuda="Los recibos por honorarios de los trabajos que Administración encargó a gente de fuera para este código, por su monto bruto: la retención también es parte de lo que cuesta. Todos suman al costo, pagados o no, porque el recibo ya se debe; el que espera a Tesorería se marca para saber cuánto falta pagar. Los anulados no aparecen."
         />
         <Tabla>
           <TablaCabecera>
@@ -1167,7 +1167,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden" data-gastos-y-caja>
         <TarjetaCabecera
           titulo="Gastos y caja"
-          descripcion="La parte de este código en los gastos del mes que registra Administración —luz, agua, celulares—: con su tasa, o en partes iguales entre los códigos que trabajaron ese mes. Los trámites, comisiones y viáticos que Administración aprobó en la OT de la unidad. Y los egresos que Tesorería escribió en la caja diaria con este código. Los pagos de OC, OS y recibos no entran aquí, porque ya se cuentan arriba."
+          ayuda="La parte de este código en los gastos del mes que registra Administración —luz, agua, celulares—: con su tasa, o en partes iguales entre los códigos que trabajaron ese mes. Los trámites, comisiones y viáticos que Administración aprobó en la OT de la unidad. Y los egresos que Tesorería escribió en la caja diaria con este código. Los pagos de OC, OS y recibos no entran aquí, porque ya se cuentan arriba."
         />
         <Tabla>
           <TablaCabecera>
@@ -1218,7 +1218,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo="Compras con este código"
-          descripcion="Las órdenes de compra sin IGV, menos las rechazadas. No se suman al costo: lo comprado entra al almacén y se cuenta cuando sale para este código."
+          ayuda="Las órdenes de compra sin IGV, menos las rechazadas. No se suman al costo: lo comprado entra al almacén y se cuenta cuando sale para este código."
         />
         <Tabla>
           <TablaCabecera>
@@ -1282,7 +1282,7 @@ async function VistaPersonal({ codigo }: { codigo: string }) {
     <Tarjeta className="overflow-hidden">
       <TarjetaCabecera
         titulo="Quién trabajó en este código"
-        descripcion="Las horas de cada persona, del reporte diario y las cargadas por Recursos Humanos. Sin lo que cuesta cada una: eso lo ve solo RR. HH."
+        ayuda="Las horas de cada persona, del reporte diario y las cargadas por Recursos Humanos. Sin lo que cuesta cada una: eso lo ve solo RR. HH."
       />
       <Tabla>
         <TablaCabecera>
@@ -1412,7 +1412,7 @@ async function VistaFacturacion({ codigo }: { codigo: string }) {
       <Tarjeta>
         <TarjetaCabecera
           titulo="Cotización aprobada"
-          descripcion="Lo que se le cobra al cliente por este código. Contabilidad factura según ella."
+          ayuda="Lo que se le cobra al cliente por este código. Contabilidad factura según ella."
         />
         <TarjetaCuerpo>
           {cotizaciones.length === 0 ? (
@@ -1457,7 +1457,7 @@ async function VistaFacturacion({ codigo }: { codigo: string }) {
       <Tarjeta>
         <TarjetaCabecera
           titulo={`Facturas de venta${facturas.length > 0 ? ` (${facturas.length})` : ''}`}
-          descripcion="Cada factura que registró Contabilidad, con los cobros que registró Tesorería y su voucher. Las anuladas salen tachadas."
+          ayuda="Cada factura que registró Contabilidad, con los cobros que registró Tesorería y su voucher. Las anuladas salen tachadas."
         />
         <TarjetaCuerpo className="space-y-3">
           {facturas.length === 0 ? (

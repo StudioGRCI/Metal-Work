@@ -64,7 +64,7 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
     <>
       <EncabezadoPagina
         titulo="Costeo por código interno"
-        descripcion={`Las horas que cada persona trabajó en cada unidad y lo que cuestan. Las del reporte diario de los supervisores entran solas; las demás las carga Recursos Humanos. La hora vale el costo mensual de la persona entre ${HORAS_DEL_MES}.`}
+        ayuda={`Las horas que cada persona trabajó en cada unidad y lo que cuestan. Las del reporte diario de los supervisores entran solas; las demás las carga Recursos Humanos. La hora vale el costo mensual de la persona entre ${HORAS_DEL_MES}.`}
         migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Costeo por código interno' }]}
         acciones={
           <CargarHoras
@@ -111,7 +111,8 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
           <Tarjeta className="border-aviso">
             <TarjetaCabecera
               titulo="Horas de los reportes que esperan su costo"
-              descripcion="Estas personas tienen horas en reportes diarios pero todavía no tienen costo mensual. Pónselo en Personal y sus horas entran solas al costeo."
+              descripcion="Tienen horas en reportes diarios pero todavía no tienen costo mensual."
+              ayuda="Con su costo mensual en Personal, sus horas entran solas al costeo."
             />
             <TarjetaCuerpo>
               <ul className="space-y-1 text-sm">
@@ -135,7 +136,7 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
         <Tarjeta>
           <TarjetaCabecera
             titulo="Mano de obra por código interno"
-            descripcion="Toca un código para ver quién trabajó en él, cuántas horas y en qué."
+            ayuda="Toca un código para ver quién trabajó en él, cuántas horas y en qué."
           />
           <TarjetaCuerpo className="space-y-2">
             {grupos.length === 0 ? (
@@ -194,10 +195,11 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
         <Tarjeta className="overflow-hidden" id="dia">
           <TarjetaCabecera
             titulo={dia ? `Horas cargadas el ${fechaLarga(dia)}` : 'Horas cargadas'}
+            ayuda="Cada carga con su costo. Una mal cargada se anula con su motivo: queda tachada y deja de sumar."
             descripcion={
               dia
-                ? `${horasCortas(horasDelDia)} en ${cargasDelDia} ${cargasDelDia === 1 ? 'carga' : 'cargas'}. Una mal cargada se anula con su motivo: queda tachada y deja de sumar.`
-                : 'Cada carga con su costo. Una mal cargada se anula con su motivo: queda tachada y deja de sumar.'
+                ? `${horasCortas(horasDelDia)} en ${cargasDelDia} ${cargasDelDia === 1 ? 'carga' : 'cargas'}`
+                : undefined
             }
           />
           {dias.length > 1 && (

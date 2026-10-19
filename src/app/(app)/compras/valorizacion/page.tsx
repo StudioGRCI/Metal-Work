@@ -67,7 +67,7 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
     <>
       <EncabezadoPagina
         titulo="Valorización del almacén"
-        descripcion="El precio unitario de lo que hay en almacén. Lo comprado por el sistema ya trae el de su orden de compra; Logística fija el de los consumibles y saldos que nunca pasaron por una compra."
+        ayuda="El precio unitario de lo que hay en almacén. Lo comprado por el sistema ya trae el de su orden de compra; Logística fija el de los consumibles y saldos que nunca pasaron por una compra."
         migas={[{ titulo: 'Compras' }, { titulo: 'Valorización' }]}
       />
 
@@ -99,7 +99,7 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo="Materiales del almacén"
-          descripcion="El costeo de la OT usa el precio congelado en la salida; si no lo hay, la última compra; y si el material nunca se compró, el precio que fija Logística."
+          ayuda="El costeo de la OT usa el precio congelado en la salida; si no lo hay, la última compra; y si el material nunca se compró, el precio que fija Logística."
         />
         <Tabla>
           <TablaCabecera>

@@ -156,7 +156,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
         <Tarjeta>
           <TarjetaCabecera
             titulo="Contactos"
-            descripcion="A quién se le dirige la cotización: su nombre, teléfono y correo salen en el papel."
+            ayuda="A quién se le dirige la cotización: su nombre, teléfono y correo salen en el papel."
             acciones={registraContactos && <NuevoContacto clienteId={id} refrescar />}
           />
           <TarjetaCuerpo className="space-y-3">

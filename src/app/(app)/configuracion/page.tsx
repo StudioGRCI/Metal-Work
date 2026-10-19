@@ -36,7 +36,7 @@ export default async function PaginaConfiguracion({
     <>
       <EncabezadoPagina
         titulo="Configuración"
-        descripcion="El calendario del taller y los catálogos con los que trabaja el sistema."
+        ayuda="El calendario del taller y los catálogos con los que trabaja el sistema."
         acciones={
           // Campo y botón del sistema en vez de un <input> suelto: el original
           // medía 28 px de alto y en el teléfono no se acertaba ni el año ni el
@@ -72,7 +72,7 @@ export default async function PaginaConfiguracion({
           <Tarjeta>
             <TarjetaCabecera
               titulo="Tipos de carrocería"
-              descripcion="Tipos y medidas técnicas de referencia. Las corrige Diseño e Ingeniería desde Carrocerías."
+              ayuda="Tipos y medidas técnicas de referencia. Las corrige Diseño e Ingeniería desde Carrocerías."
             />
             <TarjetaCuerpo className="space-y-1">
               {/* La lista vacía sin explicación se lee como pantalla rota. Es
@@ -96,7 +96,6 @@ export default async function PaginaConfiguracion({
           <Tarjeta>
             <TarjetaCabecera
               titulo="Etapas de fabricación"
-              descripcion="En este orden avanza cada orden."
             />
             <TarjetaCuerpo className="space-y-1">
               {catalogos.etapas.length === 0 && (
@@ -121,7 +120,7 @@ export default async function PaginaConfiguracion({
           <Tarjeta>
             <TarjetaCabecera
               titulo="Fichas y verificaciones"
-              descripcion="Plantillas que el equipo de Diseño y taller utiliza en las órdenes."
+              ayuda="Plantillas que el equipo de Diseño y taller utiliza en las órdenes."
             />
             <TarjetaCuerpo className="space-y-3">
               <div>

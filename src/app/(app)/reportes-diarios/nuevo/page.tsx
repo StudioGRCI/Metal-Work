@@ -82,7 +82,7 @@ export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/r
     <>
       <EncabezadoPagina
         titulo={corrige ? 'Corregir el reporte' : 'Nuevo reporte diario'}
-        descripcion={
+        ayuda={
           corrige
             ? 'Se abre con lo que ya subiste y sus fotos. Corrige lo observado y súbelo: el observado queda anulado con la observación como motivo, y Gerencia y Recursos Humanos validan este.'
             : 'Un reporte por código interno: qué se hizo, cuánto avanzó, quién trabajó y cuántas horas. Las horas pasan solas al costeo de Recursos Humanos.'

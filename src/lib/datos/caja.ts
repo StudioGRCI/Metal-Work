@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { monedaDeCuenta, type CuentaParaPagar } from '@/lib/dominio/caja'
+import { CAJA_NO_SE_MOVIO, CAJA_SIN_LEER, monedaDeCuenta, type CuentaParaPagar } from '@/lib/dominio/caja'
 import { fecha as textoFecha, hoyLima, type CodigoMoneda } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 
@@ -282,12 +282,12 @@ export async function cajaTrasElPago(origen: string, id: string, cajaId: string,
     cajaDeLosPagos(origen, [id]).catch(() => null),
     supabase.from('cajas').select('nombre, fecha_inicio').eq('id', cajaId).maybeSingle(),
   ])
-  if (!movimientos || caja.error) return 'No se pudo leer cómo quedó la caja: revísala en Caja diaria.'
+  if (!movimientos || caja.error) return CAJA_SIN_LEER
   const mov = movimientos.get(id)
   if (mov && !mov.anulado) return tipo === 'cobro' ? `Entró a ${mov.cuenta}.` : `Salió de ${mov.cuenta}.`
   const inicio = caja.data?.fecha_inicio
   if (!caja.data || !inicio || dia >= inicio) return ''
-  return `La caja no se movió: la cuenta ${caja.data.nombre} lleva la caja desde el ${textoFecha(inicio)} y este ${tipo} ya está en su saldo inicial.`
+  return `${CAJA_NO_SE_MOVIO}: la cuenta ${caja.data.nombre} lleva la caja desde el ${textoFecha(inicio)} y este ${tipo} ya está en su saldo inicial.`
 }
 
 /**
@@ -296,7 +296,7 @@ export async function cajaTrasElPago(origen: string, id: string, cajaId: string,
  */
 export async function cajaTrasAnular(origen: string, id: string, tipo: 'pago' | 'cobro'): Promise<string> {
   const movimientos = await cajaDeLosPagos(origen, [id]).catch(() => null)
-  if (!movimientos) return 'No se pudo leer cómo quedó la caja: revísala en Caja diaria.'
+  if (!movimientos) return CAJA_SIN_LEER
   const mov = movimientos.get(id)
   if (!mov) return ''
   if (mov.devuelto) {

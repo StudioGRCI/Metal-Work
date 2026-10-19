@@ -57,11 +57,11 @@ export default async function PaginaPorPagar() {
     <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Cuentas por pagar"
-        descripcion="Las facturas de compra que registró Contabilidad, al contado o a crédito, de la que vence antes a la que vence después. Cada pago va con su voucher."
+        ayuda="Las facturas de compra que registró Contabilidad, al contado o a crédito, de la que vence antes a la que vence después. Cada pago va con su voucher."
       />
 
       <Tarjeta>
-        <TarjetaCabecera titulo="Por pagar" descripcion="Cada factura con sus OC y su saldo; lo vencido sale en rojo." />
+        <TarjetaCabecera titulo="Por pagar" ayuda="Cada factura con sus OC y su saldo; lo vencido sale en rojo." />
         <TarjetaCuerpo className="space-y-3">
           {porPagar.length === 0 ? (
             <div className="flex flex-col items-center py-8 text-center">
@@ -78,7 +78,7 @@ export default async function PaginaPorPagar() {
       </Tarjeta>
 
       <Tarjeta className="mt-5">
-        <TarjetaCabecera titulo="Compras a crédito sin comprobante" descripcion="Logística marcó crédito; Contabilidad todavía tiene que registrar la factura en Adquisiciones." />
+        <TarjetaCabecera titulo="Compras a crédito sin comprobante" ayuda="Logística marcó crédito; Contabilidad todavía tiene que registrar la factura en Adquisiciones." />
         <TarjetaCuerpo className="space-y-2">
           {(pendientes.data ?? []).length === 0 ? (
             <p className="text-sm text-texto-suave">No hay compras a crédito esperando su factura.</p>
@@ -117,7 +117,7 @@ export default async function PaginaPorPagar() {
       )}
 
       <Tarjeta className="mt-5">
-        <TarjetaCabecera titulo="Planillas distribuidas por OT" descripcion="Para consultar: las planillas que cerró RR. HH. Los nombres del personal se quedan en RR. HH." />
+        <TarjetaCabecera titulo="Planillas distribuidas por OT" ayuda="Para consultar: las planillas que cerró RR. HH. Los nombres del personal se quedan en RR. HH." />
         <TarjetaCuerpo className="space-y-2">
           {(planillas.data ?? []).length === 0 ? (
             <p className="text-sm text-texto-suave">Todavía no hay planillas cerradas.</p>

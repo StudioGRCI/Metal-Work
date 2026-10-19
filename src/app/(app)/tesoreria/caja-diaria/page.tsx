@@ -63,7 +63,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
     <>
       <EncabezadoPagina
         titulo="Caja diaria"
-        descripcion="El saldo de cada cuenta día por día, como el estado de caja: lo que salió, lo que entró y el cierre contra el estado de cuenta del banco. Los pagos y cobros del sistema entran solos."
+        ayuda="El saldo de cada cuenta día por día, como el estado de caja: lo que salió, lo que entró y el cierre contra el estado de cuenta del banco. Los pagos y cobros del sistema entran solos."
         acciones={<SelectorDeDia dia={dia} hoy={hoy} />}
       />
 
@@ -102,7 +102,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
           <Tarjeta className="mb-5">
             <TarjetaCabecera
               titulo={`Saldos del ${fechaLarga(dia)}`}
-              descripcion="Cada cuenta en su moneda. El saldo final de un día es el inicial del siguiente."
+              ayuda="Cada cuenta en su moneda. El saldo final de un día es el inicial del siguiente."
               acciones={
                 abiertas.length > 0 ? (
                   <>

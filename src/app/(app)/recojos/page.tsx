@@ -36,7 +36,7 @@ export default async function PaginaRecojos() {
     <>
       <EncabezadoPagina
         titulo="Recojos"
-        descripcion={
+        ayuda={
           conductor
             ? 'Las compras que Logística te programó, en el orden en que tienes que recogerlas, con su peso y su guía de remisión. Marca «Salgo a recoger» cuando vas al proveedor, «Ya la recogí» al salir con el material y «La dejé en almacén» al entregarla: el requerimiento muestra en qué va y Almacén valida el ingreso sin volver a registrarlo.'
             : 'Lo que el conductor tiene que recoger, en el orden que le programó Logística, y lo que ya dejó en almacén.'

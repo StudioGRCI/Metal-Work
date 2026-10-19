@@ -59,7 +59,7 @@ export default async function PaginaPlanillaDiaria() {
     <>
       <EncabezadoPagina
         titulo="Planilla diaria"
-        descripcion={
+        ayuda={
           arma
             ? 'Lo que se le paga a la gente por sus horas de los reportes diarios que validaron Gerencia y Recursos Humanos: hasta 8 horas por día son ordinarias; las extras, las que decidiste pagar. La armas y la mandas a Tesorería, que paga y adjunta comprobante y boleta; tú entregas las boletas.'
             : paga
@@ -74,11 +74,8 @@ export default async function PaginaPlanillaDiaria() {
           <Tarjeta className="overflow-hidden" data-por-enviar>
             <TarjetaCabecera
               titulo="Por enviar a Tesorería"
-              descripcion={
-                conRemuneracion.length > 0
-                  ? `${personasTexto(conRemuneracion.length)} · ${moneda(total)}. Sale de los reportes con los dos vistos buenos que todavía no están en una planilla.`
-                  : 'Aparece aquí lo validado por Gerencia y Recursos Humanos que todavía no está en una planilla.'
-              }
+              descripcion={conRemuneracion.length > 0 ? `${personasTexto(conRemuneracion.length)} · ${moneda(total)}` : undefined}
+              ayuda="Sale de los reportes con los dos vistos buenos de Gerencia y Recursos Humanos que todavía no están en una planilla."
               acciones={
                 conRemuneracion.length > 0 && (
                   <EnviarPlanilla id={crypto.randomUUID()} resumen={`${personasTexto(conRemuneracion.length)} por ${moneda(total)}`} />
@@ -159,11 +156,8 @@ export default async function PaginaPlanillaDiaria() {
         <Tarjeta className="overflow-hidden">
           <TarjetaCabecera
             titulo="Planillas enviadas"
-            descripcion={
-              porPagar.length > 0
-                ? `${porPagar.length} por pagar. Cada una sale con número y no se borra: se anula con su motivo.`
-                : 'Cada una sale con número y no se borra: se anula con su motivo.'
-            }
+            descripcion={porPagar.length > 0 ? `${porPagar.length} por pagar` : undefined}
+            ayuda="Cada una sale con número y no se borra: se anula con su motivo."
           />
           {planillas.length === 0 ? (
             <TarjetaCuerpo>

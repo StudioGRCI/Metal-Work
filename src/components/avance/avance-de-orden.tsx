@@ -158,7 +158,7 @@ export async function AvanceDeOrden({
       <Tarjeta>
         <TarjetaCabecera
           titulo="Avance de la unidad"
-          descripcion="Lo que se hizo cada día, con foto. Es el registro que se le enseña al cliente."
+          ayuda="Lo que se hizo cada día, con foto. Es el registro que se le enseña al cliente."
           acciones={
             puede(perfil, 'produccion.registrar') && (
               <RegistrarAvance

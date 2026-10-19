@@ -22,7 +22,7 @@ export function RevisionesDeSalida({ revisiones }: { revisiones: RevisionPendien
     <Tarjeta className="mb-5" id="salidas-por-revisar">
       <TarjetaCabecera
         titulo="Salidas de vehículos por revisar"
-        descripcion="Requerimientos pide tu revisión antes de entregar un vehículo. Si queda revisada, puede salir; si la observas, Requerimientos ve tu respuesta y vuelve a pedirla."
+        ayuda="Requerimientos pide tu revisión antes de entregar un vehículo. Si queda revisada, puede salir; si la observas, Requerimientos ve tu respuesta y vuelve a pedirla."
       />
       <TarjetaCuerpo className="space-y-3">
         {revisiones.map((v) => (

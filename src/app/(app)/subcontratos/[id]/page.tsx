@@ -83,7 +83,7 @@ export default async function PaginaSubcontrato({ params }: PageProps<'/subcontr
         <Tarjeta>
           <TarjetaCabecera
             titulo="Cómo va"
-            descripcion="Lo recibido es el bruto de los recibos vigentes; Tesorería paga el neto, después de la retención."
+            ayuda="Lo recibido es el bruto de los recibos vigentes; Tesorería paga el neto, después de la retención."
           />
           <TarjetaCuerpo>
             <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3" data-cuentas>
@@ -104,7 +104,7 @@ export default async function PaginaSubcontrato({ params }: PageProps<'/subcontr
         <Tarjeta className="overflow-hidden">
           <TarjetaCabecera
             titulo="Recibos por honorarios"
-            descripcion={
+            ayuda={
               gestiona
                 ? 'Sube cada recibo cuando llegue. Tesorería lo paga a la cuenta del subcontratista y adjunta el voucher, que aparece aquí.'
                 : 'Cada recibo con su archivo y, cuando Tesorería lo paga, su voucher.'

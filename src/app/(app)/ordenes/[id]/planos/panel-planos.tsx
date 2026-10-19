@@ -38,7 +38,7 @@ export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
     <Boton type="submit" variante="secundario" tamano="sm" cargando={lider.enviando} disabled={!abierta}>Guardar líder de entrega</Boton>
   </form>
   if (!puedeAsignar) return <Tarjeta>
-    <TarjetaCabecera titulo="Equipo de Diseño" descripcion="Responsables que coordinan y preparan los planos de esta OT." />
+    <TarjetaCabecera titulo="Equipo de Diseño" ayuda="Responsables que coordinan y preparan los planos de esta OT." />
     <TarjetaCuerpo className="space-y-3">
       {nombreLider}
       {catalogos.planos.map((plano) => (
@@ -53,7 +53,7 @@ export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
   const responsables = catalogos.usuarios.filter((usuario) => usuario.rol === 'DISENO' || usuario.rol === 'DISENO_LIDER')
 
   return <Tarjeta>
-    <TarjetaCabecera titulo="Equipo de Diseño" descripcion="Asigna una persona líder a la OT y responsables a cada plano. Cada cambio queda validado por el sistema." />
+    <TarjetaCabecera titulo="Equipo de Diseño" ayuda="Asigna una persona líder a la OT y responsables a cada plano. Cada cambio queda validado por el sistema." />
     <TarjetaCuerpo>
       {nombreLider}
       <form onSubmit={alEnviar} className="space-y-4">
@@ -155,7 +155,7 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
   }
   const { alEnviar, enviando, error } = useEnvio(cargar, r => setAviso(r.mensaje ?? 'Versión registrada.'))
   return <Tarjeta>
-    <TarjetaCabecera titulo="Adjuntar PDF o nueva revisión" descripcion="Marca las áreas que reciben este PDF: si Maestranza y Producción llevan planos distintos, súbelos por separado. Si lo sube un colaborador, Jefatura de Diseño lo revisa primero; una corrección se adjunta como revisión nueva de esa área." />
+    <TarjetaCabecera titulo="Adjuntar PDF o nueva revisión" ayuda="Marca las áreas que reciben este PDF: si Maestranza y Producción llevan planos distintos, súbelos por separado. Si lo sube un colaborador, Jefatura de Diseño lo revisa primero; una corrección se adjunta como revisión nueva de esa área." />
     <TarjetaCuerpo>
         <form onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="plano_id" value={planoId} />

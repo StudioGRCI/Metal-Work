@@ -33,7 +33,7 @@ export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrh
     <>
       <EncabezadoPagina
         titulo={esHoy ? 'Asistencia de hoy' : 'Asistencia'}
-        descripcion={
+        ayuda={
           marca
             ? 'Toca «Ingreso» cuando la persona entra y «Salida» cuando se va. La hora la pone el sistema; si entra después de su hora, queda la tardanza.'
             : 'Lo que marcó la portería cada día, con las tardanzas. El descuento sale del mes, en «Tardanzas».'

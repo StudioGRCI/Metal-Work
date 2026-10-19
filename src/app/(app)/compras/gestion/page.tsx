@@ -38,7 +38,7 @@ export default async function PaginaGestionCompras() {
       <EncabezadoPagina
         titulo="Gestión de compras"
         migas={[{ titulo: quien.programa ? 'Logística' : 'Contabilidad' }, { titulo: 'Gestión de compras' }]}
-        descripcion={
+        ayuda={
           quien.programa
             ? 'Decide qué órdenes de compra recoge el conductor y en qué orden, con el peso de cada una. Con ese peso Contabilidad emite la guía de remisión y la carga aquí, y el conductor la ve en su lista antes de salir.'
             : 'Las órdenes de compra que recoge el conductor, en el orden que fijó Logística y con su peso. Emite la guía de remisión con ese peso y cárgala aquí: el conductor la ve en su teléfono.'

@@ -47,7 +47,7 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
     <>
       <EncabezadoPagina
         titulo="Órdenes de servicio"
-        descripcion="Los trabajos que hace un tercero —torno, pintura, doblez—, con su número OS-…-MW, el código interno de la unidad y su detracción. Gerencia las aprueba; Logística marca cuándo empiezan y cuándo vuelven conformes."
+        ayuda="Los trabajos que hace un tercero —torno, pintura, doblez—, con su número OS-…-MW, el código interno de la unidad y su detracción. Gerencia las aprueba; Logística marca cuándo empiezan y cuándo vuelven conformes."
         migas={[{ titulo: emite ? 'Compras' : 'Contabilidad' }, { titulo: 'Órdenes de servicio' }]}
         acciones={
           emite && (

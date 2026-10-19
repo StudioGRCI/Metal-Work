@@ -67,7 +67,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Códigos internos"
-        descripcion="Cada código interno con cómo va, lo que lleva costado y lo que deja de margen."
+        ayuda="Cada código interno con cómo va, lo que lleva costado y lo que deja de margen."
         migas={[{ titulo: 'Códigos internos' }]}
       />
 

@@ -15,7 +15,7 @@ export default async function PaginaNuevaEvaluacion() {
       <EncabezadoPagina
         migas={[{ titulo: 'Evaluación de desempeño', ruta: '/diseno/evaluaciones' }, { titulo: 'Nueva' }]}
         titulo="Nueva evaluación de desempeño"
-        descripcion="Se guarda como borrador: la revisas en su ficha y desde ahí la envías a Administración."
+        ayuda="Se guarda como borrador: la revisas en su ficha y desde ahí la envías a Administración."
       />
       <Tarjeta>
         <TarjetaCuerpo>

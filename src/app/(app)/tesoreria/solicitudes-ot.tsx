@@ -12,7 +12,7 @@ import { responderSolicitudTesoreria } from '../ordenes/[id]/acciones-costos'
 type Solicitud = Awaited<ReturnType<typeof solicitudesPendientesTesoreria>>[number]
 
 export function SolicitudesOT({ solicitudes }: { solicitudes: Solicitud[] }) {
-  return <Tarjeta className="mb-5"><TarjetaCabecera titulo="Solicitudes de Costos y Materiales" descripcion="Responde los pedidos de revisión de salida. Marcar atendida documenta la coordinación; la liberación de salida se registra por separado en la OT." />
+  return <Tarjeta className="mb-5"><TarjetaCabecera titulo="Solicitudes de Costos y Materiales" ayuda="Responde los pedidos de revisión de salida. Marcar atendida documenta la coordinación; la liberación de salida se registra por separado en la OT." />
     <TarjetaCuerpo className="space-y-3">{solicitudes.length === 0 ? <p className="text-sm text-texto-suave">No hay solicitudes pendientes.</p> : solicitudes.map(s => <SolicitudPendiente key={s.id} solicitud={s} />)}</TarjetaCuerpo>
   </Tarjeta>
 }

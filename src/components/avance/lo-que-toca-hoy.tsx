@@ -37,7 +37,7 @@ export function LoQueTocaHoy({
     <Tarjeta className="mb-4">
       <TarjetaCabecera
         titulo="Lo que toca reportar"
-        descripcion="Lo que está en marcha en tus órdenes y lo que ya pasó su fecha sin llegar al 100 %. Se reporta desde acá, sin entrar a la orden."
+        ayuda="Lo que está en marcha en tus órdenes y lo que ya pasó su fecha sin llegar al 100 %. Se reporta desde acá, sin entrar a la orden."
         acciones={
           faltanHoy > 0 ? (
             <Insignia tono="aviso">{faltanHoy} sin reporte de hoy</Insignia>

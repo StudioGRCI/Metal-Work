@@ -32,7 +32,7 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
     <>
       <EncabezadoPagina
         titulo="Ingreso y salida de vehículos"
-        descripcion="Cada vez que un vehículo entra a la planta —para fabricación, mantenimiento, garantía o de vuelta del arenado— y cuándo sale, con fotos de cómo entró y cómo salió. Reemplaza el seguimiento de portería en Excel."
+        ayuda="Cada vez que un vehículo entra a la planta —para fabricación, mantenimiento, garantía o de vuelta del arenado— y cuándo sale, con fotos de cómo entró y cómo salió. Reemplaza el seguimiento de portería en Excel."
         migas={[{ titulo: 'Vehículos' }]}
         acciones={registra && <NuevoIngresoVehiculo cuentaId={perfil.id} />}
       />

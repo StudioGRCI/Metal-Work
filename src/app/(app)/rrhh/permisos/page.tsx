@@ -36,7 +36,7 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
     <>
       <EncabezadoPagina
         titulo="Permisos"
-        descripcion="Las horas de permiso que pide cada persona y cómo las devuelve: se justifican con sus horas extras reservadas, de una vez o por partes. Mientras le falten horas, el permiso queda por justificar."
+        ayuda="Las horas de permiso que pide cada persona y cómo las devuelve: se justifican con sus horas extras reservadas, de una vez o por partes. Mientras le falten horas, el permiso queda por justificar."
         migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Permisos' }]}
         acciones={
           gestiona && (
@@ -51,9 +51,10 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
             titulo="Por justificar"
             descripcion={
               pendientes.length > 0
-                ? `${horasCortas(horasPendientes)} de permiso en ${pendientes.length} ${pendientes.length === 1 ? 'permiso' : 'permisos'}, de cualquier mes. Se justifican con las horas extras que Recursos Humanos reservó en «Horas extras».`
+                ? `${horasCortas(horasPendientes)} de permiso en ${pendientes.length} ${pendientes.length === 1 ? 'permiso' : 'permisos'}, de cualquier mes`
                 : 'Nadie debe horas de permiso.'
             }
+            ayuda="Se justifican con las horas extras que Recursos Humanos reservó en «Horas extras»."
           />
           <Tabla>
             <TablaCabecera>
@@ -127,7 +128,7 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
         </div>
 
         <Tarjeta className="overflow-hidden">
-          <TarjetaCabecera titulo="Los permisos del mes" descripcion="Del día más reciente al más antiguo. Lo anulado queda tachado, con su motivo." />
+          <TarjetaCabecera titulo="Los permisos del mes" ayuda="Del día más reciente al más antiguo. Lo anulado queda tachado, con su motivo." />
           <ul className="divide-y divide-borde">
             {delMes.length === 0 ? (
               <li className="px-4 py-6 text-center text-sm text-texto-suave">No hay permisos registrados este mes.</li>

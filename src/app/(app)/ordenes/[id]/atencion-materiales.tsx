@@ -34,7 +34,7 @@ export async function AtencionMaterialesDeOrden({ ordenId, perfil }: { ordenId: 
   return <section aria-labelledby="atencion-materiales-titulo" className="space-y-4">
     <Tarjeta>
       <TarjetaCabecera titulo="Atención de materiales de esta OT"
-        descripcion="Diseño revisa propuestas, Almacén comprueba stock y despacha, y Logística compra solo cuando falta saldo." />
+        ayuda="Diseño revisa propuestas, Almacén comprueba stock y despacha, y Logística compra solo cuando falta saldo." />
       <TarjetaCuerpo>
         <h2 id="atencion-materiales-titulo" className="sr-only">Atención de materiales de esta OT</h2>
         {datos.lineas.length === 0 && <p className="text-sm text-texto-suave">

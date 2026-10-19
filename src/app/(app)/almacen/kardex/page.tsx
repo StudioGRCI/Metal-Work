@@ -117,7 +117,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
     <>
       <EncabezadoPagina
         titulo="Kardex de Almacén"
-        descripcion="Ingresos, egresos e historial de movimientos con el saldo de cada material. Toda salida queda vinculada a un vehículo o al código de su unidad."
+        ayuda="Ingresos, egresos e historial de movimientos con el saldo de cada material. Toda salida queda vinculada a un vehículo o al código de su unidad."
       />
 
       {/* Las acciones van en su propia fila, a todo el ancho, y no en las del
@@ -231,7 +231,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
         <Tarjeta id="por-validar" className="mb-4">
           <TarjetaCabecera
             titulo={porValidar.length === 0 ? 'Ingresos por validar' : `Ingresos por validar · ${porValidar.length === 1 ? '1 compra' : `${porValidar.length} compras`}`}
-            descripcion="Lo que el conductor de Logística dejó en almacén. Revisa lo que llegó y valídalo: entra al kardex sin volver a registrarlo."
+            ayuda="Lo que el conductor de Logística dejó en almacén. Revisa lo que llegó y valídalo: entra al kardex sin volver a registrarlo."
             acciones={lineasPorValidar > 0 ? <Insignia tono="aviso">{lineasPorValidar === 1 ? '1 material' : `${lineasPorValidar} materiales`}</Insignia> : undefined}
           />
           <TarjetaCuerpo>
@@ -244,7 +244,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
         <Tarjeta id="por-cerrar" className="mb-4">
           <TarjetaCabecera
             titulo={porCerrar.length === 0 ? 'Salidas por cerrar' : `Salidas por cerrar · ${porCerrar.length === 1 ? '1 salida' : `${porCerrar.length} salidas`}`}
-            descripcion="Materia prima y EPP salen con formato: imprímelo, fírmenlo el almacenero y quien recibe, y carga el escaneo para cerrar la salida."
+            ayuda="Materia prima y EPP salen con formato: imprímelo, fírmenlo el almacenero y quien recibe, y carga el escaneo para cerrar la salida."
             acciones={porCerrar.length > 0 ? <Insignia tono="aviso">Formato pendiente</Insignia> : undefined}
           />
           <TarjetaCuerpo>
@@ -258,7 +258,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
         <Tarjeta className="mb-4">
           <TarjetaCabecera
             titulo={bajoMinimo.length === 1 ? '1 material bajo su stock mínimo' : `${bajoMinimo.length} materiales bajo su stock mínimo`}
-            descripcion="Almacén y Logística recibieron el aviso al cruzar la línea. Elige uno para ver su ficha."
+            ayuda="Almacén y Logística recibieron el aviso al cruzar la línea. Elige uno para ver su ficha."
             acciones={<Insignia tono="peligro">Reponer</Insignia>}
           />
           <TarjetaCuerpo>
@@ -301,7 +301,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo={elegido ? `${elegido.descripcion} · ${elegido.codigo}` : filtros.almacen ? `Historial de ${almacenEnFrase(filtros.almacen)}` : 'Historial de movimientos'}
-          descripcion={elegido
+          ayuda={elegido
             ? 'En orden de fecha, como la ficha de kardex. El saldo es lo que quedó en almacén tras cada movimiento.'
             : 'Lo último primero. El saldo es el del material en ese momento; elige un material para ver su ficha.'}
           acciones={

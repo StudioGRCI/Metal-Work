@@ -5,9 +5,11 @@
  *
  *   1. Paga a cuenta una factura de compra en soles: el formulario pide la
  *      cuenta (sin elegirla no deja enviar); tres toques dejan un solo pago y
- *      un solo egreso, y abajo de la pantalla dice de qué cuenta salió (también
- *      cuando el pago cancela el documento y su botón desaparece). Con un día
- *      de antes del inicio de la cuenta, dice que no la mueve.
+ *      un solo egreso, y el aviso de la caja de la barra de arriba dice de qué
+ *      cuenta salió (también cuando el pago cancela el documento y su botón
+ *      desaparece): está cerrado, se abre al tocarlo y se cierra con Escape. Con un día
+ *      de antes del inicio de la cuenta, dice que no la mueve; pagada así otra
+ *      factura, «La caja no se movió» llega abierto en la barra, sin tocar nada.
  *   2. Paga una factura en dólares desde la cuenta en soles: aparece «Lo que
  *      salió de la cuenta, en soles» y la caja guarda su tipo de cambio.
  *   3. Paga una orden de servicio, cobra una factura de venta en dólares a la
@@ -128,6 +130,7 @@ const N = {
   adqPen: `F998-1${sello}`,
   adqUsd: `F998-2${sello}`,
   adqCierre: `F998-3${sello}`,
+  adqAntes: `F998-4${sello}`,
   os: `QA-OS-${sello}`,
   fv: `E998-1${sello}`,
   rec: `E998-${sello}`,
@@ -168,6 +171,7 @@ try {
     ['adqPen', N.adqPen, 'PEN', 1180, 0],
     ['adqUsd', N.adqUsd, 'USD', 100, 0],
     ['adqCierre', N.adqCierre, 'PEN', 100, 5],
+    ['adqAntes', N.adqAntes, 'PEN', 100, 40],
   ]) {
     const [{ id }] = await consulta('select gen_random_uuid() as id')
     await consulta(
@@ -292,9 +296,48 @@ const movimiento = async (origen, documento, campo) =>
   const pagos = await consulta('select count(*)::int as n from pagos_adquisicion where adquisicion_id = $1', [ids.adqPen])
   comprobar(pagos[0].n === 1 && movPen.length === 1, `tres toques dejan un pago y un egreso (${pagos[0].n} pagos, ${movPen.length} egresos)`)
   comprobar(movPen[0]?.tipo === 'EGRESO' && movPen[0]?.monto === 500 && movPen[0]?.caja_id === ids.pen, 'el egreso es de S/ 500.00 en la cuenta en soles')
-  const leerAviso = async () => limpio(await pagina.locator('[data-aviso-caja]').textContent({ timeout: 8000 }).catch(() => ''))
+  // El aviso de la caja es un botón de la barra de arriba: se toca para leerlo
+  // y se cierra con Escape, que no lo borra.
+  const botonAviso = pagina.getByRole('button', { name: 'Lo que pasó en la caja diaria' })
+  const cuadroAviso = pagina.locator('[data-aviso-caja]')
+  const leerAviso = async () => {
+    await botonAviso.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {})
+    if (!(await botonAviso.isVisible())) return ''
+    if ((await botonAviso.getAttribute('aria-expanded')) !== 'true') await botonAviso.click()
+    await cuadroAviso.waitFor({ state: 'visible', timeout: 4000 }).catch(() => {})
+    const texto = (await cuadroAviso.isVisible()) ? limpio(await cuadroAviso.textContent()) : ''
+    await pagina.keyboard.press('Escape')
+    return texto
+  }
+  await botonAviso.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {})
+  comprobar((await botonAviso.isVisible()) && (await cuadroAviso.isHidden()), 'el aviso llega a la barra con su detalle cerrado, sin cuadro encima de la lista')
   const aviso = await leerAviso()
-  comprobar(aviso.includes(`Salió de ${SOLES}`), `abajo de la pantalla dice de qué cuenta salió («${aviso}»)`)
+  comprobar(aviso.includes(`Salió de ${SOLES}`), `el aviso de la barra dice de qué cuenta salió («${aviso}»)`)
+  comprobar((await cuadroAviso.isHidden()) && (await botonAviso.isVisible()), 'Escape cierra el detalle y el aviso se queda en la barra')
+
+  // 1b. Una factura de hace cuarenta días pagada ese día, antes del inicio de la
+  // cuenta: no mueve la caja, y eso no se esconde detrás del botón de la barra.
+  await pagina.locator('article', { hasText: N.adqAntes }).getByRole('button', { name: 'Registrar pago' }).click()
+  v = pagina.locator('[role="dialog"]')
+  await elegirCuenta(v, SOLES)
+  await v.locator('input[name="fecha"]').fill(haceCuarenta)
+  await v.locator('input[name="monto"]').fill('100')
+  await v.locator('input[name="referencia"]').fill(`OP-${sello}-4`)
+  await v.locator('input[name="archivo"]').setInputFiles(VOUCHER)
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  error = await esperarVentana(pagina)
+  comprobar(!error, `paga la factura de antes del inicio de la cuenta${error ? ` (dijo «${error}»)` : ''}`)
+  // Llega abierto en la barra, que siempre se ve: una alerta arriba de la
+  // página quedaba fuera de la vista en el teléfono.
+  await cuadroAviso.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {})
+  const textoAlerta = limpio(await cuadroAviso.textContent().catch(() => ''))
+  const enVista = await cuadroAviso.evaluate((el) => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight }).catch(() => false)
+  comprobar(textoAlerta.includes('La caja no se movió') && enVista, `que la caja no se movió llega abierto y a la vista, sin tocar nada («${textoAlerta}»)`)
+  comprobar(((await botonAviso.getAttribute('class')) ?? '').includes('text-aviso'), 'y el botón de la barra va en tono de aviso')
+  await pagina.keyboard.press('Escape')
+  comprobar(await cuadroAviso.isHidden(), 'Escape lo cierra')
+  const movAntes = await movimiento('PAGO_ADQUISICION', ids.adqAntes, { tabla: 'pagos_adquisicion', columna: 'adquisicion_id' })
+  comprobar(movAntes.length === 0, `ese pago no deja movimiento en la caja (${movAntes.length})`)
 
   // 2. Factura en dólares desde la cuenta en soles.
   const facturaUsd = pagina.locator('article', { hasText: N.adqUsd })
