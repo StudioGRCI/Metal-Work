@@ -56,7 +56,7 @@ export function DiasLaborables({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Días de taller"
-        descripcion="Los plazos en días hábiles saltan los días apagados y los feriados."
+        ayuda="Los plazos en días hábiles saltan los días apagados y los feriados."
       />
       <TarjetaCuerpo>
         <form onSubmit={alEnviar} className="space-y-3">
@@ -116,7 +116,7 @@ export function Feriados({
     <Tarjeta>
       <TarjetaCabecera
         titulo={`Feriados de ${anio}`}
-        descripcion="Los nacionales se cargan de una vez; los de la empresa se agregan a mano."
+        ayuda="Los nacionales se cargan de una vez; los de la empresa se agregan a mano."
         acciones={
           puedeEditar && (
             <form onSubmit={siembra.alEnviar}>

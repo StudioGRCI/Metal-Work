@@ -37,7 +37,7 @@ export function MermaDeOrden({ ordenId, merma, puedeFijar, ordenViva }: {
     <Tarjeta>
       <TarjetaCabecera
         titulo="Merma de material"
-        descripcion="Lo que se pierde al cortar y armar. Diseño e Ingeniería la evalúa; el costeo la aplica sobre el material valorizado de la OT."
+        ayuda="Lo que se pierde al cortar y armar. Diseño e Ingeniería la evalúa; el costeo la aplica sobre el material valorizado de la OT."
         acciones={editable && (
           <Boton tamano="sm" variante={merma ? 'contorno' : 'primario'} onClick={() => setAbierta(true)}>
             {merma ? 'Cambiar merma' : 'Fijar merma'}

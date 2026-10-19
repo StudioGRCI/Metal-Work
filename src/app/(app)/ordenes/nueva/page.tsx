@@ -15,7 +15,7 @@ export default async function PaginaNuevaOrden() {
       <EncabezadoPagina
         migas={[{ titulo: 'Órdenes de trabajo', ruta: '/ordenes' }, { titulo: 'Sin cotización' }]}
         titulo="Orden sin cotización"
-        descripcion="Para una reparación, una garantía o un trabajo que no salió de una cotización. Va con el PDF de la orden, como la de una cotización. Nace en borrador y Gerencia la aprueba; recién ahí se generan sus etapas. La orden de una cotización aprobada se emite desde «Cotizaciones» con el número de su papel."
+        ayuda="Para una reparación, una garantía o un trabajo que no salió de una cotización. Va con el PDF de la orden, como la de una cotización. Nace en borrador y Gerencia la aprueba; recién ahí se generan sus etapas. La orden de una cotización aprobada se emite desde «Cotizaciones» con el número de su papel."
       />
       <FormularioOrden catalogos={catalogos} />
     </>

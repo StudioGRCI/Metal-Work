@@ -73,7 +73,7 @@ function RevisionDeSalida({ ordenId, datos, puedeSolicitar, salidaCompleta }: {
   return (
     <Tarjeta>
       <TarjetaCabecera titulo="Revisión financiera para la salida"
-        descripcion="Se solicita después de cerrar la ficha de salida y adjuntar el escaneo firmado." />
+        ayuda="Se solicita después de cerrar la ficha de salida y adjuntar el escaneo firmado." />
       <TarjetaCuerpo className="space-y-4">
         {puedeSolicitar && salidaCompleta && <NuevaSolicitud ordenId={ordenId} />}
         {puedeSolicitar && !salidaCompleta &&
@@ -112,7 +112,7 @@ function ResumenCosteo({ ordenId, lineas, delCodigo }: { ordenId: string; lineas
   </>
   if (!delCodigo) {
     return <Tarjeta>
-      <TarjetaCabecera titulo="Costo acumulado de la OT" descripcion="Material despachado y sacado a la unidad, merma de Diseño, planilla repartida por RR. HH., gastos aprobados de las áreas, servicios del local y gastos de operación de Administración."
+      <TarjetaCabecera titulo="Costo acumulado de la OT" ayuda="Material despachado y sacado a la unidad, merma de Diseño, planilla repartida por RR. HH., gastos aprobados de las áreas, servicios del local y gastos de operación de Administración."
         acciones={enlaceDetalle} />
       <TarjetaCuerpo className="space-y-4">{deLaOt}</TarjetaCuerpo>
     </Tarjeta>
@@ -121,7 +121,7 @@ function ResumenCosteo({ ordenId, lineas, delCodigo }: { ordenId: string; lineas
   const falta = c ? faltanteDelCosto({ sinPrecio: c.sinPrecio, horasSinCosto: c.sinCosto, sinCambio: c.sinCambio }) : null
   return <Tarjeta>
     <TarjetaCabecera titulo="Costo de la unidad"
-      descripcion={`Se costea por su código interno, ${delCodigo.codigo}: la mano de obra del reporte diario, las salidas del almacén con su merma, las OS, los subcontratos, los gastos del mes, los gastos aprobados en esta OT y la caja. Es el mismo costo que ve Gerencia en Códigos internos.`}
+      ayuda={`Se costea por su código interno, ${delCodigo.codigo}: la mano de obra del reporte diario, las salidas del almacén con su merma, las OS, los subcontratos, los gastos del mes, los gastos aprobados en esta OT y la caja. Es el mismo costo que ve Gerencia en Códigos internos.`}
       acciones={delCodigo.enlace ? <Link href={delCodigo.enlace} className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0">Ver el costo del código</Link> : undefined} />
     <TarjetaCuerpo className="space-y-4">
       {c
@@ -150,7 +150,7 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
   const [id, setId] = useState(() => crypto.randomUUID())
   const { alEnviar, enviando, resultado, error } = useEnvio(registrarGastoArea, () => setId(crypto.randomUUID()))
   return <Tarjeta>
-    <TarjetaCabecera titulo="Gastos de las áreas" descripcion="Cada área adjunta el comprobante de su OT. Administración aprueba; solo entonces se suma al costo." />
+    <TarjetaCabecera titulo="Gastos de las áreas" ayuda="Cada área adjunta el comprobante de su OT. Administración aprueba; solo entonces se suma al costo." />
     <TarjetaCuerpo className="space-y-4">
       {puedeRegistrar && <details className="rounded-[var(--radius-base)] border border-borde p-3">
         <summary className="cursor-pointer font-medium">Registrar gasto de mi área</summary>
@@ -214,7 +214,7 @@ function FichaVehicular({ ordenId, datos, editable }: { ordenId: string; datos: 
     alEnviar(evento, d => d.set('accion', accion))
   }
   return <Tarjeta>
-    <TarjetaCabecera titulo="Ficha única de ingreso y salida" descripcion="Usa el formato de inspección vehicular de Metal Work. Guarda avances, cierra cada etapa y descarga la misma ficha para firmarla." />
+    <TarjetaCabecera titulo="Ficha única de ingreso y salida" ayuda="Usa el formato de inspección vehicular de Metal Work. Guarda avances, cierra cada etapa y descarga la misma ficha para firmarla." />
     <TarjetaCuerpo className="space-y-4">
       <div className="flex flex-wrap gap-3 text-sm">
         <span>Ingreso: {ingresoCerrado ? fechaHora(c?.ingreso_cerrado_en ?? '') : 'pendiente'}</span>

@@ -82,7 +82,7 @@ function CodigosEnCurso({ codigos }: { codigos: CodigoEnCurso[] }) {
     <Tarjeta className="mb-4">
       <TarjetaCabecera
         titulo="Códigos con movimiento reciente"
-        descripcion="Del que se movió hace menos al que se movió hace más, con su avance y su costo a la fecha"
+        ayuda="Del que se movió hace menos al que se movió hace más, con su avance y su costo a la fecha"
         acciones={
           <Link href="/codigos-internos" className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0">
             Ver todos
@@ -191,7 +191,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
         <Tarjeta className="lg:col-span-2 lg:self-start">
           <TarjetaCabecera
             titulo="Unidades en taller"
-            descripcion={
+            ayuda={
               verCosteo
                 ? 'De la entrega más próxima a la más lejana, con su avance y lo que llevan costado'
                 : 'De la entrega más próxima a la más lejana, con su avance'
@@ -344,7 +344,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
           <Tarjeta>
             <TarjetaCabecera
               titulo="Requieren atención"
-              descripcion="Órdenes que pasaron su fecha de entrega"
+              ayuda="Órdenes que pasaron su fecha de entrega"
             />
             <TarjetaCuerpo className="space-y-2">
               {atrasadas.length === 0 ? (

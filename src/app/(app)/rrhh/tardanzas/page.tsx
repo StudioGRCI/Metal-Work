@@ -37,7 +37,7 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
     <>
       <EncabezadoPagina
         titulo="Tardanzas"
-        descripcion={`Por cada persona, cuántas veces llegó después de su hora y su tolerancia en el mes. Cada ${cada} tardanzas se descuenta el ${porcentajeCorto(pct)} de su remuneración mensual; el mes siguiente empieza de cero.`}
+        ayuda={`Por cada persona, cuántas veces llegó después de su hora y su tolerancia en el mes. Cada ${cada} tardanzas se descuenta el ${porcentajeCorto(pct)} de su remuneración mensual; el mes siguiente empieza de cero.`}
         migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Tardanzas' }]}
       />
 
@@ -137,7 +137,7 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
         <Tarjeta>
           <TarjetaCabecera
             titulo="La regla de tardanza"
-            descripcion={
+            ayuda={
               regla
                 ? `Hoy: ${regla.tolerancia_minutos} ${regla.tolerancia_minutos === 1 ? 'minuto' : 'minutos'} de tolerancia; cada ${cada} tardanzas del mes se descuenta el ${porcentajeCorto(pct)} de la remuneración mensual. Si una marca fue tardanza queda fijo al marcar; el descuento del mes se calcula con la regla de hoy. Las tardanzas no se compensan con horas extras: eso es para los permisos.`
                 : 'Todavía no hay regla: se usa la de la base.'

@@ -103,7 +103,7 @@ export function SalidaDeUnidad({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Salida de la unidad"
-        descripcion="Liberación, acta, aviso y constancia de salida física."
+        ayuda="Liberación, acta, aviso y constancia de salida física."
       />
       <TarjetaCuerpo className="space-y-4">
         <div className="rounded-[var(--radius-base)] bg-acento-suave px-3 py-2 text-sm text-acento">
@@ -285,7 +285,7 @@ export function FechasClave({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Fechas clave"
-        descripcion="Las reglas de plazo que la empresa tiene escritas, calculadas en días de taller. La OS de acabados y la tarjeta se tramitan fuera: acá solo va su fecha límite."
+        ayuda="Las reglas de plazo que la empresa tiene escritas, calculadas en días de taller. La OS de acabados y la tarjeta se tramitan fuera: acá solo va su fecha límite."
       />
       <TarjetaCuerpo className="space-y-0">
         {filas.map((f) => {

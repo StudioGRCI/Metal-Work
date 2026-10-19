@@ -63,7 +63,7 @@ export default async function PaginaPlantilla({ params }: PageProps<'/carroceria
         <Tarjeta className="lg:col-span-2">
           <TarjetaCabecera
             titulo="Equipamiento"
-            descripcion="Lo que la casa promete con esta carrocería. «Sin el accesorio» es el porta que se entrega vacío."
+            ayuda="Lo que la casa promete con esta carrocería. «Sin el accesorio» es el porta que se entrega vacío."
           />
           <TarjetaCuerpo className="p-0">
             {plantilla.accesorios.length === 0 ? (
@@ -87,7 +87,7 @@ export default async function PaginaPlantilla({ params }: PageProps<'/carroceria
         <Tarjeta className="lg:col-span-2">
           <TarjetaCabecera
             titulo="Ficha técnica"
-            descripcion="Sección por sección, en el orden en que la escribe la empresa. Las medidas y la capacidad se mantienen en la ficha de cada orden."
+            ayuda="Sección por sección, en el orden en que la escribe la empresa. Las medidas y la capacidad se mantienen en la ficha de cada orden."
           />
           <TarjetaCuerpo className="space-y-5">
             {plantilla.secciones.length === 0 ? (
@@ -118,7 +118,7 @@ export default async function PaginaPlantilla({ params }: PageProps<'/carroceria
         <Tarjeta>
           <TarjetaCabecera
             titulo="Verificación y funcionamiento"
-            descripcion="Los pasos que el taller recorre con esta carrocería; bajan a la OT al aprobarla."
+            ayuda="Los pasos que el taller recorre con esta carrocería; bajan a la OT al aprobarla."
           />
           <TarjetaCuerpo className="p-0">
             {plantilla.verificacion.length === 0 ? (

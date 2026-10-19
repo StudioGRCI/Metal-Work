@@ -31,7 +31,7 @@ export default async function PaginaEvaluacionesDiseno() {
     <>
       <EncabezadoPagina
         titulo="Evaluación de desempeño de Diseño"
-        descripcion={recibe && !evalua
+        ayuda={recibe && !evalua
           ? 'Las evaluaciones que Diseño e Ingeniería te envía. Solo las ven quien las hizo y Administración.'
           : 'La jefatura de Diseño e Ingeniería evalúa a su personal y la envía a Administración. Solo la ven quien la hizo y Administración.'}
         acciones={evalua && (
@@ -43,7 +43,7 @@ export default async function PaginaEvaluacionesDiseno() {
           <Tarjeta>
             <TarjetaCabecera
               titulo="Por recibir"
-              descripcion="Revísala y márcala como recibida, o devuélvela a Diseño con lo que hay que corregir."
+              ayuda="Revísala y márcala como recibida, o devuélvela a Diseño con lo que hay que corregir."
             />
             <TarjetaCuerpo className="p-0">
               <ListaEvaluaciones
@@ -58,7 +58,7 @@ export default async function PaginaEvaluacionesDiseno() {
           <Tarjeta>
             <TarjetaCabecera
               titulo="Borradores y devueltas"
-              descripcion="Las que todavía no enviaste y las que Administración te devolvió con observaciones."
+              ayuda="Las que todavía no enviaste y las que Administración te devolvió con observaciones."
             />
             <TarjetaCuerpo className="p-0">
               <ListaEvaluaciones filas={borradoresYDevueltas} vacio={{ titulo: '' }} />
@@ -68,7 +68,7 @@ export default async function PaginaEvaluacionesDiseno() {
         <Tarjeta>
           <TarjetaCabecera
             titulo={soloEvalua ? 'Mis evaluaciones' : soloRecibe ? 'Recibidas y devueltas' : 'Todas las evaluaciones'}
-            descripcion={soloEvalua
+            ayuda={soloEvalua
               ? 'Las que hiciste, en cualquier estado. Enviada, ya no se corrige salvo que Administración la devuelva.'
               : soloRecibe
                 ? 'Las que ya recibiste y las que devolviste a Diseño para corregir.'

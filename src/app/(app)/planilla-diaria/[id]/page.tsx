@@ -87,7 +87,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
         <Tarjeta className="overflow-hidden">
           <TarjetaCabecera
             titulo="Lo que se le paga a cada persona"
-            descripcion={
+            ayuda={
               paga
                 ? 'Paga a la cuenta de cada persona y registra el pago con su comprobante; después adjunta su boleta de pago.'
                 : arma
@@ -112,7 +112,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
         </Tarjeta>
 
         <Tarjeta className="overflow-hidden">
-          <TarjetaCabecera titulo="Pagos" descripcion="Cada pago de Tesorería con su comprobante. Uno mal registrado se anula y su gente vuelve a quedar por pagar." />
+          <TarjetaCabecera titulo="Pagos" ayuda="Cada pago de Tesorería con su comprobante. Uno mal registrado se anula y su gente vuelve a quedar por pagar." />
           {p.pagos.length === 0 ? (
             <TarjetaCuerpo>
               <p className="text-sm text-texto-suave">{anulada ? 'Se anuló sin pagos.' : 'Tesorería todavía no registra pagos.'}</p>

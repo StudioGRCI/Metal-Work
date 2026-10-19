@@ -161,7 +161,7 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
           <Tarjeta className="overflow-hidden">
             <TarjetaCabecera
               titulo="Historia en el taller"
-              descripcion={
+              ayuda={
                 verOrdenes
                   ? 'Cada trabajo que se le hizo, del más reciente al primero.'
                   : 'Las órdenes de trabajo las ve quien tiene acceso a órdenes.'
@@ -249,7 +249,7 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
             <Tarjeta>
               <TarjetaCabecera
                 titulo="Otras fichas del mismo vehículo"
-                descripcion="Tienen el mismo chasis, placa, código interno o FMI: el vehículo cambió de dueño o se registró dos veces."
+                ayuda="Tienen el mismo chasis, placa, código interno o FMI: el vehículo cambió de dueño o se registró dos veces."
               />
               <TarjetaCuerpo className="p-0">
                 <ul className="divide-y divide-[var(--borde)]">

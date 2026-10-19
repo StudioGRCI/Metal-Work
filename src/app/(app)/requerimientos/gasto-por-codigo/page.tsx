@@ -49,7 +49,7 @@ export default async function PaginaGastoPorCodigo({ searchParams }: PageProps<'
     <>
       <EncabezadoPagina
         titulo="Gasto por código interno"
-        descripcion="Lo que salió del almacén para cada código interno, a su precio, y lo que se compró con ese código. Las compras se muestran aparte y no se suman: lo comprado entra al almacén y se cuenta cuando sale para el código. La mano de obra no está aquí: la llevan RR. HH. y Gerencia."
+        ayuda="Lo que salió del almacén para cada código interno, a su precio, y lo que se compró con ese código. Las compras se muestran aparte y no se suman: lo comprado entra al almacén y se cuenta cuando sale para el código. La mano de obra no está aquí: la llevan RR. HH. y Gerencia."
         migas={[{ titulo: 'Requerimientos', ruta: '/requerimientos' }, { titulo: 'Gasto por código' }]}
       />
 

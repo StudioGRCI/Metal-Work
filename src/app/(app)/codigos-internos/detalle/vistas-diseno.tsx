@@ -26,11 +26,8 @@ export async function VistaEtapas({ codigo }: { codigo: string }) {
     <Tarjeta>
       <TarjetaCabecera
         titulo="Etapas de la unidad"
-        descripcion={
-          etapas.length > 0
-            ? `${resumenEtapas(etapas, hoy)}. Las arma Diseño con su fecha comprometida; el supervisor de cada área marca cuándo empezó y terminó la suya, y el avance sale de su reporte diario.`
-            : undefined
-        }
+        descripcion={etapas.length > 0 ? `${resumenEtapas(etapas, hoy)}.` : undefined}
+        ayuda="Las arma Diseño con su fecha comprometida; el supervisor de cada área marca cuándo empezó y terminó la suya, y el avance sale de su reporte diario."
       />
       <TarjetaCuerpo>
         {etapas.length === 0 ? (
@@ -50,7 +47,7 @@ export async function VistaPlanos({ codigo }: { codigo: string }) {
     <Tarjeta>
       <TarjetaCabecera
         titulo="Planos"
-        descripcion="Los planos que cargó Diseño para cada área de producción, con su revisión vigente y si el área ya la recibió."
+        ayuda="Los planos que cargó Diseño para cada área de producción, con su revisión vigente y si el área ya la recibió."
       />
       <TarjetaCuerpo>
         {planos.length === 0 ? (
@@ -70,16 +67,16 @@ export async function VistaMateriales({ codigo }: { codigo: string }) {
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo="Lo que lleva la unidad contra lo comprado y lo salido"
-          descripcion="La lista de Diseño, material por material, frente a las OC con este código (menos las rechazadas) y a lo que salió del almacén para él (menos lo devuelto)."
+          ayuda="La lista de Diseño, material por material, frente a las OC con este código (menos las rechazadas) y a lo que salió del almacén para él (menos lo devuelto)."
         />
         <TablaComparada materiales={comparados} />
       </Tarjeta>
       <Tarjeta className="overflow-hidden">
-        <TarjetaCabecera titulo="Lista de materiales de Diseño" descripcion="Línea por línea, con el plano del que sale cada una." />
+        <TarjetaCabecera titulo="Lista de materiales de Diseño" ayuda="Línea por línea, con el plano del que sale cada una." />
         <TablaListaDiseno lineas={lineas} />
       </Tarjeta>
       <Tarjeta className="overflow-hidden">
-        <TarjetaCabecera titulo="Lo que pidieron las áreas" descripcion="Los requerimientos con este código, menos los anulados." />
+        <TarjetaCabecera titulo="Lo que pidieron las áreas" ayuda="Los requerimientos con este código, menos los anulados." />
         <TablaLoPedido lineas={pedido} />
       </Tarjeta>
     </>

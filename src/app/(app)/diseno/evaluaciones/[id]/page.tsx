@@ -51,7 +51,7 @@ export default async function PaginaEvaluacion({ params }: PageProps<'/diseno/ev
         <Tarjeta className="min-w-0">
           <TarjetaCabecera
             titulo="Formato de evaluación del desempeño laboral"
-            descripcion="Veinte comportamientos de 1 (muy bajo) a 5 (muy alto). El puntaje total es sobre 100 %."
+            ayuda="Veinte comportamientos de 1 (muy bajo) a 5 (muy alto). El puntaje total es sobre 100 %."
           />
           <TarjetaCuerpo className="space-y-5">
             <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">

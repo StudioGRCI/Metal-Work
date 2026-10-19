@@ -90,7 +90,7 @@ export function ArchivosDeOrden({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Orden de trabajo"
-        descripcion="El PDF de la orden para tenerlo a mano en el taller, y lo que alguien encontró mal en ella."
+        ayuda="El PDF de la orden para tenerlo a mano en el taller, y lo que alguien encontró mal en ella."
         acciones={
           sube && (
             <label

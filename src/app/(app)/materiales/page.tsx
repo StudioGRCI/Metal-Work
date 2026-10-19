@@ -47,7 +47,7 @@ export default async function PaginaMateriales({ searchParams }: PageProps<'/mat
     <>
       <EncabezadoPagina
         titulo="Materiales"
-        descripcion="Catálogo de Diseño y Almacén. Los materiales del Excel conservan su código original; Almacén debe confirmar las unidades provisionales."
+        ayuda="Catálogo de Diseño y Almacén. Los materiales del Excel conservan su código original; Almacén debe confirmar las unidades provisionales."
         acciones={puedeEditar && <NuevoMaterial catalogos={catalogos} />}
       />
 

@@ -82,7 +82,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
     <>
       <EncabezadoPagina
         titulo="Atención de requerimiento"
-        descripcion="Cada requerimiento pasa primero por Almacén, insumo por insumo: lo que tiene lo separa y solo lo que falta se compra. Lo de operación lo compra Logística; lo de Administración, la administradora. Cuando llega, Almacén lo recepciona y lo entrega."
+        ayuda="Cada requerimiento pasa primero por Almacén, insumo por insumo: lo que tiene lo separa y solo lo que falta se compra. Lo de operación lo compra Logística; lo de Administración, la administradora. Cuando llega, Almacén lo recepciona y lo entrega."
         migas={[{ titulo: 'Requerimientos', ruta: '/requerimientos' }, { titulo: 'Atención' }]}
       />
 

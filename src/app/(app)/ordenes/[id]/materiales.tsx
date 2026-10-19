@@ -71,7 +71,7 @@ export function MaterialesDeOrden({
       <Tarjeta>
         <TarjetaCabecera
           titulo="Materiales de la orden"
-          descripcion="Diseño carga lo que lleva la unidad, con su plano si ya lo tiene. El área puede proponer otros insumos, Diseño los aprueba y Almacén comprueba el stock antes de derivar a Logística."
+          ayuda="Diseño carga lo que lleva la unidad, con su plano si ya lo tiene. El área puede proponer otros insumos, Diseño los aprueba y Almacén comprueba el stock antes de derivar a Logística."
         />
         <TarjetaCuerpo className="grid gap-3 sm:grid-cols-3">
           <Dato titulo="Líneas" valor={String(materiales.length)} pie="materiales distintos" />
@@ -189,7 +189,7 @@ function MaterialFueraDeCatalogo({ ordenId, catalogo }: { ordenId: string; catal
   </div>
   return <Tarjeta className="border-acento">
     <TarjetaCabecera titulo="Solicitar un material nuevo"
-      descripcion="Indica qué necesita tu área y para qué plano. Se guarda en la OT; Diseño lo revisa antes de enviarlo a Almacén." />
+      ayuda="Indica qué necesita tu área y para qué plano. Se guarda en la OT; Diseño lo revisa antes de enviarlo a Almacén." />
     <TarjetaCuerpo>
       <form key={clave} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2">
         <input type="hidden" name="orden_id" value={ordenId} />
@@ -488,7 +488,7 @@ function NuevoMaterial({
     <Tarjeta className="border-acento">
       <TarjetaCabecera
         titulo={propuesta ? 'Proponer material a Diseño' : 'Agregar material a la lista'}
-        descripcion={propuesta ? 'Elige el plano y la cantidad que necesita tu área. Diseño revisará la propuesta antes de enviarla a Almacén.' : 'Qué lleva la unidad y cuánto; el plano es opcional y se puede vincular después. Si el material no está en el catálogo, se agrega en «Materiales» del menú.'}
+        ayuda={propuesta ? 'Elige el plano y la cantidad que necesita tu área. Diseño revisará la propuesta antes de enviarla a Almacén.' : 'Qué lleva la unidad y cuánto; el plano es opcional y se puede vincular después. Si el material no está en el catálogo, se agrega en «Materiales» del menú.'}
       />
       <TarjetaCuerpo>
         <form key={guardados} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">

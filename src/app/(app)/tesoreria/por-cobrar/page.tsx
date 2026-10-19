@@ -54,7 +54,7 @@ export default async function PaginaPorCobrar() {
     <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Cuentas por cobrar"
-        descripcion="Las facturas que registró Contabilidad, por código interno, de la que vence antes a la que vence después. Registra cada cobro con su voucher."
+        ayuda="Las facturas que registró Contabilidad, por código interno, de la que vence antes a la que vence después. Registra cada cobro con su voucher."
       />
 
       {pendientes.length > 0 && (
@@ -72,7 +72,7 @@ export default async function PaginaPorCobrar() {
       {solicitudes.length > 0 && <SolicitudesOT solicitudes={solicitudes} />}
 
       <Tarjeta>
-        <TarjetaCabecera titulo="Por cobrar" descripcion="Cada factura con su saldo; lo vencido sale en rojo." />
+        <TarjetaCabecera titulo="Por cobrar" ayuda="Cada factura con su saldo; lo vencido sale en rojo." />
         <TarjetaCuerpo className="space-y-3">
           {pendientes.length === 0 ? (
             <div className="flex flex-col items-center py-8 text-center">
@@ -133,7 +133,7 @@ export default async function PaginaPorCobrar() {
       <Tarjeta className="mt-5">
         <TarjetaCabecera
           titulo="Cotizaciones aprobadas"
-          descripcion="Lo que Gerencia aprobó, por código interno, con lo que Contabilidad ya facturó y lo cobrado."
+          ayuda="Lo que Gerencia aprobó, por código interno, con lo que Contabilidad ya facturó y lo cobrado."
         />
         <TarjetaCuerpo className="space-y-2">
           {cotizaciones.length === 0 ? (

@@ -80,7 +80,7 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
         <Tarjeta id="ficha">
           <TarjetaCabecera
             titulo="Ficha de ingreso y salida"
-            descripcion="El formato de inspección vehicular de Metal Work (SIG-FCLIV-001). Se llena al entrar, se completa al salir y se adjunta firmado."
+            ayuda="El formato de inspección vehicular de Metal Work (SIG-FCLIV-001). Se llena al entrar, se completa al salir y se adjunta firmado."
             acciones={
               <span className="flex flex-wrap gap-2">
                 <DescargarFicha registro={r.id} />
@@ -221,7 +221,7 @@ function RevisionDeTesoreria({
     <Tarjeta id="revision-salida">
       <TarjetaCabecera
         titulo="Revisión de Tesorería para la salida"
-        descripcion="Antes de entregar el vehículo, Tesorería revisa lo que le pidas (por ejemplo, si el cliente pagó). Se pide con la ficha de salida cerrada y su escaneo firmado."
+        ayuda="Antes de entregar el vehículo, Tesorería revisa lo que le pidas (por ejemplo, si el cliente pagó). Se pide con la ficha de salida cerrada y su escaneo firmado."
         acciones={ultima && <Insignia tono={definirRevisionSalida(ultima.estado).tono}>{definirRevisionSalida(ultima.estado).etiqueta}</Insignia>}
       />
       <TarjetaCuerpo className="space-y-4">

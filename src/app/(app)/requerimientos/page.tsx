@@ -75,7 +75,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
     <>
       <EncabezadoPagina
         titulo="Requerimientos"
-        descripcion={
+        ayuda={
           emite
             ? 'Lo que cada área necesita, con el código interno y su justificación. Al registrarlo lo revisa Almacén insumo por insumo: lo que tiene lo separa y solo lo que falta se compra.'
             : supervisaArea

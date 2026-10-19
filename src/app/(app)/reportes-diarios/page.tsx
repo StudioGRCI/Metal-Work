@@ -42,7 +42,7 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Reporte diario"
-        descripcion={
+        ayuda={
           sube
             ? 'Lo que hiciste en el día por código interno: los trabajos con su avance, quién trabajó y cuántas horas, y hasta tres fotos. Las horas pasan solas al costeo; Gerencia y Recursos Humanos lo validan para la planilla diaria, o te lo observan para que lo corrijas.'
             : 'Lo que cada supervisor reporta en el día por código interno: trabajos con su avance, el personal con sus horas y fotos. Con el visto bueno de Gerencia y de Recursos Humanos, sus horas pasan a la planilla diaria.'

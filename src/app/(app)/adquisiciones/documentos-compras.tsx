@@ -33,7 +33,7 @@ export function DocumentosDeCompras({
 }) {
   return (
     <Tarjeta className="mt-5">
-      <TarjetaCabecera titulo="Documentos de compras de Logística" descripcion="Los PDF de órdenes de compra, de pago, de servicio y las facturas que Logística adjuntó a cada compra." />
+      <TarjetaCabecera titulo="Documentos de compras de Logística" ayuda="Los PDF de órdenes de compra, de pago, de servicio y las facturas que Logística adjuntó a cada compra." />
       <TarjetaCuerpo className="space-y-2">
         {documentos.length === 0 ? (
           <div className="flex flex-col items-center py-8 text-center">

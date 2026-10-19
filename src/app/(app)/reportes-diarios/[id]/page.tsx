@@ -132,7 +132,7 @@ export default async function PaginaReporteDiario({ params, searchParams }: Page
           <Tarjeta>
             <TarjetaCabecera
               titulo="Validación"
-              descripcion="Sus horas entran a la planilla diaria cuando le dan su visto bueno Gerencia y Recursos Humanos, en cualquier orden."
+              ayuda="Sus horas entran a la planilla diaria cuando le dan su visto bueno Gerencia y Recursos Humanos, en cualquier orden."
               acciones={<Insignia tono={ESTADO_REPORTE[estado].tono}>{ESTADO_REPORTE[estado].etiqueta}</Insignia>}
             />
             <ul className="divide-y divide-borde">
@@ -187,7 +187,7 @@ export default async function PaginaReporteDiario({ params, searchParams }: Page
 
         {general.length > 0 && (
           <Tarjeta className="overflow-hidden">
-            <TarjetaCabecera titulo="Personal general" descripcion="La misma gente para todos los trabajos del reporte." />
+            <TarjetaCabecera titulo="Personal general" ayuda="La misma gente para todos los trabajos del reporte." />
             <div className="px-4 pb-3">
               <Personal personas={general} veCosteo={veCosteo} />
             </div>

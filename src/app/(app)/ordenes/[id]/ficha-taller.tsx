@@ -180,7 +180,7 @@ function Medidas({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Medidas, colores y características especiales"
-        descripcion="Lo que el taller necesita tener a la vista para fabricar la unidad."
+        ayuda="Lo que el taller necesita tener a la vista para fabricar la unidad."
       />
       <TarjetaCuerpo>
         <form onSubmit={alEnviar} className="space-y-3">
@@ -617,11 +617,8 @@ function Accesorios({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Accesorios"
-        descripcion={
-          accesorios.length
-            ? `${puestos} de ${accesorios.length} con visto bueno. Salen de lo que se cotizó.`
-            : 'Salen de lo que se cotizó: lo prometido es lo que hay que montar.'
-        }
+        descripcion={accesorios.length ? `${puestos} de ${accesorios.length} con visto bueno.` : undefined}
+        ayuda="Salen de lo que se cotizó: lo prometido es lo que hay que montar."
         acciones={
           puedeArmar && (
             <Boton variante="secundario" tamano="sm" onClick={() => setAbierto((a) => !a)}>
@@ -791,7 +788,7 @@ function Repuestos({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Repuestos"
-        descripcion="Lo que se entrega con la unidad, con su marca."
+        ayuda="Lo que se entrega con la unidad, con su marca."
         acciones={
           puedeEditar && (
             <Boton variante="secundario" tamano="sm" onClick={() => setAbierto((a) => !a)}>

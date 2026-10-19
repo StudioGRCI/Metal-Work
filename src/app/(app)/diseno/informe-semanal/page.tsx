@@ -78,14 +78,14 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
 
   return <>
     <EncabezadoPagina titulo="Informe semanal de Diseño e Ingeniería"
-      descripcion={`Formato ${FORMATO_INFORME_DISENO.codigo}. Lo llena el colaborador y lo aprueba Diseño.`}
+      ayuda={`Formato ${FORMATO_INFORME_DISENO.codigo}. Lo llena el colaborador y lo aprueba Diseño.`}
       acciones={informe && <a href={`/diseno/informe-semanal/descargar?semana=${inicio}`} download
         className={cn(BASE_BOTON, VARIANTES.secundario, TAMANOS.md)}>
         <Download aria-hidden className="size-4" /> Descargar Word
       </a>} />
     <div className="space-y-5">
       {(pendientes.data ?? []).length > 0 && <Tarjeta>
-        <TarjetaCabecera titulo={puede(perfil, 'diseno.revisar_informe') ? 'Informes por revisar' : 'Informes aprobados por recibir'} descripcion="Abre la semana correspondiente para completar tu revisión." />
+        <TarjetaCabecera titulo={puede(perfil, 'diseno.revisar_informe') ? 'Informes por revisar' : 'Informes aprobados por recibir'} ayuda="Abre la semana correspondiente para completar tu revisión." />
         <TarjetaCuerpo className="flex flex-wrap gap-3">{(pendientes.data ?? []).map((p) =>
           <Link key={p.id} href={`/diseno/informe-semanal?semana=${p.semana_inicio}`}
             className="min-h-11 rounded-[var(--radius-base)] border border-borde px-4 py-3 text-sm font-medium text-acento hover:bg-acento-suave">
@@ -94,7 +94,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
       </Tarjeta>}
 
       <Tarjeta>
-        <TarjetaCabecera titulo="Semana del informe" descripcion="Elige cualquier día de la semana que quieres ver." />
+        <TarjetaCabecera titulo="Semana del informe" ayuda="Elige cualquier día de la semana que quieres ver." />
         <TarjetaCuerpo>
           <form action="/diseno/informe-semanal" className="flex flex-wrap items-end gap-3">
             <label htmlFor="semana-diseno" className="grid gap-1 text-sm font-medium text-texto">
@@ -125,7 +125,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
 
       <Tarjeta>
         <TarjetaCabecera titulo="Planificación de modelado"
-          descripcion="Todas las unidades tienen código interno para la fabricación; las de garantía o mantenimiento, su OT. Cada tarea sale en la semana de sus fechas." />
+          ayuda="Todas las unidades tienen código interno para la fabricación; las de garantía o mantenimiento, su OT. Cada tarea sale en la semana de sus fechas." />
         <TarjetaCuerpo className="space-y-4">
           <p className="text-sm text-texto"><span className="font-medium">Diseñadores:</span> {disenadores.length ? disenadores.join(', ') : 'Todavía nadie registró trabajo esta semana.'}</p>
           <Tabla>
@@ -157,7 +157,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
 
       <Tarjeta>
         <TarjetaCabecera titulo="Avance de planos o culminación"
-          descripcion="Cada entregable con su número de planos y de piezas. La conclusión suma los planos entregados a cada área." />
+          ayuda="Cada entregable con su número de planos y de piezas. La conclusión suma los planos entregados a cada área." />
         <TarjetaCuerpo className="space-y-4">
           <Tabla>
             <TablaCabecera><tr>
@@ -202,7 +202,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
       </Tarjeta>
 
       <Tarjeta>
-        <TarjetaCabecera titulo="Contenido del informe" descripcion="Las secciones del formato, en su orden. Las tablas de arriba entran solas al Word." />
+        <TarjetaCabecera titulo="Contenido del informe" ayuda="Las secciones del formato, en su orden. Las tablas de arriba entran solas al Word." />
         <TarjetaCuerpo className="space-y-4">
           {escribe && (!informe || ['BORRADOR', 'OBSERVADO'].includes(informe.estado))
             ? <FormularioInformeDiseno inicio={inicio} informe={informe} responsable={`${perfil.nombres} ${perfil.apellidos}`.trim()} />

@@ -2,23 +2,20 @@ import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 
-import { DescripcionPlegable } from '@/components/estructura/descripcion-plegable'
-
-/**
- * Desde aquí una descripción ocupa cuatro renglones o más en un teléfono de
- * 390 px. Por debajo, recogerla a dos más «Leer más» no ahorra casi nada y
- * suma un toque.
- */
-const DESCRIPCION_LARGA = 160
+import { TituloConAyuda } from '@/components/estructura/titulo-con-ayuda'
 
 export function EncabezadoPagina({
   titulo,
   descripcion,
+  ayuda,
   migas,
   acciones,
 }: {
   titulo: ReactNode
+  /** Lo que cambia y hay que ver de un vistazo: la fecha, el área, un total. */
   descripcion?: ReactNode
+  /** Para qué sirve la pantalla: queda detrás del botón «i». */
+  ayuda?: ReactNode
   migas?: { titulo: string; ruta?: string }[]
   acciones?: ReactNode
 }) {
@@ -26,6 +23,7 @@ export function EncabezadoPagina({
   // repiten el título de abajo («Requerimientos» sobre «Requerimientos»): son
   // un renglón más antes del trabajo. Se muestran cuando dejan volver a algo.
   const conMigas = migas?.some((miga) => miga.ruta) ?? false
+  const h1 = <h1 className="text-xl font-semibold tracking-tight text-texto sm:text-2xl">{titulo}</h1>
 
   return (
     <div className="mb-6">
@@ -51,12 +49,12 @@ export function EncabezadoPagina({
             ancho de un monitor, un renglón medía 180 caracteres y al volver
             al comienzo del siguiente se perdía la línea. */}
         <div className="min-w-0 max-w-3xl">
-          <h1 className="text-xl font-semibold tracking-tight text-texto sm:text-2xl">{titulo}</h1>
-          {typeof descripcion === 'string' && descripcion.length > DESCRIPCION_LARGA ? (
-            <DescripcionPlegable>{descripcion}</DescripcionPlegable>
+          {ayuda ? (
+            <TituloConAyuda ayuda={ayuda}>{h1}</TituloConAyuda>
           ) : (
-            descripcion && <p className="mt-1 text-sm text-texto-suave">{descripcion}</p>
+            h1
           )}
+          {descripcion && <p className="mt-1 text-sm text-texto-suave">{descripcion}</p>}
         </div>
         {/* Sin `shrink-0`: cuando las acciones bajan a su propia línea y no caben
             —tres botones en el teléfono—, se acomodan en dos filas en vez de

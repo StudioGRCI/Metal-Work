@@ -32,7 +32,7 @@ export default async function PaginaRRHH() {
 
   return <>
     <EncabezadoPagina titulo="Recursos Humanos"
-      descripcion="Tres planillas por mes: taller, administrativa y subcontratos. Se importan del Excel de la planilla y el costo de cada persona se reparte al 100 % entre las OT antes de cerrar." />
+      ayuda="Tres planillas por mes: taller, administrativa y subcontratos. Se importan del Excel de la planilla y el costo de cada persona se reparte al 100 % entre las OT antes de cerrar." />
     {gestiona && <details className="mb-5 rounded-[var(--radius-base)] border border-borde bg-superficie p-4">
       <summary className="cursor-pointer font-semibold text-acento">Crear planilla del mes</summary>
       <div className="pt-4"><NuevaPlanilla /></div>

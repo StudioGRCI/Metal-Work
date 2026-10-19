@@ -13,7 +13,7 @@ export default async function PaginaNuevoCliente() {
       <EncabezadoPagina
         migas={[{ titulo: 'Clientes', ruta: '/clientes' }, { titulo: 'Nuevo' }]}
         titulo="Nuevo cliente"
-        descripcion="Registra la empresa o persona a la que se le factura el trabajo."
+        ayuda="Registra la empresa o persona a la que se le factura el trabajo."
       />
       <FormularioCliente />
     </>

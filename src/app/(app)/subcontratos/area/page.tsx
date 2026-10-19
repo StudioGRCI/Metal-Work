@@ -47,7 +47,7 @@ export default async function PaginaSubcontratosDelArea({ searchParams }: PagePr
     <>
       <EncabezadoPagina
         titulo="Subcontratos"
-        descripcion={
+        ayuda={
           recibe
             ? `Los trabajos que Administración le encargó a gente de fuera para ${todasLasAreas ? 'Producción y Acabados' : (nombreDeMiArea ?? 'tu área')}, por código interno: quién lo hace, en qué va y sus recibos por honorarios. Solo para consultar; los montos los lleva Administración.`
             : 'Los trabajos que Administración le encarga a gente de fuera, por código interno, van a Producción o a Acabados.'

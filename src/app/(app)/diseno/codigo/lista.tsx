@@ -76,7 +76,7 @@ export async function ListaDeCodigosDeDiseno({
     <>
       <EncabezadoPagina
         titulo={titulo}
-        descripcion={seguimiento ? DESCRIPCION_SEGUIMIENTO : DESCRIPCION[vista]}
+        ayuda={seguimiento ? DESCRIPCION_SEGUIMIENTO : DESCRIPCION[vista]}
         migas={seguimiento ? [{ titulo }] : [{ titulo: 'Diseño e Ingeniería' }, { titulo }]}
       />
 
@@ -92,7 +92,7 @@ export async function ListaDeCodigosDeDiseno({
         />
       ) : (
         <Tarjeta className="mb-4">
-          <TarjetaCabecera titulo="Abrir un código" descripcion="Para una unidad nueva, escribe su código interno tal cual: aparece en la lista apenas cargues algo." />
+          <TarjetaCabecera titulo="Abrir un código" ayuda="Para una unidad nueva, escribe su código interno tal cual: aparece en la lista apenas cargues algo." />
           <TarjetaCuerpo>
             <AbrirCodigo codigos={todos.map((c) => c.codigo)} vista={vista} />
           </TarjetaCuerpo>

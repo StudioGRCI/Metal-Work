@@ -32,15 +32,16 @@ export default async function PaginaTipoDeCambio() {
     <>
       <EncabezadoPagina
         titulo="Tipo de cambio"
-        descripcion="El cambio del dólar de cada día. El costo de cada OT pasa a soles lo comprado en dólares con el cambio de su fecha."
+        ayuda="El cambio del dólar de cada día. El costo de cada OT pasa a soles lo comprado en dólares con el cambio de su fecha."
       />
 
       <Tarjeta className="mb-5">
         <TarjetaCabecera
           titulo={deHoy ? 'Cambio de hoy registrado' : 'Registrar el cambio de hoy'}
-          descripcion={
+          descripcion={deHoy ? `Compra ${numero(deHoy.compra, 3)} · venta ${numero(deHoy.venta, 3)}` : undefined}
+          ayuda={
             deHoy
-              ? `Compra ${numero(deHoy.compra, 3)} · venta ${numero(deHoy.venta, 3)}. Si estaba mal, vuelve a guardarlo con la misma fecha y se corrige.`
+              ? 'Si estaba mal, vuelve a guardarlo con la misma fecha y se corrige.'
               : 'Copia el cambio que publica la SUNAT. Si un día no lo tiene (fin de semana, feriado), vale el último de los diez días anteriores.'
           }
         />

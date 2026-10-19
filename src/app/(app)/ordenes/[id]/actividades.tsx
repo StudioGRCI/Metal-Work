@@ -141,7 +141,7 @@ export function ActividadesDeOrden({
       <Tarjeta>
         <TarjetaCabecera
           titulo={esNueva ? 'Tareas y fotos del taller' : 'Avance por área'}
-          descripcion={esNueva ? 'Supervisión crea las tareas de su área y reporta el avance de cada una con foto y materiales usados.' : 'Diseño arma la lista de cada área y cada una reporta lo que avanzó cada día. Producción por carrocería, Maestranza por pieza solicitada. Cada una tiene su propio 100 %.'}
+          ayuda={esNueva ? 'Supervisión crea las tareas de su área y reporta el avance de cada una con foto y materiales usados.' : 'Diseño arma la lista de cada área y cada una reporta lo que avanzó cada día. Producción por carrocería, Maestranza por pieza solicitada. Cada una tiene su propio 100 %.'}
           acciones={
             puedeCrear && !agregando ? (
               <span className="flex flex-wrap gap-2">
@@ -230,7 +230,7 @@ export function ActividadesDeOrden({
         <Tarjeta key={area.id} id={`area-${area.codigo}`} className="scroll-mt-20">
           <TarjetaCabecera
             titulo={area.nombre}
-            descripcion={
+            ayuda={
               area.codigo === 'MTZ'
                 ? 'Lo que Maestranza habilita, por pieza solicitada.'
                 : 'Lo que hace el área en esta unidad.'
@@ -386,7 +386,7 @@ export function ActividadesDeOrden({
         <Tarjeta>
           <TarjetaCabecera
             titulo="Diario de la unidad"
-            descripcion="Lo reportado día por día, lo más reciente arriba, con la revisión de Administración."
+            ayuda="Lo reportado día por día, lo más reciente arriba, con la revisión de Administración."
             acciones={
               aprueba &&
               diario.some((r) => r.revision === 'PENDIENTE') && (
@@ -763,7 +763,7 @@ function NuevaActividad({
     <Tarjeta className="border-acento">
       <TarjetaCabecera
         titulo={esNueva ? 'Nueva tarea del taller' : 'Nueva actividad'}
-        descripcion={esNueva ? 'Anota el trabajo de hoy y la etapa de la OT. El supervisor registrará su avance con una foto.' : 'Qué trabajo es y cuánto pesa dentro del 100 % de su área. Para Maestranza, la pieza solicitada va en «referencia».'}
+        ayuda={esNueva ? 'Anota el trabajo de hoy y la etapa de la OT. El supervisor registrará su avance con una foto.' : 'Qué trabajo es y cuánto pesa dentro del 100 % de su área. Para Maestranza, la pieza solicitada va en «referencia».'}
       />
       <TarjetaCuerpo>
         <form key={guardadas} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-6">

@@ -40,7 +40,7 @@ export default async function PaginaOrdenesCompra() {
     <>
       <EncabezadoPagina
         titulo="Órdenes de compra"
-        descripcion="Todas las órdenes, con su número OC-…-MW: las que nacen de un requerimiento de OT y las directas para el almacén. Aquí se ve si esperan a Gerencia, si el conductor ya las recogió y si falta el comprobante."
+        ayuda="Todas las órdenes, con su número OC-…-MW: las que nacen de un requerimiento de OT y las directas para el almacén. Aquí se ve si esperan a Gerencia, si el conductor ya las recogió y si falta el comprobante."
         migas={[{ titulo: 'Compras' }, { titulo: 'Órdenes de compra' }]}
         acciones={
           emite && (

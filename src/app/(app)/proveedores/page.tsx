@@ -34,9 +34,10 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
         titulo="Proveedores"
         descripcion={
           total === 1
-            ? '1 proveedor en el padrón. La orden de compra elige de aquí.'
-            : `${total} proveedores en el padrón. La orden de compra elige de aquí.`
+            ? '1 proveedor en el padrón'
+            : `${total} proveedores en el padrón`
         }
+        ayuda="La orden de compra elige el proveedor de este padrón."
         acciones={
           <div className="flex flex-wrap items-center gap-3">
             {edita && <NuevoProveedor />}

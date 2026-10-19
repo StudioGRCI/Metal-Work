@@ -51,7 +51,7 @@ export default async function PaginaAprobacionCompras() {
         <Tarjeta>
           <TarjetaCabecera
             titulo="La regla"
-            descripcion={
+            ayuda={
               configura
                 ? 'Desde qué monto una orden de compra espera aprobación y qué puesto la da. Cambiarla no toca las compras ya emitidas.'
                 : 'La fija Gerencia.'

@@ -53,7 +53,7 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
     <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Recibos por honorarios"
-        descripcion={
+        ayuda={
           paga
             ? 'Los recibos de los subcontratos que sube Administración. Paga el neto —el bruto menos la retención, si la lleva— a la cuenta del subcontratista y adjunta el voucher: Administración lo ve en el subcontrato.'
             : 'Los recibos de los subcontratos, con su retención y lo que Tesorería pagó.'

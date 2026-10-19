@@ -39,7 +39,7 @@ export default async function PaginaHorasExtras() {
     <>
       <EncabezadoPagina
         titulo="Horas extras"
-        descripcion={`Lo que pasa de ${JORNADA_HORAS} horas en un día, sumando los reportes diarios que validaron Gerencia y Recursos Humanos. ${
+        ayuda={`Lo que pasa de ${JORNADA_HORAS} horas en un día, sumando los reportes diarios que validaron Gerencia y Recursos Humanos. ${
           decide
             ? 'Decide si se pagan (entran a la próxima planilla diaria con su recargo) o se reservan para otra ocasión (pasan al saldo de la persona).'
             : 'Recursos Humanos decide si se pagan o se reservan para otra ocasión.'
@@ -53,9 +53,10 @@ export default async function PaginaHorasExtras() {
             titulo="Por decidir"
             descripcion={
               porDecidir.length > 0
-                ? `${horasCortas(horasPorDecidir)} en ${porDecidir.length} ${porDecidir.length === 1 ? 'jornada' : 'jornadas'}. Las ${horasCortas(regla.horas_tramo1)} primeras de cada día van con ${regla.recargo_tramo1} % y las siguientes con ${regla.recargo_tramo2} %.`
+                ? `${horasCortas(horasPorDecidir)} en ${porDecidir.length} ${porDecidir.length === 1 ? 'jornada' : 'jornadas'}`
                 : 'Nada por decidir.'
             }
+            ayuda={`Las ${horasCortas(regla.horas_tramo1)} primeras de cada día van con ${regla.recargo_tramo1} % y las siguientes con ${regla.recargo_tramo2} %.`}
           />
           <Tabla>
             <TablaCabecera>
@@ -113,7 +114,7 @@ export default async function PaginaHorasExtras() {
         <Tarjeta className="overflow-hidden">
           <TarjetaCabecera
             titulo="Saldo de horas reservadas"
-            descripcion="Las horas extras que se reservaron, menos las que la persona ya usó en un permiso o un descanso."
+            ayuda="Las horas extras que se reservaron, menos las que la persona ya usó en un permiso o un descanso."
           />
           <Tabla>
             <TablaCabecera>
@@ -156,7 +157,7 @@ export default async function PaginaHorasExtras() {
         </Tarjeta>
 
         <Tarjeta className="overflow-hidden">
-          <TarjetaCabecera titulo="Lo decidido" descripcion="Una decisión equivocada se anula y sus horas vuelven a esperar, mientras no estén en una planilla." />
+          <TarjetaCabecera titulo="Lo decidido" ayuda="Una decisión equivocada se anula y sus horas vuelven a esperar, mientras no estén en una planilla." />
           {decisiones.length === 0 ? (
             <TarjetaCuerpo>
               <p className="text-sm text-texto-suave">Todavía no se decidió ninguna hora extra.</p>
@@ -229,7 +230,7 @@ export default async function PaginaHorasExtras() {
         <Tarjeta>
           <TarjetaCabecera
             titulo="La regla de las horas extras"
-            descripcion={`Hoy: las ${horasCortas(regla.horas_tramo1)} primeras de cada día con ${regla.recargo_tramo1} % y las siguientes con ${regla.recargo_tramo2} %, sobre la hora de la persona (su remuneración mensual entre 240). Es lo mínimo de ley o más; cambiarla no toca lo ya enviado a Tesorería.`}
+            ayuda={`Hoy: las ${horasCortas(regla.horas_tramo1)} primeras de cada día con ${regla.recargo_tramo1} % y las siguientes con ${regla.recargo_tramo2} %, sobre la hora de la persona (su remuneración mensual entre 240). Es lo mínimo de ley o más; cambiarla no toca lo ya enviado a Tesorería.`}
           />
           {decide && (
             <TarjetaCuerpo>

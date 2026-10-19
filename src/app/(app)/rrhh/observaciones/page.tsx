@@ -58,7 +58,7 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
     <>
       <EncabezadoPagina
         titulo={persona ? `Historial de ${persona.nombres} ${persona.apellidos}` : 'Observaciones y amonestaciones'}
-        descripcion="Lo que se le observa a cada persona: observaciones, amonestaciones verbales y escritas, y suspensiones, con su motivo. No se borran: se anulan con su motivo y quedan como evidencia."
+        ayuda="Lo que se le observa a cada persona: observaciones, amonestaciones verbales y escritas, y suspensiones, con su motivo. No se borran: se anulan con su motivo y quedan como evidencia."
         migas={[
           { titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined },
           { titulo: 'Observaciones', ruta: persona ? `/rrhh/observaciones?mes=${mes}` : undefined },
@@ -110,7 +110,7 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
       <div className="space-y-5">
         {!persona && (
           <Tarjeta className="overflow-hidden">
-            <TarjetaCabecera titulo="Por persona" descripcion="Toca un nombre para ver todo su historial, de todos los meses." />
+            <TarjetaCabecera titulo="Por persona" ayuda="Toca un nombre para ver todo su historial, de todos los meses." />
             <Tabla>
               <TablaCabecera>
                 <tr>
@@ -156,7 +156,7 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
         <Tarjeta className="overflow-hidden">
           <TarjetaCabecera
             titulo={persona ? 'Todo lo registrado' : 'Lo registrado en el mes'}
-            descripcion="Del más reciente al más antiguo. Lo anulado queda tachado, con su motivo."
+            ayuda="Del más reciente al más antiguo. Lo anulado queda tachado, con su motivo."
           />
           <ul className="divide-y divide-borde">
             {observaciones.length === 0 ? (

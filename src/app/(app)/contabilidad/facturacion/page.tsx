@@ -40,7 +40,7 @@ export default async function PaginaFacturacion() {
     <>
       <EncabezadoPagina
         titulo="Facturación"
-        descripcion="Las cotizaciones aprobadas, por código interno: registra la factura que emitiste en SUNAT y Tesorería la tiene por cobrar."
+        ayuda="Las cotizaciones aprobadas, por código interno: registra la factura que emitiste en SUNAT y Tesorería la tiene por cobrar."
       />
 
       {porFacturar > 0 && (

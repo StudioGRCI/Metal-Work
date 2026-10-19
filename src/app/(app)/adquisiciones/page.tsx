@@ -104,14 +104,14 @@ export default async function PaginaAdquisiciones({ searchParams }: PageProps<'/
     <>
       <EncabezadoPagina
         titulo="Adquisiciones"
-        descripcion="Todo lo comprado, de cada RQ a su OC, su factura y su pago, con el enlace a cada documento. Contabilidad registra cada factura con las OC que cubre y aquí se ve si su total calza con el de sus OC. Tesorería la paga en Cuentas por pagar."
+        ayuda="Todo lo comprado, de cada RQ a su OC, su factura y su pago, con el enlace a cada documento. Contabilidad registra cada factura con las OC que cubre y aquí se ve si su total calza con el de sus OC. Tesorería la paga en Cuentas por pagar."
       />
 
       {registra && (
         <Tarjeta className="mb-5">
           <TarjetaCabecera
             titulo="Nuevo comprobante"
-            descripcion="Elige la factura que anexó Logística, que trae su número, su fecha y su OC; o marca las OC que cubre y adjunta el PDF."
+            ayuda="Elige la factura que anexó Logística, que trae su número, su fecha y su OC; o marca las OC que cubre y adjunta el PDF."
           />
           <TarjetaCuerpo>
             <FormularioAdquisicion ordenes={ordenes.data ?? []} compras={sinFactura} documentos={porRegistrar} />

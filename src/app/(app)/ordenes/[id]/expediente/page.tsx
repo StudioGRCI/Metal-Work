@@ -284,7 +284,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
         {/* Van antes que los datos de la unidad: dicen en qué paso va la orden,
             que es lo primero que se pregunta. */}
         <Tarjeta className="no-partir">
-          <TarjetaCabecera titulo="Hitos" descripcion="Los pasos que toda carrocería recorre, con su fecha" />
+          <TarjetaCabecera titulo="Hitos" ayuda="Los pasos que toda carrocería recorre, con su fecha" />
           <TarjetaCuerpo>
             <Hitos orden={orden} expediente={expediente} />
           </TarjetaCuerpo>
@@ -292,7 +292,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
 
         {/* ------------------------------------------------- la unidad */}
         <Tarjeta className="no-partir">
-          <TarjetaCabecera titulo="La unidad" descripcion="Qué se fabricó y para quién" />
+          <TarjetaCabecera titulo="La unidad" ayuda="Qué se fabricó y para quién" />
           <TarjetaCuerpo>
             <dl className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
               <Dato etiqueta="Cliente" valor={cliente?.razon_social} />
@@ -329,7 +329,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
         <Tarjeta id="plan" className="scroll-mt-20">
           <TarjetaCabecera
             titulo="Plan contra real"
-            descripcion="Lo que Administración programó para cada etapa y lo que de verdad tomó"
+            ayuda="Lo que Administración programó para cada etapa y lo que de verdad tomó"
           />
           <TarjetaCuerpo className="space-y-5">
             {expediente.etapas.length === 0 ? (
@@ -390,7 +390,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
         <div className="grid gap-5 lg:grid-cols-2 *:min-w-0 print:grid-cols-1">
           {/* ------------------------------------------------- las áreas */}
           <Tarjeta id="areas" className="no-partir scroll-mt-20">
-            <TarjetaCabecera titulo="Avance por área" descripcion="La hoja de actividades de cada área y cuánto lleva de lo suyo" />
+            <TarjetaCabecera titulo="Avance por área" ayuda="La hoja de actividades de cada área y cuánto lleva de lo suyo" />
             <TarjetaCuerpo className="space-y-4">
               {expediente.areas.length === 0 ? (
                 <p className="text-sm text-texto-suave">Ninguna área armó todavía su hoja de actividades para esta orden.</p>
@@ -475,7 +475,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
           <Tarjeta id="costo" className="scroll-mt-20" data-costo-del-codigo>
             <TarjetaCabecera
               titulo="Costo de la unidad"
-              descripcion={`La unidad se costea por su código interno, ${delCodigo.codigo}: la mano de obra del reporte diario, las salidas del almacén con su merma, las OS, los subcontratos, los gastos del mes, los gastos aprobados en esta OT y la caja. Es el mismo costo que ve Gerencia en Códigos internos.`}
+              ayuda={`La unidad se costea por su código interno, ${delCodigo.codigo}: la mano de obra del reporte diario, las salidas del almacén con su merma, las OS, los subcontratos, los gastos del mes, los gastos aprobados en esta OT y la caja. Es el mismo costo que ve Gerencia en Códigos internos.`}
             />
             <TarjetaCuerpo className="space-y-5">
               <CostoDelCodigo costo={delCodigo} verMargen={verMargen} />
@@ -540,7 +540,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
           <Tarjeta id="costo" className="scroll-mt-20">
             <TarjetaCabecera
               titulo="Costo de la carrocería"
-              descripcion="Material despachado a precio de compra, mano de obra de la planilla cerrada y gastos aprobados de las áreas. Se calcula en vivo."
+              ayuda="Material despachado a precio de compra, mano de obra de la planilla cerrada y gastos aprobados de las áreas. Se calcula en vivo."
             />
             <TarjetaCuerpo className="space-y-5">
               {composicion.sinPrecio > 0 && (
@@ -607,7 +607,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
         <Tarjeta id="proceso" className="scroll-mt-20">
           <TarjetaCabecera
             titulo="Cómo se fabricó"
-            descripcion="Día por día: lo que reportó cada área, con su foto, y lo que pasó con la orden"
+            ayuda="Día por día: lo que reportó cada área, con su foto, y lo que pasó con la orden"
           />
           <TarjetaCuerpo>
             <Proceso expediente={expediente} eventos={eventos} />
@@ -616,7 +616,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
 
         {/* ------------------------------------------------- la entrega */}
         <Tarjeta id="entrega" className="no-partir scroll-mt-20">
-          <TarjetaCabecera titulo="Entrega y salida" descripcion="Cómo dejó la planta: liberación de Tesorería, acta de conformidad y salida física" />
+          <TarjetaCabecera titulo="Entrega y salida" ayuda="Cómo dejó la planta: liberación de Tesorería, acta de conformidad y salida física" />
           <TarjetaCuerpo>
             <dl className="grid gap-x-8 sm:grid-cols-2">
               <Dato

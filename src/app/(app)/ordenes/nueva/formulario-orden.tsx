@@ -382,7 +382,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
       <Tarjeta>
         <TarjetaCabecera
           titulo="PDF de la orden"
-          descripcion="La orden de trabajo firmada, la misma que se imprime. Sin su PDF la orden no se registra."
+          ayuda="La orden de trabajo firmada, la misma que se imprime. Sin su PDF la orden no se registra."
         />
         <TarjetaCuerpo>
           <label
