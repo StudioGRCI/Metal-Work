@@ -54,9 +54,10 @@ export function BarraInferior({
   // Lo que espera en los módulos que no tienen pestaña: sin este globo, en el
   // teléfono nadie se enteraba de un servicio o una planilla por pagar hasta
   // abrir «Más». El Dashboard ya no lo lista (2026-10-19); el menú sí lo cuenta.
+  const base = (r: string) => r.split('?')[0]
   const otros = visibles.filter((i) => !pestanas.some((p) => p.ruta === i.ruta))
-  const enOtros = otros.reduce((suma, i) => suma + (pendientes[i.ruta] ?? 0), 0)
-  const fallaEnOtros = otros.some((i) => sinComprobar.includes(i.ruta))
+  const enOtros = otros.reduce((suma, i) => suma + (pendientes[base(i.ruta)] ?? 0), 0)
+  const fallaEnOtros = otros.some((i) => sinComprobar.includes(base(i.ruta)))
 
   const clasePestana = (activo: boolean) =>
     cn(
@@ -79,8 +80,8 @@ export function BarraInferior({
           {pestanas.map((p) => {
             const Icono = p.icono
             const activo = p.ruta === activa
-            const n = pendientes[p.ruta] ?? 0
-            const falla = sinComprobar.includes(p.ruta)
+            const n = pendientes[base(p.ruta)] ?? 0
+            const falla = sinComprobar.includes(base(p.ruta))
             return (
               <li key={p.ruta}>
                 <Link

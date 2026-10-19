@@ -410,7 +410,10 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   }
 
   if (puede(perfil, 'tesoreria.liberar') || puede(perfil, 'ordenes.entregar')) {
-    const cierre = terminadas()
+    // Perezosa: si ninguna de las dos tareas queda en el menú del puesto, no se
+    // lee nada (y un error no queda sin quien lo atienda).
+    let cierre: ReturnType<typeof terminadas> | undefined
+    const terminadasUnaVez = () => (cierre ??= terminadas())
     if (puede(perfil, 'tesoreria.liberar')) {
       tareas.push({
         clave: 'liberar',
@@ -418,7 +421,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
         tono: 'aviso',
         texto: (n) => plural(n, 'orden terminada espera la liberación de tesorería', 'órdenes terminadas esperan la liberación de tesorería'),
         contar: async () => {
-          const c = await cierre
+          const c = await terminadasUnaVez()
           return c.ids.filter((id) => !c.liberadas.has(id)).length
         },
       })
@@ -430,7 +433,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
         tono: 'acento',
         texto: (n) => plural(n, 'orden liberada espera el acta de entrega', 'órdenes liberadas esperan el acta de entrega'),
         contar: async () => {
-          const c = await cierre
+          const c = await terminadasUnaVez()
           return c.ids.filter((id) => c.liberadas.has(id) && !c.entregadas.has(id)).length
         },
       })

@@ -76,8 +76,10 @@ export function NavegacionLista({
                 )
               }
 
-              const n = pendientes[item.ruta] ?? 0
-              const falla = sinComprobar.includes(item.ruta)
+              // Los pendientes van por la ruta base, sin `?…`, como se cuentan.
+              const base = item.ruta.split('?')[0]
+              const n = pendientes[base] ?? 0
+              const falla = sinComprobar.includes(base)
               return (
                 <li key={item.ruta}>
                   <Link
