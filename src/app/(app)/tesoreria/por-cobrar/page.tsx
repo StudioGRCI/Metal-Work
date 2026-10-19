@@ -29,7 +29,8 @@ const codigo = (m: string | null): CodigoMoneda => (m === 'USD' ? 'USD' : 'PEN')
  */
 export default async function PaginaPorCobrar() {
   const perfil = await exigirPermiso('tesoreria.ver_documentos')
-  const cobra = puede(perfil, 'tesoreria.registrar_cobros')
+  // Paga quien lleva la caja: el pago sale de una de sus cuentas (la base pide los dos permisos).
+  const cobra = puede(perfil, 'tesoreria.registrar_cobros') && puede(perfil, 'tesoreria.caja')
   const responde = puede(perfil, 'tesoreria.liberar')
   const [facturas, cotizaciones, solicitudes, salidas, cuentasCaja] = await Promise.all([
     facturasDeVenta(),

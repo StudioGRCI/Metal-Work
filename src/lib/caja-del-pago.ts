@@ -35,3 +35,6 @@ export function leerCuenta(formulario: FormData) {
 export function montoDeLaCuenta(monto: string): number | null {
   return monto && MONTO.test(monto) && Number(monto) > 0 ? Number(monto) : null
 }
+
+/** Pagar o cobrar mueve una cuenta de la caja: la base pide también `tesoreria.caja`, y la acción lo exige antes. */
+export const SIN_CAJA = 'Los pagos y los cobros mueven la caja diaria: los registra quien lleva la caja.'

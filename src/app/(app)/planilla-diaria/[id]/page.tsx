@@ -23,12 +23,14 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
   const perfil = await exigirPermiso(['planilla_diaria.preparar', 'planilla_diaria.pagar', 'planilla_diaria.ver'])
   const arma = puede(perfil, 'planilla_diaria.preparar')
   const paga = puede(perfil, 'planilla_diaria.pagar')
+  // Registra y anula pagos quien además lleva la caja: el pago sale de una de sus cuentas (la base pide los dos permisos).
+  const pagaDeLaCaja = paga && puede(perfil, 'tesoreria.caja')
   const { id } = await params
   if (!GUID.test(id)) notFound()
   const [p, cuentasCaja] = await Promise.all([
     planillaDiaria(id, arma || paga),
     // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
-    paga ? cuentasParaPagar() : Promise.resolve([]),
+    pagaDeLaCaja ? cuentasParaPagar() : Promise.resolve([]),
   ])
   if (!p) notFound()
   // Para quien lleva la caja, de qué cuenta salió cada pago.
@@ -50,7 +52,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
         acciones={
           <>
             <Insignia tono={ESTADO_PLANILLA[estado].tono}>{ESTADO_PLANILLA[estado].etiqueta}</Insignia>
-            {paga && !anulada && porPagar.length > 0 && (
+            {pagaDeLaCaja && !anulada && porPagar.length > 0 && (
               <RegistrarPago
                 planillaId={p.id}
                 pagoId={crypto.randomUUID()}
@@ -134,7 +136,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
                     </div>
                     <div className="flex items-center gap-2">
                       <EnlaceArchivo enlace={g.enlace} texto="Comprobante" />
-                      {paga && !g.anulado_en && (
+                      {pagaDeLaCaja && !g.anulado_en && (
                         <AnularConMotivo
                           tipo="pago"
                           id={g.id}

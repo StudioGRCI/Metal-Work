@@ -106,7 +106,8 @@ export async function cajaDelDia(dia: string): Promise<CajaDelDia> {
   const pagosPlanilla = (movimientos.data ?? []).flatMap((m) => (m.origen === 'PAGO_PLANILLA_DIARIA' && m.origen_id ? [m.origen_id] : []))
   const planillaDe = new Map<string, string>()
   if (pagosPlanilla.length > 0) {
-    const { data } = await supabase.from('planilla_diaria_pagos').select('id, planilla_id').in('id', pagosPlanilla)
+    const { data, error } = await supabase.from('planilla_diaria_pagos').select('id, planilla_id').in('id', pagosPlanilla)
+    if (error) console.error(`No se pudieron leer las planillas de los pagos de la caja: ${error.message}`)
     for (const g of data ?? []) planillaDe.set(g.id, g.planilla_id)
   }
 
@@ -227,13 +228,18 @@ export async function cajaDeLosPagos(origen: string, ids: string[]): Promise<Map
   const mapa = new Map<string, CajaDelPago>()
   if (ids.length === 0) return mapa
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('movimientos_caja')
-    .select('origen_id, anulado_en, monto, caja:cajas!movimientos_caja_caja_id_fkey(nombre, moneda)')
-    .eq('origen', origen)
-    .in('origen_id', ids)
-  if (error) throw new Error(`No se pudo leer la caja de los pagos: ${error.message}`)
-  for (const m of data ?? []) {
+  const filas = []
+  // En tandas de 150, como `correccionesDe`: Cuentas por pagar trae cientos de pagos y la URL no se alarga sin fin.
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data, error } = await supabase
+      .from('movimientos_caja')
+      .select('origen_id, anulado_en, monto, caja:cajas!movimientos_caja_caja_id_fkey(nombre, moneda)')
+      .eq('origen', origen)
+      .in('origen_id', ids.slice(i, i + 150))
+    if (error) throw new Error(`No se pudo leer la caja de los pagos: ${error.message}`)
+    filas.push(...(data ?? []))
+  }
+  for (const m of filas) {
     if (!m.origen_id) continue
     const previo = mapa.get(m.origen_id)
     // Uno vigente manda sobre uno anulado.

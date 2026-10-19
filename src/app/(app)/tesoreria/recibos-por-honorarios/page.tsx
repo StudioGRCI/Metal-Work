@@ -23,7 +23,8 @@ export const metadata = { title: 'Recibos por honorarios' }
  */
 export default async function PaginaRecibosPorHonorarios({ searchParams }: { searchParams: Promise<{ ver?: string }> }) {
   const perfil = await exigirPermiso(['subcontratos.pagar', 'subcontratos.ver', 'subcontratos.gestionar'])
-  const paga = puede(perfil, 'subcontratos.pagar')
+  // Paga quien lleva la caja: el pago sale de una de sus cuentas (la base pide los dos permisos).
+  const paga = puede(perfil, 'subcontratos.pagar') && puede(perfil, 'tesoreria.caja')
   const params = await searchParams
   const ver = params.ver === 'pagados' ? 'pagados' : 'por-pagar'
 

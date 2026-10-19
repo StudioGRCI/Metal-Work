@@ -31,7 +31,8 @@ export const metadata = { title: 'Cuentas por pagar' }
  */
 export default async function PaginaPorPagar() {
   const perfil = await exigirPermiso('tesoreria.ver_documentos')
-  const paga = puede(perfil, 'tesoreria.registrar_pagos')
+  // Paga quien lleva la caja: el pago sale de una de sus cuentas (la base pide los dos permisos).
+  const paga = puede(perfil, 'tesoreria.registrar_pagos') && puede(perfil, 'tesoreria.caja')
   const db = await createClient()
   const [cuentas, pendientes, planillas, cuentasCaja] = await Promise.all([
     cuentasPorPagar(),

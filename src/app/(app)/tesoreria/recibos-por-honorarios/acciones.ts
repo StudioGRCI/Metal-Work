@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { camposDeLaCuenta, leerCuenta, montoDeLaCuenta } from '@/lib/caja-del-pago'
+import { camposDeLaCuenta, leerCuenta, montoDeLaCuenta, SIN_CAJA } from '@/lib/caja-del-pago'
 import { cajaTrasElPago } from '@/lib/datos/caja'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -39,6 +39,7 @@ function repintar(subcontratoId: string) {
 export async function registrarPagoRecibo(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'subcontratos.pagar')) return { ok: false, error: NO_PAGA }
+  if (!puede(perfil, 'tesoreria.caja')) return { ok: false, error: SIN_CAJA }
   const analisis = z
     .object({
       id: z.guid(),

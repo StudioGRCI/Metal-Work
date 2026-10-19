@@ -26,7 +26,8 @@ export const metadata = { title: 'Pagos de servicio' }
  */
 export default async function PaginaPagosDeServicio() {
   const perfil = await exigirPermiso(['tesoreria.pagar_servicios', 'tesoreria.ver_documentos'])
-  const paga = puede(perfil, 'tesoreria.pagar_servicios')
+  // Paga quien lleva la caja: el pago sale de una de sus cuentas (la base pide los dos permisos).
+  const paga = puede(perfil, 'tesoreria.pagar_servicios') && puede(perfil, 'tesoreria.caja')
   const [servicios, cuentasCaja] = await Promise.all([
     serviciosPorPagar(puede(perfil, 'proveedores.ver_cuentas')),
     // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
