@@ -24,7 +24,7 @@ import {
   timelineDeOrden,
 } from '@/lib/datos/ordenes'
 import { actividadesDeOrden, areasDelTaller, despachosParaReporte } from '@/lib/datos/actividades'
-import { adjuntosDeOrden } from '@/lib/datos/adjuntos'
+import { adjuntosDeOrden, vePdfDeOrden } from '@/lib/datos/adjuntos'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
 import { controlesYSolicitudesDeOrden, costoDeOrdenes, mermaDeOrden } from '@/lib/datos/costos-ot'
@@ -238,14 +238,15 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
   // Los archivos de la orden (099), en el resumen junto a sus observaciones.
   // Quitarlos es de quien los subió, la oficina o el jefe: lo mismo que dice
-  // la política.
-  const puedeSubirArchivos = perfil.rol.codigo === 'SUPERVISOR' && puede(perfil, [
-    'produccion.actividades',
-    'ordenes.editar',
-    'ordenes.crear',
-    'ordenes.abrir_taller',
-  ])
+  // la política. La orden sin cotización la registra Administración y su PDF
+  // también lo sube ella (2026-10-19); la de una cotización nace con el suyo.
+  const puedeSubirArchivos =
+    (perfil.rol.codigo === 'SUPERVISOR' &&
+      puede(perfil, ['produccion.actividades', 'ordenes.editar', 'ordenes.crear', 'ordenes.abrir_taller'])) ||
+    (!orden.cotizacion_pdf_id && puede(perfil, 'ordenes.crear'))
   const quitaCualquiera = puede(perfil, ['ordenes.editar', 'produccion.cualquier_area'])
+  // Quien no ve el PDF de la orden no lo encuentra en la lista: que no se le diga que falta.
+  const vePdfOrden = vista === 'resumen' ? await vePdfDeOrden() : false
   const archivos: AdjuntoEnPantalla[] | null =
     vista === 'resumen'
       ? (await adjuntosDeOrden(id)).map((a) => ({
@@ -315,7 +316,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               error; en el monitor queda a la derecha. */}
           <div className="grid items-start gap-4 lg:grid-cols-3 *:min-w-0">
             <div className="space-y-4 lg:col-start-3 lg:row-start-1">
-              <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos ?? []} puedeSubir={puedeSubirArchivos}>
+              <ArchivosDeOrden ordenId={orden.id} adjuntos={archivos ?? []} puedeSubir={puedeSubirArchivos} vePdf={vePdfOrden}>
                 <Observaciones
                   ordenId={orden.id}
                   observaciones={observaciones.map((o) => ({ ...o, resoluble: puedeResolverObservacion(perfil, o) }))}

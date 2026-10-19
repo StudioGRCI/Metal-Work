@@ -44,11 +44,14 @@ export function ArchivosDeOrden({
   ordenId,
   adjuntos,
   puedeSubir,
+  vePdf,
   children,
 }: {
   ordenId: string
   adjuntos: AdjuntoEnPantalla[]
   puedeSubir: boolean
+  /** Ve el PDF de la orden (`puede_ver_pdf_ot`); si no, no se le dice que falta. */
+  vePdf: boolean
   children?: ReactNode
 }) {
   const router = useRouter()
@@ -113,7 +116,9 @@ export function ArchivosDeOrden({
         }
       />
       <TarjetaCuerpo className="space-y-4">
-        {adjuntos.length === 0 ? (
+        {adjuntos.length === 0 && !vePdf && !puedeSubir ? (
+          <p className="text-sm text-texto-suave">El PDF de la orden lo ven Diseño y Supervisión de Producción, Maestranza y Acabados.</p>
+        ) : adjuntos.length === 0 ? (
           <p className="text-sm text-texto-suave">
             Todavía no se subió el PDF de la orden.{' '}
             {puedeSubir

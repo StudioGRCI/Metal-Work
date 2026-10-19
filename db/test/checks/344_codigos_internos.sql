@@ -207,11 +207,10 @@ select test.afirmar(not has_function_privilege('anon', 'public.codigo_interno_co
   'el anónimo no ejecuta el costeo de un código');
 select test.afirmar(not has_function_privilege('authenticated', 'public.normalizar_codigo_interno(text)', 'execute'),
   'normalizar el código es interno: ni la aplicación lo llama');
-select test.afirmar((select count(*) from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
-                      where rp.permiso_codigo = 'codigos_internos.ver') = 1
-                    and exists (select 1 from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
-                                 where rp.permiso_codigo = 'codigos_internos.ver' and r.codigo = 'GERENTE'),
-  'el permiso lo tiene Gerencia y nadie más');
+-- Desde el 2026-10-19 (migración 20261017400000) también Administración, en lectura.
+select test.afirmar((select array_agg(r.codigo order by r.codigo) from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
+                      where rp.permiso_codigo = 'codigos_internos.ver') = array['ADMINISTRACION', 'GERENTE'],
+  'el permiso lo tienen Gerencia y Administración, y nadie más');
 
 -- ============================================== 2. GERENCIA VE TODOS LOS CÓDIGOS
 do $$

@@ -22,6 +22,12 @@ const esquemaNuevaOrden = z.object({
   fecha_entrega_comprometida: z.string().optional(),
   responsable_id: z.guid().optional().or(z.literal('')),
   observaciones: z.string().trim().optional(),
+  // La orden va siempre con su PDF: el navegador lo sube a la carpeta de la
+  // orden y la base registra las dos cosas juntas (migración 20261017402000).
+  orden_id: z.guid('Vuelve a abrir el formulario de la orden.'),
+  ruta_pdf: z.string().min(1, 'Elige el PDF de la orden de trabajo.'),
+  nombre_pdf: z.string().trim().min(1).max(200),
+  tamano_pdf: z.coerce.number().int().positive('El PDF de la orden llegó vacío.'),
 })
 
 function opcional(valor: FormDataEntryValue | null) {
@@ -39,32 +45,36 @@ export async function crearOrden(_previo: unknown, datos: FormData): Promise<Res
   }
 
   const v = analisis.data
+  if (!v.ruta_pdf.startsWith(`ot/${v.orden_id}/`)) {
+    return { ok: false, error: 'El PDF de la orden no llegó en su sitio: vuelve a elegirlo.' }
+  }
   const supabase = await createClient()
 
-  const { data, error } = await supabase
-    .from('ordenes_trabajo')
-    .insert({
-      cliente_id: v.cliente_id,
-      unidad_id: opcional(v.unidad_id ?? null),
-      sede_id: v.sede_id,
-      tipo_carroceria_id: opcional(v.tipo_carroceria_id ?? null),
-      tipo_trabajo: v.tipo_trabajo,
-      prioridad: v.prioridad,
-      descripcion: v.descripcion,
-      especificaciones_tecnicas: opcional(v.especificaciones_tecnicas ?? null),
-      fecha_inicio_programada: opcional(v.fecha_inicio_programada ?? null),
-      fecha_fin_programada: opcional(v.fecha_fin_programada ?? null),
-      fecha_entrega_comprometida: opcional(v.fecha_entrega_comprometida ?? null),
-      responsable_id: opcional(v.responsable_id ?? null),
-      observaciones: opcional(v.observaciones ?? null),
-    })
-    .select('id, numero')
-    .single()
+  const { data, error } = await supabase.rpc('registrar_orden_sin_cotizacion', {
+    p_orden: v.orden_id,
+    p_cliente: v.cliente_id,
+    p_unidad: opcional(v.unidad_id ?? null),
+    p_sede: v.sede_id,
+    p_tipo_carroceria: opcional(v.tipo_carroceria_id ?? null),
+    p_tipo_trabajo: v.tipo_trabajo,
+    p_prioridad: v.prioridad,
+    p_descripcion: v.descripcion,
+    p_especificaciones: opcional(v.especificaciones_tecnicas ?? null),
+    p_inicio: opcional(v.fecha_inicio_programada ?? null),
+    p_fin: opcional(v.fecha_fin_programada ?? null),
+    p_entrega: opcional(v.fecha_entrega_comprometida ?? null),
+    p_responsable: opcional(v.responsable_id ?? null),
+    p_observaciones: opcional(v.observaciones ?? null),
+    p_ruta_pdf: v.ruta_pdf,
+    p_nombre_pdf: v.nombre_pdf,
+    p_tamano_pdf: v.tamano_pdf,
+  })
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== v.orden_id) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/ordenes')
-  redirect(`/ordenes/${data.id}?creada=1`)
+  redirect(`/ordenes/${data}?creada=1`)
 }
 
 const esquemaCambioEstado = z.object({

@@ -448,8 +448,9 @@ begin
   perform test.afirmar(k is not null and (k->>'margen_pct') is not null, 'Administración ve el costo y el margen del código');
   perform test.debe_fallar(format('select public.cerrar_costeo_codigo(%L, %L)', 'CHK397_A_26/01', 'Unidad entregada al cliente'),
     'Administración no cierra el costeo', 'codigos_internos.cerrar');
-  perform test.debe_fallar(format('select * from public.codigo_interno_costeo(%L)', 'CHK397_A_26/01'),
-    'ni lee el detalle línea por línea de Gerencia', 'codigos_internos.ver');
+  -- Desde el 2026-10-19 (migración 20261017400000) lee el detalle, en lectura.
+  perform test.afirmar(exists (select 1 from public.codigo_interno_costeo('CHK397_A_26/01')),
+    'y lee el detalle línea por línea, como Gerencia');
   reset role;
 
   -- Supervisión general ve el costo, no el precio.

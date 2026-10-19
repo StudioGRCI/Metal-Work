@@ -13033,6 +13033,28 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_orden_sin_cotizacion: {
+        Args: {
+          p_orden: string | null
+          p_cliente: string | null
+          p_unidad: string | null
+          p_sede: string | null
+          p_tipo_carroceria: string | null
+          p_tipo_trabajo: Database["public"]["Enums"]["tipo_trabajo_ot"] | null
+          p_prioridad: Database["public"]["Enums"]["prioridad_ot"] | null
+          p_descripcion: string | null
+          p_especificaciones: string | null
+          p_inicio: string | null
+          p_fin: string | null
+          p_entrega: string | null
+          p_responsable: string | null
+          p_observaciones: string | null
+          p_ruta_pdf: string | null
+          p_nombre_pdf: string | null
+          p_tamano_pdf: number | null
+        }
+        Returns: string
+      }
       registrar_pago_factura: {
         Args: {
           p_id: string | null

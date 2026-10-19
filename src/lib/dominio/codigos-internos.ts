@@ -183,6 +183,18 @@ export function ultimoAvancePorTrabajo(filas: TrabajoReportado[]): TrabajoConAva
 export const CODIGO_SIN_AVANCE = 'PLANTA'
 
 /**
+ * El código del requerimiento de Administración que es de todas las unidades:
+ * lo que sale del almacén con él se reparte en partes iguales entre los códigos
+ * que trabajaron ese mes (migración 20261017401000). No es una unidad.
+ */
+export const CODIGO_TODOS_LOS_ACTIVOS = 'TODOS LOS ACTIVOS'
+
+/** PLANTA y TODOS LOS ACTIVOS no son una unidad: no avanzan, no se venden y su costeo no se cierra. */
+export function noEsUnidad(codigo: string) {
+  return codigo === CODIGO_SIN_AVANCE || codigo === CODIGO_TODOS_LOS_ACTIVOS
+}
+
+/**
  * De dónde sale el porcentaje de un código, en una línea, con lo que devuelve
  * `codigos_internos_avance`. Sin fila, el código no tiene etapas ni reportes y
  * va en 0 %.
@@ -192,6 +204,7 @@ export function origenDelAvance(
   a: { fuente: 'ETAPAS' | 'REPORTES'; etapas: number; etapas_terminadas: number; trabajos: number; trabajos_terminados: number } | undefined,
 ): string {
   if (codigo === CODIGO_SIN_AVANCE) return 'PLANTA no es una unidad: no lleva avance'
+  if (codigo === CODIGO_TODOS_LOS_ACTIVOS) return 'No es una unidad: lo que sale con él se reparte entre los códigos que trabajaron ese mes'
   if (!a) return 'Sin etapas de Diseño ni reporte diario: todavía no avanza'
   if (a.fuente === 'ETAPAS') {
     return `Por sus ${plural(a.etapas, 'etapa', 'etapas')} de Diseño: ${a.etapas_terminadas} ${a.etapas_terminadas === 1 ? 'terminada' : 'terminadas'}`

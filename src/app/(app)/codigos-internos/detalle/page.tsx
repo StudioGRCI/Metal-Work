@@ -28,6 +28,7 @@ import { codigosDeDiseno, etapasDeCodigo } from '@/lib/datos/diseno-codigos'
 import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo, type FacturadoDelCodigo } from '@/lib/datos/facturacion'
 import {
   CODIGO_SIN_AVANCE,
+  CODIGO_TODOS_LOS_ACTIVOS,
   ESTADO_DOCUMENTO_CODIGO,
   ESTADO_SERVICIO_CODIGO,
   TIPO_DOCUMENTO_CODIGO,
@@ -38,6 +39,7 @@ import {
   enlaceCodigo,
   faltaElPrecio,
   montoMixto,
+  noEsUnidad,
   normalizarCodigo,
   origenDelAvance,
   parecidos,
@@ -196,7 +198,7 @@ function ComoVa({
           className="col-span-2 lg:col-span-1"
           titulo="Avance"
           valor={
-            codigo === CODIGO_SIN_AVANCE ? (
+            noEsUnidad(codigo) ? (
               'No aplica'
             ) : (
               <span data-avance={avance?.avance ?? 0}>
@@ -319,7 +321,7 @@ function ComoVa({
           {c.compras === 1 ? 'OC' : 'OC'}. No se suman al costo: lo comprado entra al almacén y se cuenta cuando sale para este código.
         </p>
       )}
-      {codigo !== CODIGO_SIN_AVANCE && <LineaCierre c={c} codigo={codigo} verPrecio={verPrecio} cierra={cierra} />}
+      {!noEsUnidad(codigo) && <LineaCierre c={c} codigo={codigo} verPrecio={verPrecio} cierra={cierra} />}
     </div>
   )
 }
@@ -328,6 +330,7 @@ function ComoVa({
 function IndicadorMargen({ c, codigo }: { c: ResumenCodigo; codigo: string }) {
   const v = c.venta
   if (codigo === CODIGO_SIN_AVANCE) return <Indicador titulo="Margen" valor="No aplica" pie="PLANTA no se vende" />
+  if (codigo === CODIGO_TODOS_LOS_ACTIVOS) return <Indicador titulo="Margen" valor="No aplica" pie="No se vende: se reparte entre las unidades" />
   if (!v) return <Indicador titulo="Margen" valor="Sin cotización" pie="Sale cuando Gerencia aprueba la cotización con este código" />
   if (v.precio_neto_pen !== null && c.costo_pen <= 0) {
     // Sin nada costeado saldría 100 %: la base no da margen hasta que algo cueste.
@@ -564,6 +567,20 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
           <p className="text-sm font-medium text-texto">PLANTA no lleva avance</p>
           <p className="text-sm text-texto-suave">
             Agrupa el trabajo de la planta que no es de una unidad. Sus reportes diarios suman horas al costeo, pero no tiene etapas ni un final.
+          </p>
+        </TarjetaCuerpo>
+      </Tarjeta>
+    )
+  }
+  if (codigo === CODIGO_TODOS_LOS_ACTIVOS) {
+    return (
+      <Tarjeta>
+        <TarjetaCuerpo>
+          <p className="text-sm font-medium text-texto">TODOS LOS ACTIVOS no lleva avance</p>
+          <p className="text-sm text-texto-suave">
+            Es el código del requerimiento de Administración que va para todas las unidades. Lo que sale del almacén con él se reparte en partes
+            iguales entre los códigos que trabajaron ese mes, y cada uno lo ve en su costeo. Aquí queda lo de un mes en que todavía no trabajó
+            ninguno, y la orden de compra del requerimiento.
           </p>
         </TarjetaCuerpo>
       </Tarjeta>

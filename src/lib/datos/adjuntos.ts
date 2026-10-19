@@ -48,3 +48,15 @@ export async function adjuntosDeOrden(ordenId: string): Promise<Adjunto[]> {
     url: enlaces.get(f.ruta_storage) ?? null,
   }))
 }
+
+/**
+ * Si quien mira ve el PDF de las órdenes (`puede_ver_pdf_ot`: Diseño y
+ * Supervisión de Producción, Maestranza y Acabados). Quien no, solo ve el que
+ * subió él (migración 20261017402000).
+ */
+export async function vePdfDeOrden(): Promise<boolean> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('puede_ver_pdf_ot')
+  if (error) throw new Error(`No se pudo saber si ves el PDF de la orden: ${error.message}`)
+  return data === true
+}

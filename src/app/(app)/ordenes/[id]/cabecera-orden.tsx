@@ -131,8 +131,8 @@ export function CabeceraDeOrden({ orden, perfil, vista, secciones, contadores, c
         <p className="mb-4 rounded-[var(--radius-base)] bg-exito-suave px-3 py-2 text-sm text-exito">
           {/* A quien no aprueba no se le pide que apruebe: se le dice quién lo hace. */}
           {puede(perfil, 'ordenes.aprobar')
-            ? 'Orden registrada. Apruébala para que Diseño pueda definir las etapas.'
-            : 'Orden registrada. Falta su aprobación para que Diseño pueda definir las etapas.'}
+            ? 'Orden registrada con su PDF. Apruébala para que Diseño pueda definir las etapas.'
+            : 'Orden registrada con su PDF. Gerencia la aprueba para que Diseño pueda definir las etapas.'}
         </p>
       )}
 

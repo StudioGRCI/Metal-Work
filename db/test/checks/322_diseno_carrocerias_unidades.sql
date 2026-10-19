@@ -60,14 +60,15 @@ with x as (
 select test.afirmar((select count(*) = 1 from x), 'Diseño corrige los datos de la unidad y la desactiva');
 
 -- Administración: ya no corrige el catálogo; sí da de alta la carrocería que
--- falta al cargar una OT, y ve la ficha desde Configuración.
+-- falta al cargar una OT. Desde el 2026-10-19 (migración 20261017400000) no ve
+-- Configuración: es del administrador del sistema, y la ficha la lleva Diseño.
 select test.como_usuario(:'admin_id');
 with x as (
   update public.tipos_carroceria set nombre = 'Cambio de Administración'
    where id = current_setting('prueba.d.carroceria')::uuid returning 1)
 select test.afirmar((select count(*) = 0 from x), 'Administración ya no corrige el catálogo de carrocerías');
-select test.afirmar((select count(*) = 1 from public.plantillas_ficha where id = current_setting('prueba.d.ficha')::uuid),
-  'Administración ve la ficha técnica desde Configuración');
+select test.afirmar((select count(*) = 0 from public.plantillas_ficha where id = current_setting('prueba.d.ficha')::uuid),
+  'Administración ya no ve la ficha técnica de Configuración');
 insert into public.tipos_carroceria (codigo, nombre, orden_secuencia) values ('QA_322_NUEVA', 'Nueva QA 322', 99);
 select test.afirmar((select count(*) = 1 from public.tipos_carroceria where codigo = 'QA_322_NUEVA'),
   'Administración da de alta la carrocería que falta al cargar una OT');

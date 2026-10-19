@@ -144,7 +144,9 @@ begin
   set local role authenticated;
   perform test.debe_fallar(format('select * from public.codigo_interno_lineas_subcontrato(%L)', current_setting('prueba.codigo')),
     'la función interna no la llama nadie', 'permission denied');
-  perform test.debe_fallar('select * from public.codigos_internos_subcontratos()', 'Administración tampoco lee la lista de Gerencia', 'codigos_internos.ver');
+  -- Desde el 2026-10-19 (migración 20261017400000) ve los códigos internos en lectura.
+  perform test.afirmar(exists (select 1 from public.codigos_internos_subcontratos() where codigo = current_setting('prueba.codigo')),
+    'Administración lee la lista de los códigos, en lectura');
   reset role;
 end $$;
 

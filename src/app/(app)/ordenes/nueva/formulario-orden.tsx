@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { FileUp } from 'lucide-react'
+import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -8,9 +9,9 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
+import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { createClient } from '@/lib/supabase/client'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
-import { useEnvio } from '@/lib/envio'
 import { etiquetasDePuesto } from '@/lib/format'
 import { NuevaUnidad } from '@/app/(app)/clientes/nueva-unidad'
 import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
@@ -29,8 +30,14 @@ const TIPOS_TRABAJO = opciones(TIPO_TRABAJO)
 const PRIORIDADES = opciones(PRIORIDAD)
 
 export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
-  // useEnvio: un envío por toque y lo escrito a salvo si el servidor lo rechaza.
-  const { alEnviar, enviando: pendiente, resultado } = useEnvio(crearOrden)
+  // Un envío por toque, como `useEnvio`; aquí a mano porque el PDF viaja antes
+  // que la orden. El id se decide al abrir: un reintento tras perder la señal
+  // encuentra la orden ya registrada en vez de crear otra.
+  const [ordenId] = useState(() => crypto.randomUUID())
+  const [archivo, setArchivo] = useState<File | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [pendiente, iniciar] = useTransition()
+  const enCurso = useRef(false)
   const [clienteId, setClienteId] = useState('')
   const [unidadId, setUnidadId] = useState('')
   const [carroceriaId, setCarroceriaId] = useState('')
@@ -106,8 +113,73 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     setCarroceriaId(t.id)
   }
 
+  async function elegirArchivo(elegido: File | undefined) {
+    setError(null)
+    if (!elegido) return
+    if (!/\.pdf$/i.test(elegido.name) || new TextDecoder().decode(await elegido.slice(0, 5).arrayBuffer()) !== '%PDF-') {
+      setArchivo(null)
+      setError('La orden se sube en PDF: elige el PDF de la orden de trabajo.')
+      return
+    }
+    if (elegido.size > MAXIMO_ADJUNTO_MB * 1024 * 1024) {
+      setArchivo(null)
+      setError(`El PDF pesa más de ${MAXIMO_ADJUNTO_MB} MB.`)
+      return
+    }
+    setArchivo(elegido)
+  }
+
+  function enviar(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault()
+    if (enCurso.current) return
+    const datos = new FormData(evento.currentTarget)
+    if (!archivo) {
+      setError('Elige el PDF de la orden de trabajo: la orden va siempre con su PDF.')
+      return
+    }
+
+    enCurso.current = true
+    setError(null)
+    iniciar(async () => {
+      const supabase = createClient()
+      // El PDF viaja a la carpeta de la orden antes de que exista; la base
+      // registra la orden y su PDF juntos, o ninguno.
+      const ruta = `ot/${ordenId}/${crypto.randomUUID()}.pdf`
+      let subido = false
+      try {
+        const { error: falla } = await supabase.storage
+          .from('adjuntos-ot')
+          .upload(ruta, archivo, { contentType: 'application/pdf', upsert: false })
+        if (falla) {
+          setError('No se pudo subir el PDF de la orden. Revisa la señal y vuelve a intentar.')
+          return
+        }
+        subido = true
+
+        datos.set('orden_id', ordenId)
+        datos.set('ruta_pdf', ruta)
+        datos.set('nombre_pdf', archivo.name.slice(0, 200))
+        datos.set('tamano_pdf', String(archivo.size))
+        // Si la registra, la acción lleva a la orden y no vuelve.
+        const r = await crearOrden(null, datos)
+        if (r && !r.ok) {
+          await supabase.storage.from('adjuntos-ot').remove([ruta])
+          subido = false
+          setError(r.error)
+        }
+      } catch {
+        // No se registró: el PDF que ya viajó se quita, para que no quede un
+        // archivo que ninguna orden nombra.
+        if (subido) await supabase.storage.from('adjuntos-ot').remove([ruta])
+        setError('No se pudo registrar la orden. Vuelve a intentar.')
+      } finally {
+        enCurso.current = false
+      }
+    })
+  }
+
   return (
-    <form onSubmit={alEnviar} className="max-w-4xl space-y-4">
+    <form onSubmit={enviar} className="max-w-4xl space-y-4">
       <Tarjeta>
         <TarjetaCabecera titulo="Cliente y unidad" />
         <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2">
@@ -294,9 +366,33 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         </TarjetaCuerpo>
       </Tarjeta>
 
-      {resultado && !resultado.ok && (
+      <Tarjeta>
+        <TarjetaCabecera
+          titulo="PDF de la orden"
+          descripcion="La orden de trabajo firmada, la misma que se imprime. Sin su PDF la orden no se registra."
+        />
+        <TarjetaCuerpo>
+          <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2">
+            <FileUp aria-hidden className="size-6" />
+            <span className="font-medium text-texto">{archivo ? archivo.name : 'Elegir el PDF de la orden'}</span>
+            <span className="text-xs">Obligatorio · PDF hasta {MAXIMO_ADJUNTO_MB} MB</span>
+            {/* Sin `name`: el archivo va a Storage, no dentro del formulario a la acción. */}
+            <input
+              type="file"
+              accept="application/pdf,.pdf"
+              className="sr-only"
+              onChange={(e) => {
+                void elegirArchivo(e.target.files?.[0])
+                e.target.value = ''
+              }}
+            />
+          </label>
+        </TarjetaCuerpo>
+      </Tarjeta>
+
+      {error && (
         <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-sm text-peligro">
-          {resultado.error}
+          {error}
         </p>
       )}
 
