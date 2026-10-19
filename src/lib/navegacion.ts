@@ -790,15 +790,15 @@ export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo:
     .filter((g) => g.items.length > 0)
 }
 
-/**
- * Las pestañas de abajo en el teléfono: hasta cuatro, sacadas del menú de esta
- * persona en el orden que fija su puesto, y después «Más».
- */
 /** «1 pendiente», «3 pendientes»: la etiqueta de los globos del menú, para el lector de pantalla. */
 export function pendientesEnPalabras(n: number) {
   return `${n} ${n === 1 ? 'pendiente' : 'pendientes'}`
 }
 
+/**
+ * Las pestañas de abajo en el teléfono: hasta cuatro, sacadas del menú de esta
+ * persona en el orden que fija su puesto, y después «Más».
+ */
 export function pestanasDe(permisos: readonly string[], esAdmin: boolean, rolCodigo: string) {
   const visibles = menuDe(permisos, esAdmin, rolCodigo).flatMap((g) => g.items)
   const propio = esAdmin ? undefined : MENU_POR_PUESTO[rolCodigo]

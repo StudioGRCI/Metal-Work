@@ -93,7 +93,11 @@ export function NavegacionLista({
                     )}
                   >
                     <Icono aria-hidden className="size-4 shrink-0" />
-                    <span className="min-w-0 flex-1">{item.titulo}</span>
+                    <span className="min-w-0 flex-1">
+                      {item.titulo}
+                      {/* El «!» solo no explica nada a quien mira: una línea dice qué pasó. */}
+                      {falla && <span className="block text-[11px] font-normal text-texto-suave">No se pudo contar; vuelve a cargar</span>}
+                    </span>
                     {activo && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-current" />}
                     {/* Lo que le toca a este puesto en ese módulo, a la vista
                         sin entrar: el mismo globo de la campana. */}
