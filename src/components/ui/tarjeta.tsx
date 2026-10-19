@@ -32,7 +32,9 @@ export function TarjetaCabecera({
     // Al imprimir, el título no se queda al pie de una hoja con su contenido en la siguiente.
     <div className={cn('flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-borde px-4 py-3 print:break-after-avoid', className)}>
       <div className="min-w-0 flex-1 basis-60">
-        <h2 className="text-sm font-semibold text-texto">{titulo}</h2>
+        {/* Un punto más que el texto de adentro: al mismo tamaño, «Cliente y
+            unidad» se leía como una fila más de la tarjeta y no como su nombre. */}
+        <h2 className="text-[15px] leading-snug font-semibold text-texto">{titulo}</h2>
         {descripcion && <p className="mt-0.5 text-xs text-texto-suave">{descripcion}</p>}
       </div>
       {acciones && <div className="flex shrink-0 items-center gap-2">{acciones}</div>}

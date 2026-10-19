@@ -239,7 +239,7 @@ export function SeleccionBuscable({
               placeholder={marcadorBusqueda}
               aria-label={marcadorBusqueda}
               aria-controls={idLista}
-              className="h-8 w-full rounded-[var(--radius-base)] border border-borde bg-superficie pr-2 pl-8 text-sm text-texto placeholder:text-texto-tenue"
+              className="h-8 w-full rounded-[var(--radius-base)] border border-borde-fuerte bg-superficie pr-2 pl-8 text-sm text-texto placeholder:text-texto-tenue"
             />
           </div>
 
