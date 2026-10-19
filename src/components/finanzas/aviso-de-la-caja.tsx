@@ -128,7 +128,11 @@ export function AvisoDeLaCaja({ children }: { children: ReactNode }) {
               <span className="min-w-0 flex-1 py-2">{aviso}</span>
               <button
                 type="button"
-                onClick={() => setAviso(null)}
+                onClick={() => {
+                  // El botón donde está el foco desaparece: se lo pasa a la campana, que queda al lado.
+                  document.querySelector<HTMLElement>('#ranura-aviso-caja + div button')?.focus()
+                  setAviso(null)
+                }}
                 aria-label="Quitar el aviso de la caja"
                 className="flex size-11 shrink-0 items-center justify-center rounded-full text-texto-suave hover:bg-superficie-2 hover:text-texto"
               >
