@@ -1,4 +1,3 @@
-
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'

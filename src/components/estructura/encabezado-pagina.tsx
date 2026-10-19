@@ -4,8 +4,12 @@ import { ChevronRight } from 'lucide-react'
 
 import { DescripcionPlegable } from '@/components/estructura/descripcion-plegable'
 
-/** Desde aquí una descripción ocupa más de tres renglones en un teléfono de 390 px. */
-const DESCRIPCION_LARGA = 120
+/**
+ * Desde aquí una descripción ocupa cuatro renglones o más en un teléfono de
+ * 390 px. Por debajo, recogerla a dos más «Leer más» no ahorra casi nada y
+ * suma un toque.
+ */
+const DESCRIPCION_LARGA = 160
 
 export function EncabezadoPagina({
   titulo,

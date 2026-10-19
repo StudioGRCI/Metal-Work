@@ -52,24 +52,21 @@ export type PropsPastillaFiltro = ConEnlaces | ConBotones
 // Alto táctil en el teléfono —44 px se marcan con el guante puesto— y el de
 // siempre en el monitor. `min-height` le gana a `height`, así que en `sm:` hay
 // que soltarlo o el escritorio se quedaría con la altura del teléfono.
-// Las que no están puestas llevan su caja: sin ella, en el teléfono «Validados»
-// se leía como texto suelto y no como algo que se toca.
+// Las que no están puestas llevan su caja, con el contorno de 3:1 que
+// `globals.css` pide para todo control: sin ella, en el teléfono «Validados» se
+// leía como texto suelto y no como algo que se toca.
 export const PASTILLA =
   'inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-base)] border px-3 text-sm whitespace-nowrap transition-colors sm:h-8 sm:min-h-0'
 
 // El relleno sólido y el subrayado distinguen la selección incluso sin color.
 export const ACTIVA = 'border-acento bg-acento font-semibold text-acento-texto underline underline-offset-4'
-export const INACTIVA = 'border-borde bg-superficie text-texto-suave hover:border-borde-fuerte hover:text-texto'
+export const INACTIVA = 'border-borde-fuerte bg-superficie text-texto-suave hover:bg-superficie-2 hover:text-texto'
 
-// En el teléfono el grupo va en una sola fila que se desliza —como las pestañas
-// de la orden, con la misma sombra de corte que avisa que sigue—: partido en
-// dos renglones, la última pastilla quedaba sola abajo y parecía otro filtro.
-// En el monitor cabe y vuelve a partir línea si hace falta. El `-m-1.5 p-1.5`
-// deja lugar al anillo de foco, que el desplazamiento recortaría; el ancho total
-// no cambia, así que nunca empuja la pantalla de costado. Sin `className`: los
-// márgenes de quien lo usa van en una caja aparte y no pisan este.
-export const GRUPO_PASTILLAS =
-  'pestanas-con-corte -m-1.5 flex gap-2 overflow-x-auto p-1.5 [scrollbar-width:none] sm:m-0 sm:flex-wrap sm:gap-1 sm:overflow-visible sm:p-0 [&::-webkit-scrollbar]:hidden'
+// El grupo parte línea también en el teléfono: deslizado de costado dejaba
+// filtros fuera de la vista —en /codigos-internos se veían dos de cinco— y
+// dentro de una fila flex ensanchaba la página entera (/subcontratos medía
+// 438 px en 390). `min-w-0` para que un padre flex nunca lo estire.
+export const GRUPO_PASTILLAS = 'flex min-w-0 flex-wrap gap-2 sm:gap-1'
 
 /** Vacío, `null` y ausente son la misma cosa: no hay filtro puesto. */
 function mismo(a: string | null | undefined, b: string | null | undefined) {
@@ -94,43 +91,39 @@ export function PastillaFiltro(props: PropsPastillaFiltro) {
   const claves = new Set<string>(props.clave ? [props.clave] : [])
   for (const opcion of opciones) if (opcion.clave) claves.add(opcion.clave)
 
-  // Dos cajas: la de afuera lleva los márgenes de quien la usa y la de adentro
-  // el desplazamiento con su holgura para el foco, sin que se mezclen.
   return (
-    <div className={className}>
-      <div role="group" aria-label={etiqueta} className={GRUPO_PASTILLAS}>
-        {opciones.map((opcion) => {
-          const activa = mismo(activo, opcion.valor)
-          const clases = cn(PASTILLA, activa ? ACTIVA : INACTIVA)
-          const llave = `${opcion.clave ?? ''}:${opcion.valor ?? ''}`
+    <div role="group" aria-label={etiqueta} className={cn(GRUPO_PASTILLAS, className)}>
+      {opciones.map((opcion) => {
+        const activa = mismo(activo, opcion.valor)
+        const clases = cn(PASTILLA, activa ? ACTIVA : INACTIVA)
+        const llave = `${opcion.clave ?? ''}:${opcion.valor ?? ''}`
 
-          if (props.alPulsar) {
-            const pulsar = props.alPulsar
-            return (
-              <button
-                key={llave}
-                type="button"
-                onClick={() => pulsar(opcion.valor)}
-                aria-pressed={activa}
-                className={clases}
-              >
-                {opcion.etiqueta}
-              </button>
-            )
-          }
-
+        if (props.alPulsar) {
+          const pulsar = props.alPulsar
           return (
-            <Link
+            <button
               key={llave}
-              href={enlace(props.ruta, props.params, claves, opcion, props.clave)}
-              aria-current={activa ? 'page' : undefined}
+              type="button"
+              onClick={() => pulsar(opcion.valor)}
+              aria-pressed={activa}
               className={clases}
             >
               {opcion.etiqueta}
-            </Link>
+            </button>
           )
-        })}
-      </div>
+        }
+
+        return (
+          <Link
+            key={llave}
+            href={enlace(props.ruta, props.params, claves, opcion, props.clave)}
+            aria-current={activa ? 'page' : undefined}
+            className={clases}
+          >
+            {opcion.etiqueta}
+          </Link>
+        )
+      })}
     </div>
   )
 }
