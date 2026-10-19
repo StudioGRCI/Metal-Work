@@ -3,11 +3,14 @@
 import { Ban, CheckCheck, FileUp, Wallet } from 'lucide-react'
 import { useState } from 'react'
 
+import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
+import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoPlanilla } from '@/lib/archivos-planilla'
+import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { MAXIMO_MB_PLANILLA } from '@/lib/dominio/planilla-diaria'
 import { useAccion, useEnvio } from '@/lib/envio'
 import { moneda } from '@/lib/format'
@@ -25,21 +28,28 @@ function sacarArchivo(datos: FormData): File | null {
 
 /**
  * Tesorería registra un pago: marca a quién le pagó (una persona o varias en
- * lote), el día, el número de operación y el comprobante. El comprobante sube
- * primero a Storage y, si el pago no entra, se retira.
+ * lote), el día, el número de operación, la cuenta de la caja de la que salió
+ * —la caja diaria se mueve sola por el total marcado— y el comprobante. El
+ * comprobante sube primero a Storage y, si el pago no entra, se retira.
  */
 export function RegistrarPago({
   planillaId,
   pagoId,
   hoy,
   porPagar,
+  cuentas,
 }: {
   planillaId: string
   pagoId: string
   hoy: string
   porPagar: { id: string; nombre: string; total: number }[]
+  cuentas: CuentaParaPagar[]
 }) {
   const [abierta, setAbierta] = useState(false)
+  // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
+  const [dia, setDia] = useState(hoy)
+  // De qué cuenta salió, o por qué la caja no se movió: lo dice la página, porque este botón desaparece al pagar a todos.
+  const avisar = useAvisoDeLaCaja()
   const [marcadas, setMarcadas] = useState<string[]>(() => porPagar.map((p) => p.id))
   const total = porPagar.filter((p) => marcadas.includes(p.id)).reduce((n, p) => n + p.total, 0)
 
@@ -52,11 +62,22 @@ export function RegistrarPago({
       return registrarPagoPlanilla(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(pagar, () => setAbierta(false))
+  const { alEnviar, enviando, error } = useEnvio(pagar, (r) => {
+    setAbierta(false)
+    avisar(r.mensaje ?? null)
+  })
 
   return (
     <>
-      <Boton type="button" onClick={() => setAbierta(true)} data-registrar-pago>
+      <Boton
+        type="button"
+        onClick={() => {
+          avisar(null)
+          setDia(hoy)
+          setAbierta(true)
+        }}
+        data-registrar-pago
+      >
         <Wallet aria-hidden className="size-4" />
         Registrar pago
       </Boton>
@@ -68,6 +89,7 @@ export function RegistrarPago({
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
+          <SinCuentasEnLaCaja cuentas={cuentas} tipo="pago" />
           <input type="hidden" name="id" value={pagoId} />
           <input type="hidden" name="planilla_id" value={planillaId} />
           <fieldset className="space-y-1">
@@ -94,11 +116,12 @@ export function RegistrarPago({
           </fieldset>
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Día del pago" htmlFor={`pago-fecha-${pagoId}`} requerido>
-              <Entrada id={`pago-fecha-${pagoId}`} name="fecha_pago" type="date" required defaultValue={hoy} max={hoy} />
+              <Entrada id={`pago-fecha-${pagoId}`} name="fecha_pago" type="date" required value={dia} onChange={(e) => setDia(e.target.value)} max={hoy} />
             </Campo>
             <Campo etiqueta="N.º de operación" htmlFor={`pago-operacion-${pagoId}`} ayuda="El que da el banco, si lo hay.">
               <Entrada id={`pago-operacion-${pagoId}`} name="operacion" maxLength={60} autoComplete="off" className="tabular" />
             </Campo>
+            <CuentaDeLaCaja cuentas={cuentas} monedaDocumento="PEN" tipo="pago" dia={dia} prefijo={`planilla-${pagoId}`} />
           </div>
           <Campo etiqueta="Comprobante" htmlFor={`pago-archivo-${pagoId}`} requerido ayuda={`PDF o foto, hasta ${MAXIMO_MB_PLANILLA} MB.`}>
             <Entrada id={`pago-archivo-${pagoId}`} name="archivo" type="file" accept={ACEPTA} required />
@@ -112,7 +135,7 @@ export function RegistrarPago({
             <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
               Cancelar
             </Boton>
-            <Boton type="submit" cargando={enviando} disabled={marcadas.length === 0}>
+            <Boton type="submit" cargando={enviando} disabled={marcadas.length === 0 || cuentas.length === 0}>
               Registrar el pago
             </Boton>
           </div>
@@ -213,7 +236,11 @@ export function AnularConMotivo({
   descripcion: string
 }) {
   const [abierta, setAbierta] = useState(false)
-  const { alEnviar, enviando, error } = useEnvio(tipo === 'planilla' ? anularPlanillaDiaria : anularPagoPlanilla, () => setAbierta(false))
+  const avisar = useAvisoDeLaCaja()
+  const { alEnviar, enviando, error } = useEnvio(tipo === 'planilla' ? anularPlanillaDiaria : anularPagoPlanilla, (r) => {
+    setAbierta(false)
+    if (tipo === 'pago') avisar(r.mensaje ?? null)
+  })
   return (
     <>
       <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} data-anular={tipo}>

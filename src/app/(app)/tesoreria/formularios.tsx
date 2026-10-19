@@ -3,11 +3,14 @@
 import { Ban, HandCoins, Wallet } from 'lucide-react'
 import { useState } from 'react'
 
+import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
+import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
+import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { BUCKET_COBROS_VENTA, BUCKET_PAGOS_FACTURAS, BUCKET_PAGOS_SERVICIO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
 import { useEnvio } from '@/lib/envio'
 import { moneda, type CodigoMoneda } from '@/lib/format'
@@ -25,9 +28,10 @@ const ACEPTA = 'application/pdf,image/jpeg,image/png,image/webp'
 
 /**
  * Tesorería registra un cobro de una factura de venta: el día, lo cobrado, si
- * con él la factura queda cancelada, el número de operación y el voucher. El
- * voucher sube primero a Storage, en la carpeta de la factura, y si el cobro
- * no entra se retira. El id del cobro se decide al abrir la ventana: un
+ * con él la factura queda cancelada, el número de operación, la cuenta de la
+ * caja a la que entró —la caja diaria se mueve sola— y el voucher. El voucher
+ * sube primero a Storage, en la carpeta de la factura, y si el cobro no entra
+ * se retira. El id del cobro se decide al abrir la ventana: un
  * reintento no registra otro.
  */
 export function CobrarFactura({
@@ -37,6 +41,7 @@ export function CobrarFactura({
   hoy,
   saldo,
   codigoMoneda,
+  cuentas,
 }: {
   facturaId: string
   numero: string
@@ -44,8 +49,13 @@ export function CobrarFactura({
   hoy: string
   saldo: number
   codigoMoneda: CodigoMoneda
+  cuentas: CuentaParaPagar[]
 }) {
   const [cobroId, setCobroId] = useState<string | null>(null)
+  // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
+  const [dia, setDia] = useState(hoy)
+  // A qué cuenta entró, o por qué la caja no se movió: lo dice la página, porque este botón desaparece si la factura queda cobrada.
+  const avisar = useAvisoDeLaCaja()
 
   async function cobrar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = datos.get('archivo')
@@ -57,12 +67,24 @@ export function CobrarFactura({
       return registrarCobroFactura(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(cobrar, () => setCobroId(null))
+  const { alEnviar, enviando, error } = useEnvio(cobrar, (r) => {
+    setCobroId(null)
+    avisar(r.mensaje ?? null)
+  })
   const campo = (nombre: string) => `${nombre}-cobro-${facturaId}`
 
   return (
     <>
-      <Boton type="button" tamano="sm" onClick={() => setCobroId(crypto.randomUUID())} data-cobrar-factura={numero}>
+      <Boton
+        type="button"
+        tamano="sm"
+        onClick={() => {
+          avisar(null)
+          setDia(hoy)
+          setCobroId(crypto.randomUUID())
+        }}
+        data-cobrar-factura={numero}
+      >
         <HandCoins aria-hidden className="size-4" />
         Registrar cobro
       </Boton>
@@ -74,11 +96,12 @@ export function CobrarFactura({
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
+          <SinCuentasEnLaCaja cuentas={cuentas} tipo="cobro" />
           <input type="hidden" name="id" value={cobroId ?? ''} />
           <input type="hidden" name="factura_id" value={facturaId} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Día del cobro" htmlFor={campo('fecha')} requerido>
-              <Entrada id={campo('fecha')} name="fecha" type="date" required defaultValue={hoy} max={hoy} />
+              <Entrada id={campo('fecha')} name="fecha" type="date" required value={dia} onChange={(e) => setDia(e.target.value)} max={hoy} />
             </Campo>
             <Campo etiqueta={`Importe cobrado (${codigoMoneda === 'USD' ? 'dólares' : 'soles'})`} htmlFor={campo('monto')} requerido>
               <Entrada
@@ -108,6 +131,7 @@ export function CobrarFactura({
             <Campo etiqueta="N.º de operación" htmlFor={campo('operacion')} ayuda="El que da el banco, si lo hay.">
               <Entrada id={campo('operacion')} name="operacion" maxLength={60} autoComplete="off" className="tabular" />
             </Campo>
+            <CuentaDeLaCaja cuentas={cuentas} monedaDocumento={codigoMoneda} tipo="cobro" dia={dia} prefijo={`cobro-${facturaId}`} />
           </div>
           <Campo etiqueta="Voucher o constancia del depósito" htmlFor={campo('archivo')} requerido ayuda={`PDF o foto, hasta ${MAXIMO_MB_FINANZAS} MB.`}>
             <Entrada id={campo('archivo')} name="archivo" type="file" accept={ACEPTA} required />
@@ -121,7 +145,7 @@ export function CobrarFactura({
             <Boton type="button" variante="contorno" onClick={() => setCobroId(null)}>
               Cancelar
             </Boton>
-            <Boton type="submit" cargando={enviando}>
+            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
               Registrar el cobro
             </Boton>
           </div>
@@ -134,7 +158,11 @@ export function CobrarFactura({
 /** Anular con su motivo un cobro mal registrado: la factura vuelve a su saldo. */
 export function AnularCobro({ cobroId }: { cobroId: string }) {
   const [abierta, setAbierta] = useState(false)
-  const { alEnviar, enviando, error } = useEnvio(anularCobroFactura, () => setAbierta(false))
+  const avisar = useAvisoDeLaCaja()
+  const { alEnviar, enviando, error } = useEnvio(anularCobroFactura, (r) => {
+    setAbierta(false)
+    avisar(r.mensaje ?? null)
+  })
   return (
     <>
       <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} data-anular-cobro={cobroId}>
@@ -145,7 +173,7 @@ export function AnularCobro({ cobroId }: { cobroId: string }) {
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo="Anular el cobro"
-        descripcion="Queda en el historial con su motivo y su voucher; la factura vuelve a su saldo."
+        descripcion="Queda en el historial con su motivo y su voucher. La factura vuelve a su saldo y la caja diaria anula su ingreso."
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
@@ -175,8 +203,9 @@ export function AnularCobro({ cobroId }: { cobroId: string }) {
 
 /**
  * Tesorería paga una orden de servicio: el día, lo pagado, si cancela la orden
- * o es a cuenta, el número de operación, el comprobante del proveedor y el
- * voucher. El voucher sube primero a Storage y, si el pago no entra, se retira.
+ * o es a cuenta, el número de operación, el comprobante del proveedor, la cuenta
+ * de la caja de la que salió —la caja diaria se mueve sola— y el voucher. El
+ * voucher sube primero a Storage y, si el pago no entra, se retira.
  * El id del pago se decide al abrir la ventana: un reintento no registra otro.
  */
 export function PagarServicio({
@@ -186,6 +215,7 @@ export function PagarServicio({
   hoy,
   saldo,
   codigoMoneda,
+  cuentas,
 }: {
   ordenServicioId: string
   numero: string
@@ -193,8 +223,13 @@ export function PagarServicio({
   hoy: string
   saldo: number
   codigoMoneda: CodigoMoneda
+  cuentas: CuentaParaPagar[]
 }) {
   const [pagoId, setPagoId] = useState<string | null>(null)
+  // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
+  const [dia, setDia] = useState(hoy)
+  // De qué cuenta salió, o por qué la caja no se movió: lo dice la página, porque este botón desaparece si el pago cancela el documento.
+  const avisar = useAvisoDeLaCaja()
 
   async function pagar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = datos.get('archivo')
@@ -206,12 +241,24 @@ export function PagarServicio({
       return registrarPagoServicio(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(pagar, () => setPagoId(null))
+  const { alEnviar, enviando, error } = useEnvio(pagar, (r) => {
+    setPagoId(null)
+    avisar(r.mensaje ?? null)
+  })
   const campo = (nombre: string) => `${nombre}-${ordenServicioId}`
 
   return (
     <>
-      <Boton type="button" tamano="sm" onClick={() => setPagoId(crypto.randomUUID())} data-pagar-servicio={numero}>
+      <Boton
+        type="button"
+        tamano="sm"
+        onClick={() => {
+          avisar(null)
+          setDia(hoy)
+          setPagoId(crypto.randomUUID())
+        }}
+        data-pagar-servicio={numero}
+      >
         <Wallet aria-hidden className="size-4" />
         Registrar pago
       </Boton>
@@ -223,11 +270,12 @@ export function PagarServicio({
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
+          <SinCuentasEnLaCaja cuentas={cuentas} tipo="pago" />
           <input type="hidden" name="id" value={pagoId ?? ''} />
           <input type="hidden" name="orden_servicio_id" value={ordenServicioId} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Día del pago" htmlFor={campo('fecha')} requerido>
-              <Entrada id={campo('fecha')} name="fecha_pago" type="date" required defaultValue={hoy} max={hoy} />
+              <Entrada id={campo('fecha')} name="fecha_pago" type="date" required value={dia} onChange={(e) => setDia(e.target.value)} max={hoy} />
             </Campo>
             <Campo etiqueta={`Importe pagado (${codigoMoneda === 'USD' ? 'dólares' : 'soles'})`} htmlFor={campo('monto')} requerido>
               <Entrada
@@ -254,6 +302,7 @@ export function PagarServicio({
             <Campo etiqueta="Factura o recibo del proveedor" htmlFor={campo('comprobante')} ayuda="Su número, si ya lo entregó: E001-45.">
               <Entrada id={campo('comprobante')} name="comprobante" maxLength={30} autoComplete="off" className="tabular uppercase" />
             </Campo>
+            <CuentaDeLaCaja cuentas={cuentas} monedaDocumento={codigoMoneda} tipo="pago" dia={dia} prefijo={`servicio-${ordenServicioId}`} />
           </div>
           <Campo etiqueta="Voucher o constancia del pago" htmlFor={campo('archivo')} requerido ayuda={`PDF o foto, hasta ${MAXIMO_MB_FINANZAS} MB.`}>
             <Entrada id={campo('archivo')} name="archivo" type="file" accept={ACEPTA} required />
@@ -267,7 +316,7 @@ export function PagarServicio({
             <Boton type="button" variante="contorno" onClick={() => setPagoId(null)}>
               Cancelar
             </Boton>
-            <Boton type="submit" cargando={enviando}>
+            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
               Registrar el pago
             </Boton>
           </div>
@@ -280,7 +329,11 @@ export function PagarServicio({
 /** Anular con su motivo un pago de servicio mal registrado: la orden vuelve a quedar por pagar. */
 export function AnularPagoServicio({ pagoId }: { pagoId: string }) {
   const [abierta, setAbierta] = useState(false)
-  const { alEnviar, enviando, error } = useEnvio(anularPagoServicio, () => setAbierta(false))
+  const avisar = useAvisoDeLaCaja()
+  const { alEnviar, enviando, error } = useEnvio(anularPagoServicio, (r) => {
+    setAbierta(false)
+    avisar(r.mensaje ?? null)
+  })
   return (
     <>
       <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} data-anular-pago-servicio={pagoId}>
@@ -291,7 +344,7 @@ export function AnularPagoServicio({ pagoId }: { pagoId: string }) {
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo="Anular el pago"
-        descripcion="Queda en el historial con su motivo y su voucher; la orden de servicio vuelve a quedar por pagar."
+        descripcion="Queda en el historial con su motivo y su voucher. La orden de servicio vuelve a quedar por pagar y la caja diaria anula su egreso."
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
@@ -319,8 +372,9 @@ export function AnularPagoServicio({ pagoId }: { pagoId: string }) {
 }
 
 /**
- * Tesorería paga una factura de compra con su voucher: el día, lo pagado y el
- * número de operación. El voucher sube primero a Storage y, si el pago no entra,
+ * Tesorería paga una factura de compra con su voucher: el día, lo pagado, el
+ * número de operación y la cuenta de la caja de la que salió —la caja diaria se
+ * mueve sola—. El voucher sube primero a Storage y, si el pago no entra,
  * se retira. El id del pago se decide al abrir la ventana: un reintento no
  * registra otro.
  */
@@ -331,6 +385,7 @@ export function PagarFactura({
   hoy,
   saldo,
   codigoMoneda,
+  cuentas,
 }: {
   adquisicionId: string
   numero: string
@@ -338,8 +393,13 @@ export function PagarFactura({
   hoy: string
   saldo: number
   codigoMoneda: CodigoMoneda
+  cuentas: CuentaParaPagar[]
 }) {
   const [pagoId, setPagoId] = useState<string | null>(null)
+  // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
+  const [dia, setDia] = useState(hoy)
+  // De qué cuenta salió, o por qué la caja no se movió: lo dice la página, porque este botón desaparece si el pago cancela el documento.
+  const avisar = useAvisoDeLaCaja()
 
   async function pagar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = datos.get('archivo')
@@ -351,12 +411,24 @@ export function PagarFactura({
       return registrarPagoFactura(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(pagar, () => setPagoId(null))
+  const { alEnviar, enviando, error } = useEnvio(pagar, (r) => {
+    setPagoId(null)
+    avisar(r.mensaje ?? null)
+  })
   const campo = (nombre: string) => `${nombre}-${adquisicionId}`
 
   return (
     <>
-      <Boton type="button" tamano="sm" onClick={() => setPagoId(crypto.randomUUID())} data-pagar-factura={numero}>
+      <Boton
+        type="button"
+        tamano="sm"
+        onClick={() => {
+          avisar(null)
+          setDia(hoy)
+          setPagoId(crypto.randomUUID())
+        }}
+        data-pagar-factura={numero}
+      >
         <Wallet aria-hidden className="size-4" />
         Registrar pago
       </Boton>
@@ -368,11 +440,12 @@ export function PagarFactura({
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
+          <SinCuentasEnLaCaja cuentas={cuentas} tipo="pago" />
           <input type="hidden" name="id" value={pagoId ?? ''} />
           <input type="hidden" name="adquisicion_id" value={adquisicionId} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Día del pago" htmlFor={campo('fecha')} requerido>
-              <Entrada id={campo('fecha')} name="fecha" type="date" required defaultValue={hoy} max={hoy} />
+              <Entrada id={campo('fecha')} name="fecha" type="date" required value={dia} onChange={(e) => setDia(e.target.value)} max={hoy} />
             </Campo>
             <Campo etiqueta={`Importe pagado (${codigoMoneda === 'USD' ? 'dólares' : 'soles'})`} htmlFor={campo('monto')} requerido>
               <Entrada
@@ -391,6 +464,7 @@ export function PagarFactura({
             <Campo etiqueta="N.º de operación" htmlFor={campo('referencia')} requerido ayuda="El que da el banco en la constancia.">
               <Entrada id={campo('referencia')} name="referencia" minLength={3} maxLength={120} required autoComplete="off" className="tabular" />
             </Campo>
+            <CuentaDeLaCaja cuentas={cuentas} monedaDocumento={codigoMoneda} tipo="pago" dia={dia} prefijo={`factura-${adquisicionId}`} />
           </div>
           <Campo etiqueta="Voucher o constancia del pago" htmlFor={campo('archivo')} requerido ayuda={`PDF o foto, hasta ${MAXIMO_MB_FINANZAS} MB.`}>
             <Entrada id={campo('archivo')} name="archivo" type="file" accept={ACEPTA} required />
@@ -404,7 +478,7 @@ export function PagarFactura({
             <Boton type="button" variante="contorno" onClick={() => setPagoId(null)}>
               Cancelar
             </Boton>
-            <Boton type="submit" cargando={enviando}>
+            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
               Registrar el pago
             </Boton>
           </div>
@@ -417,7 +491,11 @@ export function PagarFactura({
 /** Anular con su motivo un pago de factura mal registrado: la factura vuelve a su saldo. */
 export function AnularPagoFactura({ pagoId }: { pagoId: string }) {
   const [abierta, setAbierta] = useState(false)
-  const { alEnviar, enviando, error } = useEnvio(anularPagoFactura, () => setAbierta(false))
+  const avisar = useAvisoDeLaCaja()
+  const { alEnviar, enviando, error } = useEnvio(anularPagoFactura, (r) => {
+    setAbierta(false)
+    avisar(r.mensaje ?? null)
+  })
   return (
     <>
       <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} data-anular-pago-factura={pagoId}>
@@ -428,7 +506,7 @@ export function AnularPagoFactura({ pagoId }: { pagoId: string }) {
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo="Anular el pago"
-        descripcion="Queda en el historial con su motivo y su voucher; la factura vuelve a su saldo."
+        descripcion="Queda en el historial con su motivo y su voucher. La factura vuelve a su saldo y la caja diaria anula su egreso."
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">

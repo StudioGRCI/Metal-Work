@@ -30,6 +30,8 @@ import { join } from 'node:path'
 import pg from 'pg'
 import { chromium } from 'playwright-core'
 
+import { crearCajaDePrueba, elegirCuenta, movimientosDeLaCaja } from './caja-de-prueba.mjs'
+
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -123,6 +125,8 @@ mkdirSync(archivos, { recursive: true })
 }
 
 const sello = Date.now().toString().slice(-6)
+// El pago pide la cuenta de la caja de la que salió (migración 20261019100000).
+const caja = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
 const ruc = rucDePrueba(sello.padStart(8, '7'))
 const nombre = `Subcontratista de prueba ${sello}`
 const codigo = `prb_sc_${sello}`
@@ -238,11 +242,15 @@ comprobar(archivo?.n === 1, 'el recibo está en Storage, en el bucket de subcont
   await pagina.screenshot({ path: join(CAPTURAS, 'sc-05-tesoreria-por-pagar.png'), fullPage: true })
   await fila.locator(`[data-pagar-recibo="${numeroRecibo}"]`).click()
   const v = pagina.locator('[role="dialog"]')
+  await elegirCuenta(v, caja)
   await v.locator('input[name="operacion"]').fill(`OP-${sello}`)
   await v.locator('input[type="file"]').setInputFiles(join(archivos, 'voucher.pdf'))
   await v.getByRole('button', { name: 'Registrar el pago' }).click()
   const error = await esperarVentana(pagina)
   comprobar(!error, `registra el pago con su voucher${error ? `: ${error}` : ''}`)
+  const movs = await movimientosDeLaCaja(consulta, caja)
+  comprobar(movs.length === 1 && movs[0].origen === 'PAGO_RECIBO_HONORARIOS' && movs[0].tipo === 'EGRESO' && movs[0].monto === 1840,
+    `el neto sale de la cuenta elegida en la caja diaria (${JSON.stringify(movs)})`)
   await pagina.waitForLoadState('networkidle')
   comprobar((await pagina.locator(`[data-recibo="${numeroRecibo}"]`).count()) === 0, 'sale de «Por pagar»')
   await pagina.goto(`${BASE}/tesoreria/recibos-por-honorarios?ver=pagados`, { waitUntil: 'networkidle' })
@@ -395,6 +403,8 @@ async function loQueVe(pagina) {
   const error = await esperarVentana(pagina)
   comprobar(!error, `lo pasa a Acabados${error ? `: ${error}` : ''}`)
   await pagina.waitForLoadState('networkidle')
+  // El repintado llega después de cerrarse la ventana: se espera, no se lee al vuelo.
+  await pagina.locator('[data-area]', { hasText: 'Acabados' }).waitFor({ timeout: 15000 }).catch(() => {})
   const area = limpio(await pagina.locator('[data-area]').textContent().catch(() => ''))
   comprobar(area.startsWith('Acabados'), `ahora dice Acabados (${area})`)
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)

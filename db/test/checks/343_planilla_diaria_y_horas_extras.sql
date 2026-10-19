@@ -27,6 +27,7 @@ update public.usuarios set area_id = (select id from public.areas where codigo =
 select set_config('prueba.rrhh', :'rrhh_id', true);
 select set_config('prueba.gerente', :'gerente_id', true);
 select set_config('prueba.tesoreria', :'tesoreria_id', true);
+select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261019100000 todo pago pide su cuenta
 select set_config('prueba.sup1', :'sup1_id', true);
 select set_config('prueba.sup2', :'sup2_id', true);
 select set_config('prueba.portero', :'portero_id', true);
@@ -425,21 +426,21 @@ begin
     ('planilla-diaria', current_setting('prueba.comprobante'), current_setting('prueba.tesoreria'), '{"mimetype": "application/pdf", "size": 84000}'),
     ('planilla-diaria', current_setting('prueba.boleta'), current_setting('prueba.tesoreria'), '{"mimetype": "application/pdf", "size": 52000}');
 
-  perform test.debe_fallar(format('select public.registrar_pago_planilla_diaria(%L, %L, %L, %L, ''OP-1'', %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_planilla_diaria(%L, %L, %L, %L, ''OP-1'', %L, current_setting(''prueba.caja'')::uuid, null)',
       gen_random_uuid(), current_setting('prueba.pd1'), '{}', (now() at time zone 'America/Lima')::date, current_setting('prueba.comprobante')),
     'el pago dice a quién se pagó', 'Marca a quién');
-  perform test.debe_fallar(format('select public.registrar_pago_planilla_diaria(%L, %L, %L, %L, ''OP-1'', %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_planilla_diaria(%L, %L, %L, %L, ''OP-1'', %L, current_setting(''prueba.caja'')::uuid, null)',
       gen_random_uuid(), current_setting('prueba.pd1'), array[v_persona], (now() at time zone 'America/Lima')::date,
       current_setting('prueba.pd1') || '/' || gen_random_uuid() || '.pdf'),
     'un comprobante que no subió no entra', 'no terminó de subir');
   v := public.registrar_pago_planilla_diaria(current_setting('prueba.pago')::uuid, current_setting('prueba.pd1')::uuid, array[v_persona],
-         (now() at time zone 'America/Lima')::date, 'OP-000123', current_setting('prueba.comprobante'));
+         (now() at time zone 'America/Lima')::date, 'OP-000123', current_setting('prueba.comprobante'), current_setting('prueba.caja')::uuid, null);
   v := public.registrar_pago_planilla_diaria(current_setting('prueba.pago')::uuid, current_setting('prueba.pd1')::uuid, array[v_persona],
-         (now() at time zone 'America/Lima')::date, 'OP-000123', current_setting('prueba.comprobante'));
+         (now() at time zone 'America/Lima')::date, 'OP-000123', current_setting('prueba.comprobante'), current_setting('prueba.caja')::uuid, null);
   perform test.afirmar((select count(*) from public.planilla_diaria_pagos) = 1, 'el reintento no duplica el pago');
   perform test.afirmar((select pago_id from public.planilla_diaria_personas where id = v_persona) = current_setting('prueba.pago')::uuid,
     'Juan queda pagado con su comprobante');
-  perform test.debe_fallar(format('select public.registrar_pago_planilla_diaria(%L, %L, %L, %L, null, %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_planilla_diaria(%L, %L, %L, %L, null, %L, current_setting(''prueba.caja'')::uuid, null)',
       gen_random_uuid(), current_setting('prueba.pd1'), array[v_persona], (now() at time zone 'America/Lima')::date, current_setting('prueba.boleta')),
     'a quien ya se pagó no se le paga otra vez', 'ya está pagada');
   v := public.subir_boleta_planilla_diaria(v_persona, current_setting('prueba.boleta'));

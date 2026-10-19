@@ -1,10 +1,14 @@
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
+import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta } from '@/components/ui/tarjeta'
+import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/caja'
 import { recibosParaTesoreria, type ReciboParaPagar } from '@/lib/datos/subcontratos'
+import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { fecha, fechaHora, hoyLima, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -20,11 +24,20 @@ export const metadata = { title: 'Recibos por honorarios' }
  */
 export default async function PaginaRecibosPorHonorarios({ searchParams }: { searchParams: Promise<{ ver?: string }> }) {
   const perfil = await exigirPermiso(['subcontratos.pagar', 'subcontratos.ver', 'subcontratos.gestionar'])
-  const paga = puede(perfil, 'subcontratos.pagar')
+  // Paga quien lleva la caja: el pago sale de una de sus cuentas (la base pide los dos permisos).
+  const paga = puede(perfil, 'subcontratos.pagar') && puede(perfil, 'tesoreria.caja')
   const params = await searchParams
   const ver = params.ver === 'pagados' ? 'pagados' : 'por-pagar'
 
-  const recibos = await recibosParaTesoreria()
+  const [recibos, cuentasCaja] = await Promise.all([
+    recibosParaTesoreria(),
+    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
+    paga ? cuentasParaPagar() : Promise.resolve([]),
+  ])
+  // Para quien lleva la caja, de qué cuenta salió cada pago.
+  const cajas = puede(perfil, 'tesoreria.caja')
+    ? await cajaDeLosPagos('PAGO_RECIBO_HONORARIOS', recibos.flatMap((r) => r.pagos.map((p) => p.id)))
+    : undefined
   const pagoDe = (r: ReciboParaPagar) => r.pagos.find((p) => !p.anulado_en) ?? null
   const porPagar = recibos.filter((r) => !pagoDe(r))
   // Los pagados, del pago más reciente al más viejo.
@@ -37,7 +50,7 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
   const hoy = hoyLima()
 
   return (
-    <>
+    <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Recibos por honorarios"
         descripcion={
@@ -84,16 +97,28 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
         ) : (
           <ul className="divide-y divide-borde">
             {lista.map((r) => (
-              <Fila key={r.id} r={r} paga={paga} hoy={hoy} />
+              <Fila key={r.id} r={r} paga={paga} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajas} />
             ))}
           </ul>
         )}
       </Tarjeta>
-    </>
+    </AvisoDeLaCaja>
   )
 }
 
-function Fila({ r, paga, hoy }: { r: ReciboParaPagar; paga: boolean; hoy: string }) {
+function Fila({
+  r,
+  paga,
+  hoy,
+  cuentasCaja,
+  cajas,
+}: {
+  r: ReciboParaPagar
+  paga: boolean
+  hoy: string
+  cuentasCaja: CuentaParaPagar[]
+  cajas: Map<string, CajaDelPago> | undefined
+}) {
   const pago = r.pagos.find((p) => !p.anulado_en) ?? null
   const sub = r.subcontratista
   const sc = r.subcontrato
@@ -154,11 +179,17 @@ function Fila({ r, paga, hoy }: { r: ReciboParaPagar; paga: boolean; hoy: string
           <>
             <EnlaceArchivo enlace={pago.enlace} texto="Voucher" />
             {pago.operacion && <span className="tabular text-texto-suave">Op. {pago.operacion}</span>}
+            {cajas && (
+              <span className="text-texto-suave">
+                <CajaDeLaLinea cajas={cajas} id={pago.id} tipo="pago" monedaDocumento={r.moneda === 'USD' ? 'USD' : 'PEN'} sola />
+              </span>
+            )}
           </>
         )}
         {paga && !pago && (
           <PagarRecibo
             hoy={hoy}
+            cuentas={cuentasCaja}
             recibo={{
               id: r.id,
               numero: r.numero,
@@ -177,6 +208,7 @@ function Fila({ r, paga, hoy }: { r: ReciboParaPagar; paga: boolean; hoy: string
         .map((p) => (
           <p key={p.id} className="text-xs text-texto-suave">
             Pago del {fecha(p.fecha_pago)} anulado el {fechaHora(p.anulado_en)}: {p.motivo_anulacion}
+            <CajaDeLaLinea cajas={cajas} id={p.id} tipo="pago" monedaDocumento={r.moneda === 'USD' ? 'USD' : 'PEN'} />
           </p>
         ))}
     </li>

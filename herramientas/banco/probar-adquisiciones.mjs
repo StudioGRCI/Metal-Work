@@ -36,6 +36,8 @@ import { join } from 'node:path'
 import pg from 'pg'
 import { chromium } from 'playwright-core'
 
+import { crearCajaDePrueba, elegirCuenta } from './caja-de-prueba.mjs'
+
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -112,6 +114,8 @@ const [oc1, oc2, oc3] = await consulta(
   "select id, numero from ordenes_compra_materiales where referencia in ('QA-ADQ-1', 'QA-ADQ-2', 'QA-ADQ-3') order by referencia",
 )
 if (!oc3) throw new Error('Faltan las OC QA-ADQ-1, QA-ADQ-2 y QA-ADQ-3 en la base del banco.')
+// Cada pago pide la cuenta de la caja de la que salió (migración 20261019100000).
+const CAJA = await crearCajaDePrueba(consulta, 'tesoreria@banco.test')
 
 // ---------------------------------------------------------------- 1. Logística
 {
@@ -196,6 +200,7 @@ if (!oc3) throw new Error('Faltan las OC QA-ADQ-1, QA-ADQ-2 y QA-ADQ-3 en la bas
   await v.locator('input[name="monto"]').fill('500')
   await v.locator('input[name="referencia"]').fill('OP-77001')
   await v.locator('input[name="archivo"]').setInputFiles(join(ARCHIVOS, 'voucher.pdf'))
+  await elegirCuenta(v, CAJA)
   await v.getByRole('button', { name: 'Registrar el pago' }).click()
   let error = await esperarVentana(pagina)
   comprobar(!error, `paga una parte con su voucher${error ? ` (dijo «${error}»)` : ''}`)
@@ -218,6 +223,7 @@ if (!oc3) throw new Error('Faltan las OC QA-ADQ-1, QA-ADQ-2 y QA-ADQ-3 en la bas
   v = pagina.locator('[role="dialog"]')
   await v.locator('input[name="referencia"]').fill('OP-77001')
   await v.locator('input[name="archivo"]').setInputFiles(join(ARCHIVOS, 'voucher.pdf'))
+  await elegirCuenta(v, CAJA)
   await v.getByRole('button', { name: 'Registrar el pago' }).click()
   error = await esperarVentana(pagina)
   comprobar(!error, `la paga entera con la misma operación${error ? ` (dijo «${error}»)` : ''}`)

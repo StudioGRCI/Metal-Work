@@ -1,9 +1,13 @@
 import { FileText, Wrench } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
+import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/caja'
 import { serviciosPorPagar, type ServicioPorPagar } from '@/lib/datos/facturacion'
+import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { resumenDetraccion } from '@/lib/dominio/detraccion'
 import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
 import { fecha, hoyLima, moneda } from '@/lib/format'
@@ -23,8 +27,17 @@ export const metadata = { title: 'Pagos de servicio' }
  */
 export default async function PaginaPagosDeServicio() {
   const perfil = await exigirPermiso(['tesoreria.pagar_servicios', 'tesoreria.ver_documentos'])
-  const paga = puede(perfil, 'tesoreria.pagar_servicios')
-  const servicios = await serviciosPorPagar(puede(perfil, 'proveedores.ver_cuentas'))
+  // Paga quien lleva la caja: el pago sale de una de sus cuentas (la base pide los dos permisos).
+  const paga = puede(perfil, 'tesoreria.pagar_servicios') && puede(perfil, 'tesoreria.caja')
+  const [servicios, cuentasCaja] = await Promise.all([
+    serviciosPorPagar(puede(perfil, 'proveedores.ver_cuentas')),
+    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
+    paga ? cuentasParaPagar() : Promise.resolve([]),
+  ])
+  // Para quien lleva la caja, de qué cuenta salió cada pago.
+  const cajas = puede(perfil, 'tesoreria.caja')
+    ? await cajaDeLosPagos('PAGO_ORDEN_SERVICIO', servicios.flatMap((s) => s.pagos.map((p) => p.id)))
+    : undefined
   const hoy = hoyLima()
   const porPagar = servicios
     .filter((s) => !s.cancelada)
@@ -32,7 +45,7 @@ export default async function PaginaPagosDeServicio() {
   const pagados = servicios.filter((s) => s.cancelada)
 
   return (
-    <>
+    <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Pagos de servicio"
         descripcion="Las órdenes de servicio que aprobó Gerencia: paga cada una al proveedor con su voucher. Primero las que ya volvieron conformes."
@@ -52,7 +65,7 @@ export default async function PaginaPagosDeServicio() {
               </p>
             </div>
           ) : (
-            porPagar.map((s) => <Servicio key={s.id} servicio={s} paga={paga} hoy={hoy} />)
+            porPagar.map((s) => <Servicio key={s.id} servicio={s} paga={paga} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajas} />)
           )}
         </TarjetaCuerpo>
       </Tarjeta>
@@ -62,16 +75,28 @@ export default async function PaginaPagosDeServicio() {
           <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm font-medium text-texto">Pagados ({pagados.length})</summary>
           <div className="space-y-3 border-t border-borde p-4">
             {pagados.map((s) => (
-              <Servicio key={s.id} servicio={s} paga={paga} hoy={hoy} />
+              <Servicio key={s.id} servicio={s} paga={paga} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajas} />
             ))}
           </div>
         </details>
       )}
-    </>
+    </AvisoDeLaCaja>
   )
 }
 
-function Servicio({ servicio: s, paga, hoy }: { servicio: ServicioPorPagar; paga: boolean; hoy: string }) {
+function Servicio({
+  servicio: s,
+  paga,
+  hoy,
+  cuentasCaja,
+  cajas,
+}: {
+  servicio: ServicioPorPagar
+  paga: boolean
+  hoy: string
+  cuentasCaja: CuentaParaPagar[]
+  cajas: Map<string, CajaDelPago> | undefined
+}) {
   const m = codigoMoneda(s.moneda)
   const saldo = Math.max(Number(s.monto ?? 0) - Number(s.pagado ?? 0), 0)
   const estado = ESTADO_SERVICIO[s.estado ?? ''] ?? { etiqueta: s.estado ?? '—', tono: 'neutro' as const }
@@ -123,11 +148,15 @@ function Servicio({ servicio: s, paga, hoy }: { servicio: ServicioPorPagar; paga
         <ol className="mt-2 space-y-1.5 border-t border-borde pt-2">
           {s.pagos.map((p) => (
             <li key={p.id} className="flex flex-col gap-1 text-xs sm:flex-row sm:items-center sm:justify-between">
-              <span className={p.anulado_en ? 'text-texto-suave line-through' : 'text-texto-suave'}>
-                Pago del {fecha(p.fecha_pago)} · <span className="tabular text-texto">{moneda(p.monto, codigoMoneda(p.moneda))}</span>
-                {p.cancela ? ' · cancela la orden' : ' · a cuenta'}
-                {p.operacion && ` · op. ${p.operacion}`}
-                {p.comprobante_proveedor && ` · comprobante ${p.comprobante_proveedor}`}
+              <span className="text-texto-suave">
+                <span className={p.anulado_en ? 'line-through' : undefined}>
+                  Pago del {fecha(p.fecha_pago)} · <span className="tabular text-texto">{moneda(p.monto, codigoMoneda(p.moneda))}</span>
+                  {p.cancela ? ' · cancela la orden' : ' · a cuenta'}
+                  {p.operacion && ` · op. ${p.operacion}`}
+                  {p.comprobante_proveedor && ` · comprobante ${p.comprobante_proveedor}`}
+                </span>
+                {/* Fuera del tachado: que su egreso también se anuló es lo que se tiene que leer. */}
+                <CajaDeLaLinea cajas={cajas} id={p.id} tipo="pago" monedaDocumento={codigoMoneda(p.moneda)} />
               </span>
               <span className="flex flex-wrap items-center gap-2">
                 {p.anulado_en && <span className="text-peligro">Anulado: {p.motivo_anulacion}</span>}
@@ -153,6 +182,7 @@ function Servicio({ servicio: s, paga, hoy }: { servicio: ServicioPorPagar; paga
             hoy={hoy}
             saldo={saldo}
             codigoMoneda={m}
+            cuentas={cuentasCaja}
           />
         </div>
       )}

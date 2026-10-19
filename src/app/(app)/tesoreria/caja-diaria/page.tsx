@@ -10,7 +10,7 @@ import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cajaDelDia, type CierreReabierto, type CuentaDelDia, type MovimientoDelDia } from '@/lib/datos/caja'
-import { consolidado, detalleDeCuenta, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO } from '@/lib/dominio/caja'
+import { consolidado, detalleDeCuenta, esDevolucion, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO, PANTALLA_DEL_ORIGEN } from '@/lib/dominio/caja'
 import { fecha, fechaHora, fechaLarga, hoyLima, moneda, numero, sumarDias } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
@@ -36,8 +36,10 @@ function diaPedido(texto: string | string[] | undefined, hoy: string) {
  * La caja diaria de Tesorería, como su libro ESTADO DE CAJA DIARIA (migración
  * 20261017200000): un día a la vez, cada cuenta con su saldo inicial, lo que
  * salió y lo que entró, su saldo final y el cierre contra el estado de cuenta,
- * y arriba el consolidado de todas. Los movimientos de hoy los registra
- * Tesorería; cuando se conecten los pagos del sistema, cada uno dejará el suyo.
+ * y arriba el consolidado de todas. Tesorería registra a mano lo que no pasa
+ * por el sistema; cada pago y cobro del sistema deja el suyo en la cuenta que
+ * se eligió al registrarlo (migración 20261019100000), y se anula anulando ese
+ * pago.
  */
 export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tesoreria/caja-diaria'>) {
   await exigirPermiso('tesoreria.caja')
@@ -61,7 +63,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
     <>
       <EncabezadoPagina
         titulo="Caja diaria"
-        descripcion="El saldo de cada cuenta día por día, como el estado de caja: lo que salió, lo que entró y el cierre contra el estado de cuenta del banco."
+        descripcion="El saldo de cada cuenta día por día, como el estado de caja: lo que salió, lo que entró y el cierre contra el estado de cuenta del banco. Los pagos y cobros del sistema entran solos."
         acciones={<SelectorDeDia dia={dia} hoy={hoy} />}
       />
 
@@ -448,7 +450,26 @@ function FilaDeMovimiento({ movimiento: mov, moneda: m, cuenta, abierta }: {
           </span>
         )}
         {!transferencia && mov.origen !== 'MANUAL' && (
-          <span className="block text-xs text-texto-suave">{ORIGEN_MOVIMIENTO[mov.origen] ?? mov.origen}</span>
+          <span className="block text-xs text-texto-suave">
+            {ORIGEN_MOVIMIENTO[mov.origen] ?? mov.origen}
+            {esDevolucion(mov.origen, mov.tipo) ? (
+              ' · devolución de uno anulado, cuyo día ya estaba cerrado'
+            ) : (
+              !anulado &&
+              PANTALLA_DEL_ORIGEN[mov.origen] && (
+                // En su propio renglón: con 44 px para tocarlo, metido en la frase la partía en renglones altos.
+                <span className="flex min-h-11 items-center sm:block sm:min-h-0">
+                  Se anula en:&nbsp;
+                  <Link
+                    href={mov.planilla_id ? `/planilla-diaria/${mov.planilla_id}` : PANTALLA_DEL_ORIGEN[mov.origen].ruta}
+                    className="text-acento underline underline-offset-2"
+                  >
+                    {mov.planilla_id ? 'su planilla' : PANTALLA_DEL_ORIGEN[mov.origen].nombre}
+                  </Link>
+                </span>
+              )
+            )}
+          </span>
         )}
         {mov.tipo_cambio && <span className="block text-xs text-texto-suave">Cambio {numero(mov.tipo_cambio, 4)}</span>}
         {anulado && (

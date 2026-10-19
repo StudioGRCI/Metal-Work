@@ -1,7 +1,9 @@
 import { FileText, Paperclip } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import type { CajaDelPago } from '@/lib/datos/caja'
 import type { CobroFactura, FacturaVenta } from '@/lib/datos/facturacion'
 import { estadoFacturaVenta } from '@/lib/dominio/finanzas'
 import { diasHasta, fecha, moneda, type CodigoMoneda } from '@/lib/format'
@@ -18,12 +20,15 @@ export function FacturaDeVenta({
   conCotizacion = false,
   acciones,
   accionCobro,
+  cajas,
 }: {
   factura: FacturaVenta
   /** Tesorería la lee suelta: dice de qué código interno y de qué cotización es. */
   conCotizacion?: boolean
   acciones?: ReactNode
   accionCobro?: (cobro: CobroFactura) => ReactNode
+  /** Para quien lleva la caja: a qué cuenta entró cada cobro. */
+  cajas?: Map<string, CajaDelPago>
 }) {
   const m = codigo(f.moneda)
   const estado = estadoFacturaVenta(f)
@@ -98,10 +103,14 @@ export function FacturaDeVenta({
         <ol className="mt-2 space-y-1.5 border-t border-borde pt-2 text-xs text-texto-suave">
           {f.cobros.map((b) => (
             <li key={b.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className={b.anulado_en ? 'line-through' : undefined}>
-                Cobro del {fecha(b.fecha)} · <span className="tabular font-medium text-texto">{moneda(b.monto, m)}</span>
-                {b.operacion && <> · op. {b.operacion}</>}
-                {b.cancela && !b.anulado_en && <> · la canceló</>}
+              <span>
+                <span className={b.anulado_en ? 'line-through' : undefined}>
+                  Cobro del {fecha(b.fecha)} · <span className="tabular font-medium text-texto">{moneda(b.monto, m)}</span>
+                  {b.operacion && <> · op. {b.operacion}</>}
+                  {b.cancela && !b.anulado_en && <> · la canceló</>}
+                </span>
+                {/* Fuera del tachado: que su ingreso también se anuló es lo que se tiene que leer. */}
+                <CajaDeLaLinea cajas={cajas} id={b.id} tipo="cobro" monedaDocumento={m} />
               </span>
               {b.url ? (
                 <a href={b.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 text-acento hover:underline sm:min-h-0">
