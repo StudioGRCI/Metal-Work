@@ -332,6 +332,15 @@ lo que dependa de una política de Storage se prueba en un check con
   (2026-10-01) y solo se vio al abrirla con la cuenta de Diseño. Las funciones
   puras que usan los dos lados van en `src/lib/dominio/`.
 
+- **Toda `.grid` lleva por base una columna `minmax(0, 1fr)`** (`globals.css`).
+  Sin eso, `grid sm:grid-cols-2` en el teléfono tenía una columna `auto` que
+  crecía con el texto más largo: Gestión de compras medía 493 px en un teléfono
+  de 390 (2026-10-19). Cualquier `grid-cols-*` le gana. Para centrar se usa
+  `place-items-center`, no `place-content-center`, y una rejilla dentro de un
+  `flex`, un `absolute` o una celda necesita su ancho o su `grid-cols-*`: ya no
+  toma el de su contenido. Un `whitespace-nowrap` largo dentro de una rejilla
+  ahora se sale de su columna en vez de ensanchar la página: va con `truncate`.
+
 - **Una columna nueva no aparece sola.** Aunque esté en la base y en los tipos,
   la pantalla la ignora hasta que se agrega al `select` explícito de
   `src/lib/datos/*`. El síntoma es un campo vacío sin ningún error.
