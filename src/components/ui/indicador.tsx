@@ -63,8 +63,10 @@ export function Indicador({
           media columna del teléfono «REQUERIMIENTOS ABIERTOS» se partía en tres
           renglones y empujaba la cifra hacia abajo, cada tarjeta a otra altura. */}
       {/* En el teléfono el rótulo reserva dos renglones: así la cifra cae a la
-          misma altura en las dos tarjetas de la fila aunque solo uno parta. */}
-      <p className="flex min-h-[2.75em] items-start gap-1.5 text-[13px] leading-snug font-medium text-texto-suave sm:min-h-0 sm:text-xs">
+          misma altura en las dos tarjetas de la fila aunque solo uno parta.
+          La tarjeta que va sola a todo lo ancho lo suelta con la clase
+          `rotulo-indicador` (ver el Dashboard): ahí cabe en uno y sobraba. */}
+      <p className="rotulo-indicador flex min-h-[2.75em] items-start gap-1.5 text-[13px] leading-snug font-medium text-texto-suave sm:min-h-0 sm:text-xs">
         {Icono && <Icono aria-hidden className={cn('mt-px size-4 shrink-0 sm:size-3.5', color.icono)} />}
         {titulo}
       </p>

@@ -67,7 +67,7 @@ function CifrasDelArea({ titulo, cifras }: { titulo: string; cifras: Cifra[] }) 
       {/* Dos columnas ya en el teléfono: apiladas de a una ocupaban una pantalla entera.
           Con un número impar, la última toma la fila entera en vez de quedar
           sola con un hueco al lado. */}
-      <div className={cn('grid grid-cols-2 gap-3 sm:gap-4 max-lg:[&>:last-child:nth-child(odd)]:col-span-2', cifras.length >= 5 ? 'lg:grid-cols-5' : cifras.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4')}>
+      <div className={cn('grid grid-cols-2 gap-3 sm:gap-4 max-lg:[&>:last-child:nth-child(odd)]:col-span-2 [&>:last-child:nth-child(odd)_.rotulo-indicador]:min-h-0', cifras.length >= 5 ? 'lg:grid-cols-5' : cifras.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4')}>
         {cifras.map((c) => (
           <Indicador key={c.clave} icono={c.icono} titulo={c.titulo} valor={c.valor} pie={c.pie} tono={c.tono} href={c.href} />
         ))}
@@ -145,7 +145,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
 
       {/* Dos columnas ya en el teléfono: cinco tarjetas apiladas ocupaban una
           pantalla entera antes de llegar a la lista de órdenes. */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5 max-lg:[&>:last-child:nth-child(odd)]:col-span-2">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5 max-lg:[&>:last-child:nth-child(odd)]:col-span-2 [&>:last-child:nth-child(odd)_.rotulo-indicador]:min-h-0">
         <Indicador
           icono={ClipboardList}
           titulo="Órdenes abiertas"
