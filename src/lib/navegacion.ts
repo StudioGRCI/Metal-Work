@@ -72,7 +72,7 @@ export const NAVEGACION = [
         titulo: 'Dashboard',
         ruta: '/',
         icono: LayoutDashboard,
-        descripcion: 'Lo que te toca hoy y las cifras de tu área',
+        descripcion: 'Las cifras de tu área y tus módulos a un toque',
         disponible: true,
       },
       // Lo que se trabaja hoy va por código interno, no por OT: Gerencia ve cada

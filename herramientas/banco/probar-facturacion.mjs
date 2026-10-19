@@ -76,7 +76,7 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
     pagina.click('button[type="submit"]'),
   ])
   if (pagina.url().includes('/ingresar')) throw new Error(`No se pudo entrar como ${correo}`)
-  // El tablero llega por partes: «Te toca» puede pintarse después de la URL.
+  // El dashboard llega por partes: las cifras pueden pintarse después de la URL.
   await pagina.waitForLoadState('networkidle')
   return { pagina, contexto }
 }
