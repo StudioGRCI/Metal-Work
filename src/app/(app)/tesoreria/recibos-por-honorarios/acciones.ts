@@ -31,7 +31,7 @@ function repintar(subcontratoId: string) {
 /**
  * Registrar el pago del neto de un recibo con su voucher, ya subido a Storage,
  * desde la cuenta de la caja que eligió: la base deja ahí su egreso (migración
- * 20261017220000) y a Administración le llega el aviso. Mismo permiso que
+ * 20261019100000) y a Administración le llega el aviso. Mismo permiso que
  * `registrar_pago_recibo_honorarios`. El id llega de la pantalla: un reintento
  * no registra otro.
  */

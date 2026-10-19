@@ -26,7 +26,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
   if (!GUID.test(id)) notFound()
   const [p, cuentasCaja] = await Promise.all([
     planillaDiaria(id, arma || paga),
-    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261017220000).
+    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
     paga ? cuentasParaPagar() : Promise.resolve([]),
   ])
   if (!p) notFound()

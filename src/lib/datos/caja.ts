@@ -179,7 +179,7 @@ export async function cajaDelDia(dia: string): Promise<CajaDelDia> {
 /**
  * Las cuentas activas de la caja, en el orden de la caja diaria, para que
  * Tesorería elija de cuál salió un pago o a cuál entró un cobro (migración
- * 20261017220000). Sin `tesoreria.caja` sale vacía.
+ * 20261019100000). Sin `tesoreria.caja` sale vacía.
  */
 export async function cuentasParaPagar(): Promise<CuentaParaPagar[]> {
   const supabase = await createClient()

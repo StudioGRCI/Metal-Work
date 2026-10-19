@@ -28,7 +28,7 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
 
   const [recibos, cuentasCaja] = await Promise.all([
     recibosParaTesoreria(),
-    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261017220000).
+    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
     paga ? cuentasParaPagar() : Promise.resolve([]),
   ])
   const pagoDe = (r: ReciboParaPagar) => r.pagos.find((p) => !p.anulado_en) ?? null

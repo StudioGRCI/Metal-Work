@@ -9,7 +9,7 @@ import { fecha, type CodigoMoneda } from '@/lib/format'
 
 /**
  * La cuenta de la caja de la que salió un pago o a la que entró un cobro
- * (migración 20261017220000): al registrarlo, la caja diaria se mueve sola.
+ * (migración 20261019100000): al registrarlo, la caja diaria se mueve sola.
  * Si la cuenta es de otra moneda que el documento, pide además lo que salió o
  * entró en ella, como dice el estado de cuenta. Va dentro de la rejilla de dos
  * columnas del formulario.

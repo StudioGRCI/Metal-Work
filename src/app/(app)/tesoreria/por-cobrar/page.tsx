@@ -36,7 +36,7 @@ export default async function PaginaPorCobrar() {
     cotizacionesAprobadas(),
     responde ? solicitudesPendientesTesoreria() : Promise.resolve([]),
     responde ? revisionesDeSalidaPendientes() : Promise.resolve([]),
-    // La cuenta a la que entra cada cobro: la caja diaria se mueve sola (20261017220000).
+    // La cuenta a la que entra cada cobro: la caja diaria se mueve sola (20261019100000).
     cobra ? cuentasParaPagar() : Promise.resolve([]),
   ])
   const hoy = hoyLima()

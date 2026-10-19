@@ -27,7 +27,7 @@ function repintarCobros() {
 /**
  * Tesorería registra un cobro de una factura de venta, con su voucher ya subido
  * a `cobros-venta/{factura}/…` (migración 20261015124000), en la cuenta de la
- * caja que eligió: la base deja ahí su ingreso (migración 20261017220000).
+ * caja que eligió: la base deja ahí su ingreso (migración 20261019100000).
  * Mismo permiso que `registrar_cobro_factura` (`tesoreria.registrar_cobros`).
  * El id llega de la pantalla: un reintento no registra otro.
  */
@@ -101,7 +101,7 @@ const NO_PAGA_FACTURAS = 'Los pagos de las facturas los registra Tesorería.'
  * Tesorería paga una factura de compra registrada en Adquisiciones, al contado
  * o a crédito, con su voucher ya subido a `pagos-facturas/{factura}/…`
  * (migración 20261015122000), desde la cuenta de la caja que eligió: la base
- * deja ahí su egreso (migración 20261017220000). Mismo permiso que
+ * deja ahí su egreso (migración 20261019100000). Mismo permiso que
  * `registrar_pago_factura` (`tesoreria.registrar_pagos`). El id llega de la
  * pantalla: un reintento no registra otro.
  */
@@ -177,7 +177,7 @@ const NO_PAGA_SERVICIOS = 'Los pagos de servicio los registra Tesorería.'
 /**
  * Tesorería paga una orden de servicio aprobada, con su comprobante ya subido a
  * `pagos-servicio/{orden de servicio}/…`, desde la cuenta de la caja que eligió:
- * la base deja ahí su egreso (migración 20261017220000). Mismo permiso que
+ * la base deja ahí su egreso (migración 20261019100000). Mismo permiso que
  * `registrar_pago_servicio` (`tesoreria.pagar_servicios`). El id llega de la
  * pantalla: un reintento no registra otro.
  */

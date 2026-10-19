@@ -28,7 +28,7 @@ export default async function PaginaPagosDeServicio() {
   const paga = puede(perfil, 'tesoreria.pagar_servicios')
   const [servicios, cuentasCaja] = await Promise.all([
     serviciosPorPagar(puede(perfil, 'proveedores.ver_cuentas')),
-    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261017220000).
+    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
     paga ? cuentasParaPagar() : Promise.resolve([]),
   ])
   const hoy = hoyLima()

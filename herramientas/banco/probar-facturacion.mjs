@@ -165,7 +165,7 @@ const ruta = (pagina) => new URL(pagina.url()).pathname
 
 // -------------------------------------------------------------- 2. Tesorería
 {
-  // Cada pago y cada cobro pide su cuenta de la caja (migración 20261017220000): la factura es en dólares.
+  // Cada pago y cada cobro pide su cuenta de la caja (migración 20261019100000): la factura es en dólares.
   const cajaSoles = await crearCajaDePrueba(consulta, 'tesoreria@banco.test')
   const cajaDolares = await crearCajaDePrueba(consulta, 'tesoreria@banco.test', 'USD')
   const { pagina, contexto } = await entrar('tesoreria@banco.test')

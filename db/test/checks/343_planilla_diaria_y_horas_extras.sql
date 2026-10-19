@@ -27,7 +27,7 @@ update public.usuarios set area_id = (select id from public.areas where codigo =
 select set_config('prueba.rrhh', :'rrhh_id', true);
 select set_config('prueba.gerente', :'gerente_id', true);
 select set_config('prueba.tesoreria', :'tesoreria_id', true);
-select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261017220000 todo pago pide su cuenta
+select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261019100000 todo pago pide su cuenta
 select set_config('prueba.sup1', :'sup1_id', true);
 select set_config('prueba.sup2', :'sup2_id', true);
 select set_config('prueba.portero', :'portero_id', true);

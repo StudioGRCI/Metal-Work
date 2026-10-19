@@ -1,5 +1,5 @@
 -- Los pagos y los cobros del sistema mueven la caja diaria solos (migración
--- 20261017220000, «Conectar ya» de DKS el 19/10). Tesorería paga una factura de
+-- 20261019100000, «Conectar ya» de DKS el 19/10). Tesorería paga una factura de
 -- compra, una orden de servicio, un recibo por honorarios y la planilla diaria,
 -- y cobra una factura de venta: cada uno pide la cuenta y deja su movimiento ahí.
 -- Anular el pago anula su movimiento; un día cerrado no se toca; lo de antes del

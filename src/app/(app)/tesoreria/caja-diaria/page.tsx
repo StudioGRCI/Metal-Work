@@ -38,7 +38,7 @@ function diaPedido(texto: string | string[] | undefined, hoy: string) {
  * salió y lo que entró, su saldo final y el cierre contra el estado de cuenta,
  * y arriba el consolidado de todas. Tesorería registra a mano lo que no pasa
  * por el sistema; cada pago y cobro del sistema deja el suyo en la cuenta que
- * se eligió al registrarlo (migración 20261017220000), y se anula anulando ese
+ * se eligió al registrarlo (migración 20261019100000), y se anula anulando ese
  * pago.
  */
 export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tesoreria/caja-diaria'>) {

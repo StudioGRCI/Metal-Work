@@ -36,7 +36,7 @@ export default async function PaginaPorPagar() {
     cuentasPorPagar(),
     db.from('v_compras_credito_sin_comprobante').select('orden_compra_id,numero,numero_ot,proveedor,referencia,fecha_compra,fecha_vencimiento,moneda,total_estimado').order('fecha_vencimiento').limit(100),
     db.rpc('resumen_planilla_por_ot'),
-    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261017220000).
+    // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
     paga ? cuentasParaPagar() : Promise.resolve([]),
   ])
   for (const r of [pendientes, planillas]) if (r.error) throw new Error(`No se pudieron cargar las cuentas por pagar: ${r.error.message}`)

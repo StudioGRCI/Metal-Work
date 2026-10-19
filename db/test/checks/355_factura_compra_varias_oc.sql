@@ -18,7 +18,7 @@ select test.crear_usuario('Vico', 'Ventas', 'ventas355@demo.pe', 'VENDEDOR', (se
 select set_config('prueba.admin', :'admin_id', true);
 select set_config('prueba.conta', :'conta_id', true);
 select set_config('prueba.teso', :'teso_id', true);
-select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261017220000 todo pago pide su cuenta
+select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261019100000 todo pago pide su cuenta
 select set_config('prueba.compras', :'compras_id', true);
 select set_config('prueba.vendedor', :'vendedor_id', true);
 select set_config('prueba.hoy', ((now() at time zone 'America/Lima')::date)::text, true);

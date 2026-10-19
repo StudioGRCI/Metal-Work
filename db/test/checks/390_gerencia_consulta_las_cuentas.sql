@@ -26,7 +26,7 @@ begin
   end loop;
   perform set_config('prueba.hoy', (now() at time zone 'America/Lima')::date::text, true);
 end $$;
-select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261017220000 todo pago pide su cuenta
+select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261019100000 todo pago pide su cuenta
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
 begin

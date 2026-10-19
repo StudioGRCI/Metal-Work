@@ -8,7 +8,7 @@ import type { createClient } from '@/lib/supabase/server'
 
 /*
  * La cuenta de la caja que pide cada pago y cada cobro del sistema (migración
- * 20261017220000): la eligen en el formulario y la base deja ahí su movimiento.
+ * 20261019100000): la eligen en el formulario y la base deja ahí su movimiento.
  * Lo comparten las acciones de Tesorería, de recibos por honorarios y de la
  * planilla diaria, para que las cinco lean y avisen lo mismo.
  */

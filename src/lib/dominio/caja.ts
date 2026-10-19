@@ -9,7 +9,7 @@ import type { CodigoMoneda } from '@/lib/format'
 
 export const TIPO_CUENTA: Record<string, string> = { BANCO: 'Banco', EFECTIVO: 'Efectivo' }
 
-/** De dónde viene cada movimiento. Los del sistema los deja su pago o su cobro (migración 20261017220000). */
+/** De dónde viene cada movimiento. Los del sistema los deja su pago o su cobro (migración 20261019100000). */
 export const ORIGEN_MOVIMIENTO: Record<string, string> = {
   MANUAL: 'Registrado en la caja',
   TRANSFERENCIA: 'Transferencia',

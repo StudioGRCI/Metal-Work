@@ -1,6 +1,6 @@
 /**
  * Recorre con clic real los pagos y cobros que mueven la caja diaria
- * (migración 20261017220000, «Conectar ya» de DKS el 19/10), con la cuenta de
+ * (migración 20261019100000, «Conectar ya» de DKS el 19/10), con la cuenta de
  * Tesorería (nunca ADMIN):
  *
  *   1. Paga a cuenta una factura de compra en soles: el formulario pide la
