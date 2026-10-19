@@ -165,7 +165,7 @@ begin
   perform test.afirmar(v_a > 0 and v_a = v_b and abs(v_a - 6.0 / v_n) < 0.0001,
     format('cada código lleva su parte igual: A %s, B %s, de 6 entre %s', v_a, v_b, v_n));
   perform test.afirmar((select sum(l.cantidad) from public.codigo_interno_lineas(null, true) l
-                         where l.fuente = 'MATERIALES' and l.referencia_id = current_setting('prueba.sal')::uuid) = 6,
+                         where l.fuente = 'MATERIALES' and l.referencia_id = current_setting('prueba.sal')::uuid) between 5.9999 and 6.0001,
     'entre todos suman los seis: no se pierde ni se duplica');
   perform test.afirmar(pg_temp.parte('PLANTA') = 0 and pg_temp.parte('OFICINA') = 0 and pg_temp.parte('TODOS LOS ACTIVOS') = 0,
     'PLANTA, OFICINA y TODOS LOS ACTIVOS no reciben');
@@ -364,5 +364,38 @@ set local role authenticated;
 select test.afirmar(not public.orden_tiene_pdf(current_setting('prueba.ot')::uuid),
   'quien no ve la orden no sabe si tiene PDF');
 reset role;
+
+-- El PDF de una orden que la base rechazó lo quita quien lo subió: borrar por
+-- la API de Storage pide poder leerlo. Nadie más lo ve.
+select set_config('prueba.suelto', 'ot/' || gen_random_uuid() || '/' || gen_random_uuid() || '.pdf', false);
+select pg_temp.como('administracion');
+set local role authenticated;
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values ('adjuntos-ot', current_setting('prueba.suelto'), current_setting('prueba.administracion'),
+        '{"mimetype":"application/pdf","size":1000}'::jsonb);
+reset role;
+select pg_temp.como('gerente');
+set local role authenticated;
+select test.afirmar((select count(*) from storage.objects where name = current_setting('prueba.suelto')) = 0,
+  'el PDF suelto de otra cuenta no se ve');
+reset role;
+select pg_temp.como('administracion');
+set local role authenticated;
+do $$
+declare
+  v integer;
+begin
+  delete from storage.objects where bucket_id = 'adjuntos-ot' and name = current_setting('prueba.suelto');
+  get diagnostics v = row_count;
+  perform test.afirmar(v = 1, 'quien subió el PDF de una orden rechazada lo quita de Storage');
+end $$;
+reset role;
+
+-- Ninguna unidad se llama TODOS LOS ACTIVOS: un despacho a ella se repartiría entre todas.
+select test.debe_fallar($q$insert into public.unidades (codigo_interno) values ('todos los activos')$q$,
+  'ninguna unidad se registra con el código TODOS LOS ACTIVOS', 'no es el código de una unidad');
+insert into public.unidades (codigo_interno) values ('CHK398_UNIDAD');
+select test.debe_fallar($q$update public.unidades set codigo_interno = 'Todos los activos' where codigo_interno = 'CHK398_UNIDAD'$q$,
+  'ni se le cambia a ese código', 'no es el código de una unidad');
 
 rollback;

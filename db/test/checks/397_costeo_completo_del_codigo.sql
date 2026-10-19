@@ -230,7 +230,7 @@ end $$;
 
 -- ============================================ 2. El costo completo y el margen
 do $$
-declare k jsonb; v_agua numeric; v_luz numeric; v_suma_agua numeric; v_esperado numeric;
+declare k jsonb; v_agua numeric; v_luz numeric; v_suma_agua numeric; v_partes integer; v_esperado numeric;
 begin
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
   set local role authenticated;
@@ -238,9 +238,10 @@ begin
   v_luz := pg_temp.lineas('CHK397_A_26/01', 'GASTOS_DEL_MES');
   select coalesce(sum(l.monto) filter (where l.concepto like 'Agua%'), 0) into v_agua
     from public.codigo_interno_costeo('CHK397_A_26/01') l where l.fuente = 'GASTOS_DEL_MES';
-  select coalesce(sum(l.monto), 0) into v_suma_agua
+  -- Cada parte se redondea al céntimo: entre muchos códigos, el total se aparta medio céntimo por parte.
+  select coalesce(sum(l.monto), 0), count(*) into v_suma_agua, v_partes
     from public.codigo_interno_costeo(null) l where l.fuente = 'GASTOS_DEL_MES' and l.concepto like 'Agua%';
-  perform test.afirmar(abs(v_suma_agua - 300) < 0.05, 'el agua en partes iguales se reparte entera: 300, salió ' || v_suma_agua);
+  perform test.afirmar(abs(v_suma_agua - 300) <= v_partes * 0.005, 'el agua en partes iguales se reparte entera: 300, salió ' || v_suma_agua);
   perform test.afirmar(v_agua = (select sum(l.monto) from public.codigo_interno_costeo('CHK397_B_26/02') l
                                   where l.fuente = 'GASTOS_DEL_MES' and l.concepto like 'Agua%'),
     'A y B, que trabajaron ese mes, llevan la misma parte del agua');

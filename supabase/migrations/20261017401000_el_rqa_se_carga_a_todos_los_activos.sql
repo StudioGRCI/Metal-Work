@@ -32,6 +32,10 @@
 --
 -- Es la misma función de la 20261017300000, con sus servicios, subcontratos,
 -- caja, recargo, gastos de la OT y merma al final, que se conservan.
+--
+-- Al final, las guardas: TODOS LOS ACTIVOS no se cierra como una unidad, no lo
+-- escribe Almacén a mano en una salida general y no es el código de ninguna
+-- unidad.
 -- =============================================================================
 
 create or replace function public.codigo_interno_lineas(p_codigo text, p_mano_obra boolean)
@@ -371,3 +375,21 @@ revoke all on function public.fn_salida_todos_los_activos() from public, anon, a
 create or replace trigger trg_salida_todos_los_activos
   before insert on public.movimientos_materiales
   for each row execute function public.fn_salida_todos_los_activos();
+
+-- Ni una unidad se llama así: el costeo toma también el código de la unidad y
+-- el de la unidad de la OT, y un despacho a ella se repartiría entre todas.
+create or replace function public.fn_unidad_no_es_todos_los_activos()
+returns trigger language plpgsql set search_path to 'public' as $$
+begin
+  if public.normalizar_codigo_interno(new.codigo_interno) = 'TODOS LOS ACTIVOS' then
+    raise exception 'TODOS LOS ACTIVOS no es el código de una unidad: es el del requerimiento de Administración que va para todas. Escribe el código interno de la unidad.'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.fn_unidad_no_es_todos_los_activos() from public, anon, authenticated;
+
+create or replace trigger trg_unidad_no_es_todos_los_activos
+  before insert or update of codigo_interno on public.unidades
+  for each row execute function public.fn_unidad_no_es_todos_los_activos();

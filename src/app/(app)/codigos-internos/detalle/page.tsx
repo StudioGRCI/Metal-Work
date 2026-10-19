@@ -23,6 +23,7 @@ import {
   repartoATodosLosActivos,
   sumarCodigosDeDiseno,
   type AvanceDeCodigo,
+  type RepartoATodos as RepartoATodosFila,
   type ResumenCodigo,
 } from '@/lib/datos/codigos-internos'
 import { codigosDeDiseno, etapasDeCodigo } from '@/lib/datos/diseno-codigos'
@@ -69,19 +70,21 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   if (!codigo) notFound()
   // La factura y el cobro los ve quien lee las cotizaciones aprobadas (Gerencia) o las factura y cobra.
   const veFacturas = puede(perfil, ['cotizaciones.ver_aprobadas', 'contabilidad.facturar', 'tesoreria.ver_documentos'])
-  // TODOS LOS ACTIVOS no es una unidad: no tiene etapas, planos, lista de materiales ni factura.
+  // TODOS LOS ACTIVOS no es una unidad: no tiene etapas, planos, materiales, costeo propio, personal ni factura.
+  // Solo a dónde fue lo que se le cargó y sus requerimientos.
   const aTodos = codigo === CODIGO_TODOS_LOS_ACTIVOS
-  const vistas = VISTAS_CODIGO.filter(
-    (v) => (v.valor !== 'facturacion' || (veFacturas && !aTodos)) && !(aTodos && ['etapas', 'planos', 'materiales'].includes(v.valor)),
+  const vistas = VISTAS_CODIGO.filter((v) =>
+    aTodos ? v.valor === 'avance' || v.valor === 'documentos' : v.valor !== 'facturacion' || veFacturas,
   )
   const pedida = vistaValida(params.vista)
   const vista = vistas.some((v) => v.valor === pedida) ? pedida : 'avance'
 
-  const [conDocumentos, deDiseno, avances, facturado] = await Promise.all([
+  const [conDocumentos, deDiseno, avances, facturado, reparto] = await Promise.all([
     listarCodigosInternos(),
     codigosDeDiseno(),
     avanceDeLosCodigos(codigo),
     veFacturas && !aTodos ? facturadoDelCodigo(codigo) : Promise.resolve(null),
+    aTodos ? repartoATodosLosActivos() : Promise.resolve<RepartoATodosFila[]>([]),
   ])
   const avance = avances.get(codigo)
   const todos = sumarCodigosDeDiseno(conDocumentos, deDiseno)
@@ -146,7 +149,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
           )}
 
           {aTodos ? (
-            <RepartoATodos c={resumen} />
+            <CifrasDelReparto filas={reparto} />
           ) : (
             <>
               <ComoVa
@@ -169,11 +172,15 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
             etiqueta="Secciones del código"
             opciones={vistas.map((v) => ({
               valor: v.valor === 'avance' ? null : v.valor,
-              etiqueta: v.etiqueta,
+              etiqueta: aTodos && v.valor === 'avance' ? 'Reparto' : v.etiqueta,
             }))}
           />
 
-          <Vista vista={vista} codigo={codigo} perfil={perfil} avance={avance} />
+          {aTodos && vista === 'avance' ? (
+            <RepartoPorMes filas={reparto} c={resumen} />
+          ) : (
+            <Vista vista={vista} codigo={codigo} perfil={perfil} avance={avance} />
+          )}
         </div>
       )}
     </>
@@ -340,38 +347,50 @@ function ComoVa({
 
 /**
  * TODOS LOS ACTIVOS no guarda costo: cada salida del almacén con él se reparte
- * entre los códigos que trabajaron ese mes. Aquí se ve a dónde fue y lo que
+ * entre los códigos que trabajaron ese mes. Arriba, cuánto se repartió y cuánto
  * espera porque ese mes no trabajó ninguno (migración 20261017401000).
  */
-async function RepartoATodos({ c }: { c: ResumenCodigo }) {
-  const filas = await repartoATodosLosActivos()
+function CifrasDelReparto({ filas }: { filas: RepartoATodosFila[] }) {
   const repartido = filas.filter((f) => f.codigo !== CODIGO_TODOS_LOS_ACTIVOS)
   const enEspera = filas.filter((f) => f.codigo === CODIGO_TODOS_LOS_ACTIVOS)
-  const suma = (lista: typeof filas, campo: 'monto_pen' | 'monto_usd' | 'sin_precio') => lista.reduce((n, f) => n + f[campo], 0)
+  const repartidoPen = sumar(repartido, 'monto_pen')
+  const repartidoUsd = sumar(repartido, 'monto_usd')
+  const esperaPen = sumar(enEspera, 'monto_pen')
+  const esperaUsd = sumar(enEspera, 'monto_usd')
   const codigos = new Set(repartido.map((f) => f.codigo)).size
-  const esperaPen = suma(enEspera, 'monto_pen')
-  const esperaUsd = suma(enEspera, 'monto_usd')
-  const sinPrecio = suma(filas, 'sin_precio')
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <Indicador
+        titulo="Repartido"
+        valor={
+          <span data-repartido={repartidoPen}>
+            {moneda(repartidoPen)}
+            {repartidoUsd > 0 && <span className="block text-sm">+ {moneda(repartidoUsd, 'USD')}</span>}
+          </span>
+        }
+        pie={codigos === 0 ? 'Todavía nada' : `Entre ${codigos} ${codigos === 1 ? 'código' : 'códigos'}, cada uno en su costeo`}
+      />
+      <Indicador
+        titulo="Por repartir"
+        valor={montoMixto(esperaPen, esperaUsd)}
+        tono={esperaPen + esperaUsd > 0 || enEspera.some((f) => f.sin_precio > 0) ? 'aviso' : 'neutro'}
+        pie={enEspera.length === 0 ? 'Nada esperando' : 'De un mes en que todavía no trabajó ningún código'}
+      />
+    </div>
+  )
+}
+
+function sumar(lista: RepartoATodosFila[], campo: 'monto_pen' | 'monto_usd' | 'sin_precio') {
+  return lista.reduce((n, f) => n + f[campo], 0)
+}
+
+/** La pestaña «Reparto»: mes por mes, lo que salió y lo que le tocó a cada código. */
+function RepartoPorMes({ filas, c }: { filas: RepartoATodosFila[]; c: ResumenCodigo }) {
+  const meses = new Map<string, RepartoATodosFila[]>()
+  for (const f of filas) meses.set(f.periodo, [...(meses.get(f.periodo) ?? []), f])
+  const sinPrecio = sumar(filas, 'sin_precio')
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <Indicador
-          titulo="Repartido"
-          valor={
-            <span data-repartido={suma(repartido, 'monto_pen')}>
-              {moneda(suma(repartido, 'monto_pen'))}
-              {suma(repartido, 'monto_usd') > 0 && <span className="block text-sm">+ {moneda(suma(repartido, 'monto_usd'), 'USD')}</span>}
-            </span>
-          }
-          pie={codigos === 0 ? 'Todavía nada' : `Entre ${codigos} ${codigos === 1 ? 'código' : 'códigos'}, cada uno en su costeo`}
-        />
-        <Indicador
-          titulo="Por repartir"
-          valor={montoMixto(esperaPen, esperaUsd)}
-          tono={esperaPen + esperaUsd > 0 || enEspera.some((f) => f.sin_precio > 0) ? 'aviso' : 'neutro'}
-          pie={enEspera.length === 0 ? 'Nada esperando' : 'De un mes en que todavía no trabajó ningún código'}
-        />
-      </div>
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo="A dónde fue"
@@ -380,40 +399,56 @@ async function RepartoATodos({ c }: { c: ResumenCodigo }) {
         <Tabla>
           <TablaCabecera>
             <tr>
-              <TH>Mes</TH>
               <TH>Código</TH>
-              <TH className="text-right">Salidas</TH>
               <TH className="text-right">Le tocó</TH>
             </tr>
           </TablaCabecera>
-          <tbody>
-            {filas.length === 0 ? (
+          {meses.size === 0 ? (
+            <tbody>
               <SinDatos
                 titulo="Todavía no salió nada con este código"
                 descripcion="Se reparte cuando Almacén entrega lo de un requerimiento de Administración cargado a todos los activos."
               />
-            ) : (
-              filas.map((f) => (
-                <TR key={`${f.periodo}-${f.codigo}`} data-reparto={f.codigo}>
-                  <TD className="tabular align-top">{periodo(f.periodo)}</TD>
-                  <TD className="align-top">
-                    {f.codigo === CODIGO_TODOS_LOS_ACTIVOS ? (
-                      <span className="text-aviso">Esperando un código que trabaje ese mes</span>
-                    ) : (
-                      <Link href={enlaceCodigo(f.codigo, 'costeo')} className="font-mono text-acento hover:underline">
-                        {f.codigo}
-                      </Link>
-                    )}
-                  </TD>
-                  <TD className="tabular text-right align-top">{f.salidas}</TD>
-                  <TD className="tabular text-right align-top">
-                    {montoMixto(f.monto_pen, f.monto_usd)}
-                    {f.sin_precio > 0 && <p className="text-xs text-aviso">{f.sin_precio} sin precio</p>}
-                  </TD>
-                </TR>
-              ))
-            )}
-          </tbody>
+            </tbody>
+          ) : (
+            [...meses].map(([mes, lista]) => {
+              // Cada salida del mes se reparte entre todos los códigos de ese mes: todas las filas cuentan las mismas.
+              const salidas = Math.max(...lista.map((f) => f.salidas))
+              return (
+                <tbody key={mes} data-mes={mes}>
+                  <tr className="border-b border-borde bg-superficie-2">
+                    <th scope="rowgroup" className="px-3 py-2 text-left text-xs font-semibold text-texto">
+                      {periodo(mes)}
+                      <span className="font-normal text-texto-suave">
+                        {' '}
+                        · {salidas} {salidas === 1 ? 'salida' : 'salidas'}
+                      </span>
+                    </th>
+                    <td className="tabular px-3 py-2 text-right text-xs font-semibold whitespace-nowrap text-texto">
+                      {montoMixto(sumar(lista, 'monto_pen'), sumar(lista, 'monto_usd'))}
+                    </td>
+                  </tr>
+                  {lista.map((f) => (
+                    <TR key={f.codigo} data-reparto={f.codigo}>
+                      <TD className="align-top">
+                        {f.codigo === CODIGO_TODOS_LOS_ACTIVOS ? (
+                          <span className="text-aviso">Esperando un código que trabaje ese mes</span>
+                        ) : (
+                          <Link href={enlaceCodigo(f.codigo, 'costeo')} className="font-mono break-all text-acento hover:underline">
+                            {f.codigo}
+                          </Link>
+                        )}
+                      </TD>
+                      <TD className="tabular text-right align-top whitespace-nowrap">
+                        {montoMixto(f.monto_pen, f.monto_usd)}
+                        {f.sin_precio > 0 && <p className="text-xs text-aviso">{f.sin_precio} sin precio</p>}
+                      </TD>
+                    </TR>
+                  ))}
+                </tbody>
+              )
+            })
+          )}
         </Tabla>
       </Tarjeta>
       {sinPrecio > 0 && (
@@ -672,20 +707,6 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
           <p className="text-sm font-medium text-texto">PLANTA no lleva avance</p>
           <p className="text-sm text-texto-suave">
             Agrupa el trabajo de la planta que no es de una unidad. Sus reportes diarios suman horas al costeo, pero no tiene etapas ni un final.
-          </p>
-        </TarjetaCuerpo>
-      </Tarjeta>
-    )
-  }
-  if (codigo === CODIGO_TODOS_LOS_ACTIVOS) {
-    return (
-      <Tarjeta>
-        <TarjetaCuerpo>
-          <p className="text-sm font-medium text-texto">TODOS LOS ACTIVOS no lleva avance</p>
-          <p className="text-sm text-texto-suave">
-            Es el código del requerimiento de Administración que va para todas las unidades. Lo que sale del almacén con él se reparte en partes
-            iguales entre los códigos que trabajaron ese mes, y cada uno lo ve en su costeo. Aquí queda lo de un mes en que todavía no trabajó
-            ninguno, y la orden de compra del requerimiento.
           </p>
         </TarjetaCuerpo>
       </Tarjeta>

@@ -138,6 +138,10 @@ export function ArchivosDeOrden({
             ))}
           </ul>
         )}
+        {/* El último PDF no se quita (lo cuida la base): se dice cómo se cambia. */}
+        {sube && adjuntos.filter((a) => a.tipo === 'ORDEN').length === 1 && (
+          <p className="text-xs text-texto-suave">Para cambiarlo, sube el correcto y después quita este.</p>
+        )}
 
         {error && (
           <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">

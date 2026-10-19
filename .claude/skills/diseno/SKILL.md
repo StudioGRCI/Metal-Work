@@ -154,6 +154,15 @@ Para que el archivo pueda viajar a `ot/{orden}/…` antes de que la orden exista
 el identificador se decide en el navegador con `crypto.randomUUID()` y la base
 crea las dos cosas en la misma transacción (ver `emitir_orden_de_cotizacion`).
 
+**La acción que anota el archivo no llama a `redirect()`.** En Next 16, una
+acción de servidor que termina en `redirect()` hace que la promesa que espera el
+navegador se **rechace** con el error de redirección: el `catch` que limpia el
+huérfano corre también cuando todo salió bien, y borra el archivo de una fila que
+ya existe. Pasó con la orden sin cotización el 2026-10-19: se registraba y quedaba
+sin PDF, y solo lo vio el banco consultando `storage.objects` después del clic.
+La acción devuelve `{ ok: true, datos: { id } }` y el formulario navega con
+`router.push` (ver `ordenes/nueva/formulario-orden.tsx`).
+
 ## PDF de documentos de la empresa
 
 Se arman con `@react-pdf/renderer` en el servidor (`src/lib/pdf/`), con la
@@ -226,6 +235,14 @@ sin el conteo y el texto. Sin selectores, `mirar.mjs` solo dice que la página
 cargó, que es casi nada. Pantalla nueva → mirarla con los selectores que la
 delatan si viene vacía (`tbody tr`, el `h1`, el estado vacío). Lo mismo vale para
 los scripts del banco.
+
+**El banco no aplica las políticas de Storage.** Su `DELETE` de un archivo quita
+la fila de `storage.objects` y deja el archivo en el disco, y firma enlaces de
+rutas sin fila: la pantalla puede mostrar un PDF que en Supabase ya no existe, o
+dejar borrar uno que Supabase rechazaría. Toda subida o quitada de archivo se
+comprueba en el `probar-*.mjs` consultando `storage.objects` después del clic, y
+lo que dependa de una política de Storage se prueba en un check con
+`set local role authenticated`.
 
 ## Trampas
 

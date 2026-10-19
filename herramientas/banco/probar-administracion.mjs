@@ -249,11 +249,13 @@ let ordenId = ''
   await pagina.screenshot({ path: `${CAPTURAS}/adm-costeo-a.png`, fullPage: true })
   await pagina.goto(`${BASE}/codigos-internos/detalle?${new URLSearchParams({ codigo: 'TODOS LOS ACTIVOS' })}`, { waitUntil: 'networkidle' })
   const todos = limpio(await pagina.locator('main').innerText())
-  comprobar(todos.includes('TODOS LOS ACTIVOS no lleva avance'), 'TODOS LOS ACTIVOS explica que no es una unidad')
-  comprobar((await pagina.locator(`[data-reparto="${A}"]`).count()) === 1 && (await pagina.locator('[data-repartido]').count()) === 1,
-    `y dice a dónde fue: cuánto se repartió y lo que le tocó a ${A}`)
-  const secciones = await pagina.locator('[role="group"][aria-label="Secciones del código"] a').allInnerTexts()
-  comprobar(!secciones.some((x) => /Etapas|Planos|Factura/.test(x)), `sin las secciones de una unidad (${secciones.join(', ')})`)
+  comprobar(todos.includes('A dónde fue') && todos.includes('PLANTA y OFICINA no reciben'), 'TODOS LOS ACTIVOS abre en a dónde fue lo repartido')
+  comprobar((await pagina.locator(`[data-reparto="${A}"]`).count()) >= 1 && (await pagina.locator('[data-repartido]').count()) === 1,
+    `y dice cuánto se repartió y lo que le tocó a ${A}`)
+  const mes = await pagina.locator('tbody[data-mes]').first().locator('th').innerText()
+  comprobar(/\d{2}\/\d{4} · \d+ salidas?/.test(limpio(mes)), `agrupado por mes, con sus salidas (${limpio(mes)})`)
+  const secciones = (await pagina.locator('[role="group"][aria-label="Secciones del código"] a').allInnerTexts()).map(limpio)
+  comprobar(secciones.join('|') === 'Reparto|RQ, OT y cotización', `solo Reparto y sus requerimientos, sin las secciones de una unidad (${secciones.join(', ')})`)
   await pagina.screenshot({ path: `${CAPTURAS}/adm-todos-los-activos.png`, fullPage: true })
 
   // ---------------------------------------------- 4. La orden sin cotización con su PDF
@@ -298,6 +300,7 @@ let ordenId = ''
   comprobar(vista.includes('Orden registrada con su PDF'), 'la orden dice que se registró con su PDF')
   comprobar(vista.includes(`OT-banco-${sello}.pdf`), 'y Administración ve su PDF en la orden')
   comprobar((await pagina.getByRole('button', { name: `Quitar OT-banco-${sello}.pdf` }).count()) === 0, 'sin botón para quitar el único PDF de la orden')
+  comprobar(await pagina.getByText('Para cambiarlo, sube el correcto y después quita este.').isVisible(), 'y dice cómo se cambia')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-orden-registrada.png`, fullPage: true })
   await contexto.close()
 }

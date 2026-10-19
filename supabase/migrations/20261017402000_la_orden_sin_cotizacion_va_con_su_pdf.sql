@@ -24,6 +24,8 @@
 --   · Ninguna orden se queda sin su PDF una vez que lo tiene: el último no se
 --     quita, ni de la tabla ni de Storage. Hasta aquí eso solo se cuidaba en la
 --     OT de una cotización (migración 101).
+--   · Quien sube un archivo de la orden lo ve, y lo puede quitar de Storage
+--     si la orden no llegó a nombrarlo.
 --   · Quien sube el PDF de una orden lo ve. Hasta aquí el PDF de la OT solo lo
 --     veían Diseño y Supervisión de Producción, Maestranza y Acabados
 --     (`puede_ver_pdf_ot`, migración 20260929221000): Administración subía la
@@ -176,6 +178,17 @@ begin
 end;
 $$;
 revoke all on function public.fn_el_pdf_de_la_orden_se_queda() from public, anon, authenticated;
+
+-- Quien subió un archivo lo ve en Storage aunque ninguna fila lo nombre todavía,
+-- o ya no: borrar por la API de Storage pide también poder leerlo, y sin esto el
+-- PDF de una orden que la base rechazó se quedaba suelto, sin que nadie lo viera
+-- ni lo pudiera quitar. Los demás leen solo lo que su fila les deja ver.
+alter policy mw_leer_adjuntos_ot on storage.objects
+  using (bucket_id = 'adjuntos-ot'
+         and (owner_id = (select auth.uid()::text)
+              or exists (select 1 from public.ot_adjuntos a
+                          where a.ruta_storage = objects.name
+                            and a.orden_id = public.orden_de_ruta(objects.name))));
 
 -- Y el archivo tampoco se borra por la API de Storage mientras una orden lo
 -- nombra: quitar un archivo de la orden quita primero su fila, que es la que

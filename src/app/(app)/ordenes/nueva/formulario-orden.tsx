@@ -167,7 +167,9 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         const r = await crearOrden(null, datos)
         if (!r.ok) {
           // La base dijo que no: la orden no existe y el PDF que ya viajó se
-          // quita, para que no quede un archivo que ninguna orden nombra.
+          // quita, para que no quede un archivo que ninguna orden nombra. Quien
+          // lo subió lo ve y lo borra mientras ninguna fila lo nombre (migración
+          // 20261017402000).
           await supabase.storage.from('adjuntos-ot').remove([ruta])
           setError(r.error)
           return
@@ -386,8 +388,10 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
           <label
             className={cn(
               'flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2',
-              'focus-within:border-acento focus-within:ring-2 focus-within:ring-acento/25',
-              archivo ? 'border-solid border-exito' : 'border-borde',
+              'focus-within:ring-2',
+              archivo
+                ? 'border-solid border-exito focus-within:border-exito focus-within:ring-exito/25'
+                : 'border-borde focus-within:border-acento focus-within:ring-acento/25',
             )}
           >
             {archivo ? <FileText aria-hidden className="size-6 text-exito" /> : <FileUp aria-hidden className="size-6" />}
