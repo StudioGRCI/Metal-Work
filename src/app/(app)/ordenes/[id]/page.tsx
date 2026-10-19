@@ -641,7 +641,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
           <Bitacora ordenId={orden.id} eventos={timeline} puedeComentar={puede(perfil, 'ordenes.ver')} />
           {!orden.plan_etapas_manual && secciones.includes('avance') && (
             <Tarjeta>
-              <TarjetaCabecera titulo="Registros del flujo anterior" ayuda="Estos reportes se conservan para consulta." />
+              <TarjetaCabecera titulo="Registros del flujo anterior" />
               <TarjetaCuerpo className="flex flex-wrap gap-2">
                 {secciones.includes('avance') && <EnlaceBoton href={`/ordenes/${orden.id}?vista=avance`} variante="secundario" tamano="sm">Ver reportes anteriores</EnlaceBoton>}
               </TarjetaCuerpo>

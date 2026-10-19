@@ -14,7 +14,10 @@ export function EncabezadoPagina({
   titulo: ReactNode
   /** Lo que cambia y hay que ver de un vistazo: la fecha, el área, un total. */
   descripcion?: ReactNode
-  /** Para qué sirve la pantalla: queda detrás del botón «i». */
+  /**
+   * Para qué sirve la pantalla: queda detrás del botón «i». No es la `ayuda`
+   * de `Campo`, que se ve siempre bajo el campo.
+   */
   ayuda?: ReactNode
   migas?: { titulo: string; ruta?: string }[]
   acciones?: ReactNode
@@ -23,6 +26,7 @@ export function EncabezadoPagina({
   // repiten el título de abajo («Requerimientos» sobre «Requerimientos»): son
   // un renglón más antes del trabajo. Se muestran cuando dejan volver a algo.
   const conMigas = migas?.some((miga) => miga.ruta) ?? false
+  const texto = descripcion && <p className="mt-1 text-sm text-texto-suave">{descripcion}</p>
   const h1 = <h1 className="text-xl font-semibold tracking-tight text-texto sm:text-2xl">{titulo}</h1>
 
   return (
@@ -50,11 +54,15 @@ export function EncabezadoPagina({
             al comienzo del siguiente se perdía la línea. */}
         <div className="min-w-0 max-w-3xl">
           {ayuda ? (
-            <TituloConAyuda ayuda={ayuda}>{h1}</TituloConAyuda>
+            <TituloConAyuda ayuda={ayuda} nombre={typeof titulo === 'string' ? titulo : undefined} descripcion={texto}>
+              {h1}
+            </TituloConAyuda>
           ) : (
-            h1
+            <>
+              {h1}
+              {texto}
+            </>
           )}
-          {descripcion && <p className="mt-1 text-sm text-texto-suave">{descripcion}</p>}
         </div>
         {/* Sin `shrink-0`: cuando las acciones bajan a su propia línea y no caben
             —tres botones en el teléfono—, se acomodan en dos filas en vez de

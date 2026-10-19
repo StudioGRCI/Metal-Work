@@ -25,11 +25,15 @@ export function TarjetaCabecera({
   titulo: React.ReactNode
   /** Lo que cambia y hay que ver de un vistazo. */
   descripcion?: React.ReactNode
-  /** Para qué sirve la tarjeta: queda detrás del botón «i». */
+  /**
+   * Para qué sirve la tarjeta: queda detrás del botón «i». No es la `ayuda` de
+   * `Campo`, que se ve siempre bajo el campo.
+   */
   ayuda?: React.ReactNode
   acciones?: React.ReactNode
   className?: string
 }) {
+  const texto = descripcion && <p className="mt-0.5 text-xs text-texto-suave">{descripcion}</p>
   const h2 = <h2 className="text-[15px] leading-snug font-semibold text-texto">{titulo}</h2>
   return (
     // Las acciones bajan de línea cuando no caben al lado del título. Sin eso, en
@@ -40,8 +44,16 @@ export function TarjetaCabecera({
       <div className="min-w-0 flex-1 basis-60">
         {/* Un punto más que el texto de adentro: al mismo tamaño, «Cliente y
             unidad» se leía como una fila más de la tarjeta y no como su nombre. */}
-        {ayuda ? <TituloConAyuda ayuda={ayuda}>{h2}</TituloConAyuda> : h2}
-        {descripcion && <p className="mt-0.5 text-xs text-texto-suave">{descripcion}</p>}
+        {ayuda ? (
+          <TituloConAyuda ayuda={ayuda} nombre={typeof titulo === 'string' ? titulo : undefined} descripcion={texto} claseAyuda="text-xs">
+            {h2}
+          </TituloConAyuda>
+        ) : (
+          <>
+            {h2}
+            {texto}
+          </>
+        )}
       </div>
       {acciones && <div className="flex shrink-0 items-center gap-2">{acciones}</div>}
     </div>

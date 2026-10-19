@@ -344,7 +344,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
           <Tarjeta>
             <TarjetaCabecera
               titulo="Requieren atención"
-              ayuda="Órdenes que pasaron su fecha de entrega"
+              descripcion="Órdenes que pasaron su fecha de entrega"
             />
             <TarjetaCuerpo className="space-y-2">
               {atrasadas.length === 0 ? (

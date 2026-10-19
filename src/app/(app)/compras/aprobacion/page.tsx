@@ -54,7 +54,7 @@ export default async function PaginaAprobacionCompras() {
             ayuda={
               configura
                 ? 'Desde qué monto una orden de compra espera aprobación y qué puesto la da. Cambiarla no toca las compras ya emitidas.'
-                : 'La fija Gerencia.'
+                : undefined
             }
             acciones={regla && <Insignia tono={regla.activa ? 'exito' : 'neutro'}>{regla.activa ? 'Encendida' : 'Apagada'}</Insignia>}
           />

@@ -96,7 +96,6 @@ export default async function PaginaConfiguracion({
           <Tarjeta>
             <TarjetaCabecera
               titulo="Etapas de fabricación"
-              ayuda="En este orden avanza cada orden."
             />
             <TarjetaCuerpo className="space-y-1">
               {catalogos.etapas.length === 0 && (

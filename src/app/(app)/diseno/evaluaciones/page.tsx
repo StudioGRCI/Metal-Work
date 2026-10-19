@@ -72,7 +72,7 @@ export default async function PaginaEvaluacionesDiseno() {
               ? 'Las que hiciste, en cualquier estado. Enviada, ya no se corrige salvo que Administración la devuelva.'
               : soloRecibe
                 ? 'Las que ya recibiste y las que devolviste a Diseño para corregir.'
-                : 'Todas, en cualquier estado.'}
+                : undefined}
           />
           <TarjetaCuerpo className="p-0">
             <ListaEvaluaciones

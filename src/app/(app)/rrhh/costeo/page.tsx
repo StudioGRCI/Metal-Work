@@ -111,7 +111,8 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
           <Tarjeta className="border-aviso">
             <TarjetaCabecera
               titulo="Horas de los reportes que esperan su costo"
-              ayuda="Estas personas tienen horas en reportes diarios pero todavía no tienen costo mensual. Pónselo en Personal y sus horas entran solas al costeo."
+              descripcion="Tienen horas en reportes diarios pero todavía no tienen costo mensual."
+              ayuda="Con su costo mensual en Personal, sus horas entran solas al costeo."
             />
             <TarjetaCuerpo>
               <ul className="space-y-1 text-sm">

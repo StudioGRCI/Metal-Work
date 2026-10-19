@@ -230,7 +230,8 @@ export default async function PaginaHorasExtras() {
         <Tarjeta>
           <TarjetaCabecera
             titulo="La regla de las horas extras"
-            ayuda={`Hoy: las ${horasCortas(regla.horas_tramo1)} primeras de cada día con ${regla.recargo_tramo1} % y las siguientes con ${regla.recargo_tramo2} %, sobre la hora de la persona (su remuneración mensual entre 240). Es lo mínimo de ley o más; cambiarla no toca lo ya enviado a Tesorería.`}
+            descripcion={`Hoy: las ${horasCortas(regla.horas_tramo1)} primeras de cada día con ${regla.recargo_tramo1} % y las siguientes con ${regla.recargo_tramo2} %`}
+            ayuda="Sobre la hora de la persona (su remuneración mensual entre 240). Es lo mínimo de ley o más; cambiarla no toca lo ya enviado a Tesorería."
           />
           {decide && (
             <TarjetaCuerpo>
