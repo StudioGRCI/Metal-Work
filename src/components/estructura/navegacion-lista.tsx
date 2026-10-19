@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-import { menuDe, rutaActiva } from '@/lib/navegacion'
+import { menuDe, rutaActiva, pendientesEnPalabras } from '@/lib/navegacion'
 import { cn } from '@/lib/utils'
 import { useContextoOrden } from './contexto-orden'
 
@@ -22,6 +22,7 @@ export function NavegacionLista({
   rolCodigo,
   alNavegar,
   pendientes = {},
+  sinComprobar = [],
 }: {
   permisos: string[]
   esAdmin: boolean
@@ -30,6 +31,8 @@ export function NavegacionLista({
   alNavegar?: () => void
   /** Cuántos pendientes cuelgan de cada módulo, por su ruta: el número al lado del nombre. */
   pendientes?: Record<string, number>
+  /** Rutas con un pendiente que no se pudo contar: el globo dice «!», nunca cero. */
+  sinComprobar?: string[]
 }) {
   const ruta = usePathname()
   const { orden } = useContextoOrden()
@@ -73,14 +76,17 @@ export function NavegacionLista({
                 )
               }
 
-              const n = pendientes[item.ruta] ?? 0
+              // Los pendientes van por la ruta base, sin `?…`, como se cuentan.
+              const base = item.ruta.split('?')[0]
+              const n = pendientes[base] ?? 0
+              const falla = sinComprobar.includes(base)
               return (
                 <li key={item.ruta}>
                   <Link
                     href={item.ruta}
                     onClick={alNavegar}
                     aria-current={activo ? 'page' : undefined}
-                    aria-label={n > 0 ? `${item.titulo}, ${n} pendientes` : undefined}
+                    aria-label={falla ? `${item.titulo}, un pendiente no se pudo comprobar` : n > 0 ? `${item.titulo}, ${pendientesEnPalabras(n)}` : undefined}
                     className={cn(
                       'flex min-h-11 items-center gap-3 rounded-xl border px-3 py-2.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento',
                       activo
@@ -89,13 +95,17 @@ export function NavegacionLista({
                     )}
                   >
                     <Icono aria-hidden className="size-4 shrink-0" />
-                    <span className="min-w-0 flex-1">{item.titulo}</span>
+                    <span className="min-w-0 flex-1">
+                      {item.titulo}
+                      {/* El «!» solo no explica nada a quien mira: una línea dice qué pasó. */}
+                      {falla && <span className="block text-[11px] font-normal text-texto-suave">No se pudo contar; vuelve a cargar</span>}
+                    </span>
                     {activo && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-current" />}
                     {/* Lo que le toca a este puesto en ese módulo, a la vista
                         sin entrar: el mismo globo de la campana. */}
-                    {n > 0 && (
+                    {(falla || n > 0) && (
                       <span className="tabular ml-auto rounded-full bg-aviso-suave px-1.5 text-[11px] font-semibold text-aviso">
-                        {n > 99 ? '99+' : n}
+                        {falla ? '!' : n > 99 ? '99+' : n}
                       </span>
                     )}
                   </Link>

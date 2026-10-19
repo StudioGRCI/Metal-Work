@@ -62,7 +62,7 @@ export function quienAtiende(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>): Qu
  * Si un requerimiento abierto espera a quien mira en la bandeja de atención: el
  * que revisa el stock lo recibe por revisar y en compra (para recepcionarlo), el
  * que compra lo suyo sin stock, y el que despacha lo listo en almacén. La misma
- * regla para la bandeja y para «Te toca» del dashboard, para que digan lo mismo.
+ * regla para la bandeja y para el globo del menú, para que digan lo mismo.
  */
 export function leTocaAtender(rq: { estado: string | null; tipo: string | null }, p: QuienAtiende): boolean {
   if (rq.estado === 'POR_ATENDER' || rq.estado === 'EN_ATENCION') return p.recibe

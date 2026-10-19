@@ -238,23 +238,30 @@ Desde el 2026-10-15 la pantalla de inicio se llama **Dashboard** (antes
 «Tablero») en el menú, en la pestaña del teléfono y en su título. Se lee de
 arriba abajo:
 
-1. **Te toca hoy** (`src/lib/datos/pendientes-globales.ts`): lo que espera al
-   puesto, cada cosa con su cantidad y el enlace a la pantalla donde se atiende.
-   Son los mismos números que los globos del menú.
-2. **Las cifras de su área** (`src/lib/datos/dashboard.ts`, `CIFRAS_POR_PUESTO`):
+1. **Las cifras de su área** (`src/lib/datos/dashboard.ts`, `CIFRAS_POR_PUESTO`):
    cómo va su trabajo, cada cifra con el enlace a su pantalla.
-3. Gerencia, además, los seis códigos internos con movimiento más reciente, con
+2. Gerencia, además, los seis códigos internos con movimiento más reciente, con
    su avance y su costo. Diseño, su colaborador y Administración, que todavía
    llevan la OT, el bloque de órdenes de trabajo.
+3. En el teléfono, sus módulos a un toque.
 
-Las dos listas siguen la misma regla: un pendiente o una cifra sale **solo si
-la pantalla a la que lleva está en el menú del puesto**, que ya se filtra por
-su permiso. Todo se lee con la sesión de quien mira, así que el RLS y las
-funciones de la base dejan fuera lo que no es suyo: el dashboard no abre nada
-que el puesto no vea en su pantalla. Lo que se resolvía en la OT ya no se le
-cuenta a quien no tiene la OT en su menú.
+Hasta el 2026-10-19 arriba iba un bloque **«Te toca hoy»** con la lista de lo
+que esperaba al puesto. Se quitó por decisión de DKS: el sistema no le dice al
+usuario qué debe hacer, lo guía en cada cosa que puede hacer. Lo que espera en
+cada pantalla sigue en los **globos del menú**
+(`src/lib/datos/pendientes-globales.ts`): al lado del nombre en la barra
+lateral, sobre la pestaña en el teléfono y, sumado, sobre «Más» cuando cuelga de
+un módulo sin pestaña. Un pendiente que no se pudo contar sale como «!», nunca
+como cero.
 
-| Puesto | Te toca hoy | Cifras |
+Las cifras y los globos siguen la misma regla: salen **solo si la pantalla a la
+que llevan está en el menú del puesto**, que ya se filtra por su permiso. Todo
+se lee con la sesión de quien mira, así que el RLS y las funciones de la base
+dejan fuera lo que no es suyo: el dashboard no abre nada que el puesto no vea
+en su pantalla. Lo que se resolvía en la OT ya no se le cuenta a quien no tiene
+la OT en su menú.
+
+| Puesto | Globos del menú | Cifras |
 | --- | --- | --- |
 | Requerimientos | Salidas de vehículo observadas por Tesorería | Requerimientos abiertos (y listos en almacén), Esperan compra, Vehículos en la planta, Salido del almacén por código |
 | Almacén | Requerimientos por revisar, Requerimientos listos por entregar, Compras dejadas por validar, Salidas que esperan su formato firmado | Por llegar al almacén, Bajo su stock mínimo, Materiales con saldo, Salidas este mes |
@@ -271,8 +278,8 @@ cuenta a quien no tiene la OT en su menú.
 | Supervisor General | Códigos con etapas vencidas | Códigos en curso, Requerimientos abiertos, Vehículos en la planta, Bajo su stock mínimo |
 | Agente de Ventas | Cotizaciones rechazadas por corregir | En revisión de Gerencia, Aprobadas este mes, Clientes |
 
-ADMIN ve las cifras de Gerencia y todos los pendientes. Una cifra que no se
-pudo leer sale con «—» y lo dice; nunca como si fuera cero.
+ADMIN ve las cifras de Gerencia y todos los globos. Una cifra que no se pudo
+leer sale con «—» y lo dice; nunca como si fuera cero.
 
 ## Visibilidad de documentos
 
