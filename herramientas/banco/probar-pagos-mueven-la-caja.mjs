@@ -294,6 +294,10 @@ const movimiento = async (origen, documento, campo) =>
   comprobar(!error, `paga la factura en dólares desde soles${error ? ` (dijo «${error}»)` : ''}`)
   const movUsd = await hasta(() => movimiento('PAGO_ADQUISICION', ids.adqUsd, { tabla: 'pagos_adquisicion', columna: 'adquisicion_id' }), (r) => r.length > 0)
   comprobar(movUsd[0]?.monto === 370 && movUsd[0]?.cambio === 3.7, 'sale S/ 370.00 de la cuenta, al cambio de 3.70')
+  // Saldada, la factura pasa a «Pagadas» sin su botón: su línea dice de qué cuenta salió y cuánto en soles.
+  await pagina.reload({ waitUntil: 'networkidle' })
+  const textoUsd = limpio(await pagina.locator('article', { hasText: N.adqUsd }).first().textContent().catch(() => ''))
+  comprobar(textoUsd.includes(`salió de ${SOLES}: S/ 370.00`), `la factura saldada dice que salió S/ 370.00 de la cuenta en soles («${textoUsd.slice(0, 160)}»)`)
 
   // 3a. Orden de servicio, a cuenta (queda otra por pagar para mirarla en el teléfono).
   await pagina.goto(`${BASE}/tesoreria/pagos-de-servicio`, { waitUntil: 'networkidle' })
@@ -353,13 +357,13 @@ const movimiento = async (origen, documento, campo) =>
   comprobar(textoPlanilla.includes(`salió de ${SOLES}`), 'la planilla ya pagada dice en su pago de qué cuenta salió')
   await pagina.goto(`${BASE}/tesoreria/recibos-por-honorarios?ver=pagados`, { waitUntil: 'networkidle' })
   const textoRecibo = limpio(await pagina.locator('li', { hasText: N.rec }).first().textContent().catch(() => ''))
-  comprobar(textoRecibo.includes(`salió de ${SOLES}`), 'el recibo pagado dice de qué cuenta salió')
+  comprobar(textoRecibo.includes(`Salió de ${SOLES}`), 'el recibo pagado dice de qué cuenta salió')
 
   // 4. La caja diaria.
   await pagina.goto(`${BASE}/tesoreria/caja-diaria`, { waitUntil: 'networkidle' })
   const fila = pagina.locator('tr', { hasText: `Pago de la factura ${N.adqPen}` })
   const textoFila = limpio(await fila.textContent().catch(() => ''))
-  comprobar(textoFila.includes('Pago de factura de compra') && textoFila.includes('se anula en Cuentas por pagar'),
+  comprobar(textoFila.includes('Pago de factura de compra') && textoFila.includes('Se anula en: Cuentas por pagar'),
     'la caja muestra el pago con su origen y dónde se anula')
   comprobar((await fila.locator('button').count()) === 0, 'y sin botón para anularlo suelto')
   const enlace = await fila.locator('a', { hasText: 'Cuentas por pagar' }).getAttribute('href').catch(() => null)

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { monedaDeCuenta, type CuentaParaPagar } from '@/lib/dominio/caja'
-import { fecha as textoFecha, hoyLima } from '@/lib/format'
+import { fecha as textoFecha, hoyLima, type CodigoMoneda } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 
 /*
@@ -214,8 +214,8 @@ export async function cuentasParaPagar(): Promise<CuentaParaPagar[]> {
   )
 }
 
-/** La cuenta que movió un pago o un cobro del sistema, y si ese movimiento ya se anuló. */
-export type CajaDelPago = { cuenta: string; anulado: boolean }
+/** La cuenta que movió un pago o un cobro del sistema, cuánto movió en su moneda y si ese movimiento ya se anuló. */
+export type CajaDelPago = { cuenta: string; anulado: boolean; monto: number; moneda: CodigoMoneda }
 
 /**
  * La cuenta de la caja que movió cada pago o cobro (migración 20261019100000),
@@ -229,7 +229,7 @@ export async function cajaDeLosPagos(origen: string, ids: string[]): Promise<Map
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('movimientos_caja')
-    .select('origen_id, anulado_en, caja:cajas!movimientos_caja_caja_id_fkey(nombre)')
+    .select('origen_id, anulado_en, monto, caja:cajas!movimientos_caja_caja_id_fkey(nombre, moneda)')
     .eq('origen', origen)
     .in('origen_id', ids)
   if (error) throw new Error(`No se pudo leer la caja de los pagos: ${error.message}`)
@@ -238,7 +238,12 @@ export async function cajaDeLosPagos(origen: string, ids: string[]): Promise<Map
     const previo = mapa.get(m.origen_id)
     // Uno vigente manda sobre uno anulado.
     if (previo && !previo.anulado) continue
-    mapa.set(m.origen_id, { cuenta: m.caja?.nombre ?? 'una cuenta', anulado: !!m.anulado_en })
+    mapa.set(m.origen_id, {
+      cuenta: m.caja?.nombre ?? 'una cuenta',
+      anulado: !!m.anulado_en,
+      monto: Number(m.monto),
+      moneda: monedaDeCuenta(m.caja?.moneda),
+    })
   }
   return mapa
 }

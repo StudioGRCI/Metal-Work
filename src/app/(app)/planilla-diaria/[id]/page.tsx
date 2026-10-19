@@ -123,7 +123,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
                         Pagado el {fecha(g.fecha_pago)}
                         {g.operacion && <span className="tabular font-normal text-texto-suave"> · Op. {g.operacion}</span>}
                         <span className="font-normal text-texto-suave">
-                          <CajaDeLaLinea cajas={cajas} id={g.id} tipo="pago" />
+                          <CajaDeLaLinea cajas={cajas} id={g.id} tipo="pago" monedaDocumento="PEN" />
                         </span>
                       </p>
                       <p className="text-xs text-texto-suave">

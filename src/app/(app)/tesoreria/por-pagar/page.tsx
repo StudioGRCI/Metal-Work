@@ -216,9 +216,12 @@ function Factura({
         <ol className="mt-2 space-y-1.5 border-t border-borde pt-2">
           {c.pagos.map((p) => (
             <li key={p.id} className="flex flex-col gap-1 text-xs sm:flex-row sm:items-center sm:justify-between">
-              <span className={p.anulado_en ? 'text-texto-suave line-through' : 'text-texto-suave'}>
-                Pago del {fecha(p.fecha)} · <span className="tabular text-texto">{moneda(p.monto, m)}</span> · op. {p.referencia}
-                <CajaDeLaLinea cajas={cajas} id={p.id} tipo="pago" />
+              <span className="text-texto-suave">
+                <span className={p.anulado_en ? 'line-through' : undefined}>
+                  Pago del {fecha(p.fecha)} · <span className="tabular text-texto">{moneda(p.monto, m)}</span> · op. {p.referencia}
+                </span>
+                {/* Fuera del tachado: que su egreso también se anuló es lo que se tiene que leer. */}
+                <CajaDeLaLinea cajas={cajas} id={p.id} tipo="pago" monedaDocumento={m} />
               </span>
               <span className="flex flex-wrap items-center gap-2">
                 {p.anulado_en && <span className="text-peligro">Anulado: {p.motivo_anulacion}</span>}

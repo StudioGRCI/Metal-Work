@@ -453,15 +453,16 @@ function FilaDeMovimiento({ movimiento: mov, moneda: m, cuenta, abierta }: {
           <span className="block text-xs text-texto-suave">
             {ORIGEN_MOVIMIENTO[mov.origen] ?? mov.origen}
             {!anulado && PANTALLA_DEL_ORIGEN[mov.origen] && (
-              <>
-                {' · se anula en '}
+              // En su propio renglón: con 44 px para tocarlo, metido en la frase la partía en renglones altos.
+              <span className="flex min-h-11 items-center sm:block sm:min-h-0">
+                Se anula en:&nbsp;
                 <Link
                   href={mov.planilla_id ? `/planilla-diaria/${mov.planilla_id}` : PANTALLA_DEL_ORIGEN[mov.origen].ruta}
-                  className="inline-flex min-h-11 items-center text-acento underline underline-offset-2 sm:min-h-0"
+                  className="text-acento underline underline-offset-2"
                 >
                   {mov.planilla_id ? 'su planilla' : PANTALLA_DEL_ORIGEN[mov.origen].nombre}
                 </Link>
-              </>
+              </span>
             )}
           </span>
         )}

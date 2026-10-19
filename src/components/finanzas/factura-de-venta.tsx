@@ -103,11 +103,14 @@ export function FacturaDeVenta({
         <ol className="mt-2 space-y-1.5 border-t border-borde pt-2 text-xs text-texto-suave">
           {f.cobros.map((b) => (
             <li key={b.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className={b.anulado_en ? 'line-through' : undefined}>
-                Cobro del {fecha(b.fecha)} · <span className="tabular font-medium text-texto">{moneda(b.monto, m)}</span>
-                {b.operacion && <> · op. {b.operacion}</>}
-                {b.cancela && !b.anulado_en && <> · la canceló</>}
-                <CajaDeLaLinea cajas={cajas} id={b.id} tipo="cobro" />
+              <span>
+                <span className={b.anulado_en ? 'line-through' : undefined}>
+                  Cobro del {fecha(b.fecha)} · <span className="tabular font-medium text-texto">{moneda(b.monto, m)}</span>
+                  {b.operacion && <> · op. {b.operacion}</>}
+                  {b.cancela && !b.anulado_en && <> · la canceló</>}
+                </span>
+                {/* Fuera del tachado: que su ingreso también se anuló es lo que se tiene que leer. */}
+                <CajaDeLaLinea cajas={cajas} id={b.id} tipo="cobro" monedaDocumento={m} />
               </span>
               {b.url ? (
                 <a href={b.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 text-acento hover:underline sm:min-h-0">

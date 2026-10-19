@@ -179,7 +179,7 @@ function Fila({
             {pago.operacion && <span className="tabular text-texto-suave">Op. {pago.operacion}</span>}
             {cajas && (
               <span className="text-texto-suave">
-                <CajaDeLaLinea cajas={cajas} id={pago.id} tipo="pago" />
+                <CajaDeLaLinea cajas={cajas} id={pago.id} tipo="pago" monedaDocumento={r.moneda === 'USD' ? 'USD' : 'PEN'} sola />
               </span>
             )}
           </>
@@ -206,7 +206,7 @@ function Fila({
         .map((p) => (
           <p key={p.id} className="text-xs text-texto-suave">
             Pago del {fecha(p.fecha_pago)} anulado el {fechaHora(p.anulado_en)}: {p.motivo_anulacion}
-            <CajaDeLaLinea cajas={cajas} id={p.id} tipo="pago" />
+            <CajaDeLaLinea cajas={cajas} id={p.id} tipo="pago" monedaDocumento={r.moneda === 'USD' ? 'USD' : 'PEN'} />
           </p>
         ))}
     </li>

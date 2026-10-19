@@ -146,12 +146,15 @@ function Servicio({
         <ol className="mt-2 space-y-1.5 border-t border-borde pt-2">
           {s.pagos.map((p) => (
             <li key={p.id} className="flex flex-col gap-1 text-xs sm:flex-row sm:items-center sm:justify-between">
-              <span className={p.anulado_en ? 'text-texto-suave line-through' : 'text-texto-suave'}>
-                Pago del {fecha(p.fecha_pago)} · <span className="tabular text-texto">{moneda(p.monto, codigoMoneda(p.moneda))}</span>
-                {p.cancela ? ' · cancela la orden' : ' · a cuenta'}
-                {p.operacion && ` · op. ${p.operacion}`}
-                {p.comprobante_proveedor && ` · comprobante ${p.comprobante_proveedor}`}
-                <CajaDeLaLinea cajas={cajas} id={p.id} tipo="pago" />
+              <span className="text-texto-suave">
+                <span className={p.anulado_en ? 'line-through' : undefined}>
+                  Pago del {fecha(p.fecha_pago)} · <span className="tabular text-texto">{moneda(p.monto, codigoMoneda(p.moneda))}</span>
+                  {p.cancela ? ' · cancela la orden' : ' · a cuenta'}
+                  {p.operacion && ` · op. ${p.operacion}`}
+                  {p.comprobante_proveedor && ` · comprobante ${p.comprobante_proveedor}`}
+                </span>
+                {/* Fuera del tachado: que su egreso también se anuló es lo que se tiene que leer. */}
+                <CajaDeLaLinea cajas={cajas} id={p.id} tipo="pago" monedaDocumento={codigoMoneda(p.moneda)} />
               </span>
               <span className="flex flex-wrap items-center gap-2">
                 {p.anulado_en && <span className="text-peligro">Anulado: {p.motivo_anulacion}</span>}
