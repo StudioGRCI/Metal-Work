@@ -10552,6 +10552,15 @@ export type Database = {
         }
         Returns: null
       }
+      caja_anular_por_pago: {
+        Args: {
+          p_origen: string | null
+          p_origen_id: string | null
+          p_motivo: string | null
+          p_que: string | null
+        }
+        Returns: null
+      }
       caja_codigos_internos: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -10591,6 +10600,22 @@ export type Database = {
         Args: {
           p_caja: string | null
           p_fecha: string | null
+        }
+        Returns: string
+      }
+      caja_mover_por_pago: {
+        Args: {
+          p_origen: string | null
+          p_origen_id: string | null
+          p_tipo: string | null
+          p_caja: string | null
+          p_fecha: string | null
+          p_monto: number | null
+          p_moneda: string | null
+          p_monto_cuenta: number | null
+          p_descripcion: string | null
+          p_codigo: string | null
+          p_operacion: string | null
         }
         Returns: string
       }
@@ -12908,6 +12933,8 @@ export type Database = {
           p_cancela: boolean | null
           p_operacion: string | null
           p_ruta: string | null
+          p_caja: string | null
+          p_monto_cuenta: number | null
         }
         Returns: string
       }
@@ -13086,6 +13113,8 @@ export type Database = {
           p_monto: number | null
           p_referencia: string | null
           p_ruta: string | null
+          p_caja: string | null
+          p_monto_cuenta: number | null
         }
         Returns: string
       }
@@ -13097,6 +13126,8 @@ export type Database = {
           p_fecha_pago: string | null
           p_operacion: string | null
           p_ruta: string | null
+          p_caja: string | null
+          p_monto_cuenta: number | null
         }
         Returns: string
       }
@@ -13107,6 +13138,8 @@ export type Database = {
           p_fecha_pago: string | null
           p_operacion: string | null
           p_ruta: string | null
+          p_caja: string | null
+          p_monto_cuenta: number | null
         }
         Returns: string
       }
@@ -13120,6 +13153,8 @@ export type Database = {
           p_operacion: string | null
           p_comprobante: string | null
           p_ruta: string | null
+          p_caja: string | null
+          p_monto_cuenta: number | null
         }
         Returns: string
       }

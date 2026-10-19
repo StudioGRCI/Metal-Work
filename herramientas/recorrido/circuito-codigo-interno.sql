@@ -84,6 +84,8 @@ declare
   f       text[] := '{}';
   -- Lo que se agrega para medir lo que NO llega al código.
   v_caja  uuid := gen_random_uuid();  v_r3 uuid := gen_random_uuid();
+  -- La cuenta de la que Tesorería paga y a la que cobra (migración 20261019100000).
+  v_banco uuid := gen_random_uuid();
   b_antes jsonb; b_despues jsonb; b_ot jsonb; b_ot_admin jsonb; b_margen jsonb; b_tareo_extra jsonb;
   -- El costeo completo (migración 20261017300000).
   n_gerencia jsonb; n_admin jsonb; n_general jsonb; n_gasto jsonb; n_cierre text; n_admin_cierre text;
@@ -350,7 +352,9 @@ begin
     insert into storage.objects (bucket_id, name, owner_id, metadata)
     values ('subcontratos', v_ruta, k->>'TESORERIA', jsonb_build_object('mimetype', 'image/jpeg', 'size', 60000));
     perform pg_temp.ensayo_como((k->>'TESORERIA')::uuid);
-    perform public.registrar_pago_recibo_honorarios(v_pago, v_rh1, v_hoy, 'OP-ENSAYO-1', v_ruta);
+    -- Desde la 20261019100000 todo pago y cobro pide su cuenta de la caja.
+    perform public.guardar_caja(v_banco, 'Banco del ensayo 2699', 'BANCO', 'BANCO DEL ENSAYO', 'PEN', 0, v_hoy, true);
+    perform public.registrar_pago_recibo_honorarios(v_pago, v_rh1, v_hoy, 'OP-ENSAYO-1', v_ruta, v_banco, null);
 
     v_paso := 'Contabilidad factura la cotización';
     reset role;
@@ -366,7 +370,7 @@ begin
     insert into storage.objects (bucket_id, name, owner_id, metadata)
     values ('cobros-venta', v_ruta, k->>'TESORERIA', jsonb_build_object('mimetype', 'application/pdf', 'size', 50000));
     perform pg_temp.ensayo_como((k->>'TESORERIA')::uuid);
-    perform public.registrar_cobro_factura(v_cobro, v_fac, v_hoy, 10000, false, 'OP-ENSAYO-2', v_ruta);
+    perform public.registrar_cobro_factura(v_cobro, v_fac, v_hoy, 10000, false, 'OP-ENSAYO-2', v_ruta, v_banco, null);
 
     -- ================================================ 2. LO QUE LEE GERENCIA
     v_paso := 'Gerencia lee el código';

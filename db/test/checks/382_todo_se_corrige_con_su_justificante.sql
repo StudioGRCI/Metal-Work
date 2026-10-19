@@ -54,6 +54,7 @@ begin
     (current_setting('prueba.oc2')::uuid, 1, 50.00, current_setting('prueba.m1')::uuid),
     (current_setting('prueba.oc3')::uuid, 1, 50.00, current_setting('prueba.m1')::uuid);
 end $$;
+select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261019100000 todo pago pide su cuenta
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
 begin
@@ -219,7 +220,7 @@ insert into storage.objects (bucket_id, name, owner_id, metadata)
 values ('pagos-facturas', current_setting('prueba.adq') || '/' || current_setting('prueba.c8') || '.pdf', current_setting('prueba.tesoreria'),
         '{"mimetype": "application/pdf", "size": 1024}');
 select public.registrar_pago_factura(current_setting('prueba.c8')::uuid, current_setting('prueba.adq')::uuid, current_setting('prueba.hoy')::date,
-  500, 'OP-382', current_setting('prueba.adq') || '/' || current_setting('prueba.c8') || '.pdf');
+  500, 'OP-382', current_setting('prueba.adq') || '/' || current_setting('prueba.c8') || '.pdf', current_setting('prueba.caja')::uuid, null);
 reset role;
 
 select pg_temp.como('contabilidad');

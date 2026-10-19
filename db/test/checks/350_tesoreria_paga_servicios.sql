@@ -20,6 +20,7 @@ grant select, insert, delete on storage.objects to authenticated;
 
 select set_config('prueba.conta', :'conta_id', true);
 select set_config('prueba.teso', :'teso_id', true);
+select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261019100000 todo pago pide su cuenta
 select set_config('prueba.compras', :'compras_id', true);
 select set_config('prueba.req', :'req_id', true);
 select set_config('prueba.hoy', ((now() at time zone 'America/Lima')::date)::text, true);
@@ -69,25 +70,25 @@ begin
     ('pagos-servicio', current_setting('prueba.os') || '/' || current_setting('prueba.p1') || '.pdf', current_setting('prueba.teso'), '{"mimetype": "application/pdf", "size": 900}'),
     ('pagos-servicio', current_setting('prueba.os') || '/' || current_setting('prueba.p2') || '.jpg', current_setting('prueba.teso'), '{"mimetype": "image/jpeg", "size": 900}'),
     ('pagos-servicio', current_setting('prueba.os') || '/' || current_setting('prueba.p3') || '.pdf', current_setting('prueba.teso'), '{"mimetype": "application/pdf", "size": 900}');
-  perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, %L, 10, true, null, null, %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, %L, 10, true, null, null, %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.p1'), current_setting('prueba.os'), (current_setting('prueba.hoy')::date + 1)::text,
       current_setting('prueba.os') || '/' || current_setting('prueba.p1') || '.pdf'),
     'el pago no es de mañana', 'de hoy hacia atrás');
-  perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, current_setting(''prueba.hoy'')::date, 10, true, null, null, %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, current_setting(''prueba.hoy'')::date, 10, true, null, null, %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.p1'), current_setting('prueba.os'), gen_random_uuid() || '/' || current_setting('prueba.p1') || '.pdf'),
     'el comprobante va en la carpeta de su orden de servicio', 'Vuelve a adjuntar');
   perform public.registrar_pago_servicio(current_setting('prueba.p1')::uuid, current_setting('prueba.os')::uuid, current_setting('prueba.hoy')::date, 590, false,
-    'OP-1', 'E001-45', current_setting('prueba.os') || '/' || current_setting('prueba.p1') || '.pdf');
+    'OP-1', 'E001-45', current_setting('prueba.os') || '/' || current_setting('prueba.p1') || '.pdf', current_setting('prueba.caja')::uuid, null);
   perform test.afirmar(public.registrar_pago_servicio(current_setting('prueba.p1')::uuid, current_setting('prueba.os')::uuid, current_setting('prueba.hoy')::date, 590, false,
-    'OP-1', 'E001-45', current_setting('prueba.os') || '/' || current_setting('prueba.p1') || '.pdf') = current_setting('prueba.p1')::uuid,
+    'OP-1', 'E001-45', current_setting('prueba.os') || '/' || current_setting('prueba.p1') || '.pdf', current_setting('prueba.caja')::uuid, null) = current_setting('prueba.p1')::uuid,
     'un reintento no registra otro pago');
   select * into r from public.servicios_por_pagar() where id = current_setting('prueba.os')::uuid;
   perform test.afirmar(r.pagado = 590 and not r.cancelada, 'un pago a cuenta no la cancela');
   perform public.registrar_pago_servicio(current_setting('prueba.p2')::uuid, current_setting('prueba.os')::uuid, current_setting('prueba.hoy')::date, 590, true,
-    'OP-2', 'E001-45', current_setting('prueba.os') || '/' || current_setting('prueba.p2') || '.jpg');
+    'OP-2', 'E001-45', current_setting('prueba.os') || '/' || current_setting('prueba.p2') || '.jpg', current_setting('prueba.caja')::uuid, null);
   select * into r from public.servicios_por_pagar() where id = current_setting('prueba.os')::uuid;
   perform test.afirmar(r.pagado = 1180 and r.cancelada, 'el pago que la cancela la deja pagada');
-  perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, current_setting(''prueba.hoy'')::date, 10, true, null, null, %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, current_setting(''prueba.hoy'')::date, 10, true, null, null, %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.p3'), current_setting('prueba.os'), current_setting('prueba.os') || '/' || current_setting('prueba.p3') || '.pdf'),
     'la OS cancelada no se paga de nuevo', 'ya está cancelada');
   perform test.debe_fallar(format('select public.anular_pago_servicio(%L, ''corto'')', current_setting('prueba.p2')),
@@ -103,7 +104,7 @@ begin
 
   perform test.como_usuario(current_setting('prueba.compras')::uuid);
   set local role authenticated;
-  perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, current_setting(''prueba.hoy'')::date, 10, true, null, null, %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, current_setting(''prueba.hoy'')::date, 10, true, null, null, %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.p3'), current_setting('prueba.os'), current_setting('prueba.os') || '/' || current_setting('prueba.p3') || '.pdf'),
     'Logística no registra pagos', 'tesoreria.pagar_servicios');
   perform test.afirmar((select count(*) from public.pagos_orden_servicio where orden_servicio_id = current_setting('prueba.os')::uuid) = 2,

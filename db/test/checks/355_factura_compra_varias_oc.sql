@@ -18,6 +18,7 @@ select test.crear_usuario('Vico', 'Ventas', 'ventas355@demo.pe', 'VENDEDOR', (se
 select set_config('prueba.admin', :'admin_id', true);
 select set_config('prueba.conta', :'conta_id', true);
 select set_config('prueba.teso', :'teso_id', true);
+select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261019100000 todo pago pide su cuenta
 select set_config('prueba.compras', :'compras_id', true);
 select set_config('prueba.vendedor', :'vendedor_id', true);
 select set_config('prueba.hoy', ((now() at time zone 'America/Lima')::date)::text, true);
@@ -273,33 +274,33 @@ begin
     ('pagos-facturas', current_setting('prueba.p2_ruta'), current_setting('prueba.teso'), '{"mimetype": "image/jpeg", "size": 900}'),
     ('pagos-facturas', current_setting('prueba.otra_ruta'), current_setting('prueba.teso'), '{"mimetype": "application/pdf", "size": 900}');
 
-  perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 500, ''OP-355-1'', %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 500, ''OP-355-1'', %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.p1'), current_setting('prueba.a1'), current_setting('prueba.hoy'), current_setting('prueba.p3_ruta')),
     'sin el voucher subido no hay pago', 'no terminó de subir');
-  perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 500, ''OP-355-1'', %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 500, ''OP-355-1'', %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.p1'), current_setting('prueba.a1'), current_setting('prueba.hoy'), current_setting('prueba.otra_ruta')),
     'el voucher va en la carpeta de su factura', 'Vuelve a adjuntar');
-  perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 500, ''OP-355-1'', %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 500, ''OP-355-1'', %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.p1'), current_setting('prueba.a2'), current_setting('prueba.hoy'), current_setting('prueba.p1_ruta')),
     'la factura en borrador no se paga', 'todavía no está registrada');
-  perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 500, ''OP-355-1'', %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 500, ''OP-355-1'', %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.p1'), current_setting('prueba.a1'), (current_setting('prueba.hoy')::date + 1)::text, current_setting('prueba.p1_ruta')),
     'el pago no es de mañana', 'de hoy hacia atrás');
-  perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 1300, ''OP-355-1'', %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 1300, ''OP-355-1'', %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.p1'), current_setting('prueba.a1'), current_setting('prueba.hoy'), current_setting('prueba.p1_ruta')),
     'no se paga más que el saldo', 'supera el saldo');
 
   v := public.registrar_pago_factura(current_setting('prueba.p1')::uuid, current_setting('prueba.a1')::uuid,
-         current_setting('prueba.hoy')::date, 500, ' OP-355-1 ', current_setting('prueba.p1_ruta'));
+         current_setting('prueba.hoy')::date, 500, ' OP-355-1 ', current_setting('prueba.p1_ruta'), current_setting('prueba.caja')::uuid, null);
   perform test.afirmar(public.registrar_pago_factura(current_setting('prueba.p1')::uuid, current_setting('prueba.a1')::uuid,
-         current_setting('prueba.hoy')::date, 500, 'OP-355-1', current_setting('prueba.p1_ruta')) = v, 'un segundo toque no paga dos veces');
+         current_setting('prueba.hoy')::date, 500, 'OP-355-1', current_setting('prueba.p1_ruta'), current_setting('prueba.caja')::uuid, null) = v, 'un segundo toque no paga dos veces');
   select * into r from public.pagos_adquisicion where id = v;
   perform test.afirmar(r.referencia = 'OP-355-1' and r.archivo_ruta = current_setting('prueba.p1_ruta')
                        and r.archivo_mime = 'application/pdf' and r.archivo_tamano = 900 and r.registrado_por = current_setting('prueba.teso')::uuid,
     'el pago guarda su voucher y quién lo registró');
   perform test.afirmar((select saldo from public.v_cuentas_pagar where id = current_setting('prueba.a1')::uuid) = 798,
     'el pago baja el saldo de la factura');
-  perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 10, ''OP-355-1'', %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 10, ''OP-355-1'', %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.p2'), current_setting('prueba.a1'), current_setting('prueba.hoy'), current_setting('prueba.p2_ruta')),
     'la misma operación no entra dos veces', 'ya está registrada');
   perform test.debe_fallar(format('insert into public.pagos_adquisicion (adquisicion_id, fecha, monto, referencia, registrado_por) values (%L, current_setting(''prueba.hoy'')::date, 1, ''OP-A-MANO'', %L)',
@@ -316,7 +317,7 @@ begin
     'anulado el pago, la factura vuelve a su saldo');
   -- La misma operación, bien registrada (la 20261015123000 soltó la restricción vieja).
   perform public.registrar_pago_factura(current_setting('prueba.p2')::uuid, current_setting('prueba.a1')::uuid,
-         current_setting('prueba.hoy')::date, 1298, 'OP-355-1', current_setting('prueba.p2_ruta'));
+         current_setting('prueba.hoy')::date, 1298, 'OP-355-1', current_setting('prueba.p2_ruta'), current_setting('prueba.caja')::uuid, null);
   select * into r from public.v_cuentas_pagar where id = current_setting('prueba.a1')::uuid;
   perform test.afirmar(r.saldo = 0 and r.pagado = 1298, 'la operación anulada vuelve a entrar y la factura queda pagada');
   reset role;
@@ -333,7 +334,7 @@ begin
     'y abre su voucher');
   perform test.afirmar((select count(*) from storage.objects where bucket_id = 'pagos-facturas' and name = current_setting('prueba.otra_ruta')) = 0,
     'pero no el que no es de ningún pago');
-  perform test.debe_fallar(format('select public.registrar_pago_factura(gen_random_uuid(), %L, %L, 1, ''OP-355-9'', %L)',
+  perform test.debe_fallar(format('select public.registrar_pago_factura(gen_random_uuid(), %L, %L, 1, ''OP-355-9'', %L, current_setting(''prueba.caja'')::uuid, null)',
       current_setting('prueba.a6'), current_setting('prueba.hoy'), current_setting('prueba.p1_ruta')),
     'Contabilidad no paga', 'tesoreria.registrar_pagos');
   perform test.debe_fallar(format('insert into storage.objects (bucket_id, name, owner_id, metadata) values (''pagos-facturas'', %L, %L, ''{}'')',

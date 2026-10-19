@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { camposDeLaCuenta, leerCuenta, montoDeLaCuenta, SIN_CAJA } from '@/lib/caja-del-pago'
+import { cajaTrasAnular, cajaTrasElPago } from '@/lib/datos/caja'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -19,6 +21,7 @@ const NO_PAGA = 'La planilla diaria la paga Tesorería.'
 function repintar(planillaId?: string) {
   revalidatePath('/planilla-diaria')
   if (planillaId) revalidatePath(`/planilla-diaria/${planillaId}`)
+  revalidatePath('/tesoreria/caja-diaria')
 }
 
 /**
@@ -68,6 +71,7 @@ export async function anularPlanillaDiaria(_previo: unknown, formulario: FormDat
 export async function registrarPagoPlanilla(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'planilla_diaria.pagar')) return { ok: false, error: NO_PAGA }
+  if (!puede(perfil, 'tesoreria.caja')) return { ok: false, error: SIN_CAJA }
   const analisis = z
     .object({
       id: z.guid(),
@@ -76,6 +80,7 @@ export async function registrarPagoPlanilla(_previo: unknown, formulario: FormDa
       fecha_pago: z.iso.date('Elige el día del pago.'),
       operacion: z.string().max(60, 'El número de operación pasa de 60 caracteres.'),
       ruta: z.string().min(1, 'Adjunta el comprobante.').max(200),
+      ...camposDeLaCuenta('pago'),
     })
     .safeParse({
       id: dato(formulario, 'id'),
@@ -84,6 +89,7 @@ export async function registrarPagoPlanilla(_previo: unknown, formulario: FormDa
       fecha_pago: dato(formulario, 'fecha_pago'),
       operacion: dato(formulario, 'operacion'),
       ruta: dato(formulario, 'ruta'),
+      ...leerCuenta(formulario),
     })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el pago.' }
   const d = analisis.data
@@ -96,12 +102,16 @@ export async function registrarPagoPlanilla(_previo: unknown, formulario: FormDa
     p_fecha_pago: d.fecha_pago,
     p_operacion: d.operacion || null,
     p_ruta: d.ruta,
+    p_caja: d.caja_id,
+    p_monto_cuenta: montoDeLaCuenta(d.monto_cuenta),
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El pago no quedó registrado. Recarga la pantalla.' }
 
+  const caja = await cajaTrasElPago('PAGO_PLANILLA_DIARIA', d.id, d.caja_id, d.fecha_pago, 'pago')
   repintar(d.planilla_id)
-  return { ok: true, mensaje: d.personas.length === 1 ? 'Pago registrado con su comprobante.' : `Pago de ${d.personas.length} personas registrado con su comprobante.` }
+  const pagado = d.personas.length === 1 ? 'Pago registrado con su comprobante.' : `Pago de ${d.personas.length} personas registrado con su comprobante.`
+  return { ok: true, mensaje: `${pagado} ${caja}`.trim() }
 }
 
 /** Anular un pago mal registrado: su gente vuelve a quedar por pagar. Mismo permiso que `anular_pago_planilla_diaria`. */
@@ -117,9 +127,9 @@ export async function anularPagoPlanilla(_previo: unknown, formulario: FormData)
   const { data, error } = await supabase.rpc('anular_pago_planilla_diaria', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== analisis.data.id) return { ok: false, error: 'El pago no se anuló. Recarga la pantalla.' }
-
+  const caja = await cajaTrasAnular('PAGO_PLANILLA_DIARIA', analisis.data.id, 'pago')
   repintar(analisis.data.planilla_id)
-  return { ok: true, mensaje: 'Pago anulado: esas personas vuelven a quedar por pagar.' }
+  return { ok: true, mensaje: `Pago anulado: esas personas vuelven a quedar por pagar. ${caja}`.trim() }
 }
 
 /** Tesorería adjunta la boleta de pago de una persona, ya subida a Storage. Mismo permiso que `subir_boleta_planilla_diaria`. */

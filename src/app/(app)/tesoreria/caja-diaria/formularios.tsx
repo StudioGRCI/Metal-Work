@@ -93,7 +93,7 @@ export function RegistrarMovimiento({ cuentas, cuentaId, dia, codigos, compacto 
         abierta={v.abierta}
         alCerrar={v.cerrar}
         titulo={cuenta ? `Registrar en ${cuenta.nombre}` : 'Registrar un ingreso o un egreso'}
-        descripcion={`Del ${fecha(dia)}. Escríbelo como sale en el estado de cuenta; si es de una unidad, con su código interno.`}
+        descripcion={`Del ${fecha(dia)}. Solo lo que no pasa por el sistema: los pagos y cobros de Tesorería —facturas, órdenes de servicio, recibos, planilla diaria— entran solos. Escríbelo como sale en el estado de cuenta; si es de una unidad, con su código interno.`}
         ancho="md"
       >
         <FormularioMovimiento key={v.vez} cuentas={cuentas} cuentaId={cuentaId} dia={dia} codigos={codigos} alTerminar={v.cerrar} />
@@ -138,7 +138,7 @@ function FormularioMovimiento({ cuentas, cuentaId, dia, codigos, alTerminar }: {
         </Campo>
       </div>
       {/* Sin ejemplos dentro de los campos de la caja: se leían como si ya estuvieran escritos. Van en la ayuda, corta para que se vea entera. */}
-      <Campo etiqueta="Descripción" htmlFor={`${p}-descripcion`} requerido ayuda="Como en el estado de cuenta: la OC u OS, la planilla, el ITF…">
+      <Campo etiqueta="Descripción" htmlFor={`${p}-descripcion`} requerido ayuda="Como en el estado de cuenta: el ITF, una comisión…">
         <Entrada id={`${p}-descripcion`} name="descripcion" list={`${p}-frecuentes`} required minLength={3} maxLength={300} autoComplete="off" />
         <datalist id={`${p}-frecuentes`}>
           {DESCRIPCIONES_FRECUENTES.map((d) => (
