@@ -391,6 +391,47 @@ begin
 end $$;
 reset role;
 
+-- Quien subió el PDF de una orden y ya no la ve (le cambiaron el puesto) no lo
+-- borra de Storage: la guarda pregunta por encima del RLS.
+do $$
+declare
+  v_ruta text := 'ot/' || current_setting('prueba.ot') || '/' || gen_random_uuid() || '.pdf';
+begin
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('adjuntos-ot', v_ruta, current_setting('prueba.almacenero'), '{"mimetype":"application/pdf","size":1000}'::jsonb);
+  insert into public.ot_adjuntos (orden_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por)
+  values (current_setting('prueba.ot')::uuid, 'ORDEN', 'subido-antes-del-cambio.pdf', v_ruta, 'application/pdf', 1000,
+          current_setting('prueba.almacenero')::uuid);
+  perform set_config('prueba.ruta_ajena', v_ruta, false);
+end $$;
+select pg_temp.como('almacenero');
+set local role authenticated;
+do $$
+declare
+  v integer;
+begin
+  delete from storage.objects where bucket_id = 'adjuntos-ot' and name = current_setting('prueba.ruta_ajena');
+  get diagnostics v = row_count;
+  perform test.afirmar(v = 0, 'quien subió el PDF y ya no ve la orden no lo borra de Storage');
+end $$;
+reset role;
+
+-- La orden anulada queda como evidencia: su PDF no se quita, aunque tenga otro, ni se le sube uno nuevo.
+select pg_temp.como('gerente');
+update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'Prueba 398: orden repetida'
+ where id = current_setting('prueba.ot')::uuid;
+select pg_temp.como('administracion');
+set local role authenticated;
+select test.debe_fallar(format('delete from public.ot_adjuntos where orden_id = %L and nombre_archivo = %L',
+                               current_setting('prueba.ot'), 'orden-corregida.pdf'),
+  'el PDF de una orden anulada no se quita, aunque tenga otro', 'está anulada');
+select test.debe_fallar(format($q$insert into public.ot_adjuntos (orden_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por)
+                                  values (%L, 'ORDEN', 'otro.pdf', %L, 'application/pdf', 1000, %L)$q$,
+                               current_setting('prueba.ot'), 'ot/' || current_setting('prueba.ot') || '/' || gen_random_uuid() || '.pdf',
+                               current_setting('prueba.administracion')),
+  'ni se le sube otro PDF', 'está anulada');
+reset role;
+
 -- Ninguna unidad se llama TODOS LOS ACTIVOS: un despacho a ella se repartiría entre todas.
 select test.debe_fallar($q$insert into public.unidades (codigo_interno) values ('todos los activos')$q$,
   'ninguna unidad se registra con el código TODOS LOS ACTIVOS', 'no es el código de una unidad');

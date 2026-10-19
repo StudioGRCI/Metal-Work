@@ -243,10 +243,13 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   // Quitarlos es de quien los subió, la oficina o el jefe: lo mismo que dice
   // la política. La orden sin cotización la registra Administración y su PDF
   // también lo sube ella (2026-10-19); la de una cotización nace con el suyo.
+  // La orden anulada queda como evidencia: su PDF ya no cambia (migración 20261017402000).
+  const anulada = orden.estado === 'ANULADA'
   const puedeSubirArchivos =
-    (perfil.rol.codigo === 'SUPERVISOR' &&
+    !anulada &&
+    ((perfil.rol.codigo === 'SUPERVISOR' &&
       puede(perfil, ['produccion.actividades', 'ordenes.editar', 'ordenes.crear', 'ordenes.abrir_taller'])) ||
-    (!orden.cotizacion_pdf_id && puede(perfil, 'ordenes.crear'))
+      (!orden.cotizacion_pdf_id && puede(perfil, 'ordenes.crear')))
   const quitaCualquiera = puede(perfil, ['ordenes.editar', 'produccion.cualquier_area'])
   // El último PDF de la orden no se quita: la base lo rechaza (migración 20261017402000).
   const pdfsDeOrden = adjuntos?.filter((a) => a.tipo === 'ORDEN').length ?? 0
@@ -258,7 +261,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         tamano_bytes: a.tamano_bytes,
         creado_en: a.creado_en,
         url: a.url,
-        quitable: (quitaCualquiera || a.subido_por === perfil.id) && (a.tipo !== 'ORDEN' || pdfsDeOrden > 1),
+        quitable: (quitaCualquiera || a.subido_por === perfil.id) && (a.tipo !== 'ORDEN' || (pdfsDeOrden > 1 && !anulada)),
       }))
     : null
 

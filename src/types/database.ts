@@ -10453,6 +10453,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      archivo_ot_vinculado: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
       archivo_plano_vinculado: {
         Args: {
           p_ruta: string | null

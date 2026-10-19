@@ -137,18 +137,19 @@ Lo que sí funciona:
 ## Subidas
 
 El archivo va primero al almacenamiento y **después** una acción lo anota en su
-tabla. Entre las dos cosas hay un hueco: si la acción devuelve error, o levanta
-excepción, o el usuario pierde la señal, el archivo se queda donde ninguna fila
-lo nombra. Ahí **no lo ve nadie y no lo borra nadie**, porque las políticas de
-Storage deducen de la ruta a qué orden pertenece y ese archivo ya no pertenece a
-ninguna. Pasó con el Excel de un cronograma y hubo que sacarlo a mano, con la
-sesión del que lo subió.
+tabla. Entre las dos cosas hay un hueco: si la acción devuelve error, el archivo
+se queda donde ninguna fila lo nombra, y ahí solo lo ve quien lo subió (en
+`adjuntos-ot`, por `owner_id` desde la migración `20261017402000`; antes no lo
+veía nadie y hubo que sacar a mano el Excel de un cronograma).
 
-La forma correcta es la de `src/lib/adjuntos.ts`: `try`/`catch` alrededor de la
-anotación y `storage.remove([ruta])` en **las dos** salidas malas, la del `!ok` y
-la de la excepción. Un `if (!r.ok)` solo no basta: es la excepción la que deja el
-huérfano. Y si la subida es opcional —el Excel que acompaña a un cronograma ya
-cargado—, su fallo no puede tragarse el aviso de lo que sí entró.
+La forma correcta es la de `src/lib/adjuntos.ts`: si la anotación devuelve
+`!ok`, `storage.remove([ruta])`. Si **no llega la respuesta** (excepción, señal
+cortada), el archivo **no se toca**: la fila pudo entrar, y quitarlo deja una
+orden que nombra un archivo que no existe —el banco lo mostró el 2026-10-19 con
+«Subir PDF»—. La pantalla dice «No llegó la respuesta: mira si quedó antes de
+volver a subirlo», porque reintentar a ciegas lo sube dos veces. Y si la subida
+es opcional —el Excel que acompaña a un cronograma ya cargado—, su fallo no
+puede tragarse el aviso de lo que sí entró.
 
 Para que el archivo pueda viajar a `ot/{orden}/…` antes de que la orden exista,
 el identificador se decide en el navegador con `crypto.randomUUID()` y la base
