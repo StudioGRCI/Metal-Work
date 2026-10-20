@@ -1,6 +1,6 @@
 /**
- * Clic real sobre lo que DKS pidió el 2026-10-20 (migraciones 20261020190000,
- * 191000 y 192000), con la cuenta de cada puesto (nunca ADMIN). El contrato de
+ * Clic real sobre lo que DKS pidió el 2026-10-20 (migraciones 20261020200000,
+ * 201000 y 202000), con la cuenta de cada puesto (nunca ADMIN). El contrato de
  * la orden de servicio va con los documentos de la OS, en el PR de Adquisiciones.
  *
  *   1. El sueldo de la oficina va por la planilla: un ayudante de Maestranza en

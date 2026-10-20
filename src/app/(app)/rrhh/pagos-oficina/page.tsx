@@ -9,7 +9,7 @@ import { inicioDelRegistroDePagos, listarTrabajadores, pagosOficinaDelMes, perio
 import { diasEntre, diasSinPago, finDeMes, parteDelMes } from '@/lib/dominio/pagos-oficina'
 import { mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, fechaHora, hoyLima, mesLargo, moneda, sumarDias } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularPago, RegistrarPago } from './formulario'
 
@@ -24,6 +24,8 @@ export const metadata = { title: 'Pagos de la oficina' }
  */
 export default async function PaginaPagosOficina({ searchParams }: PageProps<'/rrhh/pagos-oficina'>) {
   const perfil = await exigirPermiso('rrhh.personal')
+  // Carga y anula solo RR. HH.; el administrador lo ve (migración 20261020167000).
+  const edita = editaComoRrhh(perfil, 'rrhh.personal')
   const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const hoy = hoyLima()
@@ -70,12 +72,14 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
         ayuda="Lo que se le paga a cada persona de planilla administrativa (la planilla se elige en su ficha de Personal, no depende del área), como se le paga: por semana, por quincena o por mes. Cada pago entra al sueldo de la oficina de cada mes por los días que caen en él, con sus aportes, y ese sueldo se reparte por horas entre las unidades que trabajaron el mes. Lo que esa persona cargó en horas a una unidad ya va en la mano de obra y se descuenta. Solo lo ve Recursos Humanos; Administración y Gerencia ven el total."
         migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Pagos de la oficina' }]}
         acciones={
+          edita && (
           <RegistrarPago
             inicio={inicio}
             personal={deOficina
               .filter((t) => t.activo || (t.fecha_baja !== null && t.fecha_baja >= inicio))
               .map((t) => ({ id: t.id, nombre: nombre(t), cargo: t.cargo, inicio: primerDiaLibre(t.id) }))}
           />
+          )
         }
       />
 
@@ -195,7 +199,7 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
                         {moneda(parteDelMes(p, mes))}
                       </TD>
                       <TD className="text-right align-top">
-                        {!anulado && <AnularPago id={p.id} descripcion={`El pago de ${quien} del ${fecha(p.desde)} al ${fecha(p.hasta)}`} />}
+                        {edita && !anulado && <AnularPago id={p.id} descripcion={`El pago de ${quien} del ${fecha(p.desde)} al ${fecha(p.hasta)}`} />}
                       </TD>
                     </TR>
                   )

@@ -23,7 +23,7 @@ import {
 } from '@/lib/dominio/planilla-diaria'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import { fecha, moneda } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { EnviarPlanilla } from './enviar'
 
@@ -42,6 +42,8 @@ function estimado(p: PersonaPorEnviar, regla: ReglaHorasExtras) {
 export default async function PaginaPlanillaDiaria() {
   const perfil = await exigirPermiso(['planilla_diaria.preparar', 'planilla_diaria.pagar', 'planilla_diaria.ver'])
   const arma = puede(perfil, 'planilla_diaria.preparar')
+  // La manda solo RR. HH.; el administrador la ve (migración 20261020167000).
+  const envia = editaComoRrhh(perfil, 'planilla_diaria.preparar')
   const paga = puede(perfil, 'planilla_diaria.pagar')
 
   const [planillas, porEnviar, porDecidir, regla] = await Promise.all([
@@ -60,7 +62,7 @@ export default async function PaginaPlanillaDiaria() {
       <EncabezadoPagina
         titulo="Planilla diaria"
         ayuda={
-          arma
+          envia
             ? 'Lo que se le paga a la gente por sus horas de los reportes diarios que validaron Gerencia y Recursos Humanos: hasta 8 horas por día son ordinarias; las extras, las que decidiste pagar. La armas y la mandas a Tesorería, que paga y adjunta comprobante y boleta; tú entregas las boletas.'
             : paga
               ? 'Las planillas que manda Recursos Humanos con las horas validadas de cada persona. Paga a cada una a su cuenta, adjunta el comprobante y su boleta de pago.'
@@ -77,6 +79,7 @@ export default async function PaginaPlanillaDiaria() {
               descripcion={conRemuneracion.length > 0 ? `${personasTexto(conRemuneracion.length)} · ${moneda(total)}` : undefined}
               ayuda="Sale de los reportes con los dos vistos buenos de Gerencia y Recursos Humanos que todavía no están en una planilla."
               acciones={
+                envia &&
                 conRemuneracion.length > 0 && (
                   <EnviarPlanilla id={crypto.randomUUID()} resumen={`${personasTexto(conRemuneracion.length)} por ${moneda(total)}`} />
                 )
@@ -162,7 +165,7 @@ export default async function PaginaPlanillaDiaria() {
           {planillas.length === 0 ? (
             <TarjetaCuerpo>
               <p className="text-sm text-texto-suave">
-                {arma ? 'Todavía no se mandó ninguna. Envía la primera con «Enviar a Tesorería».' : 'Todavía no llega ninguna de Recursos Humanos.'}
+                {envia ? 'Todavía no se mandó ninguna. Envía la primera con «Enviar a Tesorería».' : 'Todavía no llega ninguna de Recursos Humanos.'}
               </p>
             </TarjetaCuerpo>
           ) : (

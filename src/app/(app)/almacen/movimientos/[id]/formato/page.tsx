@@ -22,16 +22,22 @@ export default async function PaginaFormato({ params }: PageProps<'/almacen/movi
   const { id } = await params
   if (!esUuid(id)) notFound()
   const db = await createClient()
-  const { data: m, error } = await db.from('v_kardex_almacen')
-    .select('id,fecha,material,material_codigo,unidad_medida,salida,codigo_unidad,documento,recibido_por_nombre,registrado_por_nombre,almacen,requerimiento_numero,con_formato,orden_numero')
-    .eq('id', id).eq('movimiento', 'SALIDA').maybeSingle()
+  // El número de la casa (migración 20261020162000) no está en el kardex: se
+  // lee del movimiento mismo, con los mismos permisos, a la par.
+  const [{ data: m, error }, { data: mov, error: errorNumero }] = await Promise.all([
+    db.from('v_kardex_almacen')
+      .select('id,fecha,material,material_codigo,unidad_medida,salida,codigo_unidad,documento,recibido_por_nombre,registrado_por_nombre,almacen,requerimiento_numero,con_formato,orden_numero')
+      .eq('id', id).eq('movimiento', 'SALIDA').maybeSingle(),
+    db.from('movimientos_materiales').select('numero_salida').eq('id', id).maybeSingle(),
+  ])
   if (error) throw new Error('No se pudo cargar la salida.')
   if (!m) notFound()
+  if (errorNumero) throw new Error('No se pudo cargar el número de la salida.')
 
   const almacen = esAlmacen(m.almacen) ? m.almacen : null
   const def = almacen ? ALMACENES[almacen] : null
   const titulo = def?.formato ?? 'Formato de salida de almacén'
-  const corto = id.slice(0, 8).toUpperCase()
+  const numero = mov?.numero_salida ?? null
 
   return (
     <div className="mx-auto max-w-3xl print:max-w-none">
@@ -58,7 +64,11 @@ export default async function PaginaFormato({ params }: PageProps<'/almacen/movi
             {almacen && <p className="text-sm text-texto-suave">Almacén de {almacenEnFrase(almacen)}</p>}
           </div>
           <div className="text-right text-sm">
-            <p className="font-mono">N.º {corto}</p>
+            {numero ? (
+              <p className="font-mono">N.º {numero}</p>
+            ) : (
+              <p className="text-texto-suave">{exigeFormato(almacen) ? 'Sin número: anterior a la serie' : 'Constancia sin número'}</p>
+            )}
             <p className="text-texto-suave">{fechaHora(m.fecha)}</p>
           </div>
         </header>

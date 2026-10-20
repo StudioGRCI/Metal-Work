@@ -287,7 +287,7 @@ export async function anularRecibo(_previo: unknown, formulario: FormData): Prom
 }
 
 /**
- * El contrato del subcontrato (migración 20261020192000), ya subido a Storage
+ * El contrato del subcontrato (migración 20261020202000), ya subido a Storage
  * por el navegador. Opcional: al registrarlo o después; otra versión va encima.
  * Mismo permiso que `adjuntar_contrato_subcontrato`.
  */
@@ -318,7 +318,7 @@ export async function adjuntarContratoSubcontrato(
 
 /**
  * El supervisor marca cuándo empezó y cuándo terminó de verdad el subcontrato
- * (migración 20261020191000). Referencial: las fechas del contrato no cambian.
+ * (migración 20261020201000). Referencial: las fechas del contrato no cambian.
  * Mismo permiso que `marcar_fechas_reales_subcontrato`, que además exige que
  * sea de su área.
  */

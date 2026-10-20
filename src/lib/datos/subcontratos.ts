@@ -62,7 +62,7 @@ export type SubcontratoListado = {
   monto: number
   fecha_inicio: string | null
   fecha_fin: string | null
-  /** Cuándo empezó y terminó de verdad, según el supervisor (referencial, migración 20261020191000). */
+  /** Cuándo empezó y terminó de verdad, según el supervisor (referencial, migración 20261020201000). */
   inicio_real: string | null
   fin_real: string | null
   estado: string
@@ -308,7 +308,7 @@ export type SubcontratoDelArea = {
   avance: number | null
   ultimo_reporte: string | null
   reportes: number
-  /** Cuándo empezó y terminó de verdad, según el supervisor (referencial, migración 20261020191000). */
+  /** Cuándo empezó y terminó de verdad, según el supervisor (referencial, migración 20261020201000). */
   inicio_real: string | null
   fin_real: string | null
   fechas_reales_en: string | null

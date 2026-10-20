@@ -8,7 +8,12 @@ export type Trabajador = {
   id: string
   nombres: string
   apellidos: string
-  dni: string
+  /**
+   * Solo para RR. HH. (`listarTrabajadores(…, { conDni: true })`): la columna
+   * está cerrada por permiso (migración 20261020165000) y a los demás les llega
+   * vacío. La portería busca por DNI con `asistencia_buscar_por_dni`, sin verlo.
+   */
+  dni: string | null
   cargo: string | null
   area_id: string | null
   hora_entrada: string
@@ -30,13 +35,13 @@ export type Trabajador = {
 }
 
 const COLUMNAS_TRABAJADOR =
-  'id, nombres, apellidos, dni, cargo, area_id, hora_entrada, hora_salida, activo, fecha_ingreso, fecha_baja, planilla,' +
+  'id, nombres, apellidos, cargo, area_id, hora_entrada, hora_salida, activo, fecha_ingreso, fecha_baja, planilla,' +
   ' area:areas(id, codigo, nombre), cuenta:trabajador_cuentas(banco, tipo_cuenta, numero_cuenta, cci),' +
   ' costo:trabajador_costos(costo_mensual), remuneracion:trabajador_remuneraciones(remuneracion_mensual)'
 
 type FilaCosto = { costo_mensual: number | string }
 type FilaRemuneracion = { remuneracion_mensual: number | string }
-type FilaTrabajador = Omit<Trabajador, 'cuenta' | 'costo_mensual' | 'remuneracion_mensual'> & {
+type FilaTrabajador = Omit<Trabajador, 'dni' | 'cuenta' | 'costo_mensual' | 'remuneracion_mensual'> & {
   cuenta: Trabajador['cuenta'] | Trabajador['cuenta'][]
   costo: FilaCosto | FilaCosto[] | null
   remuneracion: FilaRemuneracion | FilaRemuneracion[] | null
@@ -47,25 +52,40 @@ function unico<T>(valor: T | T[] | null): T | null {
   return Array.isArray(valor) ? (valor[0] ?? null) : valor
 }
 
-function aplanar({ costo, remuneracion, ...fila }: FilaTrabajador): Trabajador {
+function aplanar({ costo, remuneracion, ...fila }: FilaTrabajador, dni: Map<string, string>): Trabajador {
   const c = unico(costo)
   const r = unico(remuneracion)
   return {
     ...fila,
+    dni: dni.get(fila.id) ?? null,
     cuenta: unico(fila.cuenta),
     costo_mensual: c ? Number(c.costo_mensual) : null,
     remuneracion_mensual: r ? Number(r.remuneracion_mensual) : null,
   }
 }
 
-/** Todo el personal, por apellidos. `activos` deja fuera a los de baja. */
-export async function listarTrabajadores(filtro: 'activos' | 'todos' = 'activos'): Promise<Trabajador[]> {
+/**
+ * Todo el personal, por apellidos. `activos` deja fuera a los de baja.
+ * `conDni` lo pide solo la ficha de RR. HH.: la base lo niega a los demás.
+ */
+export async function listarTrabajadores(
+  filtro: 'activos' | 'todos' = 'activos',
+  { conDni = false }: { conDni?: boolean } = {},
+): Promise<Trabajador[]> {
   const supabase = await createClient()
   let consulta = supabase.from('trabajadores').select(COLUMNAS_TRABAJADOR).order('apellidos').order('nombres')
   if (filtro === 'activos') consulta = consulta.eq('activo', true)
-  const { data, error } = await consulta
+  const [{ data, error }, dni] = await Promise.all([consulta, conDni ? dniDelPersonal() : Promise.resolve(new Map<string, string>())])
   if (error) throw new Error(`No se pudo leer el personal: ${error.message}`)
-  return ((data ?? []) as unknown as FilaTrabajador[]).map(aplanar)
+  return ((data ?? []) as unknown as FilaTrabajador[]).map((f) => aplanar(f, dni))
+}
+
+/** El DNI de cada persona, para RR. HH. (`rrhh_dni_de_trabajadores`). */
+async function dniDelPersonal(): Promise<Map<string, string>> {
+  const supabase = await createClient()
+  const { data, error } = await todasLasFilas(() => supabase.rpc('rrhh_dni_de_trabajadores'), ['trabajador_id'])
+  if (error) throw new Error(`No se pudo leer el DNI del personal: ${error.message}`)
+  return new Map(data.flatMap((f) => (f.trabajador_id && f.dni ? [[f.trabajador_id, f.dni] as const] : [])))
 }
 
 /** Las áreas vigentes, para la ficha. */
@@ -121,6 +141,7 @@ export async function reglaTardanza(): Promise<ReglaTardanza | null> {
 
 /** Lo que acumula cada persona en un mes: tardanzas, y el descuento que suman cada tantas. */
 export type ResumenTardanza = {
+  /** El DNI llega solo a RR. HH. */
   trabajador: Pick<Trabajador, 'id' | 'nombres' | 'apellidos' | 'dni' | 'cargo' | 'activo'>
   dias_con_ingreso: number
   tardanzas: number
@@ -150,7 +171,7 @@ export async function resumenTardanzas(mes: string): Promise<ResumenTardanza[]> 
               id: f.trabajador_id,
               nombres: f.nombres ?? '',
               apellidos: f.apellidos ?? '',
-              dni: f.dni ?? '',
+              dni: f.dni,
               cargo: f.cargo,
               activo: f.activo ?? true,
             },
@@ -174,7 +195,7 @@ function rangoDelMes(mes: string) {
   return { desde: `${mes}-01`, hasta }
 }
 
-type PersonaCorta = Pick<Trabajador, 'id' | 'nombres' | 'apellidos' | 'dni' | 'cargo'>
+type PersonaCorta = Pick<Trabajador, 'id' | 'nombres' | 'apellidos' | 'cargo'>
 
 /** Unas horas de una persona en un código interno, con el costo escrito al registrarlas. */
 export type Tareo = {
@@ -204,7 +225,7 @@ export async function tareosDelMes(mes: string): Promise<Tareo[]> {
         .from('tareos')
         .select(
           'id, trabajador_id, fecha, codigo_interno, horas, labor, costo_hora, costo, anulado_en, motivo_anulacion,' +
-            ' trabajador:trabajadores(id, nombres, apellidos, dni, cargo),' +
+            ' trabajador:trabajadores(id, nombres, apellidos, cargo),' +
             ' linea:reporte_diario_personal!tareos_reporte_linea_id_fkey(reporte:reportes_diarios!reporte_diario_personal_reporte_id_fkey(id, asunto, area:areas(nombre)))',
         )
         .gte('fecha', desde)
@@ -254,7 +275,7 @@ export type Observacion = {
 
 const COLUMNAS_OBSERVACION =
   'id, trabajador_id, fecha, tipo, motivo, detalle, codigo_interno, dias_suspension, anulado_en, motivo_anulacion, creado_en,' +
-  ' trabajador:trabajadores(id, nombres, apellidos, dni, cargo)'
+  ' trabajador:trabajadores(id, nombres, apellidos, cargo)'
 
 type FilaObservacion = Omit<Observacion, 'trabajador'> & { trabajador: PersonaCorta | PersonaCorta[] | null }
 

@@ -1,4 +1,4 @@
--- Las fechas reales del subcontrato y su contrato (migraciones 20261020191000 y 20261020192000). DKS, 2026-10-20:
+-- Las fechas reales del subcontrato y su contrato (migraciones 20261020201000 y 20261020202000). DKS, 2026-10-20:
 -- «también, pero referencial… para servicios y para subcontratos debes dejar
 -- adjuntar contratos al crearlos o que se quede opcional para que después lo
 -- adjunten».

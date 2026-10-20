@@ -351,9 +351,13 @@ begin
     v_ruta := v_sc || '/' || gen_random_uuid() || '.jpg';
     insert into storage.objects (bucket_id, name, owner_id, metadata)
     values ('subcontratos', v_ruta, k->>'TESORERIA', jsonb_build_object('mimetype', 'image/jpeg', 'size', 60000));
+    -- Desde la 20261020174500 la cuenta de banco se abre con la captura de su saldo.
+    v_ruta2 := v_banco || '/' || gen_random_uuid() || '.png';
+    insert into storage.objects (bucket_id, name, owner_id, metadata)
+    values ('apertura-caja', v_ruta2, k->>'TESORERIA', jsonb_build_object('mimetype', 'image/png', 'size', 40000));
     perform pg_temp.ensayo_como((k->>'TESORERIA')::uuid);
     -- Desde la 20261019100000 todo pago y cobro pide su cuenta de la caja.
-    perform public.guardar_caja(v_banco, 'Banco del ensayo 2699', 'BANCO', 'BANCO DEL ENSAYO', 'PEN', 0, v_hoy, true);
+    perform public.guardar_caja(v_banco, 'Banco del ensayo 2699', 'BANCO', 'BANCO DEL ENSAYO', 'PEN', 0, v_hoy, true, v_ruta2);
     perform public.registrar_pago_recibo_honorarios(v_pago, v_rh1, v_hoy, 'OP-ENSAYO-1', v_ruta, v_banco, null);
 
     v_paso := 'Contabilidad factura la cotización';
@@ -427,8 +431,9 @@ begin
 
     -- ===================================== 4. NADIE MÁS ABRE CÓDIGOS INTERNOS
     v_paso := 'Las demás cuentas no ven Códigos internos';
+    -- Administración también los abre desde la migración 20261017400000.
     foreach v_txt in array v_puestos_vistos loop
-      continue when v_txt = 'GERENTE';
+      continue when v_txt in ('GERENTE', 'ADMINISTRACION');
       reset role; perform pg_temp.ensayo_como((k->>v_txt)::uuid);
       begin
         perform 1 from public.codigos_internos_resumen();

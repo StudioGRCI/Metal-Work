@@ -1,5 +1,5 @@
 /**
- * El contrato que se adjunta a un subcontrato (migración 20261020192000). Puro, sin consultas: lo usan el servidor y el
+ * El contrato que se adjunta a un subcontrato (migración 20261020202000). Puro, sin consultas: lo usan el servidor y el
  * navegador. Las mismas cifras las exige la base.
  */
 

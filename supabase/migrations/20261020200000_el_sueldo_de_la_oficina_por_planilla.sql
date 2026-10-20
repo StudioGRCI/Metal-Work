@@ -31,7 +31,7 @@ declare
   v_previo public.oficina_pagos;
   v_cruce public.oficina_pagos;
 begin
-  perform public.exigir_permiso('rrhh.personal');
+  perform public.exigir_permiso_del_puesto('rrhh.personal');
   if p_id is null then
     raise exception 'Vuelve a abrir el formulario del pago.' using errcode = 'check_violation';
   end if;

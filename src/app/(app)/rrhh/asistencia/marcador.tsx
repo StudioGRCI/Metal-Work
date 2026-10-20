@@ -1,7 +1,7 @@
 'use client'
 
 import { Ban, LogIn, LogOut, Search } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
@@ -12,14 +12,21 @@ import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { horaCorta, minutosLargos } from '@/lib/dominio/rrhh'
 import { useEnvio } from '@/lib/envio'
 
-import { anularAsistencia, marcarAsistencia } from './acciones'
+import { anularAsistencia, buscarPorDni, marcarAsistencia } from './acciones'
 
-type Persona = Pick<Trabajador, 'id' | 'nombres' | 'apellidos' | 'dni' | 'cargo' | 'hora_entrada' | 'hora_salida'>
+type Persona = Pick<Trabajador, 'id' | 'nombres' | 'apellidos' | 'cargo' | 'hora_entrada' | 'hora_salida'>
+
+/** Lo que la base contestó para un DNI: la persona, nadie, o por qué no buscó. */
+type RespuestaDni = { dni: string; id: string | null; error?: string }
 
 /**
  * La lista del día, pensada para el celular del portero: un buscador y una
  * tarjeta por persona con dos botones grandes. Quien solo consulta ve lo
  * mismo sin botones.
+ *
+ * El DNI no llega al celular (migración 20261020165000): con los 8 dígitos
+ * escritos, la base contesta quién es y queda solo su tarjeta. Quien solo
+ * consulta busca por nombre.
  */
 export function Marcador({
   personal,
@@ -27,16 +34,54 @@ export function Marcador({
   marca,
   anula,
   esHoy,
+  buscaPorDni,
 }: {
   personal: Persona[]
   marcas: Marca[]
   marca: boolean
   anula: boolean
   esHoy: boolean
+  /** La portería y RR. HH.: los demás buscan por nombre. */
+  buscaPorDni: boolean
 }) {
   const [busqueda, setBusqueda] = useState('')
+  const [respuesta, setRespuesta] = useState<RespuestaDni | null>(null)
+  const digitos = busqueda.replace(/\s/g, '')
+  const esNumero = buscaPorDni && /^\d+$/.test(digitos)
+  const dni = esNumero && digitos.length === 8 ? digitos : null
+
+  useEffect(() => {
+    if (!dni) return
+    let vigente = true
+    buscarPorDni(dni)
+      .then((r) => vigente && setRespuesta({ dni, ...r }))
+      .catch(() => vigente && setRespuesta({ dni, id: null, error: 'No se pudo buscar. Revisa la conexión y vuelve a escribirlo.' }))
+    return () => {
+      vigente = false
+    }
+  }, [dni])
+
+  const contestado = dni !== null && respuesta?.dni === dni ? respuesta : null
   const palabras = palabrasDeBusqueda(busqueda)
-  const visibles = personal.filter((p) => coincide(palabras, [p.nombres, p.apellidos, p.dni]))
+  const visibles = esNumero
+    ? contestado?.id
+      ? personal.filter((p) => p.id === contestado.id)
+      : []
+    : personal.filter((p) => coincide(palabras, [p.nombres, p.apellidos]))
+  const vacio =
+    personal.length === 0
+      ? 'Recursos Humanos todavía no registró a nadie.'
+      : !esNumero
+        ? buscaPorDni
+          ? 'Nadie coincide. Prueba solo con el apellido o con el DNI.'
+          : 'Nadie coincide. Prueba solo con el apellido.'
+        : digitos.length < 8
+          ? `Escribe los 8 dígitos del DNI (van ${digitos.length}).`
+          : digitos.length > 8
+            ? 'El DNI tiene 8 dígitos: sobra alguno.'
+            : !contestado
+              ? 'Buscando…'
+              : (contestado.error ?? 'Ese DNI no es de nadie del personal activo. Revísalo o busca por el apellido.')
   const porPersona = new Map<string, Marca[]>()
   for (const m of marcas) porPersona.set(m.trabajador_id, [...(porPersona.get(m.trabajador_id) ?? []), m])
 
@@ -46,17 +91,22 @@ export function Marcador({
         <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-texto-suave" />
         <Entrada
           type="search"
-          aria-label="Buscar por nombre o DNI"
-          placeholder="Nombre o DNI"
+          aria-label={buscaPorDni ? 'Buscar por nombre o DNI' : 'Buscar por nombre'}
+          placeholder={buscaPorDni ? 'Nombre o los 8 dígitos del DNI' : 'Nombre o apellido'}
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
+          // Al volver al buscador queda todo marcado: el siguiente DNI se escribe encima.
+          onFocus={(e) => e.currentTarget.select()}
           className="min-h-11 pl-9"
           autoComplete="off"
         />
       </div>
       {visibles.length === 0 ? (
-        <p className="rounded-[var(--radius-base)] border border-borde bg-superficie p-4 text-center text-sm text-texto-suave">
-          {personal.length === 0 ? 'Recursos Humanos todavía no registró a nadie.' : 'Nadie coincide. Prueba solo con el apellido o con el DNI.'}
+        <p
+          role="status"
+          className="rounded-[var(--radius-base)] border border-borde bg-superficie p-4 text-center text-sm text-texto-suave"
+        >
+          {vacio}
         </p>
       ) : (
         <ul className="space-y-2">

@@ -8,7 +8,7 @@ import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import { listarPermisos, listarTrabajadores, type Permiso } from '@/lib/datos/rrhh'
 import { horasCortas, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, hoyLima, mesLargo } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularPermiso, JustificarPermiso, RegistrarPermiso } from './controles'
 
@@ -16,7 +16,7 @@ export const metadata = { title: 'Permisos del personal' }
 
 export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/permisos'>) {
   const perfil = await exigirPermiso(['rrhh.permisos', 'asistencia.ver'])
-  const gestiona = puede(perfil, 'rrhh.permisos')
+  const gestiona = editaComoRrhh(perfil, 'rrhh.permisos')
   const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const hoy = hoyLima()

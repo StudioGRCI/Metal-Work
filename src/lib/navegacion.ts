@@ -20,6 +20,7 @@ import {
   HandCoins,
   Handshake,
   Hash,
+  IdCard,
   Landmark,
   Layers,
   LayoutDashboard,
@@ -347,6 +348,16 @@ export const NAVEGACION = [
         descripcion: 'Trabajos del día con su avance, el personal con sus horas y fotos; Gerencia y RR. HH. lo validan',
         disponible: true,
       },
+      // DKS decidió (2026-10-20) que los reportes de las unidades que entran sin
+      // OT los aprueban Administración y Gerencia (migración 20261020160000).
+      {
+        titulo: 'Trabajos sin orden',
+        ruta: '/avance/trabajos',
+        icono: Truck,
+        permiso: ['produccion.aprobar_reportes', 'produccion.aprobar_sin_orden'],
+        descripcion: 'Las unidades que entraron sin OT, con lo que el taller reportó de cada una, para aprobarlo u observarlo',
+        disponible: true,
+      },
       {
         titulo: 'Planos y etapas',
         ruta: '/planos',
@@ -472,6 +483,7 @@ export const NAVEGACION = [
     titulo: 'Recursos Humanos',
     items: [
       { titulo: 'Personal', ruta: '/rrhh/personal', icono: Users, permiso: ['rrhh.personal', 'asistencia.ver'], descripcion: 'La ficha de cada persona: datos, cuenta de pago y horario', disponible: true },
+      { titulo: 'DNI y costo de las cuentas', ruta: '/rrhh/cuentas', icono: IdCard, permiso: 'rrhh.personal', descripcion: 'El DNI y el costo por hora de cada cuenta del sistema', disponible: true },
       { titulo: 'Asistencia', ruta: '/rrhh/asistencia', icono: ClipboardCheck, permiso: ['asistencia.marcar', 'asistencia.ver'], descripcion: 'Ingreso y salida de cada persona, marcados en portería', disponible: true },
       { titulo: 'Tardanzas', ruta: '/rrhh/tardanzas', icono: Clock, permiso: ['asistencia.ver', 'rrhh.personal'], descripcion: 'Tardanzas del mes: cada tres, un descuento del sueldo', disponible: true },
       { titulo: 'Permisos', ruta: '/rrhh/permisos', icono: CalendarClock, permiso: ['rrhh.permisos', 'asistencia.ver'], descripcion: 'Las horas de permiso de cada persona, justificadas con sus horas extras', disponible: true },
@@ -609,53 +621,58 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   GERENTE: {
     principal: ['/codigos-internos'],
     grupos: [
-      { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'] },
+      { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'] },
       { titulo: 'Consultas', rutas: ['/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'] },
     ],
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
   },
   // Cerrado desde #28, como Gerencia.
-  // Primero la caja diaria, con la que abre y cierra cada día (2026-10-16).
-  // Después sus cuatro, en el orden en que Gerencia las nombró el 2026-10-14:
-  // Adquisiciones, Cuentas por cobrar, Cuentas por pagar y Pagos de servicio.
-  // Después los otros pagos que esperan por ella (los recibos por honorarios de
-  // los subcontratos y la planilla diaria) y el tipo de cambio. Consulta la
-  // cotización aprobada; la OT ya no (2026-10-15).
+  // Primero Adquisiciones y después la caja diaria, con la que abre y cierra
+  // cada día (DKS, 2026-10-20). Después Cuentas por cobrar, Cuentas por pagar y
+  // Pagos de servicio, en el orden en que Gerencia las nombró el 2026-10-14, y
+  // los otros pagos que esperan por ella (los recibos por honorarios de los
+  // subcontratos y la planilla diaria). El tipo de cambio ya no: lo registra
+  // Contabilidad (2026-10-20). Consulta la cotización aprobada; la OT ya no
+  // (2026-10-15).
   TESORERIA: {
     grupos: [
       {
         titulo: 'Tesorería',
         rutas: [
-          '/tesoreria/caja-diaria',
           '/adquisiciones',
+          '/tesoreria/caja-diaria',
           '/tesoreria/por-cobrar',
           '/tesoreria/por-pagar',
           '/tesoreria/pagos-de-servicio',
           '/tesoreria/recibos-por-honorarios',
           '/planilla-diaria',
-          '/tesoreria/tipo-de-cambio',
         ],
       },
       { titulo: 'Consultas', rutas: ['/cotizaciones/pdf'] },
     ],
-    // En el teléfono también va primero la caja, con la que abre y cierra el día; los pagos de servicio pasan a «Más» (2026-10-17).
-    telefono: ['/tesoreria/caja-diaria', '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar'],
+    // En el teléfono, en el mismo orden; los pagos de servicio pasan a «Más» (2026-10-17).
+    telefono: ['/adquisiciones', '/tesoreria/caja-diaria', '/tesoreria/por-cobrar', '/tesoreria/por-pagar'],
   },
-  // Primero lo que espera por ella: las cotizaciones por facturar. Después las
-  // compras en su orden: la guía de remisión de cada OC que recoge el conductor,
-  // la detracción de las órdenes de servicio y la factura de compra. El kardex
-  // lo consulta en lectura: ingresos con su guía, atenciones y egresos. También
-  // la cotización aprobada; la OT ya no (2026-10-15).
+  // Primero Adquisiciones, lo que entra de Logística por factura, y encima de
+  // la facturación (DKS, 2026-10-20). Después las compras en su orden: la guía
+  // de remisión de cada OC que recoge el conductor y la detracción de las
+  // órdenes de servicio. El kardex lo consulta en lectura: ingresos con su
+  // guía, atenciones y egresos. Proveedores y el tipo de cambio —que registra
+  // ella— van en Consultas. Sin la cotización (la abre desde su factura en
+  // Facturación) ni los requerimientos, que no son de su trabajo (2026-10-20).
   CONTABILIDAD: {
     grupos: [
       {
         titulo: 'Contabilidad',
-        rutas: ['/contabilidad/facturacion', '/compras/gestion', '/compras/servicios', '/adquisiciones', '/proveedores', '/tesoreria/tipo-de-cambio'],
+        rutas: ['/adquisiciones', '/contabilidad/facturacion', '/compras/gestion', '/compras/servicios'],
       },
       // Los recibos por honorarios, por la retención de cuarta categoría que declara cada mes.
-      { titulo: 'Consultas', rutas: ['/almacen/kardex', '/cotizaciones/pdf', '/requerimientos', '/tesoreria/recibos-por-honorarios'] },
+      {
+        titulo: 'Consultas',
+        rutas: ['/almacen/kardex', '/tesoreria/recibos-por-honorarios', '/proveedores', '/tesoreria/tipo-de-cambio'],
+      },
     ],
-    telefono: ['/contabilidad/facturacion', '/compras/gestion', '/adquisiciones', '/almacen/kardex'],
+    telefono: ['/adquisiciones', '/contabilidad/facturacion', '/compras/gestion', '/almacen/kardex'],
   },
   // Unidades y Carrocerías las lleva Diseño e Ingeniería (pedido de la
   // empresa, 2026-10-01). Configuración la alcanza por `configuracion.ver`,
@@ -695,7 +712,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [
       {
         titulo: 'Administración',
-        rutas: ['/cotizaciones/pdf', '/ordenes', '/subcontratos', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
+        rutas: ['/cotizaciones/pdf', '/ordenes', '/avance/trabajos', '/subcontratos', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
       },
       { titulo: 'Requerimiento de Administración', rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes'] },
       { titulo: 'Consultas', rutas: ['/diseno/evaluaciones', '/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos', '/clientes'] },
@@ -712,7 +729,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       { titulo: 'Recursos Humanos', rutas: ['/reportes-diarios', '/rrhh/horas-extras', '/planilla-diaria'] },
       {
         titulo: 'Control del personal',
-        rutas: ['/rrhh/personal', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh/permisos', '/rrhh/observaciones'],
+        rutas: ['/rrhh/personal', '/rrhh/cuentas', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh/permisos', '/rrhh/observaciones'],
       },
       { titulo: 'Planillas y costeo', rutas: ['/rrhh', '/rrhh/costeo', '/rrhh/pagos-oficina'] },
     ],
@@ -870,6 +887,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/requerimientos/gasto-por-codigo', corto: 'Gasto' },
   { ruta: '/rrhh/asistencia', corto: 'Asistencia' },
   { ruta: '/rrhh/personal', corto: 'Personal' },
+  { ruta: '/rrhh/cuentas', corto: 'Cuentas' },
   { ruta: '/rrhh/tardanzas', corto: 'Tardanzas' },
   { ruta: '/rrhh/permisos', corto: 'Permisos' },
   { ruta: '/rrhh/costeo', corto: 'Costeo' },

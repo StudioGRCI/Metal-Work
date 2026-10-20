@@ -80,6 +80,12 @@ create table if not exists storage.objects (
 );
 
 grant usage on schema auth, storage to anon, authenticated, service_role;
+-- Como en Supabase, todos tienen la tabla y decide su RLS, que enciende la
+-- migración 009. Sin esto el banco no podía preguntarle a las políticas de
+-- Storage con el rol de la sesión, y cada check que sube un archivo se daba el
+-- permiso por su cuenta.
+grant select, insert, update, delete on storage.objects to anon, authenticated, service_role;
+grant select on storage.buckets to anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
 -- Utilidades para las pruebas del esquema (solo entorno local)

@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 function dato(formulario: FormData, nombre: string) {
@@ -24,7 +24,7 @@ function refrescar() {
 /** Registra un pago a una persona de la oficina. Mismo permiso que `rrhh_registrar_pago_oficina`. */
 export async function registrarPagoOficina(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const soles = (mensaje: string) => z.coerce.number(mensaje).min(0, mensaje).max(100000, 'El monto pasa de S/ 100 000.')
   const analisis = z
@@ -69,7 +69,7 @@ export async function registrarPagoOficina(_previo: unknown, formulario: FormDat
 /** Anula un pago mal registrado, con motivo. Mismo permiso que `rrhh_anular_pago_oficina`. */
 export async function anularPagoOficina(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const analisis = z
     .object({

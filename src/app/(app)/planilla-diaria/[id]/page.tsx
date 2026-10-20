@@ -12,7 +12,7 @@ import { planillaDiaria, type PagoPlanilla, type PersonaPlanilla } from '@/lib/d
 import { ESTADO_PLANILLA, estadoDePlanilla, personasTexto } from '@/lib/dominio/planilla-diaria'
 import { TIPO_CUENTA, horasCortas } from '@/lib/dominio/rrhh'
 import { fecha, fechaHora, hoyLima, moneda } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularConMotivo, EntregarBoleta, RegistrarPago, SubirBoleta } from './acciones-planilla'
 
@@ -23,6 +23,8 @@ const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export default async function PaginaPlanilla({ params }: PageProps<'/planilla-diaria/[id]'>) {
   const perfil = await exigirPermiso(['planilla_diaria.preparar', 'planilla_diaria.pagar', 'planilla_diaria.ver'])
   const arma = puede(perfil, 'planilla_diaria.preparar')
+  // Anula y entrega boletas solo RR. HH.; el administrador la ve (migración 20261020167000).
+  const edita = editaComoRrhh(perfil, 'planilla_diaria.preparar')
   const paga = puede(perfil, 'planilla_diaria.pagar')
   // Registra y anula pagos quien además lleva la caja: el pago sale de una de sus cuentas (la base pide los dos permisos).
   const pagaDeLaCaja = paga && puede(perfil, 'tesoreria.caja')
@@ -64,7 +66,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
                 cuentas={cuentasCaja}
               />
             )}
-            {arma && !anulada && pagosVigentes.length === 0 && (
+            {edita && !anulada && pagosVigentes.length === 0 && (
               <AnularConMotivo
                 tipo="planilla"
                 id={p.id}
@@ -103,7 +105,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
                 planillaId={p.id}
                 pago={g.pago_id ? (pagoDe.get(g.pago_id) ?? null) : null}
                 anulada={anulada}
-                arma={arma}
+                arma={edita}
                 paga={paga}
                 conCuenta={(arma || paga) && !anulada}
               />

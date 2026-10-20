@@ -12,7 +12,7 @@ import { marcarFechasReales } from '../acciones'
 
 /**
  * El supervisor marca el día en que el subcontrato empezó de verdad y, cuando
- * termina, el día en que terminó (migración 20261020191000). Son referenciales:
+ * termina, el día en que terminó (migración 20261020201000). Son referenciales:
  * las fechas del contrato las pone Administración y no cambian.
  */
 export function MarcarFechasReales({

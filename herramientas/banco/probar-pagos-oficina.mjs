@@ -133,7 +133,7 @@ try {
     await v.locator('input[name="apellidos"]').fill('Banco')
     await v.locator('input[name="dni"]').fill(`7${sello.slice(-7)}`)
     await v.locator('select[name="area_id"]').selectOption({ label: 'Administración' })
-    // El sueldo de la oficina va por la planilla, no por el área (20261020190000).
+    // El sueldo de la oficina va por la planilla, no por el área (20261020200000).
     await v.locator('select[name="planilla"]').selectOption('ADMINISTRATIVA')
     await v.locator('input[name="fecha_ingreso"]').fill(`${mes}-01`)
     await v.locator('input[name="banco"]').fill('BCP')

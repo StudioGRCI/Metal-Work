@@ -49,7 +49,7 @@ $$;
 -- por quincena, que cargó 10 h a la unidad A a S/ 10), Beto (Maestranza), Dani (sin
 -- área), Eli (Administración, de baja) y Gil (Almacén: apoya al taller, no es oficina).
 -- Las de Administración van en planilla administrativa; el resto, en la de taller
--- (la oficina va por la planilla desde 20261020190000, no por el área).
+-- (la oficina va por la planilla desde 20261020200000, no por el área).
 -- Marzo: A 40 h (30 de Beto y 10 de Caro), B 10 h; PLANTA 5 h y OFICINA 4 h no son unidades.
 select test.como_usuario(:'admin_id');
 do $$

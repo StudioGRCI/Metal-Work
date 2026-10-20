@@ -4,7 +4,7 @@ import { subirArchivoPrivado } from '@/lib/subida-privada'
 
 /**
  * Subir el contrato de un subcontrato desde el navegador (migración
- * 20261020192000) y anotarlo. El archivo va a `{carpeta}/{id}.ext`, donde la
+ * 20261020202000) y anotarlo. El archivo va a `{carpeta}/{id}.ext`, donde la
  * carpeta es el subcontrato y el id
  * es el del contrato, decidido una vez por formulario: un reintento sube a la
  * misma ruta y la base no lo duplica. Si la anotación se rechaza, el archivo se

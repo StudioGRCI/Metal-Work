@@ -1,5 +1,5 @@
 -- El sueldo de la oficina va por la planilla, no por el área (migración
--- 20261020190000). DKS, 2026-10-20: «si alguien de Maestranza queda en planilla
+-- 20261020200000). DKS, 2026-10-20: «si alguien de Maestranza queda en planilla
 -- administrativa, su sueldo no cuenta en ningún lado, tiene que ser por la
 -- planilla».
 --
