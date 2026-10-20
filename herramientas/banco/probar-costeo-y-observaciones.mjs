@@ -87,6 +87,8 @@ const codigoB = 'PLANTA'
   await v.locator('input[name="apellidos"]').fill(persona.apellidos)
   await v.locator('input[name="dni"]').fill(persona.dni)
   await v.locator('input[name="cargo"]').fill('Soldador')
+  // La planilla es obligatoria desde #129: sin elegirla, el formulario no sale.
+  await v.locator('select[name="planilla"]').selectOption('TALLER')
   await v.locator('input[name="banco"]').fill('Banco de Pruebas')
   await v.locator('input[name="numero_cuenta"]').fill(persona.cuenta)
   await v.locator('input[name="costo_mensual"]').fill('2400')
