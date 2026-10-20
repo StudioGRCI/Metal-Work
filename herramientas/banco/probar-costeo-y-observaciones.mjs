@@ -178,9 +178,12 @@ const codigoB = 'PLANTA'
   await v.getByRole('button', { name: 'Registrar' }).click()
   await v.waitFor({ state: 'hidden', timeout: 15000 }).catch(() => {})
   await pagina.waitForLoadState('networkidle')
-  const fila = limpio(await pagina.locator('tbody tr', { hasText: persona.nombres }).textContent())
-  // Observaciones, verbales, escritas y suspensiones.
-  comprobar(fila.endsWith('Soldador0010'), `el resumen cuenta la amonestación escrita (${fila.slice(0, 120)})`)
+  // Observaciones, verbales, escritas y suspensiones, celda por celda: desde #134
+  // la celda del nombre trae también «0 verbales» para el teléfono.
+  const filaResumen = pagina.locator('tbody tr', { hasText: persona.nombres })
+  await filaResumen.waitFor({ timeout: 15000 }).catch(() => {})
+  const celdas = (await filaResumen.locator('td').allTextContents()).map(limpio)
+  comprobar(celdas.slice(1).join(',') === '0,0,1,0', `el resumen cuenta la amonestación escrita (${celdas.join(' | ').slice(0, 120)})`)
   const registro = limpio(await pagina.locator('li', { hasText: `Soldaba sin careta en la prueba ${sello}` }).textContent())
   comprobar(registro.includes('Amonestación escrita') && registro.includes('No usa su EPP') && registro.includes(codigoA), `el registro trae tipo, motivo y código (${registro.slice(0, 140)})`)
 
