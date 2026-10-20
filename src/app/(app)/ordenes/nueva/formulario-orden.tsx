@@ -209,7 +209,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
                   setClienteId(v)
                   setUnidadId('')
                 }}
-                marcador="Selecciona un cliente"
+                marcador="Elige el cliente"
                 marcadorBusqueda="Razón social o RUC"
                 opciones={clientes.map((c) => ({
                   valor: c.id,
