@@ -80,7 +80,10 @@ begin
   -- Hoy: la soldadura va en 40 % y el armado en 20 %; Ana trabajó 4 h sin costo.
   v := public.registrar_reporte_diario(current_setting('prueba.r_hoy')::uuid, v_hoy, current_setting('prueba.codigo'),
          'Avance de la tolva', 'Se soldó y se armó', jsonb_build_array(
-           jsonb_build_object('descripcion', 'Soldadura de la tolva', 'avance', 40, 'personal', jsonb_build_array(
+           -- Desde 20261020100000 la soldadura de antes se continúa: es la misma actividad.
+           jsonb_build_object('actividad_id', (select t.actividad_id from public.reporte_diario_trabajos t
+                                                where t.reporte_id = current_setting('prueba.r_viejo')::uuid),
+                              'avance', 40, 'personal', jsonb_build_array(
              jsonb_build_object('trabajador_id', current_setting('prueba.t1'), 'horas', 6),
              jsonb_build_object('trabajador_id', current_setting('prueba.t2'), 'horas', 4))),
            jsonb_build_object('descripcion', 'Armado del bastidor', 'avance', 20, 'personal', jsonb_build_array(
@@ -89,7 +92,9 @@ begin
   -- Uno que se anula: ni su avance ni sus horas cuentan.
   v := public.registrar_reporte_diario(current_setting('prueba.r_anulado')::uuid, v_hoy - 1, current_setting('prueba.codigo'),
          'Reporte equivocado', 'Se subió dos veces', jsonb_build_array(
-           jsonb_build_object('descripcion', 'Soldadura de la tolva', 'avance', 90, 'personal', jsonb_build_array(
+           jsonb_build_object('actividad_id', (select t.actividad_id from public.reporte_diario_trabajos t
+                                                where t.reporte_id = current_setting('prueba.r_viejo')::uuid),
+                              'avance', 30, 'personal', jsonb_build_array(
              jsonb_build_object('trabajador_id', current_setting('prueba.t1'), 'horas', 5)))),
          null, null);
   perform public.anular_reporte_diario(current_setting('prueba.r_anulado')::uuid, 'Se subió dos veces el mismo día');
@@ -278,8 +283,8 @@ begin
   -- El avance: tres trabajos de dos reportes vigentes, por validar.
   perform test.afirmar((select count(*) from public.codigo_interno_avance(v_c)) = 3, 'tres trabajos en dos reportes vigentes');
   perform test.afirmar((select bool_and(estado = 'POR_VALIDAR') from public.codigo_interno_avance(v_c)), 'los dos reportes esperan su validación');
-  perform test.afirmar((select horas = 10 and personas = 2 from public.codigo_interno_avance(v_c) where trabajo = 'Soldadura de la tolva'),
-    'la soldadura de hoy: 10 h de dos personas');
+  perform test.afirmar((select horas = 10 and personas = 2 from public.codigo_interno_avance(v_c) where lower(trabajo) = 'soldadura de la tolva' and reporte_id = current_setting('prueba.r_hoy')::uuid),
+    'la soldadura de hoy: 10 h de dos personas, con el nombre de la actividad que se abrió primero');
 
   -- Las compras, con en qué va cada una.
   perform test.afirmar((select count(*) from public.codigo_interno_compras(v_c)) = 1, 'una compra viva');

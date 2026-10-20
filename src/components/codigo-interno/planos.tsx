@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import type { PlanoDeCodigo, RevisionDePlano } from '@/lib/datos/diseno-codigos'
 import { tamanoArchivo } from '@/lib/dominio/diseno-codigos'
-import { fecha, fechaHora } from '@/lib/format'
+import { cantidad, fecha, fechaHora } from '@/lib/format'
 
 /** El PDF se abre por la ruta que pide el enlace firmado en el momento del toque. */
 export function enlacePdfPlano(revision: string) {
@@ -86,6 +86,13 @@ function FilaPlano({ plano: p, anteriores, acciones }: { plano: PlanoDeCodigo; a
           </span>
         </p>
         <div className="flex flex-wrap items-center gap-2 text-xs">
+          {p.peso === null ? (
+            <Insignia tono="aviso">Sin % de la unidad</Insignia>
+          ) : (
+            <Insignia tono="neutro">
+              <span className="tabular">{cantidad(p.peso)} %</span> de la unidad
+            </Insignia>
+          )}
           {p.recibido_en ? (
             <Insignia tono="exito">
               Recibido{p.recibido_por_area ? ` por ${p.recibido_por_area}` : ''} el {fecha(p.recibido_en)}

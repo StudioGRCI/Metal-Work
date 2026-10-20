@@ -78,6 +78,8 @@ export type PlanoDeCodigo = {
   subido_en: string | null
   recibido_en: string | null
   recibido_por_area: string | null
+  /** El porcentaje de la unidad que representa; vacío en los planos de antes del 2026-10-20. */
+  peso: number | null
 }
 
 /** Los planos de un código, o todos los que la persona ve si no se da código. */
@@ -85,6 +87,15 @@ export async function planosDeCodigo(codigo: string | null): Promise<PlanoDeCodi
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('codigo_interno_planos', { p_codigo: codigo })
   if (error) throw new Error(`No se pudieron leer los planos: ${error.message}`)
+  // El peso no está en la función (su firma no se puede cambiar en producción):
+  // se lee de la tabla, con el mismo RLS que deja ver el plano.
+  const ids = (data ?? []).flatMap((p) => (p.id ? [p.id] : []))
+  const pesos = new Map<string, number | null>()
+  if (ids.length > 0) {
+    const { data: filas, error: errorPeso } = await supabase.from('codigo_planos').select('id, peso').in('id', ids)
+    if (errorPeso) throw new Error(`No se pudo leer el porcentaje de los planos: ${errorPeso.message}`)
+    for (const f of filas ?? []) pesos.set(f.id, f.peso === null ? null : Number(f.peso))
+  }
   return (data ?? []).flatMap((p) =>
     p.id && p.codigo && p.area_id
       ? [
@@ -109,6 +120,7 @@ export async function planosDeCodigo(codigo: string | null): Promise<PlanoDeCodi
             subido_en: p.subido_en,
             recibido_en: p.recibido_en,
             recibido_por_area: p.recibido_por_area,
+            peso: pesos.get(p.id) ?? null,
           },
         ]
       : [],

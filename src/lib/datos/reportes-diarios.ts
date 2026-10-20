@@ -3,8 +3,23 @@ import 'server-only'
 import { BUCKET_FOTOS_REPORTE, type LadoValidacion } from '@/lib/dominio/reporte-diario'
 import { createClient } from '@/lib/supabase/server'
 
-/** Un trabajo realizado, con su avance. */
-export type TrabajoReporte = { id: string; orden: number; descripcion: string; avance: number }
+/**
+ * Un trabajo realizado, con su avance y la actividad que avanza: la de un plano,
+ * la de un subcontrato o una propia. Los de antes del 2026-10-20 van sin ella.
+ */
+export type TrabajoReporte = {
+  id: string
+  orden: number
+  descripcion: string
+  avance: number
+  actividad_id: string | null
+  plano_id: string | null
+  subcontrato_id: string | null
+}
+
+type FilaTrabajo = Omit<TrabajoReporte, 'plano_id' | 'subcontrato_id'> & {
+  actividad: Uno<{ plano_id: string | null; subcontrato_id: string | null }>
+}
 
 /**
  * Una persona del reporte con sus horas. `costeo` solo lo sabe RR. HH., que ve
@@ -63,18 +78,25 @@ const COLUMNAS_REPORTE =
   'id, fecha, codigo_interno, asunto, descripcion, personal_general, registrado_por, creado_en, anulado_en, motivo_anulacion,' +
   ' visto_gerencia_en, visto_rrhh_en, observado_en, observacion_area, observacion, reemplaza_a,' +
   ' area:areas(nombre),' +
-  ' trabajos:reporte_diario_trabajos!reporte_diario_trabajos_reporte_id_fkey(id, orden, descripcion, avance)'
+  ' trabajos:reporte_diario_trabajos!reporte_diario_trabajos_reporte_id_fkey(id, orden, descripcion, avance, actividad_id,' +
+  ' actividad:codigo_actividades!reporte_diario_trabajos_actividad_id_fkey(plano_id, subcontrato_id))'
 
 type FilaReporte = Omit<ReporteListado, 'area' | 'trabajos' | 'personal' | 'fotos'> & {
   area: Uno<{ nombre: string }>
-  trabajos: TrabajoReporte[] | null
+  trabajos: FilaTrabajo[] | null
 }
 
 function cabecera(fila: FilaReporte) {
   return {
     ...fila,
     area: unico(fila.area)?.nombre ?? null,
-    trabajos: [...(fila.trabajos ?? [])].sort((a, b) => a.orden - b.orden),
+    trabajos: [...(fila.trabajos ?? [])]
+      .sort((a, b) => a.orden - b.orden)
+      .map(({ actividad, ...t }) => ({
+        ...t,
+        plano_id: unico(actividad)?.plano_id ?? null,
+        subcontrato_id: unico(actividad)?.subcontrato_id ?? null,
+      })),
   }
 }
 
@@ -198,6 +220,41 @@ export async function horasEsperandoCosto(): Promise<HorasEsperandoCosto[]> {
   return (data ?? []).flatMap((f) =>
     f.trabajador_id
       ? [{ trabajador_id: f.trabajador_id, nombre: f.nombre ?? 'Persona', horas: Number(f.horas), lineas: Number(f.lineas), desde: f.desde ?? '' }]
+      : [],
+  )
+}
+
+/** Sobre qué puede reportar el supervisor en un código: un plano o un subcontrato de su área, o una actividad que ya abrió. */
+export type OpcionDeTrabajo = {
+  tipo: 'PLANO' | 'SUBCONTRATO' | 'ACTIVIDAD'
+  id: string
+  etiqueta: string
+  area: string | null
+  /** El último avance reportado; `null` si todavía nadie lo reportó. */
+  avance: number | null
+  ultima_fecha: string | null
+  /** El porcentaje de la unidad, en los planos. */
+  peso: number | null
+}
+
+/** Lo que el supervisor puede elegir en un código; `corrige`: su reporte observado, que no se cuenta. */
+export async function opcionesDeTrabajo(codigo: string, corrige: string | null): Promise<OpcionDeTrabajo[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('reporte_diario_opciones', { p_codigo: codigo, p_corrige: corrige ?? undefined })
+  if (error) throw new Error(`No se pudo leer sobre qué se reporta en ${codigo}: ${error.message}`)
+  return (data ?? []).flatMap((o) =>
+    o.id && (o.tipo === 'PLANO' || o.tipo === 'SUBCONTRATO' || o.tipo === 'ACTIVIDAD')
+      ? [
+          {
+            tipo: o.tipo,
+            id: o.id,
+            etiqueta: o.etiqueta ?? '',
+            area: o.area,
+            avance: o.avance === null ? null : Number(o.avance),
+            ultima_fecha: o.ultima_fecha,
+            peso: o.peso === null ? null : Number(o.peso),
+          },
+        ]
       : [],
   )
 }

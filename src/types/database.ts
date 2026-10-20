@@ -778,6 +778,71 @@ export type Database = {
           }
         ]
       }
+      codigo_actividades: {
+        Row: {
+          id: string
+          codigo_interno: string
+          area_id: string | null
+          descripcion: string
+          plano_id: string | null
+          subcontrato_id: string | null
+          creado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo_interno: string
+          area_id?: string | null
+          descripcion: string
+          plano_id?: string | null
+          subcontrato_id?: string | null
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo_interno?: string
+          area_id?: string | null
+          descripcion?: string
+          plano_id?: string | null
+          subcontrato_id?: string | null
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "codigo_actividades_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_actividades_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_actividades_plano_id_fkey"
+            columns: ["plano_id"]
+            isOneToOne: true
+            referencedRelation: "codigo_planos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_actividades_subcontrato_id_fkey"
+            columns: ["subcontrato_id"]
+            isOneToOne: true
+            referencedRelation: "subcontratos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       codigo_etapas: {
         Row: {
           id: string
@@ -1098,6 +1163,7 @@ export type Database = {
           anulado_por: string | null
           motivo_anulacion: string | null
           actualizado_en: string
+          peso: number | null
         }
         Insert: {
           id?: string
@@ -1112,6 +1178,7 @@ export type Database = {
           anulado_por?: string | null
           motivo_anulacion?: string | null
           actualizado_en?: string
+          peso?: number | null
         }
         Update: {
           id?: string
@@ -1126,6 +1193,7 @@ export type Database = {
           anulado_por?: string | null
           motivo_anulacion?: string | null
           actualizado_en?: string
+          peso?: number | null
         }
         Relationships: [
           {
@@ -7908,6 +7976,7 @@ export type Database = {
           avance: number
           creado_en: string
           actualizado_en: string
+          actividad_id: string | null
         }
         Insert: {
           id?: string
@@ -7917,6 +7986,7 @@ export type Database = {
           avance: number
           creado_en?: string
           actualizado_en?: string
+          actividad_id?: string | null
         }
         Update: {
           id?: string
@@ -7926,8 +7996,16 @@ export type Database = {
           avance?: number
           creado_en?: string
           actualizado_en?: string
+          actividad_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "reporte_diario_trabajos_actividad_id_fkey"
+            columns: ["actividad_id"]
+            isOneToOne: false
+            referencedRelation: "codigo_actividades"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "reporte_diario_trabajos_reporte_id_fkey"
             columns: ["reporte_id"]
@@ -10749,6 +10827,25 @@ export type Database = {
         }
         Returns: string
       }
+      codigo_interno_actividades_estado: {
+        Args: {
+          p_codigo: string | null
+          p_sin?: string | null
+        }
+        Returns: {
+          clave: string | null
+          actividad_id: string | null
+          codigo: string | null
+          area_id: string | null
+          descripcion: string | null
+          plano_id: string | null
+          subcontrato_id: string | null
+          avance: number | null
+          ultima_fecha: string | null
+          primera_fecha: string | null
+          reportes: number | null
+        }[]
+      }
       codigo_interno_avance: {
         Args: {
           p_codigo?: string | null
@@ -10768,6 +10865,43 @@ export type Database = {
           avance: number | null
           horas: number | null
           personas: number | null
+        }[]
+      }
+      codigo_interno_avance_planos: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          plano_id: string | null
+          codigo: string | null
+          numero: string | null
+          nombre: string | null
+          area: string | null
+          peso: number | null
+          avance: number | null
+          aporte: number | null
+          por_etapa: boolean | null
+          ultima_fecha: string | null
+          reportes: number | null
+        }[]
+      }
+      codigo_interno_avance_planos_calculado: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          plano_id: string | null
+          codigo: string | null
+          numero: string | null
+          nombre: string | null
+          area_id: string | null
+          area: string | null
+          peso: number | null
+          avance: number | null
+          aporte: number | null
+          por_etapa: boolean | null
+          ultima_fecha: string | null
+          reportes: number | null
         }[]
       }
       codigo_interno_compras: {
@@ -12027,6 +12161,13 @@ export type Database = {
         }
         Returns: string
       }
+      fijar_peso_plano: {
+        Args: {
+          p_plano: string | null
+          p_peso: number | null
+        }
+        Returns: string
+      }
       fijar_precio_compra_material: {
         Args: {
           p_detalle: string | null
@@ -13168,6 +13309,7 @@ export type Database = {
           p_area: string | null
           p_observacion: string | null
           p_nombre_archivo: string | null
+          p_peso: number | null
         }
         Returns: string
       }
@@ -13358,6 +13500,21 @@ export type Database = {
           p_reemplaza: string | null
         }
         Returns: string
+      }
+      reporte_diario_opciones: {
+        Args: {
+          p_codigo: string | null
+          p_corrige?: string | null
+        }
+        Returns: {
+          tipo: string | null
+          id: string | null
+          etiqueta: string | null
+          area: string | null
+          avance: number | null
+          ultima_fecha: string | null
+          peso: number | null
+        }[]
       }
       reporte_diario_personal_disponible: {
         Args: Record<PropertyKey, never>

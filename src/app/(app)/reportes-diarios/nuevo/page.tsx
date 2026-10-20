@@ -1,7 +1,7 @@
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { personalParaReporte, reporteDiario } from '@/lib/datos/reportes-diarios'
+import { opcionesDeTrabajo, personalParaReporte, reporteDiario } from '@/lib/datos/reportes-diarios'
 import { codigosInternos } from '@/lib/datos/rrhh'
 import { AREA_QUE_VALIDA, DIAS_PARA_EL_REPORTE, estadoDeReporte } from '@/lib/dominio/reporte-diario'
 import { hoyLima, sumarDias } from '@/lib/format'
@@ -56,6 +56,14 @@ export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/r
         descripcion: observado.descripcion,
         general: observado.personal_general,
         trabajos: observado.trabajos.map((t) => ({
+          // Sigue sobre lo mismo: el plano, el subcontrato o la actividad del observado.
+          sobre: t.plano_id
+            ? `PLANO:${t.plano_id}`
+            : t.subcontrato_id
+              ? `SUBCONTRATO:${t.subcontrato_id}`
+              : t.actividad_id
+                ? `ACTIVIDAD:${t.actividad_id}`
+                : 'NUEVA',
           descripcion: t.descripcion,
           avance: t.avance,
           personal: observado.personal.filter((p) => p.trabajo_id === t.id).map((p) => ({ trabajador_id: p.trabajador_id, horas: p.horas })),
@@ -66,6 +74,8 @@ export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/r
         fotos: observado.fotos.map((f) => ({ ruta: f.ruta, enlace: f.enlace })),
       }
     : null
+  // Al corregir, lo que se puede elegir se cuenta sin el observado, que se va a reemplazar.
+  const opcionesIniciales = corrige ? await opcionesDeTrabajo(corrige.codigo_interno, corrige.reemplaza) : []
   // El corregido conserva su día aunque ya pasaran los 7: la base lo deja.
   const minimo = sumarDias(hoy, -DIAS_PARA_EL_REPORTE)
 
@@ -104,6 +114,7 @@ export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/r
             personal={opciones}
             codigos={codigos}
             corrige={corrige}
+            opcionesIniciales={opcionesIniciales}
           />
         </TarjetaCuerpo>
       </Tarjeta>

@@ -13,6 +13,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import {
+  aporteDeLosPlanos,
   avanceDeLosCodigos,
   avanceDelCodigo,
   comprasDelCodigo,
@@ -55,7 +56,7 @@ import { situacionCompra, validacionDeCompra } from '@/lib/dominio/logistica'
 import { ESTADO_REPORTE, type EstadoReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADO_REQUERIMIENTO } from '@/lib/dominio/requerimientos'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { cantidad, fecha, fechaLarga, moneda, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
+import { cantidad, fecha, fechaLarga, moneda, numero, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, type PerfilSesion } from '@/lib/sesion'
 
 import { CerrarCosteo, ReabrirCosteo } from './cierre-costeo'
@@ -738,37 +739,102 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
       </Tarjeta>
     )
   }
-  const etapas = await etapasDeCodigo(codigo)
+  const [etapas, planos] = await Promise.all([etapasDeCodigo(codigo), avance.fuente === 'PLANOS' ? aporteDeLosPlanos(codigo) : Promise.resolve([])])
+  const listaEtapas = (
+    <ul className="space-y-2">
+      {etapas.map((e, i) => {
+        const vale = e.fin_real ? 100 : (e.avance_reportado ?? 0)
+        return (
+          <li key={e.id} className="grid grid-cols-[1fr_8rem] items-center gap-3 text-sm" data-etapa={e.nombre} data-vale={Math.round(vale)}>
+            <span className="min-w-0">
+              <span className="text-texto">
+                {i + 1}. {e.nombre}
+              </span>{' '}
+              <span className="text-xs text-texto-suave">
+                {e.area ?? 'Sin área del taller'} ·{' '}
+                {e.fin_real
+                  ? `terminada el ${fecha(e.fin_real)}`
+                  : e.avance_reportado !== null
+                    ? 'sin terminar: lo que reporta su área'
+                    : 'sin terminar y sin reporte diario'}
+              </span>
+            </span>
+            <Progreso valor={vale} mostrarValor etiqueta={`Lo que vale ${e.nombre}`} />
+          </li>
+        )
+      })}
+    </ul>
+  )
+  if (avance.fuente !== 'PLANOS') {
+    return (
+      <Tarjeta data-como-sale>
+        <TarjetaCabecera
+          titulo={`Cómo sale el ${avance.avance} %`}
+          ayuda="Es el promedio de las etapas que armó Diseño, todas con el mismo peso. La etapa terminada vale 100 %; la que no, lo que su área reporta de este código en el reporte diario (el promedio del último avance de cada una de sus actividades); sin reporte, 0 %. Cuando Diseño ponga a cada plano su porcentaje de la unidad, lo repartido en planos se medirá plano por plano."
+        />
+        <TarjetaCuerpo>{listaEtapas}</TarjetaCuerpo>
+      </Tarjeta>
+    )
+  }
+
+  // Lo que Diseño repartió en planos cuenta plano por plano; el resto, por las etapas.
+  const repartido = planos.reduce((suma, p) => suma + p.peso, 0)
+  const deLosPlanos = planos.reduce((suma, p) => suma + p.aporte, 0)
+  const resto = Math.max(0, 100 - repartido)
+  const promedioEtapas = etapas.length > 0 ? etapas.reduce((suma, e) => suma + (e.fin_real ? 100 : (e.avance_reportado ?? 0)), 0) / etapas.length : 0
+  const deLasEtapas = (resto * promedioEtapas) / 100
   return (
     <Tarjeta data-como-sale>
       <TarjetaCabecera
         titulo={`Cómo sale el ${avance.avance} %`}
-        ayuda="Es el promedio de las etapas que armó Diseño, todas con el mismo peso. La etapa terminada vale 100 %; la que no, lo que su área reporta de este código en el reporte diario (el promedio del último avance de cada uno de sus trabajos); sin reporte, 0 %."
+        descripcion={`${numero(deLosPlanos, 1)} de los planos${resto > 0 ? ` + ${numero(deLasEtapas, 1)} del ${cantidad(resto)} % que se mide por etapas` : ''}`}
+        ayuda="Diseño pone a cada plano el porcentaje de la unidad que representa. Cada plano aporta su porcentaje por lo que avanzó: lo último que reportó su área, o 100 % si la etapa de su área ya terminó. Lo que no se repartió en planos se mide por las etapas: su promedio, donde la terminada vale 100 % y la que no, el promedio de las actividades de su área."
       />
-      <TarjetaCuerpo>
-        <ul className="space-y-2">
-          {etapas.map((e, i) => {
-            const vale = e.fin_real ? 100 : (e.avance_reportado ?? 0)
-            return (
-              <li key={e.id} className="grid grid-cols-[1fr_8rem] items-center gap-3 text-sm" data-etapa={e.nombre} data-vale={Math.round(vale)}>
-                <span className="min-w-0">
-                  <span className="text-texto">
-                    {i + 1}. {e.nombre}
-                  </span>{' '}
-                  <span className="text-xs text-texto-suave">
-                    {e.area ?? 'Sin área del taller'} ·{' '}
-                    {e.fin_real
-                      ? `terminada el ${fecha(e.fin_real)}`
-                      : e.avance_reportado !== null
-                        ? 'sin terminar: lo que reporta su área'
-                        : 'sin terminar y sin reporte diario'}
+      <TarjetaCuerpo className="space-y-4">
+        <Tabla>
+          <TablaCabecera>
+            <TR>
+              <TH>Plano</TH>
+              <TH className="text-right">% de la unidad</TH>
+              <TH className="w-40">Avance</TH>
+              <TH className="text-right">Aporta</TH>
+            </TR>
+          </TablaCabecera>
+          <tbody>
+            {planos.map((p) => (
+              <TR key={p.plano_id} data-plano={p.numero}>
+                <TD>
+                  <span className="font-mono">{p.numero}</span> · {p.nombre}
+                  <span className="block text-xs text-texto-suave">
+                    {p.area} ·{' '}
+                    {p.por_etapa
+                      ? 'su etapa ya terminó'
+                      : p.reportes > 0
+                        ? `último reporte el ${fecha(p.ultima_fecha)}`
+                        : 'sin reporte todavía'}
                   </span>
-                </span>
-                <Progreso valor={vale} mostrarValor etiqueta={`Lo que vale ${e.nombre}`} />
-              </li>
-            )
-          })}
-        </ul>
+                </TD>
+                <TD className="tabular text-right">{cantidad(p.peso)} %</TD>
+                <TD>
+                  <Progreso valor={p.avance} alto="sm" mostrarValor etiqueta={`Avance del plano ${p.numero}`} />
+                </TD>
+                <TD className="tabular text-right">{numero(p.aporte, 1)}</TD>
+              </TR>
+            ))}
+          </tbody>
+        </Tabla>
+        {resto > 0 && (
+          <div className="space-y-2" data-resto={resto}>
+            <p className="text-sm font-medium text-texto">
+              El {cantidad(resto)} % que no está en planos, por las etapas: {numero(promedioEtapas, 0)} % en promedio
+            </p>
+            {etapas.length > 0 ? (
+              listaEtapas
+            ) : (
+              <p className="text-sm text-texto-suave">Diseño todavía no armó las etapas: se mide por el promedio de las actividades del reporte diario.</p>
+            )}
+          </div>
+        )}
       </TarjetaCuerpo>
     </Tarjeta>
   )
@@ -825,8 +891,8 @@ async function VistaAvance({ codigo, perfil, avance }: { codigo: string; perfil:
         <TarjetaCabecera
           titulo="Cada trabajo con su último avance"
           ayuda={`El porcentaje que el supervisor de cada área puso la última vez que reportó cada trabajo. ${
-            avance?.fuente === 'ETAPAS'
-              ? 'Su promedio, área por área, es lo que vale la etapa de esa área mientras no termine.'
+            avance?.fuente === 'ETAPAS' || avance?.fuente === 'PLANOS'
+              ? 'Su promedio, área por área, es lo que vale la etapa de esa área mientras no termine; el de un plano es lo que avanzó ese plano.'
               : 'El avance del código es el promedio de estos.'
           }`}
         />

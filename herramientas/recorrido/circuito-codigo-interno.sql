@@ -209,7 +209,7 @@ begin
             jsonb_build_object('mimetype', 'application/pdf', 'size', 120000));
     perform pg_temp.ensayo_como((k->>'DISENO')::uuid);
     perform public.guardar_material_codigo(null, c, v_mat, 5, null, 'Para cortar las planchas del chasis');
-    perform public.registrar_plano_codigo(v_plano, v_rev, c, '001', 'Estructura del chasis', v_mtz, null, 'chasis.pdf');
+    perform public.registrar_plano_codigo(v_plano, v_rev, c, '001', 'Estructura del chasis', v_mtz, null, 'chasis.pdf', 25);
 
     v_paso := 'Maestranza recibe el plano';
     reset role; perform pg_temp.ensayo_como((k->>'SUPERVISOR_MTZ')::uuid);

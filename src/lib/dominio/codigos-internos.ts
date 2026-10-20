@@ -201,11 +201,14 @@ export function noEsUnidad(codigo: string) {
  */
 export function origenDelAvance(
   codigo: string,
-  a: { fuente: 'ETAPAS' | 'REPORTES'; etapas: number; etapas_terminadas: number; trabajos: number; trabajos_terminados: number } | undefined,
+  a: { fuente: 'PLANOS' | 'ETAPAS' | 'REPORTES'; etapas: number; etapas_terminadas: number; trabajos: number; trabajos_terminados: number } | undefined,
 ): string {
   if (codigo === CODIGO_SIN_AVANCE) return 'PLANTA no es una unidad: no lleva avance'
   if (codigo === CODIGO_TODOS_LOS_ACTIVOS) return 'No es una unidad: lo que sale con él se reparte entre los códigos que trabajaron ese mes'
   if (!a) return 'Sin etapas de Diseño ni reporte diario: todavía no avanza'
+  if (a.fuente === 'PLANOS') {
+    return `Por los planos de Diseño, cada uno con su % de la unidad${a.etapas > 0 ? `, y el resto por sus ${plural(a.etapas, 'etapa', 'etapas')}` : ''}`
+  }
   if (a.fuente === 'ETAPAS') {
     return `Por sus ${plural(a.etapas, 'etapa', 'etapas')} de Diseño: ${a.etapas_terminadas} ${a.etapas_terminadas === 1 ? 'terminada' : 'terminadas'}`
   }

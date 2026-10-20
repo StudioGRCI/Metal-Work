@@ -277,16 +277,18 @@ export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
 }
 
 /**
- * El porcentaje de avance de un código (migración 20261016300000): el promedio
- * de sus etapas de Diseño, donde la terminada vale 100 y la que no, lo que su
- * área reporta en el reporte diario. Sin etapas, el promedio del último avance
- * de cada trabajo del reporte diario, área por área. El código que no tiene ni
- * lo uno ni lo otro no viene: va en 0 %. PLANTA no viene nunca.
+ * El porcentaje de avance de un código (migraciones 20261016300000 y
+ * 20261020100000). Lo que Diseño repartió en planos cuenta plano por plano (su
+ * porcentaje por su avance) y la fuente es PLANOS; el resto, el promedio de sus
+ * etapas de Diseño, donde la terminada vale 100 y la que no, el promedio de las
+ * actividades que su área reporta. Sin etapas, el promedio del último avance
+ * de cada actividad del reporte diario. El código que no tiene nada de eso no
+ * viene: va en 0 %. PLANTA no viene nunca.
  */
 export type AvanceDeCodigo = {
   codigo: string
   avance: number
-  fuente: 'ETAPAS' | 'REPORTES'
+  fuente: 'PLANOS' | 'ETAPAS' | 'REPORTES'
   etapas: number
   etapas_terminadas: number
   /** Los trabajos del reporte diario, cada uno con su área: «Soldadura» de dos áreas son dos. */
@@ -309,7 +311,7 @@ export async function avanceDeLosCodigos(codigo?: string): Promise<Map<string, A
               {
                 codigo: f.codigo,
                 avance: n(f.avance),
-                fuente: f.fuente === 'ETAPAS' ? 'ETAPAS' : 'REPORTES',
+                fuente: f.fuente === 'PLANOS' ? 'PLANOS' : f.fuente === 'ETAPAS' ? 'ETAPAS' : 'REPORTES',
                 etapas: n(f.etapas),
                 etapas_terminadas: n(f.etapas_terminadas),
                 trabajos: n(f.trabajos),
@@ -320,6 +322,46 @@ export async function avanceDeLosCodigos(codigo?: string): Promise<Map<string, A
           ]
         : [],
     ),
+  )
+}
+
+/** Un plano con su porcentaje de la unidad, cuánto avanzó y cuánto aporta al avance del código. */
+export type AporteDePlano = {
+  plano_id: string
+  numero: string
+  nombre: string
+  area: string
+  peso: number
+  avance: number
+  aporte: number
+  /** Vale 100 % porque la etapa de su área ya terminó, aunque el reporte dijera menos. */
+  por_etapa: boolean
+  ultima_fecha: string | null
+  reportes: number
+}
+
+/** Lo que aporta cada plano con porcentaje al avance de un código. */
+export async function aporteDeLosPlanos(codigo: string): Promise<AporteDePlano[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('codigo_interno_avance_planos', { p_codigo: codigo })
+  if (error) throw new Error(`No se pudo leer lo que aporta cada plano: ${error.message}`)
+  return (data ?? []).flatMap((p) =>
+    p.plano_id
+      ? [
+          {
+            plano_id: p.plano_id,
+            numero: p.numero ?? '',
+            nombre: p.nombre ?? '',
+            area: p.area ?? '',
+            peso: n(p.peso),
+            avance: n(p.avance),
+            aporte: n(p.aporte),
+            por_etapa: p.por_etapa === true,
+            ultima_fecha: p.ultima_fecha,
+            reportes: n(p.reportes),
+          },
+        ]
+      : [],
   )
 }
 
