@@ -502,6 +502,71 @@ for (const ancho of [390, 1280]) {
       `Personal: «Limpiar» con la pastilla en viaje deja la pastilla (${limpia.search}, caja «${vacia}»)`)
   }
 
+  // Escribir despacio con el servidor lento: cada letra sale sola y la
+  // respuesta de la anterior llega con otra en viaje. Antes, esa respuesta
+  // copiaba a la caja el término viejo y se comía lo escrito entretanto: en
+  // producción, «carroceria» quedaba «caroei» (2026-10-20). Se ve con la
+  // demora variable de producción y con `next build` + `next start`: con
+  // `next dev`, o con una demora fija, las respuestas no se cruzan.
+  for (const [puesto, ruta, caja] of [
+    ['gerencia', '/ordenes', 'Buscar órdenes'],
+    ['ventas', '/clientes', 'Buscar clientes'],
+  ]) {
+    const { pagina } = await sesion(puesto)
+    const patron = new RegExp(`${ruta}(\\?|$)`)
+    await pagina.route(patron, async (r) => {
+      if (r.request().headers()['rsc']) await new Promise((listo) => setTimeout(listo, 300 + Math.random() * 1500))
+      // La respuesta demorada puede llegar con la página ya en otra parte.
+      await r.continue().catch(() => {})
+    })
+    await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle', timeout: 60000 })
+    const entrada = pagina.getByRole('searchbox', { name: caja })
+    await entrada.pressSequentially('carroceria', { delay: 450 })
+    await pagina.waitForURL((u) => u.searchParams.get('q') === 'carroceria', { timeout: 20000 }).catch(() => {})
+    await pagina.waitForTimeout(2000)
+    const escrito = await entrada.inputValue()
+    const url = new URL(pagina.url())
+    await pagina.unroute(patron)
+    comprobar(escrito === 'carroceria' && url.searchParams.get('q') === 'carroceria',
+      `${ruta} (${puesto}): escribiendo despacio con el servidor lento no se pierden letras (caja «${escrito}», URL «${url.searchParams.get('q')}»)`)
+  }
+
+  // «Limpiar», escribir otra cosa y tocar el menú antes de que vuelva nada: el
+  // menú se lleva lo escrito, y la caja tiene que decir lo mismo que la URL.
+  // Antes, el eco de «Limpiar» dejaba anotada como en viaje una búsqueda que el
+  // menú ya había reemplazado: la caja con texto, la lista sin filtrar y el
+  // ícono girando sin fin.
+  {
+    const { pagina } = await sesion('ventas')
+    const patron = /\/clientes(\?|$)/
+    await pagina.route(patron, async (r) => {
+      if (r.request().headers()['rsc']) await new Promise((listo) => setTimeout(listo, 300 + Math.random() * 1500))
+      // La respuesta demorada puede llegar con la página ya en otra parte.
+      await r.continue().catch(() => {})
+    })
+    await pagina.goto(`${BASE}/clientes?q=pena`, { waitUntil: 'networkidle', timeout: 60000 })
+    const entrada = pagina.getByRole('searchbox', { name: 'Buscar clientes' })
+    await pagina.getByRole('button', { name: 'Limpiar' }).click()
+    await entrada.pressSequentially('tra', { delay: 120 })
+    await pagina.waitForTimeout(400)
+    // El menú lateral en el monitor; en el teléfono, las pestañas de abajo.
+    await pagina.locator('nav[aria-label="Menú principal"] a[href="/clientes"]:visible, nav[aria-label="Secciones"] a[href="/clientes"]:visible').first().click()
+    const asentado = () =>
+      pagina.evaluate(() => {
+        const caja = document.querySelector('input[aria-label="Buscar clientes"]')
+        const q = new URL(location.href).searchParams.get('q') ?? ''
+        return { caja: caja?.value, q, gira: Boolean(caja?.closest('.relative')?.querySelector('.animate-spin')) }
+      })
+    let e = await asentado()
+    for (let i = 0; i < 80 && (e.gira || e.caja !== e.q); i++) {
+      await pagina.waitForTimeout(250)
+      e = await asentado()
+    }
+    await pagina.unroute(patron)
+    comprobar(!e.gira && e.caja === e.q,
+      `/clientes (ventas): «Limpiar», escribir y el menú con todo en viaje dejan la caja como la URL (caja «${e.caja}», URL «${e.q}», ${e.gira ? 'gira' : 'quieto'})`)
+  }
+
   // «Ver también…» de Clientes, Unidades y Proveedores se lleva lo que se está
   // escribiendo y el término ya puesto, como una pastilla.
   for (const [puesto, ruta, caja, enlace, estado] of [

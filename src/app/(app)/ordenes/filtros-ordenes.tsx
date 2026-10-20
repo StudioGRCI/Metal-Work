@@ -18,32 +18,59 @@ export function FiltrosOrdenes() {
   const actual = params.get('q') ?? ''
   const [busqueda, setBusqueda] = useState(actual)
   // Si la URL cambia por otro lado (un enlace, el menú), la caja la sigue,
-  // como en `BuscadorSimple`; lo que esta misma caja pidió no la toca.
-  const [pedido, setPedido] = useState<string | null>(null)
+  // como en `BuscadorSimple`; lo que esta misma caja pidió, en orden y todavía
+  // sin volver, no la toca.
+  const [pedidos, setPedidos] = useState<{ consulta: string; termino: string }[]>([])
+  const pedir = (query: URLSearchParams) =>
+    setPedidos((anteriores) => [...anteriores, { consulta: query.toString(), termino: query.get('q') ?? '' }])
   // Se vigila la URL entera: con solo el término, un «Limpiar» que volvía a la
-  // misma URL dejaba un `pedido` viejo y la caja vacía sobre una lista filtrada.
+  // misma URL dejaba un pedido viejo y la caja vacía sobre una lista filtrada.
   const consulta = params.toString()
   const [vista, setVista] = useState(consulta)
   if (consulta !== vista) {
     const antes = new URLSearchParams(vista).get('q') ?? ''
     setVista(consulta)
-    // El eco de lo pedido se consume: si después «atrás» trae ese mismo valor,
-    // ya no es eco y la caja lo sigue. Lo escrito sin pedir todavía se queda
-    // si el término de la URL no cambió.
-    if (actual !== pedido && (actual !== antes || pedido !== null)) setBusqueda(actual)
-    setPedido(null)
+    // Las respuestas llegan en el orden en que salieron: si la que llegó es una
+    // de las pedidas, se consumen ella y las anteriores, y la caja no se toca,
+    // porque lo escrito después ya va en viaje. Con un solo pedido anotado, la
+    // respuesta vieja que llegaba con otra en viaje copiaba a la caja el término
+    // de antes y se comía lo escrito entretanto: en producción, escribiendo
+    // despacio, «carroceria» quedaba «caroei» (2026-10-20). Se reconoce por la
+    // URL entera y no por el término: un enlace que deja el mismo término con
+    // otros filtros («Ver todos») no es eco, y la caja lo sigue.
+    const eco = pedidos.findIndex((p) => p.consulta === consulta)
+    if (eco >= 0) setPedidos(pedidos.slice(eco + 1))
+    else {
+      // Lo escrito sin pedir todavía se queda si el término de la URL no cambió.
+      if (actual !== antes || pedidos.length > 0) setBusqueda(actual)
+      setPedidos([])
+    }
   }
+  // Ya no queda nada en viaje y algo de lo pedido nunca volvió: otra navegación
+  // —el menú, «atrás»— lo reemplazó. Tomarlo por eco dejaba la caja con un
+  // término que no filtraba y el ícono girando sin fin. Si después de lo
+  // perdido no se escribió nada, la caja sigue a la URL; si se escribió, se
+  // queda y sale en su pausa.
+  if (!pendiente && pedidos.length > 0) {
+    setPedidos([])
+    if (busqueda === pedidos[pedidos.length - 1].termino) setBusqueda(actual)
+  }
+  const ultimoPedido = pedidos.length > 0 ? pedidos[pedidos.length - 1].termino : null
 
   // La búsqueda que espera su pausa. Un filtro tocado en esa pausa la cancela y
   // se lleva lo escrito: si no, la búsqueda salía después con la URL de antes
   // del filtro y lo deshacía.
   const espera = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   // La consulta que va en viaje: lo que se pide después se arma sobre ella, o
-  // la búsqueda que salía con un filtro en viaje lo deshacía.
+  // la búsqueda que salía con un filtro en viaje lo deshacía. Se olvida cuando
+  // ya volvió todo lo pedido, o se perdió; no con cualquier URL que llegue: el
+  // eco de una búsqueda vieja la borraba con el filtro todavía en viaje, y el
+  // resto de lo escrito salía sin él.
   const enViaje = useRef<string | null>(null)
+  const sinPedidos = pedidos.length === 0
   useEffect(() => {
-    enViaje.current = null
-  }, [consulta])
+    if (sinPedidos) enViaje.current = null
+  }, [consulta, sinPedidos])
 
   function navegar(cambios: Record<string, string | null>, reemplazar = false) {
     clearTimeout(espera.current)
@@ -51,7 +78,6 @@ export function FiltrosOrdenes() {
     if (!('q' in cambios) && busqueda !== actual) {
       if (busqueda) query.set('q', busqueda)
       else query.delete('q')
-      setPedido(busqueda)
     }
     for (const [clave, valor] of Object.entries(cambios)) {
       if (valor) query.set(clave, valor)
@@ -60,6 +86,7 @@ export function FiltrosOrdenes() {
     // Cualquier cambio de filtro devuelve a la primera página.
     query.delete('pagina')
     enViaje.current = query.toString()
+    pedir(query)
     // Lo que se escribe reemplaza la entrada del historial: con `push`,
     // «atrás» recorría la búsqueda letra por letra.
     iniciarTransicion(() => (reemplazar ? router.replace : router.push)(`/ordenes?${query}`))
@@ -71,10 +98,9 @@ export function FiltrosOrdenes() {
     // URL si no hay nada en viaje: pedir otra vez el vacío reponía la prioridad
     // que «Limpiar» acababa de quitar, y volver al valor de antes con otro en
     // viaje dejaba la caja con un término y la lista con otro.
-    if (busqueda === (pedido ?? actual)) return
+    if (busqueda === (ultimoPedido ?? actual)) return
 
     espera.current = setTimeout(() => {
-      setPedido(busqueda)
       navegar({ q: busqueda || null }, true)
     }, 350)
     return () => clearTimeout(espera.current)
@@ -168,7 +194,7 @@ export function FiltrosOrdenes() {
           onClick={() => {
             clearTimeout(espera.current)
             setBusqueda('')
-            setPedido('')
+            pedir(new URLSearchParams())
             enViaje.current = ''
             iniciarTransicion(() => router.push('/ordenes'))
           }}

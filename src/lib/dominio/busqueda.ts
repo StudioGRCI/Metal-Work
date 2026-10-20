@@ -28,14 +28,29 @@ function trozos(texto: string): string[] {
 }
 
 /**
+ * Una sigla de razón social escrita con espacios es una palabra: «S R L» es
+ * «srl». Sueltas, cada letra está en casi todo y «S R L» traía 10 de los 15
+ * clientes (producción, 2026-10-20). Solo esas siglas: «transportes a y b»
+ * unido en «ayb» ya no encontraba «TRANSPORTES A Y B», porque la base busca
+ * con espacios solo las de `SIGLAS_DE_EMPRESA`.
+ */
+function siglasConEspacios(texto: string): string {
+  return texto.replace(/(?<![a-z0-9])[a-z](?: +[a-z](?![a-z0-9]))+/g, (letras) => {
+    const sigla = letras.replace(/ +/g, '')
+    return SIGLAS_DE_EMPRESA.has(sigla) ? sigla : letras
+  })
+}
+
+/**
  * Las palabras que se buscan, en minúsculas y sin tildes; «S.A.C.» es una sola
  * palabra, «sac», y no tres letras sueltas que están en casi todo. Una letra
  * sola —la «y» de «Peña y Núñez»— o una palabra de enlace —«transportes de
  * peña»— no se busca si hay otras: está en todo, o no está en el nombre.
  */
+
 const DE_ENLACE = new Set(['de', 'del', 'la', 'las', 'el', 'los', 'en', 'con', 'por'])
 export function palabrasDeBusqueda(texto: string | null | undefined): string[] {
-  const todas = plano(texto ?? '').split(/[^a-z0-9._/-]+/).flatMap(trozos).filter(Boolean)
+  const todas = siglasConEspacios(plano(texto ?? '')).split(/[^a-z0-9._/-]+/).flatMap(trozos).filter(Boolean)
   const utiles = todas.filter((p) => (p.length > 1 && !DE_ENLACE.has(p)) || /\d/.test(p))
   // Si hay que cortar, se quedan primero las que distinguen —con números y
   // siglas—: «… HORIZONTE PERÚ S.A.C.» perdía «sac» y salía su gemelo E.I.R.L.
@@ -80,10 +95,11 @@ const VARIANTES: Record<string, string> = {
 
 /**
  * Una palabra como expresión regular que encuentra sus versiones con tilde y
- * con los `SIGNOS` entre letra y letra: «sac» encuentra «S.A.C.» y «sr04»,
- * «SR_04». Solo lleva letras, números, corchetes, esos signos, el espacio y
- * `?` —`palabrasDeBusqueda` no dejó nada más—, y entre las comillas del filtro
- * nada de eso es un mando para PostgREST.
+ * con los `SIGNOS` entre letra y letra: «sac» encuentra «S.A.C.» y «S A C», y
+ * «sr04», «SR_04». Solo lleva letras, números, corchetes, esos signos, el
+ * espacio y los mandos de la expresión (`? + | ^ $ ( )`) —`palabrasDeBusqueda`
+ * no dejó nada más—, y entre las comillas del filtro nada de eso es un mando
+ * para PostgREST.
  */
 export function expresionSinTildes(palabra: string): string {
   // Los signos entre letra y letra solo hacen falta en siglas y códigos —cortos
@@ -91,8 +107,26 @@ export function expresionSinTildes(palabra: string): string {
   // Con números también el espacio: «2x14» encuentra «2 X 1/4», como hace
   // `coincide`. En una sigla no, que «sac» saltaría a «planchaS ACero».
   const entre = /\d/.test(palabra) ? '[ ._/-]?' : palabra.length <= 4 ? '[._/-]?' : ''
-  return [...palabra].map((c) => (VARIANTES[c] ? `[${VARIANTES[c]}]` : c)).join(entre)
+  const letras = [...palabra].map((c) => (VARIANTES[c] ? `[${VARIANTES[c]}]` : c))
+  const pegada = letras.join(entre)
+  // La sigla de empresa también escrita con espacios —«TALLERES EJEMPLO S R L»—,
+  // pero solo como letras sueltas entre dos no-letras: así «sac» no salta a
+  // «planchaS ACero». Solo esas: en toda palabra corta («agua», «tubo») la
+  // expresión doble no cabía en la dirección con las demás palabras.
+  if (SIGLAS_DE_EMPRESA.has(palabra)) return `${pegada}|(^|${NO_LETRA})${letras.join('[ ._/-]+')}(${NO_LETRA}|$)`
+  return pegada
 }
+
+/** Las siglas de razón social, que en los registros viejos van con espacios. */
+const SIGLAS_DE_EMPRESA = new Set(['sa', 'saa', 'sac', 'sacs', 'srl', 'scrl', 'eirl'])
+
+/**
+ * Lo que no es letra, también para Postgres, que no tiene `\b`. El filtro no
+ * distingue mayúsculas (`imatch`), así que `a-z` vale también por `A-Z`; las
+ * letras con tilde no van, porque cada una ocupa seis caracteres en la
+ * dirección.
+ */
+const NO_LETRA = '[^a-z]'
 
 /**
  * El filtro `or` de PostgREST para una palabra: aparece en alguna de las
@@ -130,5 +164,14 @@ export function coincide(palabras: string[], campos: (string | null | undefined)
   const cero = (t: string) => t.replace(/o/g, '0')
   const textos = campos.map((c) => cero(plano(c ?? ''))).flatMap((t) => [t, t.replace(/[._/-]+/g, '')])
   const pegados = textos.map((t) => t.replace(/[^a-z0-9]+/g, ''))
-  return palabras.every((p) => textos.some((t) => t.includes(cero(p))) || (/\d/.test(p) && pegados.some((t) => t.includes(cero(p)))))
+  // «S R L» en el campo es «srl», como en la expresión: solo letras sueltas.
+  const siglas = campos.map((c) =>
+    plano(c ?? '').replace(/(?<![a-z0-9])[a-z](?:[ ._/-]+[a-z](?![a-z0-9]))+/g, (sigla) => sigla.replace(/[^a-z]/g, '')),
+  )
+  return palabras.every(
+    (p) =>
+      textos.some((t) => t.includes(cero(p))) ||
+      (/\d/.test(p) && pegados.some((t) => t.includes(cero(p)))) ||
+      siglas.some((t) => t.includes(p)),
+  )
 }
