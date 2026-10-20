@@ -70,9 +70,10 @@ export function SeleccionBuscable({
   const caja = useRef<HTMLInputElement>(null)
 
   const elegida = opciones.find((o) => o.valor === valor) ?? null
+  const conEquis = Boolean(elegida) && permiteVaciar && !deshabilitado
 
   // Como todo buscador: «grua» encuentra «Grúa», «sac» a «S.A.C.» y
-  // «juan agricola» a «Agrícola San Juan».
+  // «ejemplo agricola» a «Agrícola El Ejemplo».
   const palabras = palabrasDeBusqueda(filtro)
   const coincidencias = opciones.filter((o) => coincide(palabras, [o.etiqueta, o.detalle]))
   const visibles = coincidencias.slice(0, TOPE)
@@ -187,16 +188,19 @@ export function SeleccionBuscable({
           }
         }}
         className={cn(
-          'flex h-11 w-full items-center gap-2 rounded-[var(--radius-base)] border pr-20 pl-3 text-left sm:pr-14 text-base transition-colors sm:h-9 sm:text-sm',
+          'flex min-h-11 w-full items-center gap-2 rounded-[var(--radius-base)] border py-1 pl-3 text-left text-base transition-colors sm:h-9 sm:min-h-0 sm:py-0 sm:text-sm',
+          // Lugar para la flecha y, solo si se dibuja, para la ×: reservarlo
+          // siempre dejaba al cliente elegido en «TRANS…» en el teléfono.
+          conEquis ? 'pr-20 sm:pr-14' : 'pr-9',
           'disabled:cursor-not-allowed disabled:opacity-60',
           elegida ? 'border-acento bg-acento-suave font-medium text-acento' : 'border-borde-fuerte bg-superficie text-texto-tenue',
         )}
       >
         {elegida && <Check aria-hidden className="size-4 shrink-0" />}
-        <span className="min-w-0 flex-1 truncate">{elegida ? elegida.etiqueta : marcador}</span>
+        <span className="line-clamp-2 min-w-0 flex-1 sm:line-clamp-1 sm:truncate">{elegida ? elegida.etiqueta : marcador}</span>
       </button>
 
-      {elegida && permiteVaciar && !deshabilitado && (
+      {conEquis && (
         <button
           type="button"
           aria-label="Quitar la selección"

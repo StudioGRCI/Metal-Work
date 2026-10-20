@@ -270,7 +270,7 @@ export function FilaDePersona({
           <div className="font-medium">
             {persona.apellidos}, {persona.nombres}
           </div>
-          <div className="text-xs text-texto-suave">{persona.cargo ?? '—'}</div>
+          {persona.cargo && <div className="text-xs text-texto-suave">{persona.cargo}</div>}
           {/* El correo es la columna que se esconde en el teléfono; aquí abajo
               sigue estando, que es el dato con el que se le escribe. */}
           <div className="text-[11px] break-all text-texto-suave sm:hidden">{persona.correo}</div>

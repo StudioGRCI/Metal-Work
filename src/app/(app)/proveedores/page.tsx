@@ -34,8 +34,8 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
     <>
       <EncabezadoPagina
         titulo="Proveedores"
-        descripcion={busqueda && total > 0
-          ? `${total === 1 ? '1 proveedor' : `${total} proveedores`} con «${busqueda}»`
+        descripcion={busqueda
+          ? total === 0 ? `Ningún proveedor con «${busqueda}»` : `${total === 1 ? '1 proveedor' : `${total} proveedores`} con «${busqueda}»`
           : total === 1 ? '1 proveedor en el padrón' : `${total} proveedores en el padrón`}
         ayuda="La orden de compra elige el proveedor de este padrón."
         acciones={

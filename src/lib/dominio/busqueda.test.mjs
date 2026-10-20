@@ -12,20 +12,20 @@ test('las palabras salen sin tildes, sin signos y en minúsculas', () => {
   assert.deepEqual(palabrasDeBusqueda('%,()*"\\'), [])
 })
 
-test('no pasan más de cinco palabras ni más de veinticuatro letras entre todas', () => {
+test('no pasan más de cinco palabras ni más de veinte letras entre todas', () => {
   assert.equal(palabrasDeBusqueda('a b c d e f g').length, 5)
-  assert.equal(palabrasDeBusqueda('x'.repeat(100))[0].length, 24)
-  assert.deepEqual(palabrasDeBusqueda(`${'x'.repeat(19)} abcdefgh zz`), ['x'.repeat(19), 'abcde'])
+  assert.equal(palabrasDeBusqueda('x'.repeat(100))[0].length, 20)
+  assert.deepEqual(palabrasDeBusqueda(`${'x'.repeat(15)} abcdefgh zz`), ['x'.repeat(15), 'abcde'])
 })
 
 // Con `i`, como el `~*` de Postgres: las mayúsculas sin tilde las iguala la base.
 test('la expresión encuentra la palabra con y sin tilde', () => {
   const r = new RegExp(expresionSinTildes('camion'), 'i')
   for (const t of ['CAMIÓN', 'camion', 'Camión']) assert.ok(r.test(t), t)
-  assert.ok(new RegExp(expresionSinTildes('agricola'), 'i').test('AGRÍCOLA SAN JUAN'))
+  assert.ok(new RegExp(expresionSinTildes('agricola'), 'i').test('AGRÍCOLA EL EJEMPLO'))
   assert.ok(new RegExp(expresionSinTildes('pena'), 'i').test('PEÑA'))
-  assert.match(expresionSinTildes('sr04'), /^[a-z0-9[\]._/?áéíóúüñ-]+$/)
-  assert.equal(expresionSinTildes('un'), '[uúü][._/-]?[nñ]')
+  assert.match(expresionSinTildes('sr04'), /^[a-z0-9[\]._/?áéíóúüñÁÉÍÓÚÜÑ-]+$/)
+  assert.equal(expresionSinTildes('un'), '[uúüÚÜ][._/-]?[nñÑ]')
 })
 
 test('la expresión encuentra siglas y códigos con o sin sus signos, y no salta espacios', () => {
@@ -50,7 +50,7 @@ test('en una lista ya leída cada palabra tiene que estar en algún campo, en cu
   const p = palabrasDeBusqueda('agua cisterna')
   assert.ok(coincide(p, ['COT-0012', 'CISTERNA DE AGUA', null]))
   assert.ok(!coincide(p, ['CISTERNA DE COMBUSTIBLE']))
-  assert.ok(coincide(palabrasDeBusqueda('agricola'), ['AGRÍCOLA SAN JUAN S.A.C.']))
+  assert.ok(coincide(palabrasDeBusqueda('agricola'), ['AGRÍCOLA EL EJEMPLO S.A.C.']))
   assert.ok(coincide([], ['lo que sea']))
   assert.ok(coincide(palabrasDeBusqueda('nunez pena'), ['TRANSPORTES PEÑA Y NÚÑEZ S.A.C.']))
   assert.ok(coincide(palabrasDeBusqueda('Núñez'), ['NUNEZ']))

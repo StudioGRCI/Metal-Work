@@ -336,7 +336,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                 <TD className="hidden sm:table-cell" />
                 <TD />
                 <TD />
-                <TD className="tabular text-right font-semibold">{cantidad(saldoAnterior)}</TD>
+                <TD className="tabular px-2 text-right sm:px-3 font-semibold">{cantidad(saldoAnterior)}</TD>
               </TR>
             )}
             {filas.length === 0 ? (
@@ -418,9 +418,9 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                     )}
                   </TD>
                   <TD className="hidden max-w-52 sm:table-cell">{unidadYOt}</TD>
-                  <TD className="tabular text-right text-exito">{Number(f.entrada) > 0 ? cantidad(f.entrada) : ''}</TD>
-                  <TD className="tabular text-right text-peligro">{Number(f.salida) > 0 ? cantidad(f.salida) : ''}</TD>
-                  <TD className="tabular text-right font-semibold">
+                  <TD className="tabular px-2 text-right sm:px-3 text-exito">{Number(f.entrada) > 0 ? cantidad(f.entrada) : ''}</TD>
+                  <TD className="tabular px-2 text-right sm:px-3 text-peligro">{Number(f.salida) > 0 ? cantidad(f.salida) : ''}</TD>
+                  <TD className="tabular px-2 text-right sm:px-3 font-semibold">
                     {cantidad(f.saldo)}
                     {!elegido && f.unidad_medida && <span className="ml-1 text-[10px] font-normal text-texto-tenue">{f.unidad_medida}</span>}
                   </TD>

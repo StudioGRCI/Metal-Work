@@ -6,6 +6,7 @@ import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { codigosDeDiseno, type CodigoDeDiseno } from '@/lib/datos/diseno-codigos'
+import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { llaveParecido } from '@/lib/dominio/codigos-internos'
 import { VISTAS_DISENO, VISTAS_SEGUIMIENTO, enlaceDisenoCodigo, enlaceSeguimientoCodigo, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
 import { fecha } from '@/lib/format'
@@ -69,7 +70,12 @@ export async function ListaDeCodigosDeDiseno({
 
   const todos = await codigosDeDiseno()
   const llave = llaveParecido(q)
-  const buscados = q ? todos.filter((c) => c.codigo.includes(q.toUpperCase()) || (llave && llaveParecido(c.codigo).includes(llave))) : todos
+  const palabras = palabrasDeBusqueda(q)
+  // Por código, con su llave de parecidos (SR-04, SR 4…), o por la placa y el
+  // vehículo que la fila muestra: quien busca «y14966» la está viendo ahí.
+  const buscados = q
+    ? todos.filter((c) => c.codigo.includes(q.toUpperCase()) || (llave && llaveParecido(c.codigo).includes(llave)) || coincide(palabras, [c.codigo, c.unidad]))
+    : todos
   const codigos = filtro ? buscados.filter(filtro.cumple) : buscados
 
   return (
@@ -100,7 +106,7 @@ export async function ListaDeCodigosDeDiseno({
       )}
 
       <div className="mb-3 space-y-3">
-        <BuscadorSimple ruta={ruta} etiqueta="Buscar código interno" marcador="Código interno, por ejemplo SR_04" />
+        <BuscadorSimple ruta={ruta} etiqueta="Buscar código interno" marcador="Código, placa o vehículo" />
         <PastillaFiltro
           ruta={ruta}
           clave="ver"

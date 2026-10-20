@@ -36,7 +36,10 @@ export function BuscadorSimple({
   const [vista, setVista] = useState(actual)
   if (actual !== vista) {
     setVista(actual)
+    // El eco de lo pedido se consume: si después «atrás» trae ese mismo valor,
+    // ya no es eco y la caja lo sigue.
     if (actual !== pedido) setBusqueda(actual)
+    setPedido(null)
   }
 
   useEffect(() => {

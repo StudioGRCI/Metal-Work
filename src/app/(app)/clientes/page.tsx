@@ -54,8 +54,8 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
     <>
       <EncabezadoPagina
         titulo="Clientes"
-        descripcion={busqueda && total > 0
-          ? `${total === 1 ? '1 cliente' : `${total} clientes`} con «${busqueda}»`
+        descripcion={busqueda
+          ? total === 0 ? `Ningún cliente con «${busqueda}»` : `${total === 1 ? '1 cliente' : `${total} clientes`} con «${busqueda}»`
           : total === 1 ? '1 cliente registrado' : `${total} clientes registrados`}
         acciones={
           <div className="flex flex-wrap items-center gap-3">
@@ -118,7 +118,9 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                 // teléfono del cliente ni de dónde es.
                 const enElTelefono = [
                   `${c.tipo_documento} ${c.numero_documento}`, c.telefono, ubicacion,
-                  `${unidades} ${unidades === 1 ? 'unidad' : 'unidades'}`, `${ordenes} ${ordenes === 1 ? 'orden' : 'órdenes'}`,
+                  // Espacio duro entre la cifra y su nombre: si la línea se parte,
+                  // no deja el «0» arriba y «unidades» abajo.
+                  `${unidades}\u00a0${unidades === 1 ? 'unidad' : 'unidades'}`, `${ordenes}\u00a0${ordenes === 1 ? 'orden' : 'órdenes'}`,
                 ].filter(Boolean).join(' · ')
 
                 return (

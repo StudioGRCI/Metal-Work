@@ -1,6 +1,7 @@
 /**
  * Recorre con tecleo real los buscadores de las listas, con la cuenta del
- * puesto que usa cada una (nunca ADMIN), en el teléfono y en el monitor:
+ * puesto que usa cada una, en el teléfono y en el monitor. Nunca ADMIN, salvo
+ * en Personal: `usuarios.ver` solo lo tiene el administrador (`docs/PERMISOS.md`).
  *
  *   1. Se busca sin tildes y encuentra con tilde («nunez» → «NÚÑEZ»).
  *   2. Las palabras van en cualquier orden («agua cisterna» → «CISTERNA DE AGUA»).
@@ -93,7 +94,7 @@ for (const [puesto, [rol, area]] of Object.entries(PROPIAS)) {
   }
   await consulta(`update auth.users set encrypted_password = crypt($2, gen_salt('bf')) where email = $1`, [correo, CLAVE])
 }
-const almacenero = (await uno(`select id from public.usuarios where correo = $1`, [cuenta('logistica')])).id
+const logistico = (await uno(`select id from public.usuarios where correo = $1`, [cuenta('logistica')])).id
 for (const [codigo, descripcion] of [[`BUS-${sello}-1`, MATERIAL], [`BUS-${sello}-2`, PLANCHA]]) {
   const { id } = await uno(
     `insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
@@ -104,10 +105,10 @@ for (const [codigo, descripcion] of [[`BUS-${sello}-1`, MATERIAL], [`BUS-${sello
   // Con saldo, para que aparezca en el stock de Supervisión, y una salida a un
   // código interno, para que ese código tenga gasto.
   await consulta(`insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por, precio_unitario, moneda, registrado_en)
-                  values (gen_random_uuid(), 'INGRESO', $1, 5, 'INGRESO_GENERAL', 'Banco de buscadores', $2, 10, 'PEN', now() - interval '1 hour')`, [id, almacenero])
+                  values (gen_random_uuid(), 'INGRESO', $1, 5, 'INGRESO_GENERAL', 'Banco de buscadores', $2, 10, 'PEN', now() - interval '1 hour')`, [id, logistico])
   await consulta(`insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por,
                                                              recibido_por_nombre, codigo_unidad, codigo_interno, cantidad_de_stock)
-                  values (gen_random_uuid(), 'SALIDA', $1, 1, 'SALIDA_GENERAL', 'Banco de buscadores', $2, 'Área de banco', $3, $3, 1)`, [id, almacenero, CODIGO])
+                  values (gen_random_uuid(), 'SALIDA', $1, 1, 'SALIDA_GENERAL', 'Banco de buscadores', $2, 'Área de banco', $3, $3, 1)`, [id, logistico, CODIGO])
 }
 const clienteId = (await uno(`insert into public.clientes (tipo_documento, numero_documento, razon_social) values ('RUC', $1, $2) returning id`, [await rucLibre('clientes'), CLIENTE])).id
 await consulta(`insert into public.clientes (tipo_documento, numero_documento, razon_social) values ('RUC', $1, $2)`, [await rucLibre('clientes'), GEMELO])
@@ -127,20 +128,20 @@ await consulta(
 )
 const SERVICIO = `QA-OS-BUS-${sello}`
 await consulta(`insert into public.ordenes_servicio (numero, proveedor_id, proveedor, descripcion, monto, codigo_interno, creado_por) values ($1, $2, $3, 'Torneado de prueba', 1, $4, $5)`,
-  [SERVICIO, proveedorId, PROVEEDOR, CODIGO, almacenero])
+  [SERVICIO, proveedorId, PROVEEDOR, CODIGO, logistico])
 const SUBCONTRATO = `QA-SC-BUS-${sello}`
 await consulta(`insert into public.subcontratos (numero, subcontratista_id, codigo_interno, descripcion, moneda, monto, creado_por)
-                values ($1, (select id from public.subcontratistas order by nombre limit 1), $2, 'Subcontrato de prueba', 'PEN', 1, $3)`, [SUBCONTRATO, CODIGO, almacenero])
+                values ($1, (select id from public.subcontratistas order by nombre limit 1), $2, 'Subcontrato de prueba', 'PEN', 1, $3)`, [SUBCONTRATO, CODIGO, logistico])
 // Dos trabajadores inventados que se parecen: la búsqueda deja uno solo.
 const DNI = `9${sello}`
 const TRABAJADOR = `ZÚÑIGA PEÑA ${sello}, ÁNGEL`
 const OTRO = `ZÚÑIGA ROJAS ${sello}, MARÍA`
 await consulta(`insert into public.trabajadores (nombres, apellidos, dni, creado_por) values ('ÁNGEL', $1, $2, $5), ('MARÍA', $3, $4, $5)`,
-  [`ZÚÑIGA PEÑA ${sello}`, `${DNI}1`, `ZÚÑIGA ROJAS ${sello}`, `${DNI}2`, almacenero])
+  [`ZÚÑIGA PEÑA ${sello}`, `${DNI}1`, `ZÚÑIGA ROJAS ${sello}`, `${DNI}2`, logistico])
 // Una planilla en preparación con alguien, para que salga el reparto entre OT.
 const planilla = await uno(`insert into public.planillas (tipo, periodo, moneda, registrado_por) values ('TALLER', '2099-12-01', 'PEN', $1)
-                            on conflict (tipo, periodo) do update set tipo = excluded.tipo returning id, estado`, [almacenero])
-await consulta(`insert into public.planilla_personas (planilla_id, nombre, monto, registrado_por) values ($1, $2, 1, $3)`, [planilla.id, `PERSONA BANCO ${sello}`, almacenero])
+                            on conflict (tipo, periodo) do update set tipo = excluded.tipo returning id, estado`, [logistico])
+await consulta(`insert into public.planilla_personas (planilla_id, nombre, monto, registrado_por) values ($1, $2, 1, $3)`, [planilla.id, `PERSONA BANCO ${sello}`, logistico])
 console.log(`Sembrado con el sello ${sello} (OT ${ot.numero}).`)
 
 // ---------------------------------------------------------------- navegador
@@ -295,6 +296,21 @@ for (const ancho of [390, 1280]) {
       `Kardex (almacén): el Excel con el mismo filtro trae ${enElExcel} fila con ${CODIGO} y la base tiene ${enLaBase}`)
   }
 
+  // «Registrar ingreso» de Almacén sugiere del catálogo sin tildes: con
+  // «angulo» tiene que ofrecer el ÁNGULO, o entraría como material nuevo.
+  {
+    const { pagina } = await sesion('almacen')
+    await pagina.goto(`${BASE}/almacen/kardex`, { waitUntil: 'networkidle' })
+    await pagina.getByRole('button', { name: 'Registrar ingreso' }).click()
+    await pagina.locator('#ing-material').pressSequentially(`angulo ${sello}`, { delay: 15 })
+    const sugerida = pagina.getByRole('list', { name: 'Del catálogo' }).getByRole('button', { name: new RegExp(sello) })
+    const n = await hasta(() => sugerida.count(), (x) => x === 1)
+    if (n === 1) await sugerida.click()
+    const dice = await hasta(() => textoDe(pagina).then(() => pagina.locator('form:has(#ing-material)').innerText()), (t) => t.includes('Del catálogo:'))
+    comprobar(n === 1 && dice.includes(`Del catálogo: ${MATERIAL}`), `Ingreso a Almacén: «angulo ${sello}» sugiere «${MATERIAL}» y al elegirlo lo toma del catálogo`)
+    await pagina.keyboard.press('Escape')
+  }
+
   // Las listas enteras, sin filtro, tampoco se corren: una fila con un texto
   // largo basta para empujar la tabla fuera de su tarjeta.
   for (const [puesto, ruta] of [['almacen', '/almacen/kardex'], ['logistica', '/compras/servicios'], ['ventas', '/unidades'], ['diseno', '/materiales'], ['logistica', '/compras/valorizacion']]) {
@@ -321,6 +337,20 @@ for (const ancho of [390, 1280]) {
     } else {
       comprobar(false, 'Códigos de Diseño (diseño): la lista está vacía y no hay qué buscar')
     }
+
+    // La fila muestra la placa y el vehículo: buscar la placa sin guion la encuentra.
+    await pagina.goto(`${BASE}/diseno/planos`, { waitUntil: 'networkidle' })
+    const conUnidad = await pagina.locator('main [data-codigo]:visible').evaluateAll((l) => l
+      .map((a) => ({ codigo: a.getAttribute('data-codigo'), unidad: a.querySelector('p.text-xs')?.textContent ?? '' }))
+      .find((f) => f.unidad.includes(' · ')))
+    if (conUnidad) {
+      const placa = conUnidad.unidad.split(' · ')[0].toLowerCase().replace(/[^a-z0-9]/g, '')
+      await buscar(pagina, 'Buscar código interno', 'q', placa)
+      const despues = await hasta(codigos, (v) => v.includes(conUnidad.codigo))
+      comprobar(despues.includes(conUnidad.codigo), `Códigos de Diseño (diseño): la placa «${placa}» encuentra ${conUnidad.codigo} (${despues.length} a la vista)`)
+    } else {
+      comprobar(false, 'Códigos de Diseño (diseño): ningún código muestra su placa y no hay qué buscar')
+    }
   }
 
   // Un término que no está: el estado vacío lo dice con lo que se escribió.
@@ -330,11 +360,19 @@ for (const ancho of [390, 1280]) {
     await buscar(pagina, 'Buscar clientes', 'q', `zzz${sello}`)
     const t = await hasta(() => textoDe(pagina), (x) => x.includes('Ningún cliente coincide'))
     comprobar(t.includes('Ningún cliente coincide') && t.includes(`zzz${sello}`), 'Clientes: sin resultados lo dice, con lo que se escribió')
+    comprobar(t.includes(`Ningún cliente con «zzz${sello}»`) && !/\b0 clientes registrados/.test(t), 'Clientes: la cabecera dice «Ningún cliente con…», no que el padrón está vacío')
     // «Ver todos los clientes» cambia la URL por fuera del buscador: la caja la sigue.
     await pagina.getByRole('link', { name: 'Ver todos los clientes' }).first().click()
     await pagina.waitForURL((u) => !new URL(u).searchParams.has('q'), { timeout: 15000 }).catch(() => {})
     const caja = await hasta(() => pagina.getByRole('searchbox', { name: 'Buscar clientes' }).inputValue(), (v) => v === '')
     comprobar(caja === '', `Clientes: «Ver todos los clientes» vacía también la caja («${caja}»)`)
+    // Y «atrás» vuelve a la búsqueda: la caja la retoma y no se queda buscando.
+    await pagina.goBack()
+    await pagina.waitForURL((u) => new URL(u).searchParams.get('q') === `zzz${sello}`, { timeout: 15000 }).catch(() => {})
+    const vuelta = await hasta(() => pagina.getByRole('searchbox', { name: 'Buscar clientes' }).inputValue(), (v) => v === `zzz${sello}`)
+    await pagina.waitForTimeout(1500)
+    const girando = await pagina.locator('main .animate-spin').count()
+    comprobar(vuelta === `zzz${sello}` && girando === 0, `Clientes: «atrás» devuelve la búsqueda a la caja («${vuelta}») sin quedarse buscando (${girando} girando)`)
   }
 
   // Los que filtran en el navegador: la asistencia de Portería…
@@ -378,6 +416,12 @@ for (const ancho of [390, 1280]) {
       await pagina.getByLabel('Razón social o RUC').pressSequentially(`nunez pena ${sello} sac`, { delay: 15 })
       const opcion = pagina.getByRole('option', { name: new RegExp(sello) })
       comprobar(await hasta(() => opcion.count(), (n) => n === 1) === 1, `Orden nueva (administración): el desplegable de clientes encuentra «${CLIENTE}» con «nunez pena … sac», sin su gemelo E.I.R.L.`)
+      // Elegido, el nombre se lee entero: en el teléfono quedaba en «TRANS…».
+      await opcion.click()
+      const etiqueta = disparador.locator('span').last()
+      const cortada = await etiqueta.evaluate((e) => e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1)
+      const visto = await etiqueta.innerText()
+      comprobar(ancho > 1000 || (!cortada && visto.includes(sello)), `Orden nueva (administración): el cliente elegido se lee entero en el desplegable («${visto}»)`)
     } else {
       comprobar(false, 'Orden nueva (administración): no se encontró el desplegable de clientes')
     }

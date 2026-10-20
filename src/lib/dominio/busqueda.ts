@@ -14,12 +14,12 @@
  * «3/16». Escritos o no, la palabra es la misma.
  */
 const DENTRO = /([a-z0-9])[._/-]+(?=[a-z0-9])/g
-const LETRAS = 24
+const LETRAS = 20
 
 /**
  * Las palabras que se buscan, en minúsculas y sin tildes; «S.A.C.» es una sola
  * palabra, «sac», y no tres letras sueltas que están en casi todo. Pocas y
- * cortas —cinco y veinticuatro letras entre todas—: cada letra viaja en la dirección
+ * cortas —cinco y veinte letras entre todas—: cada letra viaja en la dirección
  * de la consulta, una vez por columna, y una dirección demasiado larga la
  * rechaza el servidor.
  */
@@ -42,19 +42,19 @@ function plano(texto: string) {
   return texto.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '')
 }
 
-// Solo las tildes del castellano (y la diéresis de la u), en minúscula: el `~*`
-// de Postgres iguala «Ú» con «ú» en una base UTF-8 (`'NÚÑEZ' ~* 'ú'` da
-// verdadero en Supabase y en el banco), y cada letra de más alarga la dirección.
-// La O y el cero van juntos, como en `llaveParecido`: en los códigos internos se
-// escriben uno por otro («SR_O4» y «SR_04»).
+// Solo las tildes del castellano (y la diéresis de la u). Las mayúsculas con
+// tilde van escritas: el `~*` de Postgres iguala «a» con «A» siempre, pero «ú»
+// con «Ú» solo si la base no está en intercalación «C», y la de producción no
+// se comprobó. La O y el cero van juntos, como en `llaveParecido`: en los
+// códigos internos se escriben uno por otro («SR_O4» y «SR_04»).
 const VARIANTES: Record<string, string> = {
-  a: 'aá',
-  e: 'eé',
-  i: 'ií',
-  o: 'oó0',
+  a: 'aáÁ',
+  e: 'eéÉ',
+  i: 'iíÍ',
+  o: 'oóÓ0',
   '0': '0o',
-  u: 'uúü',
-  n: 'nñ',
+  u: 'uúüÚÜ',
+  n: 'nñÑ',
 }
 
 /**

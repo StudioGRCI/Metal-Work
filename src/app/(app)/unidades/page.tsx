@@ -142,7 +142,10 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                       {cliente ? (
                         <Link
                           href={`/clientes/${cliente.id}`}
-                          className="max-w-52 truncate text-acento hover:underline"
+                          title={cliente.razon_social}
+                          // `block`: en un enlace en línea el ancho máximo no
+                          // corta nada y la razón social empujaba la tabla.
+                          className="block max-w-52 truncate text-acento hover:underline"
                         >
                           {cliente.razon_social}
                         </Link>

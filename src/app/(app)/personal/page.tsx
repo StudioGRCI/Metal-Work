@@ -7,6 +7,7 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SinDatos, TH, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { catalogosDePersonal, listarPersonal } from '@/lib/datos/personal'
+import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AltaDePersona, FilaDePersona } from './acciones-personal'
@@ -25,7 +26,7 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
   const perfil = await exigirPermiso(['usuarios.ver', 'usuarios.gestionar'])
   const params = await searchParams
 
-  const busqueda = typeof params.q === 'string' ? params.q : undefined
+  const busqueda = typeof params.q === 'string' && palabrasDeBusqueda(params.q).length > 0 ? params.q : undefined
   const estado = typeof params.estado === 'string' ? params.estado : 'activos'
 
   const [personal, catalogos] = await Promise.all([
@@ -55,9 +56,13 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
       <EncabezadoPagina
         titulo="Personal"
         descripcion={
-          personal.length === 1
-            ? '1 persona'
-            : `${personal.length} personas · ${operarios} en el taller`
+          busqueda
+            ? personal.length === 0
+              ? `Nadie con «${busqueda}»`
+              : `${personal.length === 1 ? '1 persona' : `${personal.length} personas`} con «${busqueda}»`
+            : personal.length === 1
+              ? '1 persona'
+              : `${personal.length} personas · ${operarios} en el taller`
         }
         acciones={gestiona && <AltaDePersona catalogos={catalogos} />}
       />

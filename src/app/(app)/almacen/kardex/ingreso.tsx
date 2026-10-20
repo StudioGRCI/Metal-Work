@@ -5,6 +5,7 @@ import {Campo,Entrada,Seleccion} from '@/components/ui/campos'
 import {Ventana} from '@/components/ui/ventana'
 import {useEnvio} from '@/lib/envio'
 import type {MaterialParaConteo} from '@/lib/datos/atencion-materiales'
+import {coincide,palabrasDeBusqueda} from '@/lib/dominio/busqueda'
 import {registrarIngresoGeneral} from '../../materiales/atencion/acciones'
 
 const etiquetaDe=(m:MaterialParaConteo)=>`${m.codigo} · ${m.descripcion}${m.unidad?` (${m.unidad})`:''}`
@@ -24,15 +25,19 @@ export function NuevoIngreso({materiales,unidades,despachos}:{materiales:Materia
  const escrito=texto.trim().toUpperCase()
  const elegido=escrito?materiales.find(m=>etiquetaDe(m).toUpperCase()===escrito||m.codigo.toUpperCase()===escrito):undefined
  const libre=Boolean(escrito)&&!elegido
- const parecidos=escrito.length>=2&&!elegido?materiales.filter(m=>(m.descripcion+' '+m.codigo).toUpperCase().includes(escrito)).slice(0,100):materiales.slice(0,100)
+ // Como todo buscador: «angulo» sugiere «ÁNGULO 2 X 1/4». Antes era un datalist,
+ // que el navegador vuelve a filtrar a su modo (con tilde) y no lo sugería: el
+ // material entraba como nuevo y quedaba duplicado en «Por clasificar».
+ const palabras=palabrasDeBusqueda(texto)
+ const parecidos=palabras.length&&!elegido?materiales.filter(m=>coincide(palabras,[m.descripcion,m.codigo])).slice(0,8):[]
  return <><Boton onClick={()=>setAbierta(true)}>Registrar ingreso</Boton>
  <Ventana abierta={abierta} alCerrar={()=>setAbierta(false)} titulo="Ingreso a Almacén" descripcion="Registra lo que entró físicamente. Las compras de una OT se reciben desde Materiales de esa OT." ancho="lg">
  <form key={id} onSubmit={envio.alEnviar} className="space-y-5">
  <input type="hidden" name="operacion_id" value={id}/>
  {elegido?<input type="hidden" name="material_id" value={elegido.id}/>:<input type="hidden" name="material_nuevo_id" value={materialNuevo}/>}
  <Campo etiqueta="Material" htmlFor="ing-material" requerido ayuda="Escríbelo como lo conoces. Si aparece en la lista, elígelo; si no, entra como material nuevo.">
- <Entrada id="ing-material" name="descripcion" list="ing-catalogo" value={texto} onChange={e=>setTexto(e.target.value)} required minLength={3} maxLength={200} autoComplete="off" placeholder="Ej.: Disco de corte 7 pulgadas"/>
- <datalist id="ing-catalogo">{parecidos.map(m=><option key={m.id} value={etiquetaDe(m)}/>)}</datalist>
+ <Entrada id="ing-material" name="descripcion" value={texto} onChange={e=>setTexto(e.target.value)} required minLength={3} maxLength={200} autoComplete="off" placeholder="Ej.: Disco de corte 7 pulgadas"/>
+ {parecidos.length>0&&<ul aria-label="Del catálogo" className="mt-1 divide-y divide-borde rounded-[var(--radius-base)] border border-borde">{parecidos.map(m=><li key={m.id}><button type="button" onClick={()=>setTexto(etiquetaDe(m))} className="flex min-h-11 w-full items-center px-3 py-1.5 text-left text-sm text-texto hover:bg-superficie-2 sm:min-h-9"><span className="line-clamp-2">{etiquetaDe(m)}</span></button></li>)}</ul>}
  </Campo>
  {elegido&&<p className="-mt-3 text-xs text-exito">Del catálogo: {elegido.descripcion}{elegido.unidad?`, en ${elegido.unidad}`:''}.</p>}
  {libre&&<p className="-mt-3 text-xs text-texto-suave">No está en el catálogo: se dará de alta como material nuevo, por clasificar.</p>}
