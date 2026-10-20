@@ -38,6 +38,10 @@ begin
     alter table public.trabajadores add constraint ck_trabajador_planilla check (planilla in ('TALLER', 'ADMINISTRATIVA'));
   end if;
 end $$;
+-- Por columna, como el resto de la ficha que no es reservada: la revisión
+-- (20261020165000) le quita a authenticated el select de la tabla entera y
+-- devuelve columna por columna; sin esta línea nadie leería la planilla.
+grant select (planilla) on public.trabajadores to authenticated;
 comment on column public.trabajadores.planilla is
   'En qué planilla va la persona: TALLER (la gente de las unidades, la que el supervisor pone en el reporte diario) o ADMINISTRATIVA (la oficina). La elige RR. HH. en la ficha.';
 
