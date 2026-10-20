@@ -445,8 +445,9 @@ drop function if exists public.sueldos_oficina_del_mes(date);
 -- consultado el 2026-10-20), o el mes de su primer pago si le registraron uno
 -- anterior. Por persona y por mes entero: si fuera el primer pago de todos, una
 -- corrección de agosto de una sola persona pondría en falta a toda la oficina, y
--- una primera quincena del 16 borraría la falta del 1 al 15. Cuentan también los
--- anulados: anular el único pago de alguien no puede borrar lo que le falta.
+-- una primera quincena del 16 borraría la falta del 1 al 15. Solo los vigentes: un
+-- pago con el año mal escrito, ya anulado, no deja a la persona en falta desde
+-- entonces (en un mes con horas la falta ya cuenta por el primer mes con horas).
 -- sueldos_oficina_del_mes adelanta además el inicio al primer mes con horas por
 -- código: RR. HH. puede cargar horas de hasta un año atrás, y ese mes cerraría sin
 -- la oficina y sin aviso.
@@ -456,7 +457,7 @@ create or replace function public.inicio_registro_pagos_oficina(p_trabajador_id 
 returns date language sql stable set search_path to 'public' as $$
   select least(date_trunc('month', min(p.desde))::date, date '2026-10-01')
     from public.oficina_pagos p
-   where p.trabajador_id = p_trabajador_id
+   where p.trabajador_id = p_trabajador_id and p.anulado_en is null
      and not exists (select 1 from public.pruebas_filas f where f.tabla = 'oficina_pagos' and f.fila_id = p.id)
 $$;
 revoke all on function public.inicio_registro_pagos_oficina(uuid) from public, anon, authenticated;

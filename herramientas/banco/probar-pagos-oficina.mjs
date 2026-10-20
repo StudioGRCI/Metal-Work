@@ -257,11 +257,13 @@ try {
     await b.getByRole('button', { name: 'Dar de baja' }).click()
     const rechazo = limpio(await b.getByRole('alert').innerText({ timeout: 20000 }).catch(() => ''))
     comprobar(rechazo.includes('Tiene pagos de la oficina después'), `la baja que deja fuera un pago se rechaza y lo dice: «${rechazo}»`)
-    await b.locator('input[name="fecha_baja"]').fill(hoy < `${mes}-15` ? `${mes}-15` : hoy)
+    // La baja, la víspera de hoy si ya pasó la primera quincena: así vuelve hoy y no queda un ingreso en el futuro.
+    const ultimo = sumarDias(hoy, -1) < `${mes}-15` ? `${mes}-15` : sumarDias(hoy, -1)
+    await b.locator('input[name="fecha_baja"]').fill(ultimo)
     await b.getByRole('button', { name: 'Dar de baja' }).click()
     await b.waitFor({ state: 'detached', timeout: 20000 }).catch(() => {})
     const [w] = await consulta(`select activo, fecha_baja::text from trabajadores where id = $1`, [asistente.id])
-    comprobar(w.activo === false && w.fecha_baja === (hoy < `${mes}-15` ? `${mes}-15` : hoy), `queda de baja con su último día (${w.fecha_baja})`)
+    comprobar(w.activo === false && w.fecha_baja === ultimo, `queda de baja con su último día (${w.fecha_baja})`)
     await pagina.goto(`${BASE}/rrhh/personal?estado=todos`, { waitUntil: 'networkidle' })
     // Vuelve a entrar al día siguiente de su baja: el periodo anterior queda anotado.
     const vuelve = sumarDias(w.fecha_baja, 1)
@@ -275,6 +277,9 @@ try {
     comprobar(alta.activo && alta.fecha_baja === null && alta.fecha_ingreso === vuelve
               && periodos.length === 1 && periodos[0].ingreso === `${mes}-01` && periodos[0].baja === w.fecha_baja,
       `vuelve de alta con su día de reingreso y el periodo anterior anotado: ${JSON.stringify({ alta, periodos })}`)
+    await pagina.reload({ waitUntil: 'networkidle' })
+    const filaAntes = limpio(await pagina.locator('tr', { hasText: NOMBRE }).innerText())
+    comprobar(filaAntes.includes(`Antes: del ${dd(`${mes}-01`)} al ${dd(w.fecha_baja)}`), `la ficha muestra lo que trabajó antes: «${filaAntes.slice(-140)}»`)
   }
 
   // ------------------------------------------------------- 6. Ventas fuera; el teléfono

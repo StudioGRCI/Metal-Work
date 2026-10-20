@@ -3,7 +3,7 @@ import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { areasParaPersonal, listarTrabajadores, type Trabajador } from '@/lib/datos/rrhh'
+import { areasParaPersonal, listarTrabajadores, periodosAnteriores, type Trabajador } from '@/lib/datos/rrhh'
 import { HORAS_DEL_MES, TIPO_CUENTA, horaCorta } from '@/lib/dominio/rrhh'
 import { fecha, hoyLima, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -26,7 +26,12 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
   const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const filtro = params.estado === 'todos' ? 'todos' : 'activos'
-  const [personal, areas] = await Promise.all([listarTrabajadores(filtro), areasParaPersonal()])
+  // Los periodos de quien volvió a entrar solo los lee RR. HH.
+  const [personal, areas, periodos] = await Promise.all([
+    listarTrabajadores(filtro),
+    areasParaPersonal(),
+    gestiona ? periodosAnteriores() : Promise.resolve(new Map<string, { ingreso: string | null; baja: string }[]>()),
+  ])
 
   return (
     <>
@@ -71,7 +76,9 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
                 descripcion={gestiona ? 'Registra a la primera persona con el botón de arriba.' : 'Recursos Humanos registra al personal.'}
               />
             ) : (
-              personal.map((t) => <FilaTrabajador key={t.id} trabajador={t} areas={areas} gestiona={gestiona} hoy={hoy} />)
+              personal.map((t) => (
+                <FilaTrabajador key={t.id} trabajador={t} areas={areas} gestiona={gestiona} hoy={hoy} antes={periodos.get(t.id) ?? []} />
+              ))
             )}
           </tbody>
         </Tabla>
@@ -85,11 +92,14 @@ function FilaTrabajador({
   areas,
   gestiona,
   hoy,
+  antes,
 }: {
   trabajador: Trabajador
   areas: { id: string; codigo: string; nombre: string }[]
   gestiona: boolean
   hoy: string
+  /** Los periodos que ya trabajó antes de volver a entrar. */
+  antes: { ingreso: string | null; baja: string }[]
 }) {
   const horario = `${horaCorta(t.hora_entrada)} – ${horaCorta(t.hora_salida)}`
   return (
@@ -151,6 +161,11 @@ function FilaTrabajador({
           {t.fecha_ingreso ? `Desde el ${fecha(t.fecha_ingreso)}` : 'Sin fecha de ingreso'}
           {t.fecha_baja && ` · hasta el ${fecha(t.fecha_baja)}`}
         </p>
+        {antes.map((q) => (
+          <p key={q.baja} className="tabular text-[11px] text-texto-suave">
+            Antes: {q.ingreso ? `del ${fecha(q.ingreso)} ` : ''}al {fecha(q.baja)}
+          </p>
+        ))}
       </TD>
       {gestiona && (
         <TD className="text-right align-top">
