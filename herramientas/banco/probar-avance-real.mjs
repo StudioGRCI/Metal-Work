@@ -264,7 +264,7 @@ let idViernes = null
   // Aunque se salte el navegador, la base tampoco lo deja.
   await avanceDe(pagina, 1).evaluate((e) => e.removeAttribute('min'))
   const r9 = await subir(pagina)
-  comprobar(!r9.id && r9.error.includes('ya iba en 9 %') && r9.error.includes('pon 10 % o más'), `ni la base: «${r9.error}»`)
+  comprobar(!r9.id && r9.error.includes('ya iba en 9 %') && r9.error.includes('10 % o más'), `ni la base: «${r9.error}»`)
 
   // Otra «Corte de materia prima» nueva tampoco: se continúa la que hay.
   await avanceDe(pagina, 1).fill('10')

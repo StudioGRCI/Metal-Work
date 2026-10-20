@@ -171,3 +171,12 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   de setiembre. Ninguna verificación lo ve, porque el tipo no cambió. Antes de
   cambiar el valor de una columna que ya se muestra, buscar en `src/` quién la
   lee (`grep -n "l.fecha\|'GASTOS_DEL_MES'"`) y mirar esa pantalla.
+
+- **Un avance que se mide por partes no se vuelve a contar en el promedio.** En
+  la `20261020100000` el plano con peso aportaba su parte de la unidad y, además,
+  su actividad entraba al promedio de su etapa, que mide el resto: ponerle 25 %
+  a un plano subía la unidad de 33 a 49 sin trabajo nuevo, y los checks lo daban
+  por bueno porque sus cifras esperadas se calcularon con la misma regla. Lo vio
+  el auditor, no la prueba. Cuando una cifra sale de dos partes, escribir en el
+  check la cuenta a mano con lo que **no** debe entrar en cada parte, y que la
+  pantalla pinte las partes que da la base en vez de recalcularlas.

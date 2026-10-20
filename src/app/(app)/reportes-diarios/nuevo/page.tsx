@@ -3,6 +3,7 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { opcionesDeTrabajo, personalParaReporte, reporteDiario } from '@/lib/datos/reportes-diarios'
 import { codigosInternos } from '@/lib/datos/rrhh'
+import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { AREA_QUE_VALIDA, DIAS_PARA_EL_REPORTE, estadoDeReporte } from '@/lib/dominio/reporte-diario'
 import { hoyLima, sumarDias } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
@@ -61,7 +62,8 @@ export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/r
             ? `PLANO:${t.plano_id}`
             : t.subcontrato_id
               ? `SUBCONTRATO:${t.subcontrato_id}`
-              : t.actividad_id
+              : // PLANTA no lleva avance ni actividades que sigan: su trabajo va suelto.
+                t.actividad_id && normalizarCodigo(observado.codigo_interno) !== CODIGO_SIN_AVANCE
                 ? `ACTIVIDAD:${t.actividad_id}`
                 : 'NUEVA',
           descripcion: t.descripcion,

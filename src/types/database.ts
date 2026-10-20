@@ -10867,6 +10867,34 @@ export type Database = {
           personas: number | null
         }[]
       }
+      codigo_interno_avance_calculado: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          peso: number | null
+          de_planos: number | null
+          resto: number | null
+          resto_por: string | null
+          etapas: number | null
+          etapas_terminadas: number | null
+          trabajos: number | null
+          trabajos_terminados: number | null
+          ultimo_reporte: string | null
+        }[]
+      }
+      codigo_interno_avance_partes: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          peso: number | null
+          de_planos: number | null
+          resto: number | null
+          resto_por: string | null
+        }[]
+      }
       codigo_interno_avance_planos: {
         Args: {
           p_codigo: string | null
@@ -10902,15 +10930,6 @@ export type Database = {
           por_etapa: boolean | null
           ultima_fecha: string | null
           reportes: number | null
-        }[]
-      }
-      codigo_interno_avance_resto: {
-        Args: {
-          p_codigo: string | null
-        }
-        Returns: {
-          etapa_id: string | null
-          avance: number | null
         }[]
       }
       codigo_interno_compras: {

@@ -40,7 +40,8 @@ const CANTIDAD = z.preprocess(
 const PESO = z.preprocess(
   // Vacío no es cero: z.coerce lo volvería 0 y el plano entraría sin que Diseño lo decida.
   (v) => (typeof v !== 'string' || v.trim() === '' ? undefined : v.trim().replace(/\s|%/g, '').replace(',', '.')),
-  z.coerce.number().min(0).max(100).refine((n) => Math.round(n * 100) === n * 100),
+  // Los dos decimales se miran en el texto: en coma flotante 16.67 * 100 no da 1667 y se rechazaba.
+  z.string().regex(/^\d{1,3}(\.\d{1,2})?$/).transform(Number).pipe(z.number().min(0).max(100)),
 )
 const PESO_MAL = 'Pon el porcentaje de la unidad que representa el plano: de 0 a 100, con hasta dos decimales.'
 

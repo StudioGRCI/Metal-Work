@@ -90,11 +90,11 @@ export async function opcionesDelCodigo(codigo: string, corrige: string | null):
   const analisis = z
     .object({ codigo: z.string().trim().min(2).max(60), corrige: z.guid().nullable() })
     .safeParse({ codigo, corrige })
-  if (!analisis.success) return { ok: true, datos: [] }
+  if (!analisis.success) return { ok: false, error: 'Revisa el código interno: de 2 a 60 caracteres.' }
   try {
     return { ok: true, datos: await opcionesDeTrabajo(analisis.data.codigo, analisis.data.corrige) }
-  } catch {
-    return { ok: false, error: 'No se pudo leer qué hay para reportar en ese código. Revisa la conexión y vuelve a intentar.' }
+  } catch (e) {
+    return { ok: false, error: mensajeDeError({ message: e instanceof Error ? e.message : String(e) }) }
   }
 }
 

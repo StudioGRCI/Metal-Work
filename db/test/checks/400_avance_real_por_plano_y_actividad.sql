@@ -205,7 +205,7 @@ select test.afirmar(
 -- El viernes: el corte otra vez en 9 % no entra; en 10 %, sí.
 select test.debe_fallar(pg_temp.reporte_sql(pg_temp.txt('rep_vie'), 2, jsonb_build_array(
     pg_temp.trabajo('actividad_id', pg_temp.actividad('Corte de materia prima'), 9))),
-  'el corte no repite el 9 % del jueves', 'ya iba en 9 % (reporte del ' || to_char(pg_temp.dia(3), 'DD/MM/YYYY') || '): pon 10 % o más');
+  'el corte no repite el 9 % del jueves', 'ya iba en 9 % (reporte del ' || to_char(pg_temp.dia(3), 'DD/MM/YYYY') || '): pon en cuánto va ahora, 10 % o más');
 select test.debe_fallar(pg_temp.reporte_sql(pg_temp.txt('rep_vie'), 2, jsonb_build_array(
     pg_temp.trabajo('descripcion', 'corte de MATERIA prima', 12))),
   'ni se vuelve a abrir con otro nombre igual', 'Ya hay una actividad abierta «Corte de materia prima»');
@@ -295,7 +295,7 @@ set local role authenticated;
 select test.debe_fallar(format('select public.registrar_reporte_corregido(%L, %L, %L, %L, ''Avance de la tolva'', ''Corregido'', %L)',
     pg_temp.txt('rep_vie'), pg_temp.txt('rep_vie2'), pg_temp.dia(2), pg_temp.txt('codigo'),
     jsonb_build_array(pg_temp.trabajo('actividad_id', pg_temp.actividad('Corte de materia prima'), 9))),
-  'la corrección tampoco baja del jueves', 'pon 10 % o más');
+  'la corrección tampoco baja del jueves', '10 % o más');
 select public.registrar_reporte_corregido(pg_temp.id('rep_vie'), pg_temp.id('rep_vie2'), pg_temp.dia(2), pg_temp.txt('codigo'),
   'Avance de la tolva', 'Corregido con la gente del cajón', jsonb_build_array(
     pg_temp.trabajo('actividad_id', pg_temp.actividad('Corte de materia prima'), 10),
@@ -328,16 +328,14 @@ select test.afirmar(
          from public.codigo_interno_avance_planos(pg_temp.txt('codigo')) where plano_id = pg_temp.id('p2')),
   'Gerencia ve lo que aporta cada plano: el cajón 20, el bastidor 0');
 select test.afirmar(
-  (select avance_reportado from public.codigo_interno_etapas(pg_temp.txt('codigo')) where nombre = 'Habilitado') = 30
+  (select avance_reportado from public.codigo_interno_etapas(pg_temp.txt('codigo')) where nombre = 'Habilitado') = 10
   and (select avance_reportado from public.codigo_interno_etapas(pg_temp.txt('codigo')) where nombre = 'Armado') = 26,
-  'cada etapa dice el promedio de las actividades de su área');
+  'cada etapa dice el promedio de las actividades de su área sin el cajón, que ya contó por su plano');
 select test.afirmar(
-  (select r.avance from public.codigo_interno_avance_resto(pg_temp.txt('codigo')) r
-     join public.codigo_etapas e on e.id = r.etapa_id where e.nombre = 'Habilitado') = 10
-  and (select r.avance from public.codigo_interno_avance_resto(pg_temp.txt('codigo')) r
-     join public.codigo_etapas e on e.id = r.etapa_id where e.nombre = 'Armado') = 26
-  and (select count(*) from public.codigo_interno_avance_resto(pg_temp.txt('codigo'))) = 6,
-  'en lo que se mide por etapas, el Habilitado vale 10: el cajón ya contó por su plano');
+  (select peso = 70 and de_planos = 20 and resto = 6 and resto_por = 'ETAPAS'
+     from public.codigo_interno_avance_partes(pg_temp.txt('codigo'))),
+  format('las dos partes: 20 de los planos y las etapas en 6 %% (salió %s)',
+         (select to_jsonb(k) from public.codigo_interno_avance_partes(pg_temp.txt('codigo')) k)));
 select test.afirmar((select count(*) from public.codigo_actividades where codigo_interno = pg_temp.txt('codigo')) = 3,
   'Gerencia ve las tres actividades');
 -- El costo sale de las horas: Juan, 1 h el miércoles, 1 h el jueves y 2 h el viernes corregido, a S/ 10.
@@ -354,7 +352,7 @@ select test.afirmar(
   'el supervisor de Maestranza ve solo su plano y sus dos actividades');
 select test.debe_fallar(format('select * from public.codigos_internos_avance(%L)', pg_temp.txt('codigo')),
   'el porcentaje de la unidad es de Gerencia', 'codigos_internos.ver');
-select test.debe_fallar(format('select * from public.codigo_interno_avance_resto(%L)', pg_temp.txt('codigo')),
+select test.debe_fallar(format('select * from public.codigo_interno_avance_partes(%L)', pg_temp.txt('codigo')),
   'cómo sale el porcentaje, también', 'codigos_internos.ver');
 select test.debe_fallar(format('select * from public.codigo_interno_resto_por_area_calculado(%L)', pg_temp.txt('codigo')),
   'el cálculo interno del resto no se llama directo', 'permission denied');
@@ -445,6 +443,39 @@ select pg_temp.subir(gen_random_uuid()::text, 0, jsonb_build_array(
 select test.afirmar(
   (select count(*) from public.codigo_actividades where codigo_interno = pg_temp.txt('codigo') and lower(descripcion) = 'corte de materia prima') = 2,
   'un corte nuevo, aparte del terminado');
+reset role;
+
+-- ======================================================= 7. Lo que ya no está vigente, y PLANTA
+-- La actividad de un plano no se reporta por su id: se elige el plano, que es donde se mira si sigue vigente.
+select pg_temp.como('sup_mtz');
+set local role authenticated;
+select test.debe_fallar(pg_temp.reporte_sql(gen_random_uuid()::text, 0, jsonb_build_array(
+    pg_temp.trabajo('actividad_id', (select id::text from public.codigo_actividades where plano_id = pg_temp.id('p1')), 90))),
+  'la actividad de un plano no entra por su id', 'elígelo como tal');
+reset role;
+-- Diseño anula el cajón: su actividad deja de contar, porque ya nadie la puede reportar ni cerrar.
+select pg_temp.como('gerente');
+set local role authenticated;
+select set_config('prueba.trabajos_antes', pg_temp.avance('trabajos'), true);
+reset role;
+select pg_temp.como('diseno');
+set local role authenticated;
+select public.anular_plano_codigo(pg_temp.id('p1'), 'Se rehízo el cajón con otra medida');
+reset role;
+select pg_temp.como('gerente');
+set local role authenticated;
+select test.afirmar(pg_temp.avance('trabajos')::int = current_setting('prueba.trabajos_antes')::int - 1,
+  format('la actividad del plano anulado ya no cuenta (%s → %s trabajos)', current_setting('prueba.trabajos_antes'), pg_temp.avance('trabajos')));
+reset role;
+-- PLANTA no lleva avance: el mismo trabajo de cada día va suelto, sin «ya hay una abierta» ni «solo hacia arriba».
+select pg_temp.como('sup_mtz');
+set local role authenticated;
+select public.registrar_reporte_diario(gen_random_uuid(), pg_temp.dia(2), 'PLANTA', 'Orden de la planta', 'Limpieza del área',
+  jsonb_build_array(pg_temp.trabajo('descripcion', 'Limpieza del área de soldadura', 50)), null, null);
+select public.registrar_reporte_diario(gen_random_uuid(), pg_temp.dia(1), 'PLANTA', 'Orden de la planta', 'Limpieza del área',
+  jsonb_build_array(pg_temp.trabajo('descripcion', 'Limpieza del área de soldadura', 50)), null, null);
+select test.afirmar((select count(*) from public.reporte_diario_opciones('PLANTA') where tipo = 'ACTIVIDAD') = 0,
+  'en PLANTA la limpieza de cada día va suelta, y no se ofrece para continuarla');
 reset role;
 
 -- La actividad no se corrige ni se borra por debajo, ni siquiera como dueño.

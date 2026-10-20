@@ -365,15 +365,23 @@ export async function aporteDeLosPlanos(codigo: string): Promise<AporteDePlano[]
   )
 }
 
-/**
- * Lo que vale cada etapa en la parte de la unidad que no se repartió en planos:
- * sin las actividades de un plano con porcentaje, que ya aportó por su cuenta.
- */
-export async function avanceDelResto(codigo: string): Promise<Map<string, number>> {
+/** Cómo sale el porcentaje de un código, en sus dos partes, tal como lo cuenta la base. */
+export type PartesDelAvance = {
+  /** Lo que Diseño repartió en planos (0 a 100) y lo que aportan a la unidad. */
+  peso: number
+  de_planos: number
+  /** El avance (0 a 100) de lo que no se repartió, y por qué se mide. */
+  resto: number
+  resto_por: 'ETAPAS' | 'ACTIVIDADES'
+}
+
+export async function partesDelAvance(codigo: string): Promise<PartesDelAvance | null> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('codigo_interno_avance_resto', { p_codigo: codigo })
-  if (error) throw new Error(`No se pudo leer cómo avanzan las etapas: ${error.message}`)
-  return new Map((data ?? []).flatMap((e) => (e.etapa_id ? [[e.etapa_id, n(e.avance)] as const] : [])))
+  const { data, error } = await supabase.rpc('codigo_interno_avance_partes', { p_codigo: codigo })
+  if (error) throw new Error(`No se pudo leer cómo sale el avance: ${error.message}`)
+  const k = data?.[0]
+  if (!k) return null
+  return { peso: n(k.peso), de_planos: n(k.de_planos), resto: n(k.resto), resto_por: k.resto_por === 'ETAPAS' ? 'ETAPAS' : 'ACTIVIDADES' }
 }
 
 /** Un trabajo de un reporte diario vigente del código. */

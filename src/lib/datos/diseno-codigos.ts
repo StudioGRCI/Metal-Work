@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { AREAS_DE_PLANOS } from '@/lib/dominio/diseno-codigos'
+import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -85,17 +86,17 @@ export type PlanoDeCodigo = {
 /** Los planos de un código, o todos los que la persona ve si no se da código. */
 export async function planosDeCodigo(codigo: string | null): Promise<PlanoDeCodigo[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('codigo_interno_planos', { p_codigo: codigo })
-  if (error) throw new Error(`No se pudieron leer los planos: ${error.message}`)
   // El peso no está en la función (su firma no se puede cambiar en producción):
-  // se lee de la tabla, con el mismo RLS que deja ver el plano.
-  const ids = (data ?? []).flatMap((p) => (p.id ? [p.id] : []))
-  const pesos = new Map<string, number | null>()
-  if (ids.length > 0) {
-    const { data: filas, error: errorPeso } = await supabase.from('codigo_planos').select('id, peso').in('id', ids)
-    if (errorPeso) throw new Error(`No se pudo leer el porcentaje de los planos: ${errorPeso.message}`)
-    for (const f of filas ?? []) pesos.set(f.id, f.peso === null ? null : Number(f.peso))
-  }
+  // se lee de la tabla, con el mismo RLS que deja ver el plano, a la vez y por
+  // código (no por la lista de ids, que alarga la URL hasta romperla).
+  const delPeso = supabase.from('codigo_planos').select('id, peso').not('peso', 'is', null)
+  const [{ data, error }, { data: filas, error: errorPeso }] = await Promise.all([
+    supabase.rpc('codigo_interno_planos', { p_codigo: codigo }),
+    codigo ? delPeso.eq('codigo_interno', normalizarCodigo(codigo)) : delPeso,
+  ])
+  if (error) throw new Error(`No se pudieron leer los planos: ${error.message}`)
+  if (errorPeso) throw new Error(`No se pudo leer el porcentaje de los planos: ${errorPeso.message}`)
+  const pesos = new Map((filas ?? []).map((f) => [f.id, Number(f.peso)]))
   return (data ?? []).flatMap((p) =>
     p.id && p.codigo && p.area_id
       ? [

@@ -65,7 +65,7 @@ export function ListaEtapas({
                         }`
                       : `${e.area} no subió reportes de este código`}
                   </span>
-                  {e.avance_reportado !== null && <Progreso valor={e.avance_reportado} alto="sm" mostrarValor etiqueta={`Avance reportado de ${e.nombre}`} />}
+                  {e.avance_reportado !== null && <Progreso valor={e.avance_reportado} alto="sm" mostrarValor etiqueta={`Avance reportado de ${e.nombre}, sin los planos con % de la unidad`} />}
                 </div>
               )}
               {e.nota && <p className="text-xs text-texto">Nota: {e.nota}</p>}

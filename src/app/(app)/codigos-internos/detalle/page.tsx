@@ -16,10 +16,10 @@ import {
   aporteDeLosPlanos,
   avanceDeLosCodigos,
   avanceDelCodigo,
-  avanceDelResto,
   comprasDelCodigo,
   costeoDelCodigo,
   documentosDelCodigo,
+  partesDelAvance,
   listarCodigosInternos,
   personalDelCodigo,
   repartoATodosLosActivos,
@@ -741,13 +741,13 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
     )
   }
   const porPlanos = avance.fuente === 'PLANOS'
-  const [etapas, planos, delResto] = await Promise.all([
+  const [etapas, planos, partes] = await Promise.all([
     etapasDeCodigo(codigo),
     porPlanos ? aporteDeLosPlanos(codigo) : Promise.resolve([]),
-    porPlanos ? avanceDelResto(codigo) : Promise.resolve(new Map<string, number>()),
+    porPlanos ? partesDelAvance(codigo) : Promise.resolve(null),
   ])
-  // Con planos, la etapa vale sin las actividades de un plano con porcentaje: ese ya aportó lo suyo.
-  const valeDe = (e: (typeof etapas)[number]) => (e.fin_real ? 100 : porPlanos ? (delResto.get(e.id) ?? 0) : (e.avance_reportado ?? 0))
+  // La etapa ya viene sin las actividades de un plano con porcentaje: ese cuenta por su lado.
+  const valeDe = (e: (typeof etapas)[number]) => (e.fin_real ? 100 : (e.avance_reportado ?? 0))
   const listaEtapas = (
     <ul className="space-y-2">
       {etapas.map((e, i) => {
@@ -788,16 +788,17 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
   }
 
   // Lo que Diseño repartió en planos cuenta plano por plano; el resto, por las etapas.
-  const repartido = planos.reduce((suma, p) => suma + p.peso, 0)
-  const deLosPlanos = planos.reduce((suma, p) => suma + p.aporte, 0)
-  const resto = Math.max(0, 100 - repartido)
-  const promedioEtapas = etapas.length > 0 ? etapas.reduce((suma, e) => suma + valeDe(e), 0) / etapas.length : 0
-  const deLasEtapas = (resto * promedioEtapas) / 100
+  // Las cifras son las de la base, que es la que saca el porcentaje: aquí solo se pintan.
+  const deLosPlanos = partes?.de_planos ?? 0
+  const resto = Math.max(0, 100 - (partes?.peso ?? 0))
+  const avanceResto = partes?.resto ?? 0
+  const deLasEtapas = (resto * avanceResto) / 100
+  const porEtapas = partes?.resto_por === 'ETAPAS'
   return (
     <Tarjeta data-como-sale>
       <TarjetaCabecera
         titulo={`Cómo sale el ${avance.avance} %`}
-        descripcion={`${numero(deLosPlanos, 1)} % por los planos${resto > 0 ? ` + ${numero(deLasEtapas, 1)} % por las etapas (el ${cantidad(resto)} % que no está en planos)` : ''}`}
+        descripcion={`${numero(deLosPlanos, 1)} % por los planos${resto > 0 ? ` + ${numero(deLasEtapas, 1)} % por ${porEtapas ? 'las etapas' : 'las actividades'} (el ${cantidad(resto)} % que no está en planos)` : ''}`}
         ayuda="Diseño pone a cada plano el porcentaje de la unidad que representa. Cada plano aporta su porcentaje por lo que avanzó: lo último que reportó su área, o 100 % si la etapa de su área ya terminó. Lo que no se repartió en planos se mide por las etapas: su promedio, donde la terminada vale 100 % y la que no, el promedio de las actividades de su área que no son de un plano, porque el plano ya contó por su lado."
       />
       <TarjetaCuerpo className="space-y-4">
@@ -836,7 +837,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
         {resto > 0 && (
           <div className="space-y-2" data-resto={resto}>
             <p className="text-sm font-medium text-texto">
-              El {cantidad(resto)} % que no está en planos, por las etapas: {numero(promedioEtapas, 0)} % en promedio
+              El {cantidad(resto)} % que no está en planos, por {porEtapas ? 'las etapas' : 'las actividades'}: {numero(avanceResto, 0)} % en promedio
             </p>
             {etapas.length > 0 ? (
               listaEtapas
