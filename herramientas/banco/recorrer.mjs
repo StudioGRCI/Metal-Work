@@ -171,9 +171,9 @@ for (const [nombre, ruta] of RUTAS) {
 // La lista general corre como administración. El avance por área se vuelve a
 // abrir como cada supervisor para verificar su alcance y el botón de reporte.
 const supervisores = [
-  { clave: 'supervisor-prd', correo: 'supervisor.prd@metalwork.test', area: 'Producción', propia: 'Bastidor principal', ajena: 'Corte de planchas' },
-  { clave: 'supervisor-mtz', correo: 'supervisor.mtz@metalwork.test', area: 'Maestranza', propia: 'Corte de planchas', ajena: 'Preparar superficie' },
-  { clave: 'supervisor-acb', correo: 'supervisor.acb@metalwork.test', area: 'Acabados', propia: 'Preparar superficie', ajena: 'Bastidor principal' },
+  { clave: 'supervisor-prd', correo: 'sup.prd.local@metalwork.test', area: 'Producción', propia: 'Bastidor principal', ajena: 'Corte de planchas' },
+  { clave: 'supervisor-mtz', correo: 'sup.mtz.local@metalwork.test', area: 'Maestranza', propia: 'Corte de planchas', ajena: 'Preparar superficie' },
+  { clave: 'supervisor-acb', correo: 'sup.acb.local@metalwork.test', area: 'Acabados', propia: 'Preparar superficie', ajena: 'Bastidor principal' },
 ]
 
 if (ordenId) {

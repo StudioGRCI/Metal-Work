@@ -51,24 +51,36 @@ Emite una cotización, la descarga en PDF, comprueba que el borrador descargado
 queda marcado como enviado, intenta anularla sin motivo (no la deja), la anula
 con motivo y vuelve a descargarla ya anulada.
 
-La preparación local crea además tres accesos ficticios para comprobar el
-reporte por área: `supervisor.prd@metalwork.test`,
-`supervisor.mtz@metalwork.test` y `supervisor.acb@metalwork.test`. Los tres usan
-el valor local de `BANCO_CLAVE`; no son cuentas de la empresa ni se crean en
-Supabase.
+La preparación local crea además una cuenta por puesto (ver «Las cuentas de
+cada puesto»). Usan el valor local de `BANCO_CLAVE`; no son cuentas de la empresa
+ni se crean en Supabase.
+
+Para recorrer todas las pantallas con la cuenta de cada puesto, en monitor y en
+teléfono, y ver qué pantallas fuera de su menú le dejan entrar:
+
+```bash
+BANCO_CLAVE='la-que-quieras' node herramientas/banco/recorrer-puestos.mjs [gerencia tesoreria …]
+```
+
+## Las cuentas de cada puesto
+
+`preparar.sh` deja una cuenta `<puesto>.local@metalwork.test` por cada puesto que
+tiene acceso en producción, con la clave de `BANCO_CLAVE`: `gerencia`,
+`administracion`, `almacen`, `logistica`, `conductor`, `contabilidad`, `diseno`,
+`colaborador`, `porteria`, `rrhh`, `requerimientos`, `sup.prd`, `sup.mtz`,
+`sup.acb`, `tesoreria` y `ventas`. Son las que usan los `probar-*.mjs` y los
+auditores. La supervisión es una por área: la de la demostración pasa a llamarse
+`sup.prd.local` y conserva su historia.
 
 ## Si `preparar.sh` se cae
 
-Medido el 2026-10-01: la preparación ya no llega al final sola, por dos causas.
-
-- **Migraciones que arreglan datos de producción.** `20260929110100_cuentas_solo_supervision`,
-  `20260929180000_importar_catalogo_almacen` y `20260929222000_corregir_numero_ot_2939`
-  buscan cuentas, un Excel o una OT reales que la base vacía no tiene. Ninguna crea
-  esquema: se pueden saltar en local (correr las migraciones con `ON_ERROR_STOP=0` y
-  revisar que los errores sean solo esos).
-- **`db/demo/datos-demo.sql` quedó atrás del flujo.** Crea una cuenta `JEFE_TALLER`,
-  que el esquema ya rechaza, y pasa órdenes a `EN_PROCESO` sin plan de etapas de
-  Diseño. Hasta que se ponga al día, sembrar a mano solo lo que la prueba necesita.
+Desde el 2026-10-20 llega al final sola y `db-test.sh` rehace el esquema desde
+cero. Cada migración corre en su transacción (`psql -1`), como las aplica
+Supabase, y las tres que arreglan datos de producción
+(`20260929110100_cuentas_solo_supervision`, `20260929180000_importar_catalogo_almacen`
+y `20260929222000_corregir_numero_ot_2939`) no hacen nada en una base que no
+tiene esas cuentas ni esa OT. Si vuelve a caerse, es que una migración nueva o
+`db/demo/datos-demo.sql` quedó atrás del flujo: arreglarlo ahí, no saltarlo.
 
 ## Qué hay dentro
 
@@ -79,6 +91,7 @@ Medido el 2026-10-01: la preparación ya no llega al final sola, por dos causas.
 | `rest.mjs` | Traduce las peticiones de datos a SQL. |
 | `esquema.mjs` | Lee las claves foráneas para resolver las incrustaciones. |
 | `recorrer.mjs` | Recorre la aplicación con un navegador y deja el informe y las capturas. |
+| `recorrer-puestos.mjs` | Lo mismo con la cuenta de cada puesto: cada pantalla de su menú en monitor y en teléfono (sin permiso, error, consola, 5xx, tiempo, desborde) y las pantallas fuera de su menú que le dejan entrar. |
 | `probar-cotizacion.mjs` | Aprieta los botones de una cotización: emitir, descargar el PDF, anular con motivo y volver a descargar. |
 | `probar-reporte-diario.mjs` | El reporte diario de supervisión con la cuenta de cada puesto: el supervisor lo sube desde el celular con fotos que se achican, el tope de 16 horas, RR. HH. ve las horas en el costeo y las que esperan su costo, Gerencia consulta y la portería no entra. Crea su propio personal inventado; las cuentas `*.local@metalwork.test` se crean aparte. |
 | `probar-planilla-diaria.mjs` | Del reporte diario a la planilla diaria, con la cuenta de cada puesto: Gerencia y RR. HH. validan (cada una solo con su botón), Gerencia observa y el supervisor corrige y sube de nuevo, RR. HH. paga o reserva las horas que pasan de 8 y usa el saldo, manda la planilla, Tesorería ve las cuentas, paga en lote con comprobante y adjunta boletas, RR. HH. las entrega; Gerencia consulta sin cuentas y el supervisor y la portería no entran. Crea su propio personal inventado. |

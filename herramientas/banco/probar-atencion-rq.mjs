@@ -21,7 +21,7 @@ const CUENTAS = {
   requerimientos: process.env.REQUERIMIENTOS ?? 'requerimientos.local@metalwork.test',
   almacen: process.env.ALMACEN ?? 'almacen.local@metalwork.test',
   logistica: process.env.LOGISTICA ?? 'logistica.local@metalwork.test',
-  supervisor: process.env.SUPERVISOR ?? 'supervisor.local@metalwork.test',
+  supervisor: process.env.SUPERVISOR ?? 'sup.prd.local@metalwork.test',
 }
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')
