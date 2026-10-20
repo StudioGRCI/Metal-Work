@@ -252,7 +252,8 @@ export async function opcionesDeTrabajo(codigo: string, corrige: string | null, 
     p_corrige: corrige ?? undefined,
     p_fecha: fecha ?? undefined,
   })
-  if (error) throw new Error(`No se pudo leer sobre qué se reporta en ${codigo}: ${error.message}`)
+  // El código viaja con el error para que la acción lo traduzca (`mensajeDeError`).
+  if (error) throw Object.assign(new Error(error.message), { code: error.code })
   return (data ?? []).flatMap((o) =>
     o.id && (o.tipo === 'PLANO' || o.tipo === 'SUBCONTRATO' || o.tipo === 'ACTIVIDAD')
       ? [

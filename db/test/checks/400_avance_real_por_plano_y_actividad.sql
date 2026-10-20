@@ -480,6 +480,12 @@ select pg_temp.como('gerente');
 set local role authenticated;
 select test.afirmar(pg_temp.avance('trabajos')::int = current_setting('prueba.trabajos_antes')::int - 1,
   format('la actividad del plano anulado ya no cuenta (%s → %s trabajos)', current_setting('prueba.trabajos_antes'), pg_temp.avance('trabajos')));
+select test.afirmar(
+  (select count(*) from public.codigo_interno_actividades(pg_temp.txt('codigo')) where lower(descripcion) = 'corte de materia prima') = 2
+  and (select historial->-1->>'avance' from public.codigo_interno_actividades(pg_temp.txt('codigo')) where tipo = 'SUBCONTRATO') = '26'
+  and (select count(*) from public.codigo_interno_actividades(pg_temp.txt('codigo')) where descripcion like 'Plano 001%') = 0
+  and (select avance from public.codigo_interno_actividades(pg_temp.txt('codigo')) where tipo = 'SUBCONTRATO' and area = (select nombre from public.areas where codigo = 'PRD')) = 100,
+  'Gerencia ve cada actividad aparte: los dos cortes, sin el plano anulado, y el subcontrato terminado en 100 aunque se reportó 26');
 reset role;
 -- PLANTA no lleva avance: el mismo trabajo de cada día va suelto, sin «ya hay una abierta» ni «solo hacia arriba».
 select pg_temp.como('sup_mtz');

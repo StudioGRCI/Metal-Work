@@ -189,12 +189,14 @@ export function FormularioReporteDiario({
     if (codigo === codigoLeido && fecha === diaLeido) {
       // Volvió a lo que ya estaba leído: lo que se pidió en medio ya no vale.
       setLeyendo(false)
+      setErrorOpciones(null)
       return
     }
     if (codigo.length < 2) {
       setOpciones([])
       setCodigoLeido('')
       setLeyendo(false)
+      setErrorOpciones(null)
       return
     }
     setLeyendo(true)

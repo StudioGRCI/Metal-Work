@@ -95,7 +95,8 @@ export async function opcionesDelCodigo(codigo: string, corrige: string | null, 
   try {
     return { ok: true, datos: await opcionesDeTrabajo(analisis.data.codigo, analisis.data.corrige, analisis.data.fecha) }
   } catch (e) {
-    return { ok: false, error: mensajeDeError({ message: e instanceof Error ? e.message : String(e) }) }
+    const { message, code } = e instanceof Error ? (e as Error & { code?: string }) : { message: String(e), code: undefined }
+    return { ok: false, error: mensajeDeError({ message, code }) }
   }
 }
 

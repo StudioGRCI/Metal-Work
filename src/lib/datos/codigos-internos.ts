@@ -365,6 +365,50 @@ export async function aporteDeLosPlanos(codigo: string): Promise<AporteDePlano[]
   )
 }
 
+/** Una actividad de un código con su último avance y su historia, reporte por reporte. */
+export type ActividadDelCodigo = {
+  clave: string
+  area: string | null
+  descripcion: string
+  tipo: 'PLANO' | 'SUBCONTRATO' | 'PROPIA' | 'TEXTO'
+  /** Dónde entra al porcentaje: por su plano con %, al promedio de su etapa, o en ninguno (PLANTA). */
+  cuenta: 'PLANO' | 'ETAPA' | 'NADA'
+  avance: number
+  ultima_fecha: string | null
+  reportes: number
+  historial: { fecha: string; avance: number }[]
+}
+
+const TIPOS_DE_ACTIVIDAD = ['PLANO', 'SUBCONTRATO', 'PROPIA', 'TEXTO'] as const
+const CUENTAS_DE_ACTIVIDAD = ['PLANO', 'ETAPA', 'NADA'] as const
+
+export async function actividadesDelCodigo(codigo: string): Promise<ActividadDelCodigo[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('codigo_interno_actividades', { p_codigo: codigo })
+  if (error) throw new Error(`No se pudieron leer las actividades del código: ${error.message}`)
+  return (data ?? []).flatMap((a) =>
+    a.clave
+      ? [
+          {
+            clave: a.clave,
+            area: a.area,
+            descripcion: a.descripcion ?? '',
+            tipo: TIPOS_DE_ACTIVIDAD.find((t) => t === a.tipo) ?? 'TEXTO',
+            cuenta: CUENTAS_DE_ACTIVIDAD.find((c) => c === a.cuenta) ?? 'ETAPA',
+            avance: n(a.avance),
+            ultima_fecha: a.ultima_fecha,
+            reportes: n(a.reportes),
+            historial: Array.isArray(a.historial)
+              ? a.historial.flatMap((h) =>
+                  h && typeof h === 'object' && !Array.isArray(h) && typeof h.fecha === 'string' ? [{ fecha: h.fecha, avance: Number(h.avance ?? 0) }] : [],
+                )
+              : [],
+          },
+        ]
+      : [],
+  )
+}
+
 /** Cómo sale el porcentaje de un código, en sus dos partes, tal como lo cuenta la base. */
 export type PartesDelAvance = {
   /** Lo que Diseño repartió en planos (0 a 100) y lo que aportan a la unidad. */

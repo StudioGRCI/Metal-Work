@@ -83,8 +83,8 @@ export type PlanoDeCodigo = {
   peso: number | null
 }
 
-/** Los planos de un código, o todos los que la persona ve si no se da código. */
-export async function planosDeCodigo(codigo: string | null): Promise<PlanoDeCodigo[]> {
+/** Los planos de un código, o todos los que la persona ve si no se da código. Sin `conPeso` no se lee su % (donde solo se cuentan). */
+export async function planosDeCodigo(codigo: string | null, { conPeso = true }: { conPeso?: boolean } = {}): Promise<PlanoDeCodigo[]> {
   const supabase = await createClient()
   // El peso no está en la función (su firma no se puede cambiar en producción):
   // se lee de la tabla, con el mismo RLS que deja ver el plano, a la vez y por
@@ -92,7 +92,7 @@ export async function planosDeCodigo(codigo: string | null): Promise<PlanoDeCodi
   const delPeso = supabase.from('codigo_planos').select('id, peso').not('peso', 'is', null)
   const [{ data, error }, { data: filas, error: errorPeso }] = await Promise.all([
     supabase.rpc('codigo_interno_planos', { p_codigo: codigo }),
-    codigo ? delPeso.eq('codigo_interno', normalizarCodigo(codigo)) : delPeso,
+    !conPeso ? Promise.resolve({ data: [], error: null }) : codigo ? delPeso.eq('codigo_interno', normalizarCodigo(codigo)) : delPeso,
   ])
   if (error) throw new Error(`No se pudieron leer los planos: ${error.message}`)
   if (errorPeso) throw new Error(`No se pudo leer el porcentaje de los planos: ${errorPeso.message}`)

@@ -179,7 +179,7 @@ await base.query('commit')
   await pagina.waitForTimeout(1500)
   const [c] = await consulta(`select peso::float as peso from codigo_planos where codigo_interno = $1 and numero = '003'`, [CODIGO])
   comprobar(c.peso === 0, `la compuerta queda en 0 % (${c.peso})`)
-  comprobar(limpio(await pagina.locator('main').innerText()).includes('el 30 % restante se mide por las etapas'), 'la lista dice que el 30 % restante va por etapas')
+  comprobar(limpio(await pagina.locator('main').innerText()).includes('el 30 % restante se mide por las actividades del reporte diario'), 'sin etapas todavía, la lista dice que el 30 % restante va por las actividades')
   await pagina.screenshot({ path: join(CAPTURAS, 'avance-real-diseno-planos.png'), fullPage: true })
 
   await pagina.goto(enlace('etapas'), { waitUntil: 'networkidle' })
@@ -267,15 +267,16 @@ let idViernes = null
   comprobar(!r9.id && r9.error.includes('ya iba en 9 %') && r9.error.includes('10 % o más'), `ni la base: «${r9.error}»`)
 
   // Otra «Corte de materia prima» nueva tampoco: se continúa la que hay.
-  await avanceDe(pagina, 1).fill('10')
-  await pagina.getByRole('button', { name: 'Agregar trabajo' }).click()
-  await elegir(pagina, 'Trabajo 2: sobre qué', 'Actividad nueva')
-  await pagina.locator('fieldset[data-trabajo="2"] textarea').fill('corte de MATERIA prima')
-  await avanceDe(pagina, 2).fill('15')
+  await elegir(pagina, 'Trabajo 1: sobre qué', 'Actividad nueva')
+  await pagina.locator('fieldset[data-trabajo="1"] textarea').fill('corte de MATERIA prima')
+  await avanceDe(pagina, 1).fill('15')
   const rDoble = await subir(pagina)
   comprobar(!rDoble.id && rDoble.error.includes('Ya hay una actividad abierta'), `abrir otra igual no entra: «${rDoble.error}»`)
 
   // Bien: el corte en 10 y el plano en 50.
+  await elegir(pagina, 'Trabajo 1: sobre qué', 'Corte de materia prima')
+  await avanceDe(pagina, 1).fill('10')
+  await pagina.getByRole('button', { name: 'Agregar trabajo' }).click()
   await elegir(pagina, 'Trabajo 2: sobre qué', 'Plano 001')
   await avanceDe(pagina, 2).fill('50')
   const rBien = await subir(pagina)
@@ -377,6 +378,22 @@ let idViernes = null
   await pagina.goto(`${BASE}/codigos-internos/detalle?${new URLSearchParams({ codigo: CODIGO, vista: 'avance' })}`, { waitUntil: 'networkidle' })
   const texto = limpio(await pagina.locator('[data-como-sale]').innerText().catch(() => ''))
   comprobar(texto.includes('Cómo sale el 18 %'), `con la corrección, la unidad va en 18 % (${texto.slice(0, 60)})`)
+  await contexto.close()
+}
+
+// -------------------------------------------- 6b. El miércoles que se olvidó: va por debajo del jueves
+{
+  const { pagina, contexto, errores } = await entrar(CUENTAS.mtz, CELULAR)
+  await nuevoReporte(pagina, { fecha: dia(4), asunto: `Habilitado ${sello} miércoles` })
+  await elegir(pagina, 'Trabajo 1: sobre qué', 'Corte de materia prima')
+  const lleva = limpio(await pagina.locator('fieldset[data-trabajo="1"] [id^="rd-lleva-"]').innerText())
+  comprobar(lleva.includes('ya iba en 9 %') && lleva.includes('de 0 a 8'), `un día anterior se ofrece por debajo del jueves (${lleva})`)
+  comprobar((await avanceDe(pagina, 1).getAttribute('max')) === '8', 'y el campo no pasa de 8')
+  await avanceDe(pagina, 1).fill('5')
+  await elegirPersona(pagina, 1, JUAN, '1')
+  const r = await subir(pagina)
+  comprobar(Boolean(r.id), `el reporte del miércoles entra${r.error ? `: ${r.error}` : ''}`)
+  comprobar(errores.length === 0, `el miércoles sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 

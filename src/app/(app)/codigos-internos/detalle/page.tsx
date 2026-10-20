@@ -13,6 +13,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import {
+  actividadesDelCodigo,
   aporteDeLosPlanos,
   avanceDeLosCodigos,
   avanceDelCodigo,
@@ -47,7 +48,6 @@ import {
   normalizarCodigo,
   origenDelAvance,
   parecidos,
-  ultimoAvancePorTrabajo,
   vistaValida,
   type VistaCodigo,
 } from '@/lib/dominio/codigos-internos'
@@ -766,7 +766,9 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
                     ? porPlanos
                       ? 'sin terminar: lo que reporta su área fuera de los planos'
                       : 'sin terminar: lo que reporta su área'
-                    : 'sin terminar y sin reporte diario'}
+                    : e.reportes > 0 && porPlanos
+                      ? 'sin terminar: su área solo reportó planos con %, que cuentan arriba'
+                      : 'sin terminar y sin reporte diario'}
               </span>
             </span>
             <Progreso valor={vale} mostrarValor etiqueta={`Lo que vale ${e.nombre}`} />
@@ -852,8 +854,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
 }
 
 async function VistaAvance({ codigo, perfil, avance }: { codigo: string; perfil: PerfilSesion; avance: AvanceDeCodigo | undefined }) {
-  const filas = await avanceDelCodigo(codigo)
-  const trabajos = ultimoAvancePorTrabajo(filas)
+  const [filas, trabajos] = await Promise.all([avanceDelCodigo(codigo), actividadesDelCodigo(codigo)])
   const abreReporte = puede(perfil, ['reporte_diario.ver', 'reporte_diario.registrar'])
 
   type Reporte = { id: string; fecha: string; creado_en: string; asunto: string; area: string | null; estado: string; horas: number; personal_general: boolean; trabajos: typeof filas }
@@ -901,26 +902,31 @@ async function VistaAvance({ codigo, perfil, avance }: { codigo: string; perfil:
       <Tarjeta>
         <TarjetaCabecera
           titulo="Cada trabajo con su último avance"
-          ayuda={`El porcentaje que el supervisor de cada área puso la última vez que reportó cada trabajo. ${
+          ayuda={`El porcentaje que el supervisor de cada área puso la última vez que reportó cada trabajo; el subcontrato que Administración dio por terminado vale 100 %. ${
             avance?.fuente === 'ETAPAS' || avance?.fuente === 'PLANOS'
-              ? 'Su promedio, área por área, es lo que vale la etapa de esa área mientras no termine; el de un plano es lo que avanzó ese plano.'
+              ? 'El de un plano con % de la unidad cuenta por su plano; el promedio de los demás, área por área, es lo que vale la etapa de esa área mientras no termine.'
               : 'El avance del código es el promedio de estos.'
           }`}
         />
         <TarjetaCuerpo>
           <ul className="space-y-3">
             {trabajos.map((t) => (
-              <li key={`${t.area ?? ''}|${t.trabajo}`} className="text-sm" data-trabajo={t.trabajo} data-area={t.area ?? ''}>
+              <li key={t.clave} className="text-sm" data-trabajo={t.descripcion} data-area={t.area ?? ''} data-cuenta={t.cuenta}>
                 <div className="grid grid-cols-[1fr_8rem] items-center gap-3">
                   <span className="text-texto">
-                    {t.trabajo} <span className="text-xs text-texto-suave">· {t.area ?? 'Sin área'}</span>
+                    {t.descripcion}{' '}
+                    <span className="text-xs text-texto-suave">
+                      · {t.area ?? 'Sin área'}
+                      {t.cuenta === 'PLANO' && ' · cuenta por su plano'}
+                    </span>
                   </span>
-                  <Progreso valor={t.avance} mostrarValor etiqueta={`Avance de ${t.trabajo}`} />
+                  <Progreso valor={t.avance} mostrarValor etiqueta={`Avance de ${t.descripcion}`} />
                 </div>
                 <p className="text-xs text-texto-suave">
                   {t.historial.length > 1
                     ? t.historial.map((h) => `${h.avance} % el ${fecha(h.fecha)}`).join(' → ')
-                    : `Reportado el ${fecha(t.fecha)}`}
+                    : `Reportado el ${fecha(t.ultima_fecha)}`}
+                  {t.tipo === 'SUBCONTRATO' && t.avance === 100 && t.historial.at(-1)?.avance !== 100 && ' · terminado por Administración'}
                 </p>
               </li>
             ))}

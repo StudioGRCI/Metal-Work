@@ -502,12 +502,11 @@ begin
         raise exception 'El plano % es de %: su avance lo reporta esa área.', v_plano.numero,
           (select a.nombre from public.areas a where a.id = v_plano.area_id) using errcode = 'insufficient_privilege';
       end if;
+      -- Si dos supervisores lo reportan a la vez por primera vez, el segundo usa la que abrió el primero.
+      insert into public.codigo_actividades (codigo_interno, area_id, descripcion, plano_id, creado_por)
+      values (v_norma, v_plano.area_id, left('Plano ' || v_plano.numero || ' · ' || v_plano.nombre, 500), v_plano_id, v_yo)
+      on conflict do nothing;
       select * into v_act from public.codigo_actividades where plano_id = v_plano_id;
-      if not found then
-        insert into public.codigo_actividades (codigo_interno, area_id, descripcion, plano_id, creado_por)
-        values (v_norma, v_plano.area_id, left('Plano ' || v_plano.numero || ' · ' || v_plano.nombre, 500), v_plano_id, v_yo)
-        returning * into v_act;
-      end if;
       v_solo_sub := false;
     elsif v_sub_id is not null then
       select * into v_sub from public.subcontratos where id = v_sub_id;
@@ -521,12 +520,10 @@ begin
         raise exception 'El subcontrato % no es de tu área: su avance lo reporta el supervisor de %.', v_sub.numero,
           coalesce((select a.nombre from public.areas a where a.id = v_sub.area_id), 'su área') using errcode = 'insufficient_privilege';
       end if;
+      insert into public.codigo_actividades (codigo_interno, area_id, descripcion, subcontrato_id, creado_por)
+      values (v_norma, v_sub.area_id, left('Subcontrato ' || v_sub.numero || ' · ' || btrim(v_sub.descripcion), 500), v_sub_id, v_yo)
+      on conflict do nothing;
       select * into v_act from public.codigo_actividades where subcontrato_id = v_sub_id;
-      if not found then
-        insert into public.codigo_actividades (codigo_interno, area_id, descripcion, subcontrato_id, creado_por)
-        values (v_norma, v_sub.area_id, left('Subcontrato ' || v_sub.numero || ' · ' || btrim(v_sub.descripcion), 500), v_sub_id, v_yo)
-        returning * into v_act;
-      end if;
     elsif v_act_id is not null then
       select * into v_act from public.codigo_actividades where id = v_act_id;
       if not found then
@@ -553,7 +550,7 @@ begin
         raise exception 'Describe el trabajo % (de 3 a 500 caracteres).', v_orden using errcode = 'check_violation';
       end if;
       -- Una actividad propia que ya está abierta con el mismo nombre se continúa, no se abre otra.
-      -- PLANTA no lleva avance: su trabajo de cada día va suelto.
+      -- PLANTA no lleva avance: su trabajo de cada día va suelto, sin actividad.
       v_clave := lower(v_tdesc);
       if exists (select 1 from public.reporte_diario_trabajos t where t.reporte_id = p_id and lower(t.descripcion) = v_clave) then
         raise exception 'El trabajo % repite «%»: cada actividad va una sola vez en el reporte.', v_orden, v_tdesc
@@ -572,9 +569,13 @@ begin
           (select e.avance from public.codigo_interno_actividades_estado(v_norma) e where e.actividad_id = v_act.id)
           using errcode = 'check_violation';
       end if;
-      insert into public.codigo_actividades (codigo_interno, area_id, descripcion, creado_por)
-      values (v_norma, v_reporte.area_id, v_tdesc, v_yo)
-      returning * into v_act;
+      if v_norma = 'PLANTA' then
+        v_act := null;
+      else
+        insert into public.codigo_actividades (codigo_interno, area_id, descripcion, creado_por)
+        values (v_norma, v_reporte.area_id, v_tdesc, v_yo)
+        returning * into v_act;
+      end if;
       v_solo_sub := false;
     end if;
 
@@ -583,7 +584,7 @@ begin
         using errcode = 'check_violation';
     end if;
     v_vistas := v_vistas || v_act.id;
-    v_tdesc := v_act.descripcion;
+    v_tdesc := coalesce(v_act.descripcion, v_tdesc);
 
     -- Solo hacia arriba: más que el último reporte anterior, menos que uno de un día posterior.
     -- La fila de la actividad se toma primero: dos supervisores a la vez no se pisan el avance.
@@ -960,3 +961,51 @@ comment on function public.codigo_interno_avance_partes(text) is
   'Cómo sale el porcentaje de un código: el peso repartido en planos, lo que aportan, y el avance (0 a 100) de lo que no se repartió, por ETAPAS o por ACTIVIDADES. Exige codigos_internos.ver.';
 revoke all on function public.codigo_interno_avance_partes(text) from public, anon;
 grant execute on function public.codigo_interno_avance_partes(text) to authenticated;
+
+-- 12. Cada actividad con su historia, para Gerencia ---------------------------------------------------------
+-- La lista «cada trabajo con su último avance» de un código, actividad por
+-- actividad y no por el texto: el «Corte» que terminó y el nuevo que se abrió
+-- con el mismo nombre son dos, y la de un plano anulado ya no aparece. cuenta
+-- dice dónde entra: PLANO (aporta por su plano con %), ETAPA (al promedio de
+-- su etapa) o NADA (PLANTA).
+create or replace function public.codigo_interno_actividades(p_codigo text)
+returns table (clave text, area text, descripcion text, tipo text, cuenta text, avance numeric,
+               ultima_fecha date, reportes integer, historial jsonb)
+language plpgsql stable security definer set search_path to 'public' as $$
+#variable_conflict use_column
+declare
+  v_codigo text := public.normalizar_codigo_interno(p_codigo);
+begin
+  perform public.exigir_permiso('codigos_internos.ver');
+  if v_codigo is null then
+    return;
+  end if;
+  return query
+  with estado as (
+    select * from public.codigo_interno_actividades_estado(v_codigo)
+  ), fila as (
+    select coalesce(t.actividad_id::text,
+                    'texto:' || coalesce(r.area_id::text, '') || ':' || lower(regexp_replace(btrim(t.descripcion), '\s+', ' ', 'g'))) as clave,
+           r.fecha, r.creado_en, t.orden, t.avance
+      from public.reporte_diario_trabajos t
+      join public.reportes_diarios r on r.id = t.reporte_id
+     where r.anulado_en is null and public.normalizar_codigo_interno(r.codigo_interno) = v_codigo
+  )
+  select e.clave, a.nombre::text, e.descripcion,
+         case when e.plano_id is not null then 'PLANO' when e.subcontrato_id is not null then 'SUBCONTRATO'
+              when e.actividad_id is not null then 'PROPIA' else 'TEXTO' end,
+         case when v_codigo = 'PLANTA' then 'NADA'
+              when exists (select 1 from public.codigo_planos p where p.id = e.plano_id and p.peso > 0) then 'PLANO'
+              else 'ETAPA' end,
+         e.avance, e.ultima_fecha, e.reportes,
+         (select jsonb_agg(jsonb_build_object('fecha', f.fecha, 'avance', f.avance) order by f.fecha, f.creado_en, f.orden)
+            from fila f where f.clave = e.clave)
+    from estado e
+    left join public.areas a on a.id = e.area_id
+   order by e.ultima_fecha desc, e.avance, e.descripcion;
+end;
+$$;
+comment on function public.codigo_interno_actividades(text) is
+  'Cada actividad vigente de un código con su último avance (el subcontrato TERMINADO, 100), su área, dónde cuenta (PLANO, ETAPA o NADA) y sus avances reporte por reporte. Sin las de un plano anulado o un subcontrato ANULADO. Exige codigos_internos.ver.';
+revoke all on function public.codigo_interno_actividades(text) from public, anon;
+grant execute on function public.codigo_interno_actividades(text) to authenticated;

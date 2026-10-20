@@ -10827,6 +10827,22 @@ export type Database = {
         }
         Returns: string
       }
+      codigo_interno_actividades: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          clave: string | null
+          area: string | null
+          descripcion: string | null
+          tipo: string | null
+          cuenta: string | null
+          avance: number | null
+          ultima_fecha: string | null
+          reportes: number | null
+          historial: Json | null
+        }[]
+      }
       codigo_interno_actividades_estado: {
         Args: {
           p_codigo: string | null

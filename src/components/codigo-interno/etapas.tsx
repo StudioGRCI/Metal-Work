@@ -67,7 +67,11 @@ export function ListaEtapas({
                           e.primer_reporte === e.ultimo_reporte ? `el ${fecha(e.ultimo_reporte)}` : `del ${fecha(e.primer_reporte)} al ${fecha(e.ultimo_reporte)}`
                         }`
                       : `${e.area} no subió reportes de este código`}
-                    {conPlanosConPeso && e.avance_reportado !== null && ' · sin los planos con % de la unidad, que cuentan aparte'}
+                    {conPlanosConPeso &&
+                      e.reportes > 0 &&
+                      (e.avance_reportado !== null
+                        ? ' · sin los planos con % de la unidad, que cuentan aparte'
+                        : ' · solo reportó planos con % de la unidad, que cuentan aparte')}
                   </span>
                   {e.avance_reportado !== null && <Progreso valor={e.avance_reportado} alto="sm" mostrarValor etiqueta={`Avance reportado de ${e.nombre}`} />}
                 </div>
