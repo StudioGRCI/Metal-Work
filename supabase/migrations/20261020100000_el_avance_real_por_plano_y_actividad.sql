@@ -546,7 +546,7 @@ begin
          and lower(a.descripcion) = v_clave and e.avance < 100
        limit 1;
       if found then
-        raise exception 'Ya hay una actividad abierta «%» en % (va en % %%): elígela en «Continuar una actividad» para sumarle el avance.',
+        raise exception 'Ya hay una actividad abierta «%» en % (va en % %%): elígela en «Sobre qué» para sumarle el avance.',
           v_act.descripcion, v_codigo,
           (select e.avance from public.codigo_interno_actividades_estado(v_norma) e where e.actividad_id = v_act.id)
           using errcode = 'check_violation';

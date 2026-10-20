@@ -466,9 +466,11 @@ begin
 
     v_paso := 'Producción reporta 5 h más del soldador hoy (10 h en el día: 2 h extras)';
     reset role; perform pg_temp.ensayo_como((k->>'SUPERVISOR_PRD')::uuid);
+    -- La «Soldadura» que Producción abrió en la mañana se continúa eligiéndola, no se abre otra.
     perform public.registrar_reporte_diario(v_r3, v_hoy, c, 'Soldadura de largueros por la tarde', 'Se siguió soldando hasta la noche',
       jsonb_build_array(
-        jsonb_build_object('descripcion', 'Soldadura', 'avance', 60,
+        jsonb_build_object('actividad_id', (select o.id from public.reporte_diario_opciones(c) o
+                                             where o.tipo = 'ACTIVIDAD' and o.etiqueta = 'Soldadura'), 'avance', 60,
                            'personal', jsonb_build_array(jsonb_build_object('trabajador_id', v_t1, 'horas', 5)))),
       null, null);
     reset role;
@@ -572,9 +574,11 @@ begin
   -- ============================================ 5. CADA CIFRA CONTRA LO HECHO
   reset role;
   if g_resumen is null then raise exception 'FALLO: Gerencia no ve el código % en la lista', c; end if;
-  -- El porcentaje: (100 de Habilitado, terminada + 30 de Producción + 0 + 0) / 4 = 32.5 → 33.
-  f := f || pg_temp.ensayo_dif('porcentaje del código', (g_avance->>'avance')::numeric, 33::numeric)
-         || pg_temp.ensayo_dif('de dónde sale el porcentaje', g_avance->>'fuente', 'ETAPAS'::text)
+  -- El porcentaje: el plano de Maestranza vale el 25 % de la unidad y su etapa (Habilitado)
+  -- terminó, así que aporta 25; el 75 % restante va por las etapas, (100 de Habilitado
+  -- + 30 de Producción + 0 + 0) / 4 = 32.5, que aportan 24.375. 49.375 → 49.
+  f := f || pg_temp.ensayo_dif('porcentaje del código', (g_avance->>'avance')::numeric, 49::numeric)
+         || pg_temp.ensayo_dif('de dónde sale el porcentaje', g_avance->>'fuente', 'PLANOS'::text)
          || pg_temp.ensayo_dif('etapas', (g_avance->>'etapas')::numeric, 4::numeric)
          || pg_temp.ensayo_dif('etapas terminadas', (g_avance->>'etapas_terminadas')::numeric, 1::numeric)
          || pg_temp.ensayo_dif('trabajos de los reportes (área por área)', (g_avance->>'trabajos')::numeric, 4::numeric)
