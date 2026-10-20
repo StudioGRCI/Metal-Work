@@ -88,10 +88,18 @@ async function subir(bucket, ruta, puesto) {
   return ruta
 }
 
-const [ruc] = await consulta(
-  `select n from (select '20' || lpad((floor(random() * 1e8))::bigint::text, 8, '0') || d as n from generate_series(0, 9) d) x
-    where public.ruc_es_valido(n) and not exists (select 1 from proveedores p where p.numero_documento = n) limit 1`,
-)
+// Un RUC válido: de un mismo número de diez dígitos, el dígito verificador que
+// calza. El número sale de aquí y no de random() en la consulta, que lo cambia en
+// cada fila y a veces no dejaba ninguno válido.
+let ruc
+while (!ruc) {
+  const base = `20${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`
+  ;[ruc] = await consulta(
+    `select n from (select $1 || d as n from generate_series(0, 9) d) x
+      where public.ruc_es_valido(n) and not exists (select 1 from proveedores p where p.numero_documento = n) limit 1`,
+    [base],
+  )
+}
 const [{ id: proveedor }] = await consulta(
   `insert into proveedores (numero_documento, razon_social, direccion, telefono) values ($1, $2, 'Av. Argentina 403, Lima', '999 403 403') returning id`,
   [ruc.n, PROVEEDOR],
