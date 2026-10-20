@@ -18,6 +18,8 @@ export type Trabajador = {
   fecha_ingreso: string | null
   /** El último día que trabajó, si está de baja. */
   fecha_baja: string | null
+  /** De taller (la que el supervisor pone en el reporte diario) o administrativa. La elige RR. HH. */
+  planilla: 'TALLER' | 'ADMINISTRATIVA'
   area: { id: string; codigo: string; nombre: string } | null
   /** Solo la ve RR. HH.: para el portero el embed llega vacío. */
   cuenta: { banco: string; tipo_cuenta: string; numero_cuenta: string; cci: string | null } | null
@@ -28,7 +30,7 @@ export type Trabajador = {
 }
 
 const COLUMNAS_TRABAJADOR =
-  'id, nombres, apellidos, dni, cargo, area_id, hora_entrada, hora_salida, activo, fecha_ingreso, fecha_baja,' +
+  'id, nombres, apellidos, dni, cargo, area_id, hora_entrada, hora_salida, activo, fecha_ingreso, fecha_baja, planilla,' +
   ' area:areas(id, codigo, nombre), cuenta:trabajador_cuentas(banco, tipo_cuenta, numero_cuenta, cci),' +
   ' costo:trabajador_costos(costo_mensual), remuneracion:trabajador_remuneraciones(remuneracion_mensual)'
 

@@ -66,6 +66,12 @@ export type ReporteDetalle = Omit<ReporteListado, 'personal' | 'fotos'> & {
   fotos: { id: string; orden: number; ruta: string; enlace: string | null }[]
   /** El reporte que corrigió a este, si lo observaron y el supervisor ya lo subió de nuevo. */
   corregido_por: string | null
+  /**
+   * Los otros códigos que subieron con este, en el mismo envío: los guardó la
+   * misma transacción (`registrar_reportes_diarios`), así que comparten autor e
+   * instante.
+   */
+  del_mismo_envio: { id: string; codigo_interno: string; anulado_en: string | null }[]
 }
 
 type Uno<T> = T | T[] | null
@@ -162,12 +168,26 @@ export async function reporteDiario(id: string, veCosteo: boolean): Promise<Repo
     fotos: { id: string; orden: number; ruta: string }[] | null
   }
   const fotos = [...(fila.fotos ?? [])].sort((a, b) => a.orden - b.orden)
-  const [enlaces, corregido] = await Promise.all([
+  const [enlaces, corregido, hermanos] = await Promise.all([
     enlacesDeFotos(fotos.map((f) => f.ruta)),
     fila.observado_en
       ? supabase.from('reportes_diarios').select('id').eq('reemplaza_a', id).limit(1).maybeSingle()
       : Promise.resolve({ data: null }),
+    // Una corrección entra sola: no tiene hermanos. Los del día de esa persona
+    // son pocos; el instante se compara aquí, al milisegundo: igualarlo en la
+    // consulta depende de cuántos decimales devuelve la API.
+    fila.reemplaza_a
+      ? Promise.resolve({ data: [], error: null })
+      : supabase
+          .from('reportes_diarios')
+          .select('id, codigo_interno, anulado_en, creado_en')
+          .eq('registrado_por', fila.registrado_por)
+          .eq('fecha', fila.fecha)
+          .neq('id', id)
+          .order('codigo_interno')
+          .limit(50),
   ])
+  if (hermanos.error) throw new Error(`No se pudieron leer los otros códigos del reporte: ${hermanos.error.message}`)
 
   return {
     ...cabecera(fila),
@@ -181,6 +201,9 @@ export async function reporteDiario(id: string, veCosteo: boolean): Promise<Repo
     }),
     fotos: fotos.map((f) => ({ ...f, enlace: enlaces[f.ruta] ?? null })),
     corregido_por: corregido.data?.id ?? null,
+    del_mismo_envio: (hermanos.data ?? [])
+      .filter((h) => Date.parse(h.creado_en) === Date.parse(fila.creado_en))
+      .map(({ id: hermano, codigo_interno, anulado_en }) => ({ id: hermano, codigo_interno, anulado_en })),
   }
 }
 

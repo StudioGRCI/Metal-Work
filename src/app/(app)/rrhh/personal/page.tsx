@@ -157,6 +157,9 @@ function FilaTrabajador({
       )}
       <TD className="align-top">
         {t.activo ? <Insignia tono="exito">Activo</Insignia> : <Insignia tono="neutro">De baja</Insignia>}
+        <p className="mt-1 text-[11px] text-texto-suave" data-planilla={t.planilla}>
+          {t.planilla === 'ADMINISTRATIVA' ? 'Planilla administrativa' : 'Planilla de taller'}
+        </p>
         <p className="tabular mt-1 text-[11px] text-texto-suave">
           {t.fecha_ingreso ? `Desde el ${fecha(t.fecha_ingreso)}` : 'Sin fecha de ingreso'}
           {t.fecha_baja && ` · hasta el ${fecha(t.fecha_baja)}`}

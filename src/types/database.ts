@@ -9357,6 +9357,7 @@ export type Database = {
           actualizado_en: string
           fecha_ingreso: string | null
           fecha_baja: string | null
+          planilla: string
         }
         Insert: {
           id?: string
@@ -9373,6 +9374,7 @@ export type Database = {
           actualizado_en?: string
           fecha_ingreso?: string | null
           fecha_baja?: string | null
+          planilla?: string
         }
         Update: {
           id?: string
@@ -9389,6 +9391,7 @@ export type Database = {
           actualizado_en?: string
           fecha_ingreso?: string | null
           fecha_baja?: string | null
+          planilla?: string
         }
         Relationships: [
           {
@@ -13590,6 +13593,15 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_reportes_diarios: {
+        Args: {
+          p_fecha: string | null
+          p_asunto: string | null
+          p_descripcion: string | null
+          p_codigos: Json | null
+        }
+        Returns: string[]
+      }
       registrar_salida_almacen: {
         Args: {
           p_id: string | null
@@ -13984,6 +13996,13 @@ export type Database = {
         }
         Returns: string
       }
+      rrhh_guardar_planilla_trabajador: {
+        Args: {
+          p_trabajador_id: string | null
+          p_planilla: string | null
+        }
+        Returns: string
+      }
       rrhh_guardar_regla_horas_extras: {
         Args: {
           p_horas_tramo1: number | null
@@ -14325,6 +14344,25 @@ export type Database = {
           creado_en: string | null
           terminado_en: string | null
           recibos: Json | null
+        }[]
+      }
+      subcontratos_del_area: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          numero: string | null
+          codigo_interno: string | null
+          descripcion: string | null
+          estado: string | null
+          area_codigo: string | null
+          area_nombre: string | null
+          subcontratista: string | null
+          fecha_inicio: string | null
+          fecha_fin: string | null
+          terminado_en: string | null
+          avance: number | null
+          ultimo_reporte: string | null
+          reportes: number | null
         }[]
       }
       subir_boleta_planilla_diaria: {
