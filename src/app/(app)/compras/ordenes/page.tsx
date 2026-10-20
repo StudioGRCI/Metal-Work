@@ -68,8 +68,9 @@ export default async function PaginaOrdenesCompra() {
             <tr>
               <TH>Orden</TH>
               <TH className="hidden md:table-cell">Para</TH>
-              <TH className="text-right">Monto sin IGV</TH>
-              <TH>En qué va</TH>
+              {/* En el teléfono el monto y en qué va viajan bajo el número: con sus columnas, la tabla medía 461 px en una pantalla de 390. */}
+              <TH className="hidden text-right sm:table-cell">Monto sin IGV</TH>
+              <TH className="hidden sm:table-cell">En qué va</TH>
               <TH className="hidden sm:table-cell">Comprobante</TH>
               {/* Con `relative`, el rótulo oculto queda dentro de la tabla que se desliza y no ensancha la página en el teléfono. */}
               <TH className="relative text-right">
@@ -127,6 +128,11 @@ function FilaCompra({
           <span className="tabular font-semibold text-texto">{c.numero}</span>
           {origen && <Insignia tono={origen.tono}>{origen.etiqueta}</Insignia>}
         </div>
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 sm:hidden">
+          <span className="tabular text-sm font-semibold text-texto">{moneda(c.monto, divisa(c.moneda))}</span>
+          <span className="text-[11px] text-texto-suave">sin IGV</span>
+          <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
+        </div>
         <p className="text-xs text-texto">{c.proveedor}</p>
         <p className="text-[11px] text-texto-suave">
           {[
@@ -144,8 +150,8 @@ function FilaCompra({
         <HistorialDeCorrecciones correcciones={correcciones} />
       </TD>
       <TD className="hidden text-texto-suave md:table-cell">{para || '—'}</TD>
-      <TD className="tabular text-right whitespace-nowrap">{moneda(c.monto, divisa(c.moneda))}</TD>
-      <TD>
+      <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{moneda(c.monto, divisa(c.moneda))}</TD>
+      <TD className="hidden sm:table-cell">
         <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
       </TD>
       <TD className="hidden sm:table-cell">

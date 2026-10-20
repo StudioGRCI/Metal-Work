@@ -115,10 +115,15 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
               <TablaCabecera>
                 <tr>
                   <TH>Persona</TH>
-                  <TH className="text-right">Observaciones</TH>
+                  {/* En el teléfono el rótulo corto: los largos ensanchaban la tabla a 418 px en una pantalla de 390. */}
+                  <TH className="text-right">
+                    <RotuloCorto corto="Obs." largo="Observaciones" />
+                  </TH>
                   <TH className="hidden text-right sm:table-cell">Verbales</TH>
                   <TH className="text-right">Escritas</TH>
-                  <TH className="text-right">Suspensiones</TH>
+                  <TH className="text-right">
+                    <RotuloCorto corto="Susp." largo="Suspensiones" />
+                  </TH>
                 </tr>
               </TablaCabecera>
               <tbody>
@@ -198,5 +203,17 @@ function Registro({ observacion: o, registra, mostrarPersona }: { observacion: O
         <AnularObservacion id={o.id} descripcion={`${tipo.etiqueta} de ${nombre} del ${fecha(o.fecha)}`} />
       )}
     </li>
+  )
+}
+
+/** El rótulo de una columna, abreviado en el teléfono; el lector de pantalla siempre lee el completo. */
+function RotuloCorto({ corto, largo }: { corto: string; largo: string }) {
+  return (
+    <>
+      <span aria-hidden className="sm:hidden">
+        {corto}
+      </span>
+      <span className="sr-only sm:not-sr-only">{largo}</span>
+    </>
   )
 }
