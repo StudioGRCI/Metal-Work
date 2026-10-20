@@ -431,6 +431,24 @@ for (const ancho of [390, 1280]) {
     const url = new URL(pagina.url())
     comprobar(url.searchParams.get('estado') === 'bajas' && url.searchParams.get('q') === 'baja',
       `Personal: la pastilla «Dados de baja» tocada mientras se escribe se queda (${url.search})`)
+
+    // Lo mismo con la búsqueda ya en viaje y el servidor lento, como en un
+    // teléfono con datos: la caja no se queda con un término que no filtra.
+    await pagina.route(/\/personal(\?|$)/, async (ruta) => {
+      if (ruta.request().headers()['rsc']) await new Promise((r) => setTimeout(r, 2000))
+      await ruta.continue()
+    })
+    await pagina.goto(`${BASE}/personal`, { waitUntil: 'networkidle' })
+    await pagina.getByRole('searchbox', { name: 'Buscar personal' }).pressSequentially('baja', { delay: 10 })
+    await pagina.waitForTimeout(600)
+    await pagina.getByRole('link', { name: 'Dados de baja' }).click()
+    await pagina.waitForTimeout(7000)
+    const lenta = new URL(pagina.url())
+    const caja = await pagina.getByRole('searchbox', { name: 'Buscar personal' }).inputValue()
+    const girando = await pagina.locator('main .animate-spin').count()
+    await pagina.unroute(/\/personal(\?|$)/)
+    comprobar(lenta.searchParams.get('estado') === 'bajas' && lenta.searchParams.get('q') === 'baja' && caja === 'baja' && girando === 0,
+      `Personal: con la búsqueda en viaje y el servidor lento, la pastilla se queda con lo escrito (${lenta.search}, caja «${caja}», ${girando} girando)`)
   }
 
   // Órdenes: «Limpiar» quita la búsqueda y también la prioridad.

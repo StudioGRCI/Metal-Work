@@ -3,27 +3,29 @@ import assert from 'node:assert/strict'
 import { coincide, expresionSinTildes, filtroDePalabra, filtrosDeBusqueda, palabrasDeBusqueda } from './busqueda.ts'
 
 test('las palabras salen sin tildes, sin signos y en minúsculas', () => {
-  assert.deepEqual(palabrasDeBusqueda('  Camión, CISTERNA (agua) '), ['camion', 'cisterna', 'agua'])
+  assert.deepEqual(palabrasDeBusqueda('  Camión, CISTERNA (agua) '), ['agua', 'camion', 'cisterna'])
   assert.deepEqual(palabrasDeBusqueda('S.A.C.'), ['sac'])
-  assert.deepEqual(palabrasDeBusqueda('SR_04, plancha 3/16 A-36'), ['sr04', 'plancha', '316', 'a36'])
-  assert.deepEqual(palabrasDeBusqueda('Año 2026'), ['ano', '2026'])
+  assert.deepEqual(palabrasDeBusqueda('SR_04, plancha 3/16 A-36'), ['sr04', '316', 'a36', 'plancha'])
+  assert.deepEqual(palabrasDeBusqueda('Año 2026'), ['2026', 'ano'])
   assert.deepEqual(palabrasDeBusqueda(''), [])
   assert.deepEqual(palabrasDeBusqueda(undefined), [])
   assert.deepEqual(palabrasDeBusqueda('%,()*"\\'), [])
 })
 
 test('la letra suelta no se busca si hay otras, y la sigla del final no se pierde', () => {
-  assert.deepEqual(palabrasDeBusqueda('Transportes Peña y Núñez S.A.C.'), ['transportes', 'pena', 'nunez', 'sac'])
+  assert.deepEqual(palabrasDeBusqueda('Transportes Peña y Núñez S.A.C.'), ['pena', 'sac', 'transportes', 'nunez'])
   assert.deepEqual(palabrasDeBusqueda('y'), ['y'])
-  assert.deepEqual(palabrasDeBusqueda('Transportes de Peña'), ['transportes', 'pena'])
+  assert.deepEqual(palabrasDeBusqueda('Transportes de Peña'), ['pena', 'transportes'])
   assert.deepEqual(palabrasDeBusqueda('de'), ['de'])
-  assert.deepEqual(palabrasDeBusqueda('tubo 2 x 1/4'), ['tubo', '2', '14'])
+  assert.deepEqual(palabrasDeBusqueda('tubo 2 x 1/4'), ['2', '14', 'tubo'])
   // Una palabra larga con guion o punto son dos: la base las encuentra sueltas.
-  assert.deepEqual(palabrasDeBusqueda('Mercedes-Benz'), ['mercedes', 'benz'])
+  assert.deepEqual(palabrasDeBusqueda('Mercedes-Benz'), ['benz', 'mercedes'])
   assert.deepEqual(palabrasDeBusqueda('juan.perez'), ['juan', 'perez'])
-  assert.deepEqual(palabrasDeBusqueda('E.I.R.L. PLA_SR_O4'), ['eirl', 'plasro4'])
-  assert.ok(new RegExp(expresionSinTildes(palabrasDeBusqueda('semi-remolque')[1]), 'i').test('SEMI-REMOLQUE'))
-  assert.equal(palabrasDeBusqueda('a1 b2 c3 d4 e5 f6 g7 h8 i9 j10').length, 8)
+  assert.deepEqual(palabrasDeBusqueda('E.I.R.L. PLA_SR_O4'), ['plasro4', 'eirl'])
+  assert.ok(palabrasDeBusqueda('semi-remolque').every((p) => new RegExp(expresionSinTildes(p), 'i').test('SEMI-REMOLQUE')))
+  assert.equal(palabrasDeBusqueda('a1 b2 c3 d4 e5 f6 g7 h8 i9 j10 k11 l12').length, 10)
+  // Al cortar se quedan las que distinguen: la sigla del final no se pierde.
+  assert.ok(palabrasDeBusqueda('empresa transportes turismo servicios multiples horizonte peru norte sur centro oriente s.a.c.').includes('sac'))
   assert.equal(palabrasDeBusqueda('x'.repeat(100))[0].length, 20)
 })
 
@@ -31,9 +33,11 @@ test('los filtros caben en la dirección y una búsqueda de verdad entra entera'
   const clientes = ['razon_social', 'nombre_comercial', 'numero_documento']
   assert.equal(filtrosDeBusqueda(clientes, 'transportes peña y núñez 123456 s.a.c.').length, 5)
   const unidades = ['placa', 'codigo_interno', 'numero_fmi', 'marca', 'modelo', 'numero_chasis']
-  const absurda = filtrosDeBusqueda(unidades, Array(8).fill('u'.repeat(30)).join(' '))
-  assert.ok(absurda.length >= 1 && absurda.length < 8)
-  assert.ok(absurda.reduce((n, f) => n + encodeURIComponent(f).length, 0) <= 4000)
+  const absurda = filtrosDeBusqueda(unidades, Array(10).fill('u'.repeat(30)).join(' '))
+  assert.ok(absurda.length >= 1 && absurda.length < 10)
+  const ordenes = ['numero', 'cliente', 'placa', 'codigo_interno', 'descripcion']
+  assert.equal(filtrosDeBusqueda(ordenes, 'mantenimiento cisterna agua municipalidad provincial huancayo').length, 6)
+  assert.ok(absurda.reduce((n, f) => n + encodeURIComponent(f).length, 0) <= 5000)
   assert.deepEqual(filtrosDeBusqueda(unidades, ''), [])
 })
 

@@ -8,6 +8,7 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { numero } from '@/lib/format'
+import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { listarUnidades } from '@/lib/datos/comercial'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -21,7 +22,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
   // Corrigen unidades Ventas y Diseño e Ingeniería (migración 20261001213000).
   const puedeEditar = puede(perfil, ['clientes.editar', 'diseno.unidades'])
 
-  const busqueda = typeof params.q === 'string' ? params.q : undefined
+  const busqueda = typeof params.q === 'string' && palabrasDeBusqueda(params.q).length > 0 ? params.q : undefined
   const incluirInactivas = params.estado === 'inactivas'
   const unidades = await listarUnidades({ busqueda, incluirInactivas })
 
@@ -29,6 +30,14 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
     <>
       <EncabezadoPagina
         titulo="Unidades"
+        // Hasta 300 en la lista: pasado eso se dice «300 o más».
+        descripcion={
+          busqueda
+            ? unidades.length === 0
+              ? `Ninguna unidad con «${busqueda}»`
+              : `${unidades.length === 1 ? '1 unidad' : `${unidades.length >= 300 ? '300 o más' : unidades.length} unidades`} con «${busqueda}»`
+            : `${unidades.length >= 300 ? '300 o más' : unidades.length} ${unidades.length === 1 ? 'unidad' : 'unidades'}`
+        }
         ayuda="Vehículos de los clientes sobre los que trabaja el taller. Se registran desde la ficha de cada cliente."
       />
 

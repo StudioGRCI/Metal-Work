@@ -33,18 +33,26 @@ export function BuscadorSimple({
   // cosa —«Ver todos los clientes», el menú—, la caja la sigue; si no, quedaba
   // con un término que ya no filtraba y el ícono de «Buscando…» girando.
   const [pedido, setPedido] = useState<string | null>(null)
-  const [vista, setVista] = useState(actual)
-  if (actual !== vista) {
-    setVista(actual)
+  // Se vigila la URL entera, no solo el término: si otro enlace la cambia con
+  // una búsqueda en viaje, esa búsqueda se perdió, y quedaba la caja con un
+  // término que no filtraba y el ícono girando sin fin.
+  const consulta = params.toString()
+  const [vista, setVista] = useState(consulta)
+  if (consulta !== vista) {
+    const antes = new URLSearchParams(vista).get(clave) ?? ''
+    setVista(consulta)
     // El eco de lo pedido se consume: si después «atrás» trae ese mismo valor,
-    // ya no es eco y la caja lo sigue.
-    if (actual !== pedido) setBusqueda(actual)
+    // ya no es eco y la caja lo sigue. Lo escrito sin pedir todavía se queda
+    // si el término de la URL no cambió.
+    if (actual !== pedido && (actual !== antes || pedido !== null)) setBusqueda(actual)
     setPedido(null)
   }
 
-  const consulta = params.toString()
   useEffect(() => {
-    if (busqueda === (pedido ?? actual)) return
+    // Nada que llevar: la URL ya dice lo escrito.
+    if (busqueda === actual) return
+    // Lo escrito espera su pausa, o ya va en viaje (`pedido`).
+    const enEspera = busqueda !== (pedido ?? actual)
 
     const disparar = () => {
       // La URL de ahora, no la de cuando se escribió.
@@ -57,15 +65,21 @@ export function BuscadorSimple({
       setPedido(busqueda)
       iniciarTransicion(() => router.replace(`${ruta}?${query}`))
     }
-    let temporizador = setTimeout(disparar, 350)
-    // Un enlace tocado en la pausa —una pastilla— manda: la búsqueda espera a
-    // que su URL llegue, que vuelve a correr este efecto, y sale sobre ella.
-    // Si salía antes, con la URL de antes del enlace, lo deshacía. El plazo
-    // largo cubre un enlace que no cambia la URL.
+    const temporizador = enEspera ? setTimeout(disparar, 350) : undefined
+    // Una pastilla tocada antes de que lo escrito llegue a la URL se lleva lo
+    // escrito, como los filtros de Órdenes. Si no, la búsqueda salía después
+    // con la URL de antes de la pastilla —o se perdía en viaje— y la deshacía.
     const alTocar = (e: MouseEvent) => {
-      if (!(e.target instanceof Element) || !e.target.closest('a[href]')) return
+      const enlace = e.target instanceof Element ? e.target.closest<HTMLAnchorElement>('a[data-filtro]') : null
+      if (!enlace || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+      const destino = new URL(enlace.href)
+      if (destino.pathname !== window.location.pathname) return
+      e.preventDefault()
       clearTimeout(temporizador)
-      temporizador = setTimeout(disparar, 1500)
+      if (busqueda) destino.searchParams.set(clave, busqueda)
+      else destino.searchParams.delete(clave)
+      setPedido(busqueda)
+      iniciarTransicion(() => router.push(`${destino.pathname}${destino.search}`))
     }
     document.addEventListener('click', alTocar, true)
 
@@ -74,7 +88,7 @@ export function BuscadorSimple({
       document.removeEventListener('click', alTocar, true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busqueda, consulta])
+  }, [busqueda, consulta, pedido])
 
   // Lo escrito todavía no está en la URL, o la pantalla se está rehaciendo: en
   // ambos casos lo que se ve abajo ya no corresponde a lo que se pidió.

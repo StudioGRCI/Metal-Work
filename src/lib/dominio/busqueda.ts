@@ -37,7 +37,13 @@ const DE_ENLACE = new Set(['de', 'del', 'la', 'las', 'el', 'los', 'en', 'con', '
 export function palabrasDeBusqueda(texto: string | null | undefined): string[] {
   const todas = plano(texto ?? '').split(/[^a-z0-9._/-]+/).flatMap(trozos).filter(Boolean)
   const utiles = todas.filter((p) => (p.length > 1 && !DE_ENLACE.has(p)) || /\d/.test(p))
-  return (utiles.length ? utiles : todas).slice(0, 8).map((p) => p.slice(0, 20))
+  // Si hay que cortar, se quedan primero las que distinguen —con números y
+  // siglas—: «… HORIZONTE PERÚ S.A.C.» perdía «sac» y salía su gemelo E.I.R.L.
+  // El orden no cambia lo que se encuentra: tienen que estar todas.
+  const pesa = (p: string) => (/\d/.test(p) ? 0 : p.length <= 4 ? 1 : 2)
+  const ordenadas = (utiles.length ? utiles : todas).map((p, i) => ({ p, i }))
+    .sort((a, b) => pesa(a.p) - pesa(b.p) || a.i - b.i).map(({ p }) => p)
+  return ordenadas.slice(0, 10).map((p) => p.slice(0, 20))
 }
 
 /**
@@ -47,7 +53,7 @@ export function palabrasDeBusqueda(texto: string | null | undefined): string[] {
  * menos). Una búsqueda de verdad —«transportes peña y núñez s.a.c.» en cuatro
  * columnas— usa menos de la mitad.
  */
-const TOPE_DE_LA_DIRECCION = 4000
+const TOPE_DE_LA_DIRECCION = 5000
 
 /**
  * Minúsculas y sin tildes, y la ñ como n: en el taller se escribe «nunez» y

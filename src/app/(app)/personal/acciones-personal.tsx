@@ -338,8 +338,12 @@ export function FilaDePersona({
               </button>
               {/* Dar de baja pregunta: el ícono está a un dedo del de la
                   contraseña y deja a la persona sin entrar. Reactivar no. */}
-              {persona.activo ? (
-                !propia && <button
+              {/* En la fila propia el lugar queda ocupado: si no, el lápiz caía
+                  donde las demás filas tienen la llave. */}
+              {persona.activo && propia ? (
+                <span aria-hidden className={cn(BOTON_ICONO, 'invisible')} />
+              ) : persona.activo ? (
+                <button
                   type="button"
                   onClick={() => {
                     estado.limpiar()
