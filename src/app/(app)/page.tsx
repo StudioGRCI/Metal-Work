@@ -67,7 +67,7 @@ function CifrasDelArea({ titulo, cifras }: { titulo: string; cifras: Cifra[] }) 
       {/* Dos columnas ya en el teléfono: apiladas de a una ocupaban una pantalla entera.
           Con un número impar, la primera —la cifra principal del puesto— toma la
           fila entera en vez de dejar una sola con un hueco al lado: en media
-          columna, «S/ 129,037.50» de la caja partía el «S/» en otro renglón. */}
+          columna, un saldo de seis cifras partía el «S/» en otro renglón. */}
       <div className={cn('grid grid-cols-2 gap-3 sm:gap-4 max-lg:[&>:first-child:nth-last-child(odd)]:col-span-2 [&>:first-child:nth-last-child(odd)_.rotulo-indicador]:min-h-0', cifras.length >= 5 ? 'lg:grid-cols-5' : cifras.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4')}>
         {cifras.map((c) => (
           <Indicador key={c.clave} icono={c.icono} titulo={c.titulo} valor={c.valor} pie={c.pie} tono={c.tono} href={c.href} />

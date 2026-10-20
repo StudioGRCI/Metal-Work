@@ -151,6 +151,20 @@ function Servicio({
         </ul>
       )}
 
+      {/* El pago, encima de los pagos anteriores como en Cuentas por pagar y por cobrar. */}
+      {paga && !s.cancelada && s.id && (
+        <div className="mt-2">
+          <PagarServicio
+            ordenServicioId={s.id}
+            numero={s.numero ?? 'orden de servicio'}
+            proveedor={s.proveedor ?? 'Proveedor'}
+            hoy={hoy}
+            saldo={saldo}
+            codigoMoneda={m}
+            cuentas={cuentasCaja}
+          />
+        </div>
+      )}
       {s.pagos.length > 0 && (
         <ol className="mt-2 space-y-1.5 border-t border-borde pt-2">
           {s.pagos.map((p) => (
@@ -180,19 +194,6 @@ function Servicio({
         </ol>
       )}
 
-      {paga && !s.cancelada && s.id && (
-        <div className="mt-2">
-          <PagarServicio
-            ordenServicioId={s.id}
-            numero={s.numero ?? 'orden de servicio'}
-            proveedor={s.proveedor ?? 'Proveedor'}
-            hoy={hoy}
-            saldo={saldo}
-            codigoMoneda={m}
-            cuentas={cuentasCaja}
-          />
-        </div>
-      )}
     </article>
   )
 }

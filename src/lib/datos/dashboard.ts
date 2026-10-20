@@ -33,11 +33,11 @@ import type { TonoIndicador } from '@/components/ui/indicador'
 import { avanceDeLosCodigos, listarCodigosInternos } from '@/lib/datos/codigos-internos'
 import { codigosDeDiseno, etapasDeCodigo, planosDeCodigo } from '@/lib/datos/diseno-codigos'
 import { listarGastoPorCodigo } from '@/lib/datos/gasto-por-codigo'
-import { consolidado } from '@/lib/dominio/caja'
+import { consolidado, sumaEnLaCaja } from '@/lib/dominio/caja'
 import { CODIGO_SIN_AVANCE, costoDelCodigo, enlaceCodigo } from '@/lib/dominio/codigos-internos'
 import { estadoDeReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADOS_RQ_ABIERTOS, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
-import { hoyLima, moneda, porcentaje, sumarDias } from '@/lib/format'
+import { hoyLima, moneda, numero, porcentaje, sumarDias } from '@/lib/format'
 import { menuDe } from '@/lib/navegacion'
 import { puede, puedeHojaDeArea, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -379,22 +379,26 @@ const CIFRAS = {
       ])
       fallo(cuentas)
       fallo(cambio)
-      // Las mismas que suma la caja: empezadas y a la vista (una desactivada con saldo sigue contando).
-      const filas = (cuentas.data ?? []).filter(
-        (k) => k.caja_id && (k.fecha_inicio ?? c.hoy) <= c.hoy && (k.activa || num(k.movimientos) > 0 || k.cierre_id || num(k.saldo_final) !== 0),
-      )
+      const todas = (cuentas.data ?? []).filter((k) => k.caja_id)
+      // Las mismas que suma la caja diaria.
+      const filas = todas.filter((k) => sumaEnLaCaja(k, c.hoy))
       if (filas.length === 0) return { titulo: 'Caja de hoy', valor: 'Sin cuentas', pie: 'Da de alta las cuentas de la caja', icono: Landmark, tono: 'aviso' }
       const total = consolidado(
         filas.map((k) => ({ moneda: k.moneda ?? 'PEN', saldo_final: k.saldo_final === null ? null : num(k.saldo_final) })),
         cambio.data === null ? null : num(cambio.data),
       )
-      const sinCerrar = filas.filter((k) => k.primer_dia_sin_cerrar && k.primer_dia_sin_cerrar < c.hoy).length
-      const pie =
-        sinCerrar > 0
-          ? plural(sinCerrar, 'cuenta con días sin cerrar', 'cuentas con días sin cerrar')
+      // Como el aviso «Días sin cerrar» de la caja: de todas las cuentas.
+      const sinCerrar = todas.filter((k) => k.primer_dia_sin_cerrar && k.primer_dia_sin_cerrar < c.hoy).length
+      // Los dólares nunca se callan: pasados a soles, o aparte si falta el cambio.
+      const dolares =
+        total.dolares === 0
+          ? null
           : total.totalEnSoles !== null
-            ? `Todo en soles, ${plural(filas.length, 'cuenta', 'cuentas')}`
-            : `y ${moneda(total.dolares, 'USD')} · falta el cambio de hoy`
+            ? `Con los dólares a ${numero(num(cambio.data), 3)}`
+            : `y ${moneda(total.dolares, 'USD')}, falta el cambio de hoy`
+      const pie = [dolares, sinCerrar > 0 ? plural(sinCerrar, 'cuenta con días sin cerrar', 'cuentas con días sin cerrar') : plural(filas.length, 'cuenta', 'cuentas')]
+        .filter(Boolean)
+        .join(' · ')
       return {
         titulo: 'Caja de hoy',
         valor: moneda(total.totalEnSoles ?? total.soles),

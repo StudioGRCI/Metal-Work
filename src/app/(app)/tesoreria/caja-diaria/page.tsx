@@ -10,7 +10,7 @@ import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cajaDelDia, type CierreReabierto, type CuentaDelDia, type MovimientoDelDia } from '@/lib/datos/caja'
-import { consolidado, detalleDeCuenta, esDevolucion, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO, PANTALLA_DEL_ORIGEN } from '@/lib/dominio/caja'
+import { consolidado, detalleDeCuenta, sumaEnLaCaja, esDevolucion, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO, PANTALLA_DEL_ORIGEN } from '@/lib/dominio/caja'
 import { fecha, fechaHora, fechaLarga, hoyLima, moneda, numero, sumarDias } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
@@ -49,7 +49,8 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
 
   // Una cuenta desactivada sigue a la vista mientras tenga saldo, o el consolidado bajaría sin que nadie moviera la plata.
   const visibles = caja.cuentas.filter((c) => c.activa || c.movimientos > 0 || c.cierre_id || (c.saldo_final ?? 0) !== 0)
-  const empezadas = visibles.filter((c) => dia >= c.fecha_inicio)
+  // Las que suman en el consolidado: el mismo criterio que la cifra del Dashboard.
+  const empezadas = caja.cuentas.filter((c) => sumaEnLaCaja(c, dia))
   // A las que hoy se les puede registrar: activas, ya empezadas y con el día abierto.
   const abiertas: CuentaElegible[] = empezadas
     .filter((c) => c.activa && !c.cierre_id && !(c.ultimo_cierre && dia <= c.ultimo_cierre))
@@ -329,6 +330,7 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
           </span>
         }
         descripcion={`${detalleDeCuenta(c)} · empieza el día con ${moneda(c.saldo_inicial, m)} y termina con ${moneda(c.saldo_final, m)}`}
+        ayuda={puedeCerrar ? 'Al terminar el día, ciérralo con el saldo que dice el estado de cuenta. Cerrado, el día ya no cambia.' : undefined}
         // Registrar y cerrar, juntos arriba: el cierre iba en un renglón propio al pie, con una frase que se repetía en cada cuenta.
         acciones={
           abierta || puedeCerrar ? (
@@ -340,7 +342,9 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
         }
       />
       {movimientos.length === 0 ? (
-        <TarjetaCuerpo className="border-t border-borde text-sm text-texto-suave">Sin movimientos este día.</TarjetaCuerpo>
+        <TarjetaCuerpo className="border-t border-borde text-sm text-texto-suave">
+          Sin movimientos este día.{abierta ? ' Regístralos con «Registrar».' : ''}
+        </TarjetaCuerpo>
       ) : (
         <Tabla>
           {/* En el teléfono no caben siete columnas: el código, la operación y quién registró van bajo la descripción, y egreso o ingreso en una sola columna con su signo. */}

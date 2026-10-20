@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -514,15 +514,18 @@ export function CompletarAdquisicion({ id }: { id: string }) {
   const [lectura, setLectura] = useState<LecturaFactura | null>(null)
   const [leyendo, setLeyendo] = useState(false)
   const turno = useRef(0)
+  // Con `useId` y no con el id de la factura: la página la dibuja dos veces —en la
+  // tabla del monitor y en la tarjeta del teléfono— y la etiqueta apuntaba al campo oculto.
+  const campo = `pdf-${useId()}`
   return (
     <form onSubmit={alEnviar} className="mt-2 flex flex-wrap items-end gap-2">
       <input type="hidden" name="id" value={id} />
       {Object.entries(camposDeLectura(lectura)).map(([nombre, valor]) => (
         <input key={nombre} type="hidden" name={nombre} value={valor} />
       ))}
-      <Campo etiqueta="PDF pendiente" htmlFor={`pdf-${id}`} requerido>
+      <Campo etiqueta="PDF pendiente" htmlFor={campo} requerido>
         <Entrada
-          id={`pdf-${id}`}
+          id={campo}
           name="pdf"
           type="file"
           accept="application/pdf,.pdf"
