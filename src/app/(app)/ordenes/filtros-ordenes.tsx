@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { Loader2, Search, X } from 'lucide-react'
 
 import { Entrada, Seleccion } from '@/components/ui/campos'
@@ -28,10 +28,19 @@ export function FiltrosOrdenes() {
     setPedido(null)
   }
 
+  // La búsqueda que espera su pausa. Un filtro tocado en esa pausa la cancela y
+  // se lleva lo escrito: si no, la búsqueda salía después con la URL de antes
+  // del filtro y lo deshacía.
+  const espera = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
   function navegar(cambios: Record<string, string | null>, reemplazar = false) {
-    // La URL de ahora: la búsqueda dispara tras una pausa y, con la de cuando se
-    // escribió, deshacía la pastilla tocada en esa pausa.
+    clearTimeout(espera.current)
     const query = new URLSearchParams(window.location.search)
+    if (!('q' in cambios) && busqueda !== actual) {
+      if (busqueda) query.set('q', busqueda)
+      else query.delete('q')
+      setPedido(busqueda)
+    }
     for (const [clave, valor] of Object.entries(cambios)) {
       if (valor) query.set(clave, valor)
       else query.delete(clave)
@@ -45,15 +54,17 @@ export function FiltrosOrdenes() {
 
   // La búsqueda se envía sola tras una pausa, sin necesidad de pulsar Enter.
   useEffect(() => {
-    // Lo ya pedido —también el vacío de «Limpiar»— no se vuelve a pedir: ese
-    // segundo viaje reponía la prioridad que «Limpiar» acababa de quitar.
-    if (busqueda === actual || busqueda === pedido) return
+    // Se compara con lo último pedido —también el vacío de «Limpiar»—, o con la
+    // URL si no hay nada en viaje: pedir otra vez el vacío reponía la prioridad
+    // que «Limpiar» acababa de quitar, y volver al valor de antes con otro en
+    // viaje dejaba la caja con un término y la lista con otro.
+    if (busqueda === (pedido ?? actual)) return
 
-    const temporizador = setTimeout(() => {
+    espera.current = setTimeout(() => {
       setPedido(busqueda)
       navegar({ q: busqueda || null }, true)
     }, 350)
-    return () => clearTimeout(temporizador)
+    return () => clearTimeout(espera.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busqueda])
 
@@ -140,6 +151,7 @@ export function FiltrosOrdenes() {
         <button
           type="button"
           onClick={() => {
+            clearTimeout(espera.current)
             setBusqueda('')
             setPedido('')
             iniciarTransicion(() => router.push('/ordenes'))

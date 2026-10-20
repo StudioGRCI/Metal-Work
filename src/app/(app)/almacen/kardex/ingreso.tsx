@@ -25,8 +25,11 @@ export function NuevoIngreso({materiales,unidades,despachos}:{materiales:Materia
  const escrito=texto.trim().toUpperCase()
  // Escrito igual que uno del catálogo, aunque sea sin tildes, es ese: si no,
  // «angulo 2 x 1/4» entraba como material nuevo al lado del ÁNGULO.
- const llano=(t:string)=>t.normalize('NFD').replace(/\p{Diacritic}/gu,'').toUpperCase().replace(/[^A-Z0-9]+/g,'')
- const elegido=escrito?materiales.find(m=>etiquetaDe(m).toUpperCase()===escrito||m.codigo.toUpperCase()===escrito||llano(m.descripcion)===llano(texto)):undefined
+ // Los puntos y las barras se quedan: «1.5» no es «15» ni «3/16» es «316».
+ // Y solo si es uno: con dos iguales se pregunta.
+ const llano=(t:string)=>t.normalize('NFD').replace(/\p{Diacritic}/gu,'').toUpperCase().replace(/[^A-Z0-9./]+/g,'')
+ const iguales=escrito?materiales.filter(m=>llano(m.descripcion)===llano(texto)):[]
+ const elegido=escrito?materiales.find(m=>etiquetaDe(m).toUpperCase()===escrito||m.codigo.toUpperCase()===escrito)??(iguales.length===1?iguales[0]:undefined):undefined
  const libre=Boolean(escrito)&&!elegido
  // Como todo buscador: «angulo» sugiere «ÁNGULO 2 X 1/4». Antes era un datalist,
  // que el navegador vuelve a filtrar a su modo (con tilde) y no lo sugería: el

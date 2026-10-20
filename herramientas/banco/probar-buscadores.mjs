@@ -209,6 +209,8 @@ const CASOS = [
   // y, a veces, lo que no tiene que salir
   ['diseno', '/materiales', 'Buscar material', 'buscar', 'angulo 1/4', MATERIAL],
   ['diseno', '/materiales', 'Buscar material', 'buscar', 'plancha, a36', PLANCHA],
+  // La medida pegada, como se anota en el taller, en la base.
+  ['diseno', '/materiales', 'Buscar material', 'buscar', `angulo 2x1/4 ${sello}`, MATERIAL],
   ['logistica', '/compras/valorizacion', 'Buscar material', 'q', `busca ${sello} angulo`, MATERIAL],
   ['ventas', '/clientes', 'Buscar clientes', 'q', `pena nunez ${sello}`, CLIENTE],
   ['ventas', '/clientes', 'Buscar clientes', 'q', `nunez ${sello} s.a.c.`, CLIENTE, GEMELO],
@@ -221,6 +223,8 @@ const CASOS = [
   ['gerencia', '/unidades', 'Buscar unidades', 'q', PLACA.replace('-', '').toLowerCase(), PLACA],
   ['ventas', '/cotizaciones/pdf', 'Buscar cotizaciones', 'q', `nunez ${sello}`, COTIZACION],
   ['admin', '/personal', 'Buscar personal', 'q', 'vendedor banco buscadores', 'ventas.bus@banco.test'],
+  // El correo escrito tal cual, con su punto: la base lo busca por sus partes.
+  ['admin', '/personal', 'Buscar personal', 'q', 'ventas.bus@banco.test', 'ventas.bus@banco.test'],
   ['gerencia', '/codigos-internos', 'Buscar código interno', 'q', `qa bus ${sello}`, CODIGO],
   ['requerimientos', '/requerimientos/gasto-por-codigo', 'Buscar código interno', 'q', `qa_bus_${sello}`, CODIGO],
   ['logistica', '/compras/servicios', 'Buscar por código interno', 'codigo', CODIGO.toLowerCase(), SERVICIO],
@@ -404,11 +408,19 @@ for (const ancho of [390, 1280]) {
     const activo = async () => (await uno('select activo from public.usuarios where correo = $1', [correo])).activo
     await pagina.goto(`${BASE}/personal?q=${encodeURIComponent(`prueba${n} baja ${sello}`)}`, { waitUntil: 'networkidle' })
     await pagina.getByRole('button', { name: `Dar de baja a PRUEBA${n}` }).click()
+    // Pregunta antes: el ícono está junto al de la contraseña.
+    const ventana = pagina.getByRole('dialog')
+    const pregunta = await ventana.innerText().catch(() => '')
+    await ventana.getByRole('button', { name: 'Dar de baja', exact: true }).click()
     const tras = await hasta(activo, (v) => v === false)
-    await pagina.goto(`${BASE}/personal?estado=todos&q=${encodeURIComponent(`prueba${n} baja ${sello}`)}`, { waitUntil: 'networkidle' })
-    await pagina.getByRole('button', { name: `Reactivar a PRUEBA${n}` }).click()
+    // Y lleva a «Dados de baja», con el botón para deshacerlo a la vista.
+    await pagina.waitForURL((u) => new URL(u).searchParams.get('estado') === 'bajas', { timeout: 15000 }).catch(() => {})
+    const reactivar = pagina.getByRole('button', { name: `Reactivar a PRUEBA${n}` })
+    const aLaVista = await hasta(() => reactivar.count(), (c) => c === 1)
+    if (aLaVista === 1) await reactivar.click()
     const otraVez = await hasta(activo, (v) => v === true)
-    comprobar(tras === false && otraVez === true, `Personal (administrador): «Dar de baja» deja la ficha inactiva (${tras}) y «Reactivar» la vuelve activa (${otraVez})`)
+    comprobar(pregunta.includes('Deja de entrar') && tras === false && aLaVista === 1 && otraVez === true,
+      `Personal (administrador): «Dar de baja» pregunta, deja la ficha inactiva (${tras}), lleva a «Dados de baja» y «Reactivar» la vuelve activa (${otraVez})`)
 
     // Una pastilla tocada en la pausa de la búsqueda se queda.
     await pagina.goto(`${BASE}/personal`, { waitUntil: 'networkidle' })
@@ -428,6 +440,13 @@ for (const ancho of [390, 1280]) {
     await pagina.waitForTimeout(2000)
     const url = new URL(pagina.url())
     comprobar(url.pathname === '/ordenes' && url.search === '', `Órdenes (gerencia): «Limpiar» quita la búsqueda y la prioridad («${url.search}»)`)
+    // Y una prioridad elegida mientras se escribe se queda, con lo escrito.
+    await pagina.getByRole('searchbox', { name: 'Buscar órdenes' }).pressSequentially('zzz', { delay: 10 })
+    await pagina.getByLabel('Filtrar por prioridad').selectOption('ALTA')
+    await pagina.waitForTimeout(2500)
+    const otra = new URL(pagina.url())
+    comprobar(otra.searchParams.get('prioridad') === 'ALTA' && otra.searchParams.get('q') === 'zzz',
+      `Órdenes (gerencia): la prioridad elegida mientras se escribe se queda con lo escrito («${otra.search}»)`)
   }
 
   // Kardex: lo escrito en «Unidad o código» sin pulsar «Ver» no sobrevive a «Limpiar».

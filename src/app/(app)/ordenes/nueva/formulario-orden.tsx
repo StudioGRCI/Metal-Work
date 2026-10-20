@@ -22,7 +22,7 @@ import { NuevoCliente } from '@/components/comercial/nuevo-cliente'
 import { crearOrden } from '../acciones'
 
 type Catalogos = {
-  clientes: { id: string; razon_social: string; numero_documento: string }[]
+  clientes: { id: string; razon_social: string; tipo_documento?: string; numero_documento: string }[]
   sedes: { id: string; nombre: string }[]
   tiposCarroceria: { id: string; nombre: string }[]
   responsables: { id: string; puesto: string | null; correo: string | null }[]
@@ -203,7 +203,8 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
             requerido
             // El desplegable corta un nombre largo en el monitor y lo que
             // distingue a dos clientes —el número, la sigla— queda al final.
-            ayuda={clienteElegido ? `${clienteElegido.razon_social} · RUC ${clienteElegido.numero_documento}` : undefined}
+            ayudaEnIcono={false}
+            ayuda={clienteElegido ? `${clienteElegido.razon_social} · ${clienteElegido.tipo_documento ?? 'N.º'} ${clienteElegido.numero_documento}` : undefined}
           >
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <SeleccionBuscable

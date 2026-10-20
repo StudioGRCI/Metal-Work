@@ -70,7 +70,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                 titulo={busqueda ? 'Ninguna unidad coincide' : 'Aún no hay unidades'}
                 descripcion={
                   busqueda
-                    ? `Nada con «${busqueda}». Prueba con la placa completa, la marca o el chasis.`
+                    ? 'Prueba con menos palabras, con la placa completa, la marca o el chasis.'
                     : 'Cada unidad se registra desde la ficha de su cliente, con el botón «Agregar unidad».'
                 }
                 accion={
@@ -168,7 +168,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                     </TD>
                     {puedeEditar && (
                       <TD>
-                        <div className="space-y-2">
+                        <div className="flex flex-col items-start gap-2 lg:flex-row lg:items-center">
                           {/* Una unidad del taller todavía no tiene cliente: se edita
                               desde su orden, cuando Administración le pone uno. */}
                           {u.cliente_id && <NuevaUnidad clienteId={u.cliente_id} unidad={u} compacta />}

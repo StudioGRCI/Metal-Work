@@ -1,6 +1,7 @@
 'use client'
 
 import { KeyRound, Pencil, Plus, UserMinus, UserPlus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
@@ -247,11 +248,18 @@ export function FilaDePersona({
   catalogos: Catalogos
   gestiona: boolean
 }) {
-  const [ventana, setVentana] = useState<'editar' | 'clave' | null>(null)
+  const router = useRouter()
+  const [ventana, setVentana] = useState<'editar' | 'clave' | 'baja' | null>(null)
 
   const edicion = useEnvio(guardarPersona)
   const clave = useEnvio(cambiarClave)
-  const estado = useEnvio(cambiarEstado)
+  // Dada de baja, la fila se va de «Activos» y con ella el botón para
+  // deshacerlo: se lleva a la lista donde quedó, con el botón a la vista.
+  const estado = useEnvio(cambiarEstado, () => {
+    setVentana(null)
+    const lista = persona.activo ? 'bajas' : 'activos'
+    router.push(`/personal?estado=${lista}&q=${encodeURIComponent(persona.correo ?? persona.apellidos)}`)
+  })
 
   const alcance = (
     <>
@@ -318,22 +326,53 @@ export function FilaDePersona({
               >
                 <KeyRound className="size-4" />
               </button>
-              {/* Dar de baja no pregunta: no se pierde nada —la ficha y sus
-                  horas siguen ahí— y se deshace con el mismo botón, que pasa a
-                  decir «Reactivar». */}
-              <form onSubmit={estado.alEnviar} className="inline">
-                <input type="hidden" name="id" value={persona.id} />
-                <input type="hidden" name="activo" value={persona.activo ? 'false' : 'true'} />
+              {/* Dar de baja pregunta: el ícono está a un dedo del de la
+                  contraseña y deja a la persona sin entrar. Reactivar no. */}
+              {persona.activo ? (
                 <button
-                  type="submit"
-                  disabled={estado.enviando}
-                  title={persona.activo ? 'Dar de baja' : 'Reactivar'}
-                  aria-label={persona.activo ? `Dar de baja a ${persona.nombres}` : `Reactivar a ${persona.nombres}`}
-                  className={cn(BOTON_ICONO, 'disabled:opacity-50')}
+                  type="button"
+                  onClick={() => setVentana('baja')}
+                  title="Dar de baja"
+                  aria-label={`Dar de baja a ${persona.nombres}`}
+                  className={BOTON_ICONO}
                 >
-                  {persona.activo ? <UserMinus className="size-4" /> : <UserPlus className="size-4" />}
+                  <UserMinus className="size-4" />
                 </button>
-              </form>
+              ) : (
+                <form onSubmit={estado.alEnviar} className="inline">
+                  <input type="hidden" name="id" value={persona.id} />
+                  <input type="hidden" name="activo" value="true" />
+                  <button
+                    type="submit"
+                    disabled={estado.enviando}
+                    title="Reactivar"
+                    aria-label={`Reactivar a ${persona.nombres}`}
+                    className={cn(BOTON_ICONO, 'disabled:opacity-50')}
+                  >
+                    <UserPlus className="size-4" />
+                  </button>
+                </form>
+              )}
+              <Ventana
+                abierta={ventana === 'baja'}
+                alCerrar={() => setVentana(null)}
+                titulo={`Dar de baja a ${persona.nombres} ${persona.apellidos}`}
+                descripcion="Deja de entrar al sistema. Su ficha y sus horas se quedan, y se reactiva desde «Dados de baja»."
+              >
+                <form onSubmit={estado.alEnviar} className="flex flex-wrap justify-end gap-2">
+                  <input type="hidden" name="id" value={persona.id} />
+                  <input type="hidden" name="activo" value="false" />
+                  {estado.resultado?.ok === false && (
+                    <p role="alert" className="w-full text-sm text-peligro">{estado.resultado.error}</p>
+                  )}
+                  <Boton type="button" variante="secundario" onClick={() => setVentana(null)}>
+                    Cancelar
+                  </Boton>
+                  <Boton type="submit" variante="peligro" cargando={estado.enviando}>
+                    Dar de baja
+                  </Boton>
+                </form>
+              </Ventana>
             </div>
           </TD>
         )}

@@ -72,7 +72,7 @@ export async function ListaDeCodigosDeDiseno({
   const llave = llaveParecido(q)
   const palabras = palabrasDeBusqueda(q)
   // Por código, con su llave de parecidos (SR-04, SR 4…), o por la placa y el
-  // vehículo que la fila muestra: quien busca «y14966» la está viendo ahí.
+  // vehículo que la fila muestra: quien busca «v2g841» la está viendo ahí.
   const buscados = q
     ? todos.filter((c) => c.codigo.includes(q.toUpperCase()) || (llave && llaveParecido(c.codigo).includes(llave)) || coincide(palabras, [c.codigo, c.unidad]))
     : todos

@@ -42,12 +42,12 @@ export function BuscadorSimple({
     setPedido(null)
   }
 
+  const consulta = params.toString()
   useEffect(() => {
-    if (busqueda === actual || busqueda === pedido) return
+    if (busqueda === (pedido ?? actual)) return
 
-    const temporizador = setTimeout(() => {
-      // La URL de ahora, no la de cuando se escribió: si en la pausa se tocó
-      // un filtro, ese filtro se queda.
+    const disparar = () => {
+      // La URL de ahora, no la de cuando se escribió.
       const query = new URLSearchParams(window.location.search)
       if (busqueda) query.set(clave, busqueda)
       else query.delete(clave)
@@ -56,11 +56,25 @@ export function BuscadorSimple({
       // historial y «atrás» recorría la búsqueda letra por letra.
       setPedido(busqueda)
       iniciarTransicion(() => router.replace(`${ruta}?${query}`))
-    }, 350)
+    }
+    let temporizador = setTimeout(disparar, 350)
+    // Un enlace tocado en la pausa —una pastilla— manda: la búsqueda espera a
+    // que su URL llegue, que vuelve a correr este efecto, y sale sobre ella.
+    // Si salía antes, con la URL de antes del enlace, lo deshacía. El plazo
+    // largo cubre un enlace que no cambia la URL.
+    const alTocar = (e: MouseEvent) => {
+      if (!(e.target instanceof Element) || !e.target.closest('a[href]')) return
+      clearTimeout(temporizador)
+      temporizador = setTimeout(disparar, 3000)
+    }
+    document.addEventListener('click', alTocar, true)
 
-    return () => clearTimeout(temporizador)
+    return () => {
+      clearTimeout(temporizador)
+      document.removeEventListener('click', alTocar, true)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busqueda])
+  }, [busqueda, consulta])
 
   // Lo escrito todavía no está en la URL, o la pantalla se está rehaciendo: en
   // ambos casos lo que se ve abajo ya no corresponde a lo que se pidió.

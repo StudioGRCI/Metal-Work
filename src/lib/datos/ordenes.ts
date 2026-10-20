@@ -199,7 +199,7 @@ export async function catalogosOrden() {
   const supabase = await createClient()
 
   const [clientes, sedes, tipos, responsables] = await Promise.all([
-    supabase.from('clientes').select('id, razon_social, numero_documento').eq('activo', true).order('razon_social').limit(500),
+    supabase.from('clientes').select('id, razon_social, tipo_documento, numero_documento').eq('activo', true).order('razon_social').limit(500),
     supabase.from('sedes').select('id, nombre').eq('activo', true).order('nombre'),
     supabase.from('tipos_carroceria').select('id, nombre').eq('activo', true).order('orden_secuencia'),
     // Se eligen por puesto (migración 109): `puesto` es la columna calculada y

@@ -13,7 +13,19 @@
  * Los signos que van dentro de una sigla o un código: «S.A.C.», «SR_04», «A-36»,
  * «3/16». Escritos o no, la palabra es la misma.
  */
-const DENTRO = /([a-z0-9])[._/-]+(?=[a-z0-9])/g
+const SIGNOS = /[._/-]+/
+
+/**
+ * Un trozo entre espacios con signos dentro: si es sigla —letras sueltas— o
+ * código —con números—, es una sola palabra; si no, son varias. «S.A.C.» es
+ * «sac» y «SR_04» es «sr04», pero «Mercedes-Benz» son «mercedes» y «benz»:
+ * pegado no lo encontraba la base, que en una palabra larga sin números no
+ * admite signos entre letras.
+ */
+function trozos(texto: string): string[] {
+  const partes = texto.split(SIGNOS).filter(Boolean)
+  return partes.every((p) => p.length === 1) || partes.some((p) => /\d/.test(p)) ? [partes.join('')] : partes
+}
 
 /**
  * Las palabras que se buscan, en minúsculas y sin tildes; «S.A.C.» es una sola
@@ -21,7 +33,7 @@ const DENTRO = /([a-z0-9])[._/-]+(?=[a-z0-9])/g
  * sola —la «y» de «Peña y Núñez»— no se busca si hay otras: está en todo.
  */
 export function palabrasDeBusqueda(texto: string | null | undefined): string[] {
-  const todas = plano(texto ?? '').replace(DENTRO, '$1').split(/[^a-z0-9]+/).filter(Boolean)
+  const todas = plano(texto ?? '').split(/[^a-z0-9._/-]+/).flatMap(trozos).filter(Boolean)
   const utiles = todas.filter((p) => p.length > 1 || /\d/.test(p))
   return (utiles.length ? utiles : todas).slice(0, 8).map((p) => p.slice(0, 20))
 }
@@ -60,15 +72,17 @@ const VARIANTES: Record<string, string> = {
 
 /**
  * Una palabra como expresión regular que encuentra sus versiones con tilde y
- * con los signos de `DENTRO` entre letra y letra: «sac» encuentra «S.A.C.» y
- * «sr04», «SR_04». Solo lleva letras, números, corchetes, esos signos y `?`
- * —`palabrasDeBusqueda` no dejó nada más—, y entre las comillas del filtro
+ * con los `SIGNOS` entre letra y letra: «sac» encuentra «S.A.C.» y «sr04»,
+ * «SR_04». Solo lleva letras, números, corchetes, esos signos, el espacio y
+ * `?` —`palabrasDeBusqueda` no dejó nada más—, y entre las comillas del filtro
  * nada de eso es un mando para PostgREST.
  */
 export function expresionSinTildes(palabra: string): string {
   // Los signos entre letra y letra solo hacen falta en siglas y códigos —cortos
   // o con números—; en «transportes» triplicaban el largo de la dirección.
-  const entre = palabra.length <= 4 || /\d/.test(palabra) ? '[._/-]?' : ''
+  // Con números también el espacio: «2x14» encuentra «2 X 1/4», como hace
+  // `coincide`. En una sigla no, que «sac» saltaría a «planchaS ACero».
+  const entre = /\d/.test(palabra) ? '[ ._/-]?' : palabra.length <= 4 ? '[._/-]?' : ''
   return [...palabra].map((c) => (VARIANTES[c] ? `[${VARIANTES[c]}]` : c)).join(entre)
 }
 
@@ -97,7 +111,7 @@ export function filtrosDeBusqueda(columnas: string[], texto: string | null | und
 
 /**
  * Lo mismo para una lista ya leída: cada palabra está en alguno de los campos,
- * leídos también sin los signos de `DENTRO` y con la O igual al cero, como hace
+ * leídos también sin los `SIGNOS` y con la O igual al cero, como hace
  * la expresión. Una medida —una palabra con números— se busca además sin
  * espacios: en el taller se anota «2X1/4» lo que el catálogo tiene como
  * «2 X 1/4». Una palabra sin números no salta espacios: «sac» no está en

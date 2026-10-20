@@ -16,6 +16,11 @@ test('la letra suelta no se busca si hay otras, y la sigla del final no se pierd
   assert.deepEqual(palabrasDeBusqueda('Transportes Peña y Núñez S.A.C.'), ['transportes', 'pena', 'nunez', 'sac'])
   assert.deepEqual(palabrasDeBusqueda('y'), ['y'])
   assert.deepEqual(palabrasDeBusqueda('tubo 2 x 1/4'), ['tubo', '2', '14'])
+  // Una palabra larga con guion o punto son dos: la base las encuentra sueltas.
+  assert.deepEqual(palabrasDeBusqueda('Mercedes-Benz'), ['mercedes', 'benz'])
+  assert.deepEqual(palabrasDeBusqueda('juan.perez'), ['juan', 'perez'])
+  assert.deepEqual(palabrasDeBusqueda('E.I.R.L. PLA_SR_O4'), ['eirl', 'plasro4'])
+  assert.ok(new RegExp(expresionSinTildes(palabrasDeBusqueda('semi-remolque')[1]), 'i').test('SEMI-REMOLQUE'))
   assert.equal(palabrasDeBusqueda('a1 b2 c3 d4 e5 f6 g7 h8 i9 j10').length, 8)
   assert.equal(palabrasDeBusqueda('x'.repeat(100))[0].length, 20)
 })
@@ -36,7 +41,7 @@ test('la expresión encuentra la palabra con y sin tilde', () => {
   for (const t of ['CAMIÓN', 'camion', 'Camión']) assert.ok(r.test(t), t)
   assert.ok(new RegExp(expresionSinTildes('agricola'), 'i').test('AGRÍCOLA EL EJEMPLO'))
   assert.ok(new RegExp(expresionSinTildes('pena'), 'i').test('PEÑA'))
-  assert.match(expresionSinTildes('sr04'), /^[a-z0-9[\]._/?áéíóúüñÁÉÍÓÚÜÑ-]+$/)
+  assert.match(expresionSinTildes('sr04'), /^[a-z0-9[\] ._/?áéíóúüñÁÉÍÓÚÜÑ-]+$/)
   assert.equal(expresionSinTildes('un'), '[uúüÚÜ][._/-]?[nñÑ]')
   // En una palabra larga sin números no van signos entre letras.
   assert.equal(expresionSinTildes('camion'), 'c[aáÁ]m[iíÍ][oóÓ0][nñÑ]')
@@ -52,10 +57,13 @@ test('la expresión encuentra siglas y códigos con o sin sus signos, y no salta
   assert.ok(new RegExp(expresionSinTildes('sr04'), 'i').test('PLA_SR_O4_1_26/28'))
   assert.ok(new RegExp(expresionSinTildes('sro4'), 'i').test('PLA_SR_04_1'))
   assert.ok(!new RegExp(expresionSinTildes('sac'), 'i').test('E.I.R.L.'))
+  // La medida pegada encuentra la que lleva espacios.
+  assert.ok(new RegExp(expresionSinTildes(palabrasDeBusqueda('2x1/4')[0]), 'i').test('ÁNGULO 2 X 1/4'))
+  assert.ok(!new RegExp(expresionSinTildes(palabrasDeBusqueda('2x3/8')[0]), 'i').test('ÁNGULO 2 X 1/4'))
 })
 
 test('el filtro lleva cada columna con su expresión entre comillas', () => {
-  assert.equal(filtroDePalabra(['placa', 'marca'], '12'), 'placa.imatch."1[._/-]?2",marca.imatch."1[._/-]?2"')
+  assert.equal(filtroDePalabra(['placa', 'marca'], '12'), 'placa.imatch."1[ ._/-]?2",marca.imatch."1[ ._/-]?2"')
   // La coma y el paréntesis escritos no llegan al filtro.
   assert.equal(filtroDePalabra(['a'], palabrasDeBusqueda('x, y)')[0]), 'a.imatch."x"')
 })
