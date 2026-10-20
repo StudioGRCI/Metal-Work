@@ -285,3 +285,63 @@ export async function anularRecibo(_previo: unknown, formulario: FormData): Prom
   repintar(analisis.data.subcontrato_id)
   return { ok: true, mensaje: 'Recibo anulado: queda con su motivo y su archivo como evidencia.' }
 }
+
+/**
+ * El contrato del subcontrato (migración 20261020202000), ya subido a Storage
+ * por el navegador. Opcional: al registrarlo o después; otra versión va encima.
+ * Mismo permiso que `adjuntar_contrato_subcontrato`.
+ */
+export async function adjuntarContratoSubcontrato(
+  subcontratoId: string,
+  entrada: { id: string; ruta: string; nombre: string },
+): Promise<ResultadoAccion> {
+  if (!(await puedeGestionar())) return { ok: false, error: NO_GESTIONA }
+  const analisis = z
+    .object({ id: z.guid(), subcontratoId: z.guid(), ruta: z.string().min(1).max(200), nombre: z.string().max(500) })
+    .safeParse({ ...entrada, subcontratoId })
+  if (!analisis.success) return { ok: false, error: 'Vuelve a adjuntar el contrato.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('adjuntar_contrato_subcontrato', {
+    p_id: d.id,
+    p_subcontrato_id: d.subcontratoId,
+    p_ruta: d.ruta,
+    p_nombre: d.nombre.slice(0, 200) || null,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.id) return { ok: false, error: 'El contrato no quedó adjunto. Recarga la pantalla.' }
+
+  repintar(d.subcontratoId)
+  return { ok: true, mensaje: 'Contrato adjunto.' }
+}
+
+/**
+ * El supervisor marca cuándo empezó y cuándo terminó de verdad el subcontrato
+ * (migración 20261020201000). Referencial: las fechas del contrato no cambian.
+ * Mismo permiso que `marcar_fechas_reales_subcontrato`, que además exige que
+ * sea de su área.
+ */
+export async function marcarFechasReales(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'subcontratos.area')) return { ok: false, error: 'Las fechas reales las marca el supervisor del área.' }
+  const analisis = z
+    .object({ id: z.guid(), inicio: z.iso.date().optional(), fin: z.iso.date().optional() })
+    .safeParse({ id: dato(formulario, 'id'), inicio: dato(formulario, 'inicio_real') || undefined, fin: dato(formulario, 'fin_real') || undefined })
+  if (!analisis.success) return { ok: false, error: 'Revisa las fechas: el día en que empezó y, si ya terminó, el día en que terminó.' }
+  const d = analisis.data
+  if (!d.inicio && d.fin) return { ok: false, error: 'Marca primero el día en que empezó.' }
+  if (d.inicio && d.fin && d.fin < d.inicio) return { ok: false, error: 'No pudo terminar antes de empezar: revisa las dos fechas.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('marcar_fechas_reales_subcontrato', {
+    p_id: d.id,
+    p_inicio: d.inicio ?? null,
+    p_fin: d.fin ?? null,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.id) return { ok: false, error: 'Las fechas no quedaron marcadas. Recarga la pantalla.' }
+
+  repintar(d.id)
+  return { ok: true, mensaje: d.inicio ? 'Fechas reales marcadas.' : 'Fechas reales borradas.' }
+}

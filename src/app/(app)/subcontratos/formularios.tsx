@@ -5,18 +5,22 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo'
+import { CampoContrato, sacarContrato } from '@/components/estructura/contrato-adjunto'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
+import type { ResultadoAccion } from '@/lib/acciones'
+import { subirContrato } from '@/lib/contratos'
 import type { Subcontratista } from '@/lib/datos/subcontratos'
+import { problemaDeContrato } from '@/lib/dominio/contratos'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
-import { AREAS_SUBCONTRATO, AYUDA_AREA_SUBCONTRATO } from '@/lib/dominio/subcontratos'
+import { AREAS_SUBCONTRATO, AYUDA_AREA_SUBCONTRATO, BUCKET_SUBCONTRATOS } from '@/lib/dominio/subcontratos'
 import { BANCOS_SUGERIDOS, rucEsValido } from '@/lib/dominio/proveedores'
 import { useEnvio } from '@/lib/envio'
 
-import { guardarSubcontratista, registrarSubcontrato } from './acciones'
+import { adjuntarContratoSubcontrato, guardarSubcontratista, registrarSubcontrato } from './acciones'
 
 /** El código interno con el buscador de todos los formularios: por el código, la placa o la marca. */
 export function CampoCodigoInterno({ id, codigos, valor }: { id: string; codigos: CodigoParaElegir[] | null; valor?: string }) {
@@ -50,8 +54,8 @@ export function CampoAreaSubcontrato({ id, valor, opcional = false }: { id: stri
 
 /**
  * Registrar un subcontrato: a quién, para qué área y código interno, qué
- * trabajo y cuánto se pactó. El número SC-… lo pone la base; al salir bien se abre el
- * subcontrato para subirle sus recibos.
+ * trabajo y cuánto se pactó, y su contrato si ya lo tienen. El número SC-… lo pone la
+ * base; al salir bien se abre el subcontrato para subirle sus recibos.
  */
 export function NuevoSubcontrato({ subcontratistas, codigos }: { subcontratistas: Subcontratista[]; codigos: CodigoParaElegir[] | null }) {
   const [abierta, setAbierta] = useState(false)
@@ -94,8 +98,32 @@ function FormularioSubcontrato({
   const router = useRouter()
   // Decidido aquí: un reintento manda el mismo y la base no registra otro.
   const [id] = useState(() => crypto.randomUUID())
+  const [idContrato] = useState(() => crypto.randomUUID())
   const [subcontratistaId, setSubcontratistaId] = useState('')
-  const { alEnviar, enviando, error } = useEnvio(registrarSubcontrato, () => router.push(`/subcontratos/${id}`), { refrescar: false })
+
+  // El contrato es opcional y sube después de registrar: su carpeta es el subcontrato,
+  // que tiene que existir. Si el subcontrato entra y el contrato no, se abre el
+  // subcontrato con el aviso y el botón para adjuntarlo.
+  async function registrar(previo: unknown, datos: FormData): Promise<ResultadoAccion<{ id: string; contratoPendiente: boolean }>> {
+    const contrato = sacarContrato(datos)
+    const problema = contrato && problemaDeContrato(contrato)
+    if (problema) return { ok: false, error: problema }
+    const r = await registrarSubcontrato(previo, datos)
+    if (!r.ok || !contrato) return r.ok ? { ...r, datos: { id, contratoPendiente: false } } : r
+    const c = await subirContrato({
+      bucket: BUCKET_SUBCONTRATOS,
+      carpeta: id,
+      id: idContrato,
+      archivo: contrato,
+      adjuntar: (d) => adjuntarContratoSubcontrato(id, d),
+    })
+    return { ...r, datos: { id, contratoPendiente: !c.ok } }
+  }
+  const { alEnviar, enviando, error } = useEnvio(
+    registrar,
+    (r) => router.push(`/subcontratos/${id}${r.datos?.contratoPendiente ? '?contrato=pendiente' : ''}`),
+    { refrescar: false },
+  )
 
   if (subcontratistas.length === 0) {
     return (
@@ -156,6 +184,7 @@ function FormularioSubcontrato({
           <Entrada id="sc-fin" name="fecha_fin" type="date" />
         </Campo>
       </div>
+      <CampoContrato id="sc-contrato" />
       {error && (
         <p role="alert" className="text-sm text-peligro">
           {error}

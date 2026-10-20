@@ -158,7 +158,7 @@ export function ConteoInicial() {
                 {resumen.sinCambio > 0 && <Insignia tono="neutro">{resumen.sinCambio} en cero, sin nada que registrar</Insignia>}
                 {resumen.errores > 0 && <Insignia tono="peligro">{resumen.errores} con errores</Insignia>}
                 {!registrando && !terminado && (
-                  <button type="button" onClick={reiniciar} className="ml-auto text-sm text-acento hover:underline">Elegir otro archivo</button>
+                  <Boton type="button" variante="fantasma" tamano="sm" onClick={reiniciar} className="ml-auto">Elegir otro archivo</Boton>
                 )}
               </div>
 

@@ -8893,6 +8893,57 @@ export type Database = {
           }
         ]
       }
+      subcontrato_contratos: {
+        Row: {
+          id: string
+          subcontrato_id: string
+          archivo_ruta: string
+          archivo_nombre: string | null
+          archivo_mime: string
+          archivo_tamano: number
+          subido_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id: string
+          subcontrato_id: string
+          archivo_ruta: string
+          archivo_nombre?: string | null
+          archivo_mime: string
+          archivo_tamano: number
+          subido_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          subcontrato_id?: string
+          archivo_ruta?: string
+          archivo_nombre?: string | null
+          archivo_mime?: string
+          archivo_tamano?: number
+          subido_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subcontrato_contratos_subcontrato_id_fkey"
+            columns: ["subcontrato_id"]
+            isOneToOne: false
+            referencedRelation: "subcontratos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontrato_contratos_subido_por_fkey"
+            columns: ["subido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       subcontratos: {
         Row: {
           id: string
@@ -8914,6 +8965,10 @@ export type Database = {
           creado_en: string
           actualizado_en: string
           area_id: string | null
+          inicio_real: string | null
+          fin_real: string | null
+          fechas_reales_por: string | null
+          fechas_reales_en: string | null
         }
         Insert: {
           id?: string
@@ -8935,6 +8990,10 @@ export type Database = {
           creado_en?: string
           actualizado_en?: string
           area_id?: string | null
+          inicio_real?: string | null
+          fin_real?: string | null
+          fechas_reales_por?: string | null
+          fechas_reales_en?: string | null
         }
         Update: {
           id?: string
@@ -8956,6 +9015,10 @@ export type Database = {
           creado_en?: string
           actualizado_en?: string
           area_id?: string | null
+          inicio_real?: string | null
+          fin_real?: string | null
+          fechas_reales_por?: string | null
+          fechas_reales_en?: string | null
         }
         Relationships: [
           {
@@ -8975,6 +9038,13 @@ export type Database = {
           {
             foreignKeyName: "subcontratos_creado_por_fkey"
             columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontratos_fechas_reales_por_fkey"
+            columns: ["fechas_reales_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -10545,6 +10615,15 @@ export type Database = {
           p_tabla: string | null
         }
         Returns: null
+      }
+      adjuntar_contrato_subcontrato: {
+        Args: {
+          p_id: string | null
+          p_subcontrato_id: string | null
+          p_ruta: string | null
+          p_nombre: string | null
+        }
+        Returns: string
       }
       adjuntar_ficha_vehiculo_firmada: {
         Args: {
@@ -12811,6 +12890,14 @@ export type Database = {
         }
         Returns: string
       }
+      marcar_fechas_reales_subcontrato: {
+        Args: {
+          p_id: string | null
+          p_inicio: string | null
+          p_fin: string | null
+        }
+        Returns: string
+      }
       margen_ot: {
         Args: {
           p_orden: string | null
@@ -14459,6 +14546,12 @@ export type Database = {
         }
         Returns: null
       }
+      subcontrato_ruta_adjunta: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
       subcontratos_codigos_internos: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -14500,6 +14593,28 @@ export type Database = {
           avance: number | null
           ultimo_reporte: string | null
           reportes: number | null
+        }[]
+      }
+      subcontratos_del_area_con_fechas_reales: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          numero: string | null
+          codigo_interno: string | null
+          descripcion: string | null
+          estado: string | null
+          area_codigo: string | null
+          area_nombre: string | null
+          subcontratista: string | null
+          fecha_inicio: string | null
+          fecha_fin: string | null
+          terminado_en: string | null
+          avance: number | null
+          ultimo_reporte: string | null
+          reportes: number | null
+          inicio_real: string | null
+          fin_real: string | null
+          fechas_reales_en: string | null
         }[]
       }
       subir_boleta_planilla_diaria: {

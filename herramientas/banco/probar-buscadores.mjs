@@ -133,7 +133,7 @@ for (const n of [3, 4]) {
 const clienteId = (await uno(`insert into public.clientes (tipo_documento, numero_documento, razon_social) values ('RUC', $1, $2) returning id`, [await rucLibre('clientes'), CLIENTE])).id
 await consulta(`insert into public.clientes (tipo_documento, numero_documento, razon_social) values ('RUC', $1, $2)`, [await rucLibre('clientes'), GEMELO])
 await consulta(`insert into public.proveedores (tipo_documento, numero_documento, razon_social, rubro) values ('RUC', $1, $2, 'Tornería y maestranza')`, [await rucLibre('proveedores'), PROVEEDOR])
-const unidadId = (await uno(`insert into public.unidades (cliente_id, placa, marca, modelo, tipo_vehiculo) values ($1, $2, 'VOLVO', 'FMX ÚNICO', 'VOLQUETE') returning id`, [clienteId, PLACA])).id
+const unidadId = (await uno(`insert into public.unidades (cliente_id, placa, marca, modelo, tipo_vehiculo, codigo_interno) values ($1, $2, 'VOLVO', 'FMX ÚNICO', 'VOLQUETE', $3) returning id`, [clienteId, PLACA, CODIGO])).id
 const ot = await uno(
   `insert into public.ordenes_trabajo (sede_id, descripcion, cliente_id, unidad_id) values ((select id from public.sedes order by nombre limit 1), $1, $2, $3) returning numero`,
   [OT, clienteId, unidadId],
@@ -151,6 +151,12 @@ const SERVICIO = (await uno(`select public.siguiente_correlativo('ORDEN_SERVICIO
 await consulta(`insert into public.ordenes_servicio (numero, proveedor_id, proveedor, descripcion, monto, codigo_interno, creado_por) values ($1, $2, $3, 'Torneado de prueba', 1, $4, $5)`,
   [SERVICIO, proveedorId, PROVEEDOR, CODIGO, logistico])
 const SUBCONTRATO = (await uno(`select public.siguiente_correlativo('SUBCONTRATO', '001', null) as n`)).n
+// En una base recién preparada no hay subcontratistas: uno inventado, con RUC 10.
+if (!(await uno(`select count(*)::int as n from public.subcontratistas`)).n) {
+  await consulta(`insert into public.subcontratistas (ruc, nombre)
+                  select n::text, 'SUBCONTRATISTA DE BANCO' from generate_series(10990050000::bigint, 10990099999::bigint) n
+                  where public.ruc_es_valido(n::text) limit 1`)
+}
 await consulta(`insert into public.subcontratos (numero, subcontratista_id, codigo_interno, descripcion, moneda, monto, creado_por)
                 values ($1, (select id from public.subcontratistas order by nombre limit 1), $2, 'Subcontrato de prueba', 'PEN', 1, $3)`, [SUBCONTRATO, CODIGO, logistico])
 // Dos trabajadores inventados que se parecen: la búsqueda deja uno solo.
@@ -494,6 +500,71 @@ for (const ancho of [390, 1280]) {
     await pagina.unroute(/\/personal(\?|$)/)
     comprobar(limpia.searchParams.get('estado') === 'bajas' && !limpia.searchParams.has('q') && vacia === '',
       `Personal: «Limpiar» con la pastilla en viaje deja la pastilla (${limpia.search}, caja «${vacia}»)`)
+  }
+
+  // Escribir despacio con el servidor lento: cada letra sale sola y la
+  // respuesta de la anterior llega con otra en viaje. Antes, esa respuesta
+  // copiaba a la caja el término viejo y se comía lo escrito entretanto: en
+  // producción, «carroceria» quedaba «caroei» (2026-10-20). Se ve con la
+  // demora variable de producción y con `next build` + `next start`: con
+  // `next dev`, o con una demora fija, las respuestas no se cruzan.
+  for (const [puesto, ruta, caja] of [
+    ['gerencia', '/ordenes', 'Buscar órdenes'],
+    ['ventas', '/clientes', 'Buscar clientes'],
+  ]) {
+    const { pagina } = await sesion(puesto)
+    const patron = new RegExp(`${ruta}(\\?|$)`)
+    await pagina.route(patron, async (r) => {
+      if (r.request().headers()['rsc']) await new Promise((listo) => setTimeout(listo, 300 + Math.random() * 1500))
+      // La respuesta demorada puede llegar con la página ya en otra parte.
+      await r.continue().catch(() => {})
+    })
+    await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle', timeout: 60000 })
+    const entrada = pagina.getByRole('searchbox', { name: caja })
+    await entrada.pressSequentially('carroceria', { delay: 450 })
+    await pagina.waitForURL((u) => u.searchParams.get('q') === 'carroceria', { timeout: 20000 }).catch(() => {})
+    await pagina.waitForTimeout(2000)
+    const escrito = await entrada.inputValue()
+    const url = new URL(pagina.url())
+    await pagina.unroute(patron)
+    comprobar(escrito === 'carroceria' && url.searchParams.get('q') === 'carroceria',
+      `${ruta} (${puesto}): escribiendo despacio con el servidor lento no se pierden letras (caja «${escrito}», URL «${url.searchParams.get('q')}»)`)
+  }
+
+  // «Limpiar», escribir otra cosa y tocar el menú antes de que vuelva nada: el
+  // menú se lleva lo escrito, y la caja tiene que decir lo mismo que la URL.
+  // Antes, el eco de «Limpiar» dejaba anotada como en viaje una búsqueda que el
+  // menú ya había reemplazado: la caja con texto, la lista sin filtrar y el
+  // ícono girando sin fin.
+  {
+    const { pagina } = await sesion('ventas')
+    const patron = /\/clientes(\?|$)/
+    await pagina.route(patron, async (r) => {
+      if (r.request().headers()['rsc']) await new Promise((listo) => setTimeout(listo, 300 + Math.random() * 1500))
+      // La respuesta demorada puede llegar con la página ya en otra parte.
+      await r.continue().catch(() => {})
+    })
+    await pagina.goto(`${BASE}/clientes?q=pena`, { waitUntil: 'networkidle', timeout: 60000 })
+    const entrada = pagina.getByRole('searchbox', { name: 'Buscar clientes' })
+    await pagina.getByRole('button', { name: 'Limpiar' }).click()
+    await entrada.pressSequentially('tra', { delay: 120 })
+    await pagina.waitForTimeout(400)
+    // El menú lateral en el monitor; en el teléfono, las pestañas de abajo.
+    await pagina.locator('nav[aria-label="Menú principal"] a[href="/clientes"]:visible, nav[aria-label="Secciones"] a[href="/clientes"]:visible').first().click()
+    const asentado = () =>
+      pagina.evaluate(() => {
+        const caja = document.querySelector('input[aria-label="Buscar clientes"]')
+        const q = new URL(location.href).searchParams.get('q') ?? ''
+        return { caja: caja?.value, q, gira: Boolean(caja?.closest('.relative')?.querySelector('.animate-spin')) }
+      })
+    let e = await asentado()
+    for (let i = 0; i < 80 && (e.gira || e.caja !== e.q); i++) {
+      await pagina.waitForTimeout(250)
+      e = await asentado()
+    }
+    await pagina.unroute(patron)
+    comprobar(!e.gira && e.caja === e.q,
+      `/clientes (ventas): «Limpiar», escribir y el menú con todo en viaje dejan la caja como la URL (caja «${e.caja}», URL «${e.q}», ${e.gira ? 'gira' : 'quieto'})`)
   }
 
   // «Ver también…» de Clientes, Unidades y Proveedores se lleva lo que se está

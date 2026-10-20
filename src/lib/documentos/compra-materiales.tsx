@@ -1,7 +1,8 @@
-import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
+import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import type { ReactNode } from 'react'
 
 import { igvCompra, importeCompra, totalCompra } from '@/lib/dominio/compra-materiales'
+import { CabeceraDocumento, PALETA_DOCUMENTO } from '@/lib/documentos/cabecera-documento'
 import { EMPRESA } from '@/lib/dominio/empresa'
 import { cantidad, fecha, moneda, numero } from '@/lib/format'
 
@@ -48,25 +49,13 @@ export type CompraPdf = {
   cuenta: { banco: string; titular: string; numero: string; moneda: string } | null
 }
 
-const AZUL = '#13467f'
-const ROJO = '#fd0002'
-const TINTA = '#16283d'
-const SUAVE = '#526174'
-const LINEA = '#aab6c4'
-const FONDO = '#eef2f7'
+const { azul: AZUL, tinta: TINTA, suave: SUAVE, linea: LINEA, fondo: FONDO } = PALETA_DOCUMENTO
 
 // El `lineHeight` va en cada estilo de texto y nunca en la página ni en nada del
 // pie: el pie es `fixed`, y con un `lineHeight` heredado, en su caja o en sus
 // textos, desaparece de la hoja sin avisar (pasó con la evaluación, 2026-10-01).
 const s = StyleSheet.create({
   pagina: { paddingTop: 24, paddingBottom: 42, paddingHorizontal: 28, fontFamily: 'Helvetica', fontSize: 8, color: TINTA },
-  cabecera: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
-  logo: { width: 110, height: 46, objectFit: 'contain' },
-  marcaTexto: { fontSize: 13, fontFamily: 'Helvetica-Bold', color: AZUL, lineHeight: 1.2 },
-  titulo: { fontSize: 16, fontFamily: 'Helvetica-Bold', color: AZUL, textAlign: 'right', lineHeight: 1.25 },
-  numero: { fontSize: 10, fontFamily: 'Helvetica-Bold', textAlign: 'right', lineHeight: 1.35 },
-  emision: { fontSize: 8, textAlign: 'right', color: SUAVE, lineHeight: 1.35 },
-  filete: { flexDirection: 'row', height: 3, marginBottom: 8 },
   fila2: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   caja: { borderWidth: 0.75, borderColor: TINTA },
   cajaTitulo: {
@@ -88,19 +77,21 @@ const s = StyleSheet.create({
   texto: { fontSize: 7.5, lineHeight: 1.35 },
   textoSuave: { fontSize: 7, lineHeight: 1.3, color: SUAVE },
   tabla: { borderWidth: 0.75, borderColor: TINTA },
+  // La moneda va una vez, aquí, y no en una columna que repetía «SOLES» en cada fila.
+  tablaTitulo: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: FONDO, borderBottomWidth: 0.75, borderColor: TINTA, paddingHorizontal: 5, paddingVertical: 2.5 },
+  tablaTituloTexto: { fontSize: 7.5, fontFamily: 'Helvetica-Bold', lineHeight: 1.25 },
   filaCab: { flexDirection: 'row', backgroundColor: AZUL },
   fila: { flexDirection: 'row', borderTopWidth: 0.5, borderColor: LINEA },
   cab: { paddingHorizontal: 3, paddingVertical: 3, fontSize: 6.8, fontFamily: 'Helvetica-Bold', color: '#ffffff', lineHeight: 1.2 },
   celda: { paddingHorizontal: 3, paddingVertical: 3, fontSize: 7.5, lineHeight: 1.3 },
   celdaSuave: { fontSize: 6.5, lineHeight: 1.25, color: SUAVE },
   cItem: { width: '6%', textAlign: 'center' },
-  cDesc: { width: '31%' },
+  cDesc: { width: '39%' },
   cCant: { width: '9%', textAlign: 'right' },
   cUm: { width: '7%', textAlign: 'center' },
-  cMon: { width: '8%', textAlign: 'center' },
   cPrecio: { width: '10%', textAlign: 'right' },
   cTotal: { width: '12%', textAlign: 'right' },
-  cDestino: { width: '17%' },
+  cDestino: { width: '17%', paddingLeft: 8 },
   totales: { alignSelf: 'flex-end', width: 200, marginTop: 6, borderWidth: 0.75, borderColor: TINTA },
   totalFila: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 5, paddingVertical: 2.5 },
   totalFinal: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 5, paddingVertical: 3, backgroundColor: FONDO, borderTopWidth: 0.75, borderColor: TINTA },
@@ -166,23 +157,7 @@ export function DocumentoCompraMateriales({ compra: c, lineas, logo }: { compra:
   return (
     <Document title={`Orden de compra ${c.numero}`} author={EMPRESA.razonSocial}>
       <Page size="A4" style={s.pagina}>
-        <View style={s.cabecera}>
-          {logo ? (
-            // eslint-disable-next-line jsx-a11y/alt-text -- el Image de react-pdf no es una etiqueta HTML
-            <Image src={logo} style={s.logo} />
-          ) : (
-            <Text style={s.marcaTexto}>{EMPRESA.razonSocial}</Text>
-          )}
-          <View>
-            <Text style={s.titulo}>ORDEN DE COMPRA</Text>
-            <Text style={s.numero}>N°: {c.numero}</Text>
-            <Text style={s.emision}>FECHA DE EMISIÓN: {fecha(c.emitida)}</Text>
-          </View>
-        </View>
-        <View style={s.filete}>
-          <View style={{ flex: 3, backgroundColor: AZUL }} />
-          <View style={{ flex: 1, backgroundColor: ROJO }} />
-        </View>
+        <CabeceraDocumento logo={logo} titulo="ORDEN DE COMPRA" numero={`N°: ${c.numero}`} lineas={[`FECHA DE EMISIÓN: ${fecha(c.emitida)}`]} />
 
         <View style={s.fila2}>
           <Caja titulo="Datos del proveedor" flex={3}>
@@ -227,12 +202,18 @@ export function DocumentoCompraMateriales({ compra: c, lineas, logo }: { compra:
         </View>
 
         <View style={s.tabla}>
+          <View style={s.tablaTitulo} wrap={false}>
+            <Text style={s.tablaTituloTexto}>DETALLE DE LA COMPRA</Text>
+            <Text style={s.tablaTituloTexto}>
+              IMPORTES EN {nombreMoneda(c.divisa)}
+              {c.conFactura ? ', SIN IGV' : ''}
+            </Text>
+          </View>
           <View style={s.filaCab} wrap={false}>
             <Text style={[s.cab, s.cItem]}>ITEM N°</Text>
             <Text style={[s.cab, s.cDesc]}>DESCRIPCIÓN</Text>
             <Text style={[s.cab, s.cCant]}>CANTIDAD</Text>
             <Text style={[s.cab, s.cUm]}>U.M</Text>
-            <Text style={[s.cab, s.cMon]}>MONEDA</Text>
             <Text style={[s.cab, s.cPrecio]}>PRECIO</Text>
             <Text style={[s.cab, s.cTotal]}>TOTAL</Text>
             <Text style={[s.cab, s.cDestino]}>DESTINO</Text>
@@ -246,9 +227,8 @@ export function DocumentoCompraMateriales({ compra: c, lineas, logo }: { compra:
               </View>
               <Text style={[s.celda, s.cCant]}>{cantidad(l.cantidad)}</Text>
               <Text style={[s.celda, s.cUm]}>{l.unidad}</Text>
-              <Text style={[s.celda, s.cMon]}>{nombreMoneda(c.divisa)}</Text>
               <Text style={[s.celda, s.cPrecio]}>{l.precio === null ? 'Pendiente' : numero(l.precio, 2)}</Text>
-              <Text style={[s.celda, s.cTotal]}>{l.precio === null ? 'Pendiente' : moneda(importeCompra(l.cantidad, l.precio), c.divisa)}</Text>
+              <Text style={[s.celda, s.cTotal]}>{l.precio === null ? 'Pendiente' : numero(importeCompra(l.cantidad, l.precio), 2)}</Text>
               <Text style={[s.celda, s.cDestino]}>{l.destino}</Text>
             </View>
           ))}

@@ -69,6 +69,8 @@ async function registrar(pagina, p, entrada, salida) {
   await v.locator('input[name="nombres"]').fill(p.nombres)
   await v.locator('input[name="apellidos"]').fill(p.apellidos)
   await v.locator('input[name="dni"]').fill(p.dni)
+  // Desde la migración 20261020120000 la ficha pide la fecha de ingreso.
+  await v.locator('input[name="fecha_ingreso"]').fill('2026-01-05')
   await v.locator('input[name="cargo"]').fill('Soldador')
   // La fecha de ingreso es obligatoria desde #122.
   await v.locator('input[name="fecha_ingreso"]').fill(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' }))
