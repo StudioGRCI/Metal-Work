@@ -50,7 +50,9 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   const deSuArea = supervisaArea && params.area !== 'todas' ? (perfil.area_id ?? undefined) : undefined
   const [requerimientos, catalogos] = await Promise.all([
     cargarRequerimientos(
-      soloUno ? { id: soloUno } : { tipo: supervisaArea || vista === 'todos' ? undefined : vista, area: deSuArea, codigo },
+      soloUno
+        ? { id: soloUno, conEntregado: true }
+        : { tipo: supervisaArea || vista === 'todos' ? undefined : vista, area: deSuArea, codigo, conEntregado: true },
     ),
     emite ? catalogosDelRequerimiento() : Promise.resolve(null),
   ])

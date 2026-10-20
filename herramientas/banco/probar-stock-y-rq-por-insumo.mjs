@@ -74,6 +74,12 @@ async function pestanas(pagina) {
   return pagina.locator('nav[aria-label="Secciones"] a').evaluateAll((as) => as.map((a) => a.textContent?.trim()))
 }
 const texto = async (loc) => (await loc.innerText()).replace(/\s+/g, ' ')
+// Las fichas del resumen («2 para recoger») solo se ven con los insumos cerrados:
+// abiertos, cada insumo lo dice en su unidad.
+const resumenCerrado = async (detalles) => {
+  if (await detalles.evaluate((d) => d.open)) await detalles.locator('summary').click()
+  return texto(detalles.locator('summary'))
+}
 const ir = (pagina, ruta) => pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
 
 // ============================================ 1. El supervisor ve el stock
@@ -146,8 +152,7 @@ const ir = (pagina, ruta) => pagina.goto(`${BASE}${ruta}`, { waitUntil: 'network
   comprobar(await rq1.evaluate((d) => d.open), 'el RQ en camino llega desplegado')
   const resumen = await texto(rq1.locator('summary'))
   console.log('    arriba:', resumen)
-  comprobar(resumen.includes('3 insumos') && resumen.includes('2 para recoger') && resumen.includes('2 por llegar'),
-    'arriba dice cuántos se pueden recoger en Almacén y cuántos faltan que lleguen')
+  comprobar(resumen.includes('3 insumos'), 'arriba dice cuántos insumos lleva')
   comprobar(await rq1.locator('li[data-insumo]').first().isVisible(), 'los insumos se ven sin presionar')
   const insumo = async (n) => texto(rq1.locator(`li[data-insumo="${n}"]`))
   const [i1, i2, i3] = [await insumo(1), await insumo(2), await insumo(3)]
@@ -159,8 +164,11 @@ const ir = (pagina, ruta) => pagina.goto(`${BASE}${ruta}`, { waitUntil: 'network
     'la plancha: 12 para recoger en Almacén y 8 que faltan de Logística, por comprar')
   comprobar(i3.includes('Faro') && /faltan? de Logística/.test(i3) && /OC-\d+/.test(i3) && !i3.includes('para recoger'), 'el faro falta entero, con su OC')
   await pagina.screenshot({ path: `${CAPTURAS}/rq-desplegado.png`, fullPage: true })
+  const cerrado = await resumenCerrado(rq1)
+  comprobar(cerrado.includes('2 para recoger') && cerrado.includes('2 por llegar'),
+    `cerrado, dice cuántos se pueden recoger en Almacén y cuántos faltan que lleguen («${cerrado}»)`)
 
-  const rq3 = await texto(pagina.locator('[data-insumos="RQ-0003-2026"] summary'))
+  const rq3 = await resumenCerrado(pagina.locator('[data-insumos="RQ-0003-2026"]'))
   comprobar(rq3.includes('2 por revisar'), 'el RQ que Almacén no revisa dice «por revisar»')
 
   await pagina.getByRole('link', { name: /Todas las áreas/ }).click()
@@ -168,7 +176,7 @@ const ir = (pagina, ruta) => pagina.goto(`${BASE}${ruta}`, { waitUntil: 'network
   await pagina.waitForLoadState('networkidle')
   const todas = await numeros()
   comprobar(todas.length === 3 && todas.includes('RQ-0002-2026'), 'con «Todas las áreas» ve también el de Producción')
-  const rq2 = await texto(pagina.locator('[data-insumos="RQ-0002-2026"] summary'))
+  const rq2 = await resumenCerrado(pagina.locator('[data-insumos="RQ-0002-2026"]'))
   comprobar(rq2.includes('1 para recoger'), 'el de Producción está listo para recoger en Almacén')
 
   await pagina.locator('[data-rq="RQ-0002-2026"]').getByRole('link', { name: 'MW-0130' }).click()

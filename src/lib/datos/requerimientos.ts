@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
+import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { createClient } from '@/lib/supabase/server'
 
 export type LineaRequerimiento = {
@@ -33,7 +34,10 @@ export type LineaRequerimiento = {
   en_stock: number | null
   /** Lo que falta y se compra: lo pedido menos lo que tenía Almacén. Vacío mientras no lo revisa. */
   por_comprar: number | null
-  /** Lo que ya salió del almacén para este insumo, menos lo devuelto (`entregado_de_requerimientos`). */
+  /**
+   * Lo que ya salió del almacén para este insumo, menos lo devuelto
+   * (`entregado_de_requerimientos`). Solo si se pidió con `conEntregado`; si no, 0.
+   */
   entregado: number
 }
 
@@ -89,10 +93,18 @@ const SELECT_RQ =
  * que la bandeja de atención muestra. Con `tipo`, solo los de operación o solo
  * los de Administración. Con `id`, solo ese: es el que abre Adquisiciones. Con
  * `area`, los que pidió esa área (el supervisor ve primero los de la suya); con
- * `codigo`, los de ese código interno.
+ * `codigo`, los de ese código interno. Con `conEntregado`, también lo que ya
+ * salió del almacén de cada insumo: lo pinta la lista de RQ, no la bandeja.
  */
 export async function cargarRequerimientos(
-  opciones: { soloAbiertos?: boolean; tipo?: 'OPERACION' | 'ADMINISTRACION'; id?: string; area?: string; codigo?: string } = {},
+  opciones: {
+    soloAbiertos?: boolean
+    tipo?: 'OPERACION' | 'ADMINISTRACION'
+    id?: string
+    area?: string
+    codigo?: string
+    conEntregado?: boolean
+  } = {},
 ): Promise<RequerimientoListado[]> {
   const supabase = await createClient()
   let consulta = supabase.from('requerimientos').select(SELECT_RQ)
@@ -114,16 +126,19 @@ export async function cargarRequerimientos(
     const ids = data.map((r) => r.id)
     const [avance, entregado] = await Promise.all([
       supabase.rpc('avance_de_requerimientos', { p_ids: ids }),
-      supabase.rpc('entregado_de_requerimientos', { p_ids: ids }),
+      // Una fila por insumo: con 300 RQ pasa de mil, y Supabase corta en mil sin avisar.
+      opciones.conEntregado
+        ? todasLasFilas(() => supabase.rpc('entregado_de_requerimientos', { p_ids: ids }), ['requerimiento_id', 'item'])
+        : null,
     ])
     if (avance.error) throw new Error(`No se pudo calcular el avance de los requerimientos: ${avance.error.message}`)
-    if (entregado.error) throw new Error(`No se pudo leer lo entregado de los requerimientos: ${entregado.error.message}`)
+    if (entregado?.error) throw new Error(`No se pudo leer lo entregado de los requerimientos: ${entregado.error.message}`)
     for (const a of avance.data ?? []) {
       if (!a.requerimiento_id || a.porcentaje == null || !a.etapa) continue
       const lineas = (a.lineas as LineaDeAvance[] | null) ?? []
       avances.set(a.requerimiento_id, { porcentaje: a.porcentaje, etapa: a.etapa, lineas: new Map(lineas.map((l) => [l.item, l])) })
     }
-    for (const e of entregado.data ?? []) {
+    for (const e of entregado?.data ?? []) {
       if (e.requerimiento_id && e.item != null) entregados.set(`${e.requerimiento_id}:${e.item}`, Number(e.entregado ?? 0))
     }
   }

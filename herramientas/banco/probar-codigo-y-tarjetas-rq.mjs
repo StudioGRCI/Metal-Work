@@ -344,7 +344,7 @@ for (const [nombre, viewport] of [['monitor', { width: 1280, height: 900 }], ['t
   await lista.waitFor({ timeout: 5000 })
   comprobar(limpio(await lista.locator('[role="option"]').first().innerText()).startsWith('PLANTA'), 'RR. HH.: PLANTA primero')
   await campo.pressSequentially(`volvo ${sufijo.toLowerCase()}`)
-  const quedan = await lista.locator('[role="option"]').allInnerTexts()
+  const quedan = await lista.locator(CODIGOS).allInnerTexts()
   comprobar(quedan.length === 1 && quedan[0].includes(CODIGO), `RR. HH. encuentra ${CODIGO} por la marca y la placa`)
   await pagina.keyboard.press('Escape')
   await pagina.keyboard.press('Escape')
@@ -407,7 +407,8 @@ for (const [nombre, viewport] of [['monitor', { width: 1280, height: 900 }], ['t
 
   // En el RQA, lo escrito para buscar no queda aceptado por ir a «Todos» y volver.
   await pagina.goto(`${BASE}/requerimientos`, { waitUntil: 'networkidle' })
-  const nuevoRq = pagina.getByRole('button', { name: 'Nuevo requerimiento', exact: true })
+  // Con solo el RQA, el botón dice «Nuevo requerimiento de Administración».
+  const nuevoRq = pagina.getByRole('button', { name: /^Nuevo requerimiento( de Administración)?$/ })
   if (await nuevoRq.isVisible().catch(() => false)) {
     await nuevoRq.click()
     const v = pagina.locator('[role="dialog"]')
@@ -420,11 +421,11 @@ for (const [nombre, viewport] of [['monitor', { width: 1280, height: 900 }], ['t
       comprobar((await campo.inputValue()) === 'volvo' && (await campo.evaluate((e) => e.validity.customError)),
         'en el RQA, «volvo» escrito para buscar sigue sin valer después de pasar por «Todos los códigos activos»')
     } else {
-      console.log('    (Administración no tiene «Se carga a» en el RQ: no se probó el paso por «Todos»)')
+      comprobar(false, 'Administración no tiene «Se carga a» en el RQ: no se probó el paso por «Todos»')
     }
     await pagina.keyboard.press('Escape')
   } else {
-    console.log('    (Administración no ve «Nuevo requerimiento»: no se probó el RQA)')
+    comprobar(false, 'Administración no ve «Nuevo requerimiento de Administración»: no se probó el RQA')
   }
   comprobar(errores.length === 0, `Administración, sin errores de consola ${errores.join(' | ')}`)
   await contexto.close()

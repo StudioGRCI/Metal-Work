@@ -343,8 +343,9 @@ function InsumosConPartes({ rq, abierto: abiertoPorDefecto }: { rq: Requerimient
           <ChevronDown aria-hidden className="size-4 shrink-0 text-texto-suave transition-transform group-open:rotate-180" />
           {total} {total === 1 ? 'insumo' : 'insumos'}
         </span>
+        {/* Abierto, cada insumo lo dice en su unidad: las fichas, que cuentan insumos, se esconden para no leer «1 para recoger» junto a «7 UND para recoger». */}
         {fichas.length > 0 && (
-          <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-texto-suave">
+          <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-texto-suave group-open:hidden">
             {fichas.map((f) => (
               <span key={f.texto} className="inline-flex items-center gap-1.5">
                 <Punto tono={f.tono} />
@@ -419,7 +420,7 @@ function InsumoConPartes({ linea: l, partes, rq }: { linea: LineaRequerimiento; 
               </Parte>
             )}
             {partes.entregado > 0 && (
-              <Parte color="bg-texto-tenue" cifra={`${cantidad(partes.entregado)} ${u}`} data-parte="entregado">
+              <Parte color="bg-texto" cifra={`${cantidad(partes.entregado)} ${u}`} data-parte="entregado">
                 <span className="text-texto-suave">{partes.entregado === 1 ? 'ya se entregó' : 'ya se entregaron'}</span>
               </Parte>
             )}
@@ -431,16 +432,17 @@ function InsumoConPartes({ linea: l, partes, rq }: { linea: LineaRequerimiento; 
 }
 
 /**
- * La barra del insumo, partida en lo entregado, lo que se recoge, lo que falta
- * y lo que Almacén revisa, en proporción a lo pedido. Es solo para el ojo: la
- * leyenda de abajo dice lo mismo con números.
+ * La barra del insumo, partida en lo que se recoge, lo que falta, lo que Almacén
+ * revisa y lo ya entregado, en proporción a lo pedido y en el orden de la
+ * leyenda de abajo, que dice lo mismo con números. Es solo para el ojo. Lo
+ * entregado va en el color del texto: en gris se confundía con lo que se revisa.
  */
 function BarraDePartes({ partes, tonoPorLlegar }: { partes: PartesDelInsumo; tonoPorLlegar: Tono }) {
   const tramos = [
-    { n: partes.entregado, clase: 'bg-texto-tenue' },
     { n: partes.recoger, clase: 'bg-exito' },
     { n: partes.porLlegar, clase: BARRA[tonoPorLlegar] },
     { n: partes.revisar, clase: 'bg-borde-fuerte' },
+    { n: partes.entregado, clase: 'bg-texto' },
   ].filter((t) => t.n > 0)
   return (
     <div aria-hidden className="mt-2 flex h-2.5 w-full max-w-xl gap-0.5 overflow-hidden rounded-full bg-neutro-suave">

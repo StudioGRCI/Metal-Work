@@ -79,11 +79,15 @@ export function EntradaCodigoInterno({
   const caja = useRef<HTMLInputElement>(null)
 
   const deFijos = new Set(fijos.map((f) => f.codigo))
+  const deLista = (codigos ?? [])
+    .filter((c) => !c.cerrado && !deFijos.has(c.codigo))
+    .map((c) => ({ codigo: c.codigo, detalle: c.unidad, registrada: c.registrada }))
+  // Primero los fijos, después los de una unidad del padrón y al final los demás
+  // que se usaron alguna vez (caja, tareo, salidas…): «los códigos que deben ser».
   const abiertos: Opcion[] = [
     ...fijos.map((f) => ({ codigo: f.codigo, detalle: f.detalle, registrada: false })),
-    ...(codigos ?? [])
-      .filter((c) => !c.cerrado && !deFijos.has(c.codigo))
-      .map((c) => ({ codigo: c.codigo, detalle: c.unidad, registrada: c.registrada })),
+    ...deLista.filter((o) => o.registrada),
+    ...deLista.filter((o) => !o.registrada),
   ]
   // Las variantes que ya conviven en el sistema (`PLA_SR_O4…` con O y con cero):
   // cada una avisa de su gemela, y dice cuál es la del padrón de unidades.
@@ -110,6 +114,13 @@ export function EntradaCodigoInterno({
   const conNuevo = sinElegir && escrito.length >= 2
   const idNuevo = `${idLista}-nuevo`
   const enNuevo = conNuevo && resaltado === visibles.length
+  const idResaltado = lista ? (visibles[resaltado] ? `${idLista}-${resaltado}` : enNuevo ? idNuevo : undefined) : undefined
+
+  // Con las flechas, la resaltada se trae a la vista: la lista mide unas seis
+  // opciones y Enter elegía una que no se veía.
+  useEffect(() => {
+    if (idResaltado) document.getElementById(idResaltado)?.scrollIntoView({ block: 'nearest' })
+  }, [idResaltado])
 
   // Con `required` y `minLength`, la validación del navegador ya para el envío
   // y lleva al campo; esto le suma el caso de lo que no se eligió.
@@ -198,8 +209,8 @@ export function EntradaCodigoInterno({
         role="combobox"
         aria-autocomplete="list"
         aria-expanded={lista}
-        aria-controls={idLista}
-        aria-activedescendant={lista && visibles[resaltado] ? `${idLista}-${resaltado}` : lista && enNuevo ? idNuevo : undefined}
+        aria-controls={lista ? idLista : undefined}
+        aria-activedescendant={idResaltado}
         aria-describedby={[descripcion, idEstado].filter(Boolean).join(' ')}
         aria-invalid={invalido || (sinElegir && !lista) || undefined}
         className="pr-9 font-mono uppercase placeholder:font-sans placeholder:normal-case"
@@ -214,7 +225,7 @@ export function EntradaCodigoInterno({
           className="absolute z-30 mt-1 max-h-72 w-full min-w-56 overflow-y-auto rounded-[var(--radius-base)] border border-borde bg-superficie py-1 shadow-[var(--sombra)]"
         >
           {visibles.length === 0 && (
-            <li className="px-3 py-4 text-center text-xs text-texto-suave">
+            <li role="presentation" className="px-3 py-4 text-center text-xs text-texto-suave">
               Ningún código abierto coincide. Prueba con menos letras, con la placa o con la marca.
             </li>
           )}
@@ -238,14 +249,18 @@ export function EntradaCodigoInterno({
                 <Check aria-hidden className={cn('mt-0.5 size-3.5 shrink-0', elegida ? 'text-acento' : 'text-transparent')} />
                 <span className="min-w-0">
                   <span className="block font-mono text-sm font-medium break-all">{o.codigo}</span>
-                  {o.detalle && <span className="line-clamp-2 block text-xs text-texto-suave">{o.detalle}</span>}
+                  {o.detalle ? (
+                    <span className="line-clamp-2 block text-xs text-texto-suave">{o.detalle}</span>
+                  ) : (
+                    !deFijos.has(o.codigo) && <span className="block text-xs text-texto-tenue">Sin unidad registrada</span>
+                  )}
                   <Gemelas opcion={o} gemelas={gemelasDe(o.codigo)} />
                 </span>
               </li>
             )
           })}
           {ocultas > 0 && (
-            <li className="px-3 py-2 text-center text-xs text-texto-tenue">
+            <li role="presentation" className="px-3 py-2 text-center text-xs text-texto-tenue">
               y {ocultas} más: sigue escribiendo para acotar
             </li>
           )}
@@ -345,15 +360,20 @@ function EstadoDelCodigo({
     const parecido = parecidas.find((o) => o.registrada) ?? parecidas[0]
     // Pocas coincidencias se ofrecen como botones; muchas, se acotan escribiendo en la lista.
     const ofrecidas = parecido ? [parecido] : coincidencias.length <= 3 ? coincidencias : []
-    const nuevo = (
-      <>
-        {' '}o, si es de una unidad nueva,{' '}
-        <button type="button" onClick={alUsarNuevo} className={ENLACE}>
-          usa {escrito} como código nuevo
-        </button>
-        .
-      </>
-    )
+    // Como en la lista: un código tiene al menos dos caracteres, y el que se pone
+    // por botón no pasa por el `minLength` del navegador.
+    const nuevo =
+      escrito.length >= 2 ? (
+        <>
+          {' '}o, si es de una unidad nueva,{' '}
+          <button type="button" onClick={alUsarNuevo} className={ENLACE}>
+            usa {escrito} como código nuevo
+          </button>
+          .
+        </>
+      ) : (
+        '.'
+      )
     if (abiertoIgual) {
       contenido = (
         <>
