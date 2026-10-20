@@ -61,12 +61,26 @@ begin
 end $$;
 
 -- ============================================ 1. Tesorería da de alta sus cuentas
+-- Cada banco con la captura de su saldo (migración 20261020170000), que el
+-- navegador sube antes; el check 404 prueba la subida con la política de Storage.
+do $$
+declare v text;
+begin
+  foreach v in array array['bcp_pen', 'bcp_usd'] loop
+    perform set_config('prueba.cap_' || v, pg_temp.id(v) || '/' || gen_random_uuid() || '.png', true);
+    insert into storage.objects (bucket_id, name, owner_id, metadata)
+    values ('apertura-caja', current_setting('prueba.cap_' || v), current_setting('prueba.tesoreria'), '{"mimetype":"image/png","size":100}'::jsonb);
+  end loop;
+end $$;
+
 do $$
 begin
   perform pg_temp.como('tesoreria');
   set local role authenticated;
-  perform public.guardar_caja(pg_temp.id('bcp_pen'), '  BCP   soles 396 ', 'BANCO', 'BCP', 'PEN', 10000, pg_temp.dia('d3'), true);
-  perform public.guardar_caja(pg_temp.id('bcp_usd'), 'BCP dólares 396', 'BANCO', 'BCP', 'USD', 2000, pg_temp.dia('d3'), true);
+  perform public.guardar_caja(pg_temp.id('bcp_pen'), '  BCP   soles 396 ', 'BANCO', 'BCP', 'PEN', 10000, pg_temp.dia('d3'), true,
+                              current_setting('prueba.cap_bcp_pen'));
+  perform public.guardar_caja(pg_temp.id('bcp_usd'), 'BCP dólares 396', 'BANCO', 'BCP', 'USD', 2000, pg_temp.dia('d3'), true,
+                              current_setting('prueba.cap_bcp_usd'));
   perform public.guardar_caja(pg_temp.id('chica'), 'Caja chica 396', 'EFECTIVO', 'no va', 'PEN', 500, pg_temp.dia('d3'), true);
   perform test.afirmar((select nombre from public.cajas where id = pg_temp.id('bcp_pen')) = 'BCP soles 396',
                        'el nombre se guarda sin espacios de más');

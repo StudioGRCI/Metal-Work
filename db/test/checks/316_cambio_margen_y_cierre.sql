@@ -2,8 +2,8 @@
 -- El costo en soles, el margen sin IGV y el cierre que no se toca.
 --
 -- Una OT con una cotización de S/ 11,800 (IGV incluido) y dos gastos aprobados:
--- S/ 1,000 y US$ 100. Tesorería registra el cambio del día (venta 3.80) y Ventas
--- no puede. Gerencia lee el costo en soles (1,000 + 380 = 1,380), no ve margen
+-- S/ 1,000 y US$ 100. Contabilidad registra el cambio del día (venta 3.80);
+-- Ventas no puede, y Tesorería tampoco desde la migración 20261020171000. Gerencia lee el costo en soles (1,000 + 380 = 1,380), no ve margen
 -- hasta que alguien confirma el IGV, y luego lo ve: 11,800 / 1.18 = 10,000 de
 -- venta neta, 8,620 de margen, 86.2 %. Costos y Materiales no ve el margen,
 -- pero cierra el costo cuando la OT terminó; el cierre no se edita ni se borra,
@@ -15,11 +15,13 @@ select test.crear_usuario('QA','Gerencia','qa-314-gerencia@demo.pe','GERENTE', :
 select test.crear_usuario('QA','Ventas','qa-314-ventas@demo.pe','VENDEDOR', :'sede_id') as ventas_id \gset
 select test.crear_usuario('QA','Costos','qa-314-costos@demo.pe','COSTOS_MATERIALES', :'sede_id') as costos_id \gset
 select test.crear_usuario('QA','Tesoreria','qa-314-tesoreria@demo.pe','TESORERIA', :'sede_id') as tesoreria_id \gset
+select test.crear_usuario('QA','Contabilidad','qa-314-contabilidad@demo.pe','CONTABILIDAD', :'sede_id') as contabilidad_id \gset
 
 select set_config('prueba.m.gerente', :'gerente_id', true);
 select set_config('prueba.m.ventas', :'ventas_id', true);
 select set_config('prueba.m.costos', :'costos_id', true);
 select set_config('prueba.m.tesoreria', :'tesoreria_id', true);
+select set_config('prueba.m.contabilidad', :'contabilidad_id', true);
 select set_config('prueba.m.orden', gen_random_uuid()::text, true);
 select set_config('prueba.m.cotizacion', gen_random_uuid()::text, true);
 select set_config('prueba.m.sin_precio', gen_random_uuid()::text, true);
@@ -93,11 +95,25 @@ declare
   v_cierre uuid;
   v_n integer;
 begin
-  -- Tesorería registra el cambio del día; Ventas no puede.
-  perform test.como_usuario(current_setting('prueba.m.tesoreria')::uuid);
+  -- Contabilidad registra el cambio del día; Ventas y Tesorería no pueden.
+  perform test.como_usuario(current_setting('prueba.m.contabilidad')::uuid);
   set local role authenticated;
   insert into public.tipos_de_cambio (fecha, compra, venta, fuente, registrado_por)
-  values (current_date, 3.75, 3.80, 'SUNAT', current_setting('prueba.m.tesoreria')::uuid);
+  values (current_date, 3.75, 3.80, 'SUNAT', current_setting('prueba.m.contabilidad')::uuid);
+  reset role;
+
+  perform test.como_usuario(current_setting('prueba.m.tesoreria')::uuid);
+  set local role authenticated;
+  perform test.debe_fallar(
+    format('insert into public.tipos_de_cambio (fecha, compra, venta, registrado_por) values (current_date - 1, 3.70, 3.72, %L)',
+           current_setting('prueba.m.tesoreria')),
+    'Tesorería ya no registra el tipo de cambio', 'row-level security');
+  -- Corregirlo no es un error para Postgres: la política lo deja en cero filas.
+  update public.tipos_de_cambio set venta = 3.90 where fecha = current_date;
+  get diagnostics v_n = row_count;
+  perform test.afirmar(v_n = 0, 'Tesorería ya no corrige el tipo de cambio');
+  perform test.afirmar((select venta from public.tipos_de_cambio where fecha = current_date) = 3.80,
+    'Tesorería lo sigue leyendo, con el cambio que puso Contabilidad');
   reset role;
 
   perform test.como_usuario(current_setting('prueba.m.ventas')::uuid);

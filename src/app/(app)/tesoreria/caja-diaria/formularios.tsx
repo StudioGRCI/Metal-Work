@@ -1,14 +1,29 @@
 'use client'
 
-import { ArrowLeftRight, Ban, Lock, LockOpen, Pencil, Plus } from 'lucide-react'
+import { ArrowLeftRight, Ban, ImageIcon, Lock, LockOpen, Pencil, Plus } from 'lucide-react'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import { DESCRIPCIONES_FRECUENTES, monedaDeCuenta, nombreMoneda, normalizarMonto, SALDO } from '@/lib/dominio/caja'
+import type { ResultadoAccion } from '@/lib/acciones'
+import {
+  ACEPTA_CAPTURA_SALDO,
+  BUCKET_APERTURA_CAJA,
+  DESCRIPCIONES_FRECUENTES,
+  enlaceCaptura,
+  MAXIMO_MB_CAPTURA_SALDO,
+  monedaDeCuenta,
+  nombreMoneda,
+  normalizarMonto,
+  problemaDeLaCaptura,
+  rutaDeCapturaDeSaldo,
+  SALDO,
+} from '@/lib/dominio/caja'
 import { useEnvio } from '@/lib/envio'
 import { fecha, moneda } from '@/lib/format'
+import { subirArchivoPrivado } from '@/lib/subida-privada'
+import { createClient } from '@/lib/supabase/client'
 
 import { anularMovimiento, cerrarDia, guardarCuenta, reabrirDia, registrarMovimiento, registrarTransferencia } from './acciones'
 
@@ -403,6 +418,8 @@ export type CuentaEditable = {
   fecha_inicio: string
   activa: boolean
   con_movimientos: boolean
+  /** La captura del saldo inicial en Storage, si ya la tiene. */
+  apertura_ruta: string | null
 }
 
 export function EditarCuenta({ cuenta, hoy, primera = false }: { cuenta?: CuentaEditable; hoy: string; primera?: boolean }) {
@@ -426,8 +443,8 @@ export function EditarCuenta({ cuenta, hoy, primera = false }: { cuenta?: Cuenta
         titulo={cuenta ? `Corregir ${cuenta.nombre}` : 'Agregar una cuenta'}
         descripcion={
           cuenta?.con_movimientos
-            ? 'Ya tiene movimientos: se corrigen el nombre y el banco, o se desactiva. Su moneda y su saldo inicial no cambian.'
-            : 'Un banco en una moneda, o la caja chica en efectivo, con el saldo con el que empieza en el sistema.'
+            ? 'Ya tiene movimientos: se corrigen el nombre y el banco, o se desactiva. Su moneda, su saldo inicial y la captura de ese saldo no cambian.'
+            : 'Un banco en una moneda, o la caja chica en efectivo, con el saldo con el que empieza en el sistema y la captura del aplicativo que lo muestra.'
         }
         ancho="md"
       >
@@ -439,9 +456,46 @@ export function EditarCuenta({ cuenta, hoy, primera = false }: { cuenta?: Cuenta
 
 function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable; hoy: string; alTerminar: () => void }) {
   const [id] = useState(() => cuenta?.id ?? crypto.randomUUID())
+  // El nombre de la captura en Storage, decidido al abrir: un reintento sube al mismo sitio y no la duplica.
+  const [capturaId] = useState(() => crypto.randomUUID())
   const [tipo, setTipo] = useState(cuenta?.tipo ?? 'BANCO')
-  const { alEnviar, enviando, error } = useEnvio(guardarCuenta, alTerminar)
   const fijo = cuenta?.con_movimientos ?? false
+  const anterior = cuenta?.apertura_ruta ?? null
+  // Un banco nuevo no entra sin su captura; la caja chica no tiene aplicativo.
+  const pideCaptura = !cuenta && tipo === 'BANCO'
+  // Con movimientos, la captura que ya tiene queda como respaldo del saldo y no se cambia.
+  const ofreceCaptura = !(fijo && anterior)
+
+  /**
+   * La captura sube primero a Storage y después la cuenta la anota (ver
+   * `subirArchivoPrivado`): si la base no la acepta, la captura se retira. Si
+   * reemplazó a otra, la de antes se quita después, porque ya ninguna cuenta la
+   * nombra; si no se puede, se queda donde solo la ve quien la subió.
+   */
+  async function guardar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+    const archivo = datos.get('captura')
+    datos.delete('captura')
+    if (!(archivo instanceof File) || archivo.size === 0) {
+      if (pideCaptura) return { ok: false, error: 'Adjunta la captura del aplicativo del banco con el saldo de ese día.' }
+      return guardarCuenta(null, datos)
+    }
+    const problema = problemaDeLaCaptura(archivo)
+    const ruta = rutaDeCapturaDeSaldo(id, capturaId, archivo.type)
+    if (problema || !ruta) return { ok: false, error: problema ?? 'La captura va en foto (JPG, PNG o WEBP) o en PDF.' }
+    datos.set('apertura_ruta', ruta)
+    const resultado = await subirArchivoPrivado({
+      bucket: BUCKET_APERTURA_CAJA,
+      ruta,
+      archivo,
+      contentType: archivo.type,
+      registrar: () => guardarCuenta(null, datos),
+    })
+    if (resultado.ok && anterior && anterior !== ruta) {
+      await createClient().storage.from(BUCKET_APERTURA_CAJA).remove([anterior]).catch(() => null)
+    }
+    return resultado
+  }
+  const { alEnviar, enviando, error } = useEnvio(guardar, alTerminar)
   const p = `cuenta-${id.slice(0, 8)}`
 
   return (
@@ -516,6 +570,39 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
           />
         </Campo>
       </div>
+      {cuenta && anterior && (
+        <p className="flex flex-wrap items-center gap-x-2 text-sm text-texto-suave">
+          <ImageIcon aria-hidden className="size-4" />
+          Captura del saldo inicial:
+          <a href={enlaceCaptura(cuenta.id)} target="_blank" rel="noopener" className="font-medium text-acento underline underline-offset-2">
+            verla
+          </a>
+          {fijo && <span>· queda como respaldo del saldo</span>}
+        </p>
+      )}
+      {ofreceCaptura && (
+        <Campo
+          etiqueta={
+            cuenta
+              ? anterior
+                ? 'Cambiar la captura'
+                : 'Captura del saldo inicial'
+              : tipo === 'BANCO'
+                ? 'Captura del saldo en el aplicativo'
+                : 'Foto del conteo'
+          }
+          htmlFor={`${p}-captura`}
+          requerido={pideCaptura}
+          ayudaEnIcono={false}
+          ayuda={
+            tipo === 'BANCO'
+              ? `La pantalla del aplicativo con el saldo de ese día. Foto o PDF, hasta ${MAXIMO_MB_CAPTURA_SALDO} MB.`
+              : `Si la tienes: el conteo de la caja chica ese día. Foto o PDF, hasta ${MAXIMO_MB_CAPTURA_SALDO} MB.`
+          }
+        >
+          <Entrada id={`${p}-captura`} name="captura" type="file" accept={ACEPTA_CAPTURA_SALDO} required={pideCaptura} />
+        </Campo>
+      )}
       <Pie error={error} enviando={enviando} alCancelar={alTerminar} texto={cuenta ? 'Guardar' : 'Agregar la cuenta'} />
     </form>
   )

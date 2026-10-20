@@ -37,7 +37,11 @@ async function permitido() {
   return puede(perfil, 'tesoreria.caja')
 }
 
-/** Da de alta o corrige una cuenta. Mismo permiso que `guardar_caja`. */
+/**
+ * Da de alta o corrige una cuenta. Mismo permiso que `guardar_caja`. La captura
+ * del saldo ya viajó a Storage desde el navegador: aquí llega su ruta, y la base
+ * comprueba que esté subida por quien guarda (migración 20261020170000).
+ */
 export async function guardarCuenta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   if (!(await permitido())) return { ok: false, error: NO_LLEVA }
   const analisis = z
@@ -50,6 +54,9 @@ export async function guardarCuenta(_previo: unknown, formulario: FormData): Pro
       saldo_inicial: z.string().regex(SALDO, 'Escribe el saldo inicial con números, como 25000.00.'),
       fecha_inicio: z.iso.date('Elige el día de ese saldo inicial.'),
       activa: z.boolean(),
+      apertura_ruta: z
+        .string()
+        .regex(/^([0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png|webp|pdf))?$/, 'Vuelve a adjuntar la captura del saldo.'),
     })
     .safeParse({
       id: dato(formulario, 'id'),
@@ -60,10 +67,12 @@ export async function guardarCuenta(_previo: unknown, formulario: FormData): Pro
       saldo_inicial: montoEscrito(formulario, 'saldo_inicial'),
       fecha_inicio: dato(formulario, 'fecha_inicio'),
       activa: formulario.get('activa') !== 'no',
+      apertura_ruta: dato(formulario, 'apertura_ruta'),
     })
   if (!analisis.success) return { ok: false, error: primerError(analisis.error, 'Revisa los datos de la cuenta.') }
   const d = analisis.data
   if (d.tipo === 'BANCO' && d.banco.length < 2) return { ok: false, error: 'Escribe el banco de la cuenta: BCP, BBVA…' }
+  if (d.apertura_ruta && !d.apertura_ruta.startsWith(`${d.id}/`)) return { ok: false, error: 'Vuelve a adjuntar la captura del saldo.' }
 
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('guardar_caja', {
@@ -75,6 +84,8 @@ export async function guardarCuenta(_previo: unknown, formulario: FormData): Pro
     p_saldo_inicial: Number(d.saldo_inicial),
     p_fecha_inicio: d.fecha_inicio,
     p_activa: d.activa,
+    // Siempre, aunque vaya vacía: así se llama a la versión con captura y no a la de antes.
+    p_apertura_ruta: d.apertura_ruta || null,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'La cuenta no quedó guardada. Recarga la pantalla.' }

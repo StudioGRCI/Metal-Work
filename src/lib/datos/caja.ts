@@ -38,6 +38,8 @@ export type CuentaDelDia = {
   primer_dia_sin_cerrar: string | null
   /** Con algo registrado, aunque esté anulado, el saldo inicial ya no cambia. */
   con_movimientos: boolean
+  /** La captura del aplicativo con su saldo inicial, en Storage; null si no la tiene (migración 20261020170000). */
+  apertura_ruta: string | null
 }
 
 export type MovimientoDelDia = {
@@ -88,18 +90,22 @@ const o = (v: number | null | undefined) => (v === null || v === undefined ? nul
 
 export async function cajaDelDia(dia: string): Promise<CajaDelDia> {
   const supabase = await createClient()
-  const [cuentas, movimientos, reabiertos, cambio, codigos] = await Promise.all([
+  const [cuentas, movimientos, reabiertos, cambio, codigos, capturas] = await Promise.all([
     supabase.rpc('caja_del_dia', { p_fecha: dia }),
     supabase.rpc('movimientos_caja_del_dia', { p_fecha: dia }),
     supabase.rpc('cierres_caja_reabiertos', { p_fecha: dia }),
     supabase.rpc('cambio_del_dia', { p_fecha: dia, p_operacion: 'COMPRA' }),
     supabase.rpc('caja_codigos_internos'),
+    // `caja_del_dia` no la trae: cambiar lo que devuelve obligaría a borrarla y volver a crearla.
+    supabase.from('cajas').select('id, apertura_ruta').not('apertura_ruta', 'is', null),
   ])
   if (cuentas.error) throw new Error(`No se pudo leer la caja del día: ${cuentas.error.message}`)
   if (movimientos.error) throw new Error(`No se pudieron leer los movimientos del día: ${movimientos.error.message}`)
   if (reabiertos.error) throw new Error(`No se pudieron leer los cierres del día: ${reabiertos.error.message}`)
   if (cambio.error) throw new Error(`No se pudo leer el tipo de cambio: ${cambio.error.message}`)
   if (codigos.error) throw new Error(`No se pudieron leer los códigos internos: ${codigos.error.message}`)
+  if (capturas.error) throw new Error(`No se pudo leer qué cuentas tienen la captura de su saldo: ${capturas.error.message}`)
+  const capturaDe = new Map((capturas.data ?? []).map((c) => [c.id, c.apertura_ruta]))
 
   // La planilla de cada pago de la planilla diaria. Si no se puede leer, el
   // enlace lleva a la lista de planillas: no dice nada falso, solo es más largo.
@@ -138,6 +144,7 @@ export async function cajaDelDia(dia: string): Promise<CajaDelDia> {
               ultimo_cierre: c.ultimo_cierre,
               primer_dia_sin_cerrar: c.primer_dia_sin_cerrar,
               con_movimientos: c.con_movimientos ?? false,
+              apertura_ruta: capturaDe.get(c.caja_id) ?? null,
             },
           ]
         : [],

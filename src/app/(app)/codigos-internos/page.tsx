@@ -134,7 +134,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
             <strong className="text-texto">El costo</strong> suma, en soles, la mano de obra con el recargo de sus horas extras, los
             materiales que salieron del almacén con la merma que Diseño evaluó en la OT, las órdenes de servicio aprobadas, los recibos por
             honorarios de los subcontratos, los gastos del mes, los gastos que Administración aprobó en la OT y los egresos de caja con el
-            código. Lo que está en dólares pasa a soles con el tipo de cambio que Tesorería cargó para el día de cada línea. Las compras se
+            código. Lo que está en dólares pasa a soles con el tipo de cambio que Contabilidad registró para el día de cada línea. Las compras se
             muestran aparte y no se suman: lo comprado se cuenta cuando sale del almacén.
           </p>
           <p>

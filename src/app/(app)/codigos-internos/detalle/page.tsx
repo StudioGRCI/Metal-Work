@@ -260,7 +260,7 @@ function ComoVa({
           tono={c.lineas_sin_cambio > 0 ? 'aviso' : 'neutro'}
           pie={
             c.lineas_sin_cambio > 0
-              ? 'Falta el tipo de cambio de Tesorería para pasar los dólares a soles'
+              ? 'Falta el tipo de cambio de Contabilidad para pasar los dólares a soles'
               : costo.pen === 0
                 ? 'Todavía nada costeado'
                 : c.usd_al_cambio > 0
@@ -561,7 +561,7 @@ function LineaCierre({
       // Con cotización, el cierre congela el margen: sin el IGV o el cambio de la venta saldría sin él.
       c.venta && c.venta.sin_igv > 0 &&
         `${c.venta.sin_igv === 1 ? 'confirmar si la cotización incluye IGV' : `confirmar si ${c.venta.sin_igv} cotizaciones incluyen IGV`} (Gerencia o Administración en el expediente de la OT, o Ventas al corregir la cotización)`,
-      c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo carga Tesorería)',
+      c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo registra Contabilidad)',
       esperaElMes && 'que termine el mes: los gastos del mes y el sueldo de la oficina se reparten por las horas del mes entero',
       faltaOficina.length > 0 &&
         `registrar los pagos de la oficina de ${faltaOficina.map((m) => periodo(m)).join(', ')} (RR. HH.: los pagos, o la fecha de ingreso de quien entró después)`,
