@@ -16,6 +16,7 @@
 --   5. Lo que cargó en horas a una unidad se descuenta de su pago.
 --   6. Dar de baja por el camino de antes deja la fecha de hoy, y volver a dar
 --      de alta la borra.
+--   7. En el mes en curso solo faltan los días hasta hoy.
 --
 -- Cada paso con la cuenta del puesto —nunca ADMIN— y `set local role
 -- authenticated`. Termina en rollback.
@@ -174,6 +175,16 @@ select test.debe_fallar($q$delete from public.oficina_pagos where desde < date '
 select test.afirmar((select o.monto = 4000 and o.sin_pago = 1 from public.sueldos_oficina_del_mes(date '2021-06-01') o),
   format('sin el pago de Bea, junio baja a 4,000 y avisa que a una persona le faltan días; da %s',
          (select row(o.monto, o.sin_pago)::text from public.sueldos_oficina_del_mes(date '2021-06-01') o)));
+-- Con días de junio sin pago, Gerencia no cierra una unidad que trabajó en junio:
+-- quedaría congelada sin esa parte de la oficina.
+select test.como_usuario(:'gerente_id');
+set local role authenticated;
+select test.debe_fallar($q$select public.cerrar_costeo_codigo('CHK402_A_21/06', 'Entregada al cliente en el taller, prueba del check 402')$q$,
+  'el cierre espera los pagos de la oficina del mes en que trabajó la unidad', 'los pagos de la oficina de 06/2021');
+-- Y el pago de cada persona no se asoma por la bitácora.
+select test.afirmar((select count(*) from public.audit_log where tabla = 'oficina_pagos') = 0,
+  'Gerencia no lee los pagos de la oficina en audit_log');
+reset role;
 
 -- ------------------------------------------- 5. Lo que cargó en horas a una unidad se descuenta
 select test.como_usuario(:'admin_id');
@@ -195,6 +206,28 @@ select public.rrhh_cambiar_estado_trabajador(current_setting('prueba.bea')::uuid
 select test.afirmar((select activo and fecha_baja is null and fecha_ingreso = date '2021-06-16' from public.trabajadores
                       where id = current_setting('prueba.bea')::uuid),
   'volver a dar de alta borra la baja y deja el ingreso');
+reset role;
+
+-- ------------------------------- 7. En el mes en curso, un día que no llega no falta
+-- Ana y Bea siguen en la oficina y no tienen pagos de este mes. Pagarle a Ana del
+-- 1 hasta hoy la saca del aviso, aunque el resto del mes no esté pagado.
+select test.afirmar((select o.sin_pago = 2 from public.sueldos_oficina_del_mes(date_trunc('month', now() at time zone 'America/Lima')::date) o),
+  'en el mes en curso, a Ana y a Bea les faltan días pagados');
+select test.como_usuario(:'rrhh_id');
+set local role authenticated;
+select public.rrhh_registrar_pago_oficina(gen_random_uuid(), current_setting('prueba.ana')::uuid,
+  date_trunc('month', now() at time zone 'America/Lima')::date, (now() at time zone 'America/Lima')::date, 500, 0, null);
+reset role;
+select test.afirmar((select o.sin_pago = 1 from public.sueldos_oficina_del_mes(date_trunc('month', now() at time zone 'America/Lima')::date) o),
+  format('Ana, pagada hasta hoy, ya no falta: los días que no llegan no cuentan; da %s',
+         (select o.sin_pago from public.sueldos_oficina_del_mes(date_trunc('month', now() at time zone 'America/Lima')::date) o)));
+-- Un pago por adelantado tampoco queda fuera por la baja del camino de antes.
+select test.como_usuario(:'rrhh_id');
+set local role authenticated;
+select public.rrhh_registrar_pago_oficina(gen_random_uuid(), current_setting('prueba.bea')::uuid,
+  (now() at time zone 'America/Lima')::date + 1, (now() at time zone 'America/Lima')::date + 7, 300, 0, null);
+select test.debe_fallar(format('select public.rrhh_cambiar_estado_trabajador(%L, false)', current_setting('prueba.bea')),
+  'dar de baja hoy por el camino de antes no deja fuera un pago adelantado', 'después del');
 reset role;
 
 select 'CHECK 402 OK' as resultado;

@@ -335,6 +335,7 @@ export type PagoOficina = {
   anulado_en: string | null
   motivo_anulacion: string | null
   trabajador: { nombres: string; apellidos: string; cargo: string | null } | null
+  anulador: { nombres: string; apellidos: string } | null
 }
 
 /** Los pagos de la oficina que tocan algún día del mes `YYYY-MM`, anulados incluidos. */
@@ -342,7 +343,9 @@ export async function pagosOficinaDelMes(mes: string, finDelMes: string): Promis
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('oficina_pagos')
-    .select('id, trabajador_id, desde, hasta, monto, aportes, nota, anulado_en, motivo_anulacion, trabajador:trabajadores(nombres, apellidos, cargo)')
+    .select(
+      'id, trabajador_id, desde, hasta, monto, aportes, nota, anulado_en, motivo_anulacion, trabajador:trabajadores(nombres, apellidos, cargo), anulador:usuarios!oficina_pagos_anulado_por_fkey(nombres, apellidos)',
+    )
     .lte('desde', finDelMes)
     .gte('hasta', `${mes}-01`)
     .order('desde')

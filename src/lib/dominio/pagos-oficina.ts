@@ -48,37 +48,39 @@ export function tramoSugerido(frecuencia: Frecuencia, desde: string): string | n
   return null
 }
 
-const centimos = (n: number) => Math.round(n * 100) / 100
-
 /**
  * La parte de un pago (con aportes) que cae en el mes `YYYY-MM`: lo pagado hasta el
  * fin del mes menos lo pagado hasta el fin del anterior, para que las partes de un
  * pago sumen el pago al céntimo.
  */
 export function parteDelMes(pago: { desde: string; hasta: string; monto: number; aportes: number }, mes: string): number {
-  const total = pago.monto + pago.aportes
+  // En céntimos enteros: con decimales de coma flotante, 1000.01 partido en dos
+  // días daba 500.00 donde la base da 500.01.
+  const total = Math.round((pago.monto + pago.aportes) * 100)
   const dias = diasEntre(pago.desde, pago.hasta)
   const inicio = `${mes}-01`
   const fin = finDeMes(mes)
   const hastaFin = pago.hasta < fin ? pago.hasta : fin
   const antes = sumarDias(inicio, -1)
   const hastaAntes = pago.hasta < antes ? pago.hasta : antes
-  return centimos((total * diasEntre(pago.desde, hastaFin)) / dias) - centimos((total * diasEntre(pago.desde, hastaAntes)) / dias)
+  return (Math.round((total * diasEntre(pago.desde, hastaFin)) / dias) - Math.round((total * diasEntre(pago.desde, hastaAntes)) / dias)) / 100
 }
 
 /**
- * Los días del mes que la persona trabajó (entre su ingreso y su baja) y que ningún
- * pago cubre, y el primero de ellos.
+ * Los días del mes que la persona trabajó hasta `hoy` (entre su ingreso y su baja)
+ * y que ningún pago cubre, y el primero de ellos. Un día que todavía no llega no
+ * falta: así lo cuenta también `sueldos_oficina_del_mes`.
  */
 export function diasSinPago(
   persona: { fecha_ingreso: string | null; fecha_baja: string | null },
   pagos: { desde: string; hasta: string }[],
   mes: string,
+  hoy: string,
 ): { dias: number; desde: string | null } {
   const inicio = `${mes}-01`
-  const fin = finDeMes(mes)
+  const fin = [finDeMes(mes), persona.fecha_baja, hoy].filter((f): f is string => f !== null).sort()[0]
   let d = persona.fecha_ingreso && persona.fecha_ingreso > inicio ? persona.fecha_ingreso : inicio
-  const ultimo = persona.fecha_baja && persona.fecha_baja < fin ? persona.fecha_baja : fin
+  const ultimo = fin
   let dias = 0
   let desde: string | null = null
   for (; d <= ultimo; d = sumarDias(d, 1)) {

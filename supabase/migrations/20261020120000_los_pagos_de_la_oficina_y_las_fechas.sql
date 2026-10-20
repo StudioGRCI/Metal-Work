@@ -46,8 +46,9 @@ end $$;
 
 -- Dar de baja deja la fecha (hoy, si nadie dijo otra) y dar de alta la borra:
 -- así ninguna baja, venga de donde venga, queda sin fecha.
+-- security definer: lee oficina_pagos aunque quien da de baja no la vea.
 create or replace function public.fn_trabajador_fecha_baja()
-returns trigger language plpgsql set search_path to 'public' as $$
+returns trigger language plpgsql security definer set search_path to 'public' as $$
 begin
   if old.activo and not new.activo then
     new.fecha_baja := coalesce(new.fecha_baja, (now() at time zone 'America/Lima')::date);
@@ -55,6 +56,11 @@ begin
       raise exception 'La baja (%) no puede ser antes del ingreso (%).',
         to_char(new.fecha_baja, 'DD/MM/YYYY'), to_char(new.fecha_ingreso, 'DD/MM/YYYY')
         using errcode = 'check_violation';
+    end if;
+    if exists (select 1 from public.oficina_pagos p
+                where p.trabajador_id = new.id and p.anulado_en is null and p.hasta > new.fecha_baja) then
+      raise exception 'Tiene pagos de la oficina después del %: anúlalos primero o pon una baja posterior.',
+        to_char(new.fecha_baja, 'DD/MM/YYYY') using errcode = 'check_violation';
     end if;
   elsif not old.activo and new.activo then
     new.fecha_baja := null;
@@ -193,7 +199,10 @@ comment on column public.oficina_pagos.aportes is 'Lo que la empresa aporta por 
 create index if not exists ix_oficina_pagos_persona on public.oficina_pagos (trabajador_id, desde) where anulado_en is null;
 create index if not exists ix_oficina_pagos_tramo on public.oficina_pagos (desde, hasta) where anulado_en is null;
 select public.activar_timestamps('oficina_pagos');
-select public.activar_auditoria('oficina_pagos');
+-- Sin activar_auditoria: audit_log lo leen puestos que no deben ver cada pago
+-- (Gerencia, con auditoria.ver), y la fila ya guarda quién la registró y quién,
+-- cuándo y por qué la anuló, sin admitir otro cambio.
+drop trigger if exists trg_auditoria on public.oficina_pagos;
 select public.activar_registro_de_prueba('oficina_pagos');
 
 create or replace function public.fn_oficina_pago_guardia()
@@ -247,7 +256,8 @@ begin
     return p_id;
   end if;
 
-  select * into v_w from public.trabajadores where id = p_trabajador_id;
+  -- Bloquear la ficha: dos registros a la vez de la misma persona no se cruzan sin verse.
+  select * into v_w from public.trabajadores where id = p_trabajador_id for update;
   if not found then raise exception 'Elige a la persona a quien se le pagó.' using errcode = 'check_violation'; end if;
   select a.es_oficina into v_ofi from public.areas a where a.id = v_w.area_id;
   if not coalesce(v_ofi, false) then
@@ -344,7 +354,8 @@ drop function if exists public.sueldos_oficina_del_mes(date);
 -- partes de un pago sumen el pago al céntimo: lo pagado hasta el fin del mes menos
 -- lo pagado hasta el fin del mes anterior. Cada persona, menos lo que ese mes cargó
 -- en horas a una unidad. sin_pago: cuántas personas de la oficina tienen en el mes
--- días trabajados que ningún pago cubre todavía.
+-- días trabajados que ningún pago cubre todavía. Solo cuenta hasta hoy: un día que
+-- no llega no falta, y avisarlo empujaría a registrar un pago que aún no se hizo.
 create or replace function public.sueldos_oficina_del_mes(p_periodo date default null)
 returns table (periodo date, personas integer, monto numeric, sin_pago integer)
 language sql stable set search_path to 'public' as $$
@@ -369,7 +380,7 @@ language sql stable set search_path to 'public' as $$
       from pago g
      group by g.periodo, g.trabajador_id
   ), falta as (
-    -- Los días que trabajó en el mes (entre su ingreso y su baja) y que ningún pago cubre.
+    -- Los días que trabajó en el mes hasta hoy (entre su ingreso y su baja) y que ningún pago cubre.
     select m.periodo, w.id
       from mes m
       join public.trabajadores w on (w.activo or w.fecha_baja is not null)
@@ -378,7 +389,8 @@ language sql stable set search_path to 'public' as $$
        and not exists (select 1 from public.pruebas_filas f where f.tabla = 'trabajadores' and f.fila_id = w.id)
        and exists (select 1
                      from generate_series(greatest(m.periodo, coalesce(w.fecha_ingreso, m.periodo)),
-                                          least((m.periodo + interval '1 month' - interval '1 day')::date, coalesce(w.fecha_baja, '9999-12-31')),
+                                          least((m.periodo + interval '1 month' - interval '1 day')::date, coalesce(w.fecha_baja, '9999-12-31'),
+                                                (now() at time zone 'America/Lima')::date),
                                           interval '1 day') d(dia)
                     where not exists (select 1 from public.oficina_pagos p
                                        where p.trabajador_id = w.id and p.anulado_en is null
@@ -391,7 +403,7 @@ language sql stable set search_path to 'public' as $$
     from mes m
 $$;
 comment on function public.sueldos_oficina_del_mes(date) is
-  'El sueldo de la oficina de cada mes (o del mes de p_periodo): la parte, por días, de cada pago de oficina_pagos que cae en el mes (con aportes), menos lo que esa persona cargó ese mes en horas a una unidad; y cuántas personas de la oficina tienen días del mes sin pago registrado. No pide permiso: la llaman el costeo y gastos_del_mes_oficina.';
+  'El sueldo de la oficina de cada mes (o del mes de p_periodo): la parte, por días, de cada pago de oficina_pagos que cae en el mes (con aportes), menos lo que esa persona cargó ese mes en horas a una unidad; y cuántas personas de la oficina tienen días del mes, hasta hoy, sin pago registrado. No pide permiso: la llaman el costeo y gastos_del_mes_oficina.';
 revoke all on function public.sueldos_oficina_del_mes(date) from public, anon, authenticated;
 
 create or replace function public.gastos_del_mes_oficina(p_periodo date)
@@ -716,3 +728,103 @@ $$;
 comment on function public.codigo_interno_lineas(text, boolean) is
   'Las líneas del costeo de un código interno (o de todos), sin pedir permiso: mano de obra, materiales (lo salido con el código TODOS LOS ACTIVOS se reparte en partes iguales entre los códigos que trabajaron ese mes), compras (no van al total; la OC con insumos de varios códigos se reparte entre ellos), órdenes de servicio, recibos por honorarios de los subcontratos y, cuando se pide la mano de obra, los gastos del mes (por horas de cada unidad en el mes, con el sueldo de la oficina; los registrados antes con tasa o en partes iguales, así), los egresos de caja con el código, los gastos aprobados en la OT de la unidad, la merma que Diseño evaluó en ella y el recargo de las horas extras. Solo la llaman codigo_interno_costeo (Gerencia), codigos_internos_costo, codigo_interno_gasto y codigos_internos_gasto (Requerimientos, sin la mano de obra) y codigo_interno_compras.';
 revoke all on function public.codigo_interno_lineas(text, boolean) from public, anon, authenticated;
+
+-- 6. El cierre espera los pagos de la oficina --------------------------------------
+-- La misma función de la 20261020110000, con una condición más: antes el sueldo de
+-- la oficina entraba solo; ahora depende de que RR. HH. registre cada pago, y la
+-- quincena se registra después de pagarla. Cerrar antes congelaría la unidad sin
+-- esa parte.
+create or replace function public.cerrar_costeo_codigo(p_codigo text, p_observacion text default null)
+returns uuid language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_codigo text := public.normalizar_codigo_interno(p_codigo);
+  v_id uuid;
+  k record;
+  v_falta text[] := '{}';
+  v_fuentes jsonb;
+begin
+  perform public.exigir_permiso('codigos_internos.cerrar');
+  if v_codigo is null then
+    raise exception 'Indica el código interno.' using errcode = 'check_violation';
+  end if;
+  if v_codigo = 'PLANTA' then
+    raise exception 'PLANTA no es una unidad: su costeo no se cierra.' using errcode = 'check_violation';
+  end if;
+  -- El sistema no sabe todavía cuándo se entrega una unidad: lo dice Gerencia al cerrar.
+  if char_length(btrim(coalesce(p_observacion, ''))) not between 10 and 500 then
+    raise exception 'Escribe cómo y cuándo se entregó la unidad (de 10 a 500 caracteres).' using errcode = 'check_violation';
+  end if;
+  -- Un reintento no cierra dos veces.
+  select id into v_id from public.codigo_interno_cierres where codigo = v_codigo and reabierto_en is null;
+  if found then
+    return v_id;
+  end if;
+
+  select * into k from public.codigos_internos_costo_calculado(v_codigo) where codigo = v_codigo;
+  if not found then
+    raise exception 'El código % no tiene costos que cerrar.', v_codigo using errcode = 'check_violation';
+  end if;
+  if k.materiales_sin_precio > 0 then
+    v_falta := v_falta || (k.materiales_sin_precio || case when k.materiales_sin_precio = 1 then ' salida del almacén sin precio (la valoriza Logística)'
+                                                      else ' salidas del almacén sin precio (las valoriza Logística)' end);
+  end if;
+  if k.horas_sin_costo > 0 then
+    v_falta := v_falta || (trim(to_char(k.horas_sin_costo, 'FM999990.##')) || ' h de personal sin costo mensual (lo pone RR. HH.)');
+  end if;
+  if k.lineas_sin_cambio > 0 then
+    v_falta := v_falta || (k.lineas_sin_cambio || case when k.lineas_sin_cambio = 1 then ' línea en dólares sin tipo de cambio' else ' líneas en dólares sin tipo de cambio' end
+                           || ' (lo carga Tesorería)');
+  end if;
+  -- Con cotización aprobada, el cierre congela también el margen: sin el IGV
+  -- confirmado o sin el cambio del día de la venta en dólares quedaría congelado
+  -- sin margen, y nada empujaría después a reabrirlo.
+  if k.cotizaciones > 0 and k.venta_sin_igv_confirmado > 0 then
+    v_falta := v_falta || (case when k.venta_sin_igv_confirmado = 1 then 'confirmar si la cotización incluye IGV'
+                                else 'confirmar si ' || k.venta_sin_igv_confirmado || ' cotizaciones incluyen IGV' end
+                           || ' (Gerencia o Administración en el expediente de la OT, o Ventas al corregir la cotización)');
+  end if;
+  if k.cotizaciones > 0 and k.venta_sin_cambio > 0 then
+    v_falta := v_falta || 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo carga Tesorería)'::text;
+  end if;
+  -- Los gastos del mes y el sueldo de la oficina se reparten por las horas de
+  -- todo el mes (migración 20261020110000): cerrado a mitad de mes, la unidad se
+  -- quedaría con una parte que el resto del mes todavía mueve.
+  if exists (select 1 from public.horas_por_codigo_del_mes((now() at time zone 'America/Lima')::date) h where h.codigo = v_codigo) then
+    v_falta := v_falta || ('que termine el mes ' || to_char(now() at time zone 'America/Lima', 'MM/YYYY')
+                           || ': los gastos del mes y el sueldo de la oficina se reparten por las horas de todo el mes');
+  end if;
+  -- El sueldo de la oficina sale de los pagos que registra RR. HH. (migración
+  -- 20261020120000): con días de la oficina sin pago en un mes en que la unidad
+  -- trabajó, quedaría congelada sin esa parte.
+  select v_falta || coalesce(array_agg('los pagos de la oficina de ' || to_char(h.periodo, 'MM/YYYY') || ' (los registra RR. HH.)'
+                                       order by h.periodo), '{}')
+    into v_falta
+    from (select distinct h.periodo from public.horas_por_codigo_del_mes(null) h where h.codigo = v_codigo) h
+   where (select o.sin_pago from public.sueldos_oficina_del_mes(h.periodo) o) > 0;
+  if cardinality(v_falta) > 0 then
+    raise exception 'El costeo de % todavía no está completo: falta %.', v_codigo, array_to_string(v_falta, '; ')
+      using errcode = 'check_violation';
+  end if;
+  if k.costo_pen <= 0 then
+    raise exception 'El código % todavía no tiene costo cargado: no hay nada que congelar.', v_codigo
+      using errcode = 'check_violation';
+  end if;
+
+  select coalesce(jsonb_object_agg(f.fuente, f.total), '{}'::jsonb) into v_fuentes
+    from (select l.fuente, sum(case when l.moneda = 'PEN' then l.monto
+                                    else round(l.monto * public.cambio_del_dia(l.fecha, 'VENTA'), 2) end) as total
+            from public.codigo_interno_lineas(v_codigo, true) l
+           where l.fuente in ('MANO_OBRA', 'RECARGO_EXTRAS', 'MATERIALES', 'SERVICIOS', 'SUBCONTRATOS',
+                              'SUBCONTRATOS_POR_PAGAR', 'GASTOS_DEL_MES', 'CAJA', 'GASTOS_OT', 'MERMA')
+           group by l.fuente) f;
+
+  insert into public.codigo_interno_cierres (codigo, costo_pen, precio_neto_pen, margen_pen, margen_pct, por_fuente, observacion)
+  values (v_codigo, k.costo_pen, k.precio_neto_pen, k.margen_pen, k.margen_pct, v_fuentes, nullif(btrim(coalesce(p_observacion, '')), ''))
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+comment on function public.cerrar_costeo_codigo(text, text) is
+  'Gerencia cierra el costeo de un código interno al entregar la unidad: congela su costo, su precio sin IGV y su margen, con quién, cuándo y cómo se entregó (la observación, obligatoria). Solo con todo lo que suma completo (también los pagos de la oficina de cada mes en que trabajó) y, si tiene cotización, con su precio sin IGV en soles. Un reintento devuelve el cierre vigente. Exige codigos_internos.cerrar.';
+revoke all on function public.cerrar_costeo_codigo(text, text) from public, anon;
+grant execute on function public.cerrar_costeo_codigo(text, text) to authenticated;

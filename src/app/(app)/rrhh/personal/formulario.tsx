@@ -176,7 +176,7 @@ function FormularioTrabajador({
             etiqueta="Fecha de ingreso"
             htmlFor={`tr-ingreso-${id}`}
             requerido
-            ayuda="El primer día que trabajó. En la oficina, ningún pago puede empezar antes."
+            ayuda="El primer día que trabajó. En la oficina, ningún pago puede empezar antes. Si no se sabe, pon la del pago o la planilla más antigua que tengas."
           >
             <Entrada id={`tr-ingreso-${id}`} name="fecha_ingreso" type="date" required defaultValue={t?.fecha_ingreso ?? ''} />
           </Campo>

@@ -3,11 +3,12 @@ import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { areasDeOficina, listarTrabajadores, pagosOficinaDelMes } from '@/lib/datos/rrhh'
 import { diasEntre, diasSinPago, finDeMes, parteDelMes } from '@/lib/dominio/pagos-oficina'
 import { mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
-import { fecha, hoyLima, mesLargo, moneda } from '@/lib/format'
+import { fecha, fechaHora, hoyLima, mesLargo, moneda, sumarDias } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularPago, RegistrarPago } from './formulario'
@@ -25,7 +26,8 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
   const perfil = await exigirPermiso('rrhh.personal')
   const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
-  const mesActual = mesDeLima(hoyLima())
+  const hoy = hoyLima()
+  const mesActual = mesDeLima(hoy)
   const mes = mesValido(params.mes) ? params.mes : mesActual
   const inicio = `${mes}-01`
   const fin = finDeMes(mes)
@@ -42,10 +44,19 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
       (t.fecha_ingreso === null || t.fecha_ingreso <= fin) &&
       (t.fecha_baja === null || t.fecha_baja >= inicio),
   )
-  const faltan = deOficina
-    .map((t) => ({ t, ...diasSinPago(t, vigentes.filter((p) => p.trabajador_id === t.id), mes) }))
-    .filter((f) => f.dias > 0)
+  const pagosDe = (id: string) => vigentes.filter((p) => p.trabajador_id === id)
+  const faltan = deOficina.map((t) => ({ t, ...diasSinPago(t, pagosDe(t.id), mes, hoy) })).filter((f) => f.dias > 0)
   const nombre = (t: { nombres: string; apellidos: string }) => `${t.nombres} ${t.apellidos}`
+  // Al elegir a la persona, «Desde» se llena con su primer día sin pago, o con el día
+  // siguiente a su último pago del mes, o con el 1.
+  const primerDiaLibre = (id: string) => {
+    const hueco = faltan.find((f) => f.t.id === id)?.desde
+    if (hueco) return hueco
+    const ultimo = pagosDe(id).reduce<string | null>((u, p) => (u === null || p.hasta > u ? p.hasta : u), null)
+    return ultimo && ultimo < fin ? sumarDias(ultimo, 1) : inicio
+  }
+  // Los vigentes primero; los anulados quedan al final, como evidencia.
+  const ordenados = [...vigentes, ...pagos.filter((p) => p.anulado_en)]
 
   return (
     <>
@@ -55,10 +66,10 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
         migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Pagos de la oficina' }]}
         acciones={
           <RegistrarPago
-            inicio={faltan[0]?.desde ?? inicio}
+            inicio={inicio}
             personal={deOficina
               .filter((t) => t.activo || (t.fecha_baja !== null && t.fecha_baja >= inicio))
-              .map((t) => ({ id: t.id, nombre: nombre(t), cargo: t.cargo, ingreso: t.fecha_ingreso, baja: t.fecha_baja }))}
+              .map((t) => ({ id: t.id, nombre: nombre(t), cargo: t.cargo, inicio: primerDiaLibre(t.id) }))}
           />
         }
       />
@@ -73,7 +84,8 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
             <ChevronLeft aria-hidden className="size-4" />
           </Link>
           <p className="px-1 text-sm font-medium text-texto first-letter:uppercase">{mesLargo(inicio)}</p>
-          {mes < mesActual && (
+          {/* Hasta el mes que viene: la base acepta pagos que empiezan hasta 31 días adelante. */}
+          {mes <= mesActual && (
             <Link
               href={`/rrhh/pagos-oficina?mes=${mesVecino(mes, 1)}`}
               aria-label="Mes siguiente"
@@ -98,7 +110,7 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
               ayuda="Cuenta los días entre su ingreso y su baja que ningún pago cubre. Mientras falten, el sueldo de la oficina del mes sale incompleto en el costeo de cada unidad. Si alguien ya no trabaja, dalo de baja en Personal con su último día."
             />
             <TarjetaCuerpo>
-              <ul className="space-y-1 text-sm">
+              <ul className="max-w-2xl space-y-1 text-sm">
                 {faltan.map((f) => (
                   <li key={f.t.id} className="flex flex-wrap justify-between gap-2">
                     <span className="text-texto">{nombre(f.t)}</span>
@@ -122,7 +134,7 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
               <tr>
                 <TH>Persona</TH>
                 <TH>Días que paga</TH>
-                <TH className="text-right">Pagado</TH>
+                <TH className="hidden text-right sm:table-cell">Pagado</TH>
                 <TH className="text-right">En este mes</TH>
                 <TH className="text-right">
                   <span className="sr-only">Acciones</span>
@@ -133,16 +145,26 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
               {pagos.length === 0 ? (
                 <SinDatos titulo="Sin pagos este mes" descripcion="Registra el primero con «Registrar pago»." />
               ) : (
-                pagos.map((p) => {
+                ordenados.map((p) => {
                   const quien = p.trabajador ? nombre(p.trabajador) : 'Persona sin ficha'
                   const anulado = p.anulado_en !== null
                   const dias = diasEntre(p.desde, p.hasta)
                   return (
-                    <TR key={p.id} className={anulado ? 'opacity-60' : undefined}>
+                    <TR key={p.id}>
                       <TD className="align-top">
                         <p className={`font-medium text-texto ${anulado ? 'line-through' : ''}`}>{quien}</p>
                         {p.nota && <p className="text-xs text-texto-suave">{p.nota}</p>}
-                        {anulado && <p className="text-xs text-texto-suave">Anulado: {p.motivo_anulacion}</p>}
+                        {anulado && (
+                          <>
+                            <Insignia tono="peligro" className="mt-1">
+                              Anulado
+                            </Insignia>
+                            <p className="mt-1 text-xs text-texto-suave">
+                              {p.anulador ? `Por ${nombre(p.anulador)} el ` : 'El '}
+                              {fechaHora(p.anulado_en!)}: {p.motivo_anulacion}
+                            </p>
+                          </>
+                        )}
                       </TD>
                       <TD className="align-top">
                         <p className="tabular text-sm text-texto">
@@ -152,11 +174,11 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
                           {dias} {dias === 1 ? 'día' : 'días'}
                         </p>
                       </TD>
-                      <TD className={`tabular text-right align-top ${anulado ? 'line-through' : ''}`}>
+                      <TD className={`tabular hidden text-right align-top whitespace-nowrap sm:table-cell ${anulado ? 'line-through' : ''}`}>
                         {moneda(p.monto + p.aportes)}
                         {p.aportes > 0 && <p className="text-[11px] text-texto-suave">con {moneda(p.aportes)} de aportes</p>}
                       </TD>
-                      <TD className={`tabular text-right align-top font-semibold ${anulado ? 'line-through' : ''}`}>
+                      <TD className={`tabular text-right align-top font-semibold whitespace-nowrap ${anulado ? 'line-through' : ''}`}>
                         {moneda(anulado ? 0 : parteDelMes(p, mes))}
                       </TD>
                       <TD className="text-right align-top">

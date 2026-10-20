@@ -11,7 +11,8 @@ import { useEnvio } from '@/lib/envio'
 
 import { anularPagoOficina, registrarPagoOficina } from './acciones'
 
-export type PersonaOficina = { id: string; nombre: string; cargo: string | null; ingreso: string | null; baja: string | null }
+/** `inicio`: su primer día sin pago en el mes, con el que se llena «Desde» al elegirla. */
+export type PersonaOficina = { id: string; nombre: string; cargo: string | null; inicio: string }
 
 /** «Registrar pago»: lo que se le pagó a una persona de la oficina y qué días paga. */
 export function RegistrarPago({ personal, inicio }: { personal: PersonaOficina[]; inicio: string }) {
@@ -32,6 +33,11 @@ export function RegistrarPago({ personal, inicio }: { personal: PersonaOficina[]
         <Wallet aria-hidden className="size-4" />
         Registrar pago
       </Boton>
+      {personal.length === 0 && (
+        <p className="basis-full text-xs text-texto-suave">
+          No hay nadie de la oficina a quien pagarle: marca su área como oficina en Configuración o registra a la persona en Personal.
+        </p>
+      )}
       {aviso && (
         <p role="status" className="basis-full text-sm text-exito">
           {aviso}
@@ -86,7 +92,16 @@ function FormularioPago({
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="id" value={id} />
       <Campo etiqueta="Persona" htmlFor={`pago-persona-${id}`} requerido>
-        <Seleccion id={`pago-persona-${id}`} name="trabajador_id" required defaultValue="">
+        <Seleccion
+          id={`pago-persona-${id}`}
+          name="trabajador_id"
+          required
+          defaultValue=""
+          onChange={(e) => {
+            const persona = personal.find((p) => p.id === e.target.value)
+            if (persona) cambiarTramo(frecuencia, persona.inicio)
+          }}
+        >
           <option value="" disabled>
             Elige a quién se le pagó
           </option>
@@ -99,7 +114,7 @@ function FormularioPago({
         </Seleccion>
       </Campo>
       <div className="grid gap-4 sm:grid-cols-3">
-        <Campo etiqueta="Paga" htmlFor={`pago-frecuencia-${id}`} ayuda="Llena el último día; puedes cambiarlo.">
+        <Campo etiqueta="Cada cuánto se le paga" htmlFor={`pago-frecuencia-${id}`} ayuda="Llena el último día; puedes cambiarlo.">
           <Seleccion
             id={`pago-frecuencia-${id}`}
             value={frecuencia}
