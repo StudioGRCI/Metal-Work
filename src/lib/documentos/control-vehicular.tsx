@@ -22,6 +22,8 @@ const { azul, tinta, suave, linea, lineaSuave, firma } = PALETA_DOCUMENTO
 // puntos salía del doble de alto (comprobado al generar la ficha, 2026-10-20).
 const s = StyleSheet.create({
   page: { padding: 14, fontFamily: 'Helvetica', fontSize: 8, color: tinta },
+  // Sin `lineHeight`: dentro de un elemento `fixed` borra el pie de la hoja (skill `diseno`).
+  pie: { position: 'absolute', bottom: 4, left: 14, right: 14, fontSize: 6, color: suave, textAlign: 'right' },
   row: { flexDirection: 'row', gap: 8 },
   // Base 0: todas parten del mismo ancho y un texto largo se parte en renglones.
   // Con solo `flexGrow`, la casilla crecía con su texto, pisaba la vecina y se
@@ -167,6 +169,12 @@ export function DocumentoControlVehicular({ referencia, cliente, items, control,
           <Text style={s.signature}>Recibe en Metal Work · Nombre y firma</Text>
           <Text style={s.signature}>Conformidad de salida · Nombre, DNI y firma</Text>
         </View>
+        {/* Si los textos largos empujan las firmas a otra hoja, esa hoja dice de qué OT es. */}
+        <Text
+          style={s.pie}
+          fixed
+          render={({ pageNumber, totalPages }) => (totalPages > 1 ? (ref ? ref + ' · ' : '') + `Hoja ${pageNumber} de ${totalPages}` : '')}
+        />
       </Page>
     </Document>
   )

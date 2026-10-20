@@ -5,8 +5,8 @@ import { cn } from '@/lib/utils'
 /**
  * Una sección de la pantalla que se abre al tocarla: una tarjeta cuyo título es
  * el pliegue («Pagados (N)», el historial, la configuración que se toca poco).
- * Para un pliegue chico dentro de una fila o de un formulario, un `<details>`
- * suelto: esta es una tarjeta y, dentro de otra, se ve como caja dentro de caja.
+ * Para un pliegue chico dentro de una tarjeta o de un formulario, `Pliegue`, más
+ * abajo: esta es una tarjeta y, dentro de otra, se ve como caja dentro de caja.
  *
  * `abierta` decide solo cómo sale al cargar: mientras no cambie, React no toca
  * el atributo y la sección se queda como la dejó la persona aunque la página se

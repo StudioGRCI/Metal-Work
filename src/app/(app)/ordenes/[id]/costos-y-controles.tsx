@@ -7,7 +7,7 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
-import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
+import { Pliegue, SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { CostoDeOrden, controlesYSolicitudesDeOrden } from '@/lib/datos/costos-ot'
 import { ESTADO_GASTO_AREA, ESTADO_SOLICITUD_TESORERIA, TIPO_GASTO_AREA, definir } from '@/lib/dominio/estados'
@@ -152,9 +152,8 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
   return <Tarjeta>
     <TarjetaCabecera titulo="Gastos de las áreas" ayuda="Cada área adjunta el comprobante de su OT. Administración aprueba; solo entonces se suma al costo." />
     <TarjetaCuerpo className="space-y-4">
-      {puedeRegistrar && <details className="rounded-[var(--radius-base)] border border-borde p-3">
-        <summary className="cursor-pointer font-medium">Registrar gasto de mi área</summary>
-        <form onSubmit={alEnviar} className="mt-4 grid gap-3 sm:grid-cols-2">
+      {puedeRegistrar && <Pliegue titulo="Registrar gasto de mi área" enCaja>
+        <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2">
           <input type="hidden" name="id" value={id} /><input type="hidden" name="orden_id" value={ordenId} />
           {conCodigo && <p className="sm:col-span-2 text-sm text-texto-suave">Un servicio que ya tiene su orden de servicio, o un subcontrato con su recibo por honorarios registrado, ya suma al costo del código: no lo registres aquí, que se contaría dos veces.</p>}
           <Campo etiqueta="Tipo" htmlFor="gasto-tipo" requerido><Seleccion id="gasto-tipo" name="tipo" defaultValue="SERVICIO"><option value="SERVICIO">Servicio</option><option value="TRANSPORTE">Transporte</option><option value="VIATICO">Viático</option><option value="SUBCONTRATO">Subcontrato</option><option value="OTRO">Otro</option>{esAdministracion && <><option value="TRAMITE">Trámites de placas y documentación</option><option value="COMISION">Comisión de venta</option></>}</Seleccion></Campo>
@@ -167,7 +166,7 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
           {resultado?.ok && <p role="status" className="sm:col-span-2 text-sm text-exito">{resultado.mensaje}</p>}
           <Boton type="submit" cargando={enviando}>Enviar para revisión</Boton>
         </form>
-      </details>}
+      </Pliegue>}
       {datos.gastos.length === 0 ? <p className="text-sm text-texto-suave">Todavía no hay gastos registrados en esta OT.</p> :
         <ol className="space-y-3">{datos.gastos.map(g => <li key={g.id} className="rounded-[var(--radius-base)] border border-borde p-3 text-sm">
           <div className="flex flex-wrap justify-between gap-2"><strong>{g.descripcion}</strong><Insignia tono={definir(ESTADO_GASTO_AREA, g.estado).tono}>{definir(ESTADO_GASTO_AREA, g.estado).etiqueta}</Insignia></div>
