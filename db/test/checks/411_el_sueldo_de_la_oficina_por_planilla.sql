@@ -107,5 +107,21 @@ select test.afirmar((select o.monto = 1400 from public.sueldos_oficina_del_mes(d
   format('mayo: 1,500 pagados menos los 100 de la hora del 10; las del 20, ya en el taller, no lo tocan; da %s',
          (select o.monto from public.sueldos_oficina_del_mes(date '2021-05-01') o)));
 
+-- Dos pagos en agosto (del 1 al 5, S/ 300; del 6 al 31, S/ 1,000) y S/ 1,000 en
+-- horas el 3: la resta se topa con todo lo pagado en el mes, no con cada pago,
+-- para que la unidad no cargue dos veces lo mismo.
+select test.como_usuario(:'rrhh_id');
+set local role authenticated;
+select public.rrhh_guardar_planilla_trabajador(current_setting('prueba.max')::uuid, 'ADMINISTRATIVA');
+select public.rrhh_registrar_pago_oficina(gen_random_uuid(), current_setting('prueba.max')::uuid, date '2021-08-01', date '2021-08-05', 300, 0, null);
+select public.rrhh_registrar_pago_oficina(gen_random_uuid(), current_setting('prueba.max')::uuid, date '2021-08-06', date '2021-08-31', 1000, 0, null);
+reset role;
+select test.como_usuario(:'admin_id');
+insert into public.tareos (trabajador_id, fecha, codigo_interno, horas, labor, costo_hora, costo) values
+  (current_setting('prueba.max')::uuid, date '2021-08-03', 'CHK411_A_21/04', 10, 'Soldadura', 100, 1000);
+select test.afirmar((select o.monto = 300 from public.sueldos_oficina_del_mes(date '2021-08-01') o),
+  format('agosto: 1,300 pagados menos 1,000 en horas = 300; da %s',
+         (select o.monto from public.sueldos_oficina_del_mes(date '2021-08-01') o)));
+
 select 'CHECK 411 OK' as resultado;
 rollback;

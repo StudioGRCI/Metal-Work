@@ -74,7 +74,8 @@ end $$;
 -- subcontratos si una fila lo nombra, y uno suelto lo retira su dueño.
 -- Si una fila nombra ese archivo, mirado por encima del RLS: quien subió un
 -- archivo y después perdió el permiso ya no ve el recibo o el contrato que lo
--- nombra, y sin esto la política lo dejaba borrarlo como si estuviera suelto.
+-- nombra, y sin esto las políticas lo dejaban verlo y borrarlo como si
+-- estuviera suelto.
 create or replace function public.subcontrato_ruta_adjunta(p_ruta text)
 returns boolean language sql stable security definer set search_path to 'public' as $$
   select exists (select 1 from public.recibos_honorarios r where r.archivo_ruta = p_ruta)
@@ -89,7 +90,9 @@ comment on function public.subcontrato_ruta_adjunta(text) is
 do $$ begin
   alter policy subcontratos_ver on storage.objects using (
     bucket_id = 'subcontratos'
-    and (owner_id = (select auth.uid())::text
+    -- Quien lo subió lo ve mientras está suelto; una vez adjunto, solo quien ve
+    -- los subcontratos, aunque lo haya subido y después cambiado de puesto.
+    and ((owner_id = (select auth.uid())::text and not public.subcontrato_ruta_adjunta(objects.name))
          or ((select public.puede_ver_subcontratos())
              and (exists (select 1 from public.recibos_honorarios r where r.archivo_ruta = objects.name)
                   or exists (select 1 from public.pagos_recibo_honorarios p where p.voucher_ruta = objects.name)

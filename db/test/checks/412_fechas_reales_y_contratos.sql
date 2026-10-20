@@ -171,10 +171,12 @@ update public.usuarios set rol_id = (select id from public.roles where codigo = 
  where id = pg_temp.id('administracion');
 select pg_temp.como('administracion');
 set local role authenticated;
+select test.afirmar((select count(*) from storage.objects where bucket_id = 'subcontratos') = 0,
+  'quien subió el contrato y cambió de puesto ya no lo ve: lleva el monto');
 delete from storage.objects where bucket_id = 'subcontratos' and name = pg_temp.ruta('sc_mtz', 'c1');
 reset role;
 select test.afirmar((select count(*) from storage.objects where bucket_id = 'subcontratos' and name = pg_temp.ruta('sc_mtz', 'c1')) = 1,
-  'quien subió el contrato y cambió de puesto no quita el archivo');
+  'ni lo quita');
 select test.como_usuario(pg_temp.id('admin'));
 update public.usuarios set rol_id = (select id from public.roles where codigo = 'ADMINISTRACION')
  where id = pg_temp.id('administracion');
