@@ -435,8 +435,10 @@ export function FormularioReporteDiario({
                       ? tope !== null
                         ? `${lleva !== null ? `Iba en ${lleva} % el ${fechaCorta(elegida.ultima_fecha)} y el` : 'El'} ${fechaCorta(elegida.tope_fecha)} ya iba en ${tope} %: pon en cuánto iba este día, de ${desde} a ${hasta}.`
                         : lleva === null
-                          ? 'Todavía nadie lo reportó.'
-                          : `Iba en ${lleva} % el ${fechaCorta(elegida.ultima_fecha)}: pon en cuánto va ahora, de ${desde} a 100.`
+                          ? corrige
+                            ? 'Sin contar el reporte que corriges, nadie lo reportó antes de este día.'
+                            : 'Todavía nadie lo reportó.'
+                          : `Iba en ${lleva} % el ${fechaCorta(elegida.ultima_fecha)}: pon en cuánto ${dia < hoy ? 'iba ese día' : 'va ahora'}, de ${desde} a 100.`
                       : ''}
                   </p>
                 )}

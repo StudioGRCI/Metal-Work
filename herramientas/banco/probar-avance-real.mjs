@@ -464,6 +464,19 @@ if (idSubcontrato) {
   await avanceDe(pagina, 1).fill('26')
   const r = await subir(pagina, 'Subir el reporte corregido')
   comprobar(Boolean(r.id), `la corrección del subcontrato terminado sube${r.error ? `: ${r.error}` : ''}`)
+  if (r.id) {
+    const [f] = await consulta(
+      `select (select anulado_en is not null from reportes_diarios where id = $1) as anulado,
+              (select a.subcontrato_id::text from reporte_diario_trabajos t join codigo_actividades a on a.id = t.actividad_id
+                where t.reporte_id = $2) as subcontrato,
+              (select avance from reporte_diario_trabajos where reporte_id = $2) as avance`,
+      [idSubcontrato, r.id],
+    )
+    comprobar(
+      f.anulado && f.subcontrato === sc.id && f.avance === 26,
+      `en la base, el observado queda anulado y la corrección va sobre el mismo subcontrato en 26 (${JSON.stringify(f)})`,
+    )
+  }
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
