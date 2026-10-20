@@ -260,8 +260,10 @@ create table if not exists public.trabajador_periodos (
 );
 comment on table public.trabajador_periodos is
   'Cada periodo que una persona trabajó y cerró con su baja antes de volver a entrar (ingreso vacío: no se sabía). Lo lee RR. HH.; no se cambia ni se borra.';
+-- (b) La cuenta de las faltas y la validación de cada pago buscan por persona.
 create index if not exists ix_trabajador_periodos on public.trabajador_periodos (trabajador_id, baja);
 select public.activar_timestamps('trabajador_periodos');
+-- Sin activar_auditoria: la fila no cambia nunca y ya dice quién la anotó y cuándo.
 select public.activar_registro_de_prueba('trabajador_periodos');
 
 create or replace function public.fn_trabajador_periodo_guardia()
@@ -881,11 +883,12 @@ begin
     raise exception 'No tiene el permiso codigos_internos.ver, codigos_internos.cerrar ni costos.ver para realizar esta operación'
       using errcode = 'insufficient_privilege';
   end if;
+  -- Una sola cuenta de todos los meses: mes por mes repetía las horas de todo cada vez.
   return query
-  select h.periodo
-    from (select distinct h.periodo from public.horas_por_codigo_del_mes(null) h
-           where h.codigo = public.normalizar_codigo_interno(p_codigo)) h
-   where (select o.sin_pago from public.sueldos_oficina_del_mes(h.periodo) o) > 0
+  select distinct h.periodo
+    from public.horas_por_codigo_del_mes(null) h
+   where h.codigo = public.normalizar_codigo_interno(p_codigo)
+     and h.periodo in (select o.periodo from public.sueldos_oficina_del_mes(null) o where o.sin_pago > 0)
    order by h.periodo;
 end;
 $$;

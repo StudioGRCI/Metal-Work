@@ -98,19 +98,35 @@ export function ControlesTrabajador({ trabajador, areas, hoy }: { trabajador: Tr
         abierta={volviendo}
         alCerrar={() => setVolviendo(false)}
         titulo={`Dar de alta a ${nombre}`}
-        descripcion="Con el día en que vuelve a trabajar. Lo que trabajó antes queda anotado con su ingreso y su baja."
+        descripcion="Con el día en que vuelve a trabajar. Lo que trabajó antes queda anotado con su ingreso y su baja, y no se deshace."
         ancho="sm"
       >
+        <form onSubmit={estado.alEnviar} className="mb-4 space-y-2 border-b border-borde pb-4">
+          <input type="hidden" name="id" value={trabajador.id} />
+          <p className="text-xs text-texto-suave">¿La baja fue un error? Quítala y la ficha vuelve como estaba, con su ingreso de antes.</p>
+          {estado.error && (
+            <p role="alert" className="text-sm text-peligro">
+              {estado.error}
+            </p>
+          )}
+          <Boton type="submit" variante="contorno" tamano="sm" cargando={estado.enviando}>
+            Quitar la baja
+          </Boton>
+        </form>
         <form onSubmit={alta.alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={trabajador.id} />
-          <Campo etiqueta="Vuelve a trabajar desde" htmlFor={`tr-alta-${trabajador.id}`} requerido>
+          <Campo
+            etiqueta="Vuelve a trabajar desde"
+            htmlFor={`tr-alta-${trabajador.id}`}
+            requerido
+            ayuda="Los días entre su baja y esta fecha quedan como no trabajados: no se les registra pago."
+          >
             <Entrada
               id={`tr-alta-${trabajador.id}`}
               name="fecha_reingreso"
               type="date"
               required
               min={trabajador.fecha_baja ? sumarDias(trabajador.fecha_baja, 1) : undefined}
-              defaultValue={hoy}
             />
           </Campo>
           {alta.error && (
@@ -123,18 +139,6 @@ export function ControlesTrabajador({ trabajador, areas, hoy }: { trabajador: Tr
               Dar de alta
             </Boton>
           </div>
-        </form>
-        <form onSubmit={estado.alEnviar} className="mt-4 space-y-2 border-t border-borde pt-4">
-          <input type="hidden" name="id" value={trabajador.id} />
-          <p className="text-xs text-texto-suave">¿La baja fue un error? Quítala y la ficha vuelve como estaba, con su ingreso de antes.</p>
-          {estado.error && (
-            <p role="alert" className="text-sm text-peligro">
-              {estado.error}
-            </p>
-          )}
-          <Boton type="submit" variante="contorno" tamano="sm" cargando={estado.enviando}>
-            Quitar la baja
-          </Boton>
         </form>
       </Ventana>
       <Ventana

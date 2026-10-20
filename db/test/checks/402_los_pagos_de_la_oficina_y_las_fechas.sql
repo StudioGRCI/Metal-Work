@@ -267,9 +267,9 @@ select test.como_usuario(:'admin_id');
 insert into public.tareos (trabajador_id, fecha, codigo_interno, horas, labor, costo_hora, costo) values
   (current_setting('prueba.beto')::uuid, date '2021-03-10', 'CHK402_M_21/03', 5, 'Soldadura', 10, 50);
 reset role;
-select test.afirmar((select o.sin_pago > 0 from public.sueldos_oficina_del_mes(date '2021-03-01') o)
+select test.afirmar((select o.sin_pago = 2 from public.sueldos_oficina_del_mes(date '2021-03-01') o)
                     and exists (select 1 from public.meses_sin_pagos_oficina('CHK402_M_21/03') m where m.periodo = date '2021-03-01'),
-  'marzo, con horas y sin pagos, avisa y traba el cierre de la unidad que trabajó en marzo');
+  'marzo, con horas y sin pagos: les faltan a Ana y a Ciro (Bea entró en junio), y traba el cierre de la unidad que trabajó en marzo');
 
 -- ------------------------------------------ 9. Volver a entrar no deja meses en falta
 -- Ciro se fue el 10 de junio de 2021 y vuelve el 1 de agosto: julio no le falta, y

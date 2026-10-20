@@ -306,9 +306,15 @@ try {
     await comoPuesto(CUENTAS.rrhh, `select public.rrhh_anular_pago_oficina($1, 'Prueba del banco: se deja anulado al terminar')`, [p.id])
   }
   await comoPuesto(CUENTAS.rrhh, `select public.rrhh_anular_tareo($1, 'Prueba del banco: se deja anulada al terminar')`, [TAREO]).catch(() => {})
+  // Fuera del personal al terminar. Quien volvió con un día de mañana no puede tener
+  // la baja de hoy (iría antes de su ingreso): se le pone la baja en su ingreso.
   for (const w of await consulta(`select id from trabajadores where nombres in ($1, $2) and activo`, [NOMBRE, `Soldador ${sello}`])) {
-    // Si volvió con un día de mañana, la baja de hoy iría antes de su ingreso: se queda de alta.
-    await comoPuesto(CUENTAS.rrhh, `select public.rrhh_cambiar_estado_trabajador($1, false)`, [w.id]).catch(() => {})
+    try {
+      await consulta(`update trabajadores set activo = false, fecha_baja = greatest(fecha_ingreso, (now() at time zone 'America/Lima')::date)
+                       where id = $1`, [w.id])
+    } catch (e) {
+      fallas.push(`no se pudo dar de baja a la persona de la prueba al terminar: ${e}`)
+    }
   }
   await navegador.close()
   await base.end()
