@@ -23,7 +23,7 @@ import {
 } from '@/lib/dominio/planilla-diaria'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import { fecha, moneda } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { EnviarPlanilla } from './enviar'
 
@@ -42,6 +42,8 @@ function estimado(p: PersonaPorEnviar, regla: ReglaHorasExtras) {
 export default async function PaginaPlanillaDiaria() {
   const perfil = await exigirPermiso(['planilla_diaria.preparar', 'planilla_diaria.pagar', 'planilla_diaria.ver'])
   const arma = puede(perfil, 'planilla_diaria.preparar')
+  // La manda solo RR. HH.; el administrador la ve (migración 20261020167000).
+  const envia = editaComoRrhh(perfil, 'planilla_diaria.preparar')
   const paga = puede(perfil, 'planilla_diaria.pagar')
 
   const [planillas, porEnviar, porDecidir, regla] = await Promise.all([
@@ -77,6 +79,7 @@ export default async function PaginaPlanillaDiaria() {
               descripcion={conRemuneracion.length > 0 ? `${personasTexto(conRemuneracion.length)} · ${moneda(total)}` : undefined}
               ayuda="Sale de los reportes con los dos vistos buenos de Gerencia y Recursos Humanos que todavía no están en una planilla."
               acciones={
+                envia &&
                 conRemuneracion.length > 0 && (
                   <EnviarPlanilla id={crypto.randomUUID()} resumen={`${personasTexto(conRemuneracion.length)} por ${moneda(total)}`} />
                 )

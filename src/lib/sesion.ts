@@ -161,12 +161,20 @@ export function apruebaSinOrden(perfil: PerfilSesion | null): boolean {
 }
 
 /**
- * Si cambia el DNI y el costo por hora de las cuentas: solo Recursos Humanos,
- * tampoco el administrador, que los ve (migración 20261020165000). Por eso no
- * pasa por `puede`, que al administrador le dice que sí a todo.
+ * Si escribe lo de Recursos Humanos —la ficha, el costo, el tareo, los permisos,
+ * las observaciones, los pagos de la oficina, las horas extras, las planillas—:
+ * solo quien tiene el permiso, no el administrador, que lo ve todo pero no lo
+ * cambia (StudioGRCI, 2026-10-20; migraciones 20261020165000 y 20261020167000).
+ * Gemelo de `exigir_permiso_del_puesto`; por eso no pasa por `puede`, que al
+ * administrador le dice que sí a todo.
  */
+export function editaComoRrhh(perfil: PerfilSesion | null, permiso: string): boolean {
+  return Boolean(perfil?.permisos.includes(permiso))
+}
+
+/** Si cambia el DNI y el costo por hora de las cuentas: solo Recursos Humanos (migración 20261020165000). */
 export function cambiaDatosReservados(perfil: PerfilSesion | null): boolean {
-  return Boolean(perfil?.permisos.includes('rrhh.personal'))
+  return editaComoRrhh(perfil, 'rrhh.personal')
 }
 
 /**

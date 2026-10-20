@@ -3,7 +3,7 @@ import readXlsxFile from 'read-excel-file/node'
 import { unzipSync } from 'fflate'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { exigirPermiso } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
 import {
@@ -31,7 +31,9 @@ export type LecturaPlanilla = {
  * Recursos Humanos ve lo leído, con sus avisos, y elige a quién importar.
  */
 export async function leerExcelPlanilla(_previo: unknown, datos: FormData): Promise<ResultadoAccion<LecturaPlanilla>> {
-  await exigirPermiso('rrhh.gestionar_planillas')
+  if (!editaComoRrhh(await exigirPermiso('rrhh.gestionar_planillas'), 'rrhh.gestionar_planillas')) {
+    return { ok: false, error: 'Las planillas las arma Recursos Humanos: el administrador las ve, pero no las cambia.' }
+  }
   const archivo = datos.get('archivo')
   const planillaId = z.guid().safeParse(datos.get('planilla_id'))
   if (!(archivo instanceof File) || archivo.size === 0 || archivo.size > 5 * 1024 * 1024 || !planillaId.success) {
@@ -96,7 +98,9 @@ export async function leerExcelPlanilla(_previo: unknown, datos: FormData): Prom
 }
 
 export async function confirmarImportacion(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
-  await exigirPermiso('rrhh.gestionar_planillas')
+  if (!editaComoRrhh(await exigirPermiso('rrhh.gestionar_planillas'), 'rrhh.gestionar_planillas')) {
+    return { ok: false, error: 'Las planillas las arma Recursos Humanos: el administrador las ve, pero no las cambia.' }
+  }
   const cab = z.object({ planilla_id: z.guid(), importacion_id: z.guid(), lineas: z.string().max(1500000) })
     .safeParse(Object.fromEntries(datos))
   if (!cab.success) return { ok: false, error: 'Revisa la planilla y las personas elegidas.' }

@@ -26,11 +26,13 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
   const registra = puede(perfil, 'vehiculos.registrar')
   const params = await searchParams
   const vista = params.vista === 'historial' ? 'historial' : 'en_planta'
+  // Los códigos con OT que puede elegir quien registra el ingreso no dependen de
+  // la lista: se piden a la vez.
+  const pidiendoCodigos = registra ? codigosParaIngreso() : Promise.resolve([])
   const registros = await cargarVehiculos(vista)
-  // Lo que le falta a cada vehículo de trabajo para salir, y los códigos con OT
-  // que puede elegir quien registra el ingreso.
+  // Lo que le falta a cada vehículo de trabajo para salir.
   const enPlanta = registros.filter((r) => !r.salida_en && !r.anulado_en).map((r) => r.id)
-  const [estados, codigos] = await Promise.all([estadosDeSalida(enPlanta), registra ? codigosParaIngreso() : Promise.resolve([])])
+  const [estados, codigos] = await Promise.all([estadosDeSalida(enPlanta), pidiendoCodigos])
 
   return (
     <>

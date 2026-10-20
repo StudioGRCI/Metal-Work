@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 function dato(formulario: FormData, nombre: string) {
@@ -23,7 +23,7 @@ function repintar() {
 /** RR. HH. registra el permiso que pidió una persona. Mismo permiso que `rrhh_registrar_permiso` (`rrhh.permisos`). */
 export async function registrarPermiso(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.permisos')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.permisos')) return { ok: false, error: SIN_PERMISO }
   const analisis = z
     .object({
       id: z.guid(),
@@ -64,7 +64,7 @@ export async function registrarPermiso(_previo: unknown, formulario: FormData): 
  */
 export async function justificarPermiso(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.permisos')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.permisos')) return { ok: false, error: SIN_PERMISO }
   const analisis = z
     .object({
       id: z.guid(),
@@ -91,7 +91,7 @@ export async function justificarPermiso(_previo: unknown, formulario: FormData):
 /** Anular un permiso con su motivo: lo justificado vuelve al saldo. Mismo permiso que `rrhh_anular_permiso`. */
 export async function anularPermiso(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.permisos')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.permisos')) return { ok: false, error: SIN_PERMISO }
   const analisis = z
     .object({
       id: z.guid(),

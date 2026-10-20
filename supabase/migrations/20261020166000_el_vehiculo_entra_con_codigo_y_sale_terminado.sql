@@ -48,11 +48,16 @@ revoke all on function public.vehiculo_motivo_exige_codigo(text) from public, an
 grant execute on function public.vehiculo_motivo_exige_codigo(text) to authenticated;
 
 -- -------------------------------------------- 2. el ingreso, atado a la OT
--- Sin índice para las dos llaves: no hay pantalla que filtre por ellas (se
--- lee por el registro), y una unidad o una OT no se borran (la OT se anula).
+-- La llave a la unidad lleva un índice único parcial: una unidad está en la
+-- planta una sola vez (las unidades que nacen de una cotización no tienen placa,
+-- así que `uq_vehiculo_placa_en_planta` no las cuida), y el ingreso y la lista
+-- de códigos filtran por ella. La de la OT, no: nada filtra por ella (se lee por
+-- el registro) y una OT no se borra, se anula.
 alter table public.registro_vehiculos
   add column if not exists unidad_id uuid references public.unidades(id) on delete restrict,
   add column if not exists orden_id  uuid references public.ordenes_trabajo(id) on delete restrict;
+create unique index if not exists uq_vehiculo_unidad_en_planta on public.registro_vehiculos (unidad_id)
+  where salida_en is null and anulado_en is null and unidad_id is not null;
 comment on column public.registro_vehiculos.unidad_id is
   'La unidad del código interno con que entró (migración 20261020166000). Vacía en la cochera y «otro».';
 comment on column public.registro_vehiculos.orden_id is
@@ -329,7 +334,10 @@ begin
     v_placa := coalesce(v_placa, public.normalizar_placa(v_unidad.placa));
     v_chasis := coalesce(v_chasis, nullif(upper(btrim(coalesce(v_unidad.numero_chasis, ''))), ''));
     v_unidad_texto := public.vehiculo_descripcion_de_unidad(v_unidad.id);
-    select coalesce(cl.razon_social, v_empresa) into v_empresa from public.clientes cl where cl.id = v_unidad.cliente_id;
+    -- El cliente de la unidad; si la unidad no lo tiene, el de su OT.
+    select cl.razon_social into v_empresa
+      from public.ordenes_trabajo o join public.clientes cl on cl.id = coalesce(v_unidad.cliente_id, o.cliente_id)
+     where o.id = v_orden;
     v_empresa := coalesce(nullif(btrim(coalesce(v_empresa, '')), ''), btrim(coalesce(p_empresa, '')));
   elsif coalesce(v_placa, v_chasis, v_codigo) is null then
     raise exception 'Anota la placa, el número de chasis o el código interno: sin eso no se sabe qué vehículo entró.'

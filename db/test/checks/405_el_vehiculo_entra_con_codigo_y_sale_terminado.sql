@@ -44,6 +44,11 @@ returning id as orden_a \gset
 insert into public.ordenes_trabajo (numero, cliente_id, unidad_id, tipo_carroceria_id, sede_id, tipo_trabajo, prioridad, descripcion, estado)
 values ('8406-2026', :'cliente_id', :'unidad_c', :'carroceria_id', :'sede_id', 'FABRICACION', 'NORMAL', 'Anulada 405', 'APROBADA');
 update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'Prueba 405: orden repetida' where numero = '8406-2026';
+-- Una cuarta unidad sin cliente: el cliente lo pone su OT.
+insert into public.unidades (codigo_interno, tipo_vehiculo)
+values ('CHK405_D_26/48', 'CAMION') returning id as unidad_d \gset
+insert into public.ordenes_trabajo (numero, cliente_id, unidad_id, tipo_carroceria_id, sede_id, tipo_trabajo, prioridad, descripcion, estado)
+values ('8407-2026', :'cliente_id', :'unidad_d', :'carroceria_id', :'sede_id', 'FABRICACION', 'NORMAL', 'Sin cliente en la unidad 405', 'APROBADA');
 
 select set_config('prueba.req', :'req_id', true);
 select set_config('prueba.tes', :'tes_id', true);
@@ -132,6 +137,18 @@ select test.debe_fallar(pg_temp.ingreso_sql('v2', null, 'CHK405_A_26/45', 'MANTE
 -- La cochera no es trabajo: entra con la placa, como antes.
 select public.registrar_ingreso_vehiculo(pg_temp.id('v3'), 'XYZ405', null, null, 'Camioneta del cliente', 'QA CLIENTE 405',
   'COCHERA', null, null, pg_temp.foto('v3', 'ingreso'));
+-- La unidad sin cliente entra con el de su OT, sin que nadie lo escriba.
+select public.registrar_ingreso_vehiculo(pg_temp.id('v4'), null, null, 'CHK405_D_26/48', '', '', 'GARANTIA', null, null,
+  pg_temp.foto('v4', 'ingreso'));
+select test.afirmar((select empresa = 'QA CLIENTE 405' from public.registro_vehiculos where id = pg_temp.id('v4')),
+  'la unidad sin cliente entra con el cliente de su OT');
+-- Dos ingresos de la misma unidad en planta no caben ni por carrera: lo cuida un índice único.
+reset role;
+select test.debe_fallar(format($q$insert into public.registro_vehiculos (id, placa, codigo_interno, unidad, empresa, motivo, ingreso_por, ingreso_en, unidad_id)
+  select gen_random_uuid(), null, codigo_interno, unidad, empresa, motivo, ingreso_por, ingreso_en, unidad_id from public.registro_vehiculos where id = %L$q$,
+  pg_temp.txt('v4')), 'la misma unidad no queda dos veces en la planta', 'uq_vehiculo_unidad_en_planta');
+select test.como_usuario(:'req_id');
+set local role authenticated;
 
 -- ===================================================== 2. La salida espera el 100 %
 select test.afirmar((pg_temp.estado('v1') ->> 'exige')::boolean and (pg_temp.estado('v1') ->> 'avance')::integer = 0,

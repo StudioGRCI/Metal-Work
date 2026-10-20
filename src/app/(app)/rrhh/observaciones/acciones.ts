@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { MOTIVOS_OBSERVACION, TIPOS_OBSERVACION, TIPO_OBSERVACION } from '@/lib/dominio/rrhh'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 function dato(formulario: FormData, nombre: string) {
@@ -18,7 +18,7 @@ const SIN_PERMISO = 'Las observaciones y amonestaciones las registra Recursos Hu
 /** Registra una observación, amonestación o suspensión. Mismo permiso que `rrhh_registrar_observacion`. */
 export async function registrarObservacion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const analisis = z
     .object({
@@ -66,7 +66,7 @@ export async function registrarObservacion(_previo: unknown, formulario: FormDat
 /** Una observación equivocada se anula con motivo. Mismo permiso que `rrhh_anular_observacion`. */
 export async function anularObservacion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const analisis = z
     .object({

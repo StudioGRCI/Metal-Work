@@ -5,6 +5,16 @@ La navegación solo oculta módulos: no concede acceso. La cuenta `ADMIN` pasa
 por `public.es_admin()`; sus resultados no sirven para probar permisos de los
 roles de trabajo.
 
+Excepción: **lo que escribe Recursos Humanos no lo escribe el administrador**
+(StudioGRCI, 2026-10-20: «admin solo visualizaria»). Desde la migración
+`20261020167000`, las funciones que guardan, anulan o cierran algo de RR. HH.
+—ficha, costo y remuneración, tareo, permisos, observaciones, pagos de la
+oficina, reglas de tardanza y de horas extras, planilla diaria y planillas del
+mes— exigen el permiso con `exigir_permiso_del_puesto`, sin el atajo de
+`es_admin()`; en la aplicación, `editaComoRrhh`. El administrador ve esas
+pantallas sin botones. El DNI y el costo de las cuentas, igual, desde la
+`20261020165000`.
+
 La base de producción METAL WORK (`usnbwnemfqyjjkzdizgv`) se revisó el
 2026-09-29. La migración `20260928021551_administracion_gestiona_sistema_y_tesoreria`
 trasladó Personal y Configuración a Administración y creó el puesto de

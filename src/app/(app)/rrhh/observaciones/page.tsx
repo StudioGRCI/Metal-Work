@@ -8,7 +8,7 @@ import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import { listarObservaciones, listarTrabajadores, type Observacion } from '@/lib/datos/rrhh'
 import { MOTIVO_OBSERVACION, TIPO_OBSERVACION, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, hoyLima, mesLargo } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularObservacion, RegistrarObservacion } from './formulario'
 
@@ -37,7 +37,7 @@ function resumir(observaciones: Observacion[]): Resumen[] {
 
 export default async function PaginaObservaciones({ searchParams }: PageProps<'/rrhh/observaciones'>) {
   const perfil = await exigirPermiso(['rrhh.personal', 'asistencia.ver'])
-  const registra = puede(perfil, 'rrhh.personal')
+  const registra = editaComoRrhh(perfil, 'rrhh.personal')
   const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const hoy = hoyLima()
