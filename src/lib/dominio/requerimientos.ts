@@ -189,6 +189,13 @@ export const COMPRA_CORTA: Def = {
   descripcion: 'La orden de compra ya entró entera y no alcanzó para todo el insumo.',
 }
 
+/** Lo que dice la insignia del RQ en compra cuando solo falta lo que la OC no compró. */
+export const FALTA_LO_NO_COMPRADO: Def = {
+  etiqueta: 'Falta lo que la OC no compró',
+  tono: 'aviso',
+  descripcion: 'Lo comprado ya está en almacén; el resto no va en ninguna compra y se pide en un RQ nuevo.',
+}
+
 /** Lo que dice la insignia del RQ en compra cuando ya llegó todo (`yaLlegoTodo`). */
 export const YA_LLEGO_TODO: Def = {
   etiqueta: 'Ya llegó todo',

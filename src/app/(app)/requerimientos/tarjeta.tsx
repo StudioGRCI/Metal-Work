@@ -14,6 +14,7 @@ import {
   ESTADOS_RQ_ABIERTOS,
   ETAPA_AVANCE_RQ,
   ETAPAS_DE_RECOJO,
+  FALTA_LO_NO_COMPRADO,
   laCompraQuedoCorta,
   PASOS_DEL_RQ,
   partesDelInsumo,
@@ -73,6 +74,22 @@ function llegoTodo(rq: RequerimientoListado): boolean {
   return (rq.estado === 'SIN_STOCK' || rq.estado === 'EN_ATENCION') && yaLlegoTodo(rq.lineas.map((l) => partesDelInsumo(l, rq.estado)))
 }
 
+/**
+ * Las partes con lo que la OC no compró fuera de «por llegar»: nadie lo trae, así
+ * que no detiene el paso en la compra. Lo que se pinta en la barra no cambia.
+ */
+function partesParaElPaso(rq: RequerimientoListado): (PartesDelInsumo | null)[] {
+  return rq.lineas.map((l) => {
+    const p = partesDelInsumo(l, rq.estado)
+    return p && laCompraQuedoCorta(l, p) ? { ...p, porLlegar: 0 } : p
+  })
+}
+
+/** ¿En compra, con lo comprado ya en almacén y el resto sin ninguna compra? */
+function soloFaltaLoNoComprado(rq: RequerimientoListado): boolean {
+  return (rq.estado === 'SIN_STOCK' || rq.estado === 'EN_ATENCION') && !llegoTodo(rq) && yaLlegoTodo(partesParaElPaso(rq))
+}
+
 /** ¿Tiene algún insumo que ya se puede recoger en Almacén? */
 export function tieneParaRecoger(rq: RequerimientoListado): boolean {
   return rq.lineas.some((l) => (partesDelInsumo(l, rq.estado)?.recoger ?? 0) > 0)
@@ -94,6 +111,7 @@ export function ResumenDeRequerimientos({
 }) {
   let recoger = 0
   let porLlegar = 0
+  let noComprados = 0
   let revisar = 0
   // Lo que Gerencia pidió distinguir de un vistazo (PR #76): los dos momentos del recojo del proveedor.
   let esperanRecojo = 0
@@ -105,10 +123,11 @@ export function ResumenDeRequerimientos({
       if (!p) continue
       if (p.recoger > 0) recoger++
       if (p.revisar > 0) revisar++
-      if (p.porLlegar > 0) {
+      // Lo que la OC no compró ya no lo trae nadie: se cuenta aparte, no como de Logística.
+      if (p.porLlegar > 0 && laCompraQuedoCorta(l, p)) noComprados++
+      else if (p.porLlegar > 0) {
         porLlegar++
-        // Lo que la OC no compró ya no lo trae nadie: no cuenta como de Logística.
-        if (!laCompraQuedoCorta(l, p)) compran.add(quienCompra(rq))
+        compran.add(quienCompra(rq))
         if (l.etapa === 'PENDIENTE_RECOJO') esperanRecojo++
         if (l.etapa === 'EN_RECOJO') enRecojo++
       }
@@ -135,10 +154,16 @@ export function ResumenDeRequerimientos({
         titulo="Por llegar"
         valor={porLlegar}
         icono={Truck}
-        tono={porLlegar > 0 ? 'aviso' : 'neutro'}
+        tono={porLlegar > 0 || noComprados > 0 ? 'aviso' : 'neutro'}
         pie={
           <>
-            {porLlegar === 1 ? 'insumo' : 'insumos'} {quien}
+            {(porLlegar > 0 || noComprados === 0) && `${porLlegar === 1 ? 'insumo' : 'insumos'} ${quien}`}
+            {noComprados > 0 && (
+              <span className="block text-aviso">
+                {porLlegar > 0 ? 'y ' : ''}
+                {noComprados} que la OC compró de menos: {noComprados === 1 ? 'se pide' : 'se piden'} en un RQ nuevo
+              </span>
+            )}
             {(esperanRecojo > 0 || enRecojo > 0) && (
               <span className="block">
                 {[
@@ -191,7 +216,7 @@ export function TarjetaRequerimiento({
   correcciones: CorreccionVista[] | undefined
 }) {
   // En compra pero con todo ya en almacén, la insignia no dice «En compra»: lo dicen la barra y los pasos.
-  const estado = llegoTodo(rq) ? YA_LLEGO_TODO : ESTADO_REQUERIMIENTO[rq.estado]
+  const estado = llegoTodo(rq) ? YA_LLEGO_TODO : soloFaltaLoNoComprado(rq) ? FALTA_LO_NO_COMPRADO : ESTADO_REQUERIMIENTO[rq.estado]
   const plazo = abierto(rq.estado) ? diasHasta(rq.fecha_requerida) : null
   const corrige = anula && rq.estado !== 'ENTREGADO' && rq.estado !== 'ANULADO'
   const anulable = anula && (rq.estado === 'POR_ATENDER' || rq.estado === 'SIN_STOCK')
@@ -275,10 +300,7 @@ const TITULO_PASO: Record<PasoDelRq, string> = {
  * hizo falta» cuando Almacén tenía todo.
  */
 function PasosDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
-  const actual = pasoDelRequerimiento(
-    rq.estado,
-    rq.lineas.map((l) => partesDelInsumo(l, rq.estado)),
-  )
+  const actual = pasoDelRequerimiento(rq.estado, partesParaElPaso(rq))
   if (!actual) return null
   const indice = PASOS_DEL_RQ.indexOf(actual)
   const sinCompra =

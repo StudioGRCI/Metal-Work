@@ -26,7 +26,8 @@
  *      que faltan, no 5. Con otro RQ cuya compra entra completa, la tarjeta
  *      dice «Ya llegó todo» y el paso de ahora es «Para recoger». Si la OC
  *      compró 3 de 5 y entraron los 3, los 2 que faltan van en ámbar con «La OC
- *      compró menos», no en el verde de la etapa ni a cuenta de Logística.
+ *      compró menos», no en el verde de la etapa ni a cuenta de Logística; el
+ *      paso de ahora es «Para recoger» y arriba se cuentan aparte.
  *   5. RR. HH. (costeo de horas y observaciones, también en el teléfono, donde
  *      la lista cabe en la pantalla aunque el campo esté al fondo), Tesorería (caja diaria),
  *      Logística (OC directa, orden de servicio y OC desde los materiales de
@@ -500,7 +501,12 @@ await comprarYTraer(lineaCorta.id, 3, 3)
     `con la OC por 3 de 5 ya en almacén: 3 para recoger y 2 que la OC no compró, sin culpar a Logística («${recogerK}» | «${porLlegarK}»)`)
   const punto = await corta.locator('li[data-insumo="1"] [data-parte="por-llegar"] > span').first().getAttribute('class')
   comprobar(!(punto ?? '').includes('bg-exito') && (punto ?? '').includes('bg-aviso'), `y lo que falta va en ámbar, no en verde (${punto})`)
-  comprobar(!limpio(await corta.locator('h2 + *').first().innerText()).includes('Ya llegó todo'), 'y la insignia no dice que ya llegó todo')
+  const insigniaK = limpio(await corta.locator('h2 + *').first().innerText())
+  comprobar(insigniaK.includes('Falta lo que la OC no compró') && !insigniaK.includes('Ya llegó todo'), `la insignia dice que falta lo que la OC no compró («${insigniaK}»)`)
+  const pasoK = limpio(await corta.locator('[aria-current="step"]').innerText())
+  comprobar(pasoK.startsWith('Para recoger'), `y el paso de ahora es «Para recoger»: nadie lo está comprando («${pasoK}»)`)
+  const resumen = limpio(await pagina.locator('[data-resumen-rq]').innerText())
+  comprobar(/\d+ que la OC compró de menos/.test(resumen), `arriba, lo que la OC no compró se cuenta aparte de lo que trae Logística («${resumen.slice(0, 220)}»)`)
   const estadoRq = (await uno('select estado from public.requerimientos where id = $1', [rqCompleto]))?.estado
   comprobar(estadoRq === 'EN_ATENCION', `en la base el RQ sigue en compra hasta que Almacén lo marque listo (${estadoRq})`)
   await completa.screenshot({ path: `${CAPTURAS}/rq-tarjeta-ya-llego-todo.png` })
