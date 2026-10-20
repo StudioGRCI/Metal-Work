@@ -46,12 +46,12 @@ begin
     'la base no tiene pagos de la oficina antes de agosto de 2021');
   -- La oficina que ya está en la base sale antes de 2021 dentro de esta prueba (se deshace al final).
   update public.trabajadores w set activo = false, fecha_ingreso = date '2020-12-01', fecha_baja = date '2020-12-31'
-   where w.area_id in (select a.id from public.areas a where a.es_oficina);
+   where w.planilla = 'ADMINISTRATIVA';
   for v_nombre, v_area in select * from (values ('Ana', 'ADM'), ('Bea', 'ADM'), ('Ciro', 'ADM'), ('Beto', 'MTZ'), ('Gil', 'ALM')) x
   loop
-    insert into public.trabajadores (nombres, apellidos, dni, area_id)
+    insert into public.trabajadores (nombres, apellidos, dni, area_id, planilla)
     values (v_nombre, 'Check 402', '4020' || lpad((length(v_nombre) * 7 + ascii(v_nombre))::text, 4, '0'),
-            (select id from public.areas where codigo = v_area))
+            (select id from public.areas where codigo = v_area), case when v_area = 'ADM' then 'ADMINISTRATIVA' else 'TALLER' end)
     returning id into v_id;
     perform set_config('prueba.' || lower(v_nombre), v_id::text, true);
   end loop;
@@ -119,7 +119,7 @@ select test.debe_fallar(format('select public.rrhh_registrar_pago_oficina(gen_ra
 select test.debe_fallar(format('select public.rrhh_registrar_pago_oficina(gen_random_uuid(), %L, date ''2021-06-11'', date ''2021-06-30'', 1000, 0, null)', current_setting('prueba.ciro')),
   'un pago no pasa de la baja', 'dejó de trabajar el 10/06/2021');
 select test.debe_fallar(format('select public.rrhh_registrar_pago_oficina(gen_random_uuid(), %L, date ''2021-06-01'', date ''2021-06-30'', 1000, 0, null)', current_setting('prueba.gil')),
-  'Almacén no es oficina: su costo va por las horas', 'no es de un área de oficina');
+  'Gil, de Almacén y planilla de taller: su costo va por las horas', 'es de planilla de taller');
 select test.debe_fallar(format('select public.rrhh_registrar_pago_oficina(gen_random_uuid(), %L, date ''2021-07-05'', date ''2021-07-11'', 0, 0, null)', current_setting('prueba.ana')),
   'un pago lleva monto', 'mayor que cero');
 select test.debe_fallar(format('select public.rrhh_registrar_pago_oficina(gen_random_uuid(), %L, date ''2021-07-11'', date ''2021-07-05'', 700, 0, null)', current_setting('prueba.ana')),

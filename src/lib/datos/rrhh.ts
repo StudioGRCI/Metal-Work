@@ -400,11 +400,3 @@ export async function periodosAnteriores(): Promise<Map<string, { ingreso: strin
   for (const q of data ?? []) porPersona.set(q.trabajador_id, [...(porPersona.get(q.trabajador_id) ?? []), { ingreso: q.ingreso, baja: q.baja }])
   return porPersona
 }
-
-/** Los ids de las áreas marcadas como oficina: a su gente se le registran los pagos. */
-export async function areasDeOficina(): Promise<Set<string>> {
-  const supabase = await createClient()
-  const { data, error } = await supabase.from('areas').select('id').eq('es_oficina', true)
-  if (error) throw new Error(`No se pudieron leer las áreas de la oficina: ${error.message}`)
-  return new Set((data ?? []).map((a) => a.id))
-}
