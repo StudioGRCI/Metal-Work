@@ -75,22 +75,29 @@ update public.roles set nombre = 'Contabilidad'
 
 -- Solo cambia la palabra «Adquisición» o «Adquisiciones»; lo demás de cada campo
 -- queda como está y un campo que no la dice no se toca. Si el campo ya dice
--- «Contabilidad», la palabra sale con lo que la une («y», «/», «-», «,», «&»,
--- delante o detrás): «Contabilidad y Adquisiciones» → «Contabilidad». Si no, en
--- el nombre y el cargo pasa a decir «Contabilidad» («Jefa de Adquisiciones» →
--- «Jefa de Contabilidad»); en los apellidos solo sale. La función es temporal:
--- muere con la sesión.
+-- «Contabilidad», la palabra sale con lo que la une: los paréntesis que la
+-- envuelven, o «y», «de», «del», «/», «-», «,», «&» delante o detrás.
+-- «Contabilidad (Adquisiciones)», «Contabilidad de Adquisiciones» y
+-- «Adquisiciones y Contabilidad» → «Contabilidad». Si no la dice, en el nombre y
+-- el cargo pasa a decirla («Jefa de Adquisiciones» → «Jefa de Contabilidad»); en
+-- los apellidos solo sale. Al final no queda un «( )» vacío ni un signo colgando.
+-- La función es temporal: muere con la sesión.
 create or replace function pg_temp.sin_adquisiciones(p text, p_poner boolean) returns text language sql immutable as $f$
-  select btrim(regexp_replace(
+  select regexp_replace(regexp_replace(btrim(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
     case when p_poner and p !~* 'contabilidad'
       then regexp_replace(p, '\yadquisici[oó]n(es)?\y', 'Contabilidad', 'gi')
-      else regexp_replace(
-        regexp_replace(
-          regexp_replace(p, '\s*(\yy\y|[-,/&])\s*adquisici[oó]n(es)?\y', '', 'gi'),
-          '\yadquisici[oó]n(es)?\s*(\yy\y|[-,/&])\s*', '', 'gi'),
+      else regexp_replace(regexp_replace(regexp_replace(regexp_replace(p,
+        '\(\s*adquisici[oó]n(es)?\s*\)', '', 'gi'),
+        '\yadquisici[oó]n(es)?\s*(\yy\y|[-,/&])\s*', '', 'gi'),
+        '\s*(\yy\y|\yde(l)?\y|[-,/&])\s*adquisici[oó]n(es)?\y', '', 'gi'),
         '\yadquisici[oó]n(es)?\y', '', 'gi')
     end,
-    '\s+', ' ', 'g'));
+    '\(\s*\)', '', 'g'),
+    '\(\s+', '(', 'g'),
+    '\s+\)', ')', 'g'),
+    '\s+', ' ', 'g')),
+    '^[-,/&\s]+|[-,/&\s]+$', '', 'g'),
+    '^\(([^()]*)\)$', '\1');
 $f$;
 
 update public.usuarios u

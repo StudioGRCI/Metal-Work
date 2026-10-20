@@ -333,6 +333,12 @@ begin
   select v_id, 'Adquisiciones y Contabilidad', 'Check 404', 'contabilidad4.404@prueba.local', r.id, 'Contabilidad - Adquisiciones'
     from public.roles r where r.codigo = 'CONTABILIDAD';
   perform set_config('prueba.contabilidad4', v_id::text, true);
+  v_id := gen_random_uuid();
+  insert into auth.users (id, email) values (v_id, 'contabilidad5.404@prueba.local');
+  insert into public.usuarios (id, nombres, apellidos, correo, rol_id, cargo)
+  select v_id, 'Contabilidad (Adquisiciones)', 'De la Cruz / Adquisiciones', 'contabilidad5.404@prueba.local', r.id, 'Contabilidad de Adquisiciones'
+    from public.roles r where r.codigo = 'CONTABILIDAD';
+  perform set_config('prueba.contabilidad5', v_id::text, true);
 end $$;
 update public.usuarios set cargo = 'Jefa de Adquisiciones' where id = current_setting('prueba.tesoreria')::uuid;
 
@@ -351,6 +357,9 @@ begin
                        'un cargo que no decía Contabilidad pasa a decirla en lugar de Adquisiciones');
   perform test.afirmar((select (nombres, cargo) = ('Contabilidad', 'Contabilidad') from public.usuarios where id = pg_temp.id('contabilidad4')),
                        'con «y» o «-» delante o detrás, la palabra sale entera con lo que la une');
+  perform test.afirmar((select (nombres, apellidos, cargo) = ('Contabilidad', 'De la Cruz', 'Contabilidad')
+                          from public.usuarios where id = pg_temp.id('contabilidad5')),
+                       'entre paréntesis o tras «de» también sale entera, sin dejar «( )», «de» ni «/» sueltos; el «De» de un apellido se queda');
   perform test.afirmar((select cargo from public.usuarios where id = pg_temp.id('tesoreria')) = 'Jefa de Adquisiciones',
                        'las cuentas de otros puestos no se tocan');
   perform test.afirmar(not exists (select 1 from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
