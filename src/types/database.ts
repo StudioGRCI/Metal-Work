@@ -12332,7 +12332,6 @@ export type Database = {
           p_periodo: string | null
         }
         Returns: {
-          personas: number | null
           monto: number | null
           sin_area: number | null
         }[]

@@ -681,12 +681,20 @@ begin
          || pg_temp.ensayo_dif('Requerimientos y Gerencia: compras', (o_gasto->>'compras_pen')::numeric, (g_resumen->>'compras_pen')::numeric)
          || pg_temp.ensayo_dif('Requerimientos y Gerencia: RQ', (o_gasto->>'requerimientos')::numeric, (g_resumen->>'requerimientos')::numeric);
   -- El costeo completo: la luz por las horas del código en el mes, la caja de
-  -- S/ 300 y la venta sin IGV. La parte se saca de las horas del mes, que son las
-  -- de la base en que corre el ensayo; los dos lados se leen al mismo tiempo.
+  -- S/ 300 y la venta sin IGV. Las horas del código salen de su mano de obra, no
+  -- de la función que reparte; el total del mes, de la base en que corre el
+  -- ensayo. Y la luz entera queda repartida: ni un céntimo se pierde.
   f := f || pg_temp.ensayo_dif('la luz del mes, por las horas del código',
                                 (select sum(l.monto) from public.codigo_interno_lineas(c, true) l
                                   where l.fuente = 'GASTOS_DEL_MES' and l.detalle like '%Recibo de luz del ensayo'),
-                                (select round(1000 * h.horas / h.total, 2) from public.horas_por_codigo_del_mes(v_hoy) h where h.codigo = c))
+                                (select round(1000 * (select sum(l.horas) from public.codigo_interno_lineas(c, true) l
+                                                       where l.fuente in ('MANO_OBRA', 'MANO_OBRA_SIN_COSTO')
+                                                         and date_trunc('month', l.fecha) = date_trunc('month', v_hoy)) / h.total, 2)
+                                   from public.horas_por_codigo_del_mes(v_hoy) h where h.codigo = c))
+         || pg_temp.ensayo_dif('la luz del mes, repartida entera',
+                                (select sum(l.monto) from public.codigo_interno_lineas(null, true) l
+                                  where l.fuente = 'GASTOS_DEL_MES' and l.detalle like '%Recibo de luz del ensayo'),
+                                1000::numeric)
          || pg_temp.ensayo_dif('caja con el código', (n_gerencia->>'caja_pen')::numeric, 300::numeric)
          || pg_temp.ensayo_dif('egresos de caja', (n_gerencia->>'egresos_caja')::numeric, 1::numeric)
          || pg_temp.ensayo_dif('costo completo = lo que suma el costeo',

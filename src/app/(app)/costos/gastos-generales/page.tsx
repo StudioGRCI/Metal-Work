@@ -43,9 +43,13 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
   const pedido = typeof params.mes === 'string' ? params.mes : ''
   const mes = MES.test(pedido) ? pedido : hoyLima().slice(0, 7)
   const puedeRegistrar = puede(perfil, 'costos.gastos_generales')
+  // El total de la oficina lo ve quien ya lo ve en el costeo de cada código.
+  const veOficina = puede(perfil, ['costos.gastos_generales', 'codigos_internos.ver'])
+  const veCodigos = puede(perfil, 'codigos_internos.ver')
 
   const [conceptos, gastos, reparto, oficina] = await Promise.all([
-    conceptosGastoGeneral(), gastosGeneralesDelMes(`${mes}-01`), repartoDelMes(`${mes}-01`), oficinaDelMes(`${mes}-01`),
+    conceptosGastoGeneral(), gastosGeneralesDelMes(`${mes}-01`), repartoDelMes(`${mes}-01`),
+    veOficina ? oficinaDelMes(`${mes}-01`) : Promise.resolve({ monto: 0, sinArea: 0 }),
   ])
   const horasDelMes = reparto.reduce((n, r) => n + r.horas, 0)
   // Sin horas en el mes, lo registrado todavía no llega a ninguna unidad: se dice arriba, no solo en la ayuda.
@@ -87,7 +91,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
         </Link>
       </nav>
 
-      {(totales.size > 0 || oficina.monto > 0) && (
+      {(totales.size > 0 || (reparto.length > 0 && oficina.monto > 0)) && (
         <dl className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[...totales.values()].sort((a, b) => a.grupo.localeCompare(b.grupo) || a.moneda.localeCompare(b.moneda)).map((t) => (
             <div key={`${t.grupo}-${t.moneda}`} className="rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2">
@@ -95,7 +99,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
               <dd className="tabular mt-1 text-lg font-semibold text-texto">{moneda(t.monto, t.moneda)}</dd>
             </div>
           ))}
-          {oficina.monto > 0 && (
+          {reparto.length > 0 && oficina.monto > 0 && (
             <div className="rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2" data-sueldo-oficina>
               <dt className="text-[11px] text-texto-suave">Sueldo de la oficina</dt>
               <dd className="tabular mt-1 text-lg font-semibold text-texto">{moneda(oficina.monto)}</dd>
@@ -189,7 +193,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
           descripcion={reparto.length === 0
             ? '0 h en el mes.'
             : `${reparto.length} ${reparto.length === 1 ? 'unidad' : 'unidades'} con ${cantidad(horasDelMes)} h en el mes.`}
-          ayuda="Cada unidad carga de cada gasto del mes, y del sueldo de la oficina, la parte de sus horas: las del reporte diario y las del tareo de RR. HH. PLANTA y OFICINA no son unidades y no reciben. El sueldo de la oficina es el costo mensual que RR. HH. tiene de cada persona activa de las áreas que no son del taller (todas menos Maestranza, Producción y Acabados), sin lo que ya cargó en horas a una unidad. Sin horas en el mes, los gastos esperan y se reparten en cuanto alguien reporte."
+          ayuda="Cada unidad carga de cada gasto del mes, y del sueldo de la oficina, la parte de sus horas: las del reporte diario y las del tareo de RR. HH. PLANTA y OFICINA no son unidades y no reciben. El sueldo de la oficina es el costo mensual que RR. HH. tiene de cada persona activa de las áreas marcadas como oficina (Administración, Contabilidad, Gerencias, Logística, Marketing, Requerimientos, RR. HH., Tesorería y TI; no las del taller ni las de apoyo, como Almacén, Calidad o Diseño, que cargan sus horas a cada unidad), sin lo que ya cargó en horas a una unidad. Sin horas en el mes, los gastos esperan y se reparten en cuanto alguien reporte."
         />
         {oficina.sinArea > 0 && (
           <TarjetaCuerpo className="border-b border-borde text-sm text-aviso">
@@ -211,8 +215,10 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
             ) : reparto.map((r) => (
               <TR key={r.codigo}>
                 <TD className="font-medium">
-                  <Link href={`/codigos-internos/detalle?${new URLSearchParams({ codigo: r.codigo, vista: 'costeo' })}`}
-                    className="text-acento hover:underline">{r.codigo}</Link>
+                  {veCodigos ? (
+                    <Link href={`/codigos-internos/detalle?${new URLSearchParams({ codigo: r.codigo, vista: 'costeo' })}`}
+                      className="text-acento hover:underline">{r.codigo}</Link>
+                  ) : r.codigo}
                 </TD>
                 <TD className="tabular text-right">{cantidad(r.horas)}</TD>
                 <TD className="tabular text-right">{porcentaje(r.parte, 2)}</TD>

@@ -66,6 +66,9 @@ begin
   if not found then raise exception 'Elige un concepto de gasto válido.'; end if;
   select * into v from public.gastos_generales_mes where id = p_id;
   if found then
+    if v.estado <> 'ACTIVO' then
+      raise exception 'Ese gasto ya se anuló: regístralo de nuevo si corresponde.';
+    end if;
     if v.periodo = v_periodo and v.concepto = p_concepto and v.monto = p_monto and v.moneda = p_moneda
        and v.reparto = p_reparto and v.tasa is not distinct from p_tasa and v.registrado_por = public.usuario_actual() then
       return p_id;
@@ -160,16 +163,32 @@ alter table public.oficina_meses_congelados enable row level security;
 alter table public.oficina_mes_personas enable row level security;
 revoke all on public.oficina_meses_congelados from anon, authenticated;
 revoke all on public.oficina_mes_personas from anon, authenticated;
+-- Cerradas a todos a propósito, y dicho con una política: sin ninguna, no se
+-- distingue de una que se olvidó (20260101000007).
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'oficina_meses_congelados' and policyname = 'nadie_lee_oficina_meses_congelados') then
+    create policy nadie_lee_oficina_meses_congelados on public.oficina_meses_congelados for select to authenticated using (false);
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'oficina_mes_personas' and policyname = 'nadie_lee_oficina_mes_personas') then
+    create policy nadie_lee_oficina_mes_personas on public.oficina_mes_personas for select to authenticated using (false);
+  end if;
+end $$;
 
 create or replace function public.congelar_oficina()
 returns void language plpgsql security definer set search_path to 'public' as $$
 declare
   v_mes date := date_trunc('month', now() at time zone 'America/Lima')::date;
 begin
+  -- Todos los meses pasados desde el primero con horas, tengan horas hoy o no: un
+  -- tareo atrasado (RR. HH. carga hasta un año atrás) puede darle horas después a
+  -- un mes que hoy no tiene, y ese mes tiene que repartir la oficina de entonces.
   with mes as (
-    select distinct h.periodo from public.horas_por_codigo_del_mes(null) h
-     where h.periodo < v_mes
-       and not exists (select 1 from public.oficina_meses_congelados k where k.periodo = h.periodo)
+    select s.periodo::date as periodo
+      from (select min(h.periodo) as desde from public.horas_por_codigo_del_mes(null) h) d
+     cross join generate_series(d.desde, v_mes - interval '1 month', interval '1 month') s(periodo)
+     where d.desde is not null
+       and not exists (select 1 from public.oficina_meses_congelados k where k.periodo = s.periodo::date)
   ), nuevo as (
     insert into public.oficina_meses_congelados (periodo)
     select m.periodo from mes m
@@ -180,12 +199,13 @@ begin
   select n.periodo, w.id, c.costo_mensual
     from nuevo n
     join public.trabajadores w on w.activo and w.creado_en < n.periodo + interval '1 month'
+                              and not exists (select 1 from public.pruebas_filas f where f.tabla = 'trabajadores' and f.fila_id = w.id)
     join public.trabajador_costos c on c.trabajador_id = w.id
     join public.areas a on a.id = w.area_id and a.es_oficina;
 end;
 $$;
 comment on function public.congelar_oficina() is
-  'Anota quiénes eran la oficina, y con qué costo, en cada mes pasado con horas que todavía no estaba anotado. La llaman los disparadores antes de que cambie un costo mensual, una baja, un área o qué área es oficina.';
+  'Anota quiénes eran la oficina, y con qué costo, en cada mes pasado (desde el primero con horas) que todavía no estaba anotado. La llaman los disparadores antes de que entre o cambie un costo mensual, una baja, un área o qué área es oficina.';
 revoke all on function public.congelar_oficina() from public, anon, authenticated;
 
 create or replace function public.fn_congelar_oficina()
@@ -197,6 +217,11 @@ begin
 end;
 $$;
 revoke all on function public.fn_congelar_oficina() from public, anon, authenticated;
+-- El primer costo de una persona entra por insert (rrhh_guardar_costo_trabajador
+-- hace insert … on conflict): también anota, o el primer costo movería los meses pasados.
+create or replace trigger trg_costo_nuevo_congela_oficina
+  before insert on public.trabajador_costos
+  for each row execute function public.fn_congelar_oficina();
 -- Sin «update of columna»: el disparador mira el SET, no lo que cambió (skill esquema).
 create or replace trigger trg_costo_congela_oficina
   before update on public.trabajador_costos
@@ -215,7 +240,8 @@ create or replace trigger trg_area_congela_oficina
 -- ya cargó en horas a una unidad: ese tramo está en la mano de obra de la unidad
 -- y no se cobra dos veces. Un mes pasado, con la gente anotada; el mes en curso,
 -- con la de hoy. Quien tiene costo y no tiene área no se sabe si es de la oficina:
--- se cuenta aparte para que la pantalla lo diga. Sin p_periodo, los meses con
+-- se cuenta aparte para que la pantalla lo diga, solo en un mes todavía sin anotar:
+-- en uno anotado, ponerle el área hoy ya no lo cambia. Sin p_periodo, los meses con
 -- horas en alguna unidad, que son los que se reparten.
 create or replace function public.sueldos_oficina_del_mes(p_periodo date default null)
 returns table (periodo date, personas integer, monto numeric, sin_area integer)
@@ -235,6 +261,8 @@ language sql stable set search_path to 'public' as $$
       join public.trabajador_costos c on c.trabajador_id = w.id
       join public.areas a on a.id = w.area_id and a.es_oficina
      where not exists (select 1 from public.oficina_meses_congelados k where k.periodo = m.periodo)
+       -- La gente de un lote de prueba no es la oficina de la empresa.
+       and not exists (select 1 from public.pruebas_filas f where f.tabla = 'trabajadores' and f.fila_id = w.id)
   ), neto as (
     select p.periodo,
            greatest(p.costo_mensual - coalesce((select sum(t.costo) from public.tareos t
@@ -248,7 +276,9 @@ language sql stable set search_path to 'public' as $$
          coalesce((select round(sum(n.monto), 2) from neto n where n.periodo = m.periodo), 0),
          (select count(*) from public.trabajadores w
             join public.trabajador_costos c on c.trabajador_id = w.id
-           where w.activo and w.area_id is null and w.creado_en < m.periodo + interval '1 month')::integer
+           where w.activo and w.area_id is null and w.creado_en < m.periodo + interval '1 month'
+             and not exists (select 1 from public.oficina_meses_congelados k where k.periodo = m.periodo)
+             and not exists (select 1 from public.pruebas_filas f where f.tabla = 'trabajadores' and f.fila_id = w.id))::integer
     from mes m
 $$;
 comment on function public.sueldos_oficina_del_mes(date) is
@@ -257,11 +287,12 @@ revoke all on function public.sueldos_oficina_del_mes(date) from public, anon, a
 
 -- 4. Lo que ve la pantalla de Gastos del mes --------------------------------------------------------------
 -- Entre qué unidades se reparte un mes y con qué parte, y el sueldo de la oficina
--- de ese mes. Lo leen quienes ven los gastos del mes: Administración
+-- de ese mes. El reparto lo leen quienes ven los gastos del mes: Administración
 -- (costos.gastos_generales) y quien ve los costos (costos.ver), como la política
--- ver_gastos_generales_mes. El sueldo va sumado y la pantalla no dice cuántas
--- personas son; con una o dos en la oficina el total deja adivinar su sueldo, y
--- quién lo ve se le preguntó a DKS (el costo de la unidad lo incluye igual).
+-- ver_gastos_generales_mes. El sueldo de la oficina, sumado y sin decir cuántas
+-- personas son, solo quien ya lo ve en el costeo de cada código: Administración y
+-- Gerencia. Con una o dos personas en la oficina el total deja adivinar su
+-- sueldo; quién lo ve se le preguntó a DKS (el costo de la unidad lo incluye igual).
 create or replace function public.gastos_del_mes_reparto(p_periodo date)
 returns table (codigo text, horas numeric, parte numeric)
 language plpgsql stable security definer set search_path to 'public' as $$
@@ -286,23 +317,26 @@ revoke all on function public.gastos_del_mes_reparto(date) from public, anon;
 grant execute on function public.gastos_del_mes_reparto(date) to authenticated;
 
 create or replace function public.gastos_del_mes_oficina(p_periodo date)
-returns table (personas integer, monto numeric, sin_area integer)
+returns table (monto numeric, sin_area integer)
 language plpgsql stable security definer set search_path to 'public' as $$
 #variable_conflict use_column
 begin
+  -- Quien ve el costeo de los códigos ya ve este total en cada unidad; costos.ver
+  -- solo (Supervisión general, Costos y Materiales) no lo lee: restando un mes del
+  -- otro saldría el sueldo de quien entra.
   if public.usuario_actual() is not null
-     and not (public.es_admin() or public.tiene_permiso('costos.gastos_generales') or public.tiene_permiso('costos.ver')) then
-    raise exception 'No tiene el permiso costos.gastos_generales ni costos.ver para realizar esta operación' using errcode = 'insufficient_privilege';
+     and not (public.es_admin() or public.tiene_permiso('costos.gastos_generales') or public.tiene_permiso('codigos_internos.ver')) then
+    raise exception 'No tiene el permiso costos.gastos_generales ni codigos_internos.ver para realizar esta operación' using errcode = 'insufficient_privilege';
   end if;
   if p_periodo is null then
     return;
   end if;
   return query
-  select o.personas, o.monto, o.sin_area from public.sueldos_oficina_del_mes(p_periodo) o;
+  select o.monto, o.sin_area from public.sueldos_oficina_del_mes(p_periodo) o;
 end;
 $$;
 comment on function public.gastos_del_mes_oficina(date) is
-  'El sueldo de la oficina del mes de p_periodo, sumado: cuántas personas, cuánto (sin lo que ya cargaron en horas a una unidad) y cuántos trabajadores con costo no tienen área. Exige costos.gastos_generales o costos.ver.';
+  'El sueldo de la oficina del mes de p_periodo, sumado y sin cuántas personas son (sin lo que ya cargaron en horas a una unidad), y cuántos trabajadores con costo no tienen área. Exige costos.gastos_generales o codigos_internos.ver, los que ya lo ven en el costeo de cada código.';
 revoke all on function public.gastos_del_mes_oficina(date) from public, anon;
 grant execute on function public.gastos_del_mes_oficina(date) to authenticated;
 
@@ -474,7 +508,7 @@ begin
     -- solo mira diez días atrás (con el día 1 quedaba sin cambio y trababa el cierre).
     select m.codigo, g.id, g.periodo, (g.creado_en at time zone 'America/Lima')::date as registrado,
            g.descripcion, g.monto, g.moneda, g.reparto, g.tasa, c.nombre,
-           count(*) over (partition by g.id) as n, null::numeric as horas, null::numeric as total
+           count(*) over (partition by g.id) as n, null::numeric as horas, null::numeric as total, null::numeric as parte
       from public.gastos_generales_mes g
       join public.conceptos_gasto_general c on c.codigo = g.concepto
       join movido m on m.periodo = g.periodo
@@ -482,15 +516,25 @@ begin
     union all
     select h.codigo, g.id, g.periodo, (g.creado_en at time zone 'America/Lima')::date,
            g.descripcion, g.monto, g.moneda, g.reparto, g.tasa, c.nombre,
-           h.codigos::bigint, h.horas, h.total
+           h.codigos::bigint, h.horas, h.total,
+           -- Cada parte al céntimo, y lo que el redondeo deja suelto a la unidad con
+           -- más horas: el gasto entero queda repartido, ni un céntimo de más o de menos.
+           round(g.monto * h.horas / h.total, 2)
+           + case when row_number() over (partition by g.id order by h.horas desc, h.codigo) = 1
+                  then g.monto - sum(round(g.monto * h.horas / h.total, 2)) over (partition by g.id) else 0 end as parte
       from public.gastos_generales_mes g
       join public.conceptos_gasto_general c on c.codigo = g.concepto
       join por_horas h on h.periodo = g.periodo
      where p_mano_obra and g.estado = 'ACTIVO' and g.reparto = 'HORAS'
   ), oficina as (
-    -- El sueldo de la oficina de cada mes, que se reparte igual que un gasto POR HORAS.
-    select o.periodo, o.monto
+    -- El sueldo de la oficina de cada mes, que se reparte igual que un gasto POR
+    -- HORAS, con el residuo del redondeo a la unidad con más horas.
+    select o.periodo, o.monto, h.codigo, h.horas, h.total, h.codigos,
+           round(o.monto * h.horas / h.total, 2)
+           + case when row_number() over (partition by o.periodo order by h.horas desc, h.codigo) = 1
+                  then o.monto - sum(round(o.monto * h.horas / h.total, 2)) over (partition by o.periodo) else 0 end as parte
       from public.sueldos_oficina_del_mes(null) o
+      join por_horas h on h.periodo = o.periodo
      where p_mano_obra and o.monto > 0
   ), merma as (
     -- La merma que Diseño evaluó en la OT de la unidad va sobre los materiales
@@ -551,24 +595,23 @@ begin
                else 'Partes iguales entre los ' || g.n || ' códigos que trabajaron ese mes · ' || g.descripcion end)::text,
          1::numeric, null::text, null::numeric, g.monto, g.moneda::text,
          case when g.reparto = 'TASA' then round(g.monto * g.tasa / 100, 2)
-              when g.reparto = 'HORAS' then round(g.monto * g.horas / g.total, 2)
+              when g.reparto = 'HORAS' then g.parte
               else round(g.monto / g.n, 2) end,
          0, null::text, g.id
     from gasto_mes g
    where v_codigo is null or g.codigo = v_codigo
   union all
-  select h.codigo, 'GASTOS_DEL_MES', o.periodo, ('Sueldos de la oficina ' || to_char(o.periodo, 'MM/YYYY'))::text,
-         (case when h.codigos = 1 and o.periodo >= v_mes then 'Por ahora todo a este código, la única unidad con horas este mes (el mes no termina)'
-               when h.codigos = 1 then 'Todo a este código, la única unidad con horas ese mes'
-               else case when o.periodo >= v_mes then 'Por ahora, por horas: ' else 'Por horas: ' end || trim(trailing '.' from to_char(h.horas, 'FM999,999,990.99')) || ' de ' || trim(trailing '.' from to_char(h.total, 'FM999,999,990.99'))
-                    || ' h del mes, entre ' || h.codigos || ' unidades' end
+  select o.codigo, 'GASTOS_DEL_MES', o.periodo, ('Sueldos de la oficina ' || to_char(o.periodo, 'MM/YYYY'))::text,
+         (case when o.codigos = 1 and o.periodo >= v_mes then 'Por ahora todo a este código, la única unidad con horas este mes (el mes no termina)'
+               when o.codigos = 1 then 'Todo a este código, la única unidad con horas ese mes'
+               else case when o.periodo >= v_mes then 'Por ahora, por horas: ' else 'Por horas: ' end || trim(trailing '.' from to_char(o.horas, 'FM999,999,990.99')) || ' de ' || trim(trailing '.' from to_char(o.total, 'FM999,999,990.99'))
+                    || ' h del mes, entre ' || o.codigos || ' unidades' end
           || ' · costo mensual de RR. HH. de la oficina')::text,
          1::numeric, null::text, null::numeric, o.monto, 'PEN'::text,
-         round(o.monto * h.horas / h.total, 2),
+         o.parte,
          0, null::text, null::uuid
     from oficina o
-    join por_horas h on h.periodo = o.periodo
-   where v_codigo is null or h.codigo = v_codigo
+   where v_codigo is null or o.codigo = v_codigo
   union all
   select v.codigo, 'MERMA', mm.fecha,
          ('Merma de material ' || trim(trailing '.' from to_char(mm.porcentaje, 'FM990.99')) || ' %')::text,

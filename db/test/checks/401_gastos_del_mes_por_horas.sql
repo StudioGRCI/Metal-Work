@@ -26,6 +26,7 @@ select test.crear_usuario('Olga', 'Oficina', 'oficina401@demo.pe', 'ADMINISTRACI
 select test.crear_usuario('Gema', 'Gerente', 'gerencia401@demo.pe', 'GERENTE', (select id from public.sedes where codigo = 'QA01')) as gerente_id \gset
 select test.crear_usuario('Vico', 'Ventas', 'ventas401@demo.pe', 'VENDEDOR', (select id from public.sedes where codigo = 'QA01')) as vendedor_id \gset
 select test.crear_usuario('Rosa', 'Humanos', 'rrhh401@demo.pe', 'RECURSOS_HUMANOS', (select id from public.sedes where codigo = 'QA01')) as rrhh_id \gset
+select test.crear_usuario('Coco', 'Costos', 'costos401@demo.pe', 'COSTOS_MATERIALES', (select id from public.sedes where codigo = 'QA01')) as costos_id \gset
 select test.crear_usuario('Ada', 'Admin', 'admin401@demo.pe', 'ADMIN', (select id from public.sedes where codigo = 'QA01')) as admin_id \gset
 select set_config('prueba.oficina', :'oficina_id', true);
 select set_config('prueba.gerente', :'gerente_id', true);
@@ -169,8 +170,8 @@ select test.afirmar((select string_agg(r.codigo || ' ' || r.horas::text || ' ' |
   format('Administración ve entre quiénes se reparte marzo: %s',
          (select string_agg(r.codigo || ' ' || r.horas::text || ' ' || r.parte::text, ' | ' order by r.horas desc)
             from public.gastos_del_mes_reparto(date '2021-03-01') r)));
-select test.afirmar((select o.personas = 2 and o.monto = 4900 and o.sin_area = 1 from public.gastos_del_mes_oficina(date '2021-03-01') o),
-  'Administración ve la oficina de marzo sumada: 2 personas, S/ 4,900, y 1 trabajador con costo sin área');
+select test.afirmar((select o.monto = 4900 and o.sin_area = 1 from public.gastos_del_mes_oficina(date '2021-03-01') o),
+  'Administración ve la oficina de marzo sumada (S/ 4,900), sin cuántas personas, y 1 trabajador con costo sin área');
 reset role;
 select pg_temp.como('gerente');
 set local role authenticated;
@@ -183,11 +184,21 @@ set local role authenticated;
 select test.debe_fallar($q$select * from public.gastos_del_mes_reparto(date '2021-03-01')$q$,
   'Ventas no ve el reparto de los gastos del mes', 'costos.gastos_generales');
 select test.debe_fallar($q$select * from public.gastos_del_mes_oficina(date '2021-03-01')$q$,
-  'Ventas no ve lo que cuesta la oficina', 'costos.gastos_generales');
+  'Ventas no ve lo que cuesta la oficina', 'codigos_internos.ver');
 select test.debe_fallar($q$select * from public.sueldos_oficina_del_mes(date '2021-03-01')$q$,
   'nadie llama desde fuera la función interna de la oficina', 'permission denied');
 select test.debe_fallar($q$select * from public.horas_por_codigo_del_mes(date '2021-03-01')$q$,
   'nadie llama desde fuera la función interna de las horas', 'permission denied');
+reset role;
+
+-- Costos y Materiales ve los costos (costos.ver) y el reparto, pero no el costeo de
+-- cada código: el total de la oficina no lo lee, que mes a mes delataría un sueldo.
+select test.como_usuario(:'costos_id');
+set local role authenticated;
+select test.afirmar((select count(*) from public.gastos_del_mes_reparto(date '2021-03-01')) = 2,
+  'Costos y Materiales ve entre quiénes se reparte marzo');
+select test.debe_fallar($q$select * from public.gastos_del_mes_oficina(date '2021-03-01')$q$,
+  'Costos y Materiales no lee el total de la oficina', 'codigos_internos.ver');
 reset role;
 
 -- ------------------------------------- 6. Un mes pasado no cambia con el personal de hoy
@@ -204,6 +215,21 @@ select test.afirmar((select o.monto from public.sueldos_oficina_del_mes(date '20
 select test.afirmar(not exists (select 1 from public.oficina_meses_congelados
                                  where periodo = date_trunc('month', now() at time zone 'America/Lima')::date),
   'el mes en curso no se congela: sigue con el personal de hoy');
+-- El primer costo de alguien de la oficina entra por insert, y tampoco mueve marzo.
+-- Ponerle hoy el área a Dani tampoco: marzo ya está anotado, y ya no avisa de él.
+select test.como_usuario(:'admin_id');
+insert into public.trabajadores (nombres, apellidos, dni, area_id, activo, creado_en)
+values ('Hugo', 'Check 401', '40109999', (select id from public.areas where codigo = 'ADM'), true, date '2021-01-04')
+returning id as hugo_id \gset
+select test.como_usuario(:'rrhh_id');
+set local role authenticated;
+select public.rrhh_guardar_costo_trabajador(:'hugo_id'::uuid, 5000);
+reset role;
+select test.como_usuario(:'admin_id');
+update public.trabajadores set area_id = (select id from public.areas where codigo = 'ADM') where id = current_setting('prueba.dani')::uuid;
+select test.afirmar((select o.monto = 4900 and o.sin_area = 0 from public.sueldos_oficina_del_mes(date '2021-03-01') o),
+  format('el primer costo de Hugo y el área de Dani no mueven marzo, que ya no avisa sin área: %s',
+         (select row(o.monto, o.sin_area)::text from public.sueldos_oficina_del_mes(date '2021-03-01') o)));
 -- Un tareo tardío de marzo de Ana en una unidad sí se descuenta: ese tramo ya va en la mano de obra.
 select test.como_usuario(:'admin_id');
 insert into public.tareos (trabajador_id, fecha, codigo_interno, horas, labor, costo_hora, costo)
@@ -214,6 +240,32 @@ select pg_temp.como('gerente');
 set local role authenticated;
 select test.debe_fallar($q$select * from public.oficina_mes_personas$q$, 'nadie lee los sueldos anotados por mes', 'permission denied');
 reset role;
+
+-- --------------------------------------------- 7. El gasto entero queda repartido, al céntimo
+-- Julio: tres unidades con 1 h cada una. S/ 100 no se parten exacto en tres: el
+-- céntimo que sobra va a una sola, y la suma da 100. Un gasto anulado no se
+-- vuelve a registrar con su mismo número.
+select test.como_usuario(:'admin_id');
+insert into public.tareos (trabajador_id, fecha, codigo_interno, horas, labor, costo_hora, costo) values
+  (current_setting('prueba.beto')::uuid, date '2021-07-05', 'CHK401_A_21/03', 1, 'Repaso', 10, 10),
+  (current_setting('prueba.beto')::uuid, date '2021-07-05', 'CHK401_B_21/03', 1, 'Repaso', 10, 10),
+  (current_setting('prueba.beto')::uuid, date '2021-07-05', 'CHK401_C_21/07', 1, 'Repaso', 10, 10);
+select set_config('prueba.julio', gen_random_uuid()::text, true);
+select pg_temp.como('oficina');
+set local role authenticated;
+select public.registrar_gasto_general(current_setting('prueba.julio')::uuid, date '2021-07-10', 'AGUA', 'Recibo de agua de julio', 100, 'PEN', 'HORAS', null);
+select public.anular_gasto_general(current_setting('prueba.julio')::uuid, 'Prueba del número anulado');
+select test.debe_fallar(format($q$select public.registrar_gasto_general(%L, date '2021-07-10', 'AGUA', 'Recibo de agua de julio', 100, 'PEN', 'HORAS', null)$q$,
+                               current_setting('prueba.julio')), 'un gasto anulado no se vuelve a registrar con su número', 'ya se anuló');
+select public.registrar_gasto_general(gen_random_uuid(), date '2021-07-10', 'INTERNET', 'Internet de julio', 100, 'PEN', 'HORAS', null);
+reset role;
+select test.afirmar((select sum(l.monto) = 100 and count(*) = 3 and min(l.monto) = 33.33 and max(l.monto) = 33.34
+                       from public.codigo_interno_lineas(null, true) l where l.detalle like '% · Internet de julio'),
+  format('S/ 100 entre tres unidades iguales: %s', (select string_agg(l.monto::text, ' + ' order by l.codigo)
+                                                       from public.codigo_interno_lineas(null, true) l where l.detalle like '% · Internet de julio')));
+select test.afirmar((select abs(sum(l.monto) - max(l.precio_unitario)) = 0 from public.codigo_interno_lineas(null, true) l
+                      where l.concepto = 'Sueldos de la oficina 07/2021'),
+  'la oficina de julio también queda repartida entera, al céntimo');
 
 select 'CHECK 401 OK' as resultado;
 rollback;
