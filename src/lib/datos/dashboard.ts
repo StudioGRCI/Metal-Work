@@ -347,7 +347,8 @@ const CIFRAS = {
 
   // Gerencia: los códigos internos
   codigos_en_trabajo: {
-    ruta: '/codigos-internos',
+    // Cuenta abiertos y cerrados: la lista, también.
+    ruta: '/codigos-internos?costeo=todos',
     calcular: async (c) => {
       const codigos = await c.una('codigos', () => listarCodigosInternos())
       const desde = sumarDias(c.hoy, -30)
@@ -375,7 +376,7 @@ const CIFRAS = {
     },
   },
   facturado_y_cobrado: {
-    ruta: '/codigos-internos',
+    ruta: '/codigos-internos?costeo=todos',
     calcular: async (c) => {
       const r = await todas((d, h) => c.supabase.from('v_facturas_venta').select('moneda, total, cobrado, saldo, cancelada').is('anulada_en', null).order('id').range(d, h))
       fallo(r)

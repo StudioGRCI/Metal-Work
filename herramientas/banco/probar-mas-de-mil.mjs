@@ -205,7 +205,7 @@ try {
     comprobar(vistos.length === ABIERTOS, `«Por hacer» trae los ${ABIERTOS} códigos con la etapa sin terminar (trajo ${vistos.length})`)
     comprobar(!vistos.includes(masViejo), `${masViejo}, con su etapa terminada, no sale en «Por hacer»`)
     const terminados = await pastilla(pagina, 'Terminados')
-    comprobar(Number(terminados.match(/\d+/)?.[0]) >= TERMINADOS, `la pastilla dice «${terminados}», con los ${TERMINADOS} terminados`)
+    comprobar(Number(terminados.replace(/,/g, '').match(/\d+/)?.[0]) >= TERMINADOS, `la pastilla dice «${terminados}», con los ${TERMINADOS} terminados`)
 
     const ms2 = await ir(pagina, '/planos?ver=terminados')
     const pagina1 = await tarjetas(pagina)
@@ -240,7 +240,7 @@ try {
     )
     comprobar((await pagina.locator('main li', { hasText: 'Costeo cerrado' }).count()) === 0, 'ninguna fila dice «Costeo cerrado»')
     const deCerrados = await pastilla(pagina, 'Costeo cerrado')
-    comprobar(deCerrados === `Costeo cerrado (${cerrados})`, `la pastilla dice «${deCerrados}» y la base tiene ${cerrados} cerrados`)
+    comprobar(deCerrados === `Costeo cerrado (${cerrados.toLocaleString('es-PE')})`, `la pastilla dice «${deCerrados}» y la base tiene ${cerrados} cerrados`)
 
     await ir(pagina, '/codigos-internos?costeo=cerrados')
     const filas = await pagina.locator('main li a[data-codigo]').count()

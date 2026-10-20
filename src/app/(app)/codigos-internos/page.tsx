@@ -24,7 +24,7 @@ import {
 } from '@/lib/dominio/codigos-internos'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { fecha, moneda, porcentaje } from '@/lib/format'
+import { cantidad, fecha, moneda, porcentaje } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
 export const metadata = { title: 'Códigos internos' }
@@ -64,8 +64,8 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
   await exigirPermiso('codigos_internos.ver')
   const params = await searchParams
   const q = typeof params.q === 'string' ? params.q.trim() : ''
-  const filtro = typeof params.ver === 'string' && params.ver in FILTROS ? params.ver : null
-  const estado = typeof params.costeo === 'string' && params.costeo in ESTADOS ? params.costeo : null
+  const filtro = typeof params.ver === 'string' && Object.hasOwn(FILTROS, params.ver) ? params.ver : null
+  const estado = typeof params.costeo === 'string' && Object.hasOwn(ESTADOS, params.costeo) ? params.costeo : null
 
   const [conDocumentos, deDiseno, avances] = await Promise.all([listarCodigosInternos(), codigosDeDiseno(), avanceDeLosCodigos()])
   // Un código puede tener planos o etapas de Diseño antes que cualquier documento.
@@ -86,10 +86,31 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
   const pagina = Math.min(Math.max(1, Math.trunc(Number(params.pagina)) || 1), paginas)
   const mostrar = codigos.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)
   const cerrados = buscados.filter(ESTADOS.cerrados).length
+  // El «Todos» del segundo grupo es de lo elegido en el primero: dicho a secas se leía como todos los códigos.
+  const todosDelEstado = estado === 'cerrados' ? 'Todos los cerrados' : estado === 'todos' ? 'Todos' : 'Todos los abiertos'
 
   const costo = codigos.reduce((n, c) => n + costoDelCodigo(c).pen, 0)
   const dolares = codigos.reduce((n, c) => n + costoDelCodigo(c).usd, 0)
   const horas = codigos.reduce((n, c) => n + c.horas, 0)
+
+  const sinBuscarNiFiltrar = !q && !filtro
+  const vacio =
+    todos.length === 0
+      ? {
+          titulo: 'Todavía no hay códigos internos',
+          texto: 'Aparecen aquí apenas un requerimiento, una salida del almacén, un reporte diario o una carga de horas lleva uno.',
+        }
+      : sinBuscarNiFiltrar && estado === 'cerrados'
+        ? { titulo: 'Ningún código con el costeo cerrado', texto: 'Gerencia lo cierra en el detalle del código, con «Cerrar el costeo», al entregar la unidad.' }
+        : sinBuscarNiFiltrar && !estado
+          ? { titulo: 'Ningún código abierto', texto: 'Todos los códigos tienen el costeo cerrado. Los ves en «Costeo cerrado».' }
+          : {
+              titulo: 'Ningún código con esta búsqueda o filtro',
+              texto:
+                !estado && cerrados > 0
+                  ? `Mira en «Costeo cerrado» (${cantidad(cerrados)}), borra la búsqueda con «Limpiar» o quita el filtro con «${todosDelEstado}».`
+                  : `Borra la búsqueda con «Limpiar» o quita el filtro con «${todosDelEstado}».`,
+            }
 
   return (
     <>
@@ -131,9 +152,9 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
           activo={estado}
           etiqueta="Abiertos o con el costeo cerrado"
           opciones={[
-            { valor: null, etiqueta: `Abiertos (${buscados.length - cerrados})` },
-            { valor: 'cerrados', etiqueta: `Costeo cerrado (${cerrados})` },
-            { valor: 'todos', etiqueta: `Abiertos y cerrados (${buscados.length})` },
+            { valor: null, etiqueta: `Abiertos (${cantidad(buscados.length - cerrados)})` },
+            { valor: 'cerrados', etiqueta: `Costeo cerrado (${cantidad(cerrados)})` },
+            { valor: 'todos', etiqueta: `Abiertos y cerrados (${cantidad(buscados.length)})` },
           ]}
         />
         <PastillaFiltro
@@ -143,15 +164,15 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
           activo={filtro}
           etiqueta="Qué códigos mostrar"
           opciones={[
-            { valor: null, etiqueta: `Todos (${enEstado.length})` },
-            { valor: 'reportes', etiqueta: `Con reporte diario (${cuantos('reportes')})` },
-            { valor: 'costo', etiqueta: `Con costo (${cuantos('costo')})` },
-            { valor: 'parecidos', etiqueta: `Parecidos a otro (${cuantos('parecidos')})` },
-            { valor: 'por-completar', etiqueta: `Sin precio, sin costo o sin cambio (${cuantos('por-completar')})` },
+            { valor: null, etiqueta: `${todosDelEstado} (${cantidad(enEstado.length)})` },
+            { valor: 'reportes', etiqueta: `Con reporte diario (${cantidad(cuantos('reportes'))})` },
+            { valor: 'costo', etiqueta: `Con costo (${cantidad(cuantos('costo'))})` },
+            { valor: 'parecidos', etiqueta: `Parecidos a otro (${cantidad(cuantos('parecidos'))})` },
+            { valor: 'por-completar', etiqueta: `Sin precio, sin costo o sin cambio (${cantidad(cuantos('por-completar'))})` },
           ]}
         />
         <p className="text-xs text-texto-suave">
-          <span className="tabular">{codigos.length}</span> {codigos.length === 1 ? 'código' : 'códigos'} ·{' '}
+          <span className="tabular">{cantidad(codigos.length)}</span> {codigos.length === 1 ? 'código' : 'códigos'} ·{' '}
           <span className="tabular">{moneda(costo)}</span>
           {dolares > 0 && (
             <>
@@ -166,22 +187,8 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
       {codigos.length === 0 ? (
         <Tarjeta>
           <TarjetaCuerpo>
-            <p className="text-sm font-medium text-texto">
-              {todos.length === 0
-                ? 'Todavía no hay códigos internos'
-                : !estado && !filtro && !q
-                  ? 'Ningún código abierto'
-                  : 'Ningún código con esta búsqueda o filtro'}
-            </p>
-            <p className="text-sm text-texto-suave">
-              {todos.length === 0
-                ? 'Aparecen aquí apenas un requerimiento, una salida del almacén, un reporte diario o una carga de horas lleva uno.'
-                : !estado && !filtro && !q
-                  ? 'Todos los códigos tienen el costeo cerrado. Los ves en «Costeo cerrado».'
-                  : !estado && cerrados > 0
-                    ? `Mira en «Costeo cerrado» (${cerrados}), borra la búsqueda con «Limpiar» o quita el filtro con «Todos».`
-                    : 'Borra la búsqueda con «Limpiar» o quita el filtro con «Todos».'}
-            </p>
+            <p className="text-sm font-medium text-texto">{vacio.titulo}</p>
+            <p className="text-sm text-texto-suave">{vacio.texto}</p>
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (
@@ -242,9 +249,15 @@ function FilaCodigo({
             </p>
           )}
           {c.cierre && (
-            <p className="mt-0.5">
-              <Insignia tono="exito">Costeo cerrado</Insignia>
-            </p>
+            <>
+              <p className="mt-0.5">
+                <Insignia tono="exito">Costeo cerrado</Insignia>
+              </p>
+              {/* Lo congelado al entregar; si después entró algo, el costo de arriba ya no es el mismo. */}
+              <p className="tabular text-[11px] text-texto-suave" data-cerrado={c.cierre.costo_pen}>
+                en {moneda(c.cierre.costo_pen)} el {fecha(c.cierre.cerrado_en)}
+              </p>
+            </>
           )}
         </div>
       </div>

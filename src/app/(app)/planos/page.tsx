@@ -7,8 +7,10 @@ import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { etapasDeCodigo, planosDeCodigo, type EtapaDeCodigo, type PlanoDeCodigo } from '@/lib/datos/diseno-codigos'
+import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
+import { llaveParecido } from '@/lib/dominio/codigos-internos'
 import { enlaceSeguimientoCodigo } from '@/lib/dominio/diseno-codigos'
-import { hoyLima } from '@/lib/format'
+import { cantidad, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede, puedeHojaDeArea } from '@/lib/sesion'
 
 import { MarcarEtapa, RecibirPlano } from '../diseno/codigo/formularios'
@@ -51,7 +53,11 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
   const perfil = await exigirPermiso('codigos_internos.area')
   const params = await searchParams
   const vista = params.ver === 'por-recibir' || params.ver === 'terminados' ? params.ver : null
-  const q = typeof params.q === 'string' ? params.q.trim().toUpperCase() : ''
+  const q = typeof params.q === 'string' ? params.q.trim() : ''
+  // Como en Códigos internos: sin tildes ni orden de palabras, y «0» por «O».
+  const palabras = palabrasDeBusqueda(q)
+  const llave = llaveParecido(q)
+  const buscado = (codigo: string) => !q || coincide(palabras, [codigo]) || (llave !== '' && llaveParecido(codigo).includes(llave))
   const hoy = hoyLima()
 
   const [planos, todasLasEtapas] = await Promise.all([planosDeCodigo(null), etapasDeCodigo(null)])
@@ -71,7 +77,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
 
   // Un código con solo planos anulados no le deja nada al área.
   const codigos = [...delCodigo.entries()]
-    .filter(([codigo, c]) => (c.etapas.length > 0 || c.planos.some((p) => !p.anulado_en)) && (!q || codigo.includes(q)))
+    .filter(([codigo, c]) => (c.etapas.length > 0 || c.planos.some((p) => !p.anulado_en)) && buscado(codigo))
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
   // Primero lo que ya corre; después lo que todavía no tiene fecha.
   const abiertos = [...codigos.filter(([, c]) => enMarcha(c)), ...codigos.filter(([, c]) => porHacer(c) && !enMarcha(c))]
@@ -116,9 +122,9 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
           activo={vista}
           etiqueta="Qué códigos mostrar"
           opciones={[
-            { valor: null, etiqueta: `Por hacer (${abiertos.length})` },
-            { valor: 'por-recibir', etiqueta: `Con planos por recibir (${conPorRecibir.length})` },
-            { valor: 'terminados', etiqueta: `Terminados (${terminados.length})` },
+            { valor: null, etiqueta: `Por hacer (${cantidad(abiertos.length)})` },
+            { valor: 'por-recibir', etiqueta: `Con planos por recibir (${cantidad(conPorRecibir.length)})` },
+            { valor: 'terminados', etiqueta: `Terminados (${cantidad(terminados.length)})` },
           ]}
         />
       </div>
