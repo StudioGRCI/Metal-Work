@@ -55,9 +55,8 @@ select test.como_usuario(:'admin_id');
 do $$
 declare v_nombre text; v_area text; v_costo numeric; v_activo boolean; v_alta date; v_id uuid;
 begin
-  perform test.afirmar(not exists (select 1 from public.horas_por_codigo_del_mes(date '2021-03-01'))
-                       and not exists (select 1 from public.horas_por_codigo_del_mes(date '2021-05-01')),
-    'la base no tiene horas en marzo ni mayo de 2021: los números de esta prueba son solo suyos');
+  perform test.afirmar(not exists (select 1 from public.horas_por_codigo_del_mes(null) h where h.periodo < date '2021-08-01'),
+    'la base no tiene horas antes de agosto de 2021: los meses y los números de esta prueba son solo suyos');
   -- La oficina es la gente activa de hoy: la que ya está en la base, de baja dentro
   -- de esta prueba (se deshace al final), para que los números sean solo de ella.
   update public.trabajadores w set activo = false
@@ -66,7 +65,7 @@ begin
   for v_nombre, v_area, v_costo, v_activo, v_alta in
     select * from (values ('Ana', 'ADM', 3000, true, date '2021-01-04'), ('Caro', 'ADM', 2000, true, date '2021-01-04'),
                           ('Beto', 'MTZ', 2400, true, date '2021-01-04'), ('Dani', null, 1000, true, date '2021-01-04'),
-                          ('Eli', 'ADM', 5000, false, date '2021-01-04'), 
+                          ('Eli', 'ADM', 5000, false, date '2021-01-04'),
                           ('Gil', 'ALM', 1500, true, date '2021-01-04')) x
   loop
     insert into public.trabajadores (nombres, apellidos, dni, area_id, activo, creado_en)

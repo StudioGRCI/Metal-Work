@@ -147,7 +147,10 @@ comment on column public.areas.es_oficina is
 -- trabajadores no guarda la fecha de ingreso, y la de alta es el día en que RR. HH.
 -- lo tecleó (en producción, toda la gente se está dando de alta en octubre de
 -- 2026), así que un tareo atrasado de setiembre dejaba la oficina en cero. Quien
--- entra después no llega a los meses pasados porque su primer costo los anota antes.
+-- entra después no llega a los meses pasados desde el primero con horas, porque su
+-- primer costo los anota antes. Un mes anterior a ese, que recibe horas tarde, se
+-- arma con la gente activa del momento en que se anota: sin fecha de ingreso no hay
+-- cómo saber quién trabajaba entonces (pendiente para DKS en el PR).
 -- Sin activar_timestamps: son anotaciones que nadie edita, sin permisos de escritura.
 create table if not exists public.oficina_meses_congelados (
   periodo date primary key check (extract(day from periodo) = 1),
