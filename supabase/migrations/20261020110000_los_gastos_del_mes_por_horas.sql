@@ -17,12 +17,17 @@
 --     reparte solo en cuanto alguien reporte horas ese mes.
 --   · El sueldo de la oficina entra como un gasto del mes más, repartido igual
 --     por horas, sin que nadie lo escriba: es el costo mensual que RR. HH. ya
---     tiene de cada trabajador activo de un área que no es del taller (todas
---     menos Maestranza, Producción y Acabados). Si esa persona además cargó horas
+--     tiene de cada trabajador activo de las áreas marcadas como oficina
+--     (areas.es_oficina: las de escritorio). Si esa persona además cargó horas
 --     a una unidad, ese tramo ya está en la mano de obra de la unidad y se
---     descuenta: el mismo sueldo no se cobra dos veces.
---   · Los gastos ya registrados con tasa o en partes iguales se siguen
---     repartiendo como se registraron. La pantalla ya no ofrece esas dos formas.
+--     descuenta: el mismo sueldo no se cobra dos veces. Un mes pasado no cambia
+--     porque hoy RR. HH. cambie un costo, una baja o un área: antes se anota
+--     quiénes eran la oficina de ese mes y con qué costo.
+--   · En el mes en curso la parte de cada unidad es provisional (las horas
+--     siguen llegando), y el costeo de una unidad con horas en el mes en curso
+--     no se cierra hasta que el mes termine.
+--   · Lo nuevo solo se registra por horas. Los gastos ya registrados con tasa o
+--     en partes iguales se siguen repartiendo como se registraron.
 --
 -- El reparto se calcula en un solo lugar (horas_por_codigo_del_mes y
 -- sueldos_oficina_del_mes): lo leen el costeo de cada código y la pantalla de
@@ -31,7 +36,7 @@
 -- el 2026-10-20): el cambio no mueve ningún gasto ya registrado.
 -- =============================================================================
 
--- 1. La forma de reparto POR HORAS -------------------------------------------------------------------
+-- 1. La forma de reparto POR HORAS, la única para lo que se registra desde hoy -------------------------------------------------------------------
 alter table public.gastos_generales_mes drop constraint if exists gastos_generales_mes_reparto_check;
 alter table public.gastos_generales_mes add constraint gastos_generales_mes_reparto_check
   check (reparto in ('TASA', 'PARTES_IGUALES', 'HORAS'));
@@ -49,10 +54,13 @@ begin
   perform public.exigir_permiso('costos.gastos_generales');
   if p_id is null or p_periodo is null or length(btrim(coalesce(p_descripcion, ''))) not between 3 and 300
      or p_monto is null or p_monto <= 0 or p_monto <> round(p_monto, 2) or p_moneda is null or p_moneda not in ('PEN','USD')
-     or p_reparto is null or p_reparto not in ('TASA','PARTES_IGUALES','HORAS')
-     or (p_reparto = 'TASA' and (p_tasa is null or p_tasa <= 0 or p_tasa > 100 or p_tasa <> round(p_tasa, 3)))
-     or (p_reparto in ('PARTES_IGUALES','HORAS') and p_tasa is not null) then
+     then
     raise exception 'Indica mes, concepto, detalle (3 a 300 caracteres), importe y moneda.';
+  end if;
+  -- Lo nuevo va por horas (DKS, 2026-10-20). La tabla sigue admitiendo TASA y
+  -- PARTES_IGUALES solo por los gastos que ya se registraron así.
+  if p_reparto is distinct from 'HORAS' or p_tasa is not null then
+    raise exception 'Los gastos del mes se reparten por horas: ya no se registran con tasa ni en partes iguales.';
   end if;
   perform 1 from public.conceptos_gasto_general where codigo = p_concepto and activo;
   if not found then raise exception 'Elige un concepto de gasto válido.'; end if;
@@ -107,9 +115,106 @@ comment on function public.horas_por_codigo_del_mes(date) is
 revoke all on function public.horas_por_codigo_del_mes(date) from public, anon, authenticated;
 
 -- 3. El sueldo de la oficina de cada mes ----------------------------------------------------------------
--- El costo mensual que RR. HH. tiene de cada trabajador activo (dado de alta
--- antes de que terminara el mes) de un área que no es del taller, menos lo que
--- ese mes ya cargó en horas a una unidad. Sin área no se sabe si es de oficina:
+-- Qué áreas son la oficina lo dice cada área (areas.es_oficina), no una lista
+-- escondida en el SQL. DKS dijo «el sueldo de la oficina»: arrancan marcadas las
+-- áreas de escritorio. Las de apoyo al taller (Almacén, Calidad, Diseño,
+-- Ingeniería, Garantías, Mantenimiento, SSOMA, Servicios de apoyo) y las del
+-- taller (Maestranza, Producción, Acabados) no: su gente carga sus horas a cada
+-- unidad. La marca se pone una sola vez, al crear la columna, para que volver a
+-- correr la migración no deshaga lo que la empresa cambie después.
+do $$
+begin
+  if not exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'areas' and column_name = 'es_oficina') then
+    alter table public.areas add column es_oficina boolean not null default false;
+    update public.areas set es_oficina = true
+     where codigo in ('ADM', 'CON', 'GCO', 'GGE', 'GOP', 'LOG', 'MKT', 'REQ', 'RRH', 'TES', 'TIC');
+  end if;
+end $$;
+comment on column public.areas.es_oficina is
+  'Si el sueldo de su gente entra al costo de las unidades como sueldo de la oficina, repartido por horas con los gastos del mes (migración 20261020110000).';
+
+-- Un mes que ya pasó no cambia porque hoy cambie el personal. trabajador_costos
+-- guarda un solo costo por persona, sin historia: subirle el sueldo a alguien o
+-- darlo de baja movía la oficina de los meses ya cerrados. Antes de ese cambio se
+-- anota quiénes eran la oficina de cada mes pasado con horas, y con qué costo; el
+-- mes en curso sigue al día. Lo que cada uno cargó en horas a una unidad se sigue
+-- descontando al leer: un tareo tardío de un mes pasado sí cuenta.
+create table if not exists public.oficina_meses_congelados (
+  periodo date primary key check (extract(day from periodo) = 1),
+  congelado_en timestamptz not null default now()
+);
+-- Sin índice por trabajador_id: nadie filtra por él y un trabajador no se borra
+-- (fn_trabajador_guardia); la llave primaria empieza por el mes, que es como se lee.
+create table if not exists public.oficina_mes_personas (
+  periodo date not null references public.oficina_meses_congelados (periodo),
+  trabajador_id uuid not null references public.trabajadores (id),
+  costo_mensual numeric not null check (costo_mensual >= 0),
+  primary key (periodo, trabajador_id)
+);
+comment on table public.oficina_meses_congelados is
+  'Los meses pasados cuyo sueldo de la oficina ya quedó anotado en oficina_mes_personas. Lo llena congelar_oficina, nadie a mano.';
+comment on table public.oficina_mes_personas is
+  'Quiénes eran la oficina en cada mes pasado y con qué costo mensual, anotado antes de que RR. HH. cambiara un costo, una baja o un área. Lleva sueldos: sin políticas, solo lo leen las funciones del costeo.';
+alter table public.oficina_meses_congelados enable row level security;
+alter table public.oficina_mes_personas enable row level security;
+revoke all on public.oficina_meses_congelados from anon, authenticated;
+revoke all on public.oficina_mes_personas from anon, authenticated;
+
+create or replace function public.congelar_oficina()
+returns void language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_mes date := date_trunc('month', now() at time zone 'America/Lima')::date;
+begin
+  with mes as (
+    select distinct h.periodo from public.horas_por_codigo_del_mes(null) h
+     where h.periodo < v_mes
+       and not exists (select 1 from public.oficina_meses_congelados k where k.periodo = h.periodo)
+  ), nuevo as (
+    insert into public.oficina_meses_congelados (periodo)
+    select m.periodo from mes m
+    on conflict (periodo) do nothing
+    returning periodo
+  )
+  insert into public.oficina_mes_personas (periodo, trabajador_id, costo_mensual)
+  select n.periodo, w.id, c.costo_mensual
+    from nuevo n
+    join public.trabajadores w on w.activo and w.creado_en < n.periodo + interval '1 month'
+    join public.trabajador_costos c on c.trabajador_id = w.id
+    join public.areas a on a.id = w.area_id and a.es_oficina;
+end;
+$$;
+comment on function public.congelar_oficina() is
+  'Anota quiénes eran la oficina, y con qué costo, en cada mes pasado con horas que todavía no estaba anotado. La llaman los disparadores antes de que cambie un costo mensual, una baja, un área o qué área es oficina.';
+revoke all on function public.congelar_oficina() from public, anon, authenticated;
+
+create or replace function public.fn_congelar_oficina()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+begin
+  -- Antes del cambio: la consulta todavía ve la fila como era.
+  perform public.congelar_oficina();
+  return new;
+end;
+$$;
+revoke all on function public.fn_congelar_oficina() from public, anon, authenticated;
+-- Sin «update of columna»: el disparador mira el SET, no lo que cambió (skill esquema).
+create or replace trigger trg_costo_congela_oficina
+  before update on public.trabajador_costos
+  for each row when (old.costo_mensual is distinct from new.costo_mensual)
+  execute function public.fn_congelar_oficina();
+create or replace trigger trg_trabajador_congela_oficina
+  before update on public.trabajadores
+  for each row when (old.activo is distinct from new.activo or old.area_id is distinct from new.area_id)
+  execute function public.fn_congelar_oficina();
+create or replace trigger trg_area_congela_oficina
+  before update on public.areas
+  for each row when (old.es_oficina is distinct from new.es_oficina)
+  execute function public.fn_congelar_oficina();
+
+-- El costo mensual de la oficina de cada mes, menos lo que ese mes cada persona
+-- ya cargó en horas a una unidad: ese tramo está en la mano de obra de la unidad
+-- y no se cobra dos veces. Un mes pasado, con la gente anotada; el mes en curso,
+-- con la de hoy. Quien tiene costo y no tiene área no se sabe si es de la oficina:
 -- se cuenta aparte para que la pantalla lo diga. Sin p_periodo, los meses con
 -- horas en alguna unidad, que son los que se reparten.
 create or replace function public.sueldos_oficina_del_mes(p_periodo date default null)
@@ -120,32 +225,43 @@ language sql stable set search_path to 'public' as $$
     union
     select distinct h.periodo from public.horas_por_codigo_del_mes(null) h where p_periodo is null
   ), persona as (
-    select m.periodo, w.id, a.id as area_id, a.codigo as area, c.costo_mensual,
-           coalesce((select sum(t.costo) from public.tareos t
-                      where t.trabajador_id = w.id and t.anulado_en is null
-                        and date_trunc('month', t.fecha)::date = m.periodo
-                        and public.normalizar_codigo_interno(t.codigo_interno) not in ('PLANTA', 'OFICINA', 'TODOS LOS ACTIVOS')), 0) as en_unidades
+    select m.periodo, p.trabajador_id, p.costo_mensual
+      from mes m
+      join public.oficina_mes_personas p on p.periodo = m.periodo
+    union all
+    select m.periodo, w.id, c.costo_mensual
       from mes m
       join public.trabajadores w on w.activo and w.creado_en < m.periodo + interval '1 month'
       join public.trabajador_costos c on c.trabajador_id = w.id
-      left join public.areas a on a.id = w.area_id
+      join public.areas a on a.id = w.area_id and a.es_oficina
+     where not exists (select 1 from public.oficina_meses_congelados k where k.periodo = m.periodo)
+  ), neto as (
+    select p.periodo,
+           greatest(p.costo_mensual - coalesce((select sum(t.costo) from public.tareos t
+                                                  where t.trabajador_id = p.trabajador_id and t.anulado_en is null
+                                                    and date_trunc('month', t.fecha)::date = p.periodo
+                                                    and public.normalizar_codigo_interno(t.codigo_interno) not in ('PLANTA', 'OFICINA', 'TODOS LOS ACTIVOS')), 0), 0) as monto
+      from persona p
   )
-  select p.periodo,
-         (count(*) filter (where p.area_id is not null and p.area not in ('MTZ', 'PRD', 'ACB')))::integer,
-         coalesce(round(sum(greatest(p.costo_mensual - p.en_unidades, 0)) filter (where p.area_id is not null and p.area not in ('MTZ', 'PRD', 'ACB')), 2), 0),
-         (count(*) filter (where p.area_id is null))::integer
-    from persona p
-   group by p.periodo
+  select m.periodo,
+         (select count(*) from neto n where n.periodo = m.periodo)::integer,
+         coalesce((select round(sum(n.monto), 2) from neto n where n.periodo = m.periodo), 0),
+         (select count(*) from public.trabajadores w
+            join public.trabajador_costos c on c.trabajador_id = w.id
+           where w.activo and w.area_id is null and w.creado_en < m.periodo + interval '1 month')::integer
+    from mes m
 $$;
 comment on function public.sueldos_oficina_del_mes(date) is
-  'El sueldo de la oficina de cada mes (o del mes de p_periodo): el costo mensual de RR. HH. de los trabajadores activos de las áreas que no son del taller (todas menos MTZ, PRD y ACB), menos lo que ese mes cargaron en horas a una unidad; y cuántos trabajadores con costo no tienen área. No pide permiso: la llaman el costeo y gastos_del_mes_reparto.';
+  'El sueldo de la oficina de cada mes (o del mes de p_periodo): el costo mensual de RR. HH. de la gente de las áreas marcadas es_oficina (el de entonces en un mes pasado ya anotado, el de hoy en el mes en curso), menos lo que ese mes cargaron en horas a una unidad; y cuántos trabajadores con costo no tienen área. No pide permiso: la llaman el costeo y gastos_del_mes_oficina.';
 revoke all on function public.sueldos_oficina_del_mes(date) from public, anon, authenticated;
 
 -- 4. Lo que ve la pantalla de Gastos del mes --------------------------------------------------------------
 -- Entre qué unidades se reparte un mes y con qué parte, y el sueldo de la oficina
 -- de ese mes. Lo leen quienes ven los gastos del mes: Administración
 -- (costos.gastos_generales) y quien ve los costos (costos.ver), como la política
--- ver_gastos_generales_mes. El sueldo va sumado: nadie ve el de una persona.
+-- ver_gastos_generales_mes. El sueldo va sumado y la pantalla no dice cuántas
+-- personas son; con una o dos en la oficina el total deja adivinar su sueldo, y
+-- quién lo ve se le preguntó a DKS (el costo de la unidad lo incluye igual).
 create or replace function public.gastos_del_mes_reparto(p_periodo date)
 returns table (codigo text, horas numeric, parte numeric)
 language plpgsql stable security definer set search_path to 'public' as $$
@@ -153,7 +269,7 @@ language plpgsql stable security definer set search_path to 'public' as $$
 begin
   if public.usuario_actual() is not null
      and not (public.es_admin() or public.tiene_permiso('costos.gastos_generales') or public.tiene_permiso('costos.ver')) then
-    raise exception 'No tiene el permiso costos.gastos_generales para realizar esta operación' using errcode = 'insufficient_privilege';
+    raise exception 'No tiene el permiso costos.gastos_generales ni costos.ver para realizar esta operación' using errcode = 'insufficient_privilege';
   end if;
   if p_periodo is null then
     return;
@@ -176,7 +292,7 @@ language plpgsql stable security definer set search_path to 'public' as $$
 begin
   if public.usuario_actual() is not null
      and not (public.es_admin() or public.tiene_permiso('costos.gastos_generales') or public.tiene_permiso('costos.ver')) then
-    raise exception 'No tiene el permiso costos.gastos_generales para realizar esta operación' using errcode = 'insufficient_privilege';
+    raise exception 'No tiene el permiso costos.gastos_generales ni costos.ver para realizar esta operación' using errcode = 'insufficient_privilege';
   end if;
   if p_periodo is null then
     return;
@@ -204,6 +320,8 @@ language plpgsql stable set search_path to 'public' as $$
 #variable_conflict use_column
 declare
   v_codigo text := public.normalizar_codigo_interno(p_codigo);
+  -- El mes en curso todavía reparte con las horas que van: su parte es provisional.
+  v_mes date := date_trunc('month', now() at time zone 'America/Lima')::date;
 begin
   return query
   with tareo as (
@@ -371,7 +489,7 @@ begin
      where p_mano_obra and g.estado = 'ACTIVO' and g.reparto = 'HORAS'
   ), oficina as (
     -- El sueldo de la oficina de cada mes, que se reparte igual que un gasto POR HORAS.
-    select o.periodo, o.personas, o.monto
+    select o.periodo, o.monto
       from public.sueldos_oficina_del_mes(null) o
      where p_mano_obra and o.monto > 0
   ), merma as (
@@ -425,8 +543,9 @@ begin
   union all
   select g.codigo, 'GASTOS_DEL_MES', g.registrado, (g.nombre || ' ' || to_char(g.periodo, 'MM/YYYY'))::text,
          (case when g.reparto = 'TASA' then trim(trailing '.' from to_char(g.tasa, 'FM990.999')) || ' % de ' || g.descripcion
+               when g.reparto = 'HORAS' and g.periodo >= v_mes and g.n = 1 then 'Por ahora todo a este código, la única unidad con horas este mes (el mes no termina) · ' || g.descripcion
                when g.reparto = 'HORAS' and g.n = 1 then 'Todo a este código, la única unidad con horas ese mes · ' || g.descripcion
-               when g.reparto = 'HORAS' then 'Por horas: ' || trim(trailing '.' from to_char(g.horas, 'FM999990.99')) || ' de ' || trim(trailing '.' from to_char(g.total, 'FM999990.99'))
+               when g.reparto = 'HORAS' then case when g.periodo >= v_mes then 'Por ahora, por horas: ' else 'Por horas: ' end || trim(trailing '.' from to_char(g.horas, 'FM999,999,990.99')) || ' de ' || trim(trailing '.' from to_char(g.total, 'FM999,999,990.99'))
                                              || ' h del mes, entre ' || g.n || ' unidades · ' || g.descripcion
                when g.n = 1 then 'Todo a este código, el único que trabajó ese mes · ' || g.descripcion
                else 'Partes iguales entre los ' || g.n || ' códigos que trabajaron ese mes · ' || g.descripcion end)::text,
@@ -439,11 +558,11 @@ begin
    where v_codigo is null or g.codigo = v_codigo
   union all
   select h.codigo, 'GASTOS_DEL_MES', o.periodo, ('Sueldos de la oficina ' || to_char(o.periodo, 'MM/YYYY'))::text,
-         (case when h.codigos = 1 then 'Todo a este código, la única unidad con horas ese mes'
-               else 'Por horas: ' || trim(trailing '.' from to_char(h.horas, 'FM999990.99')) || ' de ' || trim(trailing '.' from to_char(h.total, 'FM999990.99'))
+         (case when h.codigos = 1 and o.periodo >= v_mes then 'Por ahora todo a este código, la única unidad con horas este mes (el mes no termina)'
+               when h.codigos = 1 then 'Todo a este código, la única unidad con horas ese mes'
+               else case when o.periodo >= v_mes then 'Por ahora, por horas: ' else 'Por horas: ' end || trim(trailing '.' from to_char(h.horas, 'FM999,999,990.99')) || ' de ' || trim(trailing '.' from to_char(h.total, 'FM999,999,990.99'))
                     || ' h del mes, entre ' || h.codigos || ' unidades' end
-          || ' · ' || o.personas || case when o.personas = 1 then ' persona' else ' personas' end
-          || ' de la oficina, con el costo mensual de RR. HH.')::text,
+          || ' · costo mensual de RR. HH. de la oficina')::text,
          1::numeric, null::text, null::numeric, o.monto, 'PEN'::text,
          round(o.monto * h.horas / h.total, 2),
          0, null::text, null::uuid
@@ -478,3 +597,94 @@ comment on function public.codigo_interno_lineas(text, boolean) is
   'Las líneas del costeo de un código interno (o de todos), sin pedir permiso: mano de obra, materiales (lo salido con el código TODOS LOS ACTIVOS se reparte en partes iguales entre los códigos que trabajaron ese mes), compras (no van al total; la OC con insumos de varios códigos se reparte entre ellos), órdenes de servicio, recibos por honorarios de los subcontratos y, cuando se pide la mano de obra, los gastos del mes (por horas de cada unidad en el mes, con el sueldo de la oficina; los registrados antes con tasa o en partes iguales, así), los egresos de caja con el código, los gastos aprobados en la OT de la unidad, la merma que Diseño evaluó en ella y el recargo de las horas extras. Solo la llaman codigo_interno_costeo (Gerencia), codigos_internos_costo, codigo_interno_gasto y codigos_internos_gasto (Requerimientos, sin la mano de obra) y codigo_interno_compras.';
 revoke all on function public.codigo_interno_lineas(text, boolean) from public, anon, authenticated;
 
+-- 6. El costeo se cierra cuando el mes de sus horas terminó --------------------------------------
+-- La misma función de la 20261017300000, con una condición más: si la unidad
+-- tiene horas en el mes en curso, falta que el mes termine. Entregada a mitad de
+-- mes, cargaría una parte de los gastos y de la oficina calculada con las pocas
+-- horas que van; el resto del mes la movería después de congelada.
+create or replace function public.cerrar_costeo_codigo(p_codigo text, p_observacion text default null)
+returns uuid language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_codigo text := public.normalizar_codigo_interno(p_codigo);
+  v_id uuid;
+  k record;
+  v_falta text[] := '{}';
+  v_fuentes jsonb;
+begin
+  perform public.exigir_permiso('codigos_internos.cerrar');
+  if v_codigo is null then
+    raise exception 'Indica el código interno.' using errcode = 'check_violation';
+  end if;
+  if v_codigo = 'PLANTA' then
+    raise exception 'PLANTA no es una unidad: su costeo no se cierra.' using errcode = 'check_violation';
+  end if;
+  -- El sistema no sabe todavía cuándo se entrega una unidad: lo dice Gerencia al cerrar.
+  if char_length(btrim(coalesce(p_observacion, ''))) not between 10 and 500 then
+    raise exception 'Escribe cómo y cuándo se entregó la unidad (de 10 a 500 caracteres).' using errcode = 'check_violation';
+  end if;
+  -- Un reintento no cierra dos veces.
+  select id into v_id from public.codigo_interno_cierres where codigo = v_codigo and reabierto_en is null;
+  if found then
+    return v_id;
+  end if;
+
+  select * into k from public.codigos_internos_costo_calculado(v_codigo) where codigo = v_codigo;
+  if not found then
+    raise exception 'El código % no tiene costos que cerrar.', v_codigo using errcode = 'check_violation';
+  end if;
+  if k.materiales_sin_precio > 0 then
+    v_falta := v_falta || (k.materiales_sin_precio || case when k.materiales_sin_precio = 1 then ' salida del almacén sin precio (la valoriza Logística)'
+                                                      else ' salidas del almacén sin precio (las valoriza Logística)' end);
+  end if;
+  if k.horas_sin_costo > 0 then
+    v_falta := v_falta || (trim(to_char(k.horas_sin_costo, 'FM999990.##')) || ' h de personal sin costo mensual (lo pone RR. HH.)');
+  end if;
+  if k.lineas_sin_cambio > 0 then
+    v_falta := v_falta || (k.lineas_sin_cambio || case when k.lineas_sin_cambio = 1 then ' línea en dólares sin tipo de cambio' else ' líneas en dólares sin tipo de cambio' end
+                           || ' (lo carga Tesorería)');
+  end if;
+  -- Con cotización aprobada, el cierre congela también el margen: sin el IGV
+  -- confirmado o sin el cambio del día de la venta en dólares quedaría congelado
+  -- sin margen, y nada empujaría después a reabrirlo.
+  if k.cotizaciones > 0 and k.venta_sin_igv_confirmado > 0 then
+    v_falta := v_falta || (case when k.venta_sin_igv_confirmado = 1 then 'confirmar si la cotización incluye IGV'
+                                else 'confirmar si ' || k.venta_sin_igv_confirmado || ' cotizaciones incluyen IGV' end
+                           || ' (Gerencia o Administración en el expediente de la OT, o Ventas al corregir la cotización)');
+  end if;
+  if k.cotizaciones > 0 and k.venta_sin_cambio > 0 then
+    v_falta := v_falta || 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo carga Tesorería)'::text;
+  end if;
+  -- Los gastos del mes y el sueldo de la oficina se reparten por las horas de
+  -- todo el mes (migración 20261020110000): cerrado a mitad de mes, la unidad se
+  -- quedaría con una parte que el resto del mes todavía mueve.
+  if exists (select 1 from public.horas_por_codigo_del_mes((now() at time zone 'America/Lima')::date) h where h.codigo = v_codigo) then
+    v_falta := v_falta || ('que termine el mes ' || to_char(now() at time zone 'America/Lima', 'MM/YYYY')
+                           || ': los gastos del mes y el sueldo de la oficina se reparten por las horas de todo el mes');
+  end if;
+  if cardinality(v_falta) > 0 then
+    raise exception 'El costeo de % todavía no está completo: falta %.', v_codigo, array_to_string(v_falta, '; ')
+      using errcode = 'check_violation';
+  end if;
+  if k.costo_pen <= 0 then
+    raise exception 'El código % todavía no tiene costo cargado: no hay nada que congelar.', v_codigo
+      using errcode = 'check_violation';
+  end if;
+
+  select coalesce(jsonb_object_agg(f.fuente, f.total), '{}'::jsonb) into v_fuentes
+    from (select l.fuente, sum(case when l.moneda = 'PEN' then l.monto
+                                    else round(l.monto * public.cambio_del_dia(l.fecha, 'VENTA'), 2) end) as total
+            from public.codigo_interno_lineas(v_codigo, true) l
+           where l.fuente in ('MANO_OBRA', 'RECARGO_EXTRAS', 'MATERIALES', 'SERVICIOS', 'SUBCONTRATOS',
+                              'SUBCONTRATOS_POR_PAGAR', 'GASTOS_DEL_MES', 'CAJA', 'GASTOS_OT', 'MERMA')
+           group by l.fuente) f;
+
+  insert into public.codigo_interno_cierres (codigo, costo_pen, precio_neto_pen, margen_pen, margen_pct, por_fuente, observacion)
+  values (v_codigo, k.costo_pen, k.precio_neto_pen, k.margen_pen, k.margen_pct, v_fuentes, nullif(btrim(coalesce(p_observacion, '')), ''))
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+comment on function public.cerrar_costeo_codigo(text, text) is
+  'Gerencia cierra el costeo de un código interno al entregar la unidad: congela su costo, su precio sin IGV y su margen, con quién, cuándo y cómo se entregó (la observación, obligatoria). Solo con todo lo que suma completo y, si tiene cotización, con su precio sin IGV en soles. Un reintento devuelve el cierre vigente. Exige codigos_internos.cerrar.';
+revoke all on function public.cerrar_costeo_codigo(text, text) from public, anon;
+grant execute on function public.cerrar_costeo_codigo(text, text) to authenticated;

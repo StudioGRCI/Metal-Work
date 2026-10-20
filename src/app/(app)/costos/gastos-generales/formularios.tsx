@@ -10,7 +10,7 @@ import { useEnvio } from '@/lib/envio'
 
 import { anularGastoGeneral, registrarGastoGeneral } from './acciones'
 
-export type ConceptoParaElegir = { codigo: string; nombre: string; grupo: string; tasa: number | null }
+export type ConceptoParaElegir = { codigo: string; nombre: string; grupo: string }
 
 const GRUPOS = [
   { grupo: 'LOCAL', titulo: 'Servicios del local' },
@@ -80,10 +80,6 @@ export function NuevoGastoGeneral({ conceptos, mes }: { conceptos: ConceptoParaE
               </Seleccion>
             </Campo>
           </div>
-
-          <p className="text-sm text-texto-suave">
-            Se reparte por horas: cada unidad carga la parte del gasto que le toca por las horas que su gente trabajó en ella ese mes, en el reporte diario o en el tareo de RR. HH. PLANTA y OFICINA no reciben.
-          </p>
 
           {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
           <Boton type="submit" cargando={enviando}>Registrar gasto</Boton>

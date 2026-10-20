@@ -134,7 +134,7 @@ comprobar(Number(horasUnidad?.horas) === 8, `la unidad tiene sus 8 h en el mes (
   await pagina.getByRole('button', { name: 'Registrar gasto' }).first().click()
   const v = pagina.locator('[role="dialog"]')
   comprobar((await v.getByRole('button', { name: /Tasa por código|Partes iguales/ }).count()) === 0, 'el formulario ya no pregunta cómo se reparte')
-  comprobar(limpio(await v.innerText()).includes('Se reparte por horas'), 'y dice a la vista que se reparte por horas')
+  comprobar(limpio(await v.innerText()).includes('Se reparten por horas entre las unidades'), 'y la ventana dice que se reparte por horas')
   await v.locator('#gg-concepto').selectOption('ELECTRICIDAD')
   await v.locator('#gg-descripcion').fill(DETALLE)
   await v.locator('#gg-monto').fill('1234.56')
@@ -142,24 +142,26 @@ comprobar(Number(horasUnidad?.horas) === 8, `la unidad tiene sus 8 h en el mes (
   // Tres toques seguidos: un solo gasto.
   const boton = v.getByRole('button', { name: 'Registrar gasto' })
   await boton.evaluate((b) => { b.click(); b.click(); b.click() })
-  await pagina.getByText('Gasto registrado: se reparte por horas').waitFor({ timeout: 20000 })
+  await pagina.getByText('Gasto registrado: entra al costo de cada unidad por sus horas').waitFor({ timeout: 20000 })
   const gastos = await consulta(`select id, reparto, tasa from gastos_generales_mes where descripcion = $1`, [DETALLE])
   comprobar(gastos.length === 1, `tres toques, un solo gasto (${gastos.length})`)
   comprobar(gastos[0]?.reparto === 'HORAS' && gastos[0]?.tasa === null, 'la base lo guarda POR HORAS, sin tasa')
   await pagina.reload({ waitUntil: 'networkidle' })
   const fila = pagina.locator('tr', { hasText: DETALLE })
-  comprobar(limpio(await fila.innerText()).includes('Por horas'), 'la lista dice «Por horas» en el reparto')
+  comprobar(limpio(await fila.innerText()).includes('1,234.56'), 'la lista trae la luz con su importe')
 
   const tarjeta = pagina.locator('[data-reparto-del-mes]')
   const texto = limpio(await tarjeta.innerText())
   const [parte] = await consulta(`select parte from public.horas_por_codigo_del_mes($1::date) h,
                                          lateral (select round(100 * h.horas / h.total, 2) as parte) p where h.codigo = $2`, [`${mes}-01`, CODIGO])
   const filaUnidad = limpio(await tarjeta.locator('tr', { hasText: CODIGO }).innerText())
-  comprobar(filaUnidad.includes('8') && filaUnidad.includes(`${Number(parte.parte).toLocaleString('es-PE', { maximumFractionDigits: 4 })} %`),
+  comprobar(filaUnidad.includes('8') && filaUnidad.includes(`${Number(parte.parte).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`),
     `«Cómo se reparte» lista la unidad con 8 h y su ${parte.parte} %: «${filaUnidad}»`)
   const [oficina] = await consulta(`select personas, monto from public.sueldos_oficina_del_mes($1::date)`, [`${mes}-01`])
-  comprobar(texto.includes(`S/ ${soles(oficina.monto)}`) && texto.includes(`de ${oficina.personas} persona`),
-    `y el sueldo de la oficina sumado: S/ ${soles(oficina.monto)} de ${oficina.personas} (asistente incluida)`)
+  const ficha = limpio(await pagina.locator('[data-sueldo-oficina]').innerText())
+  comprobar(ficha.includes(`S/ ${soles(oficina.monto)}`),
+    `arriba, el sueldo de la oficina sumado: «${ficha}» (${oficina.personas} personas, asistente incluida)`)
+  comprobar(!texto.includes('persona'), 'sin decir cuántas personas son')
   await pagina.screenshot({ path: `${CAPTURAS}/gph-gastos-del-mes.png`, fullPage: true })
 
   await pagina.setViewportSize({ width: 390, height: 844 })
@@ -191,10 +193,10 @@ const esperado = async () =>
   await pagina.goto(`${BASE}/codigos-internos/detalle?${new URLSearchParams({ codigo: CODIGO, vista: 'costeo' })}`, { waitUntil: 'networkidle' })
   const gastos = pagina.locator('[data-gastos-y-caja]')
   const filaLuz = limpio(await gastos.locator('tr', { hasText: DETALLE }).innerText())
-  comprobar(filaLuz.includes(`S/ ${soles(luz.monto)}`) && filaLuz.includes(`Por horas: 8 de`),
-    `Gerencia ve la luz con sus horas: «${filaLuz}»`)
+  comprobar(filaLuz.includes(`S/ ${soles(luz.monto)}`) && filaLuz.includes(`Por ahora, por horas: 8 de`),
+    `Gerencia ve la luz con sus horas, provisional porque el mes no termina: «${filaLuz}»`)
   const filaOfi = limpio(await gastos.locator('tr', { hasText: 'Sueldos de la oficina' }).innerText())
-  comprobar(filaOfi.includes(`S/ ${soles(ofi.monto)}`) && filaOfi.includes('de la oficina, con el costo mensual de RR. HH.'),
+  comprobar(filaOfi.includes(`S/ ${soles(ofi.monto)}`) && filaOfi.includes('costo mensual de RR. HH. de la oficina') && !/persona/.test(filaOfi),
     `y su parte de la oficina, sin nombres: «${filaOfi}»`)
   await pagina.screenshot({ path: `${CAPTURAS}/gph-costeo.png`, fullPage: true })
   comprobar(errores.length === 0, `sin errores en la consola (${errores.join(' | ')})`)

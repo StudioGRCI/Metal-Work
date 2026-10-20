@@ -60,7 +60,7 @@ export async function registrarGastoGeneral(_previo: unknown, formulario: FormDa
   if (data !== v.data.operacion_id) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/costos/gastos-generales')
-  return { ok: true, mensaje: 'Gasto registrado: se reparte por horas entre las unidades que trabajaron ese mes.' }
+  return { ok: true, mensaje: 'Gasto registrado: entra al costo de cada unidad por sus horas de ese mes.' }
 }
 
 /** Anular, nunca borrar: el gasto queda a la vista con el motivo, quién y cuándo. */

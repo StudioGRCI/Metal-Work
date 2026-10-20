@@ -1,17 +1,19 @@
 -- Los gastos del mes se reparten por horas, y la oficina entra al costo
 -- (migración 20261020110000). DKS eligió el 2026-10-20 «Por horas + oficina».
 --
---   1. Administración registra un gasto POR HORAS; quien lo pida con tasa no lo
---      cuela, y quien no es de Administración no lo registra.
+--   1. Administración registra un gasto POR HORAS; con tasa o en partes
+--      iguales ya no entra, y quien no es de Administración no lo registra.
 --   2. Cada unidad carga la parte del gasto de sus horas en el mes; PLANTA y
 --      OFICINA no reciben, y el gasto entero queda repartido.
 --   3. El sueldo de la oficina entra solo, repartido igual: el costo mensual de
---      RR. HH. de los activos de las áreas que no son del taller, sin lo que ya
---      cargaron en horas a una unidad. El taller, el inactivo y el que entró
---      después no cuentan; el que no tiene área se cuenta aparte.
+--      RR. HH. de los activos de las áreas marcadas como oficina, sin lo que ya
+--      cargaron en horas a una unidad. El taller, el almacén, el inactivo y el que
+--      entró después no cuentan; el que no tiene área se cuenta aparte.
 --   4. Un mes sin horas no reparte: el gasto espera hasta que alguien reporte.
 --   5. La pantalla de Gastos del mes: Administración y Gerencia ven el reparto
 --      y la oficina sumada; Ventas no.
+--   6. Un mes pasado no cambia porque RR. HH. suba un sueldo o dé de baja a
+--      alguien hoy; el mes en curso sigue al día.
 --
 -- Todo pasa en marzo y mayo de 2021, para que las horas y el personal que la
 -- base ya tenga no muevan los números. Cada paso con la cuenta del puesto
@@ -23,10 +25,12 @@ insert into public.sedes (codigo, nombre) values ('QA01', 'Taller prueba de gast
 select test.crear_usuario('Olga', 'Oficina', 'oficina401@demo.pe', 'ADMINISTRACION', (select id from public.sedes where codigo = 'QA01')) as oficina_id \gset
 select test.crear_usuario('Gema', 'Gerente', 'gerencia401@demo.pe', 'GERENTE', (select id from public.sedes where codigo = 'QA01')) as gerente_id \gset
 select test.crear_usuario('Vico', 'Ventas', 'ventas401@demo.pe', 'VENDEDOR', (select id from public.sedes where codigo = 'QA01')) as vendedor_id \gset
+select test.crear_usuario('Rosa', 'Humanos', 'rrhh401@demo.pe', 'RECURSOS_HUMANOS', (select id from public.sedes where codigo = 'QA01')) as rrhh_id \gset
 select test.crear_usuario('Ada', 'Admin', 'admin401@demo.pe', 'ADMIN', (select id from public.sedes where codigo = 'QA01')) as admin_id \gset
 select set_config('prueba.oficina', :'oficina_id', true);
 select set_config('prueba.gerente', :'gerente_id', true);
 select set_config('prueba.vendedor', :'vendedor_id', true);
+select set_config('prueba.rrhh', :'rrhh_id', true);
 select set_config('prueba.luz', gen_random_uuid()::text, true);
 select set_config('prueba.agua', gen_random_uuid()::text, true);
 
@@ -43,7 +47,8 @@ $$;
 -- ----------------------------------------- Armazón (ADMIN): la gente, sus costos y sus horas
 -- Ana (Administración, S/ 3,000), Caro (Administración, S/ 2,000, que cargó 10 h a
 -- la unidad A a S/ 10), Beto (Maestranza, S/ 2,400), Dani (sin área, S/ 1,000),
--- Eli (Administración, de baja) y Fico (Administración, entró en abril).
+-- Eli (Administración, de baja), Fico (Administración, entró en abril) y Gil
+-- (Almacén, S/ 1,500: apoya al taller, no es oficina).
 -- Marzo: A 40 h (30 de Beto y 10 de Caro), B 10 h; PLANTA 5 h y OFICINA 4 h no son unidades.
 select test.como_usuario(:'admin_id');
 do $$
@@ -55,7 +60,8 @@ begin
   for v_nombre, v_area, v_costo, v_activo, v_alta in
     select * from (values ('Ana', 'ADM', 3000, true, date '2021-01-04'), ('Caro', 'ADM', 2000, true, date '2021-01-04'),
                           ('Beto', 'MTZ', 2400, true, date '2021-01-04'), ('Dani', null, 1000, true, date '2021-01-04'),
-                          ('Eli', 'ADM', 5000, false, date '2021-01-04'), ('Fico', 'ADM', 9000, true, date '2021-04-05')) x
+                          ('Eli', 'ADM', 5000, false, date '2021-01-04'), ('Fico', 'ADM', 9000, true, date '2021-04-05'),
+                          ('Gil', 'ALM', 1500, true, date '2021-01-04')) x
   loop
     insert into public.trabajadores (nombres, apellidos, dni, area_id, activo, creado_en)
     values (v_nombre, 'Check 401', '4010' || lpad((length(v_nombre) * 7 + ascii(v_nombre))::text, 4, '0'),
@@ -83,9 +89,13 @@ select test.afirmar(public.registrar_gasto_general(current_setting('prueba.luz')
   'Recibo de luz de marzo', 1000, 'PEN', 'HORAS', null) = current_setting('prueba.luz')::uuid,
   'el reintento del mismo gasto devuelve el mismo, sin duplicarlo');
 select test.debe_fallar($q$select public.registrar_gasto_general(gen_random_uuid(), date '2021-03-20', 'AGUA',
-  'Por horas con tasa', 100, 'PEN', 'HORAS', 5)$q$, 'por horas no lleva tasa', 'Indica mes, concepto');
+  'Por horas con tasa', 100, 'PEN', 'HORAS', 5)$q$, 'por horas no lleva tasa', 'se reparten por horas');
 select test.debe_fallar($q$select public.registrar_gasto_general(gen_random_uuid(), date '2021-03-20', 'AGUA',
-  'Reparto inventado', 100, 'PEN', 'A_OJO', null)$q$, 'otra forma de reparto no entra', 'Indica mes, concepto');
+  'Con la tasa de la hoja', 100, 'PEN', 'TASA', 10)$q$, 'con tasa ya no se registra', 'se reparten por horas');
+select test.debe_fallar($q$select public.registrar_gasto_general(gen_random_uuid(), date '2021-03-20', 'AGUA',
+  'En partes iguales', 100, 'PEN', 'PARTES_IGUALES', null)$q$, 'en partes iguales ya no se registra', 'se reparten por horas');
+select test.debe_fallar($q$select public.registrar_gasto_general(gen_random_uuid(), date '2021-03-20', 'AGUA',
+  'Reparto inventado', 100, 'PEN', 'A_OJO', null)$q$, 'otra forma de reparto no entra', 'se reparten por horas');
 reset role;
 
 select pg_temp.como('vendedor');
@@ -111,9 +121,9 @@ select test.afirmar(pg_temp.gasto('CHK401_B_21/03', 'Sueldos de la oficina 03/20
   format('B carga 980 de la oficina: carga %s', pg_temp.gasto('CHK401_B_21/03', 'Sueldos de la oficina 03/2021')));
 select test.afirmar(exists (select 1 from public.codigo_interno_costeo('CHK401_B_21/03') l
                              where l.concepto = 'Sueldos de la oficina 03/2021'
-                               and l.detalle = 'Por horas: 10 de 50 h del mes, entre 2 unidades · 2 personas de la oficina, con el costo mensual de RR. HH.'
+                               and l.detalle = 'Por horas: 10 de 50 h del mes, entre 2 unidades · costo mensual de RR. HH. de la oficina'
                                and l.precio_unitario = 4900 and l.moneda = 'PEN'),
-  'la línea de la oficina dice cuántas personas y el total del mes, sin nombres ni sueldos');
+  'la línea de la oficina dice el total del mes, sin nombres ni cuántas personas');
 select test.afirmar(pg_temp.gasto('PLANTA', '') = 0 and pg_temp.gasto('OFICINA', '') = 0,
   'PLANTA y OFICINA no son unidades: no reciben gastos del mes');
 select test.afirmar((select sum(l.monto) from public.codigo_interno_costeo(null) l
@@ -178,6 +188,31 @@ select test.debe_fallar($q$select * from public.sueldos_oficina_del_mes(date '20
   'nadie llama desde fuera la función interna de la oficina', 'permission denied');
 select test.debe_fallar($q$select * from public.horas_por_codigo_del_mes(date '2021-03-01')$q$,
   'nadie llama desde fuera la función interna de las horas', 'permission denied');
+reset role;
+
+-- ------------------------------------- 6. Un mes pasado no cambia con el personal de hoy
+-- RR. HH. le sube el costo a Ana y da de baja a Caro: marzo y mayo siguen como eran.
+select test.como_usuario(:'rrhh_id');
+set local role authenticated;
+select public.rrhh_guardar_costo_trabajador(current_setting('prueba.ana')::uuid, 4000);
+select public.rrhh_cambiar_estado_trabajador(current_setting('prueba.caro')::uuid, false);
+reset role;
+select test.afirmar((select o.monto from public.sueldos_oficina_del_mes(date '2021-03-01') o) = 4900,
+  format('marzo sigue con S/ 4,900 de oficina: %s', (select o.monto from public.sueldos_oficina_del_mes(date '2021-03-01') o)));
+select test.afirmar((select o.monto from public.sueldos_oficina_del_mes(date '2021-05-01') o) = 14000,
+  format('mayo sigue con S/ 14,000: %s', (select o.monto from public.sueldos_oficina_del_mes(date '2021-05-01') o)));
+select test.afirmar(not exists (select 1 from public.oficina_meses_congelados
+                                 where periodo = date_trunc('month', now() at time zone 'America/Lima')::date),
+  'el mes en curso no se congela: sigue con el personal de hoy');
+-- Un tareo tardío de marzo de Ana en una unidad sí se descuenta: ese tramo ya va en la mano de obra.
+select test.como_usuario(:'admin_id');
+insert into public.tareos (trabajador_id, fecha, codigo_interno, horas, labor, costo_hora, costo)
+values (current_setting('prueba.ana')::uuid, date '2021-03-25', 'CHK401_B_21/03', 10, 'Compras en obra', 20, 200);
+select test.afirmar((select o.monto from public.sueldos_oficina_del_mes(date '2021-03-01') o) = 4700,
+  format('el tareo tardío de Ana en B se descuenta de la oficina de marzo: %s', (select o.monto from public.sueldos_oficina_del_mes(date '2021-03-01') o)));
+select pg_temp.como('gerente');
+set local role authenticated;
+select test.debe_fallar($q$select * from public.oficina_mes_personas$q$, 'nadie lee los sueldos anotados por mes', 'permission denied');
 reset role;
 
 select 'CHECK 401 OK' as resultado;

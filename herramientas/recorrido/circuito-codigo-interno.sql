@@ -24,7 +24,7 @@
 -- Códigos internos.
 --
 -- El costeo completo (migración 20261017300000): Administración registra la
--- luz del mes al 8 %, Tesorería paga S/ 300 por caja chica con el código,
+-- luz del mes (por horas desde la 20261020110000), Tesorería paga S/ 300 por caja chica con el código,
 -- Producción reporta horas de más, Diseño evalúa la merma y Gerencia fija el
 -- presupuesto. Gerencia, Administración y Supervisión general leen el mismo
 -- costo (Supervisión general sin precio ni margen); Gerencia no puede cerrar con
@@ -454,9 +454,9 @@ begin
     select jsonb_object_agg(x.fuente, x.monto) into b_antes
       from (select l.fuente, coalesce(sum(l.monto), 0) as monto from public.codigo_interno_costeo(c) l group by l.fuente) x;
 
-    v_paso := 'Administración registra la luz del mes (8 % por unidad, como la hoja RESUMEN)';
+    v_paso := 'Administración registra la luz del mes (se reparte por horas)';
     reset role; perform pg_temp.ensayo_como((k->>'ADMINISTRACION')::uuid);
-    perform public.registrar_gasto_general(gen_random_uuid(), v_hoy, 'ELECTRICIDAD', 'Recibo de luz del ensayo', 1000, 'PEN', 'TASA', 8);
+    perform public.registrar_gasto_general(gen_random_uuid(), v_hoy, 'ELECTRICIDAD', 'Recibo de luz del ensayo', 1000, 'PEN', 'HORAS', null);
 
     v_paso := 'Tesorería paga S/ 300 de movilidad por caja chica con el código';
     reset role; perform pg_temp.ensayo_como((k->>'TESORERIA')::uuid);
@@ -680,8 +680,13 @@ begin
          || pg_temp.ensayo_dif('Requerimientos y Gerencia: materiales', (o_gasto->>'materiales_pen')::numeric, (g_resumen->>'materiales_pen')::numeric)
          || pg_temp.ensayo_dif('Requerimientos y Gerencia: compras', (o_gasto->>'compras_pen')::numeric, (g_resumen->>'compras_pen')::numeric)
          || pg_temp.ensayo_dif('Requerimientos y Gerencia: RQ', (o_gasto->>'requerimientos')::numeric, (g_resumen->>'requerimientos')::numeric);
-  -- El costeo completo: la luz al 8 %, la caja de S/ 300 y la venta sin IGV.
-  f := f || pg_temp.ensayo_dif('gastos del mes (8 % de S/ 1,000)', (n_gerencia->>'gastos_mes_pen')::numeric, 80::numeric)
+  -- El costeo completo: la luz por las horas del código en el mes, la caja de
+  -- S/ 300 y la venta sin IGV. La parte se saca de las horas del mes, que son las
+  -- de la base en que corre el ensayo; los dos lados se leen al mismo tiempo.
+  f := f || pg_temp.ensayo_dif('la luz del mes, por las horas del código',
+                                (select sum(l.monto) from public.codigo_interno_lineas(c, true) l
+                                  where l.fuente = 'GASTOS_DEL_MES' and l.detalle like '%Recibo de luz del ensayo'),
+                                (select round(1000 * h.horas / h.total, 2) from public.horas_por_codigo_del_mes(v_hoy) h where h.codigo = c))
          || pg_temp.ensayo_dif('caja con el código', (n_gerencia->>'caja_pen')::numeric, 300::numeric)
          || pg_temp.ensayo_dif('egresos de caja', (n_gerencia->>'egresos_caja')::numeric, 1::numeric)
          || pg_temp.ensayo_dif('costo completo = lo que suma el costeo',

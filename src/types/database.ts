@@ -193,6 +193,7 @@ export type Database = {
           actualizado_en: string
           jefe_id: string | null
           requerimiento: string | null
+          es_oficina: boolean
         }
         Insert: {
           id?: string
@@ -205,6 +206,7 @@ export type Database = {
           actualizado_en?: string
           jefe_id?: string | null
           requerimiento?: string | null
+          es_oficina?: boolean
         }
         Update: {
           id?: string
@@ -217,6 +219,7 @@ export type Database = {
           actualizado_en?: string
           jefe_id?: string | null
           requerimiento?: string | null
+          es_oficina?: boolean
         }
         Relationships: [
           {
@@ -3648,6 +3651,54 @@ export type Database = {
             referencedColumns: ["id"]
           }
         ]
+      }
+      oficina_mes_personas: {
+        Row: {
+          periodo: string
+          trabajador_id: string
+          costo_mensual: number
+        }
+        Insert: {
+          periodo: string
+          trabajador_id: string
+          costo_mensual: number
+        }
+        Update: {
+          periodo?: string
+          trabajador_id?: string
+          costo_mensual?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oficina_mes_personas_periodo_fkey"
+            columns: ["periodo"]
+            isOneToOne: false
+            referencedRelation: "oficina_meses_congelados"
+            referencedColumns: ["periodo"]
+          },
+          {
+            foreignKeyName: "oficina_mes_personas_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      oficina_meses_congelados: {
+        Row: {
+          periodo: string
+          congelado_en: string
+        }
+        Insert: {
+          periodo: string
+          congelado_en?: string
+        }
+        Update: {
+          periodo?: string
+          congelado_en?: string
+        }
+        Relationships: []
       }
       orden_compra_material_detalles: {
         Row: {
@@ -11640,6 +11691,10 @@ export type Database = {
         Args: {
           p_entrega: string | null
         }
+        Returns: null
+      }
+      congelar_oficina: {
+        Args: Record<PropertyKey, never>
         Returns: null
       }
       corregir_factura_compra: {

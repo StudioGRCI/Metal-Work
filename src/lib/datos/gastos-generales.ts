@@ -39,7 +39,7 @@ export async function repartoDelMes(periodo: string) {
   const db = await createClient()
   const { data, error } = await db.rpc('gastos_del_mes_reparto', { p_periodo: periodo })
   if (error) throw new Error(`No se pudo leer el reparto del mes: ${error.message}`)
-  return (data ?? []).map((f) => ({ codigo: f.codigo, horas: Number(f.horas), parte: Number(f.parte) }))
+  return (data ?? []).flatMap((f) => (f.codigo ? [{ codigo: f.codigo, horas: Number(f.horas), parte: Number(f.parte) }] : []))
 }
 
 /**
