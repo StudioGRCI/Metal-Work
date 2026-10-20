@@ -12,6 +12,8 @@
  *      guion, el campo ofrece el del padrón; uno nuevo se confirma con «usa …
  *      como código nuevo». Al abrir «Corregir», la lista no tapa el formulario.
  *   2. En el teléfono la lista cabe en la pantalla y la página no se corre.
+ *      Cada sugerencia de debajo del campo es su propio renglón de 44 px: un
+ *      toque real en su borde de arriba elige esa y no la de al lado.
  *   3. Almacén tiene 10 de 15, entrega 4 y le devuelven 1 (armado en la base
  *      con la cuenta de Almacén y `set local role authenticated`).
  *   4. Maestranza ve en la tarjeta del RQ, sin presionar nada: 3 ya
