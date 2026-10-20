@@ -115,7 +115,7 @@ begin
 end;
 $$;
 revoke all on function public.fn_reporte_diario_solo_gente_del_taller() from public, anon, authenticated;
-create or replace trigger tg_reporte_diario_solo_gente_del_taller
+create or replace trigger trg_reporte_diario_solo_gente_del_taller
   before insert on public.reporte_diario_personal
   for each row execute function public.fn_reporte_diario_solo_gente_del_taller();
 comment on function public.fn_reporte_diario_solo_gente_del_taller() is

@@ -112,7 +112,7 @@ export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/r
     for (const p of observado?.personal ?? []) {
       if (enLista.has(p.trabajador_id)) continue
       enLista.add(p.trabajador_id)
-      opciones.push({ valor: p.trabajador_id, etiqueta: p.nombre, detalle: 'Ya no está en la planilla de taller de tu área' })
+      opciones.push({ valor: p.trabajador_id, etiqueta: p.nombre, detalle: 'Ya no está en la planilla de taller' })
     }
   }
 
