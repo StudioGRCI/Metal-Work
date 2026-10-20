@@ -9,7 +9,7 @@ import { cajaDeLosPagos, cuentasParaPagar } from '@/lib/datos/caja'
 import { solicitudesPendientesTesoreria } from '@/lib/datos/costos-ot'
 import { cotizacionesAprobadas, facturasDeVenta } from '@/lib/datos/facturacion'
 import { revisionesDeSalidaPendientes } from '@/lib/datos/vehiculos'
-import { totalConIgv } from '@/lib/dominio/finanzas'
+import { resumenPorMoneda, totalConIgv } from '@/lib/dominio/finanzas'
 import { hoyLima, moneda, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -48,25 +48,16 @@ export default async function PaginaPorCobrar() {
   const hoy = hoyLima()
   const pendientes = facturas.filter((f) => !f.cancelada && Number(f.saldo) > 0)
   const cobradas = facturas.filter((f) => !pendientes.includes(f))
-  const saldoPor = (m: CodigoMoneda) => pendientes.filter((f) => codigo(f.moneda) === m).reduce((n, f) => n + Number(f.saldo), 0)
+  const vencidas = pendientes.filter((f) => f.fecha_vencimiento && f.fecha_vencimiento < hoy).length
+  const resumen = resumenPorMoneda(pendientes.map((f) => ({ moneda: f.moneda, monto: Number(f.saldo) })), ['factura', 'facturas'])
 
   return (
     <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Cuentas por cobrar"
+        descripcion={resumen && `Por cobrar: ${resumen}${vencidas > 0 ? ` · ${vencidas === 1 ? 'una vencida' : `${vencidas} vencidas`}` : ''}.`}
         ayuda="Las facturas que registró Contabilidad, por código interno, de la que vence antes a la que vence después. Registra cada cobro con su voucher."
       />
-
-      {pendientes.length > 0 && (
-        <p className="mb-4 text-sm text-texto-suave">
-          Por cobrar:{' '}
-          {(['PEN', 'USD'] as const)
-            .filter((m) => saldoPor(m) > 0)
-            .map((m) => moneda(saldoPor(m), m))
-            .join(' y ')}{' '}
-          en {pendientes.length} {pendientes.length === 1 ? 'factura' : 'facturas'}.
-        </p>
-      )}
 
       {salidas.length > 0 && <RevisionesDeSalida revisiones={salidas} />}
       {solicitudes.length > 0 && <SolicitudesOT solicitudes={solicitudes} />}
@@ -130,16 +121,15 @@ export default async function PaginaPorCobrar() {
         </details>
       )}
 
-      <Tarjeta className="mt-5">
-        <TarjetaCabecera
-          titulo="Cotizaciones aprobadas"
-          ayuda="Lo que Gerencia aprobó, por código interno, con lo que Contabilidad ya facturó y lo cobrado."
-        />
-        <TarjetaCuerpo className="space-y-2">
-          {cotizaciones.length === 0 ? (
-            <p className="text-sm text-texto-suave">Todavía no hay cotizaciones aprobadas.</p>
-          ) : (
-            cotizaciones.map((c) => {
+      {/* Para saber qué viene por cobrar; sin ninguna, no ocupa la pantalla. */}
+      {cotizaciones.length > 0 && (
+        <Tarjeta className="mt-5">
+          <TarjetaCabecera
+            titulo="Cotizaciones aprobadas"
+            ayuda="Lo que Gerencia aprobó, por código interno, con lo que Contabilidad ya facturó y lo cobrado."
+          />
+          <TarjetaCuerpo className="space-y-2">
+            {cotizaciones.map((c) => {
               const m = codigo(c.moneda)
               const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
               return (
@@ -178,10 +168,10 @@ export default async function PaginaPorCobrar() {
                   <strong className="tabular">{total === null ? <span className="font-normal text-texto-suave">Sin total</span> : moneda(total, m)}</strong>
                 </div>
               )
-            })
-          )}
-        </TarjetaCuerpo>
-      </Tarjeta>
+            })}
+          </TarjetaCuerpo>
+        </Tarjeta>
+      )}
     </AvisoDeLaCaja>
   )
 }

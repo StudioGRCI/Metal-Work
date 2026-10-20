@@ -9,6 +9,7 @@ import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/
 import { serviciosPorPagar, type ServicioPorPagar } from '@/lib/datos/facturacion'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { resumenDetraccion } from '@/lib/dominio/detraccion'
+import { resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
 import { fecha, hoyLima, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -43,11 +44,14 @@ export default async function PaginaPagosDeServicio() {
     .filter((s) => !s.cancelada)
     .sort((a, b) => Number(b.estado === 'CONFORME') - Number(a.estado === 'CONFORME'))
   const pagados = servicios.filter((s) => s.cancelada)
+  const conformes = porPagar.filter((s) => s.estado === 'CONFORME').length
+  const resumen = resumenPorMoneda(porPagar.map((s) => ({ moneda: s.moneda, monto: saldoDe(s) })), ['orden', 'órdenes'])
 
   return (
     <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Pagos de servicio"
+        descripcion={resumen && `Por pagar: ${resumen}${conformes > 0 ? ` · ${conformes === 1 ? 'una conforme' : `${conformes} conformes`}` : ''}.`}
         ayuda="Las órdenes de servicio que aprobó Gerencia: paga cada una al proveedor con su voucher. Primero las que ya volvieron conformes."
       />
 
@@ -84,6 +88,8 @@ export default async function PaginaPagosDeServicio() {
   )
 }
 
+const saldoDe = (s: ServicioPorPagar) => Math.max(Number(s.monto ?? 0) - Number(s.pagado ?? 0), 0)
+
 function Servicio({
   servicio: s,
   paga,
@@ -98,7 +104,7 @@ function Servicio({
   cajas: Map<string, CajaDelPago> | undefined
 }) {
   const m = codigoMoneda(s.moneda)
-  const saldo = Math.max(Number(s.monto ?? 0) - Number(s.pagado ?? 0), 0)
+  const saldo = saldoDe(s)
   const estado = ESTADO_SERVICIO[s.estado ?? ''] ?? { etiqueta: s.estado ?? '—', tono: 'neutro' as const }
   const detraccion = resumenDetraccion(s.detraccion)
   return (
@@ -128,7 +134,8 @@ function Servicio({
             </p>
           )}
         </div>
-        <div className="text-right">
+        {/* En el teléfono baja bajo el proveedor, alineada a la izquierda como el resto. */}
+        <div className="sm:text-right">
           <p className="tabular text-sm font-semibold text-texto">{moneda(s.monto, m)}</p>
           {Number(s.pagado) > 0 && <p className="tabular text-xs text-texto-suave">Pagado {moneda(s.pagado, m)}</p>}
         </div>
@@ -174,7 +181,7 @@ function Servicio({
       )}
 
       {paga && !s.cancelada && s.id && (
-        <div className="mt-3">
+        <div className="mt-2">
           <PagarServicio
             ordenServicioId={s.id}
             numero={s.numero ?? 'orden de servicio'}

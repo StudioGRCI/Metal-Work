@@ -65,9 +65,10 @@ function CifrasDelArea({ titulo, cifras }: { titulo: string; cifras: Cifra[] }) 
     <section aria-label={titulo} className="mb-6">
       <h2 className="mb-2 text-base font-semibold text-texto">{titulo}</h2>
       {/* Dos columnas ya en el teléfono: apiladas de a una ocupaban una pantalla entera.
-          Con un número impar, la última toma la fila entera en vez de quedar
-          sola con un hueco al lado. */}
-      <div className={cn('grid grid-cols-2 gap-3 sm:gap-4 max-lg:[&>:last-child:nth-child(odd)]:col-span-2 [&>:last-child:nth-child(odd)_.rotulo-indicador]:min-h-0', cifras.length >= 5 ? 'lg:grid-cols-5' : cifras.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4')}>
+          Con un número impar, la primera —la cifra principal del puesto— toma la
+          fila entera en vez de dejar una sola con un hueco al lado: en media
+          columna, «S/ 129,037.50» de la caja partía el «S/» en otro renglón. */}
+      <div className={cn('grid grid-cols-2 gap-3 sm:gap-4 max-lg:[&>:first-child:nth-last-child(odd)]:col-span-2 [&>:first-child:nth-last-child(odd)_.rotulo-indicador]:min-h-0', cifras.length >= 5 ? 'lg:grid-cols-5' : cifras.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4')}>
         {cifras.map((c) => (
           <Indicador key={c.clave} icono={c.icono} titulo={c.titulo} valor={c.valor} pie={c.pie} tono={c.tono} href={c.href} />
         ))}
@@ -432,20 +433,20 @@ function TusModulos({ perfil }: { perfil: PerfilSesion }) {
   return (
     <section aria-label="Tus módulos" className="lg:hidden">
       <h2 className="mb-2 text-base font-semibold text-texto">Tus módulos</h2>
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Dos por fila y solo el nombre: con la explicación de cada uno, la lista de
+          Tesorería medía dos pantallas y repetía el menú «Más» (2026-10-20). Para qué
+          sirve cada módulo lo dice el botón «i» de su pantalla. */}
+      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {modulos.map((m) => {
           const Icono = m.icono
           return (
             <li key={m.ruta}>
               <Link href={m.ruta} className="group block h-full rounded-[var(--radius-base)]">
-                <Tarjeta className="flex h-full items-start gap-3 p-4 transition-colors group-hover:border-borde-fuerte group-hover:bg-superficie-2">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-base)] bg-acento-suave text-acento">
+                <Tarjeta className="flex h-full min-h-14 items-center gap-2.5 px-3 py-2.5 transition-colors group-hover:border-borde-fuerte group-hover:bg-superficie-2">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-base)] bg-acento-suave text-acento">
                     <Icono aria-hidden className="size-4" />
                   </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium text-texto">{m.titulo}</span>
-                    {m.descripcion && <span className="mt-0.5 block text-xs text-texto-suave">{m.descripcion}</span>}
-                  </span>
+                  <span className="min-w-0 text-sm leading-tight font-medium text-texto">{m.titulo}</span>
                 </Tarjeta>
               </Link>
             </li>
