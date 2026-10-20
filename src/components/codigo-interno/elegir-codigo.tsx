@@ -417,7 +417,8 @@ function EstadoDelCodigo({
     // por botón no pasa por el `minLength` del navegador.
     const nuevo = escrito.length >= 2 && (
       <button type="button" onClick={alUsarNuevo} className={SALIDA}>
-        <span className={SUBRAYADO}>
+        {/* Es la salida de último recurso: no pesa lo mismo que los códigos de la lista. */}
+        <span className="text-texto-suave underline underline-offset-2">
           Usar <span className="font-mono break-all">{escrito}</span> como código nuevo
         </span>
         <span className="font-normal text-texto-suave">(unidad nueva)</span>
@@ -441,7 +442,9 @@ function EstadoDelCodigo({
             <span className={SUBRAYADO}>
               Cambiar a <span className="font-mono break-all">{o.codigo}</span>
             </span>
-            {o.registrada && <span className="font-normal text-texto-suave">(del padrón de unidades)</span>}
+            {(o.registrada || abiertoIgual.registrada) && (
+              <span className="font-normal text-texto-suave">{o.registrada ? '(del padrón de unidades)' : '(no está en el padrón)'}</span>
+            )}
           </button>
         ))
       }
