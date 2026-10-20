@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { horaDeLima, MAXIMO_FOTOS_VEHICULO, MOTIVOS_VEHICULO } from '@/lib/dominio/requerimientos'
+import { horaDeLima, MAXIMO_FOTOS_VEHICULO, MOTIVOS_VEHICULO, motivoExigeCodigo } from '@/lib/dominio/requerimientos'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -43,8 +43,9 @@ export async function registrarIngresoVehiculo(_previo: unknown, formulario: For
       placa: z.string().max(15, 'La placa pasa de 15 caracteres.'),
       chasis: z.string().max(40, 'El número de chasis pasa de 40 caracteres.'),
       codigo_interno: z.string().max(60, 'El código interno pasa de 60 caracteres.'),
-      unidad: z.string().min(2, 'Describe el vehículo: tipo, marca o carrocería.').max(120, 'La descripción pasa de 120 caracteres.'),
-      empresa: z.string().min(2, 'Anota la empresa o el dueño del vehículo.').max(160, 'La empresa pasa de 160 caracteres.'),
+      // Con código interno, el vehículo y la empresa salen de la unidad (la base los pone).
+      unidad: z.string().max(120, 'La descripción pasa de 120 caracteres.'),
+      empresa: z.string().max(160, 'La empresa pasa de 160 caracteres.'),
       motivo: z.enum(MOTIVOS_VEHICULO, { message: 'Elige el motivo del ingreso.' }),
       ingreso_en: z.string(),
       observacion: z.string().max(500, 'La observación pasa de 500 caracteres.'),
@@ -64,8 +65,14 @@ export async function registrarIngresoVehiculo(_previo: unknown, formulario: For
     })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el ingreso.' }
   const d = analisis.data
-  if (!d.placa && !d.chasis && !d.codigo_interno) {
-    return { ok: false, error: 'Anota la placa, el número de chasis o el código interno.' }
+  if (motivoExigeCodigo(d.motivo)) {
+    if (!d.codigo_interno) return { ok: false, error: 'Elige el código interno: el trabajo del taller entra con su código y su OT.' }
+  } else {
+    if (!d.placa && !d.chasis && !d.codigo_interno) {
+      return { ok: false, error: 'Anota la placa, el número de chasis o el código interno.' }
+    }
+    if (d.unidad.length < 2) return { ok: false, error: 'Describe el vehículo: tipo, marca o carrocería.' }
+    if (d.empresa.length < 2) return { ok: false, error: 'Anota la empresa o el dueño del vehículo.' }
   }
   const cuando = d.ingreso_en ? horaDeLima(d.ingreso_en) : null
   if (d.ingreso_en && !cuando) return { ok: false, error: 'La fecha y hora de ingreso no es válida.' }

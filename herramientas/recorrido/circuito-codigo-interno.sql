@@ -427,8 +427,9 @@ begin
 
     -- ===================================== 4. NADIE MÁS ABRE CÓDIGOS INTERNOS
     v_paso := 'Las demás cuentas no ven Códigos internos';
+    -- Administración también los abre desde la migración 20261017400000.
     foreach v_txt in array v_puestos_vistos loop
-      continue when v_txt = 'GERENTE';
+      continue when v_txt in ('GERENTE', 'ADMINISTRACION');
       reset role; perform pg_temp.ensayo_como((k->>v_txt)::uuid);
       begin
         perform 1 from public.codigos_internos_resumen();

@@ -79,7 +79,6 @@ export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrh
           id: p.id,
           nombres: p.nombres,
           apellidos: p.apellidos,
-          dni: p.dni,
           cargo: p.cargo,
           hora_entrada: p.hora_entrada,
           hora_salida: p.hora_salida,
@@ -88,6 +87,7 @@ export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrh
         marca={marca}
         anula={consulta || (marca && esHoy)}
         esHoy={esHoy}
+        buscaPorDni={marca || puede(perfil, 'rrhh.personal')}
       />
     </>
   )

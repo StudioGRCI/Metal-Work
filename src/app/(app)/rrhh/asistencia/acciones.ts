@@ -70,3 +70,20 @@ export async function anularAsistencia(_previo: unknown, formulario: FormData): 
   revalidatePath('/rrhh/tardanzas')
   return { ok: true, mensaje: 'Marca anulada. Queda con su motivo.' }
 }
+
+/**
+ * La portería escribe los 8 dígitos del DNI y la base le dice quién es, sin
+ * que el número de nadie llegue al celular (migración 20261020165000). Mismo
+ * permiso que `asistencia_buscar_por_dni`.
+ */
+export async function buscarPorDni(dni: string): Promise<{ id: string | null; error?: string }> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ['asistencia.marcar', 'rrhh.personal'])) return { id: null, error: 'Busca por nombre o apellido.' }
+  const limpio = dni.replace(/\s/g, '')
+  if (!/^\d{8}$/.test(limpio)) return { id: null, error: 'Escribe los 8 dígitos del DNI.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('asistencia_buscar_por_dni', { p_dni: limpio })
+  if (error) return { id: null, error: mensajeDeError(error) }
+  return { id: data ?? null }
+}

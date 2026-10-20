@@ -165,12 +165,12 @@ async function registrarPermiso(pagina, persona, horas, motivo) {
 
   await pagina.goto(`${BASE}/rrhh/tardanzas?mes=${mesAnterior}`, { waitUntil: 'networkidle' })
   // Persona | Días | Tardanzas | Minutos | Descuento
-  const [, diasAna, vecesAna, , descuentoAna] = await celdas(pagina.locator(`tr[data-tardanzas="${ana.dni}"]`))
+  const [, diasAna, vecesAna, , descuentoAna] = await celdas(pagina.locator(`tr[data-tardanzas="${ana.id}"]`))
   comprobar(
     diasAna === '7' && vecesAna.startsWith('7') && descuentoAna.startsWith('10 %') && /S\/\s?300[.,]00/.test(descuentoAna),
     `Ana: 7 tardanzas, 10 %, S/ 300.00 (${diasAna} · ${vecesAna} · ${descuentoAna})`,
   )
-  const [, , vecesBeto, , descuentoBeto] = await celdas(pagina.locator(`tr[data-tardanzas="${beto.dni}"]`))
+  const [, , vecesBeto, , descuentoBeto] = await celdas(pagina.locator(`tr[data-tardanzas="${beto.id}"]`))
   comprobar(vecesBeto === '2Le falta 1 para el descuento' && descuentoBeto === '—', `Beto: 2 tardanzas no descuentan (${vecesBeto} · ${descuentoBeto})`)
   const descripcion = await texto(pagina.locator('main p', { hasText: 'Cada 3 tardanzas' }))
   comprobar(descripcion.includes('5 %'), `la pantalla dice la regla (${descripcion.slice(0, 120)})`)
@@ -258,7 +258,7 @@ async function registrarPermiso(pagina, persona, horas, motivo) {
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.gerencia)
   await pagina.goto(`${BASE}/rrhh/tardanzas?mes=${mesAnterior}`, { waitUntil: 'networkidle' })
-  const [, , , , descuentoAna] = await celdas(pagina.locator(`tr[data-tardanzas="${ana.dni}"]`))
+  const [, , , , descuentoAna] = await celdas(pagina.locator(`tr[data-tardanzas="${ana.id}"]`))
   comprobar(descuentoAna === '10 %', `Gerencia ve el 10 % sin el monto (${descuentoAna})`)
   comprobar((await pagina.getByRole('button', { name: 'Guardar la regla' }).count()) === 0, 'Gerencia no cambia la regla')
   await pagina.goto(`${BASE}/rrhh/permisos`, { waitUntil: 'networkidle' })

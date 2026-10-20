@@ -160,6 +160,9 @@ let registroId = null
   const sueltasAntes = Number((await consulta(`select count(*) from storage.objects where bucket_id = 'fotos-vehiculos'`))[0].count)
   await pagina.getByRole('button', { name: 'Registrar ingreso' }).click()
   let v = pagina.locator('[role="dialog"]')
+  // Desde el 2026-10-20 el motivo va primero, y el trabajo del taller entra con
+  // su código y su OT (eso lo prueba probar-vehiculo-con-codigo.mjs): aquí, cochera.
+  await v.locator('#veh-motivo').selectOption('COCHERA')
   await v.locator('input[type="file"]:not([capture])').setInputFiles(join(fotos, 'suelta.jpg'))
   await esperarSubidas(pagina)
   const conSuelta = Number((await consulta(`select count(*) from storage.objects where bucket_id = 'fotos-vehiculos'`))[0].count)
@@ -172,11 +175,11 @@ let registroId = null
 
   await pagina.getByRole('button', { name: 'Registrar ingreso' }).click()
   v = pagina.locator('[role="dialog"]')
+  await v.locator('#veh-motivo').selectOption('COCHERA')
   await v.locator('#veh-placa').fill(placa.toLowerCase())
   await v.locator('#veh-codigo').fill(CODIGO)
   await v.locator('#veh-unidad').fill('Tolva 18 m3 Volvo FMX')
   await v.locator('#veh-empresa').fill('EMPRESA DE PRUEBA DEL BANCO')
-  await v.locator('#veh-motivo').selectOption('MANTENIMIENTO')
   await v.locator('#veh-obs').fill('Ingresa con llanta baja')
   const registrar = v.getByRole('button', { name: 'Registrar ingreso' })
   comprobar(await registrar.isDisabled(), 'sin fotos, «Registrar ingreso» no se deja tocar')

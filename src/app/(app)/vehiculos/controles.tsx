@@ -19,8 +19,22 @@ type Paso = 'SALIDA' | 'ANULAR'
  * Lo que se marca en un vehículo que está en planta: que salió, con sus fotos,
  * o que el ingreso se anotó mal. Si la ventana de la salida se cierra sin
  * registrar, las fotos que ya subieron se retiran de Storage.
+ *
+ * `bloqueoSalida` es lo que la base dice que le falta para salir (el 100 % del
+ * avance de su código y la revisión de Tesorería): mientras haya algo, el botón
+ * queda apagado y dice por qué. La base lo vuelve a exigir al registrar.
  */
-export function ControlesVehiculo({ id, nombre, cuentaId }: { id: string; nombre: string; cuentaId: string }) {
+export function ControlesVehiculo({
+  id,
+  nombre,
+  cuentaId,
+  bloqueoSalida = null,
+}: {
+  id: string
+  nombre: string
+  cuentaId: string
+  bloqueoSalida?: string | null
+}) {
   const [paso, setPaso] = useState<Paso | null>(null)
   const [fotos, setFotos] = useState<FotoLista[]>([])
   const salida = useEnvio(registrarSalidaVehiculo, () => {
@@ -44,10 +58,17 @@ export function ControlesVehiculo({ id, nombre, cuentaId }: { id: string; nombre
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
+      {bloqueoSalida && (
+        <p id={`veh-bloqueo-${id}`} className="basis-full text-right text-[11px] text-texto-suave sm:max-w-xs sm:basis-auto" data-bloqueo-salida>
+          {bloqueoSalida}
+        </p>
+      )}
       <Boton
         type="button"
         variante="secundario"
         tamano="sm"
+        disabled={Boolean(bloqueoSalida)}
+        aria-describedby={bloqueoSalida ? `veh-bloqueo-${id}` : undefined}
         onClick={() => {
           setFotos([])
           setPaso('SALIDA')

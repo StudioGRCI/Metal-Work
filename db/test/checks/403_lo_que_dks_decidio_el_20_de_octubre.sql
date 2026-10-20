@@ -9,7 +9,7 @@
 --     sin huecos, y la de consumibles no lleva (20261020162000);
 --   · el costo por hora y el DNI viven fuera de `usuarios`: los lee Recursos
 --     Humanos y quien administra el personal, nadie más, ni en la auditoría
---     (20261020163000).
+--     (20261020163000), y los cambia solo Recursos Humanos (20261020165000).
 --
 -- Termina en rollback.
 \set ON_ERROR_STOP on
@@ -192,28 +192,58 @@ select test.afirmar(
   and (select costo_hora = 12 from public.usuario_datos_reservados where usuario_id = :'operario_id'),
   'al dar de alta, el costo por hora pasa a la tabla reservada y no queda en usuarios');
 
--- El alta real, con la función de la pantalla de Personal.
+-- El alta real, con la función de la pantalla de Personal. Desde la
+-- 20261020165000 el administrador da de alta la cuenta sin el DNI ni el costo:
+-- los pone Recursos Humanos.
 select test.como_usuario(:'admin_id');
 set local role authenticated;
+select test.debe_fallar($$
+  select public.crear_personal('Leo', 'Soldador', 'soldadura403b@demo.pe', 'Clave-403-larga',
+    (select id from public.roles where codigo = 'OPERARIO'), (select id from public.sedes where codigo = 'QA403'),
+    null, 'Soldador', '41255679', null, true, 15)
+$$, 'el administrador no pone el DNI ni el costo al dar de alta', 'Recursos Humanos');
 select public.crear_personal('Lia', 'Soldadora', 'soldadura403@demo.pe', 'Clave-403-larga',
-  (select id from public.roles where codigo = 'OPERARIO'), :'sede_id', null, 'Soldadora', '41255678', null, true, 15) as lia_id \gset
+  (select id from public.roles where codigo = 'OPERARIO'), :'sede_id', null, 'Soldadora', null, null, true, 0) as lia_id \gset
 reset role;
 select set_config('prueba.lia', :'lia_id', true);
+
+select test.como_usuario(:'rrhh_id');
+set local role authenticated;
+do $$
+declare v_n integer;
+begin
+  insert into public.usuario_datos_reservados (usuario_id, documento, costo_hora)
+  values (current_setting('prueba.lia')::uuid, '41255678', 15);
+  get diagnostics v_n = row_count;
+  perform test.afirmar(v_n = 1, 'Recursos Humanos pone el DNI y el costo de la cuenta');
+end $$;
+reset role;
 select test.afirmar(
   (select costo_hora = 0 and documento is null from public.usuarios where id = :'lia_id')
   and (select costo_hora = 15 and documento = '41255678' from public.usuario_datos_reservados where usuario_id = :'lia_id'),
-  'el alta de Personal guarda el DNI y el costo en la tabla reservada');
+  'quedan en la tabla reservada, no en usuarios');
 
--- Una pantalla vieja que escribe en usuarios: el dato se pasa solo.
+-- El camino viejo, escribir en usuarios, ya no los cambia: el administrador
+-- pasa la protección de usuarios y lo frena la de los datos reservados.
 select test.como_usuario(:'admin_id');
 set local role authenticated;
-update public.usuarios set costo_hora = 18, telefono = '999111222' where id = :'lia_id';
+select test.debe_fallar($$
+  update public.usuarios set costo_hora = 18 where id = current_setting('prueba.lia')::uuid
+$$, 'el administrador no cambia el costo por hora por usuarios', 'Recursos Humanos');
+do $$
+declare v_n integer;
+begin
+  update public.usuario_datos_reservados set costo_hora = 18 where usuario_id = current_setting('prueba.lia')::uuid;
+  get diagnostics v_n = row_count;
+  perform test.afirmar(v_n = 0, 'ni en la tabla reservada');
+  perform test.afirmar((select costo_hora = 15 from public.usuario_datos_reservados where usuario_id = current_setting('prueba.lia')::uuid),
+    'pero el administrador sí los ve');
+end $$;
 update public.usuarios set telefono = '999111223' where id = :'lia_id';
 reset role;
 select test.afirmar(
-  (select costo_hora = 0 from public.usuarios where id = :'lia_id')
-  and (select costo_hora = 18 and documento = '41255678' from public.usuario_datos_reservados where usuario_id = :'lia_id'),
-  'lo que se escribe en usuarios se pasa a la tabla reservada, y editar otra cosa no borra el DNI');
+  (select costo_hora = 15 and documento = '41255678' from public.usuario_datos_reservados where usuario_id = :'lia_id'),
+  'editar otra cosa de la cuenta no borra el DNI ni el costo');
 
 select test.como_usuario(:'operario_id');
 set local role authenticated;
@@ -231,9 +261,9 @@ select test.afirmar((select count(*) from public.usuario_datos_reservados where 
 do $$
 declare v_n integer;
 begin
-  update public.usuario_datos_reservados set costo_hora = 1 where usuario_id = current_setting('prueba.lia')::uuid;
+  update public.usuario_datos_reservados set costo_hora = 16 where usuario_id = current_setting('prueba.lia')::uuid;
   get diagnostics v_n = row_count;
-  perform test.afirmar(v_n = 0, 'Recursos Humanos no los cambia: los cambia quien administra el personal');
+  perform test.afirmar(v_n = 1, 'Recursos Humanos los cambia');
 end $$;
 reset role;
 

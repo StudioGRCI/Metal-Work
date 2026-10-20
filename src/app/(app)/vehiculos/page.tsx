@@ -6,7 +6,7 @@ import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { cargarVehiculos, type RegistroVehiculo } from '@/lib/datos/vehiculos'
+import { cargarVehiculos, codigosParaIngreso, estadosDeSalida, type EstadoDeSalida, type RegistroVehiculo } from '@/lib/datos/vehiculos'
 import { MOTIVO_VEHICULO } from '@/lib/dominio/requerimientos'
 import { fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -27,6 +27,10 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
   const params = await searchParams
   const vista = params.vista === 'historial' ? 'historial' : 'en_planta'
   const registros = await cargarVehiculos(vista)
+  // Lo que le falta a cada vehículo de trabajo para salir, y los códigos con OT
+  // que puede elegir quien registra el ingreso.
+  const enPlanta = registros.filter((r) => !r.salida_en && !r.anulado_en).map((r) => r.id)
+  const [estados, codigos] = await Promise.all([estadosDeSalida(enPlanta), registra ? codigosParaIngreso() : Promise.resolve([])])
 
   return (
     <>
@@ -34,7 +38,7 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
         titulo="Ingreso y salida de vehículos"
         ayuda="Cada vez que un vehículo entra a la planta —para fabricación, mantenimiento, garantía o de vuelta del arenado— y cuándo sale, con fotos de cómo entró y cómo salió. Reemplaza el seguimiento de portería en Excel."
         migas={[{ titulo: 'Vehículos' }]}
-        acciones={registra && <NuevoIngresoVehiculo cuentaId={perfil.id} />}
+        acciones={registra && <NuevoIngresoVehiculo cuentaId={perfil.id} codigos={codigos} />}
       />
 
       <Vistas
@@ -69,7 +73,9 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
                 descripcion={registra ? 'Cuando entre uno, anótalo con «Registrar ingreso».' : 'El área de Requerimientos registra cada ingreso.'}
               />
             ) : (
-              registros.map((r) => <FilaVehiculo key={r.id} registro={r} registra={registra} cuentaId={perfil.id} />)
+              registros.map((r) => (
+                <FilaVehiculo key={r.id} registro={r} registra={registra} cuentaId={perfil.id} estado={estados.get(r.id)} />
+              ))
             )}
           </tbody>
         </Tabla>
@@ -78,7 +84,17 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
   )
 }
 
-function FilaVehiculo({ registro: r, registra, cuentaId }: { registro: RegistroVehiculo; registra: boolean; cuentaId: string }) {
+function FilaVehiculo({
+  registro: r,
+  registra,
+  cuentaId,
+  estado,
+}: {
+  registro: RegistroVehiculo
+  registra: boolean
+  cuentaId: string
+  estado: EstadoDeSalida | undefined
+}) {
   const motivo = MOTIVO_VEHICULO[r.motivo]
   const nombre = r.placa ?? r.chasis ?? r.codigo_interno ?? 'vehículo'
   const anulado = r.anulado_en !== null
@@ -123,11 +139,20 @@ function FilaVehiculo({ registro: r, registra, cuentaId }: { registro: RegistroV
         ) : anulado ? (
           <Insignia tono="peligro">Anulado</Insignia>
         ) : (
-          <Insignia tono="aviso">En planta</Insignia>
+          <>
+            <Insignia tono="aviso">En planta</Insignia>
+            {estado?.exige && (
+              <p className="tabular mt-1 text-[11px] text-texto-suave" data-avance-salida={estado.avance ?? 0}>
+                Avance {estado.avance ?? 0} %{estado.avance === 100 && estado.falta_para_salir ? ' · falta Tesorería' : ''}
+              </p>
+            )}
+          </>
         )}
       </TD>
       <TD className="text-right align-top">
-        {registra && !r.salida_en && !anulado && <ControlesVehiculo id={r.id} nombre={nombre} cuentaId={cuentaId} />}
+        {registra && !r.salida_en && !anulado && (
+          <ControlesVehiculo id={r.id} nombre={nombre} cuentaId={cuentaId} bloqueoSalida={estado?.falta_para_salir ?? null} />
+        )}
       </TD>
     </TR>
   )

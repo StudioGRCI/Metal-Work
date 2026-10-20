@@ -20,6 +20,7 @@ import {
   HandCoins,
   Handshake,
   Hash,
+  IdCard,
   Landmark,
   Layers,
   LayoutDashboard,
@@ -481,6 +482,7 @@ export const NAVEGACION = [
     titulo: 'Recursos Humanos',
     items: [
       { titulo: 'Personal', ruta: '/rrhh/personal', icono: Users, permiso: ['rrhh.personal', 'asistencia.ver'], descripcion: 'La ficha de cada persona: datos, cuenta de pago y horario', disponible: true },
+      { titulo: 'DNI y costo de las cuentas', ruta: '/rrhh/cuentas', icono: IdCard, permiso: 'rrhh.personal', descripcion: 'El DNI y el costo por hora de cada cuenta del sistema', disponible: true },
       { titulo: 'Asistencia', ruta: '/rrhh/asistencia', icono: ClipboardCheck, permiso: ['asistencia.marcar', 'asistencia.ver'], descripcion: 'Ingreso y salida de cada persona, marcados en portería', disponible: true },
       { titulo: 'Tardanzas', ruta: '/rrhh/tardanzas', icono: Clock, permiso: ['asistencia.ver', 'rrhh.personal'], descripcion: 'Tardanzas del mes: cada tres, un descuento del sueldo', disponible: true },
       { titulo: 'Permisos', ruta: '/rrhh/permisos', icono: CalendarClock, permiso: ['rrhh.permisos', 'asistencia.ver'], descripcion: 'Las horas de permiso de cada persona, justificadas con sus horas extras', disponible: true },
@@ -721,7 +723,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       { titulo: 'Recursos Humanos', rutas: ['/reportes-diarios', '/rrhh/horas-extras', '/planilla-diaria'] },
       {
         titulo: 'Control del personal',
-        rutas: ['/rrhh/personal', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh/permisos', '/rrhh/observaciones'],
+        rutas: ['/rrhh/personal', '/rrhh/cuentas', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh/permisos', '/rrhh/observaciones'],
       },
       { titulo: 'Planillas y costeo', rutas: ['/rrhh', '/rrhh/costeo', '/rrhh/pagos-oficina'] },
     ],
@@ -880,6 +882,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/requerimientos/gasto-por-codigo', corto: 'Gasto' },
   { ruta: '/rrhh/asistencia', corto: 'Asistencia' },
   { ruta: '/rrhh/personal', corto: 'Personal' },
+  { ruta: '/rrhh/cuentas', corto: 'Cuentas' },
   { ruta: '/rrhh/tardanzas', corto: 'Tardanzas' },
   { ruta: '/rrhh/permisos', corto: 'Permisos' },
   { ruta: '/rrhh/costeo', corto: 'Costeo' },

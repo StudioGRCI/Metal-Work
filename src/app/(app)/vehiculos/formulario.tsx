@@ -15,7 +15,14 @@ import {
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import { BUCKET_FOTOS_VEHICULO, MAXIMO_FOTOS_VEHICULO, MAXIMO_MB_FOTO_VEHICULO, MOTIVO_VEHICULO } from '@/lib/dominio/requerimientos'
+import type { CodigoParaIngreso } from '@/lib/datos/vehiculos'
+import {
+  BUCKET_FOTOS_VEHICULO,
+  MAXIMO_FOTOS_VEHICULO,
+  MAXIMO_MB_FOTO_VEHICULO,
+  MOTIVO_VEHICULO,
+  motivoExigeCodigo,
+} from '@/lib/dominio/requerimientos'
 import { useEnvio } from '@/lib/envio'
 
 import { registrarIngresoVehiculo } from './acciones'
@@ -25,7 +32,7 @@ import { registrarIngresoVehiculo } from './acciones'
  * formulario: si la ventana se cierra sin registrar, las que ya subieron se
  * retiran de Storage; si se registra, quedan con el ingreso.
  */
-export function NuevoIngresoVehiculo({ cuentaId }: { cuentaId: string }) {
+export function NuevoIngresoVehiculo({ cuentaId, codigos }: { cuentaId: string; codigos: CodigoParaIngreso[] }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -63,6 +70,7 @@ export function NuevoIngresoVehiculo({ cuentaId }: { cuentaId: string }) {
         <FormularioIngreso
           key={vez}
           cuentaId={cuentaId}
+          codigos={codigos}
           fotos={fotos}
           setFotos={setFotos}
           alTerminar={(mensaje) => {
@@ -80,11 +88,13 @@ export function NuevoIngresoVehiculo({ cuentaId }: { cuentaId: string }) {
 
 function FormularioIngreso({
   cuentaId,
+  codigos,
   fotos,
   setFotos,
   alTerminar,
 }: {
   cuentaId: string
+  codigos: CodigoParaIngreso[]
   fotos: FotoLista[]
   setFotos: Dispatch<SetStateAction<FotoLista[]>>
   alTerminar: (mensaje: string) => void
@@ -92,37 +102,32 @@ function FormularioIngreso({
   // Decidido aquí: un reintento manda el mismo y la base no duplica el ingreso.
   // Las fotos suben a la carpeta de este ingreso antes de registrarlo.
   const [id] = useState(() => crypto.randomUUID())
+  const [motivo, setMotivo] = useState('')
+  const [codigo, setCodigo] = useState('')
   const { alEnviar, enviando, error } = useEnvio(registrarIngresoVehiculo, (r) => alTerminar(r.mensaje ?? 'Ingreso registrado.'))
   const subiendo = haySubiendo(fotos)
   const fallidas = hayFallidas(fotos)
   const listas = fotosParaEnviar(fotos).length
+  // El trabajo del taller entra con el código de una unidad con OT, y de ahí
+  // salen el cliente y el vehículo (migración 20261020166000).
+  const conCodigo = motivoExigeCodigo(motivo)
+  const elegido = conCodigo ? codigos.find((c) => c.codigo_interno === codigo) : undefined
+  const libres = codigos.filter((c) => !c.en_planta)
+  const faltaCodigo = conCodigo && !elegido
   return (
     <form
       onSubmit={(e) => alEnviar(e, (datos) => datos.set('fotos', JSON.stringify(fotosParaEnviar(fotos).map((f) => f.ruta_storage))))}
       className="space-y-4"
     >
       <input type="hidden" name="operacion_id" value={id} />
-      <p className="text-xs text-texto-suave">Anota al menos uno de los tres: placa, chasis o código interno.</p>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Campo etiqueta="Placa" htmlFor="veh-placa">
-          <Entrada id="veh-placa" name="placa" maxLength={15} autoComplete="off" placeholder="ABC-123" className="uppercase" />
-        </Campo>
-        <Campo etiqueta="N.º de chasis" htmlFor="veh-chasis" ayuda="Para un chasis nuevo que todavía no tiene placa.">
-          <Entrada id="veh-chasis" name="chasis" maxLength={40} autoComplete="off" className="uppercase" />
-        </Campo>
-        <Campo etiqueta="Código interno" htmlFor="veh-codigo" ayuda="El de la unidad, si ya lo tiene.">
-          <Entrada id="veh-codigo" name="codigo_interno" maxLength={60} autoComplete="off" placeholder="PLA_SR_O4_1_26/28" />
-        </Campo>
-      </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Campo etiqueta="Vehículo" htmlFor="veh-unidad" requerido>
-          <Entrada id="veh-unidad" name="unidad" required minLength={2} maxLength={120} placeholder="Tolva 18 m³ Volvo FMX" />
-        </Campo>
-        <Campo etiqueta="Empresa" htmlFor="veh-empresa" requerido ayuda="El cliente o dueño del vehículo.">
-          <Entrada id="veh-empresa" name="empresa" required minLength={2} maxLength={160} />
-        </Campo>
-        <Campo etiqueta="Motivo" htmlFor="veh-motivo" requerido>
-          <Seleccion id="veh-motivo" name="motivo" required defaultValue="">
+        <Campo
+          etiqueta="Motivo"
+          htmlFor="veh-motivo"
+          requerido
+          ayuda={motivo ? MOTIVO_VEHICULO[motivo]?.descripcion : 'Primero el motivo: el trabajo del taller entra con su código interno.'}
+        >
+          <Seleccion id="veh-motivo" name="motivo" required value={motivo} onChange={(e) => setMotivo(e.target.value)}>
             <option value="" disabled>
               Elige el motivo
             </option>
@@ -137,23 +142,108 @@ function FormularioIngreso({
           <Entrada id="veh-ingreso" name="ingreso_en" type="datetime-local" />
         </Campo>
       </div>
-      <Campo etiqueta="Observación" htmlFor="veh-obs">
-        <AreaTexto id="veh-obs" name="observacion" maxLength={500} rows={2} placeholder="Cómo llega: llanta baja, sin espejo derecho, con documentos…" />
-      </Campo>
-      <FotosDelMomento
-        titulo="Fotos al entrar"
-        fotos={fotos}
-        setFotos={setFotos}
-        prefijoRuta={`${cuentaId}/${id}/ingreso`}
-      />
+
+      {conCodigo ? (
+        <>
+          <Campo
+            etiqueta="Código interno"
+            htmlFor="veh-codigo"
+            requerido
+            ayuda={
+              libres.length === 0
+                ? undefined
+                : 'Solo los códigos con su OT. El cliente y el vehículo se cargan solos.'
+            }
+          >
+            <Seleccion id="veh-codigo" name="codigo_interno" required value={codigo} onChange={(e) => setCodigo(e.target.value)}>
+              <option value="" disabled>
+                {libres.length === 0 ? 'No hay códigos con OT por ingresar' : 'Elige el código interno'}
+              </option>
+              {codigos.map((c) => (
+                <option key={c.codigo_interno} value={c.codigo_interno} disabled={c.en_planta}>
+                  {c.codigo_interno} · OT {c.orden_numero} · {c.cliente}
+                  {c.en_planta ? ' (ya está en la planta)' : ''}
+                </option>
+              ))}
+            </Seleccion>
+          </Campo>
+          {libres.length === 0 && (
+            <p className="text-sm text-texto-suave">
+              Un vehículo entra a trabajo solo con su código interno y su OT, y el código nace cuando Gerencia aprueba la cotización con su OT. Si
+              solo se guarda, elige «Cochera».
+            </p>
+          )}
+          {elegido && (
+            <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-3 text-sm" data-codigo-elegido={elegido.codigo_interno}>
+              <p className="font-medium text-texto">{elegido.unidad}</p>
+              <p className="text-texto-suave">
+                {elegido.cliente} · OT <span className="tabular">{elegido.orden_numero}</span>
+              </p>
+            </div>
+          )}
+          {elegido && (
+            // La llave es el código: al cambiarlo, la placa y el chasis vuelven a los de esa unidad.
+            <div key={elegido.codigo_interno} className="grid gap-4 sm:grid-cols-2">
+              <Campo etiqueta="Placa" htmlFor="veh-placa" ayuda={elegido.placa ? 'La de la unidad.' : 'Si ya tiene.'}>
+                <Entrada id="veh-placa" name="placa" maxLength={15} autoComplete="off" defaultValue={elegido.placa ?? ''} className="uppercase" />
+              </Campo>
+              <Campo etiqueta="N.º de chasis" htmlFor="veh-chasis" ayuda={elegido.chasis ? 'El de la unidad.' : 'Si es un chasis nuevo.'}>
+                <Entrada id="veh-chasis" name="chasis" maxLength={40} autoComplete="off" defaultValue={elegido.chasis ?? ''} className="uppercase" />
+              </Campo>
+            </div>
+          )}
+        </>
+      ) : motivo ? (
+        <>
+          <p className="text-xs text-texto-suave">Anota al menos uno de los tres: placa, chasis o código interno.</p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Campo etiqueta="Placa" htmlFor="veh-placa">
+              <Entrada id="veh-placa" name="placa" maxLength={15} autoComplete="off" placeholder="ABC-123" className="uppercase" />
+            </Campo>
+            <Campo etiqueta="N.º de chasis" htmlFor="veh-chasis" ayuda="Para un chasis nuevo que todavía no tiene placa.">
+              <Entrada id="veh-chasis" name="chasis" maxLength={40} autoComplete="off" className="uppercase" />
+            </Campo>
+            <Campo etiqueta="Código interno" htmlFor="veh-codigo" ayuda="Si tiene uno.">
+              <Entrada id="veh-codigo" name="codigo_interno" maxLength={60} autoComplete="off" />
+            </Campo>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Campo etiqueta="Vehículo" htmlFor="veh-unidad" requerido>
+              <Entrada id="veh-unidad" name="unidad" required minLength={2} maxLength={120} placeholder="Camioneta Toyota Hilux" />
+            </Campo>
+            <Campo etiqueta="Empresa" htmlFor="veh-empresa" requerido ayuda="El cliente o dueño del vehículo.">
+              <Entrada id="veh-empresa" name="empresa" required minLength={2} maxLength={160} />
+            </Campo>
+          </div>
+        </>
+      ) : null}
+
+      {motivo && (
+        <>
+          <Campo etiqueta="Observación" htmlFor="veh-obs">
+            <AreaTexto id="veh-obs" name="observacion" maxLength={500} rows={2} placeholder="Cómo llega: llanta baja, sin espejo derecho, con documentos…" />
+          </Campo>
+          <FotosDelMomento
+            titulo="Fotos al entrar"
+            fotos={fotos}
+            setFotos={setFotos}
+            prefijoRuta={`${cuentaId}/${id}/ingreso`}
+          />
+        </>
+      )}
       {error && (
         <p role="alert" className="text-sm text-peligro">
           {error}
         </p>
       )}
-      <AvisoFotos subiendo={subiendo} fallidas={fallidas} listas={listas} momento="entrar" />
+      {motivo && <AvisoFotos subiendo={subiendo} fallidas={fallidas} listas={listas} momento="entrar" />}
       <div className="flex justify-end">
-        <Boton type="submit" cargando={enviando} disabled={subiendo || fallidas || listas === 0} className="w-full sm:w-auto">
+        <Boton
+          type="submit"
+          cargando={enviando}
+          disabled={!motivo || faltaCodigo || subiendo || fallidas || listas === 0}
+          className="w-full sm:w-auto"
+        >
           {subiendo ? 'Esperando las fotos…' : 'Registrar ingreso'}
         </Boton>
       </div>

@@ -161,6 +161,15 @@ export function apruebaSinOrden(perfil: PerfilSesion | null): boolean {
 }
 
 /**
+ * Si cambia el DNI y el costo por hora de las cuentas: solo Recursos Humanos,
+ * tampoco el administrador, que los ve (migración 20261020165000). Por eso no
+ * pasa por `puede`, que al administrador le dice que sí a todo.
+ */
+export function cambiaDatosReservados(perfil: PerfilSesion | null): boolean {
+  return Boolean(perfil?.permisos.includes('rrhh.personal'))
+}
+
+/**
  * Si esta persona ve «Eliminar» en un reporte del día. Gemelo de las políticas
  * de DELETE (migraciones 099 y 20261020160000): quien aprueba los reportes
  * del taller y el autor lo borran mientras no esté aprobado; el aprobado queda

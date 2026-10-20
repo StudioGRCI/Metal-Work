@@ -26,9 +26,9 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
   const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const filtro = params.estado === 'todos' ? 'todos' : 'activos'
-  // Los periodos de quien volvió a entrar solo los lee RR. HH.
+  // Los periodos de quien volvió a entrar y el DNI solo los lee RR. HH.
   const [personal, areas, periodos] = await Promise.all([
-    listarTrabajadores(filtro),
+    listarTrabajadores(filtro, { conDni: gestiona }),
     areasParaPersonal(),
     gestiona ? periodosAnteriores() : Promise.resolve(new Map<string, { ingreso: string | null; baja: string }[]>()),
   ])
@@ -108,7 +108,7 @@ function FilaTrabajador({
         <p className="font-semibold text-texto">
           {t.apellidos}, {t.nombres}
         </p>
-        <p className="tabular text-xs text-texto-suave">DNI {t.dni}</p>
+        {t.dni && <p className="tabular text-xs text-texto-suave">DNI {t.dni}</p>}
         {(t.cargo || t.area) && (
           <p className="text-xs text-texto">
             {t.cargo ?? 'Sin cargo'}
