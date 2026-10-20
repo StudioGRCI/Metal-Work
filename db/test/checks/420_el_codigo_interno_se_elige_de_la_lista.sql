@@ -86,8 +86,13 @@ begin
                                              precio_unitario, moneda, registrado_en)
   values (gen_random_uuid(), 'INGRESO', v_m, 20, 'INGRESO_GENERAL', 'Compra de prueba 420', current_setting('prueba.almacenero')::uuid,
           10, 'PEN', now() - interval '1 hour');
-  -- El proveedor de la compra de la sección 3, como en el check 306.
-  insert into public.proveedores (id, numero_documento, razon_social) values (gen_random_uuid(), '20100047218', 'PROVEEDOR DE PRUEBA')
+  -- El proveedor de la compra de la sección 3, con un RUC inventado que pasa
+  -- `ruc_es_valido` (no el de una empresa real).
+  insert into public.proveedores (id, numero_documento, razon_social)
+  select gen_random_uuid(), r, 'PROVEEDOR DE PRUEBA 420'
+    from (select '2069' || lpad(n::text, 6, '0') || d::text as r from generate_series(420000, 420200) n, generate_series(0, 9) d) x
+   where public.ruc_es_valido(r)
+   order by r limit 1
   on conflict (tipo_documento, numero_documento) do update set activo = true;
   insert into storage.objects (bucket_id, name, owner_id, metadata)
   values ('evidencias-almacen', current_setting('prueba.almacenero') || '/' || current_setting('prueba.sal') || '.jpg',
@@ -252,7 +257,7 @@ select set_config('prueba.insumos',
   (select jsonb_agg(l.id order by r.numero) from public.requerimiento_lineas l join public.requerimientos r on r.id = l.requerimiento_id
     where r.id in (current_setting('prueba.rq')::uuid, current_setting('prueba.rq2')::uuid))::text, true);
 select set_config('prueba.proveedor',
-  (select id::text from public.proveedores where tipo_documento = 'RUC' and numero_documento = '20100047218'), true);
+  (select id::text from public.proveedores where razon_social = 'PROVEEDOR DE PRUEBA 420'), true);
 select pg_temp.como('comprador');
 set local role authenticated;
 select public.emitir_compra_de_requerimientos(current_setting('prueba.oc')::uuid,

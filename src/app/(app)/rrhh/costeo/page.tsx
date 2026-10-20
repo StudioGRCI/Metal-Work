@@ -50,7 +50,8 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
   const [tareos, personal, codigos, esperando] = await Promise.all([
     tareosDelMes(mes),
     listarTrabajadores('activos'),
-    codigosParaElegir(),
+    // La lista es para cargar horas: quien solo mira no la necesita.
+    edita ? codigosParaElegir() : Promise.resolve(null),
     horasEsperandoCosto(),
   ])
   const grupos = agrupar(tareos)

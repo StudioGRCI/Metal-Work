@@ -173,7 +173,6 @@ export function yaLlegoTodo(partes: readonly (PartesDelInsumo | null)[]): boolea
   return partes.length > 0 && partes.every((p) => p !== null && p.porLlegar === 0 && p.revisar === 0)
 }
 
-/** Lo que dice la insignia del RQ en compra cuando ya llegó todo (`yaLlegoTodo`). */
 /**
  * La compra del insumo ya entró al almacén y todavía falta: la OC se emitió por
  * menos de lo que faltaba (o su línea, compartida con otros RQ, no alcanzó a
@@ -190,6 +189,7 @@ export const COMPRA_CORTA: Def = {
   descripcion: 'La orden de compra ya entró entera y no alcanzó para todo el insumo.',
 }
 
+/** Lo que dice la insignia del RQ en compra cuando ya llegó todo (`yaLlegoTodo`). */
 export const YA_LLEGO_TODO: Def = {
   etiqueta: 'Ya llegó todo',
   tono: 'exito',
