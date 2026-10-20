@@ -28,7 +28,7 @@ export function CampoCodigoInterno({ id, codigos, valor }: { id: string; codigos
 }
 
 /**
- * Para qué área va el subcontrato: Producción o Acabados. Obligatoria al
+ * Para qué área va el subcontrato: Maestranza, Producción o Acabados. Obligatoria al
  * registrar; al corregir uno de antes que no la tiene, se puede dejar vacía.
  */
 export function CampoAreaSubcontrato({ id, valor, opcional = false }: { id: string; valor?: string | null; opcional?: boolean }) {
@@ -36,7 +36,7 @@ export function CampoAreaSubcontrato({ id, valor, opcional = false }: { id: stri
     <Campo etiqueta="Para qué área va" htmlFor={id} requerido={!opcional} ayuda={AYUDA_AREA_SUBCONTRATO}>
       <Seleccion id={id} name="area" required={!opcional} defaultValue={valor ?? ''} data-area-subcontrato>
         <option value="" disabled={!opcional}>
-          {opcional ? 'Sin área todavía' : 'Elige Producción o Acabados'}
+          {opcional ? 'Sin área todavía' : 'Elige el área'}
         </option>
         {AREAS_SUBCONTRATO.map((a) => (
           <option key={a.codigo} value={a.codigo}>

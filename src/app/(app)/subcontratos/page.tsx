@@ -82,7 +82,7 @@ export default async function PaginaSubcontratos({ searchParams }: { searchParam
     <>
       <EncabezadoPagina
         titulo="Subcontratos"
-        ayuda="Los trabajos que se le encargan a una persona de fuera, por código interno de la unidad y para Producción o Acabados, cuyo supervisor los ve sin montos. Contra cada uno se suben sus recibos por honorarios; Tesorería los paga y adjunta el voucher."
+        ayuda="Los trabajos que se le encargan a una persona de fuera, por código interno de la unidad y para Maestranza, Producción o Acabados, cuyo supervisor los ve sin montos y reporta su avance. Contra cada uno se suben sus recibos por honorarios; Tesorería los paga y adjunta el voucher."
         migas={[{ titulo: 'Administración' }, { titulo: 'Subcontratos' }]}
         acciones={gestiona && <NuevoSubcontrato subcontratistas={subcontratistas} codigos={codigos} />}
       />
