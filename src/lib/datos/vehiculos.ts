@@ -18,6 +18,8 @@ export type RegistroVehiculo = {
   observacion_ingreso: string | null
   salida_en: string | null
   observacion_salida: string | null
+  /** La salida fue al arenado externo, a medio trabajo (migración 20261020168000). */
+  sale_al_arenado: boolean
   anulado_en: string | null
   motivo_anulacion: string | null
   /** Cuántas fotos se tomaron al entrar y al salir (las de antes del 2026-10-15 entraron sin fotos). */
@@ -26,7 +28,7 @@ export type RegistroVehiculo = {
 }
 
 const COLUMNAS =
-  'id, placa, chasis, codigo_interno, unidad, empresa, motivo, ingreso_en, observacion_ingreso, salida_en, observacion_salida, anulado_en, motivo_anulacion'
+  'id, placa, chasis, codigo_interno, unidad, empresa, motivo, ingreso_en, observacion_ingreso, salida_en, observacion_salida, sale_al_arenado, anulado_en, motivo_anulacion'
 
 type FilaConFotos = Omit<RegistroVehiculo, 'fotos_ingreso' | 'fotos_salida'> & { fotos: { momento: string }[] | null }
 

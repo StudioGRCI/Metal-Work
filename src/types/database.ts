@@ -7830,6 +7830,7 @@ export type Database = {
           actualizado_en: string
           unidad_id: string | null
           orden_id: string | null
+          sale_al_arenado: boolean
         }
         Insert: {
           id?: string
@@ -7852,6 +7853,7 @@ export type Database = {
           actualizado_en?: string
           unidad_id?: string | null
           orden_id?: string | null
+          sale_al_arenado?: boolean
         }
         Update: {
           id?: string
@@ -7874,6 +7876,7 @@ export type Database = {
           actualizado_en?: string
           unidad_id?: string | null
           orden_id?: string | null
+          sale_al_arenado?: boolean
         }
         Relationships: [
           {
@@ -7907,7 +7910,7 @@ export type Database = {
           {
             foreignKeyName: "registro_vehiculos_unidad_id_fkey"
             columns: ["unidad_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "unidades"
             referencedColumns: ["id"]
           }
@@ -12384,6 +12387,12 @@ export type Database = {
         }
         Returns: null
       }
+      exigir_permiso_del_puesto: {
+        Args: {
+          p_permiso: string | null
+        }
+        Returns: null
+      }
       exigir_ver_codigos_de_diseno: {
         Args: Record<PropertyKey, never>
         Returns: null
@@ -13675,6 +13684,15 @@ export type Database = {
           p_trabajos: Json | null
           p_personal_general?: Json | null
           p_fotos?: Json | null
+        }
+        Returns: string
+      }
+      registrar_salida_al_arenado: {
+        Args: {
+          p_id: string | null
+          p_salida_en: string | null
+          p_observacion: string | null
+          p_fotos: Json | null
         }
         Returns: string
       }

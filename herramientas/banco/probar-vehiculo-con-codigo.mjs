@@ -240,10 +240,48 @@ let registroId = null
   await contexto.close()
 }
 
+// -------------------------- 5. Sale al arenado a medio trabajo y vuelve (168000)
+{
+  const { pagina, contexto, errores } = await entrar(CUENTAS.requerimientos, CELULAR)
+  await pagina.goto(`${BASE}/vehiculos/${registroId}`, { waitUntil: 'networkidle' })
+  comprobar(await pagina.getByRole('button', { name: 'Marcar salida' }).isDisabled(), 'a medio trabajo la salida final sigue apagada')
+  await pagina.getByRole('button', { name: 'Sale al arenado' }).click()
+  const v = pagina.locator('[role="dialog"]')
+  await v.locator('textarea').fill('Va al arenado externo')
+  await v.locator('input[type="file"]:not([capture])').setInputFiles(join(fotos, 'entra.jpg'))
+  await esperarSubidas(pagina)
+  await v.getByRole('button', { name: 'Registrar salida al arenado' }).click()
+  await pagina.locator('[role="status"]').waitFor({ timeout: 20000 }).catch(() => {})
+  const [r] = await consulta('select salida_en, sale_al_arenado from public.registro_vehiculos where id = $1', [registroId])
+  comprobar(r.salida_en !== null && r.sale_al_arenado === true, 'en la base: salió, y al arenado, sin el 100 % ni Tesorería')
+  await pagina.reload({ waitUntil: 'networkidle' })
+  comprobar(limpio(await pagina.locator('main').innerText()).includes('Salió al arenado'), 'el detalle dice que salió al arenado')
+  await pagina.screenshot({ path: join(CAPTURAS, 'vehiculo-salio-al-arenado.png'), fullPage: true })
+
+  // Vuelve: el código se ofrece otra vez y entra con el motivo Arenado.
+  await pagina.goto(`${BASE}/vehiculos`, { waitUntil: 'networkidle' })
+  await pagina.getByRole('button', { name: 'Registrar ingreso' }).click()
+  const w = pagina.locator('[role="dialog"]')
+  await w.locator('#veh-motivo').selectOption('ARENADO')
+  await w.locator('#veh-codigo').click()
+  await w.getByRole('option', { name: new RegExp(CODIGO.replace(/[/]/g, '\\/')) }).click()
+  await w.locator('input[type="file"]:not([capture])').setInputFiles(join(fotos, 'entra.jpg'))
+  await esperarSubidas(pagina)
+  await w.getByRole('button', { name: 'Registrar ingreso' }).click()
+  await pagina.locator('[role="status"]').waitFor({ timeout: 20000 }).catch(() => {})
+  const [vuelta] = await consulta(
+    `select motivo from public.registro_vehiculos where codigo_interno = $1 and salida_en is null and anulado_en is null`,
+    [CODIGO],
+  )
+  comprobar(vuelta?.motivo === 'ARENADO', 'vuelve del arenado con su mismo código')
+  comprobar(errores.length === 0, `sin errores de consola en la vuelta del arenado ${errores.join(' | ')}`)
+  await contexto.close()
+}
+
 await navegador.close()
 await base.end()
 if (fallas.length > 0) {
   console.error(`\n${fallas.length} comprobación(es) fallaron.`)
   process.exit(1)
 }
-console.log('\nTodo bien: el vehículo entra con su código y su OT, y la salida espera el 100 %.')
+console.log('\nTodo bien: el vehículo entra con su código y su OT, la salida espera el 100 % y al arenado sale y vuelve.')

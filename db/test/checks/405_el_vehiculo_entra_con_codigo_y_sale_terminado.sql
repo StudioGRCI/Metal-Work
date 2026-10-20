@@ -59,7 +59,7 @@ select set_config('prueba.hoy', ((now() at time zone 'America/Lima')::date)::tex
 do $$
 declare v text;
 begin
-  foreach v in array array['v1', 'v2', 'v3', 'v4', 'rev1', 'rev2', 'pdf'] loop
+  foreach v in array array['v1', 'v2', 'v3', 'v4', 'v5', 'rev1', 'rev2', 'pdf'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
   perform set_config('prueba.todo_ingreso', (select jsonb_object_agg(codigo, jsonb_build_object('ingreso', 'CONFORME'))::text
@@ -166,6 +166,21 @@ select test.debe_fallar(format($q$select public.solicitar_revision_salida(%L, %L
 select public.registrar_salida_vehiculo(pg_temp.id('v3'), null, null, pg_temp.foto('v3', 'salida'));
 select test.afirmar((select salida_en is not null from public.registro_vehiculos where id = pg_temp.id('v3')),
   'el de la cochera sale sin esperar avance ni Tesorería');
+-- Al arenado externo sale a medio trabajo y vuelve (migración 20261020168000).
+select test.debe_fallar(pg_temp.salida_sql('v4'), 'el de garantía en 0 % no sale con «Marcar salida»', 'va en 0 %');
+select public.registrar_salida_al_arenado(pg_temp.id('v4'), null, 'Sale al arenado', pg_temp.foto('v4', 'salida'));
+select test.afirmar((select salida_en is not null and sale_al_arenado from public.registro_vehiculos where id = pg_temp.id('v4')),
+  'pero sí sale al arenado, sin el 100 % ni Tesorería, y queda dicho');
+select test.afirmar(public.registrar_salida_al_arenado(pg_temp.id('v4'), null, 'Sale al arenado', '[]') = pg_temp.id('v4'),
+  'repetir la salida al arenado no hace otra');
+select test.debe_fallar(format($q$select public.registrar_salida_al_arenado(%L, null, null, '[]')$q$, pg_temp.txt('v3')),
+  'la cochera ya salió y no se vuelve salida al arenado', 'ya salió');
+select public.registrar_ingreso_vehiculo(pg_temp.id('v5'), null, null, 'CHK405_D_26/48', '', '', 'ARENADO', null, null,
+  pg_temp.foto('v5', 'ingreso'));
+select test.afirmar((select unidad_id from public.registro_vehiculos where id = pg_temp.id('v5'))
+                    = (select unidad_id from public.registro_vehiculos where id = pg_temp.id('v4')),
+  'vuelve del arenado con su mismo código');
+select test.debe_fallar(pg_temp.salida_sql('v5'), 'y la salida final sigue esperando el 100 %', 'va en 0 %');
 -- La ficha, cerrada y firmada, como pide el pedido a Tesorería.
 select public.guardar_ficha_vehiculo(pg_temp.id('v1'), 'CERRAR_INGRESO', jsonb_build_object(
   'marca', 'Volvo', 'conductor_ingreso', 'Juan Prueba', 'dni_ingreso', '00000000', 'fecha_ingreso', current_date,
@@ -265,6 +280,8 @@ select test.como_usuario(:'ventas_id');
 set local role authenticated;
 select test.debe_fallar($q$select * from public.vehiculos_codigos_para_ingreso()$q$,
   'Ventas no lista los códigos para el ingreso', 'vehiculos.registrar');
+select test.debe_fallar(format($q$select public.registrar_salida_al_arenado(%L, null, null, '[]')$q$, pg_temp.txt('v5')),
+  'ni saca un vehículo al arenado', 'vehiculos.registrar');
 select test.debe_fallar(format($q$select * from public.vehiculos_estado_de_salida(array[%L::uuid])$q$, pg_temp.txt('v1')),
   'ni el estado de la salida', 'No tiene permiso');
 select test.debe_fallar($q$select public.vehiculo_avance_del_codigo('CHK405_A_26/45')$q$,

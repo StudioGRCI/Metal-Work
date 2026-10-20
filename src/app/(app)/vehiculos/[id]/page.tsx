@@ -62,7 +62,15 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
         migas={[{ titulo: 'Vehículos', ruta: '/vehiculos' }, { titulo: nombre }]}
         acciones={
           registra &&
-          enPlanta && <ControlesVehiculo id={r.id} nombre={nombre} cuentaId={perfil.id} bloqueoSalida={estado?.falta_para_salir ?? null} />
+          enPlanta && (
+            <ControlesVehiculo
+              id={r.id}
+              nombre={nombre}
+              cuentaId={perfil.id}
+              bloqueoSalida={estado?.falta_para_salir ?? null}
+              alArenado={Boolean(estado?.exige)}
+            />
+          )
         }
       />
 
@@ -74,7 +82,7 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
               {anulado ? (
                 <Insignia tono="peligro">Anulado</Insignia>
               ) : r.salida_en ? (
-                <Insignia tono="neutro">Salió</Insignia>
+                <Insignia tono="neutro">{r.sale_al_arenado ? 'Salió al arenado' : 'Salió'}</Insignia>
               ) : (
                 <Insignia tono="aviso">En planta</Insignia>
               )}
@@ -128,6 +136,7 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
           revisiones={revisiones}
           puedePedir={registra && enPlanta}
           salio={Boolean(r.salida_en)}
+          alArenado={r.sale_al_arenado}
           estado={estado}
         />
 
@@ -227,6 +236,7 @@ function RevisionDeTesoreria({
   revisiones,
   puedePedir,
   salio,
+  alArenado,
   estado,
 }: {
   registro: string
@@ -234,6 +244,7 @@ function RevisionDeTesoreria({
   revisiones: RevisionDeSalida[]
   puedePedir: boolean
   salio: boolean
+  alArenado: boolean
   estado: EstadoDeSalida | undefined
 }) {
   const ultima = revisiones[0]
@@ -292,7 +303,11 @@ function RevisionDeTesoreria({
             })}
           </ol>
         ) : (
-          salio && <p className="text-sm text-texto-suave">Salió sin pedido de revisión a Tesorería.</p>
+          salio && (
+            <p className="text-sm text-texto-suave">
+              {alArenado ? 'Salió al arenado: esa salida no pide revisión a Tesorería.' : 'Salió sin pedido de revisión a Tesorería.'}
+            </p>
+          )
         )}
       </TarjetaCuerpo>
     </Tarjeta>

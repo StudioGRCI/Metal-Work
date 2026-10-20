@@ -97,7 +97,11 @@ export async function registrarIngresoVehiculo(_previo: unknown, formulario: For
   return { ok: true, mensaje: `Ingreso registrado con ${d.fotos.length} ${d.fotos.length === 1 ? 'foto' : 'fotos'}: el vehículo figura en planta.` }
 }
 
-/** El vehículo sale, con sus fotos. Mismo permiso que `registrar_salida_vehiculo`. */
+/**
+ * El vehículo sale, con sus fotos. Mismo permiso que `registrar_salida_vehiculo`
+ * y `registrar_salida_al_arenado`: con `destino=ARENADO` sale al arenado externo
+ * a medio trabajo, sin el 100 % ni Tesorería (migración 20261020168000).
+ */
 export async function registrarSalidaVehiculo(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'vehiculos.registrar')) return { ok: false, error: SIN_PERMISO }
@@ -108,9 +112,11 @@ export async function registrarSalidaVehiculo(_previo: unknown, formulario: Form
       salida_en: z.string(),
       observacion: z.string().max(500, 'La observación pasa de 500 caracteres.'),
       fotos: fotos('salir'),
+      alArenado: z.boolean(),
     })
     .safeParse({
       id: formulario.get('id'),
+      alArenado: formulario.get('destino') === 'ARENADO',
       salida_en: dato(formulario, 'salida_en'),
       observacion: dato(formulario, 'observacion'),
       fotos: json(formulario, 'fotos') ?? [],
@@ -120,7 +126,7 @@ export async function registrarSalidaVehiculo(_previo: unknown, formulario: Form
   if (analisis.data.salida_en && !cuando) return { ok: false, error: 'La fecha y hora de salida no es válida.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('registrar_salida_vehiculo', {
+  const { data, error } = await supabase.rpc(analisis.data.alArenado ? 'registrar_salida_al_arenado' : 'registrar_salida_vehiculo', {
     p_id: analisis.data.id,
     p_salida_en: cuando,
     p_observacion: analisis.data.observacion || null,
@@ -130,7 +136,7 @@ export async function registrarSalidaVehiculo(_previo: unknown, formulario: Form
   if (data !== analisis.data.id) return { ok: false, error: 'La salida no quedó registrada. Recarga la pantalla.' }
 
   revalidatePath('/vehiculos', 'layout')
-  return { ok: true, mensaje: 'Salida registrada.' }
+  return { ok: true, mensaje: analisis.data.alArenado ? 'Salida al arenado registrada: vuelve con el motivo Arenado.' : 'Salida registrada.' }
 }
 
 /** Un ingreso mal anotado se anula con motivo; no se borra. */

@@ -1,6 +1,6 @@
 'use client'
 
-import { Ban, LogOut } from 'lucide-react'
+import { Ban, LogOut, Wind } from 'lucide-react'
 import { useState } from 'react'
 
 import { fotosParaEnviar, hayFallidas, haySubiendo, quitarFotosSueltas, soltarMiniaturas, type FotoLista } from '@/components/avance/selector-fotos'
@@ -13,7 +13,7 @@ import { useEnvio } from '@/lib/envio'
 import { anularRegistroVehiculo, registrarSalidaVehiculo } from './acciones'
 import { AvisoFotos, FotosDelMomento } from './formulario'
 
-type Paso = 'SALIDA' | 'ANULAR'
+type Paso = 'SALIDA' | 'ARENADO' | 'ANULAR'
 
 /**
  * Lo que se marca en un vehículo que está en planta: que salió, con sus fotos,
@@ -24,17 +24,22 @@ type Paso = 'SALIDA' | 'ANULAR'
  * avance de su código y la revisión de Tesorería): mientras haya algo, el botón
  * queda apagado. El porqué lo pinta la pantalla junto al avance, con el id
  * `veh-bloqueo-{id}`, y el botón lo nombra. La base lo vuelve a exigir al registrar.
+ *
+ * `alArenado`: el vehículo entró a trabajo con su código y puede salir al
+ * arenado externo a medio trabajo, sin esperar nada (migración 20261020168000).
  */
 export function ControlesVehiculo({
   id,
   nombre,
   cuentaId,
   bloqueoSalida = null,
+  alArenado = false,
 }: {
   id: string
   nombre: string
   cuentaId: string
   bloqueoSalida?: string | null
+  alArenado?: boolean
 }) {
   const [paso, setPaso] = useState<Paso | null>(null)
   const [fotos, setFotos] = useState<FotoLista[]>([])
@@ -46,10 +51,11 @@ export function ControlesVehiculo({
   })
   const anular = useEnvio(anularRegistroVehiculo, () => setPaso(null))
   const envio = paso === 'ANULAR' ? anular : salida
+  const sale = paso === 'SALIDA' || paso === 'ARENADO'
   const subiendo = haySubiendo(fotos)
   const fallidas = hayFallidas(fotos)
   const listas = fotosParaEnviar(fotos).length
-  const bloqueado = paso === 'SALIDA' && (subiendo || fallidas || listas === 0)
+  const bloqueado = sale && (subiendo || fallidas || listas === 0)
 
   function cerrar() {
     quitarFotosSueltas(BUCKET_FOTOS_VEHICULO, fotos)
@@ -73,6 +79,20 @@ export function ControlesVehiculo({
         <LogOut aria-hidden className="size-4" />
         Marcar salida
       </Boton>
+      {alArenado && (
+        <Boton
+          type="button"
+          variante="contorno"
+          tamano="sm"
+          onClick={() => {
+            setFotos([])
+            setPaso('ARENADO')
+          }}
+        >
+          <Wind aria-hidden className="size-4" />
+          Sale al arenado
+        </Boton>
+      )}
       <Boton type="button" variante="contornoPeligro" tamano="sm" aria-label={`Anular el ingreso de ${nombre}`} onClick={() => setPaso('ANULAR')}>
         <Ban aria-hidden className="size-4" />
         Anular
@@ -80,24 +100,29 @@ export function ControlesVehiculo({
       <Ventana
         abierta={paso !== null}
         alCerrar={cerrar}
-        titulo={paso === 'ANULAR' ? `Anular el ingreso de ${nombre}` : `Salida de ${nombre}`}
+        titulo={
+          paso === 'ANULAR' ? `Anular el ingreso de ${nombre}` : paso === 'ARENADO' ? `Salida al arenado de ${nombre}` : `Salida de ${nombre}`
+        }
         descripcion={
           paso === 'ANULAR'
             ? 'Para un ingreso que se anotó mal. No se borra: queda con su motivo.'
-            : 'El vehículo deja la planta, con fotos de cómo sale. La salida ya marcada no se corrige.'
+            : paso === 'ARENADO'
+              ? 'Sale a medio trabajo, sin esperar el 100 % ni a Tesorería, y vuelve con el motivo «Arenado». Con fotos de cómo sale.'
+              : 'El vehículo deja la planta, con fotos de cómo sale. La salida ya marcada no se corrige.'
         }
-        ancho={paso === 'SALIDA' ? 'lg' : 'md'}
+        ancho={sale ? 'lg' : 'md'}
       >
         <form
           onSubmit={(e) =>
             envio.alEnviar(e, (datos) => {
-              if (paso === 'SALIDA') datos.set('fotos', JSON.stringify(fotosParaEnviar(fotos).map((f) => f.ruta_storage)))
+              if (sale) datos.set('fotos', JSON.stringify(fotosParaEnviar(fotos).map((f) => f.ruta_storage)))
+              if (paso === 'ARENADO') datos.set('destino', 'ARENADO')
             })
           }
           className="space-y-4"
         >
           <input type="hidden" name="id" value={id} />
-          {paso === 'SALIDA' && (
+          {sale && (
             <Campo etiqueta="Fecha y hora de salida" htmlFor={`veh-salida-${id}`} ayuda="Déjalo vacío si sale ahora.">
               <Entrada id={`veh-salida-${id}`} name="salida_en" type="datetime-local" />
             </Campo>
@@ -113,10 +138,16 @@ export function ControlesVehiculo({
               required={paso === 'ANULAR'}
               minLength={paso === 'ANULAR' ? 10 : undefined}
               maxLength={500}
-              placeholder={paso === 'ANULAR' ? 'Por ejemplo: se anotó la placa de otro vehículo.' : 'Por ejemplo: sale al arenado externo.'}
+              placeholder={
+                paso === 'ANULAR'
+                  ? 'Por ejemplo: se anotó la placa de otro vehículo.'
+                  : paso === 'ARENADO'
+                    ? 'Por ejemplo: va al arenado de la av. Argentina, vuelve el jueves.'
+                    : 'Por ejemplo: lo recoge el conductor del cliente.'
+              }
             />
           </Campo>
-          {paso === 'SALIDA' && (
+          {sale && (
             <FotosDelMomento titulo="Fotos al salir" fotos={fotos} setFotos={setFotos} prefijoRuta={`${cuentaId}/${id}/salida`} />
           )}
           {envio.error && (
@@ -124,7 +155,7 @@ export function ControlesVehiculo({
               {envio.error}
             </p>
           )}
-          {paso === 'SALIDA' && <AvisoFotos subiendo={subiendo} fallidas={fallidas} listas={listas} momento="salir" />}
+          {sale && <AvisoFotos subiendo={subiendo} fallidas={fallidas} listas={listas} momento="salir" />}
           <div className="flex justify-end gap-2">
             <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
@@ -135,7 +166,7 @@ export function ControlesVehiculo({
               cargando={envio.enviando}
               disabled={bloqueado}
             >
-              {paso === 'ANULAR' ? 'Anular' : subiendo ? 'Esperando las fotos…' : 'Registrar salida'}
+              {paso === 'ANULAR' ? 'Anular' : subiendo ? 'Esperando las fotos…' : paso === 'ARENADO' ? 'Registrar salida al arenado' : 'Registrar salida'}
             </Boton>
           </div>
         </form>

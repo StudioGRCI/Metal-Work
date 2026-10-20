@@ -154,7 +154,13 @@ function FilaVehiculo({
       </TD>
       <TD className="text-right align-top">
         {registra && !r.salida_en && !anulado && (
-          <ControlesVehiculo id={r.id} nombre={nombre} cuentaId={cuentaId} bloqueoSalida={estado?.falta_para_salir ?? null} />
+          <ControlesVehiculo
+            id={r.id}
+            nombre={nombre}
+            cuentaId={cuentaId}
+            bloqueoSalida={estado?.falta_para_salir ?? null}
+            alArenado={Boolean(estado?.exige)}
+          />
         )}
       </TD>
     </TR>
@@ -164,7 +170,12 @@ function FilaVehiculo({
 /** En planta, salió o anulado; y del que espera para salir, el avance de su código. */
 function Situacion({ registro: r, estado }: { registro: RegistroVehiculo; estado: EstadoDeSalida | undefined }) {
   if (r.anulado_en) return <Insignia tono="peligro">Anulado</Insignia>
-  if (r.salida_en) return <Insignia tono="neutro">Salió {fechaHora(r.salida_en)}</Insignia>
+  if (r.salida_en)
+    return (
+      <Insignia tono="neutro">
+        {r.sale_al_arenado ? 'Salió al arenado' : 'Salió'} {fechaHora(r.salida_en)}
+      </Insignia>
+    )
   return (
     <div className="flex flex-wrap items-center gap-1">
       <Insignia tono="aviso">En planta</Insignia>
