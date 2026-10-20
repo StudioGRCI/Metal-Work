@@ -146,7 +146,7 @@ begin
   reset role;
 end $$;
 
--- 4. Gerencia sube el PDF de la OT que va a crear (ya podía: `produccion.actividades`) --
+-- 4. Gerencia sube el PDF de la OT que va a crear (por `cotizaciones.revisar`, migración 20261020206000) --
 do $$
 begin
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);

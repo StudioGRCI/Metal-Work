@@ -110,6 +110,12 @@ política `borrar_*` eliminada y el `grant delete` revocado.
 
 *(Sección viva: aquí se anota lo que salió mal al tocar el esquema. Ver `aprender`.)*
 
+- **Una OT anulada no acepta ningún UPDATE que cambie algo** (migración
+  `20261020207000`), ni del administrador ni de una migración. Un backfill sobre
+  `ordenes_trabajo` lleva `where estado <> 'ANULADA'` o aborta entero en
+  producción; y una cuenta de Auth que figure en una OT anulada ya no se borra,
+  porque su `on delete set null` es un UPDATE.
+
 - **Cerrar una columna con permiso por columna rompe `select *` y `%rowtype`.**
   Desde la `20261020165000`, `trabajadores.dni` no se lee con `authenticated`:
   cualquier función `security invoker`, check o script que haga `select *` de
