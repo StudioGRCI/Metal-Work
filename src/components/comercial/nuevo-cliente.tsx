@@ -70,7 +70,7 @@ export function NuevoCliente({
               </Seleccion>
             </Campo>
             <Campo etiqueta="Número" htmlFor="nc-numero" requerido>
-              <Entrada id="nc-numero" name="numero_documento" required inputMode="numeric" placeholder="20601538840" />
+              <Entrada id="nc-numero" name="numero_documento" required inputMode="numeric" placeholder="20XXXXXXXXX" />
             </Campo>
           </div>
 

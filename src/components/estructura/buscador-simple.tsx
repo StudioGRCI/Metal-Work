@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { Loader2, Search, X } from 'lucide-react'
 
+import { Boton } from '@/components/ui/boton'
 import { Entrada } from '@/components/ui/campos'
 
 /**
@@ -12,6 +13,9 @@ import { Entrada } from '@/components/ui/campos'
  * filtros puestos. Cómo se busca (sin tildes, por palabras) lo decide
  * `src/lib/dominio/busqueda.ts`.
  */
+/** Una navegación que salió de aquí: la URL que pidió y el término que llevaba. */
+type Pedido = { consulta: string; termino: string }
+
 export function BuscadorSimple({
   ruta,
   etiqueta,
@@ -29,10 +33,11 @@ export function BuscadorSimple({
   const [pendiente, iniciarTransicion] = useTransition()
   const actual = params.get(clave) ?? ''
   const [busqueda, setBusqueda] = useState(actual)
-  // Lo último que este buscador escribió en la URL. Si la URL cambia a otra
-  // cosa —«Ver todos los clientes», el menú—, la caja la sigue; si no, quedaba
-  // con un término que ya no filtraba y el ícono de «Buscando…» girando.
-  const [pedido, setPedido] = useState<string | null>(null)
+  // Lo que este buscador pidió y todavía no volvió en la URL, en orden. Si la
+  // URL cambia a otra cosa —«Ver todos los clientes», el menú—, la caja la
+  // sigue; si no, quedaba con un término que ya no filtraba y el ícono de
+  // «Buscando…» girando.
+  const [pedidos, setPedidos] = useState<Pedido[]>([])
   // Se vigila la URL entera, no solo el término: si otro enlace la cambia con
   // una búsqueda en viaje, esa búsqueda se perdió, y quedaba la caja con un
   // término que no filtraba y el ícono girando sin fin.
@@ -41,34 +46,62 @@ export function BuscadorSimple({
   if (consulta !== vista) {
     const antes = new URLSearchParams(vista).get(clave) ?? ''
     setVista(consulta)
-    // El eco de lo pedido se consume: si después «atrás» trae ese mismo valor,
-    // ya no es eco y la caja lo sigue. Lo escrito sin pedir todavía se queda
-    // si el término de la URL no cambió.
-    if (actual !== pedido && (actual !== antes || pedido !== null)) setBusqueda(actual)
-    setPedido(null)
+    // Las respuestas llegan en el orden en que salieron: si la que llegó es una
+    // de las pedidas, se consumen ella y las anteriores, y la caja no se toca,
+    // porque lo escrito después ya va en viaje. Con un solo pedido anotado, la
+    // respuesta vieja que llegaba con otra en viaje copiaba a la caja el término
+    // de antes y se comía lo escrito entretanto: en producción, escribiendo
+    // despacio, «carroceria» quedaba «caroei» (2026-10-20). Se reconoce por la
+    // URL entera y no por el término: un enlace que deja el mismo término con
+    // otros filtros («Ver todos») no es eco, y la caja lo sigue.
+    const eco = pedidos.findIndex((p) => p.consulta === consulta)
+    if (eco >= 0) setPedidos(pedidos.slice(eco + 1))
+    else if (!pendiente || pedidos.length === 0) {
+      // Lo escrito sin pedir todavía se queda si el término de la URL no cambió.
+      if (actual !== antes || pedidos.length > 0) setBusqueda(actual)
+      setPedidos([])
+    }
+    // Una URL ajena —el menú— con pedidos todavía en viaje no toca nada: lo que
+    // sigue en viaje salió después y llega después. Borrarlos la hacía tomar
+    // por ajenos y pisaba lo escrito entretanto («carrotpe» quedaba «carrot»).
+    // Si no llegan, el descarte de abajo deja la caja como la URL.
   }
+  // Ya no queda nada en viaje y algo de lo pedido nunca volvió: otra navegación
+  // —el menú, «atrás»— lo reemplazó. Tomarlo por eco dejaba la caja con un
+  // término que no filtraba y el ícono girando sin fin. Si después de lo
+  // perdido no se escribió nada, la caja sigue a la URL; si se escribió, se
+  // queda y sale en su pausa.
+  if (!pendiente && pedidos.length > 0) {
+    setPedidos([])
+    if (busqueda === pedidos[pedidos.length - 1].termino) setBusqueda(actual)
+  }
+  const ultimoPedido = pedidos.length > 0 ? pedidos[pedidos.length - 1].termino : null
 
   // La consulta que va en viaje y todavía no llegó a la URL. Lo que se pide
   // después se arma sobre ella: armado sobre la URL de antes, la búsqueda que
   // salía con una pastilla en viaje la deshacía.
   const enViaje = useRef<string | null>(null)
   const base = () => new URLSearchParams(enViaje.current ?? window.location.search)
-  function ir(query: URLSearchParams, reemplazar: boolean) {
+  function ir(query: URLSearchParams, reemplazar: boolean, termino: string) {
     query.delete('pagina')
     const resto = query.toString()
     enViaje.current = resto
+    setPedidos((anteriores) => [...anteriores, { consulta: resto, termino }])
     const destino = resto ? `${ruta}?${resto}` : ruta
     iniciarTransicion(() => (reemplazar ? router.replace : router.push)(destino))
   }
-  // Llegó una URL: lo que iba en viaje ya está en ella, o lo reemplazó otra.
+  // Se olvida cuando ya volvió todo lo pedido, o se perdió. No con cualquier
+  // URL que llegue: el eco de una búsqueda vieja la borraba con una pastilla
+  // todavía en viaje, y lo siguiente salía sin ella.
+  const sinPedidos = pedidos.length === 0
   useEffect(() => {
-    enViaje.current = null
-  }, [consulta])
+    if (sinPedidos) enViaje.current = null
+  }, [consulta, sinPedidos])
 
   useEffect(() => {
-    // Lo escrito espera su pausa; si ya va en viaje (`pedido`) o la URL ya lo
-    // dice, no hay nada que esperar.
-    const enEspera = busqueda !== actual && busqueda !== (pedido ?? actual)
+    // Lo escrito espera su pausa; si ya va en viaje o la URL ya lo dice, no hay
+    // nada que esperar.
+    const enEspera = busqueda !== actual && busqueda !== (ultimoPedido ?? actual)
 
     const disparar = () => {
       const query = base()
@@ -76,8 +109,7 @@ export function BuscadorSimple({
       else query.delete(clave)
       // `replace`, no `push`: cada letra escrita era una entrada en el
       // historial y «atrás» recorría la búsqueda letra por letra.
-      setPedido(busqueda)
-      ir(query, true)
+      ir(query, true, busqueda)
     }
     const temporizador = enEspera ? setTimeout(disparar, 350) : undefined
     // Una pastilla se lleva lo escrito, como los filtros de Órdenes, y deja
@@ -92,8 +124,7 @@ export function BuscadorSimple({
       clearTimeout(temporizador)
       if (busqueda) destino.searchParams.set(clave, busqueda)
       else destino.searchParams.delete(clave)
-      setPedido(busqueda)
-      ir(destino.searchParams, false)
+      ir(destino.searchParams, false, busqueda)
     }
     document.addEventListener('click', alTocar, true)
 
@@ -102,7 +133,7 @@ export function BuscadorSimple({
       document.removeEventListener('click', alTocar, true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busqueda, consulta, pedido])
+  }, [busqueda, consulta, ultimoPedido])
 
   // Lo escrito todavía no está en la URL, o la pantalla se está rehaciendo: en
   // ambos casos lo que se ve abajo ya no corresponde a lo que se pidió.
@@ -139,22 +170,22 @@ export function BuscadorSimple({
       </p>
 
       {actual && (
-        <button
+        <Boton
           type="button"
+          variante="fantasma"
+          className="px-3"
           onClick={() => {
             setBusqueda('')
-            setPedido('')
             // Quita solo el término: los filtros puestos —también uno en
             // viaje— se quedan.
             const query = base()
             query.delete(clave)
-            ir(query, true)
+            ir(query, true, '')
           }}
-          className="inline-flex h-11 items-center gap-1.5 rounded-[var(--radius-base)] px-3 text-sm text-texto-suave hover:bg-superficie-2 hover:text-texto sm:h-9"
         >
           <X aria-hidden className="size-3.5" />
           Limpiar
-        </button>
+        </Boton>
       )}
     </div>
   )

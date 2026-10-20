@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 
 import { DocumentoControlVehicular } from '@/lib/documentos/control-vehicular'
+import { leerLogoDocumento } from '@/lib/documentos/logo'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -24,6 +25,7 @@ export async function GET(_request: Request, context: RouteContext<'/vehiculos/[
   const { id } = await context.params
   if (!z.guid().safeParse(id).success) return NextResponse.json({ error: 'El vehículo no está disponible.' }, { status: 404 })
   const db = await createClient()
+  const logo = leerLogoDocumento()
   const [registro, ficha, items] = await Promise.all([
     db.from('registro_vehiculos').select('placa, chasis, codigo_interno, empresa').eq('id', id).maybeSingle(),
     db
@@ -46,6 +48,7 @@ export async function GET(_request: Request, context: RouteContext<'/vehiculos/[
       cliente={r.empresa}
       items={items.data ?? []}
       control={{ ...(ficha.data ?? FICHA_EN_BLANCO), placa }}
+      logo={await logo}
     />,
   )
   const nombre = (r.codigo_interno ?? r.placa ?? 'vehiculo').replace(/[^A-Za-z0-9_-]+/g, '-')
