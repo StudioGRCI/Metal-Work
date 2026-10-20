@@ -29,6 +29,8 @@ function dias(desde: string, hasta: string) {
 /** Dónde está el plazo hoy, en palabras del taller, y si ya se pasó. */
 function plazo(s: SubcontratoDelArea, hoy: string): { texto: string; vencido: boolean } | null {
   if (s.estado !== 'VIGENTE') return null
+  // Ya marcó que terminó: el plazo no corre, y cerrarlo le toca a Administración.
+  if (s.fin_real) return { texto: `Terminó el ${fecha(s.fin_real)}: falta que Administración lo cierre`, vencido: false }
   if (s.fecha_inicio && hoy < s.fecha_inicio) {
     const n = dias(hoy, s.fecha_inicio)
     return { texto: n === 1 ? 'Empieza mañana' : `Empieza en ${n} días`, vencido: false }
@@ -180,9 +182,9 @@ function Subcontrato({ s, hoy, conArea, reporta }: { s: SubcontratoDelArea; hoy:
           </dd>
         </div>
         {p && (
-          <div className="col-span-2 sm:col-span-1">
+          <div className={s.fin_real ? 'col-span-2' : 'col-span-2 sm:col-span-1'}>
             <dt className="text-xs text-texto-suave">Plazo</dt>
-            <dd className={p.vencido ? 'font-medium text-peligro' : 'text-texto'} data-plazo>
+            <dd className={p.vencido ? 'font-medium text-peligro' : s.fin_real ? 'text-aviso' : 'text-texto'} data-plazo>
               <CalendarRange aria-hidden className="mr-1 inline size-3.5 align-[-2px]" />
               {p.texto}
             </dd>
@@ -213,7 +215,14 @@ function Subcontrato({ s, hoy, conArea, reporta }: { s: SubcontratoDelArea; hoy:
             Reportar avance<span className="sr-only"> de {s.numero}</span>
           </EnlaceBoton>
         )}
-        <MarcarFechasReales id={s.id} numero={s.numero} inicio={s.inicio_real} fin={s.fin_real} hoy={hoy} />
+        <MarcarFechasReales
+          id={s.id}
+          numero={s.numero}
+          detalle={`${s.codigo_interno} · ${s.subcontratista}`}
+          inicio={s.inicio_real}
+          fin={s.fin_real}
+          hoy={hoy}
+        />
       </div>
     </li>
   )

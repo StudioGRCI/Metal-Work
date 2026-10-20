@@ -18,12 +18,15 @@ import { marcarFechasReales } from '../acciones'
 export function MarcarFechasReales({
   id,
   numero,
+  detalle,
   inicio,
   fin,
   hoy,
 }: {
   id: string
   numero: string
+  /** Código interno y quién hace el trabajo: así lo busca el supervisor. */
+  detalle: string
   inicio: string | null
   fin: string | null
   hoy: string
@@ -43,14 +46,14 @@ export function MarcarFechasReales({
         data-marcar-fechas-reales
       >
         <CalendarCheck aria-hidden className="size-4" />
-        {inicio ? 'Corregir fechas reales' : 'Marcar inicio real'}
+        {!inicio ? 'Marcar inicio real' : !fin ? 'Marcar fin real' : 'Corregir fechas reales'}
         <span className="sr-only"> de {numero}</span>
       </Boton>
       <Ventana
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`Fechas reales de ${numero}`}
-        descripcion="El día en que el subcontratista empezó de verdad y, cuando termine, el día en que terminó. Son de referencia: las del contrato no cambian."
+        descripcion={`${detalle}. El día en que empezó de verdad y, cuando termine, el día en que terminó. Son de referencia: las del contrato no cambian.`}
         ancho="sm"
       >
         <FormularioFechas key={vez} id={id} inicio={inicio} fin={fin} hoy={hoy} alTerminar={() => setAbierta(false)} />

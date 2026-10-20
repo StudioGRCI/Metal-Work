@@ -279,6 +279,8 @@ try {
     texto = limpio(await item.innerText().catch(() => ''))
     comprobar(texto.includes(`Real: ${dd(sumarDias(hoy, -8))}`) && texto.includes(`Real: ${dd(hoy)}`), `la pantalla las muestra: «${texto.slice(0, 220)}»`)
     comprobar((await item.getByRole('button', { name: /Corregir fechas reales/ }).count()) === 1, 'el botón pasa a «Corregir fechas reales»')
+    const plazo = limpio(await item.locator('[data-plazo]').innerText().catch(() => ''))
+    comprobar(plazo.includes('falta que Administración lo cierre'), `el plazo deja de contar y dice quién sigue: «${plazo}»`)
     await pagina.screenshot({ path: join(CAPTURAS, 'contratos-03-supervisor.png'), fullPage: true })
     comprobar(errores.length === 0, `Supervisión de Maestranza, sin errores de consola (${errores.join(' | ')})`)
     await contexto.close()
@@ -298,6 +300,12 @@ try {
     await pagina.goto(`${BASE}/subcontratos/${subcontratoId}`, { waitUntil: 'networkidle' })
     const reales = limpio(await pagina.locator('[data-fechas-reales]').innerText())
     comprobar(reales.includes(`Empezó el ${dd(sumarDias(hoy, -8))}`) && reales.includes(`terminó el ${dd(hoy)}`) && reales.includes('Las marcó'), `Administración ve las fechas reales y quién las marcó: «${reales}»`)
+    await pagina.goto(`${BASE}/subcontratos`, { waitUntil: 'networkidle' })
+    const fila = limpio(await pagina.locator(`tr[data-subcontrato="${numeroSc}"]`).innerText().catch(() => ''))
+    comprobar(
+      fila.includes(`Real: ${dd(sumarDias(hoy, -8))} → ${dd(hoy)}`) && fila.includes('Terminó según el supervisor'),
+      `en la lista, la fila avisa que terminó según el supervisor: «${fila.slice(0, 200)}»`,
+    )
     await contexto.close()
   }
   {

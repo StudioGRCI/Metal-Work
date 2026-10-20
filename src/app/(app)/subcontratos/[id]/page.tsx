@@ -78,7 +78,11 @@ export default async function PaginaSubcontrato({ params, searchParams }: PagePr
       )}
       {contratoPendiente && !anulado && s.contratos.length === 0 && (
         <p role="alert" className="mb-4 rounded-lg border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-contrato-pendiente>
-          El subcontrato quedó registrado, pero el contrato no se subió. Adjúntalo con «Adjuntar contrato».
+          El subcontrato quedó registrado, pero el contrato no se subió.{' '}
+          <a href="#contrato" className="font-medium text-acento underline">
+            Adjúntalo aquí
+          </a>
+          .
         </p>
       )}
       {estado === 'TERMINADO' && (
@@ -134,7 +138,7 @@ export default async function PaginaSubcontrato({ params, searchParams }: PagePr
           )}
         </Tarjeta>
 
-        <Tarjeta>
+        <Tarjeta id="contrato" className="scroll-mt-20">
           <TarjetaCabecera
             titulo="Contrato"
             ayuda="El contrato firmado con el subcontratista. Si llega otra versión (una adenda, el firmado que reemplaza al borrador), se adjunta encima y la anterior queda como evidencia. El supervisor del área no lo ve: lleva el monto."
@@ -152,7 +156,10 @@ export default async function PaginaSubcontrato({ params, searchParams }: PagePr
             }
           />
           <TarjetaCuerpo>
-            <ContratoVigente contratos={s.contratos} />
+            <ContratoVigente
+              contratos={s.contratos}
+              sinContrato={gestiona && !anulado ? 'Adjúntalo con «Adjuntar contrato» cuando lo tengas.' : 'Lo adjunta Administración.'}
+            />
           </TarjetaCuerpo>
         </Tarjeta>
 
@@ -182,7 +189,7 @@ export default async function PaginaSubcontrato({ params, searchParams }: PagePr
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-texto-suave">Fechas reales (referencial)</dt>
+                <dt className="text-xs text-texto-suave">Fechas reales (referenciales)</dt>
                 <dd className="text-texto" data-fechas-reales>
                   {s.inicio_real ? (
                     <>

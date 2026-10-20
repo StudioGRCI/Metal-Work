@@ -38,19 +38,24 @@ export function sacarContrato(datos: FormData): File | null {
  * El contrato vigente (el último) con su enlace, y los anteriores debajo como
  * evidencia. Sin contrato, lo dice.
  */
-export function ContratoVigente({ contratos }: { contratos: ContratoAdjunto[] }) {
+export function ContratoVigente({ contratos, sinContrato }: { contratos: ContratoAdjunto[]; sinContrato?: string }) {
   const [vigente, ...anteriores] = contratos
-  if (!vigente) return <p className="text-xs text-texto-suave" data-sin-contrato>Sin contrato adjunto</p>
+  if (!vigente)
+    return (
+      <p className="text-sm text-texto-suave" data-sin-contrato>
+        Sin contrato adjunto.{sinContrato && ` ${sinContrato}`}
+      </p>
+    )
   return (
     <div className="space-y-1" data-contrato>
       <EnlaceContrato c={vigente} texto={vigente.archivo_nombre ?? 'Contrato'} />
-      <p className="text-[11px] text-texto-suave">
+      <p className="text-xs text-texto-suave">
         Adjunto el {fecha(vigente.creado_en)}
         {vigente.subido_por && ` por ${vigente.subido_por}`}
       </p>
       {anteriores.length > 0 && (
         <details className="text-xs">
-          <summary className="min-h-9 cursor-pointer content-center text-texto-suave">
+          <summary className="min-h-11 sm:min-h-9 cursor-pointer content-center text-texto-suave">
             {anteriores.length === 1 ? 'Una versión anterior' : `${anteriores.length} versiones anteriores`}
           </summary>
           <ul className="mt-1 space-y-1">
@@ -74,7 +79,7 @@ function EnlaceContrato({ c, texto }: { c: ContratoAdjunto; texto: string }) {
       href={c.enlace}
       target="_blank"
       rel="noreferrer"
-      className="inline-flex min-h-9 max-w-full items-center gap-1 rounded-lg border border-borde px-2 text-xs font-medium text-acento hover:bg-superficie-2"
+      className="inline-flex min-h-11 sm:min-h-9 max-w-full items-center gap-1 rounded-lg border border-borde px-2 text-xs font-medium text-acento hover:bg-superficie-2"
     >
       <FileText aria-hidden className="size-3.5 flex-none" />
       <span className="truncate">{texto}</span>
