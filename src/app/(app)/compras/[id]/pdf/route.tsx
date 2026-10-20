@@ -1,22 +1,11 @@
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
-
 import { renderToBuffer } from '@react-pdf/renderer'
 import { NextResponse } from 'next/server'
 
 import { DocumentoCompraMateriales, type LineaCompraPdf } from '@/lib/documentos/compra-materiales'
+import { leerLogoDocumento } from '@/lib/documentos/logo'
 import { APROBACION_COMPRA, compraDetenida, cuentaParaCompra } from '@/lib/dominio/proveedores'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
-
-/** El logo va dentro del PDF; si no se pudo leer, la orden sale igual con el nombre en texto. */
-async function leerLogo() {
-  try {
-    return await readFile(path.join(process.cwd(), 'public', 'marca', 'logo-metal-work.png'))
-  } catch {
-    return null
-  }
-}
 
 export async function GET(_request: Request, context: RouteContext<'/compras/[id]/pdf'>) {
   await exigirPermiso(['compras.ver', 'almacen.recibir'])
@@ -120,7 +109,7 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
   const padron = c.padron
   const buffer = await renderToBuffer(
     <DocumentoCompraMateriales
-      logo={await leerLogo()}
+      logo={await leerLogoDocumento()}
       lineas={filas}
       compra={{
         numero: titulo,

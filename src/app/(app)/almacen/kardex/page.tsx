@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
@@ -208,9 +209,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
               <Entrada id="k-unidad" name="unidad" type="search" defaultValue={filtros.unidad ?? ''} placeholder="Placa o código interno" autoComplete="off" />
             </Campo>
             <div className="flex items-center gap-3">
-              <button type="submit" className="inline-flex min-h-11 items-center rounded-[var(--radius-base)] bg-acento px-4 text-sm font-medium text-acento-texto hover:opacity-90 sm:min-h-9">
-                Ver
-              </button>
+              <Boton type="submit">Ver</Boton>
               {hayFiltros && <Link href="/almacen/kardex" className="text-sm text-acento hover:underline">Limpiar</Link>}
             </div>
           </form>

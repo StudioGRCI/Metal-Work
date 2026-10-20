@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronDown } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { useEnvio } from '@/lib/envio'
 import type { catalogosDePlanos } from '@/lib/datos/versiones-planos'
 import {
@@ -21,17 +21,14 @@ export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
   const equipo = catalogos.equipoNominal
   const responsable = equipo.find((persona) => persona.funcion === 'RESPONSABLE')
   const colaboradores = equipo.filter((persona) => persona.funcion === 'COLABORADOR').length
-  const [expandida, setExpandida] = useState(puedeAsignar && (equipo.length === 0 || catalogos.planos.some((plano) => !plano.integrante_diseno_id)))
+  // Se decide una vez, al cargar: calculada en cada render, se cerraría sola al
+  // anotar a la primera persona, con el formulario todavía en la mano.
+  const [abiertaAlCargar] = useState(puedeAsignar && (equipo.length === 0 || catalogos.planos.some((plano) => !plano.integrante_diseno_id)))
   const alta = useEnvio(agregarPersonaDiseno)
-  return <details id="equipo-diseno" open={expandida} onToggle={(evento) => setExpandida(evento.currentTarget.open)}
-    className="group scroll-mt-20 rounded-[var(--radius-base)] border border-borde bg-superficie shadow-[var(--sombra)]">
-    <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-acento [&::-webkit-details-marker]:hidden">
-      <span className="min-w-0"><span className="block text-sm font-semibold text-texto">Personas que elaboran los planos</span>
-        <span className="mt-0.5 block text-xs text-texto-suave">{responsable?.nombre ?? 'Sin responsable'} · {colaboradores} {colaboradores === 1 ? 'colaborador' : 'colaboradores'} · {catalogos.planos.length} {catalogos.planos.length === 1 ? 'plano' : 'planos'}</span>
-      </span>
-      <ChevronDown aria-hidden className="size-4 shrink-0 text-texto-suave transition-transform group-open:rotate-180" />
-    </summary>
-    <div className="space-y-5 border-t border-borde p-4">
+  return <SeccionDesplegable id="equipo-diseno" className="scroll-mt-20" abierta={abiertaAlCargar}
+    titulo="Personas que elaboran los planos"
+    descripcion={`${responsable?.nombre ?? 'Sin responsable'} · ${colaboradores} ${colaboradores === 1 ? 'colaborador' : 'colaboradores'} · ${catalogos.planos.length} ${catalogos.planos.length === 1 ? 'plano' : 'planos'}`}>
+    <div className="space-y-5">
       <p className="text-xs text-texto-suave">Para que el colaborador pueda subir el PDF, registra su nombre aquí y asígnalo en «Quién preparó cada plano». Después Jefatura de Diseño revisa el archivo.</p>
       {equipo.length === 0 && <p className="rounded-[var(--radius-base)] bg-superficie-2 p-3 text-sm text-texto-suave">
         Aún no se han anotado personas para esta OT.
@@ -67,7 +64,7 @@ export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
         </div>
       </div>}
     </div>
-  </details>
+  </SeccionDesplegable>
 }
 
 function Persona({ persona, ordenId, editable, vinculada, tieneResponsable }: {

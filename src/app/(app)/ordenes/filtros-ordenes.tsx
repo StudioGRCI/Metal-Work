@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { Loader2, Search, X } from 'lucide-react'
 
+import { Boton } from '@/components/ui/boton'
 import { Entrada, Seleccion } from '@/components/ui/campos'
 import { ESTADO_OT, ORDEN_ESTADO_OT, PRIORIDAD, opciones } from '@/lib/dominio/estados'
 
@@ -160,8 +161,10 @@ export function FiltrosOrdenes() {
       </label>
 
       {hayFiltros && (
-        <button
+        <Boton
           type="button"
+          variante="fantasma"
+          className="px-3"
           onClick={() => {
             clearTimeout(espera.current)
             setBusqueda('')
@@ -169,11 +172,10 @@ export function FiltrosOrdenes() {
             enViaje.current = ''
             iniciarTransicion(() => router.push('/ordenes'))
           }}
-          className="inline-flex h-11 items-center gap-1.5 rounded-[var(--radius-base)] px-3 text-sm text-texto-suave hover:bg-superficie-2 hover:text-texto sm:h-9"
         >
           <X aria-hidden className="size-3.5" />
           Limpiar
-        </button>
+        </Boton>
       )}
     </div>
   )

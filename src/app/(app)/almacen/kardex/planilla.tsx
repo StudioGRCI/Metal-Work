@@ -192,7 +192,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
               {resumen.elegir > 0 && <Insignia tono="aviso">{resumen.elegir} por elegir el material</Insignia>}
               {resumen.errores > 0 && <Insignia tono="peligro">{resumen.errores} no se cargan</Insignia>}
               {!registrando && !terminado && (
-                <button type="button" onClick={reiniciar} className="ml-auto text-sm text-acento hover:underline">Elegir otra planilla</button>
+                <Boton type="button" variante="fantasma" tamano="sm" onClick={reiniciar} className="ml-auto">Elegir otra planilla</Boton>
               )}
             </div>
 

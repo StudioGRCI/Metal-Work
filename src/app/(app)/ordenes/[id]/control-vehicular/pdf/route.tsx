@@ -2,6 +2,7 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import { NextResponse } from 'next/server'
 
 import { DocumentoControlVehicular } from '@/lib/documentos/control-vehicular'
+import { leerLogoDocumento } from '@/lib/documentos/logo'
 import { trabajaPorCodigo } from '@/lib/dominio/acceso-orden'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -24,6 +25,7 @@ export async function GET(_request: Request, context: RouteContext<'/ordenes/[id
     cliente={orden.data.cliente?.razon_social ?? ''}
     items={items.data ?? []}
     control={control.data}
+    logo={await leerLogoDocumento()}
   />)
   return new NextResponse(new Uint8Array(buffer), {
     headers: {

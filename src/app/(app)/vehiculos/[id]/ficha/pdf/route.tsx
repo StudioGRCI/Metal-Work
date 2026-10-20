@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 
 import { DocumentoControlVehicular } from '@/lib/documentos/control-vehicular'
+import { leerLogoDocumento } from '@/lib/documentos/logo'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -46,6 +47,7 @@ export async function GET(_request: Request, context: RouteContext<'/vehiculos/[
       cliente={r.empresa}
       items={items.data ?? []}
       control={{ ...(ficha.data ?? FICHA_EN_BLANCO), placa }}
+      logo={await leerLogoDocumento()}
     />,
   )
   const nombre = (r.codigo_interno ?? r.placa ?? 'vehiculo').replace(/[^A-Za-z0-9_-]+/g, '-')
