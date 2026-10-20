@@ -43,8 +43,8 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
   const pedido = typeof params.mes === 'string' ? params.mes : ''
   const mes = MES.test(pedido) ? pedido : hoyLima().slice(0, 7)
   const puedeRegistrar = puede(perfil, 'costos.gastos_generales')
-  // El total de la oficina lo ve quien ya lo ve en el costeo de cada código.
-  const veOficina = puede(perfil, ['costos.gastos_generales', 'codigos_internos.ver'])
+  // El total de la oficina lo ve quien ve los costos: el de cada código ya lo lleva dentro.
+  const veOficina = puede(perfil, ['costos.gastos_generales', 'codigos_internos.ver', 'costos.ver'])
   const veCodigos = puede(perfil, 'codigos_internos.ver')
 
   const [conceptos, gastos, reparto, oficina] = await Promise.all([

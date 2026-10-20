@@ -44,8 +44,8 @@ export async function repartoDelMes(periodo: string) {
 
 /**
  * El sueldo de la oficina de un mes, sumado y sin cuántas personas son, y cuántos
- * trabajadores con costo no tienen área. Exige `costos.gastos_generales` o
- * `codigos_internos.ver`: quien solo tiene `costos.ver` no lo lee.
+ * trabajadores con costo no tienen área. Exige `costos.ver`,
+ * `costos.gastos_generales` o `codigos_internos.ver`.
  */
 export async function oficinaDelMes(periodo: string) {
   const db = await createClient()

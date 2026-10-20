@@ -207,16 +207,18 @@ select test.debe_fallar($q$select * from public.horas_por_codigo_del_mes(date '2
   'nadie llama desde fuera la función interna de las horas', 'permission denied');
 reset role;
 
--- Costos y Materiales ve los costos (costos.ver) y el reparto, pero no el costeo de
--- cada código: el total de la oficina no lo lee, que mes a mes delataría un sueldo.
+-- Costos y Materiales ve los costos (costos.ver): el reparto y el total de la
+-- oficina, que el costo de cada código ya lleva dentro (decisión de DKS).
+-- No el costo de cada persona.
 select test.como_usuario(:'costos_id');
 set local role authenticated;
 select test.afirmar((select count(*) from public.gastos_del_mes_reparto(date '2021-03-01')) = 2,
   'Costos y Materiales ve entre quiénes se reparte marzo');
-select test.debe_fallar($q$select * from public.gastos_del_mes_oficina(date '2021-03-01')$q$,
-  'Costos y Materiales no lee el total de la oficina suelto', 'codigos_internos.ver');
--- Pero el costo de la unidad es el mismo para todo puesto: lleva su parte de la
--- oficina (luz 800 + oficina 3,920 en A). Si eso se tapa, lo decide DKS.
+select test.afirmar((select o.monto from public.gastos_del_mes_oficina(date '2021-03-01') o) = 4900,
+  'Costos y Materiales ve el total de la oficina de marzo');
+select test.debe_fallar($q$select * from public.oficina_mes_personas$q$, 'Costos y Materiales no lee el costo de cada persona', 'permission denied');
+-- Y el costo de la unidad es el mismo para todo puesto: lleva su parte de la
+-- oficina (luz 800 + oficina 3,920 en A).
 select test.afirmar((select c.gastos_mes_pen from public.codigos_internos_costo('CHK401_A_21/03') c) = 800 + 3920,
   format('Costos y Materiales ve el costo de A con su parte de la oficina: %s',
          (select c.gastos_mes_pen from public.codigos_internos_costo('CHK401_A_21/03') c)));

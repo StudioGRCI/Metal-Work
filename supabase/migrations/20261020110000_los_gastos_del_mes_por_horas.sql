@@ -330,14 +330,14 @@ returns table (monto numeric, sin_area integer)
 language plpgsql stable security definer set search_path to 'public' as $$
 #variable_conflict use_column
 begin
-  -- El total, solo a quien registra los gastos o ve el costeo de cada código.
-  -- Con costos.ver solo (Supervisión general, Costos y Materiales) no se muestra
-  -- suelto, pero el costo de cada código lo lleva dentro (codigos_internos_costo):
-  -- el costeo de una unidad es el mismo para todo puesto. Si la oficina se tapa a
-  -- esos puestos lo decide DKS.
+  -- El total lo ve quien ve los costos (decisión de DKS, 2026-10-20): el costo de
+  -- cada código ya lo lleva dentro y el costeo es el mismo para todo puesto. Con
+  -- una o dos personas en la oficina deja adivinar un sueldo; DKS lo sabe.
+  -- El costo de cada persona sigue siendo solo de RR. HH.
   if public.usuario_actual() is not null
-     and not (public.es_admin() or public.tiene_permiso('costos.gastos_generales') or public.tiene_permiso('codigos_internos.ver')) then
-    raise exception 'No tiene el permiso costos.gastos_generales ni codigos_internos.ver para realizar esta operación' using errcode = 'insufficient_privilege';
+     and not (public.es_admin() or public.tiene_permiso('costos.gastos_generales') or public.tiene_permiso('codigos_internos.ver')
+              or public.tiene_permiso('costos.ver')) then
+    raise exception 'No tiene el permiso costos.ver, costos.gastos_generales ni codigos_internos.ver para realizar esta operación' using errcode = 'insufficient_privilege';
   end if;
   if p_periodo is null then
     return;
@@ -347,7 +347,7 @@ begin
 end;
 $$;
 comment on function public.gastos_del_mes_oficina(date) is
-  'El sueldo de la oficina del mes de p_periodo, sumado y sin cuántas personas son (sin lo que ya cargaron en horas a una unidad), y cuántos trabajadores con costo no tienen área. Exige costos.gastos_generales o codigos_internos.ver, los que ya lo ven en el costeo de cada código.';
+  'El sueldo de la oficina del mes de p_periodo, sumado y sin cuántas personas son (sin lo que ya cargaron en horas a una unidad), y cuántos trabajadores con costo no tienen área. Exige costos.ver, costos.gastos_generales o codigos_internos.ver: quien ve el costo de cada código, que ya lo lleva dentro.';
 revoke all on function public.gastos_del_mes_oficina(date) from public, anon;
 grant execute on function public.gastos_del_mes_oficina(date) to authenticated;
 
