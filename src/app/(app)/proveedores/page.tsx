@@ -7,6 +7,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { listarProveedores, PROVEEDORES_POR_PAGINA } from '@/lib/datos/proveedores'
+import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { condicionDePago, resumenCuenta } from '@/lib/dominio/proveedores'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -18,8 +19,14 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
   const perfil = await exigirPermiso('proveedores.ver')
   const params = await searchParams
 
-  const busqueda = typeof params.q === 'string' ? params.q : undefined
+  // Solo signos («%») no es una búsqueda, como en Clientes.
+  const busqueda = typeof params.q === 'string' && palabrasDeBusqueda(params.q).length > 0 ? params.q : undefined
   const incluirInactivos = params.estado === 'inactivos'
+  // El otro listado, con el mismo término.
+  const verOtros = new URLSearchParams({
+    ...(typeof params.q === 'string' && params.q ? { q: params.q } : {}),
+    ...(incluirInactivos ? {} : { estado: 'inactivos' }),
+  }).toString()
   const { proveedores, total, pagina, paginas } = await listarProveedores({
     busqueda,
     pagina: Number(params.pagina) || 1,
@@ -32,17 +39,17 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
     <>
       <EncabezadoPagina
         titulo="Proveedores"
-        descripcion={
-          total === 1
-            ? '1 proveedor en el padrón'
-            : `${total} proveedores en el padrón`
-        }
+        descripcion={busqueda
+          ? total === 0 ? `Ningún proveedor con «${busqueda}»` : `${total === 1 ? '1 proveedor' : `${total} proveedores`} con «${busqueda}»`
+          : total === 1 ? '1 proveedor en el padrón' : `${total} proveedores en el padrón`}
         ayuda="La orden de compra elige el proveedor de este padrón."
         acciones={
           <div className="flex flex-wrap items-center gap-3">
             {edita && <NuevoProveedor />}
             <Link
-              href={incluirInactivos ? '/proveedores' : '/proveedores?estado=inactivos'}
+              href={`/proveedores${verOtros ? `?${verOtros}` : ''}`}
+              // Se lleva lo que se está escribiendo, como una pastilla.
+              data-filtro=""
               className="text-sm text-acento hover:underline"
             >
               {incluirInactivos ? 'Ver solo activos' : 'Ver también los dados de baja'}
@@ -51,14 +58,14 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
         }
       />
 
-      <BuscadorSimple ruta="/proveedores" etiqueta="Buscar proveedores" marcador="Buscar por razón social, RUC o rubro" />
+      <BuscadorSimple ruta="/proveedores" etiqueta="Buscar proveedores" marcador="Razón social, RUC o rubro" />
 
       <Tarjeta className="mt-4 overflow-hidden">
         <Tabla>
           <TablaCabecera>
             <tr>
               <TH>Proveedor</TH>
-              <TH>Documento</TH>
+              <TH className="hidden sm:table-cell">Documento</TH>
               {/* En el teléfono, contacto y pago bajan a la celda del nombre: así
                   caben el RUC y Editar sin correr la tabla de lado. */}
               <TH className="hidden sm:table-cell">Contacto</TH>
@@ -74,7 +81,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                 titulo={busqueda ? 'Ningún proveedor coincide' : 'Aún no hay proveedores en el padrón'}
                 descripcion={
                   busqueda
-                    ? `Nada con «${busqueda}». Prueba con el RUC o con una parte del nombre.`
+                    ? 'Prueba con menos palabras, con el RUC o con una parte del nombre.'
                     : edita
                       ? 'Registra a quienes les compran: la orden de compra ya no se escribe a mano.'
                       : 'Logística los registra al hacer sus órdenes de compra.'
@@ -98,10 +105,13 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                       {(p.nombre_comercial || p.rubro) && (
                         <p className="text-[11px] text-texto-suave">{[p.nombre_comercial, p.rubro].filter(Boolean).join(' · ')}</p>
                       )}
-                      <p className="text-[11px] text-texto-suave sm:hidden">{[pago, contacto].filter(Boolean).join(' · ')}</p>
+                      {/* En el teléfono el RUC baja aquí: su columna aparte dejaba el nombre en cuatro renglones. */}
+                      <p className="text-xs text-texto-suave sm:hidden">
+                        {[`${p.tipo_documento} ${p.numero_documento}`, pago, contacto].filter(Boolean).join(' · ')}
+                      </p>
                     </TD>
-                    <TD className="whitespace-nowrap">
-                      <span className="hidden text-texto-suave sm:inline">{p.tipo_documento} </span><span className="tabular">{p.numero_documento}</span>
+                    <TD className="hidden whitespace-nowrap sm:table-cell">
+                      <span className="text-texto-suave">{p.tipo_documento} </span><span className="tabular">{p.numero_documento}</span>
                     </TD>
                     <TD className="hidden text-texto-suave sm:table-cell">
                       {contacto || '—'}

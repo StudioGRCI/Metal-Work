@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
 import type { Tablas } from '@/types/database'
+import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
 
 export type Cliente = Tablas<'clientes'>
 export type Unidad = Tablas<'unidades'>
@@ -20,10 +21,7 @@ export async function listarClientes(filtros: { busqueda?: string; pagina?: numb
 
   if (!filtros.incluirInactivos) consulta = consulta.eq('activo', true)
 
-  if (filtros.busqueda?.trim()) {
-    const t = filtros.busqueda.trim().replace(/[%,()]/g, '')
-    consulta = consulta.or(`razon_social.ilike.%${t}%,nombre_comercial.ilike.%${t}%,numero_documento.ilike.%${t}%`)
-  }
+  for (const filtro of filtrosDeBusqueda(['razon_social', 'nombre_comercial', 'numero_documento'], filtros.busqueda)) consulta = consulta.or(filtro)
 
   const { data, error, count } = await consulta
     .range(desde, desde + CLIENTES_POR_PAGINA - 1)
@@ -65,12 +63,7 @@ export async function listarUnidades(filtros: { clienteId?: string; busqueda?: s
 
   if (filtros.clienteId) consulta = consulta.eq('cliente_id', filtros.clienteId)
 
-  if (filtros.busqueda?.trim()) {
-    const t = filtros.busqueda.trim().replace(/[%,()]/g, '')
-    consulta = consulta.or(
-      `placa.ilike.%${t}%,codigo_interno.ilike.%${t}%,numero_fmi.ilike.%${t}%,marca.ilike.%${t}%,modelo.ilike.%${t}%,numero_chasis.ilike.%${t}%`,
-    )
-  }
+  for (const filtro of filtrosDeBusqueda(['placa', 'codigo_interno', 'numero_fmi', 'marca', 'modelo', 'numero_chasis'], filtros.busqueda)) consulta = consulta.or(filtro)
 
   const { data, error } = await consulta.order('placa').limit(300)
   if (error) throw new Error(`No se pudieron listar las unidades: ${error.message}`)

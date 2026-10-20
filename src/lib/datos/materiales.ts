@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
+import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
 
 export type MaterialDelCatalogo = {
   id: string
@@ -37,8 +38,7 @@ export async function listarCatalogoMateriales(
 
   if (!filtros.inactivos) consulta = consulta.eq('activo', true)
 
-  const texto = filtros.busqueda?.trim()
-  if (texto) consulta = consulta.or(`descripcion.ilike.%${texto}%,codigo.ilike.%${texto}%`)
+  for (const filtro of filtrosDeBusqueda(['descripcion', 'codigo'], filtros.busqueda)) consulta = consulta.or(filtro)
 
   const { data, count, error } = await consulta
   if (error) throw new Error(`No se pudo leer el catálogo de materiales: ${error.message}`)

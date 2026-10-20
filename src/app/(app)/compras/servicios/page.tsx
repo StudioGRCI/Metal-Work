@@ -1,8 +1,5 @@
-import { Search } from 'lucide-react'
-
+import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
-import { Boton } from '@/components/ui/boton'
-import { Entrada } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
@@ -62,13 +59,9 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
         }
       />
 
-      <form className="flex max-w-md gap-2" role="search">
-        <Entrada name="codigo" defaultValue={buscado} placeholder="Código interno, por ejemplo PLA_SR_O4_1_26/28" aria-label="Buscar por código interno" />
-        <Boton type="submit" variante="secundario">
-          <Search aria-hidden className="size-4" />
-          Buscar
-        </Boton>
-      </form>
+      <div className="mb-4">
+        <BuscadorSimple ruta="/compras/servicios" clave="codigo" etiqueta="Buscar por código interno" marcador="Código interno, por ejemplo SR_04" />
+      </div>
 
       <Tarjeta className="overflow-hidden">
         <Tabla>
@@ -202,7 +195,9 @@ function EnQueVa({ servicio: s }: { servicio: OrdenServicioListada }) {
         {s.atrasada && <Insignia tono="peligro">Atrasada</Insignia>}
       </div>
       <div className="mt-1" data-detraccion>
-        <Insignia tono={detraccion.tono}>{detraccion.texto}</Insignia>
+        {/* Puede partirse: «Detracción 12 %: falta el tipo de cambio» de un solo
+            renglón corría la tabla de costado en el teléfono. */}
+        <Insignia tono={detraccion.tono} className="whitespace-normal">{detraccion.texto}</Insignia>
         {detraccion.detalle && <p className="mt-0.5 max-w-64 text-[11px] text-texto-suave">{detraccion.detalle}</p>}
       </div>
     </>

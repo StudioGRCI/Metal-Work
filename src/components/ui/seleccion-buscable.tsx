@@ -3,6 +3,7 @@
 import { useId, useRef, useState } from 'react'
 import { Check, ChevronDown, Search, X } from 'lucide-react'
 
+import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { cn } from '@/lib/utils'
 
 export type OpcionBuscable = {
@@ -15,15 +16,6 @@ export type OpcionBuscable = {
 /** Cuántas opciones se pintan de una vez. Con los 500 clientes cargados,
  *  pintarlas todas traba el desplegable en el teléfono del taller. */
 const TOPE = 80
-
-/** «GRUA» tiene que encontrar «Grúa», y «sac» a «S.A.C.». */
-function normalizar(texto: string) {
-  return texto
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .replace(/[.\-_/]/g, ' ')
-    .toLowerCase()
-}
 
 /**
  * Lista desplegable con buscador. Nace por las listas que crecen —clientes,
@@ -78,11 +70,12 @@ export function SeleccionBuscable({
   const caja = useRef<HTMLInputElement>(null)
 
   const elegida = opciones.find((o) => o.valor === valor) ?? null
+  const conEquis = Boolean(elegida) && permiteVaciar && !deshabilitado
 
-  const t = normalizar(filtro.trim())
-  const coincidencias = t
-    ? opciones.filter((o) => normalizar(`${o.etiqueta} ${o.detalle ?? ''}`).includes(t))
-    : opciones
+  // Como todo buscador: «grua» encuentra «Grúa», «sac» a «S.A.C.» y
+  // «ejemplo agricola» a «Agrícola El Ejemplo».
+  const palabras = palabrasDeBusqueda(filtro)
+  const coincidencias = opciones.filter((o) => coincide(palabras, [o.etiqueta, o.detalle]))
   const visibles = coincidencias.slice(0, TOPE)
   const ocultas = coincidencias.length - visibles.length
 
@@ -184,6 +177,7 @@ export function SeleccionBuscable({
         aria-expanded={abierto}
         aria-controls={idLista}
         aria-haspopup="listbox"
+        title={elegida?.etiqueta}
         aria-label={etiquetaAccesible}
         aria-required={requerido}
         aria-describedby={descripcion}
@@ -197,21 +191,24 @@ export function SeleccionBuscable({
           }
         }}
         className={cn(
-          'flex h-11 w-full items-center gap-2 rounded-[var(--radius-base)] border pr-14 pl-3 text-left text-base transition-colors sm:h-9 sm:text-sm',
+          'flex min-h-11 w-full items-center gap-2 rounded-[var(--radius-base)] border py-1 pl-3 text-left text-base transition-colors sm:h-9 sm:min-h-0 sm:py-0 sm:text-sm',
+          // Lugar para la flecha y, solo si se dibuja, para la ×: reservarlo
+          // siempre dejaba al cliente elegido en «TRANS…» en el teléfono.
+          conEquis ? 'pr-20 sm:pr-14' : 'pr-9',
           'disabled:cursor-not-allowed disabled:opacity-60',
           elegida ? 'border-acento bg-acento-suave font-medium text-acento' : 'border-borde-fuerte bg-superficie text-texto-tenue',
         )}
       >
         {elegida && <Check aria-hidden className="size-4 shrink-0" />}
-        <span className="min-w-0 flex-1 truncate">{elegida ? elegida.etiqueta : marcador}</span>
+        <span className="line-clamp-2 min-w-0 flex-1 sm:line-clamp-1 sm:truncate">{elegida ? elegida.etiqueta : marcador}</span>
       </button>
 
-      {elegida && permiteVaciar && !deshabilitado && (
+      {conEquis && (
         <button
           type="button"
           aria-label="Quitar la selección"
           onClick={() => onChange('')}
-          className="absolute top-1/2 right-8 -translate-y-1/2 rounded p-0.5 text-texto-tenue hover:bg-superficie-2 hover:text-texto"
+          className="absolute top-1/2 right-8 inline-flex size-11 -translate-y-1/2 items-center justify-center rounded text-texto-tenue hover:bg-superficie-2 hover:text-texto sm:right-8 sm:size-auto sm:p-0.5"
         >
           <X aria-hidden className="size-3.5" />
         </button>
@@ -241,14 +238,14 @@ export function SeleccionBuscable({
               placeholder={marcadorBusqueda}
               aria-label={marcadorBusqueda}
               aria-controls={idLista}
-              className="h-8 w-full rounded-[var(--radius-base)] border border-borde-fuerte bg-superficie pr-2 pl-8 text-sm text-texto placeholder:text-texto-tenue"
+              className="h-11 w-full rounded-[var(--radius-base)] border border-borde-fuerte bg-superficie pr-2 pl-8 text-base text-texto placeholder:text-texto-tenue sm:h-8 sm:text-sm"
             />
           </div>
 
           <ul id={idLista} role="listbox" className="max-h-64 overflow-y-auto py-1">
             {visibles.length === 0 && (
               <li className="px-3 py-6 text-center text-xs text-texto-suave">
-                Nada coincide con lo que escribiste.
+                Nada coincide. Prueba con menos palabras o con el número.
               </li>
             )}
 
@@ -273,7 +270,9 @@ export function SeleccionBuscable({
                     )}
                   />
                   <span className="min-w-0">
-                    <span className="block truncate">{o.etiqueta}</span>
+                    {/* Dos renglones y no uno: cortado, «TRANSPORTES PEÑA Y…»
+                        salía igual en siete opciones. */}
+                    <span className="line-clamp-2">{o.etiqueta}</span>
                     {o.detalle && (
                       <span className="block truncate text-[11px] text-texto-suave">
                         {o.detalle}

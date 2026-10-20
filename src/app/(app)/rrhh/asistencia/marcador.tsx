@@ -8,6 +8,7 @@ import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import type { Marca, Trabajador } from '@/lib/datos/rrhh'
+import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { horaCorta, minutosLargos } from '@/lib/dominio/rrhh'
 import { useEnvio } from '@/lib/envio'
 
@@ -34,21 +35,19 @@ export function Marcador({
   esHoy: boolean
 }) {
   const [busqueda, setBusqueda] = useState('')
-  const t = busqueda.trim().toLowerCase()
-  const visibles = t
-    ? personal.filter((p) => `${p.nombres} ${p.apellidos} ${p.apellidos} ${p.nombres} ${p.dni}`.toLowerCase().includes(t))
-    : personal
+  const palabras = palabrasDeBusqueda(busqueda)
+  const visibles = personal.filter((p) => coincide(palabras, [p.nombres, p.apellidos, p.dni]))
   const porPersona = new Map<string, Marca[]>()
   for (const m of marcas) porPersona.set(m.trabajador_id, [...(porPersona.get(m.trabajador_id) ?? []), m])
 
   return (
     <div className="space-y-3">
-      <div className="relative">
+      <div className="relative max-w-xl">
         <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-texto-suave" />
         <Entrada
           type="search"
           aria-label="Buscar por nombre o DNI"
-          placeholder="Buscar por nombre o DNI"
+          placeholder="Nombre o DNI"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           className="min-h-11 pl-9"
@@ -57,7 +56,7 @@ export function Marcador({
       </div>
       {visibles.length === 0 ? (
         <p className="rounded-[var(--radius-base)] border border-borde bg-superficie p-4 text-center text-sm text-texto-suave">
-          {personal.length === 0 ? 'Recursos Humanos todavía no registró a nadie.' : 'Nadie coincide con la búsqueda.'}
+          {personal.length === 0 ? 'Recursos Humanos todavía no registró a nadie.' : 'Nadie coincide. Prueba solo con el apellido o con el DNI.'}
         </p>
       ) : (
         <ul className="space-y-2">

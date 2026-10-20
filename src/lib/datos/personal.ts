@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
+import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
 
 export type PersonaEnLista = {
   id: string
@@ -35,12 +36,7 @@ export async function listarPersonal(filtros: { busqueda?: string; estado?: stri
   if (filtros.estado === 'activos') consulta = consulta.eq('activo', true)
   if (filtros.estado === 'bajas') consulta = consulta.eq('activo', false)
 
-  const t = filtros.busqueda?.trim()
-  if (t) {
-    consulta = consulta.or(
-      `nombres.ilike.%${t}%,apellidos.ilike.%${t}%,correo.ilike.%${t}%,documento.ilike.%${t}%`,
-    )
-  }
+  for (const filtro of filtrosDeBusqueda(['nombres', 'apellidos', 'correo', 'documento'], filtros.busqueda)) consulta = consulta.or(filtro)
 
   const { data, error } = await consulta
   if (error) throw new Error(`No se pudo listar el personal: ${error.message}`)

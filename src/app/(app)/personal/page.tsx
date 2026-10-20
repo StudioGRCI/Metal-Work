@@ -7,6 +7,7 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SinDatos, TH, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { catalogosDePersonal, listarPersonal } from '@/lib/datos/personal'
+import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AltaDePersona, FilaDePersona } from './acciones-personal'
@@ -25,7 +26,7 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
   const perfil = await exigirPermiso(['usuarios.ver', 'usuarios.gestionar'])
   const params = await searchParams
 
-  const busqueda = typeof params.q === 'string' ? params.q : undefined
+  const busqueda = typeof params.q === 'string' && palabrasDeBusqueda(params.q).length > 0 ? params.q : undefined
   const estado = typeof params.estado === 'string' ? params.estado : 'activos'
 
   const [personal, catalogos] = await Promise.all([
@@ -55,9 +56,13 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
       <EncabezadoPagina
         titulo="Personal"
         descripcion={
-          personal.length === 1
-            ? '1 persona'
-            : `${personal.length} personas · ${operarios} en el taller`
+          busqueda
+            ? personal.length === 0
+              ? `Nadie con «${busqueda}»`
+              : `${personal.length === 1 ? '1 persona' : `${personal.length} personas`} con «${busqueda}»`
+            : personal.length === 1
+              ? '1 persona'
+              : `${personal.length} personas · ${operarios} en el taller`
         }
         acciones={gestiona && <AltaDePersona catalogos={catalogos} />}
       />
@@ -67,7 +72,7 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
           <BuscadorSimple
             ruta="/personal"
             etiqueta="Buscar personal"
-            marcador="Buscar por nombre, correo o documento"
+            marcador="Nombre, correo o documento"
           />
         </div>
         {/* Antes cada pastilla era un <a> que rearmaba la URL a mano y solo se
@@ -91,9 +96,9 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
               {/* En el teléfono quedan persona, puesto, alcance y acciones; correo,
                   área y costo bajan a la celda de al lado en letra chica. */}
               <TH className="hidden sm:table-cell">Correo</TH>
-              <TH>Puesto</TH>
+              <TH className="hidden sm:table-cell">Puesto</TH>
               <TH className="hidden sm:table-cell">Área</TH>
-              <TH>Alcance</TH>
+              <TH className="hidden sm:table-cell">Alcance</TH>
               <TH className="hidden text-right sm:table-cell">Costo hora</TH>
               {gestiona && <TH className="text-right">Acciones</TH>}
             </tr>
@@ -118,6 +123,7 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
                 persona={persona}
                 catalogos={catalogos}
                 gestiona={gestiona}
+                propia={persona.id === perfil.id}
               />
             ))}
           </tbody>

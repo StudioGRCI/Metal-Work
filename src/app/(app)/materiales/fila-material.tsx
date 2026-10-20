@@ -163,13 +163,18 @@ export function FilaMaterial({
             </Insignia>
           )}
         </p>
+        {/* En el teléfono la categoría y la especificación van bajo el nombre:
+            con sus columnas, la tabla se corría de costado. */}
+        <p className="text-xs text-texto-suave sm:hidden">
+          {[material.categoria?.nombre, material.especificacion_tecnica].filter(Boolean).join(' · ')}
+        </p>
       </TD>
-      <TD className="text-sm text-texto-suave">{material.categoria?.nombre ?? '—'}</TD>
+      <TD className="hidden text-sm text-texto-suave sm:table-cell">{material.categoria?.nombre ?? '—'}</TD>
       <TD className="text-sm text-texto-suave">
         {material.unidad?.codigo ?? '—'}
         {material.unidad_pendiente && <Insignia tono="aviso" className="ml-2">Confirmar unidad</Insignia>}
       </TD>
-      <TD className="text-xs text-texto-suave">{material.especificacion_tecnica ?? '—'}</TD>
+      <TD className="hidden text-xs text-texto-suave sm:table-cell">{material.especificacion_tecnica ?? '—'}</TD>
       {puedeEditar && (
         <TD>
           <div className="flex items-center justify-end gap-1">

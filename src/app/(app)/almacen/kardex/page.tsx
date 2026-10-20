@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
-import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { Campo, Entrada } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -19,6 +19,7 @@ import { createClient } from '@/lib/supabase/server'
 
 import { ConteoFisico } from './conteo'
 import { ConteoInicial } from './conteo-inicial'
+import { FiltroMaterial } from './filtro-material'
 import { NuevoIngreso } from './ingreso'
 import { SalidasPorCerrar } from './por-cerrar'
 import { BandejaPorValidar } from './por-validar'
@@ -188,16 +189,14 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
 
       <Tarjeta className="mb-4">
         <TarjetaCuerpo>
-          <form method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1.5fr_auto] lg:items-end">
+          {/* Con `key`, el formulario se rehace cuando cambian los filtros: sus
+              campos no son controlados y «Limpiar» dejaba lo escrito sin «Ver». */}
+          <form key={JSON.stringify(filtros)} method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1.5fr_auto] lg:items-end">
             {filtros.tipo && <input type="hidden" name="tipo" value={filtros.tipo} />}
             {filtros.almacen && <input type="hidden" name="almacen" value={filtros.almacen} />}
             <Campo etiqueta="Material" htmlFor="k-material">
-              <Seleccion id="k-material" name="material" defaultValue={filtros.material ?? ''}>
-                <option value="">Todo el almacén</option>
-                {materiales.map((m) => (
-                  <option key={m.material_id} value={m.material_id}>{m.descripcion} · {m.codigo}</option>
-                ))}
-              </Seleccion>
+              <FiltroMaterial key={filtros.material ?? ''} id="k-material" inicial={filtros.material ?? ''}
+                materiales={materiales.map((m) => ({ valor: m.material_id, etiqueta: m.descripcion, detalle: m.codigo }))} />
             </Campo>
             <Campo etiqueta="Desde" htmlFor="k-desde">
               <Entrada id="k-desde" name="desde" type="date" defaultValue={filtros.desde ?? ''} />
@@ -314,21 +313,32 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
         <Tabla>
           <TablaCabecera>
             <tr>
+              {/* En el teléfono quedan la fecha y las tres cifras: el material, el
+                  movimiento y la unidad bajan a la celda de la fecha. Con sus
+                  columnas la tabla medía el doble de la pantalla. */}
               <TH>Fecha</TH>
-              {!elegido && <TH>Material</TH>}
-              <TH>Movimiento</TH>
+              {!elegido && <TH className="hidden sm:table-cell">Material</TH>}
+              <TH className="hidden sm:table-cell">Movimiento</TH>
               <TH className="hidden md:table-cell">Documento o motivo</TH>
-              <TH>Unidad / OT</TH>
-              <TH className="text-right">Entrada</TH>
-              <TH className="text-right">Salida</TH>
-              <TH className="text-right">Saldo</TH>
+              <TH className="hidden sm:table-cell">Unidad / OT</TH>
+              <TH className="px-2 text-right sm:px-3">Entrada</TH>
+              <TH className="px-2 text-right sm:px-3">Salida</TH>
+              <TH className="px-2 text-right sm:px-3">Saldo</TH>
             </tr>
           </TablaCabecera>
           <tbody>
             {saldoAnterior !== null && (
+              // Celda por celda, como las demás filas: un colSpan fijo contaba
+              // columnas que en el teléfono están escondidas y corría el saldo.
               <TR>
-                <TD colSpan={elegido ? 6 : 7} className="text-xs text-texto-suave">Saldo anterior</TD>
-                <TD className="tabular text-right font-semibold">{cantidad(saldoAnterior)}</TD>
+                <TD className="text-xs text-texto-suave">Saldo anterior</TD>
+                {!elegido && <TD className="hidden sm:table-cell" />}
+                <TD className="hidden sm:table-cell" />
+                <TD className="hidden md:table-cell" />
+                <TD className="hidden sm:table-cell" />
+                <TD />
+                <TD />
+                <TD className="tabular px-2 text-right sm:px-3 font-semibold">{cantidad(saldoAnterior)}</TD>
               </TR>
             )}
             {filas.length === 0 ? (
@@ -337,21 +347,61 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                 titulo={hayFiltros ? 'Ningún movimiento con esos filtros' : 'Todavía no hay movimientos'}
                 descripcion={hayFiltros
                   ? 'Prueba con otro rango de fechas, otro tipo o borra el texto de la unidad.'
-                  : 'Registra el saldo inicial o el primer ingreso con el botón de arriba; cada salida quedará aquí con su unidad.'}
+                  : puedeIngreso
+                    ? 'Registra el saldo inicial o el primer ingreso con el botón de arriba; cada salida quedará aquí con su unidad.'
+                    : 'Almacén registra el saldo inicial y cada ingreso; aparecen aquí apenas lo haga.'}
               />
             ) : filas.map((f) => {
               const def = MOVIMIENTO_KARDEX[f.movimiento ?? ''] ?? { etiqueta: f.movimiento ?? 'Movimiento', tono: 'neutro' as const }
               const origen = ORIGEN_KARDEX[f.origen ?? ''] ?? f.origen
+              const material = (
+                <>
+                  <Link href={`/almacen/kardex?material=${f.material_id}`} className="line-clamp-2 text-sm text-acento hover:underline">{f.material ?? 'Material'}</Link>
+                  <span className="block font-mono text-[10px] text-texto-tenue">{f.material_codigo}</span>
+                </>
+              )
+              const unidadYOt = (
+                <>
+                  {f.codigo_unidad
+                    ? <span className="block text-sm font-medium break-words">{f.codigo_unidad}</span>
+                    : <span className="text-xs text-texto-tenue">—</span>}
+                  {f.orden_id && f.orden_numero && (abreOt
+                    ? <Link href={`/ordenes/${f.orden_id}?vista=materiales`} className="text-[11px] text-acento hover:underline">OT {f.orden_numero}</Link>
+                    : <span className="block text-[11px] text-texto-suave">OT {f.orden_numero}</span>)}
+                  {f.requerimiento_numero && (
+                    <span className="block text-[11px] text-texto-suave">{f.requerimiento_numero}</span>
+                  )}
+                  {f.con_foto && (
+                    <Link href={`/almacen/movimientos/${f.id}/evidencia`} target="_blank" className="ml-2 text-[11px] text-acento hover:underline">Ver foto</Link>
+                  )}
+                  {f.formato_pendiente && (
+                    <Link href={`/almacen/movimientos/${f.id}/formato`} target="_blank" className="ml-2 text-[11px] font-medium text-aviso hover:underline">Formato pendiente</Link>
+                  )}
+                  {f.con_formato && exigeFormato(f.almacen) && (
+                    <Link href={`/almacen/movimientos/${f.id}/formato-firmado`} target="_blank" className="ml-2 text-[11px] text-acento hover:underline">Ver formato</Link>
+                  )}
+                </>
+              )
               return (
                 <TR key={f.id}>
-                  <TD className="whitespace-nowrap text-xs text-texto-suave">{fechaHora(f.fecha)}</TD>
+                  <TD className="text-xs text-texto-suave">
+                    <span className="whitespace-nowrap">{fechaHora(f.fecha)}</span>
+                    <div className="mt-1 min-w-32 space-y-1 text-texto sm:hidden">
+                      {!elegido && <div>{material}</div>}
+                      <div className="flex flex-wrap items-center gap-1">
+                        <Insignia tono={def.tono}>{def.etiqueta}</Insignia>
+                        <span className="text-[11px] text-texto-suave">{origen}</span>
+                      </div>
+                      {f.documento && <span className="block text-[11px] text-texto-suave">{f.documento}</span>}
+                      <div>{unidadYOt}</div>
+                    </div>
+                  </TD>
                   {!elegido && (
-                    <TD className="max-w-56">
-                      <Link href={`/almacen/kardex?material=${f.material_id}`} className="line-clamp-2 text-sm text-acento hover:underline">{f.material ?? 'Material'}</Link>
-                      <span className="block font-mono text-[10px] text-texto-tenue">{f.material_codigo}</span>
+                    <TD className="hidden max-w-56 sm:table-cell">
+                      {material}
                     </TD>
                   )}
-                  <TD>
+                  <TD className="hidden sm:table-cell">
                     <Insignia tono={def.tono}>{def.etiqueta}</Insignia>
                     <span className="block text-[11px] text-texto-suave">{origen}</span>
                     <span className="block text-[11px] text-texto-suave md:hidden">{f.documento}</span>
@@ -369,29 +419,10 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                       <span className="block text-[11px] text-acento">Desde planilla · cargado el {fechaHora(f.cargado_en)}</span>
                     )}
                   </TD>
-                  <TD className="max-w-52">
-                    {f.codigo_unidad
-                      ? <span className="block text-sm font-medium break-words">{f.codigo_unidad}</span>
-                      : <span className="text-xs text-texto-tenue">—</span>}
-                    {f.orden_id && f.orden_numero && (abreOt
-                      ? <Link href={`/ordenes/${f.orden_id}?vista=materiales`} className="text-[11px] text-acento hover:underline">OT {f.orden_numero}</Link>
-                      : <span className="block text-[11px] text-texto-suave">OT {f.orden_numero}</span>)}
-                    {f.requerimiento_numero && (
-                      <span className="block text-[11px] text-texto-suave">{f.requerimiento_numero}</span>
-                    )}
-                    {f.con_foto && (
-                      <Link href={`/almacen/movimientos/${f.id}/evidencia`} target="_blank" className="ml-2 text-[11px] text-acento hover:underline">Ver foto</Link>
-                    )}
-                    {f.formato_pendiente && (
-                      <Link href={`/almacen/movimientos/${f.id}/formato`} target="_blank" className="ml-2 text-[11px] font-medium text-aviso hover:underline">Formato pendiente</Link>
-                    )}
-                    {f.con_formato && exigeFormato(f.almacen) && (
-                      <Link href={`/almacen/movimientos/${f.id}/formato-firmado`} target="_blank" className="ml-2 text-[11px] text-acento hover:underline">Ver formato</Link>
-                    )}
-                  </TD>
-                  <TD className="tabular text-right text-exito">{Number(f.entrada) > 0 ? cantidad(f.entrada) : ''}</TD>
-                  <TD className="tabular text-right text-peligro">{Number(f.salida) > 0 ? cantidad(f.salida) : ''}</TD>
-                  <TD className="tabular text-right font-semibold">
+                  <TD className="hidden max-w-52 sm:table-cell">{unidadYOt}</TD>
+                  <TD className="tabular px-2 text-right sm:px-3 text-exito">{Number(f.entrada) > 0 ? cantidad(f.entrada) : ''}</TD>
+                  <TD className="tabular px-2 text-right sm:px-3 text-peligro">{Number(f.salida) > 0 ? cantidad(f.salida) : ''}</TD>
+                  <TD className="tabular px-2 text-right sm:px-3 font-semibold">
                     {cantidad(f.saldo)}
                     {!elegido && f.unidad_medida && <span className="ml-1 text-[10px] font-normal text-texto-tenue">{f.unidad_medida}</span>}
                   </TD>

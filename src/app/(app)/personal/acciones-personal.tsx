@@ -1,6 +1,7 @@
 'use client'
 
 import { KeyRound, Pencil, Plus, UserMinus, UserPlus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
@@ -242,54 +243,72 @@ export function FilaDePersona({
   persona,
   catalogos,
   gestiona,
+  propia = false,
 }: {
   persona: PersonaEnLista
   catalogos: Catalogos
   gestiona: boolean
+  /** La fila de quien mira: la base no deja darse de baja a uno mismo. */
+  propia?: boolean
 }) {
-  const [ventana, setVentana] = useState<'editar' | 'clave' | null>(null)
+  const router = useRouter()
+  const [ventana, setVentana] = useState<'editar' | 'clave' | 'baja' | null>(null)
 
   const edicion = useEnvio(guardarPersona)
   const clave = useEnvio(cambiarClave)
-  const estado = useEnvio(cambiarEstado)
+  // Dada de baja, la fila se va de «Activos» y con ella el botón para
+  // deshacerlo: se lleva a la lista donde quedó, con el botón a la vista.
+  const estado = useEnvio(
+    cambiarEstado,
+    () => {
+      setVentana(null)
+      const lista = persona.activo ? 'bajas' : 'activos'
+      router.push(`/personal?estado=${lista}&q=${encodeURIComponent(persona.correo ?? persona.apellidos)}`)
+    },
+    // La navegación ya trae la lista nueva: un refresco aparte la rehacía dos veces.
+    { refrescar: false },
+  )
 
+  const alcance = (
+    <>
+      {persona.es_operario ? <Insignia tono="info">Solo sus órdenes</Insignia> : <Insignia tono="neutro">Todo el taller</Insignia>}
+      {!persona.activo && (
+        <span className="ml-1">
+          <Insignia tono="peligro">De baja</Insignia>
+        </span>
+      )}
+    </>
+  )
   return (
     <>
-      <TR className={persona.activo ? undefined : 'opacity-60'}>
+      {/* Sin atenuar la fila: dejaba «Reactivar» y el correo por debajo del
+          contraste que se lee. La insignia «De baja» ya dice el estado. */}
+      <TR>
         <TD>
           <div className="font-medium">
             {persona.apellidos}, {persona.nombres}
           </div>
-          <div className="text-xs text-texto-suave">{persona.cargo ?? '—'}</div>
+          {persona.cargo && <div className="text-xs text-texto-suave">{persona.cargo}</div>}
           {/* El correo es la columna que se esconde en el teléfono; aquí abajo
               sigue estando, que es el dato con el que se le escribe. */}
           <div className="text-[11px] break-all text-texto-suave sm:hidden">{persona.correo}</div>
-        </TD>
-        <TD className="hidden text-xs sm:table-cell">{persona.correo}</TD>
-        <TD className="text-xs">
-          {persona.rol?.nombre ?? '—'}
-          <span className="block text-[11px] text-texto-tenue sm:hidden">
+          {/* El puesto y el alcance también bajan aquí en el teléfono: con sus
+              columnas y los tres botones, la tabla se corría de costado. */}
+          <div className="mt-1 text-xs text-texto sm:hidden">
             {[
+              persona.rol?.nombre,
               persona.area?.nombre,
               persona.es_operario ? `S/ ${Number(persona.costo_hora).toFixed(2)}/h` : null,
             ]
               .filter(Boolean)
-              .join(' · ') || '—'}
-          </span>
+              .join(' · ')}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1 sm:hidden">{alcance}</div>
         </TD>
+        <TD className="hidden text-xs sm:table-cell">{persona.correo}</TD>
+        <TD className="hidden text-xs sm:table-cell">{persona.rol?.nombre ?? '—'}</TD>
         <TD className="hidden text-xs sm:table-cell">{persona.area?.nombre ?? '—'}</TD>
-        <TD>
-          {persona.es_operario ? (
-            <Insignia tono="info">Solo sus órdenes</Insignia>
-          ) : (
-            <Insignia tono="neutro">Todo el taller</Insignia>
-          )}
-          {!persona.activo && (
-            <span className="ml-1">
-              <Insignia tono="peligro">De baja</Insignia>
-            </span>
-          )}
-        </TD>
+        <TD className="hidden sm:table-cell">{alcance}</TD>
         <TD className="tabular hidden text-right text-xs sm:table-cell">
           {persona.es_operario ? `S/ ${Number(persona.costo_hora).toFixed(2)}` : '—'}
         </TD>
@@ -317,32 +336,70 @@ export function FilaDePersona({
               >
                 <KeyRound className="size-4" />
               </button>
-              {/* Dar de baja no pregunta: no se pierde nada —la ficha y sus
-                  horas siguen ahí— y se deshace con el mismo botón, que pasa a
-                  decir «Reactivar». */}
-              <form onSubmit={estado.alEnviar} className="inline">
-                <input type="hidden" name="id" value={persona.id} />
-                <input type="hidden" name="activo" value={persona.activo ? 'false' : 'true'} />
+              {/* Dar de baja pregunta: el ícono está a un dedo del de la
+                  contraseña y deja a la persona sin entrar. Reactivar no. */}
+              {/* En la fila propia el lugar queda ocupado: si no, el lápiz caía
+                  donde las demás filas tienen la llave. */}
+              {persona.activo && propia ? (
+                <span aria-hidden className={cn(BOTON_ICONO, 'invisible')} />
+              ) : persona.activo ? (
                 <button
-                  type="submit"
-                  disabled={estado.enviando}
-                  title={persona.activo ? 'Dar de baja' : 'Reactivar'}
-                  aria-label={persona.activo ? `Dar de baja a ${persona.nombres}` : `Reactivar a ${persona.nombres}`}
-                  className={cn(BOTON_ICONO, 'disabled:opacity-50')}
+                  type="button"
+                  onClick={() => {
+                    estado.limpiar()
+                    setVentana('baja')
+                  }}
+                  title="Dar de baja"
+                  aria-label={`Dar de baja a ${persona.nombres}`}
+                  className={BOTON_ICONO}
                 >
-                  {persona.activo ? <UserMinus className="size-4" /> : <UserPlus className="size-4" />}
+                  <UserMinus className="size-4" />
                 </button>
-              </form>
+              ) : (
+                <form onSubmit={estado.alEnviar} className="inline">
+                  <input type="hidden" name="id" value={persona.id} />
+                  <input type="hidden" name="activo" value="true" />
+                  <button
+                    type="submit"
+                    disabled={estado.enviando}
+                    title="Reactivar"
+                    aria-label={`Reactivar a ${persona.nombres}`}
+                    className={cn(BOTON_ICONO, 'disabled:opacity-50')}
+                  >
+                    <UserPlus className="size-4" />
+                  </button>
+                </form>
+              )}
+              <Ventana
+                abierta={ventana === 'baja'}
+                alCerrar={() => setVentana(null)}
+                titulo={`Dar de baja a ${persona.nombres} ${persona.apellidos}`}
+                descripcion="Deja de entrar al sistema. Su ficha y sus horas se quedan, y se reactiva desde «Dados de baja»."
+              >
+                <form onSubmit={estado.alEnviar} className="flex flex-wrap justify-end gap-2">
+                  <input type="hidden" name="id" value={persona.id} />
+                  <input type="hidden" name="activo" value="false" />
+                  {estado.resultado?.ok === false && (
+                    <p role="alert" className="w-full text-sm text-peligro">{estado.resultado.error}</p>
+                  )}
+                  <Boton type="button" variante="contorno" onClick={() => setVentana(null)}>
+                    Cancelar
+                  </Boton>
+                  <Boton type="submit" variante="peligro" cargando={estado.enviando}>
+                    Dar de baja
+                  </Boton>
+                </form>
+              </Ventana>
             </div>
           </TD>
         )}
       </TR>
 
-      {(estado.resultado?.ok === false || clave.resultado || edicion.resultado?.ok === false) && (
+      {((!persona.activo && estado.resultado?.ok === false) || clave.resultado || edicion.resultado?.ok === false) && (
         <TR>
           <TD colSpan={gestiona ? 7 : 6} className="py-1">
             <Aviso
-              resultado={estado.resultado?.ok === false ? estado.resultado : (clave.resultado ?? edicion.resultado)}
+              resultado={!persona.activo && estado.resultado?.ok === false ? estado.resultado : (clave.resultado ?? edicion.resultado)}
             />
           </TD>
         </TR>

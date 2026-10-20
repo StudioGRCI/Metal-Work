@@ -8,9 +8,11 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { numero } from '@/lib/format'
+import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { listarUnidades } from '@/lib/datos/comercial'
 import { exigirPermiso, puede } from '@/lib/sesion'
+import { cn } from '@/lib/utils'
 
 export const metadata = { title: 'Unidades' }
 
@@ -20,24 +22,42 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
   // Corrigen unidades Ventas y Diseño e Ingeniería (migración 20261001213000).
   const puedeEditar = puede(perfil, ['clientes.editar', 'diseno.unidades'])
 
-  const busqueda = typeof params.q === 'string' ? params.q : undefined
+  const busqueda = typeof params.q === 'string' && palabrasDeBusqueda(params.q).length > 0 ? params.q : undefined
   const incluirInactivas = params.estado === 'inactivas'
+  // El otro listado, con el mismo término.
+  const verOtras = new URLSearchParams({
+    ...(typeof params.q === 'string' && params.q ? { q: params.q } : {}),
+    ...(incluirInactivas ? {} : { estado: 'inactivas' }),
+  }).toString()
   const unidades = await listarUnidades({ busqueda, incluirInactivas })
 
   return (
     <>
       <EncabezadoPagina
         titulo="Unidades"
+        // Hasta 300 en la lista: pasado eso se dice «300 o más».
+        descripcion={
+          busqueda
+            ? unidades.length === 0
+              ? `Ninguna unidad con «${busqueda}»`
+              : `${unidades.length === 1 ? '1 unidad' : `${unidades.length >= 300 ? '300 o más' : unidades.length} unidades`} con «${busqueda}»`
+            : `${unidades.length >= 300 ? '300 o más' : unidades.length} ${unidades.length === 1 ? 'unidad' : 'unidades'}`
+        }
         ayuda="Vehículos de los clientes sobre los que trabaja el taller. Se registran desde la ficha de cada cliente."
       />
 
       <BuscadorSimple
         ruta="/unidades"
         etiqueta="Buscar unidades"
-        marcador="Buscar por placa, código interno, FMI, marca, modelo o chasis"
+        marcador="Placa, código, marca, modelo o chasis"
       />
       <div className="mt-3 flex justify-end">
-        <Link href={incluirInactivas ? '/unidades' : '/unidades?estado=inactivas'} className="text-sm text-acento hover:underline">
+        <Link
+          href={`/unidades${verOtras ? `?${verOtras}` : ''}`}
+          // Se lleva lo que se está escribiendo, como una pastilla.
+          data-filtro=""
+          className="text-sm text-acento hover:underline"
+        >
           {incluirInactivas ? 'Ver solo activas' : 'Ver también desactivadas'}
         </Link>
       </div>
@@ -50,10 +70,10 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                   la unidad entra al taller: la columna nombra la unidad, con
                   la matrícula cuando la tiene. */}
               <TH>Unidad</TH>
-              <TH>Cliente</TH>
-              <TH>Vehículo</TH>
-              {/* Siete columnas no entran en un teléfono. Las cuatro de detalle se
-                  esconden aquí y su contenido baja a la celda del vehículo en letra
+              <TH className="hidden sm:table-cell">Cliente</TH>
+              <TH className="hidden sm:table-cell">Vehículo</TH>
+              {/* Siete columnas no entran en un teléfono. Las de detalle se
+                  esconden y su contenido baja a la celda de la unidad en letra
                   chica: se pierde la rejilla, no el dato. */}
               <TH className="hidden sm:table-cell">Tipo</TH>
               <TH className="hidden sm:table-cell">Carrocería</TH>
@@ -69,7 +89,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                 titulo={busqueda ? 'Ninguna unidad coincide' : 'Aún no hay unidades'}
                 descripcion={
                   busqueda
-                    ? `Nada con «${busqueda}». Prueba con la placa completa, la marca o el chasis.`
+                    ? 'Prueba con menos palabras, con la placa completa, la marca o el chasis.'
                     : 'Cada unidad se registra desde la ficha de su cliente, con el botón «Agregar unidad».'
                 }
                 accion={
@@ -117,7 +137,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                           que nadie lea eso como si fuera una matrícula. */}
                       <Link
                         href={`/unidades/${u.id}`}
-                        className={todaviaSinPlaca(u) ? 'text-acento hover:underline' : 'tabular text-acento hover:underline'}
+                        className={cn('inline-flex min-h-11 items-center text-acento hover:underline sm:min-h-0', !todaviaSinPlaca(u) && 'tabular')}
                       >
                         {nombre}
                       </Link>
@@ -126,12 +146,25 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                           sin placa
                         </span>
                       )}
+                      {/* En el teléfono el dueño y el vehículo van aquí: con sus
+                          columnas y las acciones, la tabla se corría de costado. */}
+                      <span className="block w-44 font-normal whitespace-normal sm:hidden">
+                        <span className="line-clamp-2 text-xs text-texto-suave">
+                          {cliente ? cliente.razon_social : u.cliente_id ? null : 'Del taller'}
+                        </span>
+                        <span className="block text-xs text-texto">{[u.marca, u.modelo, u.anio].filter(Boolean).join(' ')}</span>
+                        {detalle && <span className="block text-[11px] text-texto-suave">{detalle}</span>}
+                        {u.numero_chasis && <span className="block font-mono text-[10px] break-all text-texto-tenue">chasis {u.numero_chasis}</span>}
+                      </span>
                     </TD>
-                    <TD>
+                    <TD className="hidden sm:table-cell">
                       {cliente ? (
                         <Link
                           href={`/clientes/${cliente.id}`}
-                          className="max-w-52 truncate text-acento hover:underline"
+                          title={cliente.razon_social}
+                          // En un enlace en línea el ancho máximo no corta nada
+                          // y la razón social empujaba la tabla.
+                          className="line-clamp-2 max-w-56 text-acento hover:underline"
                         >
                           {cliente.razon_social}
                         </Link>
@@ -141,19 +174,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                         <span className="text-texto-suave">Del taller</span>
                       )}
                     </TD>
-                    <TD>
-                      {[u.marca, u.modelo, u.anio].filter(Boolean).join(' ') || '—'}
-                      {detalle && (
-                        <span className="block text-[11px] text-texto-suave sm:hidden">
-                          {detalle}
-                        </span>
-                      )}
-                      {u.numero_chasis && (
-                        <span className="block font-mono text-[10px] text-texto-tenue sm:hidden">
-                          chasis {u.numero_chasis}
-                        </span>
-                      )}
-                    </TD>
+                    <TD className="hidden sm:table-cell">{[u.marca, u.modelo, u.anio].filter(Boolean).join(' ') || '—'}</TD>
                     <TD className="hidden text-texto-suave sm:table-cell">{u.tipo_vehiculo}</TD>
                     <TD className="hidden text-texto-suave sm:table-cell">
                       {carroceria?.nombre ?? '—'}
@@ -166,7 +187,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                     </TD>
                     {puedeEditar && (
                       <TD>
-                        <div className="space-y-2">
+                        <div className="flex flex-col items-start gap-2 xl:flex-row xl:items-center">
                           {/* Una unidad del taller todavía no tiene cliente: se edita
                               desde su orden, cuando Administración le pone uno. */}
                           {u.cliente_id && <NuevaUnidad clienteId={u.cliente_id} unidad={u} compacta />}

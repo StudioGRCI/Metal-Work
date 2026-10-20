@@ -22,7 +22,7 @@ import { NuevoCliente } from '@/components/comercial/nuevo-cliente'
 import { crearOrden } from '../acciones'
 
 type Catalogos = {
-  clientes: { id: string; razon_social: string; numero_documento: string }[]
+  clientes: { id: string; razon_social: string; tipo_documento?: string; numero_documento: string }[]
   sedes: { id: string; nombre: string }[]
   tiposCarroceria: { id: string; nombre: string }[]
   responsables: { id: string; puesto: string | null; correo: string | null }[]
@@ -58,6 +58,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     ...clientesNuevos.filter((n) => !catalogos.clientes.some((c) => c.id === n.id)),
     ...catalogos.clientes,
   ]
+  const clienteElegido = clientes.find((c) => c.id === clienteId)
   const carrocerias = [
     ...carroceriasNuevas.filter((n) => !catalogos.tiposCarroceria.some((t) => t.id === n.id)),
     ...catalogos.tiposCarroceria,
@@ -196,8 +197,16 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
       <Tarjeta>
         <TarjetaCabecera titulo="Cliente y unidad" />
         <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2">
-          <Campo etiqueta="Cliente" htmlFor="cliente_id" requerido>
-            <div className="flex items-center gap-2">
+          <Campo
+            etiqueta="Cliente"
+            htmlFor="cliente_id"
+            requerido
+            // El desplegable corta un nombre largo en el monitor y lo que
+            // distingue a dos clientes —el número, la sigla— queda al final.
+            ayudaEnIcono={false}
+            ayuda={clienteElegido ? `${clienteElegido.razon_social} · ${clienteElegido.tipo_documento ?? 'N.º'} ${clienteElegido.numero_documento}` : undefined}
+          >
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <SeleccionBuscable
                 id="cliente_id"
                 name="cliente_id"

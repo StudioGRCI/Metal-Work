@@ -1,12 +1,11 @@
-import Link from 'next/link'
-
+import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
-import { Entrada } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
-import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import { materialesParaValorizar, precioDeCosteo } from '@/lib/datos/valorizacion'
+import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { cantidad, fecha, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -42,7 +41,8 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
   const perfil = await exigirPermiso(['almacen.valorizar', 'almacen.ver'])
   const params = await searchParams
   const ver = texto(params.ver)
-  const busqueda = texto(params.q).slice(0, 60).toLocaleLowerCase('es')
+  const busqueda = texto(params.q)
+  const palabras = palabrasDeBusqueda(busqueda)
   const puedeValorizar = puede(perfil, 'almacen.valorizar')
 
   const todos = await materialesParaValorizar()
@@ -58,8 +58,7 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
   const filas = conCosteo.filter((m) => {
     if (ver === 'sin-precio' && m.costeo !== null) return false
     if (ver === 'logistica' && m.precio === null) return false
-    if (!busqueda) return true
-    return `${m.codigo ?? ''} ${m.descripcion ?? ''}`.toLocaleLowerCase('es').includes(busqueda)
+    return coincide(palabras, [m.codigo, m.descripcion])
   })
   const hayFiltros = Boolean(busqueda || ver)
 
@@ -78,23 +77,11 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
         <Cifra etiqueta="Valor en almacén (dólares)" valor={moneda(valor.USD, 'USD')} />
       </dl>
 
-      <Tarjeta className="mb-4">
-        <TarjetaCuerpo>
-          <form method="get" className="flex flex-wrap items-end gap-3">
-            {ver && <input type="hidden" name="ver" value={ver} />}
-            <label className="min-w-0 flex-1 basis-64">
-              <span className="mb-1 block text-xs font-medium text-texto-suave">Buscar material</span>
-              <Entrada name="q" type="search" defaultValue={texto(params.q)} placeholder="Código o descripción" autoComplete="off" />
-            </label>
-            <button type="submit" className="inline-flex min-h-11 items-center rounded-[var(--radius-base)] bg-acento px-4 text-sm font-medium text-acento-texto hover:opacity-90 sm:min-h-9">
-              Buscar
-            </button>
-            {hayFiltros && <Link href="/compras/valorizacion" className="self-center text-sm text-acento hover:underline">Limpiar</Link>}
-          </form>
-          <PastillaFiltro ruta="/compras/valorizacion" clave="ver" opciones={VER} params={params}
-            activo={ver || null} etiqueta="Qué materiales mostrar" className="mt-3" />
-        </TarjetaCuerpo>
-      </Tarjeta>
+      <div className="mb-4 space-y-3">
+        <BuscadorSimple ruta="/compras/valorizacion" etiqueta="Buscar material" marcador="Código o descripción" />
+        <PastillaFiltro ruta="/compras/valorizacion" clave="ver" opciones={VER} params={params}
+          activo={ver || null} etiqueta="Qué materiales mostrar" />
+      </div>
 
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
@@ -107,8 +94,8 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
               <TH>Material</TH>
               <TH className="text-right">Saldo</TH>
               <TH className="hidden text-right md:table-cell">Última compra</TH>
-              <TH className="text-right">Precio de Logística</TH>
-              <TH>Para el costeo</TH>
+              <TH className="hidden text-right sm:table-cell">Precio de Logística</TH>
+              <TH className="hidden sm:table-cell">Para el costeo</TH>
               <TH className="hidden text-right lg:table-cell">Valor del saldo</TH>
               {puedeValorizar && <TH><span className="sr-only">Acción</span></TH>}
             </tr>
@@ -125,11 +112,20 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
             ) : filas.map((m) => {
               const monedaCompra = monedaValida(m.moneda_compra)
               const monedaLogistica = monedaValida(m.moneda)
+              const costeo = m.costeo === null
+                ? <Insignia tono="aviso">Sin precio</Insignia>
+                : <Insignia tono={m.costeo.origen === 'COMPRA' ? 'neutro' : 'info'}>{m.costeo.origen === 'COMPRA' ? 'Compra' : 'Logística'}</Insignia>
               return (
                 <TR key={m.material_id}>
                   <TD className="max-w-72">
                     <span className="line-clamp-2 text-sm">{m.descripcion}</span>
                     <span className="block font-mono text-[10px] text-texto-tenue">{m.codigo}</span>
+                    {/* En el teléfono el precio y de dónde sale van aquí, para que
+                        «Fijar precio» quepa en la fila sin correrla de costado. */}
+                    <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-texto-suave sm:hidden">
+                      {costeo}
+                      {m.precio !== null && monedaLogistica && <span className="tabular">Logística: {moneda(m.precio, monedaLogistica)}</span>}
+                    </span>
                   </TD>
                   <TD className="tabular text-right">
                     {cantidad(m.existencia)}
@@ -138,7 +134,7 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
                   <TD className="tabular hidden text-right md:table-cell">
                     {m.ultima_compra !== null && monedaCompra ? moneda(m.ultima_compra, monedaCompra) : <span className="text-texto-tenue">—</span>}
                   </TD>
-                  <TD className="tabular text-right">
+                  <TD className="tabular hidden text-right sm:table-cell">
                     {m.precio !== null && monedaLogistica ? (
                       <>
                         {moneda(m.precio, monedaLogistica)}
@@ -146,11 +142,7 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
                       </>
                     ) : <span className="text-texto-tenue">—</span>}
                   </TD>
-                  <TD>
-                    {m.costeo === null
-                      ? <Insignia tono="aviso">Sin precio</Insignia>
-                      : <Insignia tono={m.costeo.origen === 'COMPRA' ? 'neutro' : 'info'}>{m.costeo.origen === 'COMPRA' ? 'Compra' : 'Logística'}</Insignia>}
-                  </TD>
+                  <TD className="hidden sm:table-cell">{costeo}</TD>
                   <TD className="tabular hidden text-right lg:table-cell">
                     {m.costeo ? moneda(Number(m.existencia ?? 0) * m.costeo.precio, m.costeo.moneda) : <span className="text-texto-tenue">—</span>}
                   </TD>

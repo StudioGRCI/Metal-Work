@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { useEnvio } from '@/lib/envio'
 import { crearPlanilla, agregarPersona, distribuirPersona, cerrarPlanilla, repartirEnPartesIguales } from './acciones'
 
@@ -63,8 +64,8 @@ export function RepartirPartesIguales({ planillaId, personas, ordenes }: {
   const [filtro, setFiltro] = useState('')
   const [marcadas, setMarcadas] = useState<string[]>([])
   const { alEnviar, enviando, error, resultado } = useEnvio(repartirEnPartesIguales, () => setMarcadas([]))
-  const buscar = filtro.trim().toLowerCase()
-  const visibles = ordenes.filter((o) => !buscar || `${o.numero} ${o.unidad}`.toLowerCase().includes(buscar))
+  const palabras = palabrasDeBusqueda(filtro)
+  const visibles = ordenes.filter((o) => coincide(palabras, [o.numero, o.unidad]))
   const parte = marcadas.length ? Math.floor(10000 / marcadas.length) / 100 : 0
   return <form onSubmit={alEnviar} className="space-y-4">
     <input type="hidden" name="planilla_id" value={planillaId} />
@@ -82,7 +83,7 @@ export function RepartirPartesIguales({ planillaId, personas, ordenes }: {
     </fieldset>
     <fieldset>
       <legend className="text-xs font-medium text-texto-suave">OT entre las que se reparte</legend>
-      <Entrada aria-label="Buscar OT por número o unidad" placeholder="Buscar por número o unidad" value={filtro}
+      <Entrada aria-label="Buscar OT por número o unidad" placeholder="Número o unidad" value={filtro}
         onChange={(e) => setFiltro(e.target.value)} className="mt-1.5" />
       <div className="mt-2 max-h-64 overflow-y-auto rounded-[var(--radius-base)] border border-borde">
         {ordenes.map((o) => (
@@ -93,6 +94,11 @@ export function RepartirPartesIguales({ planillaId, personas, ordenes }: {
             <span className="tabular font-medium">{o.numero}</span><span className="text-texto-suave">{o.unidad}</span>
           </label>
         ))}
+        {visibles.length === 0 && (
+          <p className="px-3 py-4 text-sm text-texto-suave">
+            {ordenes.length === 0 ? 'No hay OT abiertas entre las que repartir.' : 'Ninguna OT coincide. Prueba con el número o la placa.'}
+          </p>
+        )}
       </div>
     </fieldset>
     <p className="text-sm text-texto-suave" aria-live="polite">

@@ -3,8 +3,10 @@ import {useState} from 'react'
 import {Boton} from '@/components/ui/boton'
 import {Campo,Entrada,Seleccion} from '@/components/ui/campos'
 import {Ventana} from '@/components/ui/ventana'
+import {cn} from '@/lib/utils'
 import {useEnvio} from '@/lib/envio'
 import type {MaterialParaConteo} from '@/lib/datos/atencion-materiales'
+import {coincide,palabrasDeBusqueda} from '@/lib/dominio/busqueda'
 import {registrarIngresoGeneral} from '../../materiales/atencion/acciones'
 
 const etiquetaDe=(m:MaterialParaConteo)=>`${m.codigo} · ${m.descripcion}${m.unidad?` (${m.unidad})`:''}`
@@ -22,22 +24,35 @@ export function NuevoIngreso({materiales,unidades,despachos}:{materiales:Materia
  const [origen,setOrigen]=useState('INGRESO_GENERAL')
  const envio=useEnvio(registrarIngresoGeneral,()=>{setId(crypto.randomUUID());setMaterialNuevo(crypto.randomUUID());setTexto('');setAbierta(false)})
  const escrito=texto.trim().toUpperCase()
- const elegido=escrito?materiales.find(m=>etiquetaDe(m).toUpperCase()===escrito||m.codigo.toUpperCase()===escrito):undefined
+ // Escrito igual que uno del catálogo, aunque sea sin tildes, es ese: si no,
+ // «angulo 2 x 1/4» entraba como material nuevo al lado del ÁNGULO.
+ // Los puntos y las barras se quedan: «1.5» no es «15» ni «3/16» es «316».
+ // Y solo si es uno: con dos iguales se pregunta.
+ const llano=(t:string)=>t.normalize('NFD').replace(/\p{Diacritic}/gu,'').toUpperCase().replace(/[^A-Z0-9./]+/g,'')
+ const iguales=escrito?materiales.filter(m=>llano(m.descripcion)===llano(texto)):[]
+ const elegido=escrito?materiales.find(m=>etiquetaDe(m).toUpperCase()===escrito||m.codigo.toUpperCase()===escrito)??(iguales.length===1?iguales[0]:undefined):undefined
  const libre=Boolean(escrito)&&!elegido
- const parecidos=escrito.length>=2&&!elegido?materiales.filter(m=>(m.descripcion+' '+m.codigo).toUpperCase().includes(escrito)).slice(0,100):materiales.slice(0,100)
+ // Con dos iguales en el catálogo, confirmar sin tocar uno daba de alta un
+ // tercero (si la unidad no calzaba) o elegía por su cuenta el más antiguo.
+ const ambiguo=libre&&iguales.length>1
+ // Como todo buscador: «angulo» sugiere «ÁNGULO 2 X 1/4». Antes era un datalist,
+ // que el navegador vuelve a filtrar a su modo (con tilde) y no lo sugería: el
+ // material entraba como nuevo y quedaba duplicado en «Por clasificar».
+ const palabras=palabrasDeBusqueda(texto)
+ const parecidos=palabras.length&&!elegido?materiales.filter(m=>coincide(palabras,[m.descripcion,m.codigo])).slice(0,8):[]
  return <><Boton onClick={()=>setAbierta(true)}>Registrar ingreso</Boton>
  <Ventana abierta={abierta} alCerrar={()=>setAbierta(false)} titulo="Ingreso a Almacén" descripcion="Registra lo que entró físicamente. Las compras de una OT se reciben desde Materiales de esa OT." ancho="lg">
  <form key={id} onSubmit={envio.alEnviar} className="space-y-5">
  <input type="hidden" name="operacion_id" value={id}/>
  {elegido?<input type="hidden" name="material_id" value={elegido.id}/>:<input type="hidden" name="material_nuevo_id" value={materialNuevo}/>}
  <Campo etiqueta="Material" htmlFor="ing-material" requerido ayuda="Escríbelo como lo conoces. Si aparece en la lista, elígelo; si no, entra como material nuevo.">
- <Entrada id="ing-material" name="descripcion" list="ing-catalogo" value={texto} onChange={e=>setTexto(e.target.value)} required minLength={3} maxLength={200} autoComplete="off" placeholder="Ej.: Disco de corte 7 pulgadas"/>
- <datalist id="ing-catalogo">{parecidos.map(m=><option key={m.id} value={etiquetaDe(m)}/>)}</datalist>
+ <Entrada id="ing-material" name="descripcion" value={texto} onChange={e=>setTexto(e.target.value)} required minLength={3} maxLength={200} autoComplete="off" placeholder="Ej.: Disco de corte 7 pulgadas"/>
+ {parecidos.length>0&&<ul aria-label="Del catálogo" className="mt-1 divide-y divide-borde rounded-[var(--radius-base)] border border-borde">{parecidos.map(m=><li key={m.id}><button type="button" onClick={()=>{setTexto(etiquetaDe(m));document.getElementById('ing-material')?.focus()}} className="flex min-h-11 w-full items-center px-3 py-1.5 text-left text-sm text-texto hover:bg-superficie-2 sm:min-h-9"><span className="line-clamp-2">{etiquetaDe(m)}</span></button></li>)}</ul>}
  </Campo>
  {elegido&&<p className="-mt-3 text-xs text-exito">Del catálogo: {elegido.descripcion}{elegido.unidad?`, en ${elegido.unidad}`:''}.</p>}
- {libre&&<p className="-mt-3 text-xs text-texto-suave">No está en el catálogo: se dará de alta como material nuevo, por clasificar.</p>}
+ {libre&&<p className={cn('-mt-3 text-xs',ambiguo?'text-aviso':'text-texto-suave')}>{ambiguo?'Hay más de uno con ese nombre en el catálogo: toca el que es.':parecidos.length>0?'¿Es uno de estos? Tócalo. Si no, se dará de alta como material nuevo, por clasificar.':'No está en el catálogo: se dará de alta como material nuevo, por clasificar.'}</p>}
  <div className="grid gap-4 sm:grid-cols-2">
- {libre&&<Campo etiqueta="Unidad" htmlFor="ing-unidad" requerido><Seleccion id="ing-unidad" name="unidad_id" required defaultValue={unidades.find(u=>u.codigo==='UND')?.id??''}><option value="">Elige la unidad</option>{unidades.map(u=><option key={u.id} value={u.id}>{u.nombre} ({u.codigo})</option>)}</Seleccion></Campo>}
+ {libre&&!ambiguo&&<Campo etiqueta="Unidad" htmlFor="ing-unidad" requerido><Seleccion id="ing-unidad" name="unidad_id" required defaultValue={unidades.find(u=>u.codigo==='UND')?.id??''}><option value="">Elige la unidad</option>{unidades.map(u=><option key={u.id} value={u.id}>{u.nombre} ({u.codigo})</option>)}</Seleccion></Campo>}
  <Campo etiqueta="Tipo de ingreso" htmlFor="ing-origen"><Seleccion id="ing-origen" name="origen" value={origen} onChange={e=>setOrigen(e.target.value)}><option value="INGRESO_GENERAL">Ingreso general</option><option value="SALDO_INICIAL">Saldo inicial</option>{!libre&&<option value="DEVOLUCION">Devolución de una entrega</option>}</Seleccion></Campo>
  <Campo etiqueta="Cantidad" htmlFor="ing-cantidad" requerido><Entrada id="ing-cantidad" name="cantidad" type="number" step="0.001" min="0.001" required inputMode="decimal"/></Campo>
  <Campo etiqueta="Guía, acta o documento" htmlFor="ing-doc" requerido><Entrada id="ing-doc" name="documento" required minLength={2} maxLength={100}/></Campo>
@@ -46,6 +61,6 @@ export function NuevoIngreso({materiales,unidades,despachos}:{materiales:Materia
  </div>
  {origen==='DEVOLUCION'&&!libre&&<Campo etiqueta="Entrega o salida que se devuelve" htmlFor="ing-devolucion" requerido><Seleccion id="ing-devolucion" name="devolucion" required defaultValue=""><option value="">Elige la entrega original</option>{despachos.map(d=><option key={d.id} value={d.id}>{d.etiqueta}</option>)}</Seleccion></Campo>}
  {envio.error&&<p role="alert" className="text-sm text-peligro">{envio.error}</p>}
- <Boton type="submit" cargando={envio.enviando}>Confirmar ingreso</Boton>
+ <Boton type="submit" cargando={envio.enviando} disabled={ambiguo}>Confirmar ingreso</Boton>
  </form></Ventana>{envio.resultado?.ok&&<p role="status" className="mt-2 text-sm text-exito">{envio.resultado.mensaje}</p>}</>
 }

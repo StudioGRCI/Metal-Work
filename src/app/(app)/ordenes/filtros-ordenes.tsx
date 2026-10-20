@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { Loader2, Search, X } from 'lucide-react'
 
 import { Entrada, Seleccion } from '@/components/ui/campos'
@@ -14,26 +14,69 @@ export function FiltrosOrdenes() {
   const router = useRouter()
   const params = useSearchParams()
   const [pendiente, iniciarTransicion] = useTransition()
-  const [busqueda, setBusqueda] = useState(params.get('q') ?? '')
+  const actual = params.get('q') ?? ''
+  const [busqueda, setBusqueda] = useState(actual)
+  // Si la URL cambia por otro lado (un enlace, el menú), la caja la sigue,
+  // como en `BuscadorSimple`; lo que esta misma caja pidió no la toca.
+  const [pedido, setPedido] = useState<string | null>(null)
+  // Se vigila la URL entera: con solo el término, un «Limpiar» que volvía a la
+  // misma URL dejaba un `pedido` viejo y la caja vacía sobre una lista filtrada.
+  const consulta = params.toString()
+  const [vista, setVista] = useState(consulta)
+  if (consulta !== vista) {
+    const antes = new URLSearchParams(vista).get('q') ?? ''
+    setVista(consulta)
+    // El eco de lo pedido se consume: si después «atrás» trae ese mismo valor,
+    // ya no es eco y la caja lo sigue. Lo escrito sin pedir todavía se queda
+    // si el término de la URL no cambió.
+    if (actual !== pedido && (actual !== antes || pedido !== null)) setBusqueda(actual)
+    setPedido(null)
+  }
 
-  function navegar(cambios: Record<string, string | null>) {
-    const query = new URLSearchParams(params.toString())
+  // La búsqueda que espera su pausa. Un filtro tocado en esa pausa la cancela y
+  // se lleva lo escrito: si no, la búsqueda salía después con la URL de antes
+  // del filtro y lo deshacía.
+  const espera = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // La consulta que va en viaje: lo que se pide después se arma sobre ella, o
+  // la búsqueda que salía con un filtro en viaje lo deshacía.
+  const enViaje = useRef<string | null>(null)
+  useEffect(() => {
+    enViaje.current = null
+  }, [consulta])
+
+  function navegar(cambios: Record<string, string | null>, reemplazar = false) {
+    clearTimeout(espera.current)
+    const query = new URLSearchParams(enViaje.current ?? window.location.search)
+    if (!('q' in cambios) && busqueda !== actual) {
+      if (busqueda) query.set('q', busqueda)
+      else query.delete('q')
+      setPedido(busqueda)
+    }
     for (const [clave, valor] of Object.entries(cambios)) {
       if (valor) query.set(clave, valor)
       else query.delete(clave)
     }
     // Cualquier cambio de filtro devuelve a la primera página.
     query.delete('pagina')
-    iniciarTransicion(() => router.push(`/ordenes?${query}`))
+    enViaje.current = query.toString()
+    // Lo que se escribe reemplaza la entrada del historial: con `push`,
+    // «atrás» recorría la búsqueda letra por letra.
+    iniciarTransicion(() => (reemplazar ? router.replace : router.push)(`/ordenes?${query}`))
   }
 
   // La búsqueda se envía sola tras una pausa, sin necesidad de pulsar Enter.
   useEffect(() => {
-    const actual = params.get('q') ?? ''
-    if (busqueda === actual) return
+    // Se compara con lo último pedido —también el vacío de «Limpiar»—, o con la
+    // URL si no hay nada en viaje: pedir otra vez el vacío reponía la prioridad
+    // que «Limpiar» acababa de quitar, y volver al valor de antes con otro en
+    // viaje dejaba la caja con un término y la lista con otro.
+    if (busqueda === (pedido ?? actual)) return
 
-    const temporizador = setTimeout(() => navegar({ q: busqueda || null }), 350)
-    return () => clearTimeout(temporizador)
+    espera.current = setTimeout(() => {
+      setPedido(busqueda)
+      navegar({ q: busqueda || null }, true)
+    }, 350)
+    return () => clearTimeout(espera.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busqueda])
 
@@ -41,7 +84,7 @@ export function FiltrosOrdenes() {
 
   // Lo escrito todavía no está en la URL, o la tabla se está rehaciendo: en
   // ambos casos lo que se ve abajo ya no responde a lo que se acaba de pedir.
-  const buscando = pendiente || busqueda !== (params.get('q') ?? '')
+  const buscando = pendiente || busqueda !== actual
 
   return (
     // En el teléfono, una rejilla de dos: el buscador y el estado a todo lo
@@ -63,8 +106,8 @@ export function FiltrosOrdenes() {
         )}
         <Entrada
           type="search"
-          className="pl-9"
-          placeholder="Buscar por número, cliente, placa o descripción"
+          className="pl-9 [&::-webkit-search-cancel-button]:appearance-none"
+          placeholder="Número, cliente, placa, código o trabajo"
           aria-label="Buscar órdenes"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
@@ -120,7 +163,10 @@ export function FiltrosOrdenes() {
         <button
           type="button"
           onClick={() => {
+            clearTimeout(espera.current)
             setBusqueda('')
+            setPedido('')
+            enViaje.current = ''
             iniciarTransicion(() => router.push('/ordenes'))
           }}
           className="inline-flex h-11 items-center gap-1.5 rounded-[var(--radius-base)] px-3 text-sm text-texto-suave hover:bg-superficie-2 hover:text-texto sm:h-9"

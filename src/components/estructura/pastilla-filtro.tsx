@@ -118,6 +118,9 @@ export function PastillaFiltro(props: PropsPastillaFiltro) {
             key={llave}
             href={enlace(props.ruta, props.params, claves, opcion, props.clave)}
             aria-current={activa ? 'page' : undefined}
+            // `BuscadorSimple` reconoce el filtro por esta marca y le suma lo
+            // que se está escribiendo, que todavía no llegó a la URL.
+            data-filtro=""
             className={clases}
           >
             {opcion.etiqueta}

@@ -4,6 +4,7 @@ import { ESTADO_ETAPA, ESTADO_OT, TIPO_EVENTO_BITACORA, TIPO_TRABAJO, definir } 
 import { puesto } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Enums, Vistas } from '@/types/database'
+import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
 
 export type ResumenOrden = Vistas<'ot_resumen'>
 
@@ -71,13 +72,8 @@ export async function listarOrdenes(filtros: FiltrosOrdenes) {
   if (filtros.responsable) consulta = consulta.eq('responsable_id', filtros.responsable)
   if (filtros.atrasadas) consulta = consulta.gt('dias_atraso', 0)
 
-  if (filtros.busqueda?.trim()) {
-    // Busca por número de OT, cliente, placa o descripción del trabajo.
-    const t = filtros.busqueda.trim().replace(/[%,()]/g, '')
-    consulta = consulta.or(
-      `numero.ilike.%${t}%,cliente.ilike.%${t}%,placa.ilike.%${t}%,descripcion.ilike.%${t}%`,
-    )
-  }
+  // Por número de OT, cliente, placa, código interno o descripción del trabajo.
+  for (const filtro of filtrosDeBusqueda(['numero', 'cliente', 'placa', 'codigo_interno', 'descripcion'], filtros.busqueda)) consulta = consulta.or(filtro)
 
   const { data, error, count } = await consulta
     .order('fecha_registro', { ascending: false })
@@ -203,7 +199,7 @@ export async function catalogosOrden() {
   const supabase = await createClient()
 
   const [clientes, sedes, tipos, responsables] = await Promise.all([
-    supabase.from('clientes').select('id, razon_social, numero_documento').eq('activo', true).order('razon_social').limit(500),
+    supabase.from('clientes').select('id, razon_social, tipo_documento, numero_documento').eq('activo', true).order('razon_social').limit(500),
     supabase.from('sedes').select('id, nombre').eq('activo', true).order('nombre'),
     supabase.from('tipos_carroceria').select('id, nombre').eq('activo', true).order('orden_secuencia'),
     // Se eligen por puesto (migración 109): `puesto` es la columna calculada y
