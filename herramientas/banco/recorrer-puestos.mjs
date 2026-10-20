@@ -163,6 +163,8 @@ for (const puesto of puestos) {
     for (const h of enlaces) {
       const limpio = h?.split('?')[0].split('#')[0]
       if (!limpio || !/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\/|$)/.test(limpio)) continue
+      // Un PDF se descarga, no se abre como pantalla: `goto` lo daba por caído.
+      if (/\/pdf$/.test(limpio)) continue
       const clase = limpio.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, ':id')
       if (!detalles.has(clase)) detalles.set(clase, limpio)
     }

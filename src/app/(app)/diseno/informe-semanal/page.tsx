@@ -4,6 +4,7 @@ import { Download } from 'lucide-react'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { BASE_BOTON, Boton, TAMANOS, VARIANTES } from '@/components/ui/boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { datosInformeDiseno } from '@/lib/datos/informe-diseno'
@@ -116,7 +117,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
             {puedeEscribir && ['BORRADOR', 'OBSERVADO'].includes(informe.estado) && <DecisionInforme id={informe.id} estado="EN_REVISION" />}
             {puede(perfil, 'diseno.revisar_informe') && informe.estado === 'EN_REVISION' && <div className="space-y-4">
               <DecisionInforme id={informe.id} estado="APROBADO" />
-              <details><summary className="cursor-pointer py-2 text-sm font-medium text-acento">Devolver con observaciones</summary><DecisionInforme id={informe.id} estado="OBSERVADO" /></details>
+              <Pliegue titulo="Devolver con observaciones"><DecisionInforme id={informe.id} estado="OBSERVADO" /></Pliegue>
             </div>}
           </div>}
           {!abierta && puedeEscribir && <p className="mt-3 text-sm text-texto-suave">El informe ya se envió: las tablas muestran lo que se envió y no se pueden cambiar salvo que Diseño lo devuelva.</p>}

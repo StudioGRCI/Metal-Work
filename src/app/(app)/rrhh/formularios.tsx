@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
@@ -21,8 +21,10 @@ export function NuevaPlanilla() {
 }
 
 export function AgregarPersona({planillaId,tipo}:{planillaId:string;tipo:string}) {
-  const {alEnviar,enviando,error,resultado}=useEnvio(agregarPersona)
-  return <form onSubmit={alEnviar} className="grid gap-2 sm:grid-cols-[2fr_1fr_1fr_auto] sm:items-end">
+  // Vacío al entrar: sin documento, un segundo toque la agregaba dos veces.
+  const formulario=useRef<HTMLFormElement>(null)
+  const {alEnviar,enviando,error,resultado}=useEnvio(agregarPersona,()=>formulario.current?.reset())
+  return <form ref={formulario} onSubmit={alEnviar} className="grid gap-2 sm:grid-cols-[2fr_1fr_1fr_auto] sm:items-end">
     <input type="hidden" name="planilla_id" value={planillaId} />
     <Campo etiqueta={tipo==='SUBCONTRATOS'?'Proveedor o subcontrato':'Nombre completo'} htmlFor={`pl-nom-${planillaId}`} requerido><Entrada id={`pl-nom-${planillaId}`} name="nombre" minLength={3} maxLength={160} required /></Campo>
     <Campo etiqueta="Documento" htmlFor={`pl-doc-${planillaId}`}><Entrada id={`pl-doc-${planillaId}`} name="documento" maxLength={20} /></Campo>

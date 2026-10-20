@@ -15,6 +15,14 @@ test('las palabras salen sin tildes, sin signos y en minúsculas', () => {
 test('la letra suelta no se busca si hay otras, y la sigla del final no se pierde', () => {
   assert.deepEqual(palabrasDeBusqueda('Transportes Peña y Núñez S.A.C.'), ['pena', 'sac', 'transportes', 'nunez'])
   assert.deepEqual(palabrasDeBusqueda('y'), ['y'])
+  // Letras sueltas seguidas son una sigla escrita con espacios.
+  assert.deepEqual(palabrasDeBusqueda('S R L'), ['srl'])
+  assert.deepEqual(palabrasDeBusqueda('talleres s r l'), ['srl', 'talleres'])
+  assert.deepEqual(palabrasDeBusqueda('x, y'), ['x', 'y'])
+  // Otras letras sueltas siguen sueltas: la base solo busca con espacios las
+  // siglas de razón social.
+  assert.deepEqual(palabrasDeBusqueda('transportes a y b'), ['transportes'])
+  assert.ok(palabrasDeBusqueda('transportes a y b').every((p) => new RegExp(expresionSinTildes(p), 'i').test('TRANSPORTES A Y B EIRL')))
   assert.deepEqual(palabrasDeBusqueda('Transportes de Peña'), ['pena', 'transportes'])
   assert.deepEqual(palabrasDeBusqueda('de'), ['de'])
   assert.deepEqual(palabrasDeBusqueda('tubo 2 x 1/4'), ['2', '14', 'tubo'])
@@ -63,6 +71,12 @@ test('la expresión encuentra siglas y códigos con o sin sus signos, y no salta
   assert.ok(new RegExp(expresionSinTildes('sr04'), 'i').test('PLA_SR_O4_1_26/28'))
   assert.ok(new RegExp(expresionSinTildes('sro4'), 'i').test('PLA_SR_04_1'))
   assert.ok(!new RegExp(expresionSinTildes('sac'), 'i').test('E.I.R.L.'))
+  // La sigla con espacios entre sus letras, solo como letras sueltas.
+  const srl = new RegExp(expresionSinTildes('srl'), 'i')
+  assert.ok(srl.test('TALLERES EJEMPLO S R L'))
+  assert.ok(srl.test('TALLERES EJEMPLO S. R. L.'))
+  assert.ok(!srl.test('CASAS RELAX'))
+  assert.ok(!sac.test('PLANCHAS A C'))
   // La medida pegada encuentra la que lleva espacios.
   assert.ok(new RegExp(expresionSinTildes(palabrasDeBusqueda('2x1/4')[0]), 'i').test('ÁNGULO 2 X 1/4'))
   assert.ok(!new RegExp(expresionSinTildes(palabrasDeBusqueda('2x3/8')[0]), 'i').test('ÁNGULO 2 X 1/4'))
@@ -88,6 +102,9 @@ test('en una lista ya leída cada palabra tiene que estar en algún campo, en cu
   assert.ok(coincide(palabrasDeBusqueda('camion'), ['CAMIÓN']))
   assert.ok(coincide(palabrasDeBusqueda('S.A.C.'), ['ACEROS DEL NORTE SAC']))
   assert.ok(!coincide(palabrasDeBusqueda('S.A.C.'), ['TORNERÍA E.I.R.L.']))
+  assert.ok(coincide(palabrasDeBusqueda('srl'), ['TALLERES EJEMPLO S R L']))
+  assert.ok(coincide(palabrasDeBusqueda('S R L'), ['TALLERES EJEMPLO S.R.L.']))
+  assert.ok(!coincide(palabrasDeBusqueda('srl'), ['CASAS RELAX']))
   // Ni salta espacios ni cruza de un campo a otro.
   assert.ok(!coincide(palabrasDeBusqueda('sac'), ['PLANCHAS ACERO']))
   assert.ok(!coincide(palabrasDeBusqueda('ab'), ['XA', 'BX']))

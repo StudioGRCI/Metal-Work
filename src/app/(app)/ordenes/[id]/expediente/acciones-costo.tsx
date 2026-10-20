@@ -4,6 +4,7 @@ import type { FormEvent } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { useEnvio } from '@/lib/envio'
 
 import { cerrarCosto, confirmarIgv, fijarPresupuesto } from './acciones'
@@ -53,9 +54,8 @@ export function CerrarCosto({ ordenId }: { ordenId: string }) {
   const { alEnviar, enviando, error } = useEnvio(cerrarCosto)
 
   return (
-    <details className="rounded-[var(--radius-base)] border border-borde p-3 print:hidden">
-      <summary className="cursor-pointer text-sm font-medium text-acento">Cerrar el costo de esta OT</summary>
-      <form onSubmit={alEnviar} className="mt-3 space-y-3">
+    <Pliegue titulo="Cerrar el costo de esta OT" enCaja className="print:hidden">
+      <form onSubmit={alEnviar} className="space-y-3">
         <input type="hidden" name="orden_id" value={ordenId} />
         <p className="text-xs text-texto-suave">
           El costo queda congelado con su detalle, tu puesto y la fecha. No se edita ni se borra después: lo que llegue
@@ -73,7 +73,7 @@ export function CerrarCosto({ ordenId }: { ordenId: string }) {
           Cerrar el costo
         </Boton>
       </form>
-    </details>
+    </Pliegue>
   )
 }
 
@@ -92,11 +92,8 @@ export function FijarPresupuesto({ ordenId, manual }: { ordenId: string; manual:
   }
 
   return (
-    <details className="rounded-[var(--radius-base)] border border-borde p-3 print:hidden">
-      <summary className="cursor-pointer text-sm font-medium text-acento">
-        {manual ? 'Cambiar el presupuesto' : 'Fijar el presupuesto a mano'}
-      </summary>
-      <form onSubmit={enviar} className="mt-3 space-y-3">
+    <Pliegue titulo={manual ? 'Cambiar el presupuesto' : 'Fijar el presupuesto a mano'} enCaja className="print:hidden">
+      <form onSubmit={enviar} className="space-y-3">
         <input type="hidden" name="orden_id" value={ordenId} />
         <p className="text-xs text-texto-suave">
           Para cuando la regla de la cotización no vale: una venta con menos utilidad, un adicional aprobado, una OT del
@@ -126,6 +123,6 @@ export function FijarPresupuesto({ ordenId, manual }: { ordenId: string; manual:
           )}
         </div>
       </form>
-    </details>
+    </Pliegue>
   )
 }

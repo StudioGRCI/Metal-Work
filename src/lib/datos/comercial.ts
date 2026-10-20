@@ -18,6 +18,9 @@ export async function listarClientes(filtros: { busqueda?: string; pagina?: numb
     .from('clientes')
     .select('id, tipo_documento, numero_documento, razon_social, nombre_comercial, telefono, correo, distrito, provincia, activo, unidades(count), ordenes_trabajo(count)', { count: 'exact' })
     .order('razon_social')
+    // Desempate entre razones sociales iguales: sin él, al pasar de página uno
+    // podía salir dos veces y otro ninguna, como pasó en Materiales.
+    .order('id')
 
   if (!filtros.incluirInactivos) consulta = consulta.eq('activo', true)
 
