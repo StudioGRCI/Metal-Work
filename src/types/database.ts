@@ -12500,6 +12500,16 @@ export type Database = {
         }
         Returns: string
       }
+      guias_por_emitir: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          orden_compra_id: string | null
+          numero: string | null
+          proveedor: string | null
+          peso_kg: number | null
+          recojo: string | null
+        }[]
+      }
       horas_en_texto: {
         Args: {
           p_horas: number | null
@@ -14387,6 +14397,50 @@ export type Database = {
         }
         Returns: string
       }
+      trazabilidad_de_compras: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          tipo: string | null
+          id: string | null
+          numero: string | null
+          referencia: string | null
+          descripcion: string | null
+          creado_en: string | null
+          emitido_por: string | null
+          origen: string | null
+          requerimientos: Json | null
+          ordenes: string[] | null
+          codigos: string[] | null
+          areas: string[] | null
+          proveedor: string | null
+          proveedor_id: string | null
+          moneda: string | null
+          total: number | null
+          sin_precio: boolean | null
+          condicion_pago: string | null
+          dias_credito: number | null
+          con_factura: boolean | null
+          aprobacion: string | null
+          aprobado_en: string | null
+          motivo_rechazo: string | null
+          estado: string | null
+          recojo: string | null
+          entregado_almacen_en: string | null
+          ingreso: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          facturado: number | null
+          facturada_entera: boolean | null
+          facturas: Json | null
+          pagos: Json | null
+          documentos: Json | null
+          peso_kg: number | null
+          en_lista: boolean | null
+          guia: Json | null
+          guias_anuladas: number | null
+          pago: string | null
+        }[]
+      }
       unidades_para_salida_almacen: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -14401,6 +14455,12 @@ export type Database = {
       usuario_actual: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      usuario_programa_recojos: {
+        Args: {
+          p_usuario: string | null
+        }
+        Returns: boolean
       }
       usuarios_diseno_asignables: {
         Args: Record<PropertyKey, never>

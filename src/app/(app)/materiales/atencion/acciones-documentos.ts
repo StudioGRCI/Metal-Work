@@ -4,15 +4,17 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { TIPO_DOCUMENTO_COMPRA } from '@/lib/dominio/adquisiciones'
 import { normalizarNumeroFactura } from '@/lib/dominio/finanzas'
-import { hoyLima } from '@/lib/format'
+import { fecha, hoyLima } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 const FORMATO = z.object({
   id: z.guid(),
   orden_compra_id: z.guid(),
-  tipo: z.enum(['ORDEN_COMPRA', 'ORDEN_PAGO', 'ORDEN_SERVICIO', 'FACTURA', 'COMPROBANTE', 'OTRO']),
+  // La cotización del proveedor tiene su tipo desde la migración 20261020170000.
+  tipo: z.enum(['COTIZACION', 'ORDEN_COMPRA', 'ORDEN_PAGO', 'ORDEN_SERVICIO', 'FACTURA', 'COMPROBANTE', 'OTRO']),
   nombre_archivo: z.string().trim().min(1).max(200),
   // La factura anexada lleva su número y su fecha (migración 20261016702000):
   // Contabilidad la registra con ellos.
@@ -76,6 +78,24 @@ export async function registrarDocumentoCompra(
   }
   if (archivo.size < 1 || archivo.size > 20 * 1024 * 1024 || await archivo.slice(0, 5).text() !== '%PDF-') {
     return { ok: false, error: 'El archivo debe ser un PDF válido de hasta 20 MB.' }
+  }
+  // El mismo PDF dos veces en la misma compra (mismo nombre y mismo tamaño) es
+  // un toque de más o un archivo equivocado: en Adquisiciones salía la misma
+  // cotización dos veces, como «Orden de compra» (2026-10-20).
+  const { data: igual, error: errorIgual } = await supabase
+    .from('documentos_compra_material')
+    .select('tipo, creado_en')
+    .eq('orden_compra_id', datos.data.orden_compra_id)
+    .eq('nombre_archivo', datos.data.nombre_archivo)
+    .eq('tamano_bytes', archivo.size)
+    .limit(1)
+    .maybeSingle()
+  if (errorIgual) return { ok: false, error: mensajeDeError(errorIgual) }
+  if (igual) {
+    return {
+      ok: false,
+      error: `Ese PDF ya está adjunto a esta compra como «${TIPO_DOCUMENTO_COMPRA[igual.tipo] ?? igual.tipo}» desde el ${fecha(igual.creado_en)}. Si es otro documento, revisa que elegiste el archivo correcto.`,
+    }
   }
 
   const { data: guardado, error } = await supabase.from('documentos_compra_material').insert({

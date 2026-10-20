@@ -3,20 +3,22 @@
  * cuenta de cada puesto (nunca ADMIN):
  *
  *   1. El conductor ve las OC aprobadas solo como un aviso, sin botón: hasta
- *      que Logística las programe no sale a recogerlas.
+ *      que Logística las programe no sale a recogerlas. La gestión la abre por
+ *      su dirección, sin los controles de Logística.
  *   2. Logística, en «Gestión de compras», pone el peso y el lugar de dos OC
  *      (con coma decimal, como sale en el teléfono), rechaza un peso de cero
  *      y baja una de lugar con la flecha.
- *   3. Contabilidad ve la misma lista sin los controles de Logística y carga
- *      la guía de remisión en PDF de la primera; un archivo que no es PDF no
- *      entra.
+ *   3. Contabilidad ya no tiene la gestión (migración 20261020171000): carga
+ *      la guía de remisión en PDF de la primera desde su fila en Adquisiciones;
+ *      un archivo que no es PDF no entra.
  *   4. Con la guía, Logística ya no puede cambiar el peso.
  *   5. El conductor ve su lista en el orden de Logística, con el peso y la
  *      guía (el enlace abre el PDF), y sale a recoger la primera.
- *   6. Contabilidad anula la guía con motivo: al conductor le vuelve a decir
- *      que falta, y la anulada queda contada.
+ *   6. Contabilidad anula la guía con motivo desde Adquisiciones: al conductor
+ *      le vuelve a decir que falta, y la anulada queda contada.
  *
- * Necesita al menos tres OC aprobadas que Logística todavía no programa.
+ * Necesita al menos tres OC aprobadas que Logística todavía no programa, y la
+ * lista del conductor vacía (`probar-adquisiciones-compras.mjs` siembra las OC).
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111) y los correos de cada
  * cuenta si no son `*@local.test`.
  */
@@ -81,6 +83,7 @@ async function abrirGuia(contexto, href) {
 let ocA = ''
 let ocB = ''
 let ocC = ''
+let esperanAntes = 0
 
 // ------------------------------------------------ 1. Sin programar, el conductor no sale
 {
@@ -89,10 +92,12 @@ let ocC = ''
   const main = await texto(pagina.locator('main'))
   const espera = main.match(/(\d+) compras? aprobadas? esperan? que Logística/)
   comprobar(espera !== null && Number(espera[1]) >= 3, `el conductor ve cuántas esperan a Logística: «${espera?.[0]}»`)
+  esperanAntes = Number(espera?.[1] ?? 0)
   comprobar((await pagina.getByRole('button', { name: 'Salgo a recoger' }).count()) === 0, 'y ningún «Salgo a recoger»')
-  comprobar((await pagina.locator('nav a', { hasText: 'Gestión de compras' }).count()) === 0, 'su menú no lleva Gestión de compras')
+  comprobar((await pagina.locator('nav a', { hasText: 'Gestión de compras' }).count()) === 0, 'su menú no lleva Gestión de compras: su lista es Recojos')
   await pagina.goto(`${BASE}/compras/gestion`, { waitUntil: 'networkidle' })
-  comprobar(pagina.url().includes('/sin-permiso'), `por la dirección, Gestión de compras lo rechaza (${new URL(pagina.url()).pathname})`)
+  comprobar(new URL(pagina.url()).pathname === '/compras/gestion', 'por la dirección abre la gestión, para ver qué viene')
+  comprobar((await pagina.getByRole('button', { name: /Poner en la lista|Guardar|Sacar de la lista|Cargar guía/ }).count()) === 0, 'sin los controles de Logística')
   comprobar(errores.length === 0, `sin errores de consola (${errores.join(' | ')})`)
   await contexto.close()
 }
@@ -156,41 +161,42 @@ let ocC = ''
   await contexto.close()
 }
 
-// ------------------------------------------------ 3. Contabilidad carga la guía
+// ------------------------------------------------ 3. Contabilidad carga la guía, desde Adquisiciones
 let hrefGuia = ''
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.contabilidad)
   const menu = await pagina.locator('nav a').allInnerTexts()
-  comprobar(menu.some((m) => m.includes('Gestión de compras')), 'el menú de Contabilidad lleva Gestión de compras')
+  comprobar(!menu.some((m) => m.includes('Gestión de compras')), 'el menú de Contabilidad ya no lleva Gestión de compras')
   await pagina.goto(`${BASE}/compras/gestion`, { waitUntil: 'networkidle' })
-  comprobar((await pagina.getByRole('button', { name: /Poner en la lista|Guardar|Sacar de la lista/ }).count()) === 0, 'Contabilidad no ve los controles de Logística')
-  const sinPeso = tarjeta(pagina, 'titulo-por-programar', ocC)
-  comprobar(
-    (await texto(sinPeso)).includes('se emite cuando Logística ponga el peso') && (await sinPeso.getByRole('button', { name: 'Cargar guía' }).count()) === 0,
-    `${ocC}, sin peso, todavía no pide guía`,
-  )
+  comprobar(pagina.url().includes('/sin-permiso'), `y por la dirección la rechaza (${new URL(pagina.url()).pathname})`)
+  await pagina.goto(`${BASE}/adquisiciones?situacion=guia`, { waitUntil: 'networkidle' })
+  const fila = (oc) => pagina.locator(`tbody tr[data-orden="${oc}"]`)
+  comprobar((await fila(ocC).count()) === 0, `${ocC}, sin peso, todavía no pide guía`)
+  comprobar((await fila(ocA).count()) === 1 && (await fila(ocB).count()) === 1, `${ocA} y ${ocB}, con su peso, la piden`)
+  const ventana = pagina.locator('[role="dialog"]')
 
   // Un archivo que no es PDF no entra, aunque se llame .pdf.
-  let t = tarjeta(pagina, 'titulo-lista', ocB)
-  await t.locator('input[name="numero"]').fill('T001-0000999')
-  await t.locator('input[name="archivo"]').setInputFiles({ name: 'guia.pdf', mimeType: 'application/pdf', buffer: NO_PDF })
-  await t.getByRole('button', { name: 'Cargar guía' }).click()
-  await t.locator('[role="alert"]').waitFor({ timeout: 20000 })
-  comprobar((await t.locator('[role="alert"]').innerText()).includes('Elige el PDF'), `un archivo que no es PDF no entra: «${await t.locator('[role="alert"]').innerText()}»`)
+  await fila(ocB).getByRole('button', { name: 'Cargar guía' }).click()
+  await ventana.locator('input[name="numero"]').fill('T001-0000999')
+  await ventana.locator('input[name="archivo"]').setInputFiles({ name: 'guia.pdf', mimeType: 'application/pdf', buffer: NO_PDF })
+  await ventana.getByRole('button', { name: 'Cargar guía' }).click()
+  await ventana.locator('[role="alert"]').waitFor({ timeout: 20000 })
+  comprobar((await ventana.locator('[role="alert"]').innerText()).includes('Elige el PDF'), `un archivo que no es PDF no entra: «${await ventana.locator('[role="alert"]').innerText()}»`)
+  await ventana.getByRole('button', { name: 'Cancelar' }).click()
 
   // La guía de A, con el número escrito a la ligera: se guarda normalizado.
-  t = tarjeta(pagina, 'titulo-lista', ocA)
-  await t.locator('input[name="numero"]').fill(' t001- 00000123 ')
-  await t.locator('input[name="archivo"]').setInputFiles({ name: 'guia-a.pdf', mimeType: 'application/pdf', buffer: PDF })
-  await t.getByRole('button', { name: 'Cargar guía' }).click()
-  await t.getByRole('link', { name: /Guía de remisión T001-00000123/ }).waitFor({ timeout: 20000 })
-  comprobar(true, `la guía de ${ocA} queda como T001-00000123`)
-  comprobar((await t.getByText('Con guía', { exact: true }).count()) === 1, 'la tarjeta dice «Con guía»')
-  hrefGuia = (await t.getByRole('link', { name: /Guía de remisión/ }).getAttribute('href')) ?? ''
+  await fila(ocA).getByRole('button', { name: 'Cargar guía' }).click()
+  await ventana.locator('input[name="numero"]').fill(' t001- 00000123 ')
+  await ventana.locator('input[name="archivo"]').setInputFiles({ name: 'guia-a.pdf', mimeType: 'application/pdf', buffer: PDF })
+  await ventana.getByRole('button', { name: 'Cargar guía' }).click()
+  await ventana.waitFor({ state: 'detached', timeout: 20000 }).catch(() => {})
+  await pagina.goto(`${BASE}/adquisiciones?q=${encodeURIComponent(ocA)}`, { waitUntil: 'networkidle' })
+  const enlaceGuia = fila(ocA).getByRole('link', { name: /Guía de remisión T001-00000123/ })
+  comprobar((await enlaceGuia.count()) === 1, `la guía de ${ocA} queda como T001-00000123`)
+  hrefGuia = (await enlaceGuia.getAttribute('href')) ?? ''
   const abierta = await abrirGuia(contexto, hrefGuia)
   comprobar(abierta.estado === 200 && abierta.cabeza === '%PDF-', `Contabilidad abre el PDF de la guía (${abierta.estado}, ${abierta.cabeza})`)
-  comprobar((await texto(pagina.locator('main'))).includes('1 sin guía de remisión'), 'el resumen cuenta una sin guía')
-  await pagina.screenshot({ path: `${CAPTURAS}/gestion-contabilidad.png`, fullPage: true })
+  await pagina.screenshot({ path: `${CAPTURAS}/guia-contabilidad.png`, fullPage: true })
   comprobar(errores.length === 0, `sin errores de consola (${errores.join(' | ')})`)
   await contexto.close()
 }
@@ -215,7 +221,9 @@ let hrefGuia = ''
   comprobar(/Pesa 350[,.]5 kg/.test(textos[0] ?? '') && /Pesa 120 kg/.test(textos[1] ?? ''), 'cada una con su peso')
   comprobar(textos[0]?.includes('Guía de remisión T001-00000123 (PDF)'), 'la primera con su guía')
   comprobar(textos[1]?.includes('Contabilidad todavía no carga la guía de remisión'), 'la segunda dice que falta la guía')
-  comprobar((await texto(pagina.locator('main'))).includes('1 compra aprobada espera que Logística la programe'), 'la tercera sigue solo como aviso')
+  const quedan = esperanAntes - 2
+  const aviso = quedan === 1 ? '1 compra aprobada espera que Logística la programe' : `${quedan} compras aprobadas esperan que Logística`
+  comprobar((await texto(pagina.locator('main'))).includes(aviso), `las que no programó siguen solo como aviso: «${aviso}»`)
   const abierta = await abrirGuia(contexto, hrefGuia)
   comprobar(abierta.estado === 200 && abierta.cabeza === '%PDF-', `el conductor abre el PDF de la guía (${abierta.estado}, ${abierta.cabeza})`)
   const primera = tarjetas.filter({ hasText: ocA })
@@ -227,19 +235,19 @@ let hrefGuia = ''
   await contexto.close()
 }
 
-// ------------------------------------------------ 6. Contabilidad anula la guía
+// ------------------------------------------------ 6. Contabilidad anula la guía, desde Adquisiciones
 {
   const { pagina, contexto } = await entrar(CUENTAS.contabilidad)
-  await pagina.goto(`${BASE}/compras/gestion`, { waitUntil: 'networkidle' })
-  const t = tarjeta(pagina, 'titulo-en-camino', ocA)
-  comprobar((await t.count()) === 1, `${ocA} pasó a «En camino»`)
+  await pagina.goto(`${BASE}/adquisiciones?q=${encodeURIComponent(ocA)}`, { waitUntil: 'networkidle' })
+  const t = pagina.locator(`tbody tr[data-orden="${ocA}"]`)
+  comprobar((await texto(t)).includes('En recojo'), `${ocA} dice que va con el conductor`)
   await t.getByRole('button', { name: 'Anular guía' }).click()
   const ventana = pagina.locator('[role="dialog"]')
   await ventana.locator('textarea[name="motivo"]').fill('El peso de la guía salió mal escrito')
   await ventana.getByRole('button', { name: 'Anular guía' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 20000 })
   await t.getByRole('button', { name: 'Cargar guía' }).waitFor({ timeout: 20000 })
-  comprobar((await texto(t)).includes('(1 anulada)'), 'la anulada queda contada y se puede cargar la buena')
+  comprobar((await texto(t)).includes('Una guía anulada'), 'la anulada queda contada y se puede cargar la buena')
   await contexto.close()
 }
 {

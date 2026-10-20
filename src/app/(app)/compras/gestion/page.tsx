@@ -7,25 +7,29 @@ import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarRecojos, type CompraParaRecojo } from '@/lib/datos/logistica'
 import { RECOJO_COMPRA } from '@/lib/dominio/logistica'
-import { cantidad, fecha, fechaHora, hoyLima } from '@/lib/format'
+import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
-import { AnularGuia, CargarGuia, MoverEnLista, ProgramarRecojo, QuitarDeLaLista } from './controles'
+import { MoverEnLista, ProgramarRecojo, QuitarDeLaLista } from './controles'
 
 export const metadata = { title: 'Gestión de compras' }
 
-type Quien = { programa: boolean; contabilidad: boolean; hoy: string }
+type Quien = { programa: boolean }
 
 /**
  * Las compras que recoge el conductor, en tres tiempos: las aprobadas que
  * Logística todavía no programa, la lista del conductor en su orden y las que
  * ya salió a recoger. Logística pone el peso y el lugar; Contabilidad, con ese
- * peso, carga la guía de remisión; el conductor ve las dos cosas en «Recojos»
- * (migración 20261015140000).
+ * peso, carga la guía de remisión desde Adquisiciones; el conductor ve las dos
+ * cosas en «Recojos» (migración 20261015140000).
+ *
+ * Desde la migración 20261020171000 la gestión es de Logística
+ * (`compras.programar_recojo`) y del conductor (`compras.recojo`, que la ve sin
+ * programar nada): ni Contabilidad ni quien solo emite compras la abren.
  */
 export default async function PaginaGestionCompras() {
-  const perfil = await exigirPermiso(['compras.crear', 'compras.guia_remision'])
-  const quien: Quien = { programa: puede(perfil, 'compras.crear'), contabilidad: puede(perfil, 'compras.guia_remision'), hoy: hoyLima() }
+  const perfil = await exigirPermiso(['compras.programar_recojo', 'compras.recojo'])
+  const quien: Quien = { programa: puede(perfil, 'compras.programar_recojo') }
   const compras = await cargarRecojos()
   const porProgramar = compras.filter((c) => c.recojo === 'POR_RECOGER' && !c.en_lista)
   const enLista = compras.filter((c) => c.recojo === 'POR_RECOGER' && c.en_lista).sort((a, b) => (a.lugar ?? 0) - (b.lugar ?? 0))
@@ -37,11 +41,11 @@ export default async function PaginaGestionCompras() {
     <>
       <EncabezadoPagina
         titulo="Gestión de compras"
-        migas={[{ titulo: quien.programa ? 'Logística' : 'Contabilidad' }, { titulo: 'Gestión de compras' }]}
+        migas={[{ titulo: 'Logística' }, { titulo: 'Gestión de compras' }]}
         ayuda={
           quien.programa
-            ? 'Decide qué órdenes de compra recoge el conductor y en qué orden, con el peso de cada una. Con ese peso Contabilidad emite la guía de remisión y la carga aquí, y el conductor la ve en su lista antes de salir.'
-            : 'Las órdenes de compra que recoge el conductor, en el orden que fijó Logística y con su peso. Emite la guía de remisión con ese peso y cárgala aquí: el conductor la ve en su teléfono.'
+            ? 'Decide qué órdenes de compra recoge el conductor y en qué orden, con el peso de cada una. Con ese peso Contabilidad emite la guía de remisión y la carga en Adquisiciones, y el conductor la ve en su lista antes de salir.'
+            : 'Las órdenes de compra que recoges, en el orden que fijó Logística y con su peso. Para salir y marcar cada paso, usa tu lista de Recojos.'
         }
       />
 
@@ -83,7 +87,7 @@ export default async function PaginaGestionCompras() {
                 descripcion={
                   quien.programa
                     ? 'Ponle su peso a una orden de «Por programar» y elige su lugar: le llega el aviso al conductor y a Contabilidad.'
-                    : 'Cuando Logística programe una orden con su peso, aparece aquí para emitir su guía.'
+                    : 'Cuando Logística programe una orden con su peso, aparece aquí en su lugar.'
                 }
               />
             </Tarjeta>
@@ -168,7 +172,7 @@ function TarjetaGestion({ compra: c, quien, cuantas }: { compra: CompraParaRecoj
               <FileText aria-hidden className="mt-0.5 size-4 shrink-0 text-texto-suave" />
               {c.guia ? (
                 <span>
-                  <Link className="font-medium text-acento hover:underline" href={`/compras/gestion/guia/${c.guia.id}`} target="_blank" prefetch={false}>
+                  <Link className="font-medium text-acento hover:underline" href={`/compras/guia/${c.guia.id}`} target="_blank" prefetch={false}>
                     Guía de remisión {c.guia.numero}
                   </Link>
                   <span className="text-texto-suave"> · emitida {fecha(c.guia.fecha)}, cargada {fechaHora(c.guia.cargada_en)}</span>
@@ -210,17 +214,6 @@ function TarjetaGestion({ compra: c, quien, cuantas }: { compra: CompraParaRecoj
                 <MoverEnLista id={c.id} peso={c.peso_kg} lugar={c.lugar} cuantas={cuantas} numero={c.numero} />
                 <QuitarDeLaLista id={c.id} numero={c.numero} />
               </div>
-            )}
-          </div>
-        )}
-
-        {/* Sin peso no hay guía que emitir: la tarjeta ya lo dice arriba. */}
-        {quien.contabilidad && c.recojo !== 'DEJADO' && (c.guia || c.peso_kg !== null) && (
-          <div className="border-t border-borde pt-3">
-            {c.guia ? (
-              <AnularGuia id={c.guia.id} numero={c.guia.numero} />
-            ) : (
-              <CargarGuia ordenCompraId={c.id} solicitudId={crypto.randomUUID()} hoy={quien.hoy} />
             )}
           </div>
         )}

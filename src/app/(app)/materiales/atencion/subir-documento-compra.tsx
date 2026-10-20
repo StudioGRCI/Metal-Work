@@ -17,6 +17,8 @@ import { registrarDocumentoCompra } from './acciones-documentos'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 
 const TIPOS = [
+  // La cotización o proforma del proveedor; antes se subía como «Orden de compra» u «Otro».
+  ['COTIZACION', 'Cotización del proveedor'],
   ['ORDEN_COMPRA', 'Orden de compra'],
   ['ORDEN_PAGO', 'Orden de pago'],
   ['ORDEN_SERVICIO', 'Orden de servicio'],

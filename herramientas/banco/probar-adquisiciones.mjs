@@ -125,7 +125,7 @@ const CAJA = await crearCajaDePrueba(consulta, 'tesoreria@banco.test')
   // Desde #96 sus Consultas van Adquisiciones, Proveedores y Valorización, después de su trabajo.
   comprobar(items.includes('Adquisiciones') && items.indexOf('Adquisiciones') > items.indexOf('Órdenes de servicio') && items.indexOf('Órdenes de servicio') > 0,
     'Logística tiene Adquisiciones en Consultas, después de su trabajo')
-  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
   const cuerpo = limpio(await pagina.locator('main').textContent())
   comprobar(cuerpo.includes('OC que esperan su factura') && cuerpo.includes(oc1.numero) && cuerpo.includes(oc3.numero),
     'Logística ve las OC que esperan su factura')
@@ -136,7 +136,7 @@ const CAJA = await crearCajaDePrueba(consulta, 'tesoreria@banco.test')
 // ------------------------------------------------------------- 2. Contabilidad
 {
   const { pagina, contexto } = await entrar('contabilidad@banco.test')
-  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
   const casilla = (oc) => pagina.locator(`input[name="ordenes_compra"][value="${oc.id}"]`)
   await casilla(oc1).check()
   comprobar(await casilla(oc3).isDisabled(), 'marcada una OC, la de otro proveedor se apaga')
@@ -242,7 +242,7 @@ const CAJA = await crearCajaDePrueba(consulta, 'tesoreria@banco.test')
 // ---------------------------------------------------------- 4. Logística, después
 {
   const { pagina, contexto } = await entrar('logistica@banco.test')
-  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
   comprobar(limpio(await grupo(pagina, 'F001-9001')).includes('Pagada'), 'Logística ve la factura pagada')
   await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   comprobar((await pagina.getByRole('button', { name: 'Registrar pago' }).count()) === 0, 'Logística no paga facturas')
@@ -253,7 +253,7 @@ const CAJA = await crearCajaDePrueba(consulta, 'tesoreria@banco.test')
 const [rq1, rq2] = await consulta("select id, numero from requerimientos where numero in ('RQ-0901-2026', 'RQ-0902-2026') order by numero")
 {
   const { pagina, contexto } = await entrar('tesoreria@banco.test')
-  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
   const cabeza = (await pagina.locator('thead th').allTextContents()).map(limpio)
   console.log('     columnas:', cabeza.join(' · '))
   comprobar(cabeza.slice(0, 4).join('|') === 'RQ|OC|Factura|Fecha de factura', 'las columnas van RQ, OC, factura y su fecha')
@@ -282,13 +282,13 @@ const [rq1, rq2] = await consulta("select id, numero from requerimientos where n
   comprobar(destino.startsWith('factura-') && limpio(await pagina.locator(`[id="${destino}"]`).textContent().catch(() => '')).includes('F002-77'),
     'Tesorería salta a pagar la que falta en Cuentas por pagar')
 
-  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
   await pagina.locator('tbody tr', { hasText: 'F001-9001' }).first().getByRole('link', { name: 'FERRETERÍA DE PRUEBA S.A.C.' }).click()
   await pagina.getByText('RUC 20100055008').waitFor({ timeout: 15000 }).catch(() => {})
   comprobar(limpio(await pagina.locator('main').textContent()).includes('20100055008'), 'el proveedor abre su ficha en Proveedores')
 
   if (rq2) {
-    await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+    await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
     const texto = limpio(await grupo(pagina, 'F001-9001'))
     comprobar(texto.includes(rq1.numero) && texto.includes(rq2.numero), 'la factura muestra los dos RQ que cubre')
     const credito = pagina.locator('tbody tr', { hasText: 'F002-77' }).first()
@@ -305,13 +305,13 @@ const [rq1, rq2] = await consulta("select id, numero from requerimientos where n
   await pagina.goto(`${BASE}/adquisiciones?vista=no-calzan`, { waitUntil: 'networkidle' })
   const noCalzan = limpio(await pagina.locator('table').textContent())
   comprobar(noCalzan.includes('F002-77') && !noCalzan.includes('F001-9001'), '«No calzan» deja solo la que no calza')
-  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
   await pagina.screenshot({ path: join(CAPTURAS, 'adquisiciones-tabla-tesoreria.png'), fullPage: true })
   await contexto.close()
 }
 {
   const { pagina, contexto } = await entrar('logistica@banco.test')
-  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
   const primera = pagina.locator('tbody tr', { hasText: 'F001-9001' }).first()
   comprobar((await pagina.getByRole('link', { name: 'Pagar en Cuentas por pagar' }).count()) === 0, 'Logística no tiene el enlace a Cuentas por pagar')
   const oc = await abrir(pagina, await primera.getByRole('link', { name: oc1.numero }).getAttribute('href'))
@@ -321,7 +321,7 @@ const [rq1, rq2] = await consulta("select id, numero from requerimientos where n
 }
 {
   const { pagina, contexto } = await entrar('logistica@banco.test', { width: 390, height: 844 })
-  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
   const ancho = await pagina.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth])
   comprobar(ancho[0] <= ancho[1], `en el teléfono la página no se ensancha (${ancho[0]} de ${ancho[1]} px)`)
   await pagina.screenshot({ path: join(CAPTURAS, 'adquisiciones-tabla-telefono.png'), fullPage: true })
@@ -329,7 +329,7 @@ const [rq1, rq2] = await consulta("select id, numero from requerimientos where n
 }
 if ((await consulta("select 1 from usuarios where correo = 'ventas@banco.test'")).length) {
   const { pagina, contexto } = await entrar('ventas@banco.test')
-  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
   comprobar(pagina.url().includes('/sin-permiso'), 'Ventas no entra a Adquisiciones')
   await contexto.close()
 }
