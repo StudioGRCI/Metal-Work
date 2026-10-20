@@ -85,7 +85,7 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
             <Link
               href={`/rrhh/observaciones?mes=${mesVecino(mes, -1)}`}
               aria-label="Mes anterior"
-              className="inline-flex size-9 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto"
+              className="inline-flex size-11 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto"
             >
               <ChevronLeft aria-hidden className="size-4" />
             </Link>
@@ -94,7 +94,7 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
               <Link
                 href={`/rrhh/observaciones?mes=${mesVecino(mes, 1)}`}
                 aria-label="Mes siguiente"
-                className="inline-flex size-9 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto"
+                className="inline-flex size-11 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto"
               >
                 <ChevronRight aria-hidden className="size-4" />
               </Link>
@@ -115,10 +115,15 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
               <TablaCabecera>
                 <tr>
                   <TH>Persona</TH>
-                  <TH className="text-right">Observaciones</TH>
+                  {/* En el teléfono el rótulo corto: los largos ensanchaban la tabla a 418 px en una pantalla de 390. */}
+                  <TH className="text-right">
+                    <RotuloCorto corto="Obs." largo="Observaciones" />
+                  </TH>
                   <TH className="hidden text-right sm:table-cell">Verbales</TH>
                   <TH className="text-right">Escritas</TH>
-                  <TH className="text-right">Suspensiones</TH>
+                  <TH className="text-right">
+                    <RotuloCorto corto="Susp." largo="Suspensiones" />
+                  </TH>
                 </tr>
               </TablaCabecera>
               <tbody>
@@ -135,6 +140,10 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
                           {r.nombre}
                         </Link>
                         <p className="text-xs text-texto-suave">{r.cargo ?? 'Sin cargo'}</p>
+                        {/* La columna de las verbales no cabe en el teléfono, pero la verbal es el paso antes de la escrita. */}
+                        <p className="tabular text-[11px] text-texto-suave sm:hidden">
+                          {r.porTipo.AMONESTACION_VERBAL ?? 0} {(r.porTipo.AMONESTACION_VERBAL ?? 0) === 1 ? 'verbal' : 'verbales'}
+                        </p>
                       </TD>
                       <TD className="tabular text-right">{r.porTipo.OBSERVACION ?? 0}</TD>
                       <TD className="tabular hidden text-right sm:table-cell">{r.porTipo.AMONESTACION_VERBAL ?? 0}</TD>
@@ -198,5 +207,17 @@ function Registro({ observacion: o, registra, mostrarPersona }: { observacion: O
         <AnularObservacion id={o.id} descripcion={`${tipo.etiqueta} de ${nombre} del ${fecha(o.fecha)}`} />
       )}
     </li>
+  )
+}
+
+/** El rótulo de una columna, abreviado en el teléfono; el lector de pantalla siempre lee el completo. */
+function RotuloCorto({ corto, largo }: { corto: string; largo: string }) {
+  return (
+    <>
+      <span aria-hidden className="sm:hidden">
+        {corto}
+      </span>
+      <span className="sr-only sm:not-sr-only">{largo}</span>
+    </>
   )
 }
