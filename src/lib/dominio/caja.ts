@@ -113,12 +113,6 @@ export function estadoDelDia(
 }
 
 /**
- * El consolidado del día, como el pie de la hoja del Excel: lo que hay en
- * soles, lo que hay en dólares y todo junto en soles con el cambio de compra
- * del día (lo que vale un dólar que la empresa tiene). Sin cambio, el total en
- * soles no se inventa: queda `null` y la pantalla dice que falta.
- */
-/**
  * Las cuentas que suman en la caja de un día: las que ya empezaron y siguen a la
  * vista. Una desactivada sigue mientras tenga saldo o movimientos, o el
  * consolidado bajaría sin que nadie moviera la plata. La usan la caja diaria y
@@ -132,6 +126,12 @@ export function sumaEnLaCaja(
   return aLaVista && dia >= (c.fecha_inicio ?? dia)
 }
 
+/**
+ * El consolidado del día, como el pie de la hoja del Excel: lo que hay en
+ * soles, lo que hay en dólares y todo junto en soles con el cambio de compra
+ * del día (lo que vale un dólar que la empresa tiene). Sin cambio, el total en
+ * soles no se inventa: queda `null` y la pantalla dice que falta.
+ */
 export function consolidado(
   cuentas: { moneda: string; saldo_final: number | null }[],
   cambioCompra: number | null,

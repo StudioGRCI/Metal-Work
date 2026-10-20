@@ -382,7 +382,12 @@ const CIFRAS = {
       const todas = (cuentas.data ?? []).filter((k) => k.caja_id)
       // Las mismas que suma la caja diaria.
       const filas = todas.filter((k) => sumaEnLaCaja(k, c.hoy))
-      if (filas.length === 0) return { titulo: 'Caja de hoy', valor: 'Sin cuentas', pie: 'Da de alta las cuentas de la caja', icono: Landmark, tono: 'aviso' }
+      if (filas.length === 0) {
+        return todas.length > 0
+          ? // Una cuenta no puede empezar después de hoy: si ninguna suma, todas están desactivadas y en cero.
+            { titulo: 'Caja de hoy', valor: 'Sin cuentas activas', pie: 'Todas las cuentas están desactivadas', icono: Landmark, tono: 'aviso' }
+          : { titulo: 'Caja de hoy', valor: 'Sin cuentas', pie: 'Da de alta las cuentas de la caja', icono: Landmark, tono: 'aviso' }
+      }
       const total = consolidado(
         filas.map((k) => ({ moneda: k.moneda ?? 'PEN', saldo_final: k.saldo_final === null ? null : num(k.saldo_final) })),
         cambio.data === null ? null : num(cambio.data),
