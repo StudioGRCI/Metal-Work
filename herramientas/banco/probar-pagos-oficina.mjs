@@ -2,8 +2,8 @@
  * Clic real sobre los pagos de la oficina y la fecha de ingreso y de baja
  * (migración 20261020120000), con la cuenta de cada puesto (nunca ADMIN):
  *
- *   1. RR. HH. registra en Personal a una asistente de Administración con su
- *      fecha de ingreso.
+ *   1. RR. HH. registra en Personal a una asistente de Administración, en la
+ *      planilla administrativa, con su fecha de ingreso.
  *   2. En Pagos de la oficina la ve con días sin pagar, le registra la primera
  *      quincena (tocando «Registrar» tres veces: entra un pago) y la segunda; el
  *      último día se llena solo y ya no le faltan días. Un pago que cruza otro
@@ -133,6 +133,8 @@ try {
     await v.locator('input[name="apellidos"]').fill('Banco')
     await v.locator('input[name="dni"]').fill(`7${sello.slice(-7)}`)
     await v.locator('select[name="area_id"]').selectOption({ label: 'Administración' })
+    // El sueldo de la oficina va por la planilla, no por el área (20261020200000).
+    await v.locator('select[name="planilla"]').selectOption('ADMINISTRATIVA')
     await v.locator('input[name="fecha_ingreso"]').fill(`${mes}-01`)
     await v.locator('input[name="banco"]').fill('BCP')
     await v.locator('input[name="numero_cuenta"]').fill(`191-${sello}`)

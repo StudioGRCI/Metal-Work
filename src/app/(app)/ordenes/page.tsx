@@ -11,6 +11,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { cantidad, fecha } from '@/lib/format'
 import { PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
+import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import {
   ORDENES_POR_PAGINA,
@@ -50,8 +51,10 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
   }
 
   const { ordenes, total, pagina, paginas } = await listarOrdenes(filtros)
+  // Una búsqueda de solo signos no filtra nada: no cuenta como filtro, o la
+  // lista entera decía «3 órdenes con los filtros aplicados».
   const hayFiltros = Boolean(
-    filtros.busqueda || filtros.estado || filtros.prioridad || filtros.atrasadas,
+    palabrasDeBusqueda(filtros.busqueda).length > 0 || filtros.estado || filtros.prioridad || filtros.atrasadas,
   )
   const puedeCrear = puede(perfil, 'ordenes.crear')
   const puedeAbrirEnTaller = puede(perfil, 'ordenes.abrir_taller')

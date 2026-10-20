@@ -44,7 +44,7 @@ export async function listarProveedores(filtros: { busqueda?: string; pagina?: n
   const pagina = Math.max(1, filtros.pagina ?? 1)
   const desde = (pagina - 1) * PROVEEDORES_POR_PAGINA
 
-  let consulta = supabase.from('proveedores').select(COLUMNAS, { count: 'exact' }).order('razon_social')
+  let consulta = supabase.from('proveedores').select(COLUMNAS, { count: 'exact' }).order('razon_social').order('id')
 
   if (!filtros.incluirInactivos) consulta = consulta.eq('activo', true)
 

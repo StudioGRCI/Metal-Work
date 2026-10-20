@@ -236,7 +236,7 @@ function FormularioTrabajador({
             etiqueta="Planilla"
             htmlFor={`tr-planilla-${id}`}
             requerido
-            ayuda="De taller: la gente de Maestranza, Producción o Acabados que el supervisor pone en su reporte diario. Administrativa: la oficina."
+            ayuda="De taller: la que el supervisor pone en su reporte diario; su costo entra a cada unidad por sus horas. Administrativa: su sueldo lo registras en Pagos de la oficina y se reparte entre las unidades del mes. Manda la planilla, no el área."
           >
             <Seleccion id={`tr-planilla-${id}`} name="planilla" required defaultValue={t?.planilla ?? ''}>
               <option value="" disabled>

@@ -193,7 +193,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
           descripcion={reparto.length === 0
             ? '0 h en el mes.'
             : `${reparto.length} ${reparto.length === 1 ? 'unidad' : 'unidades'} con ${cantidad(horasDelMes)} h en el mes.`}
-          ayuda="Cada unidad carga de cada gasto del mes, y del sueldo de la oficina, la parte de sus horas: las del reporte diario y las del tareo de RR. HH. PLANTA y OFICINA no son unidades y no reciben. El sueldo de la oficina es lo que RR. HH. registra como pagado a la gente de las áreas marcadas como oficina, las de escritorio (no las del taller ni las de apoyo, que cargan sus horas a cada unidad): cada pago, semanal, quincenal o mensual, entra por los días que caen en el mes, con sus aportes, y sin lo que esa persona ya cargó en horas a una unidad. Sin horas en el mes, los gastos esperan y se reparten en cuanto alguien reporte."
+          ayuda="Cada unidad carga de cada gasto del mes, y del sueldo de la oficina, la parte de sus horas: las del reporte diario y las del tareo de RR. HH. PLANTA y OFICINA no son unidades y no reciben. El sueldo de la oficina es lo que RR. HH. registra como pagado a la gente de planilla administrativa (la de planilla de taller carga sus horas a cada unidad, sea del área que sea): cada pago, semanal, quincenal o mensual, entra por los días que caen en el mes, con sus aportes, y sin lo que esa persona ya cargó en horas a una unidad. Sin horas en el mes, los gastos esperan y se reparten en cuanto alguien reporte."
         />
         {oficina.sinPago > 0 && (
           <TarjetaCuerpo className="border-b border-borde text-sm text-aviso" data-oficina-sin-pago>

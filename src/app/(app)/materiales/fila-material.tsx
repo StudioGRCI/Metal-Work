@@ -172,7 +172,14 @@ export function FilaMaterial({
       <TD className="hidden text-sm text-texto-suave sm:table-cell">{material.categoria?.nombre ?? '—'}</TD>
       <TD className="text-sm text-texto-suave">
         {material.unidad?.codigo ?? '—'}
-        {material.unidad_pendiente && <Insignia tono="aviso" className="ml-2">Confirmar unidad</Insignia>}
+        {/* En el teléfono se ve más corta, «Confirmar» (el lector de pantalla
+            sigue leyendo «Confirmar unidad»): entera, la tabla se corría 15 px
+            de costado (producción, 2026-10-20). */}
+        {material.unidad_pendiente && (
+          <Insignia tono="aviso" className="mt-1 sm:mt-0 sm:ml-2">
+            Confirmar<span className="sr-only sm:not-sr-only"> unidad</span>
+          </Insignia>
+        )}
       </TD>
       <TD className="hidden text-xs text-texto-suave sm:table-cell">{material.especificacion_tecnica ?? '—'}</TD>
       {puedeEditar && (

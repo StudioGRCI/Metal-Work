@@ -5,7 +5,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { areasDeOficina, inicioDelRegistroDePagos, listarTrabajadores, pagosOficinaDelMes, periodosAnteriores } from '@/lib/datos/rrhh'
+import { inicioDelRegistroDePagos, listarTrabajadores, pagosOficinaDelMes, periodosAnteriores } from '@/lib/datos/rrhh'
 import { diasEntre, diasSinPago, finDeMes, parteDelMes } from '@/lib/dominio/pagos-oficina'
 import { mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, fechaHora, hoyLima, mesLargo, moneda, sumarDias } from '@/lib/format'
@@ -34,27 +34,23 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
   const inicio = `${mes}-01`
   const fin = finDeMes(mes)
 
-  const [pagos, personal, oficina, registro, periodos] = await Promise.all([
+  const [pagos, personal, registro, periodos] = await Promise.all([
     pagosOficinaDelMes(mes, fin),
     listarTrabajadores('todos'),
-    areasDeOficina(),
     inicioDelRegistroDePagos(),
     periodosAnteriores(),
   ])
   const vigentes = pagos.filter((p) => !p.anulado_en)
   const totalDelMes = vigentes.reduce((n, p) => n + parteDelMes(p, mes), 0)
-  // La gente de la oficina que trabajó algún día de este mes, según su ingreso y su
+  // La gente de planilla administrativa que trabajó algún día de este mes, según su ingreso y su
   // baja, o en un periodo anterior si volvió a entrar.
   const enElMes = (desde: string | null, hasta: string | null) => (desde === null || desde <= fin) && (hasta === null || hasta >= inicio)
   const deOficina = personal.filter(
     (t) =>
-      t.area_id !== null &&
-      oficina.has(t.area_id) &&
+      t.planilla === 'ADMINISTRATIVA' &&
       (t.activo || t.fecha_baja !== null) &&
       (enElMes(t.fecha_ingreso, t.fecha_baja) || (periodos.get(t.id) ?? []).some((q) => enElMes(q.ingreso, q.baja))),
   )
-  // Sin área no se sabe si es de la oficina, y sus días sin pago no se cuentan.
-  const sinArea = personal.filter((t) => t.activo && t.area_id === null).length
   const pagosDe = (id: string) => vigentes.filter((p) => p.trabajador_id === id)
   const faltan = deOficina.map((t) => ({ t, ...diasSinPago(t, pagosDe(t.id), mes, hoy, registro.get(t.id) ?? inicio, periodos.get(t.id)) })).filter((f) => f.dias > 0)
   const nombre = (t: { nombres: string; apellidos: string }) => `${t.nombres} ${t.apellidos}`
@@ -73,7 +69,7 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
     <>
       <EncabezadoPagina
         titulo="Pagos de la oficina"
-        ayuda="Lo que se le paga a cada persona de la oficina, como se le paga: por semana, por quincena o por mes. Cada pago entra al sueldo de la oficina de cada mes por los días que caen en él, con sus aportes, y ese sueldo se reparte por horas entre las unidades que trabajaron el mes. Lo que esa persona cargó en horas a una unidad ya va en la mano de obra y se descuenta. Solo lo ve Recursos Humanos; Administración y Gerencia ven el total."
+        ayuda="Lo que se le paga a cada persona de planilla administrativa (la planilla se elige en su ficha de Personal, no depende del área), como se le paga: por semana, por quincena o por mes. Cada pago entra al sueldo de la oficina de cada mes por los días que caen en él, con sus aportes, y ese sueldo se reparte por horas entre las unidades que trabajaron el mes. Lo que esa persona cargó en horas a una unidad ya va en la mano de obra y se descuenta. Solo lo ve Recursos Humanos; Administración y Gerencia ven el total."
         migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Pagos de la oficina' }]}
         acciones={
           edita && (
@@ -115,21 +111,11 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
       </div>
 
       <div className="space-y-5">
-        {sinArea > 0 && (
-          <p className="text-xs text-texto-suave" data-sin-area>
-            <span className="tabular">{sinArea}</span> {sinArea === 1 ? 'persona de alta no tiene área' : 'personas de alta no tienen área'}: si
-            son de la oficina, ponles su área en{' '}
-            <Link href="/rrhh/personal" className="text-acento underline-offset-2 hover:underline">
-              Personal
-            </Link>{' '}
-            para que se les registre y se les cuente lo que falta pagar.
-          </p>
-        )}
         {faltan.length > 0 && (
           <Tarjeta className="border-aviso" data-faltan-pagos>
             <TarjetaCabecera
               titulo="Les faltan días pagados"
-              descripcion={`${faltan.length} ${faltan.length === 1 ? 'persona' : 'personas'} de la oficina con días de este mes sin pago registrado.`}
+              descripcion={`${faltan.length} ${faltan.length === 1 ? 'persona' : 'personas'} de planilla administrativa con días de este mes sin pago registrado.`}
               ayuda="Cuenta los días entre su ingreso y su baja, hasta hoy, que ningún pago cubre. Cuenta desde octubre de 2026, cuando RR. HH. empieza a registrar los pagos, o desde antes si hay pagos u horas de meses anteriores. Mientras falten, el sueldo de la oficina del mes sale incompleto en el costeo de cada unidad. Si alguien ya no trabaja, dalo de baja en Personal con su último día."
             />
             <TarjetaCuerpo>
