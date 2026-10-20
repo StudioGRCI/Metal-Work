@@ -26,11 +26,12 @@ import {
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { VISTAS_DISENO, vistaDisenoValida, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
-import { fecha, hoyLima } from '@/lib/format'
+import { cantidad, fecha, hoyLima } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
 import {
   AnularPlano,
+  CambiarPeso,
   CargarPlano,
   CorregirEtapa,
   CorregirMaterial,
@@ -175,8 +176,11 @@ async function Vista({ vista, codigo }: { vista: VistaDiseno; codigo: string }) 
 }
 
 async function VistaPlanos({ codigo }: { codigo: string }) {
-  const [planos, areas] = await Promise.all([planosDeCodigo(codigo), areasDePlanos()])
+  const [planos, areas, etapas] = await Promise.all([planosDeCodigo(codigo), areasDePlanos(), etapasDeCodigo(codigo)])
   const conHistoria = planos.filter((p) => p.revisiones > 1)
+  const repartido = planos.filter((p) => !p.anulado_en).reduce((suma, p) => suma + (p.peso ?? 0), 0)
+  const libre = Math.max(0, Math.round((100 - repartido) * 100) / 100)
+  const sinPeso = planos.filter((p) => !p.anulado_en && p.peso === null).length
   const historial = new Map(await Promise.all(conHistoria.map(async (p) => [p.id, await historialDePlano(p.id)] as const)))
   return (
     <>
@@ -186,22 +190,34 @@ async function VistaPlanos({ codigo }: { codigo: string }) {
           ayuda="Cada plano va a un área de producción. Si el mismo número va a dos áreas, cárgalo una vez para cada una. Para corregir uno ya cargado, súbele una revisión."
         />
         <TarjetaCuerpo>
-          <CargarPlano codigo={codigo} areas={areas} solicitud={{ plano: crypto.randomUUID(), revision: crypto.randomUUID() }} />
+          <CargarPlano codigo={codigo} areas={areas} repartido={repartido} solicitud={{ plano: crypto.randomUUID(), revision: crypto.randomUUID() }} />
         </TarjetaCuerpo>
       </Tarjeta>
 
       <Tarjeta>
-        <TarjetaCabecera titulo="Planos del código" ayuda="La revisión vigente de cada plano, y si el supervisor del área ya la recibió." />
+        <TarjetaCabecera
+          titulo="Planos del código"
+          descripcion={
+            planos.length === 0
+              ? undefined
+              : `Repartido entre los planos: ${cantidad(repartido)} % de la unidad${libre > 0 ? ` · el ${cantidad(libre)} % restante se mide por ${etapas.length > 0 ? 'las etapas' : 'las actividades del reporte diario'}` : ''}${
+                  sinPeso > 0 ? ` · ${sinPeso} sin porcentaje` : ''
+                }`
+          }
+          ayuda="La revisión vigente de cada plano, si el supervisor del área ya la recibió, y el porcentaje de la unidad que representa. El avance de la unidad suma lo que avanzó cada plano por su porcentaje; lo que no se repartió en planos se mide por las etapas."
+        />
         <TarjetaCuerpo>
           {planos.length === 0 ? (
             <p className="text-sm text-texto-suave">Todavía no hay planos. Carga el primero con el formulario de arriba.</p>
           ) : (
             <ListaPlanos
               planos={planos}
+              avisarSinPeso
               historial={historial}
               acciones={(p) =>
                 p.anulado_en ? null : (
                   <>
+                    <CambiarPeso plano={p.id} numero={p.numero} peso={p.peso} libre={libre} />
                     <SubirRevision plano={p.id} numero={p.numero} solicitudId={crypto.randomUUID()} />
                     <AnularPlano plano={p.id} numero={p.numero} />
                   </>
@@ -267,7 +283,7 @@ async function VistaMateriales({ codigo }: { codigo: string }) {
 }
 
 async function VistaEtapas({ codigo }: { codigo: string }) {
-  const [etapas, areas] = await Promise.all([etapasDeCodigo(codigo), areasParaEtapas()])
+  const [etapas, areas, planos] = await Promise.all([etapasDeCodigo(codigo), areasParaEtapas(), planosDeCodigo(codigo)])
   const hoy = hoyLima()
   return (
     <>
@@ -292,6 +308,7 @@ async function VistaEtapas({ codigo }: { codigo: string }) {
             <ListaEtapas
               etapas={etapas}
               hoy={hoy}
+              conPlanosConPeso={planos.some((p) => !p.anulado_en && (p.peso ?? 0) > 0)}
               acciones={(e, i) => (
                 <>
                   <MarcarEtapa etapa={e} hoy={hoy} />

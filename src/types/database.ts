@@ -193,6 +193,7 @@ export type Database = {
           actualizado_en: string
           jefe_id: string | null
           requerimiento: string | null
+          es_oficina: boolean
         }
         Insert: {
           id?: string
@@ -205,6 +206,7 @@ export type Database = {
           actualizado_en?: string
           jefe_id?: string | null
           requerimiento?: string | null
+          es_oficina?: boolean
         }
         Update: {
           id?: string
@@ -217,6 +219,7 @@ export type Database = {
           actualizado_en?: string
           jefe_id?: string | null
           requerimiento?: string | null
+          es_oficina?: boolean
         }
         Relationships: [
           {
@@ -778,6 +781,71 @@ export type Database = {
           }
         ]
       }
+      codigo_actividades: {
+        Row: {
+          id: string
+          codigo_interno: string
+          area_id: string | null
+          descripcion: string
+          plano_id: string | null
+          subcontrato_id: string | null
+          creado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo_interno: string
+          area_id?: string | null
+          descripcion: string
+          plano_id?: string | null
+          subcontrato_id?: string | null
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo_interno?: string
+          area_id?: string | null
+          descripcion?: string
+          plano_id?: string | null
+          subcontrato_id?: string | null
+          creado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "codigo_actividades_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_actividades_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_actividades_plano_id_fkey"
+            columns: ["plano_id"]
+            isOneToOne: true
+            referencedRelation: "codigo_planos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_actividades_subcontrato_id_fkey"
+            columns: ["subcontrato_id"]
+            isOneToOne: true
+            referencedRelation: "subcontratos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       codigo_etapas: {
         Row: {
           id: string
@@ -1098,6 +1166,7 @@ export type Database = {
           anulado_por: string | null
           motivo_anulacion: string | null
           actualizado_en: string
+          peso: number | null
         }
         Insert: {
           id?: string
@@ -1112,6 +1181,7 @@ export type Database = {
           anulado_por?: string | null
           motivo_anulacion?: string | null
           actualizado_en?: string
+          peso?: number | null
         }
         Update: {
           id?: string
@@ -1126,6 +1196,7 @@ export type Database = {
           anulado_por?: string | null
           motivo_anulacion?: string | null
           actualizado_en?: string
+          peso?: number | null
         }
         Relationships: [
           {
@@ -3580,6 +3651,54 @@ export type Database = {
             referencedColumns: ["id"]
           }
         ]
+      }
+      oficina_mes_personas: {
+        Row: {
+          periodo: string
+          trabajador_id: string
+          costo_mensual: number
+        }
+        Insert: {
+          periodo: string
+          trabajador_id: string
+          costo_mensual: number
+        }
+        Update: {
+          periodo?: string
+          trabajador_id?: string
+          costo_mensual?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oficina_mes_personas_periodo_fkey"
+            columns: ["periodo"]
+            isOneToOne: false
+            referencedRelation: "oficina_meses_congelados"
+            referencedColumns: ["periodo"]
+          },
+          {
+            foreignKeyName: "oficina_mes_personas_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      oficina_meses_congelados: {
+        Row: {
+          periodo: string
+          congelado_en: string
+        }
+        Insert: {
+          periodo: string
+          congelado_en?: string
+        }
+        Update: {
+          periodo?: string
+          congelado_en?: string
+        }
+        Relationships: []
       }
       orden_compra_material_detalles: {
         Row: {
@@ -7908,6 +8027,7 @@ export type Database = {
           avance: number
           creado_en: string
           actualizado_en: string
+          actividad_id: string | null
         }
         Insert: {
           id?: string
@@ -7917,6 +8037,7 @@ export type Database = {
           avance: number
           creado_en?: string
           actualizado_en?: string
+          actividad_id?: string | null
         }
         Update: {
           id?: string
@@ -7926,8 +8047,16 @@ export type Database = {
           avance?: number
           creado_en?: string
           actualizado_en?: string
+          actividad_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "reporte_diario_trabajos_actividad_id_fkey"
+            columns: ["actividad_id"]
+            isOneToOne: false
+            referencedRelation: "codigo_actividades"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "reporte_diario_trabajos_reporte_id_fkey"
             columns: ["reporte_id"]
@@ -7961,6 +8090,7 @@ export type Database = {
           observacion_area: string | null
           observacion: string | null
           reemplaza_a: string | null
+          ubicado_en: string | null
         }
         Insert: {
           id?: string
@@ -7985,6 +8115,7 @@ export type Database = {
           observacion_area?: string | null
           observacion?: string | null
           reemplaza_a?: string | null
+          ubicado_en?: string | null
         }
         Update: {
           id?: string
@@ -8009,6 +8140,7 @@ export type Database = {
           observacion_area?: string | null
           observacion?: string | null
           reemplaza_a?: string | null
+          ubicado_en?: string | null
         }
         Relationships: [
           {
@@ -10749,6 +10881,43 @@ export type Database = {
         }
         Returns: string
       }
+      codigo_interno_actividades: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          clave: string | null
+          area: string | null
+          descripcion: string | null
+          tipo: string | null
+          cuenta: string | null
+          avance: number | null
+          ultima_fecha: string | null
+          reportes: number | null
+          historial: Json | null
+        }[]
+      }
+      codigo_interno_actividades_estado: {
+        Args: {
+          p_codigo: string | null
+          p_sin?: string | null
+          p_hasta?: string | null
+          p_antes_de?: string | null
+        }
+        Returns: {
+          clave: string | null
+          actividad_id: string | null
+          codigo: string | null
+          area_id: string | null
+          descripcion: string | null
+          plano_id: string | null
+          subcontrato_id: string | null
+          avance: number | null
+          ultima_fecha: string | null
+          primera_fecha: string | null
+          reportes: number | null
+        }[]
+      }
       codigo_interno_avance: {
         Args: {
           p_codigo?: string | null
@@ -10768,6 +10937,71 @@ export type Database = {
           avance: number | null
           horas: number | null
           personas: number | null
+        }[]
+      }
+      codigo_interno_avance_calculado: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          peso: number | null
+          de_planos: number | null
+          resto: number | null
+          resto_por: string | null
+          etapas: number | null
+          etapas_terminadas: number | null
+          trabajos: number | null
+          trabajos_terminados: number | null
+          ultimo_reporte: string | null
+        }[]
+      }
+      codigo_interno_avance_partes: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          peso: number | null
+          de_planos: number | null
+          resto: number | null
+          resto_por: string | null
+        }[]
+      }
+      codigo_interno_avance_planos: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          plano_id: string | null
+          codigo: string | null
+          numero: string | null
+          nombre: string | null
+          area: string | null
+          peso: number | null
+          avance: number | null
+          aporte: number | null
+          por_etapa: boolean | null
+          ultima_fecha: string | null
+          reportes: number | null
+        }[]
+      }
+      codigo_interno_avance_planos_calculado: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          plano_id: string | null
+          codigo: string | null
+          numero: string | null
+          nombre: string | null
+          area_id: string | null
+          area: string | null
+          peso: number | null
+          avance: number | null
+          aporte: number | null
+          por_etapa: boolean | null
+          ultima_fecha: string | null
+          reportes: number | null
         }[]
       }
       codigo_interno_compras: {
@@ -11104,6 +11338,16 @@ export type Database = {
           monto_pen: number | null
           monto_usd: number | null
           sin_precio: number | null
+        }[]
+      }
+      codigo_interno_resto_por_area_calculado: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          area_id: string | null
+          avance: number | null
         }[]
       }
       codigo_plano_historial: {
@@ -11447,6 +11691,10 @@ export type Database = {
         Args: {
           p_entrega: string | null
         }
+        Returns: null
+      }
+      congelar_oficina: {
+        Args: Record<PropertyKey, never>
         Returns: null
       }
       corregir_factura_compra: {
@@ -12027,6 +12275,13 @@ export type Database = {
         }
         Returns: string
       }
+      fijar_peso_plano: {
+        Args: {
+          p_plano: string | null
+          p_peso: number | null
+        }
+        Returns: string
+      }
       fijar_precio_compra_material: {
         Args: {
           p_detalle: string | null
@@ -12071,6 +12326,25 @@ export type Database = {
           p_a: string | null
         }
         Returns: null
+      }
+      gastos_del_mes_oficina: {
+        Args: {
+          p_periodo: string | null
+        }
+        Returns: {
+          monto: number | null
+          sin_area: number | null
+        }[]
+      }
+      gastos_del_mes_reparto: {
+        Args: {
+          p_periodo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          horas: number | null
+          parte: number | null
+        }[]
       }
       guardar_caja: {
         Args: {
@@ -12176,6 +12450,18 @@ export type Database = {
           horas_tramo1: number | null
           horas_tramo2: number | null
           remuneracion_mensual: number | null
+        }[]
+      }
+      horas_por_codigo_del_mes: {
+        Args: {
+          p_periodo?: string | null
+        }
+        Returns: {
+          periodo: string | null
+          codigo: string | null
+          horas: number | null
+          total: number | null
+          codigos: number | null
         }[]
       }
       identificacion_ot_diseno: {
@@ -13168,6 +13454,7 @@ export type Database = {
           p_area: string | null
           p_observacion: string | null
           p_nombre_archivo: string | null
+          p_peso: number | null
         }
         Returns: string
       }
@@ -13358,6 +13645,24 @@ export type Database = {
           p_reemplaza: string | null
         }
         Returns: string
+      }
+      reporte_diario_opciones: {
+        Args: {
+          p_codigo: string | null
+          p_corrige?: string | null
+          p_fecha?: string | null
+        }
+        Returns: {
+          tipo: string | null
+          id: string | null
+          etiqueta: string | null
+          area: string | null
+          avance: number | null
+          ultima_fecha: string | null
+          peso: number | null
+          tope: number | null
+          tope_fecha: string | null
+        }[]
       }
       reporte_diario_personal_disponible: {
         Args: Record<PropertyKey, never>
@@ -13907,6 +14212,17 @@ export type Database = {
           p_nombre_archivo: string | null
         }
         Returns: string
+      }
+      sueldos_oficina_del_mes: {
+        Args: {
+          p_periodo?: string | null
+        }
+        Returns: {
+          periodo: string | null
+          personas: number | null
+          monto: number | null
+          sin_area: number | null
+        }[]
       }
       sumar_dias_habiles: {
         Args: {

@@ -595,7 +595,7 @@ const CIFRAS = {
   planos_del_area: {
     ruta: '/planos',
     calcular: async (c) => {
-      const [planos, etapas] = await Promise.all([planosDeCodigo(null), etapasDeCodigo(null)])
+      const [planos, etapas] = await Promise.all([planosDeCodigo(null, { conPeso: false }), etapasDeCodigo(null)])
       const vigentes = planos.filter((p) => !p.anulado_en).length
       const enCurso = etapas.filter(
         (e) => e.area_id !== null && puedeHojaDeArea(c.perfil, e.area_id) && !e.fin_real && (e.inicio_real || e.inicio_plan),

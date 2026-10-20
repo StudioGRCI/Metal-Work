@@ -24,7 +24,7 @@
 -- Códigos internos.
 --
 -- El costeo completo (migración 20261017300000): Administración registra la
--- luz del mes al 8 %, Tesorería paga S/ 300 por caja chica con el código,
+-- luz del mes (por horas desde la 20261020110000), Tesorería paga S/ 300 por caja chica con el código,
 -- Producción reporta horas de más, Diseño evalúa la merma y Gerencia fija el
 -- presupuesto. Gerencia, Administración y Supervisión general leen el mismo
 -- costo (Supervisión general sin precio ni margen); Gerencia no puede cerrar con
@@ -209,7 +209,7 @@ begin
             jsonb_build_object('mimetype', 'application/pdf', 'size', 120000));
     perform pg_temp.ensayo_como((k->>'DISENO')::uuid);
     perform public.guardar_material_codigo(null, c, v_mat, 5, null, 'Para cortar las planchas del chasis');
-    perform public.registrar_plano_codigo(v_plano, v_rev, c, '001', 'Estructura del chasis', v_mtz, null, 'chasis.pdf');
+    perform public.registrar_plano_codigo(v_plano, v_rev, c, '001', 'Estructura del chasis', v_mtz, null, 'chasis.pdf', 25);
 
     v_paso := 'Maestranza recibe el plano';
     reset role; perform pg_temp.ensayo_como((k->>'SUPERVISOR_MTZ')::uuid);
@@ -454,9 +454,9 @@ begin
     select jsonb_object_agg(x.fuente, x.monto) into b_antes
       from (select l.fuente, coalesce(sum(l.monto), 0) as monto from public.codigo_interno_costeo(c) l group by l.fuente) x;
 
-    v_paso := 'Administración registra la luz del mes (8 % por unidad, como la hoja RESUMEN)';
+    v_paso := 'Administración registra la luz del mes (se reparte por horas)';
     reset role; perform pg_temp.ensayo_como((k->>'ADMINISTRACION')::uuid);
-    perform public.registrar_gasto_general(gen_random_uuid(), v_hoy, 'ELECTRICIDAD', 'Recibo de luz del ensayo', 1000, 'PEN', 'TASA', 8);
+    perform public.registrar_gasto_general(gen_random_uuid(), v_hoy, 'ELECTRICIDAD', 'Recibo de luz del ensayo', 1000, 'PEN', 'HORAS', null);
 
     v_paso := 'Tesorería paga S/ 300 de movilidad por caja chica con el código';
     reset role; perform pg_temp.ensayo_como((k->>'TESORERIA')::uuid);
@@ -466,9 +466,11 @@ begin
 
     v_paso := 'Producción reporta 5 h más del soldador hoy (10 h en el día: 2 h extras)';
     reset role; perform pg_temp.ensayo_como((k->>'SUPERVISOR_PRD')::uuid);
+    -- La «Soldadura» que Producción abrió en la mañana se continúa eligiéndola, no se abre otra.
     perform public.registrar_reporte_diario(v_r3, v_hoy, c, 'Soldadura de largueros por la tarde', 'Se siguió soldando hasta la noche',
       jsonb_build_array(
-        jsonb_build_object('descripcion', 'Soldadura', 'avance', 60,
+        jsonb_build_object('actividad_id', (select o.id from public.reporte_diario_opciones(c) o
+                                             where o.tipo = 'ACTIVIDAD' and o.etiqueta = 'Soldadura'), 'avance', 60,
                            'personal', jsonb_build_array(jsonb_build_object('trabajador_id', v_t1, 'horas', 5)))),
       null, null);
     reset role;
@@ -572,9 +574,11 @@ begin
   -- ============================================ 5. CADA CIFRA CONTRA LO HECHO
   reset role;
   if g_resumen is null then raise exception 'FALLO: Gerencia no ve el código % en la lista', c; end if;
-  -- El porcentaje: (100 de Habilitado, terminada + 30 de Producción + 0 + 0) / 4 = 32.5 → 33.
-  f := f || pg_temp.ensayo_dif('porcentaje del código', (g_avance->>'avance')::numeric, 33::numeric)
-         || pg_temp.ensayo_dif('de dónde sale el porcentaje', g_avance->>'fuente', 'ETAPAS'::text)
+  -- El porcentaje: el plano de Maestranza vale el 25 % de la unidad y su etapa (Habilitado)
+  -- terminó, así que aporta 25; el 75 % restante va por las etapas, (100 de Habilitado
+  -- + 30 de Producción + 0 + 0) / 4 = 32.5, que aportan 24.375. 49.375 → 49.
+  f := f || pg_temp.ensayo_dif('porcentaje del código', (g_avance->>'avance')::numeric, 49::numeric)
+         || pg_temp.ensayo_dif('de dónde sale el porcentaje', g_avance->>'fuente', 'PLANOS'::text)
          || pg_temp.ensayo_dif('etapas', (g_avance->>'etapas')::numeric, 4::numeric)
          || pg_temp.ensayo_dif('etapas terminadas', (g_avance->>'etapas_terminadas')::numeric, 1::numeric)
          || pg_temp.ensayo_dif('trabajos de los reportes (área por área)', (g_avance->>'trabajos')::numeric, 4::numeric)
@@ -676,8 +680,21 @@ begin
          || pg_temp.ensayo_dif('Requerimientos y Gerencia: materiales', (o_gasto->>'materiales_pen')::numeric, (g_resumen->>'materiales_pen')::numeric)
          || pg_temp.ensayo_dif('Requerimientos y Gerencia: compras', (o_gasto->>'compras_pen')::numeric, (g_resumen->>'compras_pen')::numeric)
          || pg_temp.ensayo_dif('Requerimientos y Gerencia: RQ', (o_gasto->>'requerimientos')::numeric, (g_resumen->>'requerimientos')::numeric);
-  -- El costeo completo: la luz al 8 %, la caja de S/ 300 y la venta sin IGV.
-  f := f || pg_temp.ensayo_dif('gastos del mes (8 % de S/ 1,000)', (n_gerencia->>'gastos_mes_pen')::numeric, 80::numeric)
+  -- El costeo completo: la luz por las horas del código en el mes, la caja de
+  -- S/ 300 y la venta sin IGV. Las horas del código salen de su mano de obra, no
+  -- de la función que reparte; el total del mes, de la base en que corre el
+  -- ensayo. Y la luz entera queda repartida: ni un céntimo se pierde.
+  f := f || pg_temp.ensayo_dif('la luz del mes, por las horas del código',
+                                (select sum(l.monto) from public.codigo_interno_lineas(c, true) l
+                                  where l.fuente = 'GASTOS_DEL_MES' and l.detalle like '%Recibo de luz del ensayo'),
+                                (select round(1000 * (select sum(l.horas) from public.codigo_interno_lineas(c, true) l
+                                                       where l.fuente in ('MANO_OBRA', 'MANO_OBRA_SIN_COSTO')
+                                                         and date_trunc('month', l.fecha) = date_trunc('month', v_hoy)) / h.total, 2)
+                                   from public.horas_por_codigo_del_mes(v_hoy) h where h.codigo = c))
+         || pg_temp.ensayo_dif('la luz del mes, repartida entera',
+                                (select sum(l.monto) from public.codigo_interno_lineas(null, true) l
+                                  where l.fuente = 'GASTOS_DEL_MES' and l.detalle like '%Recibo de luz del ensayo'),
+                                1000::numeric)
          || pg_temp.ensayo_dif('caja con el código', (n_gerencia->>'caja_pen')::numeric, 300::numeric)
          || pg_temp.ensayo_dif('egresos de caja', (n_gerencia->>'egresos_caja')::numeric, 1::numeric)
          || pg_temp.ensayo_dif('costo completo = lo que suma el costeo',

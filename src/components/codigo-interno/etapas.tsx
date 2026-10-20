@@ -26,10 +26,13 @@ export function ListaEtapas({
   etapas,
   hoy,
   acciones,
+  conPlanosConPeso = false,
 }: {
   etapas: EtapaDeCodigo[]
   hoy: string
   acciones?: (etapa: EtapaDeCodigo, i: number) => ReactNode
+  /** El código tiene planos con % de la unidad: su avance no entra al de la etapa, y se dice. */
+  conPlanosConPeso?: boolean
 }) {
   return (
     <ol className="divide-y divide-borde rounded-[var(--radius-base)] border border-borde">
@@ -64,6 +67,11 @@ export function ListaEtapas({
                           e.primer_reporte === e.ultimo_reporte ? `el ${fecha(e.ultimo_reporte)}` : `del ${fecha(e.primer_reporte)} al ${fecha(e.ultimo_reporte)}`
                         }`
                       : `${e.area} no subió reportes de este código`}
+                    {conPlanosConPeso &&
+                      e.reportes > 0 &&
+                      (e.avance_reportado !== null
+                        ? ' · sin los planos con % de la unidad, que cuentan aparte'
+                        : ' · solo reportó planos con % de la unidad, que cuentan aparte')}
                   </span>
                   {e.avance_reportado !== null && <Progreso valor={e.avance_reportado} alto="sm" mostrarValor etiqueta={`Avance reportado de ${e.nombre}`} />}
                 </div>

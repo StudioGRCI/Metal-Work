@@ -13,11 +13,14 @@ import { Progreso } from '@/components/ui/progreso'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import {
+  actividadesDelCodigo,
+  aporteDeLosPlanos,
   avanceDeLosCodigos,
   avanceDelCodigo,
   comprasDelCodigo,
   costeoDelCodigo,
   documentosDelCodigo,
+  partesDelAvance,
   listarCodigosInternos,
   personalDelCodigo,
   repartoATodosLosActivos,
@@ -28,6 +31,7 @@ import {
 } from '@/lib/datos/codigos-internos'
 import { codigosDeDiseno, etapasDeCodigo } from '@/lib/datos/diseno-codigos'
 import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo, type FacturadoDelCodigo } from '@/lib/datos/facturacion'
+import { repartoDelMes } from '@/lib/datos/gastos-generales'
 import {
   CODIGO_SIN_AVANCE,
   CODIGO_TODOS_LOS_ACTIVOS,
@@ -45,7 +49,6 @@ import {
   normalizarCodigo,
   origenDelAvance,
   parecidos,
-  ultimoAvancePorTrabajo,
   vistaValida,
   type VistaCodigo,
 } from '@/lib/dominio/codigos-internos'
@@ -55,7 +58,7 @@ import { situacionCompra, validacionDeCompra } from '@/lib/dominio/logistica'
 import { ESTADO_REPORTE, type EstadoReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADO_REQUERIMIENTO } from '@/lib/dominio/requerimientos'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { cantidad, fecha, fechaLarga, moneda, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
+import { cantidad, fecha, fechaLarga, hoyLima, moneda, numero, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, type PerfilSesion } from '@/lib/sesion'
 
 import { CerrarCosteo, ReabrirCosteo } from './cierre-costeo'
@@ -76,16 +79,22 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   const vistas = VISTAS_CODIGO.filter((v) =>
     aTodos ? v.valor === 'avance' || v.valor === 'documentos' : v.valor !== 'facturacion' || veFacturas,
   )
+  // Quien cierra el costeo sabe antes de intentarlo si la unidad espera a que termine el mes
+  // (cerrar_costeo_codigo lo exige: sus gastos del mes se reparten por las horas del mes entero).
+  const cierra = puede(perfil, 'codigos_internos.cerrar')
+  const miraMes = cierra && !aTodos && puede(perfil, ['costos.gastos_generales', 'costos.ver'])
   const pedida = vistaValida(params.vista)
   const vista = vistas.some((v) => v.valor === pedida) ? pedida : 'avance'
 
-  const [conDocumentos, deDiseno, avances, facturado, reparto] = await Promise.all([
+  const [conDocumentos, deDiseno, avances, facturado, reparto, horasDelMes] = await Promise.all([
     listarCodigosInternos(),
     codigosDeDiseno(),
     avanceDeLosCodigos(codigo),
     veFacturas && !aTodos ? facturadoDelCodigo(codigo) : Promise.resolve(null),
     aTodos ? repartoATodosLosActivos() : Promise.resolve<RepartoATodosFila[]>([]),
+    miraMes ? repartoDelMes(`${hoyLima().slice(0, 7)}-01`) : Promise.resolve([]),
   ])
+  const esperaElMes = horasDelMes.some((r) => r.codigo === codigo)
   const avance = avances.get(codigo)
   const todos = sumarCodigosDeDiseno(conDocumentos, deDiseno)
   const resumen = todos.find((c) => c.codigo === codigo)
@@ -158,7 +167,8 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
                 facturado={facturado}
                 codigo={codigo}
                 verPrecio={puede(perfil, 'cotizaciones.ver_pdf_comercial')}
-                cierra={puede(perfil, 'codigos_internos.cerrar')}
+                cierra={cierra}
+                esperaElMes={esperaElMes}
               />
               <LineaDeDiseno d={diseno} />
             </>
@@ -195,6 +205,7 @@ function ComoVa({
   codigo,
   verPrecio,
   cierra,
+  esperaElMes,
 }: {
   c: ResumenCodigo
   avance: AvanceDeCodigo | undefined
@@ -204,6 +215,8 @@ function ComoVa({
   verPrecio: boolean
   /** Quien cierra el costeo (`codigos_internos.cerrar`). */
   cierra: boolean
+  /** La unidad tiene horas en el mes en curso: el cierre espera a que termine. */
+  esperaElMes: boolean
 }) {
   const costo = costoDelCodigo(c)
   const manoObra = c.mano_obra + c.recargo_extras
@@ -340,7 +353,7 @@ function ComoVa({
           {c.compras === 1 ? 'OC' : 'OC'}. No se suman al costo: lo comprado entra al almacén y se cuenta cuando sale para este código.
         </p>
       )}
-      {!noEsUnidad(codigo) && <LineaCierre c={c} codigo={codigo} verPrecio={verPrecio} cierra={cierra} />}
+      {!noEsUnidad(codigo) && <LineaCierre c={c} codigo={codigo} verPrecio={verPrecio} cierra={cierra} esperaElMes={esperaElMes} />}
     </div>
   )
 }
@@ -517,7 +530,19 @@ function IndicadorMargen({ c, codigo }: { c: ResumenCodigo; codigo: string }) {
 }
 
 /** El cierre del costeo: congelado al entregar la unidad, o el botón para cerrarlo. */
-function LineaCierre({ c, codigo, verPrecio, cierra }: { c: ResumenCodigo; codigo: string; verPrecio: boolean; cierra: boolean }) {
+function LineaCierre({
+  c,
+  codigo,
+  verPrecio,
+  cierra,
+  esperaElMes,
+}: {
+  c: ResumenCodigo
+  codigo: string
+  verPrecio: boolean
+  cierra: boolean
+  esperaElMes: boolean
+}) {
   const z = c.cierre
   if (!z) {
     if (!cierra) return null
@@ -529,6 +554,7 @@ function LineaCierre({ c, codigo, verPrecio, cierra }: { c: ResumenCodigo; codig
       c.venta && c.venta.sin_igv > 0 &&
         `${c.venta.sin_igv === 1 ? 'confirmar si la cotización incluye IGV' : `confirmar si ${c.venta.sin_igv} cotizaciones incluyen IGV`} (Gerencia o Administración en el expediente de la OT, o Ventas al corregir la cotización)`,
       c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo carga Tesorería)',
+      esperaElMes && 'que termine el mes: los gastos del mes y el sueldo de la oficina se reparten por las horas del mes entero',
     ].filter(Boolean)
     if (falta.length > 0) {
       return (
@@ -738,45 +764,121 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
       </Tarjeta>
     )
   }
-  const etapas = await etapasDeCodigo(codigo)
+  const porPlanos = avance.fuente === 'PLANOS'
+  const [etapas, planos, partes] = await Promise.all([
+    etapasDeCodigo(codigo),
+    porPlanos ? aporteDeLosPlanos(codigo) : Promise.resolve([]),
+    porPlanos ? partesDelAvance(codigo) : Promise.resolve(null),
+  ])
+  // La etapa ya viene sin las actividades de un plano con porcentaje: ese cuenta por su lado.
+  const valeDe = (e: (typeof etapas)[number]) => (e.fin_real ? 100 : (e.avance_reportado ?? 0))
+  const listaEtapas = (
+    <ul className="space-y-2">
+      {etapas.map((e, i) => {
+        const vale = valeDe(e)
+        return (
+          <li key={e.id} className="grid grid-cols-[1fr_8rem] items-center gap-3 text-sm" data-etapa={e.nombre} data-vale={Math.round(vale)}>
+            <span className="min-w-0">
+              <span className="text-texto">
+                {i + 1}. {e.nombre}
+              </span>{' '}
+              <span className="text-xs text-texto-suave">
+                {e.area ?? 'Sin área del taller'} ·{' '}
+                {e.fin_real
+                  ? `terminada el ${fecha(e.fin_real)}`
+                  : e.avance_reportado !== null
+                    ? porPlanos
+                      ? 'sin terminar: lo que reporta su área fuera de los planos'
+                      : 'sin terminar: lo que reporta su área'
+                    : e.reportes > 0 && porPlanos
+                      ? 'sin terminar: su área solo reportó planos con %, que cuentan arriba'
+                      : 'sin terminar y sin reporte diario'}
+              </span>
+            </span>
+            <Progreso valor={vale} mostrarValor etiqueta={`Lo que vale ${e.nombre}`} />
+          </li>
+        )
+      })}
+    </ul>
+  )
+  if (avance.fuente !== 'PLANOS') {
+    return (
+      <Tarjeta data-como-sale>
+        <TarjetaCabecera
+          titulo={`Cómo sale el ${avance.avance} %`}
+          ayuda="Es el promedio de las etapas que armó Diseño, todas con el mismo peso. La etapa terminada vale 100 %; la que no, lo que su área reporta de este código en el reporte diario (el promedio del último avance de cada una de sus actividades); sin reporte, 0 %. Cuando Diseño ponga a cada plano su porcentaje de la unidad, lo repartido en planos se medirá plano por plano."
+        />
+        <TarjetaCuerpo>{listaEtapas}</TarjetaCuerpo>
+      </Tarjeta>
+    )
+  }
+
+  // Lo que Diseño repartió en planos cuenta plano por plano; el resto, por las etapas.
+  // Las cifras son las de la base, que es la que saca el porcentaje: aquí solo se pintan.
+  const deLosPlanos = partes?.de_planos ?? 0
+  const resto = Math.max(0, 100 - (partes?.peso ?? 0))
+  const avanceResto = partes?.resto ?? 0
+  const deLasEtapas = (resto * avanceResto) / 100
+  const porEtapas = partes?.resto_por === 'ETAPAS'
   return (
     <Tarjeta data-como-sale>
       <TarjetaCabecera
         titulo={`Cómo sale el ${avance.avance} %`}
-        ayuda="Es el promedio de las etapas que armó Diseño, todas con el mismo peso. La etapa terminada vale 100 %; la que no, lo que su área reporta de este código en el reporte diario (el promedio del último avance de cada uno de sus trabajos); sin reporte, 0 %."
+        descripcion={`${numero(deLosPlanos, 1)} % por los planos${resto > 0 ? ` + ${numero(deLasEtapas, 1)} % por ${porEtapas ? 'las etapas' : 'las actividades'} (el ${cantidad(resto)} % que no está en planos)` : ''}`}
+        ayuda="Diseño pone a cada plano el porcentaje de la unidad que representa. Cada plano aporta su porcentaje por lo que avanzó: lo último que reportó su área, o 100 % si la etapa de su área ya terminó. Lo que no se repartió en planos se mide por las etapas: su promedio, donde la terminada vale 100 % y la que no, el promedio de las actividades de su área que no son de un plano, porque el plano ya contó por su lado."
       />
-      <TarjetaCuerpo>
-        <ul className="space-y-2">
-          {etapas.map((e, i) => {
-            const vale = e.fin_real ? 100 : (e.avance_reportado ?? 0)
-            return (
-              <li key={e.id} className="grid grid-cols-[1fr_8rem] items-center gap-3 text-sm" data-etapa={e.nombre} data-vale={Math.round(vale)}>
-                <span className="min-w-0">
-                  <span className="text-texto">
-                    {i + 1}. {e.nombre}
-                  </span>{' '}
-                  <span className="text-xs text-texto-suave">
-                    {e.area ?? 'Sin área del taller'} ·{' '}
-                    {e.fin_real
-                      ? `terminada el ${fecha(e.fin_real)}`
-                      : e.avance_reportado !== null
-                        ? 'sin terminar: lo que reporta su área'
-                        : 'sin terminar y sin reporte diario'}
+      <TarjetaCuerpo className="space-y-4">
+        <Tabla>
+          <TablaCabecera>
+            <TR>
+              <TH>Plano</TH>
+              <TH className="text-right">% unidad</TH>
+              <TH className="w-40">Avance</TH>
+              <TH className="text-right">Aporta</TH>
+            </TR>
+          </TablaCabecera>
+          <tbody>
+            {[...planos].sort((a, b) => a.numero.localeCompare(b.numero, 'es', { numeric: true })).map((p) => (
+              <TR key={p.plano_id} data-plano={p.numero}>
+                <TD>
+                  <span className="font-mono">{p.numero}</span> · {p.nombre}
+                  <span className="block text-xs text-texto-suave">
+                    {p.area} ·{' '}
+                    {p.por_etapa
+                      ? 'su etapa ya terminó'
+                      : p.reportes > 0
+                        ? `último reporte el ${fecha(p.ultima_fecha)}`
+                        : 'sin reporte todavía'}
                   </span>
-                </span>
-                <Progreso valor={vale} mostrarValor etiqueta={`Lo que vale ${e.nombre}`} />
-              </li>
-            )
-          })}
-        </ul>
+                </TD>
+                <TD className="tabular text-right">{cantidad(p.peso)} %</TD>
+                <TD>
+                  <Progreso valor={p.avance} alto="sm" mostrarValor etiqueta={`Avance del plano ${p.numero}`} />
+                </TD>
+                <TD className="tabular text-right">{numero(p.aporte, 1)} %</TD>
+              </TR>
+            ))}
+          </tbody>
+        </Tabla>
+        {resto > 0 && (
+          <div className="space-y-2" data-resto={resto}>
+            <p className="text-sm font-medium text-texto">
+              El {cantidad(resto)} % que no está en planos, por {porEtapas ? 'las etapas' : 'las actividades'}: {numero(avanceResto, 0)} % en promedio
+            </p>
+            {etapas.length > 0 ? (
+              listaEtapas
+            ) : (
+              <p className="text-sm text-texto-suave">Diseño todavía no armó las etapas: se mide por el promedio de las actividades del reporte diario que no son de un plano.</p>
+            )}
+          </div>
+        )}
       </TarjetaCuerpo>
     </Tarjeta>
   )
 }
 
 async function VistaAvance({ codigo, perfil, avance }: { codigo: string; perfil: PerfilSesion; avance: AvanceDeCodigo | undefined }) {
-  const filas = await avanceDelCodigo(codigo)
-  const trabajos = ultimoAvancePorTrabajo(filas)
+  const [filas, trabajos] = await Promise.all([avanceDelCodigo(codigo), actividadesDelCodigo(codigo)])
   const abreReporte = puede(perfil, ['reporte_diario.ver', 'reporte_diario.registrar'])
 
   type Reporte = { id: string; fecha: string; creado_en: string; asunto: string; area: string | null; estado: string; horas: number; personal_general: boolean; trabajos: typeof filas }
@@ -824,26 +926,35 @@ async function VistaAvance({ codigo, perfil, avance }: { codigo: string; perfil:
       <Tarjeta>
         <TarjetaCabecera
           titulo="Cada trabajo con su último avance"
-          ayuda={`El porcentaje que el supervisor de cada área puso la última vez que reportó cada trabajo. ${
-            avance?.fuente === 'ETAPAS'
-              ? 'Su promedio, área por área, es lo que vale la etapa de esa área mientras no termine.'
+          ayuda={`El porcentaje que el supervisor de cada área puso la última vez que reportó cada trabajo; el subcontrato que Administración dio por terminado vale 100 %. ${
+            avance?.fuente === 'ETAPAS' || avance?.fuente === 'PLANOS'
+              ? `El de un plano con % de la unidad cuenta por su plano; ${
+                  (avance?.etapas ?? 0) > 0
+                    ? 'el promedio de los demás, área por área, es lo que vale la etapa de esa área mientras no termine.'
+                    : 'el promedio de los demás es lo que vale la parte de la unidad que no está en planos.'
+                }`
               : 'El avance del código es el promedio de estos.'
           }`}
         />
         <TarjetaCuerpo>
           <ul className="space-y-3">
             {trabajos.map((t) => (
-              <li key={`${t.area ?? ''}|${t.trabajo}`} className="text-sm" data-trabajo={t.trabajo} data-area={t.area ?? ''}>
+              <li key={t.clave} className="text-sm" data-trabajo={t.descripcion} data-area={t.area ?? ''} data-cuenta={t.cuenta}>
                 <div className="grid grid-cols-[1fr_8rem] items-center gap-3">
                   <span className="text-texto">
-                    {t.trabajo} <span className="text-xs text-texto-suave">· {t.area ?? 'Sin área'}</span>
+                    {t.descripcion}{' '}
+                    <span className="text-xs text-texto-suave">
+                      · {t.area ?? 'Sin área'}
+                      {t.cuenta === 'PLANO' && ' · cuenta por su plano'}
+                    </span>
                   </span>
-                  <Progreso valor={t.avance} mostrarValor etiqueta={`Avance de ${t.trabajo}`} />
+                  <Progreso valor={t.avance} mostrarValor etiqueta={`Avance de ${t.descripcion}`} />
                 </div>
                 <p className="text-xs text-texto-suave">
                   {t.historial.length > 1
                     ? t.historial.map((h) => `${h.avance} % el ${fecha(h.fecha)}`).join(' → ')
-                    : `Reportado el ${fecha(t.fecha)}`}
+                    : `Reportado el ${fecha(t.ultima_fecha)}`}
+                  {t.tipo === 'SUBCONTRATO' && t.avance === 100 && t.historial.at(-1)?.avance !== 100 && ' · terminado por Administración'}
                 </p>
               </li>
             ))}
@@ -1167,7 +1278,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden" data-gastos-y-caja>
         <TarjetaCabecera
           titulo="Gastos y caja"
-          ayuda="La parte de este código en los gastos del mes que registra Administración —luz, agua, celulares—: con su tasa, o en partes iguales entre los códigos que trabajaron ese mes. Los trámites, comisiones y viáticos que Administración aprobó en la OT de la unidad. Y los egresos que Tesorería escribió en la caja diaria con este código. Los pagos de OC, OS y recibos no entran aquí, porque ya se cuentan arriba."
+          ayuda="La parte de este código en los gastos del mes que registra Administración —luz, agua, celulares— y en el sueldo de la oficina: por sus horas del mes entre las unidades que trabajaron (los registrados antes del 20/10/2026, con su tasa o en partes iguales). Los trámites, comisiones y viáticos que Administración aprobó en la OT de la unidad. Y los egresos que Tesorería escribió en la caja diaria con este código. Los pagos de OC, OS y recibos no entran aquí, porque ya se cuentan arriba."
         />
         <Tabla>
           <TablaCabecera>
@@ -1182,7 +1293,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
             {gastos.length === 0 ? (
               <SinDatos
                 titulo="Ningún gasto ni egreso de caja en este código"
-                descripcion="Los gastos del mes se reparten entre los códigos que trabajaron ese mes; los de la OT entran cuando Administración los aprueba, y los egresos de caja cuando Tesorería les pone el código."
+                descripcion="Los gastos del mes y el sueldo de la oficina se reparten por las horas de cada unidad en el mes; los de la OT entran cuando Administración los aprueba, y los egresos de caja cuando Tesorería les pone el código."
               />
             ) : (
               <>

@@ -101,7 +101,12 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
                     {susEtapas.length > 0 && (
                       <section aria-label="Etapas de tu área">
                         <h3 className="mb-2 text-sm font-semibold text-texto">{susEtapas.length === 1 ? 'Etapa' : 'Etapas'}</h3>
-                        <ListaEtapas etapas={susEtapas} hoy={hoy} acciones={(e) => <MarcarEtapa etapa={e} hoy={hoy} />} />
+                        <ListaEtapas
+                          etapas={susEtapas}
+                          hoy={hoy}
+                          acciones={(e) => <MarcarEtapa etapa={e} hoy={hoy} />}
+                          conPlanosConPeso={deCodigo.some((p) => !p.anulado_en && (p.peso ?? 0) > 0)}
+                        />
                       </section>
                     )}
                   </TarjetaCuerpo>

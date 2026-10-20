@@ -102,9 +102,9 @@ insert into storage.objects (bucket_id, name, owner, owner_id, metadata) values
   ('planos-codigo', pg_temp.ruta_plano('p2', 'r2'), pg_temp.id('diseno_dis'), pg_temp.txt('diseno_dis'),
    '{"mimetype": "application/pdf", "size": 64000}');
 select public.registrar_plano_codigo(pg_temp.id('p1'), pg_temp.id('r1'), pg_temp.txt('codigo'), '001', 'Estructura del cajón',
-  pg_temp.id('mtz'), null, 'cajon.pdf');
+  pg_temp.id('mtz'), null, 'cajon.pdf', 40);
 select public.registrar_plano_codigo(pg_temp.id('p2'), pg_temp.id('r2'), pg_temp.txt('codigo'), '002', 'Bastidor',
-  pg_temp.id('prd'), null, 'bastidor.pdf');
+  pg_temp.id('prd'), null, 'bastidor.pdf', 30);
 select public.guardar_material_codigo(null, pg_temp.txt('codigo'), pg_temp.id('mat1'), 4.5, pg_temp.id('p1'), 'Para el piso');
 select test.afirmar(public.etapas_de_siempre_codigo(pg_temp.txt('codigo')) = 6, 'Diseño arma las seis etapas del código');
 reset role;

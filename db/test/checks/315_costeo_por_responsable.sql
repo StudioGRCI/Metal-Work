@@ -133,10 +133,15 @@ set local role authenticated;
 do $$
 declare v_anulado uuid := gen_random_uuid(); v_tramite uuid := gen_random_uuid(); v_area uuid;
 begin
-  perform public.registrar_gasto_general(gen_random_uuid(), current_setting('prueba.periodo')::date, 'ELECTRICIDAD', 'Recibo de luz', 1000, 'PEN', 'TASA', 8);
-  perform public.registrar_gasto_general(gen_random_uuid(), current_setting('prueba.periodo')::date, 'AGUA', 'Recibo de agua', 300, 'PEN', 'PARTES_IGUALES', null);
-  perform public.registrar_gasto_general(gen_random_uuid(), current_setting('prueba.periodo')::date, 'DEPRECIACION_MAQUINARIA', 'Depreciación del mes', 5000, 'PEN', 'TASA', 2);
-  perform public.registrar_gasto_general(v_anulado, current_setting('prueba.periodo')::date, 'CELULARES', 'Recibo duplicado', 999, 'PEN', 'TASA', 10);
+  -- Con tasa o en partes iguales, como se registraban antes de la 20261020110000;
+  -- hoy la función solo registra por horas.
+  reset role;
+  insert into public.gastos_generales_mes (id, periodo, concepto, descripcion, monto, moneda, reparto, tasa) values
+    (gen_random_uuid(), current_setting('prueba.periodo')::date, 'ELECTRICIDAD', 'Recibo de luz', 1000, 'PEN', 'TASA', 8),
+    (gen_random_uuid(), current_setting('prueba.periodo')::date, 'AGUA', 'Recibo de agua', 300, 'PEN', 'PARTES_IGUALES', null),
+    (gen_random_uuid(), current_setting('prueba.periodo')::date, 'DEPRECIACION_MAQUINARIA', 'Depreciación del mes', 5000, 'PEN', 'TASA', 2),
+    (v_anulado, current_setting('prueba.periodo')::date, 'CELULARES', 'Recibo duplicado', 999, 'PEN', 'TASA', 10);
+  set local role authenticated;
   perform public.anular_gasto_general(v_anulado, 'Recibo cargado dos veces');
   select area_id into v_area from public.usuarios where id = auth.uid();
   insert into public.ot_gastos_areas(id, orden_id, area_id, tipo, descripcion, fecha, monto, moneda, comprobante_ruta, comprobante_nombre, estado, registrado_por)
@@ -149,7 +154,7 @@ select pg_temp.como(current_setting('u.supervisor'));
 set local role authenticated;
 do $$ begin
   begin
-    perform public.registrar_gasto_general(gen_random_uuid(), current_setting('prueba.periodo')::date, 'AGUA', 'Intento sin permiso', 1, 'PEN', 'PARTES_IGUALES', null);
+    perform public.registrar_gasto_general(gen_random_uuid(), current_setting('prueba.periodo')::date, 'AGUA', 'Intento sin permiso', 1, 'PEN', 'HORAS', null);
     raise exception 'FAIL: Supervisión registró un gasto del mes';
   exception when insufficient_privilege then null; end;
   if (select count(*) from public.gastos_generales_mes) <> 0 then raise exception 'FAIL: Supervisión lee los gastos del mes'; end if;

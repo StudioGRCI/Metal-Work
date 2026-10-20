@@ -628,7 +628,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   if (puede(perfil, 'codigos_internos.area') && perfil.rol.codigo !== 'ADMIN') tareas.push({
     clave: 'planos_por_recibir', ruta: '/planos?ver=por-recibir', tono: 'aviso',
     texto: n => plural(n, 'plano de tu área por recibir', 'planos de tu área por recibir'),
-    contar: async () => (await planosDeCodigo(null)).filter((p) => !p.anulado_en && !p.recibido_en).length,
+    contar: async () => (await planosDeCodigo(null, { conPeso: false })).filter((p) => !p.anulado_en && !p.recibido_en).length,
   })
 
   // Los requerimientos abiertos se leen una vez: Almacén, Logística, la

@@ -2,7 +2,7 @@
 
 import { Plus, Trash2, Users, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { SelectorFotos, fotosParaEnviar, hayFallidas, haySubiendo, type FotoLista } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
@@ -14,22 +14,33 @@ import {
   MAXIMO_MB_FOTO_REPORTE,
   MAXIMO_TRABAJOS_REPORTE,
 } from '@/lib/dominio/reporte-diario'
+import { CODIGO_SIN_AVANCE } from '@/lib/dominio/codigos-internos'
 import { horasCortas } from '@/lib/dominio/rrhh'
+import type { OpcionDeTrabajo } from '@/lib/datos/reportes-diarios'
 import { useEnvio } from '@/lib/envio'
+import { fecha as fechaCorta } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import { registrarReporteDiario } from '../acciones'
+import { opcionesDelCodigo, registrarReporteDiario } from '../acciones'
 
 export type OpcionPersona = OpcionBuscable
 
 type FilaPersona = { clave: string; trabajadorId: string; horas: string }
-type FilaTrabajo = { clave: string; descripcion: string; avance: string; personal: FilaPersona[] }
+/**
+ * `sobre`: sobre qué es el trabajo, como `TIPO:id` (un plano, un subcontrato o
+ * una actividad que sigue) o `NUEVA` (una actividad nueva, con su descripción).
+ */
+type FilaTrabajo = { clave: string; sobre: string; descripcion: string; avance: string; personal: FilaPersona[] }
+
+const NUEVA = 'NUEVA'
+const claveDe = (o: Pick<OpcionDeTrabajo, 'tipo' | 'id'>) => `${o.tipo}:${o.id}`
 
 // Las filas que se agregan tocando llevan una clave al azar; las primeras, una
 // fija, porque el servidor y el navegador tienen que pintar los mismos `id`.
 const nuevaPersona = (clave: string = crypto.randomUUID()): FilaPersona => ({ clave, trabajadorId: '', horas: '' })
 const nuevoTrabajo = (clave: string = crypto.randomUUID()): FilaTrabajo => ({
   clave,
+  sobre: '',
   descripcion: '',
   avance: '',
   personal: [nuevaPersona(`${clave}-1`)],
@@ -43,7 +54,13 @@ export type ReporteACorregir = {
   asunto: string
   descripcion: string
   general: boolean
-  trabajos: { descripcion: string; avance: number; personal: { trabajador_id: string; horas: number }[] }[]
+  trabajos: {
+    /** `TIPO:id` de la actividad del trabajo, o `NUEVA` si es de antes y no tiene. */
+    sobre: string
+    descripcion: string
+    avance: number
+    personal: { trabajador_id: string; horas: number }[]
+  }[]
   personal_general: { trabajador_id: string; horas: number }[]
   fotos: { ruta: string; enlace: string | null }[]
 }
@@ -66,10 +83,28 @@ function paraEnviar(filas: FilaPersona[]) {
     .map((p) => ({ trabajador_id: p.trabajadorId, horas: horasDe(p.horas) }))
 }
 
+/** Por qué lo elegido ya no está en la lista de ese día. */
+function noEntra(nombres: string[], fecha: string) {
+  const varios = nombres.length > 1
+  return `${nombres.join(', ')} ya no ${varios ? 'se pueden' : 'se puede'} reportar el ${fechaCorta(fecha)}: ${varios ? 'están terminados o anulados' : 'está terminado o anulado'}, o un reporte posterior ya lleva tanto o más. Elige otra cosa.`
+}
+
+/** Lo que ya lleva lo elegido, para el detalle de la lista y la ayuda del avance. */
+function yaLleva(o: OpcionDeTrabajo, pasado: boolean) {
+  return o.avance === null ? 'sin reportar todavía' : `${pasado ? 'iba' : 'va'} en ${o.avance} % (${fechaCorta(o.ultima_fecha)})`
+}
+
+function detalleDe(o: OpcionDeTrabajo, pasado: boolean) {
+  const tipo = o.tipo === 'PLANO' ? 'Plano de Diseño' : o.tipo === 'SUBCONTRATO' ? 'Subcontrato' : 'Actividad que sigue'
+  return `${tipo} · ${yaLleva(o, pasado)}`
+}
+
 /**
  * El reporte diario del supervisor, pensado para el teléfono: arriba lo que
  * cuenta el reporte y su código interno, después cada trabajo con su avance y
- * su gente, y al final las fotos. El personal sale de la lista de RR. HH.; con
+ * su gente, y al final las fotos. Cada trabajo va sobre un plano o un
+ * subcontrato de su área, sobre una actividad que ya abrió otro día (y solo
+ * puede subir su avance), o sobre una actividad nueva. El personal sale de la lista de RR. HH.; con
  * «Personal general» se pone una sola vez para todo el reporte.
  *
  * El id del reporte llega del servidor con la página: las fotos viajan a
@@ -86,6 +121,7 @@ export function FormularioReporteDiario({
   personal,
   codigos,
   corrige = null,
+  opcionesIniciales = [],
 }: {
   id: string
   cuentaId: string
@@ -94,13 +130,34 @@ export function FormularioReporteDiario({
   personal: OpcionPersona[]
   codigos: string[]
   corrige?: ReporteACorregir | null
+  /** Lo que se puede elegir en el código del reporte que se corrige. */
+  opcionesIniciales?: OpcionDeTrabajo[]
 }) {
   const router = useRouter()
+  const [dia, setDia] = useState(corrige?.fecha ?? hoy)
+  const [opciones, setOpciones] = useState<OpcionDeTrabajo[]>(opcionesIniciales)
+  const [codigoLeido, setCodigoLeido] = useState(corrige?.codigo_interno.trim().toUpperCase() ?? '')
+  // Lo que lleva cada cosa se lee al día del reporte: cambiar el día vuelve a pedirlo.
+  const [diaLeido, setDiaLeido] = useState(corrige?.fecha ?? hoy)
+  const codigoEscrito = useRef(corrige?.codigo_interno ?? '')
+  const [leyendo, setLeyendo] = useState(false)
+  const [errorOpciones, setErrorOpciones] = useState<string | null>(null)
+  // Lo elegido que la última lectura sacó, para decir por qué desapareció. Al
+  // corregir, lo que el observado llevaba y ese día ya no entra.
+  const sinLugar = (corrige?.trabajos ?? []).filter(
+    (t) => t.sobre !== NUEVA && !opcionesIniciales.some((o) => claveDe(o) === t.sobre),
+  )
+  const [quitados, setQuitados] = useState<string | null>(() =>
+    corrige && sinLugar.length > 0 ? noEntra(sinLugar.map((t) => t.descripcion), corrige.fecha) : null,
+  )
+  const espera = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pedido = useRef(0)
   const [trabajos, setTrabajos] = useState<FilaTrabajo[]>(() =>
     corrige && corrige.trabajos.length > 0
       ? corrige.trabajos.map((t, i) => ({
           clave: `trabajo-${i + 1}`,
-          descripcion: t.descripcion,
+          sobre: sinLugar.includes(t) ? '' : t.sobre,
+          descripcion: t.sobre === NUEVA ? t.descripcion : '',
           avance: String(t.avance),
           personal: filasDe(t.personal, `trabajo-${i + 1}`),
         }))
@@ -134,6 +191,64 @@ export function FormularioReporteDiario({
     setTrabajos((ts) => ts.map((t) => (t.clave === clave ? { ...t, ...cambio } : t)))
   }
 
+  /**
+   * Al escribir el código (o cambiar el día) se piden sus planos, subcontratos
+   * y actividades con lo que llevaban ese día, un momento después de la última
+   * tecla. La respuesta de un pedido anterior se descarta, y lo elegido que el
+   * código nuevo no tiene se vacía.
+   */
+  function leerCodigo(texto: string, fecha: string) {
+    const codigo = texto.trim().toUpperCase()
+    if (espera.current) clearTimeout(espera.current)
+    const numero = ++pedido.current
+    if (codigo === codigoLeido && fecha === diaLeido) {
+      // Volvió a lo que ya estaba leído: lo que se pidió en medio ya no vale.
+      setLeyendo(false)
+      setErrorOpciones(null)
+      return
+    }
+    setQuitados(null)
+    if (codigo.length < 2) {
+      setOpciones([])
+      setCodigoLeido('')
+      setLeyendo(false)
+      setErrorOpciones(null)
+      return
+    }
+    setLeyendo(true)
+    espera.current = setTimeout(async () => {
+      const r = await opcionesDelCodigo(codigo, corrige?.reemplaza ?? null, fecha).catch(() => null)
+      if (numero !== pedido.current) return
+      setLeyendo(false)
+      if (!r || !r.ok) {
+        setErrorOpciones(r && !r.ok ? r.error : 'No llegó la respuesta. Revisa la conexión y vuelve a escribir el código.')
+        return
+      }
+      const nuevas = r.datos ?? []
+      const validas = new Set(nuevas.map(claveDe))
+      const anteriores = new Map(opciones.map((o) => [claveDe(o), o.etiqueta]))
+      const sacados = trabajos
+        .filter((t) => t.sobre !== '' && t.sobre !== NUEVA && !validas.has(t.sobre))
+        .map((t) => anteriores.get(t.sobre) ?? 'Lo elegido')
+      setQuitados(
+        sacados.length === 0
+          ? null
+          : codigo !== codigoLeido
+            ? `${sacados.join(', ')} no ${sacados.length === 1 ? 'es' : 'son'} de ${codigo}. Elige otra cosa.`
+            : noEntra(sacados, fecha),
+      )
+      setErrorOpciones(null)
+      setOpciones(nuevas)
+      setCodigoLeido(codigo)
+      setDiaLeido(fecha)
+      setTrabajos((ts) => ts.map((t) => (t.sobre === '' || t.sobre === NUEVA || validas.has(t.sobre) ? t : { ...t, sobre: '', avance: '' })))
+    }, 400)
+  }
+
+  const porClave = new Map(opciones.map((o) => [claveDe(o), o]))
+  const elegidos = new Set(trabajos.map((t) => t.sobre).filter((v) => v && v !== NUEVA))
+  const soloSubcontratos = trabajos.every((t) => t.sobre.startsWith('SUBCONTRATO:'))
+
   return (
     <form
       onSubmit={(e) =>
@@ -141,11 +256,15 @@ export function FormularioReporteDiario({
           datos.set(
             'trabajos',
             JSON.stringify(
-              trabajos.map((t) => ({
-                descripcion: t.descripcion,
-                avance: t.avance.trim() === '' ? null : Number(t.avance),
-                personal: general ? [] : paraEnviar(t.personal),
-              })),
+              trabajos.map((t) => {
+                const [tipo, idElegido] = t.sobre.split(':')
+                return {
+                  sobre: tipo || null,
+                  ...(tipo === NUEVA ? { descripcion: t.descripcion } : { id: idElegido }),
+                  avance: t.avance.trim() === '' ? null : Number(t.avance),
+                  personal: general ? [] : paraEnviar(t.personal),
+                }
+              }),
             ),
           )
           datos.set('personal', JSON.stringify(general ? paraEnviar(personalGeneral) : []))
@@ -163,7 +282,19 @@ export function FormularioReporteDiario({
         </h2>
         <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
           <Campo etiqueta="Día" htmlFor="rd-fecha" requerido>
-            <Entrada id="rd-fecha" name="fecha" type="date" required defaultValue={corrige?.fecha ?? hoy} min={minimo} max={hoy} />
+            <Entrada
+              id="rd-fecha"
+              name="fecha"
+              type="date"
+              required
+              value={dia}
+              onChange={(e) => {
+                setDia(e.target.value)
+                leerCodigo(codigoEscrito.current, e.target.value)
+              }}
+              min={minimo}
+              max={hoy}
+            />
           </Campo>
           <Campo
             etiqueta="Código interno"
@@ -179,6 +310,10 @@ export function FormularioReporteDiario({
               maxLength={60}
               list="rd-codigos"
               defaultValue={corrige?.codigo_interno}
+              onChange={(e) => {
+                codigoEscrito.current = e.target.value
+                leerCodigo(e.target.value, dia)
+              }}
               autoComplete="off"
               autoCapitalize="characters"
               className="font-mono uppercase"
@@ -220,63 +355,124 @@ export function FormularioReporteDiario({
         <h2 id="rd-trabajos" className="text-sm font-semibold text-texto">
           Trabajos realizados
         </h2>
-        {trabajos.map((t, i) => (
-          <fieldset key={t.clave} className="min-w-0 space-y-3 rounded-lg border border-borde p-3" data-trabajo={i + 1}>
-            <legend className="sr-only">Trabajo {i + 1}</legend>
-            <div className="flex items-center justify-between gap-2">
-              <p aria-hidden className="text-sm font-medium text-texto">
-                Trabajo {i + 1}
-              </p>
-              <Boton
-                type="button"
-                variante="fantasma"
-                tamano="icono"
-                aria-label={`Quitar el trabajo ${i + 1}`}
-                disabled={trabajos.length === 1}
-                onClick={() => setTrabajos((ts) => ts.filter((x) => x.clave !== t.clave))}
-              >
-                <Trash2 aria-hidden className="size-4" />
-              </Boton>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">
-              <Campo etiqueta="Descripción del trabajo" htmlFor={`rd-trabajo-${t.clave}`} requerido>
-                <AreaTexto
-                  id={`rd-trabajo-${t.clave}`}
-                  required
-                  minLength={3}
-                  maxLength={500}
-                  rows={2}
-                  value={t.descripcion}
-                  onChange={(e) => cambiarTrabajo(t.clave, { descripcion: e.target.value })}
-                  placeholder="Descripción del trabajo: por ejemplo, soldadura de la tolva lado izquierdo"
+        <p className={cn('text-xs', errorOpciones ? 'text-peligro' : 'text-texto-suave')} aria-live="polite" data-opciones>
+          {leyendo
+            ? 'Buscando los planos, subcontratos y actividades del código…'
+            : errorOpciones
+              ? errorOpciones
+              : !codigoLeido
+                ? 'Escribe el código interno para ver sus planos, subcontratos y las actividades que siguen.'
+                : `${quitados ? `${quitados} ` : ''}${
+                    opciones.length > 0
+                      ? `${codigoLeido}: ${opciones.length} ${opciones.length === 1 ? 'cosa' : 'cosas'} para reportar en tu área, o una actividad nueva.`
+                      : codigoLeido === CODIGO_SIN_AVANCE
+                        ? `${CODIGO_SIN_AVANCE} no lleva avance: anota el trabajo del día como actividad nueva.`
+                        : `${codigoLeido} no tiene planos ni subcontratos de tu área, ni actividades abiertas. Revisa que el código esté bien escrito; si lo está, anota una actividad nueva.`
+                  }`}
+        </p>
+        {trabajos.map((t, i) => {
+          const elegida = porClave.get(t.sobre) ?? null
+          // El avance solo sube: más que lo que llevaba ese día y menos que lo de un día posterior.
+          const lleva = elegida?.avance ?? null
+          const tope = elegida?.tope ?? null
+          const desde = lleva !== null ? lleva + 1 : 0
+          const hasta = tope !== null ? tope - 1 : 100
+          const lista: OpcionBuscable[] = [
+            ...opciones
+              .filter((o) => claveDe(o) === t.sobre || !elegidos.has(claveDe(o)))
+              .map((o) => ({ valor: claveDe(o), etiqueta: o.etiqueta, detalle: detalleDe(o, dia < hoy) })),
+            { valor: NUEVA, etiqueta: 'Actividad nueva', detalle: 'Sin plano todavía: escribe qué es y su avance' },
+          ]
+          return (
+            <fieldset key={t.clave} className="min-w-0 space-y-3 rounded-lg border border-borde p-3" data-trabajo={i + 1}>
+              <legend className="sr-only">Trabajo {i + 1}</legend>
+              <div className="flex items-center justify-between gap-2">
+                <p aria-hidden className="text-sm font-medium text-texto">
+                  Trabajo {i + 1}
+                </p>
+                <Boton
+                  type="button"
+                  variante="fantasma"
+                  tamano="icono"
+                  aria-label={`Quitar el trabajo ${i + 1}`}
+                  disabled={trabajos.length === 1}
+                  onClick={() => setTrabajos((ts) => ts.filter((x) => x.clave !== t.clave))}
+                >
+                  <Trash2 aria-hidden className="size-4" />
+                </Boton>
+              </div>
+              <Campo etiqueta="Sobre qué" htmlFor={`rd-sobre-${t.clave}`} requerido>
+                <SeleccionBuscable
+                  id={`rd-sobre-${t.clave}`}
+                  name={`sobre-${t.clave}`}
+                  opciones={lista}
+                  valor={t.sobre}
+                  onChange={(sobre) => cambiarTrabajo(t.clave, { sobre, avance: '' })}
+                  marcador="Elige el plano, el subcontrato o la actividad"
+                  marcadorBusqueda="Plano, subcontrato o actividad…"
+                  etiquetaAccesible={`Trabajo ${i + 1}: sobre qué`}
+                  requerido
+                  permiteVaciar={false}
                 />
               </Campo>
-              <Campo etiqueta="Avance %" htmlFor={`rd-avance-${t.clave}`} requerido className="max-w-32 sm:max-w-none">
-                <Entrada
-                  id={`rd-avance-${t.clave}`}
-                  type="number"
-                  inputMode="numeric"
-                  required
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={t.avance}
-                  onChange={(e) => cambiarTrabajo(t.clave, { avance: e.target.value })}
-                  className="tabular"
+              <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">
+                {t.sobre === NUEVA ? (
+                  <Campo etiqueta="Qué actividad es" htmlFor={`rd-trabajo-${t.clave}`} requerido>
+                    <AreaTexto
+                      id={`rd-trabajo-${t.clave}`}
+                      required
+                      minLength={3}
+                      maxLength={500}
+                      rows={2}
+                      value={t.descripcion}
+                      onChange={(e) => cambiarTrabajo(t.clave, { descripcion: e.target.value })}
+                      placeholder="Por ejemplo: corte de materia prima"
+                    />
+                  </Campo>
+                ) : (
+                  <p className="self-end text-xs text-texto-suave" id={`rd-lleva-${t.clave}`}>
+                    {elegida
+                      ? tope !== null
+                        ? `${lleva !== null ? `Iba en ${lleva} % el ${fechaCorta(elegida.ultima_fecha)} y el` : 'El'} ${fechaCorta(elegida.tope_fecha)} ya iba en ${tope} %: pon en cuánto iba este día, de ${desde} a ${hasta}.`
+                        : lleva === null
+                          ? corrige
+                            ? 'Sin contar el reporte que corriges, nadie lo reportó antes de este día.'
+                            : 'Todavía nadie lo reportó.'
+                          : `Iba en ${lleva} % el ${fechaCorta(elegida.ultima_fecha)}: pon en cuánto ${dia < hoy ? 'iba ese día' : 'va ahora'}, de ${desde} a 100.`
+                      : ''}
+                  </p>
+                )}
+                <Campo etiqueta="Va en (%)" htmlFor={`rd-avance-${t.clave}`} requerido className="max-w-32 sm:max-w-none">
+                  <Entrada
+                    id={`rd-avance-${t.clave}`}
+                    type="number"
+                    inputMode="numeric"
+                    required
+                    min={desde}
+                    max={hasta}
+                    step={1}
+                    value={t.avance}
+                    onChange={(e) => cambiarTrabajo(t.clave, { avance: e.target.value })}
+                    aria-describedby={t.sobre && t.sobre !== NUEVA ? `rd-lleva-${t.clave}` : undefined}
+                    className="tabular"
+                  />
+                </Campo>
+              </div>
+              {!general && t.sobre.startsWith('SUBCONTRATO:') && (
+                <p className="text-xs text-texto-suave">El subcontratista no va en el personal: pon a tu gente solo si ayudó.</p>
+              )}
+              {!general && (
+                <ListaPersonal
+                  titulo={`Personal del trabajo ${i + 1}`}
+                  filas={t.personal}
+                  alCambiar={(personal) => cambiarTrabajo(t.clave, { personal })}
+                  opciones={personal}
+                  deshabilitado={sinPersonal}
                 />
-              </Campo>
-            </div>
-            {!general && (
-              <ListaPersonal
-                titulo={`Personal del trabajo ${i + 1}`}
-                filas={t.personal}
-                alCambiar={(personal) => cambiarTrabajo(t.clave, { personal })}
-                opciones={personal}
-                deshabilitado={sinPersonal}
-              />
-            )}
-          </fieldset>
-        ))}
+              )}
+            </fieldset>
+          )
+        })}
         <Boton
           type="button"
           variante="contorno"
@@ -392,7 +588,7 @@ export function FormularioReporteDiario({
         <p className="text-sm text-peligro">Quita o vuelve a subir las fotos que no entraron antes de subir el reporte.</p>
       )}
       <div className="flex justify-end">
-        <Boton type="submit" cargando={enviando} disabled={sinPersonal || subiendo || fallidas} className="w-full sm:w-auto">
+        <Boton type="submit" cargando={enviando} disabled={(sinPersonal && !soloSubcontratos) || subiendo || fallidas} className="w-full sm:w-auto">
           {subiendo ? 'Esperando las fotos…' : corrige ? 'Subir el reporte corregido' : 'Subir reporte'}
         </Boton>
       </div>

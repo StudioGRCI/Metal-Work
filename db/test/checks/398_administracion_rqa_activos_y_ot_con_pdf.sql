@@ -222,11 +222,11 @@ begin
 end $$;
 
 -- Un gasto del mes en partes iguales: como en la 20261017300000, y TODOS LOS ACTIVOS no recibe.
+-- Registrado antes de la 20261020110000, que ya no deja registrar en partes iguales.
 select pg_temp.como('administracion');
-set local role authenticated;
-select public.registrar_gasto_general(current_setting('prueba.gasto')::uuid, current_setting('prueba.periodo')::date, 'AGUA',
-  'Recibo de agua de prueba 398', 300, 'PEN', 'PARTES_IGUALES', null);
-reset role;
+insert into public.gastos_generales_mes (id, periodo, concepto, descripcion, monto, moneda, reparto, tasa)
+values (current_setting('prueba.gasto')::uuid, current_setting('prueba.periodo')::date, 'AGUA',
+        'Recibo de agua de prueba 398', 300, 'PEN', 'PARTES_IGUALES', null);
 select test.afirmar(pg_temp.gasto('PLANTA') = 0 and pg_temp.gasto('TODOS LOS ACTIVOS') = 0,
   'PLANTA y TODOS LOS ACTIVOS no reciben gastos del mes');
 select test.afirmar(pg_temp.gasto('OFICINA') = pg_temp.gasto('CHK398_A'),

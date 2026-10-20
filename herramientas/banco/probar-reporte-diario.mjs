@@ -171,6 +171,7 @@ let idReporte2 = null
   await pagina.fill('#rd-descripcion', 'Se avanzó la tolva del lado izquierdo; mañana se sigue con el derecho.')
 
   const t1 = pagina.locator('fieldset[data-trabajo="1"]')
+  await elegirPersona(pagina, 'Trabajo 1: sobre qué', 'Actividad nueva')
   await t1.locator('textarea').fill('Soldadura de la tolva, lado izquierdo')
   await t1.locator('input[type="number"]').first().fill('60')
   await elegirPersona(pagina, 'Personal del trabajo 1: persona 1', ana)
@@ -181,6 +182,7 @@ let idReporte2 = null
 
   await pagina.getByRole('button', { name: 'Agregar trabajo' }).click()
   const t2 = pagina.locator('fieldset[data-trabajo="2"]')
+  await elegirPersona(pagina, 'Trabajo 2: sobre qué', 'Actividad nueva')
   await t2.locator('textarea').fill('Armado del bastidor')
   await t2.locator('input[type="number"]').first().fill('100')
   await elegirPersona(pagina, 'Personal del trabajo 2: persona 1', bruno)
@@ -189,7 +191,7 @@ let idReporte2 = null
   await elegirPersona(pagina, 'Personal del trabajo 2: persona 2', ana)
   await pagina.getByRole('spinbutton', { name: 'Personal del trabajo 2: horas de la persona 2' }).fill('2')
 
-  const resumen = limpio(await pagina.locator('[aria-live="polite"]').textContent())
+  const resumen = limpio(await pagina.locator('[aria-live="polite"]:not([data-opciones])').textContent())
   comprobar(/3 personas · 17\.5 h en total/.test(resumen.replace(/,/g, '.')) || /3 personas/.test(resumen), `el resumen suma por persona (${resumen.slice(0, 120)})`)
 
   // Las fotos: un archivo que no es foto no entra; las dos de verdad se achican y suben.
@@ -264,6 +266,7 @@ let idReporte2 = null
   await pagina.fill('#rd-asunto', asunto2)
   await pagina.fill('#rd-descripcion', 'Orden y mantenimiento de la planta.')
   const t1 = pagina.locator('fieldset[data-trabajo="1"]')
+  await elegirPersona(pagina, 'Trabajo 1: sobre qué', 'Actividad nueva')
   await t1.locator('textarea').fill('Limpieza del área de soldadura')
   await t1.locator('input[type="number"]').first().fill('100')
   await pagina.getByText('Personal general para todo el reporte').click()

@@ -98,10 +98,10 @@ select pg_temp.como('diseno_dis');
 set local role authenticated;
 select pg_temp.subir('p1', 'r1', 'diseno_dis');
 select public.registrar_plano_codigo(pg_temp.id('p1'), pg_temp.id('r1'), ' ' || lower(current_setting('prueba.codigo')) || ' ',
-  ' 001 ', 'Estructura  del cajón', pg_temp.id('mtz'), null, 'cajon-r1.pdf');
+  ' 001 ', 'Estructura  del cajón', pg_temp.id('mtz'), null, 'cajon-r1.pdf', 30);
 -- Un reintento con los mismos ids no duplica.
 select public.registrar_plano_codigo(pg_temp.id('p1'), pg_temp.id('r1'), current_setting('prueba.codigo'),
-  '001', 'Estructura del cajón', pg_temp.id('mtz'), null, 'cajon-r1.pdf');
+  '001', 'Estructura del cajón', pg_temp.id('mtz'), null, 'cajon-r1.pdf', 30);
 reset role;
 select test.afirmar(
   (select count(*) from public.codigo_planos where id = pg_temp.id('p1') and codigo_interno = current_setting('prueba.codigo')
@@ -120,15 +120,15 @@ select pg_temp.como('diseno_dis');
 set local role authenticated;
 select pg_temp.subir('p2', 'r2', 'diseno_dis');
 select test.debe_fallar($q$select public.registrar_plano_codigo(pg_temp.id('p2'), pg_temp.id('r2'), current_setting('prueba.codigo'),
-  '001', 'Otra vez', pg_temp.id('mtz'), null, 'x.pdf')$q$, 'el mismo plano para la misma área no se carga dos veces', 'súbele una revisión');
+  '001', 'Otra vez', pg_temp.id('mtz'), null, 'x.pdf', 10)$q$, 'el mismo plano para la misma área no se carga dos veces', 'súbele una revisión');
 select public.registrar_plano_codigo(pg_temp.id('p2'), pg_temp.id('r2'), current_setting('prueba.codigo'),
-  '001', 'Bastidor', pg_temp.id('prd'), 'Va con el cajón', 'bastidor.pdf');
+  '001', 'Bastidor', pg_temp.id('prd'), 'Va con el cajón', 'bastidor.pdf', 20);
 select test.debe_fallar($q$select public.registrar_plano_codigo(gen_random_uuid(), gen_random_uuid(), 'PLANTA',
-  '009', 'Algo', pg_temp.id('mtz'), null, 'x.pdf')$q$, 'PLANTA no es una unidad', 'PLANTA no es una unidad');
+  '009', 'Algo', pg_temp.id('mtz'), null, 'x.pdf', 10)$q$, 'PLANTA no es una unidad', 'PLANTA no es una unidad');
 select test.debe_fallar($q$select public.registrar_plano_codigo(gen_random_uuid(), gen_random_uuid(), current_setting('prueba.codigo'),
-  '009', 'Algo', pg_temp.id('log'), null, 'x.pdf')$q$, 'un plano no va a Logística', 'área de producción');
+  '009', 'Algo', pg_temp.id('log'), null, 'x.pdf', 10)$q$, 'un plano no va a Logística', 'área de producción');
 select test.debe_fallar($q$select public.registrar_plano_codigo(pg_temp.id('p3'), pg_temp.id('r3'), current_setting('prueba.codigo'),
-  '009', 'Sin PDF', pg_temp.id('mtz'), null, 'x.pdf')$q$, 'sin el PDF subido no se registra', 'no terminó de subir');
+  '009', 'Sin PDF', pg_temp.id('mtz'), null, 'x.pdf', 10)$q$, 'sin el PDF subido no se registra', 'no terminó de subir');
 reset role;
 
 -- Logística no sube ni registra; el colaborador de Diseño tampoco.
@@ -136,7 +136,7 @@ select pg_temp.como('comprador_log');
 set local role authenticated;
 select test.debe_fallar($q$select pg_temp.subir('p3', 'r3', 'comprador_log')$q$, 'Logística no sube planos', 'row-level security');
 select test.debe_fallar($q$select public.registrar_plano_codigo(pg_temp.id('p3'), pg_temp.id('r3'), current_setting('prueba.codigo'),
-  '009', 'Algo', pg_temp.id('mtz'), null, 'x.pdf')$q$, 'Logística no registra planos', 'diseno.codigos');
+  '009', 'Algo', pg_temp.id('mtz'), null, 'x.pdf', 10)$q$, 'Logística no registra planos', 'diseno.codigos');
 select test.afirmar((select count(*) from public.codigo_planos) = 0
   and (select count(*) from storage.objects where bucket_id = 'planos-codigo') = 0, 'Logística no ve ni los planos ni sus PDF');
 select test.debe_fallar($q$select * from public.codigo_interno_planos(null)$q$, 'ni por la función', 'No tienes permiso');
@@ -145,7 +145,7 @@ reset role;
 select pg_temp.como('diseno_colaborador_dis');
 set local role authenticated;
 select test.debe_fallar($q$select public.registrar_plano_codigo(pg_temp.id('p3'), pg_temp.id('r3'), current_setting('prueba.codigo'),
-  '009', 'Algo', pg_temp.id('mtz'), null, 'x.pdf')$q$, 'el colaborador de Diseño no carga planos', 'diseno.codigos');
+  '009', 'Algo', pg_temp.id('mtz'), null, 'x.pdf', 10)$q$, 'el colaborador de Diseño no carga planos', 'diseno.codigos');
 reset role;
 
 -- ============================================ 2. Cada supervisor ve los de su área

@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowDown, ArrowUp, Check, FileUp, FolderOpen, ListPlus, Pencil, Play, RotateCcw, Trash2, Flag, XCircle } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, FileUp, FolderOpen, ListPlus, Pencil, Percent, Play, RotateCcw, Trash2, Flag, XCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
@@ -10,11 +10,13 @@ import { SeleccionBuscable, type OpcionBuscable } from '@/components/ui/seleccio
 import { ConfirmarAccion, Ventana } from '@/components/ui/ventana'
 import { BUCKET_PLANOS_CODIGO, MAXIMO_MB_PLANO, enlaceDisenoCodigo, rutaPlanoCodigo, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
 import { useAccion, useEnvio } from '@/lib/envio'
+import { cantidad } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 
 import {
   anularPlano,
   cargarEtapasDeSiempre,
+  fijarPesoPlano,
   guardarEtapa,
   guardarMaterial,
   marcarEtapa,
@@ -113,7 +115,20 @@ export function AbrirCodigo({ codigos, vista }: { codigos: string[]; vista: Vist
  * sube primero a `{plano}/{revisión}.pdf` y después se registra; si el registro
  * falla, el PDF suelto se retira (ver `subirArchivoPrivado`).
  */
-export function CargarPlano({ codigo, areas, solicitud }: { codigo: string; areas: Area[]; solicitud: { plano: string; revision: string } }) {
+
+export function CargarPlano({
+  codigo,
+  areas,
+  solicitud,
+  repartido,
+}: {
+  codigo: string
+  areas: Area[]
+  solicitud: { plano: string; revision: string }
+  /** Lo que ya suman los planos vigentes del código: entre todos no pasan de 100. */
+  repartido: number
+}) {
+  const libre = Math.max(0, Math.round((100 - repartido) * 100) / 100)
   const [ids, setIds] = useState(solicitud)
   const [mensaje, setMensaje] = useState<string | null>(null)
   const { alEnviar, enviando, error } = useEnvio(
@@ -135,7 +150,7 @@ export function CargarPlano({ codigo, areas, solicitud }: { codigo: string; area
     },
   )
   return (
-    <form key={ids.plano} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[8rem_minmax(0,1fr)_12rem]">
+    <form key={ids.plano} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[8rem_minmax(0,1fr)_12rem_9rem]">
       <input type="hidden" name="plano" value={ids.plano} />
       <input type="hidden" name="revision" value={ids.revision} />
       <input type="hidden" name="codigo" value={codigo} />
@@ -157,22 +172,86 @@ export function CargarPlano({ codigo, areas, solicitud }: { codigo: string; area
           ))}
         </Seleccion>
       </Campo>
-      <Campo etiqueta="PDF del plano" htmlFor="plano-pdf" requerido className="sm:col-span-2 lg:col-span-1">
+      <Campo
+        etiqueta="% de la unidad"
+        htmlFor="plano-peso"
+        requerido
+        ayuda={libre > 0 ? `Quedan ${cantidad(libre)} % por repartir` : 'Ya se repartió el 100 %: este va en 0 o corrige otro'}
+      >
+        <Entrada
+          id="plano-peso"
+          name="peso"
+          inputMode="decimal"
+          placeholder={libre > 0 ? String(Math.min(libre, 25)) : '0'}
+          maxLength={6}
+          autoComplete="off"
+          required
+          disabled={enviando}
+        />
+      </Campo>
+      <Campo etiqueta="PDF del plano" htmlFor="plano-pdf" requerido className="sm:col-span-2 lg:col-span-2">
         <Entrada id="plano-pdf" name="archivo" type="file" accept="application/pdf,.pdf" required disabled={enviando} />
       </Campo>
       <Campo etiqueta="Observación" htmlFor="plano-observacion" className="sm:col-span-2 lg:col-span-2">
         <Entrada id="plano-observacion" name="observacion" maxLength={1000} autoComplete="off" placeholder="Opcional: lo que el área tiene que saber" disabled={enviando} />
       </Campo>
-      <div className="flex items-end sm:col-span-2 lg:col-span-3">
+      <div className="flex items-end sm:col-span-2 lg:col-span-4">
         <Boton type="submit" cargando={enviando}>
           <FileUp aria-hidden className="size-4" />
           Cargar plano
         </Boton>
       </div>
-      <div className="sm:col-span-2 lg:col-span-3">
+      <div className="sm:col-span-2 lg:col-span-4">
         <Alerta error={error} mensaje={mensaje} />
       </div>
     </form>
+  )
+}
+
+/** Corregir el porcentaje de la unidad que representa un plano vigente. */
+export function CambiarPeso({ plano, numero, peso, libre }: { plano: string; numero: string; peso: number | null; libre: number }) {
+  const [abierta, setAbierta] = useState(false)
+  const { alEnviar, enviando, error } = useEnvio(fijarPesoPlano, () => setAbierta(false))
+  const tope = Math.round((libre + (peso ?? 0)) * 100) / 100
+  return (
+    <>
+      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierta(true)} aria-label={`${peso === null ? 'Poner' : 'Cambiar'} el % de la unidad del plano ${numero}`}>
+        <Percent aria-hidden className="size-4" />
+        {peso === null ? 'Poner %' : 'Cambiar %'}
+      </Boton>
+      <Ventana
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo={`% de la unidad del plano ${numero}`}
+        descripcion={`Con los demás planos del código, este puede llegar a ${cantidad(tope)} %.`}
+        ancho="sm"
+      >
+        <form onSubmit={alEnviar} className="space-y-4">
+          <input type="hidden" name="plano" value={plano} />
+          <Campo etiqueta="% de la unidad" htmlFor={`peso-${plano}`} requerido>
+            <Entrada
+              id={`peso-${plano}`}
+              name="peso"
+              inputMode="decimal"
+              defaultValue={peso === null ? '' : String(peso)}
+              maxLength={6}
+              autoComplete="off"
+              required
+              disabled={enviando}
+            />
+          </Campo>
+          <Alerta error={error} />
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" cargando={enviando}>
+              Guardar
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
+    </>
   )
 }
 

@@ -3,13 +3,13 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import type { Tablas } from '@/types/database'
 
-export type ConceptoGastoGeneral = Pick<Tablas<'conceptos_gasto_general'>, 'codigo' | 'nombre' | 'grupo' | 'tasa_sugerida'>
+export type ConceptoGastoGeneral = Pick<Tablas<'conceptos_gasto_general'>, 'codigo' | 'nombre' | 'grupo'>
 
 /** Los conceptos activos, en el orden de la hoja RESUMEN de la empresa. */
 export async function conceptosGastoGeneral(): Promise<ConceptoGastoGeneral[]> {
   const db = await createClient()
   const { data, error } = await db.from('conceptos_gasto_general')
-    .select('codigo,nombre,grupo,tasa_sugerida').eq('activo', true).order('orden')
+    .select('codigo,nombre,grupo').eq('activo', true).order('orden')
   if (error) throw new Error(`No se pudieron leer los conceptos de gasto: ${error.message}`)
   return data ?? []
 }
@@ -30,3 +30,27 @@ export async function gastosGeneralesDelMes(periodo: string) {
 }
 
 export type GastoGeneral = Awaited<ReturnType<typeof gastosGeneralesDelMes>>[number]
+
+/**
+ * Entre qué unidades se reparten los gastos de un mes: sus horas y el porcentaje
+ * de cada gasto que carga cada una. Exige `costos.gastos_generales` o `costos.ver`.
+ */
+export async function repartoDelMes(periodo: string) {
+  const db = await createClient()
+  const { data, error } = await db.rpc('gastos_del_mes_reparto', { p_periodo: periodo })
+  if (error) throw new Error(`No se pudo leer el reparto del mes: ${error.message}`)
+  return (data ?? []).flatMap((f) => (f.codigo ? [{ codigo: f.codigo, horas: Number(f.horas), parte: Number(f.parte) }] : []))
+}
+
+/**
+ * El sueldo de la oficina de un mes, sumado y sin cuántas personas son, y cuántos
+ * trabajadores con costo no tienen área. Exige `costos.ver`,
+ * `costos.gastos_generales` o `codigos_internos.ver`.
+ */
+export async function oficinaDelMes(periodo: string) {
+  const db = await createClient()
+  const { data, error } = await db.rpc('gastos_del_mes_oficina', { p_periodo: periodo })
+  if (error) throw new Error(`No se pudo leer el sueldo de la oficina: ${error.message}`)
+  const f = data?.[0]
+  return { monto: Number(f?.monto ?? 0), sinArea: f?.sin_area ?? 0 }
+}

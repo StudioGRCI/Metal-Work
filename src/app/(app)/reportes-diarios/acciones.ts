@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { opcionesDeTrabajo, type OpcionDeTrabajo } from '@/lib/datos/reportes-diarios'
 import { MAXIMO_FOTOS_REPORTE, MAXIMO_TRABAJOS_REPORTE } from '@/lib/dominio/reporte-diario'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -30,19 +31,74 @@ const PERSONA = z.object({
     .max(16, 'Las horas de cada persona van de 0,25 a 16.'),
 })
 
-const TRABAJO = z.object({
-  descripcion: z
-    .string()
-    .trim()
-    .min(3, 'Describe cada trabajo realizado, en al menos 3 caracteres.')
-    .max(500, 'La descripción de un trabajo pasa de 500 caracteres.'),
-  avance: z.coerce
-    .number('Pon el porcentaje de avance de cada trabajo.')
-    .int('El avance va en números enteros.')
-    .min(0, 'El avance va de 0 a 100 %.')
-    .max(100, 'El avance va de 0 a 100 %.'),
-  personal: z.array(PERSONA).max(60, 'Un trabajo lleva hasta 60 personas.'),
-})
+const AVANCE = z.coerce
+  .number('Pon el porcentaje de avance de cada trabajo.')
+  .int('El avance va en números enteros.')
+  .min(0, 'El avance va de 0 a 100 %.')
+  .max(100, 'El avance va de 0 a 100 %.')
+const PERSONAL_DEL_TRABAJO = z.array(PERSONA).max(60, 'Un trabajo lleva hasta 60 personas.')
+const ELIGE = 'Elige sobre qué es cada trabajo: un plano, un subcontrato, una actividad que sigue o una nueva.'
+
+/**
+ * Cada trabajo va sobre una cosa: un plano o un subcontrato de su área, una
+ * actividad que ya abrió otro día, o una actividad nueva con su descripción.
+ */
+const TRABAJO = z.discriminatedUnion(
+  'sobre',
+  [
+    z.object({ sobre: z.literal('PLANO'), id: z.guid(ELIGE), avance: AVANCE, personal: PERSONAL_DEL_TRABAJO }),
+    z.object({ sobre: z.literal('SUBCONTRATO'), id: z.guid(ELIGE), avance: AVANCE, personal: PERSONAL_DEL_TRABAJO }),
+    z.object({ sobre: z.literal('ACTIVIDAD'), id: z.guid(ELIGE), avance: AVANCE, personal: PERSONAL_DEL_TRABAJO }),
+    z.object({
+      sobre: z.literal('NUEVA'),
+      descripcion: z
+        .string()
+        .trim()
+        .min(3, 'Describe cada actividad nueva, en al menos 3 caracteres.')
+        .max(500, 'La descripción de una actividad pasa de 500 caracteres.'),
+      avance: AVANCE,
+      personal: PERSONAL_DEL_TRABAJO,
+    }),
+  ],
+  ELIGE,
+)
+type Trabajo = z.infer<typeof TRABAJO>
+
+/** Lo que espera la base por cada trabajo (`reporte_diario_insertar`). */
+function trabajoParaLaBase(t: Trabajo, general: boolean) {
+  const personal = general ? [] : t.personal
+  switch (t.sobre) {
+    case 'PLANO':
+      return { plano_id: t.id, avance: t.avance, personal }
+    case 'SUBCONTRATO':
+      return { subcontrato_id: t.id, avance: t.avance, personal }
+    case 'ACTIVIDAD':
+      return { actividad_id: t.id, avance: t.avance, personal }
+    case 'NUEVA':
+      return { descripcion: t.descripcion, avance: t.avance, personal }
+  }
+}
+
+/**
+ * Sobre qué puede reportar el supervisor en un código, con el avance que ya
+ * llevaba cada cosa el día del reporte (`fecha`). Mismo permiso que
+ * `reporte_diario_opciones`. `corrige`: su
+ * reporte observado, que no se cuenta porque lo va a reemplazar.
+ */
+export async function opcionesDelCodigo(codigo: string, corrige: string | null, fecha: string | null): Promise<ResultadoAccion<OpcionDeTrabajo[]>> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'reporte_diario.registrar')) return { ok: false, error: 'El reporte diario lo suben los supervisores.' }
+  const analisis = z
+    .object({ codigo: z.string().trim().min(2).max(60), corrige: z.guid().nullable(), fecha: z.iso.date().nullable() })
+    .safeParse({ codigo, corrige, fecha })
+  if (!analisis.success) return { ok: false, error: 'Revisa el código interno: de 2 a 60 caracteres.' }
+  try {
+    return { ok: true, datos: await opcionesDeTrabajo(analisis.data.codigo, analisis.data.corrige, analisis.data.fecha) }
+  } catch (e) {
+    const { message, code } = e instanceof Error ? (e as Error & { code?: string }) : { message: String(e), code: undefined }
+    return { ok: false, error: mensajeDeError({ message, code }) }
+  }
+}
 
 /**
  * El supervisor sube su reporte del día, o corrige uno observado (`reemplaza`):
@@ -91,8 +147,10 @@ export async function registrarReporteDiario(_previo: unknown, formulario: FormD
 
   // Con personal general, la gente va una vez para todo el reporte y los
   // trabajos sin la suya; si no, cada trabajo con la suya.
+  // El subcontratista no está en el personal: un reporte de solo subcontratos va sin gente.
   const personas = d.general ? d.personal_general.length : d.trabajos.reduce((n, t) => n + t.personal.length, 0)
-  if (personas === 0) return { ok: false, error: 'Pon al menos a una persona con sus horas: de ahí sale el costeo.' }
+  const soloSubcontratos = d.trabajos.every((t) => t.sobre === 'SUBCONTRATO')
+  if (personas === 0 && !soloSubcontratos) return { ok: false, error: 'Pon al menos a una persona con sus horas: de ahí sale el costeo.' }
 
   const supabase = await createClient()
   const reporte = {
@@ -101,7 +159,7 @@ export async function registrarReporteDiario(_previo: unknown, formulario: FormD
     p_codigo_interno: d.codigo_interno,
     p_asunto: d.asunto,
     p_descripcion: d.descripcion,
-    p_trabajos: d.trabajos.map((t) => ({ ...t, personal: d.general ? [] : t.personal })),
+    p_trabajos: d.trabajos.map((t) => trabajoParaLaBase(t, d.general)),
     p_personal_general: d.general ? d.personal_general : [],
     p_fotos: d.fotos,
   }
@@ -116,7 +174,7 @@ export async function registrarReporteDiario(_previo: unknown, formulario: FormD
   revalidatePath('/rrhh/costeo')
   return {
     ok: true,
-    mensaje: 'Reporte subido: sus horas van al costeo y Gerencia y Recursos Humanos lo validan.',
+    mensaje: 'Reporte subido: Gerencia y Recursos Humanos lo validan.',
     datos: { id: d.id },
   }
 }
