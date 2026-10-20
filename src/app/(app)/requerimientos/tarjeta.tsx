@@ -9,10 +9,12 @@ import type { CorreccionVista } from '@/lib/datos/correcciones'
 import type { LineaRequerimiento, MaterialParaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
 import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import {
+  COMPRA_CORTA,
   ESTADO_REQUERIMIENTO,
   ESTADOS_RQ_ABIERTOS,
   ETAPA_AVANCE_RQ,
   ETAPAS_DE_RECOJO,
+  laCompraQuedoCorta,
   PASOS_DEL_RQ,
   partesDelInsumo,
   pasoDelRequerimiento,
@@ -49,9 +51,13 @@ const TEXTO: Record<Tono, string> = {
   acento: 'text-acento',
 }
 
-/** El tono de lo que falta que llegue: el de la etapa de su OC, o rojo si Gerencia la rechazó. */
-function tonoPorLlegar(l: LineaRequerimiento): Tono {
+/**
+ * El tono de lo que falta que llegue: el de la etapa de su OC, o rojo si Gerencia
+ * la rechazó. Lo que falta nunca va en verde: si la OC ya entró y no alcanzó, ámbar.
+ */
+function tonoPorLlegar(l: LineaRequerimiento, partes: PartesDelInsumo | null): Tono {
   if (l.compra_rechazada) return 'peligro'
+  if (partes && laCompraQuedoCorta(l, partes)) return COMPRA_CORTA.tono
   return (l.etapa && ETAPA_AVANCE_RQ[l.etapa]?.tono) || 'aviso'
 }
 
@@ -101,7 +107,8 @@ export function ResumenDeRequerimientos({
       if (p.revisar > 0) revisar++
       if (p.porLlegar > 0) {
         porLlegar++
-        compran.add(quienCompra(rq))
+        // Lo que la OC no compró ya no lo trae nadie: no cuenta como de Logística.
+        if (!laCompraQuedoCorta(l, p)) compran.add(quienCompra(rq))
         if (l.etapa === 'PENDIENTE_RECOJO') esperanRecojo++
         if (l.etapa === 'EN_RECOJO') enRecojo++
       }
@@ -378,8 +385,9 @@ function InsumosConPartes({ rq, abierto: abiertoPorDefecto }: { rq: Requerimient
 }
 
 function InsumoConPartes({ linea: l, partes, rq }: { linea: LineaRequerimiento; partes: PartesDelInsumo | null; rq: RequerimientoListado }) {
-  const tono = tonoPorLlegar(l)
-  const etapa = l.etapa ? ETAPA_AVANCE_RQ[l.etapa] : null
+  const tono = tonoPorLlegar(l, partes)
+  const corta = partes !== null && laCompraQuedoCorta(l, partes)
+  const etapa = corta ? COMPRA_CORTA : l.etapa ? ETAPA_AVANCE_RQ[l.etapa] : null
   const u = l.unidad
   return (
     <li className="px-4 py-3" data-insumo={l.item}>
@@ -408,7 +416,8 @@ function InsumoConPartes({ linea: l, partes, rq }: { linea: LineaRequerimiento; 
             {partes.porLlegar > 0 && (
               <Parte color={BARRA[tono]} cifra={`${cantidad(partes.porLlegar)} ${u}`} data-parte="por-llegar">
                 <span className="text-texto">
-                  {partes.porLlegar === 1 ? 'falta' : 'faltan'} de {quienCompra(rq)}
+                  {partes.porLlegar === 1 ? 'falta' : 'faltan'}
+                  {!corta && ` de ${quienCompra(rq)}`}
                 </span>
                 {l.orden_compra && (
                   <span className={cn('tabular', l.compra_rechazada ? 'text-peligro' : 'text-texto-suave')}>
@@ -424,7 +433,7 @@ function InsumoConPartes({ linea: l, partes, rq }: { linea: LineaRequerimiento; 
                     {delProveedor(l.etapa) && ' del proveedor'}
                   </span>
                 )}
-                {l.etapa_desde && <span className="text-texto-suave"> desde {fechaHora(l.etapa_desde)}</span>}
+                {l.etapa_desde && !corta && <span className="text-texto-suave"> desde {fechaHora(l.etapa_desde)}</span>}
               </Parte>
             )}
             {partes.revisar > 0 && (

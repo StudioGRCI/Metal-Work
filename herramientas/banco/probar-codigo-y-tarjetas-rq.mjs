@@ -24,7 +24,9 @@
  *   4b. La compra llega en partes: Logística compra los 5, el proveedor trae 3
  *      y Almacén los valida con observación. Maestranza ve 10 para recoger y 2
  *      que faltan, no 5. Con otro RQ cuya compra entra completa, la tarjeta
- *      dice «Ya llegó todo» y el paso de ahora es «Para recoger».
+ *      dice «Ya llegó todo» y el paso de ahora es «Para recoger». Si la OC
+ *      compró 3 de 5 y entraron los 3, los 2 que faltan van en ámbar con «La OC
+ *      compró menos», no en el verde de la etapa ni a cuenta de Logística.
  *   5. RR. HH. (costeo de horas y observaciones, también en el teléfono, donde
  *      la lista cabe en la pantalla aunque el campo esté al fondo), Tesorería (caja diaria),
  *      Logística (OC directa, orden de servicio y OC desde los materiales de
@@ -453,6 +455,14 @@ await comoCuenta(CUENTAS.requerimientos,
 await comoCuenta(CUENTAS.almacen, `select public.rq_revisar_stock($1, '[{"item": 1, "en_stock": 0}]'::jsonb, null)`, [rqCompleto])
 const lineaCompleta = await uno('select l.id, r.numero from public.requerimiento_lineas l join public.requerimientos r on r.id = l.requerimiento_id where r.id = $1', [rqCompleto])
 await comprarYTraer(lineaCompleta.id, 4, 4)
+// Y otro de 5 cuya OC se emitió por 3 y entró entera: faltan 2 que no van en ninguna compra.
+const rqCorto = randomUUID()
+await comoCuenta(CUENTAS.requerimientos,
+  `select public.emitir_requerimiento($1, 'OPERACION', (select id from public.areas where codigo = 'MTZ'), $2, 'Pedido del banco que la OC compra corto', null, $3::jsonb)`,
+  [rqCorto, CODIGO, JSON.stringify([{ material_id: materialId, cantidad: 5 }])])
+await comoCuenta(CUENTAS.almacen, `select public.rq_revisar_stock($1, '[{"item": 1, "en_stock": 0}]'::jsonb, null)`, [rqCorto])
+const lineaCorta = await uno('select l.id, r.numero from public.requerimiento_lineas l join public.requerimientos r on r.id = l.requerimiento_id where r.id = $1', [rqCorto])
+await comprarYTraer(lineaCorta.id, 3, 3)
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.maestranza)
   await pagina.goto(`${BASE}/requerimientos`, { waitUntil: 'networkidle' })
@@ -474,6 +484,13 @@ await comprarYTraer(lineaCompleta.id, 4, 4)
   comprobar(pasoC.startsWith('Para recoger'), `y el paso de ahora es «Para recoger», no la compra («${pasoC}»)`)
   const insignia = limpio(await completa.locator('h2 + *').first().innerText())
   comprobar(insignia.includes('Ya llegó todo'), `la insignia dice que ya llegó todo («${insignia}»)`)
+  const corta = pagina.locator(`[data-rq="${lineaCorta.numero}"]`)
+  const [recogerK, porLlegarK] = [await parte(corta, 'recoger'), await parte(corta, 'por-llegar')]
+  comprobar(recogerK.startsWith('3 UND') && porLlegarK.startsWith('2 UND') && porLlegarK.includes('La OC compró menos') && !porLlegarK.includes('de Logística'),
+    `con la OC por 3 de 5 ya en almacén: 3 para recoger y 2 que la OC no compró, sin culpar a Logística («${recogerK}» | «${porLlegarK}»)`)
+  const punto = await corta.locator('li[data-insumo="1"] [data-parte="por-llegar"] > span').first().getAttribute('class')
+  comprobar(!(punto ?? '').includes('bg-exito') && (punto ?? '').includes('bg-aviso'), `y lo que falta va en ámbar, no en verde (${punto})`)
+  comprobar(!limpio(await corta.locator('h2 + *').first().innerText()).includes('Ya llegó todo'), 'y la insignia no dice que ya llegó todo')
   const estadoRq = (await uno('select estado from public.requerimientos where id = $1', [rqCompleto]))?.estado
   comprobar(estadoRq === 'EN_ATENCION', `en la base el RQ sigue en compra hasta que Almacén lo marque listo (${estadoRq})`)
   await completa.screenshot({ path: `${CAPTURAS}/rq-tarjeta-ya-llego-todo.png` })

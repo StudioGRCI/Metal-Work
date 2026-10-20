@@ -174,6 +174,22 @@ export function yaLlegoTodo(partes: readonly (PartesDelInsumo | null)[]): boolea
 }
 
 /** Lo que dice la insignia del RQ en compra cuando ya llegó todo (`yaLlegoTodo`). */
+/**
+ * La compra del insumo ya entró al almacén y todavía falta: la OC se emitió por
+ * menos de lo que faltaba (o su línea, compartida con otros RQ, no alcanzó a
+ * este). Lo que falta ya no va en ninguna compra; la etapa de la OC, verde, no
+ * puede pintarlo como si ya estuviera (auditoría del 2026-10-20).
+ */
+export function laCompraQuedoCorta(l: { etapa: string | null; compra_rechazada: boolean }, partes: PartesDelInsumo): boolean {
+  return partes.porLlegar > 0 && !l.compra_rechazada && LLEGO_AL_ALMACEN.includes(l.etapa ?? '')
+}
+
+export const COMPRA_CORTA: Def = {
+  etiqueta: 'La OC compró menos: pide el resto en un RQ nuevo',
+  tono: 'aviso',
+  descripcion: 'La orden de compra ya entró entera y no alcanzó para todo el insumo.',
+}
+
 export const YA_LLEGO_TODO: Def = {
   etiqueta: 'Ya llegó todo',
   tono: 'exito',
