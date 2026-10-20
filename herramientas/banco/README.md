@@ -97,6 +97,7 @@ tiene esas cuentas ni esa OT. Si vuelve a caerse, es que una migración nueva o
 | `probar-planilla-diaria.mjs` | Del reporte diario a la planilla diaria, con la cuenta de cada puesto: Gerencia y RR. HH. validan (cada una solo con su botón), Gerencia observa y el supervisor corrige y sube de nuevo, RR. HH. paga o reserva las horas que pasan de 8 y usa el saldo, manda la planilla, Tesorería ve las cuentas, paga en lote con comprobante y adjunta boletas, RR. HH. las entrega; Gerencia consulta sin cuentas y el supervisor y la portería no entran. Crea su propio personal inventado. |
 | `probar-subcontratos.mjs` | Un subcontrato de punta a punta, con la cuenta de cada puesto: Administración da de alta al subcontratista (un RUC de empresa no entra), registra el subcontrato con su código interno y sube un recibo por honorarios con la retención del 8 %; Tesorería lo paga desde el teléfono con su voucher; Administración ve el pago; Contabilidad y Gerencia consultan sin botones y Logística no entra. Crea su propio subcontratista inventado; las cuentas `*.local@metalwork.test` se crean aparte. |
 | `probar-pagos-mueven-la-caja.mjs` | Los pagos y cobros que mueven la caja diaria, con la cuenta de Tesorería: cada pago (factura de compra, orden de servicio, recibo por honorarios, planilla diaria) y el cobro de una factura de venta piden la cuenta, dejan un solo movimiento aunque se toque tres veces, piden lo que salió de la cuenta si es de otra moneda, y al anular el pago se anula su egreso; la caja los muestra con dónde se anulan y Gerencia no paga. Arma sus documentos y dos cuentas de prueba. |
+| `probar-archivos-con-politicas.mjs` | Los archivos piden lo mismo que en Supabase Storage: quien subió una foto la firma y la descarga, una ficha falsa o de otro archivo no abre nada, Ventas no firma, descarga, sube ni quita lo que su política le tapa, y sin sesión no sale nada. Usa archivos que el banco ya tiene. |
 | `caja-de-prueba.mjs` | Ayudante de las pruebas que pagan o cobran: da de alta una cuenta de prueba y la elige en la ventana, porque desde la migración `20261019100000` cada pago pide su cuenta. |
 
 ## Lo que respeta y lo que no
@@ -105,6 +106,16 @@ tiene esas cuentas ni esa OT. Si vuelve a caerse, es que una migración nueva o
 transacción con `set local role` y los datos de la sesión, así que las políticas
 de la base se aplican igual que en Supabase: si una política tapa una fila, acá
 también la tapa. Es lo que permite probar de verdad qué ve cada rol.
+
+**Los archivos también.** Subir, firmar un enlace, descargar con sesión y quitar
+le preguntan a las políticas de `storage.objects` con el rol de la sesión, como
+Supabase Storage. Lo que la política tapa vuelve como «Object not found», la
+subida que no le corresponde da «new row violates row-level security policy»
+y el borrado ajeno no quita nada. El enlace firmado se entrega solo con su
+ficha, que no abre otro archivo. Hasta el 2026-10-20 el banco firmaba y servía
+cualquier archivo sin preguntar: una pantalla podía abrir un PDF que Supabase
+habría rechazado. Lo que no imita es el tamaño máximo y los tipos permitidos
+de cada cubeta, ni las transformaciones de imagen.
 
 **Falla en voz alta.** Ante cualquier cosa que no sepa traducir responde 501 con
 el motivo, nunca una lista vacía. Una pantalla vacía se parece demasiado a una

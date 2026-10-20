@@ -337,6 +337,7 @@ let idReporte2 = null
   await v.locator('input[name="banco"]').fill('Banco de Pruebas')
   await v.locator('input[name="numero_cuenta"]').fill('191-00000-0-03')
   await v.locator('input[name="costo_mensual"]').fill('1680')
+  await v.locator('input[name="fecha_ingreso"]').fill(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' }))
   await v.getByRole('button', { name: 'Guardar la ficha' }).click()
   await v.waitFor({ state: 'hidden', timeout: 15000 }).catch(() => {})
   const [carlosLinea] = await consulta(
