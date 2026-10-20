@@ -309,7 +309,7 @@ async function releerEscritura(cliente, esq, relacion, filas, busqueda) {
   const busquedaRelectura = new URLSearchParams()
   busquedaRelectura.set('select', seleccion)
   busquedaRelectura.set(primaria[0], `in.(${claves.map((c) => `"${c}"`).join(',')})`)
-  const consulta = construirLectura(esq, relacion, busquedaRelectura, {})
+  const consulta = construirLectura(esq, relacion, busquedaRelectura, { sinTope: true })
   const { rows } = await cliente.query(consulta.texto, consulta.valores)
   return rows
 }

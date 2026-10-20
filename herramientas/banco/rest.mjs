@@ -393,7 +393,7 @@ function crearContexto() {
 }
 
 /** Traduce una lectura (`GET`) a SQL. */
-export function construirLectura(esquema, relacion, busqueda, { limite, desplazamiento }) {
+export function construirLectura(esquema, relacion, busqueda, { limite, desplazamiento, sinTope = false }) {
   if (!esquema.relaciones.has(relacion)) {
     throw new ErrorNoSoportado(`No existe la tabla o vista «${relacion}»`)
   }
@@ -420,7 +420,7 @@ export function construirLectura(esquema, relacion, busqueda, { limite, desplaza
   if (donde.length) texto += ` where ${donde.join(' and ')}`
   if (orden.length) texto += ` order by ${orden.join(', ')}`
 
-  texto += paginar(busqueda, { limite, desplazamiento })
+  texto += paginar(busqueda, { limite, desplazamiento, sinTope })
 
   // El conteo va aparte porque no debe verse afectado por el límite.
   const ctxConteo = crearContexto()
@@ -521,11 +521,13 @@ export function construirLlamada(nombre, argumentos, json = new Set(), busqueda 
  */
 export const MAX_FILAS = Number(process.env.BANCO_MAX_FILAS ?? 1000)
 
-function paginar(busqueda, { limite, desplazamiento }) {
+// `sinTope`: lo que devuelve una escritura, que PostgREST no corta.
+function paginar(busqueda, { limite, desplazamiento, sinTope = false }) {
   const pedido = limite ?? (busqueda.get('limit') ? Number(busqueda.get('limit')) : null)
   const salto = desplazamiento ?? (busqueda.get('offset') ? Number(busqueda.get('offset')) : null)
-  const tope = pedido === null || pedido === undefined ? MAX_FILAS : Math.min(Number(pedido), MAX_FILAS)
-  return ` limit ${tope}${salto ? ` offset ${Number(salto)}` : ''}`
+  const sinPedido = pedido === null || pedido === undefined
+  const tope = sinPedido ? (sinTope ? null : MAX_FILAS) : sinTope ? Number(pedido) : Math.min(Number(pedido), MAX_FILAS)
+  return `${tope === null ? '' : ` limit ${tope}`}${salto ? ` offset ${Number(salto)}` : ''}`
 }
 
 export { comillas }

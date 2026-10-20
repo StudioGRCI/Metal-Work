@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
-import { planosDeCodigo } from '@/lib/datos/diseno-codigos'
+import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
 import { ESTADOS_RQ_ABIERTOS, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
@@ -785,9 +785,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       clave: `etapas_vencidas_${de.permiso}`, ruta: de.ruta, tono: 'peligro',
       texto: n => plural(n, 'código con etapas vencidas', 'códigos con etapas vencidas'),
       contar: async () => {
-        const { data, error } = await supabase.rpc('codigos_internos_de_diseno')
-        if (error) throw new Error('No se pudo consultar el pendiente.')
-        return (data ?? []).filter((c) => Number(c.etapas_vencidas ?? 0) > 0).length
+        return (await codigosDeDiseno()).filter((c) => c.etapas_vencidas > 0).length
       },
     })
     break

@@ -517,15 +517,20 @@ export type LineaCosteo = {
   referencia_id: string | null
 }
 
+/**
+ * El orden de las líneas de `codigo_interno_lineas`, para leerlas de mil en mil:
+ * no tienen identificador propio, así que van todas sus columnas, empezando por
+ * el orden en que las da la función. Solo empatan las líneas idénticas.
+ */
+export const ORDEN_DE_LAS_LINEAS = [
+  'codigo', 'fecha.desc', 'fuente', 'concepto', 'detalle', 'referencia_id', 'documento',
+  'moneda', 'unidad', 'cantidad', 'horas', 'precio_unitario', 'monto', 'sin_precio',
+]
+
 export async function costeoDelCodigo(codigo: string): Promise<LineaCosteo[]> {
   const supabase = await createClient()
   // Una unidad grande pasa de mil líneas: se lee entera, o su costo sumaba de menos.
-  // Las líneas no tienen identificador propio: se ordenan por todas sus columnas,
-  // empezando por el orden en que las da la función.
-  const { data, error } = await todasLasFilas(
-    () => supabase.rpc('codigo_interno_costeo', { p_codigo: codigo }),
-    ['codigo', 'fecha.desc', 'fuente', 'concepto', 'detalle', 'referencia_id', 'documento', 'moneda', 'unidad', 'cantidad', 'horas', 'precio_unitario', 'monto', 'sin_precio'],
-  )
+  const { data, error } = await todasLasFilas(() => supabase.rpc('codigo_interno_costeo', { p_codigo: codigo }), ORDEN_DE_LAS_LINEAS)
   if (error) throw new Error(`No se pudo leer el costeo del código: ${error.message}`)
   return (data ?? []).map((f) => ({
     fuente: (f.fuente ?? 'MATERIALES') as LineaCosteo['fuente'],

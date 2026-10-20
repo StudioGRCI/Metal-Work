@@ -109,6 +109,9 @@ const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--n
 async function entrar(correo) {
   const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, timezoneId: 'America/Lima' })
   const pagina = await contexto.newPage()
+  // Con 1 100 códigos, /planos tarda más de 30 s en pintarse en `next dev`.
+  pagina.setDefaultNavigationTimeout(120000)
+  pagina.setDefaultTimeout(120000)
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
   await pagina.fill('input[type="email"]', correo)
   await pagina.fill('input[type="password"]', CLAVE)
