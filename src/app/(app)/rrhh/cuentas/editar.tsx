@@ -16,11 +16,14 @@ export function EditarDatosDeCuenta({
   nombre,
   documento,
   costoHora,
+  conCosto,
 }: {
   usuarioId: string
   nombre: string
   documento: string | null
   costoHora: number
+  /** Solo las cuentas de operario llevan costo por hora; las demás guardan el que tienen. */
+  conCosto: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
   const envio = useEnvio(guardarDatosDeCuenta, () => setAbierta(false))
@@ -41,18 +44,22 @@ export function EditarDatosDeCuenta({
           <Campo etiqueta="DNI o carné de extranjería" htmlFor={`doc-${usuarioId}`}>
             <Entrada id={`doc-${usuarioId}`} name="documento" maxLength={20} autoComplete="off" defaultValue={documento ?? ''} className="tabular" />
           </Campo>
-          <Campo etiqueta="Costo por hora (S/)" htmlFor={`costo-${usuarioId}`}>
-            <Entrada
-              id={`costo-${usuarioId}`}
-              name="costo_hora"
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              defaultValue={costoHora}
-              className="tabular"
-            />
-          </Campo>
+          {conCosto ? (
+            <Campo etiqueta="Costo por hora (S/)" htmlFor={`costo-${usuarioId}`}>
+              <Entrada
+                id={`costo-${usuarioId}`}
+                name="costo_hora"
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min="0"
+                defaultValue={costoHora}
+                className="tabular"
+              />
+            </Campo>
+          ) : (
+            <input type="hidden" name="costo_hora" value={costoHora} />
+          )}
           {envio.error && (
             <p role="alert" className="text-sm text-peligro">
               {envio.error}

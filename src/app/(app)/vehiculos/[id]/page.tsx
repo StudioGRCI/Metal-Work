@@ -87,7 +87,7 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
               </Dato>
             )}
             {estado?.exige && estado.falta_para_salir && (
-              <p className="basis-full text-sm text-texto-suave" data-bloqueo-salida>
+              <p id={`veh-bloqueo-${r.id}`} className="basis-full text-sm text-texto-suave" data-bloqueo-salida>
                 {estado.falta_para_salir}
               </p>
             )}
@@ -255,7 +255,8 @@ function RevisionDeTesoreria({
           <p className="text-sm text-texto">Tesorería la dio por revisada: ya puedes marcar la salida del vehículo.</p>
         )}
         {puedePedir && !esperando && !revisada && (estado?.falta_para_pedir ? (
-          <p className="text-sm text-texto-suave">{estado.falta_para_pedir}</p>
+          // El porqué ya está arriba, junto al avance: aquí no se repite.
+          <p className="text-sm text-texto-suave">Se pide cuando el código llegue al 100 % del avance.</p>
         ) : lista ? (
           <PedirRevision registro={registro} solicitud={crypto.randomUUID()} />
         ) : (

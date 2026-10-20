@@ -59,8 +59,8 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
             <tr>
               <TH>Vehículo</TH>
               <TH className="hidden md:table-cell">Motivo</TH>
-              <TH>Ingreso</TH>
-              <TH>Salida</TH>
+              <TH className="hidden sm:table-cell">Ingreso</TH>
+              <TH className="hidden sm:table-cell">Salida</TH>
               <TH className="text-right">
                 <span className="sr-only">Acciones</span>
               </TH>
@@ -122,31 +122,32 @@ function FilaVehiculo({
           </Link>
         )}
         {r.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulado: {r.motivo_anulacion}</p>}
+        {/* En el teléfono, el ingreso y la salida van aquí: la tabla no se desliza de costado. */}
+        <div className="mt-1 space-y-1 sm:hidden">
+          <p className="tabular text-xs text-texto-suave">Entró {fechaHora(r.ingreso_en)}</p>
+          <Situacion registro={r} estado={estado} />
+        </div>
+        {estado?.falta_para_salir && (
+          <p id={`veh-bloqueo-${r.id}`} className="mt-1 max-w-sm text-xs text-texto-suave" data-bloqueo-salida>
+            {estado.falta_para_salir}
+          </p>
+        )}
       </TD>
       <TD className="hidden align-top md:table-cell">
         {motivo ? <Insignia tono={motivo.tono}>{motivo.etiqueta}</Insignia> : r.motivo}
       </TD>
-      <TD className="align-top">
+      <TD className="hidden align-top sm:table-cell">
         <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.ingreso_en)}</p>
         {r.observacion_ingreso && <p className="mt-1 max-w-xs text-[11px] text-texto-suave">{r.observacion_ingreso}</p>}
       </TD>
-      <TD className="align-top">
+      <TD className="hidden align-top sm:table-cell">
         {r.salida_en ? (
           <>
             <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.salida_en)}</p>
             {r.observacion_salida && <p className="mt-1 max-w-xs text-[11px] text-texto-suave">{r.observacion_salida}</p>}
           </>
-        ) : anulado ? (
-          <Insignia tono="peligro">Anulado</Insignia>
         ) : (
-          <>
-            <Insignia tono="aviso">En planta</Insignia>
-            {estado?.exige && (
-              <p className="tabular mt-1 text-[11px] text-texto-suave" data-avance-salida={estado.avance ?? 0}>
-                Avance {estado.avance ?? 0} %{estado.avance === 100 && estado.falta_para_salir ? ' · falta Tesorería' : ''}
-              </p>
-            )}
-          </>
+          <Situacion registro={r} estado={estado} />
         )}
       </TD>
       <TD className="text-right align-top">
@@ -155,5 +156,21 @@ function FilaVehiculo({
         )}
       </TD>
     </TR>
+  )
+}
+
+/** En planta, salió o anulado; y del que espera para salir, el avance de su código. */
+function Situacion({ registro: r, estado }: { registro: RegistroVehiculo; estado: EstadoDeSalida | undefined }) {
+  if (r.anulado_en) return <Insignia tono="peligro">Anulado</Insignia>
+  if (r.salida_en) return <Insignia tono="neutro">Salió {fechaHora(r.salida_en)}</Insignia>
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <Insignia tono="aviso">En planta</Insignia>
+      {estado?.exige && (
+        <span className="tabular text-xs text-texto-suave" data-avance-salida={estado.avance ?? 0}>
+          Avance {estado.avance ?? 0} %{estado.avance === 100 && estado.falta_para_salir ? ' · falta Tesorería' : ''}
+        </span>
+      )}
+    </div>
   )
 }

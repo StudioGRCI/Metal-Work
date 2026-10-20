@@ -14,6 +14,7 @@ import {
 } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { CodigoParaIngreso } from '@/lib/datos/vehiculos'
 import {
@@ -113,7 +114,11 @@ function FormularioIngreso({
   const conCodigo = motivoExigeCodigo(motivo)
   const elegido = conCodigo ? codigos.find((c) => c.codigo_interno === codigo) : undefined
   const libres = codigos.filter((c) => !c.en_planta)
+  const enPlanta = codigos.length - libres.length
   const faltaCodigo = conCodigo && !elegido
+  // Sin código que elegir, no se piden fotos que no van a servir.
+  const sinCodigos = conCodigo && libres.length === 0
+  const pideDatos = Boolean(motivo) && !sinCodigos
   return (
     <form
       onSubmit={(e) => alEnviar(e, (datos) => datos.set('fotos', JSON.stringify(fotosParaEnviar(fotos).map((f) => f.ruta_storage))))}
@@ -152,20 +157,32 @@ function FormularioIngreso({
             ayuda={
               libres.length === 0
                 ? undefined
-                : 'Solo los códigos con su OT. El cliente y el vehículo se cargan solos.'
+                : `Solo los códigos con su OT. El cliente y el vehículo se cargan solos.${
+                    enPlanta > 0 ? ` ${enPlanta === 1 ? 'Uno ya está' : `${enPlanta} ya están`} en la planta y no se ofrece${enPlanta === 1 ? '' : 'n'}.` : ''
+                  }`
             }
           >
-            <Seleccion id="veh-codigo" name="codigo_interno" required value={codigo} onChange={(e) => setCodigo(e.target.value)}>
-              <option value="" disabled>
-                {libres.length === 0 ? 'No hay códigos con OT por ingresar' : 'Elige el código interno'}
-              </option>
-              {codigos.map((c) => (
-                <option key={c.codigo_interno} value={c.codigo_interno} disabled={c.en_planta}>
-                  {c.codigo_interno} · OT {c.orden_numero} · {c.cliente}
-                  {c.en_planta ? ' (ya está en la planta)' : ''}
-                </option>
-              ))}
-            </Seleccion>
+            {libres.length === 0 ? (
+              <p id="veh-codigo" className="text-sm text-texto">
+                No hay códigos con OT por ingresar{enPlanta > 0 ? `: ${enPlanta === 1 ? 'el único ya está' : `los ${enPlanta} ya están`} en la planta` : ''}.
+              </p>
+            ) : (
+              <SeleccionBuscable
+                id="veh-codigo"
+                name="codigo_interno"
+                requerido
+                permiteVaciar={false}
+                marcador="Elige el código interno"
+                marcadorBusqueda="Código, OT o cliente…"
+                valor={codigo}
+                onChange={setCodigo}
+                opciones={libres.map((c) => ({
+                  valor: c.codigo_interno,
+                  etiqueta: `${c.codigo_interno} · OT ${c.orden_numero}`,
+                  detalle: [c.cliente, c.placa].filter(Boolean).join(' · '),
+                }))}
+              />
+            )}
           </Campo>
           {libres.length === 0 && (
             <p className="text-sm text-texto-suave">
@@ -218,7 +235,7 @@ function FormularioIngreso({
         </>
       ) : null}
 
-      {motivo && (
+      {pideDatos && (
         <>
           <Campo etiqueta="Observación" htmlFor="veh-obs">
             <AreaTexto id="veh-obs" name="observacion" maxLength={500} rows={2} placeholder="Cómo llega: llanta baja, sin espejo derecho, con documentos…" />
@@ -236,12 +253,12 @@ function FormularioIngreso({
           {error}
         </p>
       )}
-      {motivo && <AvisoFotos subiendo={subiendo} fallidas={fallidas} listas={listas} momento="entrar" />}
+      {pideDatos && <AvisoFotos subiendo={subiendo} fallidas={fallidas} listas={listas} momento="entrar" />}
       <div className="flex justify-end">
         <Boton
           type="submit"
           cargando={enviando}
-          disabled={!motivo || faltaCodigo || subiendo || fallidas || listas === 0}
+          disabled={!pideDatos || faltaCodigo || subiendo || fallidas || listas === 0}
           className="w-full sm:w-auto"
         >
           {subiendo ? 'Esperando las fotos…' : 'Registrar ingreso'}

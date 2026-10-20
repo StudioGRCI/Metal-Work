@@ -22,7 +22,8 @@ type Paso = 'SALIDA' | 'ANULAR'
  *
  * `bloqueoSalida` es lo que la base dice que le falta para salir (el 100 % del
  * avance de su código y la revisión de Tesorería): mientras haya algo, el botón
- * queda apagado y dice por qué. La base lo vuelve a exigir al registrar.
+ * queda apagado. El porqué lo pinta la pantalla junto al avance, con el id
+ * `veh-bloqueo-{id}`, y el botón lo nombra. La base lo vuelve a exigir al registrar.
  */
 export function ControlesVehiculo({
   id,
@@ -57,12 +58,7 @@ export function ControlesVehiculo({
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
-      {bloqueoSalida && (
-        <p id={`veh-bloqueo-${id}`} className="basis-full text-right text-[11px] text-texto-suave sm:max-w-xs sm:basis-auto" data-bloqueo-salida>
-          {bloqueoSalida}
-        </p>
-      )}
+    <div className="flex flex-col items-end gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
       <Boton
         type="button"
         variante="secundario"

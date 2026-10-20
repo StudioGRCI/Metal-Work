@@ -29,11 +29,9 @@ export default async function PaginaDatosDeCuentas({ searchParams }: PageProps<'
     <>
       <EncabezadoPagina
         titulo="DNI y costo de las cuentas"
-        descripcion={
-          cuentas.length === 0
-            ? undefined
-            : `${cuentas.length === 1 ? '1 cuenta activa' : `${cuentas.length} cuentas activas`}${sinDni > 0 ? ` · ${sinDni} sin DNI` : ''}`
-        }
+        descripcion={`${
+          cuentas.length === 0 ? '' : `${cuentas.length === 1 ? '1 cuenta activa' : `${cuentas.length} cuentas activas`}${sinDni > 0 ? ` · ${sinDni} sin DNI` : ''}. `
+        }El costo por hora va solo en las cuentas de operario; el costo que se carga a cada código interno sale del costo mensual de la ficha del personal.`}
         ayuda={
           cambia
             ? 'Las cuentas con las que la gente entra al sistema. Su DNI y su costo por hora los pones tú; el administrador los ve, pero no los cambia. El costo que se carga a cada código interno sale de la ficha de Personal, no de aquí.'
@@ -84,11 +82,21 @@ export default async function PaginaDatosDeCuentas({ searchParams }: PageProps<'
                     {c.documento ? <span className="tabular text-sm text-texto">{c.documento}</span> : <span className="text-sm text-texto-suave">Sin registrar</span>}
                   </TD>
                   <TD className="text-right">
-                    {c.costo_hora > 0 ? <span className="tabular text-sm text-texto">{moneda(c.costo_hora)}</span> : <span className="text-sm text-texto-suave">—</span>}
+                    {c.es_operario || c.costo_hora > 0 ? (
+                      <span className="tabular text-sm text-texto">{c.costo_hora > 0 ? moneda(c.costo_hora) : 'Sin registrar'}</span>
+                    ) : (
+                      <span className="text-sm text-texto-suave">—</span>
+                    )}
                   </TD>
                   {cambia && (
                     <TD className="text-right">
-                      <EditarDatosDeCuenta usuarioId={c.id} nombre={nombre} documento={c.documento} costoHora={c.costo_hora} />
+                      <EditarDatosDeCuenta
+                        usuarioId={c.id}
+                        nombre={nombre}
+                        documento={c.documento}
+                        costoHora={c.costo_hora}
+                        conCosto={c.es_operario || c.costo_hora > 0}
+                      />
                     </TD>
                   )}
                 </TR>

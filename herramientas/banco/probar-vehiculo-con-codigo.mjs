@@ -5,8 +5,9 @@
  *
  *   1. Requerimientos, en el celular: el trabajo del taller (fabricación,
  *      mantenimiento, garantía, arenado) entra eligiendo un código interno que
- *      ya tiene OT; el cliente, el vehículo y la placa se cargan solos. El código
- *      sin OT no se ofrece, y el que ya entró sale apagado.
+ *      ya tiene OT, en una lista con buscador; el cliente, el vehículo y la placa
+ *      se cargan solos. El código sin OT no se ofrece, ni el que ya entró, y sin
+ *      códigos libres la ventana no pide fotos.
  *   2. La salida de ese vehículo queda apagada y dice por qué (el avance del
  *      código no llega al 100 %), y el detalle no deja pedir la revisión de
  *      Tesorería todavía.
@@ -136,13 +137,15 @@ let registroId = null
   let v = pagina.locator('[role="dialog"]')
   comprobar((await v.locator('#veh-placa').count()) === 0, 'antes del motivo no hay campos que llenar')
   await v.locator('#veh-motivo').selectOption('FABRICACION')
-  const opciones = await v.locator('#veh-codigo option').evaluateAll((os) => os.map((o) => ({ valor: o.value, texto: o.textContent, apagada: o.disabled })))
-  const conOt = opciones.find((o) => o.valor === CODIGO)
-  comprobar(Boolean(conOt) && !conOt.apagada && conOt.texto.includes(unidad.numero), `para fabricación se elige el código, con su OT ${unidad.numero}`)
-  comprobar(!opciones.some((o) => o.valor === SIN_OT), 'el código sin OT no se ofrece')
+  await v.locator('#veh-codigo').click()
+  await v.getByRole('option').first().waitFor({ timeout: 10000 }).catch(() => {})
+  const opciones = (await v.getByRole('option').allInnerTexts()).map(limpio)
+  const conOt = opciones.find((o) => o.includes(CODIGO))
+  comprobar(Boolean(conOt) && conOt.includes(unidad.numero), `para fabricación se elige el código, con su OT ${unidad.numero} («${conOt}»)`)
+  comprobar(!opciones.some((o) => o.includes(SIN_OT)), 'el código sin OT no se ofrece')
   comprobar((await v.locator('#veh-unidad').count()) === 0 && (await v.locator('#veh-empresa').count()) === 0, 'el vehículo y la empresa no se escriben a mano')
 
-  await v.locator('#veh-codigo').selectOption(CODIGO)
+  await v.getByRole('option', { name: new RegExp(CODIGO.replace(/[/]/g, '\\/')) }).click()
   const resumen = limpio(await v.locator(`[data-codigo-elegido="${CODIGO}"]`).innerText())
   comprobar(resumen.includes(unidad.razon_social) && resumen.includes(unidad.numero), `se carga el cliente y la OT: «${resumen}»`)
   comprobar((await v.locator('#veh-placa').inputValue()) === 'V2G-841', 'y la placa de la unidad')
@@ -175,8 +178,9 @@ let registroId = null
   await pagina.getByRole('button', { name: 'Registrar ingreso' }).click()
   v = pagina.locator('[role="dialog"]')
   await v.locator('#veh-motivo').selectOption('MANTENIMIENTO')
-  const ya = await v.locator(`#veh-codigo option[value="${CODIGO}"]`).evaluate((o) => ({ apagada: o.disabled, texto: o.textContent }))
-  comprobar(ya.apagada && ya.texto.includes('ya está en la planta'), 'el código que ya entró sale apagado, «ya está en la planta»')
+  const ya = limpio(await v.locator('#veh-codigo').innerText())
+  comprobar(ya.includes('ya está en la planta'), `el código que ya entró no se ofrece otra vez: «${ya}»`)
+  comprobar((await v.locator('input[type="file"]').count()) === 0, 'y sin código que elegir, la ventana no pide fotos')
 
   // 3. La cochera entra con la placa a mano.
   await v.locator('#veh-motivo').selectOption('COCHERA')
