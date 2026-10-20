@@ -5,7 +5,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { listarTrabajadores, marcasDelDia } from '@/lib/datos/rrhh'
 import { diaVecino, fechaValida } from '@/lib/dominio/rrhh'
 import { fechaLarga, hoyLima } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { Marcador } from './marcador'
 
@@ -13,7 +13,8 @@ export const metadata = { title: 'Asistencia del personal' }
 
 export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrhh/asistencia'>) {
   const perfil = await exigirPermiso(['asistencia.marcar', 'asistencia.ver'])
-  const marca = puede(perfil, 'asistencia.marcar')
+  // Marca la portería; el administrador mira (migración 20261020169000).
+  const marca = editaComoRrhh(perfil, 'asistencia.marcar')
   const consulta = puede(perfil, 'asistencia.ver')
   // La miga lleva a las planillas solo a quien las abre: Gerencia y
   // Administración consultan esto con `asistencia.ver` y ahí las rebotaban.
@@ -85,7 +86,9 @@ export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrh
         }))}
         marcas={marcas}
         marca={marca}
-        anula={consulta || (marca && esHoy)}
+        // Anula RR. HH., cualquier día; la portería, las de hoy. Quien solo
+        // consulta, y el administrador, miran (migración 20261020169000).
+        anula={editaComoRrhh(perfil, 'rrhh.personal') || (editaComoRrhh(perfil, 'asistencia.marcar') && esHoy)}
         esHoy={esHoy}
         buscaPorDni={marca || puede(perfil, 'rrhh.personal')}
       />

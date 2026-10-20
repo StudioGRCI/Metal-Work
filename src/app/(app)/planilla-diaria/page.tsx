@@ -62,7 +62,7 @@ export default async function PaginaPlanillaDiaria() {
       <EncabezadoPagina
         titulo="Planilla diaria"
         ayuda={
-          arma
+          envia
             ? 'Lo que se le paga a la gente por sus horas de los reportes diarios que validaron Gerencia y Recursos Humanos: hasta 8 horas por día son ordinarias; las extras, las que decidiste pagar. La armas y la mandas a Tesorería, que paga y adjunta comprobante y boleta; tú entregas las boletas.'
             : paga
               ? 'Las planillas que manda Recursos Humanos con las horas validadas de cada persona. Paga a cada una a su cuenta, adjunta el comprobante y su boleta de pago.'
@@ -165,7 +165,7 @@ export default async function PaginaPlanillaDiaria() {
           {planillas.length === 0 ? (
             <TarjetaCuerpo>
               <p className="text-sm text-texto-suave">
-                {arma ? 'Todavía no se mandó ninguna. Envía la primera con «Enviar a Tesorería».' : 'Todavía no llega ninguna de Recursos Humanos.'}
+                {envia ? 'Todavía no se mandó ninguna. Envía la primera con «Enviar a Tesorería».' : 'Todavía no llega ninguna de Recursos Humanos.'}
               </p>
             </TarjetaCuerpo>
           ) : (

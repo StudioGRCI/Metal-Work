@@ -347,20 +347,21 @@ begin
     raise exception 'Anota la placa, el número de chasis o el código interno: sin eso no se sabe qué vehículo entró.'
       using errcode = 'check_violation';
   elsif v_codigo is not null and exists (
-          select 1 from public.unidades u join public.ordenes_trabajo o on o.unidad_id = u.id and o.estado <> 'ANULADA'
-           where upper(regexp_replace(btrim(coalesce(u.codigo_interno, '')), '[^A-Za-z0-9]', '', 'g'))
+          select 1 from public.unidades u join public.ordenes_trabajo o on o.unidad_id = u.id
+           where o.estado not in ('ANULADA', 'TERMINADA', 'ENTREGADA', 'FACTURADA')
+             and upper(regexp_replace(btrim(coalesce(u.codigo_interno, '')), '[^A-Za-z0-9]', '', 'g'))
                = upper(regexp_replace(v_codigo, '[^A-Za-z0-9]', '', 'g'))) then
-    -- Un código con OT que entra como cochera u «otro» se saltaría la regla:
-    -- no figuraría en la planta y saldría sin el 100 % ni Tesorería.
-    raise exception 'El código interno % es de un vehículo con OT: elige el motivo del trabajo (fabricación, mantenimiento, garantía o arenado).',
+    -- Un código con OT en el taller que entra como cochera u «otro» se saltaría
+    -- la regla: no figuraría en la planta y saldría sin el 100 % ni Tesorería.
+    -- El vehículo ya entregado sí vuelve a la cochera, por código o por placa.
+    raise exception 'El código interno % es de un vehículo con OT en el taller: elige el motivo del trabajo (fabricación, mantenimiento, garantía o arenado).',
       v_codigo using errcode = 'check_violation';
   elsif exists (
           select 1 from public.unidades u join public.ordenes_trabajo o on o.unidad_id = u.id
            where o.estado not in ('ANULADA', 'TERMINADA', 'ENTREGADA', 'FACTURADA')
              and ((v_placa is not null and public.normalizar_placa(u.placa) = v_placa)
                or (v_chasis is not null and upper(btrim(coalesce(u.numero_chasis, ''))) = v_chasis))) then
-    -- Lo mismo por la placa o el chasis, mientras su OT siga en el taller: el
-    -- vehículo ya entregado sí puede volver a la cochera.
+    -- Lo mismo por la placa o el chasis.
     raise exception 'Ese vehículo tiene una OT en el taller: elige el motivo del trabajo y su código interno.'
       using errcode = 'check_violation';
   end if;

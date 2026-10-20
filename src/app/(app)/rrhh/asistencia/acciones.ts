@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 function dato(formulario: FormData, nombre: string) {
@@ -15,7 +15,7 @@ function dato(formulario: FormData, nombre: string) {
 /** El portero marca el ingreso o la salida de una persona. Mismo permiso que `marcar_asistencia`. */
 export async function marcarAsistencia(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'asistencia.marcar')) return { ok: false, error: 'La asistencia la marca la portería.' }
+  if (!editaComoRrhh(perfil, 'asistencia.marcar')) return { ok: false, error: 'La asistencia la marca la portería.' }
 
   const analisis = z
     .object({
@@ -48,10 +48,14 @@ export async function marcarAsistencia(_previo: unknown, formulario: FormData): 
   return { ok: true, mensaje: d.tipo === 'INGRESO' ? 'Ingreso marcado.' : 'Salida marcada.' }
 }
 
-/** Una marca equivocada se anula con motivo. Mismo permiso que `anular_asistencia`. */
+/**
+ * Una marca equivocada se anula con motivo. Mismo permiso que `anular_asistencia`:
+ * RR. HH., cualquier día; la portería, las de hoy (la base mira el día).
+ */
 export async function anularAsistencia(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['asistencia.ver', 'asistencia.marcar'])) return { ok: false, error: 'No puede anular marcas de asistencia.' }
+  if (!editaComoRrhh(perfil, 'rrhh.personal') && !editaComoRrhh(perfil, 'asistencia.marcar'))
+    return { ok: false, error: 'Las marcas las anula Recursos Humanos; la portería, solo las de hoy.' }
 
   const analisis = z
     .object({

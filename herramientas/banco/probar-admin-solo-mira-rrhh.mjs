@@ -42,10 +42,12 @@ function comprobar(cond, texto) {
 }
 
 // Los botones que cambian algo. Ver, buscar, filtrar o descargar no cuentan.
-const ESCRIBE = /^(Registrar|Guardar|Nuevo|Nueva|Agregar|Anular|Cargar|Dar de (alta|baja)|Cambiar|Justificar|Decidir|Aprobar|Rechazar|Enviar|Cerrar|Importar|Repartir|Entregar|Usar)/i
+const ESCRIBE = /^(Registrar|Guardar|Nuevo|Nueva|Agregar|Anular|Cargar|Dar de (alta|baja)|Cambiar|Justificar|Decidir|Aprobar|Rechazar|Enviar|Cerrar|Importar|Repartir|Entregar|Usar|Pagar|Reservar|Corregir|Marcar|Subir|Crear|Validar|Observar|Dar el visto)/i
 
 const PANTALLAS = [
   ['/rrhh', 'Planillas del mes'],
+  ['/planilla-diaria', 'Planilla diaria'],
+  ['/rrhh/asistencia', 'Asistencia'],
   ['/rrhh/personal', 'Personal'],
   ['/rrhh/cuentas', 'DNI y costo de las cuentas'],
   ['/rrhh/costeo', 'Costeo'],

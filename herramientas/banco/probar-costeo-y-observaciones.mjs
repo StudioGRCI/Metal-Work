@@ -88,6 +88,8 @@ const codigoB = 'PLANTA'
   await v.locator('input[name="banco"]').fill('Banco de Pruebas')
   await v.locator('input[name="numero_cuenta"]').fill(persona.cuenta)
   await v.locator('input[name="costo_mensual"]').fill('2400')
+  // La fecha de ingreso es obligatoria desde #122.
+  await v.locator('input[name="fecha_ingreso"]').fill(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' }))
   await v.getByRole('button', { name: 'Registrar' }).click()
   await v.waitFor({ state: 'hidden', timeout: 15000 }).catch(() => {})
   await pagina.waitForLoadState('networkidle')
