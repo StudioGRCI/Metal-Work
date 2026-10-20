@@ -24,7 +24,10 @@
 --     Adquisiciones, y el de «Programa el recojo» le llega solo a Logística;
 --   * la guía de remisión, que es un documento más de la compra, la ve también
 --     quien ve Adquisiciones (Tesorería y Gerencia), para seguir la compra de
---     punta a punta (migración 20261020170000).
+--     punta a punta (migración 20261020170000);
+--   * la lista del conductor tampoco sale por la auditoría: `programacion_recojo`
+--     está auditada y Gerencia, con `auditoria.ver`, leía ahí el peso y el lugar
+--     de cada recojo que la tabla y `trazabilidad_de_compras()` le tapan.
 --
 -- Sin DROP de funciones ni de políticas: el conector de producción no deja
 -- pasar ninguno.
@@ -53,6 +56,38 @@ alter policy ver_guias_remision_compra on public.guias_remision_compra using (
   (select public.es_admin()) or (select public.tiene_permiso('compras.programar_recojo'))
   or (select public.tiene_permiso('compras.guia_remision')) or (select public.tiene_permiso('compras.recojo'))
   or (select public.tiene_permiso('adquisiciones.ver')));
+
+-- La auditoría de la lista, con lo mismo que su política. Es la de
+-- 20261020150000 (5. la auditoría no destapa lo tapado) más esa tabla: quien
+-- vuelva a escribir esta política tiene que conservar las dos.
+alter policy ver_audit_log on public.audit_log using (
+  public.es_admin() or (
+    public.tiene_permiso('auditoria.ver')
+    and (tabla <> all (array['cajas', 'movimientos_caja', 'cierres_caja'])
+         or public.tiene_permiso('tesoreria.caja'))
+    and (tabla <> all (array['trabajador_remuneraciones', 'trabajador_costos', 'tareos',
+                             'trabajador_cuentas'])
+         or public.tiene_permiso('rrhh.personal'))
+    and (tabla <> all (array['planillas', 'planilla_personas', 'planilla_distribuciones'])
+         or public.tiene_permiso('rrhh.ver_planillas'))
+    and (tabla <> all (array['cotizaciones_pdf', 'cotizaciones_pdf_versiones', 'cotizaciones_pdf_igv',
+                             'ot_presupuestos', 'ot_ventas_anteriores'])
+         or public.tiene_permiso('cotizaciones.ver_pdf_comercial'))
+    -- Cada tabla, con lo mismo que pide su política de lectura.
+    and (tabla <> all (array['facturas_venta', 'cobros_factura_venta'])
+         or public.tiene_permiso('contabilidad.facturar') or public.tiene_permiso('cotizaciones.ver_aprobadas')
+         or public.tiene_permiso('tesoreria.ver_documentos'))
+    and (tabla <> 'cuentas_cobrar_ot'
+         or public.tiene_permiso('tesoreria.ver_documentos') or public.tiene_permiso('adquisiciones.ver'))
+    and (tabla <> 'proveedor_cuentas' or public.tiene_permiso('proveedores.ver_cuentas'))
+    and (tabla <> 'subcontratistas' or public.puede_ver_subcontratos())
+    and (tabla <> all (array['planilla_diaria_personas', 'planilla_diaria_detalle'])
+         or public.puede_ver_planilla_diaria())
+    and (tabla <> 'trabajadores' or public.puede_ver_trabajadores())
+    and (tabla <> 'programacion_recojo'
+         or public.tiene_permiso('compras.programar_recojo') or public.tiene_permiso('compras.recojo'))
+  )
+);
 
 -- 3. ¿La cuenta que emitió la OC programa recojos? -----------------------------------------
 -- Para decidir a dónde la lleva el aviso de «Compra aprobada».
@@ -414,12 +449,19 @@ grant execute on function public.guias_por_emitir() to authenticated;
 -- El de la guía, a Adquisiciones; los demás («Programa el recojo», «Compra
 -- aprobada… Prográmala»), que les llegaron a Gerencia y a Administración por
 -- `compras.crear`, a sus órdenes de compra: si no, el aviso abre «Sin permiso».
+-- El texto cambia con la ruta, para que no mande a una pantalla que ya no abren.
 do $$ begin
   update public.notificaciones
-     set ruta = '/adquisiciones?situacion=guia'
+     set ruta = '/adquisiciones?situacion=guia',
+         cuerpo = replace(cuerpo, 'Cárgala en Gestión de compras', 'Cárgala en Adquisiciones, en la fila de la OC,')
    where ruta = '/compras/gestion' and titulo like 'Guía de remisión por emitir:%';
   update public.notificaciones n
-     set ruta = '/compras'
+     set ruta = '/compras',
+         cuerpo = replace(replace(cuerpo,
+           'Prográmala en Gestión de compras: su peso y su lugar en la lista del conductor.',
+           'Logística la programa para que el conductor la recoja.'),
+           'Ponle su peso y su lugar en la lista del conductor.',
+           'Logística le pone su peso y su lugar en la lista del conductor.')
    where n.ruta = '/compras/gestion'
      and not public.usuario_programa_recojos(n.usuario_id)
      and not exists (select 1 from public.usuarios u join public.roles_permisos rp on rp.rol_id = u.rol_id

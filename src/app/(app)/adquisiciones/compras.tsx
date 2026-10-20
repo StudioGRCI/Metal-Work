@@ -116,7 +116,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
   const paginas = Math.max(1, Math.ceil(filas.length / POR_PAGINA))
   const pagina = Math.min(Math.max(1, Number.parseInt(texto(params.pagina), 10) || 1), paginas)
   const visibles = filas.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)
-  const urls = await enlacesDeCompras(visibles)
+  const { urls, sinFirmar } = await enlacesDeCompras(visibles)
   const hayFiltros = Boolean(busqueda || tipo || situacion)
   const vacio =
     todas.length === 0
@@ -134,6 +134,11 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
   return (
     <>
       <div className="mb-4 space-y-3">
+        {sinFirmar && (
+          <p role="alert" className="text-sm text-peligro">
+            No se pudieron preparar los enlaces de algunos documentos: salen sin enlace. Recarga la página para volver a intentar.
+          </p>
+        )}
         {guiasPorCargar > 0 && situacion !== 'guia' && (
           <p className="text-sm text-aviso">
             <Link href={`${RUTA}?situacion=guia`} className={`${toque} gap-1.5 font-medium hover:underline`}>
@@ -399,9 +404,11 @@ function nombreDeComprobante(tipo: string) {
 }
 
 function Archivo({ url, children }: { url: string | undefined; children: ReactNode }) {
+  // El texto va en un solo span: dentro del inline-flex de `toque`, el espacio
+  // entre «Factura» y su número se perdía y se leía «FacturaF001-123».
   return url ? (
     <a href={url} target="_blank" rel="noreferrer" className={`${toque} ${enlace}`}>
-      {children}
+      <span>{children}</span>
     </a>
   ) : (
     <span className="font-medium text-texto">{children}</span>
@@ -463,7 +470,9 @@ function Documentos({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, s
       {f.guia && (
         <li className="flex flex-wrap items-center gap-x-2">
           <a href={`/compras/guia/${f.guia.id}`} target="_blank" rel="noopener" className={`${toque} ${enlace}`}>
-            Guía de remisión <span className="tabular">{f.guia.numero}</span>
+            <span>
+              Guía de remisión <span className="tabular">{f.guia.numero}</span>
+            </span>
           </a>
           {acceso.cargaGuia && f.recojo !== 'DEJADO' && <AnularGuia id={f.guia.id} numero={f.guia.numero} />}
         </li>

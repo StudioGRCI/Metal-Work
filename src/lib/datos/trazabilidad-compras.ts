@@ -108,10 +108,12 @@ export const claveDeArchivo = (bucket: string, ruta: string) => `${bucket}:${rut
  * factura, el voucher de cada pago de factura y el de cada pago de la OS. El
  * que la política de quien mira no deja abrir no sale, y su fila lo dice sin
  * enlace. La guía de remisión se abre por su ruta propia (`/compras/guia/…`).
- * Si la firma entera falla, la página lo dice: si no, todos los documentos
- * saldrían como texto sin enlace y nadie se enteraría.
+ * Si falla la firma de un bucket, sus documentos salen sin enlace y `sinFirmar`
+ * lo avisa arriba de la tabla: callarlo dejaría los documentos como texto sin
+ * que nadie se entere, y tumbar la página entera por eso dejaría a Contabilidad
+ * sin la tabla.
  */
-export async function enlacesDeCompras(filas: CompraTrazada[]): Promise<Map<string, string>> {
+export async function enlacesDeCompras(filas: CompraTrazada[]): Promise<{ urls: Map<string, string>; sinFirmar: boolean }> {
   const porBucket = new Map<string, string[]>()
   const sumar = (bucket: string | null, ruta: string | null) => {
     if (!bucket || !ruta) return
@@ -129,11 +131,10 @@ export async function enlacesDeCompras(filas: CompraTrazada[]): Promise<Map<stri
   const firmados = await Promise.all(
     [...porBucket].map(async ([bucket, rutas]) => {
       const { data, error } = await supabase.storage.from(bucket).createSignedUrls([...new Set(rutas)], 600)
-      if (error) throw new Error('No se pudieron preparar los enlaces de los documentos. Recarga la página para volver a intentar.')
-      return [bucket, data ?? []] as const
+      return { bucket, firmados: data ?? [], fallo: Boolean(error) }
     }),
   )
-  const mapa = new Map<string, string>()
-  for (const [bucket, deEse] of firmados) for (const e of deEse) if (e.path && e.signedUrl) mapa.set(claveDeArchivo(bucket, e.path), e.signedUrl)
-  return mapa
+  const urls = new Map<string, string>()
+  for (const { bucket, firmados: deEse } of firmados) for (const e of deEse) if (e.path && e.signedUrl) urls.set(claveDeArchivo(bucket, e.path), e.signedUrl)
+  return { urls, sinFirmar: firmados.some((f) => f.fallo) }
 }

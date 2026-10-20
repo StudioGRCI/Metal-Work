@@ -355,6 +355,18 @@ begin
     'Logística sí');
   reset role;
 end $$;
+-- Ni por la auditoría: programacion_recojo está auditada y Gerencia tiene
+-- auditoria.ver. Sigue leyendo la auditoría de lo demás.
+select set_config('prueba.auditados', (select count(*) from public.audit_log
+  where tabla = 'programacion_recojo' and datos_despues->>'orden_compra_id' = current_setting('prueba.oc3'))::text, true);
+select pg_temp.como('gerente');
+set local role authenticated;
+select test.afirmar(current_setting('prueba.auditados')::int > 0
+    and (select count(*) from public.audit_log where tabla = 'programacion_recojo') = 0
+    and (select count(*) from public.audit_log where tabla <> 'programacion_recojo') > 0,
+  'Gerencia no lee la lista del conductor en la auditoría (' || current_setting('prueba.auditados')
+    || ' filas auditadas de la OC 3), y sí el resto de la auditoría');
+reset role;
 select pg_temp.como('contabilidad');
 set local role authenticated;
 select pg_temp.subir('guias-remision', 'compra/' || current_setting('prueba.oc3') || '/' || current_setting('prueba.guia') || '.pdf',

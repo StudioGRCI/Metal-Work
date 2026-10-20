@@ -211,6 +211,25 @@ async function abrir(contexto, href) {
   const r = await contexto.request.get(new URL(href, BASE).toString(), { maxRedirects: 5 })
   return { estado: r.status(), cabeza: (await r.body()).subarray(0, 5).toString() }
 }
+/**
+ * Los píxeles entre la última letra de la palabra y el número de un enlace a un
+ * comprobante. El texto de la página trae el espacio aunque en la pantalla se
+ * lean pegados («FacturaF001-123»), así que se mide la geometría. Si el número
+ * bajó a la línea siguiente no están pegados, y se da por bueno.
+ */
+const hueco = (enlace) =>
+  enlace.evaluate((a) => {
+    const numero = a.querySelector('.tabular')?.getClientRects()[0]
+    const texto = document.createTreeWalker(a, NodeFilter.SHOW_TEXT).nextNode()
+    if (!numero || !texto) return -1
+    const fin = texto.textContent.trimEnd().length
+    const rango = document.createRange()
+    rango.setStart(texto, fin - 1)
+    rango.setEnd(texto, fin)
+    const letra = rango.getBoundingClientRect()
+    if (Math.abs(letra.top - numero.top) > letra.height / 2) return Infinity
+    return numero.left - letra.right
+  })
 const rechaza = async (pagina, ruta) => {
   await ir(pagina, ruta)
   return new URL(pagina.url()).pathname === '/sin-permiso'
@@ -244,7 +263,10 @@ const rechaza = async (pagina, ruta) => {
   comprobar(origen.includes(numeroRq) && origen.includes('PLA_SR_O4_1_26/28') && origen.includes('Maestranza'), `de dónde sale: el RQ, el código y el área («${origen}»)`)
   const docs2 = await columna(oc2, 5)
   comprobar(docs2.includes(`Factura F001-${SUFIJO}`), `la OC 2 lleva su factura («${docs2}»)`)
-  const hrefFactura = await oc2.locator('td').nth(5).getByRole('link', { name: /Factura/ }).getAttribute('href')
+  const enlaceFactura = oc2.locator('td').nth(5).getByRole('link', { name: /Factura/ })
+  const huecoFactura = await hueco(enlaceFactura)
+  comprobar(huecoFactura > 1, `y en la pantalla «Factura» y su número no salen pegados (${huecoFactura.toFixed(1)} px)`)
+  const hrefFactura = await enlaceFactura.getAttribute('href')
   comprobar((await abrir(contexto, hrefFactura)).cabeza === '%PDF-', 'y el enlace abre el PDF de la factura')
   const hrefVoucher = await oc2.locator('td').nth(6).getByRole('link', { name: 'Voucher' }).getAttribute('href')
   comprobar((await abrir(contexto, hrefVoucher)).cabeza === '%PDF-', 'y el del voucher del pago')
@@ -286,6 +308,8 @@ const rechaza = async (pagina, ruta) => {
   await ir(pagina, `/adquisiciones?${buscar}`)
   const conGuia = fila(pagina, oc[2])
   comprobar((await conGuia.getByRole('link', { name: 'Guía de remisión T001-00000403' }).count()) === 1, 'la fila muestra la guía')
+  const huecoGuia = await hueco(conGuia.getByRole('link', { name: /Guía de remisión/ }))
+  comprobar(huecoGuia > 1, `ni «Guía de remisión» y su número (${huecoGuia.toFixed(1)} px)`)
   const hrefGuia = (await conGuia.getByRole('link', { name: /Guía de remisión/ }).getAttribute('href')) ?? ''
   comprobar((await abrir(contexto, hrefGuia)).cabeza === '%PDF-', `Contabilidad abre el PDF de la guía (${hrefGuia})`)
 
@@ -314,6 +338,8 @@ const rechaza = async (pagina, ruta) => {
   comprobar(ancho <= 390, `y la página no se ensancha (${ancho} px)`)
   const t2 = limpio(await pagina.locator(`[data-orden-telefono="${nombre(oc[1])}"]`).innerText())
   comprobar(t2.includes(numeroRq) && t2.includes('Pagada en parte') && t2.includes(`Factura F001-${SUFIJO}`), `la tarjeta trae el RQ, la factura y el pago («${t2.slice(0, 160)}…»)`)
+  const huecoTelefono = await hueco(pagina.locator(`[data-orden-telefono="${nombre(oc[1])}"]`).getByRole('link', { name: /Factura/ }))
+  comprobar(huecoTelefono > 1, `y en la tarjeta «Factura» y su número tampoco salen pegados (${huecoTelefono.toFixed(1)} px)`)
   await pagina.screenshot({ path: join(CAPTURAS, 'adquisiciones-oc-os-telefono.png'), fullPage: true })
   await contexto.close()
 }
