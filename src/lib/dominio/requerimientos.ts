@@ -127,10 +127,11 @@ export type PartesDelInsumo = { entregado: number; recoger: number; porLlegar: n
 const LLEGO_AL_ALMACEN = ['EN_KARDEX', 'EN_STOCK', 'LISTO_EN_ALMACEN', 'ENTREGADO']
 
 export function partesDelInsumo(
-  l: { cantidad: number; en_stock: number | null; por_comprar: number | null; etapa: string | null; entregado: number },
+  l: { cantidad: number; en_stock: number | null; por_comprar: number | null; etapa: string | null; entregado: number | null },
   estadoRq: string,
 ): PartesDelInsumo | null {
-  if (estadoRq === 'ANULADO') return null
+  // Sin lo entregado no se parte: no se sabe cuánto de lo llegado ya se llevaron.
+  if (estadoRq === 'ANULADO' || l.entregado === null) return null
   const pedido = Math.max(l.cantidad, 0)
   if (estadoRq === 'ENTREGADO') return { entregado: pedido, recoger: 0, porLlegar: 0, revisar: 0 }
   const entregado = Math.min(Math.max(l.entregado, 0), pedido)

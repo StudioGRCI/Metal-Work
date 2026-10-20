@@ -5,7 +5,14 @@ import { Check, ChevronDown, Plus, TriangleAlert } from 'lucide-react'
 
 import { Entrada } from '@/components/ui/campos'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
-import { llaveParecido, normalizarCodigo, parecidos, type CodigoFijo, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
+import {
+  CODIGOS_FIJOS,
+  llaveParecido,
+  normalizarCodigo,
+  parecidos,
+  type CodigoFijo,
+  type CodigoParaElegir,
+} from '@/lib/dominio/codigos-internos'
 import { cn } from '@/lib/utils'
 
 // Los tipos viven en el dominio: las consultas del servidor también los usan.
@@ -13,6 +20,9 @@ export type { CodigoFijo, CodigoParaElegir } from '@/lib/dominio/codigos-interno
 
 /** Cuántos se pintan de una vez. Con cientos de códigos, pintarlos todos traba la lista en el teléfono. */
 const TOPE = 50
+
+/** PLANTA y OFICINA dicen qué son también en el formulario que no los pone arriba. */
+const DETALLE_FIJO = new Map(CODIGOS_FIJOS.map((f) => [f.codigo, f.detalle]))
 
 type Opcion = { codigo: string; detalle: string | null; registrada: boolean }
 
@@ -77,11 +87,14 @@ export function EntradaCodigoInterno({
   const [aceptado, setAceptado] = useState(() => normalizarCodigo(aceptadoInicial))
   const contenedor = useRef<HTMLDivElement>(null)
   const caja = useRef<HTMLInputElement>(null)
+  // La lista se desplaza hacia la resaltada solo si se movió con las flechas: con
+  // el ratón encima, desplazarla la corría en contra de la rueda.
+  const porTeclado = useRef(false)
 
   const deFijos = new Set(fijos.map((f) => f.codigo))
   const deLista = (codigos ?? [])
     .filter((c) => !c.cerrado && !deFijos.has(c.codigo))
-    .map((c) => ({ codigo: c.codigo, detalle: c.unidad, registrada: c.registrada }))
+    .map((c) => ({ codigo: c.codigo, detalle: c.unidad ?? DETALLE_FIJO.get(c.codigo) ?? null, registrada: c.registrada }))
   // Primero los fijos, después los de una unidad del padrón y al final los demás
   // que se usaron alguna vez (caja, tareo, salidas…): «los códigos que deben ser».
   const abiertos: Opcion[] = [
@@ -119,6 +132,8 @@ export function EntradaCodigoInterno({
   // Con las flechas, la resaltada se trae a la vista: la lista mide unas seis
   // opciones y Enter elegía una que no se veía.
   useEffect(() => {
+    if (!porTeclado.current) return
+    porTeclado.current = false
     if (idResaltado) document.getElementById(idResaltado)?.scrollIntoView({ block: 'nearest' })
   }, [idResaltado])
 
@@ -152,9 +167,11 @@ export function EntradaCodigoInterno({
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       if (!abierto) return abrir()
+      porTeclado.current = true
       setResaltado((i) => Math.min(i + 1, visibles.length - (conNuevo ? 0 : 1)))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
+      porTeclado.current = true
       setResaltado((i) => Math.max(i - 1, 0))
     } else if (e.key === 'Enter' && lista && enNuevo) {
       e.preventDefault()
@@ -239,7 +256,10 @@ export function EntradaCodigoInterno({
                 aria-selected={elegida}
                 // El foco se queda en la caja: si pasara a la opción, el blur cerraría la lista antes del clic.
                 onMouseDown={(e) => e.preventDefault()}
-                onMouseEnter={() => setResaltado(i)}
+                onMouseEnter={() => {
+                  porTeclado.current = false
+                  setResaltado(i)
+                }}
                 onClick={() => elegir(o)}
                 className={cn(
                   'flex min-h-11 cursor-pointer items-start gap-2 px-3 py-2 text-left sm:min-h-0 sm:py-1.5',
@@ -252,7 +272,7 @@ export function EntradaCodigoInterno({
                   {o.detalle ? (
                     <span className="line-clamp-2 block text-xs text-texto-suave">{o.detalle}</span>
                   ) : (
-                    !deFijos.has(o.codigo) && <span className="block text-xs text-texto-tenue">Sin unidad registrada</span>
+                    !o.registrada && <span className="block text-xs text-texto-tenue">Sin unidad registrada</span>
                   )}
                   <Gemelas opcion={o} gemelas={gemelasDe(o.codigo)} />
                 </span>
@@ -270,7 +290,10 @@ export function EntradaCodigoInterno({
               role="option"
               aria-selected={false}
               onMouseDown={(e) => e.preventDefault()}
-              onMouseEnter={() => setResaltado(visibles.length)}
+              onMouseEnter={() => {
+                porTeclado.current = false
+                setResaltado(visibles.length)
+              }}
               onClick={usarNuevo}
               className={cn(
                 'flex min-h-11 cursor-pointer items-start gap-2 border-t border-borde px-3 py-2 text-left text-texto sm:min-h-0 sm:py-1.5',

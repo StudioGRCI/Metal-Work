@@ -36,9 +36,10 @@ export type LineaRequerimiento = {
   por_comprar: number | null
   /**
    * Lo que ya salió del almacén para este insumo, menos lo devuelto
-   * (`entregado_de_requerimientos`). Solo si se pidió con `conEntregado`; si no, 0.
+   * (`entregado_de_requerimientos`). `null` si no se pidió con `conEntregado`:
+   * un 0 diría «nada entregado» y lo ya llevado saldría para recoger.
    */
-  entregado: number
+  entregado: number | null
 }
 
 /** En qué porcentaje va el RQ y la etapa de su insumo más atrasado. */
@@ -183,7 +184,7 @@ export async function cargarRequerimientos(
             etapa_desde: deLinea?.desde ?? null,
             en_stock: l.cantidad_en_stock == null ? null : Number(l.cantidad_en_stock),
             por_comprar: l.cantidad_en_stock == null ? null : Math.max(Number(l.cantidad) - Number(l.cantidad_en_stock), 0),
-            entregado: entregados.get(`${r.id}:${l.item}`) ?? 0,
+            entregado: opciones.conEntregado ? (entregados.get(`${r.id}:${l.item}`) ?? 0) : null,
           }
         })
         .sort((a, b) => a.item - b.item),
