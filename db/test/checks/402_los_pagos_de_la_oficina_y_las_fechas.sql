@@ -18,6 +18,7 @@
 --      de alta la borra.
 --   7. En el mes en curso solo faltan los días hasta hoy.
 --   8. El cierre del costeo espera los pagos de la oficina de cada mes con horas.
+--   Las faltas cuentan desde octubre de 2026, o desde el mes del primer pago si es antes.
 --
 -- Cada paso con la cuenta del puesto —nunca ADMIN— y `set local role
 -- authenticated`. Termina en rollback.
@@ -56,6 +57,9 @@ begin
   insert into public.tareos (trabajador_id, fecha, codigo_interno, horas, labor, costo_hora, costo) values
     (current_setting('prueba.beto')::uuid, date '2021-06-08', 'CHK402_A_21/06', 10, 'Soldadura', 10, 100);
 end $$;
+
+select test.afirmar(public.inicio_registro_pagos_oficina() = date '2026-10-01',
+  'sin pagos, las faltas cuentan desde octubre de 2026, cuando RR. HH. empieza a registrarlos');
 
 -- ------------------------------------------------------- 1. RR. HH. pone las fechas
 select test.como_usuario(:'rrhh_id');
@@ -149,6 +153,14 @@ select test.afirmar(exists (select 1 from public.codigo_interno_costeo('CHK402_A
 reset role;
 select test.afirmar((select o.monto from public.sueldos_oficina_del_mes(date '2021-05-01') o) = 100,
   format('mayo se queda con 1 de 7 días de la primera semana de Ana: %s', (select o.monto from public.sueldos_oficina_del_mes(date '2021-05-01') o)));
+-- El primer pago es del 31 de mayo y mayo cuenta entero: si las faltas empezaran
+-- en el primer pago, del 1 al 30 no le faltaría nada a nadie. A Ana y a Ciro
+-- (que ya trabajaban) les faltan; Bea entró en junio.
+select test.afirmar((select o.sin_pago = 2 from public.sueldos_oficina_del_mes(date '2021-05-01') o),
+  format('mayo, el mes del primer pago, cuenta desde el 1: a Ana y a Ciro les faltan días; da %s',
+         (select o.sin_pago from public.sueldos_oficina_del_mes(date '2021-05-01') o)));
+select test.afirmar(public.inicio_registro_pagos_oficina() = date '2021-05-01',
+  'el registro empieza el mes del primer pago, cuando es antes de octubre de 2026');
 select test.afirmar((select o.monto = 400 and o.sin_pago = 2 from public.sueldos_oficina_del_mes(date '2021-07-01') o),
   format('julio: 4 de 7 días de la última semana de Ana, y a Ana y a Bea les faltan días pagados; da %s',
          (select row(o.monto, o.sin_pago)::text from public.sueldos_oficina_del_mes(date '2021-07-01') o)));

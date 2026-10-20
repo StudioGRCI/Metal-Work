@@ -355,14 +355,14 @@ export async function pagosOficinaDelMes(mes: string, finDelMes: string): Promis
 }
 
 /**
- * Desde cuándo RR. HH. registra los pagos de la oficina: el primer pago vigente, o
- * el 1 del mes en curso si todavía no hay ninguno. Antes de eso no falta nada.
+ * Desde cuándo cuentan los días de la oficina sin pago: la misma fecha que usa la
+ * base (`inicio_registro_pagos_oficina`). Exige `rrhh.personal`.
  */
-export async function inicioDelRegistroDePagos(mesActual: string): Promise<string> {
+export async function inicioDelRegistroDePagos(): Promise<string> {
   const supabase = await createClient()
-  const { data, error } = await supabase.from('oficina_pagos').select('desde').is('anulado_en', null).order('desde').limit(1)
-  if (error) throw new Error(`No se pudieron leer los pagos de la oficina: ${error.message}`)
-  return data?.[0]?.desde ?? `${mesActual}-01`
+  const { data, error } = await supabase.rpc('rrhh_inicio_registro_pagos_oficina')
+  if (error || !data) throw new Error(`No se pudo leer desde cuándo se registran los pagos de la oficina: ${error?.message ?? 'sin fecha'}`)
+  return data
 }
 
 /** Los ids de las áreas marcadas como oficina: a su gente se le registran los pagos. */

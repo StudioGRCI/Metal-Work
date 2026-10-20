@@ -12551,6 +12551,10 @@ export type Database = {
           recogido_en: string | null
         }[]
       }
+      inicio_registro_pagos_oficina: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       insumos_de_compras: {
         Args: {
           p_ids: string[] | null
@@ -13990,6 +13994,10 @@ export type Database = {
           lineas: number | null
           desde: string | null
         }[]
+      }
+      rrhh_inicio_registro_pagos_oficina: {
+        Args: Record<PropertyKey, never>
+        Returns: string
       }
       rrhh_justificar_permiso: {
         Args: {

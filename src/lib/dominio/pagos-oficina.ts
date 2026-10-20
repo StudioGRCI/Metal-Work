@@ -69,7 +69,7 @@ export function parteDelMes(pago: { desde: string; hasta: string; monto: number;
 /**
  * Los días del mes que la persona trabajó hasta `hoy` (entre su ingreso y su baja)
  * y que ningún pago cubre, y el primero de ellos. Un día que todavía no llega no
- * falta, y uno anterior a `registro` (el primer pago que registró RR. HH.) tampoco:
+ * falta, y uno anterior a `registro` (`inicio_registro_pagos_oficina`) tampoco:
  * así lo cuenta también `sueldos_oficina_del_mes`.
  */
 export function diasSinPago(

@@ -36,7 +36,7 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
     pagosOficinaDelMes(mes, fin),
     listarTrabajadores('todos'),
     areasDeOficina(),
-    inicioDelRegistroDePagos(mesActual),
+    inicioDelRegistroDePagos(),
   ])
   const vigentes = pagos.filter((p) => !p.anulado_en)
   const totalDelMes = vigentes.reduce((n, p) => n + parteDelMes(p, mes), 0)
@@ -49,6 +49,8 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
       (t.fecha_ingreso === null || t.fecha_ingreso <= fin) &&
       (t.fecha_baja === null || t.fecha_baja >= inicio),
   )
+  // Sin área no se sabe si es de la oficina, y sus días sin pago no se cuentan.
+  const sinArea = personal.filter((t) => t.activo && t.area_id === null).length
   const pagosDe = (id: string) => vigentes.filter((p) => p.trabajador_id === id)
   const faltan = deOficina.map((t) => ({ t, ...diasSinPago(t, pagosDe(t.id), mes, hoy, registro) })).filter((f) => f.dias > 0)
   const nombre = (t: { nombres: string; apellidos: string }) => `${t.nombres} ${t.apellidos}`
@@ -107,12 +109,22 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
       </div>
 
       <div className="space-y-5">
+        {sinArea > 0 && (
+          <p className="text-xs text-texto-suave" data-sin-area>
+            <span className="tabular">{sinArea}</span> {sinArea === 1 ? 'persona de alta no tiene área' : 'personas de alta no tienen área'}: si
+            son de la oficina, ponles su área en{' '}
+            <Link href="/rrhh/personal" className="text-acento underline-offset-2 hover:underline">
+              Personal
+            </Link>{' '}
+            para que se les registre y se les cuente lo que falta pagar.
+          </p>
+        )}
         {faltan.length > 0 && (
           <Tarjeta className="border-aviso" data-faltan-pagos>
             <TarjetaCabecera
               titulo="Les faltan días pagados"
               descripcion={`${faltan.length} ${faltan.length === 1 ? 'persona' : 'personas'} de la oficina con días de este mes sin pago registrado.`}
-              ayuda="Cuenta los días entre su ingreso y su baja, hasta hoy y desde el primer pago que registró RR. HH., que ningún pago cubre. Mientras falten, el sueldo de la oficina del mes sale incompleto en el costeo de cada unidad. Si alguien ya no trabaja, dalo de baja en Personal con su último día."
+              ayuda="Cuenta los días entre su ingreso y su baja, hasta hoy y desde que RR. HH. registra los pagos (octubre de 2026), que ningún pago cubre. Mientras falten, el sueldo de la oficina del mes sale incompleto en el costeo de cada unidad. Si alguien ya no trabaja, dalo de baja en Personal con su último día."
             />
             <TarjetaCuerpo>
               <ul className="max-w-2xl space-y-2 text-sm">

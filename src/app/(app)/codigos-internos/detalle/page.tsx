@@ -94,7 +94,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
     aTodos ? repartoATodosLosActivos() : Promise.resolve<RepartoATodosFila[]>([]),
     miraMes ? repartoDelMes(`${hoyLima().slice(0, 7)}-01`) : Promise.resolve([]),
     // Quien cierra ve antes de intentarlo los meses que esperan los pagos de la oficina.
-    cierra && !aTodos ? mesesSinPagosDeOficina(codigo) : Promise.resolve<string[]>([]),
+    cierra && !aTodos && !noEsUnidad(codigo) ? mesesSinPagosDeOficina(codigo) : Promise.resolve<string[]>([]),
   ])
   const esperaElMes = horasDelMes.some((r) => r.codigo === codigo)
   const avance = avances.get(codigo)

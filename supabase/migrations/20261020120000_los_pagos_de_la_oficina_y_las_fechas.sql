@@ -355,16 +355,42 @@ revoke all on function public.dias_del_mes_entre(date, date, date) from public, 
 drop function if exists public.gastos_del_mes_oficina(date);
 drop function if exists public.sueldos_oficina_del_mes(date);
 
+-- Desde cuándo faltan los pagos de la oficina: octubre de 2026, cuando RR. HH.
+-- empieza a registrarlos (en producción no hay horas por código antes, consultado
+-- el 2026-10-20), o el mes del primer pago si alguien registró uno anterior. Fijo
+-- y por mes entero: si dependiera del primer pago, una primera quincena del 16 al
+-- 30 borraría la falta del 1 al 15 de toda la oficina, y sin ningún pago no
+-- faltaría nada. Antes de esa fecha no había dónde anotar los pagos: una unidad
+-- con horas antes cierra sin la oficina de esos meses, salvo que RR. HH. los registre.
+create or replace function public.inicio_registro_pagos_oficina()
+returns date language sql stable set search_path to 'public' as $$
+  select least(date_trunc('month', min(p.desde))::date, date '2026-10-01')
+    from public.oficina_pagos p
+   where p.anulado_en is null
+     and not exists (select 1 from public.pruebas_filas f where f.tabla = 'oficina_pagos' and f.fila_id = p.id)
+$$;
+revoke all on function public.inicio_registro_pagos_oficina() from public, anon, authenticated;
+
+-- La misma fecha para la pantalla de RR. HH., que no la recalcula.
+create or replace function public.rrhh_inicio_registro_pagos_oficina()
+returns date language plpgsql stable security definer set search_path to 'public' as $$
+begin
+  perform public.exigir_permiso('rrhh.personal');
+  return public.inicio_registro_pagos_oficina();
+end;
+$$;
+comment on function public.rrhh_inicio_registro_pagos_oficina() is
+  'Desde cuándo cuentan los días de la oficina sin pago (inicio_registro_pagos_oficina). Exige rrhh.personal.';
+revoke all on function public.rrhh_inicio_registro_pagos_oficina() from public, anon;
+grant execute on function public.rrhh_inicio_registro_pagos_oficina() to authenticated;
+
 -- La parte de cada pago que cae en el mes va por días, redondeada de modo que las
 -- partes de un pago sumen el pago al céntimo: lo pagado hasta el fin del mes menos
 -- lo pagado hasta el fin del mes anterior. Cada persona, menos lo que ese mes cargó
 -- en horas a una unidad. sin_pago: cuántas personas de la oficina tienen en el mes
 -- días trabajados que ningún pago cubre todavía. Solo cuenta hasta hoy: un día que
 -- no llega no falta, y avisarlo empujaría a registrar un pago que aún no se hizo. Y
--- solo desde que RR. HH. empezó a registrar pagos (el primero que entró, o el mes
--- en curso si aún no hay ninguno): los meses de antes no tenían dónde anotarse, y
--- contarlos dejaría a toda la oficina en falta desde siempre y ninguna unidad se
--- podría cerrar.
+-- solo desde inicio_registro_pagos_oficina().
 create or replace function public.sueldos_oficina_del_mes(p_periodo date default null)
 returns table (periodo date, personas integer, monto numeric, sin_pago integer)
 language sql stable set search_path to 'public' as $$
@@ -389,10 +415,7 @@ language sql stable set search_path to 'public' as $$
       from pago g
      group by g.periodo, g.trabajador_id
   ), registro as (
-    select coalesce(min(p.desde), date_trunc('month', now() at time zone 'America/Lima')::date) as desde
-      from public.oficina_pagos p
-     where p.anulado_en is null
-       and not exists (select 1 from public.pruebas_filas f where f.tabla = 'oficina_pagos' and f.fila_id = p.id)
+    select public.inicio_registro_pagos_oficina() as desde
   ), falta as (
     -- Los días que trabajó en el mes hasta hoy (entre su ingreso y su baja) y que ningún pago cubre.
     select m.periodo, w.id
@@ -420,7 +443,7 @@ language sql stable set search_path to 'public' as $$
     from mes m
 $$;
 comment on function public.sueldos_oficina_del_mes(date) is
-  'El sueldo de la oficina de cada mes (o del mes de p_periodo): la parte, por días, de cada pago de oficina_pagos que cae en el mes (con aportes), menos lo que esa persona cargó ese mes en horas a una unidad; y cuántas personas de la oficina tienen días del mes, desde el primer pago registrado y hasta hoy, sin pago. No pide permiso: la llaman el costeo y gastos_del_mes_oficina.';
+  'El sueldo de la oficina de cada mes (o del mes de p_periodo): la parte, por días, de cada pago de oficina_pagos que cae en el mes (con aportes), menos lo que esa persona cargó ese mes en horas a una unidad; y cuántas personas de la oficina tienen días del mes, desde inicio_registro_pagos_oficina() y hasta hoy, sin pago. No pide permiso: la llaman el costeo y gastos_del_mes_oficina.';
 revoke all on function public.sueldos_oficina_del_mes(date) from public, anon, authenticated;
 
 create or replace function public.gastos_del_mes_oficina(p_periodo date)
@@ -769,7 +792,7 @@ begin
 end;
 $$;
 comment on function public.meses_sin_pagos_oficina(text) is
-  'Los meses en que el código interno tuvo horas y a alguien de la oficina le faltan días pagados (desde el primer pago registrado y hasta hoy). El cierre del costeo los espera. Exige codigos_internos.ver, codigos_internos.cerrar o costos.ver.';
+  'Los meses en que el código interno tuvo horas y a alguien de la oficina le faltan días pagados (desde inicio_registro_pagos_oficina() y hasta hoy). El cierre del costeo los espera. Exige codigos_internos.ver, codigos_internos.cerrar o costos.ver.';
 revoke all on function public.meses_sin_pagos_oficina(text) from public, anon;
 grant execute on function public.meses_sin_pagos_oficina(text) to authenticated;
 
