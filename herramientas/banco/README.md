@@ -44,12 +44,14 @@ falló, así que sirve tal cual en una comprobación automática.
 Y para lo que no se ve mirando pantallas —lo que pasa al apretar los botones—:
 
 ```bash
-BANCO_CLAVE='la-que-quieras' node herramientas/banco/probar-cotizacion.mjs
+BANCO_CLAVE='la-que-quieras' node herramientas/banco/probar-aprobar-con-codigo-y-ot.mjs
 ```
 
-Emite una cotización, la descarga en PDF, comprueba que el borrador descargado
-queda marcado como enviado, intenta anularla sin motivo (no la deja), la anula
-con motivo y vuelve a descargarla ya anulada.
+Ventas sube la cotización en PDF, Gerencia la aprueba con su código interno y
+su OT en una sola ventana, y Diseño recibe el aviso y abre el PDF de la OT. Hay
+uno así por cada circuito, en la tabla de abajo. (El de la cotización que se
+emitía en borrador se retiró el 2026-10-20: esa pantalla ya no existe y la
+cotización se sube en PDF.)
 
 La preparación local crea además una cuenta por puesto (ver «Las cuentas de
 cada puesto»). Usan el valor local de `BANCO_CLAVE`; no son cuentas de la empresa
@@ -92,7 +94,6 @@ tiene esas cuentas ni esa OT. Si vuelve a caerse, es que una migración nueva o
 | `esquema.mjs` | Lee las claves foráneas para resolver las incrustaciones. |
 | `recorrer.mjs` | Recorre la aplicación con un navegador y deja el informe y las capturas. |
 | `recorrer-puestos.mjs` | Lo mismo con la cuenta de cada puesto: cada pantalla de su menú en monitor y en teléfono (sin permiso, error, consola, 5xx, tiempo, desborde) y las pantallas fuera de su menú que le dejan entrar. |
-| `probar-cotizacion.mjs` | Aprieta los botones de una cotización: emitir, descargar el PDF, anular con motivo y volver a descargar. |
 | `probar-reporte-diario.mjs` | El reporte diario de supervisión con la cuenta de cada puesto: el supervisor lo sube desde el celular con fotos que se achican, el tope de 16 horas, RR. HH. ve las horas en el costeo y las que esperan su costo, Gerencia consulta y la portería no entra. Crea su propio personal inventado; las cuentas `*.local@metalwork.test` se crean aparte. |
 | `probar-planilla-diaria.mjs` | Del reporte diario a la planilla diaria, con la cuenta de cada puesto: Gerencia y RR. HH. validan (cada una solo con su botón), Gerencia observa y el supervisor corrige y sube de nuevo, RR. HH. paga o reserva las horas que pasan de 8 y usa el saldo, manda la planilla, Tesorería ve las cuentas, paga en lote con comprobante y adjunta boletas, RR. HH. las entrega; Gerencia consulta sin cuentas y el supervisor y la portería no entran. Crea su propio personal inventado. |
 | `probar-subcontratos.mjs` | Un subcontrato de punta a punta, con la cuenta de cada puesto: Administración da de alta al subcontratista (un RUC de empresa no entra), registra el subcontrato con su código interno y sube un recibo por honorarios con la retención del 8 %; Tesorería lo paga desde el teléfono con su voucher; Administración ve el pago; Contabilidad y Gerencia consultan sin botones y Logística no entra. Crea su propio subcontratista inventado; las cuentas `*.local@metalwork.test` se crean aparte. |
