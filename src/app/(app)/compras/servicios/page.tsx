@@ -19,6 +19,7 @@ import { fecha, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AvanceServicio, CorregirServicio } from './controles'
+import { AdjuntarDocumentoServicio, ListaDocumentosServicio } from './documentos-servicio'
 import { NuevaOrdenServicio } from './formulario'
 
 export const metadata = { title: 'Órdenes de servicio' }
@@ -27,6 +28,8 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
   const perfil = await exigirPermiso(['compras.crear', 'compras.ver', 'compras.detraccion'])
   const emite = puede(perfil, 'compras.crear')
   const corrigeDetraccion = puede(perfil, ['compras.crear', 'compras.detraccion'])
+  // La factura y el contrato de la OS los adjuntan Logística y Tesorería (`puede_adjuntar_documento_servicio`).
+  const adjunta = puede(perfil, ['compras.crear', 'tesoreria.pagar_servicios'])
   const { codigo = '' } = await searchParams
   const buscado = codigo.trim()
   const [servicios, tipos, proveedores, ordenes, areas] = await Promise.all([
@@ -90,7 +93,7 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
               />
             ) : (
               visibles.map((s) => (
-                <FilaServicio key={s.id} servicio={s} emite={emite} corrigeDetraccion={corrigeDetraccion} tipos={tipos} />
+                <FilaServicio key={s.id} servicio={s} emite={emite} adjunta={adjunta} corrigeDetraccion={corrigeDetraccion} tipos={tipos} />
               ))
             )}
           </tbody>
@@ -103,11 +106,13 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
 function FilaServicio({
   servicio: s,
   emite,
+  adjunta,
   corrigeDetraccion,
   tipos,
 }: {
   servicio: OrdenServicioListada
   emite: boolean
+  adjunta: boolean
   corrigeDetraccion: boolean
   tipos: TipoDetraccion[]
 }) {
@@ -132,6 +137,7 @@ function FilaServicio({
         {s.motivo_rechazo && <p className="mt-1 text-xs text-peligro">Rechazada: {s.motivo_rechazo}</p>}
         {s.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulada: {s.motivo_anulacion}</p>}
         {s.observacion_conformidad && <p className="mt-1 text-xs text-texto-suave">Conformidad: {s.observacion_conformidad}</p>}
+        <ListaDocumentosServicio documentos={s.documentos} anula={adjunta && vigente} />
         <p className="mt-1 text-[11px] text-texto-suave md:hidden">
           <span className="tabular font-medium text-texto" data-codigo>
             {s.codigo_interno ?? 'Sin código interno'}
@@ -163,6 +169,7 @@ function FilaServicio({
               anular
             />
           )}
+          {adjunta && vigente && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero} />}
           {corrigeDetraccion && vigente && (
             <CorregirServicio
               id={s.id}

@@ -88,6 +88,9 @@ select pg_temp.como('almacenero');
 set local role authenticated;
 select public.rq_marcar_sin_stock(current_setting('prueba.rq')::uuid, 'No hay nada de esto');
 reset role;
+-- El número del RQ, leído como dueño: desde la 20261020174600 Contabilidad no lee los requerimientos,
+-- y Adquisiciones se lo da igual.
+select set_config('prueba.numero_rq', (select numero from public.requerimientos where id = current_setting('prueba.rq')::uuid), true);
 select pg_temp.como('comprador');
 set local role authenticated;
 select pg_temp.generar('oc' || n, n::smallint, n <> 7) from generate_series(1, 7) n;
@@ -207,7 +210,9 @@ select test.afirmar(pg_temp.pago('oc6') = 'PAGADA'
     and (select total = current_setting('prueba.total6')::numeric and (facturas->0->>'saldo')::numeric = 0
            from public.trazabilidad_de_compras() where id = current_setting('prueba.oc6')::uuid),
   'la factura entera pagada deja la OC pagada, con el total impreso y sin saldo');
-select test.afirmar(pg_temp.pago('oc7') = 'SIN_FACTURA', 'la que va con boleta no espera factura');
+-- Desde la 20261020210000 la OC con boleta la paga Tesorería directo: espera su pago, no una factura.
+-- La de antes (`pago_en_tesoreria` falso) sigue «fuera del sistema»: lo prueba el check 421.
+select test.afirmar(pg_temp.pago('oc7') = 'POR_PAGAR', 'la que va con boleta espera que Tesorería la pague');
 select test.afirmar(pg_temp.pago('os1') = 'POR_PAGAR' and pg_temp.pago('os2') = 'PAGADA' and pg_temp.pago('os3') = 'ESPERA_APROBACION'
     and pg_temp.pago('os4') = 'NO_SE_PAGA' and pg_temp.pago('os5') = 'PAGO_PARCIAL',
   'las OS: por pagar, pagada, esperando a Gerencia, anulada y pagada en parte');
@@ -216,7 +221,7 @@ select test.afirmar(
      from public.trazabilidad_de_compras() where id = current_setting('prueba.os2')::uuid),
   'la OS lleva su total con IGV, su código interno y su pago');
 select test.afirmar(
-  (select requerimientos->0->>'numero' = (select numero from public.requerimientos where id = current_setting('prueba.rq')::uuid)
+  (select requerimientos->0->>'numero' = current_setting('prueba.numero_rq')
           and codigos = array['PLA_SR_O4_1_26/28'] and areas = array['Maestranza']
           and jsonb_array_length(documentos) = 1 and documentos->0->>'tipo' = 'COTIZACION'
      from public.trazabilidad_de_compras() where id = current_setting('prueba.oc3')::uuid),

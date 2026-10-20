@@ -257,7 +257,8 @@ const rechaza = async (pagina, ruta) => {
   comprobar(pagos[nombre(oc[0])]?.startsWith('Espera a Gerencia'), 'la OC sin aprobar espera a Gerencia')
   comprobar(/^Pagada en parte Saldo S\/ [\d,.]+ Voucher .*S\/ 100\.00/.test(pagos[nombre(oc[1])] ?? ''), `la OC con factura pagada en parte dice su saldo y su voucher («${pagos[nombre(oc[1])]}»)`)
   comprobar(pagos[nombre(oc[2])]?.startsWith('Espera su factura'), 'la OC sin factura registrada espera su factura')
-  comprobar(pagos[nombre(oc[3])]?.startsWith('Sin factura'), 'la que va con boleta no espera factura')
+  // Desde la 20261020210000 la OC con boleta la paga Tesorería, como una OS.
+  comprobar(pagos[nombre(oc[3])]?.startsWith('Por pagar'), 'la que va con boleta no espera factura: la paga Tesorería')
   comprobar(/^Pagada Voucher .*S\/ 590\.00/.test(pagos[`QA-OS-${SUFIJO}-1`] ?? ''), `la OS pagada, con su voucher («${pagos[`QA-OS-${SUFIJO}-1`]}»)`)
   comprobar(pagos[`QA-OS-${SUFIJO}-2`]?.startsWith('Espera a Gerencia'), 'la OS sin aprobar espera a Gerencia')
   comprobar(!(pagos[nombre(oc[1])] ?? '').includes('Pagar en Cuentas por pagar'), 'a Contabilidad no le ofrece pagar: eso es de Tesorería')

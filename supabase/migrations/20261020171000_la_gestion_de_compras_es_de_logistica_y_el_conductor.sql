@@ -58,16 +58,29 @@ alter policy ver_guias_remision_compra on public.guias_remision_compra using (
   or (select public.tiene_permiso('adquisiciones.ver')));
 
 -- La auditoría de la lista, con lo mismo que su política. Es la de
--- 20261020150000 (5. la auditoría no destapa lo tapado) más esa tabla: quien
--- vuelva a escribir esta política tiene que conservar las dos.
+-- 20261020165000 (el DNI y el costo los lleva RR. HH., que a su vez conserva la
+-- de 20261020150000) más esa tabla: quien vuelva a escribir esta política tiene
+-- que conservar las dos.
 alter policy ver_audit_log on public.audit_log using (
   public.es_admin() or (
     public.tiene_permiso('auditoria.ver')
     and (tabla <> all (array['cajas', 'movimientos_caja', 'cierres_caja'])
          or public.tiene_permiso('tesoreria.caja'))
     and (tabla <> all (array['trabajador_remuneraciones', 'trabajador_costos', 'tareos',
-                             'trabajador_cuentas'])
+                             'trabajador_cuentas', 'trabajadores'])
          or public.tiene_permiso('rrhh.personal'))
+    and (tabla <> 'usuario_datos_reservados'
+         or public.tiene_permiso('rrhh.personal') or public.tiene_permiso('usuarios.gestionar'))
+    -- La auditoría de `usuarios` de antes de la mudanza copió la fila entera,
+    -- con el DNI y el costo. Esas filas no se reescriben (son evidencia): las
+    -- que llevan alguno de los dos se ven solo con el mismo permiso que la
+    -- tabla reservada. Las demás, y todas las de después, siguen a la vista.
+    and (tabla <> 'usuarios'
+         or public.tiene_permiso('rrhh.personal') or public.tiene_permiso('usuarios.gestionar')
+         or (nullif(datos_antes ->> 'documento', '') is null
+             and nullif(datos_despues ->> 'documento', '') is null
+             and coalesce((datos_antes ->> 'costo_hora')::numeric, 0) = 0
+             and coalesce((datos_despues ->> 'costo_hora')::numeric, 0) = 0))
     and (tabla <> all (array['planillas', 'planilla_personas', 'planilla_distribuciones'])
          or public.tiene_permiso('rrhh.ver_planillas'))
     and (tabla <> all (array['cotizaciones_pdf', 'cotizaciones_pdf_versiones', 'cotizaciones_pdf_igv',
@@ -83,7 +96,6 @@ alter policy ver_audit_log on public.audit_log using (
     and (tabla <> 'subcontratistas' or public.puede_ver_subcontratos())
     and (tabla <> all (array['planilla_diaria_personas', 'planilla_diaria_detalle'])
          or public.puede_ver_planilla_diaria())
-    and (tabla <> 'trabajadores' or public.puede_ver_trabajadores())
     and (tabla <> 'programacion_recojo'
          or public.tiene_permiso('compras.programar_recojo') or public.tiene_permiso('compras.recojo'))
   )

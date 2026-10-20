@@ -14,10 +14,11 @@ export const ESTADO_PAGO: Record<string, Def> = {
   PAGO_PARCIAL: { etiqueta: 'Pagada en parte', tono: 'info', descripcion: 'Hay un pago, pero falta pagar o facturar otra parte.' },
   POR_PAGAR: { etiqueta: 'Por pagar', tono: 'aviso', descripcion: 'Lista para que Tesorería la pague.' },
   POR_FACTURAR: { etiqueta: 'Espera su factura', tono: 'aviso', descripcion: 'Contabilidad todavía no registra su factura.' },
+  // La OC con boleta de antes de que Tesorería registrara esos pagos (migración 20261020210000).
   SIN_FACTURA: {
-    etiqueta: 'Sin factura',
+    etiqueta: 'Pago fuera del sistema',
     tono: 'neutro',
-    descripcion: 'Va con boleta, nota de venta o recibo: su pago no se registra en el sistema, solo su comprobante.',
+    descripcion: 'Va con boleta y es de antes de que Tesorería registrara el pago de las OC con boleta: su pago no quedó en el sistema.',
   },
   ESPERA_APROBACION: { etiqueta: 'Espera a Gerencia', tono: 'neutro', descripcion: 'No se paga hasta que Gerencia la apruebe.' },
   NO_SE_PAGA: { etiqueta: 'No se paga', tono: 'neutro', descripcion: 'Rechazada o anulada.' },
@@ -32,6 +33,24 @@ export const TIPO_DOCUMENTO_COMPRA: Record<string, string> = {
   FACTURA: 'Factura',
   COMPROBANTE: 'Boleta, nota de venta o recibo',
   OTRO: 'Otro documento',
+}
+
+/** Los documentos de una OS (migración 20261020210000): los adjuntan Logística y Tesorería. */
+export const TIPO_DOCUMENTO_SERVICIO: Record<string, string> = {
+  FACTURA: 'Factura',
+  BOLETA: 'Boleta',
+  RECIBO: 'Recibo',
+  CONTRATO: 'Contrato',
+  OTRO: 'Otro documento',
+}
+
+/** La factura, la boleta y el recibo llevan su número; el contrato y lo demás, no. */
+export const COMPROBANTES_DE_SERVICIO = ['FACTURA', 'BOLETA', 'RECIBO'] as const
+
+/** Cómo se nombra un documento de la OS: «Factura F001-123», «Contrato». La usan el servidor y el navegador. */
+export function etiquetaDocumentoServicio(d: { tipo: string; numero: string | null }) {
+  const tipo = TIPO_DOCUMENTO_SERVICIO[d.tipo] ?? 'Documento'
+  return d.numero ? `${tipo} ${d.numero}` : tipo
 }
 
 /** Lo que necesitan los filtros de cada fila. */

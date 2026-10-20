@@ -730,6 +730,17 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       texto: n => plural(n, 'factura de compra por pagar', 'facturas de compra por pagar'),
       contar: async () => (await porPagar()).resto,
     })
+    // Las OC con boleta, que Tesorería paga directo (migración 20261020210000);
+    // la que tiene líneas sin precio espera a Logística, no a Tesorería.
+    tareas.push({
+      clave: 'compras_con_boleta_por_pagar', ruta: '/tesoreria/por-pagar', tono: 'aviso',
+      texto: n => plural(n, 'OC con boleta por pagar', 'OC con boleta por pagar'),
+      contar: async () => {
+        const { data, error } = await supabase.rpc('compras_con_boleta_por_pagar')
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        return (data ?? []).filter((c) => !c.cancelada && !c.sin_precio).length
+      },
+    })
   }
   if (puede(perfil, 'subcontratos.pagar')) tareas.push({
     clave: 'recibos_por_pagar', ruta: '/tesoreria/recibos-por-honorarios', tono: 'aviso',

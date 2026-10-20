@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila } from '@/lib/datos/logistica'
+import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, documentosDeServicios, type DocumentoDeServicio } from '@/lib/datos/logistica'
 import type { DetraccionDeServicio } from '@/lib/dominio/detraccion'
 import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO } from '@/lib/dominio/finanzas'
 import type { CodigoMoneda } from '@/lib/format'
@@ -219,6 +219,8 @@ export type ServicioPorPagar = ServicioFila & {
   pagos: (PagoServicioFila & { url: string | null })[]
   cuentas: Pick<Tablas<'proveedor_cuentas'>, 'id' | 'banco' | 'numero_cuenta' | 'titular' | 'moneda'>[]
   detraccion: DetraccionDeServicio
+  /** La factura, la boleta o el recibo del proveedor, y el contrato (migración 20261020210000). */
+  documentos: DocumentoDeServicio[]
 }
 
 /**
@@ -233,7 +235,7 @@ export async function serviciosPorPagar(verCuentas: boolean): Promise<ServicioPo
   const filas = data ?? []
   const ids = filas.flatMap((f) => (f.id ? [f.id] : []))
   const proveedores = [...new Set(filas.flatMap((f) => (f.proveedor_id ? [f.proveedor_id] : [])))]
-  const [pagos, cuentas, detracciones, tipos] = await Promise.all([
+  const [pagos, cuentas, detracciones, tipos, documentos] = await Promise.all([
     ids.length
       ? supabase
           .from('pagos_orden_servicio')
@@ -246,6 +248,7 @@ export async function serviciosPorPagar(verCuentas: boolean): Promise<ServicioPo
       : Promise.resolve({ data: [], error: null }),
     ids.length ? supabase.from('ordenes_servicio').select(COLUMNAS_DETRACCION).in('id', ids) : Promise.resolve({ data: [], error: null }),
     ids.length ? cargarTiposDetraccion() : Promise.resolve([]),
+    documentosDeServicios(ids),
   ])
   if (pagos.error) throw new Error(`No se pudieron leer los pagos de servicio: ${pagos.error.message}`)
   if (cuentas.error) throw new Error(`No se pudieron leer las cuentas de los proveedores: ${cuentas.error.message}`)
@@ -257,5 +260,6 @@ export async function serviciosPorPagar(verCuentas: boolean): Promise<ServicioPo
     pagos: (pagos.data ?? []).filter((p) => p.orden_servicio_id === f.id).map((p) => ({ ...p, url: urls.get(p.archivo_ruta) ?? null })),
     cuentas: (cuentas.data ?? []).filter((c) => c.proveedor_id === f.proveedor_id).map(({ id, banco, numero_cuenta, titular, moneda }) => ({ id, banco, numero_cuenta, titular, moneda })),
     detraccion: detraccionDeFila(f.id ? detraccionDe.get(f.id) : undefined, tipos),
+    documentos: (f.id && documentos.get(f.id)) || [],
   }))
 }

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { DetraccionDeServicio, TipoDetraccion } from '@/lib/dominio/detraccion'
+import { BUCKET_DOCUMENTOS_SERVICIO } from '@/lib/dominio/finanzas'
 import { validacionDeCompra, type ValidacionIngreso } from '@/lib/dominio/logistica'
 import { createClient } from '@/lib/supabase/server'
 
@@ -263,6 +264,52 @@ export type OrdenServicioListada = {
   /** Vacío solo en las OS de antes de que se pidiera. */
   codigo_interno: string | null
   detraccion: DetraccionDeServicio
+  documentos: DocumentoDeServicio[]
+}
+
+/** La factura, la boleta, el recibo o el contrato de una OS, con su enlace (migración 20261020210000). */
+export type DocumentoDeServicio = {
+  id: string
+  tipo: string
+  numero: string | null
+  nombre: string
+  creado_en: string
+  /** Null si la firma falló o la política de quien mira no lo deja abrir: el documento se lista igual. */
+  url: string | null
+}
+
+/**
+ * Los documentos vigentes de esas OS, por OS, con su enlace firmado. Quien no
+ * los puede ver (el RLS de la tabla) recibe la lista vacía.
+ */
+export async function documentosDeServicios(ids: string[]): Promise<Map<string, DocumentoDeServicio[]>> {
+  const mapa = new Map<string, DocumentoDeServicio[]>()
+  if (ids.length === 0) return mapa
+  const supabase = await createClient()
+  const filas = []
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data, error } = await supabase
+      .from('documentos_orden_servicio')
+      .select('id, orden_servicio_id, tipo, numero, nombre_archivo, ruta_storage, creado_en')
+      .in('orden_servicio_id', ids.slice(i, i + 150))
+      .is('anulado_en', null)
+      .order('creado_en')
+    if (error) throw new Error(`No se pudieron leer los documentos de las órdenes de servicio: ${error.message}`)
+    filas.push(...(data ?? []))
+  }
+  const urls = new Map<string, string>()
+  if (filas.length > 0) {
+    const { data, error } = await supabase.storage.from(BUCKET_DOCUMENTOS_SERVICIO).createSignedUrls([...new Set(filas.map((f) => f.ruta_storage))], 600)
+    // Sin enlace el documento se lista igual: se ve qué hay aunque no se abra.
+    if (error) console.error('No se pudieron firmar los documentos de las órdenes de servicio:', error.message)
+    for (const e of data ?? []) if (e.path && e.signedUrl) urls.set(e.path, e.signedUrl)
+  }
+  for (const f of filas) {
+    const lista = mapa.get(f.orden_servicio_id) ?? []
+    lista.push({ id: f.id, tipo: f.tipo, numero: f.numero, nombre: f.nombre_archivo, creado_en: f.creado_en, url: urls.get(f.ruta_storage) ?? null })
+    mapa.set(f.orden_servicio_id, lista)
+  }
+  return mapa
 }
 
 /** Los tipos de servicio con detracción, con el porcentaje y el mínimo de SUNAT. */
@@ -334,6 +381,7 @@ export async function cargarOrdenesServicio(): Promise<OrdenServicioListada[]> {
   if (error) throw new Error(`No se pudieron leer las órdenes de servicio: ${error.message}`)
   if (extra.error) throw new Error(`No se pudo leer la detracción de las órdenes de servicio: ${extra.error.message}`)
   const porId = new Map((extra.data ?? []).map((f) => [f.id, f]))
+  const documentos = await documentosDeServicios((data ?? []).flatMap((s) => (s.id ? [s.id] : [])))
   return (data ?? []).map((s) => ({
     id: s.id ?? '',
     numero: s.numero ?? '',
@@ -361,6 +409,7 @@ export async function cargarOrdenesServicio(): Promise<OrdenServicioListada[]> {
     atrasada: s.atrasada === true,
     codigo_interno: porId.get(s.id ?? '')?.codigo_interno ?? null,
     detraccion: detraccionDeFila(porId.get(s.id ?? ''), tipos),
+    documentos: documentos.get(s.id ?? '') ?? [],
   }))
 }
 

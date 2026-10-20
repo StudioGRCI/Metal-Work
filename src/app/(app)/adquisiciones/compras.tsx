@@ -8,11 +8,18 @@ import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { claveDeArchivo, enlacesDeCompras, trazabilidadDeCompras, type CompraTrazada } from '@/lib/datos/trazabilidad-compras'
-import { ESTADO_PAGO, SITUACIONES, TIPO_DOCUMENTO_COMPRA, enSituacion, guiaPorCargar } from '@/lib/dominio/adquisiciones'
+import {
+  bucketDelDocumento,
+  bucketDelPago,
+  claveDeArchivo,
+  enlacesDeCompras,
+  trazabilidadDeCompras,
+  type CompraTrazada,
+} from '@/lib/datos/trazabilidad-compras'
+import { ESTADO_PAGO, SITUACIONES, TIPO_DOCUMENTO_COMPRA, TIPO_DOCUMENTO_SERVICIO, enSituacion, guiaPorCargar } from '@/lib/dominio/adquisiciones'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { TIPO_COMPROBANTE, definir } from '@/lib/dominio/estados'
-import { BUCKET_PAGOS_FACTURAS, BUCKET_PAGOS_SERVICIO } from '@/lib/dominio/finanzas'
+import { BUCKET_PAGOS_FACTURAS } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO, situacionCompra } from '@/lib/dominio/logistica'
 import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
 import { cantidad, fecha, hoyLima, moneda } from '@/lib/format'
@@ -418,7 +425,8 @@ function Archivo({ url, children }: { url: string | undefined; children: ReactNo
 /**
  * Los documentos de la orden: la factura que registró Contabilidad, los PDF que
  * adjuntó Logística con su tipo (la cotización, la boleta…), la guía de
- * remisión y, de la OS, el número del comprobante que Tesorería anotó al pagar.
+ * remisión y, de la OS, su factura y su contrato, y el número del comprobante
+ * que Tesorería anotó al pagar si nadie adjuntó ese comprobante.
  */
 function Documentos({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>; acceso: Acceso }) {
   // La factura que Contabilidad registró sobre el PDF que anexó Logística es un solo archivo.
@@ -428,7 +436,10 @@ function Documentos({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, s
   const sinComprobante = f.tipo === 'OC' && f.con_factura === false && aprobada && !f.documentos.some((d) => d.tipo === 'COMPROBANTE')
   const faltaFacturar =
     f.tipo === 'OC' && f.con_factura && aprobada && f.facturas.some((x) => x.estado === 'REGISTRADA') && !f.facturada_entera && f.total !== null
-  const comprobantesOs = f.pagos.flatMap((p) => (p.comprobante ? [p.comprobante] : []))
+  const adjuntados = new Set(f.documentos.flatMap((d) => (d.numero ? [d.numero] : [])))
+  const comprobantesOs =
+    f.tipo === 'OS' ? f.pagos.flatMap((p) => (p.comprobante && !adjuntados.has(p.comprobante) ? [p.comprobante] : [])) : []
+  const tipos = f.tipo === 'OS' ? TIPO_DOCUMENTO_SERVICIO : TIPO_DOCUMENTO_COMPRA
   const porCargar = guiaPorCargar(f)
   const vacio =
     f.facturas.length === 0 && adjuntos.length === 0 && !f.guia && !porCargar && comprobantesOs.length === 0 && !sinComprobante && !faltaFacturar
@@ -454,8 +465,8 @@ function Documentos({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, s
       )}
       {adjuntos.map((d) => (
         <li key={d.id} title={d.nombre}>
-          <Archivo url={urls.get(claveDeArchivo('documentos-compras', d.ruta))}>
-            {TIPO_DOCUMENTO_COMPRA[d.tipo] ?? d.tipo}
+          <Archivo url={urls.get(claveDeArchivo(bucketDelDocumento(f, d), d.ruta))}>
+            {tipos[d.tipo] ?? d.tipo}
             {d.numero && <span className="tabular"> {d.numero}</span>}
           </Archivo>
           <span className="tabular text-texto-suave"> · {fecha(d.creado_en)}</span>
@@ -516,7 +527,7 @@ function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>
                 {x.pagado > 0 ? 'Saldo' : 'Por pagar'} {moneda(x.saldo, m)}
               </p>
             )}
-            <Vouchers pagos={x.pagos.map((p) => ({ ...p, moneda: x.moneda }))} bucket={BUCKET_PAGOS_FACTURAS} urls={urls} />
+            <Vouchers pagos={x.pagos.map((p) => ({ ...p, moneda: x.moneda }))} bucket={() => BUCKET_PAGOS_FACTURAS} urls={urls} />
             {acceso.porPagar && x.saldo > 0 && (
               <Link href={`/tesoreria/por-pagar#factura-${x.id}`} className={`${toque} ${enlace}`}>
                 {acceso.porPagar === 'pagar' ? 'Pagar en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
@@ -525,10 +536,16 @@ function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>
           </div>
         )
       })}
-      {f.tipo === 'OS' && <Vouchers pagos={f.pagos} bucket={BUCKET_PAGOS_SERVICIO} urls={urls} />}
+      {/* La OS y, desde la migración 20261020210000, la OC con boleta: Tesorería las paga sin factura registrada. */}
+      <Vouchers pagos={f.pagos} bucket={(p) => bucketDelPago(f, p)} urls={urls} />
       {f.tipo === 'OS' && acceso.pagosServicio && (f.pago === 'POR_PAGAR' || f.pago === 'PAGO_PARCIAL') && (
         <Link href="/tesoreria/pagos-de-servicio" className={`${toque} ${enlace}`}>
           {acceso.pagosServicio === 'pagar' ? 'Pagar en Pagos de servicio' : 'Ver en Pagos de servicio'}
+        </Link>
+      )}
+      {f.tipo === 'OC' && f.con_factura === false && !f.facturas.some((x) => x.estado === 'REGISTRADA') && acceso.porPagar && (f.pago === 'POR_PAGAR' || f.pago === 'PAGO_PARCIAL') && (
+        <Link href={`/tesoreria/por-pagar#compra-${f.id}`} className={`${toque} ${enlace}`}>
+          {acceso.porPagar === 'pagar' ? 'Pagar en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
         </Link>
       )}
     </div>
@@ -540,8 +557,8 @@ function Vouchers({
   bucket,
   urls,
 }: {
-  pagos: { id: string; fecha: string; monto: number; moneda: string; ruta: string | null; cancela?: boolean }[]
-  bucket: string
+  pagos: { id: string; fecha: string; monto: number; moneda: string; ruta: string | null; cancela?: boolean; bucket?: string }[]
+  bucket: (pago: { bucket?: string }) => string
   urls: Map<string, string>
 }) {
   if (pagos.length === 0) return null
@@ -549,7 +566,7 @@ function Vouchers({
     <ul className="space-y-0.5">
       {pagos.map((p, i) => (
         <li key={p.id}>
-          <Archivo url={p.ruta ? urls.get(claveDeArchivo(bucket, p.ruta)) : undefined}>Voucher{pagos.length > 1 ? ` ${i + 1}` : ''}</Archivo>{' '}
+          <Archivo url={p.ruta ? urls.get(claveDeArchivo(bucket(p), p.ruta)) : undefined}>Voucher{pagos.length > 1 ? ` ${i + 1}` : ''}</Archivo>{' '}
           <span className="tabular text-texto-suave">
             {fecha(p.fecha)} · <span className="whitespace-nowrap">{moneda(p.monto, codigo(p.moneda))}</span>
             {p.cancela === false && ' · a cuenta'}

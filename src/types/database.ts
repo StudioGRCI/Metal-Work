@@ -2227,6 +2227,79 @@ export type Database = {
           }
         ]
       }
+      documentos_orden_servicio: {
+        Row: {
+          id: string
+          orden_servicio_id: string
+          tipo: string
+          numero: string | null
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type: string
+          tamano_bytes: number
+          subido_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_servicio_id: string
+          tipo: string
+          numero?: string | null
+          nombre_archivo: string
+          ruta_storage: string
+          mime_type: string
+          tamano_bytes: number
+          subido_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_servicio_id?: string
+          tipo?: string
+          numero?: string | null
+          nombre_archivo?: string
+          ruta_storage?: string
+          mime_type?: string
+          tamano_bytes?: number
+          subido_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documentos_orden_servicio_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documentos_orden_servicio_orden_servicio_id_fkey"
+            columns: ["orden_servicio_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_servicio"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documentos_orden_servicio_subido_por_fkey"
+            columns: ["subido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       empresa: {
         Row: {
           id: string
@@ -3840,6 +3913,7 @@ export type Database = {
           codigo_interno: string | null
           en_recojo_en: string | null
           en_recojo_por: string | null
+          pago_en_tesoreria: boolean
         }
         Insert: {
           id?: string
@@ -3880,6 +3954,7 @@ export type Database = {
           codigo_interno?: string | null
           en_recojo_en?: string | null
           en_recojo_por?: string | null
+          pago_en_tesoreria?: boolean
         }
         Update: {
           id?: string
@@ -3920,6 +3995,7 @@ export type Database = {
           codigo_interno?: string | null
           en_recojo_en?: string | null
           en_recojo_por?: string | null
+          pago_en_tesoreria?: boolean
         }
         Relationships: [
           {
@@ -6351,6 +6427,88 @@ export type Database = {
           },
           {
             foreignKeyName: "pagos_adquisicion_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      pagos_orden_compra: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          fecha_pago: string
+          moneda: string
+          monto: number
+          cancela: boolean
+          operacion: string | null
+          comprobante_proveedor: string | null
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id: string
+          fecha_pago: string
+          moneda: string
+          monto: number
+          cancela?: boolean
+          operacion?: string | null
+          comprobante_proveedor?: string | null
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          fecha_pago?: string
+          moneda?: string
+          monto?: number
+          cancela?: boolean
+          operacion?: string | null
+          comprobante_proveedor?: string | null
+          archivo_ruta?: string
+          archivo_mime?: string
+          archivo_tamano?: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pagos_orden_compra_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_orden_compra_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_orden_compra_registrado_por_fkey"
             columns: ["registrado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
@@ -10546,6 +10704,17 @@ export type Database = {
         }
         Returns: null
       }
+      adjuntar_documento_servicio: {
+        Args: {
+          p_id: string | null
+          p_orden_servicio: string | null
+          p_tipo: string | null
+          p_numero: string | null
+          p_nombre: string | null
+          p_ruta: string | null
+        }
+        Returns: string
+      }
       adjuntar_ficha_vehiculo_firmada: {
         Args: {
           p_registro: string | null
@@ -10586,6 +10755,13 @@ export type Database = {
         }
         Returns: string
       }
+      anular_documento_servicio: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       anular_factura_venta: {
         Args: {
           p_factura: string | null
@@ -10608,6 +10784,13 @@ export type Database = {
         Returns: string
       }
       anular_movimiento_caja: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      anular_pago_compra: {
         Args: {
           p_id: string | null
           p_motivo: string | null
@@ -11738,6 +11921,29 @@ export type Database = {
         }
         Returns: boolean
       }
+      compras_con_boleta_por_pagar: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          numero: string | null
+          referencia: string | null
+          proveedor_id: string | null
+          proveedor: string | null
+          proveedor_documento: string | null
+          codigo_interno: string | null
+          moneda: string | null
+          total: number | null
+          sin_precio: boolean | null
+          condicion_pago: string | null
+          dias_credito: number | null
+          creado_en: string | null
+          vence: string | null
+          recojo: string | null
+          pagado: number | null
+          cancelada: boolean | null
+          ultimo_pago: string | null
+        }[]
+      }
       compras_en_gestion: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -12749,6 +12955,18 @@ export type Database = {
         }
         Returns: string
       }
+      lineas_de_compra_en_papel: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: {
+          detalle_id: string | null
+          numero_ot: string | null
+          material: string | null
+          material_codigo: string | null
+          unidad: string | null
+        }[]
+      }
       lote_de_prueba: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -13244,6 +13462,10 @@ export type Database = {
         }
         Returns: Json
       }
+      puede_adjuntar_documento_servicio: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       puede_armar_hoja_de_area: {
         Args: {
           p_area_id: string | null
@@ -13585,6 +13807,21 @@ export type Database = {
           p_ruta_pdf: string | null
           p_nombre_pdf: string | null
           p_tamano_pdf: number | null
+        }
+        Returns: string
+      }
+      registrar_pago_compra: {
+        Args: {
+          p_id: string | null
+          p_orden_compra: string | null
+          p_fecha_pago: string | null
+          p_monto: number | null
+          p_cancela: boolean | null
+          p_operacion: string | null
+          p_comprobante: string | null
+          p_ruta: string | null
+          p_caja: string | null
+          p_monto_cuenta: number | null
         }
         Returns: string
       }
