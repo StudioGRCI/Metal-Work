@@ -304,6 +304,9 @@ async function releerEscritura(cliente, esq, relacion, filas, busqueda) {
   if (!seleccion || seleccion === '*' || filas.length === 0) return filas
   const primaria = esq.relaciones.get(relacion)?.primaria ?? []
   if (primaria.length !== 1) return filas
+  // Una escritura que pidió solo columnas sueltas, sin la llave (`select('usuario_id')`
+  // en una tabla cuya llave es `id`), ya las trae: no hay incrustaciones que releer.
+  if (!(primaria[0] in filas[0])) return filas
 
   const claves = filas.map((f) => f[primaria[0]])
   const busquedaRelectura = new URLSearchParams()
@@ -399,7 +402,7 @@ async function manejarDatos(req, res, url) {
   if (req.method === 'POST' || req.method === 'PATCH' || req.method === 'DELETE') {
     const crudo = (await leerCuerpo(req)).toString()
     const cuerpo = crudo ? JSON.parse(crudo) : {}
-    const escritura = construirEscritura(esq, relacion, req.method, cuerpo, url.searchParams)
+    const escritura = construirEscritura(esq, relacion, req.method, cuerpo, url.searchParams, prefiere)
     const devuelve = prefiere.includes('return=representation')
     const objeto = (req.headers.accept ?? '').includes('vnd.pgrst.object')
 

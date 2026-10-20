@@ -3357,6 +3357,7 @@ export type Database = {
           formato_ruta: string | null
           formato_cerrado_en: string | null
           formato_cerrado_por: string | null
+          numero_salida: string | null
         }
         Insert: {
           id: string
@@ -3386,6 +3387,7 @@ export type Database = {
           formato_ruta?: string | null
           formato_cerrado_en?: string | null
           formato_cerrado_por?: string | null
+          numero_salida?: string | null
         }
         Update: {
           id?: string
@@ -3415,6 +3417,7 @@ export type Database = {
           formato_ruta?: string | null
           formato_cerrado_en?: string | null
           formato_cerrado_por?: string | null
+          numero_salida?: string | null
         }
         Relationships: [
           {
@@ -9541,6 +9544,41 @@ export type Database = {
             columns: ["unidad_base_id"]
             isOneToOne: false
             referencedRelation: "unidades_medida"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      usuario_datos_reservados: {
+        Row: {
+          id: string
+          usuario_id: string
+          documento: string | null
+          costo_hora: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          usuario_id: string
+          documento?: string | null
+          costo_hora?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          usuario_id?: string
+          documento?: string | null
+          costo_hora?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usuario_datos_reservados_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: true
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]

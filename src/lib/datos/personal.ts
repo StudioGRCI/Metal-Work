@@ -27,7 +27,7 @@ export async function listarPersonal(filtros: { busqueda?: string; estado?: stri
   let consulta = supabase
     .from('usuarios')
     .select(
-      'id, codigo, nombres, apellidos, correo, cargo, telefono, documento, es_operario, costo_hora, activo,' +
+      'id, codigo, nombres, apellidos, correo, cargo, telefono, es_operario, activo,' +
         ' rol:roles!inner(id, codigo, nombre),' +
         ' area:areas!usuarios_area_id_fkey(id, codigo, nombre), sede:sedes(id, nombre)',
     )
@@ -36,12 +36,27 @@ export async function listarPersonal(filtros: { busqueda?: string; estado?: stri
   if (filtros.estado === 'activos') consulta = consulta.eq('activo', true)
   if (filtros.estado === 'bajas') consulta = consulta.eq('activo', false)
 
-  for (const filtro of filtrosDeBusqueda(['nombres', 'apellidos', 'correo', 'documento'], filtros.busqueda)) consulta = consulta.or(filtro)
+  for (const filtro of filtrosDeBusqueda(['nombres', 'apellidos', 'correo'], filtros.busqueda)) consulta = consulta.or(filtro)
 
   const { data, error } = await consulta
   if (error) throw new Error(`No se pudo listar el personal: ${error.message}`)
+  const personas = (data ?? []) as unknown as Omit<PersonaEnLista, 'documento' | 'costo_hora'>[]
 
-  return (data ?? []) as unknown as PersonaEnLista[]
+  // El DNI y el costo por hora viven aparte (migración 20261020163000): `usuarios`
+  // la lee toda cuenta, y esta tabla solo RR. HH. y quien administra el personal.
+  // Para cualquier otro, el RLS la devuelve vacía y la ficha sale sin esos dos.
+  const reservados = new Map<string, { documento: string | null; costo_hora: number }>()
+  const ids = personas.map((p) => p.id)
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data: tanda, error: errorReservados } = await supabase
+      .from('usuario_datos_reservados')
+      .select('usuario_id, documento, costo_hora')
+      .in('usuario_id', ids.slice(i, i + 150))
+    if (errorReservados) throw new Error(`No se pudo leer el DNI y el costo del personal: ${errorReservados.message}`)
+    for (const r of tanda ?? []) reservados.set(r.usuario_id, { documento: r.documento, costo_hora: Number(r.costo_hora) })
+  }
+
+  return personas.map((p) => ({ ...p, documento: null, costo_hora: 0, ...reservados.get(p.id) }))
 }
 
 /** Los catálogos que necesita el formulario de alta. */

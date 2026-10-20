@@ -1,0 +1,215 @@
+-- Lo que DKS decidió el 2026-10-20, probado con los puestos reales y
+-- `set local role authenticated`:
+--
+--   · los reportes de trabajos sin OT los aprueban Administración y Gerencia
+--     (migración 20261020160000);
+--   · la cotización rechazada, o la que ya pasó por Gerencia, no se quita: se
+--     corrige y queda como evidencia; la recién subida sí (20261020161000);
+--   · la salida de materia prima y la de EPP nacen con su número de la casa,
+--     sin huecos, y la de consumibles no lleva (20261020162000);
+--   · el costo por hora y el DNI viven fuera de `usuarios`: los lee Recursos
+--     Humanos y quien administra el personal, nadie más, ni en la auditoría
+--     (20261020163000).
+--
+-- Termina en rollback.
+\set ON_ERROR_STOP on
+begin;
+
+insert into public.sedes (codigo, nombre) values ('QA403', 'Taller prueba 403') on conflict (codigo) do nothing;
+select id as sede_id from public.sedes where codigo = 'QA403' \gset
+select test.crear_usuario('Gil', 'Gerente', 'gerencia403@demo.pe', 'GERENTE', :'sede_id') as gerente_id \gset
+select test.crear_usuario('Ofe', 'Oficina', 'administracion403@demo.pe', 'ADMINISTRACION', :'sede_id') as oficina_id \gset
+select test.crear_usuario('Ana', 'Admin', 'admin403@demo.pe', 'ADMIN', :'sede_id') as admin_id \gset
+select test.crear_usuario('Rut', 'Humanos', 'rrhh403@demo.pe', 'RECURSOS_HUMANOS', :'sede_id') as rrhh_id \gset
+select test.crear_usuario('Pio', 'Portero', 'porteria403@demo.pe', 'PORTERO', :'sede_id') as portero_id \gset
+select test.crear_usuario('Vera', 'Ventas', 'ventas403@demo.pe', 'VENDEDOR', :'sede_id') as ventas_id \gset
+select test.crear_usuario('Olo', 'Operario', 'operario403@demo.pe', 'OPERARIO', :'sede_id', true, 12) as operario_id \gset
+select set_config('prueba.operario', :'operario_id', true);
+
+-- =========================================== trabajos sin OT: quién aprueba
+select test.afirmar(
+  (select bool_and(exists (select 1 from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
+                            where r.codigo = c and rp.permiso_codigo = 'produccion.aprobar_reportes'))
+     from unnest(array['ADMINISTRACION', 'GERENTE']) c),
+  'Administración y Gerencia tienen el permiso de aprobar los reportes del taller');
+
+insert into public.flota_unidades (placa, trabajo, registrado_por) values ('QA4-031', 'Cambio de piso', :'admin_id');
+insert into public.flota_avances (flota_id, area_id, descripcion, registrado_por)
+select f.id, (select id from public.areas where codigo = 'ACB'), 'Piso nuevo', :'admin_id'
+  from public.flota_unidades f where f.placa = 'QA4-031';
+select id as avance_id from public.flota_avances where descripcion = 'Piso nuevo' \gset
+select set_config('prueba.avance', :'avance_id', true);
+
+-- Administración no tiene `produccion.ver`: antes el UPDATE le daba 0 filas.
+select test.como_usuario(:'oficina_id');
+set local role authenticated;
+do $$
+declare v_n integer;
+begin
+  perform test.afirmar(not public.tiene_permiso('produccion.ver'), 'Administración no lee toda la producción');
+  perform test.afirmar((select count(*) from public.flota_avances where id = current_setting('prueba.avance')::uuid) = 1,
+    'Administración ve el reporte del trabajo sin OT que tiene que aprobar');
+  update public.flota_avances set revision = 'APROBADO' where id = current_setting('prueba.avance')::uuid;
+  get diagnostics v_n = row_count;
+  perform test.afirmar(v_n = 1, 'Administración aprueba el reporte de un trabajo sin OT');
+end $$;
+reset role;
+
+select test.como_usuario(:'gerente_id');
+set local role authenticated;
+do $$
+declare v_n integer;
+begin
+  update public.flota_avances set revision = 'OBSERVADO', observacion = 'Falta la foto del piso'
+   where id = current_setting('prueba.avance')::uuid;
+  get diagnostics v_n = row_count;
+  perform test.afirmar(v_n = 1, 'Gerencia también aprueba u observa el reporte de un trabajo sin OT');
+end $$;
+reset role;
+
+select test.como_usuario(:'portero_id');
+set local role authenticated;
+select test.afirmar((select count(*) from public.flota_avances where id = :'avance_id') = 0,
+  'Portería no ve los reportes del taller');
+reset role;
+
+-- ================================= la cotización rechazada queda como evidencia
+insert into public.clientes (tipo_documento, numero_documento, razon_social)
+values ('RUC', '20607761403', 'TRANSPORTES PRUEBA 403 S.A.C.') on conflict do nothing;
+insert into public.tipos_carroceria (codigo, nombre, orden_secuencia) values ('QA_403', 'Tolva QA 403', 99);
+
+-- Puestas en su estado sin el circuito de revisión que las lleva ahí.
+set local session_replication_role = replica;
+insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, nombre_archivo, ruta_storage, estado, version, registrado_por, observacion)
+select n.id, n.numero, c.id, t.id, n.numero || '.pdf', 'cot/' || n.id || '/' || n.numero || '.pdf',
+       n.estado::public.estado_cotizacion_pdf, n.version, :'ventas_id', 'El precio no cuadra'
+  from (values (gen_random_uuid(), 'COT-403-R', 'RECHAZADA', 1),
+               (gen_random_uuid(), 'COT-403-C', 'POR_REVISAR', 2),
+               (gen_random_uuid(), 'COT-403-N', 'POR_REVISAR', 1)) n(id, numero, estado, version)
+ cross join (select id from public.clientes where numero_documento = '20607761403') c
+ cross join (select id from public.tipos_carroceria where codigo = 'QA_403') t;
+set local session_replication_role = origin;
+
+select test.debe_fallar($$ delete from public.cotizaciones_pdf where numero = 'COT-403-R' $$,
+  'ni el dueño de las tablas quita una cotización rechazada', 'queda como evidencia');
+select test.debe_fallar($$ delete from public.cotizaciones_pdf where numero = 'COT-403-C' $$,
+  'ni la corregida, que ya pasó por Gerencia', 'su historia queda como evidencia');
+
+select test.como_usuario(:'ventas_id');
+set local role authenticated;
+do $$
+declare v_n integer;
+begin
+  delete from public.cotizaciones_pdf where numero = 'COT-403-R';
+  get diagnostics v_n = row_count;
+  perform test.afirmar(v_n = 0 and exists (select 1 from public.cotizaciones_pdf where numero = 'COT-403-R'),
+    'Ventas no quita su cotización rechazada: la política ya no la ofrece');
+  delete from public.cotizaciones_pdf where numero = 'COT-403-N';
+  get diagnostics v_n = row_count;
+  perform test.afirmar(v_n = 1, 'Ventas sí quita la que acaba de subir y nadie revisó');
+end $$;
+reset role;
+
+-- ====================================== la salida de almacén tiene número
+select m.id as mp_id from public.materiales m join public.categorias_material c on c.id = m.categoria_id
+ where c.almacen = 'MATERIA_PRIMA' and m.activo order by m.codigo limit 1 \gset
+select m.id as cons_id from public.materiales m join public.categorias_material c on c.id = m.categoria_id
+ where c.almacen = 'CONSUMIBLES' and m.activo order by m.codigo limit 1 \gset
+select correlativo_actual as sa_antes from public.series_documentarias where tipo = 'SALIDA_ALMACEN' and serie = '001' \gset
+
+insert into public.movimientos_materiales (id, tipo, origen, material_id, cantidad, documento_referencia, registrado_por)
+values (gen_random_uuid(), 'INGRESO', 'SALDO_INICIAL', :'mp_id', 10, 'Saldo 403', :'admin_id'),
+       (gen_random_uuid(), 'INGRESO', 'SALDO_INICIAL', :'cons_id', 10, 'Saldo 403', :'admin_id');
+insert into public.movimientos_materiales
+  (id, tipo, origen, material_id, cantidad, documento_referencia, recibido_por_nombre, codigo_unidad, registrado_por, numero_salida)
+values (gen_random_uuid(), 'SALIDA', 'SALIDA_GENERAL', :'mp_id', 2, 'Vale 403-1', 'Julio Ramírez', 'QA_403_1', :'admin_id', 'SA-9999-2026'),
+       (gen_random_uuid(), 'SALIDA', 'SALIDA_GENERAL', :'cons_id', 1, 'Vale 403-2', 'Julio Ramírez', 'QA_403_1', :'admin_id', null),
+       (gen_random_uuid(), 'SALIDA', 'SALIDA_GENERAL', :'mp_id', 1, 'Vale 403-3', 'Julio Ramírez', 'QA_403_1', :'admin_id', null);
+
+select test.afirmar(
+  (select numero_salida from public.movimientos_materiales where documento_referencia = 'Vale 403-1')
+    = 'SA-' || lpad((:'sa_antes'::int + 1)::text, 4, '0') || '-' || to_char(now(), 'YYYY'),
+  'la salida de materia prima nace con su número de la serie, y no con el que trae escrito');
+select test.afirmar(
+  (select numero_salida from public.movimientos_materiales where documento_referencia = 'Vale 403-3')
+    = 'SA-' || lpad((:'sa_antes'::int + 2)::text, 4, '0') || '-' || to_char(now(), 'YYYY'),
+  'la siguiente lleva el siguiente número: la consumible de en medio no gastó ninguno');
+select test.afirmar(
+  (select numero_salida from public.movimientos_materiales where documento_referencia = 'Vale 403-2') is null,
+  'la salida de consumibles no lleva número');
+
+-- ========================================= el costo por hora y el DNI, aparte
+select test.afirmar(
+  (select costo_hora = 0 and documento is null from public.usuarios where id = :'operario_id')
+  and (select costo_hora = 12 from public.usuario_datos_reservados where usuario_id = :'operario_id'),
+  'al dar de alta, el costo por hora pasa a la tabla reservada y no queda en usuarios');
+
+-- El alta real, con la función de la pantalla de Personal.
+select test.como_usuario(:'admin_id');
+set local role authenticated;
+select public.crear_personal('Lia', 'Soldadora', 'soldadura403@demo.pe', 'Clave-403-larga',
+  (select id from public.roles where codigo = 'OPERARIO'), :'sede_id', null, 'Soldadora', '41255678', null, true, 15) as lia_id \gset
+reset role;
+select set_config('prueba.lia', :'lia_id', true);
+select test.afirmar(
+  (select costo_hora = 0 and documento is null from public.usuarios where id = :'lia_id')
+  and (select costo_hora = 15 and documento = '41255678' from public.usuario_datos_reservados where usuario_id = :'lia_id'),
+  'el alta de Personal guarda el DNI y el costo en la tabla reservada');
+
+-- Una pantalla vieja que escribe en usuarios: el dato se pasa solo.
+select test.como_usuario(:'admin_id');
+set local role authenticated;
+update public.usuarios set costo_hora = 18, telefono = '999111222' where id = :'lia_id';
+update public.usuarios set telefono = '999111223' where id = :'lia_id';
+reset role;
+select test.afirmar(
+  (select costo_hora = 0 from public.usuarios where id = :'lia_id')
+  and (select costo_hora = 18 and documento = '41255678' from public.usuario_datos_reservados where usuario_id = :'lia_id'),
+  'lo que se escribe en usuarios se pasa a la tabla reservada, y editar otra cosa no borra el DNI');
+
+select test.como_usuario(:'operario_id');
+set local role authenticated;
+select test.debe_fallar($$
+  update public.usuarios set costo_hora = 999 where id = current_setting('prueba.operario')::uuid
+$$, 'nadie se cambia su propio costo por hora', 'Solo un administrador');
+select test.afirmar((select count(*) from public.usuario_datos_reservados) = 0,
+  'el operario no lee ni su propio costo por hora');
+reset role;
+
+select test.como_usuario(:'rrhh_id');
+set local role authenticated;
+select test.afirmar((select count(*) from public.usuario_datos_reservados where usuario_id in (:'lia_id', :'operario_id')) = 2,
+  'Recursos Humanos lee el costo y el DNI');
+do $$
+declare v_n integer;
+begin
+  update public.usuario_datos_reservados set costo_hora = 1 where usuario_id = current_setting('prueba.lia')::uuid;
+  get diagnostics v_n = row_count;
+  perform test.afirmar(v_n = 0, 'Recursos Humanos no los cambia: los cambia quien administra el personal');
+end $$;
+reset role;
+
+-- La auditoría de la tabla reservada pide lo mismo que la tabla.
+select test.afirmar(exists (select 1 from public.audit_log where tabla = 'usuario_datos_reservados'),
+  'los cambios del costo y del DNI quedan en la auditoría');
+select test.como_usuario(:'gerente_id');
+set local role authenticated;
+select test.afirmar(public.tiene_permiso('auditoria.ver'), 'Gerencia consulta la auditoría');
+select test.afirmar((select count(*) from public.usuario_datos_reservados) = 0,
+  'Gerencia no lee el costo por hora ni el DNI');
+select test.afirmar((select count(*) from public.audit_log where tabla = 'usuario_datos_reservados') = 0,
+  'ni su copia en la auditoría');
+select test.afirmar(
+  (select count(*) from public.usuarios where id = :'lia_id' and costo_hora = 0 and documento is null) = 1,
+  'y en usuarios, que todos leen, ya no están');
+reset role;
+
+select test.como_usuario(:'portero_id');
+set local role authenticated;
+select test.afirmar((select count(*) from public.usuario_datos_reservados) = 0, 'Portería no los lee');
+-- La lista de OT y el puesto siguen leyendo la fila entera de usuarios.
+select test.afirmar((select count(*) from public.usuarios) > 0 and public.puesto(u) is not null, 'la fila de usuarios se sigue leyendo entera')
+  from public.usuarios u where u.id = :'portero_id';
+reset role;
+
+rollback;

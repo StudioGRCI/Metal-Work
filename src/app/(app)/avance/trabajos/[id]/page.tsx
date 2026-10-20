@@ -19,7 +19,7 @@ import { AccionesTrabajo } from './acciones-trabajo'
 export const metadata = { title: 'Trabajo sin orden' }
 
 export default async function PaginaTrabajoSinOrden({ params }: PageProps<'/avance/trabajos/[id]'>) {
-  const perfil = await exigirPermiso('produccion.ver')
+  const perfil = await exigirPermiso(['produccion.ver', 'produccion.aprobar_reportes'])
   const { id } = await params
   if (!esUuid(id)) notFound()
 

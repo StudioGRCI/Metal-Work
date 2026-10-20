@@ -26,7 +26,7 @@ const FILTROS = [
  * tabla: se miran desde el teléfono, parado al lado de la unidad.
  */
 export default async function PaginaTrabajos({ searchParams }: PageProps<'/avance/trabajos'>) {
-  const perfil = await exigirPermiso('produccion.ver')
+  const perfil = await exigirPermiso(['produccion.ver', 'produccion.aprobar_reportes'])
   const params = await searchParams
 
   const estado =

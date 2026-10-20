@@ -347,6 +347,16 @@ export const NAVEGACION = [
         descripcion: 'Trabajos del día con su avance, el personal con sus horas y fotos; Gerencia y RR. HH. lo validan',
         disponible: true,
       },
+      // DKS decidió (2026-10-20) que los reportes de las unidades que entran sin
+      // OT los aprueban Administración y Gerencia (migración 20261020160000).
+      {
+        titulo: 'Trabajos sin orden',
+        ruta: '/avance/trabajos',
+        icono: Truck,
+        permiso: 'produccion.aprobar_reportes',
+        descripcion: 'Las unidades que entraron sin OT, con lo que el taller reportó de cada una, para aprobarlo u observarlo',
+        disponible: true,
+      },
       {
         titulo: 'Planos y etapas',
         ruta: '/planos',
@@ -608,7 +618,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   GERENTE: {
     principal: ['/codigos-internos'],
     grupos: [
-      { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'] },
+      { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'] },
       { titulo: 'Consultas', rutas: ['/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'] },
     ],
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
@@ -694,7 +704,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [
       {
         titulo: 'Administración',
-        rutas: ['/cotizaciones/pdf', '/ordenes', '/subcontratos', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
+        rutas: ['/cotizaciones/pdf', '/ordenes', '/avance/trabajos', '/subcontratos', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
       },
       { titulo: 'Requerimiento de Administración', rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes'] },
       { titulo: 'Consultas', rutas: ['/diseno/evaluaciones', '/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos', '/clientes'] },

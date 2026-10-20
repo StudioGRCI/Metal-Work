@@ -113,10 +113,8 @@ export async function guardarPersona(_previo: unknown, datos: FormData): Promise
       sede_id: v.sede_id,
       area_id: nulo(v.area_id),
       cargo: nulo(v.cargo),
-      documento: nulo(v.documento),
       telefono: nulo(v.telefono),
       es_operario: v.es_operario,
-      costo_hora: v.costo_hora,
     })
     .eq('id', v.id)
     .select('id')
@@ -124,6 +122,15 @@ export async function guardarPersona(_previo: unknown, datos: FormData): Promise
 
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
+
+  // El DNI y el costo por hora, en su tabla reservada (migración 20261020163000).
+  const reservado = await supabase
+    .from('usuario_datos_reservados')
+    .upsert({ usuario_id: v.id, documento: nulo(v.documento), costo_hora: v.costo_hora }, { onConflict: 'usuario_id' })
+    .select('usuario_id')
+    .maybeSingle()
+  if (reservado.error) return { ok: false, error: `La ficha se guardó, pero no el DNI ni el costo por hora: ${mensajeDeError(reservado.error)}` }
+  if (!reservado.data) return { ok: false, error: 'La ficha se guardó, pero no el DNI ni el costo por hora: no tienes permiso para cambiarlos.' }
 
   revalidatePath('/personal')
   return { ok: true, mensaje: 'Ficha actualizada.' }

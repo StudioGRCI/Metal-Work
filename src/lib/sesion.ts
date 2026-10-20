@@ -168,16 +168,17 @@ export function puedeEliminarReporte(
 
 /**
  * Si esta persona ve «Quitar» en una cotización en PDF. Gemelo de la política
- * de DELETE y del disparador de la migración 102: la quita quien la subió o
- * Gerencia, mientras esté por revisar o rechazada, y nunca si de ella salió una
- * orden —aunque se haya anulado—, que es su rastro.
+ * de DELETE y del disparador (migraciones 102 y 20261020161000): la quita quien
+ * la subió o Gerencia, solo mientras esté por revisar en su primera versión, y
+ * nunca si de ella salió una orden —aunque se haya anulado—, que es su rastro.
+ * La rechazada no se quita: se corrige y queda en la trazabilidad.
  */
 export function puedeQuitarCotizacion(
   perfil: PerfilSesion | null,
-  c: { estado: string | null; registrado_por: string | null; tuvo_orden: boolean | null },
+  c: { estado: string | null; version: number | null; registrado_por: string | null; tuvo_orden: boolean | null },
 ): boolean {
   if (!perfil || c.tuvo_orden !== false) return false
-  if (c.estado !== 'POR_REVISAR' && c.estado !== 'RECHAZADA') return false
+  if (c.estado !== 'POR_REVISAR' || c.version !== 1) return false
   return c.registrado_por === perfil.id || puede(perfil, 'cotizaciones.revisar')
 }
 

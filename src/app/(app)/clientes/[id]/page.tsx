@@ -40,7 +40,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
   const cliente = await obtenerCliente(id)
   if (!cliente) notFound()
 
-  const [unidades, contactos, ordenes] = await Promise.all([
+  const [unidades, contactos, { ordenes, total: totalOrdenes }] = await Promise.all([
     listarUnidades({ clienteId: id }),
     contactosDeCliente(id),
     ordenesDeCliente(id),
@@ -187,7 +187,11 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
         <Tarjeta className="lg:col-span-2">
           <TarjetaCabecera
             titulo="Órdenes de trabajo"
-            descripcion={`${ordenes.length} órdenes de este cliente`}
+            descripcion={
+              totalOrdenes > ordenes.length
+                ? `Las ${ordenes.length} más recientes de ${totalOrdenes} órdenes de este cliente`
+                : `${totalOrdenes} ${totalOrdenes === 1 ? 'orden' : 'órdenes'} de este cliente`
+            }
           />
           <TarjetaCuerpo className="p-0">
             {ordenes.length === 0 ? (

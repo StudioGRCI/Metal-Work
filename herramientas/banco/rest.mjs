@@ -441,7 +441,7 @@ export function construirLectura(esquema, relacion, busqueda, { limite, desplaza
 }
 
 /** Traduce una escritura (`POST`, `PATCH`, `DELETE`) a SQL. */
-export function construirEscritura(esquema, relacion, metodo, cuerpo, busqueda) {
+export function construirEscritura(esquema, relacion, metodo, cuerpo, busqueda, prefiere = '') {
   if (!esquema.relaciones.has(relacion)) {
     throw new ErrorNoSoportado(`No existe la tabla «${relacion}»`)
   }
@@ -463,9 +463,17 @@ export function construirEscritura(esquema, relacion, metodo, cuerpo, busqueda) 
     const valores = filas.map(
       (fila) => `(${columnas.map((c) => ctx.parametro(fila[c] ?? null)).join(', ')})`,
     )
+    // `.upsert()` de supabase-js: `Prefer: resolution=merge-duplicates` y
+    // `on_conflict` con las columnas de la llave, como lo resuelve PostgREST.
+    const llave = busqueda.get('on_conflict')
+    const conflicto =
+      prefiere.includes('resolution=merge-duplicates') && llave
+        ? ` on conflict (${llave.split(',').map((c) => comillas(c.trim())).join(', ')}) do update set ` +
+          columnas.map((c) => `${comillas(c)} = excluded.${comillas(c)}`).join(', ')
+        : prefiere.includes('resolution=ignore-duplicates') ? ' on conflict do nothing' : ''
     const texto =
       `insert into public.${comillas(relacion)} (${columnas.map(comillas).join(', ')}) ` +
-      `values ${valores.join(', ')} returning ${devolver}`
+      `values ${valores.join(', ')}${conflicto} returning ${devolver}`
     return { texto, valores: ctx.valores, seleccion: nodos, relacion }
   }
 
