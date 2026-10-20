@@ -420,10 +420,7 @@ export function construirLectura(esquema, relacion, busqueda, { limite, desplaza
   if (donde.length) texto += ` where ${donde.join(' and ')}`
   if (orden.length) texto += ` order by ${orden.join(', ')}`
 
-  const tope = limite ?? (busqueda.get('limit') ? Number(busqueda.get('limit')) : null)
-  const salto = desplazamiento ?? (busqueda.get('offset') ? Number(busqueda.get('offset')) : null)
-  if (tope !== null && tope !== undefined) texto += ` limit ${Number(tope)}`
-  if (salto) texto += ` offset ${Number(salto)}`
+  texto += paginar(busqueda, { limite, desplazamiento })
 
   // El conteo va aparte porque no debe verse afectado por el límite.
   const ctxConteo = crearContexto()
@@ -503,14 +500,32 @@ const argumento = (v, esJson) =>
     : v
 
 /** Llamada a función (`/rpc/nombre`). `json`: los parámetros de tipo json/jsonb. */
-export function construirLlamada(nombre, argumentos, json = new Set()) {
+export function construirLlamada(nombre, argumentos, json = new Set(), busqueda = new URLSearchParams()) {
   const ctx = crearContexto()
   const claves = Object.keys(argumentos ?? {})
   const parametros = claves.map((c) => `${comillas(c)} => ${ctx.parametro(argumento(argumentos[c], json.has(c)))}`)
-  return {
-    texto: `select * from public.${comillas(nombre)}(${parametros.join(', ')})`,
-    valores: ctx.valores,
-  }
+  // Como PostgREST: el orden, el límite y el salto de `.order()` y `.range()`
+  // valen también sobre lo que devuelve la función, y el tope de filas también.
+  const orden = construirOrden(busqueda.get('order'), 't')
+  let texto = `select * from public.${comillas(nombre)}(${parametros.join(', ')}) t`
+  if (orden.length) texto += ` order by ${orden.join(', ')}`
+  texto += paginar(busqueda, {})
+  return { texto, valores: ctx.valores }
+}
+
+/**
+ * Lo que Supabase entrega como mucho por respuesta (`max_rows` en
+ * `supabase/config.toml`), aunque se pida más con `.limit()` o `.range()`: lo que
+ * pasa de ahí no llega, y sin error. El banco corta igual, o una lista que en
+ * producción sale corta aquí salía entera y la prueba no lo veía.
+ */
+export const MAX_FILAS = Number(process.env.BANCO_MAX_FILAS ?? 1000)
+
+function paginar(busqueda, { limite, desplazamiento }) {
+  const pedido = limite ?? (busqueda.get('limit') ? Number(busqueda.get('limit')) : null)
+  const salto = desplazamiento ?? (busqueda.get('offset') ? Number(busqueda.get('offset')) : null)
+  const tope = pedido === null || pedido === undefined ? MAX_FILAS : Math.min(Number(pedido), MAX_FILAS)
+  return ` limit ${tope}${salto ? ` offset ${Number(salto)}` : ''}`
 }
 
 export { comillas }

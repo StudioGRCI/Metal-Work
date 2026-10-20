@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -151,7 +152,7 @@ export const SIN_COSTO_COMPLETO: CostoCompleto = {
  */
 export async function costoCompletoDeLosCodigos(codigo?: string): Promise<Map<string, CostoCompleto>> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('codigos_internos_costo', codigo ? { p_codigo: codigo } : {})
+  const { data, error } = await todasLasFilas(() => supabase.rpc('codigos_internos_costo', codigo ? { p_codigo: codigo } : {}), ['codigo'])
   if (error) throw new Error(`No se pudo leer el costo de los códigos: ${error.message}`)
   return new Map(
     (data ?? []).flatMap((f) => {
@@ -214,10 +215,12 @@ export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
   // El resumen de la base no trae las órdenes de servicio, los subcontratos ni
   // el costo completo (cambiarle las columnas exige borrarlo): salen de su
   // propia función, con las mismas líneas que el costeo de cada código.
+  // Pasados los mil códigos, los más viejos se quedaban fuera y su detalle decía
+  // que no existían: se leen todos.
   const [{ data, error }, porServicio, porSubcontrato, completo] = await Promise.all([
-    supabase.rpc('codigos_internos_resumen'),
-    supabase.rpc('codigos_internos_servicios'),
-    supabase.rpc('codigos_internos_subcontratos'),
+    todasLasFilas(() => supabase.rpc('codigos_internos_resumen'), ['ultima_actividad.desc.nullslast', 'codigo']),
+    todasLasFilas(() => supabase.rpc('codigos_internos_servicios'), ['codigo']),
+    todasLasFilas(() => supabase.rpc('codigos_internos_subcontratos'), ['codigo']),
     costoCompletoDeLosCodigos(),
   ])
   if (error) throw new Error(`No se pudieron leer los códigos internos: ${error.message}`)
@@ -300,7 +303,7 @@ export type AvanceDeCodigo = {
 /** El avance de todos los códigos, o de uno, por código. */
 export async function avanceDeLosCodigos(codigo?: string): Promise<Map<string, AvanceDeCodigo>> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('codigos_internos_avance', codigo ? { p_codigo: codigo } : {})
+  const { data, error } = await todasLasFilas(() => supabase.rpc('codigos_internos_avance', codigo ? { p_codigo: codigo } : {}), ['codigo'])
   if (error) throw new Error(`No se pudo leer el avance de los códigos: ${error.message}`)
   return new Map(
     (data ?? []).flatMap((f) =>
@@ -448,7 +451,11 @@ export type AvanceReportado = {
 
 export async function avanceDelCodigo(codigo: string): Promise<AvanceReportado[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('codigo_interno_avance', { p_codigo: codigo })
+  // Cada trabajo de cada reporte es una fila: una unidad de meses pasa de mil.
+  const { data, error } = await todasLasFilas(
+    () => supabase.rpc('codigo_interno_avance', { p_codigo: codigo }),
+    ['codigo', 'fecha.desc', 'creado_en.desc', 'reporte_id', 'trabajo_orden'],
+  )
   if (error) throw new Error(`No se pudo leer el avance del código: ${error.message}`)
   return (data ?? []).map((f) => ({
     reporte_id: f.reporte_id ?? '',
@@ -512,7 +519,13 @@ export type LineaCosteo = {
 
 export async function costeoDelCodigo(codigo: string): Promise<LineaCosteo[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('codigo_interno_costeo', { p_codigo: codigo })
+  // Una unidad grande pasa de mil líneas: se lee entera, o su costo sumaba de menos.
+  // Las líneas no tienen identificador propio: se ordenan por todas sus columnas,
+  // empezando por el orden en que las da la función.
+  const { data, error } = await todasLasFilas(
+    () => supabase.rpc('codigo_interno_costeo', { p_codigo: codigo }),
+    ['codigo', 'fecha.desc', 'fuente', 'concepto', 'detalle', 'referencia_id', 'documento', 'moneda', 'unidad', 'cantidad', 'horas', 'precio_unitario', 'monto', 'sin_precio'],
+  )
   if (error) throw new Error(`No se pudo leer el costeo del código: ${error.message}`)
   return (data ?? []).map((f) => ({
     fuente: (f.fuente ?? 'MATERIALES') as LineaCosteo['fuente'],
@@ -543,7 +556,7 @@ export type RepartoATodos = {
 
 export async function repartoATodosLosActivos(): Promise<RepartoATodos[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('codigo_interno_reparto_a_todos')
+  const { data, error } = await todasLasFilas(() => supabase.rpc('codigo_interno_reparto_a_todos'), ['periodo.desc', 'codigo'])
   if (error) throw new Error(`No se pudo leer a dónde fue lo cargado a todos los activos: ${error.message}`)
   return (data ?? []).map((f) => ({
     periodo: f.periodo ?? '',
