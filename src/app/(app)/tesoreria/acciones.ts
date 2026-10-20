@@ -174,6 +174,8 @@ export async function anularPagoFactura(_previo: unknown, formulario: FormData):
   return { ok: true, mensaje: `Pago anulado: la factura vuelve a su saldo. ${caja}`.trim() }
 }
 
+const NO_PAGA_COMPRAS = 'Los pagos de las OC con boleta los registra Tesorería.'
+
 function repintarPagosDeCompra() {
   revalidatePath('/tesoreria/por-pagar')
   revalidatePath('/adquisiciones')
@@ -190,7 +192,7 @@ function repintarPagosDeCompra() {
  */
 export async function registrarPagoCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'tesoreria.registrar_pagos')) return { ok: false, error: NO_PAGA_FACTURAS }
+  if (!puede(perfil, 'tesoreria.registrar_pagos')) return { ok: false, error: NO_PAGA_COMPRAS }
   if (!puede(perfil, 'tesoreria.caja')) return { ok: false, error: SIN_CAJA }
   const analisis = z
     .object({
@@ -234,16 +236,38 @@ export async function registrarPagoCompra(_previo: unknown, formulario: FormData
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El pago no se registró. Recarga la pantalla.' }
 
+  // El pago que completa el total cancela la OC aunque se marcara «a cuenta»: lo dice la fila guardada.
+  const { data: guardado } = await supabase.from('pagos_orden_compra').select('cancela').eq('id', d.id).maybeSingle()
   const caja = await cajaTrasElPago('PAGO_ORDEN_COMPRA', d.id, d.caja_id, d.fecha_pago, 'pago')
   repintarPagosDeCompra()
-  const pagado = d.cancela === 'si' ? 'Pago registrado: la OC queda pagada.' : 'Pago a cuenta registrado.'
+  const pagado = (guardado?.cancela ?? d.cancela === 'si') ? 'Pago registrado: la OC queda pagada.' : 'Pago a cuenta registrado.'
   return { ok: true, mensaje: `${pagado} ${caja}`.trim() }
+}
+
+/**
+ * La OC con boleta de antes de la migración 20261020210000 se dio por pagada
+ * fuera del sistema. Si no se pagó, Tesorería la pasa a su lista y se paga como
+ * las de ahora. Mismo permiso que `pasar_compra_a_tesoreria`
+ * (`tesoreria.registrar_pagos`).
+ */
+export async function pasarCompraATesoreria(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tesoreria.registrar_pagos')) return { ok: false, error: NO_PAGA_COMPRAS }
+  const analisis = z.object({ id: z.guid() }).safeParse({ id: dato(formulario, 'id') })
+  if (!analisis.success) return { ok: false, error: 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('pasar_compra_a_tesoreria', { p_compra: analisis.data.id })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'La OC no pasó a Cuentas por pagar. Recarga la pantalla.' }
+  repintarPagosDeCompra()
+  return { ok: true, mensaje: 'La OC pasó a Cuentas por pagar: ahí la pagas con su voucher.' }
 }
 
 /** Anular con su motivo un pago de OC con boleta mal registrado. Mismo permiso que `anular_pago_compra`. */
 export async function anularPagoCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'tesoreria.registrar_pagos')) return { ok: false, error: NO_PAGA_FACTURAS }
+  if (!puede(perfil, 'tesoreria.registrar_pagos')) return { ok: false, error: NO_PAGA_COMPRAS }
   const analisis = z.object({ id: z.guid(), motivo: MOTIVO }).safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
 

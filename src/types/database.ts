@@ -11915,6 +11915,12 @@ export type Database = {
         }
         Returns: null
       }
+      compra_pagada_directo: {
+        Args: {
+          p_compras: string[] | null
+        }
+        Returns: string
+      }
       compra_tiene_comprobante: {
         Args: {
           p_compra: string | null
@@ -12955,18 +12961,6 @@ export type Database = {
         }
         Returns: string
       }
-      lineas_de_compra_en_papel: {
-        Args: {
-          p_compra: string | null
-        }
-        Returns: {
-          detalle_id: string | null
-          numero_ot: string | null
-          material: string | null
-          material_codigo: string | null
-          unidad: string | null
-        }[]
-      }
       lote_de_prueba: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -13305,6 +13299,12 @@ export type Database = {
           unidad: string | null
           estado: string | null
         }[]
+      }
+      pasar_compra_a_tesoreria: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: string
       }
       pascua: {
         Args: {

@@ -159,7 +159,11 @@ function Servicio({
 
       <div className="mt-2 space-y-2">
         <ParaPagar documentos={documentos} cuentas={s.cancelada ? [] : s.cuentas} monedaDocumento={m} sinCuentas={s.cancelada ? null : sinCuentas} />
-        {!s.cancelada && !comprobante && <p className="text-xs text-texto-suave">Falta la factura o el recibo del proveedor: la adjunta Logística en la OS, o tú aquí.</p>}
+        {!s.cancelada && !comprobante && (
+          <p className="text-xs text-texto-suave">
+            Falta la factura o el recibo del proveedor: la adjunta Logística en la OS{adjunta ? ', o tú aquí' : ''}.
+          </p>
+        )}
         {/* El pago, encima de los pagos anteriores como en Cuentas por pagar y por cobrar. */}
         {s.id && !s.cancelada && (paga || adjunta) && (
           <div className="flex flex-wrap items-center gap-2">

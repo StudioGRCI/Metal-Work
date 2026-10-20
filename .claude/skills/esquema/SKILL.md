@@ -208,3 +208,14 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   el auditor, no la prueba. Cuando una cifra sale de dos partes, escribir en el
   check la cuenta a mano con lo que **no** debe entrar en cada parte, y que la
   pantalla pinte las partes que da la base en vez de recalcularlas.
+
+- **Dos caminos que se excluyen se cierran desde los dos lados, en cada entrada.**
+  En la `20261020210000` la OC con boleta empezó a pagarse directo, y la función
+  del pago rechazaba la OC con factura registrada; pero nada impedía lo inverso:
+  registrar la factura de una OC que Tesorería ya había pagado directo, y pagarla
+  otra vez por Cuentas por pagar. Los checks pasaban porque solo probaban el
+  sentido que se había escrito; lo vieron los dos auditores. Cuando una regla dice
+  «o esto o lo otro», listar **cada** sentencia que puede crear la segunda mitad
+  (insertar, devolver una fila quitada, cambiar la llave, pasar a REGISTRADA,
+  pagar) y poner la guarda en un disparador propio de cada tabla, sin lista de
+  columnas; y en el check, una prueba que falle por cada una de esas puertas.

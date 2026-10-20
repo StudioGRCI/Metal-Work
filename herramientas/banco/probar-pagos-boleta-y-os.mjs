@@ -6,18 +6,26 @@
  *
  *   1. Tesorería ve la OC con boleta en Cuentas por pagar, con el PDF de la OC,
  *      la boleta que adjuntó Logística y la cuenta del proveedor, y no ve ahí
- *      la OC con factura. La paga desde la ventana, que muestra lo mismo: tres
+ *      la OC con factura; la tarjeta de la factura de esa otra OC muestra igual
+ *      la factura, el PDF de su OC y la cuenta. La paga desde la ventana, que muestra lo mismo: tres
  *      toques dejan un pago, un egreso en la caja y el voucher en
  *      storage.objects. Adquisiciones la da por pagada.
  *   2. El PDF de la OC lo descarga Tesorería (200, application/pdf).
  *   3. Tesorería anula el pago con su motivo: la OC vuelve a estar por pagar y
  *      el egreso queda anulado.
+ *   3b. La OC con boleta de antes sale «Pago fuera del sistema» y no está en
+ *      Cuentas por pagar; Tesorería la pasa con «No se pagó» (tres toques, un
+ *      cambio en la auditoría) y ya pide su pago. Con un pago directo vigente,
+ *      Contabilidad no le liga una factura.
  *   4. Logística adjunta a la OS su factura (tres toques, un documento, con el
  *      número en mayúsculas) y su contrato, y el archivo queda en
- *      storage.objects.
+ *      storage.objects. Emite otra OS con su contrato desde «Nueva orden de
+ *      servicio»: un archivo que no es PDF ni foto no deja emitir; con el PDF,
+ *      tres toques dejan una OS y su contrato.
  *   5. Tesorería los ve en Pagos de servicio junto a la cuenta del proveedor,
  *      en la tarjeta y en la ventana de pago, y ya no le pide la factura.
- *   6. Gerencia ve la OC con boleta sin el botón de pagar.
+ *   6. Gerencia ve la OC con boleta y la factura, con sus documentos y la cuenta
+ *      del proveedor, sin el botón de pagar.
  *   7. En el teléfono, Cuentas por pagar no se ensancha.
  *
  * Siembra sus datos en la base del banco con un sufijo nuevo. Variables:
@@ -36,7 +44,7 @@ const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/
 const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
 const ARCHIVOS = process.env.BANCO_ARCHIVOS ?? '/tmp/banco-archivos'
 const cuenta = (puesto) => process.env[puesto.toUpperCase()] ?? `${puesto}.local@metalwork.test`
-const CUENTAS = Object.fromEntries(['logistica', 'tesoreria', 'gerencia', 'requerimientos', 'almacen'].map((p) => [p, cuenta(p)]))
+const CUENTAS = Object.fromEntries(['logistica', 'tesoreria', 'gerencia', 'contabilidad', 'requerimientos', 'almacen'].map((p) => [p, cuenta(p)]))
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')
   process.exit(1)
@@ -139,15 +147,16 @@ await como('requerimientos')
 await consulta(
   `select public.emitir_requerimiento($1, $2, 'PLA_SR_O4_1_26/21', $3, null,
      (select jsonb_agg(jsonb_build_object('descripcion', 'Insumo ' || n, 'cantidad', 3, 'unidad_medida_id', $4::text, 'categoria_id', $5::text))
-        from generate_series(1, 2) n))`,
+        from generate_series(1, 3) n))`,
   [rq, area, `Prueba de la OC con boleta ${SUFIJO}`, und, cat],
 )
 await como('almacen')
 await consulta(`select public.rq_marcar_sin_stock($1, 'No hay nada de esto')`, [rq])
 // La 1 va con boleta y la 2 con factura: la de factura no entra en la lista de boletas.
+// La 3, con boleta, se marca después como de antes de la migración: se dio por pagada fuera.
 await como('logistica')
 const oc = []
-for (const n of [1, 2]) {
+for (const n of [1, 2, 3]) {
   const [{ id }] = await consulta(
     `select public.emitir_compra_del_requerimiento(gen_random_uuid(), $1, array[$2]::smallint[], $3, null,
        jsonb_build_array(jsonb_build_object('material_id', $4::text, 'cantidad', 3, 'precio', 120.50)), null, 'CONTADO', 0, 'PEN', $5) as id`,
@@ -165,6 +174,24 @@ await consulta(
 )
 await como('gerencia')
 for (const id of oc) await consulta(`select public.aprobar_compra($1)`, [id])
+// La factura de la OC 2, registrada por Contabilidad con su PDF.
+const [{ id: factura }] = await consulta(`select gen_random_uuid() as id`)
+const [{ total: totalFactura }] = await consulta(`select public.total_orden_compra($1)::float as total`, [oc[1]])
+await como('contabilidad')
+await consulta(
+  `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
+   values ($1, 'FACTURA_COMPRA', $2, $3, $5::date, $5::date, 'PEN', $4, 'CONTADO')`,
+  [factura, PROVEEDOR, `F001-${SUFIJO}`, totalFactura, hoy],
+)
+await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values ($1, $2)`, [factura, oc[1]])
+await subir('comprobantes-financieros', `adquisiciones/${factura}/comprobante.pdf`, 'contabilidad')
+await consulta(`update adquisiciones set ruta_storage = $2, estado = 'REGISTRADA' where id = $1`, [factura, `adquisiciones/${factura}/comprobante.pdf`])
+// Como la migración marcó las de antes al crear la columna: con los disparadores apagados.
+await consulta('begin')
+await consulta('set local session_replication_role = replica')
+await consulta('update ordenes_compra_materiales set pago_en_tesoreria = false where id = $1', [oc[2]])
+await consulta('commit')
+await como('gerencia')
 const [{ id: os }] = await consulta(
   `insert into ordenes_servicio (numero, proveedor_id, proveedor, descripcion, monto, moneda, codigo_interno, aprobacion, aprobado_por, aprobado_en, creado_por)
    values ($1, $2, $3, $4, 500, 'PEN', 'PLA_SR_O4_1_26/21', 'APROBADA', $5, now(), $6) returning id`,
@@ -176,7 +203,7 @@ const numeros = Object.fromEntries((await consulta(`select id, numero from orden
 const nombre = (id) => numeros[id] ?? 'OC sin número'
 const NUMERO_OS = `QA-OS-${SUFIJO}`
 const [{ total }] = await consulta(`select public.total_orden_compra($1)::float as total`, [oc[0]])
-console.log(`Sembrado ${SUFIJO}: ${nombre(oc[0])} con boleta (S/ ${total}), ${nombre(oc[1])} con factura y ${NUMERO_OS}`)
+console.log(`Sembrado ${SUFIJO}: ${nombre(oc[0])} con boleta (S/ ${total}), ${nombre(oc[1])} con factura, ${nombre(oc[2])} con boleta de antes y ${NUMERO_OS}`)
 
 /** Lo que Adquisiciones dice del pago de esa orden, leído con la sesión de Tesorería. */
 async function pagoSegunAdquisiciones(id) {
@@ -194,12 +221,15 @@ async function pagoSegunAdquisiciones(id) {
 // ---------------------------------------------------------------- navegador
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 const errores = []
+// Mientras la prueba corta la subida a propósito, el navegador anota el corte en la consola.
+let cortando = false
 
 async function entrar(puesto, viewport = { width: 1280, height: 900 }) {
   const correo = CUENTAS[puesto]
   const contexto = await navegador.newContext({ viewport, isMobile: viewport.width < 500, hasTouch: viewport.width < 500, timezoneId: 'America/Lima' })
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
+    if (cortando && m.text().includes('net::ERR_FAILED')) return
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${puesto}: ${m.text().slice(0, 300)}`)
   })
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
@@ -247,6 +277,10 @@ let pagoId
   comprobar((await enlaceOc.count()) === 1 && (await enlaceOc.getAttribute('download')) !== null, 'muestra el PDF de la OC, como descarga')
   comprobar((await enFila.getByRole('link', { name: `Boleta B001-${SUFIJO}` }).count()) === 1, 'y la boleta que adjuntó Logística')
   comprobar(textoFila.includes(CUENTA_PROVEEDOR) && textoFila.includes('BCP'), 'y la cuenta del proveedor para transferir')
+  // La factura muestra lo mismo en su tarjeta, no solo dentro de la ventana de pago.
+  const enFactura = limpio(await pagina.locator(`article#factura-${factura} [data-para-pagar]`).innerText().catch(() => ''))
+  comprobar(enFactura.includes(`Factura F001-${SUFIJO}`) && enFactura.includes(`PDF de la ${nombre(oc[1])}`) && enFactura.includes(CUENTA_PROVEEDOR),
+    `la tarjeta de la factura muestra la factura, el PDF de su OC y la cuenta («${enFactura}»)`)
   await pagina.screenshot({ path: join(CAPTURAS, 'boleta-por-pagar.png'), fullPage: true })
 
   // 2. El PDF de la OC sale para Tesorería.
@@ -309,6 +343,59 @@ let pagoId
   await contexto.close()
 }
 
+// ---------------------------------------------------------------- 3b. La OC con boleta de antes que no se pagó
+{
+  const { pagina, contexto } = await entrar('tesoreria')
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  comprobar((await pagina.locator(`article#compra-${oc[2]}`).count()) === 0, `la ${nombre(oc[2])}, de antes, no está en Cuentas por pagar`)
+  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  const fila = pagina.locator(`tbody tr[data-orden="${nombre(oc[2])}"]`)
+  comprobar(limpio(await fila.textContent().catch(() => '')).includes('Pago fuera del sistema'), 'Adquisiciones la da por pagada fuera del sistema')
+  const boton = fila.locator(`[data-pasar-compra="${oc[2]}"]`)
+  comprobar((await boton.count()) === 1, 'y a Tesorería le ofrece «No se pagó»')
+  await boton.click()
+  const v = pagina.locator('[role="dialog"]')
+  await v.waitFor()
+  comprobar(limpio(await v.textContent()).includes('No vuelve atrás'), 'la ventana avisa que no vuelve atrás')
+  await tresToques(v.getByRole('button', { name: 'Pasar a Cuentas por pagar' }))
+  const error = await esperarVentana(pagina)
+  comprobar(!error, `la pasa a Cuentas por pagar${error ? ` (dijo «${error}»)` : ''}`)
+  const [marca] = await hasta(() => consulta('select pago_en_tesoreria from ordenes_compra_materiales where id = $1', [oc[2]]), (r) => r[0]?.pago_en_tesoreria)
+  comprobar(marca?.pago_en_tesoreria === true, 'la OC queda para que Tesorería la pague')
+  const [{ n: auditadas }] = await consulta(
+    `select count(*)::int as n from audit_log where tabla = 'ordenes_compra_materiales' and registro_id = $1 and accion = 'UPDATE' and usuario_id = $2`,
+    [oc[2], ids[CUENTAS.tesoreria]],
+  )
+  comprobar(auditadas === 1, `tres toques, un cambio en la auditoría, con quién lo hizo (${auditadas})`)
+  const enAdq = await hasta(
+    async () => limpio(await pagina.locator(`tbody tr[data-orden="${nombre(oc[2])}"]`).textContent().catch(() => '')),
+    (t) => t.includes('Por pagar'),
+  )
+  comprobar(enAdq.includes('Por pagar') && enAdq.includes('Pagar en Cuentas por pagar') && !enAdq.includes('No se pagó'),
+    `la fila la da por pagar y lleva a pagarla: «${enAdq.slice(0, 200)}»`)
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  comprobar((await pagina.locator(`article#compra-${oc[2]} [data-pagar-compra]`).count()) === 1, 'y en Cuentas por pagar ya pide su pago')
+  await contexto.close()
+
+  // El otro camino: con un pago directo vigente, Contabilidad no le liga una factura.
+  await como('tesoreria')
+  const [{ id: pagoDirecto }] = await consulta('select gen_random_uuid() as id')
+  const voucher = await subir('pagos-compras', `${oc[2]}/${pagoDirecto}.pdf`, 'tesoreria')
+  await consulta(`select public.registrar_pago_compra($1, $2, $3::date, 50, false, null, null, $4, $5, null)`, [pagoDirecto, oc[2], hoy, voucher, caja])
+  await como('contabilidad')
+  const [{ id: otra }] = await consulta('select gen_random_uuid() as id')
+  await consulta(
+    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
+     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', 50, 'CONTADO')`,
+    [otra, PROVEEDOR, `F002-${SUFIJO}`, hoy],
+  )
+  const rechazo = await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values ($1, $2)`, [otra, oc[2]])
+    .then(() => '')
+    .catch((e) => e.message)
+  comprobar(rechazo.includes('Tesorería ya le pagó'), `y Contabilidad no le liga una factura encima («${rechazo.slice(0, 120)}»)`)
+  await como(null)
+}
+
 // ---------------------------------------------------------------- 4. Logística adjunta la factura y el contrato de la OS
 {
   const { pagina, contexto } = await entrar('logistica')
@@ -345,7 +432,77 @@ let pagoId
   comprobar(tiene(textoFila), `la fila muestra los dos documentos${tiene(textoFila) ? '' : `: «${textoFila.slice(0, 200)}»`}`)
   comprobar((await consulta(`select count(*)::int as n from documentos_orden_servicio where orden_servicio_id = $1 and tipo = 'CONTRATO'`, [os]))[0].n === 1,
     'el contrato queda en la base')
+  // A la altura del «Anular» de la OS, el del documento dice qué anula.
+  const anulan = (await fila.locator('[data-anular-documento-servicio]').allInnerTexts()).map(limpio)
+  comprobar(anulan.join(' | ') === 'Anular factura | Anular contrato', `cada documento dice qué anula: ${anulan.join(' | ')}`)
   await pagina.screenshot({ path: join(CAPTURAS, 'os-documentos.png'), fullPage: true })
+
+  // 4b. La OS nueva lleva su contrato desde que se emite, si ya está («al crearlos o
+  // que se quede opcional para que después lo adjunten», DKS por el hilo del costeo).
+  const DESCRIPCION = `Torneado de prueba con su contrato (${SUFIJO})`
+  const emitidas = () =>
+    consulta(`select id, numero from ordenes_servicio where proveedor_id = $1 and descripcion = $2`, [proveedor, DESCRIPCION])
+  await pagina.getByRole('button', { name: 'Nueva orden de servicio' }).click()
+  await v.waitFor()
+  await v.locator('#os-proveedor').click()
+  await pagina.locator('[role="option"]', { hasText: PROVEEDOR }).first().click()
+  await v.locator('#os-descripcion').fill(DESCRIPCION)
+  await v.locator('#os-codigo').fill('PLA_SR_O4_1_26/21')
+  await v.locator('#os-monto').fill('800')
+  await v.locator('#os-detraccion').selectOption('037')
+  // Un archivo que no es PDF ni foto no deja emitir: no queda una OS sin el contrato que se eligió.
+  await v.locator('#os-contrato').setInputFiles({ name: 'contrato.txt', mimeType: 'text/plain', buffer: Buffer.from('no es un pdf') })
+  await v.getByRole('button', { name: 'Emitir orden de servicio' }).click()
+  const rechazo = await esperarVentana(pagina)
+  comprobar(rechazo.includes('PDF') && (await v.isVisible()), `un contrato que no es PDF ni foto se rechaza antes de emitir («${rechazo}»)`)
+  comprobar((await emitidas()).length === 0, 'y la OS no se emite')
+  await v.locator('#os-contrato').setInputFiles(join(archivos, 'contrato-os.pdf'))
+  await tresToques(v.getByRole('button', { name: 'Emitir orden de servicio' }))
+  error = await esperarVentana(pagina)
+  comprobar(!error, `emite la OS con su contrato${error ? ` (dijo «${error}»)` : ''}`)
+  const nuevas = await hasta(emitidas, (r) => r.length > 0)
+  comprobar(nuevas.length === 1, `tres toques emiten una OS (${nuevas.length})`)
+  const contratos = await hasta(
+    () => consulta(`select ruta_storage, subido_por from documentos_orden_servicio where orden_servicio_id = $1 and tipo = 'CONTRATO'`, [nuevas[0]?.id]),
+    (r) => r.length > 0,
+  )
+  comprobar(contratos.length === 1 && contratos[0].subido_por === ids[CUENTAS.logistica], 'con su contrato adjunto, por Logística')
+  comprobar((await objeto('documentos-servicio', contratos[0]?.ruta_storage)) === 1, 'y el archivo en storage.objects')
+  const avisoNueva = limpio(await pagina.locator('[role="status"]').first().innerText().catch(() => ''))
+  comprobar(avisoNueva.includes(nuevas[0]?.numero ?? '¿?') && avisoNueva.includes('Su contrato quedó adjunto'), `el aviso lo dice: «${avisoNueva}»`)
+  const filaNueva = pagina.locator(`tr[data-servicio="${nuevas[0]?.numero}"]`)
+  const conContrato = await hasta(async () => limpio(await filaNueva.innerText().catch(() => '')), (t) => t.includes('Contrato'))
+  comprobar(conContrato.includes('Contrato'), 'y su fila muestra el contrato')
+
+  // 4c. Si la OS entra y su contrato no (aquí se corta la subida), la OS queda
+  // emitida y el aviso dice por qué y dónde adjuntarlo.
+  const SIN_SENAL = `Doblado de prueba sin señal para el contrato (${SUFIJO})`
+  cortando = true
+  await pagina.route('**/storage/v1/object/documentos-servicio/**', (r) => r.abort())
+  await pagina.getByRole('button', { name: 'Nueva orden de servicio' }).click()
+  await v.waitFor()
+  await v.locator('#os-proveedor').click()
+  await pagina.locator('[role="option"]', { hasText: PROVEEDOR }).first().click()
+  await v.locator('#os-descripcion').fill(SIN_SENAL)
+  await v.locator('#os-codigo').fill('PLA_SR_O4_1_26/21')
+  await v.locator('#os-monto').fill('800')
+  await v.locator('#os-detraccion').selectOption('037')
+  await v.locator('#os-contrato').setInputFiles(join(archivos, 'contrato-os.pdf'))
+  await v.getByRole('button', { name: 'Emitir orden de servicio' }).click()
+  error = await esperarVentana(pagina)
+  await pagina.unroute('**/storage/v1/object/documentos-servicio/**')
+  cortando = false
+  const [cortada] = await hasta(
+    () => consulta(`select id, numero from ordenes_servicio where proveedor_id = $1 and descripcion = $2`, [proveedor, SIN_SENAL]),
+    (r) => r.length > 0,
+  )
+  comprobar(!error && Boolean(cortada), `la OS queda emitida aunque su contrato no subió${error ? ` (dijo «${error}»)` : ''}`)
+  comprobar((await consulta(`select count(*)::int as n from documentos_orden_servicio where orden_servicio_id = $1`, [cortada?.id]))[0].n === 0,
+    'sin documento anotado')
+  const falta = limpio(await pagina.locator('[role="alert"]', { hasText: 'El contrato no se adjuntó' }).innerText().catch(() => ''))
+  comprobar(falta.includes('No se pudo subir el archivo') && falta.includes('Adjuntar documento'), `y se avisa por qué y dónde adjuntarlo: «${falta}»`)
+  const ofrece = await hasta(() => pagina.locator(`tr[data-servicio="${cortada?.numero}"] [data-adjuntar-documento-servicio]`).count(), (n) => n === 1)
+  comprobar(ofrece === 1, 'su fila ofrece adjuntarlo')
   await contexto.close()
 }
 
@@ -373,7 +530,11 @@ let pagoId
   const { pagina, contexto } = await entrar('gerencia')
   await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   comprobar((await pagina.locator(`article#compra-${oc[0]}`).count()) === 1, 'Gerencia ve la OC con boleta')
+  const enFactura = limpio(await pagina.locator(`article#factura-${factura} [data-para-pagar]`).innerText().catch(() => ''))
+  comprobar(enFactura.includes(`PDF de la ${nombre(oc[1])}`) && enFactura.includes(CUENTA_PROVEEDOR), 'y en la factura, el PDF de su OC y a dónde se transfiere')
   comprobar((await pagina.locator('[data-pagar-compra]').count()) === 0, 'sin ningún botón de pagar')
+  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  comprobar((await pagina.locator('[data-pasar-compra]').count()) === 0, 'ni el de pasar a Tesorería una OC de antes')
   await contexto.close()
 }
 

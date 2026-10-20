@@ -377,7 +377,7 @@ if (!ocId) throw new Error('No salió la OC: no se puede seguir.')
 // ------------------------------------------------ 3. Contabilidad registra las dos facturas
 {
   const { pagina, contexto, errores } = await entrar('contabilidad')
-  await ir(pagina, `${BASE}/adquisiciones`)
+  await ir(pagina, `${BASE}/adquisiciones?vista=facturas`)
   const espera = limpio(await pagina.locator('tbody tr', { hasText: ocNumero }).innerText())
   comprobar(espera.includes(`Logística anexó ${serie}-71`) && espera.includes(`${serie}-72`), 'la OC que espera dice las dos facturas que anexó Logística')
   comprobar(espera.includes(codigoA) && espera.includes(codigoB), 'con los dos códigos internos')
@@ -433,13 +433,13 @@ if (!ocId) throw new Error('No salió la OC: no se puede seguir.')
 {
   const { pagina, contexto, errores } = await entrar('tesoreria')
   await ir(pagina, `${BASE}/adquisiciones`)
-  // La tarjeta entera: el ancestro más cercano del título que ya trae los
-  // documentos. Desde que el título lleva su botón «i» queda un nivel más hondo
-  // y el «tercer ancestro» era solo la cabecera, sin ningún documento.
-  const docs = limpio(
-    await pagina.getByText('Documentos de compras de Logística').locator('xpath=ancestor::*[.//article][1]').innerText().catch(() => ''),
+  // Desde el PR #130 Adquisiciones es una fila por OC: sus facturas van en la
+  // columna de documentos, y la de borrador lleva «En borrador».
+  const docs = limpio((await pagina.locator(`tr[data-orden="${ocNumero}"]`).textContent().catch(() => '')) ?? '')
+  comprobar(
+    docs.includes(`Factura ${serie}-71`) && docs.includes(`Factura ${serie}-72`) && !docs.includes('En borrador'),
+    'Tesorería ve en la fila de la OC las dos facturas de Logística con su número, ya registradas',
   )
-  comprobar(docs.includes(`${serie}-71`) && docs.includes('Registrada por Contabilidad'), 'Tesorería ve las facturas de Logística con su número, ya registradas')
   await ir(pagina, `${BASE}/tesoreria/por-pagar`)
   const porPagar = limpio(await pagina.locator('main').innerText())
   // Con la OC ya completa, cada una calza con lo que le tocaba y dice con cuál la completa.

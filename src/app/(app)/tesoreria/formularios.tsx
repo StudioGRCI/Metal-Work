@@ -1,6 +1,6 @@
 'use client'
 
-import { Ban, HandCoins, Wallet } from 'lucide-react'
+import { Ban, HandCoins, Undo2, Wallet } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 
 import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
@@ -20,6 +20,7 @@ import {
   anularPagoCompra,
   anularPagoFactura,
   anularPagoServicio,
+  pasarCompraATesoreria,
   registrarCobroFactura,
   registrarPagoCompra,
   registrarPagoFactura,
@@ -710,6 +711,48 @@ export function AnularPagoCompra({ pagoId }: { pagoId: string }) {
             </Boton>
             <Boton type="submit" variante="peligro" cargando={enviando}>
               Anular
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
+    </>
+  )
+}
+
+/**
+ * La OC con boleta de antes de que Tesorería registrara esos pagos se dio por
+ * pagada fuera del sistema. Si no se pagó, Tesorería la pasa a Cuentas por
+ * pagar desde Adquisiciones (migración 20261020210000); no vuelve atrás.
+ */
+export function PasarCompraATesoreria({ compraId, numero }: { compraId: string; numero: string }) {
+  const [abierta, setAbierta] = useState(false)
+  const { alEnviar, enviando, error } = useEnvio(pasarCompraATesoreria, () => setAbierta(false))
+  return (
+    <>
+      <Boton type="button" variante="contorno" tamano="sm" onClick={() => setAbierta(true)} data-pasar-compra={compraId}>
+        <Undo2 aria-hidden className="size-4" />
+        No se pagó
+      </Boton>
+      <Ventana
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo={`La ${numero} no se pagó`}
+        descripcion="Es de antes de que Tesorería registrara el pago de las OC con boleta y se dio por pagada fuera del sistema. Si no se pagó, pasa a Cuentas por pagar y ahí la pagas con su voucher. No vuelve atrás."
+        ancho="md"
+      >
+        <form onSubmit={alEnviar} className="space-y-4">
+          <input type="hidden" name="id" value={compraId} />
+          {error && (
+            <p role="alert" className="text-sm text-peligro">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" cargando={enviando}>
+              Pasar a Cuentas por pagar
             </Boton>
           </div>
         </form>

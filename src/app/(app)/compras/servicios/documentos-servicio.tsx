@@ -32,15 +32,17 @@ export function ListaDocumentosServicio({ documentos, anula }: { documentos: Doc
           {d.url ? (
             <a href={d.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 font-medium text-acento hover:underline sm:min-h-0">
               <FileText aria-hidden className="size-3.5 shrink-0" />
-              <span className="tabular">{etiquetaDocumentoServicio(d)}</span>
+              <span className="tabular whitespace-nowrap">{etiquetaDocumentoServicio(d)}</span>
             </a>
           ) : (
+            // Sin enlace firmado: se lista igual y se dice por qué no se abre.
             <span className="inline-flex items-center gap-1 text-texto">
               <FileText aria-hidden className="size-3.5 shrink-0" />
-              <span className="tabular">{etiquetaDocumentoServicio(d)}</span>
+              <span className="tabular whitespace-nowrap">{etiquetaDocumentoServicio(d)}</span>
+              <span className="text-texto-suave">(no se pudo abrir: recarga la pantalla)</span>
             </span>
           )}
-          {anula && <AnularDocumentoServicio documentoId={d.id} etiqueta={etiquetaDocumentoServicio(d)} />}
+          {anula && <AnularDocumentoServicio documentoId={d.id} tipo={d.tipo} etiqueta={etiquetaDocumentoServicio(d)} />}
         </li>
       ))}
     </ul>
@@ -92,7 +94,6 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
         abierta={documentoId !== null}
         alCerrar={() => setDocumentoId(null)}
         titulo={`Documento de la ${numero}`}
-        descripcion="La factura, la boleta o el recibo con que Tesorería paga, o el contrato del trabajo."
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
@@ -136,8 +137,11 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
   )
 }
 
-/** Anular con su motivo un documento adjunto por error: queda en el historial. */
-function AnularDocumentoServicio({ documentoId, etiqueta }: { documentoId: string; etiqueta: string }) {
+/**
+ * Anular con su motivo un documento adjunto por error: queda en el historial.
+ * El botón dice qué anula: en la fila de la OS está a la altura del «Anular» de la orden.
+ */
+function AnularDocumentoServicio({ documentoId, tipo, etiqueta }: { documentoId: string; tipo: string; etiqueta: string }) {
   const [abierta, setAbierta] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(anularDocumentoServicio, () => setAbierta(false))
   return (
@@ -150,7 +154,7 @@ function AnularDocumentoServicio({ documentoId, etiqueta }: { documentoId: strin
         data-anular-documento-servicio={documentoId}
       >
         <Ban aria-hidden className="size-3.5" />
-        Anular
+        Anular {(TIPO_DOCUMENTO_SERVICIO[tipo] ?? 'documento').toLowerCase()}
       </button>
       <Ventana
         abierta={abierta}

@@ -38,8 +38,8 @@ begin
    where public.ruc_es_valido('2060000421' || d) limit 1
   returning id::text into v;
   perform set_config('prueba.proveedor', v, true);
-  foreach v in array array['rq', 'oc1', 'oc2', 'oc3', 'oc4', 'oc5', 'os1', 'os2', 'os3', 'f4',
-                           'p1', 'p2', 'p3', 'pv', 'd1', 'd2', 'd3', 'd4'] loop
+  foreach v in array array['rq', 'oc1', 'oc2', 'oc3', 'oc4', 'oc5', 'os1', 'os2', 'os3', 'f1', 'f3', 'f4',
+                           'p1', 'p2', 'p3', 'p4', 'pv', 'd1', 'd2', 'd3', 'd4'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
   perform set_config('prueba.hoy', ((now() at time zone 'America/Lima')::date)::text, true);
@@ -96,14 +96,16 @@ begin
   foreach f in array array['public.registrar_pago_compra(uuid, uuid, date, numeric, boolean, text, text, text, uuid, numeric)',
                            'public.anular_pago_compra(uuid, text)', 'public.compras_con_boleta_por_pagar()',
                            'public.adjuntar_documento_servicio(uuid, uuid, text, text, text, text)',
-                           'public.anular_documento_servicio(uuid, text)', 'public.lineas_de_compra_en_papel(uuid)',
+                           'public.anular_documento_servicio(uuid, text)', 'public.pasar_compra_a_tesoreria(uuid)',
                            'public.puede_adjuntar_documento_servicio()'] loop
     perform test.afirmar(not has_function_privilege('anon', f, 'execute') and has_function_privilege('authenticated', f, 'execute'),
                          'anon no llama ' || f || '; una sesión sí');
   end loop;
   perform test.afirmar(not has_function_privilege('authenticated', 'public.fn_compra_pagada_no_cambia()', 'execute')
                        and not has_function_privilege('authenticated', 'public.fn_pago_compra_guardia()', 'execute')
-                       and not has_function_privilege('authenticated', 'public.fn_documento_servicio_guardia()', 'execute'),
+                       and not has_function_privilege('authenticated', 'public.fn_documento_servicio_guardia()', 'execute')
+                       and not has_function_privilege('authenticated', 'public.fn_factura_sin_pago_directo()', 'execute')
+                       and not has_function_privilege('authenticated', 'public.compra_pagada_directo(uuid[])', 'execute'),
                        'los disparadores los llama el sistema, no la gente');
   perform test.afirmar((select bool_and(c.relrowsecurity) from pg_class c
                          where c.oid in ('public.pagos_orden_compra'::regclass, 'public.documentos_orden_servicio'::regclass)),
@@ -355,22 +357,161 @@ select test.afirmar((select pago = 'POR_PAGAR' and jsonb_array_length(facturas) 
   'Adquisiciones la sigue por su comprobante registrado, sin pagos directos');
 reset role;
 
--- ============================================ 8. La OC en papel para Tesorería
+-- ============================================ 7b. Y la OC pagada directo no recibe factura
+-- La OC 1 tiene un pago a cuenta vigente (p1): Contabilidad no le liga una factura.
+select pg_temp.como('contabilidad');
+insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
+values (pg_temp.id('f1'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', 'F001-4211', current_setting('prueba.hoy')::date,
+        current_setting('prueba.hoy')::date, 'PEN', 100, 'CONTADO');
+select test.debe_fallar($$ insert into public.adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values (pg_temp.id('f1'), pg_temp.id('oc1')) $$,
+  'a la OC que Tesorería pagó directo no se le liga una factura', 'Tesorería ya le pagó');
+select test.debe_fallar($$ update public.adquisiciones set orden_compra_id = pg_temp.id('oc1') where id = pg_temp.id('f1') $$,
+  'tampoco por la OC de la cabecera de la factura', 'Tesorería ya le pagó');
+
+-- ============================================ 8. La OC con boleta de antes que no se pagó
+-- La 3 se marcó como de antes: Tesorería la pasa a su lista; nadie más, y una
+-- marca puesta a mano no vale.
+select test.debe_fallar($$ update public.ordenes_compra_materiales set pago_en_tesoreria = true where id = pg_temp.id('oc3') $$,
+  'la marca no se cambia a mano', 'Adquisiciones');
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.debe_fallar($$ select public.pasar_compra_a_tesoreria(pg_temp.id('oc3')) $$,
+  'Logística no la pasa a Tesorería', 'permiso');
+reset role;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.debe_fallar($$ select public.pasar_compra_a_tesoreria(pg_temp.id('oc3')) $$,
+  'ni Contabilidad', 'permiso');
+reset role;
 select pg_temp.como('tesoreria');
 set local role authenticated;
-select test.afirmar((select count(*) from public.lineas_de_compra_en_papel(pg_temp.id('oc1'))) >= 0,
-  'Tesorería pide las líneas de la OC en papel sin el permiso de Requerimientos');
+select test.debe_fallar($$ select public.pasar_compra_a_tesoreria(pg_temp.id('oc2')) $$,
+  'la que va con factura no se pasa: se paga por su factura', 'va con factura');
+select test.afirmar(public.pasar_compra_a_tesoreria(pg_temp.id('oc3')) = pg_temp.id('oc3'),
+  'Tesorería pasa a su lista la OC con boleta de antes que no se pagó');
 reset role;
-select pg_temp.como('almacenero');
+select test.afirmar((select pago_en_tesoreria from public.ordenes_compra_materiales where id = pg_temp.id('oc3')),
+  'queda marcada');
+select test.afirmar(current_setting('metalwork.compra_a_tesoreria', true) = '',
+  'y la llave de la marca no queda puesta en la sesión');
+select test.afirmar((select count(*) from public.audit_log where tabla = 'ordenes_compra_materiales' and registro_id = pg_temp.id('oc3')
+                       and accion = 'UPDATE' and usuario_id = pg_temp.id('tesoreria')) = 1,
+  'quién la pasó queda en la auditoría');
+select test.debe_fallar($$ update public.ordenes_compra_materiales set pago_en_tesoreria = false where id = pg_temp.id('oc3') $$,
+  'y no vuelve atrás', 'Adquisiciones');
+select pg_temp.como('tesoreria');
 set local role authenticated;
-select test.afirmar((select count(*) from public.lineas_de_compra_en_papel(pg_temp.id('oc1'))) >= 0,
-  'Almacén también, por almacen.recibir');
+select test.afirmar((select total = 361.50 and pagado = 0 and not cancelada from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc3')),
+  'ya sale en las OC con boleta por pagar');
+select test.afirmar(pg_temp.pago('oc3') = 'POR_PAGAR', 'y Adquisiciones la da por pagar');
 reset role;
-select pg_temp.como('vendedor');
+-- La de antes con su comprobante registrado se paga por ahí: no se pasa.
+set local session_replication_role = replica;
+update public.ordenes_compra_materiales set pago_en_tesoreria = false where id = pg_temp.id('oc4');
+set local session_replication_role = origin;
+select pg_temp.como('tesoreria');
 set local role authenticated;
-select test.debe_fallar($$ select * from public.lineas_de_compra_en_papel(pg_temp.id('oc1')) $$,
-  'Ventas no', 'permiso');
+select test.debe_fallar($$ select public.pasar_compra_a_tesoreria(pg_temp.id('oc4')) $$,
+  'la de antes con su comprobante registrado no se pasa', 'ya registró el comprobante');
+select test.afirmar(pg_temp.pago('oc4') = 'POR_PAGAR',
+  'y Adquisiciones no la da por pagada fuera: se paga por su comprobante');
 reset role;
+
+-- ============================================ 8b. El pago directo y la factura en borrador
+-- Contabilidad liga la OC 3 a una factura en borrador; mientras no la registra,
+-- Tesorería la paga directo. Al registrarla, la base la para; anulado el pago, entra.
+select pg_temp.como('contabilidad');
+insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
+values (pg_temp.id('f3'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', 'F001-4213', current_setting('prueba.hoy')::date,
+        current_setting('prueba.hoy')::date, 'PEN', current_setting('prueba.total1')::numeric, 'CONTADO');
+insert into public.adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values (pg_temp.id('f3'), pg_temp.id('oc3'));
+insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
+values ('comprobantes-financieros', 'adquisiciones/' || pg_temp.id('f3') || '/comprobante.pdf', pg_temp.id('contabilidad'),
+        pg_temp.id('contabilidad')::text, jsonb_build_object('mimetype', 'application/pdf', 'size', 2048));
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select set_config('prueba.v5', pg_temp.subir('pagos-compras', 'oc3'), true);
+select test.afirmar(pg_temp.pagar('p4', 'oc3', 50, false, current_setting('prueba.v5')) = pg_temp.id('p4'),
+  'con la factura en borrador, Tesorería todavía la paga directo');
+reset role;
+select pg_temp.como('contabilidad');
+select test.debe_fallar($$ update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf'
+                           where id = pg_temp.id('f3') $$,
+  'y Contabilidad ya no registra esa factura', 'Tesorería ya le pagó');
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select public.anular_pago_compra(pg_temp.id('p4'), 'El proveedor entregó factura: se paga por ahí');
+reset role;
+select pg_temp.como('contabilidad');
+update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf' where id = pg_temp.id('f3');
+select test.afirmar((select estado = 'REGISTRADA' from public.adquisiciones where id = pg_temp.id('f3')),
+  'anulado el pago directo, la factura se registra');
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select count(*) from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc3') and not cancelada) = 0,
+  'y la OC deja la lista de boletas: ahora se paga por su factura');
+reset role;
+-- Ya registrada, una corrección (la llave que pone `corregir_factura_compra`)
+-- no la cambia a la OC 1, que tiene su pago directo vigente.
+select pg_temp.como('contabilidad');
+select test.debe_fallar($$ do $x$ begin
+                             perform set_config('metalwork.corrigiendo', 'factura', true);
+                             update public.adquisiciones set orden_compra_id = pg_temp.id('oc1') where id = pg_temp.id('f3');
+                           end $x$ $$,
+  'la factura registrada no pasa a la OC que Tesorería pagó directo', 'Tesorería ya le pagó');
+-- Un pago directo que hubiera quedado vigente con la factura registrada (de
+-- antes de la guarda, puesto con los disparadores apagados): la factura no se
+-- paga encima.
+set local session_replication_role = replica;
+insert into public.pagos_orden_compra (orden_compra_id, fecha_pago, moneda, monto, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+values (pg_temp.id('oc3'), current_setting('prueba.hoy')::date, 'PEN', 50, 'oc3/421-suelto.pdf', 'application/pdf', 2048, pg_temp.id('tesoreria'));
+set local session_replication_role = origin;
+select test.debe_fallar($$ insert into public.pagos_adquisicion (adquisicion_id, fecha, monto, referencia, registrado_por)
+                           values (pg_temp.id('f3'), current_setting('prueba.hoy')::date, 50, 'OP-4213', pg_temp.id('tesoreria')) $$,
+  'la factura de una OC pagada directo no se paga encima', 'no se paga encima');
+
+-- ============================================ 8c. La OC de un RQ de OT, en papel, para Tesorería
+-- Su PDF lee las líneas de la solicitud por `v_atencion_materiales`, que desde la
+-- 20261020174600 abre a `adquisiciones.ver`: Tesorería la paga y la tiene que leer.
+set local session_replication_role = replica;
+do $$
+begin
+  perform set_config('prueba.ot_papel', gen_random_uuid()::text, true);
+  perform set_config('prueba.otm_papel', gen_random_uuid()::text, true);
+  perform set_config('prueba.sol_papel', gen_random_uuid()::text, true);
+  perform set_config('prueba.sold_papel', gen_random_uuid()::text, true);
+  perform set_config('prueba.oc_papel', gen_random_uuid()::text, true);
+  insert into public.ordenes_trabajo (id, sede_id, descripcion, abierta_en_taller)
+  values (pg_temp.id('ot_papel'), (select id from public.sedes limit 1), 'OT 421 en papel', true);
+  insert into public.ot_materiales (id, orden_id, material_id, cantidad, area_destino)
+  values (pg_temp.id('otm_papel'), pg_temp.id('ot_papel'), current_setting('prueba.mat')::uuid, 3, 'MTZ');
+  insert into public.requerimientos_materiales (id, orden_id, area_destino, solicitado_por)
+  values (pg_temp.id('sol_papel'), pg_temp.id('ot_papel'), 'MTZ', pg_temp.id('comprador'));
+  insert into public.requerimiento_material_detalles (id, requerimiento_id, ot_material_id, cantidad_solicitada)
+  values (pg_temp.id('sold_papel'), pg_temp.id('sol_papel'), pg_temp.id('otm_papel'), 3);
+  insert into public.ordenes_compra_materiales (id, proveedor, referencia, creado_por, requerimiento_id, condicion_pago, dias_credito, con_factura)
+  values (pg_temp.id('oc_papel'), 'Proveedor de prueba 421', 'OC 421 en papel', pg_temp.id('comprador'), pg_temp.id('sol_papel'), 'CONTADO', 0, false);
+  insert into public.orden_compra_material_detalles (orden_compra_id, cantidad, precio_unitario, requerimiento_id, requerimiento_detalle_id)
+  values (pg_temp.id('oc_papel'), 3, 120.50, pg_temp.id('sol_papel'), pg_temp.id('sold_papel'));
+end $$;
+set local session_replication_role = origin;
+do $$
+declare v text;
+begin
+  foreach v in array array['tesoreria', 'contabilidad'] loop
+    perform pg_temp.como(v);
+    set local role authenticated;
+    perform test.afirmar((select count(*) from public.orden_compra_material_detalles where orden_compra_id = pg_temp.id('oc_papel')) = 1
+                         and (select count(*) from public.v_atencion_materiales where detalle_id = pg_temp.id('sold_papel')) = 1,
+                         v || ' lee la línea de la OC y lo que su PDF lee de la solicitud de la OT');
+    reset role;
+  end loop;
+  perform pg_temp.como('vendedor');
+  set local role authenticated;
+  perform test.afirmar((select count(*) from public.v_atencion_materiales where detalle_id = pg_temp.id('sold_papel')) = 0,
+                       'Ventas no');
+  reset role;
+end $$;
 
 -- ============================================ 9. La OS guarda su factura y su contrato
 -- Tres OS del mismo proveedor, como dueño de las tablas: dos aprobadas y una anulada.

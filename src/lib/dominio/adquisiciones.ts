@@ -18,7 +18,8 @@ export const ESTADO_PAGO: Record<string, Def> = {
   SIN_FACTURA: {
     etiqueta: 'Pago fuera del sistema',
     tono: 'neutro',
-    descripcion: 'Va con boleta y es de antes de que Tesorería registrara el pago de las OC con boleta: su pago no quedó en el sistema.',
+    descripcion:
+      'Va con boleta y es de antes de que Tesorería registrara el pago de las OC con boleta: se dio por pagada fuera del sistema. Si no se pagó, Tesorería la pasa a Cuentas por pagar con «No se pagó».',
   },
   ESPERA_APROBACION: { etiqueta: 'Espera a Gerencia', tono: 'neutro', descripcion: 'No se paga hasta que Gerencia la apruebe.' },
   NO_SE_PAGA: { etiqueta: 'No se paga', tono: 'neutro', descripcion: 'Rechazada o anulada.' },

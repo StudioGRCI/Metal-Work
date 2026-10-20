@@ -60,9 +60,9 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
   const ids = (detalles.data ?? []).flatMap((d) => (d.requerimiento_detalle_id ? [d.requerimiento_detalle_id] : []))
   const directos = (detalles.data ?? []).flatMap((d) => (!d.requerimiento_detalle_id && d.material_id ? [d.material_id] : []))
   const [lineas, materiales, cuentas, insumos] = await Promise.all([
-    // Por la base y no por `v_atencion_materiales`, que mira con los permisos de
-    // Requerimientos: Tesorería y Contabilidad ven la OC y no el RQ (20261020210000).
-    ids.length ? db.rpc('lineas_de_compra_en_papel', { p_compra: c.id }) : Promise.resolve({ data: [], error: null }),
+    ids.length
+      ? db.from('v_atencion_materiales').select('detalle_id, numero_ot, material, material_codigo, unidad').in('detalle_id', ids)
+      : Promise.resolve({ data: [], error: null }),
     directos.length
       ? db.from('materiales').select('id, codigo, descripcion, unidad:unidades_medida(codigo)').in('id', directos)
       : Promise.resolve({ data: [], error: null }),

@@ -213,8 +213,9 @@ comprobar(Boolean(idTesoreria), 'la cuenta local de Tesorería existe')
   const consultas = grupos.find((g) => g.titulo === 'Consultas')?.rutas ?? []
   console.log(`    menú de Contabilidad: ${grupos.map((g) => `${g.titulo}: ${g.rutas.join(' ')}`).join(' | ')}`)
   comprobar(
-    JSON.stringify(suyo) === JSON.stringify(['/adquisiciones', '/contabilidad/facturacion', '/compras/gestion', '/compras/servicios']),
-    'Contabilidad: Adquisiciones encima de Facturación, después Gestión de compras y Órdenes de servicio',
+    // Sin Gestión de compras: es de Logística y del conductor (DKS, 2026-10-20).
+    JSON.stringify(suyo) === JSON.stringify(['/adquisiciones', '/contabilidad/facturacion', '/compras/servicios']),
+    'Contabilidad: Adquisiciones encima de Facturación, después Órdenes de servicio',
   )
   comprobar(consultas.includes('/proveedores') && consultas.includes('/tesoreria/tipo-de-cambio'), 'Proveedores y Tipo de cambio van en Consultas')
   const todas = grupos.flatMap((g) => g.rutas)

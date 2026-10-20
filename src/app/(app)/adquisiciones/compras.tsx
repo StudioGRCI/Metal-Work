@@ -24,6 +24,7 @@ import { ESTADO_SERVICIO, situacionCompra } from '@/lib/dominio/logistica'
 import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
 import { cantidad, fecha, hoyLima, moneda } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
+import { PasarCompraATesoreria } from '@/app/(app)/tesoreria/formularios'
 
 import { AnularGuia, CargarGuia } from './guia-remision'
 
@@ -433,7 +434,13 @@ function Documentos({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, s
   const deFacturas = new Set(f.facturas.flatMap((x) => (x.bucket === 'documentos-compras' && x.ruta ? [x.ruta] : [])))
   const adjuntos = f.documentos.filter((d) => !deFacturas.has(d.ruta))
   const aprobada = f.aprobacion === 'APROBADA' || f.aprobacion === 'NO_REQUERIDA'
-  const sinComprobante = f.tipo === 'OC' && f.con_factura === false && aprobada && !f.documentos.some((d) => d.tipo === 'COMPROBANTE')
+  // La boleta falta solo si tampoco llegó factura: el proveedor pudo entregar factura en vez de boleta.
+  const sinComprobante =
+    f.tipo === 'OC' &&
+    f.con_factura === false &&
+    aprobada &&
+    f.facturas.length === 0 &&
+    !f.documentos.some((d) => d.tipo === 'COMPROBANTE' || d.tipo === 'FACTURA')
   const faltaFacturar =
     f.tipo === 'OC' && f.con_factura && aprobada && f.facturas.some((x) => x.estado === 'REGISTRADA') && !f.facturada_entera && f.total !== null
   const adjuntados = new Set(f.documentos.flatMap((d) => (d.numero ? [d.numero] : [])))
@@ -543,6 +550,7 @@ function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>
           {acceso.pagosServicio === 'pagar' ? 'Pagar en Pagos de servicio' : 'Ver en Pagos de servicio'}
         </Link>
       )}
+      {f.tipo === 'OC' && f.pago === 'SIN_FACTURA' && acceso.porPagar === 'pagar' && <PasarCompraATesoreria compraId={f.id} numero={nombreDe(f)} />}
       {f.tipo === 'OC' && f.con_factura === false && !f.facturas.some((x) => x.estado === 'REGISTRADA') && acceso.porPagar && (f.pago === 'POR_PAGAR' || f.pago === 'PAGO_PARCIAL') && (
         <Link href={`/tesoreria/por-pagar#compra-${f.id}`} className={`${toque} ${enlace}`}>
           {acceso.porPagar === 'pagar' ? 'Pagar en Cuentas por pagar' : 'Ver en Cuentas por pagar'}

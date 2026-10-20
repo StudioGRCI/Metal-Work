@@ -251,7 +251,7 @@ function Factura({
   // Lo que Tesorería mira al pagar: la factura, sus OC y a dónde transferir.
   const documentos: DocumentoParaPagar[] = [
     ...(c.url ? [{ clave: 'factura', etiqueta: `Factura ${c.numero_documento ?? ''}`.trim(), url: c.url }] : []),
-    ...(verOc ? ordenes.map((o) => ({ clave: o.id, etiqueta: o.numero ?? `OC ${o.referencia}`, url: pdfDeLaOc(o.id), descarga: true })) : []),
+    ...(verOc ? ordenes.map((o) => ({ clave: o.id, etiqueta: `PDF de la ${o.numero ?? `OC ${o.referencia}`}`, url: pdfDeLaOc(o.id), descarga: true })) : []),
   ]
   return (
     // El id es el ancla con que Adquisiciones salta a esta factura.
@@ -274,16 +274,11 @@ function Factura({
           {ordenes.length > 0 && (
             <p className="text-xs text-texto-suave">
               {ordenes.length === 1 ? 'OC ' : `${ordenes.length} OC: `}
+              {/* El PDF de cada OC va abajo, con la factura y las cuentas del proveedor. */}
               {ordenes.map((o, i) => (
                 <span key={o.id}>
                   {i > 0 && ' · '}
-                  {verOc ? (
-                    <a href={pdfDeLaOc(o.id)} download className="tabular font-medium text-acento hover:underline">
-                      {o.numero ?? o.referencia}
-                    </a>
-                  ) : (
-                    <span className="tabular text-texto">{o.numero ?? o.referencia}</span>
-                  )}
+                  <span className="tabular whitespace-nowrap text-texto">{o.numero ?? o.referencia}</span>
                   {o.numero_ot && ` (OT ${o.numero_ot})`}
                 </span>
               ))}
@@ -307,31 +302,29 @@ function Factura({
         </div>
       </div>
 
-      {/* La factura y el pago en un renglón, como en Cuentas por cobrar: abajo de todo dejaban media tarjeta en blanco. */}
-      {(c.url || (paga && saldo > 0 && c.id)) && (
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-          {c.url && (
-            <a href={c.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1.5 text-sm text-acento hover:underline sm:min-h-0">
-              <FileText aria-hidden className="size-4" />
-              Abrir la factura
-            </a>
-          )}
-          {paga && saldo > 0 && c.id && (
-            <PagarFactura
-              adquisicionId={c.id}
-              numero={c.numero_documento ?? 'factura'}
-              proveedor={c.proveedor ?? ''}
-              hoy={hoy}
-              saldo={saldo}
-              codigoMoneda={m}
-              cuentas={cuentasCaja}
-              paraPagar={
-                <ParaPagar documentos={documentos} cuentas={c.cuentasProveedor} monedaDocumento={m} sinCuentas={sinCuentas(verCuentas, ordenes.length > 0)} />
-              }
-            />
-          )}
-        </div>
-      )}
+      {/* La factura, sus OC y a dónde transferir, como en la OC con boleta y la OS; debajo, el pago. */}
+      <div className="mt-2 space-y-2">
+        <ParaPagar
+          documentos={documentos}
+          cuentas={saldo > 0 ? c.cuentasProveedor : []}
+          monedaDocumento={m}
+          sinCuentas={saldo > 0 ? sinCuentas(verCuentas, ordenes.length > 0) : null}
+        />
+        {paga && saldo > 0 && c.id && (
+          <PagarFactura
+            adquisicionId={c.id}
+            numero={c.numero_documento ?? 'factura'}
+            proveedor={c.proveedor ?? ''}
+            hoy={hoy}
+            saldo={saldo}
+            codigoMoneda={m}
+            cuentas={cuentasCaja}
+            paraPagar={
+              <ParaPagar documentos={documentos} cuentas={c.cuentasProveedor} monedaDocumento={m} sinCuentas={sinCuentas(verCuentas, ordenes.length > 0)} />
+            }
+          />
+        )}
+      </div>
       {c.pagos.length > 0 && (
         <ol className="mt-2 space-y-1.5 border-t border-borde pt-2">
           {c.pagos.map((p) => (
@@ -401,7 +394,7 @@ function CompraConBoletaFila({
         <div>
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-texto">
-              {b.proveedor} · <span className="tabular">{nombre}</span>
+              {b.proveedor} · <span className="tabular whitespace-nowrap">{nombre}</span>
             </span>
             {b.cancelada && <Insignia tono="exito">Pagada</Insignia>}
             {!b.cancelada && pagado > 0 && <Insignia tono="aviso">Pagada en parte</Insignia>}

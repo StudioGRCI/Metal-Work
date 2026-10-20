@@ -296,7 +296,7 @@ try {
   // ---------------------------------------------------------------- 4. Contabilidad
   {
     const { pagina, contexto } = await entrar('contabilidad')
-    await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+    await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
     await pagina.getByRole('button', { name: `Corregir el comprobante ${numeroFactura}` }).click()
     const v = pagina.locator('[role="dialog"]')
     await v.locator('[id^="fc-total-"]').fill('1185.90')

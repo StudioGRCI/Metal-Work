@@ -13,9 +13,14 @@
 -- como paga la OS: contra la OC, con su voucher y desde una cuenta de la caja,
 -- que se mueve sola. La boleta la adjunta Logística (ya era así).
 --
--- Las OC con boleta emitidas antes de esta migración se pagaron fuera del
--- sistema y nadie anotó cuándo: no aparecen como deuda. Las marca la columna
--- nueva `pago_en_tesoreria`, falsa para las que ya existían.
+-- Las OC con boleta que Gerencia ya había aprobado antes de esta migración se
+-- pagaron fuera del sistema y nadie anotó cuándo: no aparecen como deuda. Las
+-- marca la columna nueva `pago_en_tesoreria`, falsa solo para ellas. Si una no
+-- se pagó, Tesorería la pasa a su lista desde Adquisiciones.
+--
+-- Una OC se paga por un solo camino: la que tiene comprobante registrado no se
+-- paga directo, y a la que Tesorería ya le pagó directo Contabilidad no le
+-- registra un comprobante hasta que ese pago se anule.
 --
 -- La OS no guardaba su factura: solo el número que Tesorería anotaba al pagar.
 -- Desde aquí guarda sus documentos —la factura, la boleta o el recibo del
@@ -23,22 +28,30 @@
 -- contrato de la OS. Los adjuntan Logística, que emitió la OS, y Tesorería, si
 -- el proveedor se la manda a ella. Nada lleva monto: el documento dice cuánto.
 --
--- Y la OC en PDF ya se abre para Tesorería y Contabilidad: la de un RQ de OT
--- leía sus líneas con los permisos de Requerimientos, que ellas no tienen, y
--- salía «No tienes acceso a todas las solicitudes de esta compra».
---
 -- Idempotente. Sin `drop` de funciones ni de políticas: el conector de
 -- producción no los deja pasar. `drop constraint` sí pasa.
 -- =============================================================================
 
 -- 1. ¿Su pago lo registra Tesorería? ------------------------------------------------
--- Las OC que ya existían quedan en falso; las nuevas, en verdadero. Solo cuenta
--- para la OC con boleta: la que va con factura se paga por su factura.
-alter table public.ordenes_compra_materiales
-  add column if not exists pago_en_tesoreria boolean not null default false;
-alter table public.ordenes_compra_materiales alter column pago_en_tesoreria set default true;
+-- Solo cuenta para la OC con boleta: la que va con factura se paga por su factura.
+-- Quedan en falso las que iban con boleta y Gerencia ya había aprobado: esas se
+-- pagaron fuera. Las que esperaban su aprobación, las rechazadas y las que van
+-- con factura, en verdadero, como las nuevas: nadie las pagó fuera del sistema.
+-- La marca se pone una sola vez, al crear la columna, con los disparadores de la
+-- OC apagados: no es un cambio de la OC y no deja bitácora ni sello de edición.
+do $$
+begin
+  if not exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'ordenes_compra_materiales' and column_name = 'pago_en_tesoreria') then
+    alter table public.ordenes_compra_materiales add column pago_en_tesoreria boolean not null default true;
+    alter table public.ordenes_compra_materiales disable trigger user;
+    update public.ordenes_compra_materiales set pago_en_tesoreria = false
+     where not con_factura and aprobacion in ('APROBADA', 'NO_REQUERIDA');
+    alter table public.ordenes_compra_materiales enable trigger user;
+  end if;
+end $$;
 comment on column public.ordenes_compra_materiales.pago_en_tesoreria is
-  'La OC con boleta la paga Tesorería en el sistema (migración 20261020210000). Falso en las que ya existían: se pagaron fuera.';
+  'La OC con boleta la paga Tesorería en el sistema (migración 20261020210000). Falso en las que Gerencia ya había aprobado con boleta: se pagaron fuera. Si una no se pagó, Tesorería la pasa a verdadero (pasar_compra_a_tesoreria).';
 
 -- 2. El pago de una OC con boleta -----------------------------------------------------
 -- Calcado del pago de la OS: uno o varios pagos, cada uno con su voucher, y quien
@@ -145,13 +158,16 @@ do $$ begin
 end $$;
 
 -- Con un pago vigente, la OC ya no cambia de boleta a factura ni de moneda: el
--- pago quedaría colgado de una OC que se paga por otro camino. Y si su pago lo
--- registra Tesorería no se cambia nunca. Un disparador propio, sin tocar los de la OC.
+-- pago quedaría colgado de una OC que se paga por otro camino. Y quién registra
+-- su pago solo cambia de falso a verdadero, por `pasar_compra_a_tesoreria`: la
+-- OC de antes que no se pagó. Un disparador propio, sin tocar los de la OC.
 create or replace function public.fn_compra_pagada_no_cambia()
 returns trigger language plpgsql security definer set search_path to 'public' as $$
 begin
-  if new.pago_en_tesoreria is distinct from old.pago_en_tesoreria then
-    raise exception 'Si el pago de la OC lo registra Tesorería no se cambia.' using errcode = 'check_violation';
+  if new.pago_en_tesoreria is distinct from old.pago_en_tesoreria
+     and (old.pago_en_tesoreria or current_setting('metalwork.compra_a_tesoreria', true) is distinct from new.id::text) then
+    raise exception 'Quién registra el pago de la OC no se cambia aquí: la de antes que no se pagó la pasa Tesorería desde Adquisiciones.'
+      using errcode = 'check_violation';
   end if;
   if (new.con_factura, new.moneda) is distinct from (old.con_factura, old.moneda)
      and exists (select 1 from public.pagos_orden_compra where orden_compra_id = new.id and anulado_en is null) then
@@ -604,40 +620,130 @@ $$;
 revoke all on function public.anular_documento_servicio(uuid, text) from public, anon;
 grant execute on function public.anular_documento_servicio(uuid, text) to authenticated;
 
--- 6. Las líneas de la OC en papel ------------------------------------------------------------
--- La línea que atiende un RQ de OT se nombraba leyendo `v_atencion_materiales`,
--- que mira con los permisos de Requerimientos: Tesorería y Contabilidad ven la
--- OC (`compras.ver`) pero no el RQ, y su PDF salía con 403. Esta función entrega
--- solo lo que el papel necesita (OT, material, código y unidad) y solo de las
--- líneas que la política de las líneas de la OC ya deja ver a quien llama.
-create or replace function public.lineas_de_compra_en_papel(p_compra uuid)
-returns table (detalle_id uuid, numero_ot text, material text, material_codigo text, unidad text)
-language plpgsql stable security definer set search_path to 'public' as $$
-#variable_conflict use_column
+-- 6. Una OC, un solo camino de pago ---------------------------------------------------------
+-- `registrar_pago_compra` no paga directo la OC que ya tiene comprobante
+-- registrado. Esto cierra el otro lado: a la OC que Tesorería ya pagó directo no
+-- se le liga una factura, ni se registra la factura que ya la tenía ligada, ni
+-- se le devuelve en una corrección, ni se le paga una factura encima, mientras
+-- ese pago siga vigente. Si el proveedor entregó factura, Tesorería anula el
+-- pago y se paga por la factura. Los disparadores van sin lista de columnas:
+-- `update of` mira el SET de la sentencia, no lo que cambió (skill esquema).
+-- Las OC se toman «for share»: un pago que esté entrando a la misma OC (la toma
+-- «for update») termina antes, y esta consulta ya lo ve.
+create or replace function public.compra_pagada_directo(p_compras uuid[])
+returns text language plpgsql security definer set search_path to 'public' as $$
+declare v_nombre text;
 begin
-  if not (public.es_admin() or public.tiene_permiso('compras.ver') or public.tiene_permiso('almacen.recibir')) then
-    raise exception 'No tiene permiso para ver las órdenes de compra.' using errcode = 'insufficient_privilege';
-  end if;
-  return query
-  select rd.id, o.numero::text, mat.descripcion::text, mat.codigo::text, um.codigo::text
-    from public.orden_compra_material_detalles d
-    join public.requerimiento_material_detalles rd on rd.id = d.requerimiento_detalle_id
-    join public.requerimientos_materiales r on r.id = rd.requerimiento_id
-    join public.ot_materiales m on m.id = rd.ot_material_id
-    join public.materiales mat on mat.id = m.material_id
-    left join public.unidades_medida um on um.id = mat.unidad_medida_id
-    join public.ordenes_trabajo o on o.id = r.orden_id
-   where d.orden_compra_id = p_compra
-     -- Lo mismo que pide `ver_orden_compra_material_detalles`.
-     and (d.requerimiento_id is null
-          or exists (select 1 from public.requerimientos_materiales x
-                      where x.id = d.requerimiento_id and public.puede_ver_area_material(x.area_destino)));
+  perform 1 from public.ordenes_compra_materiales where id = any(p_compras) order by id for share;
+  select coalesce(c.numero, 'OC ' || c.referencia) into v_nombre
+    from public.ordenes_compra_materiales c
+   where c.id = any(p_compras)
+     and exists (select 1 from public.pagos_orden_compra p where p.orden_compra_id = c.id and p.anulado_en is null)
+   order by c.numero
+   limit 1;
+  return v_nombre;
 end;
 $$;
-comment on function public.lineas_de_compra_en_papel(uuid) is
-  'La OT, el material, su código y su unidad de cada línea de la OC que atiende un RQ de OT, para su PDF. Exige compras.ver o almacen.recibir.';
-revoke all on function public.lineas_de_compra_en_papel(uuid) from public, anon;
-grant execute on function public.lineas_de_compra_en_papel(uuid) to authenticated;
+comment on function public.compra_pagada_directo(uuid[]) is
+  'La primera de esas OC que tiene un pago directo de Tesorería vigente, o null. La usan los disparadores de Adquisiciones.';
+revoke all on function public.compra_pagada_directo(uuid[]) from public, anon, authenticated;
+
+create or replace function public.fn_factura_sin_pago_directo()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_compras uuid[];
+  v_nombre  text;
+begin
+  if tg_table_name = 'adquisiciones_ordenes_compra' then
+    -- Al ligar la OC, al devolverla en una corrección o al cambiarla por otra.
+    if new.quitada_en is not null
+       or (tg_op = 'UPDATE' and old.quitada_en is null
+           and new.orden_compra_id is not distinct from old.orden_compra_id
+           and new.adquisicion_id is not distinct from old.adquisicion_id) then
+      return new;
+    end if;
+    v_compras := array[new.orden_compra_id];
+  elsif tg_table_name = 'pagos_adquisicion' then
+    -- Al pagar la factura: las OC que cubre.
+    if new.anulado_en is not null then return new; end if;
+    select coalesce(array_agg(l.orden_compra_id), '{}') into v_compras
+      from public.adquisiciones_ordenes_compra l where l.adquisicion_id = new.adquisicion_id and l.quitada_en is null;
+    v_compras := v_compras || coalesce((select array[a.orden_compra_id] from public.adquisiciones a
+                                          where a.id = new.adquisicion_id and a.orden_compra_id is not null), '{}');
+  else
+    if new.estado <> 'REGISTRADA' then return new; end if;
+    if tg_op = 'UPDATE' and old.estado = 'REGISTRADA' then
+      -- Ya registrada: solo cuenta la OC de la cabecera, si cambió.
+      if new.orden_compra_id is not distinct from old.orden_compra_id or new.orden_compra_id is null then return new; end if;
+      v_compras := array[new.orden_compra_id];
+    else
+      -- Al registrar la factura: las OC que ya tiene ligadas.
+      select coalesce(array_agg(l.orden_compra_id), '{}') into v_compras
+        from public.adquisiciones_ordenes_compra l where l.adquisicion_id = new.id and l.quitada_en is null;
+      if new.orden_compra_id is not null then v_compras := v_compras || new.orden_compra_id; end if;
+    end if;
+  end if;
+  v_nombre := public.compra_pagada_directo(v_compras);
+  if v_nombre is not null and tg_table_name = 'pagos_adquisicion' then
+    raise exception 'Tesorería ya le pagó la % directo, por su boleta: esta factura no se paga encima. Si el proveedor entregó factura, primero se anula ese pago.',
+      v_nombre using errcode = 'check_violation';
+  elsif v_nombre is not null then
+    raise exception 'Tesorería ya le pagó la % directo, por su boleta: si el proveedor entregó factura, Tesorería anula ese pago antes de que la factura se registre aquí. Dos caminos son dos pagos.',
+      v_nombre using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.fn_factura_sin_pago_directo() from public, anon, authenticated;
+create or replace trigger trg_adquisicion_oc_sin_pago_directo
+  before insert or update on public.adquisiciones_ordenes_compra
+  for each row execute function public.fn_factura_sin_pago_directo();
+create or replace trigger trg_adquisicion_sin_pago_directo
+  before insert or update on public.adquisiciones
+  for each row execute function public.fn_factura_sin_pago_directo();
+create or replace trigger trg_pago_factura_sin_pago_directo
+  before insert on public.pagos_adquisicion
+  for each row execute function public.fn_factura_sin_pago_directo();
+
+-- La OC con boleta de antes que no se pagó: Tesorería la pasa a su lista y se
+-- paga como las de ahora. Solo de falso a verdadero, y no la que ya tiene
+-- comprobante registrado (se paga por ahí). Quién y cuándo quedan en la auditoría.
+create or replace function public.pasar_compra_a_tesoreria(p_compra uuid)
+returns uuid language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_oc     public.ordenes_compra_materiales%rowtype;
+  v_nombre text;
+  v_fact   text;
+begin
+  perform public.exigir_permiso('tesoreria.registrar_pagos');
+  select * into v_oc from public.ordenes_compra_materiales where id = p_compra for update;
+  if not found then raise exception 'Esa orden de compra no existe.' using errcode = 'check_violation'; end if;
+  v_nombre := coalesce(v_oc.numero, 'OC ' || v_oc.referencia);
+  if v_oc.con_factura then
+    raise exception 'La % va con factura: se paga por su factura en Cuentas por pagar.', v_nombre using errcode = 'check_violation';
+  end if;
+  if v_oc.pago_en_tesoreria then return p_compra; end if;
+  select a.numero_documento into v_fact
+    from public.adquisiciones a
+   where a.estado = 'REGISTRADA'
+     and (a.orden_compra_id = p_compra
+          or exists (select 1 from public.adquisiciones_ordenes_compra l
+                      where l.adquisicion_id = a.id and l.orden_compra_id = p_compra and l.quitada_en is null))
+   limit 1;
+  if v_fact is not null then
+    raise exception 'Contabilidad ya registró el comprobante % de la %: se paga en Cuentas por pagar.', v_fact, v_nombre
+      using errcode = 'check_violation';
+  end if;
+  perform set_config('metalwork.compra_a_tesoreria', p_compra::text, true);
+  update public.ordenes_compra_materiales set pago_en_tesoreria = true where id = p_compra;
+  perform set_config('metalwork.compra_a_tesoreria', '', true);
+  return p_compra;
+end;
+$$;
+comment on function public.pasar_compra_a_tesoreria(uuid) is
+  'La OC con boleta de antes de la migración 20261020210000 que no se pagó pasa a la lista de Tesorería. Exige tesoreria.registrar_pagos.';
+revoke all on function public.pasar_compra_a_tesoreria(uuid) from public, anon;
+grant execute on function public.pasar_compra_a_tesoreria(uuid) to authenticated;
 
 -- 7. Adquisiciones: el pago de la boleta y los documentos de la OS -------------------------
 -- La misma firma de la 20261020170000. Cambia:
@@ -721,7 +827,8 @@ begin
          case
            when c.aprobacion = 'RECHAZADA' then 'NO_SE_PAGA'
            when c.aprobacion = 'POR_APROBAR' then 'ESPERA_APROBACION'
-           when not c.con_factura and not c.pago_en_tesoreria then 'SIN_FACTURA'
+           -- La de antes se pagó fuera, salvo que Contabilidad le registrara su comprobante: esa va por ahí.
+           when not c.con_factura and not c.pago_en_tesoreria and coalesce(fa.registradas, 0) = 0 then 'SIN_FACTURA'
            when not c.con_factura and coalesce(pb.cancela, false) then 'PAGADA'
            when not c.con_factura and coalesce(pb.n, 0) > 0 then 'PAGO_PARCIAL'
            -- La boleta que Contabilidad registró como comprobante se paga por ahí (y
