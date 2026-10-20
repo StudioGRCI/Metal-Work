@@ -354,6 +354,15 @@ begin
     -- no figuraría en la planta y saldría sin el 100 % ni Tesorería.
     raise exception 'El código interno % es de un vehículo con OT: elige el motivo del trabajo (fabricación, mantenimiento, garantía o arenado).',
       v_codigo using errcode = 'check_violation';
+  elsif exists (
+          select 1 from public.unidades u join public.ordenes_trabajo o on o.unidad_id = u.id
+           where o.estado not in ('ANULADA', 'TERMINADA', 'ENTREGADA', 'FACTURADA')
+             and ((v_placa is not null and public.normalizar_placa(u.placa) = v_placa)
+               or (v_chasis is not null and upper(btrim(coalesce(u.numero_chasis, ''))) = v_chasis))) then
+    -- Lo mismo por la placa o el chasis, mientras su OT siga en el taller: el
+    -- vehículo ya entregado sí puede volver a la cochera.
+    raise exception 'Ese vehículo tiene una OT en el taller: elige el motivo del trabajo y su código interno.'
+      using errcode = 'check_violation';
   end if;
 
   if v_placa is not null and char_length(v_placa) not between 3 and 15 then

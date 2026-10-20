@@ -45,6 +45,7 @@ function comprobar(cond, texto) {
 const ESCRIBE = /^(Registrar|Guardar|Nuevo|Nueva|Agregar|Anular|Cargar|Dar de (alta|baja)|Cambiar|Justificar|Decidir|Aprobar|Rechazar|Enviar|Cerrar|Importar|Repartir|Entregar|Usar)/i
 
 const PANTALLAS = [
+  ['/rrhh', 'Planillas del mes'],
   ['/rrhh/personal', 'Personal'],
   ['/rrhh/cuentas', 'DNI y costo de las cuentas'],
   ['/rrhh/costeo', 'Costeo'],

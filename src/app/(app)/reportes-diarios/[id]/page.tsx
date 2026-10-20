@@ -19,7 +19,7 @@ import {
 } from '@/lib/dominio/reporte-diario'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import { fechaHora, fechaLarga, hoyLima, sumarDias } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularReporte } from './anular'
 import { ValidarReporte } from './validacion'
@@ -50,10 +50,11 @@ export default async function PaginaReporteDiario({ params, searchParams }: Page
   // días y mientras no lo validen las dos áreas; RR. HH., siempre.
   const propio = r.registrado_por === perfil.id && puede(perfil, 'reporte_diario.registrar')
   const aTiempo = (diaDeLima(r.creado_en) ?? '') >= sumarDias(hoyLima(), -DIAS_PARA_EL_REPORTE)
-  const puedeAnular = !anulado && (veCosteo || (propio && aTiempo && estado !== 'VALIDADO'))
+  // El administrador ve el costeo, pero lo de RR. HH. no lo cambia (migración 20261020167000).
+  const puedeAnular = !anulado && (editaComoRrhh(perfil, 'rrhh.personal') || (propio && aTiempo && estado !== 'VALIDADO'))
   const valida: LadoValidacion[] = []
   if (puede(perfil, 'reporte_diario.validar_gerencia')) valida.push('GERENCIA')
-  if (puede(perfil, 'reporte_diario.validar_rrhh')) valida.push('RRHH')
+  if (editaComoRrhh(perfil, 'reporte_diario.validar_rrhh')) valida.push('RRHH')
   const corrige = propio && estado === 'OBSERVADO'
   const general = r.personal.filter((p) => p.trabajo_id === null)
   const horas = r.personal.reduce((n, p) => n + p.horas, 0)

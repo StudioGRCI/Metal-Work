@@ -7,14 +7,16 @@
 -- hora de las cuentas; esta lo lleva a todo lo que escribe Recursos Humanos: la
 -- ficha del personal, su costo y su remuneración, el tareo, los permisos, las
 -- observaciones, los pagos de la oficina, la regla de tardanza, las horas
--- extras, la planilla diaria y las planillas del mes.
+-- extras, la planilla diaria, las planillas del mes y el visto de RR. HH. al
+-- reporte diario del supervisor (y su anulación), que manda las horas al costeo.
 --
 -- Esas funciones exigen su permiso con `exigir_permiso`, que deja pasar al
 -- administrador del sistema (`es_admin()`) sin mirar el permiso. Aquí cambian a
 -- `exigir_permiso_del_puesto`, igual pero sin ese atajo: el administrador sigue
 -- leyendo todo (las pantallas y las funciones de lectura no cambian) y ya no
 -- guarda, anula ni cierra nada de RR. HH. Las políticas de las planillas del mes
--- ya pedían `rrhh.gestionar_planillas` sin el atajo.
+-- ya pedían `rrhh.gestionar_planillas` sin el atajo; las de lectura, en cambio,
+-- no lo dejaban mirar: aquí lo aceptan (apartado final).
 --
 -- Las funciones se reescriben desde su propia definición vigente, cambiando solo
 -- la llamada del permiso, para no copiar treinta cuerpos que otras migraciones
@@ -67,7 +69,12 @@ declare
     'rrhh_guardar_ingreso_trabajador', 'rrhh_guardar_regla_horas_extras', 'rrhh_guardar_regla_tardanza',
     'rrhh_guardar_remuneracion_trabajador', 'rrhh_guardar_trabajador', 'rrhh_justificar_permiso',
     'rrhh_registrar_observacion', 'rrhh_registrar_pago_oficina', 'rrhh_registrar_permiso', 'rrhh_registrar_tareo',
-    'rrhh_usar_saldo_horas'];
+    'rrhh_usar_saldo_horas', 'validar_reporte_diario', 'observar_reporte_diario', 'anular_reporte_diario'];
+  -- La llamada vieja y la nueva. En el reporte diario solo cambia el lado de
+  -- RR. HH. (el de Gerencia es de Gerencia), y la anulación dejaba pasar al
+  -- administrador escrito a mano: `es_admin() or tiene_permiso('rrhh.personal')`.
+  v_viejo constant text := 'exigir_permiso\(''(rrhh\.[a-z_]+|planilla_diaria\.preparar|reporte_diario\.validar_rrhh)''|es_admin\(\)\s+or\s+public\.tiene_permiso\(''rrhh\.';
+  v_nuevo constant text := 'exigir_permiso_del_puesto|if not public\.tiene_permiso\(''rrhh\.personal''\) then';
   v_fn      record;
   v_def     text;
   v_nueva   text;
@@ -79,14 +86,16 @@ begin
      where n.nspname = 'public' and p.proname = any (v_nombres)
   loop
     v_def := pg_get_functiondef(v_fn.oid);
-    v_nueva := regexp_replace(v_def, 'exigir_permiso\(''(rrhh\.[a-z_]+|planilla_diaria\.preparar)''',
+    v_nueva := regexp_replace(v_def, 'exigir_permiso\(''(rrhh\.[a-z_]+|planilla_diaria\.preparar|reporte_diario\.validar_rrhh)''',
                               'exigir_permiso_del_puesto(''\1''', 'g');
+    v_nueva := regexp_replace(v_nueva, '\(public\.es_admin\(\)\s+or\s+public\.tiene_permiso\(''(rrhh\.[a-z_]+)''\)\)',
+                              'public.tiene_permiso(''\1'')', 'g');
     if v_nueva <> v_def then
       execute v_nueva;
     end if;
     -- Una versión vieja con otros argumentos que ya no exige nada (la regla de
     -- tardanza de soles por minuto, que solo avisa que ya no se guarda) se deja.
-    if v_nueva ~ 'exigir_permiso_del_puesto' then
+    if v_nueva ~ v_nuevo and v_nueva !~ v_viejo then
       v_cerradas := v_cerradas || v_fn.proname::text;
     end if;
   end loop;
@@ -96,4 +105,35 @@ begin
     raise exception 'Quedaron con el atajo del administrador: %',
       (select string_agg(n, ', ') from unnest(v_nombres) n where n <> all (v_cerradas));
   end if;
+end $$;
+
+-- ------------------------------------------- el administrador mira las planillas
+-- «Admin solo visualizaría»: las planillas del mes se leían solo con
+-- `rrhh.ver_planillas`, sin el atajo, y el administrador veía la lista vacía
+-- en /rrhh, sin aviso, y un error en Cuentas por pagar. Ahora las lee, como lee
+-- el resto de RR. HH.; escribirlas sigue siendo de RR. HH.
+drop policy if exists planillas_lectura on public.planillas;
+create policy planillas_lectura on public.planillas for select to authenticated
+  using (public.es_admin() or public.tiene_permiso('rrhh.ver_planillas'));
+drop policy if exists planilla_personas_lectura on public.planilla_personas;
+create policy planilla_personas_lectura on public.planilla_personas for select to authenticated
+  using (public.es_admin() or public.tiene_permiso('rrhh.ver_planillas'));
+drop policy if exists planilla_distribuciones_lectura on public.planilla_distribuciones;
+create policy planilla_distribuciones_lectura on public.planilla_distribuciones for select to authenticated
+  using (public.es_admin() or public.tiene_permiso('rrhh.ver_planillas'));
+
+do $$
+declare
+  v_oid oid;
+  v_def text;
+begin
+  for v_oid in select p.oid from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                where n.nspname = 'public' and p.proname = 'resumen_planilla_por_ot'
+  loop
+    v_def := pg_get_functiondef(v_oid);
+    if v_def ~ 'if not \(public\.tiene_permiso\(''rrhh\.ver_planillas''\)' then
+      execute regexp_replace(v_def, 'if not \(public\.tiene_permiso\(''rrhh\.ver_planillas''\)',
+                             'if not (public.es_admin() or public.tiene_permiso(''rrhh.ver_planillas'')');
+    end if;
+  end loop;
 end $$;

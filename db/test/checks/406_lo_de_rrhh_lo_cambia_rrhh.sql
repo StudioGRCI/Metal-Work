@@ -12,6 +12,9 @@ select test.crear_usuario('Ada', 'Admin', 'admin406@demo.pe', 'ADMIN', :'sede_id
 select test.crear_usuario('Rosa', 'Humanos', 'rrhh406@demo.pe', 'RECURSOS_HUMANOS', :'sede_id') as rrhh_id \gset
 select set_config('prueba.t1', gen_random_uuid()::text, true);
 select set_config('prueba.hoy', ((now() at time zone 'America/Lima')::date)::text, true);
+select set_config('prueba.planilla', gen_random_uuid()::text, true);
+insert into public.planillas (id, tipo, periodo, moneda, registrado_por)
+  values (current_setting('prueba.planilla')::uuid, 'ADMINISTRATIVA', '2099-09-01', 'PEN', :'rrhh_id');
 
 -- RR. HH. registra a la persona y le pone su costo.
 select test.como_usuario(:'rrhh_id');
@@ -41,6 +44,12 @@ select test.debe_fallar('select public.rrhh_guardar_regla_tardanza(0, 3, 5)', 'n
 select test.debe_fallar(format($q$select public.rrhh_registrar_observacion(%L, %L, %L, 'VERBAL', 'Prueba 406', null, null, null)$q$,
   gen_random_uuid(), current_setting('prueba.t1'), current_setting('prueba.hoy')),
   'ni registra una observación', 'Recursos Humanos');
+select test.debe_fallar(format($q$select public.validar_reporte_diario(%L, 'RRHH')$q$, gen_random_uuid()),
+  'ni da el visto de RR. HH. al reporte diario', 'Recursos Humanos');
+select test.debe_fallar(format($q$select public.observar_reporte_diario(%L, 'RRHH', 'Faltan las horas de la tarde')$q$, gen_random_uuid()),
+  'ni lo observa como RR. HH.', 'Recursos Humanos');
+select test.afirmar((select count(*) from public.planillas where id = current_setting('prueba.planilla')::uuid) = 1,
+  'pero sí ve las planillas del mes');
 reset role;
 select test.afirmar((select apellidos from public.trabajadores where id = current_setting('prueba.t1')::uuid) = 'Prueba 406',
   'la ficha quedó como la dejó RR. HH.');
@@ -49,7 +58,8 @@ select test.afirmar((select apellidos from public.trabajadores where id = curren
 select test.afirmar(not exists (
   select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.provolatile = 'v'
-     and p.prosrc ~ 'exigir_permiso\(''(rrhh\.[a-z_]+|planilla_diaria\.preparar)'''),
+     and (p.prosrc ~ 'exigir_permiso\(''(rrhh\.[a-z_]+|planilla_diaria\.preparar|reporte_diario\.validar_rrhh)'''
+          or p.prosrc ~ 'es_admin\(\)\s+or\s+(public\.)?tiene_permiso\(''(rrhh\.|planilla_diaria\.preparar|reporte_diario\.validar_rrhh)')),
   'ninguna función que escribe lo de RR. HH. deja pasar al administrador');
 
 rollback;

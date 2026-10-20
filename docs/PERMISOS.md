@@ -9,10 +9,11 @@ Excepción: **lo que escribe Recursos Humanos no lo escribe el administrador**
 (StudioGRCI, 2026-10-20: «admin solo visualizaria»). Desde la migración
 `20261020167000`, las funciones que guardan, anulan o cierran algo de RR. HH.
 —ficha, costo y remuneración, tareo, permisos, observaciones, pagos de la
-oficina, reglas de tardanza y de horas extras, planilla diaria y planillas del
-mes— exigen el permiso con `exigir_permiso_del_puesto`, sin el atajo de
+oficina, reglas de tardanza y de horas extras, planilla diaria, planillas del
+mes, y el visto, la observación y la anulación de RR. HH. en el reporte diario—
+exigen el permiso con `exigir_permiso_del_puesto`, sin el atajo de
 `es_admin()`; en la aplicación, `editaComoRrhh`. El administrador ve esas
-pantallas sin botones. El DNI y el costo de las cuentas, igual, desde la
+pantallas sin botones, y lee también las planillas del mes. El DNI y el costo de las cuentas, igual, desde la
 `20261020165000`.
 
 La base de producción METAL WORK (`usnbwnemfqyjjkzdizgv`) se revisó el
