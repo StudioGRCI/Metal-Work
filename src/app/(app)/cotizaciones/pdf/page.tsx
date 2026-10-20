@@ -334,6 +334,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         )}
                         {corrige && c.id && (
                           <CorregirCotizacion id={c.id} numero={c.numero ?? ''} observacion={c.observacion}
+                            rechazada={c.estado === 'RECHAZADA'}
                             version={c.version ?? 1} clienteId={c.cliente_id ?? ''} carroceriaId={c.tipo_carroceria_id ?? ''}
                             clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />
                         )}

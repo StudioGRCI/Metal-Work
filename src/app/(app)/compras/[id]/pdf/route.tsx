@@ -18,6 +18,12 @@ async function leerLogo() {
   }
 }
 
+/** El nombre de quien firma, en mayúsculas como el resto del papel. */
+function nombreDe(u: { nombres: string; apellidos: string } | null) {
+  const nombre = u ? `${u.nombres} ${u.apellidos}`.trim() : ''
+  return nombre ? nombre.toUpperCase() : null
+}
+
 export async function GET(_request: Request, context: RouteContext<'/compras/[id]/pdf'>) {
   await exigirPermiso(['compras.ver', 'almacen.recibir'])
   const { id } = await context.params
@@ -26,7 +32,7 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
     db
       .from('ordenes_compra_materiales')
       .select(
-        'id, numero, referencia, proveedor, proveedor_id, fecha_estimada, condicion_pago, dias_credito, moneda, aprobacion, con_factura, codigo_interno, motivo, origen, recojo, creado_en, padron:proveedores(tipo_documento, numero_documento, direccion, direccion_recojo, telefono, contacto)',
+        'id, numero, referencia, proveedor, proveedor_id, fecha_estimada, condicion_pago, dias_credito, moneda, aprobacion, con_factura, codigo_interno, motivo, origen, recojo, creado_en, aprobado_en, emisor:usuarios!ordenes_compra_materiales_creado_por_fkey(nombres, apellidos), aprobador:usuarios!ordenes_compra_materiales_aprobado_por_fkey(nombres, apellidos), padron:proveedores(tipo_documento, numero_documento, direccion, direccion_recojo, telefono, contacto)',
       )
       .eq('id', id)
       .maybeSingle(),
@@ -133,6 +139,9 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
         conFactura: c.con_factura,
         motivo: c.motivo,
         aprobada: c.aprobacion === 'APROBADA',
+        emitidaPor: nombreDe(c.emisor),
+        aprobadaPor: nombreDe(c.aprobador),
+        aprobadaEn: c.aprobado_en,
         recojo: c.recojo !== null,
         proveedor: {
           nombre: c.proveedor,

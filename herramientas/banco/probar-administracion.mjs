@@ -21,7 +21,7 @@
  * CAPTURAS.
  */
 import { mkdirSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import pg from 'pg'
 import { chromium } from 'playwright-core'
@@ -53,6 +53,20 @@ function comprobar(cond, texto) {
   if (!cond) fallas.push(texto)
 }
 const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
+
+/**
+ * La red quieta, sin colgarse. Con Next 16, Chromium deja a veces para
+ * Playwright una precarga del menú «abierta» para siempre: la que el enrutador
+ * abandonó al cambiar de página, sin respuesta ni error, aunque el servidor la
+ * contesta en milisegundos y el socket ya está cerrado. `networkidle` no llega
+ * nunca y el `goto` muere a los 30 s (pasa en una de cada tres navegaciones).
+ * Se espera la carga completa y, a lo sumo diez segundos, la red quieta.
+ */
+const quieta = (pagina) => pagina.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
+async function ir(pagina, url) {
+  await pagina.goto(url, { waitUntil: 'load' })
+  await quieta(pagina)
+}
 
 /** Un PDF de una página con estas líneas, como el de una orden de trabajo. */
 function pdfConTexto(lineas) {
@@ -152,7 +166,7 @@ async function entrar(clave) {
   pagina.on('console', (m) => {
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${correo}: ${m.text().slice(0, 300)}`)
   })
-  await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/ingresar`)
   await pagina.fill('input[type="email"]', correo)
   await pagina.fill('input[type="password"]', CLAVE)
   await Promise.all([
@@ -160,7 +174,7 @@ async function entrar(clave) {
     pagina.click('button[type="submit"]'),
   ])
   if (pagina.url().includes('/ingresar')) throw new Error(`No se pudo entrar como ${correo}`)
-  await pagina.waitForLoadState('networkidle')
+  await quieta(pagina)
   return { pagina, contexto }
 }
 
@@ -189,13 +203,13 @@ let ordenId = ''
   await pagina.screenshot({ path: `${CAPTURAS}/adm-menu.png`, fullPage: true })
 
   for (const ruta of ['/personal', '/configuracion']) {
-    await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
+    await ir(pagina, `${BASE}${ruta}`)
     const t = limpio(await pagina.locator('main').innerText())
     comprobar(pagina.url().includes('/sin-permiso') || /sin permiso|no tienes permiso/i.test(t), `por su dirección, ${ruta} le dice que no tiene permiso`)
   }
 
   // ---------------------------------------------- 2. El RQA a todos los activos
-  await pagina.goto(`${BASE}/requerimientos`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/requerimientos`)
   await pagina.getByRole('button', { name: 'Nuevo requerimiento de Administración' }).click()
   const v = pagina.locator('[role="dialog"]')
   await v.locator('#rq-area').selectOption({ index: 1 })
@@ -223,7 +237,7 @@ let ordenId = ''
   await pagina.screenshot({ path: `${CAPTURAS}/adm-rqa-lista.png`, fullPage: true })
   // En el teléfono la lista no ensancha la página (la ventana del RQA se salía por la derecha).
   await pagina.setViewportSize({ width: 390, height: 844 })
-  await pagina.goto(`${BASE}/requerimientos`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/requerimientos`)
   const ancho = await pagina.evaluate(() => document.documentElement.scrollWidth)
   comprobar(ancho <= 390, `en el teléfono la lista de requerimientos cabe en la pantalla (${ancho} px de 390)`)
   await pagina.setViewportSize({ width: 1280, height: 900 })
@@ -231,23 +245,30 @@ let ordenId = ''
   // Almacén entrega los seis por el RQ (como en el kardex; aquí por la base, con su cuenta).
   const salida = (await uno('select gen_random_uuid() as id')).id
   const foto = `${ids.almacen}/${salida}.jpg`
-  await consulta(`insert into storage.objects (bucket_id, name, owner, owner_id, metadata) values ('evidencias-almacen', $1, $2::uuid, $2::text, '{"mimetype":"image/jpeg","size":100}')`, [foto, ids.almacen])
+  // La foto va también al disco del banco: con la fila sola, el kardex de cualquier
+  // puesto pedía esa evidencia y el banco contestaba 500 «No se pudo abrir la foto».
+  const jpeg = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAAA//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AN//Z', 'base64')
+  mkdirSync(dirname(join(ARCHIVOS, 'evidencias-almacen', foto)), { recursive: true })
+  writeFileSync(join(ARCHIVOS, 'evidencias-almacen', foto), jpeg)
+  await consulta(`insert into storage.objects (bucket_id, name, owner, owner_id, metadata) values ('evidencias-almacen', $1, $2::uuid, $2::text, jsonb_build_object('mimetype', 'image/jpeg', 'size', $3::bigint))`, [foto, ids.almacen, jpeg.length])
   await como('almacen', `select public.registrar_salida_material($1, $2, 6, null, null, $3, 'Administración', $4,
                            (select l.id from public.requerimiento_lineas l where l.requerimiento_id = $5 and l.item = 1))`,
   [salida, materialId, `${rqa} · ítem 1`, foto, fila?.id])
 
   // ---------------------------------------------- 3. Códigos internos, en lectura
-  await pagina.goto(`${BASE}/codigos-internos`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/codigos-internos`)
   const lista = limpio(await pagina.locator('main').innerText())
   comprobar(lista.includes(A) && lista.includes(B), 've los códigos en la lista de Códigos internos')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-codigos.png`, fullPage: true })
-  await pagina.goto(`${BASE}/codigos-internos/detalle?${new URLSearchParams({ codigo: A, vista: 'costeo' })}`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/codigos-internos/detalle?${new URLSearchParams({ codigo: A, vista: 'costeo' })}`)
   const costeo = limpio(await pagina.locator('main').innerText())
   const n = (await uno(`select count(distinct l.codigo)::int as n from public.codigo_interno_lineas(null, true) l where l.referencia_id = $1`, [salida])).n
   comprobar(costeo.includes(`partes iguales entre los ${n} códigos que trabajaron ese mes`), `el costeo de ${A} lleva su parte, entre ${n} códigos`)
   comprobar((await pagina.getByRole('button', { name: 'Cerrar el costeo' }).count()) === 0, 'y no tiene el botón de cerrar el costeo')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-costeo-a.png`, fullPage: true })
-  await pagina.goto(`${BASE}/codigos-internos/detalle?${new URLSearchParams({ codigo: 'TODOS LOS ACTIVOS' })}`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/codigos-internos/detalle?${new URLSearchParams({ codigo: 'TODOS LOS ACTIVOS' })}`)
+  // Desde el 2026-10-19 (#117) la explicación del reparto va detrás del botón «i» del título.
+  await pagina.getByRole('button', { name: 'Para qué sirve: A dónde fue' }).click().catch(() => {})
   const todos = limpio(await pagina.locator('main').innerText())
   comprobar(todos.includes('A dónde fue') && todos.includes('PLANTA y OFICINA no reciben'), 'TODOS LOS ACTIVOS abre en a dónde fue lo repartido')
   comprobar((await pagina.locator(`[data-reparto="${A}"]`).count()) >= 1 && (await pagina.locator('[data-repartido]').count()) === 1,
@@ -259,7 +280,7 @@ let ordenId = ''
   await pagina.screenshot({ path: `${CAPTURAS}/adm-todos-los-activos.png`, fullPage: true })
 
   // ---------------------------------------------- 4. La orden sin cotización con su PDF
-  await pagina.goto(`${BASE}/ordenes/nueva`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/ordenes/nueva`)
   await pagina.locator('#cliente_id').click()
   await pagina.getByRole('searchbox').fill(cliente)
   await pagina.locator('[role="option"]').first().click()
@@ -280,7 +301,7 @@ let ordenId = ''
     pagina.waitForURL(/\/ordenes\/[0-9a-f-]{36}/, { timeout: 30000 }),
     pagina.getByRole('button', { name: 'Registrar orden' }).click(),
   ])
-  await pagina.waitForLoadState('networkidle')
+  await quieta(pagina)
   // La primera vez `next dev` compila la orden: se espera a que se pinte.
   await pagina.getByText('Orden registrada con su PDF').waitFor({ timeout: 60000 }).catch(() => {})
   ordenId = pagina.url().match(/\/ordenes\/([0-9a-f-]{36})/)?.[1] ?? ''
@@ -308,7 +329,7 @@ let ordenId = ''
 // ------------------------------------------------ 5. Gerencia no ve el PDF; Diseño sí
 {
   const { pagina, contexto } = await entrar('gerencia')
-  await pagina.goto(`${BASE}/ordenes/${ordenId}`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/ordenes/${ordenId}`)
   await pagina.getByText('Orden de trabajo', { exact: true }).first().waitFor({ timeout: 60000 }).catch(() => {})
   const t = limpio(await pagina.locator('main').innerText())
   comprobar(!t.includes(`OT-banco-${sello}.pdf`), 'Gerencia abre la orden y no ve el PDF')
@@ -319,7 +340,7 @@ let ordenId = ''
 }
 {
   const { pagina, contexto } = await entrar('diseno')
-  await pagina.goto(`${BASE}/ordenes/${ordenId}`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/ordenes/${ordenId}`)
   await pagina.getByText(`OT-banco-${sello}.pdf`).waitFor({ timeout: 60000 }).catch(() => {})
   comprobar(limpio(await pagina.locator('main').innerText()).includes(`OT-banco-${sello}.pdf`), 'Diseño ve el PDF de la orden')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-orden-diseno.png`, fullPage: true })

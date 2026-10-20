@@ -9,7 +9,7 @@ import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { listarTrabajadores, tareosDelMes, type Tareo } from '@/lib/datos/rrhh'
 import { HORAS_DEL_MES, fechaValida, horasCortas, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, fechaLarga, hoyLima, mesLargo, moneda, porcentaje } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularTareo, CargarHoras } from './formulario'
 
@@ -39,6 +39,8 @@ function agrupar(tareos: Tareo[]): PorCodigo[] {
 
 export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/costeo'>) {
   const perfil = await exigirPermiso('rrhh.personal')
+  // Carga y anula solo RR. HH.; el administrador lo ve (migración 20261020167000).
+  const edita = editaComoRrhh(perfil, 'rrhh.personal')
   const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const hoy = hoyLima()
@@ -68,6 +70,7 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
         ayuda={`Las horas que cada persona trabajó en cada unidad y lo que cuestan. Las del reporte diario de los supervisores entran solas; las demás las carga Recursos Humanos. La hora vale el costo mensual de la persona entre ${HORAS_DEL_MES}.`}
         migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Costeo por código interno' }]}
         acciones={
+          edita && (
           <CargarHoras
             hoy={hoy}
             codigos={codigos}
@@ -78,6 +81,7 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
               costo_mensual: p.costo_mensual,
             }))}
           />
+          )
         }
       />
 
@@ -258,7 +262,7 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
                         <p className="text-[11px] text-texto-suave">{moneda(t.costo_hora)} la hora</p>
                       </TD>
                       <TD className="text-right align-top">
-                        {!anulado && (
+                        {edita && !anulado && (
                           <AnularTareo id={t.id} descripcion={`${horasCortas(t.horas)} de ${nombre} en ${t.codigo_interno} el ${fecha(t.fecha)}`} />
                         )}
                       </TD>

@@ -239,6 +239,16 @@ export const MOTIVO_VEHICULO: Record<string, Def> = {
 export const MOTIVOS_VEHICULO = Object.keys(MOTIVO_VEHICULO) as [string, ...string[]]
 
 /**
+ * Los motivos que son trabajo del taller: entran con el código interno de una
+ * unidad con OT y salen con el 100 % del avance y la revisión de Tesorería
+ * atendida. Gemelo de `vehiculo_motivo_exige_codigo` (migración 20261020166000).
+ */
+const MOTIVOS_CON_CODIGO = new Set(['FABRICACION', 'MANTENIMIENTO', 'GARANTIA', 'ARENADO'])
+export function motivoExigeCodigo(motivo: string): boolean {
+  return MOTIVOS_CON_CODIGO.has(motivo)
+}
+
+/**
  * La hora que se escribe en un `datetime-local` es la del taller. Perú no
  * cambia de hora, así que se le pega su desfase y la base la guarda bien.
  */

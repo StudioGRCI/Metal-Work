@@ -14,7 +14,7 @@ import {
 import { DECISION_EXTRAS, JORNADA_HORAS, montoExtras, valorHora } from '@/lib/dominio/planilla-diaria'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import { fecha, fechaHora, hoyLima, moneda } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularExtras, DecidirExtras, FormularioReglaExtras, UsarSaldo } from './controles'
 
@@ -22,7 +22,7 @@ export const metadata = { title: 'Horas extras' }
 
 export default async function PaginaHorasExtras() {
   const perfil = await exigirPermiso(['planilla_diaria.preparar', 'planilla_diaria.ver'])
-  const decide = puede(perfil, 'planilla_diaria.preparar')
+  const decide = editaComoRrhh(perfil, 'planilla_diaria.preparar')
   const hoy = hoyLima()
 
   const [porDecidir, saldos, decisiones, usos, regla] = await Promise.all([

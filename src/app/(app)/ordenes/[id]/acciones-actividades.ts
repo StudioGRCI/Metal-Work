@@ -48,6 +48,22 @@ function traducir(error: { message: string }) {
 
 const nulo = (v: string | undefined) => (v && v.trim().length > 0 ? v.trim() : null)
 
+const SIN_AREA = 'No se pudo comprobar de qué área es la actividad. Vuelve a intentar.'
+
+/**
+ * `areaDeActividad` sin que un corte de la base tumbe la pantalla: devuelve
+ * `undefined` si no respondió, para avisar «vuelve a intentar» en vez de «es
+ * de otra área» y sin perder lo escrito en el formulario.
+ */
+async function areaOFallo(actividadId: string): Promise<string | null | undefined> {
+  try {
+    return await areaDeActividad(actividadId)
+  } catch (e) {
+    console.error('No se pudo leer el área de la actividad', actividadId, e)
+    return undefined
+  }
+}
+
 async function puedeEditarTarea(perfil: PerfilSesion, ordenId: string, areaId: string | null) {
   if (!areaId) return false
   const supabase = await createClient()
@@ -158,7 +174,9 @@ export async function editarActividad(_previo: unknown, datos: FormData): Promis
   }
   const v = analisis.data
 
-  if (!await puedeEditarTarea(perfil, v.orden_id, await areaDeActividad(v.id))) {
+  const area = await areaOFallo(v.id)
+  if (area === undefined) return { ok: false, error: SIN_AREA }
+  if (!await puedeEditarTarea(perfil, v.orden_id, area)) {
     return { ok: false, error: 'Esa actividad es de la hoja de otra área.' }
   }
 
@@ -220,7 +238,9 @@ export async function cambiarPesoActividad(
 
   const v = analisis.data
 
-  if (!await puedeEditarTarea(perfil, v.orden_id, await areaDeActividad(v.id))) {
+  const area = await areaOFallo(v.id)
+  if (area === undefined) return { ok: false, error: SIN_AREA }
+  if (!await puedeEditarTarea(perfil, v.orden_id, area)) {
     return { ok: false, error: 'Ese peso es de la hoja de otra área.' }
   }
 
@@ -374,7 +394,9 @@ export async function reportarAvance(_previo: unknown, datos: FormData): Promise
     return { ok: false, error: 'El reporte de esta tarea lo registra el supervisor del área.' }
   }
 
-  if (!puedeHojaDeArea(perfil, await areaDeActividad(v.actividad_id))) {
+  const area = await areaOFallo(v.actividad_id)
+  if (area === undefined) return { ok: false, error: SIN_AREA }
+  if (!puedeHojaDeArea(perfil, area)) {
     return { ok: false, error: 'Ese avance es de otra área: cada uno reporta lo suyo.' }
   }
 

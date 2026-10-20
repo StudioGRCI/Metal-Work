@@ -281,14 +281,19 @@ export async function cronogramaAbierto(
   ).map(a => ({ ...a, plan_etapas_manual: manualPorOrden.get(a.orden_id) ?? false }))
 }
 
-/** El área de una actividad, para no escribir en la hoja de otro. */
+/**
+ * El área de una actividad, para no escribir en la hoja de otro. Si la base no
+ * responde, lanza: devolver `null` hacía que un corte se leyera como «esa
+ * actividad es de la hoja de otra área».
+ */
 export async function areaDeActividad(actividadId: string): Promise<string | null> {
   const supabase = await createClient()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('ot_actividades')
     .select('area_id')
     .eq('id', actividadId)
     .maybeSingle()
+  if (error) throw new Error(`No se pudo leer el área de la actividad: ${error.message}`)
   return data?.area_id ?? null
 }
 
@@ -302,12 +307,13 @@ const AREAS_DEL_TALLER = ['DIS', 'MTZ', 'PRD', 'ACB', 'CAL', 'ALM']
 
 export async function areasDelTaller() {
   const supabase = await createClient()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('areas')
     .select('id, codigo, nombre')
     .eq('activo', true)
     .in('codigo', AREAS_DEL_TALLER)
     .order('orden_secuencia')
+  if (error) throw new Error(`No se pudieron cargar las áreas del taller: ${error.message}`)
   return data ?? []
 }
 

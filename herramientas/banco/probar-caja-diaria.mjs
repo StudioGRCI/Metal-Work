@@ -2,9 +2,10 @@
  * Recorre con clic real la caja diaria de Tesorería (migración 20261017200000),
  * con la cuenta de cada puesto (nunca ADMIN):
  *
- *   1. Tesorería tiene «Caja diaria» primero en su menú. Da de alta tres
- *      cuentas que empiezan ayer: un banco en soles, uno en dólares y la caja
- *      chica en efectivo.
+ *   1. Tesorería tiene «Caja diaria» en su menú, después de Adquisiciones
+ *      (2026-10-20). Da de alta tres cuentas que empiezan ayer: un banco en
+ *      soles y uno en dólares, cada uno con la captura de su saldo, y la caja
+ *      chica en efectivo. Lo propio de la captura, en probar-captura-del-saldo.mjs.
  *   2. Ayer: un egreso escrito «1,250.50» con su código interno, un ingreso,
  *      la reposición de la caja chica y una compra de dólares. Los saldos de la
  *      tabla salen de esos movimientos; el consolidado pasa los dólares a soles.
@@ -19,12 +20,12 @@
  *   8. Gerencia y Contabilidad no la tienen en el menú ni entran por enlace.
  *
  * Necesita en la base del banco las cuentas `*.local@metalwork.test` de
- * Tesorería, Gerencia y Contabilidad, y el tipo de cambio de ayer o de algún
- * día de los diez anteriores. Las cuentas de la caja las crea el script, con
- * un nombre distinto en cada corrida.
+ * Tesorería, Gerencia y Contabilidad. Las cuentas de la caja las crea el
+ * script, con un nombre distinto en cada corrida, y el tipo de cambio de ayer
+ * lo anota a nombre de Contabilidad si no hay uno de los diez días anteriores.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  */
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import pg from 'pg'
@@ -46,6 +47,9 @@ if (!CLAVE) {
   process.exit(1)
 }
 mkdirSync(CAPTURAS, { recursive: true })
+// La captura del aplicativo con el saldo, que todo banco nuevo lleva (migración 20261020174500).
+const CAPTURA_SALDO = join(CAPTURAS, 'saldo-del-banco.png')
+writeFileSync(CAPTURA_SALDO, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'))
 
 const base = new pg.Client({
   host: process.env.PGHOST ?? '/tmp',
@@ -94,9 +98,27 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
   return { pagina, contexto, errores }
 }
 
+// La ventana de la aplicación, no el aviso de errores de `next dev`, que también es un [role="dialog"].
+const VENTANA = '[role="dialog"]:not([data-nextjs-dialog])'
+/**
+ * Abre «Cuentas de Tesorería» cuando React ya hidrató la página: abrirla antes
+ * cambia el `open` que trajo el servidor, `next dev` levanta su aviso de
+ * hidratación y la ventana de la prueba deja de ser la única.
+ */
+async function abrirCuentas(pagina) {
+  const seccion = pagina.locator('details', { hasText: 'Cuentas de Tesorería' })
+  if (!(await seccion.count())) return seccion
+  await seccion.evaluate((d) => new Promise((listo) => {
+    const mira = () => (Object.keys(d).some((k) => k.startsWith('__react')) ? listo() : setTimeout(mira, 50))
+    mira()
+  }))
+  await seccion.evaluate((d) => (d.open = true))
+  return seccion
+}
+
 /** Espera a que la ventana abierta se cierre (la acción salió bien) o muestre su error. */
 async function esperarVentana(pagina) {
-  const v = pagina.locator('[role="dialog"]')
+  const v = pagina.locator(VENTANA)
   await Promise.race([
     v.waitFor({ state: 'hidden', timeout: 30000 }),
     v.locator('[role="alert"]').waitFor({ timeout: 30000 }),
@@ -115,6 +137,15 @@ const CHICA = `Caja chica ${sello}`
 const codigo = `prb_caja_${sello}`
 const ids = {}
 
+// El consolidado necesita un cambio de los últimos diez días. Si el banco recién
+// rehecho no lo tiene, lo anota Contabilidad, que es quien lo registra.
+await consulta(
+  `insert into tipos_de_cambio (fecha, compra, venta, registrado_por)
+   select $1::date, 3.7400, 3.7500, u.id from usuarios u
+    where u.correo = $2 and public.cambio_del_dia($1::date, 'COMPRA') is null`,
+  [ayer, CUENTAS.contabilidad],
+)
+
 const RUTA = `${BASE}/tesoreria/caja-diaria`
 const delDia = (dia) => (dia === hoy ? RUTA : `${RUTA}?fecha=${dia}`)
 /** Las celdas de la fila de una cuenta en la tabla de saldos, sin la primera. */
@@ -125,16 +156,16 @@ async function saldos(pagina, nombre) {
 
 async function darDeAlta(pagina, { nombre, tipo, banco, moneda, saldo }) {
   // Con la primera ya dada de alta, «Agregar cuenta» vive en la sección desplegable del pie.
-  const seccion = pagina.locator('details', { hasText: 'Cuentas de Tesorería' })
-  if (await seccion.count()) await seccion.evaluate((d) => (d.open = true))
+  await abrirCuentas(pagina)
   await pagina.locator('[data-agregar-cuenta]:visible').first().click()
-  const v = pagina.locator('[role="dialog"]')
+  const v = pagina.locator(VENTANA)
   await v.locator('input[name="nombre"]').fill(nombre)
   await v.locator('select[name="tipo"]').selectOption(tipo)
   if (banco) await v.locator('input[name="banco"]').fill(banco)
   await v.locator('select[name="moneda"]').selectOption(moneda)
   await v.locator('input[name="saldo_inicial"]').fill(saldo)
   await v.locator('input[name="fecha_inicio"]').fill(ayer)
+  if (tipo === 'BANCO') await v.locator('input[name="captura"]').setInputFiles(CAPTURA_SALDO)
   await v.getByRole('button', { name: 'Agregar la cuenta' }).click()
   const error = await esperarVentana(pagina)
   if (!error) await pagina.locator('details', { hasText: nombre }).waitFor({ timeout: 15000 }).catch(() => {})
@@ -143,7 +174,7 @@ async function darDeAlta(pagina, { nombre, tipo, banco, moneda, saldo }) {
 
 async function registrar(pagina, cuenta, { tipo, descripcion, monto, codigoInterno, operacion }) {
   await pagina.locator(`[data-registrar-movimiento="${cuenta}"]`).click()
-  const v = pagina.locator('[role="dialog"]')
+  const v = pagina.locator(VENTANA)
   await v.locator('select[name="tipo"]').selectOption(tipo)
   await v.locator('input[name="descripcion"]').fill(descripcion)
   await v.locator('input[name="monto"]').fill(monto)
@@ -155,7 +186,7 @@ async function registrar(pagina, cuenta, { tipo, descripcion, monto, codigoInter
 
 async function transferir(pagina, { origen, destino, monto, montoDestino, descripcion }) {
   await pagina.locator('[data-transferir]').click()
-  const v = pagina.locator('[role="dialog"]')
+  const v = pagina.locator(VENTANA)
   await v.locator('select[name="origen"]').selectOption(ids[origen])
   await v.locator('select[name="destino"]').selectOption(ids[destino])
   await v.locator('input[name="monto"]').fill(monto)
@@ -168,7 +199,7 @@ async function transferir(pagina, { origen, destino, monto, montoDestino, descri
 
 async function cerrar(pagina, cuenta, saldoBanco, observaciones) {
   await pagina.locator(`[data-cerrar-dia="${cuenta}"]`).click()
-  const v = pagina.locator('[role="dialog"]')
+  const v = pagina.locator(VENTANA)
   await v.locator('input[name="saldo_banco"]').fill(saldoBanco)
   const aviso = limpio(await v.locator('[role="status"]').textContent().catch(() => ''))
   if (observaciones) await v.locator('textarea[name="observaciones"]').fill(observaciones)
@@ -188,7 +219,7 @@ const movimientos = (caja, fecha) =>
   const { pagina, contexto, errores } = await entrar(CUENTAS.tesoreria)
   const rutas = await pagina.locator('nav a[href^="/"]').evaluateAll((as) => as.map((a) => a.getAttribute('href')))
   const caja = rutas.indexOf('/tesoreria/caja-diaria')
-  comprobar(caja >= 0 && caja < rutas.indexOf('/adquisiciones'), `«Caja diaria» va primero en el menú de Tesorería (${rutas.slice(0, 4).join(', ')})`)
+  comprobar(caja >= 0 && caja === rutas.indexOf('/adquisiciones') + 1, `«Caja diaria» va justo después de Adquisiciones en el menú de Tesorería (${rutas.slice(0, 4).join(', ')})`)
 
   await pagina.goto(RUTA, { waitUntil: 'networkidle' })
   comprobar(limpio(await pagina.locator('h1').textContent()) === 'Caja diaria', 'la pantalla abre con su título')
@@ -207,7 +238,7 @@ const movimientos = (caja, fecha) =>
   comprobar(Object.keys(ids).length === 3, 'las tres cuentas quedan en la base')
   const repetida = await darDeAlta(pagina, { nombre: BCP.toUpperCase(), tipo: 'BANCO', banco: 'BCP', moneda: 'PEN', saldo: '1' })
   comprobar(repetida.includes('Ya hay una cuenta'), `no deja dos cuentas con el mismo nombre, y lo dice con su mensaje (${repetida})`)
-  await pagina.locator('[role="dialog"]').getByRole('button', { name: 'Cancelar' }).click()
+  await pagina.locator(VENTANA).getByRole('button', { name: 'Cancelar' }).click()
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
@@ -222,7 +253,7 @@ const movimientos = (caja, fecha) =>
   comprobar(!error, `registra un ingreso${error ? `: ${error}` : ''}`)
   const enLetras = await registrar(pagina, BCP, { tipo: 'EGRESO', descripcion: `Monto en letras ${sello}`, monto: 'diez' })
   comprobar(enLetras.length > 0, `un monto en letras no entra (${enLetras})`)
-  await pagina.locator('[role="dialog"]').getByRole('button', { name: 'Cancelar' }).click()
+  await pagina.locator(VENTANA).getByRole('button', { name: 'Cancelar' }).click()
 
   const t1 = await transferir(pagina, { origen: BCP, destino: CHICA, monto: '300', descripcion: 'Reposición de caja chica' })
   comprobar(!t1.error && !t1.pide, `repone la caja chica sin pedir otro monto, las dos en soles${t1.error ? `: ${t1.error}` : ''}`)
@@ -273,7 +304,7 @@ const movimientos = (caja, fecha) =>
 
   // Tres toques seguidos a «Registrar»: un solo movimiento.
   await pagina.locator(`[data-registrar-movimiento="${BCP}"]`).click()
-  const v = pagina.locator('[role="dialog"]')
+  const v = pagina.locator(VENTANA)
   await v.locator('select[name="tipo"]').selectOption('EGRESO')
   await v.locator('input[name="descripcion"]').fill(`ITF de prueba ${sello}`)
   await v.locator('input[name="monto"]').fill('15.20')
@@ -299,7 +330,7 @@ const movimientos = (caja, fecha) =>
   comprobar(r.aviso === 'Cuadra con la caja.' && !r.error, `con coma decimal, el banco cuadra y cierra (${r.aviso}${r.error ? `: ${r.error}` : ''})`)
   // Sin observaciones, o muy cortas, el navegador no deja enviar: la ventana sigue abierta.
   await pagina.locator(`[data-cerrar-dia="${CHICA}"]`).click()
-  const v = pagina.locator('[role="dialog"]')
+  const v = pagina.locator(VENTANA)
   await v.locator('input[name="saldo_banco"]').fill('790')
   const aviso = limpio(await v.locator('[role="status"]').textContent())
   const obs = v.locator('textarea[name="observaciones"]')
@@ -328,9 +359,9 @@ const movimientos = (caja, fecha) =>
   // Las cuentas de corridas anteriores pueden seguir abiertas: las cerradas no se ofrecen para transferir.
   if (await pagina.locator('[data-transferir]').count()) {
     await pagina.locator('[data-transferir]').click()
-    const opciones = await pagina.locator('[role="dialog"] select[name="origen"] option').evaluateAll((os) => os.map((o) => o.value))
+    const opciones = await pagina.locator(`${VENTANA} select[name="origen"] option`).evaluateAll((os) => os.map((o) => o.value))
     comprobar(!opciones.includes(ids[BCP]) && !opciones.includes(ids[CHICA]), 'ni se ofrece para transferir')
-    await pagina.locator('[role="dialog"]').getByRole('button', { name: 'Cancelar' }).click()
+    await pagina.locator(VENTANA).getByRole('button', { name: 'Cancelar' }).click()
   } else comprobar(true, 'ni transferir')
   await pagina.screenshot({ path: join(CAPTURAS, 'caja-02-ayer-cerrado.png'), fullPage: true })
   const [cierre] = await consulta('select saldo_final::float as f, saldo_banco::float as b, diferencia::float as d, observaciones from cierres_caja where caja_id = $1 and fecha = $2', [ids[CHICA], ayer])
@@ -346,7 +377,7 @@ const movimientos = (caja, fecha) =>
   comprobar((await pagina.locator('[role="status"]', { hasText: BCP }).count()) === 0, 'ayer cerrado, ya no sale en «Días sin cerrar»')
   const bloque = pagina.locator(`#cuenta-${ids[BCP]}`)
   await bloque.locator(`[data-anular-movimiento="Egreso equivocado ${sello}"]`).click()
-  const v = pagina.locator('[role="dialog"]')
+  const v = pagina.locator(VENTANA)
   await v.locator('textarea[name="motivo"]').fill('Se registró en la cuenta equivocada.')
   await v.getByRole('button', { name: 'Anular' }).click()
   let error = await esperarVentana(pagina)
@@ -380,7 +411,7 @@ const movimientos = (caja, fecha) =>
   await pagina.goto(RUTA, { waitUntil: 'networkidle' })
   await pagina.locator('summary', { hasText: 'Cuentas de Tesorería' }).click()
   await pagina.locator(`[data-editar-cuenta="${CHICA}"]`).click()
-  const v = pagina.locator('[role="dialog"]')
+  const v = pagina.locator(VENTANA)
   comprobar(await v.locator('input[inputmode="decimal"]').isDisabled(), 'con movimientos, el saldo inicial está bloqueado')
   await v.locator('input[name="nombre"]').fill(`${CHICA} planta`)
   await v.getByRole('button', { name: 'Guardar' }).click()
@@ -409,7 +440,7 @@ const movimientos = (caja, fecha) =>
   comprobar(ancho <= CELULAR.width, `en el teléfono no se desborda (${ancho}px)`)
   comprobar((await pagina.locator(`[data-registrar-movimiento="caja"]`).count()) === 1, 'y tiene a mano «Registrar ingreso o egreso»')
   const pestanas = await pagina.locator('nav[aria-label="Secciones"] a').evaluateAll((as) => as.map((a) => a.getAttribute('href')))
-  comprobar(pestanas[0] === '/tesoreria/caja-diaria', `la caja es la primera pestaña del teléfono (${pestanas.join(', ')})`)
+  comprobar(pestanas[1] === '/tesoreria/caja-diaria', `la caja es la segunda pestaña del teléfono, después de Adquisiciones (${pestanas.join(', ')})`)
   // Ayer tiene egresos, ingresos y una transferencia: cada monto se ve, con su signo, y nada queda fuera de la tabla.
   await pagina.goto(delDia(ayer), { waitUntil: 'networkidle' })
   const anchoAyer = await pagina.evaluate(() => document.documentElement.scrollWidth)
