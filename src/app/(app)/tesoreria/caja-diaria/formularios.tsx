@@ -422,6 +422,9 @@ export type CuentaEditable = {
   apertura_ruta: string | null
 }
 
+/** Lo que respalda el saldo inicial: en un banco, la pantalla del aplicativo; en la caja chica, el conteo. */
+const respaldoDe = (tipo: string) => (tipo === 'BANCO' ? 'la captura del saldo' : 'la foto del conteo')
+
 export function EditarCuenta({ cuenta, hoy, primera = false }: { cuenta?: CuentaEditable; hoy: string; primera?: boolean }) {
   const v = useVentana()
   return (
@@ -443,10 +446,12 @@ export function EditarCuenta({ cuenta, hoy, primera = false }: { cuenta?: Cuenta
         titulo={cuenta ? `Corregir ${cuenta.nombre}` : 'Agregar una cuenta'}
         descripcion={
           cuenta?.con_movimientos
-            ? cuenta.apertura_ruta
-              ? 'Ya tiene movimientos: se corrigen el nombre y el banco, o se desactiva. Su moneda, su saldo inicial y la captura de ese saldo no cambian.'
-              : 'Ya tiene movimientos: se corrigen el nombre y el banco, o se desactiva. Su moneda y su saldo inicial no cambian; la captura de ese saldo, si falta, se adjunta aquí.'
-            : 'Un banco en una moneda, o la caja chica en efectivo, con el saldo con el que empieza en el sistema y la captura del aplicativo que lo muestra.'
+            ? `Ya tiene movimientos: ${cuenta.tipo === 'BANCO' ? 'se corrigen el nombre y el banco' : 'se corrige el nombre'}, o se desactiva. ${
+                cuenta.apertura_ruta
+                  ? `Su moneda, su saldo inicial y ${respaldoDe(cuenta.tipo)} no cambian.`
+                  : `Su moneda y su saldo inicial no cambian; ${respaldoDe(cuenta.tipo)}, si falta, se adjunta aquí.`
+              }`
+            : 'Un banco en una moneda, o la caja chica en efectivo, con el saldo con el que empieza en el sistema y su respaldo: la captura del aplicativo o la foto del conteo.'
         }
         ancho="md"
       >
@@ -579,13 +584,13 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
       {cuenta && anterior && (
         <p className="flex flex-wrap items-center gap-x-2 text-sm text-texto-suave">
           <ImageIcon aria-hidden className="size-4" />
-          Captura del saldo inicial:
+          {cuenta.tipo === 'BANCO' ? 'Captura del saldo inicial:' : 'Foto del conteo:'}
           <a
             href={enlaceCaptura(cuenta.id)}
             target="_blank"
             rel="noopener"
-            aria-label={`verla: la captura del saldo de ${cuenta.nombre}`}
-            className="inline-flex min-h-11 items-center font-medium text-acento underline underline-offset-2 sm:min-h-0"
+            aria-label={`verla: ${respaldoDe(cuenta.tipo)} de ${cuenta.nombre}`}
+            className="inline-flex min-h-11 min-w-11 items-center font-medium text-acento underline underline-offset-2 sm:min-h-0 sm:min-w-0"
           >
             verla
           </a>
@@ -595,10 +600,8 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
       {ofreceCaptura && (
         <Campo
           etiqueta={
-            cuenta
-              ? anterior
-                ? 'Cambiar la captura'
-                : 'Captura del saldo inicial'
+            anterior && !pideCaptura
+              ? `Cambiar ${respaldoDe(tipo)}`
               : tipo === 'BANCO'
                 ? 'Captura del saldo en el aplicativo'
                 : 'Foto del conteo'
@@ -608,7 +611,7 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
           ayudaEnIcono={false}
           ayuda={
             tipo === 'BANCO'
-              ? `La pantalla del aplicativo con el saldo de ese día. Foto o PDF, hasta ${MAXIMO_MB_CAPTURA_SALDO} MB.`
+              ? `${pideCaptura && anterior ? 'La foto del conteo no sirve para un banco: adjunta la' : 'La'} pantalla del aplicativo con el saldo de ese día. Foto o PDF, hasta ${MAXIMO_MB_CAPTURA_SALDO} MB.`
               : `Si la tienes: el conteo de la caja chica ese día. Foto o PDF, hasta ${MAXIMO_MB_CAPTURA_SALDO} MB.`
           }
         >

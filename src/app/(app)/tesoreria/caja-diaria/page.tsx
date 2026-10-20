@@ -59,6 +59,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
   const total = consolidado(empezadas, caja.cambioCompra)
   const movimientosDe = (id: string) => caja.movimientos.filter((m) => m.caja_id === id)
   const reabiertosDe = (id: string) => caja.reabiertos.filter((k) => k.caja_id === id)
+  const bancosSinCaptura = caja.cuentas.filter((c) => c.activa && c.tipo === 'BANCO' && !c.apertura_ruta).length
 
   return (
     <>
@@ -174,11 +175,12 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
           className="mt-5"
           titulo="Cuentas de Tesorería"
           // Lo que cambia, a la vista; que una cuenta no se borra sino que se desactiva lo dice su ventana.
-          // Los bancos sin la captura de su saldo, también: la sección abre cerrada.
+          // Un banco sin la captura de su saldo pide atención: la sección se abre sola y muestra su aviso.
+          abierta={bancosSinCaptura > 0}
           descripcion={[
             cuantas(caja.cuentas.filter((c) => c.activa).length, 'activa', 'activas'),
             cuantas(caja.cuentas.filter((c) => !c.activa).length, 'desactivada', 'desactivadas'),
-            cuantas(caja.cuentas.filter((c) => c.activa && c.tipo === 'BANCO' && !c.apertura_ruta).length, 'sin la captura del saldo', 'sin la captura del saldo'),
+            cuantas(bancosSinCaptura, 'sin la captura del saldo', 'sin la captura del saldo'),
           ]
             .filter(Boolean)
             .join(' · ')}

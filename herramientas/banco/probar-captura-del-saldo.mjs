@@ -311,8 +311,9 @@ await consulta(
   const chica = await hasta(() => cuenta(CHICA), Boolean)
   comprobar(!error && chica && chica.apertura_ruta === null, `la caja chica entra sin captura${error ? `: ${error}` : ''}`)
 
-  // Un banco de antes, sin captura: avisa, y la adjunta con «Corregir».
+  // Un banco de antes, sin captura: la sección de cuentas se abre sola, avisa, y la adjunta con «Corregir».
   const seccion = pagina.locator('details', { hasText: 'Cuentas de Tesorería' })
+  comprobar(await seccion.evaluate((d) => d.open), 'con un banco sin captura, la sección de cuentas se abre sola')
   if (await seccion.count()) await seccion.evaluate((d) => (d.open = true))
   comprobar((await pagina.locator(`[data-sin-captura="${ANTIGUO}"]`).count()) === 1, 'el banco de antes avisa que le falta la captura')
   comprobar((await pagina.locator(`[data-sin-captura="${CHICA}"]`).count()) === 0, 'la caja chica no')
@@ -352,10 +353,17 @@ await consulta(
     `la caja chica adjunta la foto del conteo después${error ? `: ${error}` : ''}`)
 
   // La caja chica que pasa a banco pide la captura del aplicativo: la foto del conteo no la reemplaza.
+  // Antes, que la lista se repinte con la foto, o la ventana se abre con la cuenta de antes.
+  await hasta(async () => {
+    if (await seccion.count()) await seccion.evaluate((d) => (d.open = true))
+    return pagina.locator(`[data-captura-saldo="${CHICA}"]`).count()
+  }, (n) => n === 1)
   v = await abrirCorregir(pagina, CHICA)
   await v.locator('select[name="tipo"]').selectOption('BANCO')
   await v.locator('input[name="banco"]').fill('BCP')
   comprobar(await v.locator('input[name="captura"]').evaluate((e) => e.required), 'al pasar a banco la captura se vuelve obligatoria')
+  comprobar((await v.locator('label', { hasText: 'Captura del saldo en el aplicativo' }).count()) === 1 && (await v.getByRole('link', { name: 'verla: la foto del conteo' }).count()) === 1,
+    'y la pide como captura del aplicativo, sin llamar captura a la foto del conteo que ya tiene')
   await v.getByRole('button', { name: 'Guardar' }).click()
   await pagina.waitForTimeout(1500)
   comprobar(await v.isVisible() && (await cuenta(CHICA)).tipo === 'EFECTIVO', 'sin la captura no pasa a banco')
