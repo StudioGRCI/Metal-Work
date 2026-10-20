@@ -50,6 +50,12 @@
 -- 11. El historial de la venta anterior (`ot_ventas_anteriores`) pedía
 --     `cotizaciones.ver`, un permiso que ya no existe: solo lo leía ADMIN.
 --     Ahora lo lee quien ve el precio de venta.
+-- 12. El cronograma de la OT (`v_cronograma_ot`) y el tablero (`unidad_tablero`)
+--     unían las etapas al catálogo con un INNER JOIN: desde la migración
+--     20260928135000 las etapas que define Diseño no tienen etapa del catálogo,
+--     y no salían (el cronograma daba 0 de 3). Ahora toman el nombre y el área
+--     de la etapa misma, y del catálogo solo si la etapa no los trae. Ninguna
+--     pantalla las lee hoy; los checks 95 y 100 sí.
 --
 -- Más los dos índices que vigila el check 190: `asistencias.trabajador_id` y
 -- `tareos.trabajador_id` solo estaban cubiertas por índices parciales, que la
@@ -219,3 +225,87 @@ alter policy ver_ventas_anteriores on public.ot_ventas_anteriores using (
   public.puede_ver_orden(orden_id)
   and (public.es_admin() or public.tiene_permiso('cotizaciones.ver_pdf_comercial'))
 );
+
+-- ------------------------------------- 12. las etapas libres en el cronograma
+create or replace view public.v_cronograma_ot with (security_invoker = true) as
+ SELECT oe.id AS etapa_id,
+    oe.orden_id,
+    ec.codigo AS etapa_codigo,
+    COALESCE(oe.nombre, ec.nombre) AS etapa,
+    ec.color,
+    oe.orden_secuencia,
+    a.codigo AS area_codigo,
+    a.nombre AS area_nombre,
+    oe.estado,
+    oe.avance_porcentaje,
+    oe.fecha_inicio_programada,
+    oe.fecha_fin_programada,
+    oe.fecha_inicio_real,
+    oe.fecha_fin_real,
+    (oe.fecha_fin_programada - CURRENT_DATE) AS dias,
+    estado_del_plazo(oe.fecha_fin_programada, oe.fecha_fin_real) AS plazo,
+    r.texto AS ultimo_reporte,
+    r.creado_en AS ultimo_reporte_en
+   FROM (((ot_etapas oe
+     LEFT JOIN etapas_catalogo ec ON ((ec.id = oe.etapa_catalogo_id)))
+     LEFT JOIN areas a ON ((a.id = COALESCE(oe.area_id, ec.area_id))))
+     LEFT JOIN LATERAL ( SELECT rr.texto,
+            rr.creado_en
+           FROM ot_etapa_reportes rr
+          WHERE (rr.etapa_id = oe.id)
+          ORDER BY rr.creado_en DESC
+         LIMIT 1) r ON (true))
+  WHERE (oe.estado <> 'OMITIDA'::estado_etapa_ot);
+
+create or replace view public.unidad_tablero with (security_invoker = on) as
+ SELECT o.id AS orden_id,
+    o.numero AS orden_numero,
+    o.estado AS orden_estado,
+    o.prioridad,
+    o.sede_id,
+    o.unidad_id,
+    COALESCE((u.placa)::text, ('FMI '::text || u.numero_fmi)) AS placa,
+    u.tipo_vehiculo,
+    u.marca,
+    u.modelo,
+    c.id AS cliente_id,
+    c.razon_social AS cliente,
+    tc.nombre AS tipo_carroceria,
+    o.descripcion,
+    o.avance_porcentaje,
+    o.fecha_entrega_comprometida,
+    dias_habiles_entre(CURRENT_DATE, o.fecha_entrega_comprometida) AS dias_habiles_restantes,
+    puesto_de(o.responsable_id) AS responsable,
+    actual.etapa AS etapa_actual,
+    actual.estado_etapa,
+    actual.avance_etapa,
+    ultimo.fecha AS ultimo_avance_fecha,
+    ultimo.descripcion AS ultimo_avance,
+    (CURRENT_DATE - ultimo.fecha) AS dias_sin_avance,
+    ultimo.impedimento,
+    COALESCE(fotos.total, 0) AS fotos,
+    o.abierta_en_taller
+   FROM ((((((ordenes_trabajo o
+     LEFT JOIN clientes c ON ((c.id = o.cliente_id)))
+     LEFT JOIN unidades u ON ((u.id = o.unidad_id)))
+     LEFT JOIN tipos_carroceria tc ON ((tc.id = o.tipo_carroceria_id)))
+     LEFT JOIN LATERAL ( SELECT COALESCE(oe.nombre, ec.nombre) AS etapa,
+            oe.estado AS estado_etapa,
+            oe.avance_porcentaje AS avance_etapa
+           FROM (ot_etapas oe
+             LEFT JOIN etapas_catalogo ec ON ((ec.id = oe.etapa_catalogo_id)))
+          WHERE ((oe.orden_id = o.id) AND (oe.estado = ANY (ARRAY['EN_PROCESO'::estado_etapa_ot, 'PENDIENTE'::estado_etapa_ot])))
+          ORDER BY (oe.estado = 'EN_PROCESO'::estado_etapa_ot) DESC, oe.orden_secuencia
+         LIMIT 1) actual ON (true))
+     LEFT JOIN LATERAL ( SELECT a.fecha,
+            a.descripcion,
+            a.impedimento
+           FROM ot_avances a
+          WHERE (a.orden_id = o.id)
+          ORDER BY a.fecha DESC, a.creado_en DESC
+         LIMIT 1) ultimo ON (true))
+     LEFT JOIN LATERAL ( SELECT (count(*))::integer AS total
+           FROM (ot_avances a
+             JOIN ot_avance_fotos f ON ((f.avance_id = a.id)))
+          WHERE (a.orden_id = o.id)) fotos ON (true))
+  WHERE ((o.estado = ANY (ARRAY['APROBADA'::estado_ot, 'PROGRAMADA'::estado_ot, 'EN_PROCESO'::estado_ot, 'PAUSADA'::estado_ot, 'CONTROL_CALIDAD'::estado_ot, 'TERMINADA'::estado_ot])) OR ((o.estado = 'BORRADOR'::estado_ot) AND o.abierta_en_taller));
