@@ -13,10 +13,11 @@ export function FormularioTipoDeCambio({ hoy }: { hoy: string }) {
       <Campo etiqueta="Fecha" htmlFor="tc-fecha" requerido>
         <Entrada id="tc-fecha" type="date" name="fecha" defaultValue={hoy} max={hoy} required />
       </Campo>
-      <Campo etiqueta="Compra" htmlFor="tc-compra" requerido ayuda="Soles por dólar">
+      {/* «Soles por dólar» va en la etiqueta: como ayuda debajo, bajaba la fila y los cinco controles no quedaban parejos. */}
+      <Campo etiqueta="Compra, en soles por dólar" htmlFor="tc-compra" requerido>
         <Entrada id="tc-compra" name="compra" type="number" inputMode="decimal" min="0.0001" step="0.0001" placeholder="3.745" required />
       </Campo>
-      <Campo etiqueta="Venta" htmlFor="tc-venta" requerido ayuda="Soles por dólar">
+      <Campo etiqueta="Venta, en soles por dólar" htmlFor="tc-venta" requerido>
         <Entrada id="tc-venta" name="venta" type="number" inputMode="decimal" min="0.0001" step="0.0001" placeholder="3.752" required />
       </Campo>
       <Campo etiqueta="Fuente" htmlFor="tc-fuente">

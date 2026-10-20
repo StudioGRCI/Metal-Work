@@ -10,7 +10,7 @@ import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cajaDelDia, type CierreReabierto, type CuentaDelDia, type MovimientoDelDia } from '@/lib/datos/caja'
-import { consolidado, detalleDeCuenta, esDevolucion, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO, PANTALLA_DEL_ORIGEN } from '@/lib/dominio/caja'
+import { consolidado, detalleDeCuenta, sumaEnLaCaja, esDevolucion, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO, PANTALLA_DEL_ORIGEN } from '@/lib/dominio/caja'
 import { fecha, fechaHora, fechaLarga, hoyLima, moneda, numero, sumarDias } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
@@ -49,7 +49,8 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
 
   // Una cuenta desactivada sigue a la vista mientras tenga saldo, o el consolidado bajaría sin que nadie moviera la plata.
   const visibles = caja.cuentas.filter((c) => c.activa || c.movimientos > 0 || c.cierre_id || (c.saldo_final ?? 0) !== 0)
-  const empezadas = visibles.filter((c) => dia >= c.fecha_inicio)
+  // Las que suman en el consolidado: el mismo criterio que la cifra del Dashboard.
+  const empezadas = caja.cuentas.filter((c) => sumaEnLaCaja(c, dia))
   // A las que hoy se les puede registrar: activas, ya empezadas y con el día abierto.
   const abiertas: CuentaElegible[] = empezadas
     .filter((c) => c.activa && !c.cierre_id && !(c.ultimo_cierre && dia <= c.ultimo_cierre))
@@ -177,7 +178,10 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
         <SeccionDesplegable
           className="mt-5"
           titulo="Cuentas de Tesorería"
-          descripcion="Las cuentas de la caja con su saldo inicial. Una cuenta no se borra: se desactiva."
+          // Lo que cambia, a la vista; que una cuenta no se borra sino que se desactiva lo dice su ventana.
+          descripcion={[cuantas(caja.cuentas.filter((c) => c.activa).length, 'activa', 'activas'), cuantas(caja.cuentas.filter((c) => !c.activa).length, 'desactivada', 'desactivadas')]
+            .filter(Boolean)
+            .join(' · ')}
         >
           <ul className="divide-y divide-borde">
             {caja.cuentas.map((c) => (
@@ -215,6 +219,9 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
     </>
   )
 }
+
+/** «3 activas», «1 desactivada»; nada si no hay ninguna. */
+const cuantas = (n: number, una: string, varias: string) => (n === 0 ? null : `${n} ${n === 1 ? una : varias}`)
 
 function SelectorDeDia({ dia, hoy }: { dia: string; hoy: string }) {
   const siguiente = sumarDias(dia, 1)
@@ -323,11 +330,20 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
           </span>
         }
         descripcion={`${detalleDeCuenta(c)} · empieza el día con ${moneda(c.saldo_inicial, m)} y termina con ${moneda(c.saldo_final, m)}`}
-        acciones={abierta ? <RegistrarMovimiento cuentas={abiertas} cuentaId={c.id} dia={dia} codigos={codigos} compacto /> : undefined}
+        ayuda={puedeCerrar ? 'Al terminar el día, ciérralo con el saldo que dice el estado de cuenta. Cerrado, el día ya no cambia.' : undefined}
+        // Registrar y cerrar, juntos arriba: el cierre iba en un renglón propio al pie, con una frase que se repetía en cada cuenta.
+        acciones={
+          abierta || puedeCerrar ? (
+            <>
+              {abierta && <RegistrarMovimiento cuentas={abiertas} cuentaId={c.id} dia={dia} codigos={codigos} compacto />}
+              {puedeCerrar && <CerrarDia cuenta={yo} dia={dia} saldoFinal={c.saldo_final ?? 0} />}
+            </>
+          ) : undefined
+        }
       />
       {movimientos.length === 0 ? (
         <TarjetaCuerpo className="border-t border-borde text-sm text-texto-suave">
-          Sin movimientos este día.{abierta ? ' Regístralos con el botón de arriba.' : ''}
+          Sin movimientos este día.{abierta ? ' Regístralos con «Registrar».' : ''}
         </TarjetaCuerpo>
       ) : (
         <Tabla>
@@ -374,57 +390,53 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
         </Tabla>
       )}
 
-      <TarjetaCuerpo className="space-y-2 border-t border-borde text-sm">
-        {c.cierre_id ? (
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <p className="text-texto-suave">
-              Cerrado por {c.cerrado_por ?? '—'} el {fechaHora(c.cerrado_en)}; según el estado de cuenta,{' '}
-              <span className="tabular font-medium text-texto">{moneda(c.saldo_banco, m)}</span>
-              {c.diferencia ? (
-                <span className="text-aviso">
-                  {' '}
-                  · diferencia de <span className="tabular">{moneda(c.diferencia, m)}</span>
-                </span>
-              ) : (
-                <span className="text-exito"> · cuadra</span>
-              )}
-              {c.observaciones && <span className="block text-texto">{c.observaciones}</span>}
-            </p>
-            {c.ultimo_cierre === dia && <ReabrirDia cierreId={c.cierre_id} cuenta={c.nombre} dia={dia} />}
-          </div>
-        ) : dentroDeOtroCierre ? (
-          <p className="text-texto-suave">
-            Este día quedó dentro del cierre del{' '}
-            <Link href={enlaceDia(c.ultimo_cierre!, hoy, c.id)} className="text-acento hover:underline">
-              {fecha(c.ultimo_cierre)}
-            </Link>
-            : ya no cambia.
-          </p>
-        ) : diaSinCerrarAntes ? (
-          <p className="text-aviso">
-            Para cerrar este día, primero cierra el{' '}
-            <Link href={enlaceDia(diaSinCerrarAntes, hoy, c.id)} className="font-medium text-acento hover:underline">
-              {fecha(diaSinCerrarAntes)}
-            </Link>
-            .
-          </p>
-        ) : (
-          puedeCerrar && (
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-texto-suave">Al terminar el día, ciérralo con el saldo que dice el estado de cuenta.</p>
-              <CerrarDia cuenta={yo} dia={dia} saldoFinal={c.saldo_final ?? 0} />
+      {/* El pie, solo cuando dice algo: el cierre, por qué todavía no se cierra o lo que se reabrió. */}
+      {(!puedeCerrar || reabiertos.length > 0) && (
+        <TarjetaCuerpo className="space-y-2 border-t border-borde text-sm">
+          {c.cierre_id ? (
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <p className="text-texto-suave">
+                Cerrado por {c.cerrado_por ?? '—'} el {fechaHora(c.cerrado_en)}; según el estado de cuenta,{' '}
+                <span className="tabular font-medium text-texto">{moneda(c.saldo_banco, m)}</span>
+                {c.diferencia ? (
+                  <span className="text-aviso">
+                    {' '}
+                    · diferencia de <span className="tabular">{moneda(c.diferencia, m)}</span>
+                  </span>
+                ) : (
+                  <span className="text-exito"> · cuadra</span>
+                )}
+                {c.observaciones && <span className="block text-texto">{c.observaciones}</span>}
+              </p>
+              {c.ultimo_cierre === dia && <ReabrirDia cierreId={c.cierre_id} cuenta={c.nombre} dia={dia} />}
             </div>
-          )
-        )}
-        {reabiertos.map((k) => (
-          <p key={k.id} className="text-xs text-texto-suave">
-            <span className="line-through">
-              Cierre de {k.cerrado_por ?? '—'} del {fechaHora(k.creado_en)} ({moneda(k.saldo_banco, m)})
-            </span>{' '}
-            · reabierto por {k.anulado_por ?? '—'} el {fechaHora(k.anulado_en)}: {k.motivo_anulacion}
-          </p>
-        ))}
-      </TarjetaCuerpo>
+          ) : dentroDeOtroCierre ? (
+            <p className="text-texto-suave">
+              Este día quedó dentro del cierre del{' '}
+              <Link href={enlaceDia(c.ultimo_cierre!, hoy, c.id)} className="text-acento hover:underline">
+                {fecha(c.ultimo_cierre)}
+              </Link>
+              : ya no cambia.
+            </p>
+          ) : diaSinCerrarAntes ? (
+            <p className="text-aviso">
+              Para cerrar este día, primero cierra el{' '}
+              <Link href={enlaceDia(diaSinCerrarAntes, hoy, c.id)} className="font-medium text-acento hover:underline">
+                {fecha(diaSinCerrarAntes)}
+              </Link>
+              .
+            </p>
+          ) : null}
+          {reabiertos.map((k) => (
+            <p key={k.id} className="text-xs text-texto-suave">
+              <span className="line-through">
+                Cierre de {k.cerrado_por ?? '—'} del {fechaHora(k.creado_en)} ({moneda(k.saldo_banco, m)})
+              </span>{' '}
+              · reabierto por {k.anulado_por ?? '—'} el {fechaHora(k.anulado_en)}: {k.motivo_anulacion}
+            </p>
+          ))}
+        </TarjetaCuerpo>
+      )}
     </Tarjeta>
   )
 }

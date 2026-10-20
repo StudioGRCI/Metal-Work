@@ -4,6 +4,8 @@
  * las exige la base (migraciones 20261015120000 a 20261015124000).
  */
 
+import { moneda } from '@/lib/format'
+
 type Tono = 'neutro' | 'exito' | 'aviso' | 'peligro' | 'info' | 'acento'
 
 /** El bucket privado de las facturas de venta: la ruta es `{factura}/{archivo}.pdf`. */
@@ -104,4 +106,21 @@ export function normalizarNumeroFactura(texto: string): string | null {
 export function totalConIgv(monto: number | null, incluyeIgv: boolean | null): number | null {
   if (monto === null) return null
   return incluyeIgv === false ? Math.round(Number(monto) * 118) / 100 : Number(monto)
+}
+
+/**
+ * La línea que va bajo el título de cada bandeja de Tesorería: cuánto espera,
+ * en cada moneda, y en cuántos documentos —«S/ 10,280.40 y US$ 1,240.00 en 4
+ * facturas»—. Es lo que cambia con los datos; para qué sirve la bandeja va en
+ * el botón «i». Nulo si no espera nada: el estado vacío ya lo dice.
+ */
+export function resumenPorMoneda(
+  documentos: { moneda: string | null; monto: number }[],
+  [uno, varios]: [string, string],
+): string | null {
+  if (documentos.length === 0) return null
+  const suma = (m: 'PEN' | 'USD') => documentos.filter((d) => (d.moneda === 'USD' ? 'USD' : 'PEN') === m).reduce((n, d) => n + d.monto, 0)
+  const montos = (['PEN', 'USD'] as const).filter((m) => suma(m) > 0).map((m) => moneda(suma(m), m))
+  const cuantos = `${documentos.length} ${documentos.length === 1 ? uno : varios}`
+  return montos.length > 0 ? `${montos.join(' y ')} en ${cuantos}` : cuantos
 }

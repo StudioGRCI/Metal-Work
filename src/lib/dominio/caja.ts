@@ -113,6 +113,20 @@ export function estadoDelDia(
 }
 
 /**
+ * Las cuentas que suman en la caja de un día: las que ya empezaron y siguen a la
+ * vista. Una desactivada sigue mientras tenga saldo o movimientos, o el
+ * consolidado bajaría sin que nadie moviera la plata. La usan la caja diaria y
+ * la cifra del Dashboard, para que digan lo mismo.
+ */
+export function sumaEnLaCaja(
+  c: { activa: boolean | null; movimientos: number | null; cierre_id: string | null; saldo_final: number | null; fecha_inicio: string | null },
+  dia: string,
+) {
+  const aLaVista = Boolean(c.activa) || Number(c.movimientos ?? 0) > 0 || Boolean(c.cierre_id) || Number(c.saldo_final ?? 0) !== 0
+  return aLaVista && dia >= (c.fecha_inicio ?? dia)
+}
+
+/**
  * El consolidado del día, como el pie de la hoja del Excel: lo que hay en
  * soles, lo que hay en dólares y todo junto en soles con el cambio de compra
  * del día (lo que vale un dólar que la empresa tiene). Sin cambio, el total en

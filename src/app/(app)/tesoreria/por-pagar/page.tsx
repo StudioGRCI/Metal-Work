@@ -12,7 +12,7 @@ import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { TIPO_COMPROBANTE, TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
-import { CONTROL_FACTURA_COMPRA, detalleDelControl } from '@/lib/dominio/finanzas'
+import { CONTROL_FACTURA_COMPRA, detalleDelControl, resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { fecha, hoyLima, moneda, periodo } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -25,10 +25,10 @@ export const metadata = { title: 'Cuentas por pagar' }
 /**
  * Lo que la casa debe: cada factura que Contabilidad registró en Adquisiciones,
  * al contado o a crédito, con sus OC y si su total calza con ellas; Tesorería la
- * paga con su voucher (migración 20261015122000). Debajo, las compras a crédito
- * que todavía esperan su factura y, para consultar, las planillas que RR. HH.
- * cerró y repartió por OT. Los servicios de terceros se pagan en «Pagos de
- * servicio».
+ * paga con su voucher (migración 20261015122000). Debajo, cuando las hay, las
+ * compras a crédito que todavía esperan su factura y, para consultar, las
+ * planillas que RR. HH. cerró y repartió por OT. Los servicios de terceros se
+ * pagan en «Pagos de servicio».
  */
 export default async function PaginaPorPagar() {
   const perfil = await exigirPermiso('tesoreria.ver_documentos')
@@ -52,11 +52,16 @@ export default async function PaginaPorPagar() {
   ])
   const porPagar = cuentas.filter((c) => Number(c.saldo) > 0)
   const pagadas = cuentas.filter((c) => Number(c.saldo) <= 0)
+  const vencidas = porPagar.filter((c) => c.fecha_vencimiento && c.fecha_vencimiento < hoy).length
+  const resumen = resumenPorMoneda(porPagar.map((c) => ({ moneda: c.moneda, monto: Number(c.saldo) })), ['factura', 'facturas'])
+  const pendientesCredito = pendientes.data ?? []
+  const planillasPorOt = planillas.data ?? []
 
   return (
     <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Cuentas por pagar"
+        descripcion={resumen && `Por pagar: ${resumen}${vencidas > 0 ? ` · ${vencidas === 1 ? 'una vencida' : `${vencidas} vencidas`}` : ''}.`}
         ayuda="Las facturas de compra que registró Contabilidad, al contado o a crédito, de la que vence antes a la que vence después. Cada pago va con su voucher."
       />
 
@@ -77,13 +82,12 @@ export default async function PaginaPorPagar() {
         </TarjetaCuerpo>
       </Tarjeta>
 
-      <Tarjeta className="mt-5">
-        <TarjetaCabecera titulo="Compras a crédito sin comprobante" ayuda="Logística marcó crédito; Contabilidad todavía tiene que registrar la factura en Adquisiciones." />
-        <TarjetaCuerpo className="space-y-2">
-          {(pendientes.data ?? []).length === 0 ? (
-            <p className="text-sm text-texto-suave">No hay compras a crédito esperando su factura.</p>
-          ) : (
-            (pendientes.data ?? []).map((c) => (
+      {/* Para consultar: sin nada que mostrar no ocupan la pantalla. */}
+      {pendientesCredito.length > 0 && (
+        <Tarjeta className="mt-5">
+          <TarjetaCabecera titulo="Compras a crédito sin comprobante" ayuda="Logística marcó crédito; Contabilidad todavía tiene que registrar la factura en Adquisiciones." />
+          <TarjetaCuerpo className="space-y-2">
+            {pendientesCredito.map((c) => (
               <div
                 key={c.orden_compra_id}
                 className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-[var(--radius-base)] border border-borde p-3 text-sm"
@@ -100,10 +104,10 @@ export default async function PaginaPorPagar() {
                   {c.total_estimado === null ? <span className="font-normal text-aviso">Precio pendiente</span> : moneda(c.total_estimado, codigoMoneda(c.moneda))}
                 </strong>
               </div>
-            ))
-          )}
-        </TarjetaCuerpo>
-      </Tarjeta>
+            ))}
+          </TarjetaCuerpo>
+        </Tarjeta>
+      )}
 
       {pagadas.length > 0 && (
         <details className="mt-5 rounded-[var(--radius-base)] border border-borde bg-superficie">
@@ -116,13 +120,11 @@ export default async function PaginaPorPagar() {
         </details>
       )}
 
-      <Tarjeta className="mt-5">
-        <TarjetaCabecera titulo="Planillas distribuidas por OT" ayuda="Para consultar: las planillas que cerró RR. HH. Los nombres del personal se quedan en RR. HH." />
-        <TarjetaCuerpo className="space-y-2">
-          {(planillas.data ?? []).length === 0 ? (
-            <p className="text-sm text-texto-suave">Todavía no hay planillas cerradas.</p>
-          ) : (
-            (planillas.data ?? []).map((p, i) => (
+      {planillasPorOt.length > 0 && (
+        <Tarjeta className="mt-5">
+          <TarjetaCabecera titulo="Planillas distribuidas por OT" ayuda="Para consultar: las planillas que cerró RR. HH. Los nombres del personal se quedan en RR. HH." />
+          <TarjetaCuerpo className="space-y-2">
+            {planillasPorOt.map((p, i) => (
               <p
                 key={`${p.orden_id}-${p.tipo}-${p.periodo}-${i}`}
                 className="flex flex-wrap justify-between gap-2 rounded-[var(--radius-base)] border border-borde p-3 text-sm"
@@ -132,10 +134,10 @@ export default async function PaginaPorPagar() {
                 </span>
                 <strong className="tabular">{moneda(p.monto, codigoMoneda(p.moneda))}</strong>
               </p>
-            ))
-          )}
-        </TarjetaCuerpo>
-      </Tarjeta>
+            ))}
+          </TarjetaCuerpo>
+        </Tarjeta>
+      )}
     </AvisoDeLaCaja>
   )
 }
@@ -198,14 +200,9 @@ function Factura({
           )}
           <AvisosDelDetector avisos={avisos} />
           <HistorialDeCorrecciones correcciones={correcciones} />
-          {c.url && (
-            <a href={c.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 text-xs font-medium text-acento hover:underline sm:min-h-0">
-              <FileText aria-hidden className="size-3.5" />
-              Factura
-            </a>
-          )}
         </div>
-        <div className="text-right">
+        {/* En el teléfono baja bajo el proveedor, alineada a la izquierda como el resto. */}
+        <div className="sm:text-right">
           <p className="tabular text-sm font-semibold text-texto">{saldo > 0 ? `Saldo ${moneda(saldo, m)}` : moneda(c.total, m)}</p>
           <p className="tabular text-xs text-texto-suave">
             Total {moneda(c.total, m)}
@@ -214,6 +211,28 @@ function Factura({
         </div>
       </div>
 
+      {/* La factura y el pago en un renglón, como en Cuentas por cobrar: abajo de todo dejaban media tarjeta en blanco. */}
+      {(c.url || (paga && saldo > 0 && c.id)) && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+          {c.url && (
+            <a href={c.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1.5 text-sm text-acento hover:underline sm:min-h-0">
+              <FileText aria-hidden className="size-4" />
+              Abrir la factura
+            </a>
+          )}
+          {paga && saldo > 0 && c.id && (
+            <PagarFactura
+              adquisicionId={c.id}
+              numero={c.numero_documento ?? 'factura'}
+              proveedor={c.proveedor ?? ''}
+              hoy={hoy}
+              saldo={saldo}
+              codigoMoneda={m}
+              cuentas={cuentasCaja}
+            />
+          )}
+        </div>
+      )}
       {c.pagos.length > 0 && (
         <ol className="mt-2 space-y-1.5 border-t border-borde pt-2">
           {c.pagos.map((p) => (
@@ -241,19 +260,6 @@ function Factura({
         </ol>
       )}
 
-      {paga && saldo > 0 && c.id && (
-        <div className="mt-3">
-          <PagarFactura
-            adquisicionId={c.id}
-            numero={c.numero_documento ?? 'factura'}
-            proveedor={c.proveedor ?? ''}
-            hoy={hoy}
-            saldo={saldo}
-            codigoMoneda={m}
-            cuentas={cuentasCaja}
-          />
-        </div>
-      )}
     </article>
   )
 }

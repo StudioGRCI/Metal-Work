@@ -15,6 +15,7 @@ import {
   HandCoins,
   Handshake,
   Hash,
+  Landmark,
   Layers,
   ListChecks,
   PackageCheck,
@@ -32,10 +33,11 @@ import type { TonoIndicador } from '@/components/ui/indicador'
 import { avanceDeLosCodigos, listarCodigosInternos } from '@/lib/datos/codigos-internos'
 import { codigosDeDiseno, etapasDeCodigo, planosDeCodigo } from '@/lib/datos/diseno-codigos'
 import { listarGastoPorCodigo } from '@/lib/datos/gasto-por-codigo'
+import { consolidado, sumaEnLaCaja } from '@/lib/dominio/caja'
 import { CODIGO_SIN_AVANCE, costoDelCodigo, enlaceCodigo } from '@/lib/dominio/codigos-internos'
 import { estadoDeReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADOS_RQ_ABIERTOS, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
-import { hoyLima, moneda, porcentaje, sumarDias } from '@/lib/format'
+import { hoyLima, moneda, numero, porcentaje, sumarDias } from '@/lib/format'
 import { menuDe } from '@/lib/navegacion'
 import { puede, puedeHojaDeArea, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -367,6 +369,50 @@ const CIFRAS = {
   },
 
   // Tesorería
+  // Lo primero que abre Tesorería: cuánto hay hoy en sus cuentas y si quedó un día sin cerrar.
+  caja_de_hoy: {
+    ruta: '/tesoreria/caja-diaria',
+    calcular: async (c) => {
+      const [cuentas, cambio] = await Promise.all([
+        c.supabase.rpc('caja_del_dia', { p_fecha: c.hoy }),
+        c.supabase.rpc('cambio_del_dia', { p_fecha: c.hoy, p_operacion: 'COMPRA' }),
+      ])
+      fallo(cuentas)
+      fallo(cambio)
+      const todas = (cuentas.data ?? []).filter((k) => k.caja_id)
+      // Las mismas que suma la caja diaria.
+      const filas = todas.filter((k) => sumaEnLaCaja(k, c.hoy))
+      if (filas.length === 0) {
+        return todas.length > 0
+          ? // Una cuenta no puede empezar después de hoy: si ninguna suma, todas están desactivadas y en cero.
+            { titulo: 'Caja de hoy', valor: 'Sin cuentas activas', pie: 'Todas las cuentas están desactivadas', icono: Landmark, tono: 'aviso' }
+          : { titulo: 'Caja de hoy', valor: 'Sin cuentas', pie: 'Da de alta las cuentas de la caja', icono: Landmark, tono: 'aviso' }
+      }
+      const total = consolidado(
+        filas.map((k) => ({ moneda: k.moneda ?? 'PEN', saldo_final: k.saldo_final === null ? null : num(k.saldo_final) })),
+        cambio.data === null ? null : num(cambio.data),
+      )
+      // Como el aviso «Días sin cerrar» de la caja: de todas las cuentas.
+      const sinCerrar = todas.filter((k) => k.primer_dia_sin_cerrar && k.primer_dia_sin_cerrar < c.hoy).length
+      // Los dólares nunca se callan: pasados a soles, o aparte si falta el cambio.
+      const dolares =
+        total.dolares === 0
+          ? null
+          : total.totalEnSoles !== null
+            ? `Con los dólares a ${numero(num(cambio.data), 3)}`
+            : `y ${moneda(total.dolares, 'USD')}, falta el cambio de hoy`
+      const pie = [dolares, sinCerrar > 0 ? plural(sinCerrar, 'cuenta con días sin cerrar', 'cuentas con días sin cerrar') : plural(filas.length, 'cuenta', 'cuentas')]
+        .filter(Boolean)
+        .join(' · ')
+      return {
+        titulo: 'Caja de hoy',
+        valor: moneda(total.totalEnSoles ?? total.soles),
+        pie,
+        icono: Landmark,
+        tono: sinCerrar > 0 ? 'aviso' : 'neutro',
+      }
+    },
+  },
   por_cobrar: {
     ruta: '/tesoreria/por-cobrar',
     calcular: async (c) => {
@@ -672,7 +718,7 @@ const CIFRAS_POR_PUESTO: Record<string, { titulo: string; cifras: ClaveCifra[] }
   COMPRADOR: { titulo: 'Logística', cifras: ['oc_por_aprobar', 'en_recojo', 'os_abiertas', 'compras_del_mes'] },
   CONDUCTOR: { titulo: 'Tus recojos', cifras: ['por_recoger', 'en_camino', 'dejadas_del_mes'] },
   GERENTE: { titulo: 'Códigos internos', cifras: ['codigos_en_trabajo', 'costo_de_codigos', 'facturado_y_cobrado', 'codigos_por_completar'] },
-  TESORERIA: { titulo: 'Tesorería', cifras: ['por_cobrar', 'por_pagar', 'servicios_por_pagar', 'recibos_por_pagar'] },
+  TESORERIA: { titulo: 'Tesorería', cifras: ['caja_de_hoy', 'por_cobrar', 'por_pagar', 'servicios_por_pagar', 'recibos_por_pagar'] },
   CONTABILIDAD: { titulo: 'Contabilidad', cifras: ['facturado_del_mes', 'adquisiciones_del_mes', 'guias_del_mes'] },
   DISENO: { titulo: 'Por código interno', cifras: ['etapas_en_curso', 'codigos_sin_etapas', 'planos_sin_recibir', 'codigos_sin_materiales'] },
   ADMINISTRACION: { titulo: 'Administración', cifras: ['rq_abiertos', 'subcontratos_vigentes', 'gastos_del_mes', 'clientes'] },
