@@ -46,7 +46,7 @@ select test.debe_fallar($$insert into public.diseno_evaluaciones (evaluado_nombr
 select test.como_usuario(:'gerente_id');
 select test.debe_fallar($$insert into public.diseno_evaluaciones (evaluado_nombre, puesto, fecha_evaluacion, respuestas, evaluador_id)
   values ('Persona QA', 'Diseñador', '2026-08-31', array_fill(3::smallint, array[20]), public.usuario_actual())$$,
-  'Gerencia ya no registra evaluaciones aunque tenga diseno.planos');
+  'Gerencia no registra evaluaciones');
 
 -- Diseño la registra. Lo que mande en estado o sellos no vale.
 select test.como_usuario(:'diseno_id');
