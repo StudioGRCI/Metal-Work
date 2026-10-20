@@ -106,6 +106,7 @@ const CODIGO = `POF${sello.slice(-4)}_SR_O4_1_26/41`
 const NOMBRE = `Asistente ${sello}`
 const TAREO = randomUUID()
 const dd = (fecha) => fecha.split('-').reverse().join('/')
+const sumarDias = (fecha, n) => new Date(Date.parse(`${fecha}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
 console.log(`  · persona de la prueba: ${NOMBRE} · código: ${CODIGO}`)
 
 try {
@@ -156,7 +157,7 @@ try {
       await pagina.getByRole('button', { name: 'Registrar pago' }).click()
       const v = pagina.locator('[role="dialog"]')
       await v.locator('select[name="trabajador_id"]').selectOption({ label: `${NOMBRE} Banco` })
-      await v.getByLabel('Paga').selectOption('QUINCENA')
+      await v.getByLabel('Cada cuánto se le paga').selectOption('QUINCENA')
       await v.locator('input[name="desde"]').fill(desde)
       const hasta = await v.locator('input[name="hasta"]').inputValue()
       await v.locator('input[name="monto"]').fill(String(monto))
@@ -232,9 +233,24 @@ try {
     await pagina.reload({ waitUntil: 'networkidle' })
     comprobar(limpio(await pagina.locator('[data-faltan-pagos]').innerText().catch(() => '')).includes(NOMBRE), 'sin la segunda quincena, le vuelven a faltar días')
 
-    // La primera quincena llega al 15: una baja el 10 la dejaría fuera.
+    // Corregir la ficha con un ingreso que deja fuera la primera quincena: el costo
+    // nuevo se guarda igual y el aviso dice qué no quedó.
     await pagina.goto(`${BASE}/rrhh/personal`, { waitUntil: 'networkidle' })
     const fila = pagina.locator('tr', { hasText: NOMBRE })
+    await fila.getByRole('button', { name: `Corregir la ficha de ${NOMBRE} Banco` }).click()
+    const f = pagina.locator('[role="dialog"]')
+    await f.locator('input[name="fecha_ingreso"]').fill(`${mes}-05`)
+    await f.locator('input[name="costo_mensual"]').fill('2345')
+    await f.getByRole('button', { name: /Guardar/ }).click()
+    const parcial = limpio(await f.getByRole('alert').innerText({ timeout: 20000 }).catch(() => ''))
+    const [costo] = await consulta(`select costo_mensual::numeric as c from trabajador_costos where trabajador_id = $1`, [asistente.id])
+    const [sigue] = await consulta(`select fecha_ingreso::text from trabajadores where id = $1`, [asistente.id])
+    comprobar(parcial.includes('no se guardó la fecha de ingreso') && Number(costo?.c) === 2345 && sigue.fecha_ingreso === `${mes}-01`,
+      `con el ingreso rechazado, el costo se guarda igual y el aviso lo dice: «${parcial}» (costo ${costo?.c}, ingreso ${sigue.fecha_ingreso})`)
+    await pagina.keyboard.press('Escape')
+    await pagina.reload({ waitUntil: 'networkidle' })
+
+    // La primera quincena llega al 15: una baja el 10 la dejaría fuera.
     await fila.getByRole('button', { name: `Dar de baja a ${NOMBRE} Banco` }).click()
     const b = pagina.locator('[role="dialog"]')
     await b.locator('input[name="fecha_baja"]').fill(`${mes}-10`)
@@ -247,10 +263,18 @@ try {
     const [w] = await consulta(`select activo, fecha_baja::text from trabajadores where id = $1`, [asistente.id])
     comprobar(w.activo === false && w.fecha_baja === (hoy < `${mes}-15` ? `${mes}-15` : hoy), `queda de baja con su último día (${w.fecha_baja})`)
     await pagina.goto(`${BASE}/rrhh/personal?estado=todos`, { waitUntil: 'networkidle' })
+    // Vuelve a entrar al día siguiente de su baja: el periodo anterior queda anotado.
+    const vuelve = sumarDias(w.fecha_baja, 1)
     await pagina.locator('tr', { hasText: NOMBRE }).getByRole('button', { name: `Dar de alta a ${NOMBRE} Banco` }).click()
-    await pagina.locator('tr', { hasText: NOMBRE }).getByRole('button', { name: `Dar de baja a ${NOMBRE} Banco` }).waitFor({ timeout: 20000 }).catch(() => {})
-    const [alta] = await consulta(`select activo, fecha_baja from trabajadores where id = $1`, [asistente.id])
-    comprobar(alta.activo && alta.fecha_baja === null, 'volver a darla de alta borra la baja')
+    const a = pagina.locator('[role="dialog"]')
+    await a.locator('input[name="fecha_reingreso"]').fill(vuelve)
+    await a.getByRole('button', { name: 'Dar de alta', exact: true }).click()
+    await a.waitFor({ state: 'detached', timeout: 20000 }).catch(() => {})
+    const [alta] = await consulta(`select activo, fecha_baja, fecha_ingreso::text from trabajadores where id = $1`, [asistente.id])
+    const periodos = await consulta(`select ingreso::text, baja::text from trabajador_periodos where trabajador_id = $1`, [asistente.id])
+    comprobar(alta.activo && alta.fecha_baja === null && alta.fecha_ingreso === vuelve
+              && periodos.length === 1 && periodos[0].ingreso === `${mes}-01` && periodos[0].baja === w.fecha_baja,
+      `vuelve de alta con su día de reingreso y el periodo anterior anotado: ${JSON.stringify({ alta, periodos })}`)
   }
 
   // ------------------------------------------------------- 6. Ventas fuera; el teléfono
@@ -283,7 +307,8 @@ try {
   }
   await comoPuesto(CUENTAS.rrhh, `select public.rrhh_anular_tareo($1, 'Prueba del banco: se deja anulada al terminar')`, [TAREO]).catch(() => {})
   for (const w of await consulta(`select id from trabajadores where nombres in ($1, $2) and activo`, [NOMBRE, `Soldador ${sello}`])) {
-    await comoPuesto(CUENTAS.rrhh, `select public.rrhh_cambiar_estado_trabajador($1, false)`, [w.id])
+    // Si volvió con un día de mañana, la baja de hoy iría antes de su ingreso: se queda de alta.
+    await comoPuesto(CUENTAS.rrhh, `select public.rrhh_cambiar_estado_trabajador($1, false)`, [w.id]).catch(() => {})
   }
   await navegador.close()
   await base.end()

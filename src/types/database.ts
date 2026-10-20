@@ -9254,6 +9254,51 @@ export type Database = {
           }
         ]
       }
+      trabajador_periodos: {
+        Row: {
+          id: string
+          trabajador_id: string
+          ingreso: string | null
+          baja: string
+          registrado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          trabajador_id: string
+          ingreso?: string | null
+          baja: string
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          trabajador_id?: string
+          ingreso?: string | null
+          baja?: string
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trabajador_periodos_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trabajador_periodos_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       trabajador_remuneraciones: {
         Row: {
           id: string
@@ -11985,14 +12030,6 @@ export type Database = {
         }
         Returns: number
       }
-      dias_del_mes_entre: {
-        Args: {
-          p_periodo: string | null
-          p_desde: string | null
-          p_hasta: string | null
-        }
-        Returns: number
-      }
       dias_habiles_entre: {
         Args: {
           p_desde: string | null
@@ -12552,7 +12589,9 @@ export type Database = {
         }[]
       }
       inicio_registro_pagos_oficina: {
-        Args: Record<PropertyKey, never>
+        Args: {
+          p_trabajador_id: string | null
+        }
         Returns: string
       }
       insumos_de_compras: {
@@ -13908,6 +13947,13 @@ export type Database = {
           codigo: string | null
         }[]
       }
+      rrhh_dar_de_alta_trabajador: {
+        Args: {
+          p_trabajador_id: string | null
+          p_fecha: string | null
+        }
+        Returns: string
+      }
       rrhh_dar_de_baja_trabajador: {
         Args: {
           p_trabajador_id: string | null
@@ -13997,7 +14043,10 @@ export type Database = {
       }
       rrhh_inicio_registro_pagos_oficina: {
         Args: Record<PropertyKey, never>
-        Returns: string
+        Returns: {
+          trabajador_id: string | null
+          desde: string | null
+        }[]
       }
       rrhh_justificar_permiso: {
         Args: {

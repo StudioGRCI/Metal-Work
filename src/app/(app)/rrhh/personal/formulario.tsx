@@ -9,8 +9,9 @@ import { Ventana } from '@/components/ui/ventana'
 import type { Trabajador } from '@/lib/datos/rrhh'
 import { BANCOS, HORAS_DEL_MES, TIPO_CUENTA, horaCorta } from '@/lib/dominio/rrhh'
 import { useEnvio } from '@/lib/envio'
+import { sumarDias } from '@/lib/format'
 
-import { cambiarEstadoTrabajador, darDeBajaTrabajador, guardarTrabajador } from './acciones'
+import { cambiarEstadoTrabajador, darDeAltaTrabajador, darDeBajaTrabajador, guardarTrabajador } from './acciones'
 
 type Area = { id: string; codigo: string; nombre: string }
 
@@ -61,8 +62,10 @@ export function NuevoTrabajador({ areas }: { areas: Area[] }) {
 export function ControlesTrabajador({ trabajador, areas, hoy }: { trabajador: Trabajador; areas: Area[]; hoy: string }) {
   const [editando, setEditando] = useState(false)
   const [bajando, setBajando] = useState(false)
+  const [volviendo, setVolviendo] = useState(false)
   const [vez, setVez] = useState(0)
-  const estado = useEnvio(cambiarEstadoTrabajador)
+  const estado = useEnvio(cambiarEstadoTrabajador, () => setVolviendo(false))
+  const alta = useEnvio(darDeAltaTrabajador, () => setVolviendo(false))
   const baja = useEnvio(darDeBajaTrabajador, () => setBajando(false))
   const nombre = `${trabajador.nombres} ${trabajador.apellidos}`
   return (
@@ -86,19 +89,54 @@ export function ControlesTrabajador({ trabajador, areas, hoy }: { trabajador: Tr
           Dar de baja
         </Boton>
       ) : (
-        <form onSubmit={estado.alEnviar} className="inline-flex">
+        <Boton type="button" variante="contorno" tamano="sm" aria-label={`Dar de alta a ${nombre}`} onClick={() => setVolviendo(true)}>
+          <UserRoundCheck aria-hidden className="size-4" />
+          Dar de alta
+        </Boton>
+      )}
+      <Ventana
+        abierta={volviendo}
+        alCerrar={() => setVolviendo(false)}
+        titulo={`Dar de alta a ${nombre}`}
+        descripcion="Con el día en que vuelve a trabajar. Lo que trabajó antes queda anotado con su ingreso y su baja."
+        ancho="sm"
+      >
+        <form onSubmit={alta.alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={trabajador.id} />
-          <Boton type="submit" variante="contorno" tamano="sm" cargando={estado.enviando} aria-label={`Dar de alta a ${nombre}`}>
-            <UserRoundCheck aria-hidden className="size-4" />
-            Dar de alta
+          <Campo etiqueta="Vuelve a trabajar desde" htmlFor={`tr-alta-${trabajador.id}`} requerido>
+            <Entrada
+              id={`tr-alta-${trabajador.id}`}
+              name="fecha_reingreso"
+              type="date"
+              required
+              min={trabajador.fecha_baja ? sumarDias(trabajador.fecha_baja, 1) : undefined}
+              defaultValue={hoy}
+            />
+          </Campo>
+          {alta.error && (
+            <p role="alert" className="text-sm text-peligro">
+              {alta.error}
+            </p>
+          )}
+          <div className="flex justify-end">
+            <Boton type="submit" cargando={alta.enviando}>
+              Dar de alta
+            </Boton>
+          </div>
+        </form>
+        <form onSubmit={estado.alEnviar} className="mt-4 space-y-2 border-t border-borde pt-4">
+          <input type="hidden" name="id" value={trabajador.id} />
+          <p className="text-xs text-texto-suave">¿La baja fue un error? Quítala y la ficha vuelve como estaba, con su ingreso de antes.</p>
+          {estado.error && (
+            <p role="alert" className="text-sm text-peligro">
+              {estado.error}
+            </p>
+          )}
+          <Boton type="submit" variante="contorno" tamano="sm" cargando={estado.enviando}>
+            Quitar la baja
           </Boton>
         </form>
-      )}
-      {estado.error && (
-        <p role="alert" className="basis-full text-right text-xs text-peligro">
-          {estado.error}
-        </p>
-      )}
+      </Ventana>
       <Ventana
         abierta={bajando}
         alCerrar={() => setBajando(false)}

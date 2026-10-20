@@ -86,6 +86,7 @@ returns uuid language plpgsql security definer set search_path to 'public' as $$
 declare
   v_hoy  date := (now() at time zone 'America/Lima')::date;
   v_baja date;
+  v_antes date;
   v      int;
 begin
   perform public.exigir_permiso('rrhh.personal');
@@ -102,8 +103,18 @@ begin
     raise exception 'El ingreso no puede ser después de la baja (%).', to_char(v_baja, 'DD/MM/YYYY')
       using errcode = 'check_violation';
   end if;
+  -- Quien volvió a entrar: el ingreso de ahora va después de la baja anterior.
+  select max(q.baja) into v_antes from public.trabajador_periodos q where q.trabajador_id = p_trabajador_id;
+  if v_antes is not null and p_fecha <= v_antes then
+    raise exception 'Ya trabajó antes hasta el %: el ingreso de ahora va después.', to_char(v_antes, 'DD/MM/YYYY')
+      using errcode = 'check_violation';
+  end if;
+  -- Los pagos de un periodo anterior (antes de volver a entrar) no cuentan aquí.
   if exists (select 1 from public.oficina_pagos p
-              where p.trabajador_id = p_trabajador_id and p.anulado_en is null and p.desde < p_fecha) then
+              where p.trabajador_id = p_trabajador_id and p.anulado_en is null and p.desde < p_fecha
+                and not exists (select 1 from public.trabajador_periodos q
+                                 where q.trabajador_id = p.trabajador_id
+                                   and (q.ingreso is null or p.desde >= q.ingreso) and p.hasta <= q.baja)) then
     raise exception 'Tiene pagos de la oficina antes del %: anúlalos primero o pon una fecha de ingreso anterior.',
       to_char(p_fecha, 'DD/MM/YYYY') using errcode = 'check_violation';
   end if;
@@ -233,6 +244,81 @@ end $$;
 revoke all on public.oficina_pagos from public, anon, authenticated;
 grant select on public.oficina_pagos to authenticated;
 
+-- Los periodos que una persona ya trabajó y cerró con su baja, cuando vuelve a
+-- entrar: el ingreso y la baja de la ficha son los de ahora, y sin esto los meses
+-- en que no estuvo saldrían como pagos que faltan, y los pagos de antes quedarían
+-- fuera de su ingreso nuevo. Los anota rrhh_dar_de_alta_trabajador; no se cambian.
+create table if not exists public.trabajador_periodos (
+  id             uuid primary key default gen_random_uuid(),
+  trabajador_id  uuid not null references public.trabajadores(id) on delete restrict,
+  ingreso        date,
+  baja           date not null,
+  registrado_por uuid not null default public.usuario_actual() references public.usuarios(id) on delete restrict,
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now(),
+  constraint ck_trabajador_periodo check (ingreso is null or baja >= ingreso)
+);
+comment on table public.trabajador_periodos is
+  'Cada periodo que una persona trabajó y cerró con su baja antes de volver a entrar (ingreso vacío: no se sabía). Lo lee RR. HH.; no se cambia ni se borra.';
+create index if not exists ix_trabajador_periodos on public.trabajador_periodos (trabajador_id, baja);
+select public.activar_timestamps('trabajador_periodos');
+select public.activar_registro_de_prueba('trabajador_periodos');
+
+create or replace function public.fn_trabajador_periodo_guardia()
+returns trigger language plpgsql set search_path to 'public' as $$
+begin
+  raise exception 'Un periodo trabajado no se cambia ni se borra.' using errcode = 'check_violation';
+end;
+$$;
+revoke all on function public.fn_trabajador_periodo_guardia() from public, anon, authenticated;
+create or replace trigger trg_trabajador_periodo_guardia
+  before update or delete on public.trabajador_periodos
+  for each row execute function public.fn_trabajador_periodo_guardia();
+
+alter table public.trabajador_periodos enable row level security;
+do $$ begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'trabajador_periodos' and policyname = 'ver_trabajador_periodos') then
+    create policy ver_trabajador_periodos on public.trabajador_periodos for select to authenticated
+      using ((select public.es_admin()) or (select public.tiene_permiso('rrhh.personal')));
+  end if;
+end $$;
+revoke all on public.trabajador_periodos from public, anon, authenticated;
+grant select on public.trabajador_periodos to authenticated;
+
+-- Volver a dar de alta con el día en que vuelve: el periodo anterior queda anotado.
+create or replace function public.rrhh_dar_de_alta_trabajador(p_trabajador_id uuid, p_fecha date)
+returns uuid language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  v_w   public.trabajadores;
+begin
+  perform public.exigir_permiso('rrhh.personal');
+  select * into v_w from public.trabajadores where id = p_trabajador_id for update;
+  if not found then raise exception 'La persona no existe.' using errcode = 'check_violation'; end if;
+  if v_w.activo then raise exception 'Ya está de alta.' using errcode = 'check_violation'; end if;
+  if p_fecha is null then
+    raise exception 'Pon el día en que vuelve a trabajar.' using errcode = 'check_violation';
+  end if;
+  if p_fecha > v_hoy + 31 then
+    raise exception 'El día en que vuelve no puede ir más de un mes adelante.' using errcode = 'check_violation';
+  end if;
+  if v_w.fecha_baja is not null and p_fecha <= v_w.fecha_baja then
+    raise exception 'Dejó de trabajar el %: vuelve después de ese día. Si la baja fue un error, quítala.',
+      to_char(v_w.fecha_baja, 'DD/MM/YYYY') using errcode = 'check_violation';
+  end if;
+  if v_w.fecha_baja is not null then
+    insert into public.trabajador_periodos (trabajador_id, ingreso, baja) values (p_trabajador_id, v_w.fecha_ingreso, v_w.fecha_baja);
+  end if;
+  -- El disparador de la baja la borra al volver de alta.
+  update public.trabajadores set activo = true, fecha_ingreso = p_fecha where id = p_trabajador_id;
+  return p_trabajador_id;
+end;
+$$;
+comment on function public.rrhh_dar_de_alta_trabajador(uuid, date) is
+  'RR. HH. vuelve a dar de alta a quien regresa, con el día en que vuelve: el periodo anterior (ingreso y baja) queda en trabajador_periodos. Exige rrhh.personal.';
+revoke all on function public.rrhh_dar_de_alta_trabajador(uuid, date) from public, anon;
+grant execute on function public.rrhh_dar_de_alta_trabajador(uuid, date) to authenticated;
+
 create or replace function public.rrhh_registrar_pago_oficina(
   p_id uuid, p_trabajador_id uuid, p_desde date, p_hasta date, p_monto numeric, p_aportes numeric, p_nota text
 ) returns uuid language plpgsql security definer set search_path to 'public' as $$
@@ -278,13 +364,17 @@ begin
   if p_desde > v_hoy + 31 then
     raise exception 'El pago no puede empezar más de un mes adelante.' using errcode = 'check_violation';
   end if;
-  if v_w.fecha_ingreso is not null and p_desde < v_w.fecha_ingreso then
-    raise exception '% % entró el %: el pago no puede empezar antes.', v_w.nombres, v_w.apellidos,
-      to_char(v_w.fecha_ingreso, 'DD/MM/YYYY') using errcode = 'check_violation';
-  end if;
-  if v_w.fecha_baja is not null and p_hasta > v_w.fecha_baja then
-    raise exception '% % dejó de trabajar el %: el pago no puede pasar de ese día.', v_w.nombres, v_w.apellidos,
-      to_char(v_w.fecha_baja, 'DD/MM/YYYY') using errcode = 'check_violation';
+  -- Dentro del periodo de ahora, o entero dentro de uno anterior (si volvió a entrar).
+  if not exists (select 1 from public.trabajador_periodos q
+                  where q.trabajador_id = p_trabajador_id and (q.ingreso is null or p_desde >= q.ingreso) and p_hasta <= q.baja) then
+    if v_w.fecha_ingreso is not null and p_desde < v_w.fecha_ingreso then
+      raise exception '% % entró el %: el pago no puede empezar antes.', v_w.nombres, v_w.apellidos,
+        to_char(v_w.fecha_ingreso, 'DD/MM/YYYY') using errcode = 'check_violation';
+    end if;
+    if v_w.fecha_baja is not null and p_hasta > v_w.fecha_baja then
+      raise exception '% % dejó de trabajar el %: el pago no puede pasar de ese día.', v_w.nombres, v_w.apellidos,
+        to_char(v_w.fecha_baja, 'DD/MM/YYYY') using errcode = 'check_violation';
+    end if;
   end if;
   if p_monto is null or p_monto <= 0 or p_monto > 100000 then
     raise exception 'Escribe lo que se le pagó, en soles, mayor que cero y hasta S/ 100 000.' using errcode = 'check_violation';
@@ -342,45 +432,47 @@ revoke all on function public.rrhh_anular_pago_oficina(uuid, text) from public, 
 grant execute on function public.rrhh_anular_pago_oficina(uuid, text) to authenticated;
 
 -- 4. El sueldo de la oficina, de los pagos ----------------------------------------
--- Cuántos días del mes de p_periodo caen entre p_desde y p_hasta (los dos incluidos).
--- Sin p_desde, desde el comienzo del mes; sin p_hasta, hasta el final.
-create or replace function public.dias_del_mes_entre(p_periodo date, p_desde date, p_hasta date)
-returns integer language sql immutable set search_path to 'public' as $$
-  select greatest(0, least(coalesce(p_hasta, f.fin), f.fin) - greatest(coalesce(p_desde, f.inicio), f.inicio) + 1)
-    from (select date_trunc('month', p_periodo)::date as inicio,
-                 (date_trunc('month', p_periodo) + interval '1 month' - interval '1 day')::date as fin) f
-$$;
-revoke all on function public.dias_del_mes_entre(date, date, date) from public, anon, authenticated;
+-- Una versión anterior de esta migración contaba los días con esta función; ya no se usa.
+drop function if exists public.dias_del_mes_entre(date, date, date);
 
 drop function if exists public.gastos_del_mes_oficina(date);
 drop function if exists public.sueldos_oficina_del_mes(date);
 
--- Desde cuándo faltan los pagos de la oficina: octubre de 2026, cuando RR. HH.
--- empieza a registrarlos (en producción no hay horas por código antes, consultado
--- el 2026-10-20), o el mes del primer pago si alguien registró uno anterior. Fijo
--- y por mes entero: si dependiera del primer pago, una primera quincena del 16 al
--- 30 borraría la falta del 1 al 15 de toda la oficina, y sin ningún pago no
--- faltaría nada. Antes de esa fecha no había dónde anotar los pagos: una unidad
--- con horas antes cierra sin la oficina de esos meses, salvo que RR. HH. los registre.
-create or replace function public.inicio_registro_pagos_oficina()
+-- Desde cuándo le faltan pagos a cada persona de la oficina: octubre de 2026, cuando
+-- RR. HH. empieza a registrarlos (en producción no hay horas por código antes,
+-- consultado el 2026-10-20), o el mes de su primer pago si le registraron uno
+-- anterior. Por persona y por mes entero: si fuera el primer pago de todos, una
+-- corrección de agosto de una sola persona pondría en falta a toda la oficina, y
+-- una primera quincena del 16 borraría la falta del 1 al 15. Cuentan también los
+-- anulados: anular el único pago de alguien no puede borrar lo que le falta.
+-- sueldos_oficina_del_mes adelanta además el inicio al primer mes con horas por
+-- código: RR. HH. puede cargar horas de hasta un año atrás, y ese mes cerraría sin
+-- la oficina y sin aviso.
+drop function if exists public.rrhh_inicio_registro_pagos_oficina();
+drop function if exists public.inicio_registro_pagos_oficina();
+create or replace function public.inicio_registro_pagos_oficina(p_trabajador_id uuid)
 returns date language sql stable set search_path to 'public' as $$
   select least(date_trunc('month', min(p.desde))::date, date '2026-10-01')
     from public.oficina_pagos p
-   where p.anulado_en is null
+   where p.trabajador_id = p_trabajador_id
      and not exists (select 1 from public.pruebas_filas f where f.tabla = 'oficina_pagos' and f.fila_id = p.id)
 $$;
-revoke all on function public.inicio_registro_pagos_oficina() from public, anon, authenticated;
+revoke all on function public.inicio_registro_pagos_oficina(uuid) from public, anon, authenticated;
 
--- La misma fecha para la pantalla de RR. HH., que no la recalcula.
+-- Lo mismo para la pantalla de RR. HH., que no lo recalcula: cada persona con su
+-- fecha y los periodos que ya trabajó.
 create or replace function public.rrhh_inicio_registro_pagos_oficina()
-returns date language plpgsql stable security definer set search_path to 'public' as $$
+returns table (trabajador_id uuid, desde date)
+language plpgsql stable security definer set search_path to 'public' as $$
 begin
   perform public.exigir_permiso('rrhh.personal');
-  return public.inicio_registro_pagos_oficina();
+  return query
+  select w.id, least(public.inicio_registro_pagos_oficina(w.id), (select min(h.periodo) from public.horas_por_codigo_del_mes(null) h))
+    from public.trabajadores w;
 end;
 $$;
 comment on function public.rrhh_inicio_registro_pagos_oficina() is
-  'Desde cuándo cuentan los días de la oficina sin pago (inicio_registro_pagos_oficina). Exige rrhh.personal.';
+  'Desde cuándo cuentan los días sin pago de cada persona: inicio_registro_pagos_oficina, o el primer mes con horas por código si es antes. Exige rrhh.personal.';
 revoke all on function public.rrhh_inicio_registro_pagos_oficina() from public, anon;
 grant execute on function public.rrhh_inicio_registro_pagos_oficina() to authenticated;
 
@@ -390,7 +482,7 @@ grant execute on function public.rrhh_inicio_registro_pagos_oficina() to authent
 -- en horas a una unidad. sin_pago: cuántas personas de la oficina tienen en el mes
 -- días trabajados que ningún pago cubre todavía. Solo cuenta hasta hoy: un día que
 -- no llega no falta, y avisarlo empujaría a registrar un pago que aún no se hizo. Y
--- solo desde inicio_registro_pagos_oficina().
+-- solo desde inicio_registro_pagos_oficina(persona), y en los días que trabajó.
 create or replace function public.sueldos_oficina_del_mes(p_periodo date default null)
 returns table (periodo date, personas integer, monto numeric, sin_pago integer)
 language sql stable set search_path to 'public' as $$
@@ -414,23 +506,29 @@ language sql stable set search_path to 'public' as $$
                                                  and public.normalizar_codigo_interno(t.codigo_interno) not in ('PLANTA', 'OFICINA', 'TODOS LOS ACTIVOS')), 0), 0) as monto
       from pago g
      group by g.periodo, g.trabajador_id
-  ), registro as (
-    select public.inicio_registro_pagos_oficina() as desde
+  ), horas as (
+    -- El primer mes con horas por código: desde ahí también faltan los pagos.
+    select min(h.periodo) as desde from public.horas_por_codigo_del_mes(null) h
   ), falta as (
-    -- Los días que trabajó en el mes hasta hoy (entre su ingreso y su baja) y que ningún pago cubre.
+    -- Los días que trabajó en el mes hasta hoy (en el periodo de ahora o en uno
+    -- anterior, si volvió a entrar) y que ningún pago cubre.
     select m.periodo, w.id
       from mes m
-      cross join registro r
+      cross join horas hh
       join public.trabajadores w on (w.activo or w.fecha_baja is not null)
       join public.areas a on a.id = w.area_id and a.es_oficina
-     where public.dias_del_mes_entre(m.periodo, w.fecha_ingreso, w.fecha_baja) > 0
-       and not exists (select 1 from public.pruebas_filas f where f.tabla = 'trabajadores' and f.fila_id = w.id)
+     where not exists (select 1 from public.pruebas_filas f where f.tabla = 'trabajadores' and f.fila_id = w.id)
        and exists (select 1
-                     from generate_series(greatest(m.periodo, coalesce(w.fecha_ingreso, m.periodo), r.desde),
-                                          least((m.periodo + interval '1 month' - interval '1 day')::date, coalesce(w.fecha_baja, '9999-12-31'),
+                     from generate_series(greatest(m.periodo, least(public.inicio_registro_pagos_oficina(w.id), hh.desde)),
+                                          least((m.periodo + interval '1 month' - interval '1 day')::date,
                                                 (now() at time zone 'America/Lima')::date),
                                           interval '1 day') d(dia)
-                    where not exists (select 1 from public.oficina_pagos p
+                    where ((w.fecha_ingreso is null or d.dia::date >= w.fecha_ingreso)
+                           and (w.fecha_baja is null or d.dia::date <= w.fecha_baja)
+                           or exists (select 1 from public.trabajador_periodos q
+                                       where q.trabajador_id = w.id and (q.ingreso is null or d.dia::date >= q.ingreso)
+                                         and d.dia::date <= q.baja))
+                      and not exists (select 1 from public.oficina_pagos p
                                        where p.trabajador_id = w.id and p.anulado_en is null
                                          and d.dia::date between p.desde and p.hasta
                                          and not exists (select 1 from public.pruebas_filas f
@@ -443,7 +541,7 @@ language sql stable set search_path to 'public' as $$
     from mes m
 $$;
 comment on function public.sueldos_oficina_del_mes(date) is
-  'El sueldo de la oficina de cada mes (o del mes de p_periodo): la parte, por días, de cada pago de oficina_pagos que cae en el mes (con aportes), menos lo que esa persona cargó ese mes en horas a una unidad; y cuántas personas de la oficina tienen días del mes, desde inicio_registro_pagos_oficina() y hasta hoy, sin pago. No pide permiso: la llaman el costeo y gastos_del_mes_oficina.';
+  'El sueldo de la oficina de cada mes (o del mes de p_periodo): la parte, por días, de cada pago de oficina_pagos que cae en el mes (con aportes), menos lo que esa persona cargó ese mes en horas a una unidad; y cuántas personas de la oficina tienen días trabajados del mes, desde inicio_registro_pagos_oficina(persona) y hasta hoy, sin pago. No pide permiso: la llaman el costeo y gastos_del_mes_oficina.';
 revoke all on function public.sueldos_oficina_del_mes(date) from public, anon, authenticated;
 
 create or replace function public.gastos_del_mes_oficina(p_periodo date)
@@ -792,7 +890,7 @@ begin
 end;
 $$;
 comment on function public.meses_sin_pagos_oficina(text) is
-  'Los meses en que el código interno tuvo horas y a alguien de la oficina le faltan días pagados (desde inicio_registro_pagos_oficina() y hasta hoy). El cierre del costeo los espera. Exige codigos_internos.ver, codigos_internos.cerrar o costos.ver.';
+  'Los meses en que el código interno tuvo horas y a alguien de la oficina le faltan días pagados (desde inicio_registro_pagos_oficina(persona) y hasta hoy). El cierre del costeo los espera. Exige codigos_internos.ver, codigos_internos.cerrar o costos.ver.';
 revoke all on function public.meses_sin_pagos_oficina(text) from public, anon;
 grant execute on function public.meses_sin_pagos_oficina(text) to authenticated;
 

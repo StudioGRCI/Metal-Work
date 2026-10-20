@@ -18,7 +18,8 @@
 --      de alta la borra.
 --   7. En el mes en curso solo faltan los días hasta hoy.
 --   8. El cierre del costeo espera los pagos de la oficina de cada mes con horas.
---   Las faltas cuentan desde octubre de 2026, o desde el mes del primer pago si es antes.
+--   Las faltas de cada persona cuentan desde octubre de 2026, o desde el mes de su primer pago.
+--   9. Volver a entrar anota el periodo anterior: los meses en que no estuvo no faltan.
 --
 -- Cada paso con la cuenta del puesto —nunca ADMIN— y `set local role
 -- authenticated`. Termina en rollback.
@@ -58,7 +59,7 @@ begin
     (current_setting('prueba.beto')::uuid, date '2021-06-08', 'CHK402_A_21/06', 10, 'Soldadura', 10, 100);
 end $$;
 
-select test.afirmar(public.inicio_registro_pagos_oficina() = date '2026-10-01',
+select test.afirmar(public.inicio_registro_pagos_oficina(current_setting('prueba.ana')::uuid) = date '2026-10-01',
   'sin pagos, las faltas cuentan desde octubre de 2026, cuando RR. HH. empieza a registrarlos');
 
 -- ------------------------------------------------------- 1. RR. HH. pone las fechas
@@ -133,8 +134,8 @@ select test.debe_fallar(format('select public.rrhh_dar_de_baja_trabajador(%L, da
 select test.afirmar((select count(*) from public.oficina_pagos where trabajador_id in
                       (current_setting('prueba.ana')::uuid, current_setting('prueba.bea')::uuid, current_setting('prueba.ciro')::uuid)) = 7,
   'RR. HH. lee los siete pagos');
-select test.debe_fallar($q$select public.dias_del_mes_entre(date '2021-06-01', null, null)$q$,
-  'la cuenta de los días es solo de la base', 'permission denied');
+select test.debe_fallar($q$select public.inicio_registro_pagos_oficina(gen_random_uuid())$q$,
+  'la cuenta de desde cuándo faltan es solo de la base', 'permission denied');
 reset role;
 
 -- ------------------------------------------- 3. Junio: la parte de cada pago que cae en él
@@ -153,14 +154,16 @@ select test.afirmar(exists (select 1 from public.codigo_interno_costeo('CHK402_A
 reset role;
 select test.afirmar((select o.monto from public.sueldos_oficina_del_mes(date '2021-05-01') o) = 100,
   format('mayo se queda con 1 de 7 días de la primera semana de Ana: %s', (select o.monto from public.sueldos_oficina_del_mes(date '2021-05-01') o)));
--- El primer pago es del 31 de mayo y mayo cuenta entero: si las faltas empezaran
--- en el primer pago, del 1 al 30 no le faltaría nada a nadie. A Ana y a Ciro
--- (que ya trabajaban) les faltan; Bea entró en junio.
-select test.afirmar((select o.sin_pago = 2 from public.sueldos_oficina_del_mes(date '2021-05-01') o),
-  format('mayo, el mes del primer pago, cuenta desde el 1: a Ana y a Ciro les faltan días; da %s',
+-- Cada persona cuenta desde el mes de su primer pago (o desde octubre de 2026):
+-- el primero de Ana es del 31 de mayo y su mayo cuenta entero; el de Ciro es de
+-- junio, y su mayo no cuenta aunque ya trabajaba; Gil no tiene pagos.
+select test.afirmar(public.inicio_registro_pagos_oficina(current_setting('prueba.ana')::uuid) = date '2021-05-01'
+                    and public.inicio_registro_pagos_oficina(current_setting('prueba.ciro')::uuid) = date '2021-06-01'
+                    and public.inicio_registro_pagos_oficina(current_setting('prueba.gil')::uuid) = date '2026-10-01',
+  'cada persona cuenta desde el mes de su primer pago, o desde octubre de 2026');
+select test.afirmar((select o.sin_pago = 1 from public.sueldos_oficina_del_mes(date '2021-05-01') o),
+  format('mayo: a Ana le faltan del 1 al 30 (mes de su primer pago); a Ciro no se le cuenta; da %s',
          (select o.sin_pago from public.sueldos_oficina_del_mes(date '2021-05-01') o)));
-select test.afirmar(public.inicio_registro_pagos_oficina() = date '2021-05-01',
-  'el registro empieza el mes del primer pago, cuando es antes de octubre de 2026');
 select test.afirmar((select o.monto = 400 and o.sin_pago = 2 from public.sueldos_oficina_del_mes(date '2021-07-01') o),
   format('julio: 4 de 7 días de la última semana de Ana, y a Ana y a Bea les faltan días pagados; da %s',
          (select row(o.monto, o.sin_pago)::text from public.sueldos_oficina_del_mes(date '2021-07-01') o)));
@@ -256,6 +259,47 @@ select test.afirmar(not exists (select 1 from public.meses_sin_pagos_oficina('CH
 select test.afirmar(public.cerrar_costeo_codigo('CHK402_A_21/06', 'Entregada al cliente en el taller, prueba del check 402') is not null,
   'Gerencia cierra la unidad A cuando junio está pagado');
 reset role;
+
+-- ------------------------------- Las horas cargadas hacia atrás también piden los pagos
+-- Beto carga horas de marzo de 2021 (antes de todo pago): marzo pasa a contar, y la
+-- unidad que trabajó en marzo no cierra sin la oficina.
+select test.como_usuario(:'admin_id');
+insert into public.tareos (trabajador_id, fecha, codigo_interno, horas, labor, costo_hora, costo) values
+  (current_setting('prueba.beto')::uuid, date '2021-03-10', 'CHK402_M_21/03', 5, 'Soldadura', 10, 50);
+reset role;
+select test.afirmar((select o.sin_pago > 0 from public.sueldos_oficina_del_mes(date '2021-03-01') o)
+                    and exists (select 1 from public.meses_sin_pagos_oficina('CHK402_M_21/03') m where m.periodo = date '2021-03-01'),
+  'marzo, con horas y sin pagos, avisa y traba el cierre de la unidad que trabajó en marzo');
+
+-- ------------------------------------------ 9. Volver a entrar no deja meses en falta
+-- Ciro se fue el 10 de junio de 2021 y vuelve el 1 de agosto: julio no le falta, y
+-- un pago de su periodo anterior todavía se registra.
+select test.como_usuario(:'rrhh_id');
+set local role authenticated;
+select test.debe_fallar(format('select public.rrhh_dar_de_alta_trabajador(%L, date ''2021-06-05'')', current_setting('prueba.ciro')),
+  'no vuelve antes de su baja', 'vuelve después de ese día');
+select public.rrhh_dar_de_alta_trabajador(current_setting('prueba.ciro')::uuid, date '2021-08-01');
+select test.afirmar((select activo and fecha_ingreso = date '2021-08-01' and fecha_baja is null from public.trabajadores
+                      where id = current_setting('prueba.ciro')::uuid)
+                    and (select count(*) = 1 from public.trabajador_periodos q
+                          where q.trabajador_id = current_setting('prueba.ciro')::uuid
+                            and q.ingreso = date '2021-01-04' and q.baja = date '2021-06-10'),
+  'vuelve con su ingreso nuevo, y el periodo anterior queda anotado');
+select public.rrhh_registrar_pago_oficina(gen_random_uuid(), current_setting('prueba.ciro')::uuid,
+  date '2021-05-01', date '2021-05-31', 3000, 0, null);
+select test.debe_fallar(format('select public.rrhh_registrar_pago_oficina(gen_random_uuid(), %L, date ''2021-07-01'', date ''2021-07-15'', 100, 0, null)',
+                               current_setting('prueba.ciro')),
+  'en julio no estaba: no se le paga', 'entró el');
+select test.debe_fallar(format('select public.rrhh_guardar_ingreso_trabajador(%L, date ''2021-06-01'')', current_setting('prueba.ciro')),
+  'el ingreso de ahora va después de la baja anterior', 'Ya trabajó antes');
+reset role;
+select test.afirmar((select o.sin_pago = 2 from public.sueldos_oficina_del_mes(date '2021-07-01') o),
+  format('julio: les faltan a Ana y a Bea, no a Ciro, que no estaba; da %s',
+         (select o.sin_pago from public.sueldos_oficina_del_mes(date '2021-07-01') o)));
+select test.afirmar((select o.sin_pago = 3 from public.sueldos_oficina_del_mes(date '2021-08-01') o),
+  format('agosto: Ciro volvió y también le falta; da %s',
+         (select o.sin_pago from public.sueldos_oficina_del_mes(date '2021-08-01') o)));
+select test.debe_fallar($q$delete from public.trabajador_periodos$q$, 'un periodo trabajado no se borra', 'no se cambia ni se borra');
 
 select 'CHECK 402 OK' as resultado;
 rollback;

@@ -355,14 +355,24 @@ export async function pagosOficinaDelMes(mes: string, finDelMes: string): Promis
 }
 
 /**
- * Desde cuándo cuentan los días de la oficina sin pago: la misma fecha que usa la
+ * Desde cuándo cuentan los días sin pago de cada persona: la misma fecha que usa la
  * base (`inicio_registro_pagos_oficina`). Exige `rrhh.personal`.
  */
-export async function inicioDelRegistroDePagos(): Promise<string> {
+export async function inicioDelRegistroDePagos(): Promise<Map<string, string>> {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('rrhh_inicio_registro_pagos_oficina')
-  if (error || !data) throw new Error(`No se pudo leer desde cuándo se registran los pagos de la oficina: ${error?.message ?? 'sin fecha'}`)
-  return data
+  if (error) throw new Error(`No se pudo leer desde cuándo se registran los pagos de la oficina: ${error.message}`)
+  return new Map((data ?? []).flatMap((f) => (f.trabajador_id && f.desde ? [[f.trabajador_id, f.desde] as const] : [])))
+}
+
+/** Los periodos que cada persona ya trabajó antes de volver a entrar, por persona. Solo RR. HH. */
+export async function periodosAnteriores(): Promise<Map<string, { ingreso: string | null; baja: string }[]>> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('trabajador_periodos').select('trabajador_id, ingreso, baja').order('baja')
+  if (error) throw new Error(`No se pudieron leer los periodos trabajados: ${error.message}`)
+  const porPersona = new Map<string, { ingreso: string | null; baja: string }[]>()
+  for (const q of data ?? []) porPersona.set(q.trabajador_id, [...(porPersona.get(q.trabajador_id) ?? []), { ingreso: q.ingreso, baja: q.baja }])
+  return porPersona
 }
 
 /** Los ids de las áreas marcadas como oficina: a su gente se le registran los pagos. */

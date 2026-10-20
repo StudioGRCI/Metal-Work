@@ -5,7 +5,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { areasDeOficina, inicioDelRegistroDePagos, listarTrabajadores, pagosOficinaDelMes } from '@/lib/datos/rrhh'
+import { areasDeOficina, inicioDelRegistroDePagos, listarTrabajadores, pagosOficinaDelMes, periodosAnteriores } from '@/lib/datos/rrhh'
 import { diasEntre, diasSinPago, finDeMes, parteDelMes } from '@/lib/dominio/pagos-oficina'
 import { mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, fechaHora, hoyLima, mesLargo, moneda, sumarDias } from '@/lib/format'
@@ -32,27 +32,29 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
   const inicio = `${mes}-01`
   const fin = finDeMes(mes)
 
-  const [pagos, personal, oficina, registro] = await Promise.all([
+  const [pagos, personal, oficina, registro, periodos] = await Promise.all([
     pagosOficinaDelMes(mes, fin),
     listarTrabajadores('todos'),
     areasDeOficina(),
     inicioDelRegistroDePagos(),
+    periodosAnteriores(),
   ])
   const vigentes = pagos.filter((p) => !p.anulado_en)
   const totalDelMes = vigentes.reduce((n, p) => n + parteDelMes(p, mes), 0)
-  // La gente de la oficina que trabajó algún día de este mes, según su ingreso y su baja.
+  // La gente de la oficina que trabajó algún día de este mes, según su ingreso y su
+  // baja, o en un periodo anterior si volvió a entrar.
+  const enElMes = (desde: string | null, hasta: string | null) => (desde === null || desde <= fin) && (hasta === null || hasta >= inicio)
   const deOficina = personal.filter(
     (t) =>
       t.area_id !== null &&
       oficina.has(t.area_id) &&
       (t.activo || t.fecha_baja !== null) &&
-      (t.fecha_ingreso === null || t.fecha_ingreso <= fin) &&
-      (t.fecha_baja === null || t.fecha_baja >= inicio),
+      (enElMes(t.fecha_ingreso, t.fecha_baja) || (periodos.get(t.id) ?? []).some((q) => enElMes(q.ingreso, q.baja))),
   )
   // Sin área no se sabe si es de la oficina, y sus días sin pago no se cuentan.
   const sinArea = personal.filter((t) => t.activo && t.area_id === null).length
   const pagosDe = (id: string) => vigentes.filter((p) => p.trabajador_id === id)
-  const faltan = deOficina.map((t) => ({ t, ...diasSinPago(t, pagosDe(t.id), mes, hoy, registro) })).filter((f) => f.dias > 0)
+  const faltan = deOficina.map((t) => ({ t, ...diasSinPago(t, pagosDe(t.id), mes, hoy, registro.get(t.id) ?? inicio, periodos.get(t.id)) })).filter((f) => f.dias > 0)
   const nombre = (t: { nombres: string; apellidos: string }) => `${t.nombres} ${t.apellidos}`
   // Al elegir a la persona, «Desde» se llena con su primer día sin pago, o con el día
   // siguiente a su último pago del mes, o con el 1.
@@ -124,7 +126,7 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
             <TarjetaCabecera
               titulo="Les faltan días pagados"
               descripcion={`${faltan.length} ${faltan.length === 1 ? 'persona' : 'personas'} de la oficina con días de este mes sin pago registrado.`}
-              ayuda="Cuenta los días entre su ingreso y su baja, hasta hoy y desde que RR. HH. registra los pagos (octubre de 2026), que ningún pago cubre. Mientras falten, el sueldo de la oficina del mes sale incompleto en el costeo de cada unidad. Si alguien ya no trabaja, dalo de baja en Personal con su último día."
+              ayuda="Cuenta los días entre su ingreso y su baja, hasta hoy, que ningún pago cubre. Cuenta desde octubre de 2026, cuando RR. HH. empieza a registrar los pagos, o desde antes si hay pagos u horas de meses anteriores. Mientras falten, el sueldo de la oficina del mes sale incompleto en el costeo de cada unidad. Si alguien ya no trabaja, dalo de baja en Personal con su último día."
             />
             <TarjetaCuerpo>
               <ul className="max-w-2xl space-y-2 text-sm">

@@ -67,10 +67,11 @@ export function parteDelMes(pago: { desde: string; hasta: string; monto: number;
 }
 
 /**
- * Los días del mes que la persona trabajó hasta `hoy` (entre su ingreso y su baja)
- * y que ningún pago cubre, y el primero de ellos. Un día que todavía no llega no
- * falta, y uno anterior a `registro` (`inicio_registro_pagos_oficina`) tampoco:
- * así lo cuenta también `sueldos_oficina_del_mes`.
+ * Los días del mes que la persona trabajó hasta `hoy` (en su periodo de ahora, entre
+ * su ingreso y su baja, o en uno anterior si volvió a entrar) y que ningún pago
+ * cubre, y el primero de ellos. Un día que todavía no llega no falta, y uno anterior
+ * a `registro` (`inicio_registro_pagos_oficina` de esa persona) tampoco: así lo
+ * cuenta también `sueldos_oficina_del_mes`.
  */
 export function diasSinPago(
   persona: { fecha_ingreso: string | null; fecha_baja: string | null },
@@ -78,15 +79,16 @@ export function diasSinPago(
   mes: string,
   hoy: string,
   registro: string,
+  periodos: { ingreso: string | null; baja: string }[] = [],
 ): { dias: number; desde: string | null } {
-  const inicio = [`${mes}-01`, registro].sort()[1]
-  const fin = [finDeMes(mes), persona.fecha_baja, hoy].filter((f): f is string => f !== null).sort()[0]
-  let d = persona.fecha_ingreso && persona.fecha_ingreso > inicio ? persona.fecha_ingreso : inicio
-  const ultimo = fin
+  const ultimo = [finDeMes(mes), hoy].sort()[0]
+  const trabajo = (d: string) =>
+    ((persona.fecha_ingreso === null || d >= persona.fecha_ingreso) && (persona.fecha_baja === null || d <= persona.fecha_baja)) ||
+    periodos.some((q) => (q.ingreso === null || d >= q.ingreso) && d <= q.baja)
   let dias = 0
   let desde: string | null = null
-  for (; d <= ultimo; d = sumarDias(d, 1)) {
-    if (pagos.some((p) => p.desde <= d && d <= p.hasta)) continue
+  for (let d = [`${mes}-01`, registro].sort()[1]; d <= ultimo; d = sumarDias(d, 1)) {
+    if (!trabajo(d) || pagos.some((p) => p.desde <= d && d <= p.hasta)) continue
     dias += 1
     desde ??= d
   }
