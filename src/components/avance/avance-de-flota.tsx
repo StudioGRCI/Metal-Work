@@ -56,7 +56,7 @@ export async function AvanceDeFlota({ flotaId, perfil }: { flotaId: string; perf
           hoy,
         )
         const revisa = aprueba && r.revision !== 'APROBADO'
-        const elimina = puedeEliminarReporte(perfil, { revision: r.revision, autor: r.registrado_por, clase: 'flota' })
+        const elimina = puedeEliminarReporte(perfil, { revision: r.revision, autor: r.registrado_por })
 
         return (
           <li key={r.id}>

@@ -162,20 +162,21 @@ export function apruebaSinOrden(perfil: PerfilSesion | null): boolean {
 
 /**
  * Si esta persona ve «Eliminar» en un reporte del día. Gemelo de las políticas
- * de DELETE (migraciones 099 y 20261020160000): quien aprueba y el autor lo
- * borran mientras no esté aprobado; el aprobado queda firme, salvo para el
- * administrador. El avance con foto que movió una etapa no se borra —lo
+ * de DELETE (migraciones 099 y 20261020160000): quien aprueba los reportes
+ * del taller y el autor lo borran mientras no esté aprobado; el aprobado queda
+ * firme, salvo para el administrador. Gerencia, que solo aprueba los trabajos
+ * sin orden, no borra. El avance con foto que movió una etapa no se borra —lo
  * impide un disparador—, así que ni se ofrece.
  */
 export function puedeEliminarReporte(
   perfil: PerfilSesion | null,
-  r: { revision: string | null; autor: string | null; movioEtapa?: boolean; clase?: ClaseReporte },
+  r: { revision: string | null; autor: string | null; movioEtapa?: boolean },
 ): boolean {
   if (!perfil || r.movioEtapa) return false
   if (perfil.rol.codigo === 'ADMIN') return true
   if (r.revision === 'APROBADO') return false
-  const aprueba = r.clase === 'flota' ? apruebaSinOrden(perfil) : puede(perfil, 'produccion.aprobar_reportes')
-  return aprueba || r.autor === perfil.id
+  // Gerencia aprueba los trabajos sin orden, pero no borra lo ajeno.
+  return puede(perfil, 'produccion.aprobar_reportes') || r.autor === perfil.id
 }
 
 /**

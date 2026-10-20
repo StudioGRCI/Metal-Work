@@ -79,7 +79,7 @@ alter policy editar_flota_avances on public.flota_avances
               or (registrado_por = public.usuario_actual() and public.puede_hoja_de_area(area_id)));
 
 -- El disparador de revisión, igual al de la migración 20260929110000 salvo
--- `v_aprueba`.
+-- `v_aprueba` y que quien solo aprueba los trabajos sin orden no corrige lo aprobado.
 create or replace function public.fn_reporte_revision()
 returns trigger
 language plpgsql
@@ -135,6 +135,14 @@ begin
   end if;
 
   if v_corrige then
+    -- Quien solo aprueba los trabajos sin orden (Gerencia) da el visto; con
+    -- él no gana corregir lo aprobado, que sigue siendo de quien aprueba los
+    -- reportes del taller.
+    if old.revision = 'APROBADO' and tg_table_name = 'flota_avances'
+       and not public.es_admin() and not public.tiene_permiso('produccion.aprobar_reportes') then
+      raise exception 'Ese reporte ya fue aprobado: queda como está.'
+        using errcode = 'check_violation';
+    end if;
     -- Aprobado queda firme. Solo quien aprueba lo puede tocar: el visto es suyo.
     if old.revision = 'APROBADO' and not v_aprueba then
       raise exception 'Ese reporte ya fue aprobado: queda como está.'
@@ -172,14 +180,14 @@ $$;
 -- con sus fotos y sin vuelta atrás. Con más puestos aprobando, eso dejaba a
 -- varios borrando la evidencia que otro ya firmó con «Aprobado». Desde aquí,
 -- el reporte aprobado solo lo quita el administrador; mientras está pendiente
--- u observado, lo borra quien aprueba o su autor, como antes.
+-- u observado, lo borra quien aprueba o su autor, como antes. Gerencia, que
+-- solo aprueba los trabajos sin orden, no borra reportes ajenos: DKS le dio
+-- aprobar, no quitar.
 -- -----------------------------------------------------------------------------
 alter policy borrar_flota_avances on public.flota_avances
   using (public.es_admin()
          or (revision <> 'APROBADO'
-             and (public.tiene_permiso('produccion.aprobar_reportes')
-                  or public.tiene_permiso('produccion.aprobar_sin_orden')
-                  or registrado_por = public.usuario_actual())));
+             and (public.tiene_permiso('produccion.aprobar_reportes') or registrado_por = public.usuario_actual())));
 
 alter policy borrar_ot_avances on public.ot_avances
   using (public.es_admin()

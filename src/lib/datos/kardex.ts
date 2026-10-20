@@ -201,11 +201,15 @@ export async function salidasPorCerrar(): Promise<SalidaPorCerrar[]> {
   const filas = data ?? []
   const ids = filas.map((f) => f.id).filter((id): id is string => Boolean(id))
   if (ids.length === 0) return []
-  const { data: numeros, error: errorNumeros } = await db.from('movimientos_materiales')
-    .select('id,numero_salida')
-    .in('id', ids)
-  if (errorNumeros) throw new Error(`No se pudieron leer los números de las salidas: ${errorNumeros.message}`)
-  const numeroDe = new Map((numeros ?? []).map((n) => [n.id, n.numero_salida]))
+  // En tandas de 150, como el resto del repo, para no alargar la URL.
+  const tandas = await Promise.all(
+    Array.from({ length: Math.ceil(ids.length / 150) }, (_, i) =>
+      db.from('movimientos_materiales').select('id,numero_salida').in('id', ids.slice(i * 150, (i + 1) * 150)),
+    ),
+  )
+  const fallo = tandas.find((t) => t.error)?.error
+  if (fallo) throw new Error(`No se pudieron leer los números de las salidas: ${fallo.message}`)
+  const numeroDe = new Map(tandas.flatMap((t) => t.data ?? []).map((n) => [n.id, n.numero_salida]))
   return filas.map((f) => ({ ...f, numero_salida: (f.id && numeroDe.get(f.id)) ?? null }))
 }
 

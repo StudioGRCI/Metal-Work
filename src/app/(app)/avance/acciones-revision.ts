@@ -177,16 +177,13 @@ const esquemaEliminar = z.object({
  */
 export async function eliminarReporte(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['produccion.registrar', 'produccion.aprobar_reportes', 'produccion.aprobar_sin_orden'])) {
+  if (!puede(perfil, ['produccion.registrar', 'produccion.aprobar_reportes'])) {
     return { ok: false, error: 'No tienes permiso para borrar reportes del taller.' }
   }
 
   const analisis = esquemaEliminar.safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: 'No se pudo identificar el reporte.' }
   const v = analisis.data
-  if (v.clase !== 'flota' && !puede(perfil, ['produccion.registrar', 'produccion.aprobar_reportes'])) {
-    return { ok: false, error: 'No tienes permiso para borrar reportes de las órdenes.' }
-  }
 
   const supabase = await createClient()
 

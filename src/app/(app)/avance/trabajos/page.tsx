@@ -33,13 +33,16 @@ export default async function PaginaTrabajos({ searchParams }: PageProps<'/avanc
     params.estado === 'LISTA' || params.estado === 'SALIO' ? (params.estado as EstadoFlota) : null
   const buscar = typeof params.buscar === 'string' ? params.buscar.trim() : ''
 
-  const [lista, areas] = await Promise.all([listarFlota({ estado, buscar }), areasDelTaller()])
-  const puedeRegistrar = puede(perfil, 'produccion.actividades') && areasDeSuMano(perfil, areas).length > 0
-
   // Quien aprueba viene a eso: el trabajo con reportes por aprobar va primero y
   // lo dice en su tarjeta, para no tener que abrirlos todos a buscarlos.
   const aprueba = apruebaSinOrden(perfil)
-  const porAprobar = aprueba ? await porAprobarDeFlota(lista.map((t) => t.id)) : new Map<string, number>()
+  const [lista, areas, porAprobar] = await Promise.all([
+    listarFlota({ estado, buscar }),
+    areasDelTaller(),
+    aprueba ? porAprobarDeFlota() : Promise.resolve(new Map<string, number>()),
+  ])
+  const puedeRegistrar = puede(perfil, 'produccion.actividades') && areasDeSuMano(perfil, areas).length > 0
+
   const trabajos = aprueba
     ? [...lista].sort((a, b) => Number(porAprobar.has(b.id)) - Number(porAprobar.has(a.id)))
     : lista

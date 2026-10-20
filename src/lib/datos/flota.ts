@@ -118,19 +118,20 @@ export async function listarFlota(
 
 /**
  * Cuántos reportes esperan aprobación en cada trabajo, para que quien aprueba
- * sepa en qué tarjeta entrar. Solo trae los trabajos que tienen alguno.
+ * sepa en qué tarjeta entrar. Solo trae los trabajos que tienen alguno; los
+ * que la persona no puede ver ya los quita el RLS. Mil pendientes a la vez no
+ * los junta el taller: si se llegara, la cuenta lo dice en vez de cortarse.
  */
-export async function porAprobarDeFlota(ids: string[]): Promise<Map<string, number>> {
+export async function porAprobarDeFlota(): Promise<Map<string, number>> {
   const cuenta = new Map<string, number>()
-  if (ids.length === 0) return cuenta
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('v_flota_avance_diario')
     .select('flota_id')
     .eq('revision', 'PENDIENTE')
-    .in('flota_id', ids)
     .limit(1000)
   if (error) throw new Error(`No se pudieron contar los reportes por aprobar: ${error.message}`)
+  if ((data ?? []).length === 1000) throw new Error('Hay más de mil reportes de trabajos sin orden por aprobar: la cuenta no cabe.')
   for (const r of data ?? []) if (r.flota_id) cuenta.set(r.flota_id, (cuenta.get(r.flota_id) ?? 0) + 1)
   return cuenta
 }

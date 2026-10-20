@@ -79,8 +79,8 @@ select test.afirmar((select count(*) from public.flota_avances where id = :'avan
   'Portería no ve los reportes del taller');
 reset role;
 
--- Lo aprobado queda firme también para quien aprueba: Gerencia no lo borra.
--- El pendiente sí, como antes. Un segundo reporte, pendiente, para probarlo.
+-- Lo aprobado queda firme también para quien aprueba, y Gerencia, que solo
+-- aprueba los trabajos sin orden, no borra ni el pendiente ajeno.
 insert into public.flota_avances (flota_id, area_id, descripcion, registrado_por)
 select f.id, (select id from public.areas where codigo = 'ACB'), 'Pintura del piso', :'admin_id'
   from public.flota_unidades f where f.placa = 'QA4-031';
@@ -104,7 +104,10 @@ begin
   perform test.afirmar(v_n = 0, 'Gerencia no borra un reporte que ya está aprobado');
   delete from public.flota_avances where id = current_setting('prueba.pendiente')::uuid;
   get diagnostics v_n = row_count;
-  perform test.afirmar(v_n = 1, 'Gerencia sí borra un reporte pendiente, como cualquiera que aprueba');
+  perform test.afirmar(v_n = 0, 'Gerencia tampoco borra uno pendiente ajeno: aprueba, no quita');
+  perform test.debe_fallar(format('update public.flota_avances set descripcion = %L where id = %L',
+                                  'Texto de Gerencia', current_setting('prueba.avance')),
+    'Gerencia no reescribe un reporte ya aprobado', 'queda como está');
 end $$;
 reset role;
 
