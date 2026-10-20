@@ -7,13 +7,13 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { stockEnAlmacen, type MaterialEnStock } from '@/lib/datos/stock-almacen'
 import { ALMACENES, ORDEN_ALMACENES, type Almacen, esAlmacen } from '@/lib/dominio/almacen'
+import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { cantidad } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Stock en almacén' }
 
 /** Sin tildes ni mayúsculas, para que «tubo» encuentre «TUBO» y «lamina» encuentre «Lámina». */
-const plano = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
 /** «Por clasificar» va en la URL como un almacén más, aunque no lo sea. */
 const POR_CLASIFICAR = 'POR_CLASIFICAR'
@@ -41,11 +41,8 @@ export default async function PaginaStockEnAlmacen({ searchParams }: PageProps<'
   const todos = await stockEnAlmacen()
   // Lo que busca: el nombre, el código del material, la familia o el código
   // interno de la unidad para la que entró un accesorio.
-  const buscados = q
-    ? todos.filter((m) =>
-        [m.descripcion, m.codigo, m.categoria, ...m.por_codigo.map((c) => c.codigo)].some((t) => plano(t).includes(plano(q))),
-      )
-    : todos
+  const palabras = palabrasDeBusqueda(q)
+  const buscados = todos.filter((m) => coincide(palabras, [m.descripcion, m.codigo, m.categoria, ...m.por_codigo.map((c) => c.codigo)]))
   const deAlmacen = (a: Almacen | typeof POR_CLASIFICAR) =>
     buscados.filter((m) => (a === POR_CLASIFICAR ? m.almacen === null : m.almacen === a))
   const conStock = (lista: MaterialEnStock[]) => lista.filter((m) => m.existencia > 0).length

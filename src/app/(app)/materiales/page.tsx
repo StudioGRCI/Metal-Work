@@ -1,7 +1,7 @@
+import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import Link from 'next/link'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
-import { Entrada } from '@/components/ui/campos'
 import { SinDatos, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { catalogosDeMateriales, listarCatalogoMateriales } from '@/lib/datos/materiales'
@@ -51,24 +51,9 @@ export default async function PaginaMateriales({ searchParams }: PageProps<'/mat
         acciones={puedeEditar && <NuevoMaterial catalogos={catalogos} />}
       />
 
-      <form method="get" className="mb-3 flex flex-wrap items-center gap-3">
-        {inactivos && <input type="hidden" name="todos" value="1" />}
-        <Entrada
-          type="search"
-          name="buscar"
-          defaultValue={busqueda ?? ''}
-          placeholder="Buscar por nombre o código…"
-          aria-label="Buscar material"
-          autoComplete="off"
-          className="w-full sm:w-72"
-        />
-        <button
-          type="submit"
-          className="inline-flex min-h-11 items-center text-sm text-acento hover:underline sm:min-h-0"
-        >
-          Buscar
-        </button>
-      </form>
+      <div className="mb-3">
+        <BuscadorSimple ruta="/materiales" clave="buscar" etiqueta="Buscar material" marcador="Nombre o código del material" />
+      </div>
 
       <PastillaFiltro
         ruta="/materiales"

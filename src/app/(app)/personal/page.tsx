@@ -67,7 +67,7 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
           <BuscadorSimple
             ruta="/personal"
             etiqueta="Buscar personal"
-            marcador="Buscar por nombre, correo o documento"
+            marcador="Nombre, correo o documento"
           />
         </div>
         {/* Antes cada pastilla era un <a> que rearmaba la URL a mano y solo se

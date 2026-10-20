@@ -9,6 +9,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { etiquetaDeMime } from '@/lib/archivo-cotizacion'
 import { catalogosDeCotizacion, listarCotizacionesPdf } from '@/lib/datos/cotizaciones-pdf'
+import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { estadoFacturaVenta } from '@/lib/dominio/finanzas'
 import { fecha as fmtFecha, hora, moneda as formatoMoneda } from '@/lib/format'
@@ -101,9 +102,8 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const filtro = (FILTROS_ESTADO as readonly string[]).includes(String(params.estado))
     ? (params.estado as FiltroEstado)
     : null
-  const busqueda = typeof params.q === 'string' ? params.q.trim().toLowerCase() : ''
-  const coincide = (c: (typeof cotizaciones)[number]) =>
-    !busqueda || [c.numero, c.cliente, c.carroceria].some((v) => (v ?? '').toLowerCase().includes(busqueda))
+  const palabras = palabrasDeBusqueda(typeof params.q === 'string' ? params.q : '')
+  const buscada = (c: (typeof cotizaciones)[number]) => coincide(palabras, [c.numero, c.cliente, c.carroceria])
   // Sin filtro, primero lo que quien mira puede mover: Gerencia ve arriba las
   // que esperan su visto y las aprobadas de antes que quedaron sin código;
   // Ventas, las suyas rechazadas. El orden por fecha se conserva dentro de cada grupo.
@@ -111,7 +111,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     (revisa && (c.estado === 'POR_REVISAR' || (c.estado === 'APROBADA' && !c.orden_id))) ||
     puedeCorregirCotizacion(perfil, c)
   const visibles = cotizaciones
-    .filter((c) => enFiltro(c, filtro) && coincide(c))
+    .filter((c) => enFiltro(c, filtro) && buscada(c))
     .sort((a, b) => Number(meToca(b)) - Number(meToca(a)))
 
   const opciones = [
@@ -133,7 +133,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
 
       {cotizaciones.length > 0 && (
         <>
-          <BuscadorSimple ruta="/cotizaciones/pdf" etiqueta="Buscar cotizaciones" marcador="Buscar por número, cliente o carrocería" />
+          <BuscadorSimple ruta="/cotizaciones/pdf" etiqueta="Buscar cotizaciones" marcador="Número, cliente o carrocería" />
           <PastillaFiltro
             ruta="/cotizaciones/pdf"
             clave="estado"

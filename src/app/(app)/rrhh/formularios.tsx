@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { useEnvio } from '@/lib/envio'
 import { crearPlanilla, agregarPersona, distribuirPersona, cerrarPlanilla, repartirEnPartesIguales } from './acciones'
 
@@ -63,8 +64,8 @@ export function RepartirPartesIguales({ planillaId, personas, ordenes }: {
   const [filtro, setFiltro] = useState('')
   const [marcadas, setMarcadas] = useState<string[]>([])
   const { alEnviar, enviando, error, resultado } = useEnvio(repartirEnPartesIguales, () => setMarcadas([]))
-  const buscar = filtro.trim().toLowerCase()
-  const visibles = ordenes.filter((o) => !buscar || `${o.numero} ${o.unidad}`.toLowerCase().includes(buscar))
+  const palabras = palabrasDeBusqueda(filtro)
+  const visibles = ordenes.filter((o) => coincide(palabras, [o.numero, o.unidad]))
   const parte = marcadas.length ? Math.floor(10000 / marcadas.length) / 100 : 0
   return <form onSubmit={alEnviar} className="space-y-4">
     <input type="hidden" name="planilla_id" value={planillaId} />

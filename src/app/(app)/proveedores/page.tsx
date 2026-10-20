@@ -51,14 +51,14 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
         }
       />
 
-      <BuscadorSimple ruta="/proveedores" etiqueta="Buscar proveedores" marcador="Buscar por razón social, RUC o rubro" />
+      <BuscadorSimple ruta="/proveedores" etiqueta="Buscar proveedores" marcador="Razón social, RUC o rubro" />
 
       <Tarjeta className="mt-4 overflow-hidden">
         <Tabla>
           <TablaCabecera>
             <tr>
               <TH>Proveedor</TH>
-              <TH>Documento</TH>
+              <TH className="hidden sm:table-cell">Documento</TH>
               {/* En el teléfono, contacto y pago bajan a la celda del nombre: así
                   caben el RUC y Editar sin correr la tabla de lado. */}
               <TH className="hidden sm:table-cell">Contacto</TH>
@@ -98,10 +98,13 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                       {(p.nombre_comercial || p.rubro) && (
                         <p className="text-[11px] text-texto-suave">{[p.nombre_comercial, p.rubro].filter(Boolean).join(' · ')}</p>
                       )}
-                      <p className="text-[11px] text-texto-suave sm:hidden">{[pago, contacto].filter(Boolean).join(' · ')}</p>
+                      {/* En el teléfono el RUC baja aquí: su columna aparte dejaba el nombre en cuatro renglones. */}
+                      <p className="text-[11px] text-texto-suave sm:hidden">
+                        {[`${p.tipo_documento} ${p.numero_documento}`, pago, contacto].filter(Boolean).join(' · ')}
+                      </p>
                     </TD>
-                    <TD className="whitespace-nowrap">
-                      <span className="hidden text-texto-suave sm:inline">{p.tipo_documento} </span><span className="tabular">{p.numero_documento}</span>
+                    <TD className="hidden whitespace-nowrap sm:table-cell">
+                      <span className="text-texto-suave">{p.tipo_documento} </span><span className="tabular">{p.numero_documento}</span>
                     </TD>
                     <TD className="hidden text-texto-suave sm:table-cell">
                       {contacto || '—'}

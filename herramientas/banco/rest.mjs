@@ -22,6 +22,8 @@ const OPERADORES = {
   lte: '<=',
   like: 'like',
   ilike: 'ilike',
+  match: '~',
+  imatch: '~*',
 }
 
 const PARAMETROS_RESERVADOS = new Set(['select', 'order', 'limit', 'offset', 'on_conflict', 'columns'])
@@ -151,6 +153,9 @@ function condicionSimple(columna, expresion, ctx, tabla) {
     }
   } else if (operador === 'like' || operador === 'ilike') {
     sql = `${col}::text ${OPERADORES[operador]} ${ctx.parametro(desentrecomillar(valor).replace(/\*/g, '%'))}`
+  } else if (operador === 'match' || operador === 'imatch') {
+    // Los buscadores (`src/lib/dominio/busqueda.ts`) buscan sin tildes con `imatch`.
+    sql = `${col}::text ${OPERADORES[operador]} ${ctx.parametro(desentrecomillar(valor))}`
   } else if (operador in OPERADORES) {
     sql = `${col} ${OPERADORES[operador]} ${ctx.parametro(desentrecomillar(valor))}`
   } else {

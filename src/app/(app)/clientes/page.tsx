@@ -73,7 +73,7 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
       <BuscadorSimple
         ruta="/clientes"
         etiqueta="Buscar clientes"
-        marcador="Buscar por razón social, nombre comercial o RUC"
+        marcador="Razón social, nombre comercial o RUC"
       />
 
       <Tarjeta className="mt-4 overflow-hidden">
@@ -81,10 +81,10 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
           <TablaCabecera>
             <tr>
               <TH>Cliente</TH>
-              <TH>Documento</TH>
-              {/* En el teléfono no caben seis columnas: contacto y ubicación se
-                  esconden aquí y bajan a la celda del nombre en letra chica, que
-                  es donde el dedo ya está mirando. */}
+              <TH className="hidden sm:table-cell">Documento</TH>
+              {/* En el teléfono no caben seis columnas: documento, contacto y
+                  ubicación se esconden aquí y bajan a la celda del nombre en letra
+                  chica, que es donde el dedo ya está mirando. */}
               <TH className="hidden sm:table-cell">Contacto</TH>
               <TH className="hidden sm:table-cell">Ubicación</TH>
               <TH className="text-right">Unidades</TH>
@@ -112,7 +112,7 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                 // Lo que en el teléfono se pierde al esconder dos columnas vuelve
                 // aquí en una sola línea; sin esto el listado móvil no diría ni el
                 // teléfono del cliente ni de dónde es.
-                const enElTelefono = [c.telefono, ubicacion].filter(Boolean).join(' · ')
+                const enElTelefono = [`${c.tipo_documento} ${c.numero_documento}`, c.telefono, ubicacion].filter(Boolean).join(' · ')
 
                 return (
                   <TR key={c.id}>
@@ -130,7 +130,7 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                         <p className="text-[11px] text-texto-suave sm:hidden">{enElTelefono}</p>
                       )}
                     </TD>
-                    <TD className="whitespace-nowrap">
+                    <TD className="hidden whitespace-nowrap sm:table-cell">
                       <span className="text-texto-suave">{c.tipo_documento}</span>{' '}
                       <span className="tabular">{c.numero_documento}</span>
                     </TD>

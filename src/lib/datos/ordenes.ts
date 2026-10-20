@@ -4,6 +4,7 @@ import { ESTADO_ETAPA, ESTADO_OT, TIPO_EVENTO_BITACORA, TIPO_TRABAJO, definir } 
 import { puesto } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Enums, Vistas } from '@/types/database'
+import { filtroDePalabra, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 
 export type ResumenOrden = Vistas<'ot_resumen'>
 
@@ -71,12 +72,9 @@ export async function listarOrdenes(filtros: FiltrosOrdenes) {
   if (filtros.responsable) consulta = consulta.eq('responsable_id', filtros.responsable)
   if (filtros.atrasadas) consulta = consulta.gt('dias_atraso', 0)
 
-  if (filtros.busqueda?.trim()) {
-    // Busca por número de OT, cliente, placa o descripción del trabajo.
-    const t = filtros.busqueda.trim().replace(/[%,()]/g, '')
-    consulta = consulta.or(
-      `numero.ilike.%${t}%,cliente.ilike.%${t}%,placa.ilike.%${t}%,descripcion.ilike.%${t}%`,
-    )
+  // Por número de OT, cliente, placa o descripción del trabajo.
+  for (const palabra of palabrasDeBusqueda(filtros.busqueda)) {
+    consulta = consulta.or(filtroDePalabra(['numero', 'cliente', 'placa', 'descripcion'], palabra))
   }
 
   const { data, error, count } = await consulta

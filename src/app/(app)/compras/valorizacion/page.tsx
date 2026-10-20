@@ -1,12 +1,11 @@
-import Link from 'next/link'
-
+import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
-import { Entrada } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
-import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import { materialesParaValorizar, precioDeCosteo } from '@/lib/datos/valorizacion'
+import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { cantidad, fecha, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -42,7 +41,8 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
   const perfil = await exigirPermiso(['almacen.valorizar', 'almacen.ver'])
   const params = await searchParams
   const ver = texto(params.ver)
-  const busqueda = texto(params.q).slice(0, 60).toLocaleLowerCase('es')
+  const busqueda = texto(params.q)
+  const palabras = palabrasDeBusqueda(busqueda)
   const puedeValorizar = puede(perfil, 'almacen.valorizar')
 
   const todos = await materialesParaValorizar()
@@ -58,8 +58,7 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
   const filas = conCosteo.filter((m) => {
     if (ver === 'sin-precio' && m.costeo !== null) return false
     if (ver === 'logistica' && m.precio === null) return false
-    if (!busqueda) return true
-    return `${m.codigo ?? ''} ${m.descripcion ?? ''}`.toLocaleLowerCase('es').includes(busqueda)
+    return coincide(palabras, [m.codigo, m.descripcion])
   })
   const hayFiltros = Boolean(busqueda || ver)
 
@@ -78,23 +77,11 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
         <Cifra etiqueta="Valor en almacén (dólares)" valor={moneda(valor.USD, 'USD')} />
       </dl>
 
-      <Tarjeta className="mb-4">
-        <TarjetaCuerpo>
-          <form method="get" className="flex flex-wrap items-end gap-3">
-            {ver && <input type="hidden" name="ver" value={ver} />}
-            <label className="min-w-0 flex-1 basis-64">
-              <span className="mb-1 block text-xs font-medium text-texto-suave">Buscar material</span>
-              <Entrada name="q" type="search" defaultValue={texto(params.q)} placeholder="Código o descripción" autoComplete="off" />
-            </label>
-            <button type="submit" className="inline-flex min-h-11 items-center rounded-[var(--radius-base)] bg-acento px-4 text-sm font-medium text-acento-texto hover:opacity-90 sm:min-h-9">
-              Buscar
-            </button>
-            {hayFiltros && <Link href="/compras/valorizacion" className="self-center text-sm text-acento hover:underline">Limpiar</Link>}
-          </form>
-          <PastillaFiltro ruta="/compras/valorizacion" clave="ver" opciones={VER} params={params}
-            activo={ver || null} etiqueta="Qué materiales mostrar" className="mt-3" />
-        </TarjetaCuerpo>
-      </Tarjeta>
+      <div className="mb-4 space-y-3">
+        <BuscadorSimple ruta="/compras/valorizacion" etiqueta="Buscar material" marcador="Código o descripción" />
+        <PastillaFiltro ruta="/compras/valorizacion" clave="ver" opciones={VER} params={params}
+          activo={ver || null} etiqueta="Qué materiales mostrar" />
+      </div>
 
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera

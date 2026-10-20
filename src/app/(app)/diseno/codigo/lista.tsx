@@ -100,7 +100,7 @@ export async function ListaDeCodigosDeDiseno({
       )}
 
       <div className="mb-3 space-y-3">
-        <BuscadorSimple ruta={ruta} etiqueta="Buscar código interno" marcador="Busca por código, por ejemplo SR_04" />
+        <BuscadorSimple ruta={ruta} etiqueta="Buscar código interno" marcador="Código interno, por ejemplo SR_04" />
         <PastillaFiltro
           ruta={ruta}
           clave="ver"

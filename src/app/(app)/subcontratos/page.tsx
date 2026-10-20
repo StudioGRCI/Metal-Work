@@ -1,10 +1,8 @@
-import { Search } from 'lucide-react'
 import Link from 'next/link'
 
+import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
-import { Boton } from '@/components/ui/boton'
-import { Entrada } from '@/components/ui/campos'
 import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
@@ -109,7 +107,8 @@ export default async function PaginaSubcontratos({ searchParams }: { searchParam
         </p>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="mb-4 space-y-3">
+        <BuscadorSimple ruta="/subcontratos" clave="codigo" etiqueta="Buscar por código interno" marcador="Código interno, por ejemplo SR_04" />
         <PastillaFiltro
           ruta="/subcontratos"
           clave="estado"
@@ -123,14 +122,6 @@ export default async function PaginaSubcontratos({ searchParams }: { searchParam
           params={params}
           activo={estado === 'VIGENTE' ? null : estado}
         />
-        <form className="flex max-w-md flex-1 gap-2" role="search">
-          {estado !== 'VIGENTE' && <input type="hidden" name="estado" value={estado} />}
-          <Entrada name="codigo" defaultValue={buscado} placeholder="Código interno, por ejemplo PLA_SR_O4_1_26/28" aria-label="Buscar por código interno" />
-          <Boton type="submit" variante="secundario">
-            <Search aria-hidden className="size-4" />
-            Buscar
-          </Boton>
-        </form>
       </div>
 
       <Tarjeta className="overflow-hidden">

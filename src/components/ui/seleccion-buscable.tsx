@@ -3,6 +3,7 @@
 import { useId, useRef, useState } from 'react'
 import { Check, ChevronDown, Search, X } from 'lucide-react'
 
+import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { cn } from '@/lib/utils'
 
 export type OpcionBuscable = {
@@ -15,15 +16,6 @@ export type OpcionBuscable = {
 /** Cuántas opciones se pintan de una vez. Con los 500 clientes cargados,
  *  pintarlas todas traba el desplegable en el teléfono del taller. */
 const TOPE = 80
-
-/** «GRUA» tiene que encontrar «Grúa», y «sac» a «S.A.C.». */
-function normalizar(texto: string) {
-  return texto
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .replace(/[.\-_/]/g, ' ')
-    .toLowerCase()
-}
 
 /**
  * Lista desplegable con buscador. Nace por las listas que crecen —clientes,
@@ -79,10 +71,10 @@ export function SeleccionBuscable({
 
   const elegida = opciones.find((o) => o.valor === valor) ?? null
 
-  const t = normalizar(filtro.trim())
-  const coincidencias = t
-    ? opciones.filter((o) => normalizar(`${o.etiqueta} ${o.detalle ?? ''}`).includes(t))
-    : opciones
+  // Como todo buscador: «grua» encuentra «Grúa», «sac» a «S.A.C.» y
+  // «valle moche» a «Agrícola Valle de Moche».
+  const palabras = palabrasDeBusqueda(filtro)
+  const coincidencias = opciones.filter((o) => coincide(palabras, [o.etiqueta, o.detalle]))
   const visibles = coincidencias.slice(0, TOPE)
   const ocultas = coincidencias.length - visibles.length
 
