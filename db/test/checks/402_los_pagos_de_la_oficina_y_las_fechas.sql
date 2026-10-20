@@ -17,6 +17,7 @@
 --   6. Dar de baja por el camino de antes deja la fecha de hoy, y volver a dar
 --      de alta la borra.
 --   7. En el mes en curso solo faltan los días hasta hoy.
+--   8. El cierre del costeo espera los pagos de la oficina de cada mes con horas.
 --
 -- Cada paso con la cuenta del puesto —nunca ADMIN— y `set local role
 -- authenticated`. Termina en rollback.
@@ -180,7 +181,9 @@ select test.afirmar((select o.monto = 4000 and o.sin_pago = 1 from public.sueldo
 select test.como_usuario(:'gerente_id');
 set local role authenticated;
 select test.debe_fallar($q$select public.cerrar_costeo_codigo('CHK402_A_21/06', 'Entregada al cliente en el taller, prueba del check 402')$q$,
-  'el cierre espera los pagos de la oficina del mes en que trabajó la unidad', 'los pagos de la oficina de 06/2021');
+  'el cierre espera los pagos de la oficina del mes en que trabajó la unidad', 'registrar los pagos de la oficina de 06/2021');
+select test.afirmar((select array_agg(m.periodo) = array[date '2021-06-01'] from public.meses_sin_pagos_oficina('CHK402_A_21/06') m),
+  'Gerencia ve antes de cerrar que a la unidad A le faltan los pagos de junio');
 -- Y el pago de cada persona no se asoma por la bitácora.
 select test.afirmar((select count(*) from public.audit_log where tabla = 'oficina_pagos') = 0,
   'Gerencia no lee los pagos de la oficina en audit_log');
@@ -228,6 +231,18 @@ select public.rrhh_registrar_pago_oficina(gen_random_uuid(), current_setting('pr
   (now() at time zone 'America/Lima')::date + 1, (now() at time zone 'America/Lima')::date + 7, 300, 0, null);
 select test.debe_fallar(format('select public.rrhh_cambiar_estado_trabajador(%L, false)', current_setting('prueba.bea')),
   'dar de baja hoy por el camino de antes no deja fuera un pago adelantado', 'después del');
+reset role;
+
+-- ------------------------------------ 8. Con junio pagado entero, el cierre entra
+select test.como_usuario(:'rrhh_id');
+set local role authenticated;
+select public.rrhh_registrar_pago_oficina(gen_random_uuid(), current_setting('prueba.bea')::uuid,
+  date '2021-06-16', date '2021-06-30', 1400, 100, 'Registrado de nuevo, con el monto correcto');
+select test.como_usuario(:'gerente_id');
+select test.afirmar(not exists (select 1 from public.meses_sin_pagos_oficina('CHK402_A_21/06')),
+  'con junio pagado, a la unidad A ya no le falta la oficina');
+select test.afirmar(public.cerrar_costeo_codigo('CHK402_A_21/06', 'Entregada al cliente en el taller, prueba del check 402') is not null,
+  'Gerencia cierra la unidad A cuando junio está pagado');
 reset role;
 
 select 'CHECK 402 OK' as resultado;

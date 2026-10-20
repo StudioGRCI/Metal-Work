@@ -96,7 +96,8 @@ begin
     raise exception 'La fecha de ingreso va desde 1990 hasta un mes adelante (%).', to_char(v_hoy + 31, 'DD/MM/YYYY')
       using errcode = 'check_violation';
   end if;
-  select fecha_baja into v_baja from public.trabajadores where id = p_trabajador_id;
+  -- Bloquear la ficha: un pago que entra a la vez no queda antes del ingreso.
+  select fecha_baja into v_baja from public.trabajadores where id = p_trabajador_id for update;
   if v_baja is not null and p_fecha > v_baja then
     raise exception 'El ingreso no puede ser después de la baja (%).', to_char(v_baja, 'DD/MM/YYYY')
       using errcode = 'check_violation';
@@ -126,7 +127,7 @@ declare
   v         int;
 begin
   perform public.exigir_permiso('rrhh.personal');
-  select activo, fecha_ingreso into v_activo, v_ingreso from public.trabajadores where id = p_trabajador_id;
+  select activo, fecha_ingreso into v_activo, v_ingreso from public.trabajadores where id = p_trabajador_id for update;
   if not found then raise exception 'La persona no existe.'; end if;
   if not v_activo then
     raise exception 'Ya está de baja.' using errcode = 'check_violation';
@@ -259,6 +260,10 @@ begin
   -- Bloquear la ficha: dos registros a la vez de la misma persona no se cruzan sin verse.
   select * into v_w from public.trabajadores where id = p_trabajador_id for update;
   if not found then raise exception 'Elige a la persona a quien se le pagó.' using errcode = 'check_violation'; end if;
+  -- El mismo envío que llegó dos veces a la vez: el segundo esperó el bloqueo y ya lo encuentra.
+  if exists (select 1 from public.oficina_pagos where id = p_id and anulado_en is null) then
+    return p_id;
+  end if;
   select a.es_oficina into v_ofi from public.areas a where a.id = v_w.area_id;
   if not coalesce(v_ofi, false) then
     raise exception '% % no es de un área de oficina: su costo entra por las horas que carga a cada unidad.',
@@ -355,7 +360,11 @@ drop function if exists public.sueldos_oficina_del_mes(date);
 -- lo pagado hasta el fin del mes anterior. Cada persona, menos lo que ese mes cargó
 -- en horas a una unidad. sin_pago: cuántas personas de la oficina tienen en el mes
 -- días trabajados que ningún pago cubre todavía. Solo cuenta hasta hoy: un día que
--- no llega no falta, y avisarlo empujaría a registrar un pago que aún no se hizo.
+-- no llega no falta, y avisarlo empujaría a registrar un pago que aún no se hizo. Y
+-- solo desde que RR. HH. empezó a registrar pagos (el primero que entró, o el mes
+-- en curso si aún no hay ninguno): los meses de antes no tenían dónde anotarse, y
+-- contarlos dejaría a toda la oficina en falta desde siempre y ninguna unidad se
+-- podría cerrar.
 create or replace function public.sueldos_oficina_del_mes(p_periodo date default null)
 returns table (periodo date, personas integer, monto numeric, sin_pago integer)
 language sql stable set search_path to 'public' as $$
@@ -379,22 +388,30 @@ language sql stable set search_path to 'public' as $$
                                                  and public.normalizar_codigo_interno(t.codigo_interno) not in ('PLANTA', 'OFICINA', 'TODOS LOS ACTIVOS')), 0), 0) as monto
       from pago g
      group by g.periodo, g.trabajador_id
+  ), registro as (
+    select coalesce(min(p.desde), date_trunc('month', now() at time zone 'America/Lima')::date) as desde
+      from public.oficina_pagos p
+     where p.anulado_en is null
+       and not exists (select 1 from public.pruebas_filas f where f.tabla = 'oficina_pagos' and f.fila_id = p.id)
   ), falta as (
     -- Los días que trabajó en el mes hasta hoy (entre su ingreso y su baja) y que ningún pago cubre.
     select m.periodo, w.id
       from mes m
+      cross join registro r
       join public.trabajadores w on (w.activo or w.fecha_baja is not null)
       join public.areas a on a.id = w.area_id and a.es_oficina
      where public.dias_del_mes_entre(m.periodo, w.fecha_ingreso, w.fecha_baja) > 0
        and not exists (select 1 from public.pruebas_filas f where f.tabla = 'trabajadores' and f.fila_id = w.id)
        and exists (select 1
-                     from generate_series(greatest(m.periodo, coalesce(w.fecha_ingreso, m.periodo)),
+                     from generate_series(greatest(m.periodo, coalesce(w.fecha_ingreso, m.periodo), r.desde),
                                           least((m.periodo + interval '1 month' - interval '1 day')::date, coalesce(w.fecha_baja, '9999-12-31'),
                                                 (now() at time zone 'America/Lima')::date),
                                           interval '1 day') d(dia)
                     where not exists (select 1 from public.oficina_pagos p
                                        where p.trabajador_id = w.id and p.anulado_en is null
-                                         and d.dia::date between p.desde and p.hasta))
+                                         and d.dia::date between p.desde and p.hasta
+                                         and not exists (select 1 from public.pruebas_filas f
+                                                          where f.tabla = 'oficina_pagos' and f.fila_id = p.id)))
   )
   select m.periodo,
          (select count(*) from neto n where n.periodo = m.periodo)::integer,
@@ -403,7 +420,7 @@ language sql stable set search_path to 'public' as $$
     from mes m
 $$;
 comment on function public.sueldos_oficina_del_mes(date) is
-  'El sueldo de la oficina de cada mes (o del mes de p_periodo): la parte, por días, de cada pago de oficina_pagos que cae en el mes (con aportes), menos lo que esa persona cargó ese mes en horas a una unidad; y cuántas personas de la oficina tienen días del mes, hasta hoy, sin pago registrado. No pide permiso: la llaman el costeo y gastos_del_mes_oficina.';
+  'El sueldo de la oficina de cada mes (o del mes de p_periodo): la parte, por días, de cada pago de oficina_pagos que cae en el mes (con aportes), menos lo que esa persona cargó ese mes en horas a una unidad; y cuántas personas de la oficina tienen días del mes, desde el primer pago registrado y hasta hoy, sin pago. No pide permiso: la llaman el costeo y gastos_del_mes_oficina.';
 revoke all on function public.sueldos_oficina_del_mes(date) from public, anon, authenticated;
 
 create or replace function public.gastos_del_mes_oficina(p_periodo date)
@@ -730,6 +747,32 @@ comment on function public.codigo_interno_lineas(text, boolean) is
 revoke all on function public.codigo_interno_lineas(text, boolean) from public, anon, authenticated;
 
 -- 6. El cierre espera los pagos de la oficina --------------------------------------
+-- Los meses en que el código tuvo horas y a alguien de la oficina le faltan días
+-- pagados. Los usa el cierre, y la pantalla del costeo los muestra antes de cerrar.
+create or replace function public.meses_sin_pagos_oficina(p_codigo text)
+returns table (periodo date)
+language plpgsql stable security definer set search_path to 'public' as $$
+#variable_conflict use_column
+begin
+  if public.usuario_actual() is not null
+     and not (public.es_admin() or public.tiene_permiso('codigos_internos.cerrar') or public.tiene_permiso('codigos_internos.ver')
+              or public.tiene_permiso('costos.ver')) then
+    raise exception 'No tiene el permiso codigos_internos.ver, codigos_internos.cerrar ni costos.ver para realizar esta operación'
+      using errcode = 'insufficient_privilege';
+  end if;
+  return query
+  select h.periodo
+    from (select distinct h.periodo from public.horas_por_codigo_del_mes(null) h
+           where h.codigo = public.normalizar_codigo_interno(p_codigo)) h
+   where (select o.sin_pago from public.sueldos_oficina_del_mes(h.periodo) o) > 0
+   order by h.periodo;
+end;
+$$;
+comment on function public.meses_sin_pagos_oficina(text) is
+  'Los meses en que el código interno tuvo horas y a alguien de la oficina le faltan días pagados (desde el primer pago registrado y hasta hoy). El cierre del costeo los espera. Exige codigos_internos.ver, codigos_internos.cerrar o costos.ver.';
+revoke all on function public.meses_sin_pagos_oficina(text) from public, anon;
+grant execute on function public.meses_sin_pagos_oficina(text) to authenticated;
+
 -- La misma función de la 20261020110000, con una condición más: antes el sueldo de
 -- la oficina entraba solo; ahora depende de que RR. HH. registre cada pago, y la
 -- quincena se registra después de pagarla. Cerrar antes congelaría la unidad sin
@@ -742,6 +785,7 @@ declare
   k record;
   v_falta text[] := '{}';
   v_fuentes jsonb;
+  v_meses text;
 begin
   perform public.exigir_permiso('codigos_internos.cerrar');
   if v_codigo is null then
@@ -796,11 +840,13 @@ begin
   -- El sueldo de la oficina sale de los pagos que registra RR. HH. (migración
   -- 20261020120000): con días de la oficina sin pago en un mes en que la unidad
   -- trabajó, quedaría congelada sin esa parte.
-  select v_falta || coalesce(array_agg('los pagos de la oficina de ' || to_char(h.periodo, 'MM/YYYY') || ' (los registra RR. HH.)'
-                                       order by h.periodo), '{}')
-    into v_falta
-    from (select distinct h.periodo from public.horas_por_codigo_del_mes(null) h where h.codigo = v_codigo) h
-   where (select o.sin_pago from public.sueldos_oficina_del_mes(h.periodo) o) > 0;
+  -- En una variable aparte: un select into sin filas dejaría v_falta en null y el cierre pasaría.
+  select string_agg(to_char(m.periodo, 'MM/YYYY'), ', ' order by m.periodo) into v_meses
+    from public.meses_sin_pagos_oficina(v_codigo) m;
+  if v_meses is not null then
+    v_falta := v_falta || ('registrar los pagos de la oficina de ' || v_meses
+                           || ' (RR. HH.: los pagos, o la fecha de ingreso de quien entró después)');
+  end if;
   if cardinality(v_falta) > 0 then
     raise exception 'El costeo de % todavía no está completo: falta %.', v_codigo, array_to_string(v_falta, '; ')
       using errcode = 'check_violation';

@@ -54,3 +54,15 @@ export async function oficinaDelMes(periodo: string) {
   const f = data?.[0]
   return { monto: Number(f?.monto ?? 0), sinPago: f?.sin_pago ?? 0 }
 }
+
+/**
+ * Los meses (`YYYY-MM-01`) en que el código tuvo horas y a alguien de la oficina le
+ * faltan días pagados: el cierre del costeo los espera (`cerrar_costeo_codigo`).
+ * Exige `codigos_internos.ver`, `codigos_internos.cerrar` o `costos.ver`.
+ */
+export async function mesesSinPagosDeOficina(codigo: string): Promise<string[]> {
+  const db = await createClient()
+  const { data, error } = await db.rpc('meses_sin_pagos_oficina', { p_codigo: codigo })
+  if (error) throw new Error(`No se pudo leer qué meses esperan los pagos de la oficina: ${error.message}`)
+  return (data ?? []).flatMap((f) => (f.periodo ? [f.periodo] : []))
+}

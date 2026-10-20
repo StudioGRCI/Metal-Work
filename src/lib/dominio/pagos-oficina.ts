@@ -69,15 +69,17 @@ export function parteDelMes(pago: { desde: string; hasta: string; monto: number;
 /**
  * Los días del mes que la persona trabajó hasta `hoy` (entre su ingreso y su baja)
  * y que ningún pago cubre, y el primero de ellos. Un día que todavía no llega no
- * falta: así lo cuenta también `sueldos_oficina_del_mes`.
+ * falta, y uno anterior a `registro` (el primer pago que registró RR. HH.) tampoco:
+ * así lo cuenta también `sueldos_oficina_del_mes`.
  */
 export function diasSinPago(
   persona: { fecha_ingreso: string | null; fecha_baja: string | null },
   pagos: { desde: string; hasta: string }[],
   mes: string,
   hoy: string,
+  registro: string,
 ): { dias: number; desde: string | null } {
-  const inicio = `${mes}-01`
+  const inicio = [`${mes}-01`, registro].sort()[1]
   const fin = [finDeMes(mes), persona.fecha_baja, hoy].filter((f): f is string => f !== null).sort()[0]
   let d = persona.fecha_ingreso && persona.fecha_ingreso > inicio ? persona.fecha_ingreso : inicio
   const ultimo = fin

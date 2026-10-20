@@ -12683,6 +12683,14 @@ export type Database = {
         }
         Returns: string
       }
+      meses_sin_pagos_oficina: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          periodo: string | null
+        }[]
+      }
       mi_rol: {
         Args: Record<PropertyKey, never>
         Returns: string

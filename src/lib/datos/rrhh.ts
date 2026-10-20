@@ -354,6 +354,17 @@ export async function pagosOficinaDelMes(mes: string, finDelMes: string): Promis
   return (data ?? []).map((p) => ({ ...p, monto: Number(p.monto), aportes: Number(p.aportes) }))
 }
 
+/**
+ * Desde cuándo RR. HH. registra los pagos de la oficina: el primer pago vigente, o
+ * el 1 del mes en curso si todavía no hay ninguno. Antes de eso no falta nada.
+ */
+export async function inicioDelRegistroDePagos(mesActual: string): Promise<string> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('oficina_pagos').select('desde').is('anulado_en', null).order('desde').limit(1)
+  if (error) throw new Error(`No se pudieron leer los pagos de la oficina: ${error.message}`)
+  return data?.[0]?.desde ?? `${mesActual}-01`
+}
+
 /** Los ids de las áreas marcadas como oficina: a su gente se le registran los pagos. */
 export async function areasDeOficina(): Promise<Set<string>> {
   const supabase = await createClient()

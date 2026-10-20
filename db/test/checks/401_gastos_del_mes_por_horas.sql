@@ -59,8 +59,8 @@ begin
   -- de esta prueba (se deshace al final), para que los números sean solo de ella.
   -- Con su baja antes de 2021: sin fecha, la baja de hoy los contaría en marzo (20261020120000).
   update public.trabajadores w set activo = false, fecha_ingreso = date '2020-12-01', fecha_baja = date '2020-12-31'
-   where exists (select 1 from public.trabajador_costos c where c.trabajador_id = w.id)
-     and (w.area_id is null or w.area_id in (select a.id from public.areas a where a.es_oficina));
+   where w.area_id in (select a.id from public.areas a where a.es_oficina)
+      or (w.area_id is null and exists (select 1 from public.trabajador_costos c where c.trabajador_id = w.id));
   for v_nombre, v_area, v_costo, v_activo, v_alta in
     select * from (values ('Ana', 'ADM', 3000, true, date '2021-01-04'), ('Caro', 'ADM', 2000, true, date '2021-01-04'),
                           ('Beto', 'MTZ', 2400, true, date '2021-01-04'), ('Dani', null, 1000, true, date '2021-01-04'),

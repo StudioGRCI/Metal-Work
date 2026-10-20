@@ -21,28 +21,31 @@ export function RegistrarPago({ personal, inicio }: { personal: PersonaOficina[]
   const [aviso, setAviso] = useState<string | null>(null)
   return (
     <>
-      <Boton
-        type="button"
-        onClick={() => {
-          setAviso(null)
-          setVez((v) => v + 1)
-          setAbierta(true)
-        }}
-        disabled={personal.length === 0}
-      >
-        <Wallet aria-hidden className="size-4" />
-        Registrar pago
-      </Boton>
-      {personal.length === 0 && (
-        <p className="basis-full text-xs text-texto-suave">
-          No hay nadie de la oficina a quien pagarle: marca su área como oficina en Configuración o registra a la persona en Personal.
-        </p>
-      )}
-      {aviso && (
-        <p role="status" className="basis-full text-sm text-exito">
-          {aviso}
-        </p>
-      )}
+      {/* Botón y avisos en columna: un texto suelto en las acciones del encabezado lo ensancha y mueve el botón. */}
+      <div className="flex flex-col items-end gap-1">
+        <Boton
+          type="button"
+          onClick={() => {
+            setAviso(null)
+            setVez((v) => v + 1)
+            setAbierta(true)
+          }}
+          disabled={personal.length === 0}
+        >
+          <Wallet aria-hidden className="size-4" />
+          Registrar pago
+        </Boton>
+        {personal.length === 0 && (
+          <p className="max-w-xs text-right text-xs text-texto-suave">
+            No hay nadie de la oficina a quien pagarle: regístralo en Personal, en un área de oficina.
+          </p>
+        )}
+        {aviso && (
+          <p role="status" className="max-w-xs text-right text-sm text-exito">
+            {aviso}
+          </p>
+        )}
+      </div>
       <Ventana
         abierta={abierta}
         alCerrar={() => setAbierta(false)}

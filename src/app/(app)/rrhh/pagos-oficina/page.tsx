@@ -5,7 +5,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { areasDeOficina, listarTrabajadores, pagosOficinaDelMes } from '@/lib/datos/rrhh'
+import { areasDeOficina, inicioDelRegistroDePagos, listarTrabajadores, pagosOficinaDelMes } from '@/lib/datos/rrhh'
 import { diasEntre, diasSinPago, finDeMes, parteDelMes } from '@/lib/dominio/pagos-oficina'
 import { mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, fechaHora, hoyLima, mesLargo, moneda, sumarDias } from '@/lib/format'
@@ -32,7 +32,12 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
   const inicio = `${mes}-01`
   const fin = finDeMes(mes)
 
-  const [pagos, personal, oficina] = await Promise.all([pagosOficinaDelMes(mes, fin), listarTrabajadores('todos'), areasDeOficina()])
+  const [pagos, personal, oficina, registro] = await Promise.all([
+    pagosOficinaDelMes(mes, fin),
+    listarTrabajadores('todos'),
+    areasDeOficina(),
+    inicioDelRegistroDePagos(mesActual),
+  ])
   const vigentes = pagos.filter((p) => !p.anulado_en)
   const totalDelMes = vigentes.reduce((n, p) => n + parteDelMes(p, mes), 0)
   // La gente de la oficina que trabajó algún día de este mes, según su ingreso y su baja.
@@ -45,7 +50,7 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
       (t.fecha_baja === null || t.fecha_baja >= inicio),
   )
   const pagosDe = (id: string) => vigentes.filter((p) => p.trabajador_id === id)
-  const faltan = deOficina.map((t) => ({ t, ...diasSinPago(t, pagosDe(t.id), mes, hoy) })).filter((f) => f.dias > 0)
+  const faltan = deOficina.map((t) => ({ t, ...diasSinPago(t, pagosDe(t.id), mes, hoy, registro) })).filter((f) => f.dias > 0)
   const nombre = (t: { nombres: string; apellidos: string }) => `${t.nombres} ${t.apellidos}`
   // Al elegir a la persona, «Desde» se llena con su primer día sin pago, o con el día
   // siguiente a su último pago del mes, o con el 1.
@@ -53,7 +58,7 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
     const hueco = faltan.find((f) => f.t.id === id)?.desde
     if (hueco) return hueco
     const ultimo = pagosDe(id).reduce<string | null>((u, p) => (u === null || p.hasta > u ? p.hasta : u), null)
-    return ultimo && ultimo < fin ? sumarDias(ultimo, 1) : inicio
+    return ultimo ? sumarDias(ultimo, 1) : inicio
   }
   // Los vigentes primero; los anulados quedan al final, como evidencia.
   const ordenados = [...vigentes, ...pagos.filter((p) => p.anulado_en)]
@@ -107,15 +112,23 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
             <TarjetaCabecera
               titulo="Les faltan días pagados"
               descripcion={`${faltan.length} ${faltan.length === 1 ? 'persona' : 'personas'} de la oficina con días de este mes sin pago registrado.`}
-              ayuda="Cuenta los días entre su ingreso y su baja que ningún pago cubre. Mientras falten, el sueldo de la oficina del mes sale incompleto en el costeo de cada unidad. Si alguien ya no trabaja, dalo de baja en Personal con su último día."
+              ayuda="Cuenta los días entre su ingreso y su baja, hasta hoy y desde el primer pago que registró RR. HH., que ningún pago cubre. Mientras falten, el sueldo de la oficina del mes sale incompleto en el costeo de cada unidad. Si alguien ya no trabaja, dalo de baja en Personal con su último día."
             />
             <TarjetaCuerpo>
-              <ul className="max-w-2xl space-y-1 text-sm">
+              <ul className="max-w-2xl space-y-2 text-sm">
                 {faltan.map((f) => (
                   <li key={f.t.id} className="flex flex-wrap justify-between gap-2">
                     <span className="text-texto">{nombre(f.t)}</span>
                     <span className="text-xs text-texto-suave">
                       <span className="tabular">{f.dias}</span> {f.dias === 1 ? 'día' : 'días'} sin pago, desde el {fecha(f.desde)}
+                      {f.t.fecha_ingreso === null && (
+                        <>
+                          {' · '}
+                          <Link href="/rrhh/personal" className="text-acento underline-offset-2 hover:underline">
+                            sin fecha de ingreso
+                          </Link>
+                        </>
+                      )}
                     </span>
                   </li>
                 ))}
@@ -179,7 +192,7 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
                         {p.aportes > 0 && <p className="text-[11px] text-texto-suave">con {moneda(p.aportes)} de aportes</p>}
                       </TD>
                       <TD className={`tabular text-right align-top font-semibold whitespace-nowrap ${anulado ? 'line-through' : ''}`}>
-                        {moneda(anulado ? 0 : parteDelMes(p, mes))}
+                        {moneda(parteDelMes(p, mes))}
                       </TD>
                       <TD className="text-right align-top">
                         {!anulado && <AnularPago id={p.id} descripcion={`El pago de ${quien} del ${fecha(p.desde)} al ${fecha(p.hasta)}`} />}
