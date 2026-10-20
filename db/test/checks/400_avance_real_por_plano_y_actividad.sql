@@ -560,11 +560,81 @@ select test.debe_fallar(format('select public.registrar_reporte_corregido(%L, %L
     pg_temp.txt('manana'), gen_random_uuid(), pg_temp.dia(0), pg_temp.txt('codigo'),
     jsonb_build_array(pg_temp.trabajo('actividad_id', pg_temp.actividad('Rolado de planchas'), 30))),
   'la mañana no alcanza a la tarde', 'reporte posterior');
-select public.registrar_reporte_corregido(pg_temp.id('manana'), gen_random_uuid(), pg_temp.dia(0), pg_temp.txt('codigo'),
+select set_config('prueba.manana2', gen_random_uuid()::text, true);
+select public.registrar_reporte_corregido(pg_temp.id('manana'), pg_temp.id('manana2'), pg_temp.dia(0), pg_temp.txt('codigo'),
   'Avance de la tolva', 'Corregido con las horas', jsonb_build_array(pg_temp.trabajo('actividad_id', pg_temp.actividad('Rolado de planchas'), 20)));
 select test.afirmar(
   (select avance from public.reporte_diario_opciones(pg_temp.txt('codigo')) where etiqueta = 'Rolado de planchas') = 30,
   'el rolado sigue en 30: la mañana corregida se subió después, pero el día vale lo más alto');
+reset role;
+-- La mañana corregida guarda su lugar: si después se observa la tarde, la tarde
+-- sigue yendo después de ella, con su 30.
+select pg_temp.como('gerente');
+set local role authenticated;
+select public.observar_reporte_diario(pg_temp.id('tarde'), 'GERENCIA', 'Faltan las horas de la tarde');
+reset role;
+select pg_temp.como('sup_mtz');
+set local role authenticated;
+select test.afirmar(
+  (select avance = 20 and tope is null from public.reporte_diario_opciones(pg_temp.txt('codigo'), pg_temp.id('tarde'), pg_temp.dia(0))
+    where etiqueta = 'Rolado de planchas'),
+  'al corregir la tarde, el rolado viene de la mañana corregida (20) y sin tope');
+select set_config('prueba.tarde2', gen_random_uuid()::text, true);
+select public.registrar_reporte_corregido(pg_temp.id('tarde'), pg_temp.id('tarde2'), pg_temp.dia(0), pg_temp.txt('codigo'),
+  'Avance de la tolva', 'Corregido con las horas', jsonb_build_array(pg_temp.trabajo('actividad_id', pg_temp.actividad('Rolado de planchas'), 30)));
+reset role;
+-- Y la mañana se puede corregir otra vez sin tener que pasar a la tarde.
+select pg_temp.como('gerente');
+set local role authenticated;
+select public.observar_reporte_diario(pg_temp.id('manana2'), 'GERENCIA', 'Revisa otra vez la mañana');
+reset role;
+select pg_temp.como('sup_mtz');
+set local role authenticated;
+select public.registrar_reporte_corregido(pg_temp.id('manana2'), gen_random_uuid(), pg_temp.dia(0), pg_temp.txt('codigo'),
+  'Avance de la tolva', 'Segunda corrección', jsonb_build_array(pg_temp.trabajo('actividad_id', pg_temp.actividad('Rolado de planchas'), 25)));
+select test.afirmar(
+  (select avance from public.reporte_diario_opciones(pg_temp.txt('codigo')) where etiqueta = 'Rolado de planchas') = 30,
+  'la mañana corregida dos veces no baja el rolado del 30 de la tarde');
+reset role;
+select pg_temp.como('gerente');
+set local role authenticated;
+select test.afirmar(
+  (select string_agg(h->>'avance', '→' order by n)
+         from public.codigo_interno_actividades(pg_temp.txt('codigo')) a,
+              jsonb_array_elements(a.historial) with ordinality as x(h, n)
+        where a.descripcion = 'Rolado de planchas') = '25→30',
+  'Gerencia ve la historia del rolado en orden: la mañana en 25, la tarde en 30');
+reset role;
+
+-- Una corrección que cambia de día va al final del día nuevo, no al lugar que tenía
+-- el observado en su día.
+select set_config('prueba.tal1', gen_random_uuid()::text, true);
+select set_config('prueba.tal2', gen_random_uuid()::text, true);
+select pg_temp.como('sup_mtz');
+set local role authenticated;
+select pg_temp.subir(pg_temp.txt('tal2'), 1, jsonb_build_array(pg_temp.trabajo('descripcion', 'Taladrado de bridas', 10)));
+select pg_temp.subir(pg_temp.txt('tal1'), 0, jsonb_build_array(pg_temp.trabajo('actividad_id', pg_temp.actividad('Taladrado de bridas'), 30)));
+reset role;
+-- El observado se subió antes que el de hoy (a mano: en la transacción todo lleva la misma hora).
+set local session_replication_role = replica;
+update public.reportes_diarios set creado_en = creado_en - interval '2 hours' where id = pg_temp.id('tal2');
+update public.reportes_diarios set creado_en = creado_en - interval '1 hour' where id = pg_temp.id('tal1');
+set local session_replication_role = origin;
+select pg_temp.como('gerente');
+set local role authenticated;
+select public.observar_reporte_diario(pg_temp.id('tal2'), 'GERENCIA', 'El taladrado fue hoy, no ayer');
+reset role;
+select pg_temp.como('sup_mtz');
+set local role authenticated;
+select test.afirmar(
+  (select avance = 30 and tope is null from public.reporte_diario_opciones(pg_temp.txt('codigo'), pg_temp.id('tal2'), pg_temp.dia(0))
+    where etiqueta = 'Taladrado de bridas'),
+  'al pasar la corrección a hoy, el taladrado viene del 30 de hoy y sin tope');
+select public.registrar_reporte_corregido(pg_temp.id('tal2'), gen_random_uuid(), pg_temp.dia(0), pg_temp.txt('codigo'),
+  'Avance de la tolva', 'Era de hoy', jsonb_build_array(pg_temp.trabajo('actividad_id', pg_temp.actividad('Taladrado de bridas'), 35)));
+select test.afirmar(
+  (select avance from public.reporte_diario_opciones(pg_temp.txt('codigo')) where etiqueta = 'Taladrado de bridas') = 35,
+  'y entra con 35, después del 30 de hoy');
 reset role;
 
 -- La actividad no se corrige ni se borra por debajo, ni siquiera como dueño.

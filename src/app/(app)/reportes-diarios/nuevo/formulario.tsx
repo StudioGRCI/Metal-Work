@@ -85,7 +85,8 @@ function paraEnviar(filas: FilaPersona[]) {
 
 /** Por qué lo elegido ya no está en la lista de ese día. */
 function noEntra(nombres: string[], fecha: string) {
-  return `${nombres.join(', ')} no ${nombres.length === 1 ? 'entra' : 'entran'} el ${fechaCorta(fecha)}: ese día ya estaba terminado o un reporte posterior ya lleva tanto o más. Elige otra cosa.`
+  const varios = nombres.length > 1
+  return `${nombres.join(', ')} ya no ${varios ? 'se pueden' : 'se puede'} reportar el ${fechaCorta(fecha)}: ${varios ? 'están terminados o anulados' : 'está terminado o anulado'}, o un reporte posterior ya lleva tanto o más. Elige otra cosa.`
 }
 
 /** Lo que ya lleva lo elegido, para el detalle de la lista y la ayuda del avance. */

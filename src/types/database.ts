@@ -8039,6 +8039,7 @@ export type Database = {
           observacion_area: string | null
           observacion: string | null
           reemplaza_a: string | null
+          ubicado_en: string | null
         }
         Insert: {
           id?: string
@@ -8063,6 +8064,7 @@ export type Database = {
           observacion_area?: string | null
           observacion?: string | null
           reemplaza_a?: string | null
+          ubicado_en?: string | null
         }
         Update: {
           id?: string
@@ -8087,6 +8089,7 @@ export type Database = {
           observacion_area?: string | null
           observacion?: string | null
           reemplaza_a?: string | null
+          ubicado_en?: string | null
         }
         Relationships: [
           {

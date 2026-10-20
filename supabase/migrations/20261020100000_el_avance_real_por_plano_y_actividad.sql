@@ -338,6 +338,12 @@ do $$ begin
       foreign key (actividad_id) references public.codigo_actividades(id) on delete restrict;
   end if;
 end $$;
+-- El lugar del reporte dentro de su día. La corrección de un observado del mismo
+-- día va donde estaba el observado, no al final: corregir el de la mañana después
+-- del de la tarde no lo vuelve posterior. Vacío: el lugar es cuando se subió.
+alter table public.reportes_diarios add column if not exists ubicado_en timestamptz;
+comment on column public.reportes_diarios.ubicado_en is
+  'Dónde cae el reporte dentro de su día, si no es cuando se subió: la corrección de un observado del mismo día toma el lugar del observado. Vacío en los demás (vale creado_en).';
 -- (b) El último avance de cada actividad y el tope de solo hacia arriba se buscan por actividad.
 create index if not exists idx_reporte_diario_trabajos_actividad
   on public.reporte_diario_trabajos (actividad_id) where actividad_id is not null;
@@ -350,8 +356,8 @@ create index if not exists idx_reporte_diario_trabajos_actividad
 -- cuenta: nadie puede reportarla ni cerrarla, y sumaría para siempre.
 -- p_sin: un reporte que no se cuenta (el observado que el supervisor está corrigiendo).
 -- p_hasta: solo los reportes hasta ese día (lo que llevaba cada actividad ese día);
--- con p_antes_de, de ese mismo día solo los subidos antes (la corrección de un
--- reporte de la mañana no cuenta el de la tarde, que va después).
+-- con p_antes_de, de ese mismo día solo los que van antes en el día (la corrección
+-- de un reporte de la mañana no cuenta el de la tarde, que va después).
 -- Dentro de un mismo día manda el avance más alto, no el último subido: corregir
 -- el reporte de la mañana lo vuelve a subir después del de la tarde.
 create or replace function public.codigo_interno_actividades_estado(p_codigo text, p_sin uuid default null, p_hasta date default null,
@@ -361,7 +367,8 @@ returns table (clave text, actividad_id uuid, codigo text, area_id uuid, descrip
 language sql stable set search_path to 'public' as $$
   with fila as (
     select public.normalizar_codigo_interno(r.codigo_interno) as codigo,
-           coalesce(a.area_id, r.area_id) as area_id, t.actividad_id, t.avance, r.fecha, r.creado_en, t.orden,
+           coalesce(a.area_id, r.area_id) as area_id, t.actividad_id, t.avance, r.fecha,
+           coalesce(r.ubicado_en, r.creado_en) as creado_en, t.orden,
            coalesce(a.descripcion, t.descripcion) as descripcion, a.plano_id, a.subcontrato_id,
            coalesce(t.actividad_id::text,
                     'texto:' || coalesce(r.area_id::text, '') || ':' || lower(regexp_replace(btrim(t.descripcion), '\s+', ' ', 'g'))) as clave
@@ -369,7 +376,7 @@ language sql stable set search_path to 'public' as $$
       join public.reportes_diarios r on r.id = t.reporte_id
       left join public.codigo_actividades a on a.id = t.actividad_id
      where r.anulado_en is null and r.id is distinct from p_sin
-       and (p_hasta is null or r.fecha < p_hasta or (r.fecha = p_hasta and (p_antes_de is null or r.creado_en < p_antes_de)))
+       and (p_hasta is null or r.fecha < p_hasta or (r.fecha = p_hasta and (p_antes_de is null or coalesce(r.ubicado_en, r.creado_en) < p_antes_de)))
        and (public.normalizar_codigo_interno(p_codigo) is null
             or public.normalizar_codigo_interno(r.codigo_interno) = public.normalizar_codigo_interno(p_codigo))
   ), ultimo as (
@@ -439,14 +446,20 @@ declare
   v_despues  smallint;
   v_despues_el date;
   v_clave    text;
-  -- Dónde cae este reporte entre los demás: su día y, dentro del día, cuándo se
-  -- subió. La corrección va donde estaba el observado, no al final del día.
+  -- Dónde cae este reporte entre los demás: su día y, dentro del día, su lugar.
+  -- La corrección del mismo día va donde estaba el observado, no al final del día;
+  -- si cambia de día, va al final del día nuevo.
   v_ref      timestamptz := now();
+  v_ubicado  timestamptz;
   v_sub_prev boolean;
 begin
   if p_reemplaza is not null then
-    select fecha, creado_en into v_fecha_previa, v_ref from public.reportes_diarios where id = p_reemplaza;
-    v_ref := coalesce(v_ref, now());
+    select fecha, coalesce(ubicado_en, creado_en) into v_fecha_previa, v_ubicado from public.reportes_diarios where id = p_reemplaza;
+    if v_fecha_previa = p_fecha and v_ubicado is not null then
+      v_ref := v_ubicado;
+    else
+      v_ubicado := null;
+    end if;
   end if;
   if p_fecha is null or p_fecha > v_hoy then
     raise exception 'Elige el día del reporte: hoy o un día anterior.' using errcode = 'check_violation';
@@ -473,12 +486,22 @@ begin
     raise exception 'Un reporte lleva hasta 3 fotos.' using errcode = 'check_violation';
   end if;
 
-  insert into public.reportes_diarios (id, fecha, codigo_interno, asunto, descripcion, personal_general, area_id, registrado_por, reemplaza_a)
-  values (p_id, p_fecha, v_codigo, v_asunto, v_desc, v_general, (select u.area_id from public.usuarios u where u.id = v_yo), v_yo, p_reemplaza)
+  insert into public.reportes_diarios (id, fecha, codigo_interno, asunto, descripcion, personal_general, area_id, registrado_por, reemplaza_a, ubicado_en)
+  values (p_id, p_fecha, v_codigo, v_asunto, v_desc, v_general, (select u.area_id from public.usuarios u where u.id = v_yo), v_yo, p_reemplaza, v_ubicado)
   returning * into v_reporte;
 
-  -- Las actividades que ya existen se toman de una vez y en orden: dos reportes
-  -- a la vez con los mismos planos en distinto orden no se traban entre sí.
+  -- Lo que el reporte avanza se toma de una vez y en orden (planos, subcontratos,
+  -- actividades, cada uno por id): dos reportes a la vez con los mismos planos en
+  -- distinto orden no se traban, tampoco cuando el plano se reporta por primera
+  -- vez y su actividad todavía no existe.
+  perform 1 from public.codigo_planos p
+   where p.id in (select (j->>'plano_id')::uuid from jsonb_array_elements(p_trabajos) j where j->>'plano_id' ~ '^[0-9a-fA-F-]{36}$')
+   order by p.id
+   for no key update;
+  perform 1 from public.subcontratos s
+   where s.id in (select (j->>'subcontrato_id')::uuid from jsonb_array_elements(p_trabajos) j where j->>'subcontrato_id' ~ '^[0-9a-fA-F-]{36}$')
+   order by s.id
+   for no key update;
   perform 1 from public.codigo_actividades a
    where a.plano_id in (select (j->>'plano_id')::uuid from jsonb_array_elements(p_trabajos) j where j->>'plano_id' ~ '^[0-9a-fA-F-]{36}$')
       or a.subcontrato_id in (select (j->>'subcontrato_id')::uuid from jsonb_array_elements(p_trabajos) j where j->>'subcontrato_id' ~ '^[0-9a-fA-F-]{36}$')
@@ -625,7 +648,7 @@ begin
       from public.reporte_diario_trabajos t
       join public.reportes_diarios r on r.id = t.reporte_id
      where t.actividad_id = v_act.id and r.anulado_en is null and r.id <> p_id
-       and r.id is distinct from p_reemplaza and (r.fecha, r.creado_en) < (p_fecha, v_ref)
+       and r.id is distinct from p_reemplaza and (r.fecha, coalesce(r.ubicado_en, r.creado_en)) < (p_fecha, v_ref)
      order by t.avance desc, r.fecha desc
      limit 1;
     if found and v_avance <= v_antes then
@@ -640,7 +663,7 @@ begin
       from public.reporte_diario_trabajos t
       join public.reportes_diarios r on r.id = t.reporte_id
      where t.actividad_id = v_act.id and r.anulado_en is null and r.id <> p_id
-       and r.id is distinct from p_reemplaza and (r.fecha, r.creado_en) > (p_fecha, v_ref)
+       and r.id is distinct from p_reemplaza and (r.fecha, coalesce(r.ubicado_en, r.creado_en)) > (p_fecha, v_ref)
      order by t.avance, r.fecha
      limit 1;
     if found and v_avance >= v_despues then
@@ -742,7 +765,9 @@ begin
   end if;
   -- La corrección va donde estaba el observado: de su mismo día, lo subido
   -- después (el reporte de la tarde) es el tope, no lo que ya lleva.
-  select r.id, r.creado_en into v_sin, v_ref from public.reportes_diarios r
+  -- Si la corrección cambia de día, va al final del día nuevo: no hay lugar que guardar.
+  select r.id, case when r.fecha = p_fecha then coalesce(r.ubicado_en, r.creado_en) end into v_sin, v_ref
+    from public.reportes_diarios r
    where r.id = p_corrige and r.registrado_por = v_yo and r.observado_en is not null and r.anulado_en is null;
   return query
   with estado as (
@@ -751,7 +776,7 @@ begin
     select distinct on (t.actividad_id) t.actividad_id, t.avance::numeric as tope, r.fecha as tope_fecha
       from public.reporte_diario_trabajos t
       join public.reportes_diarios r on r.id = t.reporte_id
-     where p_fecha is not null and (r.fecha > p_fecha or (r.fecha = p_fecha and v_ref is not null and r.creado_en > v_ref))
+     where p_fecha is not null and (r.fecha > p_fecha or (r.fecha = p_fecha and v_ref is not null and coalesce(r.ubicado_en, r.creado_en) > v_ref))
        and r.anulado_en is null and r.id is distinct from v_sin
        and t.actividad_id is not null and public.normalizar_codigo_interno(r.codigo_interno) = v_codigo
      order by t.actividad_id, t.avance, r.fecha
@@ -780,7 +805,7 @@ begin
         from public.reporte_diario_trabajos t
         join public.reportes_diarios r on r.id = t.reporte_id
        where s.estado = 'TERMINADO' and t.actividad_id = x.id and r.anulado_en is null and r.id is distinct from v_sin
-         and (p_fecha is null or r.fecha < p_fecha or (r.fecha = p_fecha and (v_ref is null or r.creado_en < v_ref)))
+         and (p_fecha is null or r.fecha < p_fecha or (r.fecha = p_fecha and (v_ref is null or coalesce(r.ubicado_en, r.creado_en) < v_ref)))
        order by t.avance desc, r.fecha desc
        limit 1
     ) real on true
@@ -1042,7 +1067,7 @@ begin
   ), fila as (
     select coalesce(t.actividad_id::text,
                     'texto:' || coalesce(r.area_id::text, '') || ':' || lower(regexp_replace(btrim(t.descripcion), '\s+', ' ', 'g'))) as clave,
-           r.fecha, r.creado_en, t.orden, t.avance
+           r.fecha, coalesce(r.ubicado_en, r.creado_en) as creado_en, t.orden, t.avance
       from public.reporte_diario_trabajos t
       join public.reportes_diarios r on r.id = t.reporte_id
      where r.anulado_en is null and public.normalizar_codigo_interno(r.codigo_interno) = v_codigo
