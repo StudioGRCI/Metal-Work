@@ -115,7 +115,10 @@ language sql stable set search_path to 'public' as $$
     union
     select distinct h.periodo from public.horas_por_codigo_del_mes(null) h where p_periodo is null
   ), pago as (
+    -- Los días que el pago cubre dentro del mes: de ahí se restan las horas.
     select m.periodo, p.trabajador_id,
+           greatest(p.desde, m.periodo) as desde,
+           least(p.hasta, (m.periodo + interval '1 month' - interval '1 day')::date) as hasta,
            round((p.monto + p.aportes) * (least(p.hasta, (m.periodo + interval '1 month' - interval '1 day')::date) - p.desde + 1) / (p.hasta - p.desde + 1), 2)
            - round((p.monto + p.aportes) * greatest(0, least(p.hasta, m.periodo - 1) - p.desde + 1) / (p.hasta - p.desde + 1), 2) as parte
       from mes m
@@ -123,11 +126,14 @@ language sql stable set search_path to 'public' as $$
                                  and p.desde < (m.periodo + interval '1 month')::date and p.hasta >= m.periodo
      where not exists (select 1 from public.pruebas_filas f where f.tabla = 'oficina_pagos' and f.fila_id = p.id)
   ), neto as (
+    -- A cada pago se le resta lo que esa persona cargó en horas a una unidad en
+    -- los días que ese pago cubre, y solo en esos: si pasó a planilla de taller a
+    -- mitad de mes, sus horas de después no se comen lo que se le pagó antes.
     select g.periodo, g.trabajador_id,
-           greatest(sum(g.parte) - coalesce((select sum(t.costo) from public.tareos t
-                                               where t.trabajador_id = g.trabajador_id and t.anulado_en is null
-                                                 and date_trunc('month', t.fecha)::date = g.periodo
-                                                 and public.normalizar_codigo_interno(t.codigo_interno) not in ('PLANTA', 'OFICINA', 'TODOS LOS ACTIVOS')), 0), 0) as monto
+           sum(greatest(g.parte - coalesce((select sum(t.costo) from public.tareos t
+                                             where t.trabajador_id = g.trabajador_id and t.anulado_en is null
+                                               and t.fecha between g.desde and g.hasta
+                                               and public.normalizar_codigo_interno(t.codigo_interno) not in ('PLANTA', 'OFICINA', 'TODOS LOS ACTIVOS')), 0), 0)) as monto
       from pago g
      group by g.periodo, g.trabajador_id
   ), horas as (
@@ -164,5 +170,5 @@ language sql stable set search_path to 'public' as $$
     from mes m
 $$;
 comment on function public.sueldos_oficina_del_mes(date) is
-  'El sueldo de la oficina de cada mes (o del mes de p_periodo): la parte, por días, de cada pago de oficina_pagos que cae en el mes (con aportes), menos lo que esa persona cargó ese mes en horas a una unidad; y cuántas personas de planilla administrativa tienen días trabajados del mes, desde inicio_registro_pagos_oficina(persona) y hasta hoy, sin pago. No pide permiso: la llaman el costeo y gastos_del_mes_oficina.';
+  'El sueldo de la oficina de cada mes (o del mes de p_periodo): la parte, por días, de cada pago de oficina_pagos que cae en el mes (con aportes), menos lo que esa persona cargó en horas a una unidad en los días que ese pago cubre; y cuántas personas de planilla administrativa tienen días trabajados del mes, desde inicio_registro_pagos_oficina(persona) y hasta hoy, sin pago. No pide permiso: la llaman el costeo y gastos_del_mes_oficina.';
 revoke all on function public.sueldos_oficina_del_mes(date) from public, anon, authenticated;

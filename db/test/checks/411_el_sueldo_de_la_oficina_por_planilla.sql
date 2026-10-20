@@ -10,6 +10,9 @@
 --      registra un pago y no cuenta como persona sin pago.
 --   3. Si RR. HH. lo devuelve a la planilla de taller, lo ya pagado sigue en el
 --      costeo de ese mes.
+--   4. Al pago se le restan solo las horas que cargó en los días que ese pago
+--      cubre: las que carga ya en el taller, más adelante en el mes, no se comen
+--      lo que se le pagó antes.
 --
 -- Cada paso con la cuenta del puesto —nunca ADMIN— y `set local role
 -- authenticated`. Termina en rollback.
@@ -86,6 +89,23 @@ reset role;
 select test.afirmar((select o.monto = 2700 and o.sin_pago = 0 from public.sueldos_oficina_del_mes(date '2021-04-01') o)
                     and (select o.sin_pago = 0 from public.sueldos_oficina_del_mes(date_trunc('month', now() at time zone 'America/Lima')::date) o),
   'lo pagado en abril sigue en el costeo; desde que vuelve al taller, ya no le faltan pagos');
+
+-- ------------------------ 4. Las horas de después del cambio no se comen el pago
+-- Mayo: administrativo del 1 al 15 (S/ 1,500), con 1 h a una unidad el 10 (S/ 100);
+-- desde el 16, en el taller, carga 10 h (S/ 1,000) el 20.
+select test.como_usuario(:'rrhh_id');
+set local role authenticated;
+select public.rrhh_guardar_planilla_trabajador(current_setting('prueba.max')::uuid, 'ADMINISTRATIVA');
+select public.rrhh_registrar_pago_oficina(gen_random_uuid(), current_setting('prueba.max')::uuid, date '2021-05-01', date '2021-05-15', 1500, 0, null);
+select public.rrhh_guardar_planilla_trabajador(current_setting('prueba.max')::uuid, 'TALLER');
+reset role;
+select test.como_usuario(:'admin_id');
+insert into public.tareos (trabajador_id, fecha, codigo_interno, horas, labor, costo_hora, costo) values
+  (current_setting('prueba.max')::uuid, date '2021-05-10', 'CHK411_A_21/04', 1, 'Soldadura', 100, 100),
+  (current_setting('prueba.max')::uuid, date '2021-05-20', 'CHK411_A_21/04', 10, 'Soldadura', 100, 1000);
+select test.afirmar((select o.monto = 1400 from public.sueldos_oficina_del_mes(date '2021-05-01') o),
+  format('mayo: 1,500 pagados menos los 100 de la hora del 10; las del 20, ya en el taller, no lo tocan; da %s',
+         (select o.monto from public.sueldos_oficina_del_mes(date '2021-05-01') o)));
 
 select 'CHECK 411 OK' as resultado;
 rollback;

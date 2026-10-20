@@ -162,6 +162,23 @@ select test.afirmar((select count(*) from storage.objects where bucket_id = 'sub
 select test.debe_fallar(format('delete from public.subcontrato_contratos where id = %L', pg_temp.txt('c1')),
   'ni el dueño de la base borra un contrato adjunto', 'no se cambia ni se borra');
 
+-- Quien subió el contrato y después cambió de puesto ya no ve el contrato que
+-- nombra su archivo, pero tampoco puede quitarlo como si estuviera suelto. El
+-- cambio de puesto lo hace el administrador del sistema.
+select set_config('prueba.admin', test.crear_usuario('Ada', 'Admin', 'admin412@demo.pe', 'ADMIN', (select id from public.sedes limit 1))::text, true);
+select test.como_usuario(pg_temp.id('admin'));
+update public.usuarios set rol_id = (select id from public.roles where codigo = 'VENDEDOR')
+ where id = pg_temp.id('administracion');
+select pg_temp.como('administracion');
+set local role authenticated;
+delete from storage.objects where bucket_id = 'subcontratos' and name = pg_temp.ruta('sc_mtz', 'c1');
+reset role;
+select test.afirmar((select count(*) from storage.objects where bucket_id = 'subcontratos' and name = pg_temp.ruta('sc_mtz', 'c1')) = 1,
+  'quien subió el contrato y cambió de puesto no quita el archivo');
+select test.como_usuario(pg_temp.id('admin'));
+update public.usuarios set rol_id = (select id from public.roles where codigo = 'ADMINISTRACION')
+ where id = pg_temp.id('administracion');
+
 select pg_temp.como('tesoreria');
 set local role authenticated;
 select test.afirmar((select count(*) from public.subcontrato_contratos where subcontrato_id = pg_temp.id('sc_mtz')) = 2
@@ -182,7 +199,8 @@ reset role;
 
 select test.afirmar(not has_function_privilege('anon', 'public.marcar_fechas_reales_subcontrato(uuid, date, date)', 'execute')
                     and not has_function_privilege('anon', 'public.adjuntar_contrato_subcontrato(uuid, uuid, text, text)', 'execute')
-                    and not has_function_privilege('anon', 'public.subcontratos_del_area_con_fechas_reales()', 'execute'),
+                    and not has_function_privilege('anon', 'public.subcontratos_del_area_con_fechas_reales()', 'execute')
+                    and not has_function_privilege('anon', 'public.subcontrato_ruta_adjunta(text)', 'execute'),
   'anon no ejecuta nada de esto');
 
 select 'CHECK 412 OK' as resultado;

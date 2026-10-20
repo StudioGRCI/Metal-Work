@@ -72,6 +72,20 @@ end $$;
 -- 3. El archivo del subcontrato: el contrato va en el mismo bucket -------------------------
 -- La ruta es la de siempre, {subcontrato}/{archivo}. Lo ve quien ve los
 -- subcontratos si una fila lo nombra, y uno suelto lo retira su dueño.
+-- Si una fila nombra ese archivo, mirado por encima del RLS: quien subió un
+-- archivo y después perdió el permiso ya no ve el recibo o el contrato que lo
+-- nombra, y sin esto la política lo dejaba borrarlo como si estuviera suelto.
+create or replace function public.subcontrato_ruta_adjunta(p_ruta text)
+returns boolean language sql stable security definer set search_path to 'public' as $$
+  select exists (select 1 from public.recibos_honorarios r where r.archivo_ruta = p_ruta)
+      or exists (select 1 from public.pagos_recibo_honorarios p where p.voucher_ruta = p_ruta)
+      or exists (select 1 from public.subcontrato_contratos c where c.archivo_ruta = p_ruta);
+$$;
+revoke all on function public.subcontrato_ruta_adjunta(text) from public, anon;
+grant execute on function public.subcontrato_ruta_adjunta(text) to authenticated;
+comment on function public.subcontrato_ruta_adjunta(text) is
+  'Si un recibo, un voucher o un contrato de subcontrato nombra esa ruta del bucket subcontratos. Solo responde sí o no: la usa la política que deja quitar un archivo suelto.';
+
 do $$ begin
   alter policy subcontratos_ver on storage.objects using (
     bucket_id = 'subcontratos'
@@ -82,9 +96,7 @@ do $$ begin
                   or exists (select 1 from public.subcontrato_contratos c where c.archivo_ruta = objects.name)))));
   alter policy subcontratos_quitar_suelto on storage.objects using (
     bucket_id = 'subcontratos' and owner_id = (select auth.uid())::text
-    and not exists (select 1 from public.recibos_honorarios r where r.archivo_ruta = objects.name)
-    and not exists (select 1 from public.pagos_recibo_honorarios p where p.voucher_ruta = objects.name)
-    and not exists (select 1 from public.subcontrato_contratos c where c.archivo_ruta = objects.name));
+    and not public.subcontrato_ruta_adjunta(objects.name));
 end $$;
 
 -- El archivo que esta persona subió para este subcontrato, y que ninguna fila nombra todavía.

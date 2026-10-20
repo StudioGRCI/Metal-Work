@@ -16,8 +16,8 @@
  *      contrato sin poder adjuntar.
  *
  * Cada subida se comprueba en la base (`storage.objects` y la tabla del
- * contrato) después del clic: el banco no aplica las políticas de Storage, que
- * prueba el check 412. Necesita las cuentas `*.local@metalwork.test`. Lo que
+ * contrato) después del clic; los casos de borde de Storage los prueba el check
+ * 412. Necesita las cuentas `*.local@metalwork.test`. Lo que
  * crea lleva un sello distinto en cada corrida; al terminar deja el pago
  * anulado y a la persona de baja.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
