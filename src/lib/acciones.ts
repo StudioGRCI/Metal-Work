@@ -50,6 +50,11 @@ export function mensajeDeError(error: { message: string; code?: string }): strin
       : m
   }
 
+  // El resto de la clase 42 (un tipo que no calza, una columna que no existe) es
+  // un fallo del sistema, no del dato: en inglés no le sirve a nadie. Pasó con
+  // la regla de las horas extras (2026-10-20).
+  if (error.code?.startsWith('42')) return 'El sistema no pudo guardar esto. Avisa al administrador.'
+
   const check = /violates check constraint "([^"]+)"/.exec(m)
   if (check) return `El dato no cumple la regla ${check[1]}.`
 

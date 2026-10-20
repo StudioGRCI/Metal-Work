@@ -7,7 +7,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { reglaTardanza, resumenTardanzas } from '@/lib/datos/rrhh'
 import { mesDeLima, mesValido, mesVecino, minutosLargos, porcentajeCorto } from '@/lib/dominio/rrhh'
 import { hoyLima, mesLargo, moneda } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { FormularioRegla } from './regla'
 
@@ -15,10 +15,10 @@ export const metadata = { title: 'Tardanzas del personal' }
 
 export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh/tardanzas'>) {
   const perfil = await exigirPermiso(['asistencia.ver', 'rrhh.personal'])
-  const ajusta = puede(perfil, 'rrhh.personal')
+  const ajusta = editaComoRrhh(perfil, 'rrhh.personal')
   // El monto sale de la remuneración, que solo ve RR. HH. (la misma regla que
   // aplica `rrhh_tardanzas_del_mes`). Gerencia y Administración ven el porcentaje.
-  const veSueldo = ajusta || puede(perfil, 'planilla_diaria.preparar')
+  const veSueldo = puede(perfil, ['rrhh.personal', 'planilla_diaria.preparar'])
   // La miga lleva a las planillas solo a quien las abre: Gerencia y
   // Administración consultan esto con `asistencia.ver` y ahí las rebotaban.
   const planillas = puede(perfil, 'rrhh.ver_planillas')
@@ -93,7 +93,7 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
                 resumen.map((r) => {
                   const faltan = cada - (r.tardanzas % cada)
                   return (
-                    <TR key={r.trabajador.id} className={r.trabajador.activo ? undefined : 'opacity-60'} data-tardanzas={r.trabajador.dni}>
+                    <TR key={r.trabajador.id} className={r.trabajador.activo ? undefined : 'opacity-60'} data-tardanzas={r.trabajador.id}>
                       <TD>
                         <p className="font-medium text-texto">
                           {r.trabajador.apellidos}, {r.trabajador.nombres}

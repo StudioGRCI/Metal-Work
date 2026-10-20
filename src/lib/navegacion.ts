@@ -20,6 +20,7 @@ import {
   HandCoins,
   Handshake,
   Hash,
+  IdCard,
   Landmark,
   Layers,
   LayoutDashboard,
@@ -347,6 +348,16 @@ export const NAVEGACION = [
         descripcion: 'Trabajos del día con su avance, el personal con sus horas y fotos; Gerencia y RR. HH. lo validan',
         disponible: true,
       },
+      // DKS decidió (2026-10-20) que los reportes de las unidades que entran sin
+      // OT los aprueban Administración y Gerencia (migración 20261020160000).
+      {
+        titulo: 'Trabajos sin orden',
+        ruta: '/avance/trabajos',
+        icono: Truck,
+        permiso: ['produccion.aprobar_reportes', 'produccion.aprobar_sin_orden'],
+        descripcion: 'Las unidades que entraron sin OT, con lo que el taller reportó de cada una, para aprobarlo u observarlo',
+        disponible: true,
+      },
       {
         titulo: 'Planos y etapas',
         ruta: '/planos',
@@ -472,6 +483,7 @@ export const NAVEGACION = [
     titulo: 'Recursos Humanos',
     items: [
       { titulo: 'Personal', ruta: '/rrhh/personal', icono: Users, permiso: ['rrhh.personal', 'asistencia.ver'], descripcion: 'La ficha de cada persona: datos, cuenta de pago y horario', disponible: true },
+      { titulo: 'DNI y costo de las cuentas', ruta: '/rrhh/cuentas', icono: IdCard, permiso: 'rrhh.personal', descripcion: 'El DNI y el costo por hora de cada cuenta del sistema', disponible: true },
       { titulo: 'Asistencia', ruta: '/rrhh/asistencia', icono: ClipboardCheck, permiso: ['asistencia.marcar', 'asistencia.ver'], descripcion: 'Ingreso y salida de cada persona, marcados en portería', disponible: true },
       { titulo: 'Tardanzas', ruta: '/rrhh/tardanzas', icono: Clock, permiso: ['asistencia.ver', 'rrhh.personal'], descripcion: 'Tardanzas del mes: cada tres, un descuento del sueldo', disponible: true },
       { titulo: 'Permisos', ruta: '/rrhh/permisos', icono: CalendarClock, permiso: ['rrhh.permisos', 'asistencia.ver'], descripcion: 'Las horas de permiso de cada persona, justificadas con sus horas extras', disponible: true },
@@ -609,7 +621,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   GERENTE: {
     principal: ['/codigos-internos'],
     grupos: [
-      { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'] },
+      { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'] },
       { titulo: 'Consultas', rutas: ['/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'] },
     ],
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
@@ -700,7 +712,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [
       {
         titulo: 'Administración',
-        rutas: ['/cotizaciones/pdf', '/ordenes', '/subcontratos', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
+        rutas: ['/cotizaciones/pdf', '/ordenes', '/avance/trabajos', '/subcontratos', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
       },
       { titulo: 'Requerimiento de Administración', rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes'] },
       { titulo: 'Consultas', rutas: ['/diseno/evaluaciones', '/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos', '/clientes'] },
@@ -717,7 +729,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       { titulo: 'Recursos Humanos', rutas: ['/reportes-diarios', '/rrhh/horas-extras', '/planilla-diaria'] },
       {
         titulo: 'Control del personal',
-        rutas: ['/rrhh/personal', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh/permisos', '/rrhh/observaciones'],
+        rutas: ['/rrhh/personal', '/rrhh/cuentas', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh/permisos', '/rrhh/observaciones'],
       },
       { titulo: 'Planillas y costeo', rutas: ['/rrhh', '/rrhh/costeo', '/rrhh/pagos-oficina'] },
     ],
@@ -875,6 +887,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/requerimientos/gasto-por-codigo', corto: 'Gasto' },
   { ruta: '/rrhh/asistencia', corto: 'Asistencia' },
   { ruta: '/rrhh/personal', corto: 'Personal' },
+  { ruta: '/rrhh/cuentas', corto: 'Cuentas' },
   { ruta: '/rrhh/tardanzas', corto: 'Tardanzas' },
   { ruta: '/rrhh/permisos', corto: 'Permisos' },
   { ruta: '/rrhh/costeo', corto: 'Costeo' },

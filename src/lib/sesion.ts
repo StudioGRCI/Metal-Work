@@ -138,7 +138,7 @@ export function puedeCorregirReporte(
   hoy: string,
 ): boolean {
   if (!perfil) return false
-  const aprueba = puede(perfil, 'produccion.aprobar_reportes')
+  const aprueba = r.clase === 'flota' ? apruebaSinOrden(perfil) : puede(perfil, 'produccion.aprobar_reportes')
   const esAutor = r.autor === perfil.id
   if (r.revision === 'APROBADO' && !aprueba) return false
   if (aprueba && !esAutor) return false
@@ -152,9 +152,37 @@ export function puedeCorregirReporte(
 }
 
 /**
+ * Si aprueba u observa los reportes de los trabajos sin orden: quien aprueba
+ * todos los del taller, y Gerencia, que solo aprueba esos (migración
+ * 20261020160000, `produccion.aprobar_sin_orden`).
+ */
+export function apruebaSinOrden(perfil: PerfilSesion | null): boolean {
+  return puede(perfil, ['produccion.aprobar_reportes', 'produccion.aprobar_sin_orden'])
+}
+
+/**
+ * Si escribe lo de Recursos Humanos —la ficha, el costo, el tareo, los permisos,
+ * las observaciones, los pagos de la oficina, las horas extras, las planillas—:
+ * solo quien tiene el permiso, no el administrador, que lo ve todo pero no lo
+ * cambia (StudioGRCI, 2026-10-20; migraciones 20261020165000 y 20261020167000).
+ * Gemelo de `exigir_permiso_del_puesto`; por eso no pasa por `puede`, que al
+ * administrador le dice que sí a todo.
+ */
+export function editaComoRrhh(perfil: PerfilSesion | null, permiso: string): boolean {
+  return Boolean(perfil?.permisos.includes(permiso))
+}
+
+/** Si cambia el DNI y el costo por hora de las cuentas: solo Recursos Humanos (migración 20261020165000). */
+export function cambiaDatosReservados(perfil: PerfilSesion | null): boolean {
+  return editaComoRrhh(perfil, 'rrhh.personal')
+}
+
+/**
  * Si esta persona ve «Eliminar» en un reporte del día. Gemelo de las políticas
- * de DELETE de la migración 099: el jefe borra cualquiera; el autor, mientras
- * no esté aprobado. El avance con foto que movió una etapa no se borra —lo
+ * de DELETE (migraciones 099 y 20261020160000): quien aprueba los reportes
+ * del taller y el autor lo borran mientras no esté aprobado; el aprobado queda
+ * firme, salvo para el administrador. Gerencia, que solo aprueba los trabajos
+ * sin orden, no borra. El avance con foto que movió una etapa no se borra —lo
  * impide un disparador—, así que ni se ofrece.
  */
 export function puedeEliminarReporte(
@@ -162,22 +190,25 @@ export function puedeEliminarReporte(
   r: { revision: string | null; autor: string | null; movioEtapa?: boolean },
 ): boolean {
   if (!perfil || r.movioEtapa) return false
-  if (puede(perfil, 'produccion.aprobar_reportes')) return true
-  return r.autor === perfil.id && r.revision !== 'APROBADO'
+  if (perfil.rol.codigo === 'ADMIN') return true
+  if (r.revision === 'APROBADO') return false
+  // Gerencia aprueba los trabajos sin orden, pero no borra lo ajeno.
+  return puede(perfil, 'produccion.aprobar_reportes') || r.autor === perfil.id
 }
 
 /**
  * Si esta persona ve «Quitar» en una cotización en PDF. Gemelo de la política
- * de DELETE y del disparador de la migración 102: la quita quien la subió o
- * Gerencia, mientras esté por revisar o rechazada, y nunca si de ella salió una
- * orden —aunque se haya anulado—, que es su rastro.
+ * de DELETE y del disparador (migraciones 102 y 20261020161000): la quita quien
+ * la subió o Gerencia, solo mientras esté por revisar en su primera versión, y
+ * nunca si de ella salió una orden —aunque se haya anulado—, que es su rastro.
+ * La rechazada no se quita: se corrige y queda en la trazabilidad.
  */
 export function puedeQuitarCotizacion(
   perfil: PerfilSesion | null,
-  c: { estado: string | null; registrado_por: string | null; tuvo_orden: boolean | null },
+  c: { estado: string | null; version: number | null; registrado_por: string | null; tuvo_orden: boolean | null },
 ): boolean {
   if (!perfil || c.tuvo_orden !== false) return false
-  if (c.estado !== 'POR_REVISAR' && c.estado !== 'RECHAZADA') return false
+  if (c.estado !== 'POR_REVISAR' || c.version !== 1) return false
   return c.registrado_por === perfil.id || puede(perfil, 'cotizaciones.revisar')
 }
 

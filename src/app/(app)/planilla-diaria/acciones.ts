@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { camposDeLaCuenta, leerCuenta, montoDeLaCuenta, SIN_CAJA } from '@/lib/caja-del-pago'
 import { cajaTrasAnular, cajaTrasElPago } from '@/lib/datos/caja'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 function dato(formulario: FormData, nombre: string) {
@@ -32,7 +32,7 @@ function repintar(planillaId?: string) {
  */
 export async function enviarPlanillaDiaria(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ id: string }>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'planilla_diaria.preparar')) return { ok: false, error: NO_ARMA }
+  if (!editaComoRrhh(perfil, 'planilla_diaria.preparar')) return { ok: false, error: NO_ARMA }
   const id = z.guid().safeParse(dato(formulario, 'id'))
   if (!id.success) return { ok: false, error: 'Vuelve a cargar la pantalla.' }
 
@@ -49,7 +49,7 @@ export async function enviarPlanillaDiaria(_previo: unknown, formulario: FormDat
 /** Anular una planilla sin pagos: sus horas vuelven a esperar la siguiente. Mismo permiso que `anular_planilla_diaria`. */
 export async function anularPlanillaDiaria(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'planilla_diaria.preparar')) return { ok: false, error: NO_ARMA }
+  if (!editaComoRrhh(perfil, 'planilla_diaria.preparar')) return { ok: false, error: NO_ARMA }
   const analisis = z.object({ id: z.guid(), motivo: MOTIVO }).safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
 
@@ -153,7 +153,7 @@ export async function subirBoletaPlanilla(_previo: unknown, formulario: FormData
 /** RR. HH. marca que entregó la boleta. Mismo permiso que `entregar_boleta_planilla_diaria`. */
 export async function entregarBoletaPlanilla(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'planilla_diaria.preparar')) return { ok: false, error: 'Las boletas las entrega Recursos Humanos.' }
+  if (!editaComoRrhh(perfil, 'planilla_diaria.preparar')) return { ok: false, error: 'Las boletas las entrega Recursos Humanos.' }
   const analisis = z
     .object({ persona_id: z.guid(), planilla_id: z.guid() })
     .safeParse({ persona_id: dato(formulario, 'persona_id'), planilla_id: dato(formulario, 'planilla_id') })

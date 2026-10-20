@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 function dato(formulario: FormData, nombre: string) {
@@ -18,7 +18,7 @@ const SIN_PERMISO = 'El tareo lo lleva Recursos Humanos.'
 /** Carga las horas de una persona a un código interno. Mismo permiso que `rrhh_registrar_tareo`. */
 export async function registrarTareo(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const analisis = z
     .object({
@@ -59,7 +59,7 @@ export async function registrarTareo(_previo: unknown, formulario: FormData): Pr
 /** Unas horas mal cargadas se anulan con motivo. Mismo permiso que `rrhh_anular_tareo`. */
 export async function anularTareo(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const analisis = z
     .object({
