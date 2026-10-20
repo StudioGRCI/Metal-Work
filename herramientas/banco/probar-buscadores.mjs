@@ -133,7 +133,7 @@ for (const n of [3, 4]) {
 const clienteId = (await uno(`insert into public.clientes (tipo_documento, numero_documento, razon_social) values ('RUC', $1, $2) returning id`, [await rucLibre('clientes'), CLIENTE])).id
 await consulta(`insert into public.clientes (tipo_documento, numero_documento, razon_social) values ('RUC', $1, $2)`, [await rucLibre('clientes'), GEMELO])
 await consulta(`insert into public.proveedores (tipo_documento, numero_documento, razon_social, rubro) values ('RUC', $1, $2, 'Tornería y maestranza')`, [await rucLibre('proveedores'), PROVEEDOR])
-const unidadId = (await uno(`insert into public.unidades (cliente_id, placa, marca, modelo, tipo_vehiculo) values ($1, $2, 'VOLVO', 'FMX ÚNICO', 'VOLQUETE') returning id`, [clienteId, PLACA])).id
+const unidadId = (await uno(`insert into public.unidades (cliente_id, placa, marca, modelo, tipo_vehiculo, codigo_interno) values ($1, $2, 'VOLVO', 'FMX ÚNICO', 'VOLQUETE', $3) returning id`, [clienteId, PLACA, CODIGO])).id
 const ot = await uno(
   `insert into public.ordenes_trabajo (sede_id, descripcion, cliente_id, unidad_id) values ((select id from public.sedes order by nombre limit 1), $1, $2, $3) returning numero`,
   [OT, clienteId, unidadId],
@@ -151,6 +151,12 @@ const SERVICIO = (await uno(`select public.siguiente_correlativo('ORDEN_SERVICIO
 await consulta(`insert into public.ordenes_servicio (numero, proveedor_id, proveedor, descripcion, monto, codigo_interno, creado_por) values ($1, $2, $3, 'Torneado de prueba', 1, $4, $5)`,
   [SERVICIO, proveedorId, PROVEEDOR, CODIGO, logistico])
 const SUBCONTRATO = (await uno(`select public.siguiente_correlativo('SUBCONTRATO', '001', null) as n`)).n
+// En una base recién preparada no hay subcontratistas: uno inventado, con RUC 10.
+if (!(await uno(`select count(*)::int as n from public.subcontratistas`)).n) {
+  await consulta(`insert into public.subcontratistas (ruc, nombre)
+                  select n::text, 'SUBCONTRATISTA DE BANCO' from generate_series(10990050000::bigint, 10990099999::bigint) n
+                  where public.ruc_es_valido(n::text) limit 1`)
+}
 await consulta(`insert into public.subcontratos (numero, subcontratista_id, codigo_interno, descripcion, moneda, monto, creado_por)
                 values ($1, (select id from public.subcontratistas order by nombre limit 1), $2, 'Subcontrato de prueba', 'PEN', 1, $3)`, [SUBCONTRATO, CODIGO, logistico])
 // Dos trabajadores inventados que se parecen: la búsqueda deja uno solo.

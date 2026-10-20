@@ -4,6 +4,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { AvisosDelDetector, avisosDeFacturaRegistrada, InsigniaDelDetector } from '@/app/(app)/adquisiciones/detector'
@@ -110,16 +111,16 @@ export default async function PaginaPorPagar() {
       )}
 
       {pagadas.length > 0 && (
-        <details className="mt-5 rounded-[var(--radius-base)] border border-borde bg-superficie">
-          <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm font-medium text-texto">
-            {pagadas.length >= PAGADAS_A_LA_VISTA ? `Las ${PAGADAS_A_LA_VISTA} pagadas de emisión más reciente` : `Pagadas (${pagadas.length})`}
-          </summary>
-          <div className="space-y-3 border-t border-borde p-4">
+        <SeccionDesplegable
+          titulo={pagadas.length >= PAGADAS_A_LA_VISTA ? `Las ${PAGADAS_A_LA_VISTA} pagadas de emisión más reciente` : `Pagadas (${pagadas.length})`}
+          className="mt-5"
+        >
+          <div className="space-y-3">
             {pagadas.map((c) => (
               <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} cuentasCaja={cuentasCaja} cajas={cajas} />
             ))}
           </div>
-        </details>
+        </SeccionDesplegable>
       )}
 
       {planillasPorOt.length > 0 && (

@@ -5,6 +5,7 @@ import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { FacturaDeVenta } from '@/components/finanzas/factura-de-venta'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { cajaDeLosPagos, cuentasParaPagar } from '@/lib/datos/caja'
 import { solicitudesPendientesTesoreria } from '@/lib/datos/costos-ot'
 import { COBRADAS_A_LA_VISTA, cotizacionesAprobadas, facturasDeVenta } from '@/lib/datos/facturacion'
@@ -103,11 +104,11 @@ export default async function PaginaPorCobrar() {
       </Tarjeta>
 
       {cobradas.length > 0 && (
-        <details className="mt-5 rounded-[var(--radius-base)] border border-borde bg-superficie">
-          <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm font-medium text-texto">
-            {cobradas.length >= COBRADAS_A_LA_VISTA ? `Las últimas ${COBRADAS_A_LA_VISTA} cobradas` : `Cobradas (${cobradas.length})`}
-          </summary>
-          <div className="space-y-3 border-t border-borde p-4">
+        <SeccionDesplegable
+          titulo={cobradas.length >= COBRADAS_A_LA_VISTA ? `Las últimas ${COBRADAS_A_LA_VISTA} cobradas` : `Cobradas (${cobradas.length})`}
+          className="mt-5"
+        >
+          <div className="space-y-3">
             {cobradas.map((f) => (
               <FacturaDeVenta
                 key={f.id}
@@ -118,7 +119,7 @@ export default async function PaginaPorCobrar() {
               />
             ))}
           </div>
-        </details>
+        </SeccionDesplegable>
       )}
 
       {/* Para saber qué viene por cobrar; sin ninguna, no ocupa la pantalla. */}
