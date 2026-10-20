@@ -356,6 +356,24 @@ for (const [nombre, viewport] of [['monitor', { width: 1280, height: 900 }], ['t
   await pagina.getByRole('button', { name: 'Nueva orden de servicio' }).click()
   const os = await buscaEn(pagina.locator('[role="dialog"]'), '#os-codigo', `volvo ${sufijo.toLowerCase()}`)
   comprobar(os.length === 1 && os[0].includes(CODIGO), `y en la orden de servicio (${os.join(' | ')})`)
+  await pagina.keyboard.press('Escape')
+  await pagina.keyboard.press('Escape')
+
+  // La OC desde los materiales de una OT: el botón se habilita solo si la OT
+  // tiene algo por comprar, así que se busca una entre las que tienen líneas.
+  const ordenes = await consulta('select distinct orden_id from v_atencion_materiales where orden_id is not null limit 15')
+  let probada = false
+  for (const { orden_id: ordenId } of ordenes) {
+    await pagina.goto(`${BASE}/ordenes/${ordenId}?vista=materiales`, { waitUntil: 'networkidle' })
+    const nueva = pagina.getByRole('button', { name: 'Nueva orden de compra' })
+    if (!(await nueva.isEnabled().catch(() => false))) continue
+    await nueva.click()
+    const ot = await buscaEn(pagina.locator('[role="dialog"]'), '#oc-codigo', `volvo ${sufijo.toLowerCase()}`)
+    comprobar(ot.length === 1 && ot[0].includes(CODIGO), `y en la OC desde los materiales de una OT (${ot.join(' | ')})`)
+    probada = true
+    break
+  }
+  if (!probada) console.log('    (ninguna OT del banco tiene materiales por comprar: no se probó el buscador de la OC desde la OT)')
   comprobar(errores.length === 0, `Logística, sin errores de consola ${errores.join(' | ')}`)
   await contexto.close()
 }

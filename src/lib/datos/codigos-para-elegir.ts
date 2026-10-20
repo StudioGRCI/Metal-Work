@@ -9,7 +9,8 @@ import { createClient } from '@/lib/supabase/server'
  * los que conoce el sistema, con su unidad y si su costeo está cerrado
  * (`codigos_internos_para_elegir`, migración 20261020190000). La misma lista en
  * el requerimiento, la caja diaria, el costeo de horas, las observaciones de
- * RR. HH., la compra directa, el servicio y el subcontrato.
+ * RR. HH., la compra directa, la compra desde los materiales de una OT, el
+ * servicio y el subcontrato.
  *
  * Si no se puede leer, `null`: el campo dice que no hay lista y se escribe a
  * mano, como antes. Nadie se queda sin poder registrar por la lista.

@@ -28,9 +28,10 @@
 -- administracion`) en el requerimiento, Tesorería en la caja diaria
 -- (`tesoreria.caja`), RR. HH. en el costeo de horas y las observaciones
 -- (`rrhh.personal`), Supervisión en el reporte diario (`reporte_diario.
--- registrar`), Logística y la administradora en la orden de compra directa y la
--- de servicio (`compras.crear`) y quien registra los subcontratos
--- (`subcontratos.gestionar`): los mismos permisos que piden esos formularios.
+-- registrar`), Logística y la administradora en la orden de compra (directa o
+-- desde los materiales de una OT) y la de servicio (`compras.crear`) y quien
+-- registra los subcontratos (`subcontratos.gestionar`): los mismos permisos que
+-- piden esos formularios.
 -- Les muestra la placa, la marca y el modelo de la unidad aunque no lean
 -- Unidades ni la portería: es lo que se busca, y no lleva montos ni dueños.
 -- TODOS LOS ACTIVOS no viene: no es un código, es «Se carga a todos» del RQA.
@@ -93,6 +94,6 @@ begin
 end;
 $$;
 comment on function public.codigos_internos_para_elegir() is
-  'Los códigos internos que se ofrecen en los formularios (requerimiento, caja diaria, costeo de horas, observaciones, reporte diario, compra directa, servicio, subcontrato), con su unidad, si su costeo está cerrado (sin montos) y si es de una unidad del padrón.';
+  'Los códigos internos que se ofrecen en los formularios (requerimiento, caja diaria, costeo de horas, observaciones, reporte diario, orden de compra, servicio, subcontrato), con su unidad, si su costeo está cerrado (sin montos) y si es de una unidad del padrón.';
 revoke all on function public.codigos_internos_para_elegir() from public, anon;
 grant execute on function public.codigos_internos_para_elegir() to authenticated;
