@@ -85,7 +85,7 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
             <Link
               href={`/rrhh/observaciones?mes=${mesVecino(mes, -1)}`}
               aria-label="Mes anterior"
-              className="inline-flex size-9 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto"
+              className="inline-flex size-11 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto"
             >
               <ChevronLeft aria-hidden className="size-4" />
             </Link>
@@ -94,7 +94,7 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
               <Link
                 href={`/rrhh/observaciones?mes=${mesVecino(mes, 1)}`}
                 aria-label="Mes siguiente"
-                className="inline-flex size-9 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto"
+                className="inline-flex size-11 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto"
               >
                 <ChevronRight aria-hidden className="size-4" />
               </Link>
@@ -140,6 +140,10 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
                           {r.nombre}
                         </Link>
                         <p className="text-xs text-texto-suave">{r.cargo ?? 'Sin cargo'}</p>
+                        {/* La columna de las verbales no cabe en el teléfono, pero la verbal es el paso antes de la escrita. */}
+                        <p className="tabular text-[11px] text-texto-suave sm:hidden">
+                          {r.porTipo.AMONESTACION_VERBAL ?? 0} {(r.porTipo.AMONESTACION_VERBAL ?? 0) === 1 ? 'verbal' : 'verbales'}
+                        </p>
                       </TD>
                       <TD className="tabular text-right">{r.porTipo.OBSERVACION ?? 0}</TD>
                       <TD className="tabular hidden text-right sm:table-cell">{r.porTipo.AMONESTACION_VERBAL ?? 0}</TD>

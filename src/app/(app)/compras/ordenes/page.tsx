@@ -132,6 +132,11 @@ function FilaCompra({
           <span className="tabular text-sm font-semibold text-texto">{moneda(c.monto, divisa(c.moneda))}</span>
           <span className="text-[11px] text-texto-suave">sin IGV</span>
           <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
+          {c.tiene_factura ? (
+            <Insignia tono="exito">Comprobante adjunto</Insignia>
+          ) : (
+            <span className="text-[11px] text-texto-suave">{c.con_factura ? 'Factura pendiente' : 'Comprobante pendiente'}</span>
+          )}
         </div>
         <p className="text-xs text-texto">{c.proveedor}</p>
         <p className="text-[11px] text-texto-suave">
@@ -178,7 +183,7 @@ function FilaCompra({
             <a
               href={`/compras/${c.id}/pdf`}
               download
-              className="inline-flex items-center gap-1 text-xs text-acento hover:underline"
+              className="inline-flex min-h-11 items-center gap-1 px-1 text-xs text-acento hover:underline sm:min-h-0 sm:px-0"
               aria-label={`Descargar el PDF de la orden ${c.numero}`}
             >
               <FileDown aria-hidden className="size-4" />
