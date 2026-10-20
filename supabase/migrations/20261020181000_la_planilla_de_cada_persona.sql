@@ -15,8 +15,11 @@
 --
 -- 2. EL REPORTE DIARIO OFRECE SOLO A LA GENTE DEL TALLER. El supervisor elige
 --    su personal entre la gente de planilla de taller de Maestranza, Producción
---    o Acabados. La base no rechaza a otra persona en un reporte: corregir uno
---    viejo que la llevaba no tiene que caerse, y el costeo sigue igual.
+--    o Acabados, y la base no acepta a nadie más en un reporte nuevo (un
+--    formulario abierto antes de que RR. HH. la cambiara, o la acción repetida
+--    a mano, metería horas de oficina en el costeo de una unidad). Al corregir
+--    un reporte observado, quien ya iba en él se conserva aunque RR. HH. lo
+--    haya cambiado después: la corrección no tiene que caerse por eso.
 --
 -- El sueldo de la oficina (20261020110000) sigue contando por el área de cada
 -- persona (`areas.es_oficina`), no por esta planilla.
@@ -88,3 +91,32 @@ revoke all on function public.reporte_diario_personal_disponible() from public, 
 grant execute on function public.reporte_diario_personal_disponible() to authenticated;
 comment on function public.reporte_diario_personal_disponible() is
   'La gente que el supervisor puede poner en su reporte diario: activa, de planilla de taller y de Maestranza, Producción o Acabados. Sin DNI, cuenta ni costo. Exige reporte_diario.registrar.';
+
+-- La base pone el mismo límite al guardar. Va en un disparador propio para no
+-- redefinir `reporte_diario_agregar_persona`, que también cambia en otra rama.
+create or replace function public.fn_reporte_diario_solo_gente_del_taller()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_reemplaza uuid;
+begin
+  if exists (select 1 from public.trabajadores t
+               join public.areas a on a.id = t.area_id
+              where t.id = new.trabajador_id and t.planilla = 'TALLER' and a.codigo in ('MTZ', 'PRD', 'ACB')) then
+    return new;
+  end if;
+  -- Al corregir, quien ya iba en el observado se queda.
+  select r.reemplaza_a into v_reemplaza from public.reportes_diarios r where r.id = new.reporte_id;
+  if v_reemplaza is not null and exists (select 1 from public.reporte_diario_personal p
+                                          where p.reporte_id = v_reemplaza and p.trabajador_id = new.trabajador_id) then
+    return new;
+  end if;
+  raise exception '% no es de la planilla de taller de Maestranza, Producción o Acabados, y no va en el reporte diario. Si trabaja en el taller, pídele a Recursos Humanos que corrija su ficha.',
+    new.nombre using errcode = 'check_violation';
+end;
+$$;
+revoke all on function public.fn_reporte_diario_solo_gente_del_taller() from public, anon, authenticated;
+create or replace trigger tg_reporte_diario_solo_gente_del_taller
+  before insert on public.reporte_diario_personal
+  for each row execute function public.fn_reporte_diario_solo_gente_del_taller();
+comment on function public.fn_reporte_diario_solo_gente_del_taller() is
+  'En el reporte diario va solo la gente de planilla de taller de Maestranza, Producción o Acabados; al corregir un observado, también quien ya iba en él.';

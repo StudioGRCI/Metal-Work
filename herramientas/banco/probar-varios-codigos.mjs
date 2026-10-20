@@ -172,16 +172,17 @@ let idB = null
   comprobar(!pagina_texto.includes('Tu área no recibe subcontratos'), 'Maestranza ya recibe subcontratos')
   await pagina.screenshot({ path: join(CAPTURAS, 'varios-codigos-subcontratos-mtz.png'), fullPage: true })
 
-  await pagina.locator(`[data-codigo="${CODIGO}"]`).getByRole('link', { name: 'Reportar avance' }).click()
-  await pagina.waitForURL(/reportes-diarios\/nuevo\?codigo=/, { timeout: 30000 })
+  await fila.getByRole('link', { name: 'Reportar avance' }).click()
+  await pagina.waitForURL(/reportes-diarios\/nuevo\?codigo=.*&subcontrato=/, { timeout: 30000 })
   await pagina.waitForLoadState('networkidle')
   comprobar((await pagina.inputValue('#rd-codigo')) === CODIGO, 'el reporte se abre con el código del subcontrato')
   const opciones1 = await esperarOpciones(pagina, 1)
   comprobar(opciones1.includes('1 cosa para reportar'), `y su subcontrato para elegir (${opciones1})`)
+  const sobre1 = limpio(await pagina.getByRole('combobox', { name: 'Trabajo 1: sobre qué' }).innerText())
+  comprobar(sobre1.includes(NUMERO), `y con el subcontrato ya elegido en «Sobre qué» (${sobre1})`)
 
   await pagina.fill('#rd-asunto', `Avance del día ${sello}`)
   await pagina.fill('#rd-descripcion', 'Soldadura del piso y armado del cajón.')
-  await elegir(pagina, 'Trabajo 1: sobre qué', `Subcontrato ${NUMERO}`)
   await pagina.locator('fieldset[data-codigo-reporte="1"] input[id^="rd-avance-"]').fill('30')
 
   // Segundo código, buscado por partes y en otro orden.

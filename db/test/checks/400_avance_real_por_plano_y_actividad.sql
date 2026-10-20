@@ -99,7 +99,7 @@ $$;
 select pg_temp.como('rrhh');
 set local role authenticated;
 select public.rrhh_guardar_trabajador(pg_temp.id('t1'), 'Juan', 'Habilitador', '70000401', 'Habilitador',
-  null, '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-01', null);
+  (select id from public.areas where codigo = 'MTZ'), '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-01', null);
 select public.rrhh_guardar_costo_trabajador(pg_temp.id('t1'), 2400);
 reset role;
 

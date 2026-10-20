@@ -89,8 +89,9 @@ $$;
 -- RR. HH. registra a Juan, a S/ 2400 al mes (S/ 10 la hora).
 select pg_temp.como('rrhh');
 set local role authenticated;
+-- De Maestranza: el reporte lleva solo a la gente de taller (20261020181000).
 select public.rrhh_guardar_trabajador(pg_temp.id('t1'), 'Juan', 'Habilitador', '70000403', 'Habilitador',
-  null, '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-03', null);
+  (select id from public.areas where codigo = 'MTZ'), '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-03', null);
 select public.rrhh_guardar_costo_trabajador(pg_temp.id('t1'), 2400);
 reset role;
 

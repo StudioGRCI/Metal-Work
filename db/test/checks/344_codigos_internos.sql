@@ -49,9 +49,9 @@ begin
   perform test.como_usuario(current_setting('prueba.rrhh')::uuid);
   set local role authenticated;
   v := public.rrhh_guardar_trabajador(current_setting('prueba.t1')::uuid, 'Juan', 'Soldador', '70000441', 'Soldador',
-         null, '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-41', null);
+         (select id from public.areas where codigo = 'MTZ'), '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-41', null);
   v := public.rrhh_guardar_trabajador(current_setting('prueba.t2')::uuid, 'Ana', 'Sin Costo', '70000442', 'Pintora',
-         null, '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-42', null);
+         (select id from public.areas where codigo = 'MTZ'), '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-42', null);
   -- S/ 2400 al mes: S/ 10 la hora. Ana no tiene costo: sus horas esperan.
   v := public.rrhh_guardar_costo_trabajador(current_setting('prueba.t1')::uuid, 2400);
   -- Una hora a mano, en el código escrito en minúsculas y con espacios.

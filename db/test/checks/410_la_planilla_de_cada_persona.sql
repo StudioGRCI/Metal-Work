@@ -1,7 +1,8 @@
 -- La planilla de cada persona y quién sale en el reporte diario (migración
 -- 20261020181000). RR. HH. elige si la persona es de planilla de taller o
 -- administrativa; el supervisor ve en su reporte solo a la gente de taller de
--- Maestranza, Producción o Acabados. Cada paso con el rol que lo da —nunca
+-- Maestranza, Producción o Acabados, y la base no deja meter a nadie más (salvo
+-- a quien ya iba en el reporte observado que se corrige). Cada paso con el rol que lo da —nunca
 -- ADMIN— y `set local role authenticated`. Termina en rollback.
 \set ON_ERROR_STOP on
 begin;
@@ -94,6 +95,59 @@ select pg_temp.como('sup_mtz');
 set local role authenticated;
 select test.afirmar(not pg_temp.sale('pintora'), 'con la planilla administrativa, la pintora ya no sale en el reporte');
 reset role;
+
+-- ======================================================= 3. La base pone el mismo límite
+-- Un trabajo en PLANTA con una persona y sus horas.
+create or replace function pg_temp.trabajo(p_persona text) returns jsonb language sql as $$
+  select jsonb_build_array(jsonb_build_object('descripcion', 'Orden del taller', 'avance', 0, 'personal',
+           jsonb_build_array(jsonb_build_object('trabajador_id', current_setting('prueba.' || p_persona), 'horas', 2))));
+$$;
+create or replace function pg_temp.reporte_sql(p_id uuid, p_persona text) returns text language sql as $$
+  select format('select public.registrar_reporte_diario(%L, %L, ''PLANTA'', ''Orden del taller'', ''Ordenar y limpiar el área'', %L)',
+                p_id, (now() at time zone 'America/Lima')::date, pg_temp.trabajo(p_persona));
+$$;
+do $$
+begin
+  perform set_config('prueba.r1', gen_random_uuid()::text, true);
+  perform set_config('prueba.r2', gen_random_uuid()::text, true);
+  perform set_config('prueba.r3', gen_random_uuid()::text, true);
+end $$;
+
+-- Un formulario abierto antes del cambio, o la acción repetida a mano: la base no la deja.
+select pg_temp.como('sup_mtz');
+set local role authenticated;
+select test.debe_fallar(pg_temp.reporte_sql(gen_random_uuid(), 'asistente'),
+  'la asistente administrativa no entra en un reporte aunque llegue su id', 'planilla de taller');
+select test.debe_fallar(pg_temp.reporte_sql(gen_random_uuid(), 'almacenero'),
+  'el almacenero tampoco', 'planilla de taller');
+-- El soldador sí entra.
+select public.registrar_reporte_diario(pg_temp.id('r1'), (now() at time zone 'America/Lima')::date, 'PLANTA',
+  'Orden del taller', 'Ordenar y limpiar el área', pg_temp.trabajo('soldador'));
+reset role;
+-- Leído sin el rol, para que un cero no sea el RLS. Las líneas del reporte son
+-- las que pasan al tareo (sin costo mensual, esperan ahí).
+select test.afirmar((select count(*) from public.reporte_diario_personal where trabajador_id in (pg_temp.id('asistente'), pg_temp.id('almacenero'))) = 0
+  and (select count(*) from public.reporte_diario_personal where trabajador_id = pg_temp.id('soldador') and reporte_id = pg_temp.id('r1')) = 1,
+  'del rechazo no queda ninguna hora; del soldador, la suya');
+
+-- RR. HH. observa el reporte y después pasa al soldador a la oficina.
+select pg_temp.como('rrhh');
+set local role authenticated;
+select public.observar_reporte_diario(pg_temp.id('r1'), 'RRHH', 'Faltan las horas del ayudante del día');
+select public.rrhh_guardar_planilla_trabajador(pg_temp.id('soldador'), 'ADMINISTRATIVA');
+reset role;
+
+-- Al corregir el observado, el soldador se queda; en un reporte nuevo, ya no.
+select pg_temp.como('sup_mtz');
+set local role authenticated;
+select test.afirmar(public.registrar_reporte_corregido(pg_temp.id('r1'), pg_temp.id('r2'), (now() at time zone 'America/Lima')::date, 'PLANTA',
+    'Orden del taller', 'Ordenar y limpiar el área', pg_temp.trabajo('soldador')) = pg_temp.id('r2'),
+  'al corregir el observado, quien ya iba en él se conserva');
+select test.debe_fallar(pg_temp.reporte_sql(pg_temp.id('r3'), 'soldador'),
+  'en un reporte nuevo, el soldador ya no entra', 'planilla de taller');
+reset role;
+select test.afirmar((select count(*) from public.reporte_diario_personal where reporte_id = pg_temp.id('r2') and trabajador_id = pg_temp.id('soldador')) = 1,
+  'el corregido lleva al soldador con sus horas');
 
 select test.afirmar(not has_function_privilege('anon', 'public.rrhh_guardar_planilla_trabajador(uuid, text)', 'execute'),
   'anon no cambia la planilla');

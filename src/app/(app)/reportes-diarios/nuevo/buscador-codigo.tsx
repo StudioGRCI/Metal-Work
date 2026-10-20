@@ -64,7 +64,7 @@ export function BuscadorCodigo({
         id={id}
         role="combobox"
         aria-expanded={visible}
-        aria-controls={lista}
+        aria-controls={visible ? lista : undefined}
         aria-autocomplete="list"
         aria-activedescendant={visible && activa >= 0 ? `${lista}-${activa}` : undefined}
         aria-invalid={invalido || undefined}
@@ -78,7 +78,12 @@ export function BuscadorCodigo({
           setAbierta(true)
           setActiva(-1)
         }}
-        onFocus={() => setAbierta(true)}
+        onFocus={(e) => {
+          setAbierta(true)
+          // En el teléfono el teclado se come la mitad de abajo: el campo sube
+          // arriba para que las sugerencias quepan entre él y el teclado.
+          if (window.matchMedia('(max-width: 639px)').matches) e.currentTarget.scrollIntoView({ block: 'start', behavior: 'smooth' })
+        }}
         // El toque en una sugerencia llega antes que el blur (onMouseDown), así que cerrar aquí no la pierde.
         onBlur={() => setAbierta(false)}
         onKeyDown={(e) => {
@@ -101,14 +106,14 @@ export function BuscadorCodigo({
         autoCapitalize="characters"
         spellCheck={false}
         placeholder="Escribe parte del código"
-        className="font-mono uppercase"
+        className="scroll-mt-20 font-mono uppercase placeholder:normal-case"
       />
       {visible && (
         <ul
           id={lista}
           role="listbox"
           aria-label="Códigos internos que calzan"
-          className="absolute inset-x-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-lg border border-borde bg-superficie py-1 shadow-lg"
+          className="absolute inset-x-0 top-full z-20 mt-1 max-h-[min(20rem,40dvh)] overflow-y-auto rounded-lg border border-borde bg-superficie py-1 shadow-lg"
         >
           {calzan.map((c, i) => (
             <li

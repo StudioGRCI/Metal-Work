@@ -29,7 +29,8 @@
 --    RECIBOS: solo quién, qué, el inicio y el fin, y el avance que su área
 --    reportó en el reporte diario (`subcontratos_del_area`). La función de
 --    antes (`subcontratos_de_mi_area`, con recibos) queda porque el conector de
---    producción no deja quitar funciones, pero la pantalla ya no la llama.
+--    producción no deja quitar funciones, pero ya no la ejecuta nadie: si no,
+--    los recibos seguirían saliendo por la API aunque la pantalla no los pinte.
 -- =============================================================================
 
 -- 1. Varios códigos en un mismo reporte -----------------------------------------------------
@@ -180,5 +181,8 @@ end;
 $$;
 revoke all on function public.subcontratos_del_area() from public, anon;
 grant execute on function public.subcontratos_del_area() to authenticated;
+revoke execute on function public.subcontratos_de_mi_area() from authenticated;
+comment on column public.subcontratos.area_id is
+  'Para qué área va el trabajo: Producción (PRD), Maestranza (MTZ) o Acabados (ACB). Su supervisor lo ve sin montos ni recibos. Obligatoria desde la migración 20261017100000; los anteriores pueden no tenerla hasta que Administración los corrija.';
 comment on function public.subcontratos_del_area() is
   'Los subcontratos que Administración registró para el área de quien mira (Producción, Maestranza o Acabados), sin anulados, sin montos y sin recibos: quién, qué, inicio, fin y el avance que su área reportó en el reporte diario. Exige subcontratos.area.';

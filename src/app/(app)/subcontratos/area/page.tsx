@@ -120,26 +120,16 @@ export default async function PaginaSubcontratosDelArea({ searchParams }: PagePr
         <ul className="space-y-4">
           {codigos.map((codigo) => {
             const deCodigo = visibles.filter((s) => s.codigo_interno === codigo)
-            const vigentes = deCodigo.filter((s) => s.estado === 'VIGENTE').length
             return (
               <li key={codigo}>
                 <Tarjeta className="overflow-hidden" data-codigo={codigo}>
                   <TarjetaCabecera
                     titulo={<span className="font-mono break-all">{codigo}</span>}
                     descripcion={deCodigo.length === 1 ? 'Un subcontrato' : `${deCodigo.length} subcontratos`}
-                    acciones={
-                      reporta &&
-                      vigentes > 0 && (
-                        <EnlaceBoton href={`/reportes-diarios/nuevo?codigo=${encodeURIComponent(codigo)}`} variante="secundario" tamano="sm">
-                          <ClipboardPen aria-hidden className="size-4" />
-                          Reportar avance
-                        </EnlaceBoton>
-                      )
-                    }
                   />
                   <ul className="divide-y divide-borde">
                     {deCodigo.map((s) => (
-                      <Subcontrato key={s.id} s={s} hoy={hoy} conArea={todasLasAreas} />
+                      <Subcontrato key={s.id} s={s} hoy={hoy} conArea={todasLasAreas} reporta={reporta} />
                     ))}
                   </ul>
                 </Tarjeta>
@@ -152,7 +142,7 @@ export default async function PaginaSubcontratosDelArea({ searchParams }: PagePr
   )
 }
 
-function Subcontrato({ s, hoy, conArea }: { s: SubcontratoDelArea; hoy: string; conArea: boolean }) {
+function Subcontrato({ s, hoy, conArea, reporta }: { s: SubcontratoDelArea; hoy: string; conArea: boolean; reporta: boolean }) {
   const def = ESTADO_SUBCONTRATO[estadoDeSubcontrato(s.estado)]
   const p = plazo(s, hoy)
   return (
@@ -200,6 +190,18 @@ function Subcontrato({ s, hoy, conArea }: { s: SubcontratoDelArea; hoy: string; 
               : `Último avance reportado el ${fecha(s.ultimo_reporte)}${s.reportes > 1 ? `, en ${s.reportes} reportes` : ''}.`}
         </p>
       </div>
+
+      {/* Abre el reporte diario con el código escrito y este subcontrato elegido. */}
+      {reporta && s.estado === 'VIGENTE' && (
+        <EnlaceBoton
+          href={`/reportes-diarios/nuevo?codigo=${encodeURIComponent(s.codigo_interno)}&subcontrato=${s.id}`}
+          variante="secundario"
+          tamano="sm"
+        >
+          <ClipboardPen aria-hidden className="size-4" />
+          Reportar avance<span className="sr-only"> de {s.numero}</span>
+        </EnlaceBoton>
+      )}
     </li>
   )
 }

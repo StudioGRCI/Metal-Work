@@ -218,6 +218,8 @@ export function FormularioReporteDiario({
   corrige = null,
   codigoInicial = '',
   opcionesIniciales = [],
+  errorOpcionesIniciales = null,
+  subcontratoInicial = null,
 }: {
   /** Uno por cada código que puede llevar el reporte; al corregir, el primero. */
   ids: string[]
@@ -231,6 +233,10 @@ export function FormularioReporteDiario({
   codigoInicial?: string
   /** Lo que se puede elegir en el código con que se abre. */
   opcionesIniciales?: OpcionDeTrabajo[]
+  /** Si no se pudo leer lo que se puede elegir en ese código. */
+  errorOpcionesIniciales?: string | null
+  /** El subcontrato cuyo avance se viene a reportar: el primer trabajo se abre sobre él. */
+  subcontratoInicial?: string | null
 }) {
   const router = useRouter()
   const [dia, setDia] = useState(corrige?.fecha ?? hoy)
@@ -246,10 +252,11 @@ export function FormularioReporteDiario({
         id: ids[0],
         codigo,
         opciones: opcionesIniciales,
-        codigoLeido: codigo.trim().toUpperCase(),
+        // Sin leer, el código se vuelve a leer en cuanto la persona lo toque.
+        codigoLeido: errorOpcionesIniciales ? '' : codigo.trim().toUpperCase(),
         diaLeido: corrige?.fecha ?? hoy,
         leyendo: false,
-        errorOpciones: null,
+        errorOpciones: errorOpcionesIniciales,
         quitados: corrige && sinLugar.length > 0 ? noEntra(sinLugar.map((t) => t.descripcion), corrige.fecha) : null,
         trabajos:
           corrige && corrige.trabajos.length > 0
@@ -260,7 +267,14 @@ export function FormularioReporteDiario({
                 avance: String(t.avance),
                 personal: filasDe(t.personal, `codigo-1-trabajo-${i + 1}`),
               }))
-            : [nuevoTrabajo('codigo-1-trabajo-1')],
+            : [
+                {
+                  ...nuevoTrabajo('codigo-1-trabajo-1'),
+                  sobre: opcionesIniciales.some((o) => o.tipo === 'SUBCONTRATO' && o.id === subcontratoInicial)
+                    ? `SUBCONTRATO:${subcontratoInicial}`
+                    : '',
+                },
+              ],
         general: corrige?.general ?? false,
         personalGeneral: filasDe(corrige?.personal_general ?? [], 'codigo-1-general'),
         fotos: [],
@@ -453,14 +467,9 @@ export function FormularioReporteDiario({
       </section>
 
       <section aria-labelledby="rd-codigos-titulo" className="space-y-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          <h2 id="rd-codigos-titulo" className="text-sm font-semibold text-texto">
-            {corrige ? 'Código interno' : varios ? `Códigos internos (${secciones.length})` : 'Código interno'}
-          </h2>
-          {!corrige && (
-            <p className="text-xs text-texto-suave">Si tu gente trabajó en varios, agrega cada uno: sus horas van al costeo de cada código.</p>
-          )}
-        </div>
+        <h2 id="rd-codigos-titulo" className="text-sm font-semibold text-texto">
+          {corrige ? 'Código interno' : varios ? `Códigos internos (${secciones.length})` : 'Código interno'}
+        </h2>
         {secciones.map((s, n) => (
           <SeccionDelCodigo
             key={s.clave}
@@ -501,8 +510,8 @@ export function FormularioReporteDiario({
         </h2>
         {sinPersonal ? (
           <p role="alert" className="rounded-lg border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto">
-            Recursos Humanos todavía no registró al personal. Sin esa lista no se pueden cargar las horas: pídele que registre a tu
-            gente en Personal.
+            No hay nadie de planilla de taller en Maestranza, Producción o Acabados. Sin esa lista no se pueden cargar las horas: pídele
+            a Recursos Humanos que registre a tu gente en Personal, con su área y en la planilla de taller.
           </p>
         ) : porPersona.size === 0 ? (
           <p className="text-xs text-texto-suave">Aquí se suman las horas de cada persona en todos los códigos del reporte.</p>
@@ -605,37 +614,41 @@ function SeccionDelCodigo({
       data-codigo-reporte={numero}
     >
       <legend className="sr-only">{varios ? `Código ${numero}: ${nombre}` : 'Código interno'}</legend>
-      <div className="flex items-start gap-3">
-        {varios && (
-          <span
-            aria-hidden
-            className="mt-7 inline-flex size-7 flex-none items-center justify-center rounded-full bg-acento-suave text-sm font-semibold text-acento tabular"
-          >
-            {numero}
+      {/* El número y «Quitar» van arriba: el código, que es largo, usa todo el ancho. */}
+      {varios && (
+        <div className="flex items-center justify-between gap-3">
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-texto">
+            <span
+              aria-hidden
+              className="inline-flex size-7 flex-none items-center justify-center rounded-full bg-acento-suave text-acento tabular"
+            >
+              {numero}
+            </span>
+            Código {numero}
           </span>
-        )}
-        <Campo
-          etiqueta="Código interno"
-          htmlFor={idCodigo}
-          requerido
-          ayuda={numero === 1 ? 'El de la unidad, por ejemplo PLA_SR_O4_1_26/28; PLANTA si no es para una unidad.' : undefined}
-          className="min-w-0 flex-1"
-        >
-          <BuscadorCodigo
-            id={idCodigo}
-            codigos={codigos}
-            valor={s.codigo}
-            alCambiar={alEscribirCodigo}
-            soloLectura={corrige}
-            invalido={repetido}
-          />
-        </Campo>
-        {alQuitar && (
-          <Boton type="button" variante="fantasma" tamano="icono" className="mt-6" aria-label={`Quitar ${nombre} del reporte`} onClick={alQuitar}>
-            <Trash2 aria-hidden className="size-4" />
-          </Boton>
-        )}
-      </div>
+          {alQuitar && (
+            <Boton type="button" variante="fantasma" tamano="sm" aria-label={`Quitar ${nombre} del reporte`} onClick={alQuitar}>
+              <Trash2 aria-hidden className="size-4" />
+              Quitar
+            </Boton>
+          )}
+        </div>
+      )}
+      <Campo
+        etiqueta="Código interno"
+        htmlFor={idCodigo}
+        requerido
+        ayuda={numero === 1 ? 'El de la unidad, por ejemplo PLA_SR_O4_1_26/28; PLANTA si no es para una unidad.' : undefined}
+      >
+        <BuscadorCodigo
+          id={idCodigo}
+          codigos={codigos}
+          valor={s.codigo}
+          alCambiar={alEscribirCodigo}
+          soloLectura={corrige}
+          invalido={repetido}
+        />
+      </Campo>
       {repetido && (
         <p role="alert" className="text-xs text-peligro">
           Este código ya está más arriba: junta sus trabajos en uno solo.
@@ -772,6 +785,7 @@ function SeccionDelCodigo({
               {!s.general && (
                 <ListaPersonal
                   titulo={`Personal ${varios ? `de ${nombre}, trabajo ${i + 1}` : `del trabajo ${i + 1}`}`}
+                  visible={`Personal del trabajo ${i + 1}`}
                   filas={t.personal}
                   alCambiar={(filas) => cambiarTrabajo(t.clave, { personal: filas })}
                   opciones={personal}
@@ -789,7 +803,7 @@ function SeccionDelCodigo({
           onClick={() => alCambiar((actual) => ({ trabajos: [...actual.trabajos, nuevoTrabajo()] }))}
         >
           <Plus aria-hidden className="size-4" />
-          Agregar trabajo{varios ? ` en ${nombre}` : ''}
+          Agregar trabajo{varios && <span className="sr-only"> en {nombre}</span>}
         </Boton>
       </div>
 
@@ -799,11 +813,18 @@ function SeccionDelCodigo({
             type="checkbox"
             checked={s.general}
             onChange={(e) => alCambiar({ general: e.target.checked })}
-            className="mt-0.5 size-5 accent-[var(--acento)]"
+            className="mt-0.5 size-5 flex-none accent-[var(--acento)]"
           />
           <span>
             <span className="block text-sm font-medium text-texto">
-              Personal general {varios ? `para todo ${nombre}` : 'para todo el reporte'}
+              Personal general{' '}
+              {varios ? (
+                <>
+                  para todo este código<span className="sr-only"> {nombre}</span>
+                </>
+              ) : (
+                'para todo el reporte'
+              )}
             </span>
             <span className="block text-xs text-texto-suave">
               Márcalo si la misma gente trabajó en todo lo {varios ? 'de este código' : 'del reporte'}: la pones una sola vez, con sus
@@ -815,6 +836,7 @@ function SeccionDelCodigo({
       {s.general && (
         <ListaPersonal
           titulo={varios ? `Personal general de ${nombre}` : 'Personal general del reporte'}
+          visible={varios ? 'Personal general de este código' : undefined}
           filas={s.personalGeneral}
           alCambiar={(filas) => alCambiar({ personalGeneral: filas })}
           opciones={personal}
@@ -823,7 +845,15 @@ function SeccionDelCodigo({
       )}
 
       <div className="space-y-2">
-        <p className="text-xs font-medium text-texto-suave">{varios ? `Fotos de ${nombre}` : 'Fotos del trabajo'}</p>
+        <p className="text-xs font-medium text-texto-suave">
+          {varios ? (
+            <>
+              Fotos de este código<span className="sr-only"> {nombre}</span>
+            </>
+          ) : (
+            'Fotos del trabajo'
+          )}
+        </p>
         {s.fotosPrevias.length > 0 && (
           <ul className="flex flex-wrap gap-2" aria-label="Fotos del reporte observado">
             {s.fotosPrevias.map((f, i) => (
@@ -864,12 +894,15 @@ function SeccionDelCodigo({
 /** Las personas de un trabajo (o del código entero), cada una con sus horas. */
 function ListaPersonal({
   titulo,
+  visible,
   filas,
   alCambiar,
   opciones,
   deshabilitado,
 }: {
   titulo: string
+  /** Lo que se lee en la pantalla, si es más corto que `titulo`. */
+  visible?: string
   filas: FilaPersona[]
   alCambiar: (filas: FilaPersona[]) => void
   opciones: OpcionPersona[]
@@ -881,7 +914,9 @@ function ListaPersonal({
 
   return (
     <div className="space-y-2" role="group" aria-label={titulo}>
-      <p className="text-xs font-medium text-texto-suave">{titulo}</p>
+      <p aria-hidden className="text-xs font-medium text-texto-suave">
+        {visible ?? titulo}
+      </p>
       {filas.map((p, i) => {
         // Quien ya está en otra fila de esta lista no se ofrece de nuevo.
         const elegidas = new Set(filas.filter((x) => x.clave !== p.clave).map((x) => x.trabajadorId))

@@ -17,13 +17,26 @@ const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/reportes-diarios/nuevo'>) {
   const perfil = await exigirPermiso('reporte_diario.registrar')
   const hoy = hoyLima()
-  const { corrige: idCorrige, codigo: codigoPedido } = await searchParams
-  // Desde Subcontratos, «Reportar avance» abre el reporte con su código escrito.
-  const codigoInicial = typeof codigoPedido === 'string' && codigoPedido.trim().length >= 2 ? codigoPedido.trim().slice(0, 60).toUpperCase() : ''
-  const [personal, codigos, observado] = await Promise.all([
+  const { corrige: idCorrige, codigo: codigoPedido, subcontrato: subcontratoPedido } = await searchParams
+  // Desde Subcontratos, «Reportar avance» abre el reporte con su código escrito
+  // y el subcontrato elegido.
+  const codigoInicial =
+    typeof idCorrige !== 'string' && typeof codigoPedido === 'string' && codigoPedido.trim().length >= 2
+      ? codigoPedido.trim().slice(0, 60).toUpperCase()
+      : ''
+  const subcontratoInicial = typeof subcontratoPedido === 'string' && GUID.test(subcontratoPedido) ? subcontratoPedido : null
+  // Lo que se puede elegir en ese código se lee junto con lo demás. Si falla, el
+  // formulario lo dice: una lista vacía diría que el código no tiene nada.
+  const [personal, codigos, observado, leidas] = await Promise.all([
     personalParaReporte(),
     codigosInternos(),
     typeof idCorrige === 'string' && GUID.test(idCorrige) ? reporteDiario(idCorrige, false) : Promise.resolve(null),
+    codigoInicial
+      ? opcionesDeTrabajo(codigoInicial, null, hoy).then(
+          (opciones) => ({ opciones, error: null }),
+          () => ({ opciones: [], error: `No se pudo leer lo que tiene ${codigoInicial}. Vuelve a escribir el código o recarga la página.` }),
+        )
+      : Promise.resolve({ opciones: [], error: null }),
   ])
 
   // Se corrige solo un reporte propio que Gerencia o RR. HH. observaron y que
@@ -79,11 +92,7 @@ export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/r
       }
     : null
   // Al corregir, lo que se puede elegir se cuenta sin el observado, que se va a reemplazar.
-  const opcionesIniciales = corrige
-    ? await opcionesDeTrabajo(corrige.codigo_interno, corrige.reemplaza, corrige.fecha)
-    : codigoInicial
-      ? await opcionesDeTrabajo(codigoInicial, null, hoy).catch(() => [])
-      : []
+  const opcionesIniciales = corrige ? await opcionesDeTrabajo(corrige.codigo_interno, corrige.reemplaza, corrige.fecha) : leidas.opciones
   // El corregido conserva su día aunque ya pasaran los 7: la base lo deja.
   const minimo = sumarDias(hoy, -DIAS_PARA_EL_REPORTE)
 
@@ -95,6 +104,17 @@ export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/r
       etiqueta: `${p.apellidos}, ${p.nombres}`,
       detalle: [p.cargo, p.area].filter(Boolean).join(' · ') || null,
     }))
+  // Quien iba en el observado y ya no sale en la lista (RR. HH. lo pasó a la
+  // planilla administrativa o a otra área) se sigue viendo con su nombre: la
+  // corrección lo conserva, y la base lo deja solo por venir del observado.
+  if (corrige) {
+    const enLista = new Set(opciones.map((o) => o.valor))
+    for (const p of observado?.personal ?? []) {
+      if (enLista.has(p.trabajador_id)) continue
+      enLista.add(p.trabajador_id)
+      opciones.push({ valor: p.trabajador_id, etiqueta: p.nombre, detalle: 'Ya no está en la planilla de taller de tu área' })
+    }
+  }
 
   return (
     <>
@@ -124,6 +144,8 @@ export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/r
             corrige={corrige}
             codigoInicial={corrige ? '' : codigoInicial}
             opcionesIniciales={opcionesIniciales}
+            errorOpcionesIniciales={corrige ? null : leidas.error}
+            subcontratoInicial={corrige ? null : subcontratoInicial}
           />
         </TarjetaCuerpo>
       </Tarjeta>
