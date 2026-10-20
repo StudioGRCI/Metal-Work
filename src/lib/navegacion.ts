@@ -248,6 +248,17 @@ export const NAVEGACION = [
         descripcion: 'Saldos, ingresos, egresos por unidad y conteo físico',
         disponible: true,
       },
+      // El apartado que Almacén comparte (DKS, 2026-10-20): lo mismo que ven
+      // Supervisión, Requerimientos y Administración antes de pedir, sin precios
+      // ni movimientos. Su entrada de Supervisión, más abajo, lleva su permiso.
+      {
+        titulo: 'Stock en almacén',
+        ruta: '/almacen/stock',
+        icono: Warehouse,
+        permiso: 'almacen.ver',
+        descripcion: 'Lo que ven Supervisión y quien pide: cuánto hay libre de cada material y cuánto es de cada código interno',
+        disponible: true,
+      },
     ],
   },
   {
@@ -357,14 +368,15 @@ export const NAVEGACION = [
       },
       // Maestranza pidió el 2026-10-15 ver lo que Almacén tiene antes de
       // pedirlo: el stock de cada material, sin precios ni el kardex
-      // (migración 20261016950000). Almacén también la abre, pero lo suyo es el
-      // kardex.
+      // (migración 20261016950000). Desde el 2026-10-20 lo ven también
+      // Requerimientos y Administración, que piden por RQ (migración
+      // 20261020195000), y Almacén lo tiene en su menú (entrada de arriba).
       {
         titulo: 'Stock en almacén',
         ruta: '/almacen/stock',
         icono: Warehouse,
         permiso: 'almacen.stock',
-        descripcion: 'Cuánto hay de cada material en los cuatro almacenes, y de qué código interno es cada accesorio',
+        descripcion: 'Cuánto hay libre de cada material en los cuatro almacenes, y cuánto es de cada código interno',
         disponible: true,
       },
       // Los subcontratos que Administración registró para Maestranza, Producción o
@@ -553,23 +565,26 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // valorización del almacén (la base le quitó almacen.ver y costos.ver): ve lo
   // gastado en cada código interno. Sin la OT desde el 2026-10-15: la ficha de
   // ingreso y salida del vehículo y la revisión de Tesorería para la salida van
-  // en Vehículos.
+  // en Vehículos. Desde el 2026-10-20 consulta el stock de Almacén antes de
+  // pedir (migración 20261020195000): primero en «Consultas» y, en el
+  // teléfono, junto a sus RQ, en lugar del dashboard.
   REQUERIMIENTOS: {
     grupos: [
       { titulo: 'Requerimientos', rutas: ['/requerimientos', '/vehiculos'] },
-      { titulo: 'Consultas', rutas: ['/requerimientos/gasto-por-codigo'] },
+      { titulo: 'Consultas', rutas: ['/almacen/stock', '/requerimientos/gasto-por-codigo'] },
     ],
-    telefono: ['/requerimientos', '/vehiculos', '/requerimientos/gasto-por-codigo', '/'],
+    telefono: ['/requerimientos', '/almacen/stock', '/vehiculos', '/requerimientos/gasto-por-codigo'],
   },
   // Trabaja los RQ desde su bandeja de atención, no desde la lista de
   // Requerimientos, aunque `requerimientos.ver` le deje leerla. Sin la OT desde
   // el 2026-10-15: lo que lleva cada unidad lo ve por código, para tenerlo a
   // tiempo. Aparte, el kardex: sus cuatro almacenes se abren desde su tablero,
-  // no desde el menú (2026-10-15).
+  // no desde el menú (2026-10-15). Después del kardex, el stock que comparte
+  // con Supervisión y con quien pide (DKS, 2026-10-20).
   ALMACENERO: {
     grupos: [
       { titulo: 'Por atender', rutas: ['/requerimientos/atencion', '/seguimiento?vista=materiales'] },
-      { titulo: 'Almacén', rutas: ['/almacen/kardex'] },
+      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/stock'] },
     ],
     telefono: ['/requerimientos/atencion', '/seguimiento?vista=materiales', '/almacen/kardex', '/'],
   },
@@ -697,7 +712,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         titulo: 'Administración',
         rutas: ['/cotizaciones/pdf', '/ordenes', '/subcontratos', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
       },
-      { titulo: 'Requerimiento de Administración', rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes'] },
+      // El stock de Almacén, para ver qué hay antes de pedir (2026-10-20).
+      { titulo: 'Requerimiento de Administración', rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes', '/almacen/stock'] },
       { titulo: 'Consultas', rutas: ['/diseno/evaluaciones', '/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos', '/clientes'] },
     ],
     telefono: ['/cotizaciones/pdf', '/ordenes', '/subcontratos', '/requerimientos'],

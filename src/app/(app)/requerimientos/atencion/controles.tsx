@@ -1,15 +1,17 @@
 'use client'
 
 import { Check, ClipboardCheck, PackageCheck, ShoppingCart } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { MaterialParaRequerimiento } from '@/lib/datos/requerimientos'
+import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { useEnvio } from '@/lib/envio'
 import { cantidad as formatoCantidad } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 import { marcarPasoRequerimiento, revisarStockRequerimiento } from './acciones'
 
@@ -86,6 +88,35 @@ export function PasoRequerimiento({ id, numero, paso }: { id: string; numero: st
   )
 }
 
+/** Lo que dice el sistema del material de un insumo: lo libre y lo que ya es de otros códigos internos. */
+export type StockDelSistema = {
+  existencia: number
+  libre: number
+  /** Lo apartado por los pedidos de OT del circuito anterior. */
+  reservado_ot: number
+  /** La unidad del kardex, que puede no ser la del insumo. */
+  unidad: string
+  /**
+   * Lo separado para cada código, con cuánto de eso separaron sus RQ abiertos y
+   * cuáles (los números, vacíos si quien mira no ve los RQ).
+   */
+  codigos: { codigo: string; cantidad: number; de_requerimientos: number; requerimientos: string[] }[]
+}
+
+/**
+ * Lo que el sistema tiene para este RQ: lo libre y, de lo que ya es de su mismo
+ * código, solo lo que ningún RQ abierto separó (el accesorio que entró para la
+ * unidad). Lo que separó otro RQ del mismo código es de aquel: contarlo aquí lo
+ * separaría dos veces, y la base lo marcaría «separado de más».
+ */
+function partesDelSistema(sistema: StockDelSistema, codigo: string) {
+  const propio = normalizarCodigo(codigo)
+  const mismo = sistema.codigos.find((c) => c.codigo === propio) ?? null
+  const otros = sistema.codigos.filter((c) => c.codigo !== propio)
+  const deLaUnidad = mismo ? Math.max(mismo.cantidad - mismo.de_requerimientos, 0) : 0
+  return { mismo, otros, deLaUnidad, usable: sistema.libre + deLaUnidad }
+}
+
 type InsumoPorRevisar = {
   item: number
   descripcion: string
@@ -97,6 +128,8 @@ type InsumoPorRevisar = {
   codigo: string | null
   /** La unidad del material es provisional: esta revisión la confirma con la del insumo. */
   unidad_pendiente: boolean
+  /** Lo que dice el sistema; vacío si el insumo todavía no tiene material del catálogo. */
+  sistema: StockDelSistema | 'no_se_pudo' | null
 }
 
 /**
@@ -108,17 +141,23 @@ type InsumoPorRevisar = {
 export function RevisarStock({
   id,
   numero,
+  codigo,
   compra,
   insumos,
   materiales,
+  stockDelCatalogo,
 }: {
   id: string
   numero: string
+  /** El código interno del RQ: lo que ya es de ese código se dice aparte. */
+  codigo: string
   /** Quién compra lo que falta: «Logística» o «la administradora». */
   compra: string
   insumos: InsumoPorRevisar[]
   /** El catálogo de Almacén; solo hace falta si algún insumo es un material nuevo. */
   materiales: MaterialParaRequerimiento[]
+  /** El stock de cada material del catálogo con kardex, para el material nuevo que se asocie; vacío si no se pudo leer. */
+  stockDelCatalogo: Record<string, StockDelSistema> | null
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
@@ -142,7 +181,16 @@ export function RevisarStock({
         descripcion={`Anota cuánto tienes de cada insumo. Lo que tienes completo no se compra; lo que falta le llega a ${compra}.`}
         ancho="lg"
       >
-        <FormularioStock key={vez} id={id} compra={compra} insumos={insumos} materiales={materiales} alTerminar={() => setAbierta(false)} />
+        <FormularioStock
+          key={vez}
+          id={id}
+          codigo={codigo}
+          compra={compra}
+          insumos={insumos}
+          materiales={materiales}
+          stockDelCatalogo={stockDelCatalogo}
+          alTerminar={() => setAbierta(false)}
+        />
       </Ventana>
     </>
   )
@@ -150,15 +198,19 @@ export function RevisarStock({
 
 function FormularioStock({
   id,
+  codigo,
   compra,
   insumos,
   materiales,
+  stockDelCatalogo,
   alTerminar,
 }: {
   id: string
+  codigo: string
   compra: string
   insumos: InsumoPorRevisar[]
   materiales: MaterialParaRequerimiento[]
+  stockDelCatalogo: Record<string, StockDelSistema> | null
   alTerminar: () => void
 }) {
   const [valores, setValores] = useState<Record<number, string>>({})
@@ -211,6 +263,19 @@ function FormularioStock({
         {insumos.map((l) => {
           const valor = valores[l.item] ?? ''
           const falta = valor === '' ? null : Math.max(l.cantidad - Number(valor), 0)
+          // El material nuevo, en cuanto Almacén elige uno del catálogo, dice el stock de ése.
+          const elegido = l.nuevo ? elegidos[l.item] : undefined
+          const sistema: InsumoPorRevisar['sistema'] = !l.nuevo
+            ? l.sistema
+            : !elegido
+              ? null
+              : stockDelCatalogo === null
+                ? 'no_se_pudo'
+                : (stockDelCatalogo[elegido] ?? { existencia: 0, libre: 0, reservado_ot: 0, unidad: l.unidad, codigos: [] })
+          // Anotar más de lo que el sistema tiene para este RQ no se impide —Almacén
+          // cuenta lo que ve—, pero se avisa: separaría de más.
+          const usable = sistema && sistema !== 'no_se_pudo' && sistema.unidad === l.unidad ? partesDelSistema(sistema, codigo).usable : null
+          const deMas = valor !== '' && usable !== null && Number(valor) > usable
           return (
             <li key={l.item} className="grid gap-2 rounded-lg border border-borde p-3 sm:grid-cols-[1fr_9rem] sm:items-end">
               <div className="text-sm">
@@ -223,6 +288,7 @@ function FormularioStock({
                   {falta !== null &&
                     (falta === 0 ? ' · lo tienes completo' : ` · se compran ${formatoCantidad(falta)} ${l.unidad}`)}
                 </p>
+                <EnElSistema sistema={sistema} codigo={codigo} />
                 {l.unidad_pendiente && (
                   <p className="text-xs text-texto-suave">La unidad de este material era provisional: queda en {l.unidad}.</p>
                 )}
@@ -230,6 +296,7 @@ function FormularioStock({
               <Campo etiqueta={`Tienes (${l.unidad || 'cantidad'})`} htmlFor={`rq-stock-${id}-${l.item}`} requerido>
                 <Entrada
                   id={`rq-stock-${id}-${l.item}`}
+                  aria-describedby={deMas ? `rq-stock-${id}-${l.item}-aviso` : undefined}
                   type="number"
                   inputMode="decimal"
                   min={0}
@@ -240,6 +307,21 @@ function FormularioStock({
                   onChange={(e) => setValores((v) => ({ ...v, [l.item]: e.target.value }))}
                 />
               </Campo>
+              {/* Siempre en la página, para que el lector de pantalla anuncie el aviso cuando aparece. */}
+              <p
+                id={`rq-stock-${id}-${l.item}-aviso`}
+                aria-live="polite"
+                className={cn('tabular text-xs text-aviso sm:col-span-2', !deMas && 'sr-only')}
+                data-separa-de-mas={deMas || undefined}
+              >
+                {deMas && sistema && sistema !== 'no_se_pudo'
+                  ? sistema.existencia <= 0
+                    ? 'El sistema no tiene stock de este material: revisa antes de separarlo.'
+                    : usable !== null && usable <= 0
+                      ? 'El sistema no tiene nada libre para este RQ: revisa antes de separarlo.'
+                      : `El sistema tiene ${formatoCantidad(usable)} ${sistema.unidad} para este RQ: revisa antes de separar más.`
+                  : ''}
+              </p>
               {l.nuevo && (
                 <Campo
                   etiqueta="Material nuevo: en el catálogo es…"
@@ -300,5 +382,87 @@ function FormularioStock({
         </Boton>
       </div>
     </form>
+  )
+}
+
+/** Cuántos códigos se nombran antes de resumir el resto: en el teléfono la línea no debe crecer sin fin. */
+const CODIGOS_A_LA_VISTA = 3
+
+/**
+ * Lo que ya es del mismo código del RQ. Lo que separó otro RQ abierto de ese
+ * código es de aquel: si es el mismo pedido repetido, no se separa otra vez. Lo
+ * que entró para la unidad y ningún RQ tomó sí le sirve a este.
+ */
+function DelMismoCodigo({ mismo, deLaUnidad, unidad }: {
+  mismo: StockDelSistema['codigos'][number]; deLaUnidad: number; unidad: string
+}) {
+  const separado = mismo.de_requerimientos
+  const numeros = mismo.requerimientos.join(', ')
+  const propio = `${mismo.codigo}, el código de este RQ`
+  return (
+    <p className="tabular text-xs text-texto" data-mismo-codigo>
+      {separado <= 0
+        ? `${formatoCantidad(deLaUnidad)} ${unidad} ${deLaUnidad === 1 ? 'entró' : 'entraron'} para ${propio}: ${deLaUnidad === 1 ? 'sirve' : 'sirven'} para este pedido.`
+        : deLaUnidad <= 0
+          ? `${formatoCantidad(separado)} ${unidad} ya ${separado === 1 ? 'está separado' : 'están separados'} para ${propio}${numeros && `, en ${numeros}`}: si es el mismo pedido, no ${separado === 1 ? 'lo' : 'los'} separes otra vez.`
+          : `${formatoCantidad(mismo.cantidad)} ${unidad} son de ${propio}: ${formatoCantidad(separado)} ya separados${numeros && ` en ${numeros}`}; ${formatoCantidad(deLaUnidad)} ${deLaUnidad === 1 ? 'entró' : 'entraron'} para la unidad y ${deLaUnidad === 1 ? 'sirve' : 'sirven'} para este pedido.`}
+    </p>
+  )
+}
+
+/**
+ * Lo que dice el sistema junto al insumo, para contar con eso a la vista (DKS,
+ * 2026-10-20): lo libre se puede usar; lo separado para otros códigos internos
+ * es de sus RQ o entró para esa unidad. Lo que ya es del mismo código del RQ va
+ * aparte: puede ser un pedido repetido, o el accesorio que entró para esa
+ * unidad y sirve para este. «Tienes» lo sigue anotando Almacén con lo que
+ * cuenta: el sistema no lo llena.
+ */
+function EnElSistema({ sistema, codigo }: { sistema: InsumoPorRevisar['sistema']; codigo: string }) {
+  if (sistema === null) return null
+  if (sistema === 'no_se_pudo') {
+    return <p className="text-xs text-texto-suave">No se pudo leer el stock del sistema: anota lo que cuentes.</p>
+  }
+  const { existencia, libre, reservado_ot: reservado, unidad } = sistema
+  if (existencia <= 0) return <p className="text-xs text-texto-suave" data-en-el-sistema>En el sistema: no hay stock.</p>
+  const { mismo, otros, deLaUnidad } = partesDelSistema(sistema, codigo)
+  const deOtros = otros.reduce((suma, c) => suma + c.cantidad, 0)
+  const nombrados = otros.slice(0, CODIGOS_A_LA_VISTA)
+  const resto = otros.length - nombrados.length
+  return (
+    <>
+      {deOtros <= 0 && reservado <= 0 && libre > 0 ? (
+        <p className="tabular text-xs text-texto" data-en-el-sistema>
+          En el sistema: <strong className="font-semibold">{formatoCantidad(libre)} {unidad} libres</strong>
+        </p>
+      ) : (
+        <p className="tabular text-xs text-texto" data-en-el-sistema>
+          En el sistema hay {formatoCantidad(existencia)} {unidad}:{' '}
+          <strong className="font-semibold">{libre > 0 ? `${formatoCantidad(libre)} libres` : 'nada libre'}</strong>
+          {deOtros > 0 && (
+            <span className="text-texto-suave">
+              {' · '}
+              {formatoCantidad(deOtros)} separados para otros códigos (
+              {nombrados.map((c, i) => (
+                <Fragment key={c.codigo}>
+                  {i > 0 && ' · '}
+                  <span className="whitespace-nowrap">
+                    {c.codigo}: {formatoCantidad(c.cantidad)}
+                  </span>
+                </Fragment>
+              ))}
+              {resto > 0 && ` y ${resto} más`})
+            </span>
+          )}
+          {reservado > 0 && (
+            <span className="text-texto-suave">
+              {' · '}
+              {formatoCantidad(reservado)} en pedidos de OT
+            </span>
+          )}
+        </p>
+      )}
+      {mismo && <DelMismoCodigo mismo={mismo} deLaUnidad={deLaUnidad} unidad={unidad} />}
+    </>
   )
 }

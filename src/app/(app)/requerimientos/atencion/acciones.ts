@@ -77,6 +77,10 @@ export async function revisarStockRequerimiento(_previo: unknown, formulario: Fo
               .string()
               .trim()
               .regex(CANTIDAD_EN_STOCK, 'Anota cuánto hay de cada insumo: de 0 a lo pedido, con hasta tres decimales.'),
+            // El material del catálogo que Almacén eligió para un material nuevo.
+            // Sin declararlo, zod lo quitaba en silencio y la base daba de alta
+            // uno provisional en vez del elegido (visto en el banco, 2026-10-20).
+            material_id: z.guid('Vuelve a cargar la pantalla.').nullable().optional(),
           }),
         )
         .min(1, 'Anota cuánto hay de cada insumo.')

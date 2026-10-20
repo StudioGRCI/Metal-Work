@@ -12,12 +12,13 @@ import { catalogoDeAlmacen, type MaterialParaConteo } from '@/lib/datos/atencion
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { proveedoresParaCompra, type ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { cargarRequerimientos, catalogoParaRequerimiento, type MaterialParaRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
+import { stockEnAlmacen, type MaterialEnStock } from '@/lib/datos/stock-almacen'
 import { ESTADO_REQUERIMIENTO, leTocaAtender, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AvanceDelRequerimiento, CompraDelInsumo, MaterialDelInsumo } from '../avance'
-import { PasoRequerimiento, RevisarStock } from './controles'
+import { PasoRequerimiento, RevisarStock, type StockDelSistema } from './controles'
 import { PorComprar, type GrupoPorComprar } from './por-comprar'
 
 export const metadata = { title: 'Atención de requerimiento' }
@@ -70,8 +71,19 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   // Almacén asocia o da de alta el material nuevo al revisar el stock: el catálogo
   // solo se carga si hay alguno por revisar.
   const hayNuevos = recibe && requerimientos.some((r) => r.estado === 'POR_ATENDER' && r.lineas.some((l) => l.material_nuevo && !l.material_id))
-  const catalogo: MaterialParaRequerimiento[] = hayNuevos ? await catalogoParaRequerimiento() : []
-  const correcciones = await correccionesDe('REQUERIMIENTO', requerimientos.map((r) => r.id))
+  // Al revisar el stock, Almacén ve al lado de cada insumo lo que dice el
+  // sistema: cuánto está libre y cuánto ya es de otros códigos internos (DKS,
+  // 2026-10-20). Solo de los materiales de los RQ que esperan esa revisión; si
+  // hay un material nuevo por asociar, de todos, para ver el del que elija.
+  const porRevisar = recibe
+    ? [...new Set(requerimientos.flatMap((r) => (r.estado === 'POR_ATENDER' ? r.lineas.flatMap((l) => (l.material_id ? [l.material_id] : [])) : [])))]
+    : []
+  const [catalogo, correcciones, stock] = await Promise.all([
+    hayNuevos ? catalogoParaRequerimiento() : Promise.resolve<MaterialParaRequerimiento[]>([]),
+    correccionesDe('REQUERIMIENTO', requerimientos.map((r) => r.id)),
+    stockDelSistema(hayNuevos ? null : porRevisar),
+  ])
+  const stockDelCatalogo = stock === 'no_se_pudo' ? null : hayNuevos ? Object.fromEntries([...stock].map(([id, m]) => [id, sistemaDe(m)])) : {}
 
   const meToca = requerimientos.filter((r) => leTocaAtender(r, { recibe, despacha, compraDe })).length
   const grupos = compra ? insumosPorComprar(requerimientos, compraDe) : []
@@ -135,6 +147,8 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
                     compra={compraDe[tipoDeRequerimiento(r)]}
                     paraComprar={paraComprar}
                     catalogo={catalogo}
+                    stock={stock}
+                    stockDelCatalogo={stockDelCatalogo}
                     correcciones={correcciones.get(r.id)}
                   />
                 ))
@@ -145,6 +159,42 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
       )}
     </>
   )
+}
+
+/**
+ * El stock que dice el sistema de los materiales por revisar (`null`: de todos).
+ * Si no se pudo leer, la revisión sigue —Almacén cuenta lo que tiene— y la
+ * ventana lo dice; la causa queda en el registro del servidor.
+ */
+async function stockDelSistema(materiales: string[] | null): Promise<Map<string, MaterialEnStock> | 'no_se_pudo'> {
+  if (materiales?.length === 0) return new Map()
+  try {
+    return new Map((await stockEnAlmacen(materiales ?? undefined)).map((m) => [m.material_id, m]))
+  } catch (error) {
+    console.error('Revisar stock: no se pudo leer el stock de Almacén.', error)
+    return 'no_se_pudo'
+  }
+}
+
+function sistemaDe(m: MaterialEnStock): StockDelSistema {
+  return {
+    existencia: m.existencia,
+    libre: m.libre,
+    reservado_ot: m.reservado_ot,
+    unidad: m.unidad,
+    codigos: m.por_codigo,
+  }
+}
+
+/** Lo que dice el sistema de un insumo: nada si es un material nuevo, cero si su material no tiene kardex. */
+function sistemaDelInsumo(
+  l: RequerimientoListado['lineas'][number],
+  stock: Map<string, MaterialEnStock> | 'no_se_pudo',
+): StockDelSistema | 'no_se_pudo' | null {
+  if (!l.material_id) return null
+  if (stock === 'no_se_pudo') return 'no_se_pudo'
+  const m = stock.get(l.material_id)
+  return m ? sistemaDe(m) : { existencia: 0, libre: 0, reservado_ot: 0, unidad: l.unidad, codigos: [] }
 }
 
 /** Lo que falta comprar de un insumo: todo si Almacén no lo revisó, o lo que no tenía. */
@@ -195,6 +245,8 @@ function Fila({
   compra,
   paraComprar,
   catalogo,
+  stock,
+  stockDelCatalogo,
   correcciones,
 }: {
   rq: RequerimientoListado
@@ -204,6 +256,10 @@ function Fila({
   paraComprar: ParaComprar | null
   /** El catálogo de Almacén para asociar los materiales nuevos al revisar el stock. */
   catalogo: MaterialParaRequerimiento[]
+  /** Lo que dice el sistema de los materiales por revisar. */
+  stock: Map<string, MaterialEnStock> | 'no_se_pudo'
+  /** El de cada material del catálogo con kardex, para el material nuevo que Almacén asocie; vacío si no se pudo leer. */
+  stockDelCatalogo: Record<string, StockDelSistema> | null
   correcciones: CorreccionVista[] | undefined
 }) {
   const estado = ESTADO_REQUERIMIENTO[rq.estado]
@@ -273,6 +329,7 @@ function Fila({
             <RevisarStock
               id={rq.id}
               numero={rq.numero}
+              codigo={rq.codigo_interno}
               compra={quienCompra}
               insumos={rq.lineas.map((l) => ({
                 item: l.item,
@@ -282,8 +339,10 @@ function Fila({
                 nuevo: l.material_nuevo && !l.material_id,
                 codigo: l.material_codigo,
                 unidad_pendiente: l.material_unidad_pendiente,
+                sistema: sistemaDelInsumo(l, stock),
               }))}
               materiales={rq.lineas.some((l) => l.material_nuevo && !l.material_id) ? catalogo : []}
+              stockDelCatalogo={rq.lineas.some((l) => l.material_nuevo && !l.material_id) ? stockDelCatalogo : {}}
             />
           )}
           {generaOc && (

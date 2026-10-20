@@ -138,7 +138,7 @@ let rqa = ''
   const { pagina, contexto, errores } = await entrar(CUENTAS.administracion)
   const m = await menu(pagina)
   const grupo = m.find((g) => g.grupo === 'Requerimiento de Administración')
-  comprobar(grupo && grupo.items.join(',') === 'Requerimientos,Atención de requerimiento,Órdenes de compra',
+  comprobar(grupo && grupo.items.join(',') === 'Requerimientos,Atención de requerimiento,Órdenes de compra,Stock en almacén',
     `su menú tiene el requerimiento de Administración: ${JSON.stringify(grupo?.items)}`)
   await pagina.goto(`${BASE}/requerimientos`, { waitUntil: 'networkidle' })
   comprobar((await pagina.locator('nav[aria-label="Requerimiento"] [aria-current="page"]').innerText()).startsWith('Administración'),

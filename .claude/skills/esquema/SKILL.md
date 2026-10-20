@@ -189,3 +189,18 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   el auditor, no la prueba. Cuando una cifra sale de dos partes, escribir en el
   check la cuenta a mano con lo que **no** debe entrar en cada parte, y que la
   pantalla pinte las partes que da la base en vez de recalcularlas.
+
+- **Una línea de RQ no es de un solo material.** `requerimiento_lineas.material_id`
+  es lo que se pidió, pero Logística puede comprar otro
+  (`orden_compra_material_detalles.material_id`, otra marca u otra medida) y
+  Almacén puede entregar otro del mismo almacén (`registrar_salida_material` solo
+  exige el almacén). Todo cálculo de stock por línea —lo separado, lo que llegó,
+  lo entregado— cuenta lo comprado en el material comprado y descuenta lo
+  entregado de la línea entera, sea del material que sea. Si se filtra por el
+  material pedido, lo comprado queda libre y lo pedido separado de más, o lo que
+  no salió queda separado para siempre en un RQ ya atendido. En
+  `stock_libre_en_almacen` (migración `20261020195000`) el auditor lo encontró
+  dos veces, una por cada lado; el check 414 tiene los dos casos: compra de otra
+  marca y entrega con otro material. Al escribir el check de algo por línea de
+  RQ, incluir siempre una línea comprada y entregada con un material distinto
+  del pedido.
