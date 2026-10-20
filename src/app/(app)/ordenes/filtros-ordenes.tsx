@@ -19,12 +19,17 @@ export function FiltrosOrdenes() {
   // Si la URL cambia por otro lado (un enlace, el menú), la caja la sigue,
   // como en `BuscadorSimple`; lo que esta misma caja pidió no la toca.
   const [pedido, setPedido] = useState<string | null>(null)
-  const [vista, setVista] = useState(actual)
-  if (actual !== vista) {
-    setVista(actual)
+  // Se vigila la URL entera: con solo el término, un «Limpiar» que volvía a la
+  // misma URL dejaba un `pedido` viejo y la caja vacía sobre una lista filtrada.
+  const consulta = params.toString()
+  const [vista, setVista] = useState(consulta)
+  if (consulta !== vista) {
+    const antes = new URLSearchParams(vista).get('q') ?? ''
+    setVista(consulta)
     // El eco de lo pedido se consume: si después «atrás» trae ese mismo valor,
-    // ya no es eco y la caja lo sigue.
-    if (actual !== pedido) setBusqueda(actual)
+    // ya no es eco y la caja lo sigue. Lo escrito sin pedir todavía se queda
+    // si el término de la URL no cambió.
+    if (actual !== pedido && (actual !== antes || pedido !== null)) setBusqueda(actual)
     setPedido(null)
   }
 
@@ -32,10 +37,16 @@ export function FiltrosOrdenes() {
   // se lleva lo escrito: si no, la búsqueda salía después con la URL de antes
   // del filtro y lo deshacía.
   const espera = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // La consulta que va en viaje: lo que se pide después se arma sobre ella, o
+  // la búsqueda que salía con un filtro en viaje lo deshacía.
+  const enViaje = useRef<string | null>(null)
+  useEffect(() => {
+    enViaje.current = null
+  }, [consulta])
 
   function navegar(cambios: Record<string, string | null>, reemplazar = false) {
     clearTimeout(espera.current)
-    const query = new URLSearchParams(window.location.search)
+    const query = new URLSearchParams(enViaje.current ?? window.location.search)
     if (!('q' in cambios) && busqueda !== actual) {
       if (busqueda) query.set('q', busqueda)
       else query.delete('q')
@@ -47,6 +58,7 @@ export function FiltrosOrdenes() {
     }
     // Cualquier cambio de filtro devuelve a la primera página.
     query.delete('pagina')
+    enViaje.current = query.toString()
     // Lo que se escribe reemplaza la entrada del historial: con `push`,
     // «atrás» recorría la búsqueda letra por letra.
     iniciarTransicion(() => (reemplazar ? router.replace : router.push)(`/ordenes?${query}`))
@@ -94,7 +106,7 @@ export function FiltrosOrdenes() {
         )}
         <Entrada
           type="search"
-          className="pl-9"
+          className="pl-9 [&::-webkit-search-cancel-button]:appearance-none"
           placeholder="Número, cliente, placa, código o trabajo"
           aria-label="Buscar órdenes"
           value={busqueda}
@@ -154,6 +166,7 @@ export function FiltrosOrdenes() {
             clearTimeout(espera.current)
             setBusqueda('')
             setPedido('')
+            enViaje.current = ''
             iniciarTransicion(() => router.push('/ordenes'))
           }}
           className="inline-flex h-11 items-center gap-1.5 rounded-[var(--radius-base)] px-3 text-sm text-texto-suave hover:bg-superficie-2 hover:text-texto sm:h-9"

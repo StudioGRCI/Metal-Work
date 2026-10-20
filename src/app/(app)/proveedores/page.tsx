@@ -22,6 +22,11 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
   // Solo signos («%») no es una búsqueda, como en Clientes.
   const busqueda = typeof params.q === 'string' && palabrasDeBusqueda(params.q).length > 0 ? params.q : undefined
   const incluirInactivos = params.estado === 'inactivos'
+  // El otro listado, con el mismo término.
+  const verOtros = new URLSearchParams({
+    ...(typeof params.q === 'string' && params.q ? { q: params.q } : {}),
+    ...(incluirInactivos ? {} : { estado: 'inactivos' }),
+  }).toString()
   const { proveedores, total, pagina, paginas } = await listarProveedores({
     busqueda,
     pagina: Number(params.pagina) || 1,
@@ -42,7 +47,9 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
           <div className="flex flex-wrap items-center gap-3">
             {edita && <NuevoProveedor />}
             <Link
-              href={incluirInactivos ? '/proveedores' : '/proveedores?estado=inactivos'}
+              href={`/proveedores${verOtros ? `?${verOtros}` : ''}`}
+              // Se lleva lo que se está escribiendo, como una pastilla.
+              data-filtro=""
               className="text-sm text-acento hover:underline"
             >
               {incluirInactivos ? 'Ver solo activos' : 'Ver también los dados de baja'}

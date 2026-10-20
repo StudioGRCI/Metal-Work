@@ -28,6 +28,11 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
     incluirInactivos: params.estado === 'inactivas',
   })
   const incluirInactivos = params.estado === 'inactivas'
+  // El otro listado, con el mismo término.
+  const verOtros = new URLSearchParams({
+    ...(typeof params.q === 'string' && params.q ? { q: params.q } : {}),
+    ...(incluirInactivos ? {} : { estado: 'inactivas' }),
+  }).toString()
 
   const crea = puede(perfil, 'clientes.crear')
 
@@ -66,7 +71,12 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
               </EnlaceBoton>
             )}
             {puede(perfil, 'clientes.editar') && (
-              <Link href={incluirInactivos ? '/clientes' : '/clientes?estado=inactivas'} className="text-sm text-acento hover:underline">
+              <Link
+                href={`/clientes${verOtros ? `?${verOtros}` : ''}`}
+                // Se lleva lo que se está escribiendo, como una pastilla.
+                data-filtro=""
+                className="text-sm text-acento hover:underline"
+              >
                 {incluirInactivos ? 'Ver activas' : 'Ver también desactivados'}
               </Link>
             )}

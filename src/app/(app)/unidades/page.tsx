@@ -24,6 +24,11 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
 
   const busqueda = typeof params.q === 'string' && palabrasDeBusqueda(params.q).length > 0 ? params.q : undefined
   const incluirInactivas = params.estado === 'inactivas'
+  // El otro listado, con el mismo término.
+  const verOtras = new URLSearchParams({
+    ...(typeof params.q === 'string' && params.q ? { q: params.q } : {}),
+    ...(incluirInactivas ? {} : { estado: 'inactivas' }),
+  }).toString()
   const unidades = await listarUnidades({ busqueda, incluirInactivas })
 
   return (
@@ -47,7 +52,12 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
         marcador="Placa, código, marca, modelo o chasis"
       />
       <div className="mt-3 flex justify-end">
-        <Link href={incluirInactivas ? '/unidades' : '/unidades?estado=inactivas'} className="text-sm text-acento hover:underline">
+        <Link
+          href={`/unidades${verOtras ? `?${verOtras}` : ''}`}
+          // Se lleva lo que se está escribiendo, como una pastilla.
+          data-filtro=""
+          className="text-sm text-acento hover:underline"
+        >
           {incluirInactivas ? 'Ver solo activas' : 'Ver también desactivadas'}
         </Link>
       </div>

@@ -121,6 +121,15 @@ for (const [codigo, descripcion] of [[`BUS-${sello}-1`, MATERIAL], [`BUS-${sello
                                                              recibido_por_nombre, codigo_unidad, codigo_interno, cantidad_de_stock)
                   values (gen_random_uuid(), 'SALIDA', $1, 1, 'SALIDA_GENERAL', 'Banco de buscadores', $2, 'Área de banco', $3, $3, 1)`, [id, logistico, CODIGO])
 }
+const GEMELOS = `TUBO GEMELO INGRESO ${sello}`
+for (const n of [3, 4]) {
+  await consulta(
+    `insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
+     values ($1, $2, (select id from public.categorias_material where activo and almacen = 'CONSUMIBLES' and codigo <> 'ALM_POR_CLASIFICAR' order by codigo limit 1),
+             (select id from public.unidades_medida where codigo = 'KG'))`,
+    [`BUS-${sello}-${n}`, GEMELOS],
+  )
+}
 const clienteId = (await uno(`insert into public.clientes (tipo_documento, numero_documento, razon_social) values ('RUC', $1, $2) returning id`, [await rucLibre('clientes'), CLIENTE])).id
 await consulta(`insert into public.clientes (tipo_documento, numero_documento, razon_social) values ('RUC', $1, $2)`, [await rucLibre('clientes'), GEMELO])
 await consulta(`insert into public.proveedores (tipo_documento, numero_documento, razon_social, rubro) values ('RUC', $1, $2, 'Tornería y maestranza')`, [await rucLibre('proveedores'), PROVEEDOR])
@@ -333,6 +342,18 @@ for (const ancho of [390, 1280]) {
     await pagina.locator('#ing-material').pressSequentially(pegado, { delay: 10 })
     const tomado = await hasta(() => pagina.locator('form:has(#ing-material)').innerText(), (t) => t.includes('Del catálogo:'))
     comprobar(tomado.includes(`Del catálogo: ${MATERIAL}`), `Ingreso a Almacén: «${pegado}» escrito sin tocar la lista se toma del catálogo`)
+    // Con dos iguales en el catálogo no se confirma hasta tocar uno: si no,
+    // daba de alta un tercero «por clasificar» con el saldo.
+    await pagina.locator('#ing-material').fill('')
+    await pagina.locator('#ing-material').pressSequentially(GEMELOS.toLowerCase(), { delay: 10 })
+    const confirmar = pagina.getByRole('button', { name: 'Confirmar ingreso' })
+    const pide = await hasta(() => pagina.locator('form:has(#ing-material)').innerText(), (t) => t.includes('Hay más de uno'))
+    const cerrado = await confirmar.isDisabled()
+    const unidadAntes = await pagina.locator('#ing-unidad').count()
+    await pagina.getByRole('list', { name: 'Del catálogo' }).getByRole('button').first().click()
+    const elegido = await hasta(() => pagina.locator('form:has(#ing-material)').innerText(), (t) => t.includes('Del catálogo:'))
+    comprobar(pide.includes('Hay más de uno') && cerrado && unidadAntes === 0 && elegido.includes(`Del catálogo: ${GEMELOS}`) && !(await confirmar.isDisabled()),
+      `Ingreso a Almacén: con dos «${GEMELOS}» en el catálogo pide tocar uno (confirmar ${cerrado ? 'cerrado' : 'ABIERTO'}, ${unidadAntes} campo de unidad) y al tocarlo deja confirmar`)
     await pagina.keyboard.press('Escape')
   }
 
@@ -449,6 +470,51 @@ for (const ancho of [390, 1280]) {
     await pagina.unroute(/\/personal(\?|$)/)
     comprobar(lenta.searchParams.get('estado') === 'bajas' && lenta.searchParams.get('q') === 'baja' && caja === 'baja' && girando === 0,
       `Personal: con la búsqueda en viaje y el servidor lento, la pastilla se queda con lo escrito (${lenta.search}, caja «${caja}», ${girando} girando)`)
+
+    // Al revés: la pastilla en viaje y después se escribe. La búsqueda sale
+    // sobre la pastilla y no la deshace.
+    await pagina.route(/\/personal(\?|$)/, async (ruta) => {
+      if (ruta.request().headers()['rsc']) await new Promise((r) => setTimeout(r, 2000))
+      await ruta.continue()
+    })
+    await pagina.goto(`${BASE}/personal`, { waitUntil: 'networkidle' })
+    await pagina.getByRole('link', { name: 'Dados de baja' }).click()
+    await pagina.getByRole('searchbox', { name: 'Buscar personal' }).pressSequentially('baja', { delay: 10 })
+    await pagina.waitForTimeout(7000)
+    const despues = new URL(pagina.url())
+    comprobar(despues.searchParams.get('estado') === 'bajas' && despues.searchParams.get('q') === 'baja',
+      `Personal: la pastilla en viaje y después lo escrito, se quedan las dos (${despues.search})`)
+    // Y «Limpiar» con la pastilla en viaje quita el término y deja la pastilla.
+    await pagina.goto(`${BASE}/personal?q=baja`, { waitUntil: 'networkidle' })
+    await pagina.getByRole('link', { name: 'Dados de baja' }).click()
+    await pagina.getByRole('button', { name: 'Limpiar' }).click()
+    await pagina.waitForTimeout(7000)
+    const limpia = new URL(pagina.url())
+    const vacia = await pagina.getByRole('searchbox', { name: 'Buscar personal' }).inputValue()
+    await pagina.unroute(/\/personal(\?|$)/)
+    comprobar(limpia.searchParams.get('estado') === 'bajas' && !limpia.searchParams.has('q') && vacia === '',
+      `Personal: «Limpiar» con la pastilla en viaje deja la pastilla (${limpia.search}, caja «${vacia}»)`)
+  }
+
+  // «Ver también…» de Clientes, Unidades y Proveedores se lleva lo que se está
+  // escribiendo y el término ya puesto, como una pastilla.
+  for (const [puesto, ruta, caja, enlace, estado] of [
+    ['ventas', '/clientes', 'Buscar clientes', 'Ver también desactivados', 'inactivas'],
+    ['ventas', '/unidades', 'Buscar unidades', 'Ver también desactivadas', 'inactivas'],
+    ['contabilidad', '/proveedores', 'Buscar proveedores', 'Ver también los dados de baja', 'inactivos'],
+  ]) {
+    const { pagina } = await sesion(puesto)
+    await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
+    await pagina.getByRole('searchbox', { name: caja }).pressSequentially('sac', { delay: 10 })
+    await pagina.getByRole('link', { name: enlace }).click()
+    await pagina.waitForTimeout(2500)
+    const escrita = new URL(pagina.url())
+    await pagina.goto(`${BASE}${ruta}?q=sac`, { waitUntil: 'networkidle' })
+    await pagina.getByRole('link', { name: enlace }).click()
+    await pagina.waitForTimeout(2500)
+    const puesta = new URL(pagina.url())
+    comprobar([escrita, puesta].every((u) => u.searchParams.get('estado') === estado && u.searchParams.get('q') === 'sac'),
+      `${ruta} (${puesto}): «${enlace}» conserva lo escrito (${escrita.search}) y el término puesto (${puesta.search})`)
   }
 
   // Órdenes: «Limpiar» quita la búsqueda y también la prioridad.
@@ -462,10 +528,39 @@ for (const ancho of [390, 1280]) {
     // Y una prioridad elegida mientras se escribe se queda, con lo escrito.
     await pagina.getByRole('searchbox', { name: 'Buscar órdenes' }).pressSequentially('zzz', { delay: 10 })
     await pagina.getByLabel('Filtrar por prioridad').selectOption('ALTA')
-    await pagina.waitForTimeout(2500)
+    // Se espera a la URL: con el banco cargado, una respuesta tardó 3,6 s y un
+    // plazo fijo de 2,5 s la dio por fallida.
+    await pagina.waitForURL((u) => u.searchParams.get('prioridad') === 'ALTA' && u.searchParams.get('q') === 'zzz', { timeout: 15000 }).catch(() => {})
     const otra = new URL(pagina.url())
     comprobar(otra.searchParams.get('prioridad') === 'ALTA' && otra.searchParams.get('q') === 'zzz',
       `Órdenes (gerencia): la prioridad elegida mientras se escribe se queda con lo escrito («${otra.search}»)`)
+
+    // Con el servidor lento: la prioridad en viaje y después lo escrito.
+    await pagina.route(/\/ordenes(\?|$)/, async (ruta) => {
+      if (ruta.request().headers()['rsc']) await new Promise((r) => setTimeout(r, 2000))
+      await ruta.continue()
+    })
+    await pagina.goto(`${BASE}/ordenes`, { waitUntil: 'networkidle' })
+    await pagina.getByLabel('Filtrar por prioridad').selectOption('ALTA')
+    await pagina.getByRole('searchbox', { name: 'Buscar órdenes' }).pressSequentially('tolva', { delay: 10 })
+    await pagina.waitForTimeout(7000)
+    const lenta = new URL(pagina.url())
+    // Y «Limpiar», lo escrito y la prioridad antes de que responda; después se
+    // borra la caja: la lista no se queda filtrada con la caja vacía.
+    await pagina.goto(`${BASE}/ordenes?q=zzz&prioridad=ALTA`, { waitUntil: 'networkidle' })
+    await pagina.getByRole('button', { name: 'Limpiar' }).click()
+    await pagina.getByRole('searchbox', { name: 'Buscar órdenes' }).pressSequentially('zzz', { delay: 10 })
+    await pagina.getByLabel('Filtrar por prioridad').selectOption('ALTA')
+    await pagina.waitForTimeout(7000)
+    await pagina.getByRole('searchbox', { name: 'Buscar órdenes' }).fill('')
+    await pagina.waitForTimeout(7000)
+    const borrada = new URL(pagina.url())
+    const gira = await pagina.locator('main .animate-spin').count()
+    await pagina.unroute(/\/ordenes(\?|$)/)
+    comprobar(lenta.searchParams.get('prioridad') === 'ALTA' && lenta.searchParams.get('q') === 'tolva',
+      `Órdenes (gerencia): con el servidor lento, la prioridad en viaje y después lo escrito se quedan («${lenta.search}»)`)
+    comprobar(!borrada.searchParams.has('q') && borrada.searchParams.get('prioridad') === 'ALTA' && gira === 0,
+      `Órdenes (gerencia): tras «Limpiar» y volver a escribir, borrar la caja quita el término («${borrada.search}», ${gira} girando)`)
   }
 
   // Kardex: lo escrito en «Unidad o código» sin pulsar «Ver» no sobrevive a «Limpiar».

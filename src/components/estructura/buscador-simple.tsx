@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { Loader2, Search, X } from 'lucide-react'
 
 import { Entrada } from '@/components/ui/campos'
@@ -48,27 +48,41 @@ export function BuscadorSimple({
     setPedido(null)
   }
 
+  // La consulta que va en viaje y todavía no llegó a la URL. Lo que se pide
+  // después se arma sobre ella: armado sobre la URL de antes, la búsqueda que
+  // salía con una pastilla en viaje la deshacía.
+  const enViaje = useRef<string | null>(null)
+  const base = () => new URLSearchParams(enViaje.current ?? window.location.search)
+  function ir(query: URLSearchParams, reemplazar: boolean) {
+    query.delete('pagina')
+    const resto = query.toString()
+    enViaje.current = resto
+    const destino = resto ? `${ruta}?${resto}` : ruta
+    iniciarTransicion(() => (reemplazar ? router.replace : router.push)(destino))
+  }
+  // Llegó una URL: lo que iba en viaje ya está en ella, o lo reemplazó otra.
   useEffect(() => {
-    // Nada que llevar: la URL ya dice lo escrito.
-    if (busqueda === actual) return
-    // Lo escrito espera su pausa, o ya va en viaje (`pedido`).
-    const enEspera = busqueda !== (pedido ?? actual)
+    enViaje.current = null
+  }, [consulta])
+
+  useEffect(() => {
+    // Lo escrito espera su pausa; si ya va en viaje (`pedido`) o la URL ya lo
+    // dice, no hay nada que esperar.
+    const enEspera = busqueda !== actual && busqueda !== (pedido ?? actual)
 
     const disparar = () => {
-      // La URL de ahora, no la de cuando se escribió.
-      const query = new URLSearchParams(window.location.search)
+      const query = base()
       if (busqueda) query.set(clave, busqueda)
       else query.delete(clave)
-      query.delete('pagina')
       // `replace`, no `push`: cada letra escrita era una entrada en el
       // historial y «atrás» recorría la búsqueda letra por letra.
       setPedido(busqueda)
-      iniciarTransicion(() => router.replace(`${ruta}?${query}`))
+      ir(query, true)
     }
     const temporizador = enEspera ? setTimeout(disparar, 350) : undefined
-    // Una pastilla tocada antes de que lo escrito llegue a la URL se lleva lo
-    // escrito, como los filtros de Órdenes. Si no, la búsqueda salía después
-    // con la URL de antes de la pastilla —o se perdía en viaje— y la deshacía.
+    // Una pastilla se lleva lo escrito, como los filtros de Órdenes, y deja
+    // anotado su destino para lo que se escriba mientras viaja. Si no, la
+    // búsqueda salía con la URL de antes de la pastilla y la deshacía.
     const alTocar = (e: MouseEvent) => {
       const enlace = e.target instanceof Element ? e.target.closest<HTMLAnchorElement>('a[data-filtro]') : null
       if (!enlace || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
@@ -79,7 +93,7 @@ export function BuscadorSimple({
       if (busqueda) destino.searchParams.set(clave, busqueda)
       else destino.searchParams.delete(clave)
       setPedido(busqueda)
-      iniciarTransicion(() => router.push(`${destino.pathname}${destino.search}`))
+      ir(destino.searchParams, false)
     }
     document.addEventListener('click', alTocar, true)
 
@@ -130,12 +144,11 @@ export function BuscadorSimple({
           onClick={() => {
             setBusqueda('')
             setPedido('')
-            // Quita solo el término: los filtros puestos se quedan.
-            const query = new URLSearchParams(params.toString())
+            // Quita solo el término: los filtros puestos —también uno en
+            // viaje— se quedan.
+            const query = base()
             query.delete(clave)
-            query.delete('pagina')
-            const resto = query.toString()
-            iniciarTransicion(() => router.replace(resto ? `${ruta}?${resto}` : ruta))
+            ir(query, true)
           }}
           className="inline-flex h-11 items-center gap-1.5 rounded-[var(--radius-base)] px-3 text-sm text-texto-suave hover:bg-superficie-2 hover:text-texto sm:h-9"
         >
