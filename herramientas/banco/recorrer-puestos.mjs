@@ -157,7 +157,9 @@ for (const puesto of puestos) {
     delMenu.push(r)
     if (anotar(r, ruta)) await p.screenshot({ path: join(CAPTURAS, `${puesto}${ruta.replaceAll('/', '_')}.png`), fullPage: true })
     if (r.resultado !== 'ABRE') continue
-    const enlaces = await p.$$eval('main a[href^="/"]', (as) => as.map((a) => a.getAttribute('href')))
+    // Sin los que abren un archivo en otra pestaña (la captura del saldo, una guía): no son pantallas,
+    // y un PDF el Chromium sin pantalla lo descarga en vez de mostrarlo.
+    const enlaces = await p.$$eval('main a[href^="/"]:not([target="_blank"]):not([download])', (as) => as.map((a) => a.getAttribute('href')))
     for (const h of enlaces) {
       const limpio = h?.split('?')[0].split('#')[0]
       if (!limpio || !/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\/|$)/.test(limpio)) continue

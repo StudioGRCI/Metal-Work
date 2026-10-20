@@ -2,9 +2,10 @@
  * Recorre con clic real la caja diaria de Tesorería (migración 20261017200000),
  * con la cuenta de cada puesto (nunca ADMIN):
  *
- *   1. Tesorería tiene «Caja diaria» primero en su menú. Da de alta tres
- *      cuentas que empiezan ayer: un banco en soles, uno en dólares y la caja
- *      chica en efectivo.
+ *   1. Tesorería tiene «Caja diaria» en su menú, después de Adquisiciones
+ *      (2026-10-20). Da de alta tres cuentas que empiezan ayer: un banco en
+ *      soles y uno en dólares, cada uno con la captura de su saldo, y la caja
+ *      chica en efectivo. Lo propio de la captura, en probar-captura-del-saldo.mjs.
  *   2. Ayer: un egreso escrito «1,250.50» con su código interno, un ingreso,
  *      la reposición de la caja chica y una compra de dólares. Los saldos de la
  *      tabla salen de esos movimientos; el consolidado pasa los dólares a soles.
@@ -24,7 +25,7 @@
  * un nombre distinto en cada corrida.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  */
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import pg from 'pg'
@@ -44,6 +45,9 @@ if (!CLAVE) {
   process.exit(1)
 }
 mkdirSync(CAPTURAS, { recursive: true })
+// La captura del aplicativo con el saldo, que todo banco nuevo lleva (migración 20261020170000).
+const CAPTURA_SALDO = join(CAPTURAS, 'saldo-del-banco.png')
+writeFileSync(CAPTURA_SALDO, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'))
 
 const base = new pg.Client({
   host: process.env.PGHOST ?? '/tmp',
@@ -133,6 +137,7 @@ async function darDeAlta(pagina, { nombre, tipo, banco, moneda, saldo }) {
   await v.locator('select[name="moneda"]').selectOption(moneda)
   await v.locator('input[name="saldo_inicial"]').fill(saldo)
   await v.locator('input[name="fecha_inicio"]').fill(ayer)
+  if (tipo === 'BANCO') await v.locator('input[name="captura"]').setInputFiles(CAPTURA_SALDO)
   await v.getByRole('button', { name: 'Agregar la cuenta' }).click()
   const error = await esperarVentana(pagina)
   if (!error) await pagina.locator('details', { hasText: nombre }).waitFor({ timeout: 15000 }).catch(() => {})
@@ -186,7 +191,7 @@ const movimientos = (caja, fecha) =>
   const { pagina, contexto, errores } = await entrar(CUENTAS.tesoreria)
   const rutas = await pagina.locator('nav a[href^="/"]').evaluateAll((as) => as.map((a) => a.getAttribute('href')))
   const caja = rutas.indexOf('/tesoreria/caja-diaria')
-  comprobar(caja >= 0 && caja < rutas.indexOf('/adquisiciones'), `«Caja diaria» va primero en el menú de Tesorería (${rutas.slice(0, 4).join(', ')})`)
+  comprobar(caja >= 0 && caja === rutas.indexOf('/adquisiciones') + 1, `«Caja diaria» va justo después de Adquisiciones en el menú de Tesorería (${rutas.slice(0, 4).join(', ')})`)
 
   await pagina.goto(RUTA, { waitUntil: 'networkidle' })
   comprobar(limpio(await pagina.locator('h1').textContent()) === 'Caja diaria', 'la pantalla abre con su título')
@@ -407,7 +412,7 @@ const movimientos = (caja, fecha) =>
   comprobar(ancho <= CELULAR.width, `en el teléfono no se desborda (${ancho}px)`)
   comprobar((await pagina.locator(`[data-registrar-movimiento="caja"]`).count()) === 1, 'y tiene a mano «Registrar ingreso o egreso»')
   const pestanas = await pagina.locator('nav[aria-label="Secciones"] a').evaluateAll((as) => as.map((a) => a.getAttribute('href')))
-  comprobar(pestanas[0] === '/tesoreria/caja-diaria', `la caja es la primera pestaña del teléfono (${pestanas.join(', ')})`)
+  comprobar(pestanas[1] === '/tesoreria/caja-diaria', `la caja es la segunda pestaña del teléfono, después de Adquisiciones (${pestanas.join(', ')})`)
   // Ayer tiene egresos, ingresos y una transferencia: cada monto se ve, con su signo, y nada queda fuera de la tabla.
   await pagina.goto(delDia(ayer), { waitUntil: 'networkidle' })
   const anchoAyer = await pagina.evaluate(() => document.documentElement.scrollWidth)
