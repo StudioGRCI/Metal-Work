@@ -19,12 +19,14 @@
  *      comprar; el paso de ahora es la compra y «Para recoger» va a medias, y
  *      las cifras de arriba cuentan el insumo. En el teléfono la tarjeta cabe.
  *      La cifra verde deja solo los RQ con algo para recoger.
- *   5. RR. HH. (costeo de horas y observaciones), Tesorería (caja diaria, si
- *      hay una cuenta abierta), Logística (OC directa y orden de servicio) y
- *      Administración (subcontrato) encuentran la unidad del banco con el
- *      mismo buscador.
+ *   5. RR. HH. (costeo de horas y observaciones), Tesorería (caja diaria),
+ *      Logística (OC directa, orden de servicio y OC desde los materiales de
+ *      una OT) y Administración (subcontrato) encuentran la unidad del banco
+ *      con el mismo buscador.
  *
- * Crea su propia unidad y su material, con un sufijo distinto en cada corrida.
+ * Crea su propia unidad y su material, con un sufijo distinto en cada corrida, y
+ * lo que el banco no trae: una solicitud de materiales por comprar, un
+ * subcontratista y una cuenta de caja.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  */
 import { mkdirSync } from 'node:fs'
@@ -137,6 +139,41 @@ await consulta(
   [`POR-${sufijo}`, GEMELO, almacenero.id],
 )
 console.log(`  unidad ${PLACA} con el código ${CODIGO} (y ${GEMELO} en la portería); material «${MATERIAL}» con 20 en stock`)
+// La OC desde los materiales de una OT se abre solo con algo por comprar, y el
+// banco no trae ninguna solicitud de materiales: una de Maestranza, aprobada
+// por Diseño y que Almacén mandó a compra, como la arma el check 306. La OT
+// tiene una sola solicitud por área: la siguiente corrida le suma una línea.
+const { id: otMaterialId, orden_id: ordenConCompra } = await uno(
+  `insert into public.ot_materiales (orden_id, material_id, cantidad, area_destino)
+   values ((select id from public.ordenes_trabajo where estado <> 'ANULADA' order by numero limit 1), $1, 6, 'MTZ')
+   returning id, orden_id`,
+  [materialId],
+)
+const { id: solicitudId } = await uno(
+  `insert into public.requerimientos_materiales (orden_id, area_destino, solicitado_por)
+   values ($1, 'MTZ', (select id from public.usuarios where lower(correo) = $2))
+   on conflict (orden_id, area_destino) do update set area_destino = excluded.area_destino
+   returning id`,
+  [ordenConCompra, CUENTAS.maestranza],
+)
+await consulta(
+  `insert into public.requerimiento_material_detalles (requerimiento_id, ot_material_id, cantidad_solicitada) values ($1, $2, 6)`,
+  [solicitudId, otMaterialId],
+)
+await consulta(
+  `update public.requerimiento_material_detalles set aprobacion_diseno = 'APROBADO', decision_almacen = 'COMPRA', cantidad_stock = 0
+    where requerimiento_id = $1`,
+  [solicitudId],
+)
+// El formulario del subcontrato pide antes a alguien del padrón, y el banco no trae a nadie.
+await consulta(
+  `insert into public.subcontratistas (ruc, nombre)
+   select r, 'Subcontratista del banco'
+     from (select '1045' || lpad(n::text, 6, '0') || d::text as r from generate_series(100000, 100200) n, generate_series(0, 9) d) x
+    where public.ruc_es_valido(r) and not exists (select 1 from public.subcontratistas where activo)
+    order by r limit 1
+   on conflict (ruc) do nothing`,
+)
 
 /** Abre un formulario, toca el campo de código, escribe y mira qué queda en la lista. */
 // Las opciones que son códigos: la última, «Usar … como código nuevo», no cuenta.
@@ -375,21 +412,18 @@ for (const [nombre, viewport] of [['monitor', { width: 1280, height: 900 }], ['t
   await pagina.keyboard.press('Escape')
   await pagina.keyboard.press('Escape')
 
-  // La OC desde los materiales de una OT: el botón se habilita solo si la OT
-  // tiene algo por comprar, así que se busca una entre las que tienen líneas.
-  const ordenes = await consulta('select distinct orden_id from v_atencion_materiales where orden_id is not null limit 15')
-  let probada = false
-  for (const { orden_id: ordenId } of ordenes) {
-    await pagina.goto(`${BASE}/ordenes/${ordenId}?vista=materiales`, { waitUntil: 'networkidle' })
-    const nueva = pagina.getByRole('button', { name: 'Nueva orden de compra' })
-    if (!(await nueva.isEnabled().catch(() => false))) continue
+  // La OC desde los materiales de la OT que el armazón dejó con algo por comprar.
+  await pagina.goto(`${BASE}/ordenes/${ordenConCompra}?vista=materiales`, { waitUntil: 'networkidle' })
+  const nueva = pagina.getByRole('button', { name: 'Nueva orden de compra' })
+  if (await nueva.isEnabled().catch(() => false)) {
     await nueva.click()
     const ot = await buscaEn(pagina.locator('[role="dialog"]'), '#oc-codigo', `volvo ${sufijo.toLowerCase()}`)
     comprobar(ot.length === 1 && ot[0].includes(CODIGO), `y en la OC desde los materiales de una OT (${ot.join(' | ')})`)
-    probada = true
-    break
+    await pagina.keyboard.press('Escape')
+    await pagina.keyboard.press('Escape')
+  } else {
+    comprobar(false, 'la OT con materiales por comprar no le ofrece a Logística «Nueva orden de compra»')
   }
-  if (!probada) console.log('    (ninguna OT del banco tiene materiales por comprar: no se probó el buscador de la OC desde la OT)')
   comprobar(errores.length === 0, `Logística, sin errores de consola ${errores.join(' | ')}`)
   await contexto.close()
 }
@@ -431,6 +465,13 @@ for (const [nombre, viewport] of [['monitor', { width: 1280, height: 900 }], ['t
   await contexto.close()
 }
 {
+  // El banco no trae cuentas en la caja: Tesorería da de alta una de efectivo si no hay ninguna,
+  // con la misma función que su formulario.
+  await comoCuenta(
+    CUENTAS.tesoreria,
+    `select public.guardar_caja(gen_random_uuid(), 'Efectivo del banco', 'EFECTIVO', null, 'PEN', 0, (now() at time zone 'America/Lima')::date, true)
+      where not exists (select 1 from public.cajas where activa)`,
+  )
   const { pagina, contexto, errores } = await entrar(CUENTAS.tesoreria)
   await pagina.goto(`${BASE}/tesoreria/caja-diaria`, { waitUntil: 'networkidle' })
   const boton = pagina.locator('[data-registrar-movimiento]').first()
@@ -443,7 +484,7 @@ for (const [nombre, viewport] of [['monitor', { width: 1280, height: 900 }], ['t
     const quedan = await v.locator(`[role="listbox"] ${CODIGOS}`).allInnerTexts()
     comprobar(quedan.length === 1 && quedan[0].includes(CODIGO), `Tesorería encuentra ${CODIGO} en la caja diaria`)
   } else {
-    console.log('    (la caja no tiene una cuenta abierta hoy: no se probó el buscador de la caja)')
+    comprobar(false, 'la caja tiene una cuenta activa y no ofrece «Registrar ingreso o egreso»')
   }
   comprobar(errores.length === 0, `Tesorería, sin errores de consola ${errores.join(' | ')}`)
   await contexto.close()
