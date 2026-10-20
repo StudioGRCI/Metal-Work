@@ -7,7 +7,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { plantillaEntera } from '@/lib/datos/carrocerias'
 import { cantidad } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
-import { esGuid } from '@/lib/guid'
+import { esUuid } from '@/lib/utils'
 
 const TIPO_UNIDAD: Record<string, string> = {
   SEMIRREMOLQUE: 'Semirremolque',
@@ -16,7 +16,7 @@ const TIPO_UNIDAD: Record<string, string> = {
 
 export async function generateMetadata({ params }: PageProps<'/carrocerias/[id]'>): Promise<Metadata> {
   const { id } = await params
-  if (!esGuid(id)) notFound()
+  if (!esUuid(id)) notFound()
   const plantilla = await plantillaEntera(id)
   return { title: plantilla ? plantilla.nombre : 'Ficha no encontrada' }
 }
@@ -28,7 +28,7 @@ export async function generateMetadata({ params }: PageProps<'/carrocerias/[id]'
 export default async function PaginaPlantilla({ params }: PageProps<'/carrocerias/[id]'>) {
   await exigirPermiso(['diseno.planos', 'configuracion.ver'])
   const { id } = await params
-  if (!esGuid(id)) notFound()
+  if (!esUuid(id)) notFound()
 
   const plantilla = await plantillaEntera(id)
   if (!plantilla) notFound()

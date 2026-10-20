@@ -32,10 +32,16 @@ begin
   select id into v_id from public.ordenes_trabajo limit 1;
   perform set_config('prueba.ot', v_id::text, true);
 
-  -- Se recorre el camino completo hasta terminada.
+  -- Se recorre el camino completo hasta terminada. Desde la migración
+  -- 20260928130000 la OT entra al taller con las etapas de Diseño y las fechas
+  -- de Administración; el armazón pone una etapa ya programada.
+  insert into public.ot_etapas (orden_id, nombre, orden_secuencia, area_id, peso_pct,
+                                fecha_inicio_programada, fecha_fin_programada)
+  values (v_id, 'Fabricación de la tolva', 1, (select id from public.areas where codigo = 'PRD'), 100,
+          current_date - 10, current_date);
+  update public.ordenes_trabajo set estado = 'EN_PROCESO' where id = v_id;
   update public.ot_etapas set avance_porcentaje = 100, estado = 'TERMINADA'
    where orden_id = v_id and estado <> 'OMITIDA';
-  update public.ordenes_trabajo set estado = 'EN_PROCESO' where id = v_id;
   update public.ordenes_trabajo set estado = 'TERMINADA'  where id = v_id;
 
 end $$;

@@ -3,31 +3,57 @@
 -- la unidad, Logística le pone precio, Diseño la merma, RR. HH. la planilla,
 -- Administración los gastos del mes y los trámites. Costos ve la suma, y el
 -- resumen cuadra con el detalle. Todo se deshace con el rollback final.
+\set ON_ERROR_STOP on
 begin;
 -- Armazón: dos OT abiertas con unidad, un material sin solicitudes y las fotos.
-select set_config('prueba.orden', (select o.id::text from public.ordenes_trabajo o
-  where o.estado::text not in ('ANULADA','ENTREGADA','FACTURADA') and o.unidad_id is not null
-    and (select count(*) from public.ordenes_trabajo x where x.unidad_id = o.unidad_id
-          and x.estado::text not in ('ANULADA','ENTREGADA','FACTURADA')) = 1
-  order by o.numero limit 1), true);
-select set_config('prueba.otra', (select o.id::text from public.ordenes_trabajo o
-  where o.estado::text not in ('ANULADA','ENTREGADA','FACTURADA') and o.id <> current_setting('prueba.orden')::uuid
-  order by o.numero limit 1), true);
+-- El check se arma su propio taller y sus cuentas: antes tomaba las primeras
+-- OT, el primer material y la primera cuenta de cada rol de la base, y en una
+-- base vacía se quedaba con un uuid en blanco. Con su taller propio, el mes de
+-- prueba tiene exactamente las dos OT con las que se reparte el agua.
+insert into public.empresa (ruc, razon_social) values ('20100000315', 'PRUEBAS COSTEO S.A.C.');
+insert into public.sedes (codigo, nombre) values ('QA315', 'Taller costeo');
+select test.crear_usuario('QA', 'Admin',     'qa-315-admin@demo.pe',     'ADMIN',             (select id from public.sedes where codigo = 'QA315')) as admin_id \gset
+select test.crear_usuario('QA', 'Almacen',   'qa-315-almacen@demo.pe',   'ALMACENERO',        (select id from public.sedes where codigo = 'QA315')) as almacen_id \gset
+select test.crear_usuario('QA', 'Logistica', 'qa-315-logistica@demo.pe', 'COMPRADOR',         (select id from public.sedes where codigo = 'QA315')) as logistica_id \gset
+select test.crear_usuario('QA', 'Diseno',    'qa-315-diseno@demo.pe',    'DISENO',            (select id from public.sedes where codigo = 'QA315')) as diseno_id \gset
+select test.crear_usuario('QA', 'Rrhh',      'qa-315-rrhh@demo.pe',      'RECURSOS_HUMANOS',  (select id from public.sedes where codigo = 'QA315')) as rrhh_id \gset
+select test.crear_usuario('QA', 'Oficina',   'qa-315-oficina@demo.pe',   'ADMINISTRACION',    (select id from public.sedes where codigo = 'QA315')) as oficina_id \gset
+select test.crear_usuario('QA', 'Costos',    'qa-315-costos@demo.pe',    'COSTOS_MATERIALES', (select id from public.sedes where codigo = 'QA315')) as costos_id \gset
+select test.crear_usuario('QA', 'Gerencia',  'qa-315-gerente@demo.pe',   'GERENTE',           (select id from public.sedes where codigo = 'QA315')) as gerente_id \gset
+select test.crear_usuario('QA', 'Prd',       'qa-315-prd@demo.pe',       'SUPERVISOR',        (select id from public.sedes where codigo = 'QA315')) as supervisor_id \gset
+select test.como_usuario(:'admin_id');
+update public.usuarios u set area_id = a.id from public.areas a, (values
+  (:'almacen_id'::uuid, 'ALM'), (:'logistica_id'::uuid, 'LOG'), (:'diseno_id'::uuid, 'DIS'), (:'rrhh_id'::uuid, 'RRH'),
+  (:'oficina_id'::uuid, 'ADM'), (:'supervisor_id'::uuid, 'PRD')) v(id, area)
+ where u.id = v.id and a.codigo = v.area;
+insert into public.clientes (tipo_documento, numero_documento, razon_social) values ('RUC', '20990000315', 'QA Cliente 315');
+insert into public.unidades (cliente_id, placa, tipo_vehiculo, marca, modelo)
+select id, v.placa, 'VOLQUETE', 'VOLVO', 'FMX' from public.clientes, (values ('C3A-315'), ('C3B-315')) v(placa)
+ where numero_documento = '20990000315';
+insert into public.ordenes_trabajo (numero, cliente_id, unidad_id, sede_id, descripcion)
+select v.numero, c.id, (select id from public.unidades where placa = v.placa), (select id from public.sedes where codigo = 'QA315'), 'OT de costeo ' || v.numero
+  from public.clientes c, (values ('9315-2099', 'C3A-315'), ('9316-2099', 'C3B-315')) v(numero, placa)
+ where c.numero_documento = '20990000315';
+update public.ordenes_trabajo set estado = 'APROBADA' where numero in ('9315-2099', '9316-2099');
+insert into public.unidades_medida (codigo, nombre) values ('QA-UND-315', 'Unidad prueba') on conflict (codigo) do nothing;
+insert into public.categorias_material (codigo, nombre) values ('QA-CAT-315', 'Material prueba') on conflict (codigo) do nothing;
+insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
+select 'QA-MAT-315', 'Material del costeo', c.id, u.id from public.categorias_material c, public.unidades_medida u
+ where c.codigo = 'QA-CAT-315' and u.codigo = 'QA-UND-315';
+select set_config('prueba.orden', (select id::text from public.ordenes_trabajo where numero = '9315-2099'), true);
+select set_config('prueba.otra', (select id::text from public.ordenes_trabajo where numero = '9316-2099'), true);
 select set_config('prueba.unidad', (select unidad_id::text from public.ordenes_trabajo where id = current_setting('prueba.orden')::uuid), true);
-select set_config('prueba.material', (select m.id::text from public.materiales m
-  where m.activo and not m.unidad_pendiente
-    and not exists (select 1 from public.ot_materiales om where om.material_id = m.id)
-  order by m.codigo limit 1), true);
+select set_config('prueba.material', (select id::text from public.materiales where codigo = 'QA-MAT-315'), true);
 select set_config('prueba.salida', gen_random_uuid()::text, true);
 select set_config('prueba.periodo', '2030-01-01', true);
-select set_config('u.almacen', (select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'ALMACENERO' and u.activo limit 1), true);
-select set_config('u.logistica', (select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'COMPRADOR' and u.activo limit 1), true);
-select set_config('u.diseno', (select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'DISENO' and u.activo limit 1), true);
-select set_config('u.rrhh', (select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'RECURSOS_HUMANOS' and u.activo limit 1), true);
-select set_config('u.admin', (select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'ADMINISTRACION' and u.activo limit 1), true);
-select set_config('u.costos', (select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'COSTOS_MATERIALES' and u.activo limit 1), true);
-select set_config('u.gerente', (select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'GERENTE' and u.activo limit 1), true);
-select set_config('u.supervisor', (select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'SUPERVISOR' and u.activo limit 1), true);
+select set_config('u.almacen', :'almacen_id', true);
+select set_config('u.logistica', :'logistica_id', true);
+select set_config('u.diseno', :'diseno_id', true);
+select set_config('u.rrhh', :'rrhh_id', true);
+select set_config('u.admin', :'oficina_id', true);
+select set_config('u.costos', :'costos_id', true);
+select set_config('u.gerente', :'gerente_id', true);
+select set_config('u.supervisor', :'supervisor_id', true);
 insert into storage.objects(bucket_id, name, owner_id, metadata) values ('evidencias-almacen',
   current_setting('u.almacen') || '/' || current_setting('prueba.salida') || '.jpg', current_setting('u.almacen'),
   '{"mimetype":"image/jpeg","size":100}'::jsonb);
@@ -160,7 +186,12 @@ do $$ begin
   if (select count(*) from public.gastos_generales_mes) <> 0 then raise exception 'FAIL: Supervisión lee los gastos del mes'; end if;
 end $$;
 reset role;
-select pg_temp.como(current_setting('u.almacen'));
+-- Otra área que registra gastos de la OT no carga una comisión de venta. Antes
+-- lo intentaba Almacén; desde la migración 20261016120000 Almacén ya no lee la
+-- OT y la base lo para antes, en la política. Se prueba con Logística, que
+-- registra gastos y sí lee la OT, para que lo que rechace sea la regla de
+-- Administración y no la falta de lectura.
+select pg_temp.como(current_setting('u.logistica'));
 set local role authenticated;
 do $$
 declare v uuid := gen_random_uuid(); v_area uuid;
@@ -168,9 +199,9 @@ begin
   select area_id into v_area from public.usuarios where id = auth.uid();
   begin
     insert into public.ot_gastos_areas(id, orden_id, area_id, tipo, descripcion, fecha, monto, moneda, comprobante_ruta, comprobante_nombre, estado, registrado_por)
-    values (v, current_setting('prueba.orden')::uuid, v_area, 'COMISION', 'Comisión que no le toca a Almacén', current_date, 10, 'PEN',
+    values (v, current_setting('prueba.orden')::uuid, v_area, 'COMISION', 'Comisión que no le toca a Logística', current_date, 10, 'PEN',
             'ot/' || current_setting('prueba.orden') || '/gastos/' || v || '.pdf', 'x.pdf', 'PENDIENTE', public.usuario_actual());
-    raise exception 'FAIL: Almacén registró una comisión de venta';
+    raise exception 'FAIL: Logística registró una comisión de venta';
   exception when others then if sqlerrm like 'FAIL:%' then raise; end if; if sqlerrm not like 'Los trámites de placas%' then raise; end if; end;
 end $$;
 reset role;

@@ -100,14 +100,15 @@ export async function facturasDeVenta(cotizaciones?: string[]): Promise<FacturaV
     supabase.from('v_facturas_venta').select(COLUMNAS_FACTURA).is('anulada_en', null)
       .eq('cancelada', false).gt('saldo', 0).order('fecha_vencimiento'),
     supabase.from('v_facturas_venta').select(COLUMNAS_FACTURA).is('anulada_en', null)
-      .or('cancelada.eq.true,saldo.lte.0').order('fecha_emision', { ascending: false }).limit(COBRADAS_A_LA_VISTA),
+      .or('cancelada.eq.true,saldo.lte.0').order('ultimo_cobro', { ascending: false, nullsFirst: false })
+      .order('fecha_emision', { ascending: false }).limit(COBRADAS_A_LA_VISTA),
   ])
   const error = pendientes.error ?? cobradas.error
   if (error) throw new Error(`No se pudieron leer las facturas de venta: ${error.message}`)
   return conCobros([...(pendientes.data ?? []), ...(cobradas.data ?? [])])
 }
 
-/** Cuántas facturas ya cobradas se muestran, de la más reciente a la más vieja. */
+/** Cuántas facturas ya cobradas se muestran, de la del último cobro más reciente a la más vieja. */
 export const COBRADAS_A_LA_VISTA = 60
 
 /** De a tandas, para no alargar la URL con cientos de identificadores. */

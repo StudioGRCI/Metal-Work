@@ -226,24 +226,31 @@ export type ReciboParaPagar = ReciboHonorarios & {
 
 /**
  * Los recibos para Tesorería: los vigentes, los que esperan pago y los
- * pagados. Los anulados no: no se pagan ni se pagaron. Del más nuevo al más
- * viejo: con tope y del más viejo al más nuevo, los pagados de hace meses
- * llenaban la lista y los recibos nuevos por pagar quedaban fuera sin aviso.
- * La pantalla los vuelve a ordenar.
+ * pagados. Los anulados no: no se pagan ni se pagaron. Todos, de a 1000 filas
+ * (lo que entrega el servicio por consulta): si el recibo está pagado lo dice
+ * su pago, no una columna, así que no se pueden separar en la base, y con un
+ * tope los por pagar más viejos desaparecían sin aviso. La pantalla los ordena.
  */
 export async function recibosParaTesoreria(): Promise<ReciboParaPagar[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('recibos_honorarios')
-    .select(
-      `${COLUMNAS_RECIBO},` +
-        ' subcontrato:subcontratos!recibos_honorarios_subcontrato_id_fkey(id, numero, codigo_interno, estado),' +
-        ' subcontratista:subcontratistas!recibos_honorarios_subcontratista_id_fkey(nombre, ruc, banco, numero_cuenta, cci)',
-    )
-    .is('anulado_en', null)
-    .order('fecha_emision', { ascending: false })
-    .order('creado_en', { ascending: false })
-    .limit(1000)
+  const data: unknown[] = []
+  let error: { message: string } | null = null
+  for (let desde = 0; ; desde += 1000) {
+    const r = await supabase
+      .from('recibos_honorarios')
+      .select(
+        `${COLUMNAS_RECIBO},` +
+          ' subcontrato:subcontratos!recibos_honorarios_subcontrato_id_fkey(id, numero, codigo_interno, estado),' +
+          ' subcontratista:subcontratistas!recibos_honorarios_subcontratista_id_fkey(nombre, ruc, banco, numero_cuenta, cci)',
+      )
+      .is('anulado_en', null)
+      .order('fecha_emision')
+      .order('id')
+      .range(desde, desde + 999)
+    if (r.error) { error = r.error; break }
+    data.push(...(r.data ?? []))
+    if ((r.data ?? []).length < 1000) break
+  }
   if (error) throw new Error(`No se pudieron leer los recibos por honorarios: ${error.message}`)
   type Fila = FilaRecibo & {
     subcontrato: Uno<NonNullable<ReciboParaPagar['subcontrato']>>

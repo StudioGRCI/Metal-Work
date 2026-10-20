@@ -5,12 +5,14 @@ import { nombresDelEquipoDeDiseno, obtenerEvaluacionDiseno } from '@/lib/datos/e
 import { hoyLima } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 import { FormularioEvaluacion } from '../../formulario'
+import { esUuid } from '@/lib/utils'
 
 export const metadata = { title: 'Corregir evaluación · Diseño e Ingeniería' }
 
 export default async function PaginaCorregirEvaluacion({ params }: PageProps<'/diseno/evaluaciones/[id]/editar'>) {
   const perfil = await exigirPermiso('diseno.evaluar')
   const { id } = await params
+  if (!esUuid(id)) notFound()
   const [e, nombres] = await Promise.all([obtenerEvaluacionDiseno(id), nombresDelEquipoDeDiseno()])
   if (!e) notFound()
   // Enviada o recibida ya no se corrige; la base lo rechazaría igual.

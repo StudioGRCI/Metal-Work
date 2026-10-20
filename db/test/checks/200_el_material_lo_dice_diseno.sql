@@ -14,7 +14,8 @@ insert into public.sedes (codigo, nombre) values ('T1', 'Taller principal');
 
 select test.crear_usuario('Aldo',  'Quiroz',  'aldo@demo.pe',  'ADMIN',       (select id from public.sedes limit 1)) as admin_id \gset
 select test.crear_usuario('Dina',  'Rojas',   'dina@demo.pe',  'DISENO',      (select id from public.sedes limit 1)) as diseno_id \gset
-select test.crear_usuario('Rosa',  'Yupanqui','rosa@demo.pe',  'JEFE_TALLER', (select id from public.sedes limit 1)) as jefe_id \gset
+-- El taller es Supervisión desde la migración 20260929110100 (ya no hay jefatura).
+select test.crear_usuario('Rosa',  'Yupanqui','rosa@demo.pe',  'SUPERVISOR',  (select id from public.sedes limit 1)) as jefe_id \gset
 
 insert into public.clientes (tipo_documento, numero_documento, razon_social)
   values ('RUC', '20607761907', 'TRANSPORTES VEGA PIUNDO S.A.C');
@@ -72,7 +73,7 @@ declare
   v_filas int;
   v_req   uuid;
 begin
-  -- El jefe de taller no tiene `diseno.planos`. La política lo esconde, así que
+  -- Supervisión no tiene `diseno.planos`. La política lo esconde, así que
   -- esto NO da error: afecta cero filas. Ese es justamente el fallo que hay que
   -- cazar acá y no en la pantalla.
   update public.ot_materiales set cantidad = 999
@@ -82,12 +83,17 @@ begin
   perform test.afirmar(v_filas = 0,
     'quien no es Diseño no cambia la lista de materiales');
 
-  perform test.afirmar(
-    (select cantidad from public.ot_materiales where id = current_setting('prueba.linea')::uuid) = 500,
-    'y la cantidad quedó como la dejó Diseño');
-
 end $$;
 
+reset role;
+
+-- Supervisión ya no lee la OT ni su lista (migración 20261016120000): la
+-- cantidad se mira con los ojos de Diseño, que es quien la escribió.
+select test.como_usuario(:'diseno_id');
+set local role authenticated;
+select test.afirmar(
+  (select cantidad from public.ot_materiales where id = current_setting('prueba.linea')::uuid) = 500,
+  'y la cantidad quedó como la dejó Diseño');
 reset role;
 
 -- ------------------------------------------- el operario ve la lista, pero no la escribe

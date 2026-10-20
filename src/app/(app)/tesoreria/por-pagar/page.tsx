@@ -112,7 +112,7 @@ export default async function PaginaPorPagar() {
       {pagadas.length > 0 && (
         <details className="mt-5 rounded-[var(--radius-base)] border border-borde bg-superficie">
           <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm font-medium text-texto">
-            {pagadas.length >= PAGADAS_A_LA_VISTA ? `Las últimas ${PAGADAS_A_LA_VISTA} pagadas` : `Pagadas (${pagadas.length})`}
+            {pagadas.length >= PAGADAS_A_LA_VISTA ? `Las ${PAGADAS_A_LA_VISTA} pagadas de emisión más reciente` : `Pagadas (${pagadas.length})`}
           </summary>
           <div className="space-y-3 border-t border-borde p-4">
             {pagadas.map((c) => (

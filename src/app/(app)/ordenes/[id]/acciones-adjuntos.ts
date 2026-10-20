@@ -68,7 +68,11 @@ const esquemaQuitar = z.object({ id: z.guid(), orden_id: z.guid() })
  * si se puede —la política deja a quien lo subió, a la oficina y al jefe—; el
  * archivo después, con la ruta leída antes.
  */
-export async function quitarAdjunto(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+/** `datos.archivoQuedo`: la fila se quitó pero el archivo no; la tarjeta lo avisa. */
+export async function quitarAdjunto(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion<{ archivoQuedo: boolean }>> {
   await exigirSesion()
 
   const analisis = esquemaQuitar.safeParse(Object.fromEntries(datos))
@@ -92,7 +96,11 @@ export async function quitarAdjunto(_previo: unknown, datos: FormData): Promise<
 
   revalidatePath(`/ordenes/${v.orden_id}`)
   if (errorArchivo) {
-    return { ok: true, mensaje: 'Se quitó de la orden, pero el archivo quedó guardado: avisa al administrador para retirarlo.' }
+    return {
+      ok: true,
+      mensaje: 'Se quitó de la orden, pero el archivo quedó guardado: avisa al administrador para retirarlo.',
+      datos: { archivoQuedo: true },
+    }
   }
-  return { ok: true, mensaje: 'Archivo quitado.' }
+  return { ok: true, mensaje: 'Archivo quitado.', datos: { archivoQuedo: false } }
 }

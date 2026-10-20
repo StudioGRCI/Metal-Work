@@ -36,12 +36,20 @@ for f in "$ROOT"/supabase/migrations/*.sql; do
   migrar "$f"
 done
 
+# Todos los checks corren aunque uno falle: parar en el primero escondía lo que
+# decían los demás. El veredicto sigue siendo el código de salida.
+fallidos=()
 if [ -d "$ROOT/db/test/checks" ]; then
   for f in "$ROOT"/db/test/checks/*.sql; do
     [ -e "$f" ] || continue
     echo "→ check $(basename "$f")"
-    run "$f"
+    run "$f" || fallidos+=("$(basename "$f")")
   done
 fi
 
+if [ ${#fallidos[@]} -gt 0 ]; then
+  echo "✘ ${#fallidos[@]} check(s) fallan sobre ${DB}:"
+  printf '   %s\n' "${fallidos[@]}"
+  exit 3
+fi
 echo "✔ esquema aplicado sin errores sobre ${DB}"

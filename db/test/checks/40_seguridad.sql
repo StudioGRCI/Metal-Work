@@ -20,7 +20,8 @@ insert into public.empresa (ruc, razon_social) values ('20100000004', 'PRUEBAS R
 insert into public.sedes (codigo, nombre) values ('T1', 'Taller principal');
 
 select test.crear_usuario('Ana',   'Torres',  'ana@demo.pe',   'ADMIN',       (select id from public.sedes limit 1)) as admin_id \gset
-select test.crear_usuario('Beto',  'Ríos',    'beto@demo.pe',  'JEFE_TALLER', (select id from public.sedes limit 1)) as jefe_id \gset
+-- Desde la migración 20260929110100 la jefatura de taller es Supervisión.
+select test.crear_usuario('Beto',  'Ríos',    'beto@demo.pe',  'SUPERVISOR',  (select id from public.sedes limit 1)) as jefe_id \gset
 select test.crear_usuario('Carla', 'Vega',    'carla@demo.pe', 'VENDEDOR',    (select id from public.sedes limit 1)) as vendedor_id \gset
 select test.crear_usuario('Diego', 'Quispe',  'diego@demo.pe', 'OPERARIO',    (select id from public.sedes limit 1), true, 14) as operario_id \gset
 select test.crear_usuario('Elsa',  'Mendoza', 'elsa@demo.pe',  'OPERARIO',    (select id from public.sedes limit 1), true, 14) as operario2_id \gset
@@ -88,7 +89,45 @@ end $$;
 
 reset role;
 
--- --- el jefe de taller sí puede mover la producción -------------------------
+-- --- Supervisión ya no lee ni mueve la OT ------------------------------------
+-- Desde la migración 20261016120000 el supervisor trabaja por código interno:
+-- deja `ordenes.ver` y `ordenes.cambiar_estado` (decisión de Gerencia del
+-- 2026-10-15). Se comprueba con su rol real.
+select test.como_usuario(:'jefe_id');
+set role authenticated;
+
+do $$
+declare v_filas int;
+begin
+  perform test.afirmar(
+    (select count(*) from public.ordenes_trabajo) = 0,
+    'Supervisión ya no ve las órdenes: trabaja por código interno');
+  update public.ordenes_trabajo set estado = 'EN_PROCESO';
+  get diagnostics v_filas = row_count;
+  perform test.afirmar(v_filas = 0, 'ni puede mover el estado de ninguna orden');
+end $$;
+
+reset role;
+
+-- --- quien tiene el permiso de producción sí puede mover la OT --------------
+-- Ninguna cuenta activa tiene hoy `ordenes.cambiar_estado` (era de las
+-- jefaturas). Para seguir cuidando que la política acepte el permiso que exige
+-- el disparador, la prueba se lo devuelve a Supervisión solo mientras dure.
+insert into public.roles_permisos (rol_id, permiso_codigo)
+select r.id, p.codigo from public.roles r
+  cross join (values ('ordenes.ver'), ('ordenes.cambiar_estado')) p(codigo)
+ where r.codigo = 'SUPERVISOR'
+on conflict do nothing;
+
+-- Desde la migración 20260928130000 una OT no entra al taller sin las etapas
+-- de Diseño con fechas de Administración; el armazón las pone como ADMIN.
+select test.como_usuario(:'admin_id');
+insert into public.ot_etapas (orden_id, nombre, orden_secuencia, area_id, peso_pct,
+                              fecha_inicio_programada, fecha_fin_programada)
+select o.id, 'Armado y soldadura', 1, (select id from public.areas where codigo = 'PRD'), 100,
+       current_date, current_date + 7
+  from public.ordenes_trabajo o where o.descripcion like '%Diego%';
+
 select test.como_usuario(:'jefe_id');
 set role authenticated;
 
@@ -97,18 +136,19 @@ declare v_filas int;
 begin
   perform test.afirmar(
     (select count(*) from public.ordenes_trabajo) = 2,
-    'el jefe de taller ve todas las órdenes');
+    'con ordenes.ver se ven todas las órdenes');
 
   update public.ordenes_trabajo set estado = 'EN_PROCESO'
    where descripcion like '%Diego%';
 
   perform test.afirmar(
     (select estado from public.ordenes_trabajo where descripcion like '%Diego%') = 'EN_PROCESO',
-    'el jefe de taller sí puede iniciar el trabajo');
+    'con ordenes.cambiar_estado sí se puede iniciar el trabajo');
 
-  delete from public.ordenes_trabajo;
-  get diagnostics v_filas = row_count;
-  perform test.afirmar(v_filas = 0, 'nadie salvo un administrador borra órdenes: se anulan');
+  -- Desde la migración 20261020150000 la OT numerada no la borra nadie, ni el
+  -- administrador: authenticated perdió el DELETE y un disparador lo frena.
+  perform test.debe_fallar('delete from public.ordenes_trabajo',
+    'nadie borra órdenes: se anulan', 'permission denied');
 end $$;
 
 reset role;

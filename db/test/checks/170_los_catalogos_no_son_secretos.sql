@@ -12,7 +12,9 @@ insert into public.empresa (ruc, razon_social) values ('20100000021', 'PRUEBAS C
 insert into public.sedes (codigo, nombre) values ('T1', 'Taller principal');
 
 select test.crear_usuario('Vera',  'Sandoval', 'vera@demo.pe',  'VENDEDOR',   (select id from public.sedes limit 1)) as vendedor_id \gset
-select test.crear_usuario('Rosa',  'Yupanqui', 'rosa@demo.pe',  'JEFE_TALLER',(select id from public.sedes limit 1)) as jefe_id \gset
+-- La jefatura de taller ya no existe (migración 20260929110100): la orden la
+-- abre Administración (`ordenes.crear`, migración 20261017402000).
+select test.crear_usuario('Rosa',  'Yupanqui', 'rosa@demo.pe',  'ADMINISTRACION',(select id from public.sedes limit 1)) as jefe_id \gset
 select test.crear_usuario('Jesus', 'Campos',   'jesus@demo.pe', 'ALMACENERO', (select id from public.sedes limit 1)) as almacenero_id \gset
 select test.crear_usuario('Luis',  'Ochoa',    'luis@demo.pe',  'OPERARIO',   (select id from public.sedes limit 1)) as operario_id \gset
 
@@ -49,7 +51,7 @@ end $$;
 
 reset role;
 
--- ------------------------- el jefe de taller abre la orden con su carrocería
+-- ------------------------- Administración abre la orden con su carrocería
 select test.como_usuario(:'jefe_id');
 set local role authenticated;
 
@@ -58,7 +60,7 @@ begin
   perform test.afirmar(
     (select count(*) from public.tipos_carroceria) > 0
       and (select count(*) from public.sedes) > 0,
-    'el jefe de taller ve carrocerías y sedes para abrir la orden');
+    'Administración ve carrocerías y sedes para abrir la orden');
   perform test.afirmar(
     (select count(*) from public.etapas_catalogo) > 0,
     'y las etapas con las que se arma el trabajo');
@@ -111,9 +113,18 @@ begin
     (select count(*) from public.series_documentarias) = 0,
     'ni los correlativos vivos de la casa');
 
-  perform test.afirmar(
-    (select d.ruc from public.datos_de_empresa() d) = '20100000021',
-    'pero sí tiene el membrete para imprimir sus documentos');
+  -- HALLAZGO: la migración 20260927234131 soltó `empresa.firma_nombre` y
+  -- `firma_cargo`, pero `datos_de_empresa()` las sigue leyendo y revienta con
+  -- «column e.firma_nombre does not exist» para cualquiera. Falla hasta que se
+  -- redefina la función sin esas dos columnas.
+  begin
+    perform test.afirmar(
+      (select d.ruc from public.datos_de_empresa() d) = '20100000021',
+      'pero sí tiene el membrete para imprimir sus documentos');
+  exception when undefined_column then
+    raise exception 'FALLA (hallazgo): datos_de_empresa() está rota: %', sqlerrm
+      using errcode = 'assert_failure';
+  end;
 end $$;
 
 reset role;

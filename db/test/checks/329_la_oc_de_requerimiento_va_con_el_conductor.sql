@@ -5,16 +5,21 @@
 -- Termina en rollback.
 begin;
 
+-- ----------------------------------------------------------------- armazón
+-- Una cuenta por puesto, cada una en su área, como en producción (como el check
+-- 330). Antes se tomaba de la base la primera cuenta activa de cada rol, y en
+-- una base sin esas cuentas el check se caía antes de probar nada.
 do $$
-declare v text;
+declare v text; v_id uuid;
 begin
-  foreach v in array array['COMPRADOR', 'GERENTE', 'SUPERVISOR', 'CONDUCTOR'] loop
-    perform set_config('prueba.' || lower(v), (
-      select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id
-       where r.codigo = v and u.activo order by u.creado_en limit 1), true);
-    if current_setting('prueba.' || lower(v)) = '' then
-      raise exception 'FALLA: no hay una cuenta activa con el rol % para probar', v;
-    end if;
+  foreach v in array array['COMPRADOR:LOG:comprador', 'GERENTE:GGE:gerente', 'SUPERVISOR:PRD:supervisor', 'CONDUCTOR:LOG:conductor'] loop
+    v_id := gen_random_uuid();
+    insert into auth.users (id, email) values (v_id, lower(split_part(v, ':', 3)) || '.329@prueba.local');
+    insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
+    select v_id, split_part(v, ':', 1), 'Check 329', lower(split_part(v, ':', 3)) || '.329@prueba.local', r.id,
+           (select id from public.areas where codigo = split_part(v, ':', 2))
+      from public.roles r where r.codigo = split_part(v, ':', 1);
+    perform set_config('prueba.' || split_part(v, ':', 3), v_id::text, true);
   end loop;
 end $$;
 
@@ -71,7 +76,7 @@ select pg_temp.como('comprador');
 set local role authenticated;
 select public.emitir_compra_agrupada(current_setting('prueba.oc1')::uuid, current_setting('prueba.proveedor')::uuid, 'COT-329A',
   jsonb_build_array(jsonb_build_object('id', current_setting('prueba.det'), 'cantidad', 2, 'precio', 15)),
-  null, 'CONTADO', 0, 'PEN');
+  null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
 set constraints all immediate;
 select test.afirmar(
   (select aprobacion = 'NO_REQUERIDA' and recojo = 'POR_RECOGER' and recojo_pedido_en is not null
@@ -119,7 +124,7 @@ select pg_temp.como('comprador');
 set local role authenticated;
 select public.emitir_compra_agrupada(current_setting('prueba.oc2')::uuid, current_setting('prueba.proveedor')::uuid, 'COT-329B',
   jsonb_build_array(jsonb_build_object('id', current_setting('prueba.det'), 'cantidad', 2, 'precio', 15)),
-  null, 'CONTADO', 0, 'PEN');
+  null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
 set constraints all immediate;
 select test.afirmar(
   (select aprobacion = 'POR_APROBAR' and recojo is null
@@ -146,7 +151,7 @@ select pg_temp.como('comprador');
 set local role authenticated;
 select public.emitir_compra_agrupada(current_setting('prueba.oc3')::uuid, current_setting('prueba.proveedor')::uuid, 'COT-329C',
   jsonb_build_array(jsonb_build_object('id', current_setting('prueba.det'), 'cantidad', 2, 'precio', 15)),
-  null, 'CONTADO', 0, 'PEN');
+  null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
 set constraints all immediate;
 reset role;
 set local session_replication_role = replica;

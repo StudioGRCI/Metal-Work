@@ -429,8 +429,10 @@ begin
 
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
   set local role authenticated;
+  -- Desde la migración 20261020150000 el correlativo de la OT es global y no
+  -- se reinicia cada año: la segunda OT del check lleva otro correlativo.
   perform public.aprobar_cotizacion_con_ot(
-    current_setting('prueba.cot_c')::uuid, current_setting('prueba.ot_c')::uuid, 'CHK397_C_26/03', '397-2098',
+    current_setting('prueba.cot_c')::uuid, current_setting('prueba.ot_c')::uuid, 'CHK397_C_26/03', '3972-2098',
     'SEMIRREMOLQUE', current_setting('prueba.hoy')::date + 30, 'ot/' || current_setting('prueba.ot_c') || '/orden.pdf',
     'orden.pdf', 100);
   k := pg_temp.costo('CHK397_C_26/03');

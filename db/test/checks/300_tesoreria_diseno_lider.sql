@@ -36,12 +36,23 @@ values (:'cotizacion_id', 'QA-PDF-300', :'cliente_id', :'carroceria_id', 'POR_RE
 -- cotización sin OT no se aprueba.
 select test.como_usuario(:'admin_id');
 set local role authenticated;
-insert into public.ordenes_trabajo (id, numero, cliente_id, sede_id, tipo_trabajo, prioridad, descripcion, estado, monto_presupuestado, cotizacion_pdf_id)
-select :'orden_id', 'QA-OT-300', :'cliente_id', s.id, 'FABRICACION', 'NORMAL', 'Prueba aislada de permisos y documentos', 'APROBADA', 0, :'cotizacion_id'
+-- `monto_presupuestado` se retiró con la cotización beta (migración
+-- 20260927234131).
+insert into public.ordenes_trabajo (id, numero, cliente_id, sede_id, tipo_trabajo, prioridad, descripcion, estado, cotizacion_pdf_id)
+select :'orden_id', 'QA-OT-300', :'cliente_id', s.id, 'FABRICACION', 'NORMAL', 'Prueba aislada de permisos y documentos', 'APROBADA', :'cotizacion_id'
 from public.sedes s where s.codigo='QA42';
-insert into public.ot_planos (id, orden_id, orden_secuencia, numero_plano, nombre, creado_por)
-values (:'plano_id', :'orden_id', 1, 'QA-300-01', 'Plano de prueba', :'diseno_id');
 reset role;
+-- Desde las migraciones 20260929100003 y 20260928141000 el plano dice quién de
+-- Diseño lo elaboró y de qué etapa de la OT cuelga. Es armazón: lo siembra el
+-- dueño de las tablas.
+insert into public.ot_equipo_diseno (orden_id, nombre, funcion)
+values (:'orden_id', 'QA Diseno', 'RESPONSABLE');
+insert into public.ot_etapas (orden_id, nombre, orden_secuencia, area_id, peso_pct)
+values (:'orden_id', 'Planos de la unidad', 1, (select id from public.areas where codigo = 'DIS'), 100);
+insert into public.ot_planos (id, orden_id, orden_secuencia, numero_plano, nombre, creado_por, integrante_diseno_id, etapa_id)
+values (:'plano_id', :'orden_id', 1, 'QA-300-01', 'Plano de prueba', :'diseno_id',
+        (select id from public.ot_equipo_diseno where orden_id = :'orden_id'),
+        (select id from public.ot_etapas where orden_id = :'orden_id'));
 
 select test.como_usuario(:'gerente_id');
 set local role authenticated;
@@ -67,11 +78,28 @@ insert into public.requerimiento_material_detalles (requerimiento_id, ot_materia
 values (:'requerimiento_id', :'ot_material_id', 1);
 select id as req_detalle_id from public.requerimiento_material_detalles where requerimiento_id=:'requerimiento_id' \gset
 
+-- La línea nace como propuesta (fn_material_propuesta_inicial): se deja como
+-- la dejarían Diseño al aprobarla y Almacén al derivarla a compra.
+update public.requerimiento_material_detalles
+   set aprobacion_diseno = 'APROBADO', decision_almacen = 'COMPRA', cantidad_stock = 0
+ where id = :'req_detalle_id';
+
+-- Desde la migración 20261012100000 la compra elige al proveedor del padrón
+-- (`emitir_compra_agrupada`); la versión con proveedor escrito a mano quedó
+-- cerrada. Y desde la 20260930090000 el PDF tiene que estar ya en Storage,
+-- subido por quien lo adjunta: se siembra como dueño de las tablas.
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values ('documentos-compras', 'compra/'||:'compra_id'||'/'||:'documento_id'||'.pdf', :'comprador_id',
+        '{"mimetype":"application/pdf","size":120}');
 select test.como_usuario(:'comprador_id');
 set local role authenticated;
-select public.crear_orden_compra_material(:'compra_id', :'requerimiento_id', 'Proveedor QA', 'QA-OC-300', jsonb_build_array(jsonb_build_object('id', :'req_detalle_id', 'cantidad', 1)), current_date + 7);
-insert into public.documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por)
-values (:'documento_id', :'compra_id', 'FACTURA', 'qa-factura.pdf', 'compra/'||:'compra_id'||'/'||:'documento_id'||'.pdf', 'application/pdf', 120, :'comprador_id');
+insert into public.proveedores (numero_documento, razon_social) values ('20100047218', 'Proveedor QA');
+select public.emitir_compra_agrupada(:'compra_id',
+  (select id from public.proveedores where numero_documento = '20100047218'), 'QA-OC-300',
+  jsonb_build_array(jsonb_build_object('id', :'req_detalle_id', 'cantidad', 1, 'precio', 10)),
+  current_date + 7, 'CONTADO', 0, 'PEN', true, 'PLANTA');
+insert into public.documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, numero_documento, fecha_emision)
+values (:'documento_id', :'compra_id', 'FACTURA', 'qa-factura.pdf', 'compra/'||:'compra_id'||'/'||:'documento_id'||'.pdf', 'application/pdf', 120, :'comprador_id', 'F001-300', current_date);
 reset role;
 
 -- El mismo PDF no se ve a COSTOS hasta que Administración lo libera.

@@ -4,24 +4,22 @@
 -- en el banco local que contra la base viva sin dejar nada.
 begin;
 
+-- ----------------------------------------------------------------- armazón
+-- Una cuenta por puesto, cada una en su área, como en producción (como el check
+-- 330). Antes se tomaba de la base la primera cuenta activa de cada rol, y en
+-- una base sin esas cuentas el check se caía antes de probar nada.
 do $$
-declare v text;
+declare v text; v_id uuid;
 begin
-  foreach v in array array['COMPRADOR', 'GERENTE', 'SUPERVISOR', 'CONDUCTOR'] loop
-    perform set_config('prueba.' || lower(v), (
-      select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id
-       where r.codigo = v and u.activo order by u.creado_en limit 1), true);
-    if current_setting('prueba.' || lower(v)) = '' then
-      raise exception 'FALLA: no hay una cuenta activa con el rol % para probar', v;
-    end if;
+  foreach v in array array['COMPRADOR:LOG:comprador', 'GERENTE:GGE:gerente', 'SUPERVISOR:PRD:supervisor', 'CONDUCTOR:LOG:conductor', 'ALMACENERO:ALM:almacenero'] loop
+    v_id := gen_random_uuid();
+    insert into auth.users (id, email) values (v_id, lower(split_part(v, ':', 3)) || '.325@prueba.local');
+    insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
+    select v_id, split_part(v, ':', 1), 'Check 325', lower(split_part(v, ':', 3)) || '.325@prueba.local', r.id,
+           (select id from public.areas where codigo = split_part(v, ':', 2))
+      from public.roles r where r.codigo = split_part(v, ':', 1);
+    perform set_config('prueba.' || split_part(v, ':', 3), v_id::text, true);
   end loop;
-  perform set_config('prueba.almacenero', (
-    select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id
-      join public.areas a on a.id = u.area_id
-     where r.codigo = 'ALMACENERO' and a.codigo = 'ALM' and u.activo order by u.creado_en limit 1), true);
-  if current_setting('prueba.almacenero') = '' then
-    raise exception 'FALLA: no hay un almacenero activo del área ALM para probar';
-  end if;
 end $$;
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
@@ -86,7 +84,7 @@ set local role authenticated;
 select test.debe_fallar(
   $q$select public.emitir_compra_directa(gen_random_uuid(), current_setting('prueba.proveedor')::uuid, null,
      'Reposición de consumibles', jsonb_build_array(jsonb_build_object('material_id', current_setting('prueba.mat1'), 'cantidad', 5, 'precio', 10)),
-     null, 'CONTADO', 0, 'PEN')$q$,
+     null, 'CONTADO', 0, 'PEN', true, 'PLANTA')$q$,
   'un supervisor no emite órdenes de compra');
 reset role;
 
@@ -95,26 +93,26 @@ set local role authenticated;
 select test.debe_fallar(
   $q$select public.emitir_compra_directa(gen_random_uuid(), current_setting('prueba.proveedor')::uuid, null,
      'no', jsonb_build_array(jsonb_build_object('material_id', current_setting('prueba.mat1'), 'cantidad', 5, 'precio', 10)),
-     null, 'CONTADO', 0, 'PEN')$q$,
+     null, 'CONTADO', 0, 'PEN', true, 'PLANTA')$q$,
   'la directa sin motivo no entra', 'sin requerimiento');
 select test.debe_fallar(
   $q$select public.emitir_compra_directa(gen_random_uuid(), current_setting('prueba.proveedor')::uuid, null,
      'Reposición de consumibles', jsonb_build_array(
        jsonb_build_object('material_id', current_setting('prueba.mat1'), 'cantidad', 5, 'precio', 10),
        jsonb_build_object('material_id', current_setting('prueba.mat1'), 'cantidad', 2, 'precio', 10)),
-     null, 'CONTADO', 0, 'PEN')$q$,
+     null, 'CONTADO', 0, 'PEN', true, 'PLANTA')$q$,
   'la directa no repite material', 'No repitas');
 select public.emitir_compra_directa(current_setting('prueba.oc1')::uuid, current_setting('prueba.proveedor')::uuid, 'COT-77',
   'Reposición de consumibles del almacén', jsonb_build_array(
     jsonb_build_object('material_id', current_setting('prueba.mat1'), 'cantidad', 5, 'precio', 10),
     jsonb_build_object('material_id', current_setting('prueba.mat2'), 'cantidad', 2.5, 'precio', 40)),
-  current_date + 3, 'CREDITO', 30, 'PEN');
+  current_date + 3, 'CREDITO', 30, 'PEN', true, 'PLANTA');
 -- El reintento del mismo envío devuelve la misma compra.
 select test.afirmar(public.emitir_compra_directa(current_setting('prueba.oc1')::uuid, current_setting('prueba.proveedor')::uuid, 'COT-77',
   'Reposición de consumibles del almacén', jsonb_build_array(
     jsonb_build_object('material_id', current_setting('prueba.mat1'), 'cantidad', 5, 'precio', 10),
     jsonb_build_object('material_id', current_setting('prueba.mat2'), 'cantidad', 2.5, 'precio', 40)),
-  current_date + 3, 'CREDITO', 30, 'PEN') = current_setting('prueba.oc1')::uuid, 'el doble toque no crea otra compra');
+  current_date + 3, 'CREDITO', 30, 'PEN', true, 'PLANTA') = current_setting('prueba.oc1')::uuid, 'el doble toque no crea otra compra');
 set constraints all immediate;
 select test.afirmar(
   (select count(*) from public.ordenes_compra_listado() l where l.id = current_setting('prueba.oc1')::uuid
@@ -274,7 +272,7 @@ select pg_temp.como('comprador');
 set local role authenticated;
 select public.emitir_compra_agrupada(current_setting('prueba.oc2')::uuid, current_setting('prueba.proveedor')::uuid, 'COT-88',
   jsonb_build_array(jsonb_build_object('id', current_setting('prueba.det'), 'cantidad', 4, 'precio', 12)),
-  null, 'CONTADO', 0, 'PEN');
+  null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
 set constraints all immediate;
 select test.afirmar(
   (select origen = 'REQUERIMIENTO' and numero ~ '^(OC-[0-9]{4,}-MW|PRUEBA-[0-9]+)$' and aprobacion = 'NO_REQUERIDA' and recojo = 'POR_RECOGER'
@@ -311,7 +309,7 @@ select pg_temp.como('comprador');
 set local role authenticated;
 select public.emitir_compra_directa(current_setting('prueba.oc3')::uuid, current_setting('prueba.proveedor')::uuid, null,
   'Compra para rechazar en la prueba', jsonb_build_array(jsonb_build_object('material_id', current_setting('prueba.mat1'), 'cantidad', 1, 'precio', 99)),
-  null, 'CONTADO', 0, 'USD');
+  null, 'CONTADO', 0, 'USD', true, 'PLANTA');
 set constraints all immediate;
 reset role;
 select test.afirmar((select referencia = numero from public.ordenes_compra_materiales where id = current_setting('prueba.oc3')::uuid),

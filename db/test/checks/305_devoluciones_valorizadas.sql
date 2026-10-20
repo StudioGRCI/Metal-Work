@@ -1,10 +1,46 @@
+\set ON_ERROR_STOP on
 begin;
-select set_config('prueba.detalle',(select d.id::text from public.requerimiento_material_detalles d join public.ot_materiales om on om.id=d.ot_material_id join public.ordenes_trabajo o on o.id=om.orden_id where o.estado::text<>'ANULADA' and d.aprobacion_diseno='APROBADO' limit 1),true);
+-- El check se arma su propio taller: antes leía la primera línea aprobada y la
+-- primera cuenta de cada rol de la base, y en una base vacía se quedaba con un
+-- uuid en blanco.
+insert into public.empresa (ruc, razon_social) values ('20100000305', 'PRUEBAS 305 S.A.C.');
+insert into public.sedes (codigo, nombre) values ('QA305', 'Taller 305');
+select test.crear_usuario('QA', 'Admin',   'qa-305-admin@demo.pe',   'ADMIN',      (select id from public.sedes where codigo = 'QA305')) as admin_id \gset
+select test.crear_usuario('QA', 'Almacen', 'qa-305-almacen@demo.pe', 'ALMACENERO', (select id from public.sedes where codigo = 'QA305')) as almacen_id \gset
+select test.crear_usuario('QA', 'Mtz',     'qa-305-mtz@demo.pe',     'SUPERVISOR', (select id from public.sedes where codigo = 'QA305')) as supervisor_id \gset
+select test.como_usuario(:'admin_id');
+update public.usuarios set area_id = (select id from public.areas where codigo = 'ALM') where id = :'almacen_id';
+update public.usuarios set area_id = (select id from public.areas where codigo = 'MTZ') where id = :'supervisor_id';
+
+insert into public.clientes (tipo_documento, numero_documento, razon_social) values ('RUC', '20990000305', 'QA Cliente 305');
+insert into public.unidades_medida (codigo, nombre) values ('QA-UND-305', 'Unidad prueba') on conflict (codigo) do nothing;
+insert into public.categorias_material (codigo, nombre) values ('QA-CAT-305', 'Material prueba') on conflict (codigo) do nothing;
+insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
+select 'QA-MAT-305', 'Material de prueba', c.id, u.id from public.categorias_material c, public.unidades_medida u
+ where c.codigo = 'QA-CAT-305' and u.codigo = 'QA-UND-305';
+-- Desde la migración 20261001100000 el despacho sale a nombre de la unidad.
+insert into public.unidades (cliente_id, placa, tipo_vehiculo, marca, modelo)
+select id, 'Q3A-305', 'VOLQUETE', 'VOLVO', 'FMX' from public.clientes where numero_documento = '20990000305';
+select gen_random_uuid() as orden_id \gset
+insert into public.ordenes_trabajo (id, cliente_id, unidad_id, sede_id, descripcion)
+select :'orden_id', c.id, (select id from public.unidades where placa = 'Q3A-305'), (select id from public.sedes where codigo = 'QA305'), 'OT de prueba 305'
+  from public.clientes c where c.numero_documento = '20990000305';
+update public.ordenes_trabajo set estado = 'APROBADA' where id = :'orden_id';
+insert into public.ot_materiales (orden_id, material_id, cantidad, area_destino)
+select :'orden_id', id, 10, 'MTZ' from public.materiales where codigo = 'QA-MAT-305';
+insert into public.requerimientos_materiales (orden_id, area_destino, solicitado_por) values (:'orden_id', 'MTZ', :'supervisor_id');
+insert into public.requerimiento_material_detalles (requerimiento_id, ot_material_id, cantidad_solicitada)
+select r.id, om.id, 3 from public.requerimientos_materiales r, public.ot_materiales om
+ where r.orden_id = :'orden_id' and om.orden_id = :'orden_id';
+-- Lo que pide el área entra como propuesta (fn_material_propuesta_inicial): el
+-- armazón la deja aprobada por Diseño, como la encontraba el check.
+update public.requerimiento_material_detalles d set aprobacion_diseno = 'APROBADO'
+  from public.requerimientos_materiales r where r.id = d.requerimiento_id and r.orden_id = :'orden_id';
+select set_config('prueba.detalle',(select d.id::text from public.requerimiento_material_detalles d join public.ot_materiales om on om.id=d.ot_material_id join public.ordenes_trabajo o on o.id=om.orden_id where o.id=:'orden_id' and d.aprobacion_diseno='APROBADO' limit 1),true);
 select set_config('prueba.material',(select om.material_id::text from public.requerimiento_material_detalles d join public.ot_materiales om on om.id=d.ot_material_id where d.id=current_setting('prueba.detalle')::uuid),true);
 select set_config('prueba.ingreso',gen_random_uuid()::text,true);
 select set_config('prueba.despacho',gen_random_uuid()::text,true);
-select set_config('request.jwt.claim.sub',(select u.id::text from public.usuarios u join public.roles r on r.id=u.rol_id where r.codigo='ALMACENERO' and u.activo limit 1),true);
-select set_config('request.jwt.claims',jsonb_build_object('sub',current_setting('request.jwt.claim.sub'),'role','authenticated')::text,true);
+select test.como_usuario(:'almacen_id');
 -- Solo el armazón reversible restablece la solicitud; las acciones usan su rol.
 update public.requerimiento_material_detalles set decision_almacen='PENDIENTE',cantidad_stock=null where id=current_setting('prueba.detalle')::uuid;
 insert into storage.objects(bucket_id,name,owner_id,metadata) values('evidencias-almacen',current_setting('request.jwt.claim.sub')||'/'||current_setting('prueba.despacho')||'.jpg',current_setting('request.jwt.claim.sub'),'{"mimetype":"image/jpeg","size":100}'::jsonb);

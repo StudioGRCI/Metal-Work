@@ -5,12 +5,14 @@ import { obtenerCliente } from '@/lib/datos/comercial'
 import { exigirPermiso } from '@/lib/sesion'
 
 import { FormularioCliente } from '../../formulario-cliente'
+import { esUuid } from '@/lib/utils'
 
 export const metadata = { title: 'Editar cliente' }
 
 export default async function PaginaEditarCliente({ params }: PageProps<'/clientes/[id]/editar'>) {
   await exigirPermiso('clientes.editar')
   const { id } = await params
+  if (!esUuid(id)) notFound()
 
   const cliente = await obtenerCliente(id)
   if (!cliente) notFound()

@@ -12,7 +12,7 @@ import { fecha, fechaHora, mesLargo } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
 import { AccionesEvaluacion } from './acciones-evaluacion'
-import { esGuid } from '@/lib/guid'
+import { esUuid } from '@/lib/utils'
 
 export const metadata = { title: 'Evaluación de desempeño · Diseño e Ingeniería' }
 
@@ -21,7 +21,7 @@ const GRUPOS = criteriosPorGrupo()
 export default async function PaginaEvaluacion({ params }: PageProps<'/diseno/evaluaciones/[id]'>) {
   const perfil = await exigirPermiso(['diseno.evaluar', 'administracion.recibir_evaluacion'])
   const { id } = await params
-  if (!esGuid(id)) notFound()
+  if (!esUuid(id)) notFound()
   // Sin acceso, el RLS no la devuelve: para quien no la puede ver, no existe.
   const e = await obtenerEvaluacionDiseno(id)
   if (!e) notFound()

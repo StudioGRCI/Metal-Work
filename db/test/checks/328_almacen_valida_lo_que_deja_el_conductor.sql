@@ -7,24 +7,22 @@
 -- deja las dos. Las tablas se preparan como dueño; cada paso, con su rol.
 begin;
 
+-- ----------------------------------------------------------------- armazón
+-- Una cuenta por puesto, cada una en su área, como en producción (como el check
+-- 330). Antes se tomaba de la base la primera cuenta activa de cada rol, y en
+-- una base sin esas cuentas el check se caía antes de probar nada.
 do $$
 declare v text; v_id uuid;
 begin
-  foreach v in array array['COMPRADOR', 'GERENTE', 'SUPERVISOR', 'CONDUCTOR'] loop
-    perform set_config('prueba.' || lower(v), (
-      select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id
-       where r.codigo = v and u.activo order by u.creado_en limit 1), true);
-    if current_setting('prueba.' || lower(v)) = '' then
-      raise exception 'FALLA: no hay una cuenta activa con el rol % para probar', v;
-    end if;
+  foreach v in array array['COMPRADOR:LOG:comprador', 'GERENTE:GGE:gerente', 'SUPERVISOR:PRD:supervisor', 'CONDUCTOR:LOG:conductor', 'ALMACENERO:ALM:almacenero'] loop
+    v_id := gen_random_uuid();
+    insert into auth.users (id, email) values (v_id, lower(split_part(v, ':', 3)) || '.328@prueba.local');
+    insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
+    select v_id, split_part(v, ':', 1), 'Check 328', lower(split_part(v, ':', 3)) || '.328@prueba.local', r.id,
+           (select id from public.areas where codigo = split_part(v, ':', 2))
+      from public.roles r where r.codigo = split_part(v, ':', 1);
+    perform set_config('prueba.' || split_part(v, ':', 3), v_id::text, true);
   end loop;
-  perform set_config('prueba.almacenero', (
-    select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id
-      join public.areas a on a.id = u.area_id
-     where r.codigo = 'ALMACENERO' and a.codigo = 'ALM' and u.activo order by u.creado_en limit 1), true);
-  if current_setting('prueba.almacenero') = '' then
-    raise exception 'FALLA: no hay un almacenero activo del área ALM para probar';
-  end if;
 end $$;
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
@@ -75,10 +73,10 @@ select public.emitir_compra_directa(current_setting('prueba.oc_directa')::uuid, 
   'Reposición de stock del almacén', jsonb_build_array(
     jsonb_build_object('material_id', current_setting('prueba.mat1'), 'cantidad', 10, 'precio', 12.5),
     jsonb_build_object('material_id', current_setting('prueba.mat2'), 'cantidad', 10, 'precio', 12.5)),
-  null, 'CONTADO', 0, 'PEN');
+  null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
 select public.emitir_compra_agrupada(current_setting('prueba.oc_req')::uuid, current_setting('prueba.proveedor')::uuid, 'COT-328R',
   jsonb_build_array(jsonb_build_object('id', current_setting('prueba.det'), 'cantidad', 6, 'precio', 30)),
-  null, 'CONTADO', 0, 'PEN');
+  null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
 select public.mandar_compra_a_recojo(current_setting('prueba.oc_req')::uuid);
 reset role;
 set constraints all immediate;

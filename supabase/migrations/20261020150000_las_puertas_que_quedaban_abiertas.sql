@@ -43,6 +43,14 @@
 -- 9. El precio referencial del catálogo de carrocerías lo leía cualquier
 --    cuenta. Ninguna pantalla lo usa: queda para quien ve el precio de venta.
 --
+-- Y dos que los checks destaparon rotas desde la migración 20260927234131:
+--
+-- 10. `datos_de_empresa()` fallaba siempre («column e.firma_nombre does not
+--     exist»): la firma se fue de `empresa`. Devuelve lo demás.
+-- 11. El historial de la venta anterior (`ot_ventas_anteriores`) pedía
+--     `cotizaciones.ver`, un permiso que ya no existe: solo lo leía ADMIN.
+--     Ahora lo lee quien ve el precio de venta.
+--
 -- Más los dos índices que vigila el check 190: `asistencias.trabajador_id` y
 -- `tareos.trabajador_id` solo estaban cubiertas por índices parciales, que la
 -- integridad referencial no puede usar (criterio (a) de la skill `datos`).
@@ -183,3 +191,31 @@ $$;
 -- ------------------------------------------------ los índices del check 190
 create index if not exists ix_asistencias_trabajador on public.asistencias (trabajador_id);
 create index if not exists ix_tareos_trabajador on public.tareos (trabajador_id);
+
+-- ------------------------------------------- 10. los datos de la empresa
+create or replace function public.datos_de_empresa()
+returns table (razon_social text, nombre_comercial text, ruc text, direccion text, distrito text,
+               provincia text, departamento text, telefono text, correo text, web text,
+               gerente_general text, gerente_general_cargo text)
+language plpgsql stable security definer set search_path to 'public'
+as $$
+begin
+  if not public.es_usuario_activo() then
+    raise exception 'Tu cuenta no está activa.' using errcode = 'insufficient_privilege';
+  end if;
+  -- La firma ya no vive en `empresa`: esas dos columnas salen vacías.
+  return query
+  select e.razon_social, e.nombre_comercial, e.ruc::text, e.direccion,
+         e.distrito, e.provincia, e.departamento, e.telefono,
+         e.correo::text, e.web, null::text, null::text
+    from public.empresa e
+   order by e.creado_en
+   limit 1;
+end;
+$$;
+
+-- --------------------------------------- 11. el historial de la venta anterior
+alter policy ver_ventas_anteriores on public.ot_ventas_anteriores using (
+  public.puede_ver_orden(orden_id)
+  and (public.es_admin() or public.tiene_permiso('cotizaciones.ver_pdf_comercial'))
+);

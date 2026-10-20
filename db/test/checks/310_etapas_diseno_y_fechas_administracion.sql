@@ -24,49 +24,45 @@ select set_config('prueba.etapas.diseno',:'diseno_id',true);
 select set_config('prueba.etapas.oficina',:'oficina_id',true);
 select set_config('prueba.etapas.operario',:'operario_id',true);
 
+-- Desde la migración 20260928135000 las etapas son libres: Diseño las nombra
+-- y las pesa con `guardar_etapas_libres`; la versión que copiaba el catálogo
+-- (`definir_etapas_ponderadas`) quedó cerrada para authenticated.
 do $test$
 declare
   v_orden uuid := current_setting('prueba.etapas.orden')::uuid;
-  v_primera uuid;
-  v_segunda uuid;
+  v_primera uuid := gen_random_uuid();
+  v_segunda uuid := gen_random_uuid();
+  v_config jsonb;
   v_etapa uuid;
   v_fallo boolean := false;
 begin
-  select id into v_primera from public.etapas_catalogo where activo
-   order by orden_secuencia limit 1;
-  select id into v_segunda from public.etapas_catalogo where activo
-   order by orden_secuencia offset 1 limit 1;
-  if v_primera is null or v_segunda is null then
-    raise exception 'FALLO: el catálogo necesita dos etapas activas para este check';
-  end if;
   perform public.crear_etapas_ot(v_orden);
   perform public.programar_etapas_ot(v_orden);
   if exists (select 1 from public.ot_etapas where orden_id=v_orden) then
     raise exception 'FALLO: la OT nueva recibió etapas automáticas';
   end if;
+  -- Diseño pone primero la que el catálogo tendría segunda: el orden es suyo.
+  v_config := jsonb_build_array(
+    jsonb_build_object('id',v_segunda,'nombre','Planos de fabricación','area_id',(select id from public.areas where codigo='DIS'),'peso_pct',60),
+    jsonb_build_object('id',v_primera,'nombre','Armado de estructura','area_id',(select id from public.areas where codigo='PRD'),'peso_pct',40));
   perform test.como_usuario(current_setting('prueba.etapas.diseno')::uuid);
   set local role authenticated;
-  perform public.definir_etapas_ponderadas(v_orden,jsonb_build_array(
-    jsonb_build_object('catalogo_id',v_segunda,'area_id',(select id from public.areas where codigo='DIS'),'peso_pct',60),
-    jsonb_build_object('catalogo_id',v_primera,'area_id',(select id from public.areas where codigo='PRD'),'peso_pct',40)));
+  perform public.guardar_etapas_libres(v_orden,v_config,null);
   if (select count(*) from public.ot_etapas where orden_id=v_orden) <> 2 then
     raise exception 'FALLO: Diseño no pudo elegir las dos etapas';
   end if;
   if (select orden_secuencia from public.ot_etapas
-       where orden_id=v_orden and etapa_catalogo_id=v_segunda) <> 1 then
+       where orden_id=v_orden and id=v_segunda) <> 1 then
     raise exception 'FALLO: no respetó el orden de Diseño';
   end if;
   if (select sum(peso_pct) from public.ot_etapas where orden_id=v_orden) <> 100 then
     raise exception 'FALLO: las etapas no pesan 100 por ciento';
   end if;
-  perform public.definir_etapas_ponderadas(v_orden,jsonb_build_array(
-    jsonb_build_object('catalogo_id',v_segunda,'area_id',(select id from public.areas where codigo='DIS'),'peso_pct',60),
-    jsonb_build_object('catalogo_id',v_primera,'area_id',(select id from public.areas where codigo='PRD'),'peso_pct',40)));
+  perform public.guardar_etapas_libres(v_orden,v_config,null);
   if (select count(*) from public.ot_etapas where orden_id=v_orden) <> 2 then
     raise exception 'FALLO: el reintento duplicó etapas';
   end if;
-  select id into v_etapa from public.ot_etapas
-   where orden_id=v_orden and etapa_catalogo_id=v_segunda;
+  v_etapa := v_segunda;
   begin
     perform public.programar_etapa_administracion(v_etapa,current_date,current_date+2);
   exception when others then v_fallo := true;
@@ -83,10 +79,12 @@ begin
   end if;
   v_fallo := false;
   begin
-    perform public.definir_etapas_ponderadas(v_orden,jsonb_build_array(
-      jsonb_build_object('catalogo_id',v_primera,'area_id',(select id from public.areas where codigo='DIS'),'peso_pct',60),
-      jsonb_build_object('catalogo_id',v_segunda,'area_id',(select id from public.areas where codigo='PRD'),'peso_pct',40)));
-  exception when others then v_fallo := true;
+    perform public.guardar_etapas_libres(v_orden,jsonb_build_array(
+      jsonb_build_object('id',v_primera,'nombre','Armado de estructura','area_id',(select id from public.areas where codigo='PRD'),'peso_pct',40),
+      jsonb_build_object('id',v_segunda,'nombre','Planos de fabricación','area_id',(select id from public.areas where codigo='DIS'),'peso_pct',60)),null);
+  exception when others then
+    if sqlerrm not like '%diseno.planos%' then raise; end if;
+    v_fallo := true;
   end;
   if not v_fallo then raise exception 'FALLO: Administración reordenó Diseño'; end if;
 
@@ -103,6 +101,7 @@ begin
       and fecha_fin_programada=current_date+4) then
     raise exception 'FALLO: Producción cambió fechas directamente';
   end if;
+  raise notice '  ok · Diseño elige y ordena etapas libres; Administración solo programa fechas; Producción no las mueve';
 end;
 $test$;
 
