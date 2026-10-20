@@ -8,8 +8,19 @@ select test.crear_usuario('Ana', 'Prueba', 'admin-ot@demo.pe', 'ADMIN',
          (select id from public.sedes limit 1)) as admin_id \gset
 select test.crear_usuario('Luis', 'Mamani', 'luis@demo.pe', 'OPERARIO',
          (select id from public.sedes limit 1), true, 12.50) \gset operario_
-select test.crear_usuario('Rosa', 'Yupanqui', 'rosa@demo.pe', 'JEFE_TALLER',
+-- Desde la migración 20260929110100 las jefaturas de taller no existen: el
+-- taller lo lleva Supervisión.
+select test.crear_usuario('Rosa', 'Yupanqui', 'rosa@demo.pe', 'SUPERVISOR',
          (select id from public.sedes limit 1)) \gset jefe_
+-- Diseño elige las etapas y Administración les pone fecha (migración
+-- 20260928130000): sin eso la OT no entra al taller.
+select test.crear_usuario('Dina', 'Prueba', 'diseno-ot@demo.pe', 'DISENO',
+         (select id from public.sedes limit 1)) as diseno_id \gset
+select test.crear_usuario('Olga', 'Prueba', 'oficina-ot@demo.pe', 'ADMINISTRACION',
+         (select id from public.sedes limit 1)) as oficina_id \gset
+select set_config('prueba.ot.admin', :'admin_id', true);
+select set_config('prueba.ot.diseno', :'diseno_id', true);
+select set_config('prueba.ot.oficina', :'oficina_id', true);
 insert into public.clientes (tipo_documento, numero_documento, razon_social)
   values ('RUC', '20888888888', 'MINERA LOS ANDES S.A.');
 insert into public.unidades (cliente_id, placa, tipo_vehiculo, marca, modelo)
@@ -59,16 +70,48 @@ begin
 
   update public.ordenes_trabajo set estado = 'APROBADA' where id = v_id;
 
-  -- Los valores esperados se derivan del catálogo en lugar de escribirse a
-  -- mano: la empresa ajusta sus etapas y sus días desde Configuración, y la
-  -- prueba debe seguir siendo válida cuando lo haga.
+  -- Desde la migración 20260928130000 aprobar ya no copia el catálogo de
+  -- etapas: las elige Diseño en cada OT y Administración les pone fecha.
   perform test.afirmar(
-    (select count(*) from public.ot_etapas where orden_id = v_id)
-      = (select count(*) from public.etapas_catalogo where activo),
-    'al aprobar se instancian todas las etapas activas del catálogo');
+    not exists (select 1 from public.ot_etapas where orden_id = v_id),
+    'al aprobar no se copian etapas del catálogo: las define Diseño');
+  perform test.debe_fallar(
+    format('update public.ordenes_trabajo set estado = ''EN_PROCESO'' where id = %L', v_id),
+    'una OT aprobada no entra al taller sin las etapas de Diseño',
+    'Diseño debe definir las etapas');
+
+  -- Diseño define tres etapas con su peso, con su propio rol.
+  perform test.como_usuario(current_setting('prueba.ot.diseno')::uuid);
+  set local role authenticated;
+  perform public.guardar_etapas_libres(v_id, jsonb_build_array(
+    jsonb_build_object('id', gen_random_uuid(), 'nombre', 'Habilitado de materia prima',
+      'area_id', (select id from public.areas where codigo = 'MTZ'), 'peso_pct', 30),
+    jsonb_build_object('id', gen_random_uuid(), 'nombre', 'Armado y soldadura',
+      'area_id', (select id from public.areas where codigo = 'PRD'), 'peso_pct', 50),
+    jsonb_build_object('id', gen_random_uuid(), 'nombre', 'Arenado y pintura',
+      'area_id', (select id from public.areas where codigo = 'ACB'), 'peso_pct', 20)), null);
+  reset role;
+  perform test.como_usuario(current_setting('prueba.ot.admin')::uuid);
+
+  perform test.afirmar(
+    (select count(*) from public.ot_etapas where orden_id = v_id) = 3,
+    'las etapas de la OT son las que eligió Diseño');
+  perform test.debe_fallar(
+    format('update public.ordenes_trabajo set estado = ''EN_PROCESO'' where id = %L', v_id),
+    'sin fechas de Administración la OT tampoco entra al taller',
+    'Administración debe poner inicio y fin');
+
+  -- Administración programa cada etapa, con su propio rol.
+  perform test.como_usuario(current_setting('prueba.ot.oficina')::uuid);
+  set local role authenticated;
+  perform public.programar_etapa_administracion(e.id, current_date, current_date + 10)
+     from public.ot_etapas e where e.orden_id = v_id;
+  reset role;
+  perform test.como_usuario(current_setting('prueba.ot.admin')::uuid);
+
   perform test.afirmar(
     (select horas_estimadas from public.ordenes_trabajo where id = v_id)
-      = (select sum(horas_estandar) from public.etapas_catalogo where activo),
+      = (select coalesce(sum(horas_estimadas), 0) from public.ot_etapas where orden_id = v_id),
     'las horas estimadas de la OT suman las de sus etapas');
 end $$;
 
@@ -109,32 +152,30 @@ begin
   select id into v_id from public.ordenes_trabajo limit 1;
 
   -- Al terminar el habilitado de materia prima, el avance debe ser exactamente
-  -- el peso de esa etapa sobre el total: no una etapa de catorce, sino sus
-  -- horas sobre las horas de todas.
-  select horas_estandar into v_horas_etapa
-    from public.etapas_catalogo where codigo = 'HABILITADO_MP';
-  select sum(horas_estandar) into v_horas_total
-    from public.etapas_catalogo where activo;
+  -- el peso de esa etapa sobre el total. Desde la migración 20260928133000 el
+  -- peso de una etapa es el porcentaje que le dio Diseño, no sus horas.
+  select peso_pct into v_horas_etapa
+    from public.ot_etapas where orden_id = v_id and nombre = 'Habilitado de materia prima';
+  select sum(peso_pct) into v_horas_total
+    from public.ot_etapas where orden_id = v_id;
 
   update public.ot_etapas e
      set avance_porcentaje = 100, estado = 'TERMINADA'
-    from public.etapas_catalogo c
-   where e.etapa_catalogo_id = c.id and c.codigo = 'HABILITADO_MP' and e.orden_id = v_id;
+   where e.orden_id = v_id and e.nombre = 'Habilitado de materia prima';
 
   select avance_porcentaje into v_avance from public.ordenes_trabajo where id = v_id;
   perform test.afirmar(
     round(v_avance, 1) = round(100 * v_horas_etapa / v_horas_total, 1),
-    format('el avance pondera por horas de etapa: %s%% ≈ %s%%',
+    format('el avance pondera por el peso de cada etapa: %s%% ≈ %s%%',
            round(v_avance, 2), round(100 * v_horas_etapa / v_horas_total, 2)));
 
   -- Una etapa omitida no debe contar ni en el numerador ni en el peso.
   update public.ot_etapas e
      set estado = 'OMITIDA'
-    from public.etapas_catalogo c
-   where e.etapa_catalogo_id = c.id and c.codigo = 'ARENADO' and e.orden_id = v_id;
+   where e.orden_id = v_id and e.nombre = 'Arenado y pintura';
 
-  select horas_estandar into v_horas_omitida
-    from public.etapas_catalogo where codigo = 'ARENADO';
+  select peso_pct into v_horas_omitida
+    from public.ot_etapas where orden_id = v_id and nombre = 'Arenado y pintura';
 
   select avance_porcentaje into v_avance from public.ordenes_trabajo where id = v_id;
   perform test.afirmar(

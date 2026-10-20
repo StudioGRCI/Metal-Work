@@ -8,16 +8,21 @@ begin;
 alter table storage.objects enable row level security;
 grant select, insert, delete on storage.objects to authenticated;
 
+-- ----------------------------------------------------------------- armazón
+-- Una cuenta por puesto, cada una en su área, como en producción (como el check
+-- 330). Antes se tomaba de la base la primera cuenta activa de cada rol, y en
+-- una base sin esas cuentas el check se caía antes de probar nada.
 do $$
-declare v text;
+declare v text; v_id uuid;
 begin
-  foreach v in array array['COMPRADOR', 'GERENTE', 'TESORERIA', 'ALMACENERO', 'SUPERVISOR', 'CONDUCTOR'] loop
-    perform set_config('prueba.' || lower(v), (
-      select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id
-       where r.codigo = v and u.activo order by u.creado_en limit 1), true);
-    if current_setting('prueba.' || lower(v)) = '' then
-      raise exception 'FALLA: no hay una cuenta activa con el rol % para probar', v;
-    end if;
+  foreach v in array array['COMPRADOR:LOG:comprador', 'GERENTE:GGE:gerente', 'TESORERIA:TES:tesoreria', 'ALMACENERO:ALM:almacenero', 'SUPERVISOR:PRD:supervisor', 'CONDUCTOR:LOG:conductor'] loop
+    v_id := gen_random_uuid();
+    insert into auth.users (id, email) values (v_id, lower(split_part(v, ':', 3)) || '.331@prueba.local');
+    insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
+    select v_id, split_part(v, ':', 1), 'Check 331', lower(split_part(v, ':', 3)) || '.331@prueba.local', r.id,
+           (select id from public.areas where codigo = split_part(v, ':', 2))
+      from public.roles r where r.codigo = split_part(v, ':', 1);
+    perform set_config('prueba.' || split_part(v, ':', 3), v_id::text, true);
   end loop;
 end $$;
 

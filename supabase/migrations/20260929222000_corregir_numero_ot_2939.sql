@@ -12,6 +12,12 @@ begin
    where id = v_orden and cotizacion_pdf_id = v_cotizacion
    for update;
   if v_numero is null then
+    -- En una base nueva (db-test.sh, el banco) esa OT no existe: es un arreglo
+    -- de un dato de producción y no hay nada que corregir.
+    if not exists (select 1 from public.ordenes_trabajo where id = v_orden) then
+      raise notice 'No está la OT de la cotización 3700-2026: base sin datos de producción.';
+      return;
+    end if;
     raise exception 'No se encontró la OT de la cotización 3700-2026.';
   end if;
   if v_numero = '2939-2026' then

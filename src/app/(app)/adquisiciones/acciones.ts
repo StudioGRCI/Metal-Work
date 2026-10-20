@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
-import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion, mensajeDeArchivo } from '@/lib/acciones'
 import { cambiosDelFormulario, datosDeCorreccion } from '@/lib/correccion-accion'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -157,7 +157,7 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   if (ruta && bytes) {
     const { error: errorArchivo } = await supabase.storage.from('comprobantes-financieros')
       .upload(ruta, bytes, { contentType: 'application/pdf', upsert: false })
-    if (errorArchivo) return { ok: false, error: `Comprobante creado en borrador, pero no se pudo subir el PDF: ${errorArchivo.message}` }
+    if (errorArchivo) return { ok: false, error: `Comprobante creado en borrador, pero no se pudo subir el PDF: ${mensajeDeArchivo(errorArchivo)}` }
   }
   const { data: registrado, error: errorRegistro } = await supabase.from('adquisiciones')
     .update({ ruta_storage: ruta, estado: 'REGISTRADA' }).eq('id', id).select('id').maybeSingle()
@@ -194,7 +194,7 @@ export async function completarAdquisicion(_previo: unknown, formulario: FormDat
     const { data: existentes, error: errorLista } = await db.storage.from('comprobantes-financieros')
       .list(`adquisiciones/${id.data}`, { limit: 10 })
     if (errorLista || !existentes?.some(item => item.name === 'comprobante.pdf')) {
-      return { ok: false, error: `No se pudo subir el PDF: ${errorArchivo.message}` }
+      return { ok: false, error: `No se pudo subir el PDF: ${mensajeDeArchivo(errorArchivo)}` }
     }
   }
   // Lo que el detector leyó del PDF pendiente; si no leyó nada, queda lo que había.

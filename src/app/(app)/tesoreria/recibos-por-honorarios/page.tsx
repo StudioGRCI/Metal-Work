@@ -40,7 +40,10 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
     ? await cajaDeLosPagos('PAGO_RECIBO_HONORARIOS', recibos.flatMap((r) => r.pagos.map((p) => p.id)))
     : undefined
   const pagoDe = (r: ReciboParaPagar) => r.pagos.find((p) => !p.anulado_en) ?? null
-  const porPagar = recibos.filter((r) => !pagoDe(r))
+  // Los por pagar, del más viejo, el más atrasado, al más nuevo.
+  const porPagar = recibos
+    .filter((r) => !pagoDe(r))
+    .sort((a, b) => a.fecha_emision.localeCompare(b.fecha_emision) || a.creado_en.localeCompare(b.creado_en))
   // Los pagados, del pago más reciente al más viejo.
   const pagados = recibos
     .filter((r) => pagoDe(r))

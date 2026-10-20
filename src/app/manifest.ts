@@ -4,8 +4,10 @@ import type { MetadataRoute } from 'next'
  * Lo que el teléfono necesita para instalar el sistema como aplicación: nombre,
  * íconos y que se abra sin la barra del navegador (`standalone`).
  *
- * Arranca en el dashboard, que lo ve todo el mundo. Los atajos del teléfono
- * llevan a tareas concretas del taller.
+ * Arranca en el dashboard, que lo ve todo el mundo. El atajo lleva a los
+ * avisos, que también son de todos: el que había («Nuevo trabajo sin orden»)
+ * abría una pantalla que hoy solo abren Gerencia y Supervisión, y a los demás les decía
+ * «Sin permiso» (revisión del 2026-10-20).
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -28,8 +30,8 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       {
-        name: 'Nuevo trabajo sin orden',
-        url: '/avance/trabajos/nueva',
+        name: 'Mis avisos',
+        url: '/avisos',
         icons: [{ src: '/iconos/icono-192.png', sizes: '192x192' }],
       },
     ],

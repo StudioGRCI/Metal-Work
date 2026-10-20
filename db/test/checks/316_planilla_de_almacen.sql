@@ -2,23 +2,33 @@
 -- carga lo anotado en la planilla con la fecha en que pasó; la base no deja
 -- fechas futuras, de hace más de 31 días ni anteriores al último conteo, y
 -- volver a cargar la misma fila no la duplica. Todo se deshace al final.
+\set ON_ERROR_STOP on
 begin;
-select set_config('prueba.material', (select m.id::text from public.materiales m
-  where m.activo and not m.unidad_pendiente
-    and not exists (select 1 from public.ot_materiales om where om.material_id = m.id)
-  order by m.codigo limit 1), true);
+-- El check se arma su propio almacén: antes tomaba el primer material, una
+-- unidad y la primera cuenta de cada rol de la base, y en una base vacía se
+-- quedaba con un uuid en blanco.
+insert into public.empresa (ruc, razon_social) values ('20100000316', 'PRUEBAS PLANILLA ALMACEN S.A.C.');
+insert into public.sedes (codigo, nombre) values ('QA316', 'Almacén planilla');
+select test.crear_usuario('QA', 'Admin',   'qa-316-admin@demo.pe',   'ADMIN',             (select id from public.sedes where codigo = 'QA316')) as admin_id \gset
+select test.crear_usuario('QA', 'Almacen', 'qa-316-almacen@demo.pe', 'ALMACENERO',        (select id from public.sedes where codigo = 'QA316')) as almacen_id \gset
+select test.crear_usuario('QA', 'Costos',  'qa-316-costos@demo.pe',  'COSTOS_MATERIALES', (select id from public.sedes where codigo = 'QA316')) as costos_id \gset
+select test.como_usuario(:'admin_id');
+update public.usuarios set area_id = (select id from public.areas where codigo = 'ALM') where id = :'almacen_id';
+insert into public.unidades_medida (codigo, nombre) values ('QA-UND-316', 'Unidad prueba') on conflict (codigo) do nothing;
+insert into public.categorias_material (codigo, nombre) values ('QA-CAT-316', 'Material prueba') on conflict (codigo) do nothing;
+insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
+select 'QA-MAT-316', 'Material de la planilla', c.id, u.id from public.categorias_material c, public.unidades_medida u
+ where c.codigo = 'QA-CAT-316' and u.codigo = 'QA-UND-316';
 -- Las unidades de la empresa se nombran por su código de fabricación; la placa
 -- llega después. La planilla acepta cualquiera de los dos.
-select set_config('prueba.placa', (select coalesce(nullif(btrim(u.placa), ''), u.codigo_interno) from public.unidades u
-  where u.activo and coalesce(nullif(btrim(u.placa), ''), u.codigo_interno) is not null
-    and (select count(*) from public.unidades x where x.activo
-          and (upper(btrim(x.placa)) = upper(btrim(coalesce(nullif(btrim(u.placa), ''), u.codigo_interno)))
-            or upper(btrim(x.codigo_interno)) = upper(btrim(coalesce(nullif(btrim(u.placa), ''), u.codigo_interno))))) = 1
-  order by 1 limit 1), true);
+insert into public.unidades (placa, tipo_vehiculo, marca, modelo, codigo_interno)
+values ('P3L-316', 'VOLQUETE', 'VOLVO', 'FMX', 'QA-UNI-316');
+select set_config('prueba.material', (select id::text from public.materiales where codigo = 'QA-MAT-316'), true);
+select set_config('prueba.placa', 'P3L-316', true);
 select set_config('prueba.ingreso', gen_random_uuid()::text, true);
 select set_config('prueba.salida', gen_random_uuid()::text, true);
-select set_config('u.almacen', (select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'ALMACENERO' and u.activo limit 1), true);
-select set_config('u.costos', (select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'COSTOS_MATERIALES' and u.activo limit 1), true);
+select set_config('u.almacen', :'almacen_id', true);
+select set_config('u.costos', :'costos_id', true);
 insert into storage.objects(bucket_id, name, owner_id, metadata) values ('evidencias-almacen',
   current_setting('u.almacen') || '/' || current_setting('prueba.salida') || '.jpg', current_setting('u.almacen'),
   '{"mimetype":"image/jpeg","size":100}'::jsonb);

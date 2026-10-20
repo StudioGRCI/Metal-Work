@@ -5,7 +5,11 @@
 --      sea «reportar» (produccion.registrar): el operario reporta en su área
 --      pero no da de alta unidades ni las marca listas.
 --   2. Que el área vaya en el reporte y cada uno escriba en la suya: Acabados
---      no reporta como Maestranza, y el jefe de producción reporta en las tres.
+--      no reporta como Maestranza, Maestranza reporta en la suya y quien revisa
+--      los reportes corrige el de cualquier área. (La jefatura de producción que
+--      reportaba en las tres se fue en la migración 20260929110100: hoy hay un
+--      supervisor por área, y la corrección es de quien aprueba los reportes,
+--      `produccion.aprobar_reportes`, que tiene Administración.)
 --   3. Que la misma placa no entre dos veces mientras sigue adentro —«abc 123»
 --      y «ABC-123» son la misma— y que después de salir pueda volver.
 --   4. Que «lista» y «salió» se sellen con fecha y firma, que de «salió» no se
@@ -21,14 +25,17 @@ insert into public.sedes (codigo, nombre) values ('T1', 'Taller principal');
 select test.crear_usuario('Aldo', 'Quiroz', 'aldo@demo.pe', 'ADMIN',           (select id from public.sedes limit 1)) as admin_id \gset
 select test.crear_usuario('Sam',  'Rojas',  'sam@demo.pe',  'SUPERVISOR',      (select id from public.sedes limit 1)) as acabados_id \gset
 select test.crear_usuario('Luis', 'Ochoa',  'luis@demo.pe', 'OPERARIO',        (select id from public.sedes limit 1)) as operario_id \gset
-select test.crear_usuario('Jefa', 'Prado',  'jefa@demo.pe', 'JEFE_PRODUCCION', (select id from public.sedes limit 1)) as jefe_id \gset
+select test.crear_usuario('Jefa', 'Prado',  'jefa@demo.pe', 'SUPERVISOR',      (select id from public.sedes limit 1)) as jefe_id \gset
+select test.crear_usuario('Olga', 'Ruiz',   'olga@demo.pe', 'ADMINISTRACION',  (select id from public.sedes limit 1)) as oficina_id \gset
 
 -- El área decide de quién es cada reporte; test.crear_usuario no la pide.
 select test.como_usuario(:'admin_id');
 update public.usuarios set area_id = (select id from public.areas where codigo = 'ACB')
  where id = :'acabados_id';
 update public.usuarios set area_id = (select id from public.areas where codigo = 'PRD')
- where id in (:'operario_id', :'jefe_id');
+ where id = :'operario_id';
+update public.usuarios set area_id = (select id from public.areas where codigo = 'MTZ')
+ where id = :'jefe_id';
 
 select set_config('prueba.acb', (select id::text from public.areas where codigo = 'ACB'), false);
 select set_config('prueba.mtz', (select id::text from public.areas where codigo = 'MTZ'), false);
@@ -125,7 +132,7 @@ end $$;
 
 reset role;
 
--- ----------------------------- el operario reporta en la suya; el jefe, en todas
+-- ------------------- el operario reporta en la suya; Maestranza, en la suya
 select test.como_usuario(:'operario_id');
 set local role authenticated;
 
@@ -155,12 +162,39 @@ declare v_n integer;
 begin
   insert into public.flota_avances (flota_id, area_id, descripcion)
   values (current_setting('prueba.unidad')::uuid, current_setting('prueba.mtz')::uuid, 'Maestranza habilitó la bisagra');
+  perform test.afirmar(
+    exists (select 1 from public.flota_avances
+             where flota_id = current_setting('prueba.unidad')::uuid
+               and area_id = current_setting('prueba.mtz')::uuid),
+    'Supervisión de Maestranza reporta en la suya');
 
-  -- Y corrige el reporte de Acabados, que no es el suyo.
+  -- Pero no corrige el reporte de Acabados, que no es el suyo.
   update public.flota_avances set impedimento = 'Falta la plancha'
    where id = current_setting('prueba.avance')::uuid;
   get diagnostics v_n = row_count;
-  perform test.afirmar(v_n = 1, 'el jefe de producción corrige el reporte de cualquier área');
+  perform test.afirmar(v_n = 0, 'Maestranza no corrige el reporte de Acabados');
+end $$;
+
+reset role;
+
+-- HALLAZGO: quien revisa los reportes tiene que poder aprobar y corregir el de
+-- cualquier área. Ese permiso, `produccion.aprobar_reportes`, hoy solo lo tiene
+-- Administración («Administración revisa los reportes de Supervisión», dice la
+-- acción `revisarReporte`), y la política de UPDATE de `flota_avances` lo
+-- acepta; pero la de SELECT pide `produccion.ver`, que Administración no tiene.
+-- La fila le queda oculta y el UPDATE afecta cero filas sin error: la pantalla
+-- de Avance responde «no se tocó nada» al aprobar un trabajo sin orden. Se
+-- deja al final del check para que el resto corra.
+select test.como_usuario(:'oficina_id');
+set local role authenticated;
+
+do $$
+declare v_n integer;
+begin
+  update public.flota_avances set revision = 'APROBADO', impedimento = 'Falta la plancha'
+   where id = current_setting('prueba.avance')::uuid;
+  get diagnostics v_n = row_count;
+  perform set_config('prueba.hallazgo_flota', v_n::text, false);
 end $$;
 
 reset role;
@@ -202,5 +236,9 @@ begin
 end $$;
 
 reset role;
+
+-- El hallazgo de arriba, al final para que el resto del check corra.
+select test.afirmar(current_setting('prueba.hallazgo_flota')::int = 1,
+  'HALLAZGO · quien aprueba los reportes (Administración) aprueba y corrige el reporte de cualquier área en flota_avances');
 
 rollback;

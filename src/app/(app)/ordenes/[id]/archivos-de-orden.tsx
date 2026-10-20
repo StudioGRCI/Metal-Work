@@ -134,7 +134,7 @@ export function ArchivosDeOrden({
         ) : (
           <ul className="divide-y divide-borde">
             {adjuntos.map((a) => (
-              <FilaAdjunto key={a.id} adjunto={a} ordenId={ordenId} />
+              <FilaAdjunto key={a.id} adjunto={a} ordenId={ordenId} alQuedarArchivo={setError} />
             ))}
           </ul>
         )}
@@ -160,9 +160,21 @@ export function ArchivosDeOrden({
   )
 }
 
-function FilaAdjunto({ adjunto: a, ordenId }: { adjunto: AdjuntoEnPantalla; ordenId: string }) {
+function FilaAdjunto({
+  adjunto: a,
+  ordenId,
+  alQuedarArchivo,
+}: {
+  adjunto: AdjuntoEnPantalla
+  ordenId: string
+  // La fila se va con el refresco: el aviso de que el archivo quedó guardado
+  // lo muestra la tarjeta, que se queda.
+  alQuedarArchivo: (mensaje: string) => void
+}) {
   const [confirmando, setConfirmando] = useState(false)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(quitarAdjunto)
+  const { alEnviar, enviando, error, limpiar } = useEnvio(quitarAdjunto, (r) => {
+    if (r.datos?.archivoQuedo && r.mensaje) alQuedarArchivo(r.mensaje)
+  })
   const Icono = a.tipo === 'CRONOGRAMA' ? FileSpreadsheet : FileText
 
   return (

@@ -5,13 +5,25 @@
 --      y NO se mezcle con el de la otra: cada una tiene su propio 100 %.
 --   2. Que el reporte diario sume —es incremental, «hoy avancé 15 %»— y que dos
 --      días distintos se acumulen.
---   3. Que quien no es jefe de área no pueda armar la lista, aunque sí pueda
---      reportar. Es la separación de manos de siempre.
+--   3. Que quien no es Supervisión del área no pueda armar la lista. Es la
+--      separación de manos de siempre.
 --   4. Que los topes del 100 % los ponga la base y no la pantalla: ni los pesos
 --      de un área ni lo reportado de una actividad pueden pasarse.
 --   5. Que la hoja de un área sea de esa área: el supervisor de Acabados no
---      arma, no pesa y no reporta lo de Maestranza, y quien responde por el
---      taller entero —`produccion.cualquier_area`— sí puede con las tres.
+--      arma, no pesa y no reporta lo de Maestranza.
+--
+-- Lo que cambió desde que se escribió, y por qué:
+--   · La jefatura de taller que respondía por las tres áreas
+--     (`produccion.cualquier_area`) ya no existe (migración 20260929110100), y
+--     en las OT de hoy —con plan de Diseño— solo Supervisión del área escribe
+--     sus tareas (migración 20260929229000): ni quien lleva
+--     `produccion.cualquier_area` (Gerencia) arma la hoja ajena. El check lo
+--     comprueba en vez de esperar lo contrario.
+--   · Cada tarea cuelga de una etapa que define Diseño (migraciones
+--     20260928133000 y 20260928135000) y se reporta con foto.
+--   · Desde la 20261016120000 el supervisor ya no lee la OT; como el check 317,
+--     la prueba le devuelve `ordenes.ver` solo mientras dure, para seguir
+--     cuidando el circuito de las tareas, que sigue en la base.
 \set ON_ERROR_STOP on
 begin;
 
@@ -19,8 +31,9 @@ insert into public.empresa (ruc, razon_social) values ('20100000019', 'PRUEBAS A
 insert into public.sedes (codigo, nombre) values ('T1', 'Taller principal');
 
 select test.crear_usuario('Aldo', 'Quiroz', 'aldo@demo.pe', 'ADMIN',      (select id from public.sedes limit 1)) as admin_id \gset
+select test.crear_usuario('Dina', 'Paz',    'dina@demo.pe', 'DISENO',     (select id from public.sedes limit 1)) as diseno_id \gset
 select test.crear_usuario('Teo',  'Alva',   'teo@demo.pe',  'SUPERVISOR', (select id from public.sedes limit 1)) as supervisor_id \gset
-select test.crear_usuario('Aure', 'Ramirez','aure@demo.pe', 'JEFE_TALLER',(select id from public.sedes limit 1)) as jefe_id \gset
+select test.crear_usuario('Gina', 'Ramirez','gina@demo.pe', 'GERENTE',    (select id from public.sedes limit 1)) as gerente_id \gset
 select test.crear_usuario('Luis', 'Ochoa',  'luis@demo.pe', 'OPERARIO',   (select id from public.sedes limit 1)) as operario_id \gset
 select test.crear_usuario('Sam',  'Rojas',  'sam@demo.pe',  'SUPERVISOR', (select id from public.sedes limit 1)) as acabados_id \gset
 select test.crear_usuario('Mia',  'Soto',   'mia@demo.pe',  'SUPERVISOR', (select id from public.sedes limit 1)) as maestranza_id \gset
@@ -32,12 +45,13 @@ select test.como_usuario(:'admin_id');
 select set_config('prueba.admin', :'admin_id', false);
 update public.usuarios set area_id = (select id from public.areas where codigo = 'PRD')
  where id in (:'supervisor_id', :'operario_id');
-update public.usuarios set area_id = (select id from public.areas where codigo = 'MTZ')
- where id = :'jefe_id';
 update public.usuarios set area_id = (select id from public.areas where codigo = 'ACB')
  where id = :'acabados_id';
 update public.usuarios set area_id = (select id from public.areas where codigo = 'MTZ')
  where id = :'maestranza_id';
+insert into public.roles_permisos (rol_id, permiso_codigo)
+select id, 'ordenes.ver' from public.roles where codigo = 'SUPERVISOR'
+on conflict do nothing;
 
 insert into public.clientes (tipo_documento, numero_documento, razon_social)
   values ('RUC', '20607761907', 'TRANSPORTES VEGA PIUNDO S.A.C');
@@ -53,23 +67,49 @@ begin
           (select id from public.sedes limit 1),
           'Tolva de prueba del avance por área')
   returning id into v_orden;
+  update public.ordenes_trabajo set estado = 'APROBADA' where id = v_orden;
 
   perform set_config('prueba.orden', v_orden::text, false);
   perform set_config('prueba.prd', (select id::text from public.areas where codigo = 'PRD'), false);
   perform set_config('prueba.mtz', (select id::text from public.areas where codigo = 'MTZ'), false);
   perform set_config('prueba.acb', (select id::text from public.areas where codigo = 'ACB'), false);
+  perform set_config('prueba.etapa_prd', gen_random_uuid()::text, false);
+  perform set_config('prueba.etapa_mtz', gen_random_uuid()::text, false);
+  perform set_config('prueba.etapa_acb', gen_random_uuid()::text, false);
 end $$;
 
 reset role;
 
--- ------------------------------- el operario reporta, pero no arma la lista
+-- Diseño define una etapa por área, con su rol.
+select test.como_usuario(:'diseno_id');
+set local role authenticated;
+select public.guardar_etapas_libres(current_setting('prueba.orden')::uuid, jsonb_build_array(
+  jsonb_build_object('id', current_setting('prueba.etapa_mtz'), 'nombre', 'Habilitado',
+    'area_id', current_setting('prueba.mtz'), 'peso_pct', 30),
+  jsonb_build_object('id', current_setting('prueba.etapa_prd'), 'nombre', 'Armado',
+    'area_id', current_setting('prueba.prd'), 'peso_pct', 40),
+  jsonb_build_object('id', current_setting('prueba.etapa_acb'), 'nombre', 'Acabados',
+    'area_id', current_setting('prueba.acb'), 'peso_pct', 30)), null);
+reset role;
+
+-- Las fotos de evidencia ya subidas: cada reporte exige la suya.
+insert into storage.objects (bucket_id, name, metadata)
+select 'fotos-avance', 'ot/' || current_setting('prueba.orden') || '/taller/qa-220-' || n || '.jpg',
+       '{"mimetype":"image/jpeg","size":100}'::jsonb
+  from generate_series(1, 9) n;
+
+create or replace function pg_temp.foto(n int) returns text language sql as $$
+  select 'ot/' || current_setting('prueba.orden') || '/taller/qa-220-' || n || '.jpg';
+$$;
+
+-- ------------------------------- el operario no arma la lista
 select test.como_usuario(:'operario_id');
 set local role authenticated;
 
 select test.debe_fallar(
-  format($sql$insert into public.ot_actividades (orden_id, area_id, nombre, peso_pct)
-              values (%L, %L, 'La que el operario no debe crear', 10)$sql$,
-         current_setting('prueba.orden'), current_setting('prueba.prd')),
+  format($sql$insert into public.ot_actividades (orden_id, area_id, etapa_id, nombre, peso_pct)
+              values (%L, %L, %L, 'La que el operario no debe crear', 10)$sql$,
+         current_setting('prueba.orden'), current_setting('prueba.prd'), current_setting('prueba.etapa_prd')),
   'un operario no arma la lista de actividades del área');
 
 reset role;
@@ -82,22 +122,23 @@ do $$
 declare
   v_orden uuid := current_setting('prueba.orden')::uuid;
   v_prd   uuid := current_setting('prueba.prd')::uuid;
+  v_etapa uuid := current_setting('prueba.etapa_prd')::uuid;
   v_act   uuid;
 begin
-  insert into public.ot_actividades (orden_id, area_id, orden_secuencia, nombre, peso_pct)
-  values (v_orden, v_prd, 1, 'Armado de estructura del cajón', 60)
+  insert into public.ot_actividades (orden_id, area_id, etapa_id, orden_secuencia, nombre, peso_pct)
+  values (v_orden, v_prd, v_etapa, 1, 'Armado de estructura del cajón', 60)
   returning id into v_act;
 
-  insert into public.ot_actividades (orden_id, area_id, orden_secuencia, nombre, peso_pct)
-  values (v_orden, v_prd, 2, 'Montaje de compuerta', 40);
+  insert into public.ot_actividades (orden_id, area_id, etapa_id, orden_secuencia, nombre, peso_pct)
+  values (v_orden, v_prd, v_etapa, 2, 'Montaje de compuerta', 40);
 
   perform set_config('prueba.actividad', v_act::text, false);
 
   -- Dos días: el reporte es lo del día y se acumula.
-  insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct, nota)
-  values (v_act, v_orden, current_date - 1, 15, 'Se cuadró el bastidor');
-  insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct, nota)
-  values (v_act, v_orden, current_date, 25, 'Laterales soldados');
+  insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct, nota, foto_ruta)
+  values (v_act, v_orden, current_date - 1, 15, 'Se cuadró el bastidor', pg_temp.foto(1));
+  insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct, nota, foto_ruta)
+  values (v_act, v_orden, current_date, 25, 'Laterales soldados', pg_temp.foto(2));
 
   perform test.afirmar(
     (select avance_pct from public.v_ot_actividades where id = v_act) = 40,
@@ -112,32 +153,32 @@ end $$;
 
 -- Entre todas las actividades de un área no se pasa de 100 % de peso.
 select test.debe_fallar(
-  format($sql$insert into public.ot_actividades (orden_id, area_id, nombre, peso_pct)
-              values (%L, %L, 'La que hace pasar de 100', 20)$sql$,
-         current_setting('prueba.orden'), current_setting('prueba.prd')),
+  format($sql$insert into public.ot_actividades (orden_id, area_id, etapa_id, nombre, peso_pct)
+              values (%L, %L, %L, 'La que hace pasar de 100', 20)$sql$,
+         current_setting('prueba.orden'), current_setting('prueba.prd'), current_setting('prueba.etapa_prd')),
   'los pesos de un área no pasan de 100',
   'no pueden pasar de 100');
 
 -- Ni lo reportado del 100 % de una actividad.
 select test.debe_fallar(
-  format($sql$insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct)
-              values (%L, %L, current_date + 1, 70)$sql$,
-         current_setting('prueba.actividad'), current_setting('prueba.orden')),
+  format($sql$insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct, foto_ruta)
+              values (%L, %L, current_date - 2, 70, %L)$sql$,
+         current_setting('prueba.actividad'), current_setting('prueba.orden'), pg_temp.foto(3)),
   'lo reportado no pasa del 100 % de la actividad',
   'no puede pasar del 100');
 
 -- Y no se reporta dos veces el mismo día: se corrige el del día.
 select test.debe_fallar(
-  format($sql$insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct)
-              values (%L, %L, current_date, 5)$sql$,
-         current_setting('prueba.actividad'), current_setting('prueba.orden')),
+  format($sql$insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct, foto_ruta)
+              values (%L, %L, current_date, 5, %L)$sql$,
+         current_setting('prueba.actividad'), current_setting('prueba.orden'), pg_temp.foto(3)),
   'un solo reporte por actividad y día',
   'uq_avance_del_dia');
 
 reset role;
 
 -- ---------------------------- Maestranza arma la suya, por pieza solicitada
-select test.como_usuario(:'jefe_id');
+select test.como_usuario(:'maestranza_id');
 set local role authenticated;
 
 do $$
@@ -146,46 +187,50 @@ declare
   v_mtz   uuid := current_setting('prueba.mtz')::uuid;
   v_act   uuid;
 begin
-  insert into public.ot_actividades (orden_id, area_id, orden_secuencia, nombre, referencia, peso_pct)
-  values (v_orden, v_mtz, 1, 'Habilitado de laterales', 'PZ-14', 100)
+  insert into public.ot_actividades (orden_id, area_id, etapa_id, orden_secuencia, nombre, referencia, peso_pct)
+  values (v_orden, v_mtz, current_setting('prueba.etapa_mtz')::uuid, 1, 'Habilitado de laterales', 'PZ-14', 100)
   returning id into v_act;
 
-  insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct)
-  values (v_act, v_orden, current_date, 50);
+  insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct, foto_ruta)
+  values (v_act, v_orden, current_date, 50, pg_temp.foto(4));
 
   perform set_config('prueba.actividad_mtz', v_act::text, false);
-
-  -- Y en la de Producción, que no es la suya: el jefe de taller responde por el
-  -- taller entero y lleva `produccion.cualquier_area`. Con peso 0 para no tocar
-  -- el reparto que ya está cuadrado en 100.
-  insert into public.ot_actividades (orden_id, area_id, orden_secuencia, nombre, peso_pct)
-  values (v_orden, current_setting('prueba.prd')::uuid, 3, 'Retoque que pide el jefe', 0);
 
   perform test.afirmar(
     (select avance_pct from public.v_ot_avance_areas
       where orden_id = v_orden and area_id = v_mtz) = 50,
     'Maestranza lleva el 50 % de lo suyo');
-
-  -- Y lo que importa: no se mezclan.
-  perform test.afirmar(
-    (select avance_pct from public.v_ot_avance_areas
-      where orden_id = v_orden and area_id = current_setting('prueba.prd')::uuid) = 24,
-    'sin que eso cambie el avance de Producción: cada área tiene su propio 100 %');
 end $$;
-
 reset role;
 
--- -------------------- el supervisor de Maestranza reporta su propia hoja
+-- Y lo que importa: no se mezclan. Maestranza no lee la hoja de Producción, así
+-- que se mira con los ojos de Diseño, que ve todas.
+select test.como_usuario(:'diseno_id');
+set local role authenticated;
+select test.afirmar(
+  (select avance_pct from public.v_ot_avance_areas
+    where orden_id = current_setting('prueba.orden')::uuid and area_id = current_setting('prueba.prd')::uuid) = 24,
+  'sin que eso cambie el avance de Producción: cada área tiene su propio 100 %');
+reset role;
+
 select test.como_usuario(:'maestranza_id');
 set local role authenticated;
 
+-- En la de Producción, que no es la suya, Maestranza no arma nada.
+select test.debe_fallar(
+  format($sql$insert into public.ot_actividades (orden_id, area_id, etapa_id, orden_secuencia, nombre, peso_pct)
+              values (%L, %L, %L, 3, 'Retoque que pide Maestranza', 0)$sql$,
+         current_setting('prueba.orden'), current_setting('prueba.prd'), current_setting('prueba.etapa_prd')),
+  'el supervisor de Maestranza no arma la lista de Producción');
+
+-- El supervisor de Maestranza reporta otro día de su propia hoja.
 do $$
 declare
   v_orden uuid := current_setting('prueba.orden')::uuid;
   v_act   uuid := current_setting('prueba.actividad_mtz')::uuid;
 begin
-  insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct, nota)
-  values (v_act, v_orden, current_date - 1, 10, 'Supervisor de Maestranza reporta su avance');
+  insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct, nota, foto_ruta)
+  values (v_act, v_orden, current_date - 1, 10, 'Supervisor de Maestranza reporta su avance', pg_temp.foto(5));
 
   perform test.afirmar(
     (select avance_pct from public.v_ot_avance_areas
@@ -194,12 +239,25 @@ begin
 end $$;
 
 select test.debe_fallar(
-  format($sql$insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct)
-              values (%L, %L, current_date - 2, 1)$sql$,
-         current_setting('prueba.actividad'), current_setting('prueba.orden')),
+  format($sql$insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct, foto_ruta)
+              values (%L, %L, current_date - 2, 1, %L)$sql$,
+         current_setting('prueba.actividad'), current_setting('prueba.orden'), pg_temp.foto(6)),
   'el supervisor de Maestranza no reporta avances de Producción',
-  'row-level security');
+  'otra área');
 
+reset role;
+
+-- ------------- ni quien lleva `produccion.cualquier_area` arma la hoja ajena
+-- Hoy ese permiso solo lo tiene Gerencia; en una OT con plan de Diseño la hoja
+-- es de Supervisión del área (migración 20260929229000).
+select test.como_usuario(:'gerente_id');
+set local role authenticated;
+select test.debe_fallar(
+  format($sql$insert into public.ot_actividades (orden_id, area_id, etapa_id, orden_secuencia, nombre, peso_pct)
+              values (%L, %L, %L, 3, 'Retoque que pide Gerencia', 0)$sql$,
+         current_setting('prueba.orden'), current_setting('prueba.prd'), current_setting('prueba.etapa_prd')),
+  'en una OT con plan de Diseño, ni produccion.cualquier_area arma la hoja de Producción',
+  'Solo Supervisión del área');
 reset role;
 
 -- --------------- Acabados arma la suya y no se mete en la de Maestranza
@@ -214,12 +272,12 @@ declare
   v_acb   uuid := current_setting('prueba.acb')::uuid;
   v_act   uuid;
 begin
-  insert into public.ot_actividades (orden_id, area_id, orden_secuencia, nombre, peso_pct)
-  values (v_orden, v_acb, 1, 'Pintura de cabina', 100)
+  insert into public.ot_actividades (orden_id, area_id, etapa_id, orden_secuencia, nombre, peso_pct)
+  values (v_orden, v_acb, current_setting('prueba.etapa_acb')::uuid, 1, 'Pintura de cabina', 100)
   returning id into v_act;
 
-  insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct)
-  values (v_act, v_orden, current_date, 30);
+  insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct, foto_ruta)
+  values (v_act, v_orden, current_date, 30, pg_temp.foto(7));
 
   perform test.afirmar(
     (select avance_pct from public.v_ot_avance_areas
@@ -228,15 +286,15 @@ begin
 end $$;
 
 select test.debe_fallar(
-  format($sql$insert into public.ot_actividades (orden_id, area_id, nombre, peso_pct)
-              values (%L, %L, 'La que Acabados no debe crear', 0)$sql$,
-         current_setting('prueba.orden'), current_setting('prueba.mtz')),
+  format($sql$insert into public.ot_actividades (orden_id, area_id, etapa_id, nombre, peso_pct)
+              values (%L, %L, %L, 'La que Acabados no debe crear', 0)$sql$,
+         current_setting('prueba.orden'), current_setting('prueba.mtz'), current_setting('prueba.etapa_mtz')),
   'el supervisor de Acabados no arma la lista de Maestranza');
 
 select test.debe_fallar(
-  format($sql$insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct)
-              values (%L, %L, current_date, 10)$sql$,
-         current_setting('prueba.actividad_mtz'), current_setting('prueba.orden')),
+  format($sql$insert into public.ot_actividad_avances (actividad_id, orden_id, fecha, avance_pct, foto_ruta)
+              values (%L, %L, current_date - 3, 10, %L)$sql$,
+         current_setting('prueba.actividad_mtz'), current_setting('prueba.orden'), pg_temp.foto(8)),
   'ni reporta el avance de una actividad de Maestranza');
 
 -- El peso de la hoja ajena tampoco se le mueve, y esto no revienta: afecta cero

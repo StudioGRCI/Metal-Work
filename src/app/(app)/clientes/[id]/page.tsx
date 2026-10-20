@@ -23,9 +23,11 @@ import { NuevoContacto } from '@/components/comercial/nuevo-contacto'
 import { AccionesCatalogo } from '@/app/(app)/catalogos/acciones-catalogo'
 
 import { NuevaUnidad } from '../nueva-unidad'
+import { esUuid } from '@/lib/utils'
 
 export async function generateMetadata({ params }: PageProps<'/clientes/[id]'>): Promise<Metadata> {
   const { id } = await params
+  if (!esUuid(id)) notFound()
   const cliente = await obtenerCliente(id)
   return { title: cliente?.razon_social ?? 'Cliente no encontrado' }
 }
@@ -33,6 +35,7 @@ export async function generateMetadata({ params }: PageProps<'/clientes/[id]'>):
 export default async function PaginaCliente({ params }: PageProps<'/clientes/[id]'>) {
   const perfil = await exigirPermiso('clientes.ver')
   const { id } = await params
+  if (!esUuid(id)) notFound()
 
   const cliente = await obtenerCliente(id)
   if (!cliente) notFound()

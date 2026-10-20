@@ -107,6 +107,23 @@ function fallo(lectura: { error: unknown }) {
   if (lectura.error) throw new Error('No se pudo leer la cifra.')
 }
 
+/**
+ * Todas las filas de una lectura, de a 1000: lo que el servicio entrega por
+ * consulta aunque se pida más. Para las cifras que suman dinero, que con un
+ * tope salían cortas sin avisar en cuanto había más de mil documentos.
+ */
+async function todas<T>(
+  leer: (desde: number, hasta: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<{ data: T[]; error: null }> {
+  const filas: T[] = []
+  for (let desde = 0; ; desde += 1000) {
+    const r = await leer(desde, desde + 999)
+    fallo(r)
+    filas.push(...(r.data ?? []))
+    if ((r.data ?? []).length < 1000) return { data: filas, error: null }
+  }
+}
+
 // ── Las lecturas compartidas ────────────────────────────────────────────────
 
 const rqAbiertos = (c: Contexto) =>
@@ -359,7 +376,7 @@ const CIFRAS = {
   facturado_y_cobrado: {
     ruta: '/codigos-internos',
     calcular: async (c) => {
-      const r = await c.supabase.from('v_facturas_venta').select('moneda, total, cobrado, saldo, cancelada').is('anulada_en', null).limit(2000)
+      const r = await todas((d, h) => c.supabase.from('v_facturas_venta').select('moneda, total, cobrado, saldo, cancelada').is('anulada_en', null).order('id').range(d, h))
       fallo(r)
       const pen = (r.data ?? []).filter((f) => f.moneda !== 'USD')
       const facturado = pen.reduce((n, f) => n + num(f.total), 0)
@@ -416,7 +433,9 @@ const CIFRAS = {
   por_cobrar: {
     ruta: '/tesoreria/por-cobrar',
     calcular: async (c) => {
-      const r = await c.supabase.from('v_facturas_venta').select('moneda, saldo, cancelada, fecha_vencimiento').is('anulada_en', null).limit(2000)
+      const r = await todas((d, h) =>
+        c.supabase.from('v_facturas_venta').select('moneda, saldo, cancelada, fecha_vencimiento').is('anulada_en', null)
+          .eq('cancelada', false).gt('saldo', 0).order('id').range(d, h))
       fallo(r)
       const pendientes = (r.data ?? []).filter((f) => !f.cancelada && num(f.saldo) > 0)
       const vencidas = pendientes.filter((f) => f.fecha_vencimiento && f.fecha_vencimiento < c.hoy).length
@@ -435,7 +454,7 @@ const CIFRAS = {
   por_pagar: {
     ruta: '/tesoreria/por-pagar',
     calcular: async (c) => {
-      const r = await c.supabase.from('v_cuentas_pagar').select('moneda, saldo, fecha_vencimiento').gt('saldo', 0).limit(2000)
+      const r = await todas((d, h) => c.supabase.from('v_cuentas_pagar').select('moneda, saldo, fecha_vencimiento').gt('saldo', 0).order('id').range(d, h))
       fallo(r)
       const filas = r.data ?? []
       const vencidas = filas.filter((f) => f.fecha_vencimiento && f.fecha_vencimiento < c.hoy).length
@@ -488,7 +507,7 @@ const CIFRAS = {
   facturado_del_mes: {
     ruta: '/contabilidad/facturacion',
     calcular: async (c) => {
-      const r = await c.supabase.from('v_facturas_venta').select('moneda, total').is('anulada_en', null).gte('fecha_emision', c.mes).limit(2000)
+      const r = await todas((d, h) => c.supabase.from('v_facturas_venta').select('moneda, total').is('anulada_en', null).gte('fecha_emision', c.mes).order('id').range(d, h))
       fallo(r)
       const filas = r.data ?? []
       return {
@@ -728,6 +747,8 @@ const CIFRAS_POR_PUESTO: Record<string, { titulo: string; cifras: ClaveCifra[] }
   SUPERVISOR_GENERAL: { titulo: 'Seguimiento', cifras: ['seguimiento_en_curso', 'rq_abiertos', 'vehiculos_en_planta', 'bajo_minimo'] },
   VENDEDOR: { titulo: 'Ventas', cifras: ['cotizaciones_en_gerencia', 'aprobadas_del_mes', 'clientes'] },
 }
+// El líder de Diseño ve las cifras de Diseño (mismo menú, `navegacion.ts`).
+CIFRAS_POR_PUESTO.DISENO_LIDER = CIFRAS_POR_PUESTO.DISENO
 
 export async function dashboardDelPuesto(perfil: PerfilSesion): Promise<DashboardDelPuesto | null> {
   const esAdmin = perfil.rol.codigo === 'ADMIN'

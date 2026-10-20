@@ -3,30 +3,27 @@
 -- Todo dentro de una transacción que termina en rollback: corre igual en el
 -- banco local que contra la base viva sin dejar nada.
 --
--- Las personas se toman de la base por su rol: Logística (COMPRADOR), Almacén
+-- El check crea una cuenta por puesto, en su área: Logística (COMPRADOR), Almacén
 -- (ALMACENERO del área ALM), Gerencia (GERENTE), Contabilidad (CONTABILIDAD) y un
 -- supervisor de taller como quien no tiene nada que ver con compras.
 begin;
 
+-- ----------------------------------------------------------------- armazón
+-- Una cuenta por puesto, cada una en su área, como en producción (como el check
+-- 330). Antes se tomaba de la base la primera cuenta activa de cada rol, y en
+-- una base sin esas cuentas el check se caía antes de probar nada.
 do $$
-declare
-  v text;
+declare v text; v_id uuid;
 begin
-  foreach v in array array['COMPRADOR', 'GERENTE', 'CONTABILIDAD', 'SUPERVISOR'] loop
-    perform set_config('prueba.' || lower(v), (
-      select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id
-       where r.codigo = v and u.activo order by u.creado_en limit 1), true);
-    if current_setting('prueba.' || lower(v)) = '' then
-      raise exception 'FALLA: no hay una cuenta activa con el rol % para probar', v;
-    end if;
+  foreach v in array array['COMPRADOR:LOG:comprador', 'GERENTE:GGE:gerente', 'CONTABILIDAD:CON:contabilidad', 'SUPERVISOR:PRD:supervisor', 'ALMACENERO:ALM:almacenero'] loop
+    v_id := gen_random_uuid();
+    insert into auth.users (id, email) values (v_id, lower(split_part(v, ':', 3)) || '.324@prueba.local');
+    insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
+    select v_id, split_part(v, ':', 1), 'Check 324', lower(split_part(v, ':', 3)) || '.324@prueba.local', r.id,
+           (select id from public.areas where codigo = split_part(v, ':', 2))
+      from public.roles r where r.codigo = split_part(v, ':', 1);
+    perform set_config('prueba.' || split_part(v, ':', 3), v_id::text, true);
   end loop;
-  perform set_config('prueba.almacenero', (
-    select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id
-      join public.areas a on a.id = u.area_id
-     where r.codigo = 'ALMACENERO' and a.codigo = 'ALM' and u.activo order by u.creado_en limit 1), true);
-  if current_setting('prueba.almacenero') = '' then
-    raise exception 'FALLA: no hay un almacenero activo del área ALM para probar';
-  end if;
 end $$;
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
@@ -141,7 +138,7 @@ select test.afirmar(
 select set_config('prueba.oc1', gen_random_uuid()::text, true);
 select public.emitir_compra_agrupada(current_setting('prueba.oc1')::uuid, current_setting('prueba.proveedor')::uuid,
   'OC-CHK-1', jsonb_build_array(jsonb_build_object('id', current_setting('prueba.det1'), 'cantidad', 10, 'precio', 50)),
-  null, 'CONTADO', 0, 'PEN');
+  null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
 select test.afirmar(
   (select proveedor_id = current_setting('prueba.proveedor')::uuid and proveedor = 'BANCO DE PRUEBA S.A.A.'
      from public.ordenes_compra_materiales where id = current_setting('prueba.oc1')::uuid),
@@ -149,7 +146,7 @@ select test.afirmar(
 select test.afirmar(
   public.emitir_compra_agrupada(current_setting('prueba.oc1')::uuid, current_setting('prueba.proveedor')::uuid,
     'OC-CHK-1', jsonb_build_array(jsonb_build_object('id', current_setting('prueba.det1'), 'cantidad', 10, 'precio', 50)),
-    null, 'CONTADO', 0, 'PEN') = current_setting('prueba.oc1')::uuid,
+    null, 'CONTADO', 0, 'PEN', true, 'PLANTA') = current_setting('prueba.oc1')::uuid,
   'reintentar la misma compra no la duplica');
 reset role;
 set constraints all immediate;
@@ -181,11 +178,11 @@ select public.emitir_compra_agrupada(current_setting('prueba.oc2')::uuid, curren
   'OC-CHK-2', jsonb_build_array(
     jsonb_build_object('id', current_setting('prueba.det2'), 'cantidad', 10, 'precio', 20),
     jsonb_build_object('id', current_setting('prueba.det3'), 'cantidad', 5, 'precio', 20)),
-  null, 'CREDITO', 30, 'PEN');
+  null, 'CREDITO', 30, 'PEN', true, 'PLANTA');
 select set_config('prueba.oc3', gen_random_uuid()::text, true);
 select public.emitir_compra_agrupada(current_setting('prueba.oc3')::uuid, current_setting('prueba.proveedor')::uuid,
   'OC-CHK-3', jsonb_build_array(jsonb_build_object('id', current_setting('prueba.det4'), 'cantidad', 2, 'precio', 20)),
-  null, 'CONTADO', 0, 'PEN');
+  null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
 reset role;
 set constraints all immediate;
 set constraints all deferred;
@@ -240,7 +237,7 @@ set local role authenticated;
 select set_config('prueba.oc4', gen_random_uuid()::text, true);
 select public.emitir_compra_agrupada(current_setting('prueba.oc4')::uuid, current_setting('prueba.proveedor')::uuid,
   'OC-CHK-4', jsonb_build_array(jsonb_build_object('id', current_setting('prueba.det3'), 'cantidad', 5, 'precio', 40)),
-  null, 'CONTADO', 0, 'PEN');
+  null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
 reset role;
 set constraints all immediate;
 set constraints all deferred;
@@ -263,7 +260,7 @@ set local role authenticated;
 select set_config('prueba.oc5', gen_random_uuid()::text, true);
 select public.emitir_compra_agrupada(current_setting('prueba.oc5')::uuid, current_setting('prueba.proveedor')::uuid,
   'OC-CHK-5', jsonb_build_array(jsonb_build_object('id', current_setting('prueba.det3'), 'cantidad', 5, 'precio', 18)),
-  null, 'CONTADO', 0, 'PEN');
+  null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
 select test.afirmar(true, 'lo rechazado se vuelve a comprar con otra orden');
 reset role;
 

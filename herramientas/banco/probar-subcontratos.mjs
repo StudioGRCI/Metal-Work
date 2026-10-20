@@ -42,9 +42,9 @@ const CUENTAS = {
   contabilidad: process.env.CONTABILIDAD ?? 'contabilidad.local@metalwork.test',
   gerencia: process.env.GERENCIA ?? 'gerencia.local@metalwork.test',
   logistica: process.env.LOGISTICA ?? 'logistica.local@metalwork.test',
-  supervisorPrd: process.env.SUPERVISOR_PRD ?? 'supervisor.prd.local@metalwork.test',
-  supervisorAcb: process.env.SUPERVISOR_ACB ?? 'supervisor.acb.local@metalwork.test',
-  supervisorMtz: process.env.SUPERVISOR_MTZ ?? 'supervisor.mtz.local@metalwork.test',
+  supervisorPrd: process.env.SUPERVISOR_PRD ?? 'sup.prd.local@metalwork.test',
+  supervisorAcb: process.env.SUPERVISOR_ACB ?? 'sup.acb.local@metalwork.test',
+  supervisorMtz: process.env.SUPERVISOR_MTZ ?? 'sup.mtz.local@metalwork.test',
 }
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')

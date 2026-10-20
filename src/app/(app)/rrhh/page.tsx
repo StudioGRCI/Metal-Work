@@ -12,17 +12,48 @@ import { AgregarPersona, CerrarPlanilla, Distribuir, NuevaPlanilla, RepartirPart
 
 export const metadata = { title: 'Planillas de Recursos Humanos' }
 
+/** Lo que el servicio entrega por consulta, como mucho. */
+const POR_PAGINA = 1000
+
+/**
+ * Lee todas las filas de una consulta `.in()`: de a 150 identificadores, para
+ * no alargar la URL, y cada tanda de a 1000 filas hasta que no quede nada.
+ */
+async function enTandas<T>(
+  ids: string[],
+  leer: (tanda: string[], desde: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const filas: T[] = []
+  for (let i = 0; i < ids.length; i += 150) {
+    for (let desde = 0; ; desde += POR_PAGINA) {
+      const { data, error } = await leer(ids.slice(i, i + 150), desde)
+      if (error) throw new Error(`No se pudieron cargar las planillas: ${error.message}`)
+      filas.push(...(data ?? []))
+      if ((data ?? []).length < POR_PAGINA) break
+    }
+  }
+  return filas
+}
+
 export default async function PaginaRRHH() {
   const perfil = await exigirPermiso('rrhh.ver_planillas')
   const gestiona = puede(perfil, 'rrhh.gestionar_planillas')
   const db = await createClient()
-  const [planillas, personas, distribuciones, ordenes] = await Promise.all([
+  const [planillas, ordenes] = await Promise.all([
     db.from('planillas').select('id,tipo,periodo,moneda,estado').order('periodo', { ascending: false }).limit(50),
-    db.from('planilla_personas').select('id,planilla_id,nombre,documento,monto,detalle,origen_hoja,fila_origen').order('creado_en').limit(1000),
-    db.from('planilla_distribuciones').select('id,persona_id,orden_id,porcentaje').limit(5000),
     db.from('ordenes_trabajo').select('id,numero,unidad_id').neq('estado', 'ANULADA').order('creado_en', { ascending: false }).limit(200),
   ])
-  for (const r of [planillas, personas, distribuciones, ordenes]) if (r.error) throw new Error(`No se pudieron cargar las planillas: ${r.error.message}`)
+  for (const r of [planillas, ordenes]) if (r.error) throw new Error(`No se pudieron cargar las planillas: ${r.error.message}`)
+  // Las personas y los repartos de ESTAS planillas, enteros. Antes se pedían los
+  // de todas las planillas de la historia, del más viejo al más nuevo y con el
+  // tope de 1000 filas del servicio: pasados unos meses las planillas nuevas
+  // salían con 0 personas y S/ 0.00, y el «asignado %» de cada una, falso.
+  const personas = { data: await enTandas((planillas.data ?? []).map((p) => p.id), (tanda, desde) =>
+    db.from('planilla_personas').select('id,planilla_id,nombre,documento,monto,detalle,origen_hoja,fila_origen')
+      .in('planilla_id', tanda).order('creado_en').order('id').range(desde, desde + POR_PAGINA - 1)) }
+  const distribuciones = { data: await enTandas((personas.data ?? []).map((p) => p.id), (tanda, desde) =>
+    db.from('planilla_distribuciones').select('id,persona_id,orden_id,porcentaje')
+      .in('persona_id', tanda).order('id').range(desde, desde + POR_PAGINA - 1)) }
   const ids = (ordenes.data ?? []).map((o) => o.unidad_id).filter((id): id is string => Boolean(id))
   const unidades = ids.length ? await db.from('unidades').select('id,codigo_interno,placa,numero_fmi').in('id', ids) : { data: [], error: null }
   if (unidades.error) throw new Error(`No se pudieron cargar unidades: ${unidades.error.message}`)

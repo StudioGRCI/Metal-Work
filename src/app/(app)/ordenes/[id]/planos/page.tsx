@@ -11,6 +11,7 @@ import { CabeceraDeOrden, veCotizacionEnOt } from '../cabecera-orden'
 import { Cumplimiento } from '../cumplimiento'
 import { queMeToca } from '../te-toca'
 import { EquipoDiseno } from './equipo-diseno'
+import { esUuid } from '@/lib/utils'
 
 export const metadata = { title: 'Planos' }
 
@@ -22,6 +23,7 @@ export default async function PaginaPlanos({ params, searchParams }: {
   const secciones = seccionesDeOrden(perfil)
   if (!secciones.includes('planos')) redirect('/sin-permiso')
   const { id } = await params
+  if (!esUuid(id)) notFound()
   const query = await searchParams
   const [orden, versiones, catalogos, cumplimiento, areas, etapas, areasEtapas, pendientes, cotizacionPdf] = await Promise.all([
     obtenerOrden(id), versionesDePlanos(id),

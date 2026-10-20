@@ -9,6 +9,7 @@ insert into public.sedes (codigo, nombre) values ('T1', 'Taller principal');
 
 select test.crear_usuario('Ciro',  'Palacios', 'ciro@demo.pe',  'SUPERVISOR',  (select id from public.sedes limit 1)) as supervisor_id \gset
 select test.crear_usuario('Dina',  'Paredes',  'dina@demo.pe',  'DISENO',      (select id from public.sedes limit 1)) as diseno_id \gset
+select test.crear_usuario('Olga',  'Ruiz',     'olga@demo.pe',  'ADMINISTRACION', (select id from public.sedes limit 1)) as oficina_id \gset
 
 insert into public.clientes (tipo_documento, numero_documento, razon_social)
   values ('RUC', '20607761907', 'TRANSPORTES VEGA PIUNDO S.A.C');
@@ -19,9 +20,11 @@ insert into public.ordenes_trabajo (cliente_id, sede_id, descripcion, tipo_traba
 select set_config('prueba.sede',   (select id::text from public.sedes limit 1), false);
 select set_config('prueba.orden',  (select id::text from public.ordenes_trabajo limit 1), false);
 
--- ---------------------- Diseño administra la ficha, incluso al corregirla
--- Es Diseño quien puede editar accesorios y repuestos de la ficha de taller.
-select test.como_usuario(:'diseno_id');
+-- ---------------- Administración administra la ficha, incluso al corregirla
+-- Desde la migración 20261001222000 la ficha de taller —accesorios y
+-- repuestos incluidos— la llena Administración (`ordenes.editar`), no Diseño:
+-- lo pidió el jefe de Diseño, que la lee pero no la llena.
+select test.como_usuario(:'oficina_id');
 set local role authenticated;
 
 do $$
@@ -35,7 +38,7 @@ begin
 
   perform test.afirmar(
     not exists (select 1 from public.ot_accesorios where id = v_acc),
-    'Diseño quita de verdad el accesorio que agregó a la ficha');
+    'Administración quita de verdad el accesorio que agregó a la ficha');
 end $$;
 
 do $$
@@ -54,12 +57,20 @@ end $$;
 
 reset role;
 
--- Los supervisores reportan avance, pero no alteran la ficha que prepara Diseño.
+-- Diseño ya no la llena (la lee), y los supervisores tampoco la alteran.
+select test.como_usuario(:'diseno_id');
+set local role authenticated;
+select test.debe_fallar(
+  format('insert into public.ot_accesorios (orden_id, orden, cantidad, unidad, descripcion) values (%L, 2, 1, %L, %L)',
+    current_setting('prueba.orden'), 'unid', 'Accesorio agregado por Diseño'),
+  'Diseño ya no edita accesorios de la ficha', 'row-level security');
+reset role;
+
 select test.como_usuario(:'supervisor_id');
 set local role authenticated;
 select test.debe_fallar(
   format('insert into public.ot_accesorios (orden_id, orden, cantidad, unidad, descripcion) values (%L, 2, 1, %L, %L)',
-    current_setting('prueba.orden'), 'unid', 'Accesorio agregado fuera de Diseño'),
+    current_setting('prueba.orden'), 'unid', 'Accesorio agregado fuera de Administración'),
   'el supervisor no edita accesorios de la ficha', 'row-level security');
 reset role;
 

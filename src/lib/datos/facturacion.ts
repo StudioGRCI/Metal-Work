@@ -84,12 +84,38 @@ const COLUMNAS_FACTURA =
 export async function facturasDeVenta(cotizaciones?: string[]): Promise<FacturaVenta[]> {
   if (cotizaciones && cotizaciones.length === 0) return []
   const supabase = await createClient()
-  const consulta = cotizaciones
-    ? supabase.from('v_facturas_venta').select(COLUMNAS_FACTURA).in('cotizacion_pdf_id', cotizaciones).order('creado_en')
-    : supabase.from('v_facturas_venta').select(COLUMNAS_FACTURA).is('anulada_en', null).order('fecha_vencimiento').limit(300)
-  const { data, error } = await consulta
+  if (cotizaciones) {
+    const filas = await enTandas(cotizaciones, async (tanda) => {
+      const r = await supabase.from('v_facturas_venta').select(COLUMNAS_FACTURA).in('cotizacion_pdf_id', tanda).order('creado_en')
+      if (r.error) throw new Error(`No se pudieron leer las facturas de venta: ${r.error.message}`)
+      return r.data ?? []
+    })
+    return conCobros(filas)
+  }
+  // Lo que falta cobrar va entero, filtrado en la base; lo ya cobrado, solo lo
+  // último. Antes iban juntas, de la que vence antes a la que vence después y
+  // con tope de 300: con el tiempo las cobradas viejas llenaban la lista y las
+  // facturas nuevas por cobrar, y su total, desaparecían sin aviso.
+  const [pendientes, cobradas] = await Promise.all([
+    supabase.from('v_facturas_venta').select(COLUMNAS_FACTURA).is('anulada_en', null)
+      .eq('cancelada', false).gt('saldo', 0).order('fecha_vencimiento'),
+    supabase.from('v_facturas_venta').select(COLUMNAS_FACTURA).is('anulada_en', null)
+      .or('cancelada.eq.true,saldo.lte.0').order('ultimo_cobro', { ascending: false, nullsFirst: false })
+      .order('fecha_emision', { ascending: false }).limit(COBRADAS_A_LA_VISTA),
+  ])
+  const error = pendientes.error ?? cobradas.error
   if (error) throw new Error(`No se pudieron leer las facturas de venta: ${error.message}`)
-  return conCobros(data ?? [])
+  return conCobros([...(pendientes.data ?? []), ...(cobradas.data ?? [])])
+}
+
+/** Cuántas facturas ya cobradas se muestran, de la del último cobro más reciente a la más vieja. */
+export const COBRADAS_A_LA_VISTA = 60
+
+/** De a tandas, para no alargar la URL con cientos de identificadores. */
+async function enTandas<T>(ids: string[], leer: (tanda: string[]) => Promise<T[]>): Promise<T[]> {
+  const filas: T[] = []
+  for (let i = 0; i < ids.length; i += 150) filas.push(...(await leer(ids.slice(i, i + 150))))
+  return filas
 }
 
 /** Las facturas de un código interno, anuladas incluidas, de la más vieja a la más nueva: Gerencia en Códigos internos. */
@@ -104,15 +130,18 @@ export async function facturasDelCodigo(codigo: string): Promise<FacturaVenta[]>
 async function conCobros(filas: FilaFactura[]): Promise<FacturaVenta[]> {
   const supabase = await createClient()
   const ids = filas.flatMap((f) => (f.id ? [f.id] : []))
-  const cobros = ids.length
-    ? await supabase
+  const cobros = {
+    data: await enTandas(ids, async (tanda) => {
+      const r = await supabase
         .from('cobros_factura_venta')
         .select('id, factura_id, fecha, monto, cancela, operacion, archivo_ruta, archivo_mime, anulado_en, motivo_anulacion')
-        .in('factura_id', ids)
+        .in('factura_id', tanda)
         .order('fecha')
         .order('creado_en')
-    : { data: [], error: null }
-  if (cobros.error) throw new Error(`No se pudieron leer los cobros: ${cobros.error.message}`)
+      if (r.error) throw new Error(`No se pudieron leer los cobros: ${r.error.message}`)
+      return r.data ?? []
+    }),
+  }
   const [urlsFactura, urlsVoucher] = await Promise.all([
     enlaces(BUCKET_FACTURAS_VENTA, filas.map((f) => f.ruta_storage)),
     enlaces(BUCKET_COBROS_VENTA, (cobros.data ?? []).map((c) => c.archivo_ruta)),

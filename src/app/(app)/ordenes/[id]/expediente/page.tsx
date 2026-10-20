@@ -40,7 +40,7 @@ import { CODIGO_SIN_AVANCE, enlaceCodigo, faltanteDelCosto, normalizarCodigo } f
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { cantidad, fecha, fechaHora, fechaLarga, hora, hoyLima, moneda, numero, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
-import { cn } from '@/lib/utils'
+import { cn, esUuid } from '@/lib/utils'
 
 import { Pestanas } from '../pestanas'
 import { queMeToca } from '../te-toca'
@@ -49,6 +49,7 @@ import { BotonImprimir } from './imprimir'
 
 export async function generateMetadata({ params }: PageProps<'/ordenes/[id]/expediente'>): Promise<Metadata> {
   const { id } = await params
+  if (!esUuid(id)) notFound()
   const orden = await obtenerOrden(id)
   return { title: orden ? `Expediente ${orden.numero}` : 'Orden no encontrada' }
 }
@@ -78,6 +79,7 @@ const TONO_PUNTO: Record<Tono, string> = {
 export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[id]/expediente'>) {
   const perfil = await exigirPermiso('ordenes.ver')
   const { id } = await params
+  if (!esUuid(id)) notFound()
   const secciones = seccionesDeOrden(perfil)
   if (!secciones.includes('expediente')) redirect('/sin-permiso')
 

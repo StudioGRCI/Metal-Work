@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
-import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
+import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion, mensajeDeArchivo } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import type { Json } from '@/types/database'
@@ -44,7 +44,7 @@ export async function registrarGastoArea(_previo: unknown, datos: FormData): Pro
     : { ok: false, error: 'El identificador del gasto ya está en uso.' }
   const ruta = `ot/${v.orden_id}/gastos/${v.id}.pdf`
   const { error: errorArchivo } = await db.storage.from('gastos-ot').upload(ruta, pdf.bytes, { contentType: 'application/pdf', upsert: false })
-  if (errorArchivo) return { ok: false, error: `No se pudo subir el comprobante: ${errorArchivo.message}` }
+  if (errorArchivo) return { ok: false, error: `No se pudo subir el comprobante: ${mensajeDeArchivo(errorArchivo)}` }
   try {
     const { data, error } = await db.from('ot_gastos_areas').insert({
       id: v.id, orden_id: v.orden_id, area_id: perfil.area_id, tipo: v.tipo,
@@ -173,7 +173,7 @@ export async function adjuntarControlFirmado(_previo: unknown, datos: FormData):
   if (!control?.salida_cerrada_en || control.escaneo_ruta) return { ok: false, error: 'Cierra la salida antes de adjuntar el escaneo; solo se admite un archivo.' }
   const ruta = `ot/${ordenId.data}/control/${crypto.randomUUID()}.pdf`
   const { error: subida } = await db.storage.from('control-ot').upload(ruta, pdf.bytes, { contentType: 'application/pdf', upsert: false })
-  if (subida) return { ok: false, error: `No se pudo subir el escaneo: ${subida.message}` }
+  if (subida) return { ok: false, error: `No se pudo subir el escaneo: ${mensajeDeArchivo(subida)}` }
   try {
     const { data, error } = await db.from('ot_control_vehicular').update({
       escaneo_ruta: ruta, escaneo_nombre: pdf.archivo.name.slice(0, 200),

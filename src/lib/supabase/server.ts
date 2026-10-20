@@ -1,6 +1,7 @@
+import 'server-only'
+
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
 import type { Database } from '@/types/database'
 
@@ -31,17 +32,5 @@ export async function createClient() {
         },
       },
     },
-  )
-}
-
-/**
- * Cliente con la clave de servicio: ignora RLS. Úsalo solo en tareas de
- * administración del lado del servidor, nunca a partir de datos del usuario.
- */
-export function createAdminClient() {
-  return createSupabaseClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } },
   )
 }

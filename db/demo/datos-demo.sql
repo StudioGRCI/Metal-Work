@@ -11,6 +11,43 @@
 -- creados (ver el README). No borra nada: solo agrega lo que falte.
 -- =============================================================================
 
+-- Desde la migración 20260928130000 Diseño define las etapas de cada OT, con su
+-- peso, y Administración les pone inicio y fin, antes de que el taller empiece.
+-- La demostración no tiene sesión para llamar a definir_etapas_ponderadas, así
+-- que copia aquí lo que esa función deja: todas las etapas del catálogo, el peso
+-- repartido por sus días estándar (suma exactamente 100) y las fechas seguidas
+-- entre el inicio y el fin de la orden.
+create or replace function pg_temp.demo_plan_etapas(p_orden uuid, p_inicio date, p_fin date)
+returns void language plpgsql as $f$
+declare
+  v_total numeric;
+  v_dias integer := greatest(p_fin - p_inicio, 1);
+begin
+  select sum(greatest(dias_estandar, 1)) into v_total from public.etapas_catalogo where activo;
+  insert into public.ot_etapas
+    (orden_id, etapa_catalogo_id, orden_secuencia, horas_estimadas, requiere_inspeccion,
+     area_id, peso_pct, fecha_inicio_programada, fecha_fin_programada)
+  -- Solo Administración, Diseño, Producción, Maestranza y Acabados llevan
+  -- etapas (migración 20260929100004): las de Logística o Almacén van a
+  -- Administración, como las reparte Diseño.
+  select p_orden, c.id, row_number() over w, c.horas_estandar, c.requiere_inspeccion,
+         case when a.codigo in ('ADM', 'DIS', 'PRD', 'MTZ', 'ACB') then a.id
+              else (select id from public.areas where codigo = 'ADM') end,
+         round(100 * greatest(c.dias_estandar, 1) / v_total, 2),
+         p_inicio + floor(v_dias * (sum(greatest(c.dias_estandar, 1)) over w - greatest(c.dias_estandar, 1)) / v_total)::integer,
+         p_inicio + floor(v_dias * (sum(greatest(c.dias_estandar, 1)) over w) / v_total)::integer
+    from public.etapas_catalogo c
+    left join public.areas a on a.id = c.area_id
+   where c.activo
+  window w as (order by c.orden_secuencia)
+  on conflict (orden_id, etapa_catalogo_id) do nothing;
+  -- El redondeo deja unas centésimas sueltas: van a la etapa más larga.
+  update public.ot_etapas e
+     set peso_pct = e.peso_pct + 100 - (select sum(peso_pct) from public.ot_etapas where orden_id = p_orden)
+   where e.id = (select id from public.ot_etapas where orden_id = p_orden order by peso_pct desc limit 1);
+end;
+$f$;
+
 do $$
 declare
   v_sede      uuid;
@@ -24,11 +61,20 @@ declare
   v_plantilla     uuid;
 begin
   select id into v_sede from public.sedes where activo order by creado_en limit 1;
-  select id into v_usuario from public.usuarios where activo order by creado_en limit 1;
+  -- El administrador del sistema, no la primera cuenta: la migración 042 crea
+  -- antes la de Administración, que no aprueba órdenes.
+  select u.id into v_usuario from public.usuarios u
+    join public.roles r on r.id = u.rol_id
+   where u.activo and r.codigo = 'ADMIN' order by u.creado_en limit 1;
 
   if v_sede is null or v_usuario is null then
     raise exception 'Antes de cargar la demostración hay que registrar la empresa, una sede y un usuario. Ver el README.';
   end if;
+
+  -- Los disparadores de la OT anotan quién hizo cada cambio y exigen que lo
+  -- vea (`ot_registrar_evento`, migración 013): la carga va con la sesión del
+  -- administrador.
+  perform set_config('request.jwt.claim.sub', v_usuario::text, true);
 
   -- --------------------------------------------------------------- personal
   -- Se crean como fichas de personal, no como accesos: la cuenta queda sin
@@ -41,7 +87,7 @@ begin
       select * from (values
         ('gerencia@metalworkperusac.com',     'Aníbal',   'Sologuren','GERENTE',     'GGE', false,  0.0, 'Gerente general'),
         ('ventas@metalworkperusac.com',       'Karina',   'Bardales', 'VENDEDOR',    'GCO', false,  0.0, 'Ejecutiva comercial'),
-        ('jefe.taller@metalworkperusac.com',  'Aurelio',  'Ramírez',  'JEFE_TALLER', 'MTZ', false, 22.0, 'Jefe de maestranza'),
+        ('supervisor.maestranza@metalworkperusac.com', 'Aurelio', 'Ramírez', 'SUPERVISOR', 'MTZ', false, 22.0, 'Supervisor de maestranza'),
         ('supervisor@metalworkperusac.com',   'Teodoro',  'Alva',     'SUPERVISOR',  'PRD', false, 18.0, 'Supervisor de producción'),
         ('soldador1@metalworkperusac.com',    'Elmer',    'Chávez',   'OPERARIO',    'PRD', true,  14.0, 'Soldador estructural'),
         ('soldador2@metalworkperusac.com',    'Máximo',   'Vargas',   'OPERARIO',    'PRD', true,  14.0, 'Soldador estructural'),
@@ -148,6 +194,7 @@ begin
     returning id into v_orden;
 
     update public.ordenes_trabajo set estado = 'APROBADA'   where id = v_orden;
+    perform pg_temp.demo_plan_etapas(v_orden, current_date - 20, current_date + 10);
     update public.ordenes_trabajo set estado = 'EN_PROCESO' where id = v_orden;
 
     -- Avance real de taller: las primeras etapas terminadas, producción en curso.
@@ -175,6 +222,7 @@ begin
     returning id into v_orden;
 
     update public.ordenes_trabajo set estado = 'APROBADA'   where id = v_orden;
+    perform pg_temp.demo_plan_etapas(v_orden, current_date - 30, current_date - 3);
     update public.ordenes_trabajo set estado = 'EN_PROCESO' where id = v_orden;
     update public.ordenes_trabajo
        set estado = 'PAUSADA',
@@ -197,6 +245,7 @@ begin
     returning id into v_orden;
 
     update public.ordenes_trabajo set estado = 'APROBADA'   where id = v_orden;
+    perform pg_temp.demo_plan_etapas(v_orden, current_date + 2, current_date + 25);
     update public.ordenes_trabajo set estado = 'PROGRAMADA' where id = v_orden;
 
     -- 4) Orden ya entregada, con su acta de conformidad.
@@ -214,6 +263,7 @@ begin
     returning id into v_orden;
 
     update public.ordenes_trabajo set estado = 'APROBADA'   where id = v_orden;
+    perform pg_temp.demo_plan_etapas(v_orden, current_date - 40, current_date - 5);
     update public.ordenes_trabajo set estado = 'EN_PROCESO' where id = v_orden;
 
     update public.ot_etapas set avance_porcentaje = 100, estado = 'TERMINADA'
@@ -249,10 +299,17 @@ begin
   -- Lo que se hizo cada día en la unidad. Sin fotos, porque el archivo vive en
   -- Storage y la demostración solo carga base de datos; el texto igual arma el
   -- tablero del taller y la línea de tiempo de la orden.
-  if not exists (select 1 from public.ot_avances) then
-    select id into v_jefe from public.usuarios
-     where correo like '%jefe%' or cargo ilike '%jefe%' limit 1;
-    v_jefe := coalesce(v_jefe, v_usuario);
+  -- Desde la migración 20260928130000 una OT con plan de Diseño reporta su
+  -- avance en Avance de Taller, con tarea y foto, y `ot_avances` la rechaza:
+  -- este diario solo se carga si las órdenes de la demostración son del plan
+  -- histórico. La supervisión de cada área es hoy quien reporta.
+  select u.id into v_jefe from public.usuarios u
+    join public.roles r on r.id = u.rol_id
+   where u.activo and r.codigo = 'SUPERVISOR' order by u.creado_en limit 1;
+  v_jefe := coalesce(v_jefe, v_usuario);
+
+  if not exists (select 1 from public.ot_avances)
+     and not exists (select 1 from public.ordenes_trabajo where plan_etapas_manual) then
 
     -- Quien registra el avance tiene que estar identificado: la bitácora de la
     -- OT no acepta anotaciones anónimas.
@@ -308,7 +365,8 @@ begin
   -- ahora y se deja a medio llenar, que es como se ve una unidad en planta.
   if not exists (select 1 from public.ot_repuestos) then
     for v_orden in
-      select id from public.ordenes_trabajo where estado not in ('BORRADOR', 'ANULADA')
+      select id from public.ordenes_trabajo
+       where estado not in ('BORRADOR', 'ANULADA', 'ENTREGADA', 'FACTURADA')
     loop
       perform public.armar_ficha_ot(v_orden);
     end loop;

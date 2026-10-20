@@ -29,11 +29,26 @@ export const NO_TOCO_NADA =
 export function mensajeDeError(error: { message: string; code?: string }): string {
   const m = error.message
 
-  if (error.code === '23505') return 'Ya existe un registro con esos datos.'
+  // El duplicado del motor se reescribe; el que explica un disparador («El
+  // número de OT no se reinicia cada año») se deja pasar.
+  if (error.code === '23505') {
+    return /duplicate key|unique constraint/i.test(m) ? 'Ya existe un registro con esos datos.' : m
+  }
   if (error.code === '23503')
     return 'El registro está referenciado por otro documento y no se puede modificar.'
-  if (error.code === '42501' || error.code === 'PGRST301')
-    return 'No tienes permisos para realizar esta operación.'
+  // 42501 es también el código con que las funciones del esquema explican por
+  // qué no dejan hacer algo («Solo el puesto que aprueba las compras puede
+  // aprobarlas.»): ese mensaje ya está redactado para el taller y se deja
+  // pasar. Solo el del motor (la seguridad por fila o un permiso de tabla) se
+  // reemplaza, porque en inglés no le dice nada a nadie.
+  if (error.code === 'PGRST301') return 'No tienes permisos para realizar esta operación.'
+  if (error.code === '42501') {
+    // `exigir_permiso` nombra el permiso por su código («No tiene el permiso
+    // compras.crear…»), que no le dice nada al taller.
+    return /row-level security|permission denied|insufficient privilege|^No tiene el permiso /i.test(m)
+      ? 'No tienes permisos para realizar esta operación.'
+      : m
+  }
 
   const check = /violates check constraint "([^"]+)"/.exec(m)
   if (check) return `El dato no cumple la regla ${check[1]}.`
@@ -51,4 +66,19 @@ export function mensajeDeError(error: { message: string; code?: string }): strin
   }
 
   return m
+}
+
+/**
+ * Lo mismo para el almacenamiento de archivos, que responde en inglés y sin
+ * código de Postgres («new row violates row-level security policy», «The
+ * resource already exists»). Se reescribe siempre: su texto nunca es del taller.
+ */
+export function mensajeDeArchivo(error: { message: string }): string {
+  const m = error.message
+  if (/row-level security|permission|unauthorized|not allowed/i.test(m))
+    return 'No tienes permiso para subir o quitar ese archivo.'
+  if (/already exists|duplicate/i.test(m)) return 'Ese archivo ya estaba subido.'
+  if (/too large|maximum allowed size|payload/i.test(m)) return 'El archivo pesa demasiado.'
+  if (/mime|content type|invalid file type/i.test(m)) return 'Ese tipo de archivo no se acepta.'
+  return 'El archivo no se pudo guardar. Inténtalo de nuevo; si vuelve a pasar, avisa al administrador.'
 }

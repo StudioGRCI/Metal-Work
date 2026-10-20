@@ -1,6 +1,7 @@
 \set ON_ERROR_STOP on
--- Comprueba corrección de OT, cambio de comprador con trazabilidad y el acceso
--- de Diseño a su ficha. Todo se crea aquí y se deshace al final.
+-- Comprueba corrección de OT, cambio de comprador con trazabilidad y quién
+-- llena la ficha de taller (Administración desde la migración 20261001222000;
+-- antes Diseño). Todo se crea aquí y se deshace al final.
 begin;
 
 select test.crear_usuario('QA', 'Admin', 'qa-ot-admin@demo.pe', 'ADMIN',
@@ -46,11 +47,13 @@ where id in (:'cotizacion_anterior',:'cotizacion_nueva',:'cotizacion_emision');
 
 select test.como_usuario(:'admin_id');
 set local role authenticated;
+-- `cotizacion_id` y `monto_presupuestado` se retiraron con la cotización beta
+-- (migración 20260927234131): la OT solo guarda el vínculo al PDF.
 insert into public.ordenes_trabajo(id, numero, cliente_id, unidad_id, tipo_carroceria_id, sede_id,
-  tipo_trabajo, prioridad, descripcion, estado, cotizacion_pdf_id, monto_presupuestado)
+  tipo_trabajo, prioridad, descripcion, estado, cotizacion_pdf_id)
 select :'orden_id','9900-2099',:'cliente_anterior',:'unidad_id',:'carroceria_id',s.id,
   'FABRICACION','NORMAL','Fabricación QA para validar trazabilidad','APROBADA',
-  :'cotizacion_anterior',125000
+  :'cotizacion_anterior'
 from public.sedes s order by s.nombre limit 1;
 insert into public.ot_verificaciones(orden_id, numero, descripcion)
 select :'orden_id',1,'QA funcionamiento'
@@ -107,51 +110,60 @@ begin
     raise exception 'FALLO: la cotización de reemplazo aprobada no está visible para Oficina';
   end if;
   perform public.editar_ot_con_historial(oid,v,d_nueva,'QA: cliente incumplió; nueva venta aprobada');
-  if not exists(select 1 from public.ot_ventas_anteriores
+  -- HALLAZGO: Oficina no ve la venta anterior que acaba de guardar. La política
+  -- `ver_ventas_anteriores` pide `cotizaciones.ver`, permiso que la migración
+  -- 20260927234131 borró de la tabla de permisos: solo ADMIN la lee. Se anota y
+  -- se comprueba al final, para que el resto del check corra; que la fila sí
+  -- quedó se mira después como dueño de las tablas.
+  perform set_config('prueba.oficina_ve_venta_anterior',
+    exists(select 1 from public.ot_ventas_anteriores
       where orden_id=oid and cliente_id=current_setting('prueba.cliente_anterior')::uuid
-        and cotizacion_pdf_id=current_setting('prueba.cotizacion_anterior')::uuid) then
-    raise exception 'FALLO: no quedó el cliente y PDF de la venta anterior';
-  end if;
+        and cotizacion_pdf_id=current_setting('prueba.cotizacion_anterior')::uuid)::text, true);
   if not exists(select 1 from public.ordenes_trabajo o join public.unidades u on u.id=o.unidad_id
       where o.id=oid and o.cliente_id=current_setting('prueba.cliente_nuevo')::uuid
         and o.cotizacion_pdf_id=current_setting('prueba.cotizacion_nueva')::uuid
-        and o.cotizacion_id is null and o.monto_presupuestado=0
         and u.cliente_id=o.cliente_id and u.codigo_interno='MW-QA-290'
         and u.numero_fmi='FMI-HISTORICO-290') then
     raise exception 'FALLO: el cambio de cliente no quedó coherente o alteró el FMI histórico';
   end if;
-  select count(*) into n from public.ot_ventas_anteriores where orden_id=oid;
-  if n<>1 then raise exception 'FALLO: el cambio de cliente duplicó su historial'; end if;
 
-  -- La emisión nueva recibe el valor de la caja «Código interno» por el
-  -- argumento legado p_numero_fmi; debe guardarlo en su columna propia.
+  -- Desde la migración 20261016900000 Administración ya no emite la OT de la
+  -- cotización: la crea Gerencia al aprobarla, con su código interno
+  -- (`aprobar_cotizacion_con_ot`, que el check 391 prueba guardando el código
+  -- en su columna). La función vieja quedó cerrada a las cuentas.
   perform test.como_usuario(current_setting('prueba.oficina_id')::uuid);
-  perform public.emitir_orden_de_cotizacion(
-    current_setting('prueba.cotizacion_emision')::uuid,
-    current_setting('prueba.orden_emision_id')::uuid,
-    '9901-2099','MW-EMISION-290','CARROCERIA_MONTADA'::public.tipo_unidad_carroceria,
-    'Volvo','FMX 8x4',current_date+30,
-    'ot/'||current_setting('prueba.orden_emision_id')||'/qa.pdf','qa.pdf',100
-  );
-  if not exists(select 1 from public.ordenes_trabajo o join public.unidades u on u.id=o.unidad_id
-      where o.id=current_setting('prueba.orden_emision_id')::uuid
-        and u.codigo_interno='MW-EMISION-290' and u.numero_fmi is null) then
-    raise exception 'FALLO: emisión guardó el código interno en FMI o no creó la unidad';
-  end if;
+  perform test.debe_fallar(format($q$select public.emitir_orden_de_cotizacion(
+    %L, %L, '9901-2099', 'MW-EMISION-290', 'CARROCERIA_MONTADA'::public.tipo_unidad_carroceria,
+    'Volvo', 'FMX 8x4', current_date + 30, %L, 'qa.pdf', 100)$q$,
+    current_setting('prueba.cotizacion_emision'), current_setting('prueba.orden_emision_id'),
+    'ot/'||current_setting('prueba.orden_emision_id')||'/qa.pdf'),
+    'Administración ya no emite la OT de la cotización: la crea Gerencia al aprobarla',
+    'permission denied');
 
+  -- Desde la migración 20261001222000 la ficha de taller la llena
+  -- Administración (`ordenes.editar`), no Diseño, que solo la lee.
   perform test.como_usuario(current_setting('prueba.diseno_id')::uuid);
+  fallo:=false;
+  begin perform public.guardar_ficha_diseno(oid,'{"colores":"QA Diseño","largo_m":4.5}'::jsonb);
+  exception when others then
+    if sqlerrm not like '%ordenes.editar%' then raise; end if;
+    fallo:=true;
+  end;
+  if not fallo then raise exception 'FALLO: Diseño todavía llena la ficha de taller'; end if;
+
+  perform test.como_usuario(current_setting('prueba.oficina_id')::uuid);
   perform public.guardar_ficha_diseno(oid,'{"colores":"QA rollback","largo_m":4.5}'::jsonb);
   if not exists(select 1 from public.ordenes_trabajo where id=oid and colores='QA rollback' and largo_m=4.5) then
-    raise exception 'FALLO: Diseño no guardó la ficha';
+    raise exception 'FALLO: Administración no guardó la ficha';
   end if;
   insert into public.ot_accesorios(orden_id,orden,cantidad,unidad,descripcion)
     values(oid,999,1,'unid','QA rollback accesorio') returning id into acc;
   update public.ot_accesorios set verificado=true,verificado_por=auth.uid(),verificado_en=now() where id=acc;
   get diagnostics n=row_count;
-  if n<>1 then raise exception 'FALLO: Diseño no verifica accesorios'; end if;
+  if n<>1 then raise exception 'FALLO: Administración no verifica accesorios'; end if;
   update public.ot_verificaciones set observaciones='QA rollback' where orden_id=oid;
   get diagnostics n=row_count;
-  if n<1 then raise exception 'FALLO: Diseño no verifica funcionamiento'; end if;
+  if n<1 then raise exception 'FALLO: Administración no verifica funcionamiento'; end if;
   fallo:=false;
   begin perform public.guardar_ficha_diseno(oid,'{"cliente_id":null}'::jsonb);
   exception when others then fallo:=true; end;
@@ -160,13 +172,27 @@ begin
   perform test.como_usuario(current_setting('prueba.operario_id')::uuid);
   update public.ot_accesorios set verificado=false where id=acc;
   get diagnostics n=row_count;
-  if n<>0 then raise exception 'FALLO: operario modificó una ficha reservada a Diseño'; end if;
+  if n<>0 then raise exception 'FALLO: operario modificó una ficha reservada a Administración'; end if;
   fallo:=false;
   begin perform public.editar_ot_con_historial(oid,v,d,'QA: edición sin permiso');
   exception when others then fallo:=true; end;
   if not fallo then raise exception 'FALLO: operario editó la OT'; end if;
-  raise notice 'OK: código interno al emitir, historial, cambio de comprador, ficha de Diseño y límites por rol';
+  raise notice 'OK: emisión cerrada a Oficina, historial, cambio de comprador, ficha de Administración y límites por rol';
 end $test$;
 
 reset role;
+
+-- La venta anterior quedó guardada una sola vez (mirada como dueño de las
+-- tablas, porque Oficina no la puede leer: ver el hallazgo de arriba).
+select test.afirmar(exists(select 1 from public.ot_ventas_anteriores
+    where orden_id=current_setting('prueba.orden_id')::uuid
+      and cliente_id=current_setting('prueba.cliente_anterior')::uuid
+      and cotizacion_pdf_id=current_setting('prueba.cotizacion_anterior')::uuid),
+  'quedó el cliente y el PDF de la venta anterior');
+select test.afirmar((select count(*) from public.ot_ventas_anteriores
+    where orden_id=current_setting('prueba.orden_id')::uuid) = 1,
+  'el cambio de cliente no duplicó su historial');
+
+select test.afirmar(current_setting('prueba.oficina_ve_venta_anterior')::boolean,
+  'HALLAZGO · Oficina ve el cliente y el PDF de la venta anterior que cambió (la política pide cotizaciones.ver, un permiso que ya no existe)');
 rollback;

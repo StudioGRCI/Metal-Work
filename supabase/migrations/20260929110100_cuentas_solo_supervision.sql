@@ -4,9 +4,15 @@ declare
   v_usuario uuid;
   v_filas integer;
 begin
-  select id into strict v_usuario from public.usuarios
+  select id into v_usuario from public.usuarios
   where lower(correo) = 'supervisor@metalworkperusac.com'
     and activo;
+  -- Es un arreglo de las cuentas de producción: en una base nueva (db-test.sh,
+  -- el banco) esa cuenta no existe y no hay nada que mover.
+  if v_usuario is null then
+    raise notice 'No está la cuenta supervisor@: base sin las cuentas de producción, no se cambia nada.';
+    return;
+  end if;
 
   if exists (select 1 from auth.users
     where lower(email) = 'supervisor.produccion@metalworkperusac.com')

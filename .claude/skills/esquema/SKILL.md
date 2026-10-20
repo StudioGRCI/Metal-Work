@@ -99,6 +99,15 @@ política `borrar_*` eliminada y el `grant delete` revocado.
 
 ## Trampas
 
+- **Una tabla con permiso por columna no entrega la columna nueva.** Desde la
+  migración 20261020150000, `tipos_carroceria` se lee columna por columna (el
+  precio referencial queda fuera): una columna que se le agregue no la lee
+  nadie hasta su `grant select (columna) on public.tipos_carroceria to
+  authenticated`, y el select que la pida cae con «permission denied». Y nunca
+  se cierra así una tabla que alguna función recibe entera (`puesto(usuarios)`):
+  la fila entera exige leer todas las columnas, y en `usuarios` eso tumbó la
+  lista de OT para todos (se probó en el banco y se deshizo).
+
 *(Sección viva: aquí se anota lo que salió mal al tocar el esquema. Ver `aprender`.)*
 
 - **`next typegen` antes de `tsc`.** Sin él, TypeScript reporta decenas de

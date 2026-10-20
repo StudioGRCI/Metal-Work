@@ -7,18 +7,22 @@
 -- accesorio que entró marcado para otra unidad.
 begin;
 
+-- ----------------------------------------------------------------- armazón
+-- Una cuenta por puesto, cada una en su área, como en producción (como el check
+-- 330). Antes se tomaba de la base la primera cuenta activa de cada rol, y en
+-- una base sin esas cuentas el check se caía antes de probar nada.
 do $$
+declare v text; v_id uuid;
 begin
-  perform set_config('prueba.almacenero', (
-    select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id
-      join public.areas a on a.id = u.area_id
-     where r.codigo = 'ALMACENERO' and a.codigo = 'ALM' and u.activo order by u.creado_en limit 1), true);
-  perform set_config('prueba.supervisor', (
-    select u.id::text from public.usuarios u join public.roles r on r.id = u.rol_id
-     where r.codigo = 'SUPERVISOR' and u.activo order by u.creado_en limit 1), true);
-  if current_setting('prueba.almacenero') = '' or current_setting('prueba.supervisor') = '' then
-    raise exception 'FALLA: falta un almacenero del área ALM o un supervisor activo para probar';
-  end if;
+  foreach v in array array['ALMACENERO:ALM:almacenero', 'SUPERVISOR:PRD:supervisor'] loop
+    v_id := gen_random_uuid();
+    insert into auth.users (id, email) values (v_id, lower(split_part(v, ':', 3)) || '.331b@prueba.local');
+    insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
+    select v_id, split_part(v, ':', 1), 'Check 331b', lower(split_part(v, ':', 3)) || '.331b@prueba.local', r.id,
+           (select id from public.areas where codigo = split_part(v, ':', 2))
+      from public.roles r where r.codigo = split_part(v, ':', 1);
+    perform set_config('prueba.' || split_part(v, ':', 3), v_id::text, true);
+  end loop;
 end $$;
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$

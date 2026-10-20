@@ -68,7 +68,11 @@ const esquemaQuitar = z.object({ id: z.guid(), orden_id: z.guid() })
  * si se puede —la política deja a quien lo subió, a la oficina y al jefe—; el
  * archivo después, con la ruta leída antes.
  */
-export async function quitarAdjunto(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+/** `datos.archivoQuedo`: la fila se quitó pero el archivo no; la tarjeta lo avisa. */
+export async function quitarAdjunto(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion<{ archivoQuedo: boolean }>> {
   await exigirSesion()
 
   const analisis = esquemaQuitar.safeParse(Object.fromEntries(datos))
@@ -86,8 +90,18 @@ export async function quitarAdjunto(_previo: unknown, datos: FormData): Promise<
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: 'No se pudo quitar el archivo: verifica tus permisos y el estado de la orden.' }
 
-  await supabase.storage.from('adjuntos-ot').remove([data.ruta_storage])
+  // La fila ya se fue; si el archivo no se pudo retirar se dice, en vez de
+  // dejarlo suelto en el almacenamiento sin que nadie lo sepa.
+  // Si la política de Storage no lo deja, no hay error: la lista sale vacía.
+  const { data: retirados, error: errorArchivo } = await supabase.storage.from('adjuntos-ot').remove([data.ruta_storage])
 
   revalidatePath(`/ordenes/${v.orden_id}`)
-  return { ok: true, mensaje: 'Archivo quitado.' }
+  if (errorArchivo || !retirados?.length) {
+    return {
+      ok: true,
+      mensaje: 'Se quitó de la orden, pero el archivo quedó guardado: avisa al administrador para retirarlo.',
+      datos: { archivoQuedo: true },
+    }
+  }
+  return { ok: true, mensaje: 'Archivo quitado.', datos: { archivoQuedo: false } }
 }
