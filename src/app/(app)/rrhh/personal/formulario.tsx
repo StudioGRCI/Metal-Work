@@ -10,7 +10,7 @@ import type { Trabajador } from '@/lib/datos/rrhh'
 import { BANCOS, HORAS_DEL_MES, TIPO_CUENTA, horaCorta } from '@/lib/dominio/rrhh'
 import { useEnvio } from '@/lib/envio'
 
-import { cambiarEstadoTrabajador, guardarTrabajador } from './acciones'
+import { cambiarEstadoTrabajador, darDeBajaTrabajador, guardarTrabajador } from './acciones'
 
 type Area = { id: string; codigo: string; nombre: string }
 
@@ -58,10 +58,12 @@ export function NuevoTrabajador({ areas }: { areas: Area[] }) {
 }
 
 /** Lo que se hace sobre una persona ya registrada: corregir la ficha, dar de baja o volver a dar de alta. */
-export function ControlesTrabajador({ trabajador, areas }: { trabajador: Trabajador; areas: Area[] }) {
+export function ControlesTrabajador({ trabajador, areas, hoy }: { trabajador: Trabajador; areas: Area[]; hoy: string }) {
   const [editando, setEditando] = useState(false)
+  const [bajando, setBajando] = useState(false)
   const [vez, setVez] = useState(0)
   const estado = useEnvio(cambiarEstadoTrabajador)
+  const baja = useEnvio(darDeBajaTrabajador, () => setBajando(false))
   const nombre = `${trabajador.nombres} ${trabajador.apellidos}`
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -78,25 +80,60 @@ export function ControlesTrabajador({ trabajador, areas }: { trabajador: Trabaja
         <Pencil aria-hidden className="size-4" />
         Corregir
       </Boton>
-      <form onSubmit={estado.alEnviar} className="inline-flex">
-        <input type="hidden" name="id" value={trabajador.id} />
-        <input type="hidden" name="activo" value={trabajador.activo ? 'no' : 'si'} />
-        <Boton
-          type="submit"
-          variante={trabajador.activo ? 'contornoPeligro' : 'contorno'}
-          tamano="sm"
-          cargando={estado.enviando}
-          aria-label={trabajador.activo ? `Dar de baja a ${nombre}` : `Dar de alta a ${nombre}`}
-        >
-          {trabajador.activo ? <UserRoundX aria-hidden className="size-4" /> : <UserRoundCheck aria-hidden className="size-4" />}
-          {trabajador.activo ? 'Dar de baja' : 'Dar de alta'}
+      {trabajador.activo ? (
+        <Boton type="button" variante="contornoPeligro" tamano="sm" aria-label={`Dar de baja a ${nombre}`} onClick={() => setBajando(true)}>
+          <UserRoundX aria-hidden className="size-4" />
+          Dar de baja
         </Boton>
-      </form>
+      ) : (
+        <form onSubmit={estado.alEnviar} className="inline-flex">
+          <input type="hidden" name="id" value={trabajador.id} />
+          <Boton type="submit" variante="contorno" tamano="sm" cargando={estado.enviando} aria-label={`Dar de alta a ${nombre}`}>
+            <UserRoundCheck aria-hidden className="size-4" />
+            Dar de alta
+          </Boton>
+        </form>
+      )}
       {estado.error && (
         <p role="alert" className="basis-full text-right text-xs text-peligro">
           {estado.error}
         </p>
       )}
+      <Ventana
+        abierta={bajando}
+        alCerrar={() => setBajando(false)}
+        titulo={`Dar de baja a ${nombre}`}
+        descripcion="Con el último día que trabajó. El portero deja de marcarle y la ficha se queda con su historial."
+        ancho="sm"
+      >
+        <form onSubmit={baja.alEnviar} className="space-y-4">
+          <input type="hidden" name="id" value={trabajador.id} />
+          <Campo etiqueta="Último día que trabajó" htmlFor={`tr-baja-${trabajador.id}`} requerido>
+            <Entrada
+              id={`tr-baja-${trabajador.id}`}
+              name="fecha_baja"
+              type="date"
+              required
+              max={hoy}
+              min={trabajador.fecha_ingreso ?? undefined}
+              defaultValue={hoy}
+            />
+          </Campo>
+          {baja.error && (
+            <p role="alert" className="text-sm text-peligro">
+              {baja.error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="contorno" onClick={() => setBajando(false)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" variante="peligro" cargando={baja.enviando}>
+              Dar de baja
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
       <Ventana abierta={editando} alCerrar={() => setEditando(false)} titulo={`Ficha de ${nombre}`} ancho="lg">
         <FormularioTrabajador key={vez} areas={areas} trabajador={trabajador} alTerminar={() => setEditando(false)} />
       </Ventana>
@@ -134,6 +171,14 @@ function FormularioTrabajador({
           </Campo>
           <Campo etiqueta="Cargo" htmlFor={`tr-cargo-${id}`}>
             <Entrada id={`tr-cargo-${id}`} name="cargo" maxLength={80} defaultValue={t?.cargo ?? ''} placeholder="Soldador, pintor, asistente…" />
+          </Campo>
+          <Campo
+            etiqueta="Fecha de ingreso"
+            htmlFor={`tr-ingreso-${id}`}
+            requerido
+            ayuda="El primer día que trabajó. En la oficina, ningún pago puede empezar antes."
+          >
+            <Entrada id={`tr-ingreso-${id}`} name="fecha_ingreso" type="date" required defaultValue={t?.fecha_ingreso ?? ''} />
           </Campo>
           <Campo etiqueta="Área" htmlFor={`tr-area-${id}`}>
             <Seleccion id={`tr-area-${id}`} name="area_id" defaultValue={t?.area_id ?? ''}>

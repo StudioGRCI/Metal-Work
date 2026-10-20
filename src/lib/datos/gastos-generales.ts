@@ -43,8 +43,8 @@ export async function repartoDelMes(periodo: string) {
 }
 
 /**
- * El sueldo de la oficina de un mes, sumado y sin cuántas personas son, y cuántos
- * trabajadores con costo no tienen área. Exige `costos.ver`,
+ * El sueldo de la oficina de un mes (lo que RR. HH. registró como pagado), sumado y
+ * sin cuántas personas son, y a cuántas de la oficina les faltan días pagados. Exige `costos.ver`,
  * `costos.gastos_generales` o `codigos_internos.ver`.
  */
 export async function oficinaDelMes(periodo: string) {
@@ -52,5 +52,5 @@ export async function oficinaDelMes(periodo: string) {
   const { data, error } = await db.rpc('gastos_del_mes_oficina', { p_periodo: periodo })
   if (error) throw new Error(`No se pudo leer el sueldo de la oficina: ${error.message}`)
   const f = data?.[0]
-  return { monto: Number(f?.monto ?? 0), sinArea: f?.sin_area ?? 0 }
+  return { monto: Number(f?.monto ?? 0), sinPago: f?.sin_pago ?? 0 }
 }

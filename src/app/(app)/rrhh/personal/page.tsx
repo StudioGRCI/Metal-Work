@@ -5,7 +5,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { areasParaPersonal, listarTrabajadores, type Trabajador } from '@/lib/datos/rrhh'
 import { HORAS_DEL_MES, TIPO_CUENTA, horaCorta } from '@/lib/dominio/rrhh'
-import { moneda } from '@/lib/format'
+import { fecha, hoyLima, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { ControlesTrabajador, NuevoTrabajador } from './formulario'
@@ -20,6 +20,7 @@ const FILTROS = [
 export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/rrhh/personal'>) {
   const perfil = await exigirPermiso(['rrhh.personal', 'asistencia.ver'])
   const gestiona = puede(perfil, 'rrhh.personal')
+  const hoy = hoyLima()
   // La miga lleva a las planillas solo a quien las abre: Gerencia y
   // Administración consultan esto con `asistencia.ver` y ahí las rebotaban.
   const planillas = puede(perfil, 'rrhh.ver_planillas')
@@ -70,7 +71,7 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
                 descripcion={gestiona ? 'Registra a la primera persona con el botón de arriba.' : 'Recursos Humanos registra al personal.'}
               />
             ) : (
-              personal.map((t) => <FilaTrabajador key={t.id} trabajador={t} areas={areas} gestiona={gestiona} />)
+              personal.map((t) => <FilaTrabajador key={t.id} trabajador={t} areas={areas} gestiona={gestiona} hoy={hoy} />)
             )}
           </tbody>
         </Tabla>
@@ -83,10 +84,12 @@ function FilaTrabajador({
   trabajador: t,
   areas,
   gestiona,
+  hoy,
 }: {
   trabajador: Trabajador
   areas: { id: string; codigo: string; nombre: string }[]
   gestiona: boolean
+  hoy: string
 }) {
   const horario = `${horaCorta(t.hora_entrada)} – ${horaCorta(t.hora_salida)}`
   return (
@@ -144,10 +147,14 @@ function FilaTrabajador({
       )}
       <TD className="align-top">
         {t.activo ? <Insignia tono="exito">Activo</Insignia> : <Insignia tono="neutro">De baja</Insignia>}
+        <p className="tabular mt-1 text-[11px] text-texto-suave">
+          {t.fecha_ingreso ? `Desde el ${fecha(t.fecha_ingreso)}` : 'Sin fecha de ingreso'}
+          {t.fecha_baja && ` · hasta el ${fecha(t.fecha_baja)}`}
+        </p>
       </TD>
       {gestiona && (
         <TD className="text-right align-top">
-          <ControlesTrabajador trabajador={t} areas={areas} />
+          <ControlesTrabajador trabajador={t} areas={areas} hoy={hoy} />
         </TD>
       )}
     </TR>

@@ -15,6 +15,7 @@ function dato(formulario: FormData, nombre: string) {
 
 const SIN_PERMISO = 'La ficha del personal la lleva Recursos Humanos.'
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/
+const FECHA = /^\d{4}-\d{2}-\d{2}$/
 
 /** Registra o corrige la ficha de una persona. Mismo permiso que `rrhh_guardar_trabajador`. */
 export async function guardarTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
@@ -31,6 +32,7 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
       area_id: z.union([z.literal(''), z.guid()]),
       hora_entrada: z.string().regex(HORA, 'Elige la hora de entrada.'),
       hora_salida: z.string().regex(HORA, 'Elige la hora de salida.'),
+      fecha_ingreso: z.string().regex(FECHA, 'Pon la fecha de ingreso: el primer día que trabajó.'),
       banco: z.string().min(2, 'Escribe el banco.').max(60, 'El banco pasa de 60 caracteres.'),
       tipo_cuenta: z.enum(TIPOS_CUENTA, { message: 'Elige el tipo de cuenta.' }),
       numero_cuenta: z.string().regex(/^[0-9-]{6,30}$/, 'El número de cuenta lleva solo dígitos y guiones (de 6 a 30).'),
@@ -56,6 +58,7 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
       area_id: dato(formulario, 'area_id'),
       hora_entrada: dato(formulario, 'hora_entrada'),
       hora_salida: dato(formulario, 'hora_salida'),
+      fecha_ingreso: dato(formulario, 'fecha_ingreso'),
       banco: dato(formulario, 'banco'),
       tipo_cuenta: dato(formulario, 'tipo_cuenta'),
       numero_cuenta: dato(formulario, 'numero_cuenta').replace(/\s/g, ''),
@@ -87,6 +90,11 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
   revalidatePath('/rrhh/personal')
   revalidatePath('/rrhh/asistencia')
 
+  // La fecha de ingreso, después de la ficha que ya quedó: de ella cuenta el sueldo de la oficina.
+  const ingreso = await supabase.rpc('rrhh_guardar_ingreso_trabajador', { p_trabajador_id: d.id, p_fecha: d.fecha_ingreso })
+  if (ingreso.error) return { ok: false, error: `La ficha quedó guardada, pero la fecha de ingreso no: ${mensajeDeError(ingreso.error)}` }
+  if (ingreso.data !== d.id) return { ok: false, error: 'La ficha quedó guardada, pero la fecha de ingreso no. Recarga la pantalla.' }
+
   // El costo va aparte (solo RR. HH. lo lee) y se guarda después de la ficha, que ya quedó.
   if (d.costo_mensual !== '') {
     const costo = await supabase.rpc('rrhh_guardar_costo_trabajador', { p_trabajador_id: d.id, p_costo_mensual: d.costo_mensual })
@@ -109,23 +117,44 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
   return { ok: true, mensaje: `${d.nombres} ${d.apellidos} queda en el personal.` }
 }
 
-/** Da de baja o vuelve a dar de alta. Mismo permiso que `rrhh_cambiar_estado_trabajador`. */
+/** Vuelve a dar de alta: borra la baja. Mismo permiso que `rrhh_cambiar_estado_trabajador`. */
 export async function cambiarEstadoTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
-  const analisis = z
-    .object({ id: z.guid(), activo: z.enum(['si', 'no']) })
-    .safeParse({ id: dato(formulario, 'id'), activo: dato(formulario, 'activo') })
+  const analisis = z.object({ id: z.guid() }).safeParse({ id: dato(formulario, 'id') })
   if (!analisis.success) return { ok: false, error: 'Vuelve a cargar la pantalla.' }
-  const activo = analisis.data.activo === 'si'
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('rrhh_cambiar_estado_trabajador', { p_id: analisis.data.id, p_activo: activo })
+  const { data, error } = await supabase.rpc('rrhh_cambiar_estado_trabajador', { p_id: analisis.data.id, p_activo: true })
   if (error) return { ok: false, error: mensajeDeError(error) }
-  if (data !== analisis.data.id) return { ok: false, error: 'No se pudo cambiar el estado. Recarga la pantalla.' }
+  if (data !== analisis.data.id) return { ok: false, error: 'No se pudo dar de alta. Recarga la pantalla.' }
 
   revalidatePath('/rrhh/personal')
   revalidatePath('/rrhh/asistencia')
-  return { ok: true, mensaje: activo ? 'Vuelve a estar de alta.' : 'Queda de baja: el portero ya no le marca.' }
+  return { ok: true, mensaje: 'Vuelve a estar de alta.' }
+}
+
+/** Da de baja con el último día que trabajó. Mismo permiso que `rrhh_dar_de_baja_trabajador`. */
+export async function darDeBajaTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+
+  const analisis = z
+    .object({ id: z.guid(), fecha_baja: z.string().regex(FECHA, 'Pon la fecha de baja: el último día que trabajó.') })
+    .safeParse({ id: dato(formulario, 'id'), fecha_baja: dato(formulario, 'fecha_baja') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('rrhh_dar_de_baja_trabajador', {
+    p_trabajador_id: analisis.data.id,
+    p_fecha: analisis.data.fecha_baja,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'No quedó de baja. Recarga la pantalla.' }
+
+  revalidatePath('/rrhh/personal')
+  revalidatePath('/rrhh/asistencia')
+  revalidatePath('/costos/gastos-generales')
+  return { ok: true, mensaje: 'Queda de baja: el portero ya no le marca.' }
 }
