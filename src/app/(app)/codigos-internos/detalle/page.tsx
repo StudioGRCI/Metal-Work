@@ -814,7 +814,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
             </TR>
           </TablaCabecera>
           <tbody>
-            {planos.map((p) => (
+            {[...planos].sort((a, b) => a.numero.localeCompare(b.numero, 'es', { numeric: true })).map((p) => (
               <TR key={p.plano_id} data-plano={p.numero}>
                 <TD>
                   <span className="font-mono">{p.numero}</span> · {p.nombre}

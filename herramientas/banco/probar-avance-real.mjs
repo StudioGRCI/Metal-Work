@@ -397,6 +397,22 @@ let idViernes = null
   await contexto.close()
 }
 
+// -------------------------------------- 6c. Lo elegido que se cae al cambiar el código dice por qué
+{
+  const { pagina, contexto, errores } = await entrar(CUENTAS.mtz, CELULAR)
+  await nuevoReporte(pagina, { fecha: dia(0), asunto: `Habilitado ${sello} código mal escrito` })
+  await elegir(pagina, 'Trabajo 1: sobre qué', 'Corte de materia prima')
+  await pagina.fill('#rd-codigo', 'zzz999')
+  await pagina.waitForFunction(() => /ZZZ999/.test(document.querySelector('[data-opciones]')?.textContent ?? ''), null, { timeout: 30000 })
+  const aviso = limpio(await pagina.locator('[data-opciones]').innerText())
+  comprobar(
+    aviso.includes('Corte de materia prima no es de ZZZ999') && aviso.includes('No encuentro el código ZZZ999'),
+    `al cambiar a un código que no existe, dice qué se quitó y que revise el código (${aviso})`,
+  )
+  comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
 // ------------------------------------------------------------------ 7. Logística no entra
 {
   const { pagina, contexto } = await entrar(CUENTAS.logistica)

@@ -83,13 +83,13 @@ function paraEnviar(filas: FilaPersona[]) {
 }
 
 /** Lo que ya lleva lo elegido, para el detalle de la lista y la ayuda del avance. */
-function yaLleva(o: OpcionDeTrabajo) {
-  return o.avance === null ? 'sin reportar todavía' : `va en ${o.avance} % (${fechaCorta(o.ultima_fecha)})`
+function yaLleva(o: OpcionDeTrabajo, pasado: boolean) {
+  return o.avance === null ? 'sin reportar todavía' : `${pasado ? 'iba' : 'va'} en ${o.avance} % (${fechaCorta(o.ultima_fecha)})`
 }
 
-function detalleDe(o: OpcionDeTrabajo) {
+function detalleDe(o: OpcionDeTrabajo, pasado: boolean) {
   const tipo = o.tipo === 'PLANO' ? 'Plano de Diseño' : o.tipo === 'SUBCONTRATO' ? 'Subcontrato' : 'Actividad que sigue'
-  return `${tipo} · ${yaLleva(o)}`
+  return `${tipo} · ${yaLleva(o, pasado)}`
 }
 
 /**
@@ -135,6 +135,8 @@ export function FormularioReporteDiario({
   const codigoEscrito = useRef(corrige?.codigo_interno ?? '')
   const [leyendo, setLeyendo] = useState(false)
   const [errorOpciones, setErrorOpciones] = useState<string | null>(null)
+  // Lo elegido que la última lectura sacó, para decir por qué desapareció.
+  const [quitados, setQuitados] = useState<string | null>(null)
   const espera = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pedido = useRef(0)
   const [trabajos, setTrabajos] = useState<FilaTrabajo[]>(() =>
@@ -192,6 +194,7 @@ export function FormularioReporteDiario({
       setErrorOpciones(null)
       return
     }
+    setQuitados(null)
     if (codigo.length < 2) {
       setOpciones([])
       setCodigoLeido('')
@@ -210,6 +213,19 @@ export function FormularioReporteDiario({
       }
       const nuevas = r.datos ?? []
       const validas = new Set(nuevas.map(claveDe))
+      const anteriores = new Map(opciones.map((o) => [claveDe(o), o.etiqueta]))
+      const sacados = trabajos
+        .filter((t) => t.sobre !== '' && t.sobre !== NUEVA && !validas.has(t.sobre))
+        .map((t) => anteriores.get(t.sobre) ?? 'Lo elegido')
+      setQuitados(
+        sacados.length === 0
+          ? null
+          : `${sacados.join(', ')} ${
+              codigo !== codigoLeido
+                ? `no ${sacados.length === 1 ? 'es' : 'son'} de ${codigo}`
+                : `no ${sacados.length === 1 ? 'entra' : 'entran'} el ${fechaCorta(fecha)}: ese día ya estaba terminado o un reporte posterior ya lleva tanto o más`
+            }. Elige otra cosa.`,
+      )
       setErrorOpciones(null)
       setOpciones(nuevas)
       setCodigoLeido(codigo)
@@ -335,9 +351,13 @@ export function FormularioReporteDiario({
               ? errorOpciones
               : !codigoLeido
                 ? 'Escribe el código interno para ver sus planos, subcontratos y las actividades que siguen.'
-                : opciones.length === 0
-                  ? `${codigoLeido} no tiene planos ni subcontratos de tu área, ni actividades abiertas: anota una actividad nueva.`
-                  : `${codigoLeido}: ${opciones.length} ${opciones.length === 1 ? 'cosa' : 'cosas'} para reportar en tu área, o una actividad nueva.`}
+                : `${quitados ? `${quitados} ` : ''}${
+                    opciones.length > 0
+                      ? `${codigoLeido}: ${opciones.length} ${opciones.length === 1 ? 'cosa' : 'cosas'} para reportar en tu área, o una actividad nueva.`
+                      : codigos.some((c) => c.trim().toUpperCase() === codigoLeido)
+                        ? `${codigoLeido} no tiene planos ni subcontratos de tu área, ni actividades abiertas: anota una actividad nueva.`
+                        : `No encuentro el código ${codigoLeido} en el taller: revisa cómo está escrito. Si es una unidad nueva, anota una actividad nueva.`
+                  }`}
         </p>
         {trabajos.map((t, i) => {
           const elegida = porClave.get(t.sobre) ?? null
@@ -349,7 +369,7 @@ export function FormularioReporteDiario({
           const lista: OpcionBuscable[] = [
             ...opciones
               .filter((o) => claveDe(o) === t.sobre || !elegidos.has(claveDe(o)))
-              .map((o) => ({ valor: claveDe(o), etiqueta: o.etiqueta, detalle: detalleDe(o) })),
+              .map((o) => ({ valor: claveDe(o), etiqueta: o.etiqueta, detalle: detalleDe(o, dia < hoy) })),
             { valor: NUEVA, etiqueta: 'Actividad nueva', detalle: 'Sin plano todavía: escribe qué es y su avance' },
           ]
           return (
