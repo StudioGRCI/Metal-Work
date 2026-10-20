@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { createClient } from '@/lib/supabase/server'
 
 /** Una persona del personal, con su cuenta si quien mira es RR. HH. */
@@ -194,18 +195,20 @@ export type Tareo = {
 export async function tareosDelMes(mes: string): Promise<Tareo[]> {
   const supabase = await createClient()
   const { desde, hasta } = rangoDelMes(mes)
-  const { data, error } = await supabase
-    .from('tareos')
-    .select(
-      'id, trabajador_id, fecha, codigo_interno, horas, labor, costo_hora, costo, anulado_en, motivo_anulacion,' +
-        ' trabajador:trabajadores(id, nombres, apellidos, dni, cargo),' +
-        ' linea:reporte_diario_personal!tareos_reporte_linea_id_fkey(reporte:reportes_diarios!reporte_diario_personal_reporte_id_fkey(id, asunto, area:areas(nombre)))',
-    )
-    .gte('fecha', desde)
-    .lt('fecha', hasta)
-    .order('fecha', { ascending: false })
-    .order('creado_en', { ascending: false })
-    .limit(3000)
+  // Un mes normal pasa de mil cargas: se lee entero, o el total del mes salía corto.
+  const { data, error } = await todasLasFilas(
+    () =>
+      supabase
+        .from('tareos')
+        .select(
+          'id, trabajador_id, fecha, codigo_interno, horas, labor, costo_hora, costo, anulado_en, motivo_anulacion,' +
+            ' trabajador:trabajadores(id, nombres, apellidos, dni, cargo),' +
+            ' linea:reporte_diario_personal!tareos_reporte_linea_id_fkey(reporte:reportes_diarios!reporte_diario_personal_reporte_id_fkey(id, asunto, area:areas(nombre)))',
+        )
+        .gte('fecha', desde)
+        .lt('fecha', hasta),
+    ['fecha.desc', 'creado_en.desc', 'id'],
+  )
   if (error) throw new Error(`No se pudo leer el tareo del mes: ${error.message}`)
   type Reporte = { id: string; asunto: string; area: { nombre: string } | { nombre: string }[] | null }
   type Linea = { reporte: Reporte | Reporte[] | null }

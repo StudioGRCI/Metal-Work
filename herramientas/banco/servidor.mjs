@@ -312,7 +312,7 @@ async function releerEscritura(cliente, esq, relacion, filas, busqueda) {
   const busquedaRelectura = new URLSearchParams()
   busquedaRelectura.set('select', seleccion)
   busquedaRelectura.set(primaria[0], `in.(${claves.map((c) => `"${c}"`).join(',')})`)
-  const consulta = construirLectura(esq, relacion, busquedaRelectura, {})
+  const consulta = construirLectura(esq, relacion, busquedaRelectura, { sinTope: true })
   const { rows } = await cliente.query(consulta.texto, consulta.valores)
   return rows
 }
@@ -329,7 +329,7 @@ async function manejarDatos(req, res, url) {
     const argumentos = req.method === 'POST' ? JSON.parse((await leerCuerpo(req)).toString() || '{}') : {}
     const forma = await formaDeFuncion(nombre)
     if (!forma) return responder(res, 404, { message: `No existe la función «${nombre}»` })
-    const consulta = construirLlamada(nombre, argumentos, new Set(forma.json))
+    const consulta = construirLlamada(nombre, argumentos, new Set(forma.json), url.searchParams)
 
     // `.single()` pide un objeto aunque la función devuelva filas, y PostgREST lo
     // entrega: sin esto el banco mandaba la lista, el tablero leía `data.abiertas`

@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { AREAS_DE_PLANOS } from '@/lib/dominio/diseno-codigos'
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { createClient } from '@/lib/supabase/server'
@@ -33,7 +34,7 @@ export type CodigoDeDiseno = {
 /** Todos los códigos de unidad del sistema, con los que Diseño movió hace poco primero. */
 export async function codigosDeDiseno(): Promise<CodigoDeDiseno[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('codigos_internos_de_diseno')
+  const { data, error } = await todasLasFilas(() => supabase.rpc('codigos_internos_de_diseno'), ['ultimo_cambio.desc.nullslast', 'codigo'])
   if (error) throw new Error(`No se pudieron leer los códigos internos de Diseño: ${error.message}`)
   return (data ?? []).flatMap((f) =>
     f.codigo
@@ -89,10 +90,14 @@ export async function planosDeCodigo(codigo: string | null, { conPeso = true }: 
   // El peso no está en la función (su firma no se puede cambiar en producción):
   // se lee de la tabla, con el mismo RLS que deja ver el plano, a la vez y por
   // código (no por la lista de ids, que alarga la URL hasta romperla).
-  const delPeso = supabase.from('codigo_planos').select('id, peso').not('peso', 'is', null)
+  // Sin código son los planos de todos: se leen enteros, que pasan de mil.
+  const delPeso = () => {
+    const q = supabase.from('codigo_planos').select('id, peso').not('peso', 'is', null)
+    return codigo ? q.eq('codigo_interno', normalizarCodigo(codigo)) : q
+  }
   const [{ data, error }, { data: filas, error: errorPeso }] = await Promise.all([
-    supabase.rpc('codigo_interno_planos', { p_codigo: codigo }),
-    !conPeso ? Promise.resolve({ data: [], error: null }) : codigo ? delPeso.eq('codigo_interno', normalizarCodigo(codigo)) : delPeso,
+    todasLasFilas(() => supabase.rpc('codigo_interno_planos', { p_codigo: codigo }), ['codigo', 'anulado_en.asc.nullsfirst', 'area', 'numero', 'id']),
+    !conPeso ? Promise.resolve({ data: [], error: null }) : todasLasFilas(delPeso, ['id']),
   ])
   if (error) throw new Error(`No se pudieron leer los planos: ${error.message}`)
   if (errorPeso) throw new Error(`No se pudo leer el porcentaje de los planos: ${errorPeso.message}`)
@@ -294,7 +299,8 @@ export type EtapaDeCodigo = {
 /** Las etapas de un código en su orden, o las de todos si no se da código. */
 export async function etapasDeCodigo(codigo: string | null): Promise<EtapaDeCodigo[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('codigo_interno_etapas', { p_codigo: codigo })
+  // Sin código son las etapas de todos: con seis por unidad, unos 170 códigos ya pasan de mil.
+  const { data, error } = await todasLasFilas(() => supabase.rpc('codigo_interno_etapas', { p_codigo: codigo }), ['codigo', 'orden', 'id'])
   if (error) throw new Error(`No se pudieron leer las etapas: ${error.message}`)
   return (data ?? []).flatMap((e) =>
     e.id && e.codigo
@@ -350,12 +356,12 @@ export type MaterialParaElegir = { id: string; codigo: string; descripcion: stri
 /** El catálogo activo, para elegir el material de una línea. */
 export async function materialesParaElegir(): Promise<MaterialParaElegir[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('materiales')
-    .select('id, codigo, descripcion, unidad:unidades_medida(codigo)')
-    .eq('activo', true)
-    .order('descripcion')
-    .limit(5000)
+  // El catálogo pasa de quinientos: pasado el mil, lo que venía después en orden
+  // alfabético no se podía elegir.
+  const { data, error } = await todasLasFilas(
+    () => supabase.from('materiales').select('id, codigo, descripcion, unidad:unidades_medida(codigo)').eq('activo', true),
+    ['descripcion', 'id'],
+  )
   if (error) throw new Error(`No se pudo leer el catálogo de materiales: ${error.message}`)
   return (data ?? []).map((m) => ({
     id: m.id,
