@@ -13,7 +13,7 @@
  * Los signos que van dentro de una sigla o un código: «S.A.C.», «SR_04», «A-36»,
  * «3/16». Escritos o no, la palabra es la misma.
  */
-const DENTRO = /(?<=[a-z0-9])[._/-]+(?=[a-z0-9])/g
+const DENTRO = /([a-z0-9])[._/-]+(?=[a-z0-9])/g
 const LETRAS = 24
 
 /**
@@ -26,7 +26,7 @@ const LETRAS = 24
 export function palabrasDeBusqueda(texto: string | null | undefined): string[] {
   const palabras: string[] = []
   let letras = 0
-  for (const p of plano(texto ?? '').replace(DENTRO, '').split(/[^a-z0-9]+/)) {
+  for (const p of plano(texto ?? '').replace(DENTRO, '$1').split(/[^a-z0-9]+/)) {
     if (!p || palabras.length === 5 || letras >= LETRAS) continue
     palabras.push(p.slice(0, LETRAS - letras))
     letras += p.length
@@ -45,11 +45,14 @@ function plano(texto: string) {
 // Solo las tildes del castellano (y la diéresis de la u), en minúscula: el `~*`
 // de Postgres iguala «Ú» con «ú» en una base UTF-8 (`'NÚÑEZ' ~* 'ú'` da
 // verdadero en Supabase y en el banco), y cada letra de más alarga la dirección.
+// La O y el cero van juntos, como en `llaveParecido`: en los códigos internos se
+// escriben uno por otro («SR_O4» y «SR_04»).
 const VARIANTES: Record<string, string> = {
   a: 'aá',
   e: 'eé',
   i: 'ií',
-  o: 'oó',
+  o: 'oó0',
+  '0': '0o',
   u: 'uúü',
   n: 'nñ',
 }
@@ -77,10 +80,12 @@ export function filtroDePalabra(columnas: string[], palabra: string): string {
 
 /**
  * Lo mismo para una lista ya leída: cada palabra está en alguno de los campos,
- * leídos también sin los signos de `DENTRO`, como hace la expresión.
+ * leídos también sin los signos de `DENTRO` y con la O igual al cero, como hace
+ * la expresión.
  */
 export function coincide(palabras: string[], campos: (string | null | undefined)[]): boolean {
   if (palabras.length === 0) return true
-  const textos = campos.map((c) => plano(c ?? '')).flatMap((t) => [t, t.replace(/[._/-]+/g, '')])
-  return palabras.every((p) => textos.some((t) => t.includes(p)))
+  const cero = (t: string) => t.replace(/o/g, '0')
+  const textos = campos.map((c) => cero(plano(c ?? ''))).flatMap((t) => [t, t.replace(/[._/-]+/g, '')])
+  return palabras.every((p) => textos.some((t) => t.includes(cero(p))))
 }

@@ -27,10 +27,19 @@ export function BuscadorSimple({
   const router = useRouter()
   const params = useSearchParams()
   const [pendiente, iniciarTransicion] = useTransition()
-  const [busqueda, setBusqueda] = useState(params.get(clave) ?? '')
+  const actual = params.get(clave) ?? ''
+  const [busqueda, setBusqueda] = useState(actual)
+  // Lo último que este buscador escribió en la URL. Si la URL cambia a otra
+  // cosa —«Ver todos los clientes», el menú—, la caja la sigue; si no, quedaba
+  // con un término que ya no filtraba y el ícono de «Buscando…» girando.
+  const [pedido, setPedido] = useState<string | null>(null)
+  const [vista, setVista] = useState(actual)
+  if (actual !== vista) {
+    setVista(actual)
+    if (actual !== pedido) setBusqueda(actual)
+  }
 
   useEffect(() => {
-    const actual = params.get(clave) ?? ''
     if (busqueda === actual) return
 
     const temporizador = setTimeout(() => {
@@ -40,6 +49,7 @@ export function BuscadorSimple({
       query.delete('pagina')
       // `replace`, no `push`: cada letra escrita era una entrada en el
       // historial y «atrás» recorría la búsqueda letra por letra.
+      setPedido(busqueda)
       iniciarTransicion(() => router.replace(`${ruta}?${query}`))
     }, 350)
 
@@ -49,7 +59,7 @@ export function BuscadorSimple({
 
   // Lo escrito todavía no está en la URL, o la pantalla se está rehaciendo: en
   // ambos casos lo que se ve abajo ya no corresponde a lo que se pidió.
-  const buscando = pendiente || busqueda !== (params.get(clave) ?? '')
+  const buscando = pendiente || busqueda !== actual
 
   return (
     // A todo lo ancho de un monitor la caja medía más de mil píxeles para diez
@@ -81,11 +91,12 @@ export function BuscadorSimple({
         {buscando ? 'Buscando…' : ''}
       </p>
 
-      {params.get(clave) && (
+      {actual && (
         <button
           type="button"
           onClick={() => {
             setBusqueda('')
+            setPedido('')
             // Quita solo el término: los filtros puestos se quedan.
             const query = new URLSearchParams(params.toString())
             query.delete(clave)

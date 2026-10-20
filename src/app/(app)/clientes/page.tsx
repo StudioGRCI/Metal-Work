@@ -54,7 +54,7 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
     <>
       <EncabezadoPagina
         titulo="Clientes"
-        descripcion={busqueda
+        descripcion={busqueda && total > 0
           ? `${total === 1 ? '1 cliente' : `${total} clientes`} con «${busqueda}»`
           : total === 1 ? '1 cliente registrado' : `${total} clientes registrados`}
         acciones={
@@ -91,8 +91,8 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                   chica, que es donde el dedo ya está mirando. */}
               <TH className="hidden sm:table-cell">Contacto</TH>
               <TH className="hidden sm:table-cell">Ubicación</TH>
-              <TH className="text-right">Unidades</TH>
-              <TH className="text-right">Órdenes</TH>
+              <TH className="hidden text-right sm:table-cell">Unidades</TH>
+              <TH className="hidden text-right sm:table-cell">Órdenes</TH>
               {puede(perfil, 'clientes.editar') && <TH>Acciones</TH>}
             </tr>
           </TablaCabecera>
@@ -113,10 +113,13 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                 const unidades = (c.unidades as unknown as { count: number }[])?.[0]?.count ?? 0
                 const ordenes = (c.ordenes_trabajo as unknown as { count: number }[])?.[0]?.count ?? 0
                 const ubicacion = [c.distrito, c.provincia].filter(Boolean).join(', ')
-                // Lo que en el teléfono se pierde al esconder dos columnas vuelve
+                // Lo que en el teléfono se pierde al esconder las columnas vuelve
                 // aquí en una sola línea; sin esto el listado móvil no diría ni el
                 // teléfono del cliente ni de dónde es.
-                const enElTelefono = [`${c.tipo_documento} ${c.numero_documento}`, c.telefono, ubicacion].filter(Boolean).join(' · ')
+                const enElTelefono = [
+                  `${c.tipo_documento} ${c.numero_documento}`, c.telefono, ubicacion,
+                  `${unidades} ${unidades === 1 ? 'unidad' : 'unidades'}`, `${ordenes} ${ordenes === 1 ? 'orden' : 'órdenes'}`,
+                ].filter(Boolean).join(' · ')
 
                 return (
                   <TR key={c.id}>
@@ -143,8 +146,8 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                       {c.correo && <p className="text-[11px]">{c.correo}</p>}
                     </TD>
                     <TD className="hidden text-texto-suave sm:table-cell">{ubicacion || '—'}</TD>
-                    <TD className="tabular text-right">{unidades}</TD>
-                    <TD className="tabular text-right">{ordenes}</TD>
+                    <TD className="tabular hidden text-right sm:table-cell">{unidades}</TD>
+                    <TD className="tabular hidden text-right sm:table-cell">{ordenes}</TD>
                     {puede(perfil, 'clientes.editar') && (
                       <TD>
                         <AccionesCatalogo tipo="cliente" id={c.id} nombre={c.razon_social} activo={c.activo} puedeEditar esAdmin={perfil.rol.codigo === 'ADMIN'} />

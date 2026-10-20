@@ -20,7 +20,8 @@
  * servicio, un subcontrato, dos trabajadores y una persona en una planilla en
  * preparación, con tildes en los nombres. Necesita las cuentas
  * `*.local@metalwork.test` de Gerencia, Contabilidad, Logística,
- * Requerimientos, Supervisión (sup.mtz), Portería, RRHH y Administración.
+ * Requerimientos, Supervisión (sup.mtz), Portería, RRHH y Administración;
+ * las de Ventas, Almacén, Diseño y el administrador las crea.
  * Lo sembrado se queda en el banco (una OT o una cotización numeradas no se
  * borran ni aquí): `preparar.sh` lo deja como nuevo.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
@@ -28,6 +29,7 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
+import ExcelJS from 'exceljs'
 import pg from 'pg'
 import { chromium } from 'playwright-core'
 
@@ -35,7 +37,10 @@ const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
-const cuenta = (puesto) => `${puesto}.local@metalwork.test`
+// Los puestos que el banco no trae (Ventas, Almacén, Diseño y el administrador,
+// que es quien usa Personal) se crean aquí, como en `probar-correcciones.mjs`.
+const PROPIAS = { ventas: ['VENDEDOR', 'GCO'], almacen: ['ALMACENERO', 'ALM'], diseno: ['DISENO', 'DIS'], admin: ['ADMIN', 'ADM'] }
+const cuenta = (puesto) => (PROPIAS[puesto] ? `${puesto}.bus@banco.test` : `${puesto}.local@metalwork.test`)
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')
   process.exit(1)
@@ -68,12 +73,26 @@ const rucLibre = async (tabla) =>
 const MATERIAL = `ÁNGULO 2 X 1/4 BUSCA ${sello}`
 const PLANCHA = `PLANCHA LAC 3/16, A36 BUSCA ${sello}`
 const CLIENTE = `TRANSPORTES PEÑA Y NÚÑEZ ${sello} S.A.C.`
+// El gemelo que no tiene que salir cuando se busca la sigla.
+const GEMELO = `TRANSPORTES PEÑA Y NÚÑEZ ${sello} E.I.R.L.`
 const PROVEEDOR = `TORNERÍA ÁVILA ${sello} E.I.R.L.`
 // El dominio `placa` pide tres y tres: «Q12-345».
 const PLACA = `Q${sello.slice(0, 2)}-${sello.slice(3)}`
 const OT = `CAMIÓN CISTERNA DE AGUA BUSCA ${sello}`
 const CODIGO = `QA_BUS_${sello}`
 
+for (const [puesto, [rol, area]] of Object.entries(PROPIAS)) {
+  const correo = cuenta(puesto)
+  if (!(await uno('select id from public.usuarios where correo = $1', [correo]))) {
+    const { id } = await uno(`insert into auth.users (id, email) values (gen_random_uuid(), $1) returning id`, [correo])
+    await consulta(
+      `insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
+       select $1, $2, 'Banco buscadores', $3, r.id, (select id from public.areas where codigo = $4) from public.roles r where r.codigo = $2`,
+      [id, rol, correo, area],
+    )
+  }
+  await consulta(`update auth.users set encrypted_password = crypt($2, gen_salt('bf')) where email = $1`, [correo, CLAVE])
+}
 const almacenero = (await uno(`select id from public.usuarios where correo = $1`, [cuenta('logistica')])).id
 for (const [codigo, descripcion] of [[`BUS-${sello}-1`, MATERIAL], [`BUS-${sello}-2`, PLANCHA]]) {
   const { id } = await uno(
@@ -91,6 +110,7 @@ for (const [codigo, descripcion] of [[`BUS-${sello}-1`, MATERIAL], [`BUS-${sello
                   values (gen_random_uuid(), 'SALIDA', $1, 1, 'SALIDA_GENERAL', 'Banco de buscadores', $2, 'Área de banco', $3, $3, 1)`, [id, almacenero, CODIGO])
 }
 const clienteId = (await uno(`insert into public.clientes (tipo_documento, numero_documento, razon_social) values ('RUC', $1, $2) returning id`, [await rucLibre('clientes'), CLIENTE])).id
+await consulta(`insert into public.clientes (tipo_documento, numero_documento, razon_social) values ('RUC', $1, $2)`, [await rucLibre('clientes'), GEMELO])
 await consulta(`insert into public.proveedores (tipo_documento, numero_documento, razon_social, rubro) values ('RUC', $1, $2, 'Tornería y maestranza')`, [await rucLibre('proveedores'), PROVEEDOR])
 const unidadId = (await uno(`insert into public.unidades (cliente_id, placa, marca, modelo, tipo_vehiculo) values ($1, $2, 'VOLVO', 'FMX ÚNICO', 'VOLQUETE') returning id`, [clienteId, PLACA])).id
 const ot = await uno(
@@ -174,16 +194,19 @@ async function buscar(pagina, etiqueta, clave, texto) {
 
 const CASOS = [
   // puesto, ruta, etiqueta del buscador, clave en la URL, lo que se escribe, lo que tiene que salir
-  ['gerencia', '/materiales', 'Buscar material', 'buscar', 'angulo 1/4', MATERIAL],
-  ['gerencia', '/materiales', 'Buscar material', 'buscar', 'plancha, a36', PLANCHA],
+  // y, a veces, lo que no tiene que salir
+  ['diseno', '/materiales', 'Buscar material', 'buscar', 'angulo 1/4', MATERIAL],
+  ['diseno', '/materiales', 'Buscar material', 'buscar', 'plancha, a36', PLANCHA],
   ['logistica', '/compras/valorizacion', 'Buscar material', 'q', `busca ${sello} angulo`, MATERIAL],
-  ['gerencia', '/clientes', 'Buscar clientes', 'q', `pena nunez ${sello}`, CLIENTE],
+  ['ventas', '/clientes', 'Buscar clientes', 'q', `pena nunez ${sello}`, CLIENTE],
+  ['ventas', '/clientes', 'Buscar clientes', 'q', `nunez ${sello} s.a.c.`, CLIENTE, GEMELO],
   ['contabilidad', '/proveedores', 'Buscar proveedores', 'q', `avila torneria ${sello}`, PROVEEDOR],
-  ['gerencia', '/unidades', 'Buscar unidades', 'q', `fmx unico ${sello.slice(3)}`, PLACA],
+  ['ventas', '/unidades', 'Buscar unidades', 'q', `fmx unico ${sello.slice(3)}`, PLACA],
   ['gerencia', '/ordenes', 'Buscar órdenes', 'q', `agua cisterna camion ${sello}`, ot.numero],
-  ['gerencia', '/clientes', 'Buscar clientes', 'q', `sac ${sello}`, CLIENTE],
+  ['gerencia', '/clientes', 'Buscar clientes', 'q', `sac ${sello}`, CLIENTE, GEMELO],
   ['gerencia', '/unidades', 'Buscar unidades', 'q', PLACA.replace('-', '').toLowerCase(), PLACA],
-  ['gerencia', '/cotizaciones/pdf', 'Buscar cotizaciones', 'q', `nunez ${sello}`, COTIZACION],
+  ['ventas', '/cotizaciones/pdf', 'Buscar cotizaciones', 'q', `nunez ${sello}`, COTIZACION],
+  ['admin', '/personal', 'Buscar personal', 'q', 'vendedor banco buscadores', 'ventas.bus@banco.test'],
   ['gerencia', '/codigos-internos', 'Buscar código interno', 'q', `qa bus ${sello}`, CODIGO],
   ['requerimientos', '/requerimientos/gasto-por-codigo', 'Buscar código interno', 'q', `qa_bus_${sello}`, CODIGO],
   ['logistica', '/compras/servicios', 'Buscar por código interno', 'codigo', CODIGO.toLowerCase(), SERVICIO],
@@ -199,13 +222,14 @@ for (const ancho of [390, 1280]) {
   }
   console.log(`\n— A ${ancho} px`)
 
-  for (const [puesto, ruta, etiqueta, clave, texto, espera] of CASOS) {
+  for (const [puesto, ruta, etiqueta, clave, texto, espera, noDebe] of CASOS) {
     const { pagina, errores } = await sesion(puesto)
     errores.length = 0
     await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
     const llego = await buscar(pagina, etiqueta, clave, texto)
     const visto = await hasta(() => textoDe(pagina), (t) => t.includes(espera))
     comprobar(llego === texto && visto.includes(espera), `${puesto} ${ruta}: «${texto}» llega solo a la URL y encuentra «${espera}»`)
+    if (noDebe) comprobar(!visto.includes(noDebe), `${puesto} ${ruta}: «${texto}» deja fuera a «${noDebe}»`)
     comprobar(!/no se pudo abrir/i.test(visto) && errores.length === 0, `${puesto} ${ruta}: sin pantalla de error ni errores de consola${errores.length ? ` (${errores.join(' | ')})` : ''}`)
     comprobar(await pagina.getByRole('button', { name: /^Buscar$/ }).count() === 0, `${puesto} ${ruta}: no hay botón «Buscar» que apretar`)
     // La página puede no correrse y la tabla sí, dentro de su tarjeta: se miden las dos.
@@ -237,11 +261,10 @@ for (const ancho of [390, 1280]) {
     comprobar((await pagina.getByRole('searchbox', { name: 'Buscar por código interno' }).inputValue()) === '', 'Subcontratos: la caja queda vacía después de «Limpiar»')
   }
 
-  // El Kardex, con Contabilidad (Almacén no tiene cuenta en el banco): el
-  // material con su buscador y la unidad, que se aplican con «Ver», y el Excel
-  // con el mismo filtro.
+  // El Kardex de Almacén: el material con su buscador y la unidad, que se
+  // aplican con «Ver», y el Excel con el mismo filtro.
   {
-    const { pagina } = await sesion('contabilidad')
+    const { pagina } = await sesion('almacen')
     await pagina.goto(`${BASE}/almacen/kardex`, { waitUntil: 'networkidle' })
     await pagina.locator('#k-material').click()
     await pagina.getByLabel('Nombre o código del material').pressSequentially(`angulo ${sello}`, { delay: 15 })
@@ -256,20 +279,48 @@ for (const ancho of [390, 1280]) {
     const enLaBase = (await uno(`select count(*)::int as n from public.v_kardex_almacen k join public.materiales m on m.id = k.material_id
                                  where m.descripcion = $1 and k.codigo_unidad = $2`, [MATERIAL, CODIGO])).n
     comprobar(hay === 1 && url.searchParams.get('material') && filas === enLaBase && filas === 1,
-      `Kardex (contabilidad): el material con «angulo ${sello}» y la unidad «qa bus ${sello}» muestran ${filas} fila y la base tiene ${enLaBase}`)
+      `Kardex (almacén): el material con «angulo ${sello}» y la unidad «qa bus ${sello}» muestran ${filas} fila y la base tiene ${enLaBase}`)
+    // El Excel con el mismo filtro: se abre y se cuentan las filas con el código.
     const excel = await pagina.request.get(`${BASE}/almacen/kardex/excel${url.search}`)
-    comprobar(excel.status() === 200 && /attachment/.test(excel.headers()['content-disposition'] ?? '') && (await excel.body()).length > 1000,
-      `Kardex (contabilidad): el Excel con el mismo filtro baja (${excel.status()})`)
+    let enElExcel = -1
+    if (excel.status() === 200) {
+      const libro = new ExcelJS.Workbook()
+      await libro.xlsx.load(await excel.body())
+      enElExcel = 0
+      libro.worksheets[0].eachRow((fila) => {
+        if (fila.values.some((v) => String(v ?? '').includes(CODIGO))) enElExcel++
+      })
+    }
+    comprobar(excel.status() === 200 && /attachment/.test(excel.headers()['content-disposition'] ?? '') && enElExcel === enLaBase,
+      `Kardex (almacén): el Excel con el mismo filtro trae ${enElExcel} fila con ${CODIGO} y la base tiene ${enLaBase}`)
   }
 
   // Las listas enteras, sin filtro, tampoco se corren: una fila con un texto
   // largo basta para empujar la tabla fuera de su tarjeta.
-  for (const [puesto, ruta] of [['contabilidad', '/almacen/kardex'], ['logistica', '/compras/servicios'], ['gerencia', '/unidades'], ['gerencia', '/materiales'], ['logistica', '/compras/valorizacion']]) {
+  for (const [puesto, ruta] of [['almacen', '/almacen/kardex'], ['logistica', '/compras/servicios'], ['ventas', '/unidades'], ['diseno', '/materiales'], ['logistica', '/compras/valorizacion']]) {
     const { pagina } = await sesion(puesto)
     await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
     const medida = await pagina.evaluate(() => Math.max(document.documentElement.scrollWidth,
       ...[...document.querySelectorAll('main table')].map((t) => Math.ceil(t.getBoundingClientRect().left + t.scrollWidth))))
     comprobar(medida <= ancho, `${puesto} ${ruta} sin filtro: ni la pantalla ni su tabla se salen de costado (${medida} px)`)
+  }
+
+  // Los códigos de Diseño se filtran en el navegador: el primero de la lista,
+  // escrito en minúsculas y sin signos, deja solo los que lo contienen.
+  {
+    const { pagina } = await sesion('diseno')
+    await pagina.goto(`${BASE}/diseno/planos`, { waitUntil: 'networkidle' })
+    const codigos = () => pagina.locator('main [data-codigo]:visible').evaluateAll((l) => l.map((a) => a.getAttribute('data-codigo')))
+    const antes = await codigos()
+    if (antes.length) {
+      const texto = antes[0].toLowerCase().replace(/[^a-z0-9]/g, '')
+      const llego = await buscar(pagina, 'Buscar código interno', 'q', texto)
+      const despues = await hasta(codigos, (v) => v.length > 0 && v.length <= antes.length && v.includes(antes[0]))
+      comprobar(llego === texto && despues.includes(antes[0]) && despues.every((c) => c.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/o/g, '0').includes(texto.replace(/o/g, '0'))),
+        `Códigos de Diseño (diseño): «${texto}» deja ${despues.length} de ${antes.length}, todos con ${antes[0]}`)
+    } else {
+      comprobar(false, 'Códigos de Diseño (diseño): la lista está vacía y no hay qué buscar')
+    }
   }
 
   // Un término que no está: el estado vacío lo dice con lo que se escribió.
@@ -279,6 +330,11 @@ for (const ancho of [390, 1280]) {
     await buscar(pagina, 'Buscar clientes', 'q', `zzz${sello}`)
     const t = await hasta(() => textoDe(pagina), (x) => x.includes('Ningún cliente coincide'))
     comprobar(t.includes('Ningún cliente coincide') && t.includes(`zzz${sello}`), 'Clientes: sin resultados lo dice, con lo que se escribió')
+    // «Ver todos los clientes» cambia la URL por fuera del buscador: la caja la sigue.
+    await pagina.getByRole('link', { name: 'Ver todos los clientes' }).first().click()
+    await pagina.waitForURL((u) => !new URL(u).searchParams.has('q'), { timeout: 15000 }).catch(() => {})
+    const caja = await hasta(() => pagina.getByRole('searchbox', { name: 'Buscar clientes' }).inputValue(), (v) => v === '')
+    comprobar(caja === '', `Clientes: «Ver todos los clientes» vacía también la caja («${caja}»)`)
   }
 
   // Los que filtran en el navegador: la asistencia de Portería…
@@ -319,9 +375,9 @@ for (const ancho of [390, 1280]) {
     const disparador = pagina.locator('#cliente_id')
     if (await disparador.count()) {
       await disparador.click()
-      await pagina.getByLabel('Razón social o RUC').pressSequentially(`nunez pena ${sello}`, { delay: 15 })
+      await pagina.getByLabel('Razón social o RUC').pressSequentially(`nunez pena ${sello} sac`, { delay: 15 })
       const opcion = pagina.getByRole('option', { name: new RegExp(sello) })
-      comprobar(await hasta(() => opcion.count(), (n) => n === 1) === 1, `Orden nueva (administración): el desplegable de clientes encuentra «${CLIENTE}» con «nunez pena»`)
+      comprobar(await hasta(() => opcion.count(), (n) => n === 1) === 1, `Orden nueva (administración): el desplegable de clientes encuentra «${CLIENTE}» con «nunez pena … sac», sin su gemelo E.I.R.L.`)
     } else {
       comprobar(false, 'Orden nueva (administración): no se encontró el desplegable de clientes')
     }

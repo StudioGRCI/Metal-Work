@@ -79,7 +79,6 @@ export function RepartirPartesIguales({ planillaId, personas, ordenes }: {
             <span className="tabular text-xs text-texto-suave">{p.asignado.toFixed(2)} %</span>
           </label>
         ))}
-        {visibles.length === 0 && <p className="px-3 py-4 text-sm text-texto-suave">Ninguna OT coincide. Prueba con el número o la placa.</p>}
       </div>
     </fieldset>
     <fieldset>
@@ -95,6 +94,11 @@ export function RepartirPartesIguales({ planillaId, personas, ordenes }: {
             <span className="tabular font-medium">{o.numero}</span><span className="text-texto-suave">{o.unidad}</span>
           </label>
         ))}
+        {visibles.length === 0 && (
+          <p className="px-3 py-4 text-sm text-texto-suave">
+            {ordenes.length === 0 ? 'No hay OT abiertas entre las que repartir.' : 'Ninguna OT coincide. Prueba con el número o la placa.'}
+          </p>
+        )}
       </div>
     </fieldset>
     <p className="text-sm text-texto-suave" aria-live="polite">

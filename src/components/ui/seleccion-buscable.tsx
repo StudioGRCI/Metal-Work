@@ -187,7 +187,7 @@ export function SeleccionBuscable({
           }
         }}
         className={cn(
-          'flex h-11 w-full items-center gap-2 rounded-[var(--radius-base)] border pr-[4.5rem] pl-3 text-left sm:pr-14 text-base transition-colors sm:h-9 sm:text-sm',
+          'flex h-11 w-full items-center gap-2 rounded-[var(--radius-base)] border pr-20 pl-3 text-left sm:pr-14 text-base transition-colors sm:h-9 sm:text-sm',
           'disabled:cursor-not-allowed disabled:opacity-60',
           elegida ? 'border-acento bg-acento-suave font-medium text-acento' : 'border-borde-fuerte bg-superficie text-texto-tenue',
         )}
@@ -201,7 +201,7 @@ export function SeleccionBuscable({
           type="button"
           aria-label="Quitar la selección"
           onClick={() => onChange('')}
-          className="absolute top-1/2 right-6 inline-flex size-11 -translate-y-1/2 items-center justify-center rounded text-texto-tenue hover:bg-superficie-2 hover:text-texto sm:right-8 sm:size-auto sm:p-0.5"
+          className="absolute top-1/2 right-8 inline-flex size-11 -translate-y-1/2 items-center justify-center rounded text-texto-tenue hover:bg-superficie-2 hover:text-texto sm:right-8 sm:size-auto sm:p-0.5"
         >
           <X aria-hidden className="size-3.5" />
         </button>

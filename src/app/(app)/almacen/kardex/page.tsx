@@ -193,7 +193,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
             {filtros.tipo && <input type="hidden" name="tipo" value={filtros.tipo} />}
             {filtros.almacen && <input type="hidden" name="almacen" value={filtros.almacen} />}
             <Campo etiqueta="Material" htmlFor="k-material">
-              <FiltroMaterial id="k-material" inicial={filtros.material ?? ''}
+              <FiltroMaterial key={filtros.material ?? ''} id="k-material" inicial={filtros.material ?? ''}
                 materiales={materiales.map((m) => ({ valor: m.material_id, etiqueta: m.descripcion, detalle: m.codigo }))} />
             </Campo>
             <Campo etiqueta="Desde" htmlFor="k-desde">
@@ -319,15 +319,23 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
               <TH className="hidden sm:table-cell">Movimiento</TH>
               <TH className="hidden md:table-cell">Documento o motivo</TH>
               <TH className="hidden sm:table-cell">Unidad / OT</TH>
-              <TH className="text-right">Entrada</TH>
-              <TH className="text-right">Salida</TH>
-              <TH className="text-right">Saldo</TH>
+              <TH className="px-2 text-right sm:px-3">Entrada</TH>
+              <TH className="px-2 text-right sm:px-3">Salida</TH>
+              <TH className="px-2 text-right sm:px-3">Saldo</TH>
             </tr>
           </TablaCabecera>
           <tbody>
             {saldoAnterior !== null && (
+              // Celda por celda, como las demás filas: un colSpan fijo contaba
+              // columnas que en el teléfono están escondidas y corría el saldo.
               <TR>
-                <TD colSpan={elegido ? 6 : 7} className="text-xs text-texto-suave">Saldo anterior</TD>
+                <TD className="text-xs text-texto-suave">Saldo anterior</TD>
+                {!elegido && <TD className="hidden sm:table-cell" />}
+                <TD className="hidden sm:table-cell" />
+                <TD className="hidden md:table-cell" />
+                <TD className="hidden sm:table-cell" />
+                <TD />
+                <TD />
                 <TD className="tabular text-right font-semibold">{cantidad(saldoAnterior)}</TD>
               </TR>
             )}
@@ -337,7 +345,9 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                 titulo={hayFiltros ? 'Ningún movimiento con esos filtros' : 'Todavía no hay movimientos'}
                 descripcion={hayFiltros
                   ? 'Prueba con otro rango de fechas, otro tipo o borra el texto de la unidad.'
-                  : 'Registra el saldo inicial o el primer ingreso con el botón de arriba; cada salida quedará aquí con su unidad.'}
+                  : puedeIngreso
+                    ? 'Registra el saldo inicial o el primer ingreso con el botón de arriba; cada salida quedará aquí con su unidad.'
+                    : 'Almacén registra el saldo inicial y cada ingreso; aparecen aquí apenas lo haga.'}
               />
             ) : filas.map((f) => {
               const def = MOVIMIENTO_KARDEX[f.movimiento ?? ''] ?? { etiqueta: f.movimiento ?? 'Movimiento', tono: 'neutro' as const }
@@ -380,6 +390,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                         <Insignia tono={def.tono}>{def.etiqueta}</Insignia>
                         <span className="text-[11px] text-texto-suave">{origen}</span>
                       </div>
+                      {f.documento && <span className="block text-[11px] text-texto-suave">{f.documento}</span>}
                       <div>{unidadYOt}</div>
                     </div>
                   </TD>

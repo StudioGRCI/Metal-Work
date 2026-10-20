@@ -34,6 +34,9 @@ test('la expresión encuentra siglas y códigos con o sin sus signos, y no salta
   assert.ok(!sac.test('PLANCHAS ACERO'))
   assert.ok(new RegExp(expresionSinTildes('sr04'), 'i').test('PLA_SR_04_1'))
   assert.ok(new RegExp(expresionSinTildes('316'), 'i').test('PLANCHA LAC 3/16'))
+  // La O y el cero, como en los códigos internos.
+  assert.ok(new RegExp(expresionSinTildes('sr04'), 'i').test('PLA_SR_O4_1_26/28'))
+  assert.ok(new RegExp(expresionSinTildes('sro4'), 'i').test('PLA_SR_04_1'))
   assert.ok(!new RegExp(expresionSinTildes('sac'), 'i').test('E.I.R.L.'))
 })
 
@@ -53,6 +56,8 @@ test('en una lista ya leída cada palabra tiene que estar en algún campo, en cu
   assert.ok(coincide(palabrasDeBusqueda('Núñez'), ['NUNEZ']))
   assert.ok(coincide(palabrasDeBusqueda('sac'), ['ACEROS DEL NORTE S.A.C.']))
   assert.ok(coincide(palabrasDeBusqueda('sr04'), ['PLA_SR_04_1']))
+  assert.ok(coincide(palabrasDeBusqueda('sr04'), ['PLA_SR_O4_1_26/28']))
+  assert.ok(coincide(palabrasDeBusqueda('camion'), ['CAMIÓN']))
   assert.ok(coincide(palabrasDeBusqueda('S.A.C.'), ['ACEROS DEL NORTE SAC']))
   assert.ok(!coincide(palabrasDeBusqueda('S.A.C.'), ['TORNERÍA E.I.R.L.']))
   // Ni salta espacios ni cruza de un campo a otro.

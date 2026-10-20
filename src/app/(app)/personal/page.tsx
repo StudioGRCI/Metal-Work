@@ -91,9 +91,9 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
               {/* En el teléfono quedan persona, puesto, alcance y acciones; correo,
                   área y costo bajan a la celda de al lado en letra chica. */}
               <TH className="hidden sm:table-cell">Correo</TH>
-              <TH>Puesto</TH>
+              <TH className="hidden sm:table-cell">Puesto</TH>
               <TH className="hidden sm:table-cell">Área</TH>
-              <TH>Alcance</TH>
+              <TH className="hidden sm:table-cell">Alcance</TH>
               <TH className="hidden text-right sm:table-cell">Costo hora</TH>
               {gestiona && <TH className="text-right">Acciones</TH>}
             </tr>

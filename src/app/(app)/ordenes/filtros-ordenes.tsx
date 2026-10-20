@@ -14,7 +14,16 @@ export function FiltrosOrdenes() {
   const router = useRouter()
   const params = useSearchParams()
   const [pendiente, iniciarTransicion] = useTransition()
-  const [busqueda, setBusqueda] = useState(params.get('q') ?? '')
+  const actual = params.get('q') ?? ''
+  const [busqueda, setBusqueda] = useState(actual)
+  // Si la URL cambia por otro lado (un enlace, el menú), la caja la sigue,
+  // como en `BuscadorSimple`; lo que esta misma caja pidió no la toca.
+  const [pedido, setPedido] = useState<string | null>(null)
+  const [vista, setVista] = useState(actual)
+  if (actual !== vista) {
+    setVista(actual)
+    if (actual !== pedido) setBusqueda(actual)
+  }
 
   function navegar(cambios: Record<string, string | null>) {
     const query = new URLSearchParams(params.toString())
@@ -29,10 +38,12 @@ export function FiltrosOrdenes() {
 
   // La búsqueda se envía sola tras una pausa, sin necesidad de pulsar Enter.
   useEffect(() => {
-    const actual = params.get('q') ?? ''
     if (busqueda === actual) return
 
-    const temporizador = setTimeout(() => navegar({ q: busqueda || null }), 350)
+    const temporizador = setTimeout(() => {
+      setPedido(busqueda)
+      navegar({ q: busqueda || null })
+    }, 350)
     return () => clearTimeout(temporizador)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busqueda])
@@ -41,7 +52,7 @@ export function FiltrosOrdenes() {
 
   // Lo escrito todavía no está en la URL, o la tabla se está rehaciendo: en
   // ambos casos lo que se ve abajo ya no responde a lo que se acaba de pedir.
-  const buscando = pendiente || busqueda !== (params.get('q') ?? '')
+  const buscando = pendiente || busqueda !== actual
 
   return (
     // En el teléfono, una rejilla de dos: el buscador y el estado a todo lo
@@ -121,6 +132,7 @@ export function FiltrosOrdenes() {
           type="button"
           onClick={() => {
             setBusqueda('')
+            setPedido('')
             iniciarTransicion(() => router.push('/ordenes'))
           }}
           className="inline-flex h-11 items-center gap-1.5 rounded-[var(--radius-base)] px-3 text-sm text-texto-suave hover:bg-superficie-2 hover:text-texto sm:h-9"

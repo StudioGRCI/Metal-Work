@@ -35,7 +35,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
       <BuscadorSimple
         ruta="/unidades"
         etiqueta="Buscar unidades"
-        marcador="Placa, código, marca, modelo o chasis"
+        marcador="Placa, código, FMI, marca o modelo"
       />
       <div className="mt-3 flex justify-end">
         <Link href={incluirInactivas ? '/unidades' : '/unidades?estado=inactivas'} className="text-sm text-acento hover:underline">
@@ -52,9 +52,9 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                   la matrícula cuando la tiene. */}
               <TH>Unidad</TH>
               <TH className="hidden sm:table-cell">Cliente</TH>
-              <TH>Vehículo</TH>
-              {/* Siete columnas no entran en un teléfono. Las cuatro de detalle se
-                  esconden aquí y su contenido baja a la celda del vehículo en letra
+              <TH className="hidden sm:table-cell">Vehículo</TH>
+              {/* Siete columnas no entran en un teléfono. Las de detalle se
+                  esconden y su contenido baja a la celda de la unidad en letra
                   chica: se pierde la rejilla, no el dato. */}
               <TH className="hidden sm:table-cell">Tipo</TH>
               <TH className="hidden sm:table-cell">Carrocería</TH>
@@ -127,10 +127,15 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                           sin placa
                         </span>
                       )}
-                      {/* En el teléfono el dueño va aquí: con su columna, la tabla
-                          se corría de costado. */}
-                      <span className="line-clamp-2 block w-40 text-xs font-normal whitespace-normal text-texto-suave sm:hidden">
-                        {cliente ? cliente.razon_social : u.cliente_id ? null : 'Del taller'}
+                      {/* En el teléfono el dueño y el vehículo van aquí: con sus
+                          columnas y las acciones, la tabla se corría de costado. */}
+                      <span className="block w-44 font-normal whitespace-normal sm:hidden">
+                        <span className="line-clamp-2 text-xs text-texto-suave">
+                          {cliente ? cliente.razon_social : u.cliente_id ? null : 'Del taller'}
+                        </span>
+                        <span className="block text-xs text-texto">{[u.marca, u.modelo, u.anio].filter(Boolean).join(' ')}</span>
+                        {detalle && <span className="block text-[11px] text-texto-suave">{detalle}</span>}
+                        {u.numero_chasis && <span className="block font-mono text-[10px] break-all text-texto-tenue">chasis {u.numero_chasis}</span>}
                       </span>
                     </TD>
                     <TD className="hidden sm:table-cell">
@@ -147,19 +152,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                         <span className="text-texto-suave">Del taller</span>
                       )}
                     </TD>
-                    <TD>
-                      {[u.marca, u.modelo, u.anio].filter(Boolean).join(' ') || '—'}
-                      {detalle && (
-                        <span className="block text-[11px] text-texto-suave sm:hidden">
-                          {detalle}
-                        </span>
-                      )}
-                      {u.numero_chasis && (
-                        <span className="block font-mono text-[10px] text-texto-tenue sm:hidden">
-                          chasis {u.numero_chasis}
-                        </span>
-                      )}
-                    </TD>
+                    <TD className="hidden sm:table-cell">{[u.marca, u.modelo, u.anio].filter(Boolean).join(' ') || '—'}</TD>
                     <TD className="hidden text-texto-suave sm:table-cell">{u.tipo_vehiculo}</TD>
                     <TD className="hidden text-texto-suave sm:table-cell">
                       {carroceria?.nombre ?? '—'}

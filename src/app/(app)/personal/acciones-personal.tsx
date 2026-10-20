@@ -253,6 +253,16 @@ export function FilaDePersona({
   const clave = useEnvio(cambiarClave)
   const estado = useEnvio(cambiarEstado)
 
+  const alcance = (
+    <>
+      {persona.es_operario ? <Insignia tono="info">Solo sus órdenes</Insignia> : <Insignia tono="neutro">Todo el taller</Insignia>}
+      {!persona.activo && (
+        <span className="ml-1">
+          <Insignia tono="peligro">De baja</Insignia>
+        </span>
+      )}
+    </>
+  )
   return (
     <>
       <TR className={persona.activo ? undefined : 'opacity-60'}>
@@ -264,32 +274,23 @@ export function FilaDePersona({
           {/* El correo es la columna que se esconde en el teléfono; aquí abajo
               sigue estando, que es el dato con el que se le escribe. */}
           <div className="text-[11px] break-all text-texto-suave sm:hidden">{persona.correo}</div>
-        </TD>
-        <TD className="hidden text-xs sm:table-cell">{persona.correo}</TD>
-        <TD className="text-xs">
-          {persona.rol?.nombre ?? '—'}
-          <span className="block text-[11px] text-texto-tenue sm:hidden">
+          {/* El puesto y el alcance también bajan aquí en el teléfono: con sus
+              columnas y los tres botones, la tabla se corría de costado. */}
+          <div className="mt-1 text-xs text-texto sm:hidden">
             {[
+              persona.rol?.nombre,
               persona.area?.nombre,
               persona.es_operario ? `S/ ${Number(persona.costo_hora).toFixed(2)}/h` : null,
             ]
               .filter(Boolean)
-              .join(' · ') || '—'}
-          </span>
+              .join(' · ')}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1 sm:hidden">{alcance}</div>
         </TD>
+        <TD className="hidden text-xs sm:table-cell">{persona.correo}</TD>
+        <TD className="hidden text-xs sm:table-cell">{persona.rol?.nombre ?? '—'}</TD>
         <TD className="hidden text-xs sm:table-cell">{persona.area?.nombre ?? '—'}</TD>
-        <TD>
-          {persona.es_operario ? (
-            <Insignia tono="info">Solo sus órdenes</Insignia>
-          ) : (
-            <Insignia tono="neutro">Todo el taller</Insignia>
-          )}
-          {!persona.activo && (
-            <span className="ml-1">
-              <Insignia tono="peligro">De baja</Insignia>
-            </span>
-          )}
-        </TD>
+        <TD className="hidden sm:table-cell">{alcance}</TD>
         <TD className="tabular hidden text-right text-xs sm:table-cell">
           {persona.es_operario ? `S/ ${Number(persona.costo_hora).toFixed(2)}` : '—'}
         </TD>
