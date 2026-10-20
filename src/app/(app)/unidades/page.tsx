@@ -34,7 +34,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
       <BuscadorSimple
         ruta="/unidades"
         etiqueta="Buscar unidades"
-        marcador="Placa, código, FMI, marca o chasis"
+        marcador="Placa, código, marca, modelo o chasis"
       />
       <div className="mt-3 flex justify-end">
         <Link href={incluirInactivas ? '/unidades' : '/unidades?estado=inactivas'} className="text-sm text-acento hover:underline">

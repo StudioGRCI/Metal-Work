@@ -24,7 +24,8 @@ test('la expresión encuentra la palabra con y sin tilde', () => {
   for (const t of ['CAMIÓN', 'camion', 'Camión']) assert.ok(r.test(t), t)
   assert.ok(new RegExp(expresionSinTildes('agricola'), 'i').test('AGRÍCOLA SAN JUAN'))
   assert.ok(new RegExp(expresionSinTildes('pena'), 'i').test('PEÑA'))
-  assert.match(expresionSinTildes('sr04'), /^[a-zA-Z0-9[\]._/?áéíóúüñÁÉÍÓÚÜÑ-]+$/)
+  assert.match(expresionSinTildes('sr04'), /^[a-z0-9[\]._/?áéíóúüñ-]+$/)
+  assert.equal(expresionSinTildes('un'), '[uúü][._/-]?[nñ]')
 })
 
 test('la expresión encuentra siglas y códigos con o sin sus signos, y no salta espacios', () => {

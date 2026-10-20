@@ -42,16 +42,16 @@ function plano(texto: string) {
   return texto.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '')
 }
 
-// Solo las tildes del castellano (y la diéresis de la u). Las dos cajas van
-// escritas: el `~*` de Postgres no siempre iguala «Á» con «á», según la
-// configuración regional de la base.
+// Solo las tildes del castellano (y la diéresis de la u), en minúscula: el `~*`
+// de Postgres iguala «Ú» con «ú» en una base UTF-8 (`'NÚÑEZ' ~* 'ú'` da
+// verdadero en Supabase y en el banco), y cada letra de más alarga la dirección.
 const VARIANTES: Record<string, string> = {
-  a: 'aáAÁ',
-  e: 'eéEÉ',
-  i: 'iíIÍ',
-  o: 'oóOÓ',
-  u: 'uúüUÚÜ',
-  n: 'nñNÑ',
+  a: 'aá',
+  e: 'eé',
+  i: 'ií',
+  o: 'oó',
+  u: 'uúü',
+  n: 'nñ',
 }
 
 /**

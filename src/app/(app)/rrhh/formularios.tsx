@@ -83,7 +83,7 @@ export function RepartirPartesIguales({ planillaId, personas, ordenes }: {
     </fieldset>
     <fieldset>
       <legend className="text-xs font-medium text-texto-suave">OT entre las que se reparte</legend>
-      <Entrada aria-label="Buscar OT por número o unidad" placeholder="Buscar por número o unidad" value={filtro}
+      <Entrada aria-label="Buscar OT por número o unidad" placeholder="Número o unidad" value={filtro}
         onChange={(e) => setFiltro(e.target.value)} className="mt-1.5" />
       <div className="mt-2 max-h-64 overflow-y-auto rounded-[var(--radius-base)] border border-borde">
         {ordenes.map((o) => (

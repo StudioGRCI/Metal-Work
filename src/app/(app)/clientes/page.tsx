@@ -8,6 +8,7 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { CLIENTES_POR_PAGINA, listarClientes } from '@/lib/datos/comercial'
+import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
@@ -19,7 +20,8 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
   const perfil = await exigirPermiso('clientes.ver')
   const params = await searchParams
 
-  const busqueda = typeof params.q === 'string' ? params.q : undefined
+  // Solo signos («%») no es una búsqueda: la lista sale entera y no dice «con «%»».
+  const busqueda = typeof params.q === 'string' && palabrasDeBusqueda(params.q).length > 0 ? params.q : undefined
   const { clientes, total, pagina, paginas } = await listarClientes({
     busqueda,
     pagina: Number(params.pagina) || 1,

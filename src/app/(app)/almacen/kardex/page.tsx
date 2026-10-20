@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
-import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { Campo, Entrada } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -19,6 +19,7 @@ import { createClient } from '@/lib/supabase/server'
 
 import { ConteoFisico } from './conteo'
 import { ConteoInicial } from './conteo-inicial'
+import { FiltroMaterial } from './filtro-material'
 import { NuevoIngreso } from './ingreso'
 import { SalidasPorCerrar } from './por-cerrar'
 import { BandejaPorValidar } from './por-validar'
@@ -192,12 +193,8 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
             {filtros.tipo && <input type="hidden" name="tipo" value={filtros.tipo} />}
             {filtros.almacen && <input type="hidden" name="almacen" value={filtros.almacen} />}
             <Campo etiqueta="Material" htmlFor="k-material">
-              <Seleccion id="k-material" name="material" defaultValue={filtros.material ?? ''}>
-                <option value="">Todo el almacén</option>
-                {materiales.map((m) => (
-                  <option key={m.material_id} value={m.material_id}>{m.descripcion} · {m.codigo}</option>
-                ))}
-              </Seleccion>
+              <FiltroMaterial id="k-material" inicial={filtros.material ?? ''}
+                materiales={materiales.map((m) => ({ valor: m.material_id, etiqueta: m.descripcion, detalle: m.codigo }))} />
             </Campo>
             <Campo etiqueta="Desde" htmlFor="k-desde">
               <Entrada id="k-desde" name="desde" type="date" defaultValue={filtros.desde ?? ''} />

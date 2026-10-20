@@ -21,6 +21,8 @@
  * preparación, con tildes en los nombres. Necesita las cuentas
  * `*.local@metalwork.test` de Gerencia, Contabilidad, Logística,
  * Requerimientos, Supervisión (sup.mtz), Portería, RRHH y Administración.
+ * Lo sembrado se queda en el banco (una OT o una cotización numeradas no se
+ * borran ni aquí): `preparar.sh` lo deja como nuevo.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  */
 import { mkdirSync } from 'node:fs'
@@ -233,6 +235,31 @@ for (const ancho of [390, 1280]) {
     const params = new URL(pagina.url()).searchParams
     comprobar(!params.has('codigo') && params.get('estado') === 'todos', `Subcontratos: «Limpiar» deja estado=todos y quita el código (${pagina.url().replace(BASE, '')})`)
     comprobar((await pagina.getByRole('searchbox', { name: 'Buscar por código interno' }).inputValue()) === '', 'Subcontratos: la caja queda vacía después de «Limpiar»')
+  }
+
+  // El Kardex, con Contabilidad (Almacén no tiene cuenta en el banco): el
+  // material con su buscador y la unidad, que se aplican con «Ver», y el Excel
+  // con el mismo filtro.
+  {
+    const { pagina } = await sesion('contabilidad')
+    await pagina.goto(`${BASE}/almacen/kardex`, { waitUntil: 'networkidle' })
+    await pagina.locator('#k-material').click()
+    await pagina.getByLabel('Nombre o código del material').pressSequentially(`angulo ${sello}`, { delay: 15 })
+    const opcion = pagina.getByRole('option', { name: new RegExp(sello) })
+    const hay = await hasta(() => opcion.count(), (n) => n === 1)
+    if (hay === 1) await opcion.click()
+    await pagina.locator('#k-unidad').fill(`qa bus ${sello}`)
+    await Promise.all([pagina.waitForURL((u) => new URL(u).searchParams.has('unidad'), { timeout: 15000 }).catch(() => {}), pagina.getByRole('button', { name: 'Ver', exact: true }).click()])
+    await pagina.waitForLoadState('networkidle')
+    const url = new URL(pagina.url())
+    const filas = await pagina.locator('main tbody tr', { hasText: CODIGO }).count()
+    const enLaBase = (await uno(`select count(*)::int as n from public.v_kardex_almacen k join public.materiales m on m.id = k.material_id
+                                 where m.descripcion = $1 and k.codigo_unidad = $2`, [MATERIAL, CODIGO])).n
+    comprobar(hay === 1 && url.searchParams.get('material') && filas === enLaBase && filas === 1,
+      `Kardex (contabilidad): el material con «angulo ${sello}» y la unidad «qa bus ${sello}» muestran ${filas} fila y la base tiene ${enLaBase}`)
+    const excel = await pagina.request.get(`${BASE}/almacen/kardex/excel${url.search}`)
+    comprobar(excel.status() === 200 && /attachment/.test(excel.headers()['content-disposition'] ?? '') && (await excel.body()).length > 1000,
+      `Kardex (contabilidad): el Excel con el mismo filtro baja (${excel.status()})`)
   }
 
   // Un término que no está: el estado vacío lo dice con lo que se escribió.

@@ -90,7 +90,8 @@ export function BuscadorSimple({
             const query = new URLSearchParams(params.toString())
             query.delete(clave)
             query.delete('pagina')
-            iniciarTransicion(() => router.replace(query.size ? `${ruta}?${query}` : ruta))
+            const resto = query.toString()
+            iniciarTransicion(() => router.replace(resto ? `${ruta}?${resto}` : ruta))
           }}
           className="inline-flex h-11 items-center gap-1.5 rounded-[var(--radius-base)] px-3 text-sm text-texto-suave hover:bg-superficie-2 hover:text-texto sm:h-9"
         >
