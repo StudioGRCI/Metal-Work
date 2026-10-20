@@ -165,7 +165,9 @@ export async function cambiarEstado(_previo: unknown, datos: FormData): Promise<
   }
 
   const analisis = z
-    .object({ id: z.guid(), activo: z.coerce.boolean() })
+    // `stringbool`, no `coerce.boolean`: el formulario manda el texto 'false',
+    // y `Boolean('false')` es true. «Dar de baja» reactivaba sin decir nada.
+    .object({ id: z.guid(), activo: z.stringbool() })
     .safeParse(Object.fromEntries(datos))
 
   if (!analisis.success) return { ok: false, error: 'Datos incompletos.' }

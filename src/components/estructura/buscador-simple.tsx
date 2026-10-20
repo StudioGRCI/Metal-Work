@@ -43,10 +43,12 @@ export function BuscadorSimple({
   }
 
   useEffect(() => {
-    if (busqueda === actual) return
+    if (busqueda === actual || busqueda === pedido) return
 
     const temporizador = setTimeout(() => {
-      const query = new URLSearchParams(params.toString())
+      // La URL de ahora, no la de cuando se escribió: si en la pausa se tocó
+      // un filtro, ese filtro se queda.
+      const query = new URLSearchParams(window.location.search)
       if (busqueda) query.set(clave, busqueda)
       else query.delete(clave)
       query.delete('pagina')

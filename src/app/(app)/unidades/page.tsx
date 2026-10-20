@@ -35,7 +35,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
       <BuscadorSimple
         ruta="/unidades"
         etiqueta="Buscar unidades"
-        marcador="Placa, código, FMI, marca o modelo"
+        marcador="Placa, código, marca, modelo o chasis"
       />
       <div className="mt-3 flex justify-end">
         <Link href={incluirInactivas ? '/unidades' : '/unidades?estado=inactivas'} className="text-sm text-acento hover:underline">
@@ -143,9 +143,9 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                         <Link
                           href={`/clientes/${cliente.id}`}
                           title={cliente.razon_social}
-                          // `block`: en un enlace en línea el ancho máximo no
-                          // corta nada y la razón social empujaba la tabla.
-                          className="block max-w-52 truncate text-acento hover:underline"
+                          // En un enlace en línea el ancho máximo no corta nada
+                          // y la razón social empujaba la tabla.
+                          className="line-clamp-2 max-w-56 text-acento hover:underline"
                         >
                           {cliente.razon_social}
                         </Link>

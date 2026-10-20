@@ -175,6 +175,7 @@ export function SeleccionBuscable({
         aria-expanded={abierto}
         aria-controls={idLista}
         aria-haspopup="listbox"
+        title={elegida?.etiqueta}
         aria-label={etiquetaAccesible}
         aria-required={requerido}
         aria-describedby={descripcion}

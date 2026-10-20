@@ -189,7 +189,9 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
 
       <Tarjeta className="mb-4">
         <TarjetaCuerpo>
-          <form method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1.5fr_auto] lg:items-end">
+          {/* Con `key`, el formulario se rehace cuando cambian los filtros: sus
+              campos no son controlados y «Limpiar» dejaba lo escrito sin «Ver». */}
+          <form key={JSON.stringify(filtros)} method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1.5fr_auto] lg:items-end">
             {filtros.tipo && <input type="hidden" name="tipo" value={filtros.tipo} />}
             {filtros.almacen && <input type="hidden" name="almacen" value={filtros.almacen} />}
             <Campo etiqueta="Material" htmlFor="k-material">

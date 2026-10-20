@@ -21,6 +21,7 @@ import {
   origenDelAvance,
   parecidos,
 } from '@/lib/dominio/codigos-internos'
+import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import { fecha, moneda, porcentaje } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
@@ -55,7 +56,11 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
   // Los parecidos se buscan entre todos, no solo entre los que deja la búsqueda.
   const parecidosDe = parecidos(todos.map((c) => c.codigo))
   const llave = llaveParecido(q)
-  const buscados = q ? todos.filter((c) => c.codigo.includes(q.toUpperCase()) || (llave && llaveParecido(c.codigo).includes(llave))) : todos
+  // También por la placa y el vehículo que muestra cada fila.
+  const palabras = palabrasDeBusqueda(q)
+  const buscados = q
+    ? todos.filter((c) => c.codigo.includes(q.toUpperCase()) || (llave && llaveParecido(c.codigo).includes(llave)) || coincide(palabras, [c.codigo, diseno.get(c.codigo)?.unidad]))
+    : todos
   const cuantos = (clave: string) => buscados.filter((c) => FILTROS[clave](c, parecidosDe.has(c.codigo))).length
   const codigos = filtro ? buscados.filter((c) => FILTROS[filtro](c, parecidosDe.has(c.codigo))) : buscados
 
@@ -95,7 +100,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
       </SeccionDesplegable>
 
       <div className="mb-3 space-y-3">
-        <BuscadorSimple ruta="/codigos-internos" etiqueta="Buscar código interno" marcador="Código interno, por ejemplo SR_04" />
+        <BuscadorSimple ruta="/codigos-internos" etiqueta="Buscar código interno" marcador="Código, placa o vehículo" />
         <PastillaFiltro
           ruta="/codigos-internos"
           clave="ver"

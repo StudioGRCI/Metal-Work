@@ -2,7 +2,7 @@ import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
 import type { Tablas } from '@/types/database'
-import { filtroDePalabra, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
+import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
 
 export type Cliente = Tablas<'clientes'>
 export type Unidad = Tablas<'unidades'>
@@ -21,9 +21,7 @@ export async function listarClientes(filtros: { busqueda?: string; pagina?: numb
 
   if (!filtros.incluirInactivos) consulta = consulta.eq('activo', true)
 
-  for (const palabra of palabrasDeBusqueda(filtros.busqueda)) {
-    consulta = consulta.or(filtroDePalabra(['razon_social', 'nombre_comercial', 'numero_documento'], palabra))
-  }
+  for (const filtro of filtrosDeBusqueda(['razon_social', 'nombre_comercial', 'numero_documento'], filtros.busqueda)) consulta = consulta.or(filtro)
 
   const { data, error, count } = await consulta
     .range(desde, desde + CLIENTES_POR_PAGINA - 1)
@@ -65,9 +63,7 @@ export async function listarUnidades(filtros: { clienteId?: string; busqueda?: s
 
   if (filtros.clienteId) consulta = consulta.eq('cliente_id', filtros.clienteId)
 
-  for (const palabra of palabrasDeBusqueda(filtros.busqueda)) {
-    consulta = consulta.or(filtroDePalabra(['placa', 'codigo_interno', 'numero_fmi', 'marca', 'modelo', 'numero_chasis'], palabra))
-  }
+  for (const filtro of filtrosDeBusqueda(['placa', 'codigo_interno', 'numero_fmi', 'marca', 'modelo', 'numero_chasis'], filtros.busqueda)) consulta = consulta.or(filtro)
 
   const { data, error } = await consulta.order('placa').limit(300)
   if (error) throw new Error(`No se pudieron listar las unidades: ${error.message}`)

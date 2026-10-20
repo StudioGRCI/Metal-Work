@@ -74,7 +74,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                 titulo={busqueda ? 'Ningún proveedor coincide' : 'Aún no hay proveedores en el padrón'}
                 descripcion={
                   busqueda
-                    ? `Nada con «${busqueda}». Prueba con el RUC o con una parte del nombre.`
+                    ? 'Prueba con menos palabras, con el RUC o con una parte del nombre.'
                     : edita
                       ? 'Registra a quienes les compran: la orden de compra ya no se escribe a mano.'
                       : 'Logística los registra al hacer sus órdenes de compra.'

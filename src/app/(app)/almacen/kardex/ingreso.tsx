@@ -23,7 +23,10 @@ export function NuevoIngreso({materiales,unidades,despachos}:{materiales:Materia
  const [origen,setOrigen]=useState('INGRESO_GENERAL')
  const envio=useEnvio(registrarIngresoGeneral,()=>{setId(crypto.randomUUID());setMaterialNuevo(crypto.randomUUID());setTexto('');setAbierta(false)})
  const escrito=texto.trim().toUpperCase()
- const elegido=escrito?materiales.find(m=>etiquetaDe(m).toUpperCase()===escrito||m.codigo.toUpperCase()===escrito):undefined
+ // Escrito igual que uno del catálogo, aunque sea sin tildes, es ese: si no,
+ // «angulo 2 x 1/4» entraba como material nuevo al lado del ÁNGULO.
+ const llano=(t:string)=>t.normalize('NFD').replace(/\p{Diacritic}/gu,'').toUpperCase().replace(/[^A-Z0-9]+/g,'')
+ const elegido=escrito?materiales.find(m=>etiquetaDe(m).toUpperCase()===escrito||m.codigo.toUpperCase()===escrito||llano(m.descripcion)===llano(texto)):undefined
  const libre=Boolean(escrito)&&!elegido
  // Como todo buscador: «angulo» sugiere «ÁNGULO 2 X 1/4». Antes era un datalist,
  // que el navegador vuelve a filtrar a su modo (con tilde) y no lo sugería: el
@@ -37,10 +40,10 @@ export function NuevoIngreso({materiales,unidades,despachos}:{materiales:Materia
  {elegido?<input type="hidden" name="material_id" value={elegido.id}/>:<input type="hidden" name="material_nuevo_id" value={materialNuevo}/>}
  <Campo etiqueta="Material" htmlFor="ing-material" requerido ayuda="Escríbelo como lo conoces. Si aparece en la lista, elígelo; si no, entra como material nuevo.">
  <Entrada id="ing-material" name="descripcion" value={texto} onChange={e=>setTexto(e.target.value)} required minLength={3} maxLength={200} autoComplete="off" placeholder="Ej.: Disco de corte 7 pulgadas"/>
- {parecidos.length>0&&<ul aria-label="Del catálogo" className="mt-1 divide-y divide-borde rounded-[var(--radius-base)] border border-borde">{parecidos.map(m=><li key={m.id}><button type="button" onClick={()=>setTexto(etiquetaDe(m))} className="flex min-h-11 w-full items-center px-3 py-1.5 text-left text-sm text-texto hover:bg-superficie-2 sm:min-h-9"><span className="line-clamp-2">{etiquetaDe(m)}</span></button></li>)}</ul>}
+ {parecidos.length>0&&<ul aria-label="Del catálogo" className="mt-1 divide-y divide-borde rounded-[var(--radius-base)] border border-borde">{parecidos.map(m=><li key={m.id}><button type="button" onClick={()=>{setTexto(etiquetaDe(m));document.getElementById('ing-material')?.focus()}} className="flex min-h-11 w-full items-center px-3 py-1.5 text-left text-sm text-texto hover:bg-superficie-2 sm:min-h-9"><span className="line-clamp-2">{etiquetaDe(m)}</span></button></li>)}</ul>}
  </Campo>
  {elegido&&<p className="-mt-3 text-xs text-exito">Del catálogo: {elegido.descripcion}{elegido.unidad?`, en ${elegido.unidad}`:''}.</p>}
- {libre&&<p className="-mt-3 text-xs text-texto-suave">No está en el catálogo: se dará de alta como material nuevo, por clasificar.</p>}
+ {libre&&<p className="-mt-3 text-xs text-texto-suave">{parecidos.length>0?'¿Es uno de estos? Tócalo. Si no, se dará de alta como material nuevo, por clasificar.':'No está en el catálogo: se dará de alta como material nuevo, por clasificar.'}</p>}
  <div className="grid gap-4 sm:grid-cols-2">
  {libre&&<Campo etiqueta="Unidad" htmlFor="ing-unidad" requerido><Seleccion id="ing-unidad" name="unidad_id" required defaultValue={unidades.find(u=>u.codigo==='UND')?.id??''}><option value="">Elige la unidad</option>{unidades.map(u=><option key={u.id} value={u.id}>{u.nombre} ({u.codigo})</option>)}</Seleccion></Campo>}
  <Campo etiqueta="Tipo de ingreso" htmlFor="ing-origen"><Seleccion id="ing-origen" name="origen" value={origen} onChange={e=>setOrigen(e.target.value)}><option value="INGRESO_GENERAL">Ingreso general</option><option value="SALDO_INICIAL">Saldo inicial</option>{!libre&&<option value="DEVOLUCION">Devolución de una entrega</option>}</Seleccion></Campo>

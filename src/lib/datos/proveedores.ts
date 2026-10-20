@@ -2,7 +2,7 @@ import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
 import type { Tablas } from '@/types/database'
-import { filtroDePalabra, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
+import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
 
 export type Proveedor = Pick<
   Tablas<'proveedores'>,
@@ -48,9 +48,7 @@ export async function listarProveedores(filtros: { busqueda?: string; pagina?: n
 
   if (!filtros.incluirInactivos) consulta = consulta.eq('activo', true)
 
-  for (const palabra of palabrasDeBusqueda(filtros.busqueda)) {
-    consulta = consulta.or(filtroDePalabra(['razon_social', 'nombre_comercial', 'numero_documento', 'rubro'], palabra))
-  }
+  for (const filtro of filtrosDeBusqueda(['razon_social', 'nombre_comercial', 'numero_documento', 'rubro'], filtros.busqueda)) consulta = consulta.or(filtro)
 
   const { data, error, count } = await consulta.range(desde, desde + PROVEEDORES_POR_PAGINA - 1)
   if (error) throw new Error(`No se pudieron listar los proveedores: ${error.message}`)

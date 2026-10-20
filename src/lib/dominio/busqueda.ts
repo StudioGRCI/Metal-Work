@@ -14,25 +14,26 @@
  * «3/16». Escritos o no, la palabra es la misma.
  */
 const DENTRO = /([a-z0-9])[._/-]+(?=[a-z0-9])/g
-const LETRAS = 20
 
 /**
  * Las palabras que se buscan, en minúsculas y sin tildes; «S.A.C.» es una sola
- * palabra, «sac», y no tres letras sueltas que están en casi todo. Pocas y
- * cortas —cinco y veinte letras entre todas—: cada letra viaja en la dirección
- * de la consulta, una vez por columna, y una dirección demasiado larga la
- * rechaza el servidor.
+ * palabra, «sac», y no tres letras sueltas que están en casi todo. Una letra
+ * sola —la «y» de «Peña y Núñez»— no se busca si hay otras: está en todo.
  */
 export function palabrasDeBusqueda(texto: string | null | undefined): string[] {
-  const palabras: string[] = []
-  let letras = 0
-  for (const p of plano(texto ?? '').replace(DENTRO, '$1').split(/[^a-z0-9]+/)) {
-    if (!p || palabras.length === 5 || letras >= LETRAS) continue
-    palabras.push(p.slice(0, LETRAS - letras))
-    letras += p.length
-  }
-  return palabras
+  const todas = plano(texto ?? '').replace(DENTRO, '$1').split(/[^a-z0-9]+/).filter(Boolean)
+  const utiles = todas.filter((p) => p.length > 1 || /\d/.test(p))
+  return (utiles.length ? utiles : todas).slice(0, 8).map((p) => p.slice(0, 20))
 }
+
+/**
+ * Lo que cabe en la dirección de la consulta. Cada palabra viaja una vez por
+ * columna, y una dirección demasiado larga la rechaza el servidor: pasado este
+ * tope, las palabras que sobran no filtran en la base (salen más filas, nunca
+ * menos). Una búsqueda de verdad —«transportes peña y núñez s.a.c.» en cuatro
+ * columnas— usa menos de la mitad.
+ */
+const TOPE_DE_LA_DIRECCION = 4000
 
 /**
  * Minúsculas y sin tildes, y la ñ como n: en el taller se escribe «nunez» y
@@ -65,7 +66,10 @@ const VARIANTES: Record<string, string> = {
  * nada de eso es un mando para PostgREST.
  */
 export function expresionSinTildes(palabra: string): string {
-  return [...palabra].map((c) => (VARIANTES[c] ? `[${VARIANTES[c]}]` : c)).join('[._/-]?')
+  // Los signos entre letra y letra solo hacen falta en siglas y códigos —cortos
+  // o con números—; en «transportes» triplicaban el largo de la dirección.
+  const entre = palabra.length <= 4 || /\d/.test(palabra) ? '[._/-]?' : ''
+  return [...palabra].map((c) => (VARIANTES[c] ? `[${VARIANTES[c]}]` : c)).join(entre)
 }
 
 /**
@@ -78,14 +82,31 @@ export function filtroDePalabra(columnas: string[], palabra: string): string {
   return columnas.map((c) => `${c}.imatch."${expresion}"`).join(',')
 }
 
+/** Un filtro por palabra, de la primera en adelante, mientras quepan en la dirección. */
+export function filtrosDeBusqueda(columnas: string[], texto: string | null | undefined): string[] {
+  const filtros: string[] = []
+  let largo = 0
+  for (const palabra of palabrasDeBusqueda(texto)) {
+    const filtro = filtroDePalabra(columnas, palabra)
+    largo += encodeURIComponent(filtro).length
+    if (filtros.length && largo > TOPE_DE_LA_DIRECCION) break
+    filtros.push(filtro)
+  }
+  return filtros
+}
+
 /**
  * Lo mismo para una lista ya leída: cada palabra está en alguno de los campos,
  * leídos también sin los signos de `DENTRO` y con la O igual al cero, como hace
- * la expresión.
+ * la expresión. Una medida —una palabra con números— se busca además sin
+ * espacios: en el taller se anota «2X1/4» lo que el catálogo tiene como
+ * «2 X 1/4». Una palabra sin números no salta espacios: «sac» no está en
+ * «PLANCHAS ACERO».
  */
 export function coincide(palabras: string[], campos: (string | null | undefined)[]): boolean {
   if (palabras.length === 0) return true
   const cero = (t: string) => t.replace(/o/g, '0')
   const textos = campos.map((c) => cero(plano(c ?? ''))).flatMap((t) => [t, t.replace(/[._/-]+/g, '')])
-  return palabras.every((p) => textos.some((t) => t.includes(cero(p))))
+  const pegados = textos.map((t) => t.replace(/[^a-z0-9]+/g, ''))
+  return palabras.every((p) => textos.some((t) => t.includes(cero(p))) || (/\d/.test(p) && pegados.some((t) => t.includes(cero(p)))))
 }

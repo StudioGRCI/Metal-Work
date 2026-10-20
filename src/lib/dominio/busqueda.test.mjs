@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { coincide, expresionSinTildes, filtroDePalabra, palabrasDeBusqueda } from './busqueda.ts'
+import { coincide, expresionSinTildes, filtroDePalabra, filtrosDeBusqueda, palabrasDeBusqueda } from './busqueda.ts'
 
 test('las palabras salen sin tildes, sin signos y en minúsculas', () => {
   assert.deepEqual(palabrasDeBusqueda('  Camión, CISTERNA (agua) '), ['camion', 'cisterna', 'agua'])
@@ -12,10 +12,22 @@ test('las palabras salen sin tildes, sin signos y en minúsculas', () => {
   assert.deepEqual(palabrasDeBusqueda('%,()*"\\'), [])
 })
 
-test('no pasan más de cinco palabras ni más de veinte letras entre todas', () => {
-  assert.equal(palabrasDeBusqueda('a b c d e f g').length, 5)
+test('la letra suelta no se busca si hay otras, y la sigla del final no se pierde', () => {
+  assert.deepEqual(palabrasDeBusqueda('Transportes Peña y Núñez S.A.C.'), ['transportes', 'pena', 'nunez', 'sac'])
+  assert.deepEqual(palabrasDeBusqueda('y'), ['y'])
+  assert.deepEqual(palabrasDeBusqueda('tubo 2 x 1/4'), ['tubo', '2', '14'])
+  assert.equal(palabrasDeBusqueda('a1 b2 c3 d4 e5 f6 g7 h8 i9 j10').length, 8)
   assert.equal(palabrasDeBusqueda('x'.repeat(100))[0].length, 20)
-  assert.deepEqual(palabrasDeBusqueda(`${'x'.repeat(15)} abcdefgh zz`), ['x'.repeat(15), 'abcde'])
+})
+
+test('los filtros caben en la dirección y una búsqueda de verdad entra entera', () => {
+  const clientes = ['razon_social', 'nombre_comercial', 'numero_documento']
+  assert.equal(filtrosDeBusqueda(clientes, 'transportes peña y núñez 123456 s.a.c.').length, 5)
+  const unidades = ['placa', 'codigo_interno', 'numero_fmi', 'marca', 'modelo', 'numero_chasis']
+  const absurda = filtrosDeBusqueda(unidades, Array(8).fill('u'.repeat(30)).join(' '))
+  assert.ok(absurda.length >= 1 && absurda.length < 8)
+  assert.ok(absurda.reduce((n, f) => n + encodeURIComponent(f).length, 0) <= 4000)
+  assert.deepEqual(filtrosDeBusqueda(unidades, ''), [])
 })
 
 // Con `i`, como el `~*` de Postgres: las mayúsculas sin tilde las iguala la base.
@@ -26,6 +38,8 @@ test('la expresión encuentra la palabra con y sin tilde', () => {
   assert.ok(new RegExp(expresionSinTildes('pena'), 'i').test('PEÑA'))
   assert.match(expresionSinTildes('sr04'), /^[a-z0-9[\]._/?áéíóúüñÁÉÍÓÚÜÑ-]+$/)
   assert.equal(expresionSinTildes('un'), '[uúüÚÜ][._/-]?[nñÑ]')
+  // En una palabra larga sin números no van signos entre letras.
+  assert.equal(expresionSinTildes('camion'), 'c[aáÁ]m[iíÍ][oóÓ0][nñÑ]')
 })
 
 test('la expresión encuentra siglas y códigos con o sin sus signos, y no salta espacios', () => {
@@ -63,4 +77,7 @@ test('en una lista ya leída cada palabra tiene que estar en algún campo, en cu
   // Ni salta espacios ni cruza de un campo a otro.
   assert.ok(!coincide(palabrasDeBusqueda('sac'), ['PLANCHAS ACERO']))
   assert.ok(!coincide(palabrasDeBusqueda('ab'), ['XA', 'BX']))
+  // La medida pegada encuentra la del catálogo con espacios.
+  assert.ok(coincide(palabrasDeBusqueda('ANGULO 2X1/4'), ['ÁNGULO 2 X 1/4']))
+  assert.ok(!coincide(palabrasDeBusqueda('ANGULO 2X3/8'), ['ÁNGULO 2 X 1/4']))
 })

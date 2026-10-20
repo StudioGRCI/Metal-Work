@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { type Almacen, esAlmacen } from '@/lib/dominio/almacen'
-import { filtroDePalabra, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
+import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
 import { sumarDias } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Vistas } from '@/types/database'
@@ -67,7 +67,7 @@ function consultaKardex(db: Awaited<ReturnType<typeof createClient>>, filtros: O
   // de Greenwich, o las salidas de la tarde caerían en el día siguiente.
   if (filtros.desde) consulta = consulta.gte('fecha', `${filtros.desde}T00:00:00-05:00`)
   if (filtros.hasta) consulta = consulta.lt('fecha', `${sumarDias(filtros.hasta, 1)}T00:00:00-05:00`)
-  for (const palabra of palabrasDeBusqueda(filtros.unidad)) consulta = consulta.or(filtroDePalabra(['codigo_unidad'], palabra))
+  for (const filtro of filtrosDeBusqueda(['codigo_unidad'], filtros.unidad)) consulta = consulta.or(filtro)
   if (filtros.almacen) consulta = consulta.eq('almacen', filtros.almacen)
   return consulta
 }

@@ -28,24 +28,30 @@ export function FiltrosOrdenes() {
     setPedido(null)
   }
 
-  function navegar(cambios: Record<string, string | null>) {
-    const query = new URLSearchParams(params.toString())
+  function navegar(cambios: Record<string, string | null>, reemplazar = false) {
+    // La URL de ahora: la búsqueda dispara tras una pausa y, con la de cuando se
+    // escribió, deshacía la pastilla tocada en esa pausa.
+    const query = new URLSearchParams(window.location.search)
     for (const [clave, valor] of Object.entries(cambios)) {
       if (valor) query.set(clave, valor)
       else query.delete(clave)
     }
     // Cualquier cambio de filtro devuelve a la primera página.
     query.delete('pagina')
-    iniciarTransicion(() => router.push(`/ordenes?${query}`))
+    // Lo que se escribe reemplaza la entrada del historial: con `push`,
+    // «atrás» recorría la búsqueda letra por letra.
+    iniciarTransicion(() => (reemplazar ? router.replace : router.push)(`/ordenes?${query}`))
   }
 
   // La búsqueda se envía sola tras una pausa, sin necesidad de pulsar Enter.
   useEffect(() => {
-    if (busqueda === actual) return
+    // Lo ya pedido —también el vacío de «Limpiar»— no se vuelve a pedir: ese
+    // segundo viaje reponía la prioridad que «Limpiar» acababa de quitar.
+    if (busqueda === actual || busqueda === pedido) return
 
     const temporizador = setTimeout(() => {
       setPedido(busqueda)
-      navegar({ q: busqueda || null })
+      navegar({ q: busqueda || null }, true)
     }, 350)
     return () => clearTimeout(temporizador)
     // eslint-disable-next-line react-hooks/exhaustive-deps

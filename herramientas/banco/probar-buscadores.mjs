@@ -95,6 +95,16 @@ for (const [puesto, [rol, area]] of Object.entries(PROPIAS)) {
   await consulta(`update auth.users set encrypted_password = crypt($2, gen_salt('bf')) where email = $1`, [correo, CLAVE])
 }
 const logistico = (await uno(`select id from public.usuarios where correo = $1`, [cuenta('logistica')])).id
+// Una ficha de personal que se da de baja y se reactiva con clic, una por ancho.
+const BAJA = `BAJA ${sello}`
+for (const n of [1, 2]) {
+  const { id } = await uno(`insert into auth.users (id, email) values (gen_random_uuid(), $1) returning id`, [`baja${n}.${sello}@banco.test`])
+  await consulta(
+    `insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
+     select $1, $2, $3, $4, r.id, null from public.roles r where r.codigo = 'OPERARIO'`,
+    [id, `PRUEBA${n}`, BAJA, `baja${n}.${sello}@banco.test`],
+  )
+}
 for (const [codigo, descripcion] of [[`BUS-${sello}-1`, MATERIAL], [`BUS-${sello}-2`, PLANCHA]]) {
   const { id } = await uno(
     `insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
@@ -126,10 +136,11 @@ await consulta(
    select c.id, $1, $2, (select id from public.tipos_carroceria where activo order by orden_secuencia limit 1), 'banco.pdf', 'cot/' || c.id || '/banco.pdf' from c`,
   [COTIZACION, clienteId],
 )
-const SERVICIO = `QA-OS-BUS-${sello}`
+// Los números los da su serie, como en la pantalla: a mano dejarían un hueco que nadie explica.
+const SERVICIO = (await uno(`select public.siguiente_correlativo('ORDEN_SERVICIO', '001', null) as n`)).n
 await consulta(`insert into public.ordenes_servicio (numero, proveedor_id, proveedor, descripcion, monto, codigo_interno, creado_por) values ($1, $2, $3, 'Torneado de prueba', 1, $4, $5)`,
   [SERVICIO, proveedorId, PROVEEDOR, CODIGO, logistico])
-const SUBCONTRATO = `QA-SC-BUS-${sello}`
+const SUBCONTRATO = (await uno(`select public.siguiente_correlativo('SUBCONTRATO', '001', null) as n`)).n
 await consulta(`insert into public.subcontratos (numero, subcontratista_id, codigo_interno, descripcion, moneda, monto, creado_por)
                 values ($1, (select id from public.subcontratistas order by nombre limit 1), $2, 'Subcontrato de prueba', 'PEN', 1, $3)`, [SUBCONTRATO, CODIGO, logistico])
 // Dos trabajadores inventados que se parecen: la búsqueda deja uno solo.
@@ -201,6 +212,8 @@ const CASOS = [
   ['logistica', '/compras/valorizacion', 'Buscar material', 'q', `busca ${sello} angulo`, MATERIAL],
   ['ventas', '/clientes', 'Buscar clientes', 'q', `pena nunez ${sello}`, CLIENTE],
   ['ventas', '/clientes', 'Buscar clientes', 'q', `nunez ${sello} s.a.c.`, CLIENTE, GEMELO],
+  // Más de veinte letras: la sigla del final sigue contando.
+  ['ventas', '/clientes', 'Buscar clientes', 'q', `transportes peña y núñez ${sello} s.a.c.`, CLIENTE, GEMELO],
   ['contabilidad', '/proveedores', 'Buscar proveedores', 'q', `avila torneria ${sello}`, PROVEEDOR],
   ['ventas', '/unidades', 'Buscar unidades', 'q', `fmx unico ${sello.slice(3)}`, PLACA],
   ['gerencia', '/ordenes', 'Buscar órdenes', 'q', `agua cisterna camion ${sello}`, ot.numero],
@@ -268,7 +281,7 @@ for (const ancho of [390, 1280]) {
     const { pagina } = await sesion('almacen')
     await pagina.goto(`${BASE}/almacen/kardex`, { waitUntil: 'networkidle' })
     await pagina.locator('#k-material').click()
-    await pagina.getByLabel('Nombre o código del material').pressSequentially(`angulo ${sello}`, { delay: 15 })
+    await pagina.getByLabel('Nombre o código del material').pressSequentially(`angulo 2x1/4 ${sello}`, { delay: 15 })
     const opcion = pagina.getByRole('option', { name: new RegExp(sello) })
     const hay = await hasta(() => opcion.count(), (n) => n === 1)
     if (hay === 1) await opcion.click()
@@ -280,7 +293,7 @@ for (const ancho of [390, 1280]) {
     const enLaBase = (await uno(`select count(*)::int as n from public.v_kardex_almacen k join public.materiales m on m.id = k.material_id
                                  where m.descripcion = $1 and k.codigo_unidad = $2`, [MATERIAL, CODIGO])).n
     comprobar(hay === 1 && url.searchParams.get('material') && filas === enLaBase && filas === 1,
-      `Kardex (almacén): el material con «angulo ${sello}» y la unidad «qa bus ${sello}» muestran ${filas} fila y la base tiene ${enLaBase}`)
+      `Kardex (almacén): el material con «angulo 2x1/4 ${sello}» y la unidad «qa bus ${sello}» muestran ${filas} fila y la base tiene ${enLaBase}`)
     // El Excel con el mismo filtro: se abre y se cuentan las filas con el código.
     const excel = await pagina.request.get(`${BASE}/almacen/kardex/excel${url.search}`)
     let enElExcel = -1
@@ -296,18 +309,25 @@ for (const ancho of [390, 1280]) {
       `Kardex (almacén): el Excel con el mismo filtro trae ${enElExcel} fila con ${CODIGO} y la base tiene ${enLaBase}`)
   }
 
-  // «Registrar ingreso» de Almacén sugiere del catálogo sin tildes: con
-  // «angulo» tiene que ofrecer el ÁNGULO, o entraría como material nuevo.
+  // «Registrar ingreso» de Almacén sugiere del catálogo sin tildes y con la
+  // medida pegada, como se anota en el taller: con «angulo 2x1/4» tiene que
+  // ofrecer el «ÁNGULO 2 X 1/4», o entraría como material nuevo.
   {
     const { pagina } = await sesion('almacen')
     await pagina.goto(`${BASE}/almacen/kardex`, { waitUntil: 'networkidle' })
     await pagina.getByRole('button', { name: 'Registrar ingreso' }).click()
-    await pagina.locator('#ing-material').pressSequentially(`angulo ${sello}`, { delay: 15 })
+    await pagina.locator('#ing-material').pressSequentially(`angulo 2x1/4 ${sello}`, { delay: 15 })
     const sugerida = pagina.getByRole('list', { name: 'Del catálogo' }).getByRole('button', { name: new RegExp(sello) })
     const n = await hasta(() => sugerida.count(), (x) => x === 1)
     if (n === 1) await sugerida.click()
     const dice = await hasta(() => textoDe(pagina).then(() => pagina.locator('form:has(#ing-material)').innerText()), (t) => t.includes('Del catálogo:'))
-    comprobar(n === 1 && dice.includes(`Del catálogo: ${MATERIAL}`), `Ingreso a Almacén: «angulo ${sello}» sugiere «${MATERIAL}» y al elegirlo lo toma del catálogo`)
+    comprobar(n === 1 && dice.includes(`Del catálogo: ${MATERIAL}`), `Ingreso a Almacén: «angulo 2x1/4 ${sello}» sugiere «${MATERIAL}» y al elegirlo lo toma del catálogo`)
+    // Escrito entero y pegado, sin tocar la sugerencia, también es ese.
+    const pegado = MATERIAL.normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(' X ', 'X')
+    await pagina.locator('#ing-material').fill('')
+    await pagina.locator('#ing-material').pressSequentially(pegado, { delay: 10 })
+    const tomado = await hasta(() => pagina.locator('form:has(#ing-material)').innerText(), (t) => t.includes('Del catálogo:'))
+    comprobar(tomado.includes(`Del catálogo: ${MATERIAL}`), `Ingreso a Almacén: «${pegado}» escrito sin tocar la lista se toma del catálogo`)
     await pagina.keyboard.press('Escape')
   }
 
@@ -373,6 +393,52 @@ for (const ancho of [390, 1280]) {
     await pagina.waitForTimeout(1500)
     const girando = await pagina.locator('main .animate-spin').count()
     comprobar(vuelta === `zzz${sello}` && girando === 0, `Clientes: «atrás» devuelve la búsqueda a la caja («${vuelta}») sin quedarse buscando (${girando} girando)`)
+  }
+
+  // Personal: «Dar de baja» y «Reactivar» cambian la ficha en la base. Antes
+  // «Dar de baja» respondía bien y dejaba a la persona activa.
+  {
+    const { pagina } = await sesion('admin')
+    const n = ancho < 500 ? 1 : 2
+    const correo = `baja${n}.${sello}@banco.test`
+    const activo = async () => (await uno('select activo from public.usuarios where correo = $1', [correo])).activo
+    await pagina.goto(`${BASE}/personal?q=${encodeURIComponent(`prueba${n} baja ${sello}`)}`, { waitUntil: 'networkidle' })
+    await pagina.getByRole('button', { name: `Dar de baja a PRUEBA${n}` }).click()
+    const tras = await hasta(activo, (v) => v === false)
+    await pagina.goto(`${BASE}/personal?estado=todos&q=${encodeURIComponent(`prueba${n} baja ${sello}`)}`, { waitUntil: 'networkidle' })
+    await pagina.getByRole('button', { name: `Reactivar a PRUEBA${n}` }).click()
+    const otraVez = await hasta(activo, (v) => v === true)
+    comprobar(tras === false && otraVez === true, `Personal (administrador): «Dar de baja» deja la ficha inactiva (${tras}) y «Reactivar» la vuelve activa (${otraVez})`)
+
+    // Una pastilla tocada en la pausa de la búsqueda se queda.
+    await pagina.goto(`${BASE}/personal`, { waitUntil: 'networkidle' })
+    await pagina.getByRole('searchbox', { name: 'Buscar personal' }).pressSequentially('baja', { delay: 10 })
+    await pagina.getByRole('link', { name: 'Dados de baja' }).click()
+    await pagina.waitForTimeout(2000)
+    const url = new URL(pagina.url())
+    comprobar(url.searchParams.get('estado') === 'bajas' && url.searchParams.get('q') === 'baja',
+      `Personal: la pastilla «Dados de baja» tocada mientras se escribe se queda (${url.search})`)
+  }
+
+  // Órdenes: «Limpiar» quita la búsqueda y también la prioridad.
+  {
+    const { pagina } = await sesion('gerencia')
+    await pagina.goto(`${BASE}/ordenes?q=zzz&prioridad=ALTA`, { waitUntil: 'networkidle' })
+    await pagina.getByRole('button', { name: 'Limpiar' }).click()
+    await pagina.waitForTimeout(2000)
+    const url = new URL(pagina.url())
+    comprobar(url.pathname === '/ordenes' && url.search === '', `Órdenes (gerencia): «Limpiar» quita la búsqueda y la prioridad («${url.search}»)`)
+  }
+
+  // Kardex: lo escrito en «Unidad o código» sin pulsar «Ver» no sobrevive a «Limpiar».
+  {
+    const { pagina } = await sesion('almacen')
+    await pagina.goto(`${BASE}/almacen/kardex?unidad=${encodeURIComponent(`qa bus ${sello}`)}`, { waitUntil: 'networkidle' })
+    await pagina.locator('#k-unidad').fill('escrito sin ver')
+    await pagina.getByRole('link', { name: 'Limpiar' }).click()
+    await pagina.waitForURL((u) => !new URL(u).searchParams.has('unidad'), { timeout: 15000 }).catch(() => {})
+    const queda = await hasta(() => pagina.locator('#k-unidad').inputValue(), (v) => v === '')
+    comprobar(queda === '', `Kardex (almacén): «Limpiar» vacía también lo escrito sin «Ver» («${queda}»)`)
   }
 
   // Los que filtran en el navegador: la asistencia de Portería…

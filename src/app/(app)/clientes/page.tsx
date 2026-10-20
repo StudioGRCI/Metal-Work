@@ -103,7 +103,7 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                 titulo={busqueda ? 'Ningún cliente coincide' : 'Aún no hay clientes'}
                 descripcion={
                   busqueda
-                    ? `Nada con «${busqueda}». Prueba con el RUC o con el nombre comercial.`
+                    ? 'Prueba con menos palabras, con el RUC o con el nombre comercial.'
                     : 'Registra el primer cliente para poder abrir órdenes de trabajo.'
                 }
                 accion={accionSinDatos}
