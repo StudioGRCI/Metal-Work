@@ -195,7 +195,9 @@ function EnQueVa({ servicio: s }: { servicio: OrdenServicioListada }) {
         {s.atrasada && <Insignia tono="peligro">Atrasada</Insignia>}
       </div>
       <div className="mt-1" data-detraccion>
-        <Insignia tono={detraccion.tono}>{detraccion.texto}</Insignia>
+        {/* Puede partirse: «Detracción 12 %: falta el tipo de cambio» de un solo
+            renglón corría la tabla de costado en el teléfono. */}
+        <Insignia tono={detraccion.tono} className="whitespace-normal">{detraccion.texto}</Insignia>
         {detraccion.detalle && <p className="mt-0.5 max-w-64 text-[11px] text-texto-suave">{detraccion.detalle}</p>}
       </div>
     </>

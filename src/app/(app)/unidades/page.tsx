@@ -11,6 +11,7 @@ import { numero } from '@/lib/format'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { listarUnidades } from '@/lib/datos/comercial'
 import { exigirPermiso, puede } from '@/lib/sesion'
+import { cn } from '@/lib/utils'
 
 export const metadata = { title: 'Unidades' }
 
@@ -117,7 +118,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                           que nadie lea eso como si fuera una matrícula. */}
                       <Link
                         href={`/unidades/${u.id}`}
-                        className={todaviaSinPlaca(u) ? 'text-acento hover:underline' : 'tabular text-acento hover:underline'}
+                        className={cn('inline-flex min-h-11 items-center text-acento hover:underline sm:min-h-0', !todaviaSinPlaca(u) && 'tabular')}
                       >
                         {nombre}
                       </Link>
@@ -128,7 +129,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                       )}
                       {/* En el teléfono el dueño va aquí: con su columna, la tabla
                           se corría de costado. */}
-                      <span className="block max-w-40 truncate text-xs font-normal text-texto-suave sm:hidden">
+                      <span className="line-clamp-2 block w-40 text-xs font-normal whitespace-normal text-texto-suave sm:hidden">
                         {cliente ? cliente.razon_social : u.cliente_id ? null : 'Del taller'}
                       </span>
                     </TD>

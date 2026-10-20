@@ -311,11 +311,14 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
         <Tabla>
           <TablaCabecera>
             <tr>
+              {/* En el teléfono quedan la fecha y las tres cifras: el material, el
+                  movimiento y la unidad bajan a la celda de la fecha. Con sus
+                  columnas la tabla medía el doble de la pantalla. */}
               <TH>Fecha</TH>
-              {!elegido && <TH>Material</TH>}
-              <TH>Movimiento</TH>
+              {!elegido && <TH className="hidden sm:table-cell">Material</TH>}
+              <TH className="hidden sm:table-cell">Movimiento</TH>
               <TH className="hidden md:table-cell">Documento o motivo</TH>
-              <TH>Unidad / OT</TH>
+              <TH className="hidden sm:table-cell">Unidad / OT</TH>
               <TH className="text-right">Entrada</TH>
               <TH className="text-right">Salida</TH>
               <TH className="text-right">Saldo</TH>
@@ -339,16 +342,53 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
             ) : filas.map((f) => {
               const def = MOVIMIENTO_KARDEX[f.movimiento ?? ''] ?? { etiqueta: f.movimiento ?? 'Movimiento', tono: 'neutro' as const }
               const origen = ORIGEN_KARDEX[f.origen ?? ''] ?? f.origen
+              const material = (
+                <>
+                  <Link href={`/almacen/kardex?material=${f.material_id}`} className="line-clamp-2 text-sm text-acento hover:underline">{f.material ?? 'Material'}</Link>
+                  <span className="block font-mono text-[10px] text-texto-tenue">{f.material_codigo}</span>
+                </>
+              )
+              const unidadYOt = (
+                <>
+                  {f.codigo_unidad
+                    ? <span className="block text-sm font-medium break-words">{f.codigo_unidad}</span>
+                    : <span className="text-xs text-texto-tenue">—</span>}
+                  {f.orden_id && f.orden_numero && (abreOt
+                    ? <Link href={`/ordenes/${f.orden_id}?vista=materiales`} className="text-[11px] text-acento hover:underline">OT {f.orden_numero}</Link>
+                    : <span className="block text-[11px] text-texto-suave">OT {f.orden_numero}</span>)}
+                  {f.requerimiento_numero && (
+                    <span className="block text-[11px] text-texto-suave">{f.requerimiento_numero}</span>
+                  )}
+                  {f.con_foto && (
+                    <Link href={`/almacen/movimientos/${f.id}/evidencia`} target="_blank" className="ml-2 text-[11px] text-acento hover:underline">Ver foto</Link>
+                  )}
+                  {f.formato_pendiente && (
+                    <Link href={`/almacen/movimientos/${f.id}/formato`} target="_blank" className="ml-2 text-[11px] font-medium text-aviso hover:underline">Formato pendiente</Link>
+                  )}
+                  {f.con_formato && exigeFormato(f.almacen) && (
+                    <Link href={`/almacen/movimientos/${f.id}/formato-firmado`} target="_blank" className="ml-2 text-[11px] text-acento hover:underline">Ver formato</Link>
+                  )}
+                </>
+              )
               return (
                 <TR key={f.id}>
-                  <TD className="whitespace-nowrap text-xs text-texto-suave">{fechaHora(f.fecha)}</TD>
+                  <TD className="text-xs text-texto-suave">
+                    <span className="whitespace-nowrap">{fechaHora(f.fecha)}</span>
+                    <div className="mt-1 min-w-32 space-y-1 text-texto sm:hidden">
+                      {!elegido && <div>{material}</div>}
+                      <div className="flex flex-wrap items-center gap-1">
+                        <Insignia tono={def.tono}>{def.etiqueta}</Insignia>
+                        <span className="text-[11px] text-texto-suave">{origen}</span>
+                      </div>
+                      <div>{unidadYOt}</div>
+                    </div>
+                  </TD>
                   {!elegido && (
-                    <TD className="max-w-56">
-                      <Link href={`/almacen/kardex?material=${f.material_id}`} className="line-clamp-2 text-sm text-acento hover:underline">{f.material ?? 'Material'}</Link>
-                      <span className="block font-mono text-[10px] text-texto-tenue">{f.material_codigo}</span>
+                    <TD className="hidden max-w-56 sm:table-cell">
+                      {material}
                     </TD>
                   )}
-                  <TD>
+                  <TD className="hidden sm:table-cell">
                     <Insignia tono={def.tono}>{def.etiqueta}</Insignia>
                     <span className="block text-[11px] text-texto-suave">{origen}</span>
                     <span className="block text-[11px] text-texto-suave md:hidden">{f.documento}</span>
@@ -366,26 +406,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                       <span className="block text-[11px] text-acento">Desde planilla · cargado el {fechaHora(f.cargado_en)}</span>
                     )}
                   </TD>
-                  <TD className="max-w-52">
-                    {f.codigo_unidad
-                      ? <span className="block text-sm font-medium break-words">{f.codigo_unidad}</span>
-                      : <span className="text-xs text-texto-tenue">—</span>}
-                    {f.orden_id && f.orden_numero && (abreOt
-                      ? <Link href={`/ordenes/${f.orden_id}?vista=materiales`} className="text-[11px] text-acento hover:underline">OT {f.orden_numero}</Link>
-                      : <span className="block text-[11px] text-texto-suave">OT {f.orden_numero}</span>)}
-                    {f.requerimiento_numero && (
-                      <span className="block text-[11px] text-texto-suave">{f.requerimiento_numero}</span>
-                    )}
-                    {f.con_foto && (
-                      <Link href={`/almacen/movimientos/${f.id}/evidencia`} target="_blank" className="ml-2 text-[11px] text-acento hover:underline">Ver foto</Link>
-                    )}
-                    {f.formato_pendiente && (
-                      <Link href={`/almacen/movimientos/${f.id}/formato`} target="_blank" className="ml-2 text-[11px] font-medium text-aviso hover:underline">Formato pendiente</Link>
-                    )}
-                    {f.con_formato && exigeFormato(f.almacen) && (
-                      <Link href={`/almacen/movimientos/${f.id}/formato-firmado`} target="_blank" className="ml-2 text-[11px] text-acento hover:underline">Ver formato</Link>
-                    )}
-                  </TD>
+                  <TD className="hidden max-w-52 sm:table-cell">{unidadYOt}</TD>
                   <TD className="tabular text-right text-exito">{Number(f.entrada) > 0 ? cantidad(f.entrada) : ''}</TD>
                   <TD className="tabular text-right text-peligro">{Number(f.salida) > 0 ? cantidad(f.salida) : ''}</TD>
                   <TD className="tabular text-right font-semibold">

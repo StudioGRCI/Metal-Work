@@ -262,6 +262,16 @@ for (const ancho of [390, 1280]) {
       `Kardex (contabilidad): el Excel con el mismo filtro baja (${excel.status()})`)
   }
 
+  // Las listas enteras, sin filtro, tampoco se corren: una fila con un texto
+  // largo basta para empujar la tabla fuera de su tarjeta.
+  for (const [puesto, ruta] of [['contabilidad', '/almacen/kardex'], ['logistica', '/compras/servicios'], ['gerencia', '/unidades'], ['gerencia', '/materiales'], ['logistica', '/compras/valorizacion']]) {
+    const { pagina } = await sesion(puesto)
+    await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
+    const medida = await pagina.evaluate(() => Math.max(document.documentElement.scrollWidth,
+      ...[...document.querySelectorAll('main table')].map((t) => Math.ceil(t.getBoundingClientRect().left + t.scrollWidth))))
+    comprobar(medida <= ancho, `${puesto} ${ruta} sin filtro: ni la pantalla ni su tabla se salen de costado (${medida} px)`)
+  }
+
   // Un término que no está: el estado vacío lo dice con lo que se escribió.
   {
     const { pagina } = await sesion('gerencia')

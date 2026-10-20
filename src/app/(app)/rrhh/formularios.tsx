@@ -79,6 +79,7 @@ export function RepartirPartesIguales({ planillaId, personas, ordenes }: {
             <span className="tabular text-xs text-texto-suave">{p.asignado.toFixed(2)} %</span>
           </label>
         ))}
+        {visibles.length === 0 && <p className="px-3 py-4 text-sm text-texto-suave">Ninguna OT coincide. Prueba con el número o la placa.</p>}
       </div>
     </fieldset>
     <fieldset>

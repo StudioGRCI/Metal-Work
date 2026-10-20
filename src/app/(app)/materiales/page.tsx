@@ -72,9 +72,11 @@ export default async function PaginaMateriales({ searchParams }: PageProps<'/mat
               enTabla={false}
               titulo={busqueda ? `Ningún material con «${busqueda}»` : 'El catálogo está vacío'}
               descripcion={
-                puedeEditar
-                  ? 'Agrega el primero con «Nuevo material», arriba.'
-                  : 'Lo arma Diseño.'
+                busqueda
+                  ? `Prueba con menos palabras o con el código${puedeEditar ? '; si de verdad no está, créalo con «Nuevo material»' : ''}.`
+                  : puedeEditar
+                    ? 'Agrega el primero con «Nuevo material», arriba.'
+                    : 'Lo arma Diseño.'
               }
             />
           ) : (

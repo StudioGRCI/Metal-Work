@@ -7,6 +7,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { listarProveedores, PROVEEDORES_POR_PAGINA } from '@/lib/datos/proveedores'
+import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { condicionDePago, resumenCuenta } from '@/lib/dominio/proveedores'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -18,7 +19,8 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
   const perfil = await exigirPermiso('proveedores.ver')
   const params = await searchParams
 
-  const busqueda = typeof params.q === 'string' ? params.q : undefined
+  // Solo signos («%») no es una búsqueda, como en Clientes.
+  const busqueda = typeof params.q === 'string' && palabrasDeBusqueda(params.q).length > 0 ? params.q : undefined
   const incluirInactivos = params.estado === 'inactivos'
   const { proveedores, total, pagina, paginas } = await listarProveedores({
     busqueda,
@@ -32,11 +34,9 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
     <>
       <EncabezadoPagina
         titulo="Proveedores"
-        descripcion={
-          total === 1
-            ? '1 proveedor en el padrón'
-            : `${total} proveedores en el padrón`
-        }
+        descripcion={busqueda
+          ? `${total === 1 ? '1 proveedor' : `${total} proveedores`} con «${busqueda}»`
+          : total === 1 ? '1 proveedor en el padrón' : `${total} proveedores en el padrón`}
         ayuda="La orden de compra elige el proveedor de este padrón."
         acciones={
           <div className="flex flex-wrap items-center gap-3">
