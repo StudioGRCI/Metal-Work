@@ -37,7 +37,7 @@ export function RegistrarPago({ personal, inicio }: { personal: PersonaOficina[]
         </Boton>
         {personal.length === 0 && (
           <p className="max-w-xs text-right text-xs text-texto-suave">
-            No hay nadie de la oficina a quien pagarle: regístralo en Personal, en un área de oficina.
+            No hay nadie de planilla administrativa a quien pagarle: elige su planilla en su ficha de Personal.
           </p>
         )}
         {aviso && (

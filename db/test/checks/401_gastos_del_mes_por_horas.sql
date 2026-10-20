@@ -48,6 +48,8 @@ $$;
 -- Ana (Administración, se le pagan S/ 3,000 al mes), Caro (Administración, S/ 1,000
 -- por quincena, que cargó 10 h a la unidad A a S/ 10), Beto (Maestranza), Dani (sin
 -- área), Eli (Administración, de baja) y Gil (Almacén: apoya al taller, no es oficina).
+-- Las de Administración van en planilla administrativa; el resto, en la de taller
+-- (la oficina va por la planilla desde 20261020190000, no por el área).
 -- Marzo: A 40 h (30 de Beto y 10 de Caro), B 10 h; PLANTA 5 h y OFICINA 4 h no son unidades.
 select test.como_usuario(:'admin_id');
 do $$
@@ -59,7 +61,7 @@ begin
   -- de esta prueba (se deshace al final), para que los números sean solo de ella.
   -- Con su baja antes de 2021: sin fecha, la baja de hoy los contaría en marzo (20261020120000).
   update public.trabajadores w set activo = false, fecha_ingreso = date '2020-12-01', fecha_baja = date '2020-12-31'
-   where w.area_id in (select a.id from public.areas a where a.es_oficina)
+   where w.planilla = 'ADMINISTRATIVA'
       or (w.area_id is null and exists (select 1 from public.trabajador_costos c where c.trabajador_id = w.id));
   for v_nombre, v_area, v_costo, v_activo, v_alta in
     select * from (values ('Ana', 'ADM', 3000, true, date '2021-01-04'), ('Caro', 'ADM', 2000, true, date '2021-01-04'),
@@ -67,9 +69,10 @@ begin
                           ('Eli', 'ADM', 5000, false, date '2021-01-04'),
                           ('Gil', 'ALM', 1500, true, date '2021-01-04')) x
   loop
-    insert into public.trabajadores (nombres, apellidos, dni, area_id, activo, creado_en)
+    insert into public.trabajadores (nombres, apellidos, dni, area_id, activo, creado_en, planilla)
     values (v_nombre, 'Check 401', '4010' || lpad((length(v_nombre) * 7 + ascii(v_nombre))::text, 4, '0'),
-            (select id from public.areas where codigo = v_area), v_activo, v_alta)
+            (select id from public.areas where codigo = v_area), v_activo, v_alta,
+            case when v_area = 'ADM' then 'ADMINISTRATIVA' else 'TALLER' end)
     returning id into v_id;
     insert into public.trabajador_costos (trabajador_id, costo_mensual) values (v_id, v_costo);
     perform set_config('prueba.' || lower(v_nombre), v_id::text, true);
@@ -92,9 +95,9 @@ select public.rrhh_registrar_pago_oficina(gen_random_uuid(), current_setting('pr
 select public.rrhh_registrar_pago_oficina(gen_random_uuid(), current_setting('prueba.ana')::uuid, date '2021-05-01', date '2021-05-31', 3000, 0, null);
 select public.rrhh_registrar_pago_oficina(gen_random_uuid(), current_setting('prueba.caro')::uuid, date '2021-05-01', date '2021-05-31', 2000, 0, null);
 select test.debe_fallar(format('select public.rrhh_registrar_pago_oficina(gen_random_uuid(), %L, date ''2021-03-01'', date ''2021-03-31'', 1000, 0, null)',
-                               current_setting('prueba.dani')), 'a quien no tiene área no se le registra un pago de la oficina', 'no es de un área de oficina');
+                               current_setting('prueba.dani')), 'a quien es de planilla de taller no se le registra un pago de la oficina', 'es de planilla de taller');
 select test.debe_fallar(format('select public.rrhh_registrar_pago_oficina(gen_random_uuid(), %L, date ''2021-03-01'', date ''2021-03-31'', 1000, 0, null)',
-                               current_setting('prueba.gil')), 'Almacén no es oficina: su costo va por horas', 'no es de un área de oficina');
+                               current_setting('prueba.gil')), 'Gil, de Almacén y planilla de taller: su costo va por horas', 'es de planilla de taller');
 reset role;
 select test.como_usuario(:'admin_id');
 

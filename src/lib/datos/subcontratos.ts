@@ -1,5 +1,6 @@
 import 'server-only'
 
+import type { ContratoAdjunto } from '@/lib/dominio/contratos'
 import { AREAS_SUBCONTRATO, BUCKET_SUBCONTRATOS } from '@/lib/dominio/subcontratos'
 import { createClient } from '@/lib/supabase/server'
 
@@ -61,6 +62,9 @@ export type SubcontratoListado = {
   monto: number
   fecha_inicio: string | null
   fecha_fin: string | null
+  /** Cuándo empezó y terminó de verdad, según el supervisor (referencial, migración 20261020191000). */
+  inicio_real: string | null
+  fin_real: string | null
   estado: string
   creado_en: string
   motivo_anulacion: string | null
@@ -85,7 +89,7 @@ export async function listarSubcontratos(): Promise<SubcontratoListado[]> {
   const { data, error } = await supabase
     .from('subcontratos')
     .select(
-      'id, numero, codigo_interno, descripcion, moneda, monto, fecha_inicio, fecha_fin, estado, creado_en, motivo_anulacion,' +
+      'id, numero, codigo_interno, descripcion, moneda, monto, fecha_inicio, fecha_fin, inicio_real, fin_real, estado, creado_en, motivo_anulacion,' +
         ' subcontratista:subcontratistas!subcontratos_subcontratista_id_fkey(nombre, ruc),' +
         ' area:areas!subcontratos_area_id_fkey(codigo),' +
         ' recibos:recibos_honorarios!recibos_honorarios_subcontrato_id_fkey(monto_bruto, retencion_monto, monto_neto, anulado_en,' +
@@ -144,8 +148,13 @@ export type ReciboHonorarios = {
 export type SubcontratoDetalle = Omit<SubcontratoListado, 'subcontratista' | 'recibos'> & {
   terminado_en: string | null
   anulado_en: string | null
+  fechas_reales_en: string | null
+  /** Quién marcó las fechas reales; null si nadie o si su ficha no se puede leer. */
+  fechas_reales_por: string | null
   subcontratista: Subcontratista | null
   recibos: ReciboHonorarios[]
+  /** Del más reciente al más viejo: el primero es el vigente. */
+  contratos: ContratoAdjunto[]
 }
 
 const COLUMNAS_RECIBO =
@@ -188,29 +197,42 @@ export async function subcontratoDetalle(id: string): Promise<SubcontratoDetalle
   const { data, error } = await supabase
     .from('subcontratos')
     .select(
-      'id, numero, codigo_interno, descripcion, moneda, monto, fecha_inicio, fecha_fin, estado, creado_en, terminado_en, anulado_en,' +
-        ` motivo_anulacion, subcontratista:subcontratistas!subcontratos_subcontratista_id_fkey(${COLUMNAS_SUBCONTRATISTA}),` +
+      'id, numero, codigo_interno, descripcion, moneda, monto, fecha_inicio, fecha_fin, inicio_real, fin_real, fechas_reales_en, estado, creado_en,' +
+        ` terminado_en, anulado_en, motivo_anulacion, subcontratista:subcontratistas!subcontratos_subcontratista_id_fkey(${COLUMNAS_SUBCONTRATISTA}),` +
         ' area:areas!subcontratos_area_id_fkey(codigo),' +
-        ` recibos:recibos_honorarios!recibos_honorarios_subcontrato_id_fkey(${COLUMNAS_RECIBO})`,
+        ' marco:usuarios!subcontratos_fechas_reales_por_fkey(nombres, apellidos),' +
+        ` recibos:recibos_honorarios!recibos_honorarios_subcontrato_id_fkey(${COLUMNAS_RECIBO}),` +
+        ' contratos:subcontrato_contratos!subcontrato_contratos_subcontrato_id_fkey(id, archivo_ruta, archivo_nombre, creado_en,' +
+        ' subio:usuarios!subcontrato_contratos_subido_por_fkey(nombres, apellidos))',
     )
     .eq('id', id)
     .maybeSingle()
   if (error) throw new Error(`No se pudo leer el subcontrato: ${error.message}`)
   if (!data) return null
 
-  type Fila = Omit<SubcontratoDetalle, 'area_codigo' | 'monto' | 'moneda' | 'subcontratista' | 'recibos'> & {
+  type Persona = { nombres: string; apellidos: string }
+  type Fila = Omit<SubcontratoDetalle, 'area_codigo' | 'monto' | 'moneda' | 'subcontratista' | 'recibos' | 'contratos' | 'fechas_reales_por'> & {
     area: Uno<{ codigo: string }>
+    marco: Uno<Persona>
     monto: Num
     moneda: string
     subcontratista: Uno<Subcontratista>
     recibos: FilaRecibo[] | null
+    contratos: (Omit<ContratoAdjunto, 'subido_por' | 'enlace'> & { subio: Uno<Persona> })[] | null
   }
-  const { area, ...fila } = data as unknown as Fila
+  const { area, marco, contratos: filasContrato, ...fila } = data as unknown as Fila
   const recibos = [...(fila.recibos ?? [])].sort((a, b) => a.fecha_emision.localeCompare(b.fecha_emision) || a.creado_en.localeCompare(b.creado_en))
-  const enlaces = await enlacesDeArchivos(rutasDe(recibos))
+  const contratos = [...(filasContrato ?? [])].sort((a, b) => b.creado_en.localeCompare(a.creado_en))
+  const enlaces = await enlacesDeArchivos([...rutasDe(recibos), ...contratos.map((c) => c.archivo_ruta)])
+  const nombre = (p: Uno<Persona>) => {
+    const u = unico(p)
+    return u ? `${u.nombres} ${u.apellidos}` : null
+  }
   return {
     ...fila,
     area_codigo: unico(area)?.codigo ?? null,
+    fechas_reales_por: nombre(marco),
+    contratos: contratos.map(({ subio, ...c }) => ({ ...c, subido_por: nombre(subio), enlace: enlaces[c.archivo_ruta] ?? null })),
     moneda: fila.moneda === 'USD' ? 'USD' : 'PEN',
     monto: num(fila.monto),
     subcontratista: unico(fila.subcontratista),
@@ -286,6 +308,10 @@ export type SubcontratoDelArea = {
   avance: number | null
   ultimo_reporte: string | null
   reportes: number
+  /** Cuándo empezó y terminó de verdad, según el supervisor (referencial, migración 20261020191000). */
+  inicio_real: string | null
+  fin_real: string | null
+  fechas_reales_en: string | null
 }
 
 /**
@@ -295,7 +321,7 @@ export type SubcontratoDelArea = {
  */
 export async function subcontratosDelArea(): Promise<SubcontratoDelArea[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('subcontratos_del_area')
+  const { data, error } = await supabase.rpc('subcontratos_del_area_con_fechas_reales')
   if (error) throw new Error(`No se pudieron leer los subcontratos de tu área: ${error.message}`)
   // La función devuelve con valor todo lo que sale de llaves no nulas; los tipos generados no lo saben.
   return ((data ?? []) as unknown as SubcontratoDelArea[]).map((s) => ({

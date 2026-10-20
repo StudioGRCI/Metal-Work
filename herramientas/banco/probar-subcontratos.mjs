@@ -358,13 +358,13 @@ async function loQueVe(pagina) {
   const enMenu = limpio(await pagina.locator('nav').first().textContent().catch(() => ''))
   comprobar((await pagina.locator('nav a[href="/subcontratos/area"]').count()) > 0, 'Supervisión de Producción tiene «Subcontratos» en su menú')
   comprobar(
-    enMenu.indexOf('Requerimientos') >= 0 && enMenu.indexOf('Subcontratos') > enMenu.indexOf('Requerimientos'),
-    'va al final de Supervisión, después de Requerimientos',
+    enMenu.indexOf('Planos') >= 0 && enMenu.indexOf('Subcontratos') > enMenu.indexOf('Planos') && enMenu.indexOf('Subcontratos') < enMenu.indexOf('Requerimientos'),
+    'va en Supervisión después de Planos y antes de Requerimientos',
   )
   const texto = await loQueVe(pagina)
   comprobar(texto.includes(nombre) && texto.includes('Instalación eléctrica'), `ve el subcontrato con quién lo hace y qué trabajo es (${texto.slice(0, 120)})`)
-  const recibo = limpio(await pagina.locator(`[data-recibo="${numeroRecibo}"]`).textContent().catch(() => ''))
-  comprobar(recibo.includes('Pagado'), `ve su recibo y que ya se pagó (${recibo})`)
+  // Sin dinero (DKS, 2026-10-20): ni el recibo ni si se pagó.
+  comprobar((await pagina.locator('[data-recibo]').count()) === 0 && !texto.includes(numeroRecibo), 'no ve el recibo ni si se pagó')
   const todo = limpio(await pagina.locator('main').textContent())
   comprobar(todo.includes(codigo.toUpperCase()), 'lo agrupa por su código interno')
   comprobar(!/S\/|US\$|1,840|3,500|2,000|160\.00/.test(todo), 'no aparece ni un monto: ni lo pactado, ni el recibo, ni lo pagado')
@@ -385,8 +385,9 @@ async function loQueVe(pagina) {
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.supervisorMtz)
   await pagina.goto(`${BASE}/subcontratos/area`, { waitUntil: 'networkidle' })
-  const texto = limpio(await pagina.locator('[data-sin-subcontratos]').textContent().catch(() => ''))
-  comprobar(texto.includes('no recibe subcontratos'), `a Maestranza le dice que su área no recibe subcontratos (${texto})`)
+  // Maestranza también recibe subcontratos (#129), pero solo los suyos.
+  const texto = limpio(await pagina.locator('main').textContent().catch(() => ''))
+  comprobar(!texto.includes(nombre), 'Supervisión de Maestranza no ve el de Producción')
   await pagina.screenshot({ path: join(CAPTURAS, 'sc-09-supervision-maestranza.png'), fullPage: true })
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()

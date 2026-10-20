@@ -13,6 +13,8 @@ import { ESTADO_SUBCONTRATO, estadoDeSubcontrato } from '@/lib/dominio/subcontra
 import { cantidad, fecha, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
+import { MarcarFechasReales } from './fechas-reales'
+
 export const metadata = { title: 'Subcontratos de mi área' }
 
 /** Días de `desde` a `hasta`, dos fechas `YYYY-MM-DD`, sin pasar por la hora local. */
@@ -48,7 +50,9 @@ function plazo(s: SubcontratoDelArea, hoy: string): { texto: string; vencido: bo
  * reportó en el reporte diario. Sin montos ni recibos: DKS lo pidió así el
  * 2026-10-20 («no visualizarán dinero, solo su etapa de inicio y fin donde
  * tendrán que reportar cuál es su progreso»), y la base no se los da. El avance
- * se reporta en el reporte diario, sobre el subcontrato: de ahí el botón. Con
+ * se reporta en el reporte diario, sobre el subcontrato: de ahí el botón. El
+ * supervisor marca también cuándo empezó y terminó de verdad (referencial, DKS
+ * 2026-10-20: «según contrato puede ser diferente»). Con
  * `produccion.cualquier_area`, los de las tres áreas.
  */
 export default async function PaginaSubcontratosDelArea({ searchParams }: PageProps<'/subcontratos/area'>) {
@@ -77,7 +81,7 @@ export default async function PaginaSubcontratosDelArea({ searchParams }: PagePr
     <>
       <EncabezadoPagina
         titulo="Subcontratos"
-        ayuda={`Los trabajos que Administración le encargó a gente de fuera para ${deQuien}, por código interno: quién lo hace, su inicio, su fin y en cuánto va. El avance lo reportas en el reporte diario, eligiendo el subcontrato en «Sobre qué». Los montos los lleva Administración.`}
+        ayuda={`Los trabajos que Administración le encargó a gente de fuera para ${deQuien}, por código interno: quién lo hace, su inicio y su fin según el contrato, y en cuánto va. El avance lo reportas en el reporte diario, eligiendo el subcontrato en «Sobre qué». Cuándo empezó y terminó de verdad lo marcas tú: queda de referencia, sin cambiar las fechas del contrato. Los montos los lleva Administración.`}
         migas={[{ titulo: 'Supervisión' }, { titulo: 'Subcontratos' }]}
       />
 
@@ -160,13 +164,19 @@ function Subcontrato({ s, hoy, conArea, reporta }: { s: SubcontratoDelArea; hoy:
 
       <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-[repeat(3,minmax(0,1fr))]">
         <div>
-          <dt className="text-xs text-texto-suave">Inicio</dt>
+          <dt className="text-xs text-texto-suave">Inicio según contrato</dt>
           <dd className="tabular text-texto">{s.fecha_inicio ? fecha(s.fecha_inicio) : 'Sin fecha'}</dd>
+          <dd className="tabular text-xs text-texto-suave" data-inicio-real>
+            {s.inicio_real ? `Real: ${fecha(s.inicio_real)}` : 'Real: sin marcar'}
+          </dd>
         </div>
         <div>
-          <dt className="text-xs text-texto-suave">{s.terminado_en ? 'Terminó' : 'Fin'}</dt>
+          <dt className="text-xs text-texto-suave">{s.terminado_en ? 'Administración lo terminó' : 'Fin según contrato'}</dt>
           <dd className="tabular text-texto">
             {s.terminado_en ? fecha(s.terminado_en) : s.fecha_fin ? fecha(s.fecha_fin) : 'Sin fecha'}
+          </dd>
+          <dd className="tabular text-xs text-texto-suave" data-fin-real>
+            {s.fin_real ? `Real: ${fecha(s.fin_real)}` : s.inicio_real ? 'Real: todavía no termina' : 'Real: sin marcar'}
           </dd>
         </div>
         {p && (
@@ -191,17 +201,20 @@ function Subcontrato({ s, hoy, conArea, reporta }: { s: SubcontratoDelArea; hoy:
         </p>
       </div>
 
-      {/* Abre el reporte diario con el código escrito y este subcontrato elegido. */}
-      {reporta && s.estado === 'VIGENTE' && (
-        <EnlaceBoton
-          href={`/reportes-diarios/nuevo?codigo=${encodeURIComponent(s.codigo_interno)}&subcontrato=${s.id}`}
-          variante="secundario"
-          tamano="sm"
-        >
-          <ClipboardPen aria-hidden className="size-4" />
-          Reportar avance<span className="sr-only"> de {s.numero}</span>
-        </EnlaceBoton>
-      )}
+      <div className="flex flex-wrap gap-2">
+        {/* Abre el reporte diario con el código escrito y este subcontrato elegido. */}
+        {reporta && s.estado === 'VIGENTE' && (
+          <EnlaceBoton
+            href={`/reportes-diarios/nuevo?codigo=${encodeURIComponent(s.codigo_interno)}&subcontrato=${s.id}`}
+            variante="secundario"
+            tamano="sm"
+          >
+            <ClipboardPen aria-hidden className="size-4" />
+            Reportar avance<span className="sr-only"> de {s.numero}</span>
+          </EnlaceBoton>
+        )}
+        <MarcarFechasReales id={s.id} numero={s.numero} inicio={s.inicio_real} fin={s.fin_real} hoy={hoy} />
+      </div>
     </li>
   )
 }
