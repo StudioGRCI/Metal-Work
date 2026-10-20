@@ -41,10 +41,18 @@
 -- =============================================================================
 
 -- ------------------------------------------------------------ 1. por columna
+-- Todas las columnas que tenga la tabla cuando corre, menos el DNI. Volver a
+-- correrla no le quita su permiso a una columna que otra migración agregó
+-- después (el `revoke` de la tabla se lleva también los de columna).
 revoke select on public.trabajadores from authenticated;
-grant select (id, nombres, apellidos, cargo, area_id, hora_entrada, hora_salida, activo,
-              creado_por, creado_en, actualizado_en, fecha_ingreso, fecha_baja)
-  on public.trabajadores to authenticated;
+do $$
+begin
+  execute format('grant select (%s) on public.trabajadores to authenticated',
+    (select string_agg(quote_ident(a.attname), ', ' order by a.attnum)
+       from pg_attribute a
+      where a.attrelid = 'public.trabajadores'::regclass and a.attnum > 0 and not a.attisdropped
+        and a.attname <> 'dni'));
+end $$;
 
 comment on column public.trabajadores.dni is
   'Fuera del permiso de lectura por columna (migración 20261020165000): lo leen RR. HH. por rrhh_dni_de_trabajadores() y la portería busca por él con asistencia_buscar_por_dni(), sin verlo.';
