@@ -41,7 +41,10 @@
 --    reinicia cada año. Comparar el número completo dejaba entrar `2922-2025`
 --    junto a `2922-2026`.
 -- 9. El precio referencial del catálogo de carrocerías lo leía cualquier
---    cuenta. Ninguna pantalla lo usa: queda para quien ve el precio de venta.
+--    cuenta. Ninguna pantalla lo usa: ya no lo lee ninguna cuenta (solo las
+--    funciones del sistema). OJO: la tabla queda con permiso por columna, así
+--    que una columna nueva de `tipos_carroceria` no se lee hasta que se le dé
+--    su `grant select (columna)` (está en la skill `esquema` › Trampas).
 --
 -- Y dos que los checks destaparon rotas desde la migración 20260927234131:
 --
@@ -118,7 +121,7 @@ alter policy ver_audit_log on public.audit_log using (
     and (tabla <> all (array['cajas', 'movimientos_caja', 'cierres_caja'])
          or public.tiene_permiso('tesoreria.caja'))
     and (tabla <> all (array['trabajador_remuneraciones', 'trabajador_costos', 'tareos',
-                             'trabajador_cuentas', 'usuarios'])
+                             'trabajador_cuentas'])
          or public.tiene_permiso('rrhh.personal'))
     and (tabla <> all (array['planillas', 'planilla_personas', 'planilla_distribuciones'])
          or public.tiene_permiso('rrhh.ver_planillas'))

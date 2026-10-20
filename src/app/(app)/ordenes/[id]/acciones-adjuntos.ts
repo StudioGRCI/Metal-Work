@@ -92,10 +92,11 @@ export async function quitarAdjunto(
 
   // La fila ya se fue; si el archivo no se pudo retirar se dice, en vez de
   // dejarlo suelto en el almacenamiento sin que nadie lo sepa.
-  const { error: errorArchivo } = await supabase.storage.from('adjuntos-ot').remove([data.ruta_storage])
+  // Si la política de Storage no lo deja, no hay error: la lista sale vacía.
+  const { data: retirados, error: errorArchivo } = await supabase.storage.from('adjuntos-ot').remove([data.ruta_storage])
 
   revalidatePath(`/ordenes/${v.orden_id}`)
-  if (errorArchivo) {
+  if (errorArchivo || !retirados?.length) {
     return {
       ok: true,
       mensaje: 'Se quitó de la orden, pero el archivo quedó guardado: avisa al administrador para retirarlo.',
