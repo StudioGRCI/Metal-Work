@@ -53,8 +53,10 @@
 --     de su área ya terminó). Lo que Diseño no repartió (100 menos la suma de
 --     los pesos) se mide como hasta hoy, por las etapas, ahora con las
 --     actividades: la etapa terminada vale 100 y la que no, el promedio del
---     último avance de cada actividad de su área. Sin pesos, el avance es el de
---     antes; con pesos que suman 100, es solo el de los planos.
+--     último avance de cada actividad de su área que no sea de un plano con
+--     peso (ese ya contó por su lado: contarlo otra vez en la etapa inflaba el
+--     porcentaje). Sin pesos, el avance es el de antes; con pesos que suman
+--     100, es solo el de los planos.
 --
 -- Las funciones que ya leen las pantallas conservan su firma (el conector de
 -- producción no deja quitar ninguna): `codigos_internos_avance` dice además
@@ -815,6 +817,48 @@ $$;
 revoke all on function public.codigo_interno_etapas(text) from public, anon;
 grant execute on function public.codigo_interno_etapas(text) to authenticated;
 
+-- 9b. Lo que no se repartió en planos, etapa por etapa ----------------------------------------------------
+-- Para la parte de la unidad que se mide por etapas, cada área vale el promedio
+-- de sus actividades SIN las de un plano con peso: ese plano ya aporta su parte
+-- por su cuenta, y contarlo también en su etapa lo contaría dos veces.
+create or replace function public.codigo_interno_resto_por_area_calculado(p_codigo text)
+returns table (codigo text, area_id uuid, avance numeric)
+language sql stable set search_path to 'public' as $$
+  select a.codigo, a.area_id, avg(a.avance)
+    from public.codigo_interno_actividades_estado(p_codigo) a
+   where a.area_id is not null
+     and not exists (select 1 from public.codigo_planos p
+                      where p.id = a.plano_id and p.anulado_en is null and p.peso > 0)
+   group by a.codigo, a.area_id
+$$;
+comment on function public.codigo_interno_resto_por_area_calculado(text) is
+  'El avance de cada área de un código (o de todos) para la parte de la unidad que no se repartió en planos: el promedio del último avance de sus actividades, sin las de un plano con peso. No pide permiso: la llaman las funciones del avance.';
+revoke all on function public.codigo_interno_resto_por_area_calculado(text) from public, anon, authenticated;
+
+create or replace function public.codigo_interno_avance_resto(p_codigo text)
+returns table (etapa_id uuid, avance numeric)
+language plpgsql stable security definer set search_path to 'public' as $$
+#variable_conflict use_column
+declare
+  v_codigo text := public.normalizar_codigo_interno(p_codigo);
+begin
+  perform public.exigir_permiso('codigos_internos.ver');
+  if v_codigo is null then
+    return;
+  end if;
+  return query
+  select e.id, case when e.fin_real is not null then 100::numeric else round(coalesce(r.avance, 0), 1) end
+    from public.codigo_etapas e
+    left join public.codigo_interno_resto_por_area_calculado(v_codigo) r on r.codigo = e.codigo_interno and r.area_id = e.area_id
+   where e.quitada_en is null and e.codigo_interno = v_codigo
+   order by e.orden;
+end;
+$$;
+comment on function public.codigo_interno_avance_resto(text) is
+  'Lo que vale cada etapa de un código en la parte de la unidad que no se repartió en planos: 100 si terminó; si no, el promedio de las actividades de su área sin las de un plano con peso. Exige codigos_internos.ver.';
+revoke all on function public.codigo_interno_avance_resto(text) from public, anon;
+grant execute on function public.codigo_interno_avance_resto(text) to authenticated;
+
 -- 10. El avance de cada código -------------------------------------------------------------------------
 -- Lo repartido en planos, plano por plano; el resto, por las etapas (o, sin
 -- etapas, por las actividades). Fuente: PLANOS si Diseño repartió algo; si no,
@@ -830,9 +874,11 @@ begin
   perform public.exigir_permiso('codigos_internos.ver');
   return query
   with actividad as (
-    select * from public.codigo_interno_actividades_estado(v_codigo)
+    select a.*, exists (select 1 from public.codigo_planos p
+                         where p.id = a.plano_id and p.anulado_en is null and p.peso > 0) as de_plano
+      from public.codigo_interno_actividades_estado(v_codigo) a
   ), area_avance as (
-    select a.codigo, a.area_id, avg(a.avance) as avance from actividad a where a.area_id is not null group by 1, 2
+    select * from public.codigo_interno_resto_por_area_calculado(v_codigo)
   ), etapa as (
     select e.codigo_interno as codigo,
            count(*)::integer as etapas,
@@ -844,7 +890,7 @@ begin
      group by e.codigo_interno
   ), trabajo as (
     select a.codigo, count(*)::integer as trabajos, count(*) filter (where a.avance >= 100)::integer as terminados,
-           avg(a.avance) as avance, max(a.ultima_fecha) as ultimo
+           avg(a.avance) filter (where not a.de_plano) as avance, max(a.ultima_fecha) as ultimo
       from actividad a group by a.codigo
   ), plano as (
     select k.codigo, sum(k.peso) as peso, sum(k.peso * k.avance / 100) as aporte
@@ -869,6 +915,6 @@ begin
 end;
 $$;
 comment on function public.codigos_internos_avance(text) is
-  'El porcentaje de avance de cada código interno (o de uno): lo que Diseño repartió en planos, cada plano por su peso y su avance; el resto, por el promedio de sus etapas (la terminada vale 100, la que no, el promedio del último avance de cada actividad de su área) o, sin etapas, por el de sus actividades. Sin PLANTA. Exige codigos_internos.ver.';
+  'El porcentaje de avance de cada código interno (o de uno): lo que Diseño repartió en planos, cada plano por su peso y su avance; el resto, por el promedio de sus etapas (la terminada vale 100, la que no, el promedio del último avance de cada actividad de su área que no sea de un plano con peso) o, sin etapas, por el de esas actividades. Sin PLANTA. Exige codigos_internos.ver.';
 revoke all on function public.codigos_internos_avance(text) from public, anon;
 grant execute on function public.codigos_internos_avance(text) to authenticated;

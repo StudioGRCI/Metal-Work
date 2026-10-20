@@ -10,6 +10,7 @@ import { SeleccionBuscable, type OpcionBuscable } from '@/components/ui/seleccio
 import { ConfirmarAccion, Ventana } from '@/components/ui/ventana'
 import { BUCKET_PLANOS_CODIGO, MAXIMO_MB_PLANO, enlaceDisenoCodigo, rutaPlanoCodigo, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
 import { useAccion, useEnvio } from '@/lib/envio'
+import { cantidad } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 
 import {
@@ -114,10 +115,6 @@ export function AbrirCodigo({ codigos, vista }: { codigos: string[]; vista: Vist
  * sube primero a `{plano}/{revisión}.pdf` y después se registra; si el registro
  * falla, el PDF suelto se retira (ver `subirArchivoPrivado`).
  */
-/** «12,5» y «12.5» son lo mismo para la persona; el número se muestra con coma. */
-function porcentajeTexto(valor: number) {
-  return String(Math.round(valor * 100) / 100).replace('.', ',')
-}
 
 export function CargarPlano({
   codigo,
@@ -179,13 +176,13 @@ export function CargarPlano({
         etiqueta="% de la unidad"
         htmlFor="plano-peso"
         requerido
-        ayuda={libre > 0 ? `Quedan ${porcentajeTexto(libre)} % por repartir` : 'Ya se repartió el 100 %: este va en 0 o corrige otro'}
+        ayuda={libre > 0 ? `Quedan ${cantidad(libre)} % por repartir` : 'Ya se repartió el 100 %: este va en 0 o corrige otro'}
       >
         <Entrada
           id="plano-peso"
           name="peso"
           inputMode="decimal"
-          placeholder={libre > 0 ? porcentajeTexto(Math.min(libre, 25)) : '0'}
+          placeholder={libre > 0 ? String(Math.min(libre, 25)) : '0'}
           maxLength={6}
           autoComplete="off"
           required
@@ -218,7 +215,7 @@ export function CambiarPeso({ plano, numero, peso, libre }: { plano: string; num
   const tope = Math.round((libre + (peso ?? 0)) * 100) / 100
   return (
     <>
-      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierta(true)} aria-label={`Cambiar el % de la unidad del plano ${numero}`}>
+      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierta(true)} aria-label={`${peso === null ? 'Poner' : 'Cambiar'} el % de la unidad del plano ${numero}`}>
         <Percent aria-hidden className="size-4" />
         {peso === null ? 'Poner %' : 'Cambiar %'}
       </Boton>
@@ -226,7 +223,7 @@ export function CambiarPeso({ plano, numero, peso, libre }: { plano: string; num
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`% de la unidad del plano ${numero}`}
-        descripcion={`Con los demás planos del código, este puede llegar a ${porcentajeTexto(tope)} %.`}
+        descripcion={`Con los demás planos del código, este puede llegar a ${cantidad(tope)} %.`}
         ancho="sm"
       >
         <form onSubmit={alEnviar} className="space-y-4">
@@ -236,7 +233,7 @@ export function CambiarPeso({ plano, numero, peso, libre }: { plano: string; num
               id={`peso-${plano}`}
               name="peso"
               inputMode="decimal"
-              defaultValue={peso === null ? '' : porcentajeTexto(peso)}
+              defaultValue={peso === null ? '' : String(peso)}
               maxLength={6}
               autoComplete="off"
               required

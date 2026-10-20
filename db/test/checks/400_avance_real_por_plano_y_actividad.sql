@@ -308,16 +308,17 @@ reset role;
 
 -- ======================================================= 5. El porcentaje de la unidad
 -- Planos: el cajón (40 %) en 50 % aporta 20; el bastidor (30 %) sin reporte, 0; la compuerta, 0 %.
--- El 30 % que Diseño no repartió va por las seis etapas: Diseño 0, Habilitado
--- (Maestranza) el promedio de 50 y 10 = 30, Armado (Producción) el subcontrato
--- en 26, Acabados 0, Trámites 0, Entrega 0: 56 / 6 = 9,33, por 30 % = 2,8.
--- La unidad va en 20 + 2,8 = 23 %.
+-- El 30 % que Diseño no repartió va por las seis etapas, sin volver a contar el
+-- cajón, que ya aportó lo suyo: Diseño 0, Habilitado (Maestranza) el corte en 10,
+-- Armado (Producción) el subcontrato en 26, Acabados 0, Trámites 0, Entrega 0:
+-- 36 / 6 = 6, por 30 % = 1,8. La unidad va en 20 + 1,8 = 22 % (con el cajón
+-- también en la etapa habría salido 23: contado dos veces).
 select pg_temp.como('gerente');
 set local role authenticated;
-select test.afirmar(pg_temp.avance('avance')::int = 23 and pg_temp.avance('fuente') = 'PLANOS'
+select test.afirmar(pg_temp.avance('avance')::int = 22 and pg_temp.avance('fuente') = 'PLANOS'
   and pg_temp.avance('trabajos')::int = 3 and pg_temp.avance('trabajos_terminados')::int = 0
   and pg_temp.avance('ultimo_reporte')::date = pg_temp.dia(1),
-  format('la unidad va en 23 %% por planos, con tres actividades (salió %s, %s, %s)',
+  format('la unidad va en 22 %% por planos, con tres actividades (salió %s, %s, %s)',
          pg_temp.avance('avance'), pg_temp.avance('fuente'), pg_temp.avance('trabajos')));
 select test.afirmar(
   (select count(*) from public.codigo_interno_avance_planos(pg_temp.txt('codigo'))) = 3
@@ -330,6 +331,13 @@ select test.afirmar(
   (select avance_reportado from public.codigo_interno_etapas(pg_temp.txt('codigo')) where nombre = 'Habilitado') = 30
   and (select avance_reportado from public.codigo_interno_etapas(pg_temp.txt('codigo')) where nombre = 'Armado') = 26,
   'cada etapa dice el promedio de las actividades de su área');
+select test.afirmar(
+  (select r.avance from public.codigo_interno_avance_resto(pg_temp.txt('codigo')) r
+     join public.codigo_etapas e on e.id = r.etapa_id where e.nombre = 'Habilitado') = 10
+  and (select r.avance from public.codigo_interno_avance_resto(pg_temp.txt('codigo')) r
+     join public.codigo_etapas e on e.id = r.etapa_id where e.nombre = 'Armado') = 26
+  and (select count(*) from public.codigo_interno_avance_resto(pg_temp.txt('codigo'))) = 6,
+  'en lo que se mide por etapas, el Habilitado vale 10: el cajón ya contó por su plano');
 select test.afirmar((select count(*) from public.codigo_actividades where codigo_interno = pg_temp.txt('codigo')) = 3,
   'Gerencia ve las tres actividades');
 -- El costo sale de las horas: Juan, 1 h el miércoles, 1 h el jueves y 2 h el viernes corregido, a S/ 10.
@@ -346,6 +354,10 @@ select test.afirmar(
   'el supervisor de Maestranza ve solo su plano y sus dos actividades');
 select test.debe_fallar(format('select * from public.codigos_internos_avance(%L)', pg_temp.txt('codigo')),
   'el porcentaje de la unidad es de Gerencia', 'codigos_internos.ver');
+select test.debe_fallar(format('select * from public.codigo_interno_avance_resto(%L)', pg_temp.txt('codigo')),
+  'cómo sale el porcentaje, también', 'codigos_internos.ver');
+select test.debe_fallar(format('select * from public.codigo_interno_resto_por_area_calculado(%L)', pg_temp.txt('codigo')),
+  'el cálculo interno del resto no se llama directo', 'permission denied');
 reset role;
 select pg_temp.como('sup_acb');
 set local role authenticated;

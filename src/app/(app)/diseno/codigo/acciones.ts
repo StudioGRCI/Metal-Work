@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { BUCKET_PLANOS_CODIGO, MAXIMO_MB_PLANO, rutaPlanoCodigo } from '@/lib/dominio/diseno-codigos'
+import { cantidad } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -140,7 +141,7 @@ export async function fijarPesoPlano(_previo: unknown, formulario: FormData): Pr
   const { error } = await supabase.rpc('fijar_peso_plano', { p_plano: datos.data.plano, p_peso: datos.data.peso })
   if (error) return { ok: false, error: mensajeDeError(error) }
   repintar()
-  return { ok: true, mensaje: `El plano queda en ${String(datos.data.peso).replace('.', ',')} % de la unidad.` }
+  return { ok: true, mensaje: `El plano queda en ${cantidad(datos.data.peso)} % de la unidad.` }
 }
 
 const REVISION = z.object({

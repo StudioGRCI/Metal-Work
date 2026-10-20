@@ -10904,6 +10904,15 @@ export type Database = {
           reportes: number | null
         }[]
       }
+      codigo_interno_avance_resto: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          etapa_id: string | null
+          avance: number | null
+        }[]
+      }
       codigo_interno_compras: {
         Args: {
           p_codigo: string | null
@@ -11238,6 +11247,16 @@ export type Database = {
           monto_pen: number | null
           monto_usd: number | null
           sin_precio: number | null
+        }[]
+      }
+      codigo_interno_resto_por_area_calculado: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          area_id: string | null
+          avance: number | null
         }[]
       }
       codigo_plano_historial: {

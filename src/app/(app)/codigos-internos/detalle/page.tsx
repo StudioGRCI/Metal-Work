@@ -16,6 +16,7 @@ import {
   aporteDeLosPlanos,
   avanceDeLosCodigos,
   avanceDelCodigo,
+  avanceDelResto,
   comprasDelCodigo,
   costeoDelCodigo,
   documentosDelCodigo,
@@ -739,11 +740,18 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
       </Tarjeta>
     )
   }
-  const [etapas, planos] = await Promise.all([etapasDeCodigo(codigo), avance.fuente === 'PLANOS' ? aporteDeLosPlanos(codigo) : Promise.resolve([])])
+  const porPlanos = avance.fuente === 'PLANOS'
+  const [etapas, planos, delResto] = await Promise.all([
+    etapasDeCodigo(codigo),
+    porPlanos ? aporteDeLosPlanos(codigo) : Promise.resolve([]),
+    porPlanos ? avanceDelResto(codigo) : Promise.resolve(new Map<string, number>()),
+  ])
+  // Con planos, la etapa vale sin las actividades de un plano con porcentaje: ese ya aportó lo suyo.
+  const valeDe = (e: (typeof etapas)[number]) => (e.fin_real ? 100 : porPlanos ? (delResto.get(e.id) ?? 0) : (e.avance_reportado ?? 0))
   const listaEtapas = (
     <ul className="space-y-2">
       {etapas.map((e, i) => {
-        const vale = e.fin_real ? 100 : (e.avance_reportado ?? 0)
+        const vale = valeDe(e)
         return (
           <li key={e.id} className="grid grid-cols-[1fr_8rem] items-center gap-3 text-sm" data-etapa={e.nombre} data-vale={Math.round(vale)}>
             <span className="min-w-0">
@@ -755,7 +763,9 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
                 {e.fin_real
                   ? `terminada el ${fecha(e.fin_real)}`
                   : e.avance_reportado !== null
-                    ? 'sin terminar: lo que reporta su área'
+                    ? porPlanos
+                      ? 'sin terminar: lo que reporta su área fuera de los planos'
+                      : 'sin terminar: lo que reporta su área'
                     : 'sin terminar y sin reporte diario'}
               </span>
             </span>
@@ -781,21 +791,21 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
   const repartido = planos.reduce((suma, p) => suma + p.peso, 0)
   const deLosPlanos = planos.reduce((suma, p) => suma + p.aporte, 0)
   const resto = Math.max(0, 100 - repartido)
-  const promedioEtapas = etapas.length > 0 ? etapas.reduce((suma, e) => suma + (e.fin_real ? 100 : (e.avance_reportado ?? 0)), 0) / etapas.length : 0
+  const promedioEtapas = etapas.length > 0 ? etapas.reduce((suma, e) => suma + valeDe(e), 0) / etapas.length : 0
   const deLasEtapas = (resto * promedioEtapas) / 100
   return (
     <Tarjeta data-como-sale>
       <TarjetaCabecera
         titulo={`Cómo sale el ${avance.avance} %`}
-        descripcion={`${numero(deLosPlanos, 1)} de los planos${resto > 0 ? ` + ${numero(deLasEtapas, 1)} del ${cantidad(resto)} % que se mide por etapas` : ''}`}
-        ayuda="Diseño pone a cada plano el porcentaje de la unidad que representa. Cada plano aporta su porcentaje por lo que avanzó: lo último que reportó su área, o 100 % si la etapa de su área ya terminó. Lo que no se repartió en planos se mide por las etapas: su promedio, donde la terminada vale 100 % y la que no, el promedio de las actividades de su área."
+        descripcion={`${numero(deLosPlanos, 1)} % por los planos${resto > 0 ? ` + ${numero(deLasEtapas, 1)} % por las etapas (el ${cantidad(resto)} % que no está en planos)` : ''}`}
+        ayuda="Diseño pone a cada plano el porcentaje de la unidad que representa. Cada plano aporta su porcentaje por lo que avanzó: lo último que reportó su área, o 100 % si la etapa de su área ya terminó. Lo que no se repartió en planos se mide por las etapas: su promedio, donde la terminada vale 100 % y la que no, el promedio de las actividades de su área que no son de un plano, porque el plano ya contó por su lado."
       />
       <TarjetaCuerpo className="space-y-4">
         <Tabla>
           <TablaCabecera>
             <TR>
               <TH>Plano</TH>
-              <TH className="text-right">% de la unidad</TH>
+              <TH className="text-right">% unidad</TH>
               <TH className="w-40">Avance</TH>
               <TH className="text-right">Aporta</TH>
             </TR>
@@ -818,7 +828,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
                 <TD>
                   <Progreso valor={p.avance} alto="sm" mostrarValor etiqueta={`Avance del plano ${p.numero}`} />
                 </TD>
-                <TD className="tabular text-right">{numero(p.aporte, 1)}</TD>
+                <TD className="tabular text-right">{numero(p.aporte, 1)} %</TD>
               </TR>
             ))}
           </tbody>
@@ -831,7 +841,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
             {etapas.length > 0 ? (
               listaEtapas
             ) : (
-              <p className="text-sm text-texto-suave">Diseño todavía no armó las etapas: se mide por el promedio de las actividades del reporte diario.</p>
+              <p className="text-sm text-texto-suave">Diseño todavía no armó las etapas: se mide por el promedio de las actividades del reporte diario que no son de un plano.</p>
             )}
           </div>
         )}

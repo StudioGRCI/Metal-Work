@@ -212,6 +212,7 @@ async function VistaPlanos({ codigo }: { codigo: string }) {
           ) : (
             <ListaPlanos
               planos={planos}
+              avisarSinPeso
               historial={historial}
               acciones={(p) =>
                 p.anulado_en ? null : (

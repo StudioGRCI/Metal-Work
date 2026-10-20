@@ -89,7 +89,7 @@ function yaLleva(o: OpcionDeTrabajo) {
 
 function detalleDe(o: OpcionDeTrabajo) {
   const tipo = o.tipo === 'PLANO' ? 'Plano de Diseño' : o.tipo === 'SUBCONTRATO' ? 'Subcontrato' : 'Actividad que sigue'
-  return [tipo, o.peso !== null ? `${String(o.peso).replace('.', ',')} % de la unidad` : null, yaLleva(o)].filter(Boolean).join(' · ')
+  return `${tipo} · ${yaLleva(o)}`
 }
 
 /**
@@ -302,7 +302,7 @@ export function FormularioReporteDiario({
         <h2 id="rd-trabajos" className="text-sm font-semibold text-texto">
           Trabajos realizados
         </h2>
-        <p className="text-xs text-texto-suave" aria-live="polite" data-opciones>
+        <p className={cn('text-xs', errorOpciones ? 'text-peligro' : 'text-texto-suave')} aria-live="polite" data-opciones>
           {leyendo
             ? 'Buscando los planos, subcontratos y actividades del código…'
             : errorOpciones
@@ -315,8 +315,11 @@ export function FormularioReporteDiario({
         </p>
         {trabajos.map((t, i) => {
           const elegida = porClave.get(t.sobre) ?? null
-          // El avance solo sube: más que lo último reportado, salvo que el reporte sea de un día anterior a ese.
-          const desde = elegida?.avance !== null && elegida?.avance !== undefined && (!elegida.ultima_fecha || dia >= elegida.ultima_fecha) ? elegida.avance + 1 : 0
+          // El avance solo sube: más que lo último reportado; en un día anterior a ese, menos.
+          const lleva = elegida?.avance ?? null
+          const atrasado = lleva !== null && Boolean(elegida?.ultima_fecha) && dia < (elegida?.ultima_fecha ?? '')
+          const desde = lleva !== null && !atrasado ? lleva + 1 : 0
+          const hasta = atrasado && lleva !== null ? Math.max(0, lleva - 1) : 100
           const lista: OpcionBuscable[] = [
             ...opciones
               .filter((o) => claveDe(o) === t.sobre || !elegidos.has(claveDe(o)))
@@ -344,6 +347,7 @@ export function FormularioReporteDiario({
               <Campo etiqueta="Sobre qué" htmlFor={`rd-sobre-${t.clave}`} requerido>
                 <SeleccionBuscable
                   id={`rd-sobre-${t.clave}`}
+                  name={`sobre-${t.clave}`}
                   opciones={lista}
                   valor={t.sobre}
                   onChange={(sobre) => cambiarTrabajo(t.clave, { sobre, avance: '' })}
@@ -371,20 +375,22 @@ export function FormularioReporteDiario({
                 ) : (
                   <p className="self-end text-xs text-texto-suave" id={`rd-lleva-${t.clave}`}>
                     {elegida
-                      ? elegida.avance === null
+                      ? lleva === null
                         ? 'Todavía nadie lo reportó.'
-                        : `Iba en ${elegida.avance} % el ${fechaCorta(elegida.ultima_fecha)}: pon solo lo que avanzó, de ${desde} a 100.`
+                        : atrasado
+                          ? `El ${fechaCorta(elegida.ultima_fecha)} ya iba en ${lleva} %: este día es anterior, pon en cuánto iba ese día (menos de ${lleva}).`
+                          : `Iba en ${lleva} % el ${fechaCorta(elegida.ultima_fecha)}: pon en cuánto va ahora, de ${desde} a 100.`
                       : ''}
                   </p>
                 )}
-                <Campo etiqueta="Avance %" htmlFor={`rd-avance-${t.clave}`} requerido className="max-w-32 sm:max-w-none">
+                <Campo etiqueta="Va en (%)" htmlFor={`rd-avance-${t.clave}`} requerido className="max-w-32 sm:max-w-none">
                   <Entrada
                     id={`rd-avance-${t.clave}`}
                     type="number"
                     inputMode="numeric"
                     required
                     min={desde}
-                    max={100}
+                    max={hasta}
                     step={1}
                     value={t.avance}
                     onChange={(e) => cambiarTrabajo(t.clave, { avance: e.target.value })}

@@ -11,7 +11,7 @@
  *      pasa ni en el navegador ni en la base, ni abrir otra igual; 10 sí.
  *   4. El supervisor de Producción reporta su subcontrato sin gente propia y
  *      no ve la actividad de Maestranza.
- *   5. Gerencia ve el 23 % y de dónde sale (plano por plano y el resto por
+ *   5. Gerencia ve el 22 % y de dónde sale (plano por plano y el resto por
  *      etapas) y la mano de obra en el costeo del código.
  *   6. Gerencia observa el reporte del viernes; el supervisor lo corrige: el
  *      formulario se abre sobre las mismas actividades, contadas sin el
@@ -315,10 +315,15 @@ let idViernes = null
   await pagina.goto(`${BASE}/codigos-internos/detalle?${new URLSearchParams({ codigo: CODIGO, vista: 'avance' })}`, { waitUntil: 'networkidle' })
   const como = pagina.locator('[data-como-sale]')
   const texto = limpio(await como.innerText().catch(() => ''))
-  comprobar(texto.includes('Cómo sale el 23 %'), `la unidad va en 23 % (${texto.slice(0, 120)})`)
+  // 20 del cajón + 30 % de (0 + 10 + 26 + 0 + 0 + 0) / 6 = 20 + 1,8: el cajón no vuelve a contar en su etapa.
+  comprobar(texto.includes('Cómo sale el 22 %'), `la unidad va en 22 % (${texto.slice(0, 120)})`)
   comprobar((await como.locator('[data-plano]').count()) === 3, 'con sus tres planos, cada uno con lo que aporta')
   comprobar(limpio(await como.locator('[data-plano="001"]').innerText()).includes('50%'), 'el cajón va en 50 %')
   comprobar((await como.locator('[data-resto="30"]').count()) === 1, 'y el 30 % restante por las etapas')
+  comprobar(
+    (await como.locator('[data-etapa="Habilitado"][data-vale="10"]').count()) === 1,
+    'en las etapas, el Habilitado vale 10: solo el corte, sin volver a contar el cajón',
+  )
   await pagina.screenshot({ path: join(CAPTURAS, 'avance-real-gerencia.png'), fullPage: true })
 
   await pagina.goto(`${BASE}/codigos-internos/detalle?${new URLSearchParams({ codigo: CODIGO, vista: 'costeo' })}`, { waitUntil: 'networkidle' })
@@ -366,12 +371,12 @@ let idViernes = null
   await contexto.close()
 }
 
-// Con el cajón corregido a 40 %: 16 + 30 % de (0 + 25 + 26 + 0 + 0 + 0) / 6 = 16 + 2,55 = 19 %.
+// Con el cajón corregido a 40 %: 16 + 30 % de (0 + 10 + 26 + 0 + 0 + 0) / 6 = 16 + 1,8 = 18 %.
 {
   const { pagina, contexto } = await entrar(CUENTAS.gerencia)
   await pagina.goto(`${BASE}/codigos-internos/detalle?${new URLSearchParams({ codigo: CODIGO, vista: 'avance' })}`, { waitUntil: 'networkidle' })
   const texto = limpio(await pagina.locator('[data-como-sale]').innerText().catch(() => ''))
-  comprobar(texto.includes('Cómo sale el 19 %'), `con la corrección, la unidad va en 19 % (${texto.slice(0, 60)})`)
+  comprobar(texto.includes('Cómo sale el 18 %'), `con la corrección, la unidad va en 18 % (${texto.slice(0, 60)})`)
   await contexto.close()
 }
 

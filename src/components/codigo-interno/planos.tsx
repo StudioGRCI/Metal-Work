@@ -20,11 +20,14 @@ export function ListaPlanos({
   planos,
   historial,
   acciones,
+  avisarSinPeso = false,
 }: {
   planos: PlanoDeCodigo[]
   /** Las revisiones de los planos que tienen más de una, por plano. */
   historial?: Map<string, RevisionDePlano[]>
   acciones?: (plano: PlanoDeCodigo) => ReactNode
+  /** Solo para Diseño, que es quien le pone el porcentaje: el plano sin él sale con aviso. */
+  avisarSinPeso?: boolean
 }) {
   const vigentes = planos.filter((p) => !p.anulado_en)
   const anulados = planos.filter((p) => p.anulado_en)
@@ -45,7 +48,7 @@ export function ListaPlanos({
             </h3>
             <ul className="divide-y divide-borde rounded-[var(--radius-base)] border border-borde">
               {deArea.map((p) => (
-                <FilaPlano key={p.id} plano={p} anteriores={historial?.get(p.id)?.filter((r) => r.id !== p.revision_id)} acciones={acciones?.(p)} />
+                <FilaPlano key={p.id} plano={p} anteriores={historial?.get(p.id)?.filter((r) => r.id !== p.revision_id)} acciones={acciones?.(p)} avisarSinPeso={avisarSinPeso} />
               ))}
             </ul>
           </section>
@@ -74,7 +77,17 @@ export function ListaPlanos({
   )
 }
 
-function FilaPlano({ plano: p, anteriores, acciones }: { plano: PlanoDeCodigo; anteriores?: RevisionDePlano[]; acciones?: ReactNode }) {
+function FilaPlano({
+  plano: p,
+  anteriores,
+  acciones,
+  avisarSinPeso,
+}: {
+  plano: PlanoDeCodigo
+  anteriores?: RevisionDePlano[]
+  acciones?: ReactNode
+  avisarSinPeso: boolean
+}) {
   return (
     <li className="flex flex-wrap items-start justify-between gap-3 p-3" data-plano={p.id}>
       <div className="min-w-0 flex-1 space-y-1">
@@ -87,7 +100,7 @@ function FilaPlano({ plano: p, anteriores, acciones }: { plano: PlanoDeCodigo; a
         </p>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {p.peso === null ? (
-            <Insignia tono="aviso">Sin % de la unidad</Insignia>
+            avisarSinPeso && <Insignia tono="aviso">Sin % de la unidad</Insignia>
           ) : (
             <Insignia tono="neutro">
               <span className="tabular">{cantidad(p.peso)} %</span> de la unidad
