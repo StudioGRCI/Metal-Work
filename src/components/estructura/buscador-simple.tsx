@@ -56,11 +56,15 @@ export function BuscadorSimple({
     // otros filtros («Ver todos») no es eco, y la caja lo sigue.
     const eco = pedidos.findIndex((p) => p.consulta === consulta)
     if (eco >= 0) setPedidos(pedidos.slice(eco + 1))
-    else {
+    else if (!pendiente || pedidos.length === 0) {
       // Lo escrito sin pedir todavía se queda si el término de la URL no cambió.
       if (actual !== antes || pedidos.length > 0) setBusqueda(actual)
       setPedidos([])
     }
+    // Una URL ajena —el menú— con pedidos todavía en viaje no toca nada: lo que
+    // sigue en viaje salió después y llega después. Borrarlos la hacía tomar
+    // por ajenos y pisaba lo escrito entretanto («carrotpe» quedaba «carrot»).
+    // Si no llegan, el descarte de abajo deja la caja como la URL.
   }
   // Ya no queda nada en viaje y algo de lo pedido nunca volvió: otra navegación
   // —el menú, «atrás»— lo reemplazó. Tomarlo por eco dejaba la caja con un
