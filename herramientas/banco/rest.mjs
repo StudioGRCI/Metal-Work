@@ -393,7 +393,7 @@ function crearContexto() {
 }
 
 /** Traduce una lectura (`GET`) a SQL. */
-export function construirLectura(esquema, relacion, busqueda, { limite, desplazamiento }) {
+export function construirLectura(esquema, relacion, busqueda, { limite, desplazamiento, sinTope = false }) {
   if (!esquema.relaciones.has(relacion)) {
     throw new ErrorNoSoportado(`No existe la tabla o vista «${relacion}»`)
   }
@@ -420,10 +420,7 @@ export function construirLectura(esquema, relacion, busqueda, { limite, desplaza
   if (donde.length) texto += ` where ${donde.join(' and ')}`
   if (orden.length) texto += ` order by ${orden.join(', ')}`
 
-  const tope = limite ?? (busqueda.get('limit') ? Number(busqueda.get('limit')) : null)
-  const salto = desplazamiento ?? (busqueda.get('offset') ? Number(busqueda.get('offset')) : null)
-  if (tope !== null && tope !== undefined) texto += ` limit ${Number(tope)}`
-  if (salto) texto += ` offset ${Number(salto)}`
+  texto += paginar(busqueda, { limite, desplazamiento, sinTope })
 
   // El conteo va aparte porque no debe verse afectado por el límite.
   const ctxConteo = crearContexto()
@@ -441,7 +438,7 @@ export function construirLectura(esquema, relacion, busqueda, { limite, desplaza
 }
 
 /** Traduce una escritura (`POST`, `PATCH`, `DELETE`) a SQL. */
-export function construirEscritura(esquema, relacion, metodo, cuerpo, busqueda) {
+export function construirEscritura(esquema, relacion, metodo, cuerpo, busqueda, prefiere = '') {
   if (!esquema.relaciones.has(relacion)) {
     throw new ErrorNoSoportado(`No existe la tabla «${relacion}»`)
   }
@@ -463,9 +460,17 @@ export function construirEscritura(esquema, relacion, metodo, cuerpo, busqueda) 
     const valores = filas.map(
       (fila) => `(${columnas.map((c) => ctx.parametro(fila[c] ?? null)).join(', ')})`,
     )
+    // `.upsert()` de supabase-js: `Prefer: resolution=merge-duplicates` y
+    // `on_conflict` con las columnas de la llave, como lo resuelve PostgREST.
+    const llave = busqueda.get('on_conflict')
+    const conflicto =
+      prefiere.includes('resolution=merge-duplicates') && llave
+        ? ` on conflict (${llave.split(',').map((c) => comillas(c.trim())).join(', ')}) do update set ` +
+          columnas.map((c) => `${comillas(c)} = excluded.${comillas(c)}`).join(', ')
+        : prefiere.includes('resolution=ignore-duplicates') ? ' on conflict do nothing' : ''
     const texto =
       `insert into public.${comillas(relacion)} (${columnas.map(comillas).join(', ')}) ` +
-      `values ${valores.join(', ')} returning ${devolver}`
+      `values ${valores.join(', ')}${conflicto} returning ${devolver}`
     return { texto, valores: ctx.valores, seleccion: nodos, relacion }
   }
 
@@ -503,14 +508,34 @@ const argumento = (v, esJson) =>
     : v
 
 /** Llamada a función (`/rpc/nombre`). `json`: los parámetros de tipo json/jsonb. */
-export function construirLlamada(nombre, argumentos, json = new Set()) {
+export function construirLlamada(nombre, argumentos, json = new Set(), busqueda = new URLSearchParams()) {
   const ctx = crearContexto()
   const claves = Object.keys(argumentos ?? {})
   const parametros = claves.map((c) => `${comillas(c)} => ${ctx.parametro(argumento(argumentos[c], json.has(c)))}`)
-  return {
-    texto: `select * from public.${comillas(nombre)}(${parametros.join(', ')})`,
-    valores: ctx.valores,
-  }
+  // Como PostgREST: el orden, el límite y el salto de `.order()` y `.range()`
+  // valen también sobre lo que devuelve la función, y el tope de filas también.
+  const orden = construirOrden(busqueda.get('order'), 't')
+  let texto = `select * from public.${comillas(nombre)}(${parametros.join(', ')}) t`
+  if (orden.length) texto += ` order by ${orden.join(', ')}`
+  texto += paginar(busqueda, {})
+  return { texto, valores: ctx.valores }
+}
+
+/**
+ * Lo que Supabase entrega como mucho por respuesta (`max_rows` en
+ * `supabase/config.toml`), aunque se pida más con `.limit()` o `.range()`: lo que
+ * pasa de ahí no llega, y sin error. El banco corta igual, o una lista que en
+ * producción sale corta aquí salía entera y la prueba no lo veía.
+ */
+export const MAX_FILAS = Number(process.env.BANCO_MAX_FILAS ?? 1000)
+
+// `sinTope`: lo que devuelve una escritura, que PostgREST no corta.
+function paginar(busqueda, { limite, desplazamiento, sinTope = false }) {
+  const pedido = limite ?? (busqueda.get('limit') ? Number(busqueda.get('limit')) : null)
+  const salto = desplazamiento ?? (busqueda.get('offset') ? Number(busqueda.get('offset')) : null)
+  const sinPedido = pedido === null || pedido === undefined
+  const tope = sinPedido ? (sinTope ? null : MAX_FILAS) : sinTope ? Number(pedido) : Math.min(Number(pedido), MAX_FILAS)
+  return `${tope === null ? '' : ` limit ${tope}`}${salto ? ` offset ${Number(salto)}` : ''}`
 }
 
 export { comillas }

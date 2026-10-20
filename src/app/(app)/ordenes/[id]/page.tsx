@@ -253,7 +253,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     ((perfil.rol.codigo === 'SUPERVISOR' &&
       puede(perfil, ['produccion.actividades', 'ordenes.editar', 'ordenes.crear', 'ordenes.abrir_taller'])) ||
       (!orden.cotizacion_pdf_id && puede(perfil, 'ordenes.crear')))
-  const quitaCualquiera = puede(perfil, ['ordenes.editar', 'produccion.cualquier_area'])
+  // Ver todas las áreas no basta para quitar lo ajeno: hace falta cargar
+  // actividades (migración 20261020206000), y Gerencia solo consulta.
+  const quitaCualquiera =
+    puede(perfil, 'ordenes.editar') || (puede(perfil, 'produccion.cualquier_area') && puede(perfil, 'produccion.actividades'))
   // El último PDF de la orden no se quita: la base lo rechaza (migración 20261017402000).
   const pdfsDeOrden = adjuntos?.filter((a) => a.tipo === 'ORDEN').length ?? 0
   const archivos: AdjuntoEnPantalla[] | null = adjuntos

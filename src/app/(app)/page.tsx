@@ -85,7 +85,7 @@ function CodigosEnCurso({ codigos }: { codigos: CodigoEnCurso[] }) {
         titulo="Códigos con movimiento reciente"
         ayuda="Del que se movió hace menos al que se movió hace más, con su avance y su costo a la fecha"
         acciones={
-          <Link href="/codigos-internos" className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0">
+          <Link href="/codigos-internos?costeo=todos" className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0">
             Ver todos
           </Link>
         }

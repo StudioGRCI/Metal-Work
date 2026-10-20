@@ -6,7 +6,7 @@ import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { cargarVehiculos, type RegistroVehiculo } from '@/lib/datos/vehiculos'
+import { cargarVehiculos, codigosParaIngreso, estadosDeSalida, type EstadoDeSalida, type RegistroVehiculo } from '@/lib/datos/vehiculos'
 import { MOTIVO_VEHICULO } from '@/lib/dominio/requerimientos'
 import { fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -26,7 +26,13 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
   const registra = puede(perfil, 'vehiculos.registrar')
   const params = await searchParams
   const vista = params.vista === 'historial' ? 'historial' : 'en_planta'
+  // Los códigos con OT que puede elegir quien registra el ingreso no dependen de
+  // la lista: se piden a la vez.
+  const pidiendoCodigos = registra ? codigosParaIngreso() : Promise.resolve([])
   const registros = await cargarVehiculos(vista)
+  // Lo que le falta a cada vehículo de trabajo para salir.
+  const enPlanta = registros.filter((r) => !r.salida_en && !r.anulado_en).map((r) => r.id)
+  const [estados, codigos] = await Promise.all([estadosDeSalida(enPlanta), pidiendoCodigos])
 
   return (
     <>
@@ -34,7 +40,7 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
         titulo="Ingreso y salida de vehículos"
         ayuda="Cada vez que un vehículo entra a la planta —para fabricación, mantenimiento, garantía o de vuelta del arenado— y cuándo sale, con fotos de cómo entró y cómo salió. Reemplaza el seguimiento de portería en Excel."
         migas={[{ titulo: 'Vehículos' }]}
-        acciones={registra && <NuevoIngresoVehiculo cuentaId={perfil.id} />}
+        acciones={registra && <NuevoIngresoVehiculo cuentaId={perfil.id} codigos={codigos} />}
       />
 
       <Vistas
@@ -55,8 +61,8 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
             <tr>
               <TH>Vehículo</TH>
               <TH className="hidden md:table-cell">Motivo</TH>
-              <TH>Ingreso</TH>
-              <TH>Salida</TH>
+              <TH className="hidden sm:table-cell">Ingreso</TH>
+              <TH className="hidden sm:table-cell">Salida</TH>
               <TH className="text-right">
                 <span className="sr-only">Acciones</span>
               </TH>
@@ -69,7 +75,9 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
                 descripcion={registra ? 'Cuando entre uno, anótalo con «Registrar ingreso».' : 'El área de Requerimientos registra cada ingreso.'}
               />
             ) : (
-              registros.map((r) => <FilaVehiculo key={r.id} registro={r} registra={registra} cuentaId={perfil.id} />)
+              registros.map((r) => (
+                <FilaVehiculo key={r.id} registro={r} registra={registra} cuentaId={perfil.id} estado={estados.get(r.id)} />
+              ))
             )}
           </tbody>
         </Tabla>
@@ -78,7 +86,17 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
   )
 }
 
-function FilaVehiculo({ registro: r, registra, cuentaId }: { registro: RegistroVehiculo; registra: boolean; cuentaId: string }) {
+function FilaVehiculo({
+  registro: r,
+  registra,
+  cuentaId,
+  estado,
+}: {
+  registro: RegistroVehiculo
+  registra: boolean
+  cuentaId: string
+  estado: EstadoDeSalida | undefined
+}) {
   const motivo = MOTIVO_VEHICULO[r.motivo]
   const nombre = r.placa ?? r.chasis ?? r.codigo_interno ?? 'vehículo'
   const anulado = r.anulado_en !== null
@@ -106,29 +124,66 @@ function FilaVehiculo({ registro: r, registra, cuentaId }: { registro: RegistroV
           </Link>
         )}
         {r.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulado: {r.motivo_anulacion}</p>}
+        {/* En el teléfono, el ingreso y la salida van aquí: la tabla no se desliza de costado. */}
+        <div className="mt-1 space-y-1 sm:hidden">
+          <p className="tabular text-xs text-texto-suave">Entró {fechaHora(r.ingreso_en)}</p>
+          <Situacion registro={r} estado={estado} />
+        </div>
+        {estado?.falta_para_salir && (
+          <p id={`veh-bloqueo-${r.id}`} className="mt-1 max-w-sm text-xs text-texto-suave" data-bloqueo-salida>
+            {estado.falta_para_salir}
+          </p>
+        )}
       </TD>
       <TD className="hidden align-top md:table-cell">
         {motivo ? <Insignia tono={motivo.tono}>{motivo.etiqueta}</Insignia> : r.motivo}
       </TD>
-      <TD className="align-top">
+      <TD className="hidden align-top sm:table-cell">
         <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.ingreso_en)}</p>
         {r.observacion_ingreso && <p className="mt-1 max-w-xs text-[11px] text-texto-suave">{r.observacion_ingreso}</p>}
       </TD>
-      <TD className="align-top">
+      <TD className="hidden align-top sm:table-cell">
         {r.salida_en ? (
           <>
             <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.salida_en)}</p>
             {r.observacion_salida && <p className="mt-1 max-w-xs text-[11px] text-texto-suave">{r.observacion_salida}</p>}
           </>
-        ) : anulado ? (
-          <Insignia tono="peligro">Anulado</Insignia>
         ) : (
-          <Insignia tono="aviso">En planta</Insignia>
+          <Situacion registro={r} estado={estado} />
         )}
       </TD>
       <TD className="text-right align-top">
-        {registra && !r.salida_en && !anulado && <ControlesVehiculo id={r.id} nombre={nombre} cuentaId={cuentaId} />}
+        {registra && !r.salida_en && !anulado && (
+          <ControlesVehiculo
+            id={r.id}
+            nombre={nombre}
+            cuentaId={cuentaId}
+            bloqueoSalida={estado?.falta_para_salir ?? null}
+            alArenado={Boolean(estado?.exige)}
+          />
+        )}
       </TD>
     </TR>
+  )
+}
+
+/** En planta, salió o anulado; y del que espera para salir, el avance de su código. */
+function Situacion({ registro: r, estado }: { registro: RegistroVehiculo; estado: EstadoDeSalida | undefined }) {
+  if (r.anulado_en) return <Insignia tono="peligro">Anulado</Insignia>
+  if (r.salida_en)
+    return (
+      <Insignia tono="neutro">
+        {r.sale_al_arenado ? 'Salió al arenado' : 'Salió'} {fechaHora(r.salida_en)}
+      </Insignia>
+    )
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <Insignia tono="aviso">En planta</Insignia>
+      {estado?.exige && (
+        <span className="tabular text-xs text-texto-suave" data-avance-salida={estado.avance ?? 0}>
+          Avance {estado.avance ?? 0} %{estado.avance === 100 && estado.falta_para_salir ? ' · falta Tesorería' : ''}
+        </span>
+      )}
+    </div>
   )
 }

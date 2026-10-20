@@ -77,24 +77,33 @@ export async function listarUnidades(filtros: { clienteId?: string; busqueda?: s
 export async function contactosDeCliente(clienteId: string) {
   const supabase = await createClient()
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('contactos_cliente')
-    .select('*')
+    .select('id, nombre, cargo, telefono, correo, es_principal')
     .eq('cliente_id', clienteId)
     .order('es_principal', { ascending: false })
 
+  if (error) throw new Error(`No se pudieron cargar los contactos del cliente: ${error.message}`)
   return data ?? []
 }
 
+const ORDENES_DE_CLIENTE = 50
+
+/**
+ * Las órdenes más recientes del cliente, con cuántas tiene en total: la ficha
+ * muestra las últimas y dice si hay más, en vez de dar las cincuenta por todas.
+ */
 export async function ordenesDeCliente(clienteId: string) {
   const supabase = await createClient()
 
-  const { data } = await supabase
+  const { data, error, count } = await supabase
     .from('ot_resumen')
-    .select('id, numero, estado, descripcion, placa, avance_porcentaje, fecha_registro')
+    .select('id, numero, estado, descripcion, placa, avance_porcentaje, fecha_registro', { count: 'exact' })
     .eq('cliente_id', clienteId)
     .order('fecha_registro', { ascending: false })
-    .limit(50)
+    .limit(ORDENES_DE_CLIENTE)
 
-  return data ?? []
+  if (error) throw new Error(`No se pudieron cargar las órdenes del cliente: ${error.message}`)
+  const ordenes = data ?? []
+  return { ordenes, total: count ?? ordenes.length }
 }

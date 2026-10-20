@@ -30,6 +30,11 @@ export type CompraPdf = {
   motivo: string | null
   /** Gerencia la aprobó; las de antes de la regla no pasaron por aprobación. */
   aprobada: boolean
+  /** Quién la emitió y quién la aprobó, con su nombre: lo que firma de verdad, no el área. */
+  emitidaPor: string | null
+  aprobadaPor: string | null
+  /** Cuándo se aprobó (ISO). */
+  aprobadaEn: string | null
   /** Va con el conductor: recojo en la tienda del proveedor. */
   recojo: boolean
   proveedor: {
@@ -277,11 +282,15 @@ export function DocumentoCompraMateriales({ compra: c, lineas, logo }: { compra:
         <View style={s.firmas} wrap={false}>
           <View style={s.firma}>
             <Text style={s.firmaRotulo}>SOLICITADO POR:</Text>
-            <Text style={s.firmaValor}>LOGÍSTICA</Text>
+            <Text style={s.firmaValor}>{c.emitidaPor ?? 'LOGÍSTICA'}</Text>
           </View>
           <View style={s.firma}>
             <Text style={s.firmaRotulo}>APROBADO POR:</Text>
-            <Text style={s.firmaValor}>{c.aprobada ? 'GERENCIA' : 'SIN APROBACIÓN REQUERIDA'}</Text>
+            <Text style={s.firmaValor}>
+              {c.aprobada
+                ? `${c.aprobadaPor ?? 'GERENCIA'}${c.aprobadaEn ? ` · ${fecha(c.aprobadaEn)}` : ''}`
+                : 'SIN APROBACIÓN REQUERIDA'}
+            </Text>
           </View>
         </View>
 

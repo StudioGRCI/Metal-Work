@@ -72,10 +72,15 @@ async function registrar(pagina, p, entrada, salida) {
   // Desde la migración 20261020120000 la ficha pide la fecha de ingreso.
   await v.locator('input[name="fecha_ingreso"]').fill('2026-01-05')
   await v.locator('input[name="cargo"]').fill('Soldador')
+  // La fecha de ingreso es obligatoria desde #122.
+  await v.locator('input[name="fecha_ingreso"]').fill(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' }))
   await v.locator('input[name="hora_entrada"]').fill(entrada)
   await v.locator('input[name="hora_salida"]').fill(salida)
   await v.locator('input[name="banco"]').fill('Banco de Pruebas')
   await v.locator('input[name="numero_cuenta"]').fill(p.cuenta)
+  // La fecha de ingreso y la planilla se piden desde el 2026-10-20.
+  await v.locator('input[name="fecha_ingreso"]').fill('2026-01-05')
+  await v.locator('select[name="planilla"]').selectOption('TALLER')
   await v.getByRole('button', { name: 'Registrar' }).click()
   await v.waitFor({ state: 'hidden', timeout: 15000 }).catch(() => {})
   await pagina.waitForLoadState('networkidle')
@@ -134,9 +139,14 @@ async function registrar(pagina, p, entrada, salida) {
   const cuerpo = (await pagina.locator('main').textContent()) ?? ''
   comprobar(!cuerpo.includes(tarde.cuenta) && !cuerpo.includes('Banco de Pruebas'), 'la portería no ve ninguna cuenta bancaria')
 
+  // El DNI ya no viaja al celular de la portería: con los 8 dígitos la pantalla
+  // le pregunta a la base de quién es (migración 20261020165000).
+  comprobar(!cuerpo.includes(tarde.dni) && !cuerpo.includes(puntual.dni), 'la portería no ve el DNI de nadie')
   await pagina.getByRole('searchbox', { name: 'Buscar por nombre o DNI' }).fill(tarde.dni)
   const tarjetaTarde = pagina.locator('li', { hasText: tarde.nombres })
-  comprobar((await tarjetaTarde.count()) === 1, 'el buscador encuentra a la persona por DNI')
+  await tarjetaTarde.waitFor({ timeout: 15000 }).catch(() => {})
+  comprobar((await pagina.locator('li', { has: pagina.getByRole('button', { name: /Marcar el ingreso/ }) }).count()) === 1,
+    'el buscador encuentra a la persona por DNI, y solo a ella')
   await tarjetaTarde.getByRole('button', { name: /Marcar el ingreso/ }).click()
   await tarjetaTarde.getByText(/^Tarde /).waitFor({ timeout: 15000 }).catch(() => {})
   const textoTarde = (await tarjetaTarde.textContent()) ?? ''
@@ -149,6 +159,7 @@ async function registrar(pagina, p, entrada, salida) {
 
   await pagina.getByRole('searchbox', { name: 'Buscar por nombre o DNI' }).fill(puntual.dni)
   const tarjetaPuntual = pagina.locator('li', { hasText: puntual.nombres })
+  await tarjetaPuntual.waitFor({ timeout: 15000 }).catch(() => {})
   comprobar(await tarjetaPuntual.getByRole('button', { name: /Marcar la salida/ }).isDisabled(), 'sin ingreso no se puede marcar la salida')
   await tarjetaPuntual.getByRole('button', { name: /Marcar el ingreso/ }).click()
   await tarjetaPuntual.getByText('A tiempo').waitFor({ timeout: 15000 }).catch(() => {})
@@ -185,7 +196,9 @@ async function registrar(pagina, p, entrada, salida) {
   comprobar((await pagina.getByRole('button', { name: /Marcar el ingreso/ }).count()) === 0, 'Gerencia no tiene botones de marcar')
   await pagina.goto(`${BASE}/rrhh/personal`, { waitUntil: 'networkidle' })
   const cuerpo = (await pagina.locator('main').textContent()) ?? ''
-  comprobar(cuerpo.includes(tarde.dni) && !cuerpo.includes(tarde.cuenta), 'Gerencia ve al personal pero no sus cuentas')
+  // Desde la migración 20261020165000 el DNI tampoco: lo ve solo RR. HH.
+  comprobar(cuerpo.includes(tarde.nombres) && !cuerpo.includes(tarde.dni) && !cuerpo.includes(tarde.cuenta),
+    'Gerencia ve al personal pero no su DNI ni sus cuentas')
   comprobar(errores.length === 0, `Gerencia sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }

@@ -209,7 +209,7 @@ function FormularioTrabajador({
             <Entrada id={`tr-apellidos-${id}`} name="apellidos" required minLength={2} maxLength={80} defaultValue={t?.apellidos} autoComplete="off" />
           </Campo>
           <Campo etiqueta="DNI" htmlFor={`tr-dni-${id}`} requerido>
-            <Entrada id={`tr-dni-${id}`} name="dni" required inputMode="numeric" pattern="[0-9]{8}" maxLength={8} defaultValue={t?.dni} autoComplete="off" className="tabular" />
+            <Entrada id={`tr-dni-${id}`} name="dni" required inputMode="numeric" pattern="[0-9]{8}" maxLength={8} defaultValue={t?.dni ?? undefined} autoComplete="off" className="tabular" />
           </Campo>
           <Campo etiqueta="Cargo" htmlFor={`tr-cargo-${id}`}>
             <Entrada id={`tr-cargo-${id}`} name="cargo" maxLength={80} defaultValue={t?.cargo ?? ''} placeholder="Soldador, pintor, asistente…" />
@@ -230,6 +230,20 @@ function FormularioTrabajador({
                   {a.nombre}
                 </option>
               ))}
+            </Seleccion>
+          </Campo>
+          <Campo
+            etiqueta="Planilla"
+            htmlFor={`tr-planilla-${id}`}
+            requerido
+            ayuda="De taller: la gente de Maestranza, Producción o Acabados que el supervisor pone en su reporte diario. Administrativa: la oficina."
+          >
+            <Seleccion id={`tr-planilla-${id}`} name="planilla" required defaultValue={t?.planilla ?? ''}>
+              <option value="" disabled>
+                Elige la planilla
+              </option>
+              <option value="TALLER">Planilla de taller</option>
+              <option value="ADMINISTRATIVA">Planilla administrativa</option>
             </Seleccion>
           </Campo>
         </div>

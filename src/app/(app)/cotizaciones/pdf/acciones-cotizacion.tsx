@@ -118,6 +118,7 @@ export function CorregirCotizacion({
   id,
   numero,
   observacion,
+  rechazada = false,
   version,
   clienteId,
   carroceriaId,
@@ -127,6 +128,8 @@ export function CorregirCotizacion({
   id: string
   numero: string
   observacion: string | null
+  /** La rechazada solo se corrige —no se quita—, y el botón lo dice así. */
+  rechazada?: boolean
   version: number
   clienteId: string
   carroceriaId: string
@@ -265,7 +268,7 @@ export function CorregirCotizacion({
     <>
       <Boton type="button" tamano="sm" onClick={abrir}>
         <RefreshCw aria-hidden className="size-3.5" />
-        Editar cotización
+        {rechazada ? 'Subir corrección' : 'Editar cotización'}
       </Boton>
 
       <Ventana
@@ -366,7 +369,7 @@ export function CorregirCotizacion({
   )
 }
 
-/** Quitar la que se subió mal o la que Gerencia rechazó, si nunca tuvo orden (migración 102). */
+/** Quitar la que se subió mal, mientras nadie la revisó y nunca tuvo orden (migraciones 102 y 20261020161000). La rechazada se corrige: no se quita. */
 export function QuitarCotizacion({ id, numero }: { id: string; numero: string }) {
   const [confirmando, setConfirmando] = useState(false)
   const { alEnviar, enviando, error, limpiar } = useEnvio(quitarCotizacionPdf)

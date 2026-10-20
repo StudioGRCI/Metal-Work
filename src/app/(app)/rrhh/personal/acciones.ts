@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { TIPOS_CUENTA } from '@/lib/dominio/rrhh'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 function dato(formulario: FormData, nombre: string) {
@@ -20,7 +20,7 @@ const FECHA = /^\d{4}-\d{2}-\d{2}$/
 /** Registra o corrige la ficha de una persona. Mismo permiso que `rrhh_guardar_trabajador`. */
 export async function guardarTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const analisis = z
     .object({
@@ -33,6 +33,7 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
       hora_entrada: z.string().regex(HORA, 'Elige la hora de entrada.'),
       hora_salida: z.string().regex(HORA, 'Elige la hora de salida.'),
       fecha_ingreso: z.string().regex(FECHA, 'Pon la fecha de ingreso: el primer día que trabajó.'),
+      planilla: z.enum(['TALLER', 'ADMINISTRATIVA'], { message: 'Elige la planilla: de taller o administrativa.' }),
       banco: z.string().min(2, 'Escribe el banco.').max(60, 'El banco pasa de 60 caracteres.'),
       tipo_cuenta: z.enum(TIPOS_CUENTA, { message: 'Elige el tipo de cuenta.' }),
       numero_cuenta: z.string().regex(/^[0-9-]{6,30}$/, 'El número de cuenta lleva solo dígitos y guiones (de 6 a 30).'),
@@ -59,6 +60,7 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
       hora_entrada: dato(formulario, 'hora_entrada'),
       hora_salida: dato(formulario, 'hora_salida'),
       fecha_ingreso: dato(formulario, 'fecha_ingreso'),
+      planilla: dato(formulario, 'planilla'),
       banco: dato(formulario, 'banco'),
       tipo_cuenta: dato(formulario, 'tipo_cuenta'),
       numero_cuenta: dato(formulario, 'numero_cuenta').replace(/\s/g, ''),
@@ -101,6 +103,8 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
   }
   // La fecha de ingreso: de ella cuenta el sueldo de la oficina.
   revisar('la fecha de ingreso', await supabase.rpc('rrhh_guardar_ingreso_trabajador', { p_trabajador_id: d.id, p_fecha: d.fecha_ingreso }))
+  // La planilla: con la de taller, el supervisor la ve en su reporte diario.
+  revisar('la planilla', await supabase.rpc('rrhh_guardar_planilla_trabajador', { p_trabajador_id: d.id, p_planilla: d.planilla }))
   // El costo: solo RR. HH. lo lee.
   if (d.costo_mensual !== '') {
     const costo = await supabase.rpc('rrhh_guardar_costo_trabajador', { p_trabajador_id: d.id, p_costo_mensual: d.costo_mensual })
@@ -121,7 +125,7 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
 /** Vuelve a dar de alta a quien regresa, con el día en que vuelve. Mismo permiso que `rrhh_dar_de_alta_trabajador`. */
 export async function darDeAltaTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const analisis = z
     .object({ id: z.guid(), fecha: z.string().regex(FECHA, 'Pon el día en que vuelve a trabajar.') })
@@ -142,7 +146,7 @@ export async function darDeAltaTrabajador(_previo: unknown, formulario: FormData
 /** Quita una baja puesta por error: la ficha vuelve como estaba. Mismo permiso que `rrhh_cambiar_estado_trabajador`. */
 export async function cambiarEstadoTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const analisis = z.object({ id: z.guid() }).safeParse({ id: dato(formulario, 'id') })
   if (!analisis.success) return { ok: false, error: 'Vuelve a cargar la pantalla.' }
@@ -160,7 +164,7 @@ export async function cambiarEstadoTrabajador(_previo: unknown, formulario: Form
 /** Da de baja con el último día que trabajó. Mismo permiso que `rrhh_dar_de_baja_trabajador`. */
 export async function darDeBajaTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const analisis = z
     .object({ id: z.guid(), fecha_baja: z.string().regex(FECHA, 'Pon la fecha de baja: el último día que trabajó.') })

@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { createClient } from '@/lib/supabase/server'
 
@@ -93,7 +94,12 @@ export async function costoDeOrdenes(
   // Un código, con su filtro; varios, en una sola llamada sin filtro.
   const deLosCodigos = async (): Promise<Map<string, CostoDeOrden | null>> => {
     if (codigos.length === 0) return new Map()
-    const { data, error } = await supabase.rpc('codigos_internos_costo', codigos.length === 1 ? { p_codigo: codigos[0] } : {})
+    // Sin filtro vienen todos los códigos: un código que caía después del mil
+    // salía sin fila, como si no costara nada.
+    const { data, error } = await todasLasFilas(
+      () => supabase.rpc('codigos_internos_costo', codigos.length === 1 ? { p_codigo: codigos[0] } : {}),
+      ['codigo'],
+    )
     if (error) {
       // La pantalla dice «No se pudo leer el costo»; el motivo queda en el registro del servidor.
       console.error('No se pudo leer el costo de los códigos internos:', error.message)

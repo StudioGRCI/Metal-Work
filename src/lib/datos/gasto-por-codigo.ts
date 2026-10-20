@@ -1,6 +1,7 @@
 import 'server-only'
 
-import type { LineaCosteo } from '@/lib/datos/codigos-internos'
+import { ORDEN_DE_LAS_LINEAS, type LineaCosteo } from '@/lib/datos/codigos-internos'
+import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -30,7 +31,7 @@ const n = (v: number | null | undefined) => Number(v ?? 0)
 /** Todos los códigos con gasto o con un requerimiento, del más reciente al más viejo. */
 export async function listarGastoPorCodigo(): Promise<GastoDeCodigo[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('codigos_internos_gasto')
+  const { data, error } = await todasLasFilas(() => supabase.rpc('codigos_internos_gasto'), ['ultima_actividad.desc.nullslast', 'codigo'])
   if (error) throw new Error(`No se pudo leer el gasto por código interno: ${error.message}`)
   return (data ?? []).flatMap((f) =>
     f.codigo
@@ -56,7 +57,7 @@ export async function listarGastoPorCodigo(): Promise<GastoDeCodigo[]> {
 /** Las salidas del almacén de un código, cada una con su precio o «sin precio». */
 export async function materialesDelCodigo(codigo: string): Promise<LineaCosteo[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('codigo_interno_gasto', { p_codigo: codigo })
+  const { data, error } = await todasLasFilas(() => supabase.rpc('codigo_interno_gasto', { p_codigo: codigo }), ORDEN_DE_LAS_LINEAS)
   if (error) throw new Error(`No se pudo leer el gasto del código: ${error.message}`)
   return (data ?? [])
     .filter((f) => f.fuente === 'MATERIALES' || f.fuente === 'MATERIALES_SIN_PRECIO')

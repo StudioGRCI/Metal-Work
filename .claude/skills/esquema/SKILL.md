@@ -110,6 +110,31 @@ política `borrar_*` eliminada y el `grant delete` revocado.
 
 *(Sección viva: aquí se anota lo que salió mal al tocar el esquema. Ver `aprender`.)*
 
+- **Una OT anulada no acepta ningún UPDATE que cambie algo** (migración
+  `20261020207000`), ni del administrador ni de una migración. Un backfill sobre
+  `ordenes_trabajo` lleva `where estado <> 'ANULADA'` o aborta entero en
+  producción; y una cuenta de Auth que figure en una OT anulada ya no se borra,
+  porque su `on delete set null` es un UPDATE.
+
+- **Cerrar una columna con permiso por columna rompe `select *` y `%rowtype`.**
+  Desde la `20261020165000`, `trabajadores.dni` no se lee con `authenticated`:
+  cualquier función `security invoker`, check o script que haga `select *` de
+  `trabajadores`, declare `trabajadores%rowtype` o filtre `where dni = …` cae
+  con «permission denied for table trabajadores» (le pasó a
+  `reporte_diario_agregar_persona` y a los checks 70 y 340). Antes de cerrar una
+  columna, `grep -rn "trabajadores" supabase/migrations db/ herramientas/` y
+  cambiar cada lectura por columnas explícitas; el DNI se lee por
+  `rrhh_dni_de_trabajadores`.
+
+- **Una función con permiso dentro de un cálculo interno cierra el cálculo para
+  todos los que la llaman.** `codigo_interno_etapas` exige ver códigos de
+  diseño, y `codigo_interno_avance_calculado` la llamaba: un `security definer`
+  de Requerimientos que pidiera el avance caía igual, porque `tiene_permiso` mira
+  al usuario de la sesión, no al dueño de la función. La `20261020166000` separó
+  el cálculo (`codigo_interno_etapas_calculado`, sin permiso y revocado a
+  `authenticated`) del envoltorio con permiso. Al reutilizar un cálculo desde
+  otro puesto, buscar `exigir_`/`tiene_permiso` en toda la cadena de llamadas.
+
 - **`next typegen` antes de `tsc`.** Sin él, TypeScript reporta decenas de
   «Cannot find name 'PageProps'» que no son errores del código y hacen perder
   media hora persiguiendo un fallo inexistente.

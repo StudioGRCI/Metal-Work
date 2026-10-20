@@ -18,10 +18,8 @@ const esquemaPersona = z.object({
   sede_id: z.guid('Elige el taller'),
   area_id: z.guid().optional().or(z.literal('')),
   cargo: z.string().trim().optional(),
-  documento: z.string().trim().optional(),
   telefono: z.string().trim().optional(),
   es_operario: z.coerce.boolean().default(false),
-  costo_hora: z.coerce.number().min(0, 'El costo por hora no puede ser negativo').default(0),
 })
 
 function nulo(valor: string | undefined) {
@@ -61,10 +59,9 @@ export async function darDeAltaPersona(
     p_sede_id: v.sede_id,
     p_area_id: omitible(v.area_id),
     p_cargo: omitible(v.cargo),
-    p_documento: omitible(v.documento),
     p_telefono: omitible(v.telefono),
     p_es_operario: v.es_operario,
-    p_costo_hora: v.costo_hora,
+    // El DNI y el costo por hora los pone Recursos Humanos (migración 20261020165000).
   })
 
   if (error) return { ok: false, error: mensajeDeError(error) }
@@ -84,10 +81,8 @@ const esquemaEdicion = z.object({
   sede_id: z.guid('Elige el taller'),
   area_id: z.guid().optional().or(z.literal('')),
   cargo: z.string().trim().optional(),
-  documento: z.string().trim().optional(),
   telefono: z.string().trim().optional(),
   es_operario: z.coerce.boolean().default(false),
-  costo_hora: z.coerce.number().min(0).default(0),
 })
 
 export async function guardarPersona(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -113,10 +108,8 @@ export async function guardarPersona(_previo: unknown, datos: FormData): Promise
       sede_id: v.sede_id,
       area_id: nulo(v.area_id),
       cargo: nulo(v.cargo),
-      documento: nulo(v.documento),
       telefono: nulo(v.telefono),
       es_operario: v.es_operario,
-      costo_hora: v.costo_hora,
     })
     .eq('id', v.id)
     .select('id')

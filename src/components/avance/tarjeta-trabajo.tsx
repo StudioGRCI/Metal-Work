@@ -14,7 +14,7 @@ import { fecha as formatearFecha, numero } from '@/lib/format'
  * que se lea igual en los dos lados y en el teléfono no haya tabla que deslizar.
  * Toda la tarjeta abre el trabajo.
  */
-export function TarjetaTrabajo({ trabajo: t }: { trabajo: TrabajoSinOrden }) {
+export function TarjetaTrabajo({ trabajo: t, porAprobar = 0 }: { trabajo: TrabajoSinOrden; porAprobar?: number }) {
   const estado = definir(ESTADO_FLOTA, t.estado)
   const dias = Number(t.dias_en_taller ?? 0)
   const sinReporte = Number(t.dias_sin_avance ?? 0)
@@ -35,7 +35,12 @@ export function TarjetaTrabajo({ trabajo: t }: { trabajo: TrabajoSinOrden }) {
             </Link>
             {detalle && <p className="truncate text-xs text-texto-suave">{detalle}</p>}
           </div>
-          <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+            {porAprobar > 0 && (
+              <Insignia tono="aviso">{porAprobar === 1 ? '1 por aprobar' : `${porAprobar} por aprobar`}</Insignia>
+            )}
+          </div>
         </div>
 
         <p className="line-clamp-2 text-sm text-texto">{t.trabajo}</p>

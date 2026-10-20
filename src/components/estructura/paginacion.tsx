@@ -47,7 +47,7 @@ export function Paginacion({
           <Link
             href={enlace(pagina - 1)}
             rel="prev"
-            className="rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs hover:bg-superficie-2"
+            className="inline-flex min-h-11 items-center rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs hover:bg-superficie-2 sm:min-h-0"
           >
             Anterior
           </Link>
@@ -56,7 +56,7 @@ export function Paginacion({
           <Link
             href={enlace(pagina + 1)}
             rel="next"
-            className="rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs hover:bg-superficie-2"
+            className="inline-flex min-h-11 items-center rounded-[var(--radius-base)] border border-borde px-3 py-1.5 text-xs hover:bg-superficie-2 sm:min-h-0"
           >
             Siguiente
           </Link>

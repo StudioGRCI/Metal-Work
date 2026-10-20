@@ -14,7 +14,7 @@
 
 import { createServer } from 'node:http'
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 import pg from 'pg'
@@ -122,15 +122,7 @@ async function conSesion(sesion, res, tarea) {
   const cliente = await grupo.connect()
   try {
     await cliente.query('begin')
-    const rol = sesion.rol === 'authenticated' ? 'authenticated' : sesion.rol === 'service_role' ? 'service_role' : 'anon'
-    await cliente.query(`set local role ${rol}`)
-    if (sesion.sub) {
-      const claims = JSON.stringify({ sub: sesion.sub, role: rol, email: sesion.email ?? '' })
-      await cliente.query('select set_config($1, $2, true)', ['request.jwt.claims', claims])
-      await cliente.query('select set_config($1, $2, true)', ['request.jwt.claim.sub', sesion.sub])
-      await cliente.query('select set_config($1, $2, true)', ['request.jwt.claim.role', rol])
-      await cliente.query('select set_config($1, $2, true)', ['request.jwt.claim.email', sesion.email ?? ''])
-    }
+    await tomarSesion(cliente, sesion)
     const resultado = await tarea(cliente)
     await cliente.query('commit')
     soltar()
@@ -142,6 +134,40 @@ async function conSesion(sesion, res, tarea) {
     throw fallo
   } finally {
     soltar()
+    cliente.release()
+  }
+}
+
+/** El rol y los claims de la sesión, dentro de la transacción ya abierta. */
+async function tomarSesion(cliente, sesion) {
+  const rol = sesion.rol === 'authenticated' ? 'authenticated' : sesion.rol === 'service_role' ? 'service_role' : 'anon'
+  await cliente.query(`set local role ${rol}`)
+  if (sesion.sub) {
+    const claims = JSON.stringify({ sub: sesion.sub, role: rol, email: sesion.email ?? '' })
+    await cliente.query('select set_config($1, $2, true)', ['request.jwt.claims', claims])
+    await cliente.query('select set_config($1, $2, true)', ['request.jwt.claim.sub', sesion.sub])
+    await cliente.query('select set_config($1, $2, true)', ['request.jwt.claim.role', rol])
+    await cliente.query('select set_config($1, $2, true)', ['request.jwt.claim.email', sesion.email ?? ''])
+  }
+}
+
+/**
+ * Una consulta con el rol de la sesión, sin tocar la respuesta. Los archivos la
+ * usan para preguntarle a las políticas de `storage.objects` lo mismo que les
+ * pregunta Supabase Storage antes de subir, firmar, entregar o quitar.
+ */
+async function comoSesion(sesion, consulta, valores) {
+  const cliente = await grupo.connect()
+  try {
+    await cliente.query('begin')
+    await tomarSesion(cliente, sesion)
+    const { rows } = await cliente.query(consulta, valores)
+    await cliente.query('commit')
+    return rows
+  } catch (fallo) {
+    await cliente.query('rollback').catch(() => {})
+    throw fallo
+  } finally {
     cliente.release()
   }
 }
@@ -304,12 +330,15 @@ async function releerEscritura(cliente, esq, relacion, filas, busqueda) {
   if (!seleccion || seleccion === '*' || filas.length === 0) return filas
   const primaria = esq.relaciones.get(relacion)?.primaria ?? []
   if (primaria.length !== 1) return filas
+  // Una escritura que pidió solo columnas sueltas, sin la llave (`select('usuario_id')`
+  // en una tabla cuya llave es `id`), ya las trae: no hay incrustaciones que releer.
+  if (!(primaria[0] in filas[0])) return filas
 
   const claves = filas.map((f) => f[primaria[0]])
   const busquedaRelectura = new URLSearchParams()
   busquedaRelectura.set('select', seleccion)
   busquedaRelectura.set(primaria[0], `in.(${claves.map((c) => `"${c}"`).join(',')})`)
-  const consulta = construirLectura(esq, relacion, busquedaRelectura, {})
+  const consulta = construirLectura(esq, relacion, busquedaRelectura, { sinTope: true })
   const { rows } = await cliente.query(consulta.texto, consulta.valores)
   return rows
 }
@@ -326,7 +355,7 @@ async function manejarDatos(req, res, url) {
     const argumentos = req.method === 'POST' ? JSON.parse((await leerCuerpo(req)).toString() || '{}') : {}
     const forma = await formaDeFuncion(nombre)
     if (!forma) return responder(res, 404, { message: `No existe la función «${nombre}»` })
-    const consulta = construirLlamada(nombre, argumentos, new Set(forma.json))
+    const consulta = construirLlamada(nombre, argumentos, new Set(forma.json), url.searchParams)
 
     // `.single()` pide un objeto aunque la función devuelva filas, y PostgREST lo
     // entrega: sin esto el banco mandaba la lista, el tablero leía `data.abiertas`
@@ -399,7 +428,7 @@ async function manejarDatos(req, res, url) {
   if (req.method === 'POST' || req.method === 'PATCH' || req.method === 'DELETE') {
     const crudo = (await leerCuerpo(req)).toString()
     const cuerpo = crudo ? JSON.parse(crudo) : {}
-    const escritura = construirEscritura(esq, relacion, req.method, cuerpo, url.searchParams)
+    const escritura = construirEscritura(esq, relacion, req.method, cuerpo, url.searchParams, prefiere)
     const devuelve = prefiere.includes('return=representation')
     const objeto = (req.headers.accept ?? '').includes('vnd.pgrst.object')
 
@@ -432,11 +461,38 @@ async function manejarDatos(req, res, url) {
 
 // ---------------------------------------------------------------- archivos
 
+// Lo que Supabase Storage contesta cuando una política tapa el archivo o no
+// existe: no distingue uno de otro, para no decir qué hay detrás.
+const NO_ENCONTRADO = { statusCode: '404', error: 'not_found', message: 'Object not found' }
+
+/** Los archivos de esa cubeta que la sesión ve, de entre los nombres pedidos. */
+async function visibles(sesion, cubeta, nombres) {
+  try {
+    const filas = await comoSesion(
+      sesion,
+      'select name from storage.objects where bucket_id = $1 and name = any($2::text[])',
+      [cubeta, nombres],
+    )
+    return new Set(filas.map((f) => f.name))
+  } catch (fallo) {
+    // Sin sesión (anon) la tabla ni se lee: para Supabase es «no existe».
+    if (fallo.code === '42501') return new Set()
+    throw fallo
+  }
+}
+
+function partir(camino) {
+  const [cubeta, ...resto] = decodeURIComponent(camino).split('/')
+  return { cubeta, nombre: resto.join('/') }
+}
+
 async function manejarArchivos(req, res, url) {
   const ruta = url.pathname.replace('/storage/v1', '')
   const sesion = sesionDe(req)
 
-  // Subida: POST /object/<cubeta>/<camino>
+  // Subida: POST /object/<cubeta>/<camino>. Como Supabase, la fila de
+  // `storage.objects` entra con el rol de la sesión, así que la política de
+  // subida de esa cubeta decide; si la rechaza, el archivo no se escribe.
   if (req.method === 'POST' && ruta.startsWith('/object/') && !ruta.startsWith('/object/sign/')) {
     const camino = ruta.replace('/object/', '')
     let contenido = await leerCuerpo(req)
@@ -453,26 +509,56 @@ async function manejarArchivos(req, res, url) {
         tipo = archivo.type || 'application/octet-stream'
       }
     }
-    const destino = join(ARCHIVOS, camino)
-    await mkdir(dirname(destino), { recursive: true })
-    await writeFile(destino, contenido)
 
     // Dueño, tipo y tamaño como los anota Supabase: las funciones que enlazan
     // una foto (la salida del kardex) los comprueban antes de aceptarla.
-    const [cubeta, ...resto] = camino.split('/')
-    await grupo.query(
-      `insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
-       values ($1, $2, $3, $4, jsonb_build_object('mimetype', $5::text, 'size', $6::bigint))
-       on conflict do nothing`,
-      [cubeta, resto.join('/'), sesion.sub, sesion.sub, tipo, contenido.length],
-    ).catch((e) => console.error(`No se pudo anotar ${camino} en storage.objects: ${e.message}`))
+    const { cubeta, nombre } = partir(camino)
+    const reemplaza = req.headers['x-upsert'] === 'true'
+    const { rows: previas } = await grupo.query(
+      'select 1 from storage.objects where bucket_id = $1 and name = $2',
+      [cubeta, nombre],
+    )
+    try {
+      if (previas.length && !reemplaza) {
+        return responder(res, 400, { statusCode: '409', error: 'Duplicate', message: 'The resource already exists' })
+      }
+      if (previas.length) {
+        const cambiadas = await comoSesion(
+          sesion,
+          `update storage.objects
+              set owner = $3, owner_id = $4, metadata = jsonb_build_object('mimetype', $5::text, 'size', $6::bigint)
+            where bucket_id = $1 and name = $2
+           returning 1`,
+          [cubeta, nombre, sesion.sub, sesion.sub, tipo, contenido.length],
+        )
+        if (!cambiadas.length) throw Object.assign(new Error('new row violates row-level security policy'), { code: '42501' })
+      } else {
+        await comoSesion(
+          sesion,
+          `insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
+           values ($1, $2, $3, $4, jsonb_build_object('mimetype', $5::text, 'size', $6::bigint))`,
+          [cubeta, nombre, sesion.sub, sesion.sub, tipo, contenido.length],
+        )
+      }
+    } catch (fallo) {
+      const negado = fallo.code === '42501'
+      return responder(res, negado ? 403 : 400, {
+        statusCode: negado ? '403' : '400',
+        error: negado ? 'Unauthorized' : 'Error',
+        message: fallo.message,
+      })
+    }
+    const destino = join(ARCHIVOS, camino)
+    await mkdir(dirname(destino), { recursive: true })
+    await writeFile(destino, contenido)
 
     return responder(res, 200, { Key: camino, Id: randomUUID() })
   }
 
   // Enlaces firmados por lote: POST /object/sign/<cubeta> con { paths }.
   // Supabase Storage devuelve una fila por cada ruta; la lista de cotizaciones
-  // usa este endpoint para no pedir un enlace por documento.
+  // usa este endpoint para no pedir un enlace por documento. Solo firma lo que
+  // la sesión puede leer; lo demás vuelve con su error y sin enlace.
   if (req.method === 'POST' && ruta.startsWith('/object/sign/')) {
     const camino = ruta.replace('/object/sign/', '')
     if (!camino.includes('/')) {
@@ -480,12 +566,17 @@ async function manejarArchivos(req, res, url) {
       if (!Array.isArray(cuerpo.paths)) {
         return responder(res, 400, { message: 'La solicitud de enlaces necesita una lista de rutas.' })
       }
+      const cubeta = decodeURIComponent(camino)
+      const ve = await visibles(sesion, cubeta, cuerpo.paths)
       const data = cuerpo.paths.map((archivo) => {
-        const ficha = firmar({ camino: `${camino}/${archivo}`, exp: Math.floor(Date.now() / 1000) + 3600 })
+        if (!ve.has(archivo)) {
+          return { error: 'Either the object does not exist or you do not have access to it', path: archivo, signedURL: null }
+        }
+        const ficha = firmar({ camino: `${cubeta}/${archivo}`, exp: Math.floor(Date.now() / 1000) + 3600 })
         return {
           error: null,
           path: archivo,
-          signedURL: `/object/sign/${camino}/${archivo}?token=${ficha}`,
+          signedURL: `/object/sign/${cubeta}/${archivo}?token=${ficha}`,
         }
       })
       return responder(res, 200, data)
@@ -494,13 +585,28 @@ async function manejarArchivos(req, res, url) {
   // Enlace firmado individual: POST /object/sign/<cubeta>/<camino>. Como
   // Supabase, sin `/storage/v1`: storage-js le antepone su propia dirección,
   // y con el prefijo el enlace salía doble y daba 404.
-    const ficha = firmar({ camino, exp: Math.floor(Date.now() / 1000) + 3600 })
+    const { cubeta, nombre } = partir(camino)
+    if (!(await visibles(sesion, cubeta, [nombre])).has(nombre)) return responder(res, 400, NO_ENCONTRADO)
+    const ficha = firmar({ camino: `${cubeta}/${nombre}`, exp: Math.floor(Date.now() / 1000) + 3600 })
     return responder(res, 200, { signedURL: `/object/sign/${camino}?token=${ficha}` })
   }
 
-  // Descarga por enlace firmado
+  // Descarga. Con enlace firmado vale la ficha, que ya pasó la política al
+  // firmarse; por la cubeta pública, que la cubeta lo sea; y la descarga con
+  // sesión (`download`), la política de lectura de esa cubeta.
   if (req.method === 'GET' && ruta.startsWith('/object/')) {
-    const camino = ruta.replace(/^\/object\/(sign\/|authenticated\/|public\/)?/, '')
+    const [, modo, camino] = ruta.match(/^\/object\/(sign\/|authenticated\/|public\/)?(.*)$/)
+    const { cubeta, nombre } = partir(camino)
+    let entrega
+    if (modo === 'sign/') {
+      entrega = verificar(url.searchParams.get('token') ?? '')?.camino === `${cubeta}/${nombre}`
+    } else if (modo === 'public/') {
+      const { rows } = await grupo.query('select public from storage.buckets where id = $1', [cubeta])
+      entrega = rows[0]?.public === true
+    } else {
+      entrega = (await visibles(sesion, cubeta, [nombre])).has(nombre)
+    }
+    if (!entrega) return responder(res, 400, NO_ENCONTRADO)
     try {
       const contenido = await readFile(join(ARCHIVOS, camino))
       res.writeHead(200, {
@@ -509,20 +615,28 @@ async function manejarArchivos(req, res, url) {
       })
       return res.end(contenido)
     } catch {
-      return responder(res, 404, { message: 'No existe el archivo' })
+      return responder(res, 400, NO_ENCONTRADO)
     }
   }
 
-  // Borrado: DELETE /object/<cubeta> con {prefixes: [...]}
+  // Borrado: DELETE /object/<cubeta> con {prefixes: [...]}. Con el rol de la
+  // sesión: quita solo lo que su política de borrado le deja, y si un
+  // disparador lo impide (la foto que un reporte nombra), lo dice.
   if (req.method === 'DELETE' && ruta.startsWith('/object/')) {
-    const cubeta = ruta.replace('/object/', '')
+    const cubeta = decodeURIComponent(ruta.replace('/object/', ''))
     const cuerpo = JSON.parse((await leerCuerpo(req)).toString() || '{}')
-    for (const prefijo of cuerpo.prefixes ?? []) {
-      await grupo
-        .query('delete from storage.objects where bucket_id = $1 and name = $2', [cubeta, prefijo])
-        .catch(() => {})
+    let quitados
+    try {
+      quitados = await comoSesion(
+        sesion,
+        'delete from storage.objects where bucket_id = $1 and name = any($2::text[]) returning bucket_id, name',
+        [cubeta, cuerpo.prefixes ?? []],
+      )
+    } catch (fallo) {
+      return responder(res, 400, { statusCode: '400', error: 'Error', message: fallo.message })
     }
-    return responder(res, 200, [])
+    for (const { name } of quitados) await unlink(join(ARCHIVOS, cubeta, name)).catch(() => {})
+    return responder(res, 200, quitados)
   }
 
   return responder(res, 404, { message: `Ruta de archivos no soportada: ${ruta}` })

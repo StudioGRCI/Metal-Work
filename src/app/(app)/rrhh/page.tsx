@@ -8,7 +8,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
 import { detallePlanilla } from '@/lib/dominio/planilla-excel'
 import { moneda, periodo, porcentaje } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 import { CrearPlanilla } from './crear-planilla'
@@ -42,7 +42,7 @@ async function enTandas<T>(
 
 export default async function PaginaRRHH() {
   const perfil = await exigirPermiso('rrhh.ver_planillas')
-  const gestiona = puede(perfil, 'rrhh.gestionar_planillas')
+  const gestiona = editaComoRrhh(perfil, 'rrhh.gestionar_planillas')
   const db = await createClient()
   const [planillas, ordenes] = await Promise.all([
     db.from('planillas').select('id,tipo,periodo,moneda,estado').order('periodo', { ascending: false }).limit(50),
