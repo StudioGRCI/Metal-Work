@@ -246,7 +246,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                       {/* Sin `cliente_id` es de verdad sin cliente: la abrió el
                           taller (100). Con él y sin nombre, es que quien mira
                           no tiene clientes.ver, y ahí no se dice nada. */}
-                      <p className="max-w-52 truncate text-texto xl:max-w-72" title={orden.cliente ?? undefined}>
+                      <p className="max-w-52 truncate text-texto min-[1400px]:max-w-72" title={orden.cliente ?? undefined}>
                         {orden.cliente ?? (orden.cliente_id === null ? (
                           <span className="text-aviso">Sin cliente todavía</span>
                         ) : null)}
@@ -267,7 +267,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                     </TD>
 
                     <TD>
-                      <p className="max-w-64 truncate xl:max-w-96" title={orden.descripcion ?? undefined}>{orden.descripcion}</p>
+                      <p className="max-w-64 truncate min-[1400px]:max-w-96" title={orden.descripcion ?? undefined}>{orden.descripcion}</p>
                       <p className="text-[11px] text-texto-suave">
                         {definir(TIPO_TRABAJO, orden.tipo_trabajo).etiqueta}
                         {orden.tipo_carroceria ? ` · ${orden.tipo_carroceria}` : ''}

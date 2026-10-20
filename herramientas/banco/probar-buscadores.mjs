@@ -9,13 +9,18 @@
  *   4. Ningún buscador pide apretar «Buscar»: lo escrito llega solo a la URL.
  *   5. «Limpiar» quita el término y deja los demás filtros puestos.
  *   6. Lo que la pantalla muestra es lo que la base tiene: se cuenta en SQL.
- *   7. El desplegable con buscador (`SeleccionBuscable`) y el buscador de la
- *      asistencia, que filtran en el navegador, buscan igual.
+ *   7. El desplegable con buscador (`SeleccionBuscable`), el buscador de la
+ *      asistencia y el de las OT del reparto de RRHH, que filtran en el
+ *      navegador, buscan igual.
+ *   8. Una sigla o un código se encuentran con o sin sus signos: «sac» a
+ *      «S.A.C.», una placa sin el guion.
  *
- * Siembra sus propios datos con un sello distinto en cada corrida: un material,
- * un cliente, un proveedor, una unidad y una orden con tildes en el nombre.
- * Necesita las cuentas `*.local@metalwork.test` de Gerencia, Contabilidad,
- * Logística, Requerimientos, Supervisión (sup.mtz), Portería y Administración.
+ * Siembra sus propios datos con un sello distinto en cada corrida: materiales,
+ * un cliente, un proveedor, una unidad, una orden, una cotización, una orden de
+ * servicio, un subcontrato, dos trabajadores y una persona en una planilla en
+ * preparación, con tildes en los nombres. Necesita las cuentas
+ * `*.local@metalwork.test` de Gerencia, Contabilidad, Logística,
+ * Requerimientos, Supervisión (sup.mtz), Portería, RRHH y Administración.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  */
 import { mkdirSync } from 'node:fs'
@@ -90,6 +95,30 @@ const ot = await uno(
   `insert into public.ordenes_trabajo (sede_id, descripcion, cliente_id, unidad_id) values ((select id from public.sedes order by nombre limit 1), $1, $2, $3) returning numero`,
   [OT, clienteId, unidadId],
 )
+const proveedorId = (await uno(`select id from public.proveedores where razon_social = $1`, [PROVEEDOR])).id
+const COTIZACION = `QA-BUS-${sello}`
+await consulta(
+  `with c as (select gen_random_uuid() as id)
+   insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, nombre_archivo, ruta_storage)
+   select c.id, $1, $2, (select id from public.tipos_carroceria where activo order by orden_secuencia limit 1), 'banco.pdf', 'cot/' || c.id || '/banco.pdf' from c`,
+  [COTIZACION, clienteId],
+)
+const SERVICIO = `QA-OS-BUS-${sello}`
+await consulta(`insert into public.ordenes_servicio (numero, proveedor_id, proveedor, descripcion, monto, codigo_interno, creado_por) values ($1, $2, $3, 'Torneado de prueba', 1, $4, $5)`,
+  [SERVICIO, proveedorId, PROVEEDOR, CODIGO, almacenero])
+const SUBCONTRATO = `QA-SC-BUS-${sello}`
+await consulta(`insert into public.subcontratos (numero, subcontratista_id, codigo_interno, descripcion, moneda, monto, creado_por)
+                values ($1, (select id from public.subcontratistas order by nombre limit 1), $2, 'Subcontrato de prueba', 'PEN', 1, $3)`, [SUBCONTRATO, CODIGO, almacenero])
+// Dos trabajadores inventados que se parecen: la búsqueda deja uno solo.
+const DNI = `9${sello}`
+const TRABAJADOR = `ZÚÑIGA PEÑA ${sello}, ÁNGEL`
+const OTRO = `ZÚÑIGA ROJAS ${sello}, MARÍA`
+await consulta(`insert into public.trabajadores (nombres, apellidos, dni, creado_por) values ('ÁNGEL', $1, $2, $5), ('MARÍA', $3, $4, $5)`,
+  [`ZÚÑIGA PEÑA ${sello}`, `${DNI}1`, `ZÚÑIGA ROJAS ${sello}`, `${DNI}2`, almacenero])
+// Una planilla en preparación con alguien, para que salga el reparto entre OT.
+const planilla = await uno(`insert into public.planillas (tipo, periodo, moneda, registrado_por) values ('TALLER', '2099-12-01', 'PEN', $1)
+                            on conflict (tipo, periodo) do update set tipo = excluded.tipo returning id, estado`, [almacenero])
+await consulta(`insert into public.planilla_personas (planilla_id, nombre, monto, registrado_por) values ($1, $2, 1, $3)`, [planilla.id, `PERSONA BANCO ${sello}`, almacenero])
 console.log(`Sembrado con el sello ${sello} (OT ${ot.numero}).`)
 
 // ---------------------------------------------------------------- navegador
@@ -150,10 +179,13 @@ const CASOS = [
   ['contabilidad', '/proveedores', 'Buscar proveedores', 'q', `avila torneria ${sello}`, PROVEEDOR],
   ['gerencia', '/unidades', 'Buscar unidades', 'q', `fmx unico ${sello.slice(3)}`, PLACA],
   ['gerencia', '/ordenes', 'Buscar órdenes', 'q', `agua cisterna camion ${sello}`, ot.numero],
-  ['gerencia', '/cotizaciones/pdf', 'Buscar cotizaciones', 'q', 'caja prueba', 'QA-CAJA'],
-  ['gerencia', '/codigos-internos', 'Buscar código interno', 'q', 'avm', 'AVM_FG_N2_1_26/44'],
+  ['gerencia', '/clientes', 'Buscar clientes', 'q', `sac ${sello}`, CLIENTE],
+  ['gerencia', '/unidades', 'Buscar unidades', 'q', PLACA.replace('-', '').toLowerCase(), PLACA],
+  ['gerencia', '/cotizaciones/pdf', 'Buscar cotizaciones', 'q', `nunez ${sello}`, COTIZACION],
+  ['gerencia', '/codigos-internos', 'Buscar código interno', 'q', `qa bus ${sello}`, CODIGO],
   ['requerimientos', '/requerimientos/gasto-por-codigo', 'Buscar código interno', 'q', `qa_bus_${sello}`, CODIGO],
-  ['logistica', '/compras/servicios', 'Buscar por código interno', 'codigo', 'prb_caja', 'PRB-CAJA'],
+  ['logistica', '/compras/servicios', 'Buscar por código interno', 'codigo', CODIGO.toLowerCase(), SERVICIO],
+  ['gerencia', '/subcontratos', 'Buscar por código interno', 'codigo', CODIGO.toLowerCase(), SUBCONTRATO],
   ['sup.mtz', '/almacen/stock', 'Buscar en el stock', 'q', `angulo ${sello}`, MATERIAL],
 ]
 
@@ -174,8 +206,10 @@ for (const ancho of [390, 1280]) {
     comprobar(llego === texto && visto.includes(espera), `${puesto} ${ruta}: «${texto}» llega solo a la URL y encuentra «${espera}»`)
     comprobar(!/no se pudo abrir/i.test(visto) && errores.length === 0, `${puesto} ${ruta}: sin pantalla de error ni errores de consola${errores.length ? ` (${errores.join(' | ')})` : ''}`)
     comprobar(await pagina.getByRole('button', { name: /^Buscar$/ }).count() === 0, `${puesto} ${ruta}: no hay botón «Buscar» que apretar`)
-    const ancho2 = await pagina.evaluate(() => document.documentElement.scrollWidth)
-    comprobar(ancho2 <= ancho, `${puesto} ${ruta}: la pantalla no se sale de costado (${ancho2} px)`)
+    // La página puede no correrse y la tabla sí, dentro de su tarjeta: se miden las dos.
+    const ancho2 = await pagina.evaluate(() => Math.max(document.documentElement.scrollWidth,
+      ...[...document.querySelectorAll('main table')].map((t) => Math.ceil(t.getBoundingClientRect().left + t.scrollWidth))))
+    comprobar(ancho2 <= ancho, `${puesto} ${ruta}: ni la pantalla ni su tabla se salen de costado (${ancho2} px)`)
     await pagina.screenshot({ path: join(CAPTURAS, `buscador-${ancho}${ruta.replace(/\//g, '_')}.png`) })
   }
 
@@ -193,7 +227,7 @@ for (const ancho of [390, 1280]) {
   {
     const { pagina } = await sesion('gerencia')
     await pagina.goto(`${BASE}/subcontratos?estado=todos`, { waitUntil: 'networkidle' })
-    await buscar(pagina, 'Buscar por código interno', 'codigo', 'prb')
+    await buscar(pagina, 'Buscar por código interno', 'codigo', 'qa')
     await pagina.getByRole('button', { name: 'Limpiar' }).click()
     await pagina.waitForURL((u) => !new URL(u).searchParams.has('codigo'), { timeout: 15000 }).catch(() => {})
     const params = new URL(pagina.url()).searchParams
@@ -215,11 +249,29 @@ for (const ancho of [390, 1280]) {
     const { pagina } = await sesion('porteria')
     await pagina.goto(`${BASE}/rrhh/asistencia`, { waitUntil: 'networkidle' })
     const caja = pagina.getByLabel('Buscar por nombre o DNI')
-    for (const texto of ['kevin alayo', 'rios']) {
+    for (const texto of [`angel zuniga ${sello}`, `pena ${sello}`, `${DNI}1`]) {
       await caja.fill('')
       await caja.pressSequentially(texto, { delay: 15 })
       const t = await textoDe(pagina)
-      comprobar(t.includes('Alayo Ríos, Kevin') && !t.includes('Castillo Rebaza'), `Asistencia (portería): «${texto}» deja solo a Alayo Ríos, Kevin`)
+      comprobar(t.includes(TRABAJADOR) && !t.includes(OTRO), `Asistencia (portería): «${texto}» deja solo a ${TRABAJADOR}`)
+    }
+  }
+
+  // …el reparto entre OT de una planilla en preparación (RRHH), con el número
+  // escrito sin guion…
+  {
+    const { pagina } = await sesion('rrhh')
+    await pagina.goto(`${BASE}/rrhh`, { waitUntil: 'networkidle' })
+    const tarjeta = pagina.locator('details', { hasText: 'Repartir en partes iguales' }).filter({ hasText: `PERSONA BANCO ${sello}` })
+    const texto = ot.numero.replace('-', '')
+    if (await tarjeta.count()) {
+      await tarjeta.first().locator('summary').click()
+      await tarjeta.first().getByLabel('Buscar OT por número o unidad').pressSequentially(texto, { delay: 15 })
+      const leer = () => tarjeta.first().locator('label:visible', { has: pagina.locator('input[name="orden_id"]') }).allInnerTexts()
+      const visibles = await hasta(leer, (v) => v.length === 1)
+      comprobar(visibles.length === 1 && visibles[0].includes(ot.numero), `Planillas (RRHH): «${texto}» deja solo la OT ${ot.numero} (${visibles.length} a la vista)`)
+    } else {
+      comprobar(false, `Planillas (RRHH): no salió el reparto de la planilla en preparación (estado ${planilla.estado})`)
     }
   }
 

@@ -10,17 +10,25 @@
  */
 
 /**
- * Las palabras que se buscan, en minúsculas y sin tildes. Pocas y cortas —cinco
- * y cuarenta letras entre todas—: cada letra viaja en la dirección de la
- * consulta, una vez por columna, y una dirección demasiado larga la rechaza el
- * servidor.
+ * Los signos que van dentro de una sigla o un código: «S.A.C.», «SR_04», «A-36»,
+ * «3/16». Escritos o no, la palabra es la misma.
+ */
+const DENTRO = /(?<=[a-z0-9])[._/-]+(?=[a-z0-9])/g
+const LETRAS = 24
+
+/**
+ * Las palabras que se buscan, en minúsculas y sin tildes; «S.A.C.» es una sola
+ * palabra, «sac», y no tres letras sueltas que están en casi todo. Pocas y
+ * cortas —cinco y veinticuatro letras entre todas—: cada letra viaja en la dirección
+ * de la consulta, una vez por columna, y una dirección demasiado larga la
+ * rechaza el servidor.
  */
 export function palabrasDeBusqueda(texto: string | null | undefined): string[] {
   const palabras: string[] = []
   let letras = 0
-  for (const p of plano(texto ?? '').split(/[^a-z0-9]+/)) {
-    if (!p || palabras.length === 5 || letras >= 40) continue
-    palabras.push(p.slice(0, 40 - letras))
+  for (const p of plano(texto ?? '').replace(DENTRO, '').split(/[^a-z0-9]+/)) {
+    if (!p || palabras.length === 5 || letras >= LETRAS) continue
+    palabras.push(p.slice(0, LETRAS - letras))
     letras += p.length
   }
   return palabras
@@ -47,12 +55,14 @@ const VARIANTES: Record<string, string> = {
 }
 
 /**
- * Una palabra como expresión regular que encuentra sus versiones con tilde.
- * Solo sale de letras, números y corchetes —`palabrasDeBusqueda` ya dejó nada
- * más—, así que no lleva nada que PostgREST o la expresión lean como mando.
+ * Una palabra como expresión regular que encuentra sus versiones con tilde y
+ * con los signos de `DENTRO` entre letra y letra: «sac» encuentra «S.A.C.» y
+ * «sr04», «SR_04». Solo lleva letras, números, corchetes, esos signos y `?`
+ * —`palabrasDeBusqueda` no dejó nada más—, y entre las comillas del filtro
+ * nada de eso es un mando para PostgREST.
  */
 export function expresionSinTildes(palabra: string): string {
-  return [...palabra].map((c) => (VARIANTES[c] ? `[${VARIANTES[c]}]` : c)).join('')
+  return [...palabra].map((c) => (VARIANTES[c] ? `[${VARIANTES[c]}]` : c)).join('[._/-]?')
 }
 
 /**
@@ -66,13 +76,11 @@ export function filtroDePalabra(columnas: string[], palabra: string): string {
 }
 
 /**
- * Lo mismo para una lista ya leída: cada palabra está en alguno de los campos.
- * Aquí también se lee el texto sin signos, para que «sac» encuentre «S.A.C.» y
- * «sr04», «SR_04».
+ * Lo mismo para una lista ya leída: cada palabra está en alguno de los campos,
+ * leídos también sin los signos de `DENTRO`, como hace la expresión.
  */
 export function coincide(palabras: string[], campos: (string | null | undefined)[]): boolean {
   if (palabras.length === 0) return true
-  const texto = campos.map((c) => plano(c ?? '')).join(' ')
-  const pegado = texto.replace(/[^a-z0-9]+/g, '')
-  return palabras.every((p) => texto.includes(p) || pegado.includes(p))
+  const textos = campos.map((c) => plano(c ?? '')).flatMap((t) => [t, t.replace(/[._/-]+/g, '')])
+  return palabras.every((p) => textos.some((t) => t.includes(p)))
 }

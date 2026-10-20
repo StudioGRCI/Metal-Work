@@ -64,7 +64,7 @@ export function FiltrosOrdenes() {
         <Entrada
           type="search"
           className="pl-9"
-          placeholder="Número, cliente, placa o trabajo"
+          placeholder="Número, cliente, placa, código o trabajo"
           aria-label="Buscar órdenes"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}

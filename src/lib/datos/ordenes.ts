@@ -72,9 +72,9 @@ export async function listarOrdenes(filtros: FiltrosOrdenes) {
   if (filtros.responsable) consulta = consulta.eq('responsable_id', filtros.responsable)
   if (filtros.atrasadas) consulta = consulta.gt('dias_atraso', 0)
 
-  // Por número de OT, cliente, placa o descripción del trabajo.
+  // Por número de OT, cliente, placa, código interno o descripción del trabajo.
   for (const palabra of palabrasDeBusqueda(filtros.busqueda)) {
-    consulta = consulta.or(filtroDePalabra(['numero', 'cliente', 'placa', 'descripcion'], palabra))
+    consulta = consulta.or(filtroDePalabra(['numero', 'cliente', 'placa', 'codigo_interno', 'descripcion'], palabra))
   }
 
   const { data, error, count } = await consulta

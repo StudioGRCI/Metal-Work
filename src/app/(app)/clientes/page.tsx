@@ -52,7 +52,9 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
     <>
       <EncabezadoPagina
         titulo="Clientes"
-        descripcion={total === 1 ? '1 cliente registrado' : `${total} clientes registrados`}
+        descripcion={busqueda
+          ? `${total === 1 ? '1 cliente' : `${total} clientes`} con «${busqueda}»`
+          : total === 1 ? '1 cliente registrado' : `${total} clientes registrados`}
         acciones={
           <div className="flex flex-wrap items-center gap-3">
             {crea && (
@@ -127,7 +129,7 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                         <p className="text-[11px] text-texto-suave">{c.nombre_comercial}</p>
                       )}
                       {enElTelefono && (
-                        <p className="text-[11px] text-texto-suave sm:hidden">{enElTelefono}</p>
+                        <p className="text-xs text-texto-suave sm:hidden">{enElTelefono}</p>
                       )}
                     </TD>
                     <TD className="hidden whitespace-nowrap sm:table-cell">

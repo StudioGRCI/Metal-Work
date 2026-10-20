@@ -56,7 +56,7 @@ export function Marcador({
       </div>
       {visibles.length === 0 ? (
         <p className="rounded-[var(--radius-base)] border border-borde bg-superficie p-4 text-center text-sm text-texto-suave">
-          {personal.length === 0 ? 'Recursos Humanos todavía no registró a nadie.' : 'Nadie coincide con la búsqueda.'}
+          {personal.length === 0 ? 'Recursos Humanos todavía no registró a nadie.' : 'Nadie coincide. Prueba solo con el apellido o con el DNI.'}
         </p>
       ) : (
         <ul className="space-y-2">

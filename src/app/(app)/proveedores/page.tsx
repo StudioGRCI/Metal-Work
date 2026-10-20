@@ -99,7 +99,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                         <p className="text-[11px] text-texto-suave">{[p.nombre_comercial, p.rubro].filter(Boolean).join(' · ')}</p>
                       )}
                       {/* En el teléfono el RUC baja aquí: su columna aparte dejaba el nombre en cuatro renglones. */}
-                      <p className="text-[11px] text-texto-suave sm:hidden">
+                      <p className="text-xs text-texto-suave sm:hidden">
                         {[`${p.tipo_documento} ${p.numero_documento}`, pago, contacto].filter(Boolean).join(' · ')}
                       </p>
                     </TD>

@@ -82,9 +82,9 @@ export default async function PaginaMateriales({ searchParams }: PageProps<'/mat
               <TablaCabecera>
                 <TR>
                   <TH>Material</TH>
-                  <TH>Categoría</TH>
+                  <TH className="hidden sm:table-cell">Categoría</TH>
                   <TH>Unidad</TH>
-                  <TH>Especificación</TH>
+                  <TH className="hidden sm:table-cell">Especificación</TH>
                   {puedeEditar && <TH className="w-28" />}
                 </TR>
               </TablaCabecera>

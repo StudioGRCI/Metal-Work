@@ -13,8 +13,6 @@ import { exigirPermiso, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Stock en almacén' }
 
-/** Sin tildes ni mayúsculas, para que «tubo» encuentre «TUBO» y «lamina» encuentre «Lámina». */
-
 /** «Por clasificar» va en la URL como un almacén más, aunque no lo sea. */
 const POR_CLASIFICAR = 'POR_CLASIFICAR'
 

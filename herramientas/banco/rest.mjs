@@ -154,8 +154,10 @@ function condicionSimple(columna, expresion, ctx, tabla) {
   } else if (operador === 'like' || operador === 'ilike') {
     sql = `${col}::text ${OPERADORES[operador]} ${ctx.parametro(desentrecomillar(valor).replace(/\*/g, '%'))}`
   } else if (operador === 'match' || operador === 'imatch') {
-    // Los buscadores (`src/lib/dominio/busqueda.ts`) buscan sin tildes con `imatch`.
-    sql = `${col}::text ${OPERADORES[operador]} ${ctx.parametro(desentrecomillar(valor))}`
+    // Los buscadores (`src/lib/dominio/busqueda.ts`) buscan sin tildes con
+    // `imatch`. Sin `::text`, como PostgREST: sobre una columna que no es texto
+    // tiene que fallar aquí también.
+    sql = `${col} ${OPERADORES[operador]} ${ctx.parametro(desentrecomillar(valor))}`
   } else if (operador in OPERADORES) {
     sql = `${col} ${OPERADORES[operador]} ${ctx.parametro(desentrecomillar(valor))}`
   } else {

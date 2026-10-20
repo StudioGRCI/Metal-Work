@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { type Almacen, esAlmacen } from '@/lib/dominio/almacen'
+import { filtroDePalabra, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { sumarDias } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Vistas } from '@/types/database'
@@ -37,8 +38,7 @@ export function filtrosDeKardex(params: Record<string, string | string[] | undef
   const tipo = texto(params.tipo)
   const desde = texto(params.desde)
   const hasta = texto(params.hasta)
-  // Los comodines de ilike se quitan: se busca el texto tal cual se escribió.
-  const unidad = texto(params.unidad).replace(/[%_*,()]/g, '').slice(0, 60)
+  const unidad = texto(params.unidad).slice(0, 60)
   const almacen = texto(params.almacen).toUpperCase()
   return {
     material: UUID.test(material) ? material : undefined,
@@ -67,7 +67,7 @@ function consultaKardex(db: Awaited<ReturnType<typeof createClient>>, filtros: O
   // de Greenwich, o las salidas de la tarde caerían en el día siguiente.
   if (filtros.desde) consulta = consulta.gte('fecha', `${filtros.desde}T00:00:00-05:00`)
   if (filtros.hasta) consulta = consulta.lt('fecha', `${sumarDias(filtros.hasta, 1)}T00:00:00-05:00`)
-  if (filtros.unidad) consulta = consulta.ilike('codigo_unidad', `%${filtros.unidad}%`)
+  for (const palabra of palabrasDeBusqueda(filtros.unidad)) consulta = consulta.or(filtroDePalabra(['codigo_unidad'], palabra))
   if (filtros.almacen) consulta = consulta.eq('almacen', filtros.almacen)
   return consulta
 }

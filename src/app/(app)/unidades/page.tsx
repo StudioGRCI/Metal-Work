@@ -50,7 +50,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                   la unidad entra al taller: la columna nombra la unidad, con
                   la matrícula cuando la tiene. */}
               <TH>Unidad</TH>
-              <TH>Cliente</TH>
+              <TH className="hidden sm:table-cell">Cliente</TH>
               <TH>Vehículo</TH>
               {/* Siete columnas no entran en un teléfono. Las cuatro de detalle se
                   esconden aquí y su contenido baja a la celda del vehículo en letra
@@ -126,8 +126,13 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                           sin placa
                         </span>
                       )}
+                      {/* En el teléfono el dueño va aquí: con su columna, la tabla
+                          se corría de costado. */}
+                      <span className="block max-w-40 truncate text-xs font-normal text-texto-suave sm:hidden">
+                        {cliente ? cliente.razon_social : u.cliente_id ? null : 'Del taller'}
+                      </span>
                     </TD>
-                    <TD>
+                    <TD className="hidden sm:table-cell">
                       {cliente ? (
                         <Link
                           href={`/clientes/${cliente.id}`}

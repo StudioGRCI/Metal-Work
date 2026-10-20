@@ -69,7 +69,7 @@ export function BuscadorSimple({
         )}
         <Entrada
           type="search"
-          className="pl-9"
+          className="pl-9 [&::-webkit-search-cancel-button]:appearance-none"
           placeholder={marcador}
           aria-label={etiqueta}
           value={busqueda}

@@ -72,7 +72,7 @@ export function SeleccionBuscable({
   const elegida = opciones.find((o) => o.valor === valor) ?? null
 
   // Como todo buscador: «grua» encuentra «Grúa», «sac» a «S.A.C.» y
-  // «valle moche» a «Agrícola Valle de Moche».
+  // «juan agricola» a «Agrícola San Juan».
   const palabras = palabrasDeBusqueda(filtro)
   const coincidencias = opciones.filter((o) => coincide(palabras, [o.etiqueta, o.detalle]))
   const visibles = coincidencias.slice(0, TOPE)
@@ -231,14 +231,14 @@ export function SeleccionBuscable({
               placeholder={marcadorBusqueda}
               aria-label={marcadorBusqueda}
               aria-controls={idLista}
-              className="h-8 w-full rounded-[var(--radius-base)] border border-borde-fuerte bg-superficie pr-2 pl-8 text-sm text-texto placeholder:text-texto-tenue"
+              className="h-11 w-full rounded-[var(--radius-base)] border border-borde-fuerte bg-superficie pr-2 pl-8 text-base text-texto placeholder:text-texto-tenue sm:h-8 sm:text-sm"
             />
           </div>
 
           <ul id={idLista} role="listbox" className="max-h-64 overflow-y-auto py-1">
             {visibles.length === 0 && (
               <li className="px-3 py-6 text-center text-xs text-texto-suave">
-                Nada coincide con lo que escribiste.
+                Nada coincide. Prueba con menos palabras o con el número.
               </li>
             )}
 
@@ -263,7 +263,9 @@ export function SeleccionBuscable({
                     )}
                   />
                   <span className="min-w-0">
-                    <span className="block truncate">{o.etiqueta}</span>
+                    {/* Dos renglones y no uno: cortado, «TRANSPORTES PEÑA Y…»
+                        salía igual en siete opciones. */}
+                    <span className="line-clamp-2">{o.etiqueta}</span>
                     {o.detalle && (
                       <span className="block truncate text-[11px] text-texto-suave">
                         {o.detalle}
