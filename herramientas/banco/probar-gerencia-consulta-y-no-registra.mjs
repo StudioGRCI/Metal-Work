@@ -51,6 +51,27 @@ const CERRADAS = [
   ['/compras/gestion', 'la gestión de recojos'],
 ]
 
+// Un trabajo sin orden con un reporte por aprobar, para ver que Gerencia lo
+// aprueba. Se siembra por debajo de las políticas con una marca propia; el
+// supervisor de Producción figura como quien lo reportó.
+const sello = `QA-GER-${Date.now().toString().slice(-6)}`
+let trabajoId = null
+{
+  const base = new pg.Client({ host: '/tmp', port: 5433, user: 'postgres', database: process.env.BANCO_BASE ?? 'mw_demo' })
+  await base.connect()
+  const [sup] = (await base.query("select id, area_id from public.usuarios where correo = 'sup.prd.local@metalwork.test'")).rows
+  const [flota] = (await base.query(
+    "insert into public.flota_unidades (trabajo, descripcion, cliente) values ($1, 'Trabajo de prueba de Gerencia', 'QA') returning id",
+    [sello],
+  )).rows
+  await base.query(
+    "insert into public.flota_avances (flota_id, area_id, descripcion, registrado_por) values ($1, $2, $3, $4)",
+    [flota.id, sup.area_id, `Avance ${sello}`, sup.id],
+  )
+  trabajoId = flota.id
+  await base.end()
+}
+
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 
 async function entrar(correo) {
@@ -105,14 +126,10 @@ for (const correo of new Set(PANTALLAS.map(([, , c]) => c))) {
   }
 
   // Los trabajos sin orden los sigue aprobando.
-  await pagina.goto(`${BASE}/avance/trabajos`, { waitUntil: 'networkidle' })
-  const detalle = await pagina.locator('main a[href^="/avance/trabajos/"]:not([href$="/nueva"])').first().getAttribute('href').catch(() => null)
-  if (detalle) {
-    await pagina.goto(`${BASE}${detalle}`, { waitUntil: 'networkidle' })
+  {
+    await pagina.goto(`${BASE}/avance/trabajos/${trabajoId}`, { waitUntil: 'networkidle' })
     const aprobar = await pagina.locator('main').getByRole('button', { name: /^Aprobar/ }).count()
     comprobar(aprobar > 0, 'Gerencia sigue teniendo «Aprobar» en un trabajo sin orden')
-  } else {
-    comprobar(false, 'hay un trabajo sin orden en el banco para ver que Gerencia lo aprueba')
   }
 
   // Y sigue anulando una OT.

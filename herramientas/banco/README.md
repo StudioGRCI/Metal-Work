@@ -29,6 +29,13 @@ SUPABASE_SERVICE_ROLE_KEY=<la que imprimió> \
 npx next dev -p 3111
 ```
 
+Con `next start` en vez de `next dev`, antes va `next build` con las mismas
+variables: `next start` sirve el último build, no el código. El 2026-10-20 un
+`next start` que sobrevivió a un cambio de rama sirvió un build de horas antes
+y los recorridos dieron por buenas pantallas que ya no existían así. Y si el
+banco viene de otra rama, `preparar.sh` otra vez: una base sin las últimas
+migraciones hace caer pantallas que en producción abren.
+
 Y para el recorrido automático de todas las pantallas:
 
 ```bash

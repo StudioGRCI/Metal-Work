@@ -37,8 +37,8 @@ select test.debe_fallar(
   $$select public.unidades_para_salida_almacen()$$,
   'Gerencia no abre la salida del almacén', 'almacen.despachar');
 select test.debe_fallar(
-  $$select public.registrar_ingreso_material_libre(gen_random_uuid(), null, 'Plancha 411', current_setting('prueba.unidad')::uuid,
-      1, 'COMPRA', 'F001-411', 10, 'PEN')$$,
+  $$select public.registrar_ingreso_material_libre(gen_random_uuid(), gen_random_uuid(), 'Plancha 411',
+      current_setting('prueba.unidad')::uuid, 1, 'INGRESO_GENERAL', 'F001-411', 10, 'PEN')$$,
   'Gerencia no registra un ingreso al almacén', 'almacen.recibir');
 select test.debe_fallar(
   $$select public.emitir_compra_directa(gen_random_uuid(), null, 'QA411', 'prueba', '[]'::jsonb, current_date,
@@ -56,6 +56,18 @@ select test.debe_fallar(
   $$insert into public.flota_unidades (trabajo, descripcion) values ('Trabajo 411', 'Sin orden')$$,
   'Gerencia no registra un trabajo sin orden', 'row-level security');
 
+-- El almacén, en cambio, sigue registrando: el permiso se le quitó a Gerencia,
+-- no al puesto. Su ingreso deja una fila en el kardex para lo que sigue.
+select test.como_usuario(:'almacen_id');
+do $$
+begin
+  perform test.afirmar(public.tiene_permiso('almacen.recibir') and public.tiene_permiso('almacen.despachar'),
+    'El almacén sigue registrando ingresos y salidas');
+  perform public.unidades_para_salida_almacen();
+  perform public.registrar_ingreso_material_libre(gen_random_uuid(), gen_random_uuid(), 'Plancha 411',
+    current_setting('prueba.unidad')::uuid, 1, 'INGRESO_GENERAL', 'F001-411', 10, 'PEN');
+end $$;
+
 -- Lo que consulta sigue saliendo: el kardex y las compras, igual que para el almacén.
 reset role;
 select count(*) as kardex_total from public.movimientos_materiales \gset
@@ -66,19 +78,49 @@ set local role authenticated;
 select test.como_usuario(:'gerente_id');
 do $$
 begin
+  perform test.afirmar(current_setting('prueba.kardex')::bigint > 0, 'el kardex tiene al menos el ingreso del almacén');
   perform test.afirmar((select count(*) from public.movimientos_materiales) = current_setting('prueba.kardex')::bigint,
-    'Gerencia ve todo el kardex');
+    'Gerencia ve todo el kardex, también el ingreso de recién');
   perform test.afirmar((select count(*) from public.ordenes_compra_materiales) = current_setting('prueba.compras')::bigint,
     'Gerencia ve todas las órdenes de compra');
 end $$;
 
--- El almacén, en cambio, sigue registrando: el permiso se le quitó a Gerencia, no al puesto.
-select test.como_usuario(:'almacen_id');
+-- Ver todas las áreas no le deja escribir en producción: las fotos de un
+-- reporte no las corrige ni las quita. Las jefaturas, que también tenían
+-- `cualquier_area` con `actividades`, ya no tienen cuentas activas; el control
+-- de que la fila sí se puede corregir lo hace el administrador. El armazón (un
+-- trabajo sin orden con una foto) entra sin sesión, por debajo de las políticas.
+reset role;
+select test.crear_usuario('Ada', 'Admin', 'admin411@demo.pe', 'ADMIN', :'sede_id') as admin_id \gset
+insert into public.flota_unidades (trabajo, descripcion) values ('Trabajo 411', 'Sin orden') returning id as flota_id \gset
+insert into public.flota_avances (flota_id, area_id, descripcion)
+values (:'flota_id', (select id from public.areas where codigo = 'MTZ'), 'Avance 411') returning id as avance_id \gset
+insert into public.flota_avance_fotos (avance_id, flota_id, ruta_storage, nombre_archivo)
+values (:'avance_id', :'flota_id', 'flota/' || :'flota_id' || '/foto.jpg', 'foto.jpg') returning id as foto_id \gset
+select set_config('prueba.foto', :'foto_id', true);
+
+set local role authenticated;
+select test.como_usuario(:'gerente_id');
 do $$
+declare v int;
 begin
-  perform test.afirmar(public.tiene_permiso('almacen.recibir') and public.tiene_permiso('almacen.despachar'),
-    'El almacén sigue registrando ingresos y salidas');
-  perform public.unidades_para_salida_almacen();
+  perform test.afirmar(public.tiene_permiso('produccion.cualquier_area'), 'Gerencia sigue viendo todas las áreas');
+  update public.flota_avance_fotos set orden_visual = 2 where id = current_setting('prueba.foto')::uuid;
+  get diagnostics v = row_count;
+  perform test.afirmar(v = 0, 'Gerencia no corrige la foto de un reporte');
+  delete from public.flota_avance_fotos where id = current_setting('prueba.foto')::uuid;
+  get diagnostics v = row_count;
+  perform test.afirmar(v = 0, 'Gerencia no quita la foto de un reporte');
+  perform test.afirmar(exists (select 1 from public.flota_avance_fotos where id = current_setting('prueba.foto')::uuid),
+    'y la foto sigue ahí, a la vista de Gerencia');
+end $$;
+select test.como_usuario(:'admin_id');
+do $$
+declare v int;
+begin
+  update public.flota_avance_fotos set orden_visual = 2 where id = current_setting('prueba.foto')::uuid;
+  get diagnostics v = row_count;
+  perform test.afirmar(v = 1, 'la foto sí se puede corregir: el administrador la corrige');
 end $$;
 
 reset role;
