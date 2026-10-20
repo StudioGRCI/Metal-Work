@@ -39,7 +39,7 @@ export function retencionYNeto(bruto: number, conRetencion: boolean): { retencio
 
 /**
  * Para qué área va el subcontrato (migraciones 20261017100000 y
- * 20261020160000): su supervisor lo ve en «Supervisión › Subcontratos», sin
+ * 20261020180000): su supervisor lo ve en «Supervisión › Subcontratos», sin
  * montos, y reporta su avance. Solo estas tres: la base rechaza cualquier otra.
  */
 export const AREAS_SUBCONTRATO = [

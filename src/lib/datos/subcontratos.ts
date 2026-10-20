@@ -267,7 +267,7 @@ export async function recibosParaTesoreria(): Promise<ReciboParaPagar[]> {
 
 /**
  * Un subcontrato como lo ve el supervisor de su área (migración
- * 20261020160000): sin montos ni recibos, con su inicio, su fin y el avance
+ * 20261020180000): sin montos ni recibos, con su inicio, su fin y el avance
  * que su área reportó en el reporte diario.
  */
 export type SubcontratoDelArea = {

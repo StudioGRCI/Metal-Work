@@ -9357,6 +9357,7 @@ export type Database = {
           actualizado_en: string
           fecha_ingreso: string | null
           fecha_baja: string | null
+          planilla: string
         }
         Insert: {
           id?: string
@@ -9373,6 +9374,7 @@ export type Database = {
           actualizado_en?: string
           fecha_ingreso?: string | null
           fecha_baja?: string | null
+          planilla?: string
         }
         Update: {
           id?: string
@@ -9389,6 +9391,7 @@ export type Database = {
           actualizado_en?: string
           fecha_ingreso?: string | null
           fecha_baja?: string | null
+          planilla?: string
         }
         Relationships: [
           {
@@ -13990,6 +13993,13 @@ export type Database = {
         Args: {
           p_trabajador_id: string | null
           p_fecha: string | null
+        }
+        Returns: string
+      }
+      rrhh_guardar_planilla_trabajador: {
+        Args: {
+          p_trabajador_id: string | null
+          p_planilla: string | null
         }
         Returns: string
       }

@@ -74,6 +74,9 @@ async function registrar(pagina, p, entrada, salida) {
   await v.locator('input[name="hora_salida"]').fill(salida)
   await v.locator('input[name="banco"]').fill('Banco de Pruebas')
   await v.locator('input[name="numero_cuenta"]').fill(p.cuenta)
+  // La fecha de ingreso y la planilla se piden desde el 2026-10-20.
+  await v.locator('input[name="fecha_ingreso"]').fill('2026-01-05')
+  await v.locator('select[name="planilla"]').selectOption('TALLER')
   await v.getByRole('button', { name: 'Registrar' }).click()
   await v.waitFor({ state: 'hidden', timeout: 15000 }).catch(() => {})
   await pagina.waitForLoadState('networkidle')

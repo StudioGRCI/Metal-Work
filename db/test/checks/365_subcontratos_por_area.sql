@@ -76,7 +76,7 @@ begin
   perform public.guardar_subcontratista(pg_temp.id('sub'), current_setting('prueba.ruc'), 'Pintor de prueba 365',
                                         null, null, null, null, true);
   perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, ''PLANTA'', ''Pintura de la cabina completa'', ''PEN'', 1200, null, null, null)',
-      pg_temp.id('sc_prd'), pg_temp.id('sub')), 'sin área no se registra', 'Producción o Acabados');
+      pg_temp.id('sc_prd'), pg_temp.id('sub')), 'sin área no se registra', 'Maestranza o Acabados');
   perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, ''PLANTA'', ''Pintura de la cabina completa'', ''PEN'', 1200, null, null)',
       pg_temp.id('sc_prd'), pg_temp.id('sub')), 'la pantalla de antes, sin área, tampoco', 'recarga la página');
   v := public.registrar_subcontrato(pg_temp.id('sc_prd'), pg_temp.id('sub'), 'PLA_SR_O4_1_26/28',

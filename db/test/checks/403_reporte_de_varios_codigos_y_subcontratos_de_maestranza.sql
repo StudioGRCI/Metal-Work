@@ -1,5 +1,5 @@
 -- El reporte diario con varios códigos y los subcontratos de Maestranza
--- (migración 20261020160000). El supervisor sube un solo reporte del día con
+-- (migración 20261020180000). El supervisor sube un solo reporte del día con
 -- todos los códigos en que trabajó su gente: entra un reporte por código, todos
 -- o ninguno, y las horas de cada código van a su costeo. Administración ya
 -- registra subcontratos para Maestranza, y el supervisor los ve sin montos, con

@@ -1,6 +1,6 @@
 /**
  * Clic real sobre el reporte diario con varios códigos y los subcontratos de
- * Maestranza (migración 20261020160000), con la cuenta de cada puesto (nunca
+ * Maestranza (migración 20261020180000), con la cuenta de cada puesto (nunca
  * ADMIN):
  *
  *   1. Administración ve «Maestranza» entre las áreas del subcontrato.
@@ -13,6 +13,8 @@
  *      detalle enlaza al otro.
  *   4. Subcontratos muestra el avance que reportó.
  *   5. Producción no ve el subcontrato de Maestranza.
+ *   6. RR. HH. pasa a Juan a la planilla administrativa en su ficha, y el
+ *      supervisor ya no lo encuentra en el personal del reporte.
  *
  * Necesita las cuentas `*.local@metalwork.test`. El personal, el subcontrato y
  * el código los crea el script, distintos en cada corrida.
@@ -263,6 +265,35 @@ let idB = null
   const { pagina, contexto } = await entrar(CUENTAS.prd)
   await pagina.goto(`${BASE}/subcontratos/area`, { waitUntil: 'networkidle' })
   comprobar((await pagina.locator(`[data-subcontrato="${NUMERO}"]`).count()) === 0, 'Producción no ve el subcontrato de Maestranza')
+  await contexto.close()
+}
+
+// ------------------------------------------------------------------ 6. la planilla de Juan
+{
+  const { pagina, contexto, errores } = await entrar(CUENTAS.rrhh)
+  await pagina.goto(`${BASE}/rrhh/personal`, { waitUntil: 'networkidle' })
+  comprobar((await pagina.locator('[data-planilla="TALLER"]').count()) > 0, 'la lista de RR. HH. dice la planilla de cada persona')
+  await pagina.getByRole('button', { name: `Corregir la ficha de ${JUAN} Habilitador` }).click()
+  const v = pagina.locator('[role="dialog"]')
+  comprobar((await v.locator('select[name="planilla"]').inputValue()) === 'TALLER', 'la ficha de Juan abre con su planilla de taller')
+  await v.locator('select[name="planilla"]').selectOption('ADMINISTRATIVA')
+  if (!(await v.locator('input[name="fecha_ingreso"]').inputValue())) await v.locator('input[name="fecha_ingreso"]').fill('2026-01-05')
+  if (!(await v.locator('input[name="banco"]').inputValue())) await v.locator('input[name="banco"]').fill('Banco de Pruebas')
+  if (!(await v.locator('input[name="numero_cuenta"]').inputValue())) await v.locator('input[name="numero_cuenta"]').fill('191-00000-0-07')
+  await v.getByRole('button', { name: 'Guardar la ficha' }).click()
+  await v.waitFor({ state: 'hidden', timeout: 15000 }).catch(() => {})
+  const [j] = await consulta(`select planilla from trabajadores where nombres = $1`, [JUAN])
+  comprobar(j?.planilla === 'ADMINISTRATIVA', `en la base, Juan queda en la planilla administrativa (${j?.planilla})`)
+  comprobar(errores.length === 0, `RR. HH. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+{
+  const { pagina, contexto } = await entrar(CUENTAS.mtz, CELULAR)
+  await pagina.goto(`${BASE}/reportes-diarios/nuevo`, { waitUntil: 'networkidle' })
+  await pagina.getByRole('combobox', { name: 'Personal del trabajo 1: persona 1' }).click()
+  await pagina.keyboard.type(JUAN)
+  await pagina.waitForTimeout(500)
+  comprobar((await pagina.getByRole('option', { name: new RegExp(JUAN) }).count()) === 0, 'el supervisor ya no encuentra a Juan en el personal del reporte')
   await contexto.close()
 }
 

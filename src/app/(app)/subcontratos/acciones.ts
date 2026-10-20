@@ -10,7 +10,7 @@ import { createClient } from '@/lib/supabase/server'
 
 /*
  * Lo que hace Administración con los subcontratos (migraciones 20261015221000
- * y 20261017100000, la del área: Producción o Acabados; 20261020160000 suma Maestranza).
+ * y 20261017100000, la del área: Producción o Acabados; 20261020180000 suma Maestranza).
  * Todas exigen `subcontratos.gestionar`, el mismo permiso que piden las
  * funciones de la base, y comprueban que la función devolvió el id: si no
  * vuelve, no se hizo, y la pantalla no dice «listo».

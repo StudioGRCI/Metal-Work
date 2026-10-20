@@ -126,11 +126,12 @@ begin
       current_setting('prueba.sc'), current_setting('prueba.sub')), 'sin código interno no se registra', 'código interno');
   perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, ''PLANTA'', ''Soldadura de la tolva'', ''PEN'', 3000, null, null, ''PRD'')',
       current_setting('prueba.sc'), current_setting('prueba.sub2')), 'un subcontratista dado de baja no recibe trabajo', 'dado de baja');
-  -- Desde la migración 20261017100000 va a Producción o a Acabados: sin área, o con otra, no se registra.
+  -- Desde la migración 20261017100000 va a un área del taller (y desde la 20261020180000
+  -- también a Maestranza): sin área, o con otra, no se registra.
   perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, ''PLANTA'', ''Soldadura de la tolva'', ''PEN'', 3000, null, null)',
-      current_setting('prueba.sc'), current_setting('prueba.sub')), 'la firma sin área ya no registra', 'Producción o Acabados');
-  perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, ''PLANTA'', ''Soldadura de la tolva'', ''PEN'', 3000, null, null, ''MTZ'')',
-      current_setting('prueba.sc'), current_setting('prueba.sub')), 'Maestranza no recibe subcontratos', 'Producción o Acabados');
+      current_setting('prueba.sc'), current_setting('prueba.sub')), 'la firma sin área ya no registra', 'recarga la página');
+  perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, ''PLANTA'', ''Soldadura de la tolva'', ''PEN'', 3000, null, null, ''ALM'')',
+      current_setting('prueba.sc'), current_setting('prueba.sub')), 'Almacén no recibe subcontratos', 'Maestranza o Acabados');
   v := public.registrar_subcontrato(current_setting('prueba.sc')::uuid, current_setting('prueba.sub')::uuid,
          '  pla_sr_o4_1_26/28 ', 'Soldadura de la tolva y refuerzos del piso', 'PEN', 3000, null, null, 'prd');
   -- El mismo formulario dos veces no registra otro.
@@ -299,7 +300,7 @@ begin
   perform test.afirmar((select area_id = (select id from public.areas where codigo = 'ACB') from public.subcontratos where id = v),
     'al corregir se cambia el área');
   perform test.debe_fallar(format('select public.corregir_subcontrato(%L, ''PLANTA'', ''Soldadura de la tolva y refuerzos'', 3500, null, null, ''ALM'')',
-      current_setting('prueba.sc')), 'el área es Producción o Acabados también al corregir', 'Producción o Acabados');
+      current_setting('prueba.sc')), 'el área es del taller también al corregir', 'Maestranza o Acabados');
   v := public.corregir_subcontrato(current_setting('prueba.sc')::uuid, 'PLA_SR_O4_2_26/28', 'Soldadura de la tolva y refuerzos del piso',
          3500, null, null, 'PRD');
   v := public.cambiar_estado_subcontrato(current_setting('prueba.sc')::uuid, 'TERMINADO');

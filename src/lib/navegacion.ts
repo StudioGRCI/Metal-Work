@@ -368,7 +368,7 @@ export const NAVEGACION = [
         disponible: true,
       },
       // Los subcontratos que Administración registró para Maestranza, Producción o
-      // Acabados (migraciones 20261017100000 y 20261020160000): el supervisor de esa
+      // Acabados (migraciones 20261017100000 y 20261020180000): el supervisor de esa
       // área los ve sin montos, con su inicio, su fin y el avance que reporta.
       {
         titulo: 'Subcontratos',
