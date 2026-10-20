@@ -38,18 +38,20 @@ export function retencionYNeto(bruto: number, conRetencion: boolean): { retencio
 }
 
 /**
- * Para qué área va el subcontrato (migración 20261017100000): su supervisor lo
- * ve en «Supervisión › Subcontratos», sin montos. Solo estas dos: la base
- * rechaza cualquier otra.
+ * Para qué área va el subcontrato (migraciones 20261017100000 y
+ * 20261020180000): su supervisor lo ve en «Supervisión › Subcontratos», sin
+ * montos, y reporta su avance. Solo estas tres: la base rechaza cualquier otra.
  */
 export const AREAS_SUBCONTRATO = [
+  { codigo: 'MTZ', nombre: 'Maestranza' },
   { codigo: 'PRD', nombre: 'Producción' },
   { codigo: 'ACB', nombre: 'Acabados' },
 ] as const
 
 export type AreaSubcontrato = (typeof AREAS_SUBCONTRATO)[number]['codigo']
 
-export const AYUDA_AREA_SUBCONTRATO = 'El supervisor de esa área ve el subcontrato y sus recibos, sin montos, y le llega el aviso.'
+export const AYUDA_AREA_SUBCONTRATO =
+  'El supervisor de esa área ve el subcontrato sin montos ni recibos, con su inicio y su fin, y reporta su avance en el reporte diario. Le llega el aviso.'
 
 /** El nombre del área de un subcontrato, o null si es de antes y todavía no la tiene. */
 export function nombreDeAreaSubcontrato(codigo: string | null | undefined): string | null {

@@ -196,11 +196,13 @@ values ('fichas-vehiculos', pg_temp.txt('v1') || '/' || pg_temp.txt('pdf') || '.
 select public.adjuntar_ficha_vehiculo_firmada(pg_temp.id('v1'), pg_temp.txt('v1') || '/' || pg_temp.txt('pdf') || '.pdf', 'ficha.pdf');
 reset role;
 
--- RR. HH. registra a Juan, que trabaja en la tolva.
+-- RR. HH. registra a Juan, de Maestranza, que trabaja en la tolva (desde la
+-- 20261020181000 el reporte diario solo lleva gente de taller de esas áreas).
+select id as mtz_id from public.areas where codigo = 'MTZ' \gset
 select test.como_usuario(:'rrhh_id');
 set local role authenticated;
 select public.rrhh_guardar_trabajador(gen_random_uuid(), 'Juan', 'Habilitador 405', '70000405', 'Habilitador',
-  null, '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-05', null) as juan_id \gset
+  :'mtz_id', '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-05', null) as juan_id \gset
 reset role;
 select set_config('prueba.juan', :'juan_id', true);
 create or replace function pg_temp.gente() returns jsonb language sql as $$

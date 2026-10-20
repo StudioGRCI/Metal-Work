@@ -233,7 +233,7 @@ let idViernes = null
   await avanceDe(pagina, 1).fill('20')
   await elegirPersona(pagina, 1, JUAN, '4')
   await pagina.getByRole('button', { name: 'Agregar trabajo' }).click()
-  await elegir(pagina, 'Trabajo 2: sobre qué', 'Actividad nueva')
+  await elegir(pagina, 'Trabajo 2: sobre qué', 'Tarea nueva')
   await pagina.locator('fieldset[data-trabajo="2"] textarea').fill('Corte de materia prima')
   await avanceDe(pagina, 2).fill('9')
   await elegirPersona(pagina, 2, JUAN, '3')
@@ -267,7 +267,7 @@ let idViernes = null
   comprobar(!r9.id && r9.error.includes('ya iba en 9 %') && r9.error.includes('10 % o más'), `ni la base: «${r9.error}»`)
 
   // Otra «Corte de materia prima» nueva tampoco: se continúa la que hay.
-  await elegir(pagina, 'Trabajo 1: sobre qué', 'Actividad nueva')
+  await elegir(pagina, 'Trabajo 1: sobre qué', 'Tarea nueva')
   await pagina.locator('fieldset[data-trabajo="1"] textarea').fill('corte de MATERIA prima')
   await avanceDe(pagina, 1).fill('15')
   const rDoble = await subir(pagina)

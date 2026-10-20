@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { opcionesDeTrabajo, type OpcionDeTrabajo } from '@/lib/datos/reportes-diarios'
-import { MAXIMO_FOTOS_REPORTE, MAXIMO_TRABAJOS_REPORTE } from '@/lib/dominio/reporte-diario'
+import { MAXIMO_CODIGOS_REPORTE, MAXIMO_FOTOS_REPORTE, MAXIMO_TRABAJOS_REPORTE } from '@/lib/dominio/reporte-diario'
 import { editaComoRrhh, exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -100,39 +100,58 @@ export async function opcionesDelCodigo(codigo: string, corrige: string | null, 
   }
 }
 
+const TRABAJOS = z
+  .array(TRABAJO, 'Anota al menos un trabajo realizado.')
+  .min(1, 'Anota al menos un trabajo realizado.')
+  .max(MAXIMO_TRABAJOS_REPORTE, `Un reporte lleva hasta ${MAXIMO_TRABAJOS_REPORTE} trabajos.`)
+const CODIGO_INTERNO = z
+  .string()
+  .trim()
+  .min(2, 'Escribe el código interno. Si no es para una unidad, escribe PLANTA.')
+  .max(60, 'El código interno pasa de 60 caracteres.')
+const FOTOS = z.array(z.string().min(1).max(300)).max(MAXIMO_FOTOS_REPORTE, `Cada código lleva hasta ${MAXIMO_FOTOS_REPORTE} fotos.`)
+const CABECERA = {
+  fecha: z.iso.date('Elige el día del reporte.'),
+  asunto: z.string().min(3, 'Escribe el asunto del reporte.').max(120, 'El asunto pasa de 120 caracteres.'),
+  descripcion: z.string().min(3, 'Escribe una breve descripción del reporte.').max(1000, 'La descripción pasa de 1000 caracteres.'),
+}
+
 /**
- * El supervisor sube su reporte del día, o corrige uno observado (`reemplaza`):
- * el observado se anula y este entra en su lugar. Mismo permiso que
- * `registrar_reporte_diario` y `registrar_reporte_corregido`
- * (`reporte_diario.registrar`); la base vuelve a revisar todo y es la que pasa
- * las horas al costeo y avisa a Gerencia y a RR. HH. que lo validen.
+ * Lo de un código: sus trabajos y su gente. Con personal general, la gente va
+ * una vez para todo el código y los trabajos sin la suya; si no, cada trabajo
+ * con la suya. El subcontratista no está en el personal: un código con solo
+ * subcontratos va sin gente.
  */
-export async function registrarReporteDiario(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ id: string }>> {
+function sinGente(d: { trabajos: Trabajo[]; general: boolean; personal_general: unknown[] }) {
+  const personas = d.general ? d.personal_general.length : d.trabajos.reduce((n, t) => n + t.personal.length, 0)
+  return personas === 0 && !d.trabajos.every((t) => t.sobre === 'SUBCONTRATO')
+}
+
+/**
+ * El supervisor corrige un reporte observado (`reemplaza`): el observado se
+ * anula y este entra en su lugar. Mismo permiso que `registrar_reporte_corregido`
+ * (`reporte_diario.registrar`); la base vuelve a revisar todo y es la que pasa
+ * las horas al costeo y avisa a Gerencia y a RR. HH. que lo validen. El reporte
+ * nuevo del día, con uno o varios códigos, entra por `registrarReportesDiarios`.
+ */
+export async function registrarReporteCorregido(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ id: string }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'reporte_diario.registrar')) return { ok: false, error: 'El reporte diario lo suben los supervisores.' }
 
   const analisis = z
     .object({
       id: z.guid(),
-      reemplaza: z.guid().nullable(),
-      fecha: z.iso.date('Elige el día del reporte.'),
-      codigo_interno: z
-        .string()
-        .min(2, 'Escribe el código interno. Si no es para una unidad, escribe PLANTA.')
-        .max(60, 'El código interno pasa de 60 caracteres.'),
-      asunto: z.string().min(3, 'Escribe el asunto del reporte.').max(120, 'El asunto pasa de 120 caracteres.'),
-      descripcion: z.string().min(3, 'Escribe una breve descripción del reporte.').max(1000, 'La descripción pasa de 1000 caracteres.'),
-      trabajos: z
-        .array(TRABAJO, 'Anota al menos un trabajo realizado.')
-        .min(1, 'Anota al menos un trabajo realizado.')
-        .max(MAXIMO_TRABAJOS_REPORTE, `Un reporte lleva hasta ${MAXIMO_TRABAJOS_REPORTE} trabajos.`),
+      reemplaza: z.guid('Vuelve a abrir el reporte que corriges.'),
+      ...CABECERA,
+      codigo_interno: CODIGO_INTERNO,
+      trabajos: TRABAJOS,
       general: z.boolean(),
       personal_general: z.array(PERSONA).max(60, 'El personal general lleva hasta 60 personas.'),
-      fotos: z.array(z.string().min(1).max(300)).max(MAXIMO_FOTOS_REPORTE, `Un reporte lleva hasta ${MAXIMO_FOTOS_REPORTE} fotos.`),
+      fotos: FOTOS,
     })
     .safeParse({
       id: dato(formulario, 'id'),
-      reemplaza: dato(formulario, 'reemplaza') || null,
+      reemplaza: dato(formulario, 'reemplaza'),
       fecha: dato(formulario, 'fecha'),
       codigo_interno: dato(formulario, 'codigo_interno'),
       asunto: dato(formulario, 'asunto'),
@@ -144,16 +163,11 @@ export async function registrarReporteDiario(_previo: unknown, formulario: FormD
     })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el reporte.' }
   const d = analisis.data
-
-  // Con personal general, la gente va una vez para todo el reporte y los
-  // trabajos sin la suya; si no, cada trabajo con la suya.
-  // El subcontratista no está en el personal: un reporte de solo subcontratos va sin gente.
-  const personas = d.general ? d.personal_general.length : d.trabajos.reduce((n, t) => n + t.personal.length, 0)
-  const soloSubcontratos = d.trabajos.every((t) => t.sobre === 'SUBCONTRATO')
-  if (personas === 0 && !soloSubcontratos) return { ok: false, error: 'Pon al menos a una persona con sus horas: de ahí sale el costeo.' }
+  if (sinGente(d)) return { ok: false, error: 'Pon al menos a una persona con sus horas: de ahí sale el costeo.' }
 
   const supabase = await createClient()
-  const reporte = {
+  const { data, error } = await supabase.rpc('registrar_reporte_corregido', {
+    p_reemplaza: d.reemplaza,
     p_id: d.id,
     p_fecha: d.fecha,
     p_codigo_interno: d.codigo_interno,
@@ -162,20 +176,103 @@ export async function registrarReporteDiario(_previo: unknown, formulario: FormD
     p_trabajos: d.trabajos.map((t) => trabajoParaLaBase(t, d.general)),
     p_personal_general: d.general ? d.personal_general : [],
     p_fotos: d.fotos,
-  }
-  const { data, error } = d.reemplaza
-    ? await supabase.rpc('registrar_reporte_corregido', { ...reporte, p_reemplaza: d.reemplaza })
-    : await supabase.rpc('registrar_reporte_diario', reporte)
+  })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El reporte no quedó subido. Recarga la pantalla.' }
 
   revalidatePath('/reportes-diarios')
-  if (d.reemplaza) revalidatePath(`/reportes-diarios/${d.reemplaza}`)
+  revalidatePath(`/reportes-diarios/${d.reemplaza}`)
   revalidatePath('/rrhh/costeo')
   return {
     ok: true,
     mensaje: 'Reporte subido: Gerencia y Recursos Humanos lo validan.',
     datos: { id: d.id },
+  }
+}
+
+/**
+ * El reporte del día con uno o varios códigos internos: asunto y descripción
+ * comunes, y en cada código sus trabajos, su gente y sus fotos. La base guarda
+ * un reporte por código, todos o ninguno (`registrar_reportes_diarios`), porque
+ * de cada reporte salen las horas que van al costeo de su código. Mismo permiso
+ * que la función (`reporte_diario.registrar`). Devuelve el primero: su detalle
+ * muestra los demás del mismo envío.
+ */
+export async function registrarReportesDiarios(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ id: string }>> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'reporte_diario.registrar')) return { ok: false, error: 'El reporte diario lo suben los supervisores.' }
+
+  const analisis = z
+    .object({
+      ...CABECERA,
+      codigos: z
+        .array(
+          z.object({
+            id: z.guid('Vuelve a abrir el formulario del reporte.'),
+            codigo_interno: CODIGO_INTERNO,
+            trabajos: TRABAJOS,
+            general: z.boolean(),
+            personal_general: z.array(PERSONA).max(60, 'El personal general lleva hasta 60 personas.'),
+            fotos: FOTOS,
+          }),
+          'Agrega al menos un código interno con su trabajo.',
+        )
+        .min(1, 'Agrega al menos un código interno con su trabajo.')
+        .max(MAXIMO_CODIGOS_REPORTE, `Un reporte lleva hasta ${MAXIMO_CODIGOS_REPORTE} códigos internos.`),
+    })
+    .safeParse({
+      fecha: dato(formulario, 'fecha'),
+      asunto: dato(formulario, 'asunto'),
+      descripcion: dato(formulario, 'descripcion'),
+      codigos: json(formulario, 'codigos'),
+    })
+  if (!analisis.success) {
+    const problema = analisis.error.issues[0]
+    // Con varios códigos, el aviso dice en cuál está lo que hay que corregir.
+    const n = problema?.path[0] === 'codigos' && typeof problema.path[1] === 'number' ? problema.path[1] + 1 : null
+    const lista = json(formulario, 'codigos')
+    const varios = Array.isArray(lista) && lista.length > 1
+    return { ok: false, error: `${varios && n ? `En el código ${n}: ` : ''}${problema?.message ?? 'Revisa el reporte.'}` }
+  }
+  const d = analisis.data
+  const vacio = d.codigos.findIndex(sinGente)
+  if (vacio >= 0) {
+    const varios = d.codigos.length > 1
+    return {
+      ok: false,
+      error: `${varios ? `En ${d.codigos[vacio].codigo_interno.toUpperCase()}: p` : 'P'}on al menos a una persona con sus horas: de ahí sale el costeo.`,
+    }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('registrar_reportes_diarios', {
+    p_fecha: d.fecha,
+    p_asunto: d.asunto,
+    p_descripcion: d.descripcion,
+    p_codigos: d.codigos.map((c) => ({
+      id: c.id,
+      codigo_interno: c.codigo_interno,
+      trabajos: c.trabajos.map((t) => trabajoParaLaBase(t, c.general)),
+      personal_general: c.general ? c.personal_general : [],
+      fotos: c.fotos,
+    })),
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  // La base devuelve los mismos ids, en orden: si no, no entró lo que se mandó.
+  if (!Array.isArray(data) || data.length !== d.codigos.length || data.some((id, i) => id !== d.codigos[i].id)) {
+    return { ok: false, error: 'El reporte no quedó subido. Recarga la pantalla.' }
+  }
+
+  revalidatePath('/reportes-diarios')
+  revalidatePath('/rrhh/costeo')
+  revalidatePath('/subcontratos/area')
+  return {
+    ok: true,
+    mensaje:
+      d.codigos.length === 1
+        ? 'Reporte subido: Gerencia y Recursos Humanos lo validan.'
+        : `Reporte subido con ${d.codigos.length} códigos: Gerencia y Recursos Humanos validan cada uno.`,
+    datos: { id: d.codigos[0].id },
   }
 }
 

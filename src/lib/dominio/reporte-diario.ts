@@ -10,6 +10,12 @@ export const MAXIMO_FOTOS_REPORTE = 3
 /** Los trabajos de un reporte. */
 export const MAXIMO_TRABAJOS_REPORTE = 20
 
+/**
+ * Los códigos internos de un mismo envío: cada uno entra como su propio
+ * reporte (`registrar_reportes_diarios`), con sus trabajos, su gente y sus fotos.
+ */
+export const MAXIMO_CODIGOS_REPORTE = 10
+
 /** El supervisor sube el reporte de hoy o de hasta estos días atrás, y lo anula dentro de ese plazo. */
 export const DIAS_PARA_EL_REPORTE = 7
 

@@ -171,7 +171,7 @@ let idReporte2 = null
   await pagina.fill('#rd-descripcion', 'Se avanzó la tolva del lado izquierdo; mañana se sigue con el derecho.')
 
   const t1 = pagina.locator('fieldset[data-trabajo="1"]')
-  await elegirPersona(pagina, 'Trabajo 1: sobre qué', 'Actividad nueva')
+  await elegirPersona(pagina, 'Trabajo 1: sobre qué', 'Tarea nueva')
   await t1.locator('textarea').fill('Soldadura de la tolva, lado izquierdo')
   await t1.locator('input[type="number"]').first().fill('60')
   await elegirPersona(pagina, 'Personal del trabajo 1: persona 1', ana)
@@ -182,7 +182,7 @@ let idReporte2 = null
 
   await pagina.getByRole('button', { name: 'Agregar trabajo' }).click()
   const t2 = pagina.locator('fieldset[data-trabajo="2"]')
-  await elegirPersona(pagina, 'Trabajo 2: sobre qué', 'Actividad nueva')
+  await elegirPersona(pagina, 'Trabajo 2: sobre qué', 'Tarea nueva')
   await t2.locator('textarea').fill('Armado del bastidor')
   await t2.locator('input[type="number"]').first().fill('100')
   await elegirPersona(pagina, 'Personal del trabajo 2: persona 1', bruno)
@@ -266,7 +266,7 @@ let idReporte2 = null
   await pagina.fill('#rd-asunto', asunto2)
   await pagina.fill('#rd-descripcion', 'Orden y mantenimiento de la planta.')
   const t1 = pagina.locator('fieldset[data-trabajo="1"]')
-  await elegirPersona(pagina, 'Trabajo 1: sobre qué', 'Actividad nueva')
+  await elegirPersona(pagina, 'Trabajo 1: sobre qué', 'Tarea nueva')
   await t1.locator('textarea').fill('Limpieza del área de soldadura')
   await t1.locator('input[type="number"]').first().fill('100')
   await pagina.getByText('Personal general para todo el reporte').click()
@@ -337,7 +337,8 @@ let idReporte2 = null
   await v.locator('input[name="banco"]').fill('Banco de Pruebas')
   await v.locator('input[name="numero_cuenta"]').fill('191-00000-0-03')
   await v.locator('input[name="costo_mensual"]').fill('1680')
-  await v.locator('input[name="fecha_ingreso"]').fill(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' }))
+  // La ficha pide la fecha de ingreso desde 20261020120000; Carlos se registró sin ella.
+  if (!(await v.locator('input[name="fecha_ingreso"]').inputValue())) await v.locator('input[name="fecha_ingreso"]').fill('2026-01-05')
   await v.getByRole('button', { name: 'Guardar la ficha' }).click()
   await v.waitFor({ state: 'hidden', timeout: 15000 }).catch(() => {})
   const [carlosLinea] = await consulta(
