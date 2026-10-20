@@ -49,7 +49,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
 
   const [conceptos, gastos, reparto, oficina] = await Promise.all([
     conceptosGastoGeneral(), gastosGeneralesDelMes(`${mes}-01`), repartoDelMes(`${mes}-01`),
-    veOficina ? oficinaDelMes(`${mes}-01`) : Promise.resolve({ monto: 0, sinArea: 0 }),
+    veOficina ? oficinaDelMes(`${mes}-01`) : Promise.resolve({ monto: 0, sinPago: 0 }),
   ])
   const horasDelMes = reparto.reduce((n, r) => n + r.horas, 0)
   // Sin horas en el mes, lo registrado todavía no llega a ninguna unidad: se dice arriba, no solo en la ayuda.
@@ -72,7 +72,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Gastos del mes"
-        ayuda="Servicios del local y gastos de operación que paga Administración. Cada uno se reparte por horas entre las unidades que trabajaron ese mes: cada una carga la parte de sus horas en el reporte diario o en el tareo de RR. HH. El sueldo de la oficina entra igual, solo, con el costo mensual que tiene RR. HH."
+        ayuda="Servicios del local y gastos de operación que paga Administración. Cada uno se reparte por horas entre las unidades que trabajaron ese mes: cada una carga la parte de sus horas en el reporte diario o en el tareo de RR. HH. El sueldo de la oficina entra igual, solo, con lo que RR. HH. registra como pagado a cada persona de la oficina."
         acciones={puedeRegistrar && (
           <NuevoGastoGeneral mes={mes}
             conceptos={conceptos.map((c) => ({ codigo: c.codigo, nombre: c.nombre, grupo: c.grupo }))} />
@@ -193,11 +193,12 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
           descripcion={reparto.length === 0
             ? '0 h en el mes.'
             : `${reparto.length} ${reparto.length === 1 ? 'unidad' : 'unidades'} con ${cantidad(horasDelMes)} h en el mes.`}
-          ayuda="Cada unidad carga de cada gasto del mes, y del sueldo de la oficina, la parte de sus horas: las del reporte diario y las del tareo de RR. HH. PLANTA y OFICINA no son unidades y no reciben. El sueldo de la oficina es el costo mensual que RR. HH. tiene de cada persona activa de las áreas marcadas como oficina, las de escritorio (no las del taller ni las de apoyo, que cargan sus horas a cada unidad), sin lo que ya cargó en horas a una unidad. Sin horas en el mes, los gastos esperan y se reparten en cuanto alguien reporte."
+          ayuda="Cada unidad carga de cada gasto del mes, y del sueldo de la oficina, la parte de sus horas: las del reporte diario y las del tareo de RR. HH. PLANTA y OFICINA no son unidades y no reciben. El sueldo de la oficina es lo que RR. HH. registra como pagado a la gente de las áreas marcadas como oficina, las de escritorio (no las del taller ni las de apoyo, que cargan sus horas a cada unidad): cada pago, semanal, quincenal o mensual, entra por los días que caen en el mes, con sus aportes, y sin lo que esa persona ya cargó en horas a una unidad. Sin horas en el mes, los gastos esperan y se reparten en cuanto alguien reporte."
         />
-        {oficina.sinArea > 0 && (
-          <TarjetaCuerpo className="border-b border-borde text-sm text-aviso">
-            {oficina.sinArea === 1 ? 'Un trabajador con costo no tiene área' : `${oficina.sinArea} trabajadores con costo no tienen área`}: RR. HH. tiene que ponérsela para saber si su sueldo es de la oficina.
+        {oficina.sinPago > 0 && (
+          <TarjetaCuerpo className="border-b border-borde text-sm text-aviso" data-oficina-sin-pago>
+            {/* Sin cuántas personas: con el total al lado dejaría adivinar sueldos. */}
+            Faltan pagos de la oficina en este mes: el sueldo de la oficina sale incompleto hasta que RR. HH. los registre.
           </TarjetaCuerpo>
         )}
         <Tabla className="max-w-2xl">

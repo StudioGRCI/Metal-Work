@@ -15,6 +15,7 @@ function dato(formulario: FormData, nombre: string) {
 
 const SIN_PERMISO = 'La ficha del personal la lleva Recursos Humanos.'
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/
+const FECHA = /^\d{4}-\d{2}-\d{2}$/
 
 /** Registra o corrige la ficha de una persona. Mismo permiso que `rrhh_guardar_trabajador`. */
 export async function guardarTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
@@ -31,6 +32,7 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
       area_id: z.union([z.literal(''), z.guid()]),
       hora_entrada: z.string().regex(HORA, 'Elige la hora de entrada.'),
       hora_salida: z.string().regex(HORA, 'Elige la hora de salida.'),
+      fecha_ingreso: z.string().regex(FECHA, 'Pon la fecha de ingreso: el primer día que trabajó.'),
       banco: z.string().min(2, 'Escribe el banco.').max(60, 'El banco pasa de 60 caracteres.'),
       tipo_cuenta: z.enum(TIPOS_CUENTA, { message: 'Elige el tipo de cuenta.' }),
       numero_cuenta: z.string().regex(/^[0-9-]{6,30}$/, 'El número de cuenta lleva solo dígitos y guiones (de 6 a 30).'),
@@ -56,6 +58,7 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
       area_id: dato(formulario, 'area_id'),
       hora_entrada: dato(formulario, 'hora_entrada'),
       hora_salida: dato(formulario, 'hora_salida'),
+      fecha_ingreso: dato(formulario, 'fecha_ingreso'),
       banco: dato(formulario, 'banco'),
       tipo_cuenta: dato(formulario, 'tipo_cuenta'),
       numero_cuenta: dato(formulario, 'numero_cuenta').replace(/\s/g, ''),
@@ -87,45 +90,93 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
   revalidatePath('/rrhh/personal')
   revalidatePath('/rrhh/asistencia')
 
-  // El costo va aparte (solo RR. HH. lo lee) y se guarda después de la ficha, que ya quedó.
+  // Lo que va aparte, después de la ficha que ya quedó. Cada parte se intenta aunque
+  // otra falle, y el aviso nombra todo lo que no se guardó: si cortara en la primera,
+  // el costo y la remuneración escritos se perderían sin que nadie lo sepa.
+  const noQuedo: string[] = []
+  const revisar = (que: string, r: { data: unknown; error: { message: string; code?: string } | null }) => {
+    if (r.error) noQuedo.push(`${que} (${mensajeDeError(r.error)})`)
+    else if (r.data !== d.id) noQuedo.push(`${que} (recarga la pantalla)`)
+    return !r.error && r.data === d.id
+  }
+  // La fecha de ingreso: de ella cuenta el sueldo de la oficina.
+  revisar('la fecha de ingreso', await supabase.rpc('rrhh_guardar_ingreso_trabajador', { p_trabajador_id: d.id, p_fecha: d.fecha_ingreso }))
+  // El costo: solo RR. HH. lo lee.
   if (d.costo_mensual !== '') {
     const costo = await supabase.rpc('rrhh_guardar_costo_trabajador', { p_trabajador_id: d.id, p_costo_mensual: d.costo_mensual })
-    if (costo.error) return { ok: false, error: `La ficha quedó guardada, pero el costo mensual no: ${mensajeDeError(costo.error)}` }
-    if (costo.data !== d.id) return { ok: false, error: 'La ficha quedó guardada, pero el costo mensual no. Recarga la pantalla.' }
-    revalidatePath('/rrhh/costeo')
+    if (revisar('el costo mensual', costo)) revalidatePath('/rrhh/costeo')
   }
-  // La remuneración, igual: aparte y después. Con ella entra a la planilla diaria.
+  // La remuneración: con ella entra a la planilla diaria.
   if (d.remuneracion_mensual !== '') {
     const remuneracion = await supabase.rpc('rrhh_guardar_remuneracion_trabajador', {
       p_trabajador_id: d.id,
       p_remuneracion_mensual: d.remuneracion_mensual,
     })
-    if (remuneracion.error) {
-      return { ok: false, error: `La ficha quedó guardada, pero la remuneración mensual no: ${mensajeDeError(remuneracion.error)}` }
-    }
-    if (remuneracion.data !== d.id) return { ok: false, error: 'La ficha quedó guardada, pero la remuneración mensual no. Recarga la pantalla.' }
-    revalidatePath('/planilla-diaria')
+    if (revisar('la remuneración mensual', remuneracion)) revalidatePath('/planilla-diaria')
   }
+  if (noQuedo.length > 0) return { ok: false, error: `La ficha quedó guardada, pero no se guardó ${noQuedo.join('; ni ')}.` }
   return { ok: true, mensaje: `${d.nombres} ${d.apellidos} queda en el personal.` }
 }
 
-/** Da de baja o vuelve a dar de alta. Mismo permiso que `rrhh_cambiar_estado_trabajador`. */
-export async function cambiarEstadoTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+/** Vuelve a dar de alta a quien regresa, con el día en que vuelve. Mismo permiso que `rrhh_dar_de_alta_trabajador`. */
+export async function darDeAltaTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const analisis = z
-    .object({ id: z.guid(), activo: z.enum(['si', 'no']) })
-    .safeParse({ id: dato(formulario, 'id'), activo: dato(formulario, 'activo') })
-  if (!analisis.success) return { ok: false, error: 'Vuelve a cargar la pantalla.' }
-  const activo = analisis.data.activo === 'si'
+    .object({ id: z.guid(), fecha: z.string().regex(FECHA, 'Pon el día en que vuelve a trabajar.') })
+    .safeParse({ id: dato(formulario, 'id'), fecha: dato(formulario, 'fecha_reingreso') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('rrhh_cambiar_estado_trabajador', { p_id: analisis.data.id, p_activo: activo })
+  const { data, error } = await supabase.rpc('rrhh_dar_de_alta_trabajador', { p_trabajador_id: analisis.data.id, p_fecha: analisis.data.fecha })
   if (error) return { ok: false, error: mensajeDeError(error) }
-  if (data !== analisis.data.id) return { ok: false, error: 'No se pudo cambiar el estado. Recarga la pantalla.' }
+  if (data !== analisis.data.id) return { ok: false, error: 'No se pudo dar de alta. Recarga la pantalla.' }
 
   revalidatePath('/rrhh/personal')
   revalidatePath('/rrhh/asistencia')
-  return { ok: true, mensaje: activo ? 'Vuelve a estar de alta.' : 'Queda de baja: el portero ya no le marca.' }
+  revalidatePath('/rrhh/pagos-oficina')
+  return { ok: true, mensaje: 'Vuelve a estar de alta.' }
+}
+
+/** Quita una baja puesta por error: la ficha vuelve como estaba. Mismo permiso que `rrhh_cambiar_estado_trabajador`. */
+export async function cambiarEstadoTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+
+  const analisis = z.object({ id: z.guid() }).safeParse({ id: dato(formulario, 'id') })
+  if (!analisis.success) return { ok: false, error: 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('rrhh_cambiar_estado_trabajador', { p_id: analisis.data.id, p_activo: true })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'No se pudo dar de alta. Recarga la pantalla.' }
+
+  revalidatePath('/rrhh/personal')
+  revalidatePath('/rrhh/asistencia')
+  return { ok: true, mensaje: 'Vuelve a estar de alta.' }
+}
+
+/** Da de baja con el último día que trabajó. Mismo permiso que `rrhh_dar_de_baja_trabajador`. */
+export async function darDeBajaTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+
+  const analisis = z
+    .object({ id: z.guid(), fecha_baja: z.string().regex(FECHA, 'Pon la fecha de baja: el último día que trabajó.') })
+    .safeParse({ id: dato(formulario, 'id'), fecha_baja: dato(formulario, 'fecha_baja') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('rrhh_dar_de_baja_trabajador', {
+    p_trabajador_id: analisis.data.id,
+    p_fecha: analisis.data.fecha_baja,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'No quedó de baja. Recarga la pantalla.' }
+
+  revalidatePath('/rrhh/personal')
+  revalidatePath('/rrhh/asistencia')
+  revalidatePath('/costos/gastos-generales')
+  return { ok: true, mensaje: 'Queda de baja: el portero ya no le marca.' }
 }

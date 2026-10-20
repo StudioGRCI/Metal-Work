@@ -13,6 +13,10 @@ export type Trabajador = {
   hora_entrada: string
   hora_salida: string
   activo: boolean
+  /** El primer día que trabajó. Vacía en quien se registró antes de que la ficha la tuviera. */
+  fecha_ingreso: string | null
+  /** El último día que trabajó, si está de baja. */
+  fecha_baja: string | null
   area: { id: string; codigo: string; nombre: string } | null
   /** Solo la ve RR. HH.: para el portero el embed llega vacío. */
   cuenta: { banco: string; tipo_cuenta: string; numero_cuenta: string; cci: string | null } | null
@@ -23,7 +27,7 @@ export type Trabajador = {
 }
 
 const COLUMNAS_TRABAJADOR =
-  'id, nombres, apellidos, dni, cargo, area_id, hora_entrada, hora_salida, activo,' +
+  'id, nombres, apellidos, dni, cargo, area_id, hora_entrada, hora_salida, activo, fecha_ingreso, fecha_baja,' +
   ' area:areas(id, codigo, nombre), cuenta:trabajador_cuentas(banco, tipo_cuenta, numero_cuenta, cci),' +
   ' costo:trabajador_costos(costo_mensual), remuneracion:trabajador_remuneraciones(remuneracion_mensual)'
 
@@ -317,4 +321,64 @@ export async function listarPermisos(mes?: string): Promise<Permiso[]> {
         ]
       : [],
   )
+}
+
+/** Un pago a una persona de la oficina, con el tramo de días que paga. Solo lo lee RR. HH. */
+export type PagoOficina = {
+  id: string
+  trabajador_id: string
+  desde: string
+  hasta: string
+  monto: number
+  aportes: number
+  nota: string | null
+  anulado_en: string | null
+  motivo_anulacion: string | null
+  trabajador: { nombres: string; apellidos: string; cargo: string | null } | null
+  anulador: { nombres: string; apellidos: string } | null
+}
+
+/** Los pagos de la oficina que tocan algún día del mes `YYYY-MM`, anulados incluidos. */
+export async function pagosOficinaDelMes(mes: string, finDelMes: string): Promise<PagoOficina[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('oficina_pagos')
+    .select(
+      'id, trabajador_id, desde, hasta, monto, aportes, nota, anulado_en, motivo_anulacion, trabajador:trabajadores(nombres, apellidos, cargo), anulador:usuarios!oficina_pagos_anulado_por_fkey(nombres, apellidos)',
+    )
+    .lte('desde', finDelMes)
+    .gte('hasta', `${mes}-01`)
+    .order('desde')
+    .order('creado_en')
+  if (error) throw new Error(`No se pudieron leer los pagos de la oficina: ${error.message}`)
+  return (data ?? []).map((p) => ({ ...p, monto: Number(p.monto), aportes: Number(p.aportes) }))
+}
+
+/**
+ * Desde cuándo cuentan los días sin pago de cada persona: la misma fecha que usa la
+ * base (`inicio_registro_pagos_oficina`). Exige `rrhh.personal`.
+ */
+export async function inicioDelRegistroDePagos(): Promise<Map<string, string>> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('rrhh_inicio_registro_pagos_oficina')
+  if (error) throw new Error(`No se pudo leer desde cuándo se registran los pagos de la oficina: ${error.message}`)
+  return new Map((data ?? []).flatMap((f) => (f.trabajador_id && f.desde ? [[f.trabajador_id, f.desde] as const] : [])))
+}
+
+/** Los periodos que cada persona ya trabajó antes de volver a entrar, por persona. Solo RR. HH. */
+export async function periodosAnteriores(): Promise<Map<string, { ingreso: string | null; baja: string }[]>> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('trabajador_periodos').select('trabajador_id, ingreso, baja').order('baja')
+  if (error) throw new Error(`No se pudieron leer los periodos trabajados: ${error.message}`)
+  const porPersona = new Map<string, { ingreso: string | null; baja: string }[]>()
+  for (const q of data ?? []) porPersona.set(q.trabajador_id, [...(porPersona.get(q.trabajador_id) ?? []), { ingreso: q.ingreso, baja: q.baja }])
+  return porPersona
+}
+
+/** Los ids de las áreas marcadas como oficina: a su gente se le registran los pagos. */
+export async function areasDeOficina(): Promise<Set<string>> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('areas').select('id').eq('es_oficina', true)
+  if (error) throw new Error(`No se pudieron leer las áreas de la oficina: ${error.message}`)
+  return new Set((data ?? []).map((a) => a.id))
 }

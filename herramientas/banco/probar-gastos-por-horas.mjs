@@ -3,7 +3,7 @@
  * (migración 20261020110000), con la cuenta de cada puesto (nunca ADMIN):
  *
  *   1. RR. HH. carga 8 h de un soldador a una unidad nueva; hay una persona
- *      nueva de Administración con su costo mensual.
+ *      nueva de Administración, con el pago de su mes registrado (20261020120000).
  *   2. Administración registra la luz del mes: el formulario ya no pregunta
  *      cómo se reparte, la base la guarda POR HORAS, y «Cómo se reparte» lista
  *      la unidad con sus horas y su parte, y el sueldo de la oficina sumado.
@@ -121,6 +121,13 @@ try {
     [sello, CUENTAS.rrhh],
   )
   const [soldador] = await consulta(`select id from trabajadores where nombres = $1`, [`Soldador ${sello}`])
+  const [asistente] = await consulta(`select id from trabajadores where nombres = $1`, [`Asistente ${sello}`])
+  // El sueldo de la oficina sale de lo pagado: RR. HH. le registra el mes a la asistente.
+  await comoPuesto(CUENTAS.rrhh, `select public.rrhh_registrar_pago_oficina(gen_random_uuid(), $1, $2::date, $3::date, 3000, 0, null)`, [
+    asistente.id,
+    `${mes}-01`,
+    (await consulta(`select ($1::date + interval '1 month' - interval '1 day')::date::text as fin`, [`${mes}-01`]))[0].fin,
+  ])
   await comoPuesto(CUENTAS.rrhh, `select public.rrhh_registrar_tareo($4, $1, $2::date, $3, 8, 'Soldadura del piso')`, [
     soldador.id,
     hoy,
@@ -202,7 +209,7 @@ try {
     comprobar(filaLuz.includes(`S/ ${soles(luz.monto)}`) && filaLuz.includes(`Por ahora, por horas: 8 de`),
       `Gerencia ve la luz con sus horas, provisional porque el mes no termina: «${filaLuz}»`)
     const filaOfi = limpio(await gastos.locator('tr', { hasText: 'Sueldos de la oficina' }).innerText())
-    comprobar(filaOfi.includes(`S/ ${soles(ofi.monto)}`) && filaOfi.includes('costo mensual de RR. HH. de la oficina') && !/persona/.test(filaOfi),
+    comprobar(filaOfi.includes(`S/ ${soles(ofi.monto)}`) && filaOfi.includes('pagos de la oficina registrados por RR. HH.') && !/persona/.test(filaOfi),
       `y su parte de la oficina, sin nombres: «${filaOfi}»`)
     await pagina.screenshot({ path: `${CAPTURAS}/gph-costeo.png`, fullPage: true })
     const cierre = limpio(await pagina.locator('[data-cierre="incompleto"]').innerText())
@@ -245,13 +252,17 @@ try {
     await contexto.close()
   }
 } finally {
-  // Pase lo que pase, la prueba no deja nada sumando en el banco: la luz y las 8 h
-  // anuladas con su motivo, y las dos personas de baja.
+  // Pase lo que pase, la prueba no deja nada sumando en el banco: la luz, el pago de
+  // la asistente y las 8 h anulados con su motivo, y las dos personas de baja.
   for (const g of await consulta(`select id from gastos_generales_mes where descripcion = $1 and estado = 'ACTIVO'`, [DETALLE])) {
     await comoPuesto(CUENTAS.administracion, 'select public.anular_gasto_general($1, $2)', [g.id, 'Prueba del banco: se deja anulada al terminar'])
   }
   if ((await consulta(`select 1 from tareos where id = $1 and anulado_en is null`, [TAREO])).length > 0) {
     await comoPuesto(CUENTAS.rrhh, 'select public.rrhh_anular_tareo($1, $2)', [TAREO, 'Prueba del banco: se deja anulada al terminar'])
+  }
+  for (const p of await consulta(`select p.id from oficina_pagos p join trabajadores w on w.id = p.trabajador_id
+                                   where w.nombres = $1 and p.anulado_en is null`, [`Asistente ${sello}`])) {
+    await comoPuesto(CUENTAS.rrhh, 'select public.rrhh_anular_pago_oficina($1, $2)', [p.id, 'Prueba del banco: se deja anulado al terminar'])
   }
   await consulta(`update trabajadores set activo = false where nombres = any($1::text[])`, [[`Soldador ${sello}`, `Asistente ${sello}`]])
 }

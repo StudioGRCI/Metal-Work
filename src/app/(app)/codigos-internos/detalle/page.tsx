@@ -31,7 +31,7 @@ import {
 } from '@/lib/datos/codigos-internos'
 import { codigosDeDiseno, etapasDeCodigo } from '@/lib/datos/diseno-codigos'
 import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo, type FacturadoDelCodigo } from '@/lib/datos/facturacion'
-import { repartoDelMes } from '@/lib/datos/gastos-generales'
+import { mesesSinPagosDeOficina, repartoDelMes } from '@/lib/datos/gastos-generales'
 import {
   CODIGO_SIN_AVANCE,
   CODIGO_TODOS_LOS_ACTIVOS,
@@ -86,13 +86,15 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   const pedida = vistaValida(params.vista)
   const vista = vistas.some((v) => v.valor === pedida) ? pedida : 'avance'
 
-  const [conDocumentos, deDiseno, avances, facturado, reparto, horasDelMes] = await Promise.all([
+  const [conDocumentos, deDiseno, avances, facturado, reparto, horasDelMes, faltaOficina] = await Promise.all([
     listarCodigosInternos(),
     codigosDeDiseno(),
     avanceDeLosCodigos(codigo),
     veFacturas && !aTodos ? facturadoDelCodigo(codigo) : Promise.resolve(null),
     aTodos ? repartoATodosLosActivos() : Promise.resolve<RepartoATodosFila[]>([]),
     miraMes ? repartoDelMes(`${hoyLima().slice(0, 7)}-01`) : Promise.resolve([]),
+    // Quien cierra ve antes de intentarlo los meses que esperan los pagos de la oficina.
+    cierra && !aTodos && !noEsUnidad(codigo) ? mesesSinPagosDeOficina(codigo) : Promise.resolve<string[]>([]),
   ])
   const esperaElMes = horasDelMes.some((r) => r.codigo === codigo)
   const avance = avances.get(codigo)
@@ -169,6 +171,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
                 verPrecio={puede(perfil, 'cotizaciones.ver_pdf_comercial')}
                 cierra={cierra}
                 esperaElMes={esperaElMes}
+                faltaOficina={faltaOficina}
               />
               <LineaDeDiseno d={diseno} />
             </>
@@ -206,6 +209,7 @@ function ComoVa({
   verPrecio,
   cierra,
   esperaElMes,
+  faltaOficina,
 }: {
   c: ResumenCodigo
   avance: AvanceDeCodigo | undefined
@@ -217,6 +221,8 @@ function ComoVa({
   cierra: boolean
   /** La unidad tiene horas en el mes en curso: el cierre espera a que termine. */
   esperaElMes: boolean
+  /** Los meses con horas de la unidad a los que les faltan pagos de la oficina. */
+  faltaOficina: string[]
 }) {
   const costo = costoDelCodigo(c)
   const manoObra = c.mano_obra + c.recargo_extras
@@ -353,7 +359,7 @@ function ComoVa({
           {c.compras === 1 ? 'OC' : 'OC'}. No se suman al costo: lo comprado entra al almacén y se cuenta cuando sale para este código.
         </p>
       )}
-      {!noEsUnidad(codigo) && <LineaCierre c={c} codigo={codigo} verPrecio={verPrecio} cierra={cierra} esperaElMes={esperaElMes} />}
+      {!noEsUnidad(codigo) && <LineaCierre c={c} codigo={codigo} verPrecio={verPrecio} cierra={cierra} esperaElMes={esperaElMes} faltaOficina={faltaOficina} />}
     </div>
   )
 }
@@ -536,12 +542,14 @@ function LineaCierre({
   verPrecio,
   cierra,
   esperaElMes,
+  faltaOficina,
 }: {
   c: ResumenCodigo
   codigo: string
   verPrecio: boolean
   cierra: boolean
   esperaElMes: boolean
+  faltaOficina: string[]
 }) {
   const z = c.cierre
   if (!z) {
@@ -555,6 +563,8 @@ function LineaCierre({
         `${c.venta.sin_igv === 1 ? 'confirmar si la cotización incluye IGV' : `confirmar si ${c.venta.sin_igv} cotizaciones incluyen IGV`} (Gerencia o Administración en el expediente de la OT, o Ventas al corregir la cotización)`,
       c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo carga Tesorería)',
       esperaElMes && 'que termine el mes: los gastos del mes y el sueldo de la oficina se reparten por las horas del mes entero',
+      faltaOficina.length > 0 &&
+        `registrar los pagos de la oficina de ${faltaOficina.map((m) => periodo(m)).join(', ')} (RR. HH.: los pagos, o la fecha de ingreso de quien entró después)`,
     ].filter(Boolean)
     if (falta.length > 0) {
       return (

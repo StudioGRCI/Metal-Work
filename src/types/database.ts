@@ -3652,53 +3652,75 @@ export type Database = {
           }
         ]
       }
-      oficina_mes_personas: {
+      oficina_pagos: {
         Row: {
-          periodo: string
+          id: string
           trabajador_id: string
-          costo_mensual: number
+          desde: string
+          hasta: string
+          monto: number
+          aportes: number
+          nota: string | null
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
         }
         Insert: {
-          periodo: string
+          id?: string
           trabajador_id: string
-          costo_mensual: number
+          desde: string
+          hasta: string
+          monto: number
+          aportes?: number
+          nota?: string | null
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
         }
         Update: {
-          periodo?: string
+          id?: string
           trabajador_id?: string
-          costo_mensual?: number
+          desde?: string
+          hasta?: string
+          monto?: number
+          aportes?: number
+          nota?: string | null
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
         }
         Relationships: [
           {
-            foreignKeyName: "oficina_mes_personas_periodo_fkey"
-            columns: ["periodo"]
+            foreignKeyName: "oficina_pagos_anulado_por_fkey"
+            columns: ["anulado_por"]
             isOneToOne: false
-            referencedRelation: "oficina_meses_congelados"
-            referencedColumns: ["periodo"]
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "oficina_mes_personas_trabajador_id_fkey"
+            foreignKeyName: "oficina_pagos_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oficina_pagos_trabajador_id_fkey"
             columns: ["trabajador_id"]
             isOneToOne: false
             referencedRelation: "trabajadores"
             referencedColumns: ["id"]
           }
         ]
-      }
-      oficina_meses_congelados: {
-        Row: {
-          periodo: string
-          congelado_en: string
-        }
-        Insert: {
-          periodo: string
-          congelado_en?: string
-        }
-        Update: {
-          periodo?: string
-          congelado_en?: string
-        }
-        Relationships: []
       }
       orden_compra_material_detalles: {
         Row: {
@@ -9232,6 +9254,51 @@ export type Database = {
           }
         ]
       }
+      trabajador_periodos: {
+        Row: {
+          id: string
+          trabajador_id: string
+          ingreso: string | null
+          baja: string
+          registrado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          trabajador_id: string
+          ingreso?: string | null
+          baja: string
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          trabajador_id?: string
+          ingreso?: string | null
+          baja?: string
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trabajador_periodos_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trabajador_periodos_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       trabajador_remuneraciones: {
         Row: {
           id: string
@@ -9288,6 +9355,8 @@ export type Database = {
           creado_por: string
           creado_en: string
           actualizado_en: string
+          fecha_ingreso: string | null
+          fecha_baja: string | null
         }
         Insert: {
           id?: string
@@ -9302,6 +9371,8 @@ export type Database = {
           creado_por?: string
           creado_en?: string
           actualizado_en?: string
+          fecha_ingreso?: string | null
+          fecha_baja?: string | null
         }
         Update: {
           id?: string
@@ -9316,6 +9387,8 @@ export type Database = {
           creado_por?: string
           creado_en?: string
           actualizado_en?: string
+          fecha_ingreso?: string | null
+          fecha_baja?: string | null
         }
         Relationships: [
           {
@@ -11693,10 +11766,6 @@ export type Database = {
         }
         Returns: null
       }
-      congelar_oficina: {
-        Args: Record<PropertyKey, never>
-        Returns: null
-      }
       corregir_factura_compra: {
         Args: {
           p_correccion: string | null
@@ -12333,7 +12402,7 @@ export type Database = {
         }
         Returns: {
           monto: number | null
-          sin_area: number | null
+          sin_pago: number | null
         }[]
       }
       gastos_del_mes_reparto: {
@@ -12519,6 +12588,12 @@ export type Database = {
           recogido_en: string | null
         }[]
       }
+      inicio_registro_pagos_oficina: {
+        Args: {
+          p_trabajador_id: string | null
+        }
+        Returns: string
+      }
       insumos_de_compras: {
         Args: {
           p_ids: string[] | null
@@ -12650,6 +12725,14 @@ export type Database = {
           p_compra: string | null
         }
         Returns: string
+      }
+      meses_sin_pagos_oficina: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          periodo: string | null
+        }[]
       }
       mi_rol: {
         Args: Record<PropertyKey, never>
@@ -13823,6 +13906,13 @@ export type Database = {
         }
         Returns: string
       }
+      rrhh_anular_pago_oficina: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       rrhh_anular_permiso: {
         Args: {
           p_id: string | null
@@ -13857,6 +13947,20 @@ export type Database = {
           codigo: string | null
         }[]
       }
+      rrhh_dar_de_alta_trabajador: {
+        Args: {
+          p_trabajador_id: string | null
+          p_fecha: string | null
+        }
+        Returns: string
+      }
+      rrhh_dar_de_baja_trabajador: {
+        Args: {
+          p_trabajador_id: string | null
+          p_fecha: string | null
+        }
+        Returns: string
+      }
       rrhh_decidir_horas_extras: {
         Args: {
           p_id: string | null
@@ -13870,6 +13974,13 @@ export type Database = {
         Args: {
           p_trabajador_id: string | null
           p_costo_mensual: number | null
+        }
+        Returns: string
+      }
+      rrhh_guardar_ingreso_trabajador: {
+        Args: {
+          p_trabajador_id: string | null
+          p_fecha: string | null
         }
         Returns: string
       }
@@ -13930,6 +14041,13 @@ export type Database = {
           desde: string | null
         }[]
       }
+      rrhh_inicio_registro_pagos_oficina: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          trabajador_id: string | null
+          desde: string | null
+        }[]
+      }
       rrhh_justificar_permiso: {
         Args: {
           p_id: string | null
@@ -13969,6 +14087,18 @@ export type Database = {
           p_detalle: string | null
           p_codigo_interno?: string | null
           p_dias_suspension?: number | null
+        }
+        Returns: string
+      }
+      rrhh_registrar_pago_oficina: {
+        Args: {
+          p_id: string | null
+          p_trabajador_id: string | null
+          p_desde: string | null
+          p_hasta: string | null
+          p_monto: number | null
+          p_aportes: number | null
+          p_nota: string | null
         }
         Returns: string
       }
@@ -14221,7 +14351,7 @@ export type Database = {
           periodo: string | null
           personas: number | null
           monto: number | null
-          sin_area: number | null
+          sin_pago: number | null
         }[]
       }
       sumar_dias_habiles: {
