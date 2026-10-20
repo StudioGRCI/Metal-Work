@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 function dato(formulario: FormData, nombre: string) {
@@ -27,7 +27,7 @@ function repintar() {
  */
 export async function decidirHorasExtras(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'planilla_diaria.preparar')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'planilla_diaria.preparar')) return { ok: false, error: SIN_PERMISO }
   const analisis = z
     .object({ id: z.guid(), trabajador_id: z.guid(), fecha: z.iso.date(), decision: z.enum(['PAGAR', 'RESERVAR']) })
     .safeParse({
@@ -59,7 +59,7 @@ export async function decidirHorasExtras(_previo: unknown, formulario: FormData)
 /** Anular una decisión equivocada: las horas vuelven a esperar. Mismo permiso que `rrhh_anular_decision_horas_extras`. */
 export async function anularDecisionHorasExtras(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'planilla_diaria.preparar')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'planilla_diaria.preparar')) return { ok: false, error: SIN_PERMISO }
   const analisis = z.object({ id: z.guid(), motivo: MOTIVO }).safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
 
@@ -75,7 +75,7 @@ export async function anularDecisionHorasExtras(_previo: unknown, formulario: Fo
 /** Usar horas del saldo en otra ocasión (un permiso, un descanso). Mismo permiso que `rrhh_usar_saldo_horas`. */
 export async function usarSaldoHoras(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'planilla_diaria.preparar')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'planilla_diaria.preparar')) return { ok: false, error: SIN_PERMISO }
   const analisis = z
     .object({
       id: z.guid(),
@@ -112,7 +112,7 @@ export async function usarSaldoHoras(_previo: unknown, formulario: FormData): Pr
 /** Anular un uso del saldo: las horas vuelven al saldo. Mismo permiso que `rrhh_anular_uso_saldo`. */
 export async function anularUsoSaldo(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'planilla_diaria.preparar')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'planilla_diaria.preparar')) return { ok: false, error: SIN_PERMISO }
   const analisis = z.object({ id: z.guid(), motivo: MOTIVO }).safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
 
@@ -128,7 +128,7 @@ export async function anularUsoSaldo(_previo: unknown, formulario: FormData): Pr
 /** RR. HH. ajusta la regla de las horas extras, sin bajar de la ley. Mismo permiso que `rrhh_guardar_regla_horas_extras`. */
 export async function guardarReglaHorasExtras(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'planilla_diaria.preparar')) return { ok: false, error: 'La regla de las horas extras la ajusta Recursos Humanos.' }
+  if (!editaComoRrhh(perfil, 'planilla_diaria.preparar')) return { ok: false, error: 'La regla de las horas extras la ajusta Recursos Humanos.' }
   const analisis = z
     .object({
       horas_tramo1: z.coerce.number().min(0, 'Las horas con el primer recargo van de 0 a 2.').max(2, 'Las horas con el primer recargo van de 0 a 2: la ley paga las siguientes con el segundo.'),

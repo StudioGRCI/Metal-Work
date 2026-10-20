@@ -7,8 +7,8 @@
 -- los gastos que Administración aprobó en la OT de la unidad y la merma que
 -- Diseño evaluó en ella. El presupuesto fijado a mano en la OT manda sobre el
 -- de la hoja; sin costo todavía no hay margen ni cierre.
--- Los dólares van a soles al tipo de cambio de Tesorería, y sin cambio no se
--- adivinan. El margen sale de la cotización aprobada sin IGV. Gerencia cierra
+-- Los dólares van a soles al tipo de cambio que registra Contabilidad (antes
+-- Tesorería, hasta la migración 20261020174600), y sin cambio no se adivinan. El margen sale de la cotización aprobada sin IGV. Gerencia cierra
 -- el costeo solo cuando está completo, y lo reabre con motivo.
 -- Cada paso con la cuenta del área que lo hace —nunca ADMIN— y
 -- `set local role authenticated`. Termina en rollback.
@@ -27,6 +27,7 @@ insert into public.sedes (codigo, nombre) values ('QA97', 'Taller prueba de cost
 select test.crear_usuario('Rosa', 'Humanos', 'rrhh397@demo.pe', 'RECURSOS_HUMANOS', (select id from public.sedes where codigo = 'QA97')) as rrhh_id \gset
 select test.crear_usuario('Gema', 'Gerente', 'gerencia397@demo.pe', 'GERENTE', (select id from public.sedes where codigo = 'QA97')) as gerente_id \gset
 select test.crear_usuario('Teo', 'Tesoro', 'tesoreria397@demo.pe', 'TESORERIA', (select id from public.sedes where codigo = 'QA97')) as tesoreria_id \gset
+select test.crear_usuario('Cata', 'Contable', 'contabilidad397@demo.pe', 'CONTABILIDAD', (select id from public.sedes where codigo = 'QA97')) as contabilidad_id \gset
 select test.crear_usuario('Mario', 'Maestranza', 'sup.mtz397@demo.pe', 'SUPERVISOR', (select id from public.sedes where codigo = 'QA97')) as sup_id \gset
 select test.crear_usuario('Olga', 'Oficina', 'oficina397@demo.pe', 'ADMINISTRACION', (select id from public.sedes where codigo = 'QA97')) as oficina_id \gset
 select test.crear_usuario('Vico', 'Ventas', 'ventas397@demo.pe', 'VENDEDOR', (select id from public.sedes where codigo = 'QA97')) as vendedor_id \gset
@@ -44,6 +45,7 @@ select id as carroceria_id from public.tipos_carroceria where activo order by or
 select set_config('prueba.rrhh', :'rrhh_id', true);
 select set_config('prueba.gerente', :'gerente_id', true);
 select set_config('prueba.tesoreria', :'tesoreria_id', true);
+select set_config('prueba.contabilidad', :'contabilidad_id', true);
 select set_config('prueba.sup', :'sup_id', true);
 select set_config('prueba.oficina', :'oficina_id', true);
 select set_config('prueba.vendedor', :'vendedor_id', true);
@@ -217,10 +219,10 @@ begin
   reset role;
 end $$;
 
--- Tesorería carga el tipo de cambio del primer día del mes y de hoy.
+-- Contabilidad carga el tipo de cambio del primer día del mes y de hoy.
 do $$
 begin
-  perform test.como_usuario(current_setting('prueba.tesoreria')::uuid);
+  perform test.como_usuario(current_setting('prueba.contabilidad')::uuid);
   set local role authenticated;
   insert into public.tipos_de_cambio (fecha, compra, venta)
   select f, 3.70, 3.75 from unnest(array[current_setting('prueba.periodo')::date, current_setting('prueba.hoy')::date]) f
@@ -394,10 +396,14 @@ begin
 
   -- Tesorería paga US$ 50 de una cuenta en dólares al cambio pactado de 3.80: entran S/ 190, no al cambio del día.
   perform test.como_usuario(current_setting('prueba.tesoreria')::uuid);
-  set local role authenticated;
   perform set_config('prueba.caja_usd', gen_random_uuid()::text, true);
+  -- La cuenta de banco se abre con la captura de su saldo (migración 20261020174500).
+  perform set_config('prueba.captura_usd', current_setting('prueba.caja_usd') || '/' || gen_random_uuid() || '.png', true);
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('apertura-caja', current_setting('prueba.captura_usd'), current_setting('prueba.tesoreria'), '{"mimetype":"image/png","size":100}'::jsonb);
+  set local role authenticated;
   v := public.guardar_caja(current_setting('prueba.caja_usd')::uuid, 'Cuenta en dólares QA', 'BANCO', 'BCP', 'USD', 500,
-                           current_setting('prueba.d1')::date, true);
+                           current_setting('prueba.d1')::date, true, current_setting('prueba.captura_usd'));
   v := public.registrar_movimiento_caja(gen_random_uuid(), current_setting('prueba.caja_usd')::uuid, current_setting('prueba.d1')::date,
                                         'EGRESO', 50, 'Repuesto importado de la unidad B', 'CHK397_B_26/02', null, 3.80);
   reset role;

@@ -6,8 +6,10 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import {
   cargarFichaDeVehiculo,
   cargarVehiculo,
+  estadosDeSalida,
   puntosDeFicha,
   revisionesDeSalida,
+  type EstadoDeSalida,
   type FichaDeVehiculo,
   type FotoVehiculo,
   type RevisionDeSalida,
@@ -43,7 +45,14 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
   const registra = puede(perfil, 'vehiculos.registrar')
   const alEntrar = r.fotos.filter((f) => f.momento === 'INGRESO')
   const alSalir = r.fotos.filter((f) => f.momento === 'SALIDA')
-  const [{ ficha, escaneo }, puntos, revisiones] = await Promise.all([cargarFichaDeVehiculo(r.id), puntosDeFicha(), revisionesDeSalida(r.id)])
+  const enPlanta = !r.salida_en && !anulado
+  const [{ ficha, escaneo }, puntos, revisiones, estados] = await Promise.all([
+    cargarFichaDeVehiculo(r.id),
+    puntosDeFicha(),
+    revisionesDeSalida(r.id),
+    estadosDeSalida(enPlanta ? [r.id] : []),
+  ])
+  const estado = estados.get(r.id)
 
   return (
     <>
@@ -52,7 +61,16 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
         descripcion={`${r.unidad} · ${r.empresa}`}
         migas={[{ titulo: 'Vehículos', ruta: '/vehiculos' }, { titulo: nombre }]}
         acciones={
-          registra && !r.salida_en && !anulado && <ControlesVehiculo id={r.id} nombre={nombre} cuentaId={perfil.id} />
+          registra &&
+          enPlanta && (
+            <ControlesVehiculo
+              id={r.id}
+              nombre={nombre}
+              cuentaId={perfil.id}
+              bloqueoSalida={estado?.falta_para_salir ?? null}
+              alArenado={Boolean(estado?.exige)}
+            />
+          )
         }
       />
 
@@ -64,13 +82,23 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
               {anulado ? (
                 <Insignia tono="peligro">Anulado</Insignia>
               ) : r.salida_en ? (
-                <Insignia tono="neutro">Salió</Insignia>
+                <Insignia tono="neutro">{r.sale_al_arenado ? 'Salió al arenado' : 'Salió'}</Insignia>
               ) : (
                 <Insignia tono="aviso">En planta</Insignia>
               )}
             </Dato>
             {r.placa && r.chasis && <Dato titulo="Chasis">{r.chasis}</Dato>}
             {r.codigo_interno && (r.placa || r.chasis) && <Dato titulo="Código interno">{r.codigo_interno}</Dato>}
+            {estado?.exige && (
+              <Dato titulo="Avance del código">
+                <span data-avance-salida={estado.avance ?? 0}>{estado.avance ?? 0} %</span>
+              </Dato>
+            )}
+            {estado?.exige && estado.falta_para_salir && (
+              <p id={`veh-bloqueo-${r.id}`} className="basis-full text-sm text-texto-suave" data-bloqueo-salida>
+                {estado.falta_para_salir}
+              </p>
+            )}
             {r.motivo_anulacion && (
               <p className="basis-full text-sm text-peligro">Anulado: {r.motivo_anulacion}. Sus fotos quedan como evidencia.</p>
             )}
@@ -106,8 +134,10 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
           registro={r.id}
           ficha={ficha}
           revisiones={revisiones}
-          puedePedir={registra && !anulado && !r.salida_en}
+          puedePedir={registra && enPlanta}
           salio={Boolean(r.salida_en)}
+          alArenado={r.sale_al_arenado}
+          estado={estado}
         />
 
         <Momento
@@ -206,12 +236,16 @@ function RevisionDeTesoreria({
   revisiones,
   puedePedir,
   salio,
+  alArenado,
+  estado,
 }: {
   registro: string
   ficha: FichaDeVehiculo | null
   revisiones: RevisionDeSalida[]
   puedePedir: boolean
   salio: boolean
+  alArenado: boolean
+  estado: EstadoDeSalida | undefined
 }) {
   const ultima = revisiones[0]
   const esperando = ultima?.estado === 'PENDIENTE'
@@ -228,10 +262,13 @@ function RevisionDeTesoreria({
         {puedePedir && esperando && (
           <p className="text-sm text-texto">Pedido enviado: Tesorería tiene el aviso. Su respuesta te llega como aviso y queda aquí abajo.</p>
         )}
-        {puedePedir && revisada && (
+        {puedePedir && revisada && !estado?.falta_para_salir && (
           <p className="text-sm text-texto">Tesorería la dio por revisada: ya puedes marcar la salida del vehículo.</p>
         )}
-        {puedePedir && !esperando && !revisada && (lista ? (
+        {puedePedir && !esperando && !revisada && (estado?.falta_para_pedir ? (
+          // El porqué ya está arriba, junto al avance: aquí no se repite.
+          <p className="text-sm text-texto-suave">Se pide cuando el código llegue al 100 % del avance.</p>
+        ) : lista ? (
           <PedirRevision registro={registro} solicitud={crypto.randomUUID()} />
         ) : (
           <p className="text-sm text-texto-suave">
@@ -266,7 +303,11 @@ function RevisionDeTesoreria({
             })}
           </ol>
         ) : (
-          salio && <p className="text-sm text-texto-suave">Salió sin pedido de revisión a Tesorería.</p>
+          salio && (
+            <p className="text-sm text-texto-suave">
+              {alArenado ? 'Salió al arenado: esa salida no pide revisión a Tesorería.' : 'Salió sin pedido de revisión a Tesorería.'}
+            </p>
+          )
         )}
       </TarjetaCuerpo>
     </Tarjeta>

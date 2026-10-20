@@ -36,13 +36,29 @@ export type CotizacionAprobada = FilaCotizacion & { url: string | null }
 /** En la bandeja de Contabilidad, `facturas` deja de ser la cuenta y trae las facturas mismas. */
 export type CotizacionParaFacturar = Omit<CotizacionAprobada, 'facturas'> & { facturas: FacturaVenta[] }
 
-/** Enlaces firmados de un bucket, por ruta. Sin enlace la fila igual se muestra: se ve qué hay aunque no se abra. */
+export const SIN_ENLACES =
+  'No se pudieron preparar los enlaces temporales de los documentos. Recarga la página para volver a intentar.'
+
+/**
+ * Si el almacenamiento dijo que ese archivo no está (o que esta cuenta no lo
+ * ve, que responde igual). Ese caso deja la fila sin enlace; cualquier otro
+ * error es que el almacenamiento no respondió, y se avisa.
+ */
+export const archivoNoEncontrado = (error: { message: string }) => /not.?found|does not exist/i.test(error.message)
+
+/**
+ * Enlaces firmados de un bucket, por ruta. Un archivo que falta o que esta
+ * cuenta no ve deja su fila sin enlace: se ve qué hay aunque no se abra. Si el
+ * almacenamiento no responde, lanza: antes el botón del PDF desaparecía de
+ * todas las filas sin ninguna explicación.
+ */
 export async function enlaces(bucket: string, rutas: (string | null)[], segundos = 600): Promise<Map<string, string>> {
   const unicas = [...new Set(rutas.filter((r): r is string => Boolean(r)))]
   const mapa = new Map<string, string>()
   if (unicas.length === 0) return mapa
   const supabase = await createClient()
-  const { data } = await supabase.storage.from(bucket).createSignedUrls(unicas, segundos)
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrls(unicas, segundos)
+  if (error) throw new Error(SIN_ENLACES)
   for (const e of data ?? []) if (e.path && e.signedUrl) mapa.set(e.path, e.signedUrl)
   return mapa
 }
@@ -64,9 +80,10 @@ export async function cotizacionesAprobadas(codigo?: string): Promise<Cotizacion
     filas
       .filter((f) => f.archivo_ruta && !esPdf(f))
       .map(async (f) => {
-        const { data: firmado } = await supabase.storage
+        const { data: firmado, error } = await supabase.storage
           .from('cotizaciones-pdf')
           .createSignedUrl(f.archivo_ruta as string, 600, { download: f.archivo_nombre ?? true })
+        if (error && !archivoNoEncontrado(error)) throw new Error(SIN_ENLACES)
         if (firmado?.signedUrl) urls.set(f.archivo_ruta as string, firmado.signedUrl)
       }),
   )

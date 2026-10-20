@@ -187,10 +187,12 @@ insert into storage.objects (bucket_id, name, owner_id, metadata) values
   ('fotos-vehiculos', pg_temp.foto('v1', 'ingreso'), pg_temp.txt('requerimientos_req'), '{"mimetype": "image/jpeg", "size": 240000}'),
   ('fotos-vehiculos', pg_temp.foto('v1', 'salida'), pg_temp.txt('requerimientos_req'), '{"mimetype": "image/jpeg", "size": 200000}'),
   ('fotos-vehiculos', pg_temp.foto('v2', 'ingreso'), pg_temp.txt('requerimientos_req'), '{"mimetype": "image/jpeg", "size": 220000}');
+-- Motivo «otro» o «cochera»: desde 20261020166000 el trabajo del taller entra con
+-- el código de una unidad con OT y sale con el 100 %; eso lo prueba el check 405.
 select public.registrar_ingreso_vehiculo(pg_temp.id('v1'), 'CHK 363', null, lower(pg_temp.txt('codigo')), 'Tolva de prueba',
-  'EMPRESA DE PRUEBA', 'FABRICACION', null, null, jsonb_build_array(pg_temp.foto('v1', 'ingreso')));
+  'EMPRESA DE PRUEBA', 'OTRO', null, null, jsonb_build_array(pg_temp.foto('v1', 'ingreso')));
 select public.registrar_ingreso_vehiculo(pg_temp.id('v2'), 'CHK 364', null, null, 'Furgón de prueba',
-  'EMPRESA DE PRUEBA', 'MANTENIMIENTO', null, null, jsonb_build_array(pg_temp.foto('v2', 'ingreso')));
+  'EMPRESA DE PRUEBA', 'OTRO', null, null, jsonb_build_array(pg_temp.foto('v2', 'ingreso')));
 select test.afirmar((select count(*) from public.control_vehicular_items) = pg_temp.txt('puntos')::integer,
   'Requerimientos lee los puntos del formato de la ficha');
 

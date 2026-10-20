@@ -73,7 +73,7 @@ export type CostoCompleto = {
   merma_usd: number
   /** Todo lo que suma, en soles: los dólares al cambio de venta del día de cada línea. */
   costo_pen: number
-  /** Los dólares de las líneas sin tipo de cambio cargado: no suman hasta que Tesorería lo cargue. */
+  /** Los dólares de las líneas sin tipo de cambio cargado: no suman hasta que Contabilidad lo registre. */
   usd_sin_cambio: number
   lineas_sin_cambio: number
   /** Los dólares de las partes que sí pasaron a soles, y en cuánto: con eso las partes cuadran con el total. */

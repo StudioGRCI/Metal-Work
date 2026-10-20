@@ -7,7 +7,7 @@ import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
 import { ESTADOS_RQ_ABIERTOS, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima, mesLargo } from '@/lib/format'
 import { menuDe } from '@/lib/navegacion'
-import { puede, type PerfilSesion } from '@/lib/sesion'
+import { apruebaSinOrden, puede, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -212,12 +212,11 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       tono: 'aviso',
       texto: (n) => plural(n, 'reporte por aprobar', 'reportes por aprobar'),
       contar: async () => {
-        const [hoja, foto, flota] = await Promise.all([
+        const [hoja, foto] = await Promise.all([
           cabeza(supabase.from('v_ot_avance_diario').select('id', { count: 'exact', head: true }).eq('revision', 'PENDIENTE')),
           cabeza(supabase.from('ot_avance_resumen').select('id', { count: 'exact', head: true }).eq('revision', 'PENDIENTE')),
-          cabeza(supabase.from('v_flota_avance_diario').select('id', { count: 'exact', head: true }).eq('revision', 'PENDIENTE')),
         ])
-        return hoja + foto + flota
+        return hoja + foto
       },
     })
   } else if (puede(perfil, 'produccion.registrar')) {
@@ -252,6 +251,21 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
         ])
         return hoja + foto + flota
       },
+    })
+  }
+
+  // Los de los trabajos sin orden van aparte: viven en otra pantalla, y
+  // contarlos con los de las OT mandaba a buscarlos donde no están. Los ve
+  // también Gerencia, que aprueba solo esos.
+  if (apruebaSinOrden(perfil)) {
+    tareas.push({
+      clave: 'reportes_sin_orden_por_aprobar',
+      ruta: '/avance/trabajos',
+      tono: 'aviso',
+      texto: (n) =>
+        plural(n, 'reporte de un trabajo sin orden por aprobar', 'reportes de trabajos sin orden por aprobar'),
+      contar: () =>
+        cabeza(supabase.from('v_flota_avance_diario').select('id', { count: 'exact', head: true }).eq('revision', 'PENDIENTE')),
     })
   }
 

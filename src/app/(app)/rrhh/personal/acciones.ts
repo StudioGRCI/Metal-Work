@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { TIPOS_CUENTA } from '@/lib/dominio/rrhh'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 function dato(formulario: FormData, nombre: string) {
@@ -20,7 +20,7 @@ const FECHA = /^\d{4}-\d{2}-\d{2}$/
 /** Registra o corrige la ficha de una persona. Mismo permiso que `rrhh_guardar_trabajador`. */
 export async function guardarTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const analisis = z
     .object({
@@ -125,7 +125,7 @@ export async function guardarTrabajador(_previo: unknown, formulario: FormData):
 /** Vuelve a dar de alta a quien regresa, con el día en que vuelve. Mismo permiso que `rrhh_dar_de_alta_trabajador`. */
 export async function darDeAltaTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const analisis = z
     .object({ id: z.guid(), fecha: z.string().regex(FECHA, 'Pon el día en que vuelve a trabajar.') })
@@ -146,7 +146,7 @@ export async function darDeAltaTrabajador(_previo: unknown, formulario: FormData
 /** Quita una baja puesta por error: la ficha vuelve como estaba. Mismo permiso que `rrhh_cambiar_estado_trabajador`. */
 export async function cambiarEstadoTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const analisis = z.object({ id: z.guid() }).safeParse({ id: dato(formulario, 'id') })
   if (!analisis.success) return { ok: false, error: 'Vuelve a cargar la pantalla.' }
@@ -164,7 +164,7 @@ export async function cambiarEstadoTrabajador(_previo: unknown, formulario: Form
 /** Da de baja con el último día que trabajó. Mismo permiso que `rrhh_dar_de_baja_trabajador`. */
 export async function darDeBajaTrabajador(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: SIN_PERMISO }
 
   const analisis = z
     .object({ id: z.guid(), fecha_baja: z.string().regex(FECHA, 'Pon la fecha de baja: el último día que trabajó.') })

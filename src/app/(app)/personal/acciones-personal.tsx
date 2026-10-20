@@ -11,6 +11,7 @@ import { TD, TR } from '@/components/ui/tabla'
 import { Ventana } from '@/components/ui/ventana'
 import type { PersonaEnLista } from '@/lib/datos/personal'
 import { useEnvio } from '@/lib/envio'
+import { moneda } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { cambiarClave, cambiarEstado, darDeAltaPersona, guardarPersona } from './acciones'
@@ -125,16 +126,6 @@ function CamposDePersona({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Campo etiqueta="Documento" htmlFor="documento">
-          {/* Sin `inputMode="numeric"`: aquí también entran carnés de extranjería,
-              que llevan letras, y el teclado numérico no las tiene. */}
-          <Entrada
-            id="documento"
-            name="documento"
-            autoComplete="off"
-            defaultValue={persona?.documento ?? ''}
-          />
-        </Campo>
         <Campo etiqueta="Teléfono" htmlFor="telefono">
           <Entrada
             id="telefono"
@@ -146,6 +137,16 @@ function CamposDePersona({
           />
         </Campo>
       </div>
+
+      {/* El DNI y el costo por hora los pone Recursos Humanos (migración
+          20261020165000): aquí solo se leen. */}
+      {persona && (
+        <p className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-3 text-sm text-texto">
+          DNI <span className="tabular font-medium">{persona.documento ?? 'sin registrar'}</span> · costo por hora{' '}
+          <span className="tabular font-medium">{persona.costo_hora > 0 ? moneda(persona.costo_hora) : 'sin registrar'}</span>
+          <span className="mt-0.5 block text-xs text-texto-suave">Los pone y los cambia Recursos Humanos, en «DNI y costo de las cuentas».</span>
+        </p>
+      )}
 
       <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-3">
         <label className="flex items-start gap-2.5 text-sm text-texto">
@@ -165,23 +166,7 @@ function CamposDePersona({
           </span>
         </label>
 
-        {esOperario && (
-          <div className="mt-3">
-            <Campo etiqueta="Costo por hora (S/)" htmlFor="costo_hora" ayuda="Con esto se valoriza su tiempo">
-              <Entrada
-                id="costo_hora"
-                name="costo_hora"
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
-                className="tabular"
-                defaultValue={persona?.costo_hora ?? 0}
-              />
-            </Campo>
-          </div>
-        )}
-        {!esOperario && <input type="hidden" name="costo_hora" value={persona?.costo_hora ?? 0} />}
+
       </div>
     </>
   )

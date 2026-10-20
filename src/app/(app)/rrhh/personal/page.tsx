@@ -6,7 +6,7 @@ import { Tarjeta } from '@/components/ui/tarjeta'
 import { areasParaPersonal, listarTrabajadores, periodosAnteriores, type Trabajador } from '@/lib/datos/rrhh'
 import { HORAS_DEL_MES, TIPO_CUENTA, horaCorta } from '@/lib/dominio/rrhh'
 import { fecha, hoyLima, moneda } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { ControlesTrabajador, NuevoTrabajador } from './formulario'
 
@@ -19,18 +19,20 @@ const FILTROS = [
 
 export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/rrhh/personal'>) {
   const perfil = await exigirPermiso(['rrhh.personal', 'asistencia.ver'])
-  const gestiona = puede(perfil, 'rrhh.personal')
+  // RR. HH. registra y corrige; el administrador ve lo mismo, sin botones (migración 20261020167000).
+  const ve = puede(perfil, 'rrhh.personal')
+  const gestiona = editaComoRrhh(perfil, 'rrhh.personal')
   const hoy = hoyLima()
   // La miga lleva a las planillas solo a quien las abre: Gerencia y
   // Administración consultan esto con `asistencia.ver` y ahí las rebotaban.
   const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const filtro = params.estado === 'todos' ? 'todos' : 'activos'
-  // Los periodos de quien volvió a entrar solo los lee RR. HH.
+  // Los periodos de quien volvió a entrar y el DNI solo los lee RR. HH.
   const [personal, areas, periodos] = await Promise.all([
-    listarTrabajadores(filtro),
+    listarTrabajadores(filtro, { conDni: ve }),
     areasParaPersonal(),
-    gestiona ? periodosAnteriores() : Promise.resolve(new Map<string, { ingreso: string | null; baja: string }[]>()),
+    ve ? periodosAnteriores() : Promise.resolve(new Map<string, { ingreso: string | null; baja: string }[]>()),
   ])
 
   return (
@@ -60,7 +62,7 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
             <tr>
               <TH>Persona</TH>
               <TH className="hidden md:table-cell">Horario</TH>
-              {gestiona && <TH className="hidden lg:table-cell">Cuenta</TH>}
+              {ve && <TH className="hidden lg:table-cell">Cuenta</TH>}
               <TH>Estado</TH>
               {gestiona && (
                 <TH className="text-right">
@@ -77,7 +79,7 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
               />
             ) : (
               personal.map((t) => (
-                <FilaTrabajador key={t.id} trabajador={t} areas={areas} gestiona={gestiona} hoy={hoy} antes={periodos.get(t.id) ?? []} />
+                <FilaTrabajador key={t.id} trabajador={t} areas={areas} ve={ve} gestiona={gestiona} hoy={hoy} antes={periodos.get(t.id) ?? []} />
               ))
             )}
           </tbody>
@@ -90,12 +92,16 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
 function FilaTrabajador({
   trabajador: t,
   areas,
+  ve,
   gestiona,
   hoy,
   antes,
 }: {
   trabajador: Trabajador
   areas: { id: string; codigo: string; nombre: string }[]
+  /** Ve la cuenta bancaria: RR. HH. y el administrador. */
+  ve: boolean
+  /** Corrige la ficha: solo RR. HH. */
   gestiona: boolean
   hoy: string
   /** Los periodos que ya trabajó antes de volver a entrar. */
@@ -108,7 +114,7 @@ function FilaTrabajador({
         <p className="font-semibold text-texto">
           {t.apellidos}, {t.nombres}
         </p>
-        <p className="tabular text-xs text-texto-suave">DNI {t.dni}</p>
+        {t.dni && <p className="tabular text-xs text-texto-suave">DNI {t.dni}</p>}
         {(t.cargo || t.area) && (
           <p className="text-xs text-texto">
             {t.cargo ?? 'Sin cargo'}
@@ -120,7 +126,7 @@ function FilaTrabajador({
       <TD className="hidden align-top md:table-cell">
         <span className="tabular text-sm text-texto">{horario}</span>
       </TD>
-      {gestiona && (
+      {ve && (
         <TD className="hidden align-top lg:table-cell">
           {t.cuenta ? (
             <>

@@ -40,8 +40,9 @@ begin
   v_id := public.rrhh_guardar_trabajador(current_setting('prueba.t1')::uuid, 'Juan Carlos', 'Tardón', '70000331', 'Soldador',
             (select id from public.areas where codigo = 'PRD'), '00:00', '18:00',
             'Banco de Pruebas', 'CORRIENTE', '191-0000000-0-31', null);
-  perform test.afirmar((select count(*) from public.trabajadores where dni in ('70000331', '70000332')) = 2, 'dos trabajadores registrados');
-  perform test.afirmar((select nombres from public.trabajadores where dni = '70000331') = 'Juan Carlos', 'la ficha se corrige con el mismo id');
+  -- El DNI ya no se lee de la tabla: RR. HH. lo lee por su función (migración 20261020165000).
+  perform test.afirmar((select count(*) from public.rrhh_dni_de_trabajadores() where dni in ('70000331', '70000332')) = 2, 'dos trabajadores registrados');
+  perform test.afirmar((select nombres from public.trabajadores where id = current_setting('prueba.t1')::uuid) = 'Juan Carlos', 'la ficha se corrige con el mismo id');
   perform test.afirmar((select tipo_cuenta from public.trabajador_cuentas where trabajador_id = current_setting('prueba.t1')::uuid) = 'CORRIENTE',
     'la cuenta se corrige con la ficha');
   perform test.afirmar((select count(*) from public.trabajador_cuentas where trabajador_id = current_setting('prueba.t1')::uuid) = 1,
@@ -73,7 +74,8 @@ begin
   perform test.como_usuario(current_setting('prueba.portero')::uuid);
   set local role authenticated;
 
-  perform test.afirmar((select count(*) from public.trabajadores where dni in ('70000331', '70000332')) = 2, 'el portero ve al personal');
+  perform test.afirmar((select count(*) from public.trabajadores
+                         where id in (current_setting('prueba.t1')::uuid, current_setting('prueba.t2')::uuid)) = 2, 'el portero ve al personal');
   perform test.afirmar((select count(*) from public.trabajador_cuentas) = 0, 'el portero NO ve ninguna cuenta bancaria');
   perform test.debe_fallar(
     format('select public.rrhh_guardar_trabajador(%L, ''Intruso'', ''Portero'', ''70000339'', null, null, ''08:00'', ''18:00'', ''Banco'', ''AHORROS'', ''123456'', null)', gen_random_uuid()),

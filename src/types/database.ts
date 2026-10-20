@@ -359,6 +359,7 @@ export type Database = {
           creado_por: string
           creado_en: string
           actualizado_en: string
+          apertura_ruta: string | null
         }
         Insert: {
           id?: string
@@ -372,6 +373,7 @@ export type Database = {
           creado_por?: string
           creado_en?: string
           actualizado_en?: string
+          apertura_ruta?: string | null
         }
         Update: {
           id?: string
@@ -385,6 +387,7 @@ export type Database = {
           creado_por?: string
           creado_en?: string
           actualizado_en?: string
+          apertura_ruta?: string | null
         }
         Relationships: [
           {
@@ -3357,6 +3360,7 @@ export type Database = {
           formato_ruta: string | null
           formato_cerrado_en: string | null
           formato_cerrado_por: string | null
+          numero_salida: string | null
         }
         Insert: {
           id: string
@@ -3386,6 +3390,7 @@ export type Database = {
           formato_ruta?: string | null
           formato_cerrado_en?: string | null
           formato_cerrado_por?: string | null
+          numero_salida?: string | null
         }
         Update: {
           id?: string
@@ -3415,6 +3420,7 @@ export type Database = {
           formato_ruta?: string | null
           formato_cerrado_en?: string | null
           formato_cerrado_por?: string | null
+          numero_salida?: string | null
         }
         Relationships: [
           {
@@ -7825,6 +7831,9 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          unidad_id: string | null
+          orden_id: string | null
+          sale_al_arenado: boolean
         }
         Insert: {
           id?: string
@@ -7845,6 +7854,9 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          unidad_id?: string | null
+          orden_id?: string | null
+          sale_al_arenado?: boolean
         }
         Update: {
           id?: string
@@ -7865,6 +7877,9 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          unidad_id?: string | null
+          orden_id?: string | null
+          sale_al_arenado?: boolean
         }
         Relationships: [
           {
@@ -7882,10 +7897,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "registro_vehiculos_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "registro_vehiculos_salida_por_fkey"
             columns: ["salida_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registro_vehiculos_unidad_id_fkey"
+            columns: ["unidad_id"]
+            isOneToOne: true
+            referencedRelation: "unidades"
             referencedColumns: ["id"]
           }
         ]
@@ -9548,6 +9577,41 @@ export type Database = {
           }
         ]
       }
+      usuario_datos_reservados: {
+        Row: {
+          id: string
+          usuario_id: string
+          documento: string | null
+          costo_hora: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          usuario_id: string
+          documento?: string | null
+          costo_hora?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          usuario_id?: string
+          documento?: string | null
+          costo_hora?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usuario_datos_reservados_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: true
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       usuarios: {
         Row: {
           id: string
@@ -10702,6 +10766,12 @@ export type Database = {
         }
         Returns: number
       }
+      asistencia_buscar_por_dni: {
+        Args: {
+          p_dni: string | null
+        }
+        Returns: string
+      }
       avance_de_requerimientos: {
         Args: {
           p_ids: string[] | null
@@ -11142,6 +11212,30 @@ export type Database = {
         }[]
       }
       codigo_interno_etapas: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          id: string | null
+          codigo: string | null
+          orden: number | null
+          nombre: string | null
+          area_id: string | null
+          area: string | null
+          area_codigo: string | null
+          inicio_plan: string | null
+          fin_plan: string | null
+          inicio_real: string | null
+          fin_real: string | null
+          nota: string | null
+          actualizado_en: string | null
+          reportes: number | null
+          primer_reporte: string | null
+          ultimo_reporte: string | null
+          avance_reportado: number | null
+        }[]
+      }
+      codigo_interno_etapas_calculado: {
         Args: {
           p_codigo?: string | null
         }
@@ -12299,6 +12393,12 @@ export type Database = {
         }
         Returns: null
       }
+      exigir_permiso_del_puesto: {
+        Args: {
+          p_permiso: string | null
+        }
+        Returns: null
+      }
       exigir_ver_codigos_de_diseno: {
         Args: Record<PropertyKey, never>
         Returns: null
@@ -12428,6 +12528,7 @@ export type Database = {
           p_saldo_inicial: number | null
           p_fecha_inicio: string | null
           p_activa: boolean | null
+          p_apertura_ruta: string | null
         }
         Returns: string
       }
@@ -13612,6 +13713,15 @@ export type Database = {
         }
         Returns: string[]
       }
+      registrar_salida_al_arenado: {
+        Args: {
+          p_id: string | null
+          p_salida_en: string | null
+          p_observacion: string | null
+          p_fotos: Json | null
+        }
+        Returns: string
+      }
       registrar_salida_almacen: {
         Args: {
           p_id: string | null
@@ -13991,6 +14101,13 @@ export type Database = {
           p_decision: string | null
         }
         Returns: string
+      }
+      rrhh_dni_de_trabajadores: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          trabajador_id: string | null
+          dni: string | null
+        }[]
       }
       rrhh_guardar_costo_trabajador: {
         Args: {
@@ -14554,6 +14671,58 @@ export type Database = {
           p_fotos: Json | null
         }
         Returns: null
+      }
+      vehiculo_avance_del_codigo: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: number
+      }
+      vehiculo_descripcion_de_unidad: {
+        Args: {
+          p_unidad: string | null
+        }
+        Returns: string
+      }
+      vehiculo_lo_que_falta_para_salir: {
+        Args: {
+          p_registro: string | null
+          p_con_tesoreria: boolean | null
+        }
+        Returns: string
+      }
+      vehiculo_motivo_exige_codigo: {
+        Args: {
+          p_motivo: string | null
+        }
+        Returns: boolean
+      }
+      vehiculos_codigos_para_ingreso: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          codigo_interno: string | null
+          unidad_id: string | null
+          orden_id: string | null
+          orden_numero: string | null
+          cliente: string | null
+          unidad: string | null
+          placa: string | null
+          chasis: string | null
+          en_planta: boolean | null
+        }[]
+      }
+      vehiculos_estado_de_salida: {
+        Args: {
+          p_registros: string[] | null
+        }
+        Returns: {
+          registro_id: string | null
+          exige: boolean | null
+          avance: number | null
+          tesoreria: string | null
+          falta_para_pedir: string | null
+          falta_para_salir: string | null
+        }[]
       }
     }
     Enums: {
