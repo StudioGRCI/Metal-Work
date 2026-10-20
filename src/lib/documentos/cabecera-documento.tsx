@@ -12,6 +12,10 @@ export const PALETA_DOCUMENTO = {
   tinta: '#16283d',
   suave: '#526174',
   linea: '#aab6c4',
+  /** La raya fina entre filas de una lista de puntos. */
+  lineaSuave: '#d6dce4',
+  /** La raya sobre la que se firma. */
+  firma: '#8894a2',
   fondo: '#eef2f7',
 } as const
 

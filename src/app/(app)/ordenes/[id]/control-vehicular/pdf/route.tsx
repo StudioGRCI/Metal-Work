@@ -13,8 +13,9 @@ export async function GET(_request: Request, context: RouteContext<'/ordenes/[id
   if (trabajaPorCodigo(perfil)) return NextResponse.json({ error: 'La ficha del vehículo está en Vehículos, no en la OT.' }, { status: 403 })
   const { id } = await context.params
   const db = await createClient()
+  const logo = leerLogoDocumento()
   const [orden, control, items] = await Promise.all([
-    db.from('ordenes_trabajo').select('numero, cliente:clientes!ordenes_trabajo_cliente_id_fkey(razon_social)').eq('id', id).maybeSingle(),
+    db.from('ordenes_trabajo').select('numero, cliente:clientes!ordenes_trabajo_cliente_id_fkey(razon_social), unidad:unidades!ordenes_trabajo_unidad_id_fkey(placa, marca)').eq('id', id).maybeSingle(),
     db.from('ot_control_vehicular').select('placa, marca, conductor_ingreso, dni_ingreso, fecha_ingreso, combustible_ingreso, conductor_salida, dni_salida, fecha_salida, combustible_salida, adicionales, trabajos, observacion_ingreso, observacion_salida, items').eq('orden_id', id).maybeSingle(),
     db.from('control_vehicular_items').select('codigo, categoria, nombre, orden').order('orden'),
   ])
@@ -25,7 +26,8 @@ export async function GET(_request: Request, context: RouteContext<'/ordenes/[id
     cliente={orden.data.cliente?.razon_social ?? ''}
     items={items.data ?? []}
     control={control.data}
-    logo={await leerLogoDocumento()}
+    unidad={orden.data.unidad}
+    logo={await logo}
   />)
   return new NextResponse(new Uint8Array(buffer), {
     headers: {

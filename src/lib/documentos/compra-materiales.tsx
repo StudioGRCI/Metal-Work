@@ -86,7 +86,7 @@ const s = StyleSheet.create({
   cUm: { width: '7%', textAlign: 'center' },
   cPrecio: { width: '10%', textAlign: 'right' },
   cTotal: { width: '12%', textAlign: 'right' },
-  cDestino: { width: '17%' },
+  cDestino: { width: '17%', paddingLeft: 8 },
   totales: { alignSelf: 'flex-end', width: 200, marginTop: 6, borderWidth: 0.75, borderColor: TINTA },
   totalFila: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 5, paddingVertical: 2.5 },
   totalFinal: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 5, paddingVertical: 3, backgroundColor: FONDO, borderTopWidth: 0.75, borderColor: TINTA },

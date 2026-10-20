@@ -27,3 +27,21 @@ export function SeccionDesplegable({ id, titulo, descripcion, children, abierta 
     <div className="border-t border-borde p-4">{children}</div>
   </details>
 }
+
+/**
+ * El pliegue chico, dentro de una tarjeta o de un formulario: «Agregar persona a
+ * mano», «Ver conceptos del Excel». Mismo chevron a la derecha que la sección y
+ * 44 px de alto para el dedo; cada uno tenía su triángulo y su tamaño (en RR. HH.
+ * convivían cuatro, uno de 20 px). `enCaja` lo enmarca cuando abre un formulario.
+ */
+export function Pliegue({ titulo, children, enCaja = false, className }: {
+  titulo: ReactNode; children: ReactNode; enCaja?: boolean; className?: string
+}) {
+  return <details className={cn('group/pliegue', enCaja && 'rounded-[var(--radius-base)] border border-borde', className)}>
+    <summary className={cn('flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[var(--radius-base)] text-sm font-medium text-acento focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento [&::-webkit-details-marker]:hidden', enCaja && 'px-3')}>
+      <span className="min-w-0">{titulo}</span>
+      <ChevronDown aria-hidden className="size-4 shrink-0 transition-transform group-open/pliegue:rotate-180" />
+    </summary>
+    <div className={cn(enCaja ? 'border-t border-borde p-3' : 'pt-2')}>{children}</div>
+  </details>
+}

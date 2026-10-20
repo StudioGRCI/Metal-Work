@@ -14,7 +14,7 @@ type Control = {
   observacion_ingreso: string; observacion_salida: string; items: Json
 }
 
-const { azul, tinta, suave, linea } = PALETA_DOCUMENTO
+const { azul, tinta, suave, linea, lineaSuave, firma } = PALETA_DOCUMENTO
 
 // El `lineHeight` va en cada estilo de texto y nunca en la página (ver la skill
 // `diseno`), y siempre junto a su `fontSize`: sin él, react-pdf multiplica por su
@@ -23,22 +23,25 @@ const { azul, tinta, suave, linea } = PALETA_DOCUMENTO
 const s = StyleSheet.create({
   page: { padding: 14, fontFamily: 'Helvetica', fontSize: 8, color: tinta },
   row: { flexDirection: 'row', gap: 8 },
-  box: { borderWidth: 1, borderColor: linea, padding: 5, flexGrow: 1 },
+  // Base 0: todas parten del mismo ancho y un texto largo se parte en renglones.
+  // Con solo `flexGrow`, la casilla crecía con su texto, pisaba la vecina y se
+  // cortaba en el borde de la hoja.
+  box: { borderWidth: 1, borderColor: linea, padding: 5, flexGrow: 1, flexBasis: 0, minWidth: 0 },
   label: { fontSize: 6, color: suave, marginBottom: 2, lineHeight: 1.2 },
   value: { fontSize: 8, fontFamily: 'Helvetica-Bold', minHeight: 12, lineHeight: 1.3 },
-  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 8, marginBottom: 4 },
+  filaSeccion: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 8, marginBottom: 4 },
   section: { fontFamily: 'Helvetica-Bold', fontSize: 9, lineHeight: 1.25 },
   leyenda: { fontSize: 7, color: suave, lineHeight: 1.25 },
   itemColumns: { flexDirection: 'row', gap: 8 },
   itemColumn: { width: '50%' },
-  item: { flexDirection: 'row', borderBottomWidth: 0.5, borderColor: '#d6dce4', minHeight: 11, alignItems: 'center' },
+  item: { flexDirection: 'row', borderBottomWidth: 0.5, borderColor: lineaSuave, minHeight: 10, alignItems: 'center' },
   itemName: { flexGrow: 1, width: '66%', fontSize: 8, lineHeight: 1.2 },
   itemStatus: { width: '17%', textAlign: 'center', fontSize: 6, lineHeight: 1.2 },
   group: { marginTop: 4, fontFamily: 'Helvetica-Bold', fontSize: 7, color: azul, lineHeight: 1.25 },
   // Se firma en el espacio de arriba de la raya (el `marginTop` de su fila); bajo
   // la raya, solo el rótulo. Con la cabecera de la empresa, la hoja entra justa en
   // una cara con los 49 puntos del catálogo.
-  signature: { width: '33%', paddingTop: 5, borderTopWidth: 1, borderColor: '#8894a2', textAlign: 'center', fontSize: 7, lineHeight: 1.25 },
+  signature: { width: '33%', paddingTop: 5, borderTopWidth: 1, borderColor: firma, textAlign: 'center', fontSize: 7, lineHeight: 1.25 },
 })
 
 const CATEGORIAS: Record<string, string> = {
@@ -107,8 +110,10 @@ function Columna({ items, control }: { items: Item[]; control: Control | null })
  * 2026-10-15 (migración 20261016110000). `logo` es la imagen ya leída; sin ella
  * va la razón social en texto.
  */
-export function DocumentoControlVehicular({ referencia, cliente, items, control, logo }: {
+export function DocumentoControlVehicular({ referencia, cliente, items, control, logo, unidad }: {
   referencia: { etiqueta: string; valor: string }; cliente: string; items: Item[]; control: Control | null; logo: Buffer | null
+  /** La placa y la marca que ya conoce el sistema, para la ficha que todavía no se llenó. */
+  unidad?: { placa: string | null; marca: string | null } | null
 }) {
   const mitad = Math.ceil(items.length / 2)
   const ref = referencia.valor ? referencia.etiqueta + ' ' + referencia.valor : ''
@@ -126,8 +131,8 @@ export function DocumentoControlVehicular({ referencia, cliente, items, control,
         <View style={s.row}>
           <Dato titulo="CLIENTE" valor={cliente} />
           <Dato titulo={referencia.etiqueta.toUpperCase()} valor={referencia.valor} />
-          <Dato titulo="PLACA" valor={control?.placa ?? ''} />
-          <Dato titulo="MARCA" valor={control?.marca ?? ''} />
+          <Dato titulo="PLACA" valor={control?.placa || unidad?.placa || ''} />
+          <Dato titulo="MARCA" valor={control?.marca || unidad?.marca || ''} />
         </View>
         <View style={[s.row, { marginTop: 4 }]}>
           <Dato titulo="CONDUCTOR AL INGRESO / DNI" valor={par(control?.conductor_ingreso, control?.dni_ingreso)} />
@@ -141,7 +146,7 @@ export function DocumentoControlVehicular({ referencia, cliente, items, control,
             valor={par(control?.fecha_salida ? fecha(control.fecha_salida) : '', control?.combustible_salida)}
           />
         </View>
-        <View style={s.sectionRow}>
+        <View style={s.filaSeccion}>
           <Text style={s.section}>Inspección de la unidad</Text>
           <Text style={s.leyenda}>C: Conforme · N: No tiene · O: Observado</Text>
         </View>
@@ -157,7 +162,7 @@ export function DocumentoControlVehicular({ referencia, cliente, items, control,
           <Dato titulo="OBSERVACIÓN AL INGRESO" valor={control?.observacion_ingreso ?? ''} />
           <Dato titulo="OBSERVACIÓN A LA SALIDA" valor={control?.observacion_salida ?? ''} />
         </View>
-        <View style={[s.row, { marginTop: 23 }]}>
+        <View style={[s.row, { marginTop: 23 }]} wrap={false}>
           <Text style={s.signature}>Entrega la unidad · Nombre, DNI y firma</Text>
           <Text style={s.signature}>Recibe en Metal Work · Nombre y firma</Text>
           <Text style={s.signature}>Conformidad de salida · Nombre, DNI y firma</Text>

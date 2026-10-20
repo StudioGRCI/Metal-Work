@@ -1,8 +1,8 @@
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, ChevronDown } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
+import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
@@ -11,7 +11,8 @@ import { moneda, periodo, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
-import { AgregarPersona, CerrarPlanilla, Distribuir, NuevaPlanilla, RepartirPartesIguales } from './formularios'
+import { CrearPlanilla } from './crear-planilla'
+import { AgregarPersona, CerrarPlanilla, Distribuir, RepartirPartesIguales } from './formularios'
 import { ImportarPlanilla } from './importar'
 
 export const metadata = { title: 'Planillas' }
@@ -76,12 +77,7 @@ export default async function PaginaRRHH() {
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Planillas' }]}
       />
 
-      {/* Abierta mientras no haya ninguna: es lo único que se puede hacer. */}
-      {gestiona && (
-        <SeccionDesplegable titulo="Crear planilla del mes" abierta={sinPlanillas} className="mb-5">
-          <NuevaPlanilla />
-        </SeccionDesplegable>
-      )}
+      {gestiona && <CrearPlanilla sinPlanillas={sinPlanillas} />}
 
       <div className="space-y-5">
         {sinPlanillas && (
@@ -158,8 +154,8 @@ export default async function PaginaRRHH() {
                   const avisos = x.detalle?.avisos ?? []
                   return (
                     <details key={x.id} className="group rounded-lg border border-borde">
-                      <summary className="cursor-pointer px-4 py-3 text-texto">
-                        <span className="inline-flex w-[calc(100%-1.5rem)] flex-wrap items-start justify-between gap-2 align-top">
+                      <summary className="flex min-h-11 cursor-pointer list-none items-start gap-3 px-4 py-3 text-texto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento [&::-webkit-details-marker]:hidden">
+                        <span className="flex min-w-0 flex-1 flex-wrap items-start justify-between gap-2">
                           <span className="min-w-0">
                             <strong className="block text-sm">{x.nombre}</strong>
                             <span className="text-xs text-texto-suave">
@@ -177,6 +173,7 @@ export default async function PaginaRRHH() {
                           </span>
                           <strong className="tabular text-sm">{moneda(x.monto, divisa)}</strong>
                         </span>
+                        <ChevronDown aria-hidden className="mt-0.5 size-4 shrink-0 text-texto-suave transition-transform group-open:rotate-180" />
                       </summary>
                       <div className="space-y-4 border-t border-borde p-4">
                         {avisos.length > 0 && (
@@ -215,9 +212,8 @@ export default async function PaginaRRHH() {
                                 </>
                               )}
                             </p>
-                            <details>
-                              <summary className="cursor-pointer text-sm text-acento">Ver conceptos del Excel</summary>
-                              <dl className="mt-2 divide-y divide-borde">
+                            <Pliegue titulo="Ver conceptos del Excel">
+                              <dl className="divide-y divide-borde">
                                 {x.detalle.conceptos.map((c, i) => (
                                   <div key={i} className="flex justify-between gap-4 py-2 text-sm">
                                     <dt className="text-texto-suave">
@@ -227,7 +223,7 @@ export default async function PaginaRRHH() {
                                   </div>
                                 ))}
                               </dl>
-                            </details>
+                            </Pliegue>
                           </>
                         )}
                         <p className="text-xs text-texto-suave">
@@ -242,30 +238,24 @@ export default async function PaginaRRHH() {
                   )
                 })}
 
-                {/* Pliegues de un formulario dentro de la tarjeta de la planilla: se
-                    quedan como `<details>` sueltos. La prueba de los buscadores
+                {/* Pliegues de un formulario dentro de la tarjeta de la planilla: el
+                    pliegue chico, no la sección. La prueba de los buscadores
                     (herramientas/banco/probar-buscadores.mjs) abre el reparto por
                     su texto y su `summary`. */}
                 {gestiona && abierta && (
                   <>
                     {deEsta.length > 0 && (
-                      <details className="rounded-[var(--radius-base)] border border-borde p-3">
-                        <summary className="cursor-pointer text-sm font-medium text-acento">
-                          Repartir en partes iguales entre varias OT
-                        </summary>
-                        <div className="pt-3">
-                          <RepartirPartesIguales
-                            planillaId={p.id}
-                            ordenes={opciones}
-                            personas={deEsta.map((x) => ({ id: x.id, nombre: x.nombre, asignado: x.asignado }))}
-                          />
-                        </div>
-                      </details>
+                      <Pliegue titulo="Repartir en partes iguales entre varias OT" enCaja>
+                        <RepartirPartesIguales
+                          planillaId={p.id}
+                          ordenes={opciones}
+                          personas={deEsta.map((x) => ({ id: x.id, nombre: x.nombre, asignado: x.asignado }))}
+                        />
+                      </Pliegue>
                     )}
-                    <details>
-                      <summary className="cursor-pointer py-2 text-sm text-acento">Agregar persona o subcontrato a mano</summary>
+                    <Pliegue titulo="Agregar persona o subcontrato a mano" enCaja>
                       <AgregarPersona planillaId={p.id} tipo={p.tipo} />
-                    </details>
+                    </Pliegue>
                     <CerrarPlanilla id={p.id} />
                   </>
                 )}

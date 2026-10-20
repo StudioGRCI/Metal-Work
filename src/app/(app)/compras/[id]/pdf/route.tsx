@@ -11,6 +11,7 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
   await exigirPermiso(['compras.ver', 'almacen.recibir'])
   const { id } = await context.params
   const db = await createClient()
+  const logo = leerLogoDocumento()
   const [compra, detalles] = await Promise.all([
     db
       .from('ordenes_compra_materiales')
@@ -109,7 +110,7 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
   const padron = c.padron
   const buffer = await renderToBuffer(
     <DocumentoCompraMateriales
-      logo={await leerLogoDocumento()}
+      logo={await logo}
       lineas={filas}
       compra={{
         numero: titulo,

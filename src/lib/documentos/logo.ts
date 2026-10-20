@@ -11,7 +11,8 @@ import path from 'node:path'
 export async function leerLogoDocumento(): Promise<Buffer | null> {
   try {
     return await readFile(path.join(process.cwd(), 'public', 'marca', 'logo-metal-work.png'))
-  } catch {
+  } catch (error) {
+    console.error('No se pudo leer el logo para el PDF; sale la razón social en texto.', error)
     return null
   }
 }
