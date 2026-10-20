@@ -9,9 +9,10 @@ import { createClient } from '@/lib/supabase/client'
  * El archivo va directo a Storage, a `{carpeta}/{archivo}.{extensión}`: la
  * carpeta es el id de la factura o de la orden de servicio, y la base comprueba
  * que el archivo esté ahí, que sea de quien lo anota y de qué tipo es. Después
- * `anotar` lo registra con la ruta. Si la anotación falla, o se cae por el
- * camino, el archivo se quita: un archivo que ninguna fila nombra no lo ve
- * nadie y no lo borra nadie (ver `src/lib/adjuntos.ts`).
+ * `anotar` lo registra con la ruta. Si la base dice que no, el archivo se
+ * quita: un archivo que ninguna fila nombra no lo ve nadie y no lo borra nadie.
+ * Si no llega la respuesta, no se toca: la fila pudo entrar, y quitarlo la
+ * dejaría nombrando un archivo que no existe (ver `src/lib/adjuntos.ts`).
  */
 export async function subirArchivoFinanzas(
   bucket: string,
@@ -36,7 +37,6 @@ export async function subirArchivoFinanzas(
     if (!resultado.ok) await supabase.storage.from(bucket).remove([ruta])
     return resultado
   } catch {
-    await supabase.storage.from(bucket).remove([ruta])
-    return { ok: false, error: 'No se pudo registrar el archivo. Vuelve a intentar.' }
+    return { ok: false, error: 'No llegó la respuesta. Recarga la pantalla y mira si quedó registrado antes de volver a intentar.' }
   }
 }
