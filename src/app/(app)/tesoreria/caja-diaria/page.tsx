@@ -10,7 +10,7 @@ import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cajaDelDia, type CierreReabierto, type CuentaDelDia, type MovimientoDelDia } from '@/lib/datos/caja'
-import { consolidado, detalleDeCuenta, sumaEnLaCaja, esDevolucion, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO, PANTALLA_DEL_ORIGEN } from '@/lib/dominio/caja'
+import { consolidado, detalleDeCuenta, enlaceCaptura, sumaEnLaCaja, esDevolucion, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO, PANTALLA_DEL_ORIGEN } from '@/lib/dominio/caja'
 import { fecha, fechaHora, fechaLarga, hoyLima, moneda, numero, sumarDias } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
@@ -59,6 +59,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
   const total = consolidado(empezadas, caja.cambioCompra)
   const movimientosDe = (id: string) => caja.movimientos.filter((m) => m.caja_id === id)
   const reabiertosDe = (id: string) => caja.reabiertos.filter((k) => k.caja_id === id)
+  const bancosSinCaptura = caja.cuentas.filter((c) => c.activa && c.tipo === 'BANCO' && !c.apertura_ruta).length
 
   return (
     <>
@@ -146,13 +147,8 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
                   {caja.cambioCompra && <span className="text-xs"> · dólar a {numero(caja.cambioCompra, 3)}, compra</span>}
                 </span>
               ) : (
-                <span className="text-aviso">
-                  Falta el tipo de cambio del {fecha(dia)} para pasar los dólares a soles:{' '}
-                  <Link href="/tesoreria/tipo-de-cambio" className="font-medium text-acento hover:underline">
-                    regístralo
-                  </Link>
-                  .
-                </span>
+                // Lo registra Contabilidad (migración 20261020174600): Tesorería ya no abre esa pantalla.
+                <span className="text-aviso">Falta el tipo de cambio del {fecha(dia)} para pasar los dólares a soles: lo registra Contabilidad.</span>
               )}
             </TarjetaCuerpo>
           </Tarjeta>
@@ -179,7 +175,13 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
           className="mt-5"
           titulo="Cuentas de Tesorería"
           // Lo que cambia, a la vista; que una cuenta no se borra sino que se desactiva lo dice su ventana.
-          descripcion={[cuantas(caja.cuentas.filter((c) => c.activa).length, 'activa', 'activas'), cuantas(caja.cuentas.filter((c) => !c.activa).length, 'desactivada', 'desactivadas')]
+          // Un banco sin la captura de su saldo pide atención: la sección se abre sola y muestra su aviso.
+          abierta={bancosSinCaptura > 0}
+          descripcion={[
+            cuantas(caja.cuentas.filter((c) => c.activa).length, 'activa', 'activas'),
+            cuantas(caja.cuentas.filter((c) => !c.activa).length, 'desactivada', 'desactivadas'),
+            cuantas(bancosSinCaptura, 'sin la captura del saldo', 'sin la captura del saldo'),
+          ]
             .filter(Boolean)
             .join(' · ')}
         >
@@ -193,6 +195,22 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
                   <span className="block text-xs text-texto-suave">
                     {detalleDeCuenta(c)} · empezó el {fecha(c.fecha_inicio)} con {moneda(c.saldo_alta, monedaDeCuenta(c.moneda))}
                   </span>
+                  {/* El respaldo de ese saldo: la captura del aplicativo (migración 20261020174500). */}
+                  {c.apertura_ruta ? (
+                    <a
+                      href={enlaceCaptura(c.id)}
+                      target="_blank"
+                      rel="noopener"
+                      className="inline-flex min-h-11 items-center text-xs font-medium text-acento underline underline-offset-2 sm:min-h-0"
+                      data-captura-saldo={c.nombre}
+                    >
+                      {c.tipo === 'BANCO' ? 'Ver la captura del saldo' : 'Ver la foto del conteo'}
+                    </a>
+                  ) : c.tipo === 'BANCO' ? (
+                    <span className="block text-xs text-aviso" data-sin-captura={c.nombre}>
+                      Sin la captura del saldo: adjúntala con «Corregir».
+                    </span>
+                  ) : null}
                 </span>
                 <EditarCuenta
                   cuenta={{
@@ -205,6 +223,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
                     fecha_inicio: c.fecha_inicio,
                     activa: c.activa,
                     con_movimientos: c.con_movimientos,
+                    apertura_ruta: c.apertura_ruta,
                   }}
                   hoy={hoy}
                 />

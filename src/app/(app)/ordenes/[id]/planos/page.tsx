@@ -59,7 +59,7 @@ export default async function PaginaPlanos({ params, searchParams }: {
           versiones={versiones.map(v => ({ ...v,
             puedeRevisarDiseno: abierta && v.revision_diseno === 'PENDIENTE' && v.creado_por !== perfil.id && puede(perfil, 'diseno.planos'),
             puedeRevisar: abierta && v.revision_diseno === 'APROBADO' && v.estado === 'POR_REVISAR' && v.creado_por !== perfil.id && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, 'produccion.actividades'),
-            puedeRecibir: v.vigente && v.estado === 'APROBADO' && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, ['produccion.actividades', 'produccion.cualquier_area']),
+            puedeRecibir: v.vigente && v.estado === 'APROBADO' && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, 'produccion.actividades'),
           }))}
           catalogos={catalogos} planoSeleccionado={query.plano}
           etapas={etapas.filter(e => e.etapa_id).map(e => ({

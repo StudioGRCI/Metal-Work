@@ -70,7 +70,9 @@ export async function resolverVersionPlano(_previo: unknown, datos: FormData): P
   }).safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: 'Revisa la acción y la observación (máximo 1000 caracteres).' }
   const v = analisis.data
-  if (!puede(perfil, ['produccion.actividades', 'produccion.cualquier_area'])) {
+  // Ver todas las áreas (`produccion.cualquier_area`) no basta: revisa y recibe
+  // quien carga actividades (migración 20261020206000).
+  if (!puede(perfil, 'produccion.actividades')) {
     return { ok: false, error: 'No tienes permiso para realizar esta acción.' }
   }
   const supabase = await createClient()

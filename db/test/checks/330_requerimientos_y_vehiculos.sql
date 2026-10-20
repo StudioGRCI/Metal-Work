@@ -173,10 +173,12 @@ begin
   return jsonb_build_array(v_ruta);
 end $$;
 
+-- Motivo «otro» o «cochera»: desde 20261020166000 el trabajo del taller entra con
+-- el código de una unidad con OT y sale con el 100 %; eso lo prueba el check 405.
 select pg_temp.como('vendedor');
 set local role authenticated;
 select test.debe_fallar(
-  format($q$select public.registrar_ingreso_vehiculo('%s', 'ABC-123', null, null, 'Tolva 18 m3', 'INCOAC', 'MANTENIMIENTO', null, null, '[]')$q$,
+  format($q$select public.registrar_ingreso_vehiculo('%s', 'ABC-123', null, null, 'Tolva 18 m3', 'INCOAC', 'OTRO', null, null, '[]')$q$,
          current_setting('prueba.v1')),
   'Ventas no registra vehículos', 'permiso');
 reset role;
@@ -184,17 +186,17 @@ reset role;
 select pg_temp.como('requerimientos');
 set local role authenticated;
 select test.debe_fallar(
-  format($q$select public.registrar_ingreso_vehiculo('%s', ' ', ' ', '', 'Tolva 18 m3', 'INCOAC', 'MANTENIMIENTO', null, null, pg_temp.foto('%s', 'ingreso'))$q$,
+  format($q$select public.registrar_ingreso_vehiculo('%s', ' ', ' ', '', 'Tolva 18 m3', 'INCOAC', 'OTRO', null, null, pg_temp.foto('%s', 'ingreso'))$q$,
          current_setting('prueba.v1'), current_setting('prueba.v1')),
   'sin placa, chasis ni código no se sabe qué entró', 'placa');
 select public.registrar_ingreso_vehiculo(current_setting('prueba.v1')::uuid, ' abc 123 ', null, 'VSC_CM_N3_6_26/18',
-  'Tolva 18 m3 Volvo', 'ING. Y CONST. ACOSTA', 'MANTENIMIENTO', now() - interval '2 hours', 'Ingresa con llanta baja',
+  'Tolva 18 m3 Volvo', 'ING. Y CONST. ACOSTA', 'OTRO', now() - interval '2 hours', 'Ingresa con llanta baja',
   pg_temp.foto(current_setting('prueba.v1'), 'ingreso'));
 select test.afirmar(
   (select placa = 'ABC123' and salida_en is null from public.registro_vehiculos where id = current_setting('prueba.v1')::uuid),
   'la placa se guarda en mayúsculas y sin espacios, y el vehículo queda en planta');
 select test.debe_fallar(
-  format($q$select public.registrar_ingreso_vehiculo('%s', 'ABC123', null, null, 'Tolva', 'INCOAC', 'GARANTIA', null, null, pg_temp.foto('%s', 'ingreso'))$q$,
+  format($q$select public.registrar_ingreso_vehiculo('%s', 'ABC123', null, null, 'Tolva', 'INCOAC', 'OTRO', null, null, pg_temp.foto('%s', 'ingreso'))$q$,
          current_setting('prueba.v2'), current_setting('prueba.v2')),
   'el mismo vehículo no entra dos veces sin haber salido', 'ya está en la planta');
 select test.debe_fallar(
@@ -205,10 +207,10 @@ select public.registrar_salida_vehiculo(current_setting('prueba.v1')::uuid, null
   pg_temp.foto(current_setting('prueba.v1'), 'salida'));
 -- Vuelve del arenado: es otro ingreso.
 select public.registrar_ingreso_vehiculo(current_setting('prueba.v2')::uuid, 'ABC123', null, 'VSC_CM_N3_6_26/18',
-  'Tolva 18 m3 Volvo', 'ING. Y CONST. ACOSTA', 'ARENADO', null, null, pg_temp.foto(current_setting('prueba.v2'), 'ingreso'));
+  'Tolva 18 m3 Volvo', 'ING. Y CONST. ACOSTA', 'COCHERA', null, null, pg_temp.foto(current_setting('prueba.v2'), 'ingreso'));
 -- Un chasis nuevo de fabricación entra sin placa.
 select public.registrar_ingreso_vehiculo(current_setting('prueba.v3')::uuid, null, '9BM958074KB123456', null,
-  'Chasis Mercedes-Benz Atego', 'MAT CENTER', 'FABRICACION', null, null, pg_temp.foto(current_setting('prueba.v3'), 'ingreso'));
+  'Chasis Mercedes-Benz Atego', 'MAT CENTER', 'OTRO', null, null, pg_temp.foto(current_setting('prueba.v3'), 'ingreso'));
 select test.debe_fallar(
   format($q$update public.registro_vehiculos set empresa = 'Otra' where id = '%s'$q$, current_setting('prueba.v1')),
   'el registro no se edita por debajo', 'permission denied');

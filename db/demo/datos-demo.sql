@@ -83,6 +83,10 @@ begin
   -- costos siguen en el catálogo aunque sus módulos se fueron: son gente del
   -- organigrama, no del sistema.
   if to_regclass('auth.users') is not null then
+    -- El costo por hora lo pone Recursos Humanos (migración 20261020165000):
+    -- la carga de las fichas va sin la sesión del administrador, como dueño de
+    -- la base, y la recupera al terminar.
+    perform set_config('request.jwt.claim.sub', '', true);
     for v_persona in
       select * from (values
         ('gerencia@metalworkperusac.com',     'Aníbal',   'Sologuren','GERENTE',     'GGE', false,  0.0, 'Gerente general'),
@@ -114,6 +118,7 @@ begin
                 v_persona.operario, v_persona.costo);
       end if;
     end loop;
+    perform set_config('request.jwt.claim.sub', v_usuario::text, true);
   end if;
 
   -- ------------------------------------------------------------- materiales

@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -13,7 +13,7 @@ import { createClient } from '@/lib/supabase/server'
  */
 export async function guardarReglaTardanza(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'rrhh.personal')) return { ok: false, error: 'La regla de tardanza la ajusta Recursos Humanos.' }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: 'La regla de tardanza la ajusta Recursos Humanos.' }
 
   const analisis = z
     .object({

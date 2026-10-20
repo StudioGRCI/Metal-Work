@@ -55,6 +55,24 @@ function comprobar(cond, texto) {
 }
 const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
 
+/**
+ * La red quieta, sin colgarse. Con Next 16, Chromium deja a veces para
+ * Playwright una precarga del menú «abierta» para siempre: la que el enrutador
+ * abandonó al cambiar de página, sin respuesta ni error, aunque el servidor la
+ * contesta en milisegundos y el socket ya está cerrado. `networkidle` no llega
+ * nunca y el `goto` muere a los 30 s (pasa en una de cada tres navegaciones).
+ * Se espera la carga completa y, a lo sumo diez segundos, la red quieta.
+ */
+const quieta = (pagina) => pagina.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
+async function ir(pagina, url) {
+  await pagina.goto(url, { waitUntil: 'load' })
+  await quieta(pagina)
+}
+async function recargar(pagina) {
+  await pagina.reload({ waitUntil: 'load' })
+  await quieta(pagina)
+}
+
 /** Un PDF de una página con estas líneas de texto, para que el detector lo lea. */
 function pdfConTexto(lineas) {
   const texto = lineas.map((l, i) => `BT /F1 11 Tf 50 ${780 - i * 18} Td (${l.replace(/[()\\]/g, '')}) Tj ET`).join('\n')
@@ -200,7 +218,7 @@ async function entrar(clave) {
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(m.text().slice(0, 300))
   })
   pagina.on('pageerror', (e) => errores.push(String(e).slice(0, 300)))
-  await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/ingresar`)
   await pagina.fill('input[type="email"]', `${clave}.vrq@banco.test`)
   await pagina.fill('input[type="password"]', CLAVE)
   await Promise.all([
@@ -222,7 +240,7 @@ let ocId
 let ocNumero
 {
   const { pagina, contexto, errores } = await entrar('logistica')
-  await pagina.goto(`${BASE}/requerimientos/atencion?vista=comprar&rq=${rqIds[0]}`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/requerimientos/atencion?vista=comprar&rq=${rqIds[0]}`)
   const filas = limpio(await pagina.locator('tbody').innerText())
   comprobar(filas.includes(rqA) && filas.includes(rqB), `«Por comprar» lista los insumos de ${rqA} y ${rqB}`)
   comprobar(!filas.includes(rqa), `y no el ${rqa}, que compra la administradora`)
@@ -285,7 +303,7 @@ if (!ocId) throw new Error('No salió la OC: no se puede seguir.')
 // ------------------------------------------------ 1b. La administradora compra lo de su RQA
 {
   const { pagina, contexto, errores } = await entrar('administracion')
-  await pagina.goto(`${BASE}/requerimientos/atencion?vista=comprar`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/requerimientos/atencion?vista=comprar`)
   const texto = limpio(await pagina.locator('main').innerText())
   comprobar(texto.includes('Por comprar · requerimientos de Administración') && texto.includes(rqa), `la administradora ve su ${rqa} por comprar`)
   comprobar(!texto.includes('Por comprar · requerimientos de operación') && !texto.includes(rqA), 'y no los RQ de operación')
@@ -308,7 +326,7 @@ if (!ocId) throw new Error('No salió la OC: no se puede seguir.')
 // ------------------------------------------------ 2. Gerencia aprueba; Logística anexa la segunda factura
 {
   const { pagina, contexto, errores } = await entrar('gerencia')
-  await pagina.goto(`${BASE}/compras/aprobacion`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/compras/aprobacion`)
   // La tarjeta de la OC: lo más chico que tiene su título y su botón «Aprobar».
   const tarjeta = pagina
     .locator('div')
@@ -327,7 +345,7 @@ if (!ocId) throw new Error('No salió la OC: no se puede seguir.')
 }
 {
   const { pagina, contexto, errores } = await entrar('logistica')
-  await pagina.goto(`${BASE}/compras/ordenes`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/compras/ordenes`)
   const fila = pagina.locator('tbody tr', { hasText: ocNumero })
   const t = limpio(await fila.innerText())
   comprobar(t.includes(codigoA) && t.includes(codigoB), `la ${ocNumero} dice los dos códigos`)
@@ -348,7 +366,7 @@ if (!ocId) throw new Error('No salió la OC: no se puede seguir.')
   const r = limpio(await ventana.locator('[role="status"]').last().innerText().catch(() => ''))
   comprobar(r.includes(`Factura ${serie}-72 adjuntada`), `la segunda factura entró: «${r}»`)
   await pagina.keyboard.press('Escape')
-  await pagina.reload({ waitUntil: 'networkidle' })
+  await recargar(pagina)
   const t2 = limpio(await pagina.locator('tbody tr', { hasText: ocNumero }).innerText())
   comprobar(t2.includes(`${serie}-71`) && t2.includes(`${serie}-72`), 'la lista dice las dos facturas de la OC')
   await pagina.screenshot({ path: `${CAPTURAS}/vrq-2-ordenes.png`, fullPage: true })
@@ -359,7 +377,7 @@ if (!ocId) throw new Error('No salió la OC: no se puede seguir.')
 // ------------------------------------------------ 3. Contabilidad registra las dos facturas
 {
   const { pagina, contexto, errores } = await entrar('contabilidad')
-  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/adquisiciones`)
   const espera = limpio(await pagina.locator('tbody tr', { hasText: ocNumero }).innerText())
   comprobar(espera.includes(`Logística anexó ${serie}-71`) && espera.includes(`${serie}-72`), 'la OC que espera dice las dos facturas que anexó Logística')
   comprobar(espera.includes(codigoA) && espera.includes(codigoB), 'con los dos códigos internos')
@@ -385,7 +403,7 @@ if (!ocId) throw new Error('No salió la OC: no se puede seguir.')
   await pagina.locator('[role="status"]', { hasText: 'registrado' }).first().waitFor({ timeout: 30000 }).catch(() => {})
   const r1 = limpio(await pagina.locator('[role="status"]', { hasText: 'registrado' }).first().innerText().catch(() => ''))
   comprobar(r1.includes('factura parcial'), `registró la primera como parcial: «${r1}»`)
-  await pagina.reload({ waitUntil: 'networkidle' })
+  await recargar(pagina)
   const grupo1 = limpio(await pagina.locator('tbody', { hasText: `${serie}-71` }).first().innerText())
   comprobar(grupo1.includes('Factura parcial') && grupo1.includes('quedan S/ 354.00'), 'la tabla la dice «Factura parcial» y lo que queda')
   const espera2 = limpio(await pagina.locator('tbody tr', { hasText: 'Facturada en parte' }).filter({ hasText: ocNumero }).innerText().catch(() => ''))
@@ -402,7 +420,7 @@ if (!ocId) throw new Error('No salió la OC: no se puede seguir.')
   comprobar(calza.includes('Calza con lo que falta facturar') && calza.includes('S/ 354.00'), 'la segunda calza con lo que falta facturar')
   await pagina.getByRole('button', { name: 'Registrar comprobante' }).click()
   await pagina.locator('[role="status"]', { hasText: 'registrado' }).first().waitFor({ timeout: 30000 }).catch(() => {})
-  await pagina.reload({ waitUntil: 'networkidle' })
+  await recargar(pagina)
   const grupo2 = limpio(await pagina.locator('tbody', { hasText: `${serie}-72` }).first().innerText())
   comprobar(grupo2.includes('Calza con sus OC') && grupo2.includes(`junto con ${serie}-71`), 'la segunda completa la OC junto con la primera')
   comprobar((await pagina.locator('tbody tr', { hasText: 'Facturada en parte' }).filter({ hasText: ocNumero }).count()) === 0, 'la OC ya no espera factura')
@@ -414,10 +432,15 @@ if (!ocId) throw new Error('No salió la OC: no se puede seguir.')
 // ------------------------------------------------ 4. Tesorería
 {
   const { pagina, contexto, errores } = await entrar('tesoreria')
-  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
-  const docs = limpio(await pagina.getByText('Documentos de compras de Logística').locator('xpath=ancestor::*[3]').innerText().catch(() => ''))
+  await ir(pagina, `${BASE}/adquisiciones`)
+  // La tarjeta entera: el ancestro más cercano del título que ya trae los
+  // documentos. Desde que el título lleva su botón «i» queda un nivel más hondo
+  // y el «tercer ancestro» era solo la cabecera, sin ningún documento.
+  const docs = limpio(
+    await pagina.getByText('Documentos de compras de Logística').locator('xpath=ancestor::*[.//article][1]').innerText().catch(() => ''),
+  )
   comprobar(docs.includes(`${serie}-71`) && docs.includes('Registrada por Contabilidad'), 'Tesorería ve las facturas de Logística con su número, ya registradas')
-  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/tesoreria/por-pagar`)
   const porPagar = limpio(await pagina.locator('main').innerText())
   // Con la OC ya completa, cada una calza con lo que le tocaba y dice con cuál la completa.
   comprobar(

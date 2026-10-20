@@ -18,6 +18,8 @@ export type RegistroVehiculo = {
   observacion_ingreso: string | null
   salida_en: string | null
   observacion_salida: string | null
+  /** La salida fue al arenado externo, a medio trabajo (migración 20261020168000). */
+  sale_al_arenado: boolean
   anulado_en: string | null
   motivo_anulacion: string | null
   /** Cuántas fotos se tomaron al entrar y al salir (las de antes del 2026-10-15 entraron sin fotos). */
@@ -26,7 +28,7 @@ export type RegistroVehiculo = {
 }
 
 const COLUMNAS =
-  'id, placa, chasis, codigo_interno, unidad, empresa, motivo, ingreso_en, observacion_ingreso, salida_en, observacion_salida, anulado_en, motivo_anulacion'
+  'id, placa, chasis, codigo_interno, unidad, empresa, motivo, ingreso_en, observacion_ingreso, salida_en, observacion_salida, sale_al_arenado, anulado_en, motivo_anulacion'
 
 type FilaConFotos = Omit<RegistroVehiculo, 'fotos_ingreso' | 'fotos_salida'> & { fotos: { momento: string }[] | null }
 
@@ -51,6 +53,73 @@ export async function cargarVehiculos(vista: 'en_planta' | 'historial'): Promise
   const { data, error } = await consulta
   if (error) throw new Error(`No se pudo leer el registro de vehículos: ${error.message}`)
   return (data ?? []).map((f) => conConteo(f as FilaConFotos))
+}
+
+/** Un código interno que puede entrar a la planta: su unidad tiene una OT que no está anulada. */
+export type CodigoParaIngreso = {
+  codigo_interno: string
+  orden_numero: string
+  cliente: string
+  unidad: string
+  placa: string | null
+  chasis: string | null
+  /** Ya entró y no ha salido: no entra otra vez. */
+  en_planta: boolean
+}
+
+/** Los códigos que ofrece la ventana del ingreso, con todo lo que se carga solo (`vehiculos_codigos_para_ingreso`). */
+export async function codigosParaIngreso(): Promise<CodigoParaIngreso[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('vehiculos_codigos_para_ingreso')
+  if (error) throw new Error(`No se pudo leer los códigos internos con OT: ${error.message}`)
+  return (data ?? []).flatMap((f) =>
+    f.codigo_interno && f.orden_numero
+      ? [
+          {
+            codigo_interno: f.codigo_interno,
+            orden_numero: f.orden_numero,
+            cliente: f.cliente ?? '',
+            unidad: f.unidad ?? '',
+            placa: f.placa,
+            chasis: f.chasis,
+            en_planta: Boolean(f.en_planta),
+          },
+        ]
+      : [],
+  )
+}
+
+/**
+ * Lo que espera la salida de un vehículo de trabajo: el 100 % del avance de su
+ * código y la revisión de Tesorería atendida (migración 20261020166000). Los
+ * mensajes los escribe la base; `null` es que no falta nada.
+ */
+export type EstadoDeSalida = {
+  exige: boolean
+  avance: number | null
+  tesoreria: string | null
+  falta_para_pedir: string | null
+  falta_para_salir: string | null
+}
+
+/** El estado de la salida de cada ingreso que sigue en la planta, por id. */
+export async function estadosDeSalida(ids: string[]): Promise<Map<string, EstadoDeSalida>> {
+  const estados = new Map<string, EstadoDeSalida>()
+  if (ids.length === 0) return estados
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('vehiculos_estado_de_salida', { p_registros: ids })
+  if (error) throw new Error(`No se pudo leer qué le falta a cada vehículo para salir: ${error.message}`)
+  for (const f of data ?? []) {
+    if (!f.registro_id) continue
+    estados.set(f.registro_id, {
+      exige: Boolean(f.exige),
+      avance: f.avance,
+      tesoreria: f.tesoreria,
+      falta_para_pedir: f.falta_para_pedir,
+      falta_para_salir: f.falta_para_salir,
+    })
+  }
+  return estados
 }
 
 /** Una foto del ingreso o de la salida, con su enlace firmado por una hora. */

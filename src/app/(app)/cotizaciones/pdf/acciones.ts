@@ -204,8 +204,8 @@ export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): 
 const esquemaQuitar = z.object({ id: z.guid() })
 
 /**
- * Quitar una cotización (migraciones 102 y 103): quien la subió o Gerencia,
- * mientras esté por revisar o rechazada, y nunca si de ella salió una orden
+ * Quitar una cotización (migraciones 102, 103 y 20261020161000): quien la subió
+ * o Gerencia, mientras esté por revisar en su primera versión, y nunca si de ella salió una orden
  * —eso lo dice un disparador, con palabras—. Se va con sus versiones. Primero
  * las filas y después los archivos: el almacenamiento solo deja borrar el que
  * ya no nombra ninguna cotización ni versión, y así no queda ni una cotización
@@ -241,7 +241,7 @@ export async function quitarCotizacionPdf(_previo: unknown, datos: FormData): Pr
   if (!data) {
     return {
       ok: false,
-      error: 'No se pudo quitar: la quita quien la subió o Gerencia, y solo mientras esté por revisar o rechazada.',
+      error: 'No se pudo quitar: la quita quien la subió o Gerencia, y solo mientras esté por revisar y sin corregir. La rechazada se corrige y queda como evidencia.',
     }
   }
 

@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { opcionesDeTrabajo, type OpcionDeTrabajo } from '@/lib/datos/reportes-diarios'
 import { MAXIMO_CODIGOS_REPORTE, MAXIMO_FOTOS_REPORTE, MAXIMO_TRABAJOS_REPORTE } from '@/lib/dominio/reporte-diario'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 function dato(formulario: FormData, nombre: string) {
@@ -278,6 +278,9 @@ export async function registrarReportesDiarios(_previo: unknown, formulario: For
 
 const LADO = z.enum(['GERENCIA', 'RRHH'], 'Vuelve a cargar la pantalla.')
 const PERMISO_DEL_LADO = { GERENCIA: 'reporte_diario.validar_gerencia', RRHH: 'reporte_diario.validar_rrhh' } as const
+/** El visto de RR. HH. lo da RR. HH.: el administrador no entra por su atajo (migración 20261020167000). */
+const daElVisto = (perfil: Parameters<typeof puede>[0], lado: keyof typeof PERMISO_DEL_LADO) =>
+  lado === 'RRHH' ? editaComoRrhh(perfil, PERMISO_DEL_LADO.RRHH) : puede(perfil, PERMISO_DEL_LADO.GERENCIA)
 
 /**
  * El visto bueno de Gerencia o de RR. HH. Cada lado con su permiso, el mismo
@@ -289,7 +292,7 @@ export async function validarReporteDiario(_previo: unknown, formulario: FormDat
   const analisis = z.object({ id: z.guid(), lado: LADO }).safeParse({ id: dato(formulario, 'id'), lado: dato(formulario, 'lado') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
   const { id, lado } = analisis.data
-  if (!puede(perfil, PERMISO_DEL_LADO[lado])) return { ok: false, error: `El visto de ${lado === 'GERENCIA' ? 'Gerencia' : 'Recursos Humanos'} lo da esa área.` }
+  if (!daElVisto(perfil, lado)) return { ok: false, error: `El visto de ${lado === 'GERENCIA' ? 'Gerencia' : 'Recursos Humanos'} lo da esa área.` }
 
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('validar_reporte_diario', { p_id: id, p_lado: lado })
@@ -317,7 +320,7 @@ export async function observarReporteDiario(_previo: unknown, formulario: FormDa
     .safeParse({ id: dato(formulario, 'id'), lado: dato(formulario, 'lado'), motivo: dato(formulario, 'motivo') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
   const { id, lado, motivo } = analisis.data
-  if (!puede(perfil, PERMISO_DEL_LADO[lado])) return { ok: false, error: `Como ${lado === 'GERENCIA' ? 'Gerencia' : 'Recursos Humanos'} observa esa área.` }
+  if (!daElVisto(perfil, lado)) return { ok: false, error: `Como ${lado === 'GERENCIA' ? 'Gerencia' : 'Recursos Humanos'} observa esa área.` }
 
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('observar_reporte_diario', { p_id: id, p_lado: lado, p_motivo: motivo })

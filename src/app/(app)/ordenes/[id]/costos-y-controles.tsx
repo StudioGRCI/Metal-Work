@@ -132,7 +132,7 @@ function ResumenCosteo({ ordenId, lineas, delCodigo }: { ordenId: string; lineas
                 ? `Cerrado el ${fecha(c.cierre.en)} en ${moneda(c.cierre.costo)}`
                 : c.pen <= 0
                   ? 'Todavía nada costeado: suma con el reporte diario, las salidas del almacén, las OS y los gastos'
-                  : 'Todo en soles, con lo que está en dólares al cambio de Tesorería')} />
+                  : 'Todo en soles, con lo que está en dólares al cambio de Contabilidad')} />
         : <p role="status" className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso">
             No se pudo leer el costo del código {delCodigo.codigo}. Recarga la pantalla; si sigue igual, avisa a Sistemas.
           </p>}

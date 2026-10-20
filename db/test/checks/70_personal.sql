@@ -38,7 +38,7 @@ begin
   v_nuevo := public.crear_personal('Carla', 'Vega', 'carla@demo.pe', 'clave-de-prueba-123',
                                    (select id from public.roles where codigo = 'ALMACENERO'),
                                    (select id from public.sedes limit 1),
-                                   null, 'Almacenera', '70123456', '999111222', false, 0);
+                                   null, 'Almacenera', null, '999111222', false, null);
 
   if not exists (select 1 from public.usuarios where id = v_nuevo and correo = 'carla@demo.pe') then
     raise exception 'FALLA: no quedó la ficha de la persona';
@@ -48,6 +48,18 @@ begin
   if v_clave is null or v_clave not like '$2%' then
     raise exception 'FALLA: la contraseña no quedó cifrada con bcrypt';
   end if;
+
+  -- El DNI y el costo por hora los pone Recursos Humanos, no quien da el alta
+  -- (migración 20261020165000; el check 403 prueba a RR. HH. poniéndolos).
+  begin
+    perform public.crear_personal('Dino', 'Paz', 'dino@demo.pe', 'clave-de-prueba-123',
+                                  (select id from public.roles where codigo = 'ALMACENERO'),
+                                  (select id from public.sedes limit 1),
+                                  null, 'Almacenero', '70123457', null, false, null);
+    raise exception 'FALLA: administración puso el DNI de una cuenta';
+  exception when insufficient_privilege then
+    null;  -- es lo que se espera
+  end;
 
   -- Y la contraseña tiene que verificar, que es lo que hará Supabase al entrar.
   if not exists (

@@ -288,10 +288,12 @@ begin
   reset role;
 end $$;
 
+-- Motivo «otro» o «cochera»: desde 20261020166000 el trabajo del taller entra con
+-- el código de una unidad con OT y sale con el 100 %; eso lo prueba el check 405.
 -- ---------------------------------------------------------- el ingreso, con fotos
 create or replace function pg_temp.ingreso(p_fotos jsonb) returns text language sql as $$
   select format($q$select public.registrar_ingreso_vehiculo('%s', 'CHK 346', null, 'CHK346_SR_O4_1_26/30', 'Tolva 18 m3 de prueba',
-                  'EMPRESA DE PRUEBA', 'MANTENIMIENTO', null, null, %L::jsonb)$q$, current_setting('prueba.v1'), p_fotos);
+                  'EMPRESA DE PRUEBA', 'OTRO', null, null, %L::jsonb)$q$, current_setting('prueba.v1'), p_fotos);
 $$;
 
 do $$
@@ -324,7 +326,7 @@ begin
 
   -- La pantalla vieja (sin fotos) ya no registra.
   perform test.debe_fallar(
-    format($q$select public.registrar_ingreso_vehiculo('%s', 'XYZ346', null, null, 'Tolva', 'EMPRESA', 'MANTENIMIENTO', null, null)$q$,
+    format($q$select public.registrar_ingreso_vehiculo('%s', 'XYZ346', null, null, 'Tolva', 'EMPRESA', 'OTRO', null, null)$q$,
            gen_random_uuid()),
     'la pantalla vieja no registra un ingreso sin fotos', 'recarga la pantalla');
   perform test.debe_fallar(

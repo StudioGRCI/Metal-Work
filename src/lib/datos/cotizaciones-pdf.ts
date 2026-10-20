@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { archivoNoEncontrado, SIN_ENLACES } from '@/lib/datos/facturacion'
 import { createClient } from '@/lib/supabase/server'
 import type { Vistas } from '@/types/database'
 
@@ -38,6 +39,10 @@ type ConArchivo = { ruta_storage: string | null; mime_type: string | null; nombr
  * Los enlaces firmados de una tanda de archivos. El PDF se abre en el
  * navegador; el Word se descarga con su nombre, porque el navegador no lo
  * muestra y abrirlo en otra pestaña deja una página en blanco.
+ *
+ * Un archivo que falta deja su fila sin enlace; si el almacenamiento no
+ * responde, lanza, como `enlaces()` de facturación: antes el botón del PDF
+ * desaparecía sin explicación.
  */
 async function enlacesDe(filas: ConArchivo[]): Promise<Map<string, string>> {
   const supabase = await createClient()
@@ -45,16 +50,18 @@ async function enlacesDe(filas: ConArchivo[]): Promise<Map<string, string>> {
 
   const pdfs = filas.filter((f) => f.ruta_storage && (f.mime_type ?? PDF) === PDF).map((f) => f.ruta_storage as string)
   if (pdfs.length > 0) {
-    const { data } = await supabase.storage.from('cotizaciones-pdf').createSignedUrls(pdfs, 600)
+    const { data, error } = await supabase.storage.from('cotizaciones-pdf').createSignedUrls(pdfs, 600)
+    if (error) throw new Error(SIN_ENLACES)
     for (const f of data ?? []) if (f.path && f.signedUrl) enlaces.set(f.path, f.signedUrl)
   }
 
   const words = filas.filter((f) => f.ruta_storage && (f.mime_type ?? PDF) !== PDF)
   await Promise.all(
     words.map(async (f) => {
-      const { data } = await supabase.storage
+      const { data, error } = await supabase.storage
         .from('cotizaciones-pdf')
         .createSignedUrl(f.ruta_storage as string, 600, { download: f.nombre_archivo ?? true })
+      if (error && !archivoNoEncontrado(error)) throw new Error(SIN_ENLACES)
       if (data?.signedUrl) enlaces.set(f.ruta_storage as string, data.signedUrl)
     }),
   )

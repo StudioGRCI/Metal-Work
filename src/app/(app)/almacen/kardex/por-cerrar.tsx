@@ -26,6 +26,8 @@ export type SalidaParaCerrar = {
   recibido_por_nombre: string | null
   almacen: string | null
   requerimiento_numero: string | null
+  /** El SA-… impreso en la hoja; las salidas de antes de la serie no lo tienen. */
+  numero_salida: string | null
 }
 
 const TIPOS = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
@@ -83,6 +85,7 @@ function Salida({ salida, puedeCerrar }: { salida: SalidaParaCerrar; puedeCerrar
     <li className="flex flex-wrap items-start gap-x-4 gap-y-2 py-3">
       <div className="min-w-0 flex-1 basis-64">
         <p className="text-sm font-medium">
+          {salida.numero_salida && <span className="mr-2 font-mono text-texto">{salida.numero_salida}</span>}
           {salida.material ?? 'Material'}
           <span className="ml-2 font-mono text-[11px] font-normal text-texto-tenue">{salida.material_codigo}</span>
         </p>

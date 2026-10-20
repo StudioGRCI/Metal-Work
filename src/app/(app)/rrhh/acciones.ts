@@ -3,14 +3,16 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
-import { exigirPermiso } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
+// Las planillas del mes las arma Recursos Humanos; el administrador las ve (migración 20261020167000).
+const SOLO_RRHH='Las planillas las arma Recursos Humanos: el administrador las ve, pero no las cambia.'
 const uuid=z.guid()
 const volver=()=>revalidatePath('/rrhh')
 
 export async function crearPlanilla(_previo:unknown, datos:FormData):Promise<ResultadoAccion> {
-  await exigirPermiso('rrhh.gestionar_planillas')
+  if(!editaComoRrhh(await exigirPermiso('rrhh.gestionar_planillas'),'rrhh.gestionar_planillas')) return {ok:false,error:SOLO_RRHH}
   const v=z.object({tipo:z.enum(['TALLER','ADMINISTRATIVA','SUBCONTRATOS']),periodo:z.iso.date(),moneda:z.enum(['PEN','USD']),observacion:z.string().trim().max(1000)}).safeParse(Object.fromEntries(datos))
   if(!v.success || !v.data.periodo.endsWith('-01')) return {ok:false,error:'Elige tipo, mes y moneda. El período debe empezar el día 1.'}
   const db=await createClient()
@@ -21,7 +23,7 @@ export async function crearPlanilla(_previo:unknown, datos:FormData):Promise<Res
 }
 
 export async function agregarPersona(_previo:unknown,datos:FormData):Promise<ResultadoAccion> {
-  await exigirPermiso('rrhh.gestionar_planillas')
+  if(!editaComoRrhh(await exigirPermiso('rrhh.gestionar_planillas'),'rrhh.gestionar_planillas')) return {ok:false,error:SOLO_RRHH}
   const v=z.object({planilla_id:uuid,nombre:z.string().trim().min(3).max(160),documento:z.string().trim().max(20),monto:z.coerce.number().min(0).multipleOf(0.01)}).safeParse(Object.fromEntries(datos))
   if(!v.success) return {ok:false,error:'Indica planilla, nombre y monto válidos.'}
   const db=await createClient()
@@ -32,7 +34,7 @@ export async function agregarPersona(_previo:unknown,datos:FormData):Promise<Res
 }
 
 export async function distribuirPersona(_previo:unknown,datos:FormData):Promise<ResultadoAccion> {
-  await exigirPermiso('rrhh.gestionar_planillas')
+  if(!editaComoRrhh(await exigirPermiso('rrhh.gestionar_planillas'),'rrhh.gestionar_planillas')) return {ok:false,error:SOLO_RRHH}
   const v=z.object({persona_id:uuid,orden_id:uuid,porcentaje:z.coerce.number().positive().max(100).multipleOf(0.01)}).safeParse(Object.fromEntries(datos))
   if(!v.success) return {ok:false,error:'Elige la persona, OT y porcentaje entre 0.01 y 100.'}
   const db=await createClient()
@@ -43,7 +45,7 @@ export async function distribuirPersona(_previo:unknown,datos:FormData):Promise<
 }
 
 export async function cerrarPlanilla(_previo:unknown,datos:FormData):Promise<ResultadoAccion> {
-  await exigirPermiso('rrhh.gestionar_planillas')
+  if(!editaComoRrhh(await exigirPermiso('rrhh.gestionar_planillas'),'rrhh.gestionar_planillas')) return {ok:false,error:SOLO_RRHH}
   const id=uuid.safeParse(datos.get('planilla_id'))
   if(!id.success) return {ok:false,error:'Planilla no válida.'}
   const db=await createClient()
@@ -58,7 +60,7 @@ export async function cerrarPlanilla(_previo:unknown,datos:FormData):Promise<Res
  * una vez. Reemplaza el reparto que tuvieran esas personas.
  */
 export async function repartirEnPartesIguales(_previo:unknown,datos:FormData):Promise<ResultadoAccion> {
-  await exigirPermiso('rrhh.gestionar_planillas')
+  if(!editaComoRrhh(await exigirPermiso('rrhh.gestionar_planillas'),'rrhh.gestionar_planillas')) return {ok:false,error:SOLO_RRHH}
   const planilla=uuid.safeParse(datos.get('planilla_id'))
   const personas=z.array(uuid).min(1).max(300).safeParse(datos.getAll('persona_id'))
   const ordenes=z.array(uuid).min(1).max(50).safeParse(datos.getAll('orden_id'))

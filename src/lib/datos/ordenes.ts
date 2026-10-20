@@ -91,6 +91,30 @@ export async function listarOrdenes(filtros: FiltrosOrdenes) {
 }
 
 /**
+ * Los clientes activos para ponerle cliente a una orden del taller (migración 100).
+ *
+ * Se leen de a mil hasta agotarlos: PostgREST corta en mil filas sin avisar, y
+ * con un tope el cliente que quedaba fuera simplemente no salía en la lista.
+ */
+export async function clientesParaElegir(): Promise<{ id: string; razon_social: string }[]> {
+  const supabase = await createClient()
+  const lista: { id: string; razon_social: string }[] = []
+  for (let desde = 0; ; desde += 1000) {
+    const { data, error } = await supabase
+      .from('clientes')
+      .select('id, razon_social')
+      .eq('activo', true)
+      .order('razon_social')
+      .order('id')
+      .range(desde, desde + 999)
+    if (error) throw new Error(`No se pudo cargar la lista de clientes: ${error.message}`)
+    lista.push(...(data ?? []))
+    if (!data || data.length < 1000) break
+  }
+  return lista
+}
+
+/**
  * Una orden con todo lo que la pantalla necesita.
  *
  * El cliente va con join normal y NO con `!inner`, y es la diferencia entre que
@@ -101,18 +125,6 @@ export async function listarOrdenes(filtros: FiltrosOrdenes) {
  * tienen permiso para verla. Ahora la orden se abre y lo que no se ve es el
  * nombre del cliente, que es exactamente lo que el permiso dice.
  */
-/** Los clientes activos para ponerle cliente a una orden del taller (migración 100). */
-export async function clientesParaElegir(): Promise<{ id: string; razon_social: string }[]> {
-  const supabase = await createClient()
-  const { data } = await supabase
-    .from('clientes')
-    .select('id, razon_social')
-    .eq('activo', true)
-    .order('razon_social')
-    .limit(500)
-  return data ?? []
-}
-
 export async function obtenerOrden(id: string) {
   const supabase = await createClient()
 
@@ -232,13 +244,14 @@ export async function responsablesDeOrden() {
 export async function unidadesDeCliente(clienteId: string) {
   const supabase = await createClient()
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('unidades')
     .select('id, placa, marca, modelo')
     .eq('cliente_id', clienteId)
     .eq('activo', true)
     .order('placa')
 
+  if (error) throw new Error(`No se pudieron cargar las unidades del cliente: ${error.message}`)
   return data ?? []
 }
 
