@@ -356,12 +356,12 @@ export type MaterialParaElegir = { id: string; codigo: string; descripcion: stri
 /** El catálogo activo, para elegir el material de una línea. */
 export async function materialesParaElegir(): Promise<MaterialParaElegir[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('materiales')
-    .select('id, codigo, descripcion, unidad:unidades_medida(codigo)')
-    .eq('activo', true)
-    .order('descripcion')
-    .limit(5000)
+  // El catálogo pasa de quinientos: pasado el mil, lo que venía después en orden
+  // alfabético no se podía elegir.
+  const { data, error } = await todasLasFilas(
+    () => supabase.from('materiales').select('id, codigo, descripcion, unidad:unidades_medida(codigo)').eq('activo', true),
+    ['descripcion', 'id'],
+  )
   if (error) throw new Error(`No se pudo leer el catálogo de materiales: ${error.message}`)
   return (data ?? []).map((m) => ({
     id: m.id,
