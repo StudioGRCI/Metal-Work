@@ -251,7 +251,8 @@ comprobar(archivo?.n === 1, 'el recibo está en Storage, en el bucket de subcont
   const movs = await movimientosDeLaCaja(consulta, caja)
   comprobar(movs.length === 1 && movs[0].origen === 'PAGO_RECIBO_HONORARIOS' && movs[0].tipo === 'EGRESO' && movs[0].monto === 1840,
     `el neto sale de la cuenta elegida en la caja diaria (${JSON.stringify(movs)})`)
-  await pagina.waitForLoadState('networkidle')
+  // La lista se relee después de cerrar la ventana: se espera a que lo saque.
+  await pagina.locator(`[data-recibo="${numeroRecibo}"]`).waitFor({ state: 'detached', timeout: 15000 }).catch(() => {})
   comprobar((await pagina.locator(`[data-recibo="${numeroRecibo}"]`).count()) === 0, 'sale de «Por pagar»')
   await pagina.goto(`${BASE}/tesoreria/recibos-por-honorarios?ver=pagados`, { waitUntil: 'networkidle' })
   const pagado = limpio(await pagina.locator(`[data-recibo="${numeroRecibo}"]`).textContent().catch(() => ''))

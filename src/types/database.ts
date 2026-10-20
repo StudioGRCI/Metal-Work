@@ -14526,6 +14526,12 @@ export type Database = {
         }
         Returns: null
       }
+      subcontrato_ruta_adjunta: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
       subcontratos_codigos_internos: {
         Args: Record<PropertyKey, never>
         Returns: {
