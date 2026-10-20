@@ -9,6 +9,7 @@ import { Tarjeta } from '@/components/ui/tarjeta'
 import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/caja'
 import { recibosParaTesoreria, type ReciboParaPagar } from '@/lib/datos/subcontratos'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
+import { resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { fecha, fechaHora, hoyLima, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -44,8 +45,7 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
   const pagados = recibos
     .filter((r) => pagoDe(r))
     .sort((a, b) => (pagoDe(b)?.fecha_pago ?? '').localeCompare(pagoDe(a)?.fecha_pago ?? '') || b.creado_en.localeCompare(a.creado_en))
-  const totalPen = porPagar.filter((r) => r.moneda === 'PEN').reduce((n, r) => n + r.monto_neto, 0)
-  const totalUsd = porPagar.filter((r) => r.moneda === 'USD').reduce((n, r) => n + r.monto_neto, 0)
+  const resumen = resumenPorMoneda(porPagar.map((r) => ({ moneda: r.moneda, monto: r.monto_neto })), ['recibo', 'recibos'])
   const lista = ver === 'pagados' ? pagados : porPagar
   const hoy = hoyLima()
 
@@ -53,6 +53,9 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
     <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Recibos por honorarios"
+        // Una línea, como en las otras bandejas de Tesorería: el recuadro amarillo
+        // que había aquí repetía la cuenta de la pestaña y se leía como alarma.
+        descripcion={resumen && <span data-total-por-pagar>Por pagar: {resumen}, por su neto.</span>}
         ayuda={
           paga
             ? 'Los recibos de los subcontratos que sube Administración. Paga el neto —el bruto menos la retención, si la lleva— a la cuenta del subcontratista y adjunta el voucher: Administración lo ve en el subcontrato.'
@@ -60,16 +63,6 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
         }
         migas={[{ titulo: 'Tesorería' }, { titulo: 'Recibos por honorarios' }]}
       />
-
-      {porPagar.length > 0 && (
-        <p className="mb-4 rounded-lg border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-total-por-pagar>
-          {porPagar.length === 1 ? 'Un recibo espera' : `${porPagar.length} recibos esperan`} pago:{' '}
-          <span className="tabular font-semibold">
-            {[totalPen > 0 ? moneda(totalPen) : null, totalUsd > 0 ? moneda(totalUsd, 'USD') : null].filter(Boolean).join(' y ')}
-          </span>{' '}
-          neto.
-        </p>
-      )}
 
       <PastillaFiltro
         ruta="/tesoreria/recibos-por-honorarios"
@@ -157,7 +150,8 @@ function Fila({
             )}
           </p>
         </div>
-        <div className="text-right">
+        {/* En el teléfono baja bajo el subcontratista, alineada a la izquierda como el resto. */}
+        <div className="sm:text-right">
           <p className="tabular text-base font-semibold text-texto">{moneda(r.monto_neto, r.moneda)}</p>
           <p className="text-[11px] text-texto-suave">
             bruto <span className="tabular">{moneda(r.monto_bruto, r.moneda)}</span>

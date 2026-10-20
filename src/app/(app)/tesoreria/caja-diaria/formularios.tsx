@@ -293,7 +293,9 @@ export function CerrarDia({ cuenta, dia, saldoFinal }: { cuenta: CuentaElegible;
   const v = useVentana()
   return (
     <>
-      <Boton type="button" tamano="sm" onClick={v.abrir} aria-label={`Cerrar el día de ${cuenta.nombre}`} data-cerrar-dia={cuenta.nombre}>
+      {/* En contorno, como «Registrar»: va en la cabecera de cada cuenta, y en azul lleno
+          era lo más visible de la caja a media mañana, cuando lo que toca es registrar. */}
+      <Boton type="button" variante="contorno" tamano="sm" onClick={v.abrir} aria-label={`Cerrar el día de ${cuenta.nombre}`} data-cerrar-dia={cuenta.nombre}>
         <Lock aria-hidden className="size-4" />
         Cerrar el día
       </Boton>

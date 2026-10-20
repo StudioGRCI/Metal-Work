@@ -138,7 +138,20 @@ export default async function PaginaAdquisiciones({ searchParams }: PageProps<'/
         </p>
       )}
 
-      <Tarjeta className="overflow-hidden">
+      {/* En el teléfono, una tarjeta por factura: la tabla de ocho columnas se corría de costado y el proveedor salía cortado. */}
+      <ComprasEnTelefono
+        facturas={facturas}
+        esperan={esperan}
+        vacio={facturas.length === 0 && esperan.length === 0 ? vacio(vista) : null}
+        acceso={acceso}
+        yo={perfil.id}
+        avisosDe={avisosDe}
+        correcciones={correcciones}
+        corrige={registra ? sinFactura : null}
+        porRegistrarDe={porRegistrarDe}
+      />
+
+      <Tarjeta className="hidden overflow-hidden sm:block">
         <Tabla aria-label="Compras: RQ, OC, factura y pago">
           <TablaCabecera>
             <tr>
@@ -225,6 +238,175 @@ export default async function PaginaAdquisiciones({ searchParams }: PageProps<'/
   )
 }
 
+/**
+ * Lo mismo que la tabla, para el teléfono: cada factura con su proveedor, su
+ * total, sus OC y su pago; al final, las OC que esperan su factura.
+ */
+function ComprasEnTelefono({
+  facturas,
+  esperan,
+  vacio,
+  acceso,
+  yo,
+  avisosDe,
+  correcciones,
+  corrige,
+  porRegistrarDe,
+}: {
+  facturas: { factura: FacturaEnTabla; ordenes: OcEnTabla[] }[]
+  esperan: { compra: CompraSinFactura; orden: OcEnTabla }[]
+  vacio: { titulo: string; descripcion: string } | null
+  acceso: Acceso
+  yo: string
+  avisosDe: Map<string, string[]>
+  correcciones: Map<string, CorreccionVista[]>
+  corrige: CompraSinFactura[] | null
+  porRegistrarDe: Map<string, FacturaDeLogistica[]>
+}) {
+  if (vacio) {
+    return (
+      <Tarjeta className="px-4 py-8 text-center sm:hidden">
+        <p className="text-sm font-medium text-texto">{vacio.titulo}</p>
+        <p className="mt-1 text-xs text-texto-suave">{vacio.descripcion}</p>
+      </Tarjeta>
+    )
+  }
+  return (
+    <div className="space-y-4 sm:hidden">
+      {facturas.length > 0 && (
+        <Tarjeta className="overflow-hidden">
+          <ul className="divide-y divide-borde" aria-label="Facturas de compra">
+            {facturas.map(({ factura: f, ordenes }) => {
+              const m = codigo(f.moneda)
+              return (
+                <li key={f.id} className="space-y-1.5 px-4 py-3" data-factura-telefono={f.numero_documento}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <NumeroDeFactura factura={f} />
+                      {/* Sin enlace: pegado al número, que abre el PDF, el dedo tocaba uno por el otro. */}
+                      <p className="text-sm text-texto">{f.proveedor || '—'}</p>
+                    </div>
+                    <p className="tabular shrink-0 font-semibold text-texto">{moneda(f.total, m)}</p>
+                  </div>
+                  <p className="text-xs text-texto-suave">
+                    {definir(TIPO_COMPROBANTE, f.tipo).etiqueta} del <span className="tabular">{fecha(f.fecha_emision)}</span> ·{' '}
+                    {f.condicion_pago === 'CREDITO' ? `crédito, vence ${fecha(f.fecha_vencimiento)}` : 'contado'}
+                  </p>
+                  <DatosDeFactura
+                    factura={f}
+                    conNumero={false}
+                    propia={f.registrado_por === yo}
+                    avisos={avisosDe.get(f.id) ?? []}
+                    correcciones={correcciones.get(f.id)}
+                    corrige={corrige}
+                  />
+                  {ordenes.length > 0 && (
+                    <ul className="space-y-0.5 text-xs text-texto-suave">
+                      {ordenes.map((o) => (
+                        <OcEnUnaLinea key={o.id} orden={o} acceso={acceso} />
+                      ))}
+                    </ul>
+                  )}
+                  <Pago factura={f} acceso={acceso} />
+                </li>
+              )
+            })}
+          </ul>
+        </Tarjeta>
+      )}
+      {esperan.length > 0 && (
+        <Tarjeta className="overflow-hidden">
+          <h2 className="border-b border-borde bg-superficie-2 px-4 py-2 text-xs font-semibold text-texto">
+            OC que esperan su factura <span className="tabular font-normal text-texto-suave">({esperan.length})</span>
+          </h2>
+          <ul className="divide-y divide-borde">
+            {esperan.map(({ compra, orden }) => (
+              <li key={orden.id} className="space-y-1 px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <ul className="text-sm">
+                      <OcEnUnaLinea orden={orden} acceso={acceso} />
+                    </ul>
+                    <p className="text-sm text-texto">{compra.proveedor || '—'}</p>
+                  </div>
+                  <p className="tabular shrink-0 text-right font-semibold text-texto">
+                    {compra.sin_precio ? <span className="font-normal text-aviso">Precio pendiente</span> : moneda(compra.total, codigo(compra.moneda))}
+                  </p>
+                </div>
+                <p className="flex flex-wrap items-center gap-1 text-xs text-texto-suave">
+                  <Insignia tono="neutro">{compra.facturas.length > 0 ? 'Facturada en parte' : 'Sin factura'}</Insignia>
+                  {compra.en_borrador && <Insignia tono="aviso">En un borrador</Insignia>}
+                  <span>
+                    OC del {fecha(compra.creado_en)} · {compra.condicion_pago === 'CREDITO' ? 'a crédito' : 'al contado'}
+                  </span>
+                </p>
+                {compra.facturas.length > 0 && (
+                  <p className="text-xs text-texto-suave">
+                    {compra.facturas.join(', ')}: {moneda(compra.facturado, codigo(compra.moneda))}
+                    {!compra.sin_precio && ` · falta ${moneda(Math.max(compra.total - compra.facturado, 0), codigo(compra.moneda))}`}
+                  </p>
+                )}
+                <AnexadasPorRegistrar facturas={porRegistrarDe.get(compra.orden_compra_id) ?? []} />
+              </li>
+            ))}
+          </ul>
+        </Tarjeta>
+      )}
+    </div>
+  )
+}
+
+/** Una OC en un renglón: su número, de qué RQ salió y para qué código. */
+function OcEnUnaLinea({ orden: o, acceso }: { orden: OcEnTabla; acceso: Acceso }) {
+  return (
+    <li>
+      {acceso.oc ? (
+        <a href={`/compras/${o.id}/pdf`} target="_blank" rel="noopener" className={`tabular ${enlace}`}>
+          {o.numero}
+        </a>
+      ) : (
+        <span className="tabular text-texto">{o.numero}</span>
+      )}
+      {o.requerimientos.length > 0 ? (
+        <>
+          {' · '}
+          {o.requerimientos.map((rq, i) => (
+            <span key={rq.id}>
+              {i > 0 && ', '}
+              {acceso.rq ? (
+                <Link href={`/requerimientos?rq=${rq.id}`} className={`tabular ${enlace}`}>
+                  {rq.numero}
+                </Link>
+              ) : (
+                <span className="tabular">{rq.numero}</span>
+              )}
+            </span>
+          ))}
+        </>
+      ) : (
+        <> · {o.numero_ot ? `OT ${o.numero_ot}` : 'directa'}</>
+      )}
+      {o.codigos.length > 0 && (
+        <>
+          {' · '}
+          {o.codigos.map((c, i) => (
+            <span key={c}>
+              {i > 0 && ', '}
+              {acceso.codigo && c !== 'PLANTA' ? (
+                <Link href={`/codigos-internos/detalle?codigo=${encodeURIComponent(c)}`} className={`tabular ${enlace}`}>
+                  {c}
+                </Link>
+              ) : (
+                <span className="tabular">{c}</span>
+              )}
+            </span>
+          ))}
+        </>
+      )}
+    </li>
+  )
+}
+
 /** Lo que Logística anexó a la OC y espera que Contabilidad lo registre. */
 function AnexadasPorRegistrar({ facturas }: { facturas: FacturaDeLogistica[] }) {
   if (facturas.length === 0) return null
@@ -296,60 +478,13 @@ function GrupoFactura({
           ) : (
             <>
               <TD className="align-top text-texto-suave">—</TD>
-              <TD className="align-top text-xs text-texto-suave">Sin OC</TD>
+              <TD className="align-top text-texto-suave">—</TD>
             </>
           )}
           {i === 0 && (
             <>
               <TD rowSpan={alto} className="align-top">
-                {f.url ? (
-                  <a href={f.url} target="_blank" rel="noreferrer" className={`tabular ${enlace}`}>
-                    {f.numero_documento}
-                  </a>
-                ) : (
-                  <span className="tabular font-medium">{f.numero_documento}</span>
-                )}
-                <p className="text-[11px] text-texto-suave">{definir(TIPO_COMPROBANTE, f.tipo).etiqueta}</p>
-                <p className="mt-1 flex flex-wrap gap-1">
-                  {f.estado !== 'REGISTRADA' && <Insignia tono={definir(ESTADO_COMPROBANTE, f.estado).tono}>{definir(ESTADO_COMPROBANTE, f.estado).etiqueta}</Insignia>}
-                  {f.control && (
-                    <Insignia tono={CONTROL_FACTURA_COMPRA[f.control.control]?.tono ?? 'neutro'}>
-                      {CONTROL_FACTURA_COMPRA[f.control.control]?.etiqueta ?? f.control.control}
-                    </Insignia>
-                  )}
-                  <InsigniaDelDetector avisos={avisos} />
-                </p>
-                {f.control && detalleDelControl(f.control, (n) => moneda(n, m)) && (
-                  <p className={`mt-1 max-w-56 text-xs ${f.control.control === 'NO_CALZA' ? 'text-aviso' : 'text-texto-suave'}`}>
-                    {detalleDelControl(f.control, (n) => moneda(n, m))}
-                  </p>
-                )}
-                <div className="max-w-64">
-                  <AvisosDelDetector avisos={avisos} />
-                </div>
-                {f.estado === 'BORRADOR' && propia && <CompletarAdquisicion id={f.id} />}
-                <HistorialDeCorrecciones correcciones={correcciones} />
-                {corrige && f.estado === 'REGISTRADA' && (
-                  <div className="mt-1">
-                    <CorregirFactura
-                      factura={{
-                        id: f.id,
-                        tipo: f.tipo,
-                        proveedor: f.proveedor,
-                        numero_documento: f.numero_documento,
-                        fecha_emision: f.fecha_emision,
-                        fecha_vencimiento: f.fecha_vencimiento,
-                        moneda: f.moneda,
-                        total: f.total,
-                        condicion_pago: f.condicion_pago,
-                        observacion: f.observacion ?? '',
-                        pagado: f.pagado ?? 0,
-                      }}
-                      ordenes={f.control?.ordenes ?? []}
-                      disponibles={corrige}
-                    />
-                  </div>
-                )}
+                <DatosDeFactura factura={f} propia={propia} avisos={avisos} correcciones={correcciones} corrige={corrige} />
               </TD>
               <TD rowSpan={alto} className="align-top whitespace-nowrap">
                 <span className="tabular">{fecha(f.fecha_emision)}</span>
@@ -374,6 +509,86 @@ function GrupoFactura({
         </TR>
       ))}
     </tbody>
+  )
+}
+
+/** Lo que se dice de una factura: su número con el PDF, su tipo, sus avisos y, para Contabilidad, completarla o corregirla. */
+function DatosDeFactura({
+  factura: f,
+  conNumero = true,
+  propia,
+  avisos,
+  correcciones,
+  corrige,
+}: {
+  factura: FacturaEnTabla
+  /** En el teléfono el número encabeza la tarjeta, junto al total. */
+  conNumero?: boolean
+  propia: boolean
+  avisos: string[]
+  correcciones: CorreccionVista[] | undefined
+  corrige: CompraSinFactura[] | null
+}) {
+  const m = codigo(f.moneda)
+  return (
+    <>
+      {conNumero && (
+        <>
+          <NumeroDeFactura factura={f} />
+          <p className="text-[11px] text-texto-suave">{definir(TIPO_COMPROBANTE, f.tipo).etiqueta}</p>
+        </>
+      )}
+      <p className="mt-1 flex flex-wrap gap-1">
+        {f.estado !== 'REGISTRADA' && <Insignia tono={definir(ESTADO_COMPROBANTE, f.estado).tono}>{definir(ESTADO_COMPROBANTE, f.estado).etiqueta}</Insignia>}
+        {f.control && (
+          <Insignia tono={CONTROL_FACTURA_COMPRA[f.control.control]?.tono ?? 'neutro'}>
+            {CONTROL_FACTURA_COMPRA[f.control.control]?.etiqueta ?? f.control.control}
+          </Insignia>
+        )}
+        <InsigniaDelDetector avisos={avisos} />
+      </p>
+      {f.control && detalleDelControl(f.control, (n) => moneda(n, m)) && (
+        <p className={`mt-1 max-w-56 text-xs ${f.control.control === 'NO_CALZA' ? 'text-aviso' : 'text-texto-suave'}`}>
+          {detalleDelControl(f.control, (n) => moneda(n, m))}
+        </p>
+      )}
+      <div className="max-w-64">
+        <AvisosDelDetector avisos={avisos} />
+      </div>
+      {f.estado === 'BORRADOR' && propia && <CompletarAdquisicion id={f.id} />}
+      <HistorialDeCorrecciones correcciones={correcciones} />
+      {corrige && f.estado === 'REGISTRADA' && (
+        <div className="mt-1">
+          <CorregirFactura
+            factura={{
+              id: f.id,
+              tipo: f.tipo,
+              proveedor: f.proveedor,
+              numero_documento: f.numero_documento,
+              fecha_emision: f.fecha_emision,
+              fecha_vencimiento: f.fecha_vencimiento,
+              moneda: f.moneda,
+              total: f.total,
+              condicion_pago: f.condicion_pago,
+              observacion: f.observacion ?? '',
+              pagado: f.pagado ?? 0,
+            }}
+            ordenes={f.control?.ordenes ?? []}
+            disponibles={corrige}
+          />
+        </div>
+      )}
+    </>
+  )
+}
+
+function NumeroDeFactura({ factura: f }: { factura: FacturaEnTabla }) {
+  return f.url ? (
+    <a href={f.url} target="_blank" rel="noreferrer" className={`tabular ${enlace}`}>
+      {f.numero_documento}
+    </a>
+  ) : (
+    <span className="tabular font-medium">{f.numero_documento}</span>
   )
 }
 
@@ -419,14 +634,18 @@ function CeldaOc({ orden, acceso }: { orden: OcEnTabla; acceso: Acceso }) {
 function CeldaProveedor({ proveedor, acceso, alto }: { proveedor: string; acceso: Acceso; alto?: number }) {
   return (
     <TD rowSpan={alto} className="align-top">
-      {acceso.proveedor && proveedor ? (
-        <Link href={`/proveedores?q=${encodeURIComponent(proveedor)}`} className={enlace}>
-          {proveedor}
-        </Link>
-      ) : (
-        proveedor || '—'
-      )}
+      <NombreProveedor proveedor={proveedor} acceso={acceso} />
     </TD>
+  )
+}
+
+function NombreProveedor({ proveedor, acceso }: { proveedor: string; acceso: Acceso }) {
+  return acceso.proveedor && proveedor ? (
+    <Link href={`/proveedores?q=${encodeURIComponent(proveedor)}`} className={enlace}>
+      {proveedor}
+    </Link>
+  ) : (
+    <>{proveedor || '—'}</>
   )
 }
 
