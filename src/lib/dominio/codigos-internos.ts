@@ -127,58 +127,6 @@ export function faltaElPrecio(monto: number, pendientes: number, etiqueta = 'Sin
   return monto === 0 && pendientes > 0 ? etiqueta : null
 }
 
-/** Un trabajo de un reporte, como lo devuelve `codigo_interno_avance`. */
-export type TrabajoReportado = {
-  reporte_id: string
-  fecha: string
-  creado_en: string
-  area: string | null
-  trabajo_orden: number
-  trabajo: string
-  avance: number
-}
-
-/** Un trabajo de un área con su último avance, reconocido por su descripción sin mayúsculas ni espacios de más. */
-export type TrabajoConAvance = {
-  area: string | null
-  trabajo: string
-  avance: number
-  fecha: string
-  reportes: number
-  /** Los avances de ese trabajo, del primero al último. */
-  historial: { fecha: string; avance: number }[]
-}
-
-function llaveTrabajo(area: string | null, trabajo: string) {
-  return `${area ?? ''}|${trabajo.trim().replace(/\s+/g, ' ').toLowerCase()}`
-}
-
-/**
- * El último avance de cada trabajo, área por área: «Soldadura» de Maestranza y
- * «Soldadura» de Producción son dos trabajos. La misma regla que
- * `codigos_internos_avance` usa para el código sin etapas de Diseño, así la
- * lista y el detalle no dicen cosas distintas.
- */
-export function ultimoAvancePorTrabajo(filas: TrabajoReportado[]): TrabajoConAvance[] {
-  const orden = [...filas].sort(
-    (a, b) => a.fecha.localeCompare(b.fecha) || a.creado_en.localeCompare(b.creado_en) || b.trabajo_orden - a.trabajo_orden,
-  )
-  const trabajos = new Map<string, TrabajoConAvance>()
-  for (const f of orden) {
-    const llave = llaveTrabajo(f.area, f.trabajo)
-    const previo = trabajos.get(llave)
-    trabajos.set(llave, {
-      area: f.area,
-      trabajo: f.trabajo,
-      avance: f.avance,
-      fecha: f.fecha,
-      reportes: (previo?.reportes ?? 0) + 1,
-      historial: [...(previo?.historial ?? []), { fecha: f.fecha, avance: f.avance }],
-    })
-  }
-  return [...trabajos.values()].sort((a, b) => b.fecha.localeCompare(a.fecha) || a.avance - b.avance)
-}
-
 /** PLANTA agrupa el trabajo de la planta que no es de una unidad: no tiene avance. */
 export const CODIGO_SIN_AVANCE = 'PLANTA'
 
@@ -201,11 +149,14 @@ export function noEsUnidad(codigo: string) {
  */
 export function origenDelAvance(
   codigo: string,
-  a: { fuente: 'ETAPAS' | 'REPORTES'; etapas: number; etapas_terminadas: number; trabajos: number; trabajos_terminados: number } | undefined,
+  a: { fuente: 'PLANOS' | 'ETAPAS' | 'REPORTES'; etapas: number; etapas_terminadas: number; trabajos: number; trabajos_terminados: number } | undefined,
 ): string {
   if (codigo === CODIGO_SIN_AVANCE) return 'PLANTA no es una unidad: no lleva avance'
   if (codigo === CODIGO_TODOS_LOS_ACTIVOS) return 'No es una unidad: lo que sale con él se reparte entre los códigos que trabajaron ese mes'
   if (!a) return 'Sin etapas de Diseño ni reporte diario: todavía no avanza'
+  if (a.fuente === 'PLANOS') {
+    return `Por los planos de Diseño, cada uno con su % de la unidad${a.etapas > 0 ? `, y el resto por sus ${plural(a.etapas, 'etapa', 'etapas')}` : ''}`
+  }
   if (a.fuente === 'ETAPAS') {
     return `Por sus ${plural(a.etapas, 'etapa', 'etapas')} de Diseño: ${a.etapas_terminadas} ${a.etapas_terminadas === 1 ? 'terminada' : 'terminadas'}`
   }

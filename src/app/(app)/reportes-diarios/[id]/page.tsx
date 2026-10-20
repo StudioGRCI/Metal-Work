@@ -58,6 +58,7 @@ export default async function PaginaReporteDiario({ params, searchParams }: Page
   const general = r.personal.filter((p) => p.trabajo_id === null)
   const horas = r.personal.reduce((n, p) => n + p.horas, 0)
   const personas = new Set(r.personal.map((p) => p.trabajador_id)).size
+  const sinHoras = r.personal.length === 0
 
   return (
     <>
@@ -87,8 +88,9 @@ export default async function PaginaReporteDiario({ params, searchParams }: Page
 
       {subido === '1' && !anulado && (
         <p role="status" className="mb-4 rounded-lg border border-exito bg-exito-suave px-3 py-2 text-sm text-texto">
-          Reporte subido. Sus horas van al costeo de Recursos Humanos con el código {r.codigo_interno}, y Gerencia y Recursos Humanos
-          lo validan para la planilla diaria.
+          {sinHoras
+            ? `Reporte subido, sin horas de tu gente: el avance queda en ${r.codigo_interno}, y Gerencia y Recursos Humanos lo validan.`
+            : `Reporte subido. Sus horas van al costeo de Recursos Humanos con el código ${r.codigo_interno}, y Gerencia y Recursos Humanos lo validan para la planilla diaria.`}
         </p>
       )}
       {r.observado_en && (

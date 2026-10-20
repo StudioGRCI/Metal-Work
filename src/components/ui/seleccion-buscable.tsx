@@ -150,9 +150,11 @@ export function SeleccionBuscable({
         ocultos están exentos de validación, así que un campo obligatorio se
         enviaba vacío y el «falta el material» llegaba desde el servidor, con
         su viaje de ida y vuelta, en lugar del aviso del navegador pegado al
-        campo. Va transparente y de un píxel -no `hidden` ni `display:none`-
-        porque un control que no se puede enfocar hace que el navegador se
-        niegue a enviar el formulario sin decir por qué.
+        campo. Va transparente -no `hidden` ni `display:none`- porque un
+        control que no se puede enfocar hace que el navegador se niegue a
+        enviar el formulario sin decir por qué. Ocupa lo mismo que el botón y
+        deja sitio a la cabecera fija: de un píxel al pie, el navegador lo
+        subía hasta arriba para su aviso y el campo quedaba tapado.
       */}
       {name && (
         <select
@@ -163,7 +165,7 @@ export function SeleccionBuscable({
           onChange={(e) => onChange(e.target.value)}
           tabIndex={-1}
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-px w-full opacity-0"
+          className="pointer-events-none absolute inset-0 h-full w-full scroll-mt-24 opacity-0"
         >
           <option value="" />
           {opciones.map((o) => (

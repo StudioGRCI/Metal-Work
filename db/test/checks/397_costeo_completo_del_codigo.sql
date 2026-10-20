@@ -131,15 +131,15 @@ do $$
 declare v uuid; v_anulado uuid := gen_random_uuid();
 begin
   perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  -- Gastos registrados antes de la 20261020110000, con tasa o en partes iguales:
+  -- la función ya no los registra así, pero los de antes se siguen repartiendo
+  -- igual. Entran como entraron entonces, a nombre de Administración.
+  insert into public.gastos_generales_mes (id, periodo, concepto, descripcion, monto, moneda, reparto, tasa) values
+    (gen_random_uuid(), current_setting('prueba.periodo')::date, 'ELECTRICIDAD', 'Recibo de luz del mes', 1000, 'PEN', 'TASA', 8),
+    (gen_random_uuid(), current_setting('prueba.periodo')::date, 'AGUA', 'Recibo de agua del mes', 300, 'PEN', 'PARTES_IGUALES', null),
+    (gen_random_uuid(), current_setting('prueba.periodo')::date, 'INTERNET', 'Internet del mes', 100, 'USD', 'TASA', 10),
+    (v_anulado, current_setting('prueba.periodo')::date, 'SEGUROS', 'Seguro registrado dos veces', 5000, 'PEN', 'TASA', 5);
   set local role authenticated;
-  v := public.registrar_gasto_general(gen_random_uuid(), current_setting('prueba.periodo')::date, 'ELECTRICIDAD',
-                                      'Recibo de luz del mes', 1000, 'PEN', 'TASA', 8);
-  v := public.registrar_gasto_general(gen_random_uuid(), current_setting('prueba.periodo')::date, 'AGUA',
-                                      'Recibo de agua del mes', 300, 'PEN', 'PARTES_IGUALES', null);
-  v := public.registrar_gasto_general(gen_random_uuid(), current_setting('prueba.periodo')::date, 'INTERNET',
-                                      'Internet del mes', 100, 'USD', 'TASA', 10);
-  v := public.registrar_gasto_general(v_anulado, current_setting('prueba.periodo')::date, 'SEGUROS',
-                                      'Seguro registrado dos veces', 5000, 'PEN', 'TASA', 5);
   v := public.anular_gasto_general(v_anulado, 'Se registró dos veces');
   reset role;
 end $$;
@@ -486,6 +486,29 @@ begin
 end $$;
 
 -- ============================================ 4. El cierre
+-- Con horas en el mes en curso no se cierra: los gastos del mes y la oficina se
+-- reparten por las horas de todo el mes (migración 20261020110000). Para cerrar,
+-- sus horas pasan al mes anterior, como si ese mes ya hubiera terminado.
+do $$
+begin
+  if exists (select 1 from public.horas_por_codigo_del_mes((now() at time zone 'America/Lima')::date) h where h.codigo = 'CHK397_A_26/01') then
+    perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+    set local role authenticated;
+    perform test.debe_fallar(format('select public.cerrar_costeo_codigo(%L, %L)', 'CHK397_A_26/01', 'Unidad entregada al cliente con su acta'),
+      'con horas en el mes en curso no se cierra hasta que el mes termine', 'que termine el mes');
+    reset role;
+  end if;
+  set local session_replication_role = replica;
+  update public.tareos set fecha = fecha - interval '1 month'
+   where public.normalizar_codigo_interno(codigo_interno) = 'CHK397_A_26/01'
+     and date_trunc('month', fecha) = date_trunc('month', now() at time zone 'America/Lima');
+  update public.reporte_diario_personal l set fecha = l.fecha - interval '1 month'
+    from public.reportes_diarios r
+   where r.id = l.reporte_id and public.normalizar_codigo_interno(r.codigo_interno) = 'CHK397_A_26/01'
+     and date_trunc('month', l.fecha) = date_trunc('month', now() at time zone 'America/Lima');
+  set local session_replication_role = origin;
+end $$;
+
 do $$
 declare v uuid; v2 uuid; k jsonb;
 begin

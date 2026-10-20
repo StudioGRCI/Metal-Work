@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { BUCKET_PLANOS_CODIGO, MAXIMO_MB_PLANO, rutaPlanoCodigo } from '@/lib/dominio/diseno-codigos'
+import { cantidad } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -35,6 +36,15 @@ const CANTIDAD = z.preprocess(
   z.coerce.number().positive().max(999999),
 )
 
+/** El porcentaje de la unidad que representa un plano: de 0 a 100, hasta dos decimales. */
+const PESO = z.preprocess(
+  // Vacío no es cero: z.coerce lo volvería 0 y el plano entraría sin que Diseño lo decida.
+  (v) => (typeof v !== 'string' || v.trim() === '' ? undefined : v.trim().replace(/\s|%/g, '').replace(',', '.')),
+  // Los dos decimales se miran en el texto: en coma flotante 16.67 * 100 no da 1667 y se rechazaba.
+  z.string().regex(/^\d{1,3}(\.\d{1,2})?$/).transform(Number).pipe(z.number().min(0).max(100)),
+)
+const PESO_MAL = 'Pon el porcentaje de la unidad que representa el plano: de 0 a 100, con hasta dos decimales.'
+
 /**
  * El PDF ya subió al almacenamiento con la sesión de quien lo carga: se
  * comprueba que de verdad sea un PDF antes de registrarlo. La base vuelve a
@@ -57,6 +67,7 @@ const PLANO_NUEVO = z.object({
   numero: texto(20).min(1),
   nombre: texto(200).min(2),
   area: z.guid(),
+  peso: PESO,
   observacion: texto(1000).nullable(),
   nombre_archivo: texto(200).min(1),
 })
@@ -72,6 +83,7 @@ export async function registrarPlano(_previo: unknown, formulario: FormData): Pr
     numero: formulario.get('numero'),
     nombre: formulario.get('nombre'),
     area: formulario.get('area'),
+    peso: formulario.get('peso'),
     observacion: opcional(formulario.get('observacion')),
     nombre_archivo: formulario.get('nombre_archivo'),
   })
@@ -86,7 +98,9 @@ export async function registrarPlano(_previo: unknown, formulario: FormData): Pr
             ? 'Escribe el nombre del plano, por ejemplo ESTRUCTURA CAJÓN.'
             : campo === 'area'
               ? 'Elige a qué área de producción va el plano.'
-              : campo === 'observacion'
+              : campo === 'peso'
+                ? PESO_MAL
+                : campo === 'observacion'
                 ? 'La observación pasa de 1000 caracteres.'
                 : campo === 'nombre_archivo'
                   ? 'Elige el PDF del plano.'
@@ -106,10 +120,29 @@ export async function registrarPlano(_previo: unknown, formulario: FormData): Pr
     p_area: datos.data.area,
     p_observacion: datos.data.observacion ?? '',
     p_nombre_archivo: datos.data.nombre_archivo,
+    p_peso: datos.data.peso,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   repintar()
   return { ok: true, mensaje: `Plano ${datos.data.numero.toUpperCase()} cargado. Al supervisor del área le llegó el aviso.` }
+}
+
+/** Corregir el porcentaje de la unidad que representa un plano vigente. */
+export async function fijarPesoPlano(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'diseno.codigos')) return { ok: false, error: SOLO_DISENO }
+  const datos = z.object({ plano: z.guid(), peso: PESO }).safeParse({
+    plano: formulario.get('plano'),
+    peso: formulario.get('peso'),
+  })
+  if (!datos.success) {
+    return { ok: false, error: datos.error.issues[0]?.path[0] === 'peso' ? PESO_MAL : NO_SE_RECONOCE }
+  }
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('fijar_peso_plano', { p_plano: datos.data.plano, p_peso: datos.data.peso })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  repintar()
+  return { ok: true, mensaje: `El plano queda en ${cantidad(datos.data.peso)} % de la unidad.` }
 }
 
 const REVISION = z.object({

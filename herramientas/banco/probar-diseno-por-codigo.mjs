@@ -73,10 +73,12 @@ const PDF = Buffer.from('%PDF-1.4\n1 0 obj <<>> endobj\ntrailer <<>>\n%%EOF\n')
 const NO_PDF = Buffer.from('esto no es un pdf')
 const enlace = (vista) => `${BASE}/diseno/codigo?${new URLSearchParams({ codigo: CODIGO, ...(vista ? { vista } : {}) })}`
 
-async function cargarPlano(pagina, { numero, nombre, area, archivo }) {
+async function cargarPlano(pagina, { numero, nombre, area, archivo, peso = '25' }) {
   await pagina.fill('#plano-numero', numero)
   await pagina.fill('#plano-nombre', nombre)
   await pagina.selectOption('#plano-area', { label: area })
+  // Desde 20261020100000 cada plano lleva el % de la unidad que representa.
+  await pagina.fill('#plano-peso', peso)
   await pagina.setInputFiles('#plano-pdf', { name: `${numero}.pdf`, mimeType: 'application/pdf', buffer: archivo })
   await pagina.getByRole('button', { name: 'Cargar plano' }).click()
 }

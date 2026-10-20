@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { AREAS_DE_PLANOS } from '@/lib/dominio/diseno-codigos'
+import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -78,13 +79,24 @@ export type PlanoDeCodigo = {
   subido_en: string | null
   recibido_en: string | null
   recibido_por_area: string | null
+  /** El porcentaje de la unidad que representa; vacío en los planos de antes del 2026-10-20. */
+  peso: number | null
 }
 
-/** Los planos de un código, o todos los que la persona ve si no se da código. */
-export async function planosDeCodigo(codigo: string | null): Promise<PlanoDeCodigo[]> {
+/** Los planos de un código, o todos los que la persona ve si no se da código. Sin `conPeso` no se lee su % (donde solo se cuentan). */
+export async function planosDeCodigo(codigo: string | null, { conPeso = true }: { conPeso?: boolean } = {}): Promise<PlanoDeCodigo[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('codigo_interno_planos', { p_codigo: codigo })
+  // El peso no está en la función (su firma no se puede cambiar en producción):
+  // se lee de la tabla, con el mismo RLS que deja ver el plano, a la vez y por
+  // código (no por la lista de ids, que alarga la URL hasta romperla).
+  const delPeso = supabase.from('codigo_planos').select('id, peso').not('peso', 'is', null)
+  const [{ data, error }, { data: filas, error: errorPeso }] = await Promise.all([
+    supabase.rpc('codigo_interno_planos', { p_codigo: codigo }),
+    !conPeso ? Promise.resolve({ data: [], error: null }) : codigo ? delPeso.eq('codigo_interno', normalizarCodigo(codigo)) : delPeso,
+  ])
   if (error) throw new Error(`No se pudieron leer los planos: ${error.message}`)
+  if (errorPeso) throw new Error(`No se pudo leer el porcentaje de los planos: ${errorPeso.message}`)
+  const pesos = new Map((filas ?? []).map((f) => [f.id, Number(f.peso)]))
   return (data ?? []).flatMap((p) =>
     p.id && p.codigo && p.area_id
       ? [
@@ -109,6 +121,7 @@ export async function planosDeCodigo(codigo: string | null): Promise<PlanoDeCodi
             subido_en: p.subido_en,
             recibido_en: p.recibido_en,
             recibido_por_area: p.recibido_por_area,
+            peso: pesos.get(p.id) ?? null,
           },
         ]
       : [],
