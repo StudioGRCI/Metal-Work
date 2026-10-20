@@ -232,6 +232,20 @@ function FormularioTrabajador({
               ))}
             </Seleccion>
           </Campo>
+          <Campo
+            etiqueta="Planilla"
+            htmlFor={`tr-planilla-${id}`}
+            requerido
+            ayuda="De taller: la gente de Maestranza, Producción o Acabados que el supervisor pone en su reporte diario. Administrativa: la oficina."
+          >
+            <Seleccion id={`tr-planilla-${id}`} name="planilla" required defaultValue={t?.planilla ?? ''}>
+              <option value="" disabled>
+                Elige la planilla
+              </option>
+              <option value="TALLER">Planilla de taller</option>
+              <option value="ADMINISTRATIVA">Planilla administrativa</option>
+            </Seleccion>
+          </Campo>
         </div>
       </fieldset>
 

@@ -57,9 +57,9 @@ begin
   perform test.como_usuario(current_setting('prueba.rrhh')::uuid);
   set local role authenticated;
   v := public.rrhh_guardar_trabajador(current_setting('prueba.juan')::uuid, 'Juan', 'Soldador', '70000361', 'Soldador',
-         null, '08:00', '17:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-61', null);
+         (select id from public.areas where codigo = 'MTZ'), '08:00', '17:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-61', null);
   v := public.rrhh_guardar_trabajador(current_setting('prueba.ana')::uuid, 'Ana', 'Pintora', '70000362', 'Pintora',
-         null, '08:00', '17:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-62', null);
+         (select id from public.areas where codigo = 'MTZ'), '08:00', '17:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-62', null);
   -- S/ 2400 al mes: la hora a S/ 10. A Ana todavía no se le pone.
   v := public.rrhh_guardar_remuneracion_trabajador(current_setting('prueba.juan')::uuid, 2400);
   perform test.debe_fallar(format('select public.rrhh_guardar_remuneracion_trabajador(%L, 0)', current_setting('prueba.ana')),
