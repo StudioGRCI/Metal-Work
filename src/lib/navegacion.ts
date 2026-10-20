@@ -850,7 +850,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/diseno/informe-semanal', corto: 'Informe' },
   { ruta: '/diseno/evaluaciones', corto: 'Evaluación' },
   { ruta: '/contabilidad/facturacion', corto: 'Facturar' },
-  { ruta: '/adquisiciones', corto: 'Adquisiciones' },
+  { ruta: '/adquisiciones', corto: 'Compras' },
   { ruta: '/tesoreria/por-cobrar', corto: 'Por cobrar' },
   { ruta: '/tesoreria/por-pagar', corto: 'Por pagar' },
   { ruta: '/tesoreria/pagos-de-servicio', corto: 'Servicios' },

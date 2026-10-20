@@ -24,7 +24,7 @@ begin
       from public.roles r where r.codigo = split_part(v, ':', 2);
     perform set_config('prueba.' || split_part(v, ':', 1), v_id::text, true);
   end loop;
-  foreach v in array array['banco', 'chica', 'otro'] loop
+  foreach v in array array['banco', 'chica', 'chica2', 'otro'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
   perform set_config('prueba.d3', ((now() at time zone 'America/Lima')::date - 3)::text, true);
@@ -147,6 +147,13 @@ begin
       pg_temp.id('chica'), current_setting('prueba.d3')),
     'la caja chica no pasa a banco sin la captura', 'Adjunta la captura');
   perform test.afirmar((select tipo from public.cajas where id = pg_temp.id('chica')) = 'EFECTIVO', 'y sigue en efectivo');
+  -- Ni reenviando la foto del conteo que ya tiene: no es la pantalla del aplicativo.
+  perform set_config('prueba.foto_chica2', pg_temp.subir('chica2', 'image/jpeg', 'jpg'), true);
+  perform public.guardar_caja(pg_temp.id('chica2'), 'Caja chica 404 bis', 'EFECTIVO', null, 'PEN', 100, current_setting('prueba.d3')::date, true,
+                              current_setting('prueba.foto_chica2'));
+  perform test.debe_fallar(format('select public.guardar_caja(%L, ''Caja chica 404 bis'', ''BANCO'', ''BCP'', ''PEN'', 100, %L, true, %L)',
+      pg_temp.id('chica2'), current_setting('prueba.d3'), current_setting('prueba.foto_chica2')),
+    'ni pasa a banco con la foto del conteo que ya tenía', 'Adjunta la captura');
   reset role;
 end $$;
 
@@ -256,6 +263,13 @@ begin
   reset role;
 end $$;
 
+do $$
+begin
+  perform test.afirmar((select bool_and(prosrc not like '%lo carga Tesorería%' and prosrc like '%lo registra Contabilidad%')
+                          from pg_proc where proname = 'cerrar_costeo_codigo' and pronamespace = 'public'::regnamespace),
+                       'el cierre del costeo, si falta el cambio, manda a Contabilidad y no a Tesorería');
+end $$;
+
 -- ============================================ 6. Lo que entra de Logística, entero
 -- Una OC de antes, de la solicitud de materiales de una OT: sin `requerimientos.ver`
 -- Contabilidad la sigue viendo con sus líneas y su atención (lo que pide su PDF).
@@ -268,6 +282,7 @@ begin
   perform set_config('prueba.sol_antes', gen_random_uuid()::text, true);
   perform set_config('prueba.sold_antes', gen_random_uuid()::text, true);
   perform set_config('prueba.oc_antes', gen_random_uuid()::text, true);
+  perform set_config('prueba.adq_antes', gen_random_uuid()::text, true);
   insert into public.ordenes_trabajo (id, sede_id, descripcion, abierta_en_taller)
   values (pg_temp.id('ot_antes'), (select id from public.sedes limit 1), 'OT de antes 404', true);
   insert into public.ot_materiales (id, orden_id, material_id, cantidad, area_destino)
@@ -276,10 +291,14 @@ begin
   values (pg_temp.id('sol_antes'), pg_temp.id('ot_antes'), 'MTZ', v_conta);
   insert into public.requerimiento_material_detalles (id, requerimiento_id, ot_material_id, cantidad_solicitada)
   values (pg_temp.id('sold_antes'), pg_temp.id('sol_antes'), pg_temp.id('otm_antes'), 5);
-  insert into public.ordenes_compra_materiales (id, proveedor, referencia, creado_por, requerimiento_id)
-  values (pg_temp.id('oc_antes'), 'Proveedor 404', 'OC de antes 404', v_conta, pg_temp.id('sol_antes'));
-  insert into public.orden_compra_material_detalles (orden_compra_id, cantidad, requerimiento_id, requerimiento_detalle_id)
-  values (pg_temp.id('oc_antes'), 5, pg_temp.id('sol_antes'), pg_temp.id('sold_antes'));
+  insert into public.ordenes_compra_materiales (id, proveedor, referencia, creado_por, requerimiento_id, condicion_pago, dias_credito)
+  values (pg_temp.id('oc_antes'), 'Proveedor 404', 'OC de antes 404', v_conta, pg_temp.id('sol_antes'), 'CONTADO', 0);
+  insert into public.orden_compra_material_detalles (orden_compra_id, cantidad, precio_unitario, requerimiento_id, requerimiento_detalle_id)
+  values (pg_temp.id('oc_antes'), 5, 10, pg_temp.id('sol_antes'), pg_temp.id('sold_antes'));
+  -- El PDF de su factura, ya subido por Contabilidad.
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('comprobantes-financieros', 'adquisiciones/' || pg_temp.id('adq_antes') || '/comprobante.pdf', v_conta::text,
+          '{"mimetype": "application/pdf", "size": 120}');
 end $$;
 set local session_replication_role = origin;
 
@@ -295,6 +314,18 @@ begin
                        'y lo que su PDF lee de la solicitud');
   perform test.afirmar((select count(*) from public.requerimientos) = 0 and not public.puede_ver_requerimientos(),
                        'pero los requerimientos de ahora no los lee');
+
+  -- Y registra su factura: el disparador que la protege lee la solicitud con la
+  -- cuenta de quien registra, para sacar la OT de la compra.
+  insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total,
+                                    condicion_pago, orden_compra_id, registrado_por)
+  values (pg_temp.id('adq_antes'), 'FACTURA_COMPRA', 'Proveedor 404', 'F001-404404', current_date, current_date, 'PEN', 59,
+          'CONTADO', pg_temp.id('oc_antes'), pg_temp.id('contabilidad'));
+  update public.adquisiciones
+     set ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf', estado = 'REGISTRADA'
+   where id = pg_temp.id('adq_antes');
+  perform test.afirmar((select estado::text from public.adquisiciones where id = pg_temp.id('adq_antes')) = 'REGISTRADA',
+                       'y registra la factura de la OC de antes');
   reset role;
 
   -- Administración ve las compras pero no Adquisiciones ni los requerimientos:

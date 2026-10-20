@@ -138,11 +138,14 @@ begin
   -- banco la que era de efectivo (su foto del conteo no es la del aplicativo).
   -- Sin una nueva, se queda la que tenía. Con movimientos, la que ya tiene no
   -- se cambia.
+  -- Un banco que se abre, o la caja chica que pasa a banco, trae una captura
+  -- nueva: la foto del conteo que ya tenía no es la pantalla del aplicativo.
+  if v_tipo = 'BANCO' and (not v_existe or v_previa.tipo <> 'BANCO')
+     and (v_ruta is null or v_ruta is not distinct from v_previa.apertura_ruta) then
+    raise exception 'Adjunta la captura del aplicativo del banco con el saldo de ese día: es el respaldo del saldo inicial.'
+      using errcode = 'check_violation';
+  end if;
   if v_ruta is null then
-    if v_tipo = 'BANCO' and (not v_existe or v_previa.tipo <> 'BANCO') then
-      raise exception 'Adjunta la captura del aplicativo del banco con el saldo de ese día: es el respaldo del saldo inicial.'
-        using errcode = 'check_violation';
-    end if;
     v_ruta := v_previa.apertura_ruta;
   elsif v_existe and v_ruta is not distinct from v_previa.apertura_ruta then
     null;

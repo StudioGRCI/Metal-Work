@@ -110,8 +110,26 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
   return { pagina, contexto, errores }
 }
 
+// La ventana de la aplicación, no el aviso de errores de `next dev`, que también es un [role="dialog"].
+const VENTANA = '[role="dialog"]:not([data-nextjs-dialog])'
+/**
+ * Abre «Cuentas de Tesorería» cuando React ya hidrató la página: abrirla antes
+ * cambia el `open` que trajo el servidor, `next dev` levanta su aviso de
+ * hidratación y la ventana de la prueba deja de ser la única.
+ */
+async function abrirCuentas(pagina) {
+  const seccion = pagina.locator('details', { hasText: 'Cuentas de Tesorería' })
+  if (!(await seccion.count())) return seccion
+  await seccion.evaluate((d) => new Promise((listo) => {
+    const mira = () => (Object.keys(d).some((k) => k.startsWith('__react')) ? listo() : setTimeout(mira, 50))
+    mira()
+  }))
+  await seccion.evaluate((d) => (d.open = true))
+  return seccion
+}
+
 async function esperarVentana(pagina) {
-  const v = pagina.locator('[role="dialog"]')
+  const v = pagina.locator(VENTANA)
   await Promise.race([
     v.waitFor({ state: 'hidden', timeout: 30000 }),
     v.locator('[role="alert"]').waitFor({ timeout: 30000 }),
@@ -149,10 +167,9 @@ const objetos = (prefijo) =>
 const idDe = async (correo) => (await consulta('select id from usuarios where correo = $1', [correo]))[0]?.id
 
 async function abrirAlta(pagina) {
-  const seccion = pagina.locator('details', { hasText: 'Cuentas de Tesorería' })
-  if (await seccion.count()) await seccion.evaluate((d) => (d.open = true))
+  await abrirCuentas(pagina)
   await pagina.locator('[data-agregar-cuenta]:visible').first().click()
-  return pagina.locator('[role="dialog"]')
+  return pagina.locator(VENTANA)
 }
 async function llenarAlta(v, { nombre, tipo, banco, saldo }) {
   await v.locator('input[name="nombre"]').fill(nombre)
@@ -163,10 +180,9 @@ async function llenarAlta(v, { nombre, tipo, banco, saldo }) {
   await v.locator('input[name="fecha_inicio"]').fill(ayer)
 }
 async function abrirCorregir(pagina, nombre) {
-  const seccion = pagina.locator('details', { hasText: 'Cuentas de Tesorería' })
-  if (await seccion.count()) await seccion.evaluate((d) => (d.open = true))
+  await abrirCuentas(pagina)
   await pagina.locator(`[data-editar-cuenta="${nombre}"]`).click()
-  return pagina.locator('[role="dialog"]')
+  return pagina.locator(VENTANA)
 }
 
 const idTesoreria = await idDe(CUENTAS.tesoreria)
@@ -266,10 +282,9 @@ comprobar(Boolean(idTesoreria), 'la cuenta local de Tesorería existe')
   comprobar((await consulta('select count(*)::int as n from cajas where nombre = $1', [BANCO]))[0].n === 1, 'y una sola cuenta')
 
   // «Ver la captura del saldo» la abre: el enlace firmado se pide al tocar.
-  const seccion = pagina.locator('details', { hasText: 'Cuentas de Tesorería' })
   const enlace = pagina.locator(`[data-captura-saldo="${BANCO}"]`)
   const hayEnlace = await hasta(async () => {
-    if (await seccion.count()) await seccion.evaluate((d) => (d.open = true))
+    await abrirCuentas(pagina)
     return enlace.count()
   }, (n) => n === 1)
   comprobar(hayEnlace === 1, 'la cuenta muestra «Ver la captura del saldo»')
@@ -314,7 +329,7 @@ await consulta(
   // Un banco de antes, sin captura: la sección de cuentas se abre sola, avisa, y la adjunta con «Corregir».
   const seccion = pagina.locator('details', { hasText: 'Cuentas de Tesorería' })
   comprobar(await seccion.evaluate((d) => d.open), 'con un banco sin captura, la sección de cuentas se abre sola')
-  if (await seccion.count()) await seccion.evaluate((d) => (d.open = true))
+  await abrirCuentas(pagina)
   comprobar((await pagina.locator(`[data-sin-captura="${ANTIGUO}"]`).count()) === 1, 'el banco de antes avisa que le falta la captura')
   comprobar((await pagina.locator(`[data-sin-captura="${CHICA}"]`).count()) === 0, 'la caja chica no')
   v = await abrirCorregir(pagina, ANTIGUO)
@@ -326,7 +341,7 @@ await consulta(
   // La lista se repinta un momento después de cerrar la ventana.
   const cambio = await hasta(
     async () => {
-      if (await seccion.count()) await seccion.evaluate((d) => (d.open = true))
+      await abrirCuentas(pagina)
       return [await pagina.locator(`[data-sin-captura="${ANTIGUO}"]`).count(), await pagina.locator(`[data-captura-saldo="${ANTIGUO}"]`).count()]
     },
     ([aviso, enlace]) => aviso === 0 && enlace === 1,
@@ -355,7 +370,7 @@ await consulta(
   // La caja chica que pasa a banco pide la captura del aplicativo: la foto del conteo no la reemplaza.
   // Antes, que la lista se repinte con la foto, o la ventana se abre con la cuenta de antes.
   await hasta(async () => {
-    if (await seccion.count()) await seccion.evaluate((d) => (d.open = true))
+    await abrirCuentas(pagina)
     return pagina.locator(`[data-captura-saldo="${CHICA}"]`).count()
   }, (n) => n === 1)
   v = await abrirCorregir(pagina, CHICA)
@@ -413,7 +428,7 @@ await consulta(
   comprobar(ancho <= CELULAR.width, `la ventana con la captura entra en el teléfono (${ancho} px)`)
   await pagina.screenshot({ path: join(CAPTURAS, 'captura-del-saldo-telefono.png') })
   await v.getByRole('button', { name: 'Cancelar' }).click()
-  await pagina.locator('details', { hasText: 'Cuentas de Tesorería' }).evaluate((d) => (d.open = true))
+  await abrirCuentas(pagina)
   const fila = pagina.locator(`[data-captura-saldo="${BANCO}"]`)
   const caja = await fila.boundingBox()
   comprobar(Boolean(caja) && caja.height >= 44, `«Ver la captura del saldo» se toca con el dedo (${caja ? Math.round(caja.height) : 0} px)`)

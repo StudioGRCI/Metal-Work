@@ -11,15 +11,17 @@
 --     sigue pasando sus dólares a soles con el cambio que registró
 --     Contabilidad. Administración lo conserva: nadie dijo de quitárselo.
 --     El código del permiso no cambia (lo nombran la pantalla, las políticas y
---     los checks); cambia el módulo con que se lista.
+--     los checks); cambia el módulo con que se lista. El cierre del costeo, que
+--     mandaba a Tesorería a cargarlo cuando faltaba, ahora remite a
+--     Contabilidad (punto 4).
 --   * «No tiene por qué ver requerimientos: no entra en la parte
 --     administrativa, solo visualiza lo que entra de Logística en
 --     Adquisiciones.» Contabilidad pierde `requerimientos.ver`: la lista de
 --     RQ y la bandeja de atención la rechazan también por su dirección, y la
 --     tabla `requerimientos` deja de leerse con su cuenta. El número de RQ
 --     sigue saliendo en la lista de Adquisiciones, que lo lee de
---     `insumos_de_compras`; en el kardex, que lo lee de `requerimientos`, ya
---     no. Lo que entra de Logística sigue entero: las OC de antes, las que
+--     `insumos_de_compras`; en el kardex y en el formato de salida del almacén,
+--     que lo leen de `requerimientos`, ya no. Lo que entra de Logística sigue entero: las OC de antes, las que
 --     salieron de la solicitud de materiales de una OT, se ven solo si se lee
 --     esa solicitud, y esa lectura pedía `requerimientos.ver`. Sin el punto 2b
 --     esas OC, sus líneas y su PDF se le escondían sin error.
@@ -77,7 +79,7 @@ update public.roles set nombre = 'Contabilidad'
 -- queda como está y un campo que no la dice no se toca. Si el campo ya dice
 -- «Contabilidad», la palabra sale con lo que la une: los paréntesis que la
 -- envuelven, o «y», «e», «o», «y/o», «de», «del», «la», «las», «los», «el» o un
--- signo («-», «–», «—», «,», «/», «&», «|», «·», «:») delante o detrás.
+-- signo («-», «–», «—», «,», «/», «&», «|», «·», «:», «+») delante o detrás.
 -- «Contabilidad (Adquisiciones)», «Contabilidad de Adquisiciones» y
 -- «Adquisiciones – Contabilidad» → «Contabilidad». Si no la dice, en el nombre y
 -- el cargo pasa a decirla («Jefa de Adquisiciones» → «Jefa de Contabilidad»); en
@@ -92,15 +94,15 @@ create or replace function pg_temp.sin_adquisiciones(p text, p_poner boolean) re
       then regexp_replace(p, '\yadquisici[oóÓ]n(es)?\y', 'Contabilidad', 'gi')
       else regexp_replace(regexp_replace(regexp_replace(regexp_replace(p,
         '\(\s*adquisici[oóÓ]n(es)?\s*\)', '', 'gi'),
-        '\yadquisici[oóÓ]n(es)?(\s*(\yy/o\y|\y[yeo]\y|[-–—,/&|·:]))+\s*', '', 'gi'),
-        '(\s*(\yy/o\y|\y[yeo]\y|\ydel?\y|\yl[ao]s?\y|\yel\y|[-–—,/&|·:]))+\s*adquisici[oóÓ]n(es)?\y', '', 'gi'),
+        '\yadquisici[oóÓ]n(es)?(\s*(\yy/o\y|\y[yeo]\y|[-–—,/&|·:+]))+\s*', '', 'gi'),
+        '(\s*(\yy/o\y|\y[yeo]\y|\ydel?\y|\yl[ao]s?\y|\yel\y|[-–—,/&|·:+]))+\s*adquisici[oóÓ]n(es)?\y', '', 'gi'),
         '\yadquisici[oóÓ]n(es)?\y', '', 'gi')
     end,
     '\(\s*\)', '', 'g'),
     '\(\s+', '(', 'g'),
     '\s+\)', ')', 'g'),
     '\s+', ' ', 'g')),
-    '^[-–—,/&|·:\s]+|[-–—,/&|·:\s]+$', '', 'g'),
+    '^[-–—,/&|·:+\s]+|[-–—,/&|·:+\s]+$', '', 'g'),
     '^\(([^()]*)\)$', '\1');
 $f$;
 
@@ -121,6 +123,26 @@ update public.usuarios u
   from public.roles r
  where r.id = u.rol_id and r.codigo = 'CONTABILIDAD'
    and u.apellidos ~* 'adquisici[oóÓ]n';
+
+-- 4. El cierre del costeo ya no manda a Tesorería por el tipo de cambio ---------------------
+-- `cerrar_costeo_codigo` (vigente desde la 20261020120000) dice «(lo carga
+-- Tesorería)» cuando falta el cambio de una línea en dólares o el del día en que
+-- se aprobó la cotización, y Tesorería ya no entra a registrarlo. Se cambia solo
+-- esa frase sobre la definición que está en la base, sin copiar la función
+-- entera: así no se pisa la versión vigente. Correrlo otra vez no hace nada.
+do $$
+declare v_def text;
+begin
+  for v_def in
+    select pg_get_functiondef(p.oid)
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = 'cerrar_costeo_codigo'
+  loop
+    if v_def like '%(lo carga Tesorería)%' then
+      execute replace(v_def, '(lo carga Tesorería)', '(lo registra Contabilidad)');
+    end if;
+  end loop;
+end $$;
 
 -- Lo que quedó, para leerlo en el SQL Editor al pegarlo.
 select r.nombre as puesto, u.nombres, u.apellidos, u.cargo
