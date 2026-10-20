@@ -66,9 +66,11 @@ import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
 import { FechasClave, SalidaDeUnidad } from './salida-y-plazos'
 import { queMeToca } from './te-toca'
+import { esGuid } from '@/lib/guid'
 
 export async function generateMetadata({ params }: PageProps<'/ordenes/[id]'>): Promise<Metadata> {
   const { id } = await params
+  if (!esGuid(id)) notFound()
   const orden = await obtenerOrden(id)
   return { title: orden ? `Orden ${orden.numero}` : 'Orden no encontrada' }
 }
@@ -94,6 +96,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   if (trabajaPorCodigo(perfil)) redirect(reemplazoDeLaOrden(perfil))
   if (!puede(perfil, 'ordenes.ver')) redirect('/sin-permiso')
   const { id } = await params
+  if (!esGuid(id)) notFound()
   const query = await searchParams
   if (query.vista === 'cumplimiento') redirect(`/ordenes/${id}/planos`)
   const secciones = seccionesDeOrden(perfil)

@@ -387,6 +387,9 @@ export type CuentaPorPagar = CuentaPagarFila & {
   pagos: PagoDeFactura[]
 }
 
+/** Cuántas facturas ya pagadas se muestran, de la más reciente a la más vieja. */
+export const PAGADAS_A_LA_VISTA = 60
+
 /**
  * Lo que Tesorería tiene que pagar: toda factura registrada en Adquisiciones,
  * al contado o a crédito, con sus OC, el aviso de monto, el PDF y cada pago con
@@ -394,43 +397,51 @@ export type CuentaPorPagar = CuentaPagarFila & {
  */
 export async function cuentasPorPagar(): Promise<CuentaPorPagar[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('v_cuentas_pagar')
-    .select('id, numero_ot, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, pagado, saldo, condicion_pago, tipo')
-    .order('fecha_vencimiento')
-    .limit(300)
+  const columnas = 'id, numero_ot, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, pagado, saldo, condicion_pago, tipo'
+  // Lo que falta pagar va entero, filtrado en la base; lo ya pagado, solo lo
+  // último. Antes las dos iban juntas, de la más vieja a la más nueva y con
+  // tope de 300: con el tiempo las pagadas viejas llenaban la lista y las
+  // facturas nuevas por pagar, y su total, desaparecían sin aviso.
+  const [pendientes, pagadas] = await Promise.all([
+    supabase.from('v_cuentas_pagar').select(columnas).gt('saldo', 0).order('fecha_vencimiento'),
+    supabase.from('v_cuentas_pagar').select(columnas).lte('saldo', 0)
+      .order('fecha_emision', { ascending: false }).limit(PAGADAS_A_LA_VISTA),
+  ])
+  const error = pendientes.error ?? pagadas.error
   if (error) throw new Error(`No se pudieron leer las cuentas por pagar: ${error.message}`)
-  const filas = data ?? []
+  const filas = [...(pendientes.data ?? []), ...(pagadas.data ?? [])]
   const ids = filas.flatMap((f) => (f.id ? [f.id] : []))
   const [pagos, comprobantes, controles] = await Promise.all([
-    ids.length
-      ? supabase
-          .from('pagos_adquisicion')
-          .select('id, adquisicion_id, fecha, monto, referencia, archivo_ruta, anulado_en, motivo_anulacion')
-          .in('adquisicion_id', ids)
-          .order('fecha')
-      : Promise.resolve({ data: [], error: null }),
-    ids.length
-      ? supabase
-          .from('adquisiciones')
-          .select('id, ruta_storage, documento_compra_id, lectura_fuente, lectura_total, lectura_moneda, lectura_numero, lectura_ordenes')
-          .in('id', ids)
-      : Promise.resolve({ data: [], error: null }),
+    enTandas(ids, async (tanda) => {
+      const r = await supabase
+        .from('pagos_adquisicion')
+        .select('id, adquisicion_id, fecha, monto, referencia, archivo_ruta, anulado_en, motivo_anulacion')
+        .in('adquisicion_id', tanda)
+        .order('fecha')
+      if (r.error) throw new Error(`No se pudieron leer los pagos de las facturas: ${r.error.message}`)
+      return r.data ?? []
+    }),
+    enTandas(ids, async (tanda) => {
+      const r = await supabase
+        .from('adquisiciones')
+        .select('id, ruta_storage, documento_compra_id, lectura_fuente, lectura_total, lectura_moneda, lectura_numero, lectura_ordenes')
+        .in('id', tanda)
+      if (r.error) throw new Error(`No se pudieron leer las facturas: ${r.error.message}`)
+      return r.data ?? []
+    }),
     controlDeFacturas(ids),
   ])
-  if (pagos.error) throw new Error(`No se pudieron leer los pagos de las facturas: ${pagos.error.message}`)
-  if (comprobantes.error) throw new Error(`No se pudieron leer las facturas: ${comprobantes.error.message}`)
   const [vouchers, pdfs] = await Promise.all([
-    enlaces(BUCKET_PAGOS_FACTURAS, (pagos.data ?? []).map((p) => p.archivo_ruta)),
-    enlacesDeComprobantes(comprobantes.data ?? []),
+    enlaces(BUCKET_PAGOS_FACTURAS, pagos.map((p) => p.archivo_ruta)),
+    enlacesDeComprobantes(comprobantes),
   ])
-  const lecturas = new Map((comprobantes.data ?? []).map((a) => [a.id, lecturaDeFila(a)]))
+  const lecturas = new Map(comprobantes.map((a) => [a.id, lecturaDeFila(a)]))
   return filas.map((f) => ({
     ...f,
     url: (f.id && pdfs.get(f.id)) || null,
     control: (f.id && controles.get(f.id)) || null,
     lectura: (f.id && lecturas.get(f.id)) || null,
-    pagos: (pagos.data ?? [])
+    pagos: pagos
       .filter((p) => p.adquisicion_id === f.id)
       .map((p) => ({ ...p, url: (p.archivo_ruta && vouchers.get(p.archivo_ruta)) || null })),
   }))

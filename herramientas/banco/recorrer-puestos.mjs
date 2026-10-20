@@ -8,6 +8,8 @@
  *      ofrece algo que no le deja abrir: un callejón sin salida), si cayó en la
  *      pantalla de error o en 404, los errores de consola, las respuestas 5xx
  *      del servicio, cuánto tardó y si en el teléfono se sale del borde.
+ *      Abre también la primera pantalla de detalle de cada clase que ofrecen
+ *      esos listados (una OT, un cliente, una cotización…).
  *   2. Abre todas las demás pantallas fijas del sistema, las que NO están en su
  *      menú, y anota cuáles le dejan entrar con contenido: o es una fuga de
  *      permiso, o es una pantalla que debería estar en su menú.
@@ -138,16 +140,35 @@ for (const puesto of puestos) {
   ]
   console.log(`\n## ${puesto} · menú: ${menu.join(' ')}`)
 
-  const delMenu = []
-  for (const ruta of menu) {
-    const r = await mirar(p, ruta, errores, fallas)
-    delMenu.push(r)
+  // Las pantallas de detalle (una OT, un cliente, una cotización…) no están
+  // en el menú: se toma el primer enlace de cada clase que ofrece cada listado.
+  const detalles = new Map()
+  const anotar = (r, ruta) => {
     const malo = r.resultado !== 'ABRE' || r.consola?.length || r.servicio?.length
     if (malo) fallos++
     console.log(`${malo ? 'MAL ' : '  ok'} ${r.resultado.padEnd(12)} ${String(r.ms).padStart(5)}ms ${ruta}` +
       (r.consola?.length ? ` · consola: ${r.consola.join(' | ')}` : '') +
       (r.servicio?.length ? ` · servicio: ${r.servicio.join(' | ')}` : ''))
-    if (malo) await p.screenshot({ path: join(CAPTURAS, `${puesto}${ruta.replaceAll('/', '_')}.png`), fullPage: true })
+    return malo
+  }
+  const delMenu = []
+  for (const ruta of menu) {
+    const r = await mirar(p, ruta, errores, fallas)
+    delMenu.push(r)
+    if (anotar(r, ruta)) await p.screenshot({ path: join(CAPTURAS, `${puesto}${ruta.replaceAll('/', '_')}.png`), fullPage: true })
+    if (r.resultado !== 'ABRE') continue
+    const enlaces = await p.$$eval('main a[href^="/"]', (as) => as.map((a) => a.getAttribute('href')))
+    for (const h of enlaces) {
+      const limpio = h?.split('?')[0].split('#')[0]
+      if (!limpio || !/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\/|$)/.test(limpio)) continue
+      const clase = limpio.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, ':id')
+      if (!detalles.has(clase)) detalles.set(clase, limpio)
+    }
+  }
+  for (const ruta of detalles.values()) {
+    const r = await mirar(p, ruta, errores, fallas)
+    delMenu.push(r)
+    if (anotar(r, ruta)) await p.screenshot({ path: join(CAPTURAS, `${puesto}${ruta.replaceAll('/', '_')}.png`), fullPage: true })
   }
 
   // En el teléfono, solo las del menú.

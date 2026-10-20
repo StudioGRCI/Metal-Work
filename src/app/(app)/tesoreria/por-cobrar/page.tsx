@@ -7,7 +7,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cajaDeLosPagos, cuentasParaPagar } from '@/lib/datos/caja'
 import { solicitudesPendientesTesoreria } from '@/lib/datos/costos-ot'
-import { cotizacionesAprobadas, facturasDeVenta } from '@/lib/datos/facturacion'
+import { COBRADAS_A_LA_VISTA, cotizacionesAprobadas, facturasDeVenta } from '@/lib/datos/facturacion'
 import { revisionesDeSalidaPendientes } from '@/lib/datos/vehiculos'
 import { resumenPorMoneda, totalConIgv } from '@/lib/dominio/finanzas'
 import { hoyLima, moneda, type CodigoMoneda } from '@/lib/format'
@@ -105,7 +105,7 @@ export default async function PaginaPorCobrar() {
       {cobradas.length > 0 && (
         <details className="mt-5 rounded-[var(--radius-base)] border border-borde bg-superficie">
           <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm font-medium text-texto">
-            Cobradas ({cobradas.length})
+            {cobradas.length >= COBRADAS_A_LA_VISTA ? `Las últimas ${COBRADAS_A_LA_VISTA} cobradas` : `Cobradas (${cobradas.length})`}
           </summary>
           <div className="space-y-3 border-t border-borde p-4">
             {cobradas.map((f) => (

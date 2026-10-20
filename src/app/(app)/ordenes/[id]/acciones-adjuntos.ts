@@ -86,8 +86,13 @@ export async function quitarAdjunto(_previo: unknown, datos: FormData): Promise<
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: 'No se pudo quitar el archivo: verifica tus permisos y el estado de la orden.' }
 
-  await supabase.storage.from('adjuntos-ot').remove([data.ruta_storage])
+  // La fila ya se fue; si el archivo no se pudo retirar se dice, en vez de
+  // dejarlo suelto en el almacenamiento sin que nadie lo sepa.
+  const { error: errorArchivo } = await supabase.storage.from('adjuntos-ot').remove([data.ruta_storage])
 
   revalidatePath(`/ordenes/${v.orden_id}`)
+  if (errorArchivo) {
+    return { ok: true, mensaje: 'Se quitó de la orden, pero el archivo quedó guardado: avisa al administrador para retirarlo.' }
+  }
   return { ok: true, mensaje: 'Archivo quitado.' }
 }

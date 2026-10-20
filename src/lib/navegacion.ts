@@ -755,6 +755,10 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     telefono: ['/cotizaciones/pdf', '/clientes', '/unidades', '/'],
   },
 }
+// El líder de Diseño hace el trabajo de Diseño y además revisa el de su equipo
+// (`docs/PERMISOS.md`): lleva su mismo menú. Sin esta línea le salía el
+// catálogo completo, con Configuración, y en el teléfono sin Planos ni Etapas.
+MENU_POR_PUESTO.DISENO_LIDER = MENU_POR_PUESTO.DISENO
 
 function lePermite(item: ItemNavegacion, permisos: readonly string[], esAdmin: boolean) {
   if (!item.permiso || esAdmin) return true

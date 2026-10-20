@@ -34,7 +34,7 @@ export const obtenerSesion = cache(async (): Promise<PerfilSesion | null> => {
 
   if (!user) return null
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('usuarios')
     .select(
       'id, nombres, apellidos, correo, cargo, activo, es_operario, sede_id, area_id, rol:roles!inner(codigo, nombre, nivel, roles_permisos(permiso_codigo))',
@@ -42,6 +42,10 @@ export const obtenerSesion = cache(async (): Promise<PerfilSesion | null> => {
     .eq('id', user.id)
     .maybeSingle()
 
+  // Si la base no respondió, no es que la cuenta no tenga perfil: sin esto, un
+  // corte de un segundo sacaba a la persona con «tu cuenta todavía no tiene un
+  // perfil». Con el error, sale la pantalla de error con su «Reintentar».
+  if (error) throw new Error(`No se pudo leer tu perfil: ${error.message}`)
   if (!data) return null
 
   const rol = data.rol as unknown as {

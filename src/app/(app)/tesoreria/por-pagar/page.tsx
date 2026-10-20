@@ -7,7 +7,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { AvisosDelDetector, avisosDeFacturaRegistrada, InsigniaDelDetector } from '@/app/(app)/adquisiciones/detector'
-import { cuentasPorPagar, type CuentaPorPagar } from '@/lib/datos/adquisiciones'
+import { cuentasPorPagar, PAGADAS_A_LA_VISTA, type CuentaPorPagar } from '@/lib/datos/adquisiciones'
 import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/caja'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { TIPO_COMPROBANTE, TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
@@ -111,7 +111,9 @@ export default async function PaginaPorPagar() {
 
       {pagadas.length > 0 && (
         <details className="mt-5 rounded-[var(--radius-base)] border border-borde bg-superficie">
-          <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm font-medium text-texto">Pagadas ({pagadas.length})</summary>
+          <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm font-medium text-texto">
+            {pagadas.length >= PAGADAS_A_LA_VISTA ? `Las últimas ${PAGADAS_A_LA_VISTA} pagadas` : `Pagadas (${pagadas.length})`}
+          </summary>
           <div className="space-y-3 border-t border-borde p-4">
             {pagadas.map((c) => (
               <Factura key={c.id} cuenta={c} paga={paga} hoy={hoy} correcciones={correcciones.get(c.id ?? '')} cuentasCaja={cuentasCaja} cajas={cajas} />

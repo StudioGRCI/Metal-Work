@@ -728,6 +728,8 @@ const CIFRAS_POR_PUESTO: Record<string, { titulo: string; cifras: ClaveCifra[] }
   SUPERVISOR_GENERAL: { titulo: 'Seguimiento', cifras: ['seguimiento_en_curso', 'rq_abiertos', 'vehiculos_en_planta', 'bajo_minimo'] },
   VENDEDOR: { titulo: 'Ventas', cifras: ['cotizaciones_en_gerencia', 'aprobadas_del_mes', 'clientes'] },
 }
+// El líder de Diseño ve las cifras de Diseño (mismo menú, `navegacion.ts`).
+CIFRAS_POR_PUESTO.DISENO_LIDER = CIFRAS_POR_PUESTO.DISENO
 
 export async function dashboardDelPuesto(perfil: PerfilSesion): Promise<DashboardDelPuesto | null> {
   const esAdmin = perfil.rol.codigo === 'ADMIN'

@@ -7,6 +7,7 @@ import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 import { BotonImprimir } from '../../../../ordenes/[id]/expediente/imprimir'
+import { esGuid } from '@/lib/guid'
 
 export const metadata = { title: 'Formato de salida de almacén' }
 
@@ -19,6 +20,7 @@ export const metadata = { title: 'Formato de salida de almacén' }
 export default async function PaginaFormato({ params }: PageProps<'/almacen/movimientos/[id]/formato'>) {
   await exigirPermiso('almacen.ver')
   const { id } = await params
+  if (!esGuid(id)) notFound()
   const db = await createClient()
   const { data: m, error } = await db.from('v_kardex_almacen')
     .select('id,fecha,material,material_codigo,unidad_medida,salida,codigo_unidad,documento,recibido_por_nombre,registrado_por_nombre,almacen,requerimiento_numero,con_formato,orden_numero')

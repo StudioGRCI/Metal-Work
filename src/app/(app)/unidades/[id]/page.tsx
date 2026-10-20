@@ -15,9 +15,11 @@ import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { fecha, hoyLima, moneda, numero, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
+import { esGuid } from '@/lib/guid'
 
 export async function generateMetadata({ params }: PageProps<'/unidades/[id]'>): Promise<Metadata> {
   const { id } = await params
+  if (!esGuid(id)) notFound()
   const unidad = await obtenerUnidad(id)
   return { title: unidad ? nombreDeUnidad(unidad) : 'Unidad no encontrada' }
 }
@@ -32,6 +34,7 @@ export async function generateMetadata({ params }: PageProps<'/unidades/[id]'>):
 export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]'>) {
   const perfil = await exigirPermiso(['clientes.ver', 'produccion.ver'])
   const { id } = await params
+  if (!esGuid(id)) notFound()
 
   const unidad = await obtenerUnidad(id)
   if (!unidad) notFound()

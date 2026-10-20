@@ -225,8 +225,11 @@ export type ReciboParaPagar = ReciboHonorarios & {
 }
 
 /**
- * Los recibos para Tesorería: los vigentes, del más viejo al más nuevo, los
- * que esperan pago y los pagados. Los anulados no: no se pagan ni se pagaron.
+ * Los recibos para Tesorería: los vigentes, los que esperan pago y los
+ * pagados. Los anulados no: no se pagan ni se pagaron. Del más nuevo al más
+ * viejo: con tope y del más viejo al más nuevo, los pagados de hace meses
+ * llenaban la lista y los recibos nuevos por pagar quedaban fuera sin aviso.
+ * La pantalla los vuelve a ordenar.
  */
 export async function recibosParaTesoreria(): Promise<ReciboParaPagar[]> {
   const supabase = await createClient()
@@ -238,9 +241,9 @@ export async function recibosParaTesoreria(): Promise<ReciboParaPagar[]> {
         ' subcontratista:subcontratistas!recibos_honorarios_subcontratista_id_fkey(nombre, ruc, banco, numero_cuenta, cci)',
     )
     .is('anulado_en', null)
-    .order('fecha_emision', { ascending: true })
-    .order('creado_en', { ascending: true })
-    .limit(500)
+    .order('fecha_emision', { ascending: false })
+    .order('creado_en', { ascending: false })
+    .limit(1000)
   if (error) throw new Error(`No se pudieron leer los recibos por honorarios: ${error.message}`)
   type Fila = FilaRecibo & {
     subcontrato: Uno<NonNullable<ReciboParaPagar['subcontrato']>>
