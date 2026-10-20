@@ -47,19 +47,21 @@ alter table storage.objects enable row level security;
 grant select, insert, delete on storage.objects to authenticated;
 
 -- ------------------------------------------------------ RR. HH. registra al personal
+-- De Maestranza: el reporte diario ofrece solo a la gente de taller de
+-- Maestranza, Producción o Acabados (migración 20261020181000).
 do $$
 declare v_id uuid;
 begin
   perform test.como_usuario(current_setting('prueba.rrhh')::uuid);
   set local role authenticated;
   v_id := public.rrhh_guardar_trabajador(current_setting('prueba.t1')::uuid, 'Juan', 'Soldador', '70000351', 'Soldador',
-            null, '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-51', null);
+            (select id from public.areas where codigo = 'MTZ'), '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-51', null);
   v_id := public.rrhh_guardar_trabajador(current_setting('prueba.t2')::uuid, 'Ana', 'Sin Costo', '70000352', 'Pintora',
-            null, '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-52', null);
+            (select id from public.areas where codigo = 'MTZ'), '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-52', null);
   v_id := public.rrhh_guardar_trabajador(current_setting('prueba.t3')::uuid, 'Luis', 'Esperando', '70000353', 'Armador',
-            null, '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-53', null);
+            (select id from public.areas where codigo = 'MTZ'), '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-53', null);
   v_id := public.rrhh_guardar_trabajador(current_setting('prueba.t4')::uuid, 'Eva', 'De Baja', '70000354', 'Ayudante',
-            null, '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-54', null);
+            (select id from public.areas where codigo = 'MTZ'), '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-54', null);
   v_id := public.rrhh_cambiar_estado_trabajador(current_setting('prueba.t4')::uuid, false);
   -- S/ 2400 al mes: S/ 10 la hora.
   v_id := public.rrhh_guardar_costo_trabajador(current_setting('prueba.t1')::uuid, 2400);

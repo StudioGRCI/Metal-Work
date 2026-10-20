@@ -367,14 +367,15 @@ export const NAVEGACION = [
         descripcion: 'Cuánto hay de cada material en los cuatro almacenes, y de qué código interno es cada accesorio',
         disponible: true,
       },
-      // Los subcontratos que Administración registró para Producción o Acabados
-      // (migración 20261017100000): el supervisor de esa área los consulta, sin montos.
+      // Los subcontratos que Administración registró para Maestranza, Producción o
+      // Acabados (migraciones 20261017100000 y 20261020180000): el supervisor de esa
+      // área los ve sin montos, con su inicio, su fin y el avance que reporta.
       {
         titulo: 'Subcontratos',
         ruta: '/subcontratos/area',
         icono: Handshake,
         permiso: 'subcontratos.area',
-        descripcion: 'Los trabajos de terceros que Administración registró para tu área, por código interno, con sus recibos y si ya se pagaron; sin montos',
+        descripcion: 'Los trabajos de terceros para tu área, por código interno: su inicio, su fin y el avance que reportas; sin montos',
         disponible: true,
       },
       // Supervisión general sigue todas las áreas sin la OT (2026-10-15): lo que
@@ -726,18 +727,17 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [{ titulo: 'Portería', rutas: ['/rrhh/asistencia'] }],
     telefono: ['/rrhh/asistencia', '/'],
   },
-  // Sube su reporte diario, que es su trabajo de cada día, y recoge de Almacén
-  // lo que su área pidió (el RQ «Listo en almacén», al que también lo lleva el
-  // aviso). Desde el 2026-10-15, los planos que Diseño carga para su área y las
-  // etapas que hace su área van justo después de su reporte, y ya no abre la
-  // OT: su reporte diario reemplaza las tareas con foto. Después de sus
-  // requerimientos, el stock de Almacén, que consulta para saber qué hay (lo
-  // pidió Maestranza el mismo día); en el teléfono, en lugar del dashboard.
-  // Al final, para consultar, los subcontratos que Administración registró
-  // para su área (Producción o Acabados; a Maestranza le dice que no recibe).
+  // Sube su reporte diario, que es su trabajo de cada día. Desde el 2026-10-15,
+  // los planos que Diseño carga para su área y las etapas que hace su área van
+  // justo después de su reporte, y ya no abre la OT: su reporte diario
+  // reemplaza las tareas con foto. Desde el 2026-10-20, en el orden que pidió
+  // DKS: reporte diario, planos y etapas, los subcontratos de su área (su
+  // inicio, su fin y su progreso, sin montos), sus requerimientos (el RQ
+  // «Listo en almacén», al que también lo lleva el aviso) y al final el stock
+  // de Almacén, que consulta para saber qué hay.
   SUPERVISOR: {
-    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/planos', '/requerimientos', '/almacen/stock', '/subcontratos/area'] }],
-    telefono: ['/reportes-diarios', '/planos', '/requerimientos', '/almacen/stock'],
+    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/planos', '/subcontratos/area', '/requerimientos', '/almacen/stock'] }],
+    telefono: ['/reportes-diarios', '/planos', '/subcontratos/area', '/requerimientos'],
   },
   // Mira todas las áreas sin trabajar en ninguna: cada una con su nombre y en
   // el orden del circuito, después de lo suyo. La cotización ya no: desde el
@@ -893,6 +893,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/tesoreria/tipo-de-cambio', corto: 'Cambio' },
   { ruta: '/proveedores', corto: 'Proveedores' },
   { ruta: '/subcontratos', corto: 'Subcontratos' },
+  { ruta: '/subcontratos/area', corto: 'Subcontratos' },
   { ruta: '/tesoreria/recibos-por-honorarios', corto: 'Honorarios' },
   { ruta: '/tesoreria/caja-diaria', corto: 'Caja' },
   // Al final: así no le quita la pestaña a nadie que no tenga menú propio.

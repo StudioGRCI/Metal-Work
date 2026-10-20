@@ -76,7 +76,7 @@ begin
   perform public.guardar_subcontratista(pg_temp.id('sub'), current_setting('prueba.ruc'), 'Pintor de prueba 365',
                                         null, null, null, null, true);
   perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, ''PLANTA'', ''Pintura de la cabina completa'', ''PEN'', 1200, null, null, null)',
-      pg_temp.id('sc_prd'), pg_temp.id('sub')), 'sin área no se registra', 'Producción o Acabados');
+      pg_temp.id('sc_prd'), pg_temp.id('sub')), 'sin área no se registra', 'Maestranza o Acabados');
   perform test.debe_fallar(format('select public.registrar_subcontrato(%L, %L, ''PLANTA'', ''Pintura de la cabina completa'', ''PEN'', 1200, null, null)',
       pg_temp.id('sc_prd'), pg_temp.id('sub')), 'la pantalla de antes, sin área, tampoco', 'recarga la página');
   v := public.registrar_subcontrato(pg_temp.id('sc_prd'), pg_temp.id('sub'), 'PLA_SR_O4_1_26/28',
@@ -116,20 +116,17 @@ end $$;
 
 -- ============================================ 2. El supervisor ve lo suyo, sin montos
 do $$
-declare v_filas integer; v_recibos jsonb;
+declare v_filas integer;
 begin
   perform pg_temp.como('sup_prd');
   set local role authenticated;
-  select count(*) into v_filas from public.subcontratos_de_mi_area() s where s.creado_en >= now();
+  select count(*) into v_filas from public.subcontratos_del_area() s where s.subcontratista = 'Pintor de prueba 365';
   perform test.afirmar(v_filas = 2, format('Producción ve sus dos subcontratos vigentes, sin el anulado ni el de Acabados (vio %s)', v_filas));
-  select s.recibos into v_recibos from public.subcontratos_de_mi_area() s where s.id = pg_temp.id('sc_prd');
-  perform test.afirmar(jsonb_array_length(v_recibos) = 2
-    and (v_recibos -> 0 ->> 'numero') = 'E001-41' and (v_recibos -> 0 ->> 'pagado')::boolean
-    and (v_recibos -> 1 ->> 'numero') = 'E001-42' and not (v_recibos -> 1 ->> 'pagado')::boolean,
-    've sus dos recibos, el primero pagado y el segundo por pagar');
-  perform test.afirmar(v_recibos::text !~* 'monto|neto|retencion|bruto|voucher|archivo', 'los recibos no traen montos ni archivos');
+  -- Desde la migración 20261020180000 el área no ve los recibos: la lista de
+  -- antes, que los traía, ya no la lee nadie.
+  perform test.debe_fallar('select * from public.subcontratos_de_mi_area()', 'la lista de antes, con recibos, ya no se lee', 'permission denied');
   perform test.afirmar((select area_codigo = 'PRD' and subcontratista = 'Pintor de prueba 365' and codigo_interno = 'PLA_SR_O4_1_26/28'
-                          from public.subcontratos_de_mi_area() where id = pg_temp.id('sc_prd')),
+                          from public.subcontratos_del_area() where id = pg_temp.id('sc_prd')),
     'trae el área, quién hace el trabajo y el código interno');
   -- Y las tablas siguen cerradas para él.
   perform test.afirmar((select count(*) from public.subcontratos) = 0 and (select count(*) from public.recibos_honorarios) = 0
@@ -141,24 +138,24 @@ begin
 
   perform pg_temp.como('sup_acb');
   set local role authenticated;
-  perform test.afirmar((select count(*) from public.subcontratos_de_mi_area() s where s.creado_en >= now()) = 1
-    and (select jsonb_array_length(recibos) from public.subcontratos_de_mi_area() where id = pg_temp.id('sc_acb')) = 0,
+  perform test.afirmar((select count(*) from public.subcontratos_del_area() s where s.subcontratista = 'Pintor de prueba 365') = 1
+    and exists (select 1 from public.subcontratos_del_area() where id = pg_temp.id('sc_acb')),
     'Acabados ve solo el suyo');
   reset role;
 
   perform pg_temp.como('sup_mtz');
   set local role authenticated;
-  perform test.afirmar((select count(*) from public.subcontratos_de_mi_area() s where s.creado_en >= now()) = 0,
+  perform test.afirmar((select count(*) from public.subcontratos_del_area() s where s.subcontratista = 'Pintor de prueba 365') = 0,
     'Maestranza no ve ninguno');
   reset role;
 
   perform pg_temp.como('tesoreria');
   set local role authenticated;
-  perform test.debe_fallar('select * from public.subcontratos_de_mi_area()', 'sin subcontratos.area no se lee la lista del área', 'subcontratos.area');
+  perform test.debe_fallar('select * from public.subcontratos_del_area()', 'sin subcontratos.area no se lee la lista del área', 'subcontratos.area');
   reset role;
 
-  perform test.afirmar(pg_get_function_result('public.subcontratos_de_mi_area()'::regprocedure) !~* 'monto|neto|retencion',
-    'la lista del área no tiene columnas de montos');
+  perform test.afirmar(pg_get_function_result('public.subcontratos_del_area()'::regprocedure) !~* 'monto|neto|retencion|recibo',
+    'la lista del área no tiene columnas de montos ni de recibos');
 end $$;
 
 -- ============================================ 3. Cambiar el área y el subcontrato sin área
@@ -173,18 +170,18 @@ begin
 
   perform pg_temp.como('sup_acb');
   set local role authenticated;
-  perform test.afirmar((select count(*) from public.subcontratos_de_mi_area() s where s.creado_en >= now()) = 0, 'Acabados ya no lo ve');
+  perform test.afirmar((select count(*) from public.subcontratos_del_area() s where s.subcontratista = 'Pintor de prueba 365') = 0, 'Acabados ya no lo ve');
   reset role;
   perform pg_temp.como('sup_prd');
   set local role authenticated;
-  perform test.afirmar((select count(*) from public.subcontratos_de_mi_area() s where s.creado_en >= now()) = 3, 'Producción sí');
+  perform test.afirmar((select count(*) from public.subcontratos_del_area() s where s.subcontratista = 'Pintor de prueba 365') = 3, 'Producción sí');
   reset role;
 
   -- Uno de antes de esta migración, sin área: nadie del taller lo ve.
   update public.subcontratos set area_id = null where id = pg_temp.id('sc_viejo');
   perform pg_temp.como('sup_prd');
   set local role authenticated;
-  perform test.afirmar(not exists (select 1 from public.subcontratos_de_mi_area() where id = pg_temp.id('sc_viejo')),
+  perform test.afirmar(not exists (select 1 from public.subcontratos_del_area() where id = pg_temp.id('sc_viejo')),
     'un subcontrato sin área no le sale a ningún supervisor');
   reset role;
 

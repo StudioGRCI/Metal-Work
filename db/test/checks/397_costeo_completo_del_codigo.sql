@@ -81,7 +81,7 @@ begin
   perform test.como_usuario(current_setting('prueba.rrhh')::uuid);
   set local role authenticated;
   v := public.rrhh_guardar_trabajador(current_setting('prueba.juan')::uuid, 'Juan', 'Soldador', '70000397', 'Soldador',
-         null, '08:00', '17:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-97', null);
+         (select id from public.areas where codigo = 'MTZ'), '08:00', '17:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-97', null);
   v := public.rrhh_guardar_remuneracion_trabajador(current_setting('prueba.juan')::uuid, 2400);
   perform public.rrhh_guardar_costo_trabajador(current_setting('prueba.juan')::uuid, 3600);
   reset role;

@@ -10,7 +10,7 @@ import { createClient } from '@/lib/supabase/server'
 
 /*
  * Lo que hace Administración con los subcontratos (migraciones 20261015221000
- * y 20261017100000, la del área: Producción o Acabados).
+ * y 20261017100000, la del área: Producción o Acabados; 20261020180000 suma Maestranza).
  * Todas exigen `subcontratos.gestionar`, el mismo permiso que piden las
  * funciones de la base, y comprueban que la función devolvió el id: si no
  * vuelve, no se hizo, y la pantalla no dice «listo».
@@ -24,7 +24,7 @@ const MONTO = z.coerce
   .max(999999999, 'El monto es demasiado grande.')
   .multipleOf(0.01, 'El monto lleva como máximo dos decimales.')
 const CODIGO = z.string().trim().min(2, FALTA_CODIGO_INTERNO).max(60, CODIGO_INTERNO_LARGO)
-const AREA = z.enum(['PRD', 'ACB'], { message: 'Elige para qué área va el subcontrato: Producción o Acabados.' })
+const AREA = z.enum(['MTZ', 'PRD', 'ACB'], { message: 'Elige para qué área va el subcontrato: Maestranza, Producción o Acabados.' })
 const DESCRIPCION = z
   .string()
   .trim()
