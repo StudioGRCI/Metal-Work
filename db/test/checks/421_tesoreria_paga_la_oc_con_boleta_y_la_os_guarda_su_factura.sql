@@ -367,6 +367,53 @@ select test.debe_fallar($$ insert into public.adquisiciones_ordenes_compra (adqu
   'a la OC que Tesorería pagó directo no se le liga una factura', 'Tesorería ya le pagó');
 select test.debe_fallar($$ update public.adquisiciones set orden_compra_id = pg_temp.id('oc1') where id = pg_temp.id('f1') $$,
   'tampoco por la OC de la cabecera de la factura', 'Tesorería ya le pagó');
+select set_config('prueba.f9', gen_random_uuid()::text, true);
+insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
+values ('comprobantes-financieros', 'adquisiciones/' || pg_temp.id('f9') || '/comprobante.pdf', pg_temp.id('contabilidad'),
+        pg_temp.id('contabilidad')::text, jsonb_build_object('mimetype', 'application/pdf', 'size', 2048));
+select test.debe_fallar($$ insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total,
+                                                         condicion_pago, estado, ruta_storage, orden_compra_id)
+                           values (pg_temp.id('f9'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', 'F001-4219', current_setting('prueba.hoy')::date,
+                                   current_setting('prueba.hoy')::date, 'PEN', 100, 'CONTADO', 'REGISTRADA',
+                                   'adquisiciones/' || pg_temp.id('f9') || '/comprobante.pdf', pg_temp.id('oc1')) $$,
+  'ni dándola de alta ya registrada', 'Tesorería ya le pagó');
+-- Un vínculo quitado en una corrección no se devuelve (la llave que pone `corregir_factura_compra`).
+set local session_replication_role = replica;
+insert into public.adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id, quitada_en, quitada_por)
+values (pg_temp.id('f1'), pg_temp.id('oc1'), now(), pg_temp.id('contabilidad'));
+set local session_replication_role = origin;
+select test.debe_fallar($$ do $x$ begin
+                             perform set_config('metalwork.corrigiendo', 'factura', true);
+                             update public.adquisiciones_ordenes_compra set quitada_en = null, quitada_por = null
+                              where adquisicion_id = pg_temp.id('f1') and orden_compra_id = pg_temp.id('oc1');
+                           end $x$ $$,
+  'ni se le devuelve la OC que una corrección había quitado', 'Tesorería ya le pagó');
+-- Con su pago vigente, la OC no cambia su total; lo que no lo toca, sí.
+select test.debe_fallar($$ update public.orden_compra_material_detalles set precio_unitario = 100 where orden_compra_id = pg_temp.id('oc1') $$,
+  'la OC con un pago directo vigente no cambia su precio', 'su total no cambia');
+select test.debe_fallar($$ update public.orden_compra_material_detalles set cantidad = 1 where orden_compra_id = pg_temp.id('oc1') $$,
+  'ni su cantidad', 'su total no cambia');
+select test.debe_fallar($$ delete from public.orden_compra_material_detalles where orden_compra_id = pg_temp.id('oc1') $$,
+  'ni pierde líneas', 'su total no cambia');
+update public.orden_compra_material_detalles set precio_unitario = precio_unitario where orden_compra_id = pg_temp.id('oc1');
+select test.afirmar(public.total_orden_compra(pg_temp.id('oc1')) = 361.50, 'y lo que no cambia el total pasa');
+-- El proveedor entregó factura y Logística la anexó a la OC: ya no se paga directo.
+select pg_temp.como('comprador');
+select set_config('prueba.dfac', gen_random_uuid()::text, true);
+insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
+values ('documentos-compras', 'compra/' || pg_temp.id('oc1') || '/' || pg_temp.id('dfac') || '.pdf', pg_temp.id('comprador'),
+        pg_temp.id('comprador')::text, jsonb_build_object('mimetype', 'application/pdf', 'size', 2048));
+insert into public.documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, numero_documento, fecha_emision)
+values (pg_temp.id('dfac'), pg_temp.id('oc1'), 'FACTURA', 'factura.pdf', 'compra/' || pg_temp.id('oc1') || '/' || pg_temp.id('dfac') || '.pdf',
+        'application/pdf', 2048, pg_temp.id('comprador'), 'F009-421', current_date);
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select set_config('prueba.v6', pg_temp.subir('pagos-compras', 'oc1'), true);
+select test.debe_fallar($$ select pg_temp.pagar('pv', 'oc1', 10, false, current_setting('prueba.v6')) $$,
+  'con la factura que anexó Logística, Tesorería no la paga directo', 'Logística anexó');
+select test.afirmar((select factura_en_camino = 'F009-421' from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+  'y su lista dice qué factura entregó el proveedor');
+reset role;
 
 -- ============================================ 8. La OC con boleta de antes que no se pagó
 -- La 3 se marcó como de antes: Tesorería la pasa a su lista; nadie más, y una
@@ -418,8 +465,8 @@ select test.afirmar(pg_temp.pago('oc4') = 'POR_PAGAR',
 reset role;
 
 -- ============================================ 8b. El pago directo y la factura en borrador
--- Contabilidad liga la OC 3 a una factura en borrador; mientras no la registra,
--- Tesorería la paga directo. Al registrarla, la base la para; anulado el pago, entra.
+-- Contabilidad liga la OC 3 a una factura en borrador: desde ahí se paga por
+-- ella, no directo. Con un pago directo vigente no se registra; anulado, entra.
 select pg_temp.como('contabilidad');
 insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
 values (pg_temp.id('f3'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', 'F001-4213', current_setting('prueba.hoy')::date,
@@ -431,13 +478,35 @@ values ('comprobantes-financieros', 'adquisiciones/' || pg_temp.id('f3') || '/co
 select pg_temp.como('tesoreria');
 set local role authenticated;
 select set_config('prueba.v5', pg_temp.subir('pagos-compras', 'oc3'), true);
-select test.afirmar(pg_temp.pagar('p4', 'oc3', 50, false, current_setting('prueba.v5')) = pg_temp.id('p4'),
-  'con la factura en borrador, Tesorería todavía la paga directo');
+select test.debe_fallar($$ select pg_temp.pagar('p4', 'oc3', 50, false, current_setting('prueba.v5')) $$,
+  'con la factura en borrador, Tesorería ya no la paga directo', 'en borrador');
+select test.afirmar((select factura_en_camino = 'F001-4213' from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc3')),
+  'su lista dice qué factura tiene Contabilidad en borrador');
+select test.afirmar(pg_temp.pago('oc3') = 'POR_FACTURAR', 'y Adquisiciones la da por esperar su factura, no por pagar directo');
 reset role;
+-- La de antes que trae factura tampoco se da por pagada fuera: se paga por ella.
+set local session_replication_role = replica;
+update public.ordenes_compra_materiales set pago_en_tesoreria = false where id = pg_temp.id('oc3');
+set local session_replication_role = origin;
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar(pg_temp.pago('oc3') = 'POR_FACTURAR',
+  'la de antes con la factura en borrador espera su factura, no sale «pago fuera del sistema» ni ofrece «No se pagó»');
+reset role;
+set local session_replication_role = replica;
+update public.ordenes_compra_materiales set pago_en_tesoreria = true where id = pg_temp.id('oc3');
+set local session_replication_role = origin;
+-- Un pago directo de antes de la guarda, puesto con los disparadores apagados:
+-- el borrador ya no se registra mientras siga vigente.
+set local session_replication_role = replica;
+insert into public.pagos_orden_compra (id, orden_compra_id, fecha_pago, moneda, monto, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+values (pg_temp.id('p4'), pg_temp.id('oc3'), current_setting('prueba.hoy')::date, 'PEN', 50, 'oc3/421-antes.pdf', 'application/pdf', 2048,
+        pg_temp.id('tesoreria'));
+set local session_replication_role = origin;
 select pg_temp.como('contabilidad');
 select test.debe_fallar($$ update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf'
                            where id = pg_temp.id('f3') $$,
-  'y Contabilidad ya no registra esa factura', 'Tesorería ya le pagó');
+  'y Contabilidad no registra la factura de una OC con pago directo vigente', 'Tesorería ya le pagó');
 select pg_temp.como('tesoreria');
 set local role authenticated;
 select public.anular_pago_compra(pg_temp.id('p4'), 'El proveedor entregó factura: se paga por ahí');

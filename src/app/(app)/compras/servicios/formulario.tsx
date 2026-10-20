@@ -143,10 +143,14 @@ function FormularioServicio({
       return adjuntarDocumentoServicio(null, documento)
     })
     if (adjunto.ok) return { ok: true, mensaje: `${emitida.mensaje ?? 'Orden de servicio emitida.'} Su contrato quedó adjunto.` }
+    // La ventana ya se cerró: el aviso no pide «vuelve a intentar», dice dónde adjuntarlo.
+    const motivo = adjunto.error.startsWith('No se pudo subir')
+      ? 'El contrato no subió (revisa la señal).'
+      : `El contrato no se adjuntó: ${adjunto.error.charAt(0).toLowerCase()}${adjunto.error.slice(1).replace(/ Vuelve a intentar\.$/, '')}`
     return {
       ok: true,
       mensaje: emitida.mensaje,
-      datos: { faltaContrato: `El contrato no se adjuntó: ${adjunto.error} Adjúntalo desde la fila de la orden, con «Adjuntar documento».` },
+      datos: { faltaContrato: `${motivo} Adjúntalo desde la fila de la orden, con «Adjuntar documento».` },
     }
   }
   const { alEnviar, enviando, error } = useEnvio(emitir, (r) =>

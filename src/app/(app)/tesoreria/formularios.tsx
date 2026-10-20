@@ -1,7 +1,7 @@
 'use client'
 
 import { Ban, HandCoins, Undo2, Wallet } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
@@ -723,10 +723,29 @@ export function AnularPagoCompra({ pagoId }: { pagoId: string }) {
  * La OC con boleta de antes de que Tesorería registrara esos pagos se dio por
  * pagada fuera del sistema. Si no se pagó, Tesorería la pasa a Cuentas por
  * pagar desde Adquisiciones (migración 20261020210000); no vuelve atrás.
+ *
+ * Va en toda OC con boleta que Tesorería paga y solo muestra el botón mientras
+ * está «fuera del sistema»: al refrescar, el botón se va y el componente se
+ * queda, con lo que dijo la acción y el foco en ese aviso.
  */
-export function PasarCompraATesoreria({ compraId, numero }: { compraId: string; numero: string }) {
+export function PasarCompraATesoreria({ compraId, numero, fueraDelSistema }: { compraId: string; numero: string; fueraDelSistema: boolean }) {
   const [abierta, setAbierta] = useState(false)
-  const { alEnviar, enviando, error } = useEnvio(pasarCompraATesoreria, () => setAbierta(false))
+  const [mensaje, setMensaje] = useState<string | null>(null)
+  const aviso = useRef<HTMLParagraphElement>(null)
+  const { alEnviar, enviando, error } = useEnvio(pasarCompraATesoreria, (r) => {
+    setAbierta(false)
+    setMensaje(r.mensaje ?? `La ${numero} pasó a Cuentas por pagar.`)
+  })
+  useEffect(() => {
+    if (mensaje && !fueraDelSistema) aviso.current?.focus()
+  }, [mensaje, fueraDelSistema])
+  if (!fueraDelSistema) {
+    return mensaje ? (
+      <p ref={aviso} tabIndex={-1} role="status" className="text-texto outline-none">
+        {mensaje}
+      </p>
+    ) : null
+  }
   return (
     <>
       <Boton type="button" variante="contorno" tamano="sm" onClick={() => setAbierta(true)} data-pasar-compra={compraId}>

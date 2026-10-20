@@ -286,17 +286,21 @@ export async function documentosDeServicios(ids: string[]): Promise<Map<string, 
   const mapa = new Map<string, DocumentoDeServicio[]>()
   if (ids.length === 0) return mapa
   const supabase = await createClient()
-  const filas = []
-  for (let i = 0; i < ids.length; i += 150) {
-    const { data, error } = await supabase
-      .from('documentos_orden_servicio')
-      .select('id, orden_servicio_id, tipo, numero, nombre_archivo, ruta_storage, creado_en')
-      .in('orden_servicio_id', ids.slice(i, i + 150))
-      .is('anulado_en', null)
-      .order('creado_en')
-    if (error) throw new Error(`No se pudieron leer los documentos de las órdenes de servicio: ${error.message}`)
-    filas.push(...(data ?? []))
-  }
+  // De 150 en 150 para que la URL no crezca sin límite; las tandas van a la vez.
+  const tandas = Array.from({ length: Math.ceil(ids.length / 150) }, (_, i) => ids.slice(i * 150, i * 150 + 150))
+  const leidas = await Promise.all(
+    tandas.map(async (tanda) => {
+      const { data, error } = await supabase
+        .from('documentos_orden_servicio')
+        .select('id, orden_servicio_id, tipo, numero, nombre_archivo, ruta_storage, creado_en')
+        .in('orden_servicio_id', tanda)
+        .is('anulado_en', null)
+        .order('creado_en')
+      if (error) throw new Error(`No se pudieron leer los documentos de las órdenes de servicio: ${error.message}`)
+      return data ?? []
+    }),
+  )
+  const filas = leidas.flat()
   const urls = new Map<string, string>()
   if (filas.length > 0) {
     const { data, error } = await supabase.storage.from(BUCKET_DOCUMENTOS_SERVICIO).createSignedUrls([...new Set(filas.map((f) => f.ruta_storage))], 600)

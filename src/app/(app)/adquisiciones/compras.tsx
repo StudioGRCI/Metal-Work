@@ -435,10 +435,12 @@ function Documentos({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, s
   const adjuntos = f.documentos.filter((d) => !deFacturas.has(d.ruta))
   const aprobada = f.aprobacion === 'APROBADA' || f.aprobacion === 'NO_REQUERIDA'
   // La boleta falta solo si tampoco llegó factura: el proveedor pudo entregar factura en vez de boleta.
+  // La de antes, que se dio por pagada fuera del sistema, no la pide.
   const sinComprobante =
     f.tipo === 'OC' &&
     f.con_factura === false &&
     aprobada &&
+    f.pago !== 'SIN_FACTURA' &&
     f.facturas.length === 0 &&
     !f.documentos.some((d) => d.tipo === 'COMPROBANTE' || d.tipo === 'FACTURA')
   const faltaFacturar =
@@ -550,7 +552,9 @@ function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>
           {acceso.pagosServicio === 'pagar' ? 'Pagar en Pagos de servicio' : 'Ver en Pagos de servicio'}
         </Link>
       )}
-      {f.tipo === 'OC' && f.pago === 'SIN_FACTURA' && acceso.porPagar === 'pagar' && <PasarCompraATesoreria compraId={f.id} numero={nombreDe(f)} />}
+      {f.tipo === 'OC' && f.con_factura === false && acceso.porPagar === 'pagar' && (
+        <PasarCompraATesoreria compraId={f.id} numero={nombreDe(f)} fueraDelSistema={f.pago === 'SIN_FACTURA'} />
+      )}
       {f.tipo === 'OC' && f.con_factura === false && !f.facturas.some((x) => x.estado === 'REGISTRADA') && acceso.porPagar && (f.pago === 'POR_PAGAR' || f.pago === 'PAGO_PARCIAL') && (
         <Link href={`/tesoreria/por-pagar#compra-${f.id}`} className={`${toque} ${enlace}`}>
           {acceso.porPagar === 'pagar' ? 'Pagar en Cuentas por pagar' : 'Ver en Cuentas por pagar'}

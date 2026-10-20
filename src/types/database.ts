@@ -11948,6 +11948,8 @@ export type Database = {
           pagado: number | null
           cancelada: boolean | null
           ultimo_pago: string | null
+          factura_en_camino: string | null
+          estuvo_en_factura: string | null
         }[]
       }
       compras_en_gestion: {

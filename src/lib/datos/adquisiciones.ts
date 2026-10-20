@@ -500,18 +500,21 @@ type PagoCompraFila = Pick<
   | 'id' | 'orden_compra_id' | 'fecha_pago' | 'moneda' | 'monto' | 'cancela' | 'operacion' | 'comprobante_proveedor'
   | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion'
 >
-/** La boleta, nota de venta o recibo que Logística adjuntó a la OC. */
-export type BoletaDeCompra = { id: string; nombre: string; numero: string | null; url: string | null }
+/**
+ * La boleta, nota de venta o recibo que Logística adjuntó a la OC, o la factura
+ * que el proveedor entregó después y que la saca del pago directo.
+ */
+export type ComprobanteDeCompra = { id: string; tipo: 'COMPROBANTE' | 'FACTURA'; nombre: string; numero: string | null; url: string | null }
 export type CompraConBoleta = CompraConBoletaFila & {
   pagos: (PagoCompraFila & { url: string | null })[]
-  boletas: BoletaDeCompra[]
+  comprobantes: ComprobanteDeCompra[]
   cuentasProveedor: CuentaDelProveedor[]
 }
 
 /**
  * Las OC con boleta que Tesorería paga directo, como la OS (migración
  * 20261020210000): con lo pagado y cada voucher, la boleta que adjuntó
- * Logística y las cuentas del proveedor.
+ * Logística (o la factura que llegó después) y las cuentas del proveedor.
  */
 export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<CompraConBoleta[]> {
   const supabase = await createClient()
@@ -519,7 +522,7 @@ export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<Com
   if (error) throw new Error(`No se pudieron leer las OC con boleta: ${error.message}`)
   const filas = data ?? []
   const ids = filas.flatMap((f) => (f.id ? [f.id] : []))
-  const [pagos, boletas, cuentas] = await Promise.all([
+  const [pagos, comprobantes, cuentas] = await Promise.all([
     enTandas(ids, async (tanda) => {
       const r = await supabase
         .from('pagos_orden_compra')
@@ -533,9 +536,9 @@ export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<Com
     enTandas(ids, async (tanda) => {
       const r = await supabase
         .from('documentos_compra_material')
-        .select('id, orden_compra_id, nombre_archivo, numero_documento, ruta_storage')
+        .select('id, orden_compra_id, tipo, nombre_archivo, numero_documento, ruta_storage')
         .in('orden_compra_id', tanda)
-        .eq('tipo', 'COMPROBANTE')
+        .in('tipo', ['COMPROBANTE', 'FACTURA'])
         .order('creado_en')
       if (r.error) throw new Error(`No se pudieron leer las boletas de las OC: ${r.error.message}`)
       return r.data ?? []
@@ -544,14 +547,20 @@ export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<Com
   ])
   const [vouchers, pdfs] = await Promise.all([
     enlaces(BUCKET_PAGOS_COMPRAS, pagos.map((p) => p.archivo_ruta)),
-    enlaces('documentos-compras', boletas.map((b) => b.ruta_storage)),
+    enlaces('documentos-compras', comprobantes.map((b) => b.ruta_storage)),
   ])
   return filas.map((f) => ({
     ...f,
     pagos: pagos.filter((p) => p.orden_compra_id === f.id).map((p) => ({ ...p, url: vouchers.get(p.archivo_ruta) ?? null })),
-    boletas: boletas
+    comprobantes: comprobantes
       .filter((b) => b.orden_compra_id === f.id)
-      .map((b) => ({ id: b.id, nombre: b.nombre_archivo, numero: b.numero_documento, url: pdfs.get(b.ruta_storage) ?? null })),
+      .map((b) => ({
+        id: b.id,
+        tipo: b.tipo === 'FACTURA' ? ('FACTURA' as const) : ('COMPROBANTE' as const),
+        nombre: b.nombre_archivo,
+        numero: b.numero_documento,
+        url: pdfs.get(b.ruta_storage) ?? null,
+      })),
     cuentasProveedor: (f.proveedor_id && cuentas.get(f.proveedor_id)) || [],
   }))
 }

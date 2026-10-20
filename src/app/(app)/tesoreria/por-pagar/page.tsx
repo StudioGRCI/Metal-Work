@@ -385,8 +385,16 @@ function CompraConBoletaFila({
   const nombre = b.numero ?? `OC ${b.referencia}`
   const documentos: DocumentoParaPagar[] = [
     ...(verOc ? [{ clave: 'oc', etiqueta: `PDF de la ${nombre}`, url: pdfDeLaOc(b.id), descarga: true }] : []),
-    ...b.boletas.map((d) => ({ clave: d.id, etiqueta: d.numero ? `Boleta ${d.numero}` : d.nombre, url: d.url })),
+    ...b.comprobantes.map((d) => ({
+      clave: d.id,
+      etiqueta: d.numero ? `${d.tipo === 'FACTURA' ? 'Factura' : 'Boleta'} ${d.numero}` : d.nombre,
+      url: d.url,
+    })),
   ]
+  const sinBoleta = !b.comprobantes.some((d) => d.tipo === 'COMPROBANTE')
+  // El proveedor entregó factura: se paga por ella en «Facturas por pagar», no aquí.
+  const conFactura = b.factura_en_camino
+  const conPagoVigente = b.pagos.some((p) => !p.anulado_en)
   const condicion = b.condicion_pago === 'CREDITO' ? `crédito a ${b.dias_credito ?? 0} días` : 'contado'
   return (
     <article id={`compra-${b.id}`} className="scroll-mt-20 rounded-[var(--radius-base)] border border-borde p-3 target:border-acento">
@@ -399,13 +407,26 @@ function CompraConBoletaFila({
             {b.cancelada && <Insignia tono="exito">Pagada</Insignia>}
             {!b.cancelada && pagado > 0 && <Insignia tono="aviso">Pagada en parte</Insignia>}
             {b.sin_precio && <Insignia tono="aviso">Líneas sin precio</Insignia>}
+            {conFactura && <Insignia tono="aviso">Llegó factura</Insignia>}
           </p>
           <p className="text-xs text-texto-suave">
             Boleta · {condicion}
             {b.codigo_interno && ` · ${b.codigo_interno}`} · {b.cancelada ? `Pagada el ${fecha(b.ultimo_pago)}` : <Vencimiento dia={b.vence} saldo={saldo} />}
           </p>
-          {b.boletas.length === 0 && !b.cancelada && (
-            <p className="text-xs text-texto-suave">Falta la boleta: Logística la adjunta en la OC cuando el proveedor la entregue.</p>
+          {conFactura ? (
+            <p className="text-xs text-aviso">
+              {conPagoVigente
+                ? `El proveedor entregó la factura ${conFactura}: Contabilidad no la registra mientras el pago de aquí siga vigente. Anúlalo y, cuando ella la registre, paga la factura en «Facturas por pagar» con el mismo voucher.`
+                : `El proveedor entregó la factura ${conFactura}: la registra Contabilidad y se paga en «Facturas por pagar».`}
+            </p>
+          ) : (
+            sinBoleta &&
+            !b.cancelada && <p className="text-xs text-texto-suave">Falta la boleta: Logística la adjunta en la OC cuando el proveedor la entregue.</p>
+          )}
+          {b.estuvo_en_factura && (
+            <p className="text-xs text-aviso">
+              Estuvo en la factura {b.estuvo_en_factura}, que ya tiene un pago, hasta que una corrección la sacó: mira ese pago antes de pagarla aquí.
+            </p>
           )}
           {b.sin_precio && <p className="text-xs text-aviso">Logística tiene que completar los precios antes del pago.</p>}
         </div>
@@ -425,7 +446,7 @@ function CompraConBoletaFila({
           monedaDocumento={m}
           sinCuentas={saldo > 0 ? sinCuentas(verCuentas, true) : null}
         />
-        {paga && saldo > 0 && !b.sin_precio && (
+        {paga && saldo > 0 && !b.sin_precio && !conFactura && (
           <PagarCompra
             ordenCompraId={b.id}
             numero={nombre}

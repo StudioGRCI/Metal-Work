@@ -237,10 +237,18 @@ export async function registrarPagoCompra(_previo: unknown, formulario: FormData
   if (data !== d.id) return { ok: false, error: 'El pago no se registró. Recarga la pantalla.' }
 
   // El pago que completa el total cancela la OC aunque se marcara «a cuenta»: lo dice la fila guardada.
-  const { data: guardado } = await supabase.from('pagos_orden_compra').select('cancela').eq('id', d.id).maybeSingle()
-  const caja = await cajaTrasElPago('PAGO_ORDEN_COMPRA', d.id, d.caja_id, d.fecha_pago, 'pago')
+  // Si no se pudo leer, no se adivina con lo que marcó el formulario.
+  const [guardado, caja] = await Promise.all([
+    supabase.from('pagos_orden_compra').select('cancela').eq('id', d.id).maybeSingle(),
+    cajaTrasElPago('PAGO_ORDEN_COMPRA', d.id, d.caja_id, d.fecha_pago, 'pago'),
+  ])
   repintarPagosDeCompra()
-  const pagado = (guardado?.cancela ?? d.cancela === 'si') ? 'Pago registrado: la OC queda pagada.' : 'Pago a cuenta registrado.'
+  const pagado =
+    guardado.error || !guardado.data
+      ? 'Pago registrado.'
+      : guardado.data.cancela
+        ? 'Pago registrado: la OC queda pagada.'
+        : 'Pago a cuenta registrado.'
   return { ok: true, mensaje: `${pagado} ${caja}`.trim() }
 }
 

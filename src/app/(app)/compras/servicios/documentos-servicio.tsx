@@ -30,19 +30,19 @@ export function ListaDocumentosServicio({ documentos, anula }: { documentos: Doc
       {documentos.map((d) => (
         <li key={d.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
           {d.url ? (
-            <a href={d.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 font-medium text-acento hover:underline sm:min-h-0">
+            <a href={d.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 min-w-0 items-center gap-1 font-medium text-acento hover:underline sm:min-h-0">
               <FileText aria-hidden className="size-3.5 shrink-0" />
-              <span className="tabular whitespace-nowrap">{etiquetaDocumentoServicio(d)}</span>
+              <span className="tabular truncate">{etiquetaDocumentoServicio(d)}</span>
             </a>
           ) : (
-            // Sin enlace firmado: se lista igual y se dice por qué no se abre.
-            <span className="inline-flex items-center gap-1 text-texto">
+            <span className="inline-flex min-w-0 items-center gap-1 text-texto">
               <FileText aria-hidden className="size-3.5 shrink-0" />
-              <span className="tabular whitespace-nowrap">{etiquetaDocumentoServicio(d)}</span>
-              <span className="text-texto-suave">(no se pudo abrir: recarga la pantalla)</span>
+              <span className="tabular truncate">{etiquetaDocumentoServicio(d)}</span>
             </span>
           )}
           {anula && <AnularDocumentoServicio documentoId={d.id} tipo={d.tipo} etiqueta={etiquetaDocumentoServicio(d)} />}
+          {/* Sin enlace firmado, casi siempre porque el archivo ya no está: recargar no lo trae. */}
+          {!d.url && <span className="block w-full text-texto-suave">{anula ? 'Sin archivo: anúlalo y vuelve a adjuntarlo.' : 'Sin archivo.'}</span>}
         </li>
       ))}
     </ul>
