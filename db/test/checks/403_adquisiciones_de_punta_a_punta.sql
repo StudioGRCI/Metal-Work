@@ -335,6 +335,28 @@ select test.afirmar(
 select test.afirmar((select peso_kg = 200 and guia is null from public.trazabilidad_de_compras()
                       where id = current_setting('prueba.oc3')::uuid),
   'y la fila de la OC en Adquisiciones dice el peso y que no tiene guía');
+reset role;
+-- El peso y la lista del conductor no salen por Adquisiciones a quien no lleva el recojo.
+do $$
+declare v text;
+begin
+  foreach v in array array['tesoreria', 'gerente'] loop
+    perform pg_temp.como(v);
+    set local role authenticated;
+    perform test.afirmar((select peso_kg is null and not en_lista from public.trazabilidad_de_compras()
+                           where id = current_setting('prueba.oc3')::uuid),
+      v || ' no ve el peso ni la lista del conductor en Adquisiciones');
+    reset role;
+  end loop;
+  perform pg_temp.como('comprador');
+  set local role authenticated;
+  perform test.afirmar((select peso_kg = 200 and en_lista from public.trazabilidad_de_compras()
+                         where id = current_setting('prueba.oc3')::uuid),
+    'Logística sí');
+  reset role;
+end $$;
+select pg_temp.como('contabilidad');
+set local role authenticated;
 select pg_temp.subir('guias-remision', 'compra/' || current_setting('prueba.oc3') || '/' || current_setting('prueba.guia') || '.pdf',
                      'contabilidad', 48211);
 select public.cargar_guia_remision(current_setting('prueba.guia')::uuid, current_setting('prueba.oc3')::uuid,

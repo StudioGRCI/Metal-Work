@@ -2,7 +2,6 @@ import 'server-only'
 
 import { z } from 'zod'
 
-import { enlaces } from '@/lib/datos/facturacion'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { BUCKET_PAGOS_FACTURAS, BUCKET_PAGOS_SERVICIO } from '@/lib/dominio/finanzas'
 import { createClient } from '@/lib/supabase/server'
@@ -109,6 +108,8 @@ export const claveDeArchivo = (bucket: string, ruta: string) => `${bucket}:${rut
  * factura, el voucher de cada pago de factura y el de cada pago de la OS. El
  * que la política de quien mira no deja abrir no sale, y su fila lo dice sin
  * enlace. La guía de remisión se abre por su ruta propia (`/compras/guia/…`).
+ * Si la firma entera falla, la página lo dice: si no, todos los documentos
+ * saldrían como texto sin enlace y nadie se enteraría.
  */
 export async function enlacesDeCompras(filas: CompraTrazada[]): Promise<Map<string, string>> {
   const porBucket = new Map<string, string[]>()
@@ -124,8 +125,15 @@ export async function enlacesDeCompras(filas: CompraTrazada[]): Promise<Map<stri
     }
     for (const p of f.pagos) sumar(BUCKET_PAGOS_SERVICIO, p.ruta)
   }
-  const firmados = await Promise.all([...porBucket].map(async ([bucket, rutas]) => [bucket, await enlaces(bucket, rutas)] as const))
+  const supabase = await createClient()
+  const firmados = await Promise.all(
+    [...porBucket].map(async ([bucket, rutas]) => {
+      const { data, error } = await supabase.storage.from(bucket).createSignedUrls([...new Set(rutas)], 600)
+      if (error) throw new Error('No se pudieron preparar los enlaces de los documentos. Recarga la página para volver a intentar.')
+      return [bucket, data ?? []] as const
+    }),
+  )
   const mapa = new Map<string, string>()
-  for (const [bucket, deEse] of firmados) for (const [ruta, url] of deEse) mapa.set(claveDeArchivo(bucket, ruta), url)
+  for (const [bucket, deEse] of firmados) for (const e of deEse) if (e.path && e.signedUrl) mapa.set(claveDeArchivo(bucket, e.path), e.signedUrl)
   return mapa
 }

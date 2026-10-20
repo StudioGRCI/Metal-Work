@@ -35,6 +35,7 @@ export function CargarGuia({
 }) {
   const [abierta, setAbierta] = useState(false)
   const [id, setId] = useState(solicitudId)
+  const idError = `guia-error-${ordenCompraId}`
   const { alEnviar, enviando, error } = useEnvio(
     async (_previo, datos) => {
       const guia = normalizarNumeroGuia(String(datos.get('numero') ?? ''))
@@ -91,16 +92,25 @@ export function CargarGuia({
               autoCapitalize="characters"
               required
               disabled={enviando}
+              aria-describedby={error ? idError : undefined}
             />
           </Campo>
           <Campo etiqueta="Emitida el" htmlFor={`guia-fecha-${ordenCompraId}`} requerido>
             <Entrada id={`guia-fecha-${ordenCompraId}`} name="fecha" type="date" max={hoy} defaultValue={hoy} required disabled={enviando} />
           </Campo>
           <Campo etiqueta="PDF de la guía" htmlFor={`guia-pdf-${ordenCompraId}`} requerido>
-            <Entrada id={`guia-pdf-${ordenCompraId}`} name="archivo" type="file" accept="application/pdf,.pdf" required disabled={enviando} />
+            <Entrada
+              id={`guia-pdf-${ordenCompraId}`}
+              name="archivo"
+              type="file"
+              accept="application/pdf,.pdf"
+              required
+              disabled={enviando}
+              aria-describedby={error ? idError : undefined}
+            />
           </Campo>
           {error && (
-            <p role="alert" className="text-sm text-peligro">
+            <p id={idError} role="alert" className="text-sm text-peligro">
               {error}
             </p>
           )}

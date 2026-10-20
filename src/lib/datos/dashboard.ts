@@ -525,7 +525,7 @@ const CIFRAS = {
     },
   },
   adquisiciones_del_mes: {
-    ruta: '/adquisiciones',
+    ruta: '/adquisiciones?vista=facturas',
     calcular: async (c) => {
       const r = await c.supabase.from('adquisiciones').select('id', { count: 'exact', head: true }).gte('creado_en', c.mes)
       fallo(r)

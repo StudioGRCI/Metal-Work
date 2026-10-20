@@ -21,8 +21,13 @@
 --     Gerencia), igual que las demás funciones de la pantalla;
 --   * los archivos que esa fila nombra se abren con la sesión de quien mira, así
 --     que las políticas de los PDF de Logística y de los pagos de la OS aceptan
---     también `adquisiciones.ver`. Sin eso Contabilidad veía la fila y el enlace
---     le salía roto: no tiene los permisos de Logística ni de Tesorería;
+--     también `adquisiciones.ver`: quien ve la fila abre lo que nombra. Los PDF
+--     de Logística ya los abría quien tenía `compras.ver`; los pagos de la OS,
+--     Contabilidad no los veía, porque no paga servicios ni lee los documentos
+--     de Tesorería;
+--   * el peso y el lugar en la lista del conductor salen solo para quien lleva
+--     el recojo o carga la guía (la lista la leen Logística y el conductor,
+--     migración 20261020171000); a Tesorería y a Gerencia les salen vacíos;
 --   * la cotización del proveedor se adjunta con su propio tipo. Hasta aquí iba
 --     como «Orden de compra» u «Otro», y en la captura del 2026-10-20 una misma
 --     compra tenía tres PDF «Orden de compra»: dos eran la cotización.
@@ -97,6 +102,10 @@ returns table (
   peso_kg numeric, en_lista boolean, guia jsonb, guias_anuladas integer, pago text
 ) language plpgsql stable security definer set search_path to 'public' as $$
 #variable_conflict use_column
+declare
+  -- Logística, el conductor y Contabilidad, que con el peso emite la guía.
+  v_recojo constant boolean := public.es_admin() or public.tiene_permiso('compras.programar_recojo')
+                               or public.tiene_permiso('compras.recojo') or public.tiene_permiso('compras.guia_remision');
 begin
   if not (public.es_admin() or public.tiene_permiso('adquisiciones.ver')) then
     raise exception 'Adquisiciones la ven Contabilidad, Tesorería, Logística y Gerencia.' using errcode = 'insufficient_privilege';
@@ -149,7 +158,7 @@ begin
          null::timestamptz, null::text,
          fd.facturado, coalesce(fd.completa or fd.facturado >= fd.total - 1, false),
          coalesce(fa.facturas, '[]'::jsonb), '[]'::jsonb, coalesce(dc.documentos, '[]'::jsonb),
-         pr.peso_kg, pr.posicion is not null,
+         case when v_recojo then pr.peso_kg end, v_recojo and pr.posicion is not null,
          case when g.id is not null then jsonb_build_object('id', g.id, 'numero', g.numero, 'fecha', g.fecha_emision,
                                                              'nombre', g.nombre_archivo, 'cargada_en', g.cargada_en) end,
          coalesce(ga.n, 0),

@@ -32,7 +32,9 @@ export const VISTAS_DE_FACTURAS = [
   { valor: 'facturas', titulo: 'Todas' },
   { valor: 'por-pagar', titulo: 'Por pagar' },
   { valor: 'no-calzan', titulo: 'No calzan' },
-  { valor: 'sin-factura', titulo: 'Sin factura' },
+  // «Sin factura» es la OC que va con boleta (así se elige al emitirla); esta
+  // vista es la de las que esperan la suya.
+  { valor: 'sin-factura', titulo: 'Esperan su factura' },
 ] as const
 type Vista = (typeof VISTAS_DE_FACTURAS)[number]['valor']
 type Params = Record<string, string | string[] | undefined>
@@ -186,7 +188,7 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
                       <CeldaRq orden={orden} acceso={acceso} />
                       <CeldaOc orden={orden} acceso={acceso} />
                       <TD className="align-top">
-                        <Insignia tono="neutro">{compra.facturas.length > 0 ? 'Facturada en parte' : 'Sin factura'}</Insignia>
+                        <Insignia tono="neutro">{compra.facturas.length > 0 ? 'Facturada en parte' : 'Espera su factura'}</Insignia>
                         {compra.en_borrador && (
                           <Insignia tono="aviso" className="ml-1">
                             En un borrador
@@ -319,7 +321,7 @@ function ComprasEnTelefono({
                   </p>
                 </div>
                 <p className="flex flex-wrap items-center gap-1 text-xs text-texto-suave">
-                  <Insignia tono="neutro">{compra.facturas.length > 0 ? 'Facturada en parte' : 'Sin factura'}</Insignia>
+                  <Insignia tono="neutro">{compra.facturas.length > 0 ? 'Facturada en parte' : 'Espera su factura'}</Insignia>
                   {compra.en_borrador && <Insignia tono="aviso">En un borrador</Insignia>}
                   <span>
                     OC del {fecha(compra.creado_en)} · {compra.condicion_pago === 'CREDITO' ? 'a crédito' : 'al contado'}

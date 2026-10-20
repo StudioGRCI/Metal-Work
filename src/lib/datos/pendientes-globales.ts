@@ -770,7 +770,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
 
   // Contabilidad: las compras que todavía no tienen su factura registrada.
   if (puede(perfil, 'adquisiciones.registrar')) tareas.push({
-    clave: 'compras_sin_factura', ruta: '/adquisiciones', tono: 'aviso',
+    clave: 'compras_sin_factura', ruta: '/adquisiciones?situacion=por-facturar', tono: 'aviso',
     texto: n => plural(n, 'compra sin factura registrada', 'compras sin factura registrada'),
     contar: async () => {
       const { data, error } = await supabase.rpc('compras_sin_factura')

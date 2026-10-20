@@ -11,7 +11,9 @@
  *      con su motivo y la fila vuelve a pedirla.
  *   3. En el teléfono, una tarjeta por orden y la página no se ensancha.
  *   4. Tesorería ve la misma tabla, con el salto a pagar; Logística también,
- *      sin cargar guías, y sigue con su Gestión de compras.
+ *      sin cargar guías, y sigue con su Gestión de compras. La cotización que
+ *      ya está adjunta no entra otra vez como cotización, y sí con otro tipo,
+ *      que es como se corrige uno mal elegido.
  *   5. Gerencia la lee y no entra a la gestión; el conductor entra a la gestión
  *      (sin sus controles) pero no a Adquisiciones; Ventas no entra a ninguna.
  *
@@ -22,7 +24,8 @@
  * (http://localhost:3111), CAPTURAS, BANCO_BASE, BANCO_ARCHIVOS y el correo de
  * cada cuenta si no es `<puesto>.local@metalwork.test`.
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import pg from 'pg'
@@ -231,6 +234,10 @@ const rechaza = async (pagina, ruta) => {
   comprobar(/^Pagada Voucher .*S\/ 590\.00/.test(pagos[`QA-OS-${SUFIJO}-1`] ?? ''), `la OS pagada, con su voucher («${pagos[`QA-OS-${SUFIJO}-1`]}»)`)
   comprobar(pagos[`QA-OS-${SUFIJO}-2`]?.startsWith('Espera a Gerencia'), 'la OS sin aprobar espera a Gerencia')
   comprobar(!(pagos[nombre(oc[1])] ?? '').includes('Pagar en Cuentas por pagar'), 'a Contabilidad no le ofrece pagar: eso es de Tesorería')
+  const arriba = limpio(await pagina.locator('main').innerText())
+  comprobar(/(Una guía|\d+ guías) de remisión por cargar/.test(arriba), 'arriba le dice cuántas guías tiene por cargar')
+  const situaciones = (await pagina.locator('[role="group"][aria-label="En qué van"] a').allTextContents()).map(limpio)
+  comprobar(situaciones[1]?.startsWith('Guía por cargar'), `y «Guía por cargar» es su primer filtro (${situaciones.join(' | ')})`)
 
   const oc2 = fila(pagina, oc[1])
   const origen = await columna(oc2, 1)
@@ -333,6 +340,33 @@ const rechaza = async (pagina, ruta) => {
   comprobar(!limpio(await pagina.locator('main').innerText()).includes('Guía por cargar ('), 'ni el filtro de guías por cargar, que es de Contabilidad')
   await ir(pagina, '/compras/gestion')
   comprobar(new URL(pagina.url()).pathname === '/compras/gestion' && (await pagina.getByRole('button', { name: /Guardar|Poner en la lista/ }).count()) > 0, 'en su gestión programa como siempre')
+
+  const pdf = join(mkdtempSync(join(tmpdir(), 'adq-')), 'cotizacion.pdf')
+  writeFileSync(pdf, PDF)
+  const documentos = async () => (await consulta(
+    `select d.tipo, (select count(*)::int from storage.objects o where o.bucket_id = 'documentos-compras' and o.name = d.ruta_storage) as objeto
+       from documentos_compra_material d where d.orden_compra_id = $1 order by d.creado_en`, [oc[2]]))
+  const sueltos = async () => (await consulta(
+    `select count(*)::int as n from storage.objects o where o.bucket_id = 'documentos-compras' and o.name like $1
+        and not exists (select 1 from documentos_compra_material d where d.ruta_storage = o.name)`, [`compra/${oc[2]}/%`]))[0].n
+  await ir(pagina, '/compras/ordenes')
+  await pagina.locator('tbody tr', { hasText: nombre(oc[2]) }).getByRole('button', { name: 'Adjuntar' }).click()
+  const ventana = pagina.getByRole('dialog')
+  const adjuntar = async (tipo) => {
+    await ventana.locator('select[name="tipo"]').selectOption(tipo)
+    await ventana.locator('input[type="file"]').setInputFiles(pdf)
+    await ventana.getByRole('button', { name: 'Adjuntar' }).click()
+    await ventana.locator('[role="alert"], [role="status"]').first().waitFor({ timeout: 20000 })
+    await pagina.waitForLoadState('networkidle')
+    return limpio((await ventana.locator('[role="alert"], [role="status"]').allTextContents()).join(' '))
+  }
+  const repetida = await adjuntar('COTIZACION')
+  comprobar(repetida.includes('ya está adjunto a esta compra como «Cotización»') && (await documentos()).length === 1 && (await sueltos()) === 0,
+    `la misma cotización no entra dos veces, y su PDF no queda suelto («${repetida}»)`)
+  const corregida = await adjuntar('OTRO')
+  const tras = await documentos()
+  comprobar(corregida.includes('Documento adjuntado') && tras.length === 2 && tras[1].tipo === 'OTRO' && tras[1].objeto === 1,
+    `con otro tipo sí entra, que es como se corrige uno mal elegido (${tras.map((d) => d.tipo).join(', ')})`)
   await contexto.close()
 }
 
@@ -341,6 +375,9 @@ const rechaza = async (pagina, ruta) => {
   const { pagina, contexto } = await entrar('gerencia')
   await ir(pagina, `/adquisiciones?${buscar}`)
   comprobar((await pagina.locator('tbody tr').count()) === 6, 'Gerencia lee Adquisiciones')
+  const pago = await columna(fila(pagina, oc[1]), 6)
+  comprobar(pago.includes('Ver en Cuentas por pagar') && !pago.includes('Pagar en'), `a Gerencia, que no paga, la fila la manda a mirar («${pago}»)`)
+  comprobar(!limpio(await pagina.locator('main').innerText()).includes('Guía por cargar ('), 'sin el filtro de guías, que es de Contabilidad')
   comprobar(await rechaza(pagina, '/compras/gestion'), 'y no entra a Gestión de compras')
   await contexto.close()
 }

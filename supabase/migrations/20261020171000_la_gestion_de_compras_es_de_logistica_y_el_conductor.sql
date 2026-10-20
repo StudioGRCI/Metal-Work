@@ -410,9 +410,18 @@ comment on function public.guias_por_emitir() is
 revoke all on function public.guias_por_emitir() from public, anon;
 grant execute on function public.guias_por_emitir() to authenticated;
 
--- 9. Los avisos que ya llevaban a Contabilidad a la gestión ----------------------------------
+-- 9. Los avisos que ya llevaban a la gestión a quien ya no la abre ---------------------------
+-- El de la guía, a Adquisiciones; los demás («Programa el recojo», «Compra
+-- aprobada… Prográmala»), que les llegaron a Gerencia y a Administración por
+-- `compras.crear`, a sus órdenes de compra: si no, el aviso abre «Sin permiso».
 do $$ begin
   update public.notificaciones
      set ruta = '/adquisiciones?situacion=guia'
    where ruta = '/compras/gestion' and titulo like 'Guía de remisión por emitir:%';
+  update public.notificaciones n
+     set ruta = '/compras'
+   where n.ruta = '/compras/gestion'
+     and not public.usuario_programa_recojos(n.usuario_id)
+     and not exists (select 1 from public.usuarios u join public.roles_permisos rp on rp.rol_id = u.rol_id
+                      where u.id = n.usuario_id and rp.permiso_codigo = 'compras.recojo');
 end $$;

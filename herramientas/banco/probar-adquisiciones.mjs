@@ -301,7 +301,7 @@ const [rq1, rq2] = await consulta("select id, numero from requerimientos where n
   }
   await pagina.goto(`${BASE}/adquisiciones?vista=sin-factura`, { waitUntil: 'networkidle' })
   const sinFactura = limpio(await pagina.locator('table').textContent())
-  comprobar(sinFactura.includes('OC que esperan su factura') && !sinFactura.includes('F001-9001'), '«Sin factura» deja solo las OC que esperan su factura')
+  comprobar(sinFactura.includes('OC que esperan su factura') && !sinFactura.includes('F001-9001'), '«Esperan su factura» deja solo las OC que esperan su factura')
   await pagina.goto(`${BASE}/adquisiciones?vista=no-calzan`, { waitUntil: 'networkidle' })
   const noCalzan = limpio(await pagina.locator('table').textContent())
   comprobar(noCalzan.includes('F002-77') && !noCalzan.includes('F001-9001'), '«No calzan» deja solo la que no calza')

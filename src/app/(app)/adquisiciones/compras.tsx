@@ -1,3 +1,4 @@
+import { FileUp } from 'lucide-react'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 
@@ -22,6 +23,9 @@ import { AnularGuia, CargarGuia } from './guia-remision'
 const POR_PAGINA = 50
 const RUTA = '/adquisiciones'
 const enlace = 'font-medium text-acento hover:underline'
+// En el teléfono cada enlace mide 44 px de alto, como las pastillas: son los
+// comprobantes que se abren con el dedo.
+const toque = 'inline-flex min-h-11 items-center sm:min-h-0'
 const codigo = (m: string | null) => (m === 'USD' ? 'USD' : 'PEN')
 
 type Params = Record<string, string | string[] | undefined>
@@ -32,8 +36,9 @@ type Acceso = {
   oc: boolean
   proveedor: boolean
   codigo: boolean
-  porPagar: boolean
-  pagosServicio: boolean
+  /** «pagar» salta a pagar; «ver», a mirar: Gerencia lee Cuentas por pagar pero no paga. */
+  porPagar: 'pagar' | 'ver' | null
+  pagosServicio: 'pagar' | 'ver' | null
   /** Contabilidad carga y anula la guía de remisión aquí (migración 20261020171000). */
   cargaGuia: boolean
   hoy: string
@@ -75,19 +80,34 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
     oc: puede(perfil, ['compras.ver', 'almacen.recibir']),
     proveedor: puede(perfil, 'proveedores.ver'),
     codigo: puede(perfil, 'codigos_internos.ver'),
-    porPagar: puede(perfil, 'tesoreria.ver_documentos'),
-    pagosServicio: puede(perfil, ['tesoreria.pagar_servicios', 'tesoreria.ver_documentos']),
+    // Como las pantallas de Tesorería: pagar pide además la caja de la que sale.
+    porPagar:
+      puede(perfil, 'tesoreria.registrar_pagos') && puede(perfil, 'tesoreria.caja')
+        ? 'pagar'
+        : puede(perfil, 'tesoreria.ver_documentos')
+          ? 'ver'
+          : null,
+    pagosServicio:
+      puede(perfil, 'tesoreria.pagar_servicios') && puede(perfil, 'tesoreria.caja')
+        ? 'pagar'
+        : puede(perfil, ['tesoreria.pagar_servicios', 'tesoreria.ver_documentos'])
+          ? 'ver'
+          : null,
     cargaGuia: puede(perfil, 'compras.guia_remision'),
     hoy: hoyLima(),
   }
   const busqueda = texto(params.q)
   const palabras = palabrasDeBusqueda(busqueda)
   const tipo = params.tipo === 'oc' ? 'OC' : params.tipo === 'os' ? 'OS' : null
-  // «Guía por cargar» es el trabajo de Contabilidad: a los demás no les dice nada.
-  const situaciones = SITUACIONES.filter((s) => s.valor !== 'guia' || acceso.cargaGuia)
+  // «Guía por cargar» es el trabajo de Contabilidad: para ella va primera, porque
+  // el conductor la espera; a los demás no les dice nada.
+  const situaciones = acceso.cargaGuia
+    ? [...SITUACIONES.filter((s) => s.valor === 'guia'), ...SITUACIONES.filter((s) => s.valor !== 'guia')]
+    : SITUACIONES.filter((s) => s.valor !== 'guia')
   const situacion = situaciones.find((s) => s.valor === params.situacion)?.valor ?? null
 
   const todas = await trazabilidadDeCompras()
+  const guiasPorCargar = acceso.cargaGuia ? todas.filter(guiaPorCargar).length : 0
   const buscadas = todas.filter((f) => coincide(palabras, camposDeBusqueda(f)))
   const delTipo = buscadas.filter((f) => !tipo || f.tipo === tipo)
   const enSuSituacion = buscadas.filter((f) => !situacion || enSituacion(f, situacion))
@@ -104,11 +124,24 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
           titulo: 'Todavía no hay órdenes de compra ni de servicio',
           descripcion: 'Cuando Logística emita la primera, sale aquí con su RQ, su aprobación, su factura y su pago.',
         }
-      : { titulo: 'Ninguna orden con ese filtro', descripcion: 'Borra la búsqueda o elige «Todas».' }
+      : situacion === 'guia' && !busqueda && !tipo
+        ? {
+            titulo: 'No hay guías de remisión por cargar',
+            descripcion: 'Cuando Logística ponga una OC en la lista del conductor, sale aquí con su peso para que cargues su guía.',
+          }
+        : { titulo: 'Ninguna orden con ese filtro', descripcion: 'Borra la búsqueda o elige «Todas».' }
 
   return (
     <>
       <div className="mb-4 space-y-3">
+        {guiasPorCargar > 0 && situacion !== 'guia' && (
+          <p className="text-sm text-aviso">
+            <Link href={`${RUTA}?situacion=guia`} className={`${toque} gap-1.5 font-medium hover:underline`}>
+              <FileUp aria-hidden className="size-4" />
+              {guiasPorCargar === 1 ? 'Una guía de remisión por cargar' : `${cantidad(guiasPorCargar)} guías de remisión por cargar`}
+            </Link>
+          </p>
+        )}
         <BuscadorSimple ruta={RUTA} etiqueta="Buscar orden" marcador="OC, OS, RQ, OT, código, proveedor o factura" />
         <PastillaFiltro
           ruta={RUTA}
@@ -117,7 +150,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
           activo={texto(params.tipo) || null}
           etiqueta="Qué órdenes mostrar"
           opciones={[
-            { valor: null, etiqueta: `OC y OS (${enSuSituacion.length})` },
+            { valor: null, etiqueta: `Todas las órdenes (${enSuSituacion.length})` },
             { valor: 'oc', etiqueta: `Órdenes de compra (${enSuSituacion.filter((f) => f.tipo === 'OC').length})` },
             { valor: 'os', etiqueta: `Órdenes de servicio (${enSuSituacion.filter((f) => f.tipo === 'OS').length})` },
           ]}
@@ -194,7 +227,9 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
                   </TD>
                   <TD className="min-w-36 align-top">
                     <NombreProveedor proveedor={f.proveedor} acceso={acceso} />
-                    {f.referencia && <p className="mt-0.5 max-w-48 text-[11px] text-texto-suave">Ref. del proveedor: {f.referencia}</p>}
+                    {f.referencia && f.referencia !== f.numero && (
+                      <p className="mt-0.5 max-w-48 text-[11px] text-texto-suave">Ref. del proveedor: {f.referencia}</p>
+                    )}
                   </TD>
                   <TD className="align-top">
                     <Total f={f} />
@@ -244,7 +279,7 @@ function NumeroDeOrden({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
       <p className="flex flex-wrap items-center gap-1.5">
         <Insignia tono={f.tipo === 'OC' ? 'neutro' : 'info'}>{f.tipo}</Insignia>
         {conPdf ? (
-          <a href={`/compras/${f.id}/pdf`} target="_blank" rel="noopener" className={`tabular whitespace-nowrap ${enlace}`}>
+          <a href={`/compras/${f.id}/pdf`} target="_blank" rel="noopener" className={`tabular whitespace-nowrap ${toque} ${enlace}`}>
             {nombreDe(f)}
           </a>
         ) : (
@@ -271,7 +306,7 @@ function Origen({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
         <p className="flex flex-wrap gap-x-2">
           {f.requerimientos.map((rq) =>
             acceso.rq ? (
-              <Link key={rq.id} href={`/requerimientos?rq=${rq.id}`} className={`tabular whitespace-nowrap ${enlace}`}>
+              <Link key={rq.id} href={`/requerimientos?rq=${rq.id}`} className={`tabular whitespace-nowrap ${toque} ${enlace}`}>
                 {rq.numero}
               </Link>
             ) : (
@@ -289,7 +324,7 @@ function Origen({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
         <p className="flex flex-wrap gap-x-2">
           {f.codigos.map((c) =>
             acceso.codigo && c !== 'PLANTA' ? (
-              <Link key={c} href={`/codigos-internos/detalle?codigo=${encodeURIComponent(c)}`} className={`tabular ${enlace}`}>
+              <Link key={c} href={`/codigos-internos/detalle?codigo=${encodeURIComponent(c)}`} className={`tabular ${toque} ${enlace}`}>
                 {c}
               </Link>
             ) : (
@@ -307,7 +342,7 @@ function Origen({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
 
 function NombreProveedor({ proveedor, acceso }: { proveedor: string; acceso: Acceso }) {
   return acceso.proveedor ? (
-    <Link href={`/proveedores?q=${encodeURIComponent(proveedor)}`} className={enlace}>
+    <Link href={`/proveedores?q=${encodeURIComponent(proveedor)}`} className={`${toque} ${enlace}`}>
       {proveedor}
     </Link>
   ) : (
@@ -345,8 +380,9 @@ function EnQueVa({ f }: { f: CompraTrazada }) {
   return (
     <div className="flex flex-wrap items-start gap-1 sm:flex-col">
       <Insignia tono={aprobacion.tono}>{aprobacion.etiqueta}</Insignia>
+      {/* La fecha va pegada a la aprobación: debajo del avance parecía la del recojo. */}
+      {f.aprobado_en && f.aprobacion === 'APROBADA' && <span className="tabular text-[11px] text-texto-suave">el {fecha(f.aprobado_en)}</span>}
       {avance && <Insignia tono={avance.tono}>{avance.etiqueta}</Insignia>}
-      {f.aprobado_en && f.aprobacion === 'APROBADA' && <p className="w-full text-[11px] text-texto-suave">el {fecha(f.aprobado_en)}</p>}
       {f.aprobacion === 'RECHAZADA' && f.motivo_rechazo && <p className="w-full max-w-48 text-[11px] text-texto-suave">{f.motivo_rechazo}</p>}
       {f.anulado_en && (
         <p className="w-full max-w-48 text-[11px] text-texto-suave">
@@ -364,7 +400,7 @@ function nombreDeComprobante(tipo: string) {
 
 function Archivo({ url, children }: { url: string | undefined; children: ReactNode }) {
   return url ? (
-    <a href={url} target="_blank" rel="noreferrer" className={enlace}>
+    <a href={url} target="_blank" rel="noreferrer" className={`${toque} ${enlace}`}>
       {children}
     </a>
   ) : (
@@ -426,7 +462,7 @@ function Documentos({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, s
       ))}
       {f.guia && (
         <li className="flex flex-wrap items-center gap-x-2">
-          <a href={`/compras/guia/${f.guia.id}`} target="_blank" rel="noopener" className={enlace}>
+          <a href={`/compras/guia/${f.guia.id}`} target="_blank" rel="noopener" className={`${toque} ${enlace}`}>
             Guía de remisión <span className="tabular">{f.guia.numero}</span>
           </a>
           {acceso.cargaGuia && f.recojo !== 'DEJADO' && <AnularGuia id={f.guia.id} numero={f.guia.numero} />}
@@ -473,8 +509,8 @@ function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>
             )}
             <Vouchers pagos={x.pagos.map((p) => ({ ...p, moneda: x.moneda }))} bucket={BUCKET_PAGOS_FACTURAS} urls={urls} />
             {acceso.porPagar && x.saldo > 0 && (
-              <Link href={`/tesoreria/por-pagar#factura-${x.id}`} className={`inline-flex min-h-11 items-center sm:min-h-0 ${enlace}`}>
-                Pagar en Cuentas por pagar
+              <Link href={`/tesoreria/por-pagar#factura-${x.id}`} className={`${toque} ${enlace}`}>
+                {acceso.porPagar === 'pagar' ? 'Pagar en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
               </Link>
             )}
           </div>
@@ -482,8 +518,8 @@ function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>
       })}
       {f.tipo === 'OS' && <Vouchers pagos={f.pagos} bucket={BUCKET_PAGOS_SERVICIO} urls={urls} />}
       {f.tipo === 'OS' && acceso.pagosServicio && (f.pago === 'POR_PAGAR' || f.pago === 'PAGO_PARCIAL') && (
-        <Link href="/tesoreria/pagos-de-servicio" className={`inline-flex min-h-11 items-center sm:min-h-0 ${enlace}`}>
-          Pagar en Pagos de servicio
+        <Link href="/tesoreria/pagos-de-servicio" className={`${toque} ${enlace}`}>
+          {acceso.pagosServicio === 'pagar' ? 'Pagar en Pagos de servicio' : 'Ver en Pagos de servicio'}
         </Link>
       )}
     </div>
@@ -506,7 +542,7 @@ function Vouchers({
         <li key={p.id}>
           <Archivo url={p.ruta ? urls.get(claveDeArchivo(bucket, p.ruta)) : undefined}>Voucher{pagos.length > 1 ? ` ${i + 1}` : ''}</Archivo>{' '}
           <span className="tabular text-texto-suave">
-            {fecha(p.fecha)} · {moneda(p.monto, codigo(p.moneda))}
+            {fecha(p.fecha)} · <span className="whitespace-nowrap">{moneda(p.monto, codigo(p.moneda))}</span>
             {p.cancela === false && ' · a cuenta'}
           </span>
         </li>

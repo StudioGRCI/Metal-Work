@@ -79,22 +79,24 @@ export async function registrarDocumentoCompra(
   if (archivo.size < 1 || archivo.size > 20 * 1024 * 1024 || await archivo.slice(0, 5).text() !== '%PDF-') {
     return { ok: false, error: 'El archivo debe ser un PDF válido de hasta 20 MB.' }
   }
-  // El mismo PDF dos veces en la misma compra (mismo nombre y mismo tamaño) es
-  // un toque de más o un archivo equivocado: en Adquisiciones salía la misma
-  // cotización dos veces, como «Orden de compra» (2026-10-20).
+  // El mismo PDF dos veces en la misma compra y con el mismo tipo (mismo nombre
+  // y mismo tamaño) es un toque de más: en Adquisiciones salía la misma
+  // cotización dos veces (2026-10-20). Con otro tipo sí entra: es la forma de
+  // corregir uno mal elegido, porque un documento adjunto no se edita ni se borra.
   const { data: igual, error: errorIgual } = await supabase
     .from('documentos_compra_material')
     .select('tipo, creado_en')
     .eq('orden_compra_id', datos.data.orden_compra_id)
     .eq('nombre_archivo', datos.data.nombre_archivo)
     .eq('tamano_bytes', archivo.size)
+    .eq('tipo', datos.data.tipo)
     .limit(1)
     .maybeSingle()
   if (errorIgual) return { ok: false, error: mensajeDeError(errorIgual) }
   if (igual) {
     return {
       ok: false,
-      error: `Ese PDF ya está adjunto a esta compra como «${TIPO_DOCUMENTO_COMPRA[igual.tipo] ?? igual.tipo}» desde el ${fecha(igual.creado_en)}. Si es otro documento, revisa que elegiste el archivo correcto.`,
+      error: `Ese PDF ya está adjunto a esta compra como «${TIPO_DOCUMENTO_COMPRA[igual.tipo] ?? igual.tipo}» desde el ${fecha(igual.creado_en)}: no hace falta subirlo otra vez. Si es otro documento, revisa que elegiste el archivo correcto.`,
     }
   }
 
