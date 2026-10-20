@@ -15,15 +15,16 @@ function dato(formulario: FormData, nombre: string) {
 const SOLO_ADMINISTRACION = 'Los gastos del local y de operación los registra Administración.'
 
 /**
- * Un gasto del mes que no es de una OT —luz, agua, internet, depreciación— y
- * cómo se reparte entre los códigos internos que trabajaron ese mes. `registrar_gasto_general`
- * exige `costos.gastos_generales`, el mismo permiso que se pide aquí.
+ * Un gasto del mes que no es de una OT —luz, agua, internet, depreciación—. Se
+ * reparte por horas entre las unidades que trabajaron ese mes (DKS lo eligió el
+ * 2026-10-20); la tasa y las partes iguales quedan solo para los gastos ya
+ * registrados así. `registrar_gasto_general` exige `costos.gastos_generales`, el
+ * mismo permiso que se pide aquí.
  */
 export async function registrarGastoGeneral(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'costos.gastos_generales')) return { ok: false, error: SOLO_ADMINISTRACION }
 
-  const reparto = dato(formulario, 'reparto')
   const v = z.object({
     operacion_id: z.guid(),
     mes: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
@@ -31,8 +32,6 @@ export async function registrarGastoGeneral(_previo: unknown, formulario: FormDa
     descripcion: z.string().trim().min(3).max(300),
     monto: z.coerce.number().positive().max(9999999999).multipleOf(0.01),
     moneda: z.enum(['PEN', 'USD']),
-    reparto: z.enum(['TASA', 'PARTES_IGUALES']),
-    tasa: z.coerce.number().positive().max(100).multipleOf(0.001).nullable(),
   }).safeParse({
     operacion_id: dato(formulario, 'operacion_id'),
     mes: dato(formulario, 'mes'),
@@ -40,11 +39,9 @@ export async function registrarGastoGeneral(_previo: unknown, formulario: FormDa
     descripcion: dato(formulario, 'descripcion'),
     monto: dato(formulario, 'monto'),
     moneda: dato(formulario, 'moneda'),
-    reparto,
-    tasa: reparto === 'TASA' ? dato(formulario, 'tasa') : null,
   })
   if (!v.success) {
-    return { ok: false, error: 'Revisa mes, concepto, detalle (3 a 300 caracteres), importe y cómo se reparte (tasa de 0 a 100 %, o partes iguales).' }
+    return { ok: false, error: 'Revisa mes, concepto, detalle (3 a 300 caracteres), importe y moneda.' }
   }
 
   const db = await createClient()
@@ -55,15 +52,15 @@ export async function registrarGastoGeneral(_previo: unknown, formulario: FormDa
     p_descripcion: v.data.descripcion,
     p_monto: v.data.monto,
     p_moneda: v.data.moneda,
-    p_reparto: v.data.reparto,
-    // Con partes iguales la base exige la tasa nula.
-    p_tasa: v.data.tasa,
+    p_reparto: 'HORAS',
+    // Por horas no lleva tasa: la base la exige nula.
+    p_tasa: null,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== v.data.operacion_id) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/costos/gastos-generales')
-  return { ok: true, mensaje: 'Gasto registrado: ya entra al costo de cada código interno que trabajó ese mes.' }
+  return { ok: true, mensaje: 'Gasto registrado: se reparte por horas entre las unidades que trabajaron ese mes.' }
 }
 
 /** Anular, nunca borrar: el gasto queda a la vista con el motivo, quién y cuándo. */

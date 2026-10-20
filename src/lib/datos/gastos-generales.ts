@@ -30,3 +30,26 @@ export async function gastosGeneralesDelMes(periodo: string) {
 }
 
 export type GastoGeneral = Awaited<ReturnType<typeof gastosGeneralesDelMes>>[number]
+
+/**
+ * Entre qué unidades se reparten los gastos de un mes: sus horas y el porcentaje
+ * de cada gasto que carga cada una. Exige `costos.gastos_generales` o `costos.ver`.
+ */
+export async function repartoDelMes(periodo: string) {
+  const db = await createClient()
+  const { data, error } = await db.rpc('gastos_del_mes_reparto', { p_periodo: periodo })
+  if (error) throw new Error(`No se pudo leer el reparto del mes: ${error.message}`)
+  return (data ?? []).map((f) => ({ codigo: f.codigo, horas: Number(f.horas), parte: Number(f.parte) }))
+}
+
+/**
+ * El sueldo de la oficina de un mes, sumado: cuántas personas, cuánto y cuántos
+ * trabajadores con costo no tienen área. Nadie ve el de una persona.
+ */
+export async function oficinaDelMes(periodo: string) {
+  const db = await createClient()
+  const { data, error } = await db.rpc('gastos_del_mes_oficina', { p_periodo: periodo })
+  if (error) throw new Error(`No se pudo leer el sueldo de la oficina: ${error.message}`)
+  const f = data?.[0]
+  return { personas: f?.personas ?? 0, monto: Number(f?.monto ?? 0), sinArea: f?.sin_area ?? 0 }
+}

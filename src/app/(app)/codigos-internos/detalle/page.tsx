@@ -1254,7 +1254,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden" data-gastos-y-caja>
         <TarjetaCabecera
           titulo="Gastos y caja"
-          ayuda="La parte de este código en los gastos del mes que registra Administración —luz, agua, celulares—: con su tasa, o en partes iguales entre los códigos que trabajaron ese mes. Los trámites, comisiones y viáticos que Administración aprobó en la OT de la unidad. Y los egresos que Tesorería escribió en la caja diaria con este código. Los pagos de OC, OS y recibos no entran aquí, porque ya se cuentan arriba."
+          ayuda="La parte de este código en los gastos del mes que registra Administración —luz, agua, celulares— y en el sueldo de la oficina: por sus horas del mes entre las unidades que trabajaron (los registrados antes del 20/10/2026, con su tasa o en partes iguales). Los trámites, comisiones y viáticos que Administración aprobó en la OT de la unidad. Y los egresos que Tesorería escribió en la caja diaria con este código. Los pagos de OC, OS y recibos no entran aquí, porque ya se cuentan arriba."
         />
         <Tabla>
           <TablaCabecera>
@@ -1269,7 +1269,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
             {gastos.length === 0 ? (
               <SinDatos
                 titulo="Ningún gasto ni egreso de caja en este código"
-                descripcion="Los gastos del mes se reparten entre los códigos que trabajaron ese mes; los de la OT entran cuando Administración los aprueba, y los egresos de caja cuando Tesorería les pone el código."
+                descripcion="Los gastos del mes y el sueldo de la oficina se reparten por las horas de cada unidad en el mes; los de la OT entran cuando Administración los aprueba, y los egresos de caja cuando Tesorería les pone el código."
               />
             ) : (
               <>

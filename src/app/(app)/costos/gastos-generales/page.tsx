@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
-import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
-import { conceptosGastoGeneral, gastosGeneralesDelMes } from '@/lib/datos/gastos-generales'
+import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { conceptosGastoGeneral, gastosGeneralesDelMes, oficinaDelMes, repartoDelMes } from '@/lib/datos/gastos-generales'
 import { cantidad, fechaHora, hoyLima, mesLargo, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -29,10 +29,10 @@ const nombreDe = (u: { nombres: string; apellidos: string } | null) => (u ? `${u
 /**
  * Lo que Administración paga cada mes y no es de una OT: los servicios del
  * local (luz, agua, internet…) y los gastos de operación (depreciación de
- * maquinaria y equipos). Desde la migración 20261017300000 cada uno se reparte
- * entre los códigos internos que trabajaron ese mes —con horas o salidas del
- * almacén— y llega a su costo; la OT sin código lo sigue recibiendo por la
- * planilla cerrada, como antes.
+ * maquinaria y equipos). Desde la migración 20261020110000 cada uno se reparte
+ * por horas entre las unidades que trabajaron ese mes, y el sueldo de la oficina
+ * entra igual sin que nadie lo escriba (DKS lo eligió el 2026-10-20). Los ya
+ * registrados con tasa o en partes iguales se siguen repartiendo así.
  *
  * Escribe `costos.gastos_generales` (Administración); lee también `costos.ver`,
  * igual que la política `ver_gastos_generales_mes`.
@@ -44,7 +44,10 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
   const mes = MES.test(pedido) ? pedido : hoyLima().slice(0, 7)
   const puedeRegistrar = puede(perfil, 'costos.gastos_generales')
 
-  const [conceptos, gastos] = await Promise.all([conceptosGastoGeneral(), gastosGeneralesDelMes(`${mes}-01`)])
+  const [conceptos, gastos, reparto, oficina] = await Promise.all([
+    conceptosGastoGeneral(), gastosGeneralesDelMes(`${mes}-01`), repartoDelMes(`${mes}-01`), oficinaDelMes(`${mes}-01`),
+  ])
+  const horasDelMes = reparto.reduce((n, r) => n + r.horas, 0)
   const porCodigo = new Map(conceptos.map((c) => [c.codigo, c]))
 
   const totales = new Map<string, { grupo: string; moneda: 'PEN' | 'USD'; monto: number }>()
@@ -61,7 +64,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Gastos del mes"
-        ayuda="Servicios del local y gastos de operación que paga Administración. Cada uno se reparte entre los códigos internos que trabajaron ese mes (con horas en el reporte diario o en el tareo de RR. HH., o con salidas del almacén) y llega a su costo al registrarlo."
+        ayuda="Servicios del local y gastos de operación que paga Administración. Cada uno se reparte por horas entre las unidades que trabajaron ese mes: cada una carga la parte de sus horas en el reporte diario o en el tareo de RR. HH. El sueldo de la oficina entra igual, solo, con el costo mensual que tiene RR. HH."
         acciones={puedeRegistrar && (
           <NuevoGastoGeneral mes={mes}
             conceptos={conceptos.map((c) => ({ codigo: c.codigo, nombre: c.nombre, grupo: c.grupo, tasa: c.tasa_sugerida === null ? null : Number(c.tasa_sugerida) }))} />
@@ -94,7 +97,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo={`Gastos de ${mesLargo(`${mes}-01`)}`}
-          ayuda="Con tasa, cada código que trabajó en el mes carga ese porcentaje del gasto; con partes iguales, el gasto se divide entre todos. PLANTA no recibe. Un gasto anulado deja de sumar y queda a la vista."
+          ayuda="Cada gasto se reparte por horas entre las unidades del cuadro «Cómo se reparte». Los registrados antes del 20/10/2026 con tasa o en partes iguales se siguen repartiendo así. Un gasto anulado deja de sumar y queda a la vista."
         />
         <Tabla>
           <TablaCabecera>
@@ -138,7 +141,9 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
                   <TD>
                     {g.reparto === 'TASA'
                       ? <span className="tabular block text-sm">{cantidad(g.tasa)} % por código</span>
-                      : <span className="block text-sm">Partes iguales</span>}
+                      : g.reparto === 'HORAS'
+                        ? <span className="block text-sm">Por horas</span>
+                        : <span className="block text-sm">Partes iguales</span>}
                     {anulado && <Insignia tono="peligro" className="mt-1 flex w-fit md:hidden">Anulado</Insignia>}
                   </TD>
                   <TD className={`tabular text-right ${anulado ? 'text-texto-suave line-through' : ''}`}>{moneda(g.monto, monedaGasto)}</TD>
@@ -154,6 +159,50 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
                 </TR>
               )
             })}
+          </tbody>
+        </Tabla>
+      </Tarjeta>
+
+      <Tarjeta className="mt-4 overflow-hidden" data-reparto-del-mes>
+        <TarjetaCabecera
+          titulo="Cómo se reparte"
+          descripcion={reparto.length === 0
+            ? 'Ninguna unidad tiene horas en este mes todavía.'
+            : `${reparto.length} ${reparto.length === 1 ? 'unidad' : 'unidades'} con ${cantidad(horasDelMes)} h en el mes.`}
+          ayuda="Cada unidad carga de cada gasto del mes la parte de sus horas: las del reporte diario y las del tareo de RR. HH. PLANTA y OFICINA no son unidades y no reciben. Sin horas en el mes, los gastos esperan y se reparten en cuanto alguien reporte."
+        />
+        <TarjetaCuerpo className="space-y-2 border-b border-borde text-sm">
+          <p>
+            <span className="font-medium text-texto">Sueldo de la oficina: </span>
+            {oficina.personas === 0
+              ? <span className="text-texto-suave">nadie de la oficina tiene costo mensual en RR. HH. para este mes.</span>
+              : <span className="tabular">{moneda(oficina.monto)} de {oficina.personas} {oficina.personas === 1 ? 'persona' : 'personas'}, repartido igual que los gastos.</span>}
+          </p>
+          {oficina.sinArea > 0 && (
+            <p role="status" className="text-aviso">
+              {oficina.sinArea === 1 ? 'Un trabajador con costo no tiene área' : `${oficina.sinArea} trabajadores con costo no tienen área`}: RR. HH. tiene que ponérsela para saber si su sueldo es de la oficina.
+            </p>
+          )}
+        </TarjetaCuerpo>
+        <Tabla>
+          <TablaCabecera>
+            <tr>
+              <TH>Unidad</TH>
+              <TH className="text-right">Horas</TH>
+              <TH className="text-right">Carga</TH>
+            </tr>
+          </TablaCabecera>
+          <tbody>
+            {reparto.length === 0 ? (
+              <SinDatos colSpan={3} titulo="Sin horas en este mes"
+                descripcion="Los gastos se reparten cuando los supervisores reporten horas en una unidad o RR. HH. las cargue en su tareo." />
+            ) : reparto.map((r) => (
+              <TR key={r.codigo}>
+                <TD className="font-medium">{r.codigo}</TD>
+                <TD className="tabular text-right">{cantidad(r.horas)}</TD>
+                <TD className="tabular text-right">{cantidad(r.parte)} %</TD>
+              </TR>
+            ))}
           </tbody>
         </Tabla>
       </Tarjeta>

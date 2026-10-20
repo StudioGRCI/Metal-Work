@@ -12272,6 +12272,26 @@ export type Database = {
         }
         Returns: null
       }
+      gastos_del_mes_oficina: {
+        Args: {
+          p_periodo: string | null
+        }
+        Returns: {
+          personas: number | null
+          monto: number | null
+          sin_area: number | null
+        }[]
+      }
+      gastos_del_mes_reparto: {
+        Args: {
+          p_periodo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          horas: number | null
+          parte: number | null
+        }[]
+      }
       guardar_caja: {
         Args: {
           p_id: string | null
@@ -12376,6 +12396,18 @@ export type Database = {
           horas_tramo1: number | null
           horas_tramo2: number | null
           remuneracion_mensual: number | null
+        }[]
+      }
+      horas_por_codigo_del_mes: {
+        Args: {
+          p_periodo?: string | null
+        }
+        Returns: {
+          periodo: string | null
+          codigo: string | null
+          horas: number | null
+          total: number | null
+          codigos: number | null
         }[]
       }
       identificacion_ot_diseno: {
@@ -14126,6 +14158,17 @@ export type Database = {
           p_nombre_archivo: string | null
         }
         Returns: string
+      }
+      sueldos_oficina_del_mes: {
+        Args: {
+          p_periodo?: string | null
+        }
+        Returns: {
+          periodo: string | null
+          personas: number | null
+          monto: number | null
+          sin_area: number | null
+        }[]
       }
       sumar_dias_habiles: {
         Args: {
