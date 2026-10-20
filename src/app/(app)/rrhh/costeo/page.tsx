@@ -5,7 +5,8 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { horasEsperandoCosto } from '@/lib/datos/reportes-diarios'
-import { codigosInternos, listarTrabajadores, tareosDelMes, type Tareo } from '@/lib/datos/rrhh'
+import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
+import { listarTrabajadores, tareosDelMes, type Tareo } from '@/lib/datos/rrhh'
 import { HORAS_DEL_MES, fechaValida, horasCortas, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, fechaLarga, hoyLima, mesLargo, moneda, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -47,7 +48,7 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
   const [tareos, personal, codigos, esperando] = await Promise.all([
     tareosDelMes(mes),
     listarTrabajadores('activos'),
-    codigosInternos(),
+    codigosParaElegir(),
     horasEsperandoCosto(),
   ])
   const grupos = agrupar(tareos)

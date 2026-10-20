@@ -137,6 +137,13 @@ export const CODIGO_SIN_AVANCE = 'PLANTA'
  */
 export const CODIGO_TODOS_LOS_ACTIVOS = 'TODOS LOS ACTIVOS'
 
+/**
+ * Los códigos que no son de una unidad, primeros en el buscador de código: lo
+ * de la planta y lo de la oficina.
+ */
+export const CODIGO_FIJO_PLANTA = { codigo: 'PLANTA', detalle: 'No es para una unidad: lo de la planta' }
+export const CODIGO_FIJO_OFICINA = { codigo: 'OFICINA', detalle: 'No es para una unidad: lo de la oficina' }
+
 /** PLANTA y TODOS LOS ACTIVOS no son una unidad: no avanzan, no se venden y su costeo no se cierra. */
 export function noEsUnidad(codigo: string) {
   return codigo === CODIGO_SIN_AVANCE || codigo === CODIGO_TODOS_LOS_ACTIVOS

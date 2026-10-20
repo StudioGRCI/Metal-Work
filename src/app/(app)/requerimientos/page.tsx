@@ -2,26 +2,16 @@ import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Vistas } from '@/components/estructura/vistas'
-import { Insignia } from '@/components/ui/etiqueta-estado'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
-import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
-import {
-  cargarRequerimientos,
-  catalogosDelRequerimiento,
-  type MaterialParaRequerimiento,
-  type RequerimientoListado,
-} from '@/lib/datos/requerimientos'
-import { ESTADO_REQUERIMIENTO, ESTADOS_RQ_ABIERTOS, TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
-import { fecha, fechaHora } from '@/lib/format'
+import { correccionesDe } from '@/lib/datos/correcciones'
+import { cargarRequerimientos, catalogosDelRequerimiento } from '@/lib/datos/requerimientos'
+import { TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { esUuid } from '@/lib/utils'
 
-import { AvanceDelRequerimiento, InsumosDelRequerimiento } from './avance'
-import { AnularRequerimiento } from './controles'
-import { CorregirRequerimiento } from './corregir'
 import { NuevoRequerimiento } from './formulario'
+import { ResumenDeRequerimientos, TarjetaRequerimiento } from './tarjeta'
 
 export const metadata = { title: 'Requerimientos' }
 
@@ -65,11 +55,6 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
     emite ? catalogosDelRequerimiento() : Promise.resolve(null),
   ])
   const correcciones = await correccionesDe('REQUERIMIENTO', requerimientos.map((r) => r.id))
-  const abiertos = requerimientos.filter((r) => ESTADOS_RQ_ABIERTOS.includes(r.estado as (typeof ESTADOS_RQ_ABIERTOS)[number])).length
-  const listos = requerimientos.filter((r) => r.estado === 'LISTO_EN_ALMACEN').length
-  // Los dos momentos del recojo que se quieren distinguir de un vistazo.
-  const pendientesDeRecojo = requerimientos.filter((r) => r.lineas.some((l) => l.etapa === 'PENDIENTE_RECOJO')).length
-  const enRecojo = requerimientos.filter((r) => r.lineas.some((l) => l.etapa === 'EN_RECOJO')).length
 
   return (
     <>
@@ -77,10 +62,10 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
         titulo="Requerimientos"
         ayuda={
           emite
-            ? 'Lo que cada área necesita, con el código interno y su justificación. Al registrarlo lo revisa Almacén insumo por insumo: lo que tiene lo separa y solo lo que falta se compra.'
+            ? 'Lo que cada área necesita, con el código interno y su justificación. Al registrarlo lo revisa Almacén insumo por insumo: lo que tiene lo separa y solo lo que falta se compra. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde) y cuánto falta que llegue.'
             : supervisaArea
-              ? 'Lo que pidió tu área, y con «Todas las áreas» lo de las demás. Presiona los insumos de cada RQ para ver cuáles da Almacén y cuáles van a compra; el código interno muestra solo los RQ de esa unidad.'
-              : 'Los requerimientos de operación y de Administración. «Listo en almacén» es lo que el área ya puede recoger. Presiona los insumos de cada RQ para ver cuáles da Almacén y cuáles van a compra.'
+              ? 'Lo que pidió tu área, y con «Todas las áreas» lo de las demás. La barra de cada insumo dice cuánto ya puedes recoger en Almacén (verde), cuánto falta que traiga Logística y en qué va, y cuánto ya se entregó. El código interno muestra solo los RQ de esa unidad.'
+              : 'Los requerimientos de operación y de Administración. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde), cuánto falta que llegue y en qué va, y cuánto ya se entregó.'
         }
         migas={[{ titulo: 'Requerimientos' }]}
         acciones={catalogos && <NuevoRequerimiento {...catalogos} tipos={tipos} />}
@@ -127,119 +112,34 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
         </p>
       )}
 
-      {!soloUno && requerimientos.length > 0 && (
-        <p className="mb-3 text-sm text-texto-suave">
-          {abiertos === 0 ? 'Ninguno en camino.' : `${abiertos} en camino`}
-          {pendientesDeRecojo > 0 && ` · ${pendientesDeRecojo} con insumos pendientes de recojo`}
-          {enRecojo > 0 && ` · ${enRecojo} con insumos en recojo`}
-          {listos > 0 && ` · ${listos} ${listos === 1 ? 'listo' : 'listos'} en almacén para recoger`}
-          {abiertos > 0 && '.'}
-        </p>
-      )}
+      {!soloUno && requerimientos.length > 0 && <ResumenDeRequerimientos requerimientos={requerimientos} />}
 
-      <Tarjeta className="overflow-hidden">
-        <Tabla>
-          <TablaCabecera>
-            <tr>
-              <TH>Requerimiento</TH>
-              <TH>Insumos</TH>
-              <TH>En qué va</TH>
-              <TH className="text-right">
-                <span className="sr-only">Acciones</span>
-              </TH>
-            </tr>
-          </TablaCabecera>
-          <tbody>
-            {requerimientos.length === 0 ? (
-              <SinDatos
-                titulo="Todavía no hay requerimientos"
-                descripcion={emite ? 'Registra el primero con «Nuevo requerimiento».' : 'Requerimientos y la administradora los registran; aparecen aquí con su número.'}
-              />
-            ) : (
-              requerimientos.map((r) => (
-                <FilaRequerimiento
-                  key={r.id}
-                  rq={r}
-                  // Quien los lleva los ve abiertos, como siempre; quien consulta, al presionar.
-                  insumosAbiertos={emite || Boolean(soloUno)}
-                  enlaceCodigo={supervisaArea && !deSuArea ? '/requerimientos?area=todas&codigo=' : '/requerimientos?codigo='}
-                  anula={tipos.includes(r.tipo as TipoRequerimiento)}
-                  materiales={catalogos?.materiales ?? []}
-                  correcciones={correcciones.get(r.id)}
-                />
-              ))
-            )}
-          </tbody>
-        </Tabla>
-      </Tarjeta>
-    </>
-  )
-}
-
-function FilaRequerimiento({
-  rq,
-  insumosAbiertos,
-  enlaceCodigo,
-  anula,
-  materiales,
-  correcciones,
-}: {
-  rq: RequerimientoListado
-  insumosAbiertos: boolean
-  /** A dónde lleva el código interno de la fila: la lista con solo los RQ de ese código. */
-  enlaceCodigo: string
-  /** Quien lleva su tipo: lo anula y lo corrige. */
-  anula: boolean
-  materiales: MaterialParaRequerimiento[]
-  correcciones: CorreccionVista[] | undefined
-}) {
-  const estado = ESTADO_REQUERIMIENTO[rq.estado]
-  return (
-    <TR>
-      <TD className="align-top">
-        <p className="tabular font-semibold text-texto">
-          {rq.numero}
-          {rq.tipo === 'ADMINISTRACION' && (
-            <Insignia tono="acento" className="ml-2 align-middle">
-              Administración
-            </Insignia>
-          )}
-        </p>
-        <p className="text-xs text-texto">
-          {rq.area} ·{' '}
-          <Link
-            href={`${enlaceCodigo}${encodeURIComponent(rq.codigo_interno)}`}
-            title="Ver los requerimientos de este código interno"
-            className="tabular font-medium text-acento hover:underline"
-          >
-            {rq.codigo_interno}
-          </Link>
-        </p>
-        <p className="mt-1 max-w-sm text-xs text-texto-suave">{rq.justificacion}</p>
-        <p className="text-[11px] text-texto-suave">
-          {[`Registrado ${fechaHora(rq.creado_en)}`, rq.fecha_requerida ? `se necesita el ${fecha(rq.fecha_requerida)}` : null]
-            .filter(Boolean)
-            .join(' · ')}
-        </p>
-        {rq.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulado: {rq.motivo_anulacion}</p>}
-        <HistorialDeCorrecciones correcciones={correcciones} />
-      </TD>
-      <TD className="min-w-56 align-top">
-        <InsumosDelRequerimiento rq={rq} abierto={insumosAbiertos} />
-      </TD>
-      <TD className="align-top">
-        {estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : rq.estado}
-        <AvanceDelRequerimiento rq={rq} />
-        {rq.nota_almacen && <p className="mt-1 max-w-xs text-[11px] text-texto-suave">Almacén: {rq.nota_almacen}</p>}
-        {rq.listo_en_almacen_en && !rq.entregado_en && <p className="text-[11px] text-texto-suave">Desde {fechaHora(rq.listo_en_almacen_en)}</p>}
-        {rq.entregado_en && <p className="text-[11px] text-texto-suave">Entregado {fechaHora(rq.entregado_en)}{rq.nota_entrega ? ` a ${rq.nota_entrega}` : ''}</p>}
-      </TD>
-      <TD className="text-right align-top">
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {anula && rq.estado !== 'ENTREGADO' && rq.estado !== 'ANULADO' && <CorregirRequerimiento rq={rq} materiales={materiales} />}
-          {anula && (rq.estado === 'POR_ATENDER' || rq.estado === 'SIN_STOCK') && <AnularRequerimiento id={rq.id} numero={rq.numero} />}
+      {requerimientos.length === 0 ? (
+        <Tarjeta>
+          <SinDatos
+            enTabla={false}
+            titulo="Todavía no hay requerimientos"
+            descripcion={emite ? 'Registra el primero con «Nuevo requerimiento».' : 'Requerimientos y la administradora los registran; aparecen aquí con su número.'}
+          />
+        </Tarjeta>
+      ) : (
+        <div className="space-y-3">
+          {requerimientos.map((r) => (
+            <TarjetaRequerimiento
+              key={r.id}
+              rq={r}
+              // Lo que va en camino se ve desplegado, para ver de un vistazo qué
+              // se recoge y qué falta; lo entregado y lo anulado, al presionar.
+              insumosAbiertos={Boolean(soloUno) || (r.estado !== 'ENTREGADO' && r.estado !== 'ANULADO')}
+              enlaceCodigo={supervisaArea && !deSuArea ? '/requerimientos?area=todas&codigo=' : '/requerimientos?codigo='}
+              anula={tipos.includes(r.tipo as TipoRequerimiento)}
+              materiales={catalogos?.materiales ?? []}
+              codigos={catalogos?.codigos ?? null}
+              correcciones={correcciones.get(r.id)}
+            />
+          ))}
         </div>
-      </TD>
-    </TR>
+      )}
+    </>
   )
 }

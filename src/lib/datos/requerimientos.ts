@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { createClient } from '@/lib/supabase/server'
 
 export type LineaRequerimiento = {
@@ -32,6 +33,8 @@ export type LineaRequerimiento = {
   en_stock: number | null
   /** Lo que falta y se compra: lo pedido menos lo que tenía Almacén. Vacío mientras no lo revisa. */
   por_comprar: number | null
+  /** Lo que ya salió del almacén para este insumo, menos lo devuelto (`entregado_de_requerimientos`). */
+  entregado: number
 }
 
 /** En qué porcentaje va el RQ y la etapa de su insumo más atrasado. */
@@ -104,13 +107,24 @@ export async function cargarRequerimientos(
   // también el número de la OC, que Supervisión y Requerimientos no leen de la
   // tabla de compras.
   const avances = new Map<string, AvanceRequerimiento & { lineas: Map<number, LineaDeAvance> }>()
+  // Lo que ya salió del almacén para cada insumo: Supervisión no lee el kardex,
+  // así que también lo da la base (migración 20261020191000).
+  const entregados = new Map<string, number>()
   if (data && data.length > 0) {
-    const avance = await supabase.rpc('avance_de_requerimientos', { p_ids: data.map((r) => r.id) })
+    const ids = data.map((r) => r.id)
+    const [avance, entregado] = await Promise.all([
+      supabase.rpc('avance_de_requerimientos', { p_ids: ids }),
+      supabase.rpc('entregado_de_requerimientos', { p_ids: ids }),
+    ])
     if (avance.error) throw new Error(`No se pudo calcular el avance de los requerimientos: ${avance.error.message}`)
+    if (entregado.error) throw new Error(`No se pudo leer lo entregado de los requerimientos: ${entregado.error.message}`)
     for (const a of avance.data ?? []) {
       if (!a.requerimiento_id || a.porcentaje == null || !a.etapa) continue
       const lineas = (a.lineas as LineaDeAvance[] | null) ?? []
       avances.set(a.requerimiento_id, { porcentaje: a.porcentaje, etapa: a.etapa, lineas: new Map(lineas.map((l) => [l.item, l])) })
+    }
+    for (const e of entregado.data ?? []) {
+      if (e.requerimiento_id && e.item != null) entregados.set(`${e.requerimiento_id}:${e.item}`, Number(e.entregado ?? 0))
     }
   }
   return (data ?? []).map((r) => {
@@ -154,6 +168,7 @@ export async function cargarRequerimientos(
             etapa_desde: deLinea?.desde ?? null,
             en_stock: l.cantidad_en_stock == null ? null : Number(l.cantidad_en_stock),
             por_comprar: l.cantidad_en_stock == null ? null : Math.max(Number(l.cantidad) - Number(l.cantidad_en_stock), 0),
+            entregado: entregados.get(`${r.id}:${l.item}`) ?? 0,
           }
         })
         .sort((a, b) => a.item - b.item),
@@ -220,7 +235,7 @@ export async function catalogoParaRequerimiento(): Promise<MaterialParaRequerimi
  */
 export async function catalogosDelRequerimiento() {
   const supabase = await createClient()
-  const [areas, unidades, categorias, materiales] = await Promise.all([
+  const [areas, unidades, categorias, materiales, codigos] = await Promise.all([
     supabase.from('areas').select('id, codigo, nombre, requerimiento').eq('activo', true).not('requerimiento', 'is', null).order('nombre'),
     supabase.from('unidades_medida').select('id, codigo, nombre').eq('activo', true).order('codigo'),
     supabase
@@ -231,6 +246,7 @@ export async function catalogosDelRequerimiento() {
       .neq('codigo', 'ALM_POR_CLASIFICAR')
       .order('nombre'),
     materialesParaRequerimiento(supabase),
+    codigosParaElegir(supabase),
   ])
   if (areas.error || unidades.error || categorias.error) {
     throw new Error('No se pudieron leer las áreas, unidades o categorías para el requerimiento.')
@@ -245,5 +261,6 @@ export async function catalogosDelRequerimiento() {
     unidades: unidades.data ?? [],
     categorias: deAlmacen.length > 0 ? deAlmacen : todas,
     materiales,
+    codigos,
   }
 }

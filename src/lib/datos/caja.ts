@@ -1,5 +1,7 @@
 import 'server-only'
 
+import type { CodigoParaElegir } from '@/components/codigo-interno/elegir-codigo'
+import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { CAJA_NO_SE_MOVIO, CAJA_SIN_LEER, monedaDeCuenta, type CuentaParaPagar } from '@/lib/dominio/caja'
 import { fecha as textoFecha, hoyLima, type CodigoMoneda } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
@@ -80,7 +82,8 @@ export type CajaDelDia = {
   reabiertos: CierreReabierto[]
   /** El cambio de compra del día (o de los diez anteriores), para pasar los dólares a soles. */
   cambioCompra: number | null
-  codigos: string[]
+  /** Los códigos internos para elegir en un egreso, con su unidad; `null` si no se pudieron leer. */
+  codigos: CodigoParaElegir[] | null
 }
 
 const n = (v: number | null | undefined) => Number(v ?? 0)
@@ -93,13 +96,12 @@ export async function cajaDelDia(dia: string): Promise<CajaDelDia> {
     supabase.rpc('movimientos_caja_del_dia', { p_fecha: dia }),
     supabase.rpc('cierres_caja_reabiertos', { p_fecha: dia }),
     supabase.rpc('cambio_del_dia', { p_fecha: dia, p_operacion: 'COMPRA' }),
-    supabase.rpc('caja_codigos_internos'),
+    codigosParaElegir(supabase),
   ])
   if (cuentas.error) throw new Error(`No se pudo leer la caja del día: ${cuentas.error.message}`)
   if (movimientos.error) throw new Error(`No se pudieron leer los movimientos del día: ${movimientos.error.message}`)
   if (reabiertos.error) throw new Error(`No se pudieron leer los cierres del día: ${reabiertos.error.message}`)
   if (cambio.error) throw new Error(`No se pudo leer el tipo de cambio: ${cambio.error.message}`)
-  if (codigos.error) throw new Error(`No se pudieron leer los códigos internos: ${codigos.error.message}`)
 
   // La planilla de cada pago de la planilla diaria. Si no se puede leer, el
   // enlace lleva a la lista de planillas: no dice nada falso, solo es más largo.
@@ -185,7 +187,7 @@ export async function cajaDelDia(dia: string): Promise<CajaDelDia> {
         : [],
     ),
     cambioCompra: o(cambio.data),
-    codigos: (codigos.data ?? []).flatMap((c) => (c.codigo ? [c.codigo] : [])),
+    codigos,
   }
 }
 

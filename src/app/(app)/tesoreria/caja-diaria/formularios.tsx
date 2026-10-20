@@ -3,6 +3,7 @@
 import { ArrowLeftRight, Ban, Lock, LockOpen, Pencil, Plus } from 'lucide-react'
 import { useState } from 'react'
 
+import { EntradaCodigoInterno, type CodigoParaElegir } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
@@ -63,7 +64,7 @@ export function RegistrarMovimiento({ cuentas, cuentaId, dia, codigos, compacto 
   cuentas: CuentaElegible[]
   cuentaId?: string
   dia: string
-  codigos: string[]
+  codigos: CodigoParaElegir[] | null
   compacto?: boolean
 }) {
   const v = useVentana()
@@ -106,12 +107,13 @@ function FormularioMovimiento({ cuentas, cuentaId, dia, codigos, alTerminar }: {
   cuentas: CuentaElegible[]
   cuentaId?: string
   dia: string
-  codigos: string[]
+  codigos: CodigoParaElegir[] | null
   alTerminar: () => void
 }) {
   // Decidido aquí: un reintento manda el mismo y la base no registra otro.
   const [id] = useState(() => crypto.randomUUID())
   const [caja, setCaja] = useState(cuentaId ?? cuentas[0]?.id ?? '')
+  const [codigo, setCodigo] = useState('')
   const { alEnviar, enviando, error } = useEnvio(registrarMovimiento, alTerminar)
   const p = `mov-${id.slice(0, 8)}`
   const m = monedaDeCuenta(cuentas.find((c) => c.id === caja)?.moneda)
@@ -150,13 +152,8 @@ function FormularioMovimiento({ cuentas, cuentaId, dia, codigos, alTerminar }: {
         <Campo etiqueta={`Monto en ${nombreMoneda(m)}`} htmlFor={`${p}-monto`} requerido ayuda="Con sus decimales, como en el estado de cuenta.">
           <Entrada id={`${p}-monto`} name="monto" inputMode="decimal" required autoComplete="off" className="tabular" />
         </Campo>
-        <Campo etiqueta="Código interno" htmlFor={`${p}-codigo`} ayudaEnIcono={false} ayuda="Elige uno de la lista. Un egreso con código entra al costo de esa unidad: trámites, comisión, viáticos, compras chicas. No lo pongas en el pago de una OC, OS, recibo o planilla, ni en un gasto que Administración ya aprobó en la OT: ese ya está en su costo.">
-          <Entrada id={`${p}-codigo`} name="codigo_interno" list={`${p}-codigos`} maxLength={60} autoComplete="off" autoCapitalize="characters" />
-          <datalist id={`${p}-codigos`}>
-            {codigos.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
+        <Campo etiqueta="Código interno" htmlFor={`${p}-codigo`} ayudaEnIcono={false} ayuda="Búscalo por el código, la placa o la marca. Un egreso con código entra al costo de esa unidad: trámites, comisión, viáticos, compras chicas. No lo pongas en el pago de una OC, OS, recibo o planilla, ni en un gasto que Administración ya aprobó en la OT: ese ya está en su costo.">
+          <EntradaCodigoInterno id={`${p}-codigo`} name="codigo_interno" valor={codigo} onChange={setCodigo} codigos={codigos} />
         </Campo>
         <Campo etiqueta="N.º de operación" htmlFor={`${p}-operacion`} ayuda="El del banco, si lo hay.">
           <Entrada id={`${p}-operacion`} name="operacion" maxLength={60} autoComplete="off" className="tabular" />
