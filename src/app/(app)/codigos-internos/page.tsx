@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { LineaDeDiseno } from '@/components/codigo-interno/linea-diseno'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
@@ -35,6 +36,22 @@ const tieneCosto = (c: ResumenCodigo) => {
 const porCompletar = (c: ResumenCodigo) =>
   c.horas_sin_costo > 0 || c.materiales_sin_precio > 0 || c.compras_sin_precio > 0 || c.lineas_sin_cambio > 0
 
+/**
+ * Cuántos códigos se pintan por página. Con mil códigos la lista tardaba medio
+ * minuto en pintarse, aunque la base respondía en milisegundos.
+ */
+const POR_PAGINA = 50
+
+/**
+ * Abierto o cerrado según el costeo: Gerencia lo cierra al entregar la unidad.
+ * De entrada salen los abiertos (pedido de DKS, 2026-10-20).
+ */
+const ESTADOS: Record<string, (c: ResumenCodigo) => boolean> = {
+  cerrados: (c) => c.cierre !== null,
+  todos: () => true,
+}
+const abierto = (c: ResumenCodigo) => c.cierre === null
+
 /** Los filtros de la lista. «Parecidos» es lo que Gerencia tiene que verificar a mano. */
 const FILTROS: Record<string, (c: ResumenCodigo, parecido: boolean) => boolean> = {
   reportes: (c) => c.reportes > 0,
@@ -48,6 +65,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
   const params = await searchParams
   const q = typeof params.q === 'string' ? params.q.trim() : ''
   const filtro = typeof params.ver === 'string' && params.ver in FILTROS ? params.ver : null
+  const estado = typeof params.costeo === 'string' && params.costeo in ESTADOS ? params.costeo : null
 
   const [conDocumentos, deDiseno, avances] = await Promise.all([listarCodigosInternos(), codigosDeDiseno(), avanceDeLosCodigos()])
   // Un código puede tener planos o etapas de Diseño antes que cualquier documento.
@@ -61,8 +79,13 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
   const buscados = q
     ? todos.filter((c) => c.codigo.includes(q.toUpperCase()) || (llave && llaveParecido(c.codigo).includes(llave)) || coincide(palabras, [c.codigo, diseno.get(c.codigo)?.unidad]))
     : todos
-  const cuantos = (clave: string) => buscados.filter((c) => FILTROS[clave](c, parecidosDe.has(c.codigo))).length
-  const codigos = filtro ? buscados.filter((c) => FILTROS[filtro](c, parecidosDe.has(c.codigo))) : buscados
+  const enEstado = buscados.filter(estado ? ESTADOS[estado] : abierto)
+  const cuantos = (clave: string) => enEstado.filter((c) => FILTROS[clave](c, parecidosDe.has(c.codigo))).length
+  const codigos = filtro ? enEstado.filter((c) => FILTROS[filtro](c, parecidosDe.has(c.codigo))) : enEstado
+  const paginas = Math.max(1, Math.ceil(codigos.length / POR_PAGINA))
+  const pagina = Math.min(Math.max(1, Math.trunc(Number(params.pagina)) || 1), paginas)
+  const mostrar = codigos.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)
+  const cerrados = buscados.filter(ESTADOS.cerrados).length
 
   const costo = codigos.reduce((n, c) => n + costoDelCodigo(c).pen, 0)
   const dolares = codigos.reduce((n, c) => n + costoDelCodigo(c).usd, 0)
@@ -72,7 +95,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Códigos internos"
-        ayuda="Cada código interno con cómo va, lo que lleva costado y lo que deja de margen."
+        ayuda="Cada código interno con cómo va, lo que lleva costado y lo que deja de margen. De entrada salen los abiertos: el código cuyo costeo cerró Gerencia al entregar la unidad está en «Costeo cerrado»."
         migas={[{ titulo: 'Códigos internos' }]}
       />
 
@@ -103,12 +126,24 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
         <BuscadorSimple ruta="/codigos-internos" etiqueta="Buscar código interno" marcador="Código, placa o vehículo" />
         <PastillaFiltro
           ruta="/codigos-internos"
+          clave="costeo"
+          params={params}
+          activo={estado}
+          etiqueta="Abiertos o con el costeo cerrado"
+          opciones={[
+            { valor: null, etiqueta: `Abiertos (${buscados.length - cerrados})` },
+            { valor: 'cerrados', etiqueta: `Costeo cerrado (${cerrados})` },
+            { valor: 'todos', etiqueta: `Abiertos y cerrados (${buscados.length})` },
+          ]}
+        />
+        <PastillaFiltro
+          ruta="/codigos-internos"
           clave="ver"
           params={params}
           activo={filtro}
           etiqueta="Qué códigos mostrar"
           opciones={[
-            { valor: null, etiqueta: `Todos (${buscados.length})` },
+            { valor: null, etiqueta: `Todos (${enEstado.length})` },
             { valor: 'reportes', etiqueta: `Con reporte diario (${cuantos('reportes')})` },
             { valor: 'costo', etiqueta: `Con costo (${cuantos('costo')})` },
             { valor: 'parecidos', etiqueta: `Parecidos a otro (${cuantos('parecidos')})` },
@@ -132,24 +167,41 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
         <Tarjeta>
           <TarjetaCuerpo>
             <p className="text-sm font-medium text-texto">
-              {todos.length === 0 ? 'Todavía no hay códigos internos' : 'Ningún código con esta búsqueda o filtro'}
+              {todos.length === 0
+                ? 'Todavía no hay códigos internos'
+                : !estado && !filtro && !q
+                  ? 'Ningún código abierto'
+                  : 'Ningún código con esta búsqueda o filtro'}
             </p>
             <p className="text-sm text-texto-suave">
               {todos.length === 0
                 ? 'Aparecen aquí apenas un requerimiento, una salida del almacén, un reporte diario o una carga de horas lleva uno.'
-                : 'Borra la búsqueda con «Limpiar» o quita el filtro con «Todos».'}
+                : !estado && !filtro && !q
+                  ? 'Todos los códigos tienen el costeo cerrado. Los ves en «Costeo cerrado».'
+                  : !estado && cerrados > 0
+                    ? `Mira en «Costeo cerrado» (${cerrados}), borra la búsqueda con «Limpiar» o quita el filtro con «Todos».`
+                    : 'Borra la búsqueda con «Limpiar» o quita el filtro con «Todos».'}
             </p>
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (
         <ul className="space-y-3">
-          {codigos.map((c) => (
+          {mostrar.map((c) => (
             <li key={c.codigo}>
               <FilaCodigo codigo={c} parecidos={parecidosDe.get(c.codigo) ?? []} diseno={diseno.get(c.codigo)} avance={avances.get(c.codigo)} />
             </li>
           ))}
         </ul>
       )}
+
+      <Paginacion
+        ruta="/codigos-internos"
+        pagina={pagina}
+        paginas={paginas}
+        total={codigos.length}
+        porPagina={POR_PAGINA}
+        params={params}
+      />
     </>
   )
 }

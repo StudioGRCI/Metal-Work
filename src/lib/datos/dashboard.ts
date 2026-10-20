@@ -356,7 +356,8 @@ const CIFRAS = {
     },
   },
   costo_de_codigos: {
-    ruta: '/codigos-internos?ver=costo',
+    // La tarjeta suma abiertos y cerrados: la lista, también.
+    ruta: '/codigos-internos?costeo=todos&ver=costo',
     calcular: async (c) => {
       const codigos = await c.una('codigos', () => listarCodigosInternos())
       const pen = codigos.reduce((n, k) => n + costoDelCodigo(k).pen, 0)
@@ -366,7 +367,7 @@ const CIFRAS = {
     },
   },
   codigos_por_completar: {
-    ruta: '/codigos-internos?ver=por-completar',
+    ruta: '/codigos-internos?costeo=todos&ver=por-completar',
     calcular: async (c) => {
       const codigos = await c.una('codigos', () => listarCodigosInternos())
       const n = codigos.filter((k) => k.horas_sin_costo > 0 || k.materiales_sin_precio > 0 || k.compras_sin_precio > 0 || k.lineas_sin_cambio > 0).length
