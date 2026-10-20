@@ -74,7 +74,7 @@ const [unidad] = await consulta(
 if (!unidad) throw new Error(`El banco no tiene la unidad V2G-841 con su OT: rehaz la base con preparar.sh.`)
 // Si una vuelta anterior lo dejó en la planta, se anula ese ingreso (no se borra).
 await consulta(
-  `update public.registro_vehiculos set anulado_en = now(), motivo_anulacion = 'Vuelta anterior del banco'
+  `update public.registro_vehiculos set anulado_en = now(), anulado_por = ingreso_por, motivo_anulacion = 'Vuelta anterior del banco'
     where codigo_interno = $1 and salida_en is null and anulado_en is null`,
   [CODIGO],
 )
@@ -172,15 +172,28 @@ let registroId = null
   comprobar(await salida.isDisabled(), 'en la lista, «Marcar salida» queda apagado')
   const porque = limpio(await fila.locator('[data-bloqueo-salida]').innerText().catch(() => ''))
   comprobar(porque.includes('100 %'), `y dice por qué: «${porque}»`)
-  comprobar((await fila.locator('[data-avance-salida]').count()) === 1, 'la fila muestra el avance del código')
+  // La fila lo pinta dos veces (bajo el código en el celular, en su columna en
+  // la pantalla ancha); se cuenta el que se ve.
+  comprobar((await fila.locator('[data-avance-salida]:visible').count()) === 1, 'la fila muestra el avance del código')
 
   // El mismo código no entra otra vez mientras está en la planta.
   await pagina.getByRole('button', { name: 'Registrar ingreso' }).click()
   v = pagina.locator('[role="dialog"]')
   await v.locator('#veh-motivo').selectOption('MANTENIMIENTO')
+  // Si quedan otros códigos libres (los deja quien probó antes en esta base), se
+  // mira que este no esté entre ellos; si no queda ninguno, que lo diga y no
+  // pida fotos.
   const ya = limpio(await v.locator('#veh-codigo').innerText())
-  comprobar(ya.includes('ya está en la planta'), `el código que ya entró no se ofrece otra vez: «${ya}»`)
-  comprobar((await v.locator('input[type="file"]').count()) === 0, 'y sin código que elegir, la ventana no pide fotos')
+  if (ya.includes('ya está en la planta')) {
+    comprobar(true, `el código que ya entró no se ofrece otra vez: «${ya}»`)
+    comprobar((await v.locator('input[type="file"]').count()) === 0, 'y sin código que elegir, la ventana no pide fotos')
+  } else {
+    await v.locator('#veh-codigo').click()
+    await v.getByRole('option').first().waitFor({ timeout: 10000 }).catch(() => {})
+    const otras = (await v.getByRole('option').allInnerTexts()).map(limpio)
+    comprobar(otras.length > 0 && !otras.some((o) => o.includes(CODIGO)), `el código que ya entró no se ofrece otra vez (quedan ${otras.length} libres)`)
+    await pagina.keyboard.press('Escape')
+  }
 
   // 3. La cochera entra con la placa a mano.
   await v.locator('#veh-motivo').selectOption('COCHERA')

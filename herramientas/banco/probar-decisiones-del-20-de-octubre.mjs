@@ -176,7 +176,9 @@ try {
       } else {
         // Gerencia: el aviso la lleva a los trabajos sin orden, la tarjeta dice
         // cuántos esperan, aprueba con clic y lo aprobado no lo puede borrar.
-        comprobar(await pagina.locator('a[href="/avance/trabajos"]').filter({ hasText: /orden\s*1$/ }).first().isVisible().catch(() => false),
+        // Cuántos, depende de lo que otras pruebas dejaron en la base: basta con
+        // que la tarjeta cuente alguno (el de esta prueba está pendiente).
+        comprobar(await pagina.locator('a[href="/avance/trabajos"]').filter({ hasText: /orden\s*[1-9]\d*$/ }).first().isVisible().catch(() => false),
           'el pendiente de Gerencia se cuenta en «Trabajos sin orden»')
         await pagina.goto(`${BASE}/avance/trabajos`, { waitUntil: 'networkidle' })
         comprobar(await pagina.getByText('1 por aprobar').first().isVisible().catch(() => false), 'la tarjeta del trabajo dice «1 por aprobar»')

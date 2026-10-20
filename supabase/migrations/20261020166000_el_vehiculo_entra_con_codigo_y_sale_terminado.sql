@@ -51,13 +51,17 @@ grant execute on function public.vehiculo_motivo_exige_codigo(text) to authentic
 -- La llave a la unidad lleva un índice único parcial: una unidad está en la
 -- planta una sola vez (las unidades que nacen de una cotización no tienen placa,
 -- así que `uq_vehiculo_placa_en_planta` no las cuida), y el ingreso y la lista
--- de códigos filtran por ella. La de la OT, no: nada filtra por ella (se lee por
--- el registro) y una OT no se borra, se anula.
+-- de códigos filtran por ella. Lleva además uno entero, porque una unidad sí se
+-- borra (`borrar_unidades`) y la restricción tiene que encontrar sus ingresos,
+-- también los que ya salieron: el parcial no le sirve (check 190). La de la OT,
+-- no: nada filtra por ella (se lee por el registro) y una OT no se borra, se anula.
 alter table public.registro_vehiculos
   add column if not exists unidad_id uuid references public.unidades(id) on delete restrict,
   add column if not exists orden_id  uuid references public.ordenes_trabajo(id) on delete restrict;
 create unique index if not exists uq_vehiculo_unidad_en_planta on public.registro_vehiculos (unidad_id)
   where salida_en is null and anulado_en is null and unidad_id is not null;
+create index if not exists idx_registro_vehiculos_unidad on public.registro_vehiculos (unidad_id)
+  where unidad_id is not null;
 comment on column public.registro_vehiculos.unidad_id is
   'La unidad del código interno con que entró (migración 20261020166000). Vacía en la cochera y «otro».';
 comment on column public.registro_vehiculos.orden_id is
@@ -342,6 +346,14 @@ begin
   elsif coalesce(v_placa, v_chasis, v_codigo) is null then
     raise exception 'Anota la placa, el número de chasis o el código interno: sin eso no se sabe qué vehículo entró.'
       using errcode = 'check_violation';
+  elsif v_codigo is not null and exists (
+          select 1 from public.unidades u join public.ordenes_trabajo o on o.unidad_id = u.id and o.estado <> 'ANULADA'
+           where upper(regexp_replace(btrim(coalesce(u.codigo_interno, '')), '[^A-Za-z0-9]', '', 'g'))
+               = upper(regexp_replace(v_codigo, '[^A-Za-z0-9]', '', 'g'))) then
+    -- Un código con OT que entra como cochera u «otro» se saltaría la regla:
+    -- no figuraría en la planta y saldría sin el 100 % ni Tesorería.
+    raise exception 'El código interno % es de un vehículo con OT: elige el motivo del trabajo (fabricación, mantenimiento, garantía o arenado).',
+      v_codigo using errcode = 'check_violation';
   end if;
 
   if v_placa is not null and char_length(v_placa) not between 3 and 15 then

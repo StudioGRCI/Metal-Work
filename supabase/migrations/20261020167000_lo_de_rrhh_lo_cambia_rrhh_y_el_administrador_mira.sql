@@ -38,10 +38,17 @@ begin
   if public.usuario_actual() is null then
     return;
   end if;
-  if not public.tiene_permiso(p_permiso) then
+  if public.tiene_permiso(p_permiso) then
+    return;
+  end if;
+  -- Al administrador se le dice por qué no, que él sí lo ve; a los demás, lo
+  -- mismo que les diría `exigir_permiso`.
+  if public.es_admin() then
     raise exception 'Esto lo hace Recursos Humanos: el administrador lo ve, pero no lo cambia.'
       using errcode = 'insufficient_privilege';
   end if;
+  raise exception 'No tiene el permiso % para realizar esta operación', p_permiso
+    using errcode = 'insufficient_privilege';
 end;
 $$;
 comment on function public.exigir_permiso_del_puesto(text) is

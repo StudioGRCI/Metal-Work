@@ -137,6 +137,11 @@ select test.debe_fallar(pg_temp.ingreso_sql('v2', null, 'CHK405_A_26/45', 'MANTE
 -- La cochera no es trabajo: entra con la placa, como antes.
 select public.registrar_ingreso_vehiculo(pg_temp.id('v3'), 'XYZ405', null, null, 'Camioneta del cliente', 'QA CLIENTE 405',
   'COCHERA', null, null, pg_temp.foto('v3', 'ingreso'));
+-- Pero un código con OT no entra como cochera ni «otro»: se saltaría la regla de la salida.
+select test.debe_fallar(pg_temp.ingreso_sql('v2', null, 'CHK405_D_26/48', 'COCHERA'),
+  'un código con OT no entra como cochera', 'es de un vehículo con OT');
+select test.debe_fallar(pg_temp.ingreso_sql('v2', null, 'chk405-d 26/48', 'OTRO'),
+  'ni como «otro», aunque se escriba distinto', 'es de un vehículo con OT');
 -- La unidad sin cliente entra con el de su OT, sin que nadie lo escriba.
 select public.registrar_ingreso_vehiculo(pg_temp.id('v4'), null, null, 'CHK405_D_26/48', '', '', 'GARANTIA', null, null,
   pg_temp.foto('v4', 'ingreso'));
