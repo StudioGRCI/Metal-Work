@@ -38,7 +38,7 @@ export type CuentaDelDia = {
   primer_dia_sin_cerrar: string | null
   /** Con algo registrado, aunque esté anulado, el saldo inicial ya no cambia. */
   con_movimientos: boolean
-  /** La captura del aplicativo con su saldo inicial, en Storage; null si no la tiene (migración 20261020170000). */
+  /** La captura del aplicativo con su saldo inicial, en Storage; null si no la tiene (migración 20261020174500). */
   apertura_ruta: string | null
 }
 

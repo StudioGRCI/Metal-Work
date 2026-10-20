@@ -3,7 +3,7 @@
 --
 -- Una OT con una cotización de S/ 11,800 (IGV incluido) y dos gastos aprobados:
 -- S/ 1,000 y US$ 100. Contabilidad registra el cambio del día (venta 3.80);
--- Ventas no puede, y Tesorería tampoco desde la migración 20261020171000. Gerencia lee el costo en soles (1,000 + 380 = 1,380), no ve margen
+-- Ventas no puede, y Tesorería tampoco desde la migración 20261020174600. Gerencia lee el costo en soles (1,000 + 380 = 1,380), no ve margen
 -- hasta que alguien confirma el IGV, y luego lo ve: 11,800 / 1.18 = 10,000 de
 -- venta neta, 8,620 de margen, 86.2 %. Costos y Materiales no ve el margen,
 -- pero cierra el costo cuando la OT terminó; el cierre no se edita ni se borra,

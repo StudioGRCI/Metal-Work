@@ -44,7 +44,7 @@ export function parecidos(codigos: string[]): Map<string, string[]> {
  * caja con el código, gastos aprobados en la OT y su merma (migración
  * 20261017300000). Las compras NO entran: lo
  * comprado se cuenta cuando sale del almacén para el código. Los dólares van a
- * soles al cambio de Tesorería; los de una línea sin cambio cargado quedan
+ * soles al cambio que registra Contabilidad; los de una línea sin cambio cargado quedan
  * aparte (`usd`) y no suman, porque sin cambio no se adivinan.
  */
 export function costoDelCodigo(c: { costo_pen: number; usd_sin_cambio: number }) {
@@ -73,7 +73,7 @@ export function faltanteDelCosto(f: { sinPrecio: number; horasSinCosto: number; 
 
 export function dolaresAlCambio(c: { usd_al_cambio: number; usd_en_soles: number }) {
   if (c.usd_al_cambio <= 0) return null
-  return `Lo que está en dólares (${moneda(c.usd_al_cambio, 'USD')}) suma ${moneda(c.usd_en_soles)} al cambio de Tesorería del día de cada línea: con eso, las partes en soles dan el costo hasta hoy.`
+  return `Lo que está en dólares (${moneda(c.usd_al_cambio, 'USD')}) suma ${moneda(c.usd_en_soles)} al cambio de Contabilidad del día de cada línea: con eso, las partes en soles dan el costo hasta hoy.`
 }
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`

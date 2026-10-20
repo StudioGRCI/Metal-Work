@@ -264,7 +264,7 @@ function ComoVa({
               : costo.pen === 0
                 ? 'Todavía nada costeado'
                 : c.usd_al_cambio > 0
-                  ? `En soles, con ${moneda(c.usd_al_cambio, 'USD')} pasados al cambio de Tesorería`
+                  ? `En soles, con ${moneda(c.usd_al_cambio, 'USD')} pasados al cambio de Contabilidad`
                   : 'Todo en soles'
           }
         />

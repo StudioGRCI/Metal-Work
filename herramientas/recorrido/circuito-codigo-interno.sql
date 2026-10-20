@@ -351,7 +351,7 @@ begin
     v_ruta := v_sc || '/' || gen_random_uuid() || '.jpg';
     insert into storage.objects (bucket_id, name, owner_id, metadata)
     values ('subcontratos', v_ruta, k->>'TESORERIA', jsonb_build_object('mimetype', 'image/jpeg', 'size', 60000));
-    -- Desde la 20261020170000 la cuenta de banco se abre con la captura de su saldo.
+    -- Desde la 20261020174500 la cuenta de banco se abre con la captura de su saldo.
     v_ruta2 := v_banco || '/' || gen_random_uuid() || '.png';
     insert into storage.objects (bucket_id, name, owner_id, metadata)
     values ('apertura-caja', v_ruta2, k->>'TESORERIA', jsonb_build_object('mimetype', 'image/png', 'size', 40000));

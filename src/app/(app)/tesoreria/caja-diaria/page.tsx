@@ -146,7 +146,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
                   {caja.cambioCompra && <span className="text-xs"> · dólar a {numero(caja.cambioCompra, 3)}, compra</span>}
                 </span>
               ) : (
-                // Lo registra Contabilidad (migración 20261020171000): Tesorería ya no abre esa pantalla.
+                // Lo registra Contabilidad (migración 20261020174600): Tesorería ya no abre esa pantalla.
                 <span className="text-aviso">Falta el tipo de cambio del {fecha(dia)} para pasar los dólares a soles: lo registra Contabilidad.</span>
               )}
             </TarjetaCuerpo>
@@ -174,7 +174,12 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
           className="mt-5"
           titulo="Cuentas de Tesorería"
           // Lo que cambia, a la vista; que una cuenta no se borra sino que se desactiva lo dice su ventana.
-          descripcion={[cuantas(caja.cuentas.filter((c) => c.activa).length, 'activa', 'activas'), cuantas(caja.cuentas.filter((c) => !c.activa).length, 'desactivada', 'desactivadas')]
+          // Los bancos sin la captura de su saldo, también: la sección abre cerrada.
+          descripcion={[
+            cuantas(caja.cuentas.filter((c) => c.activa).length, 'activa', 'activas'),
+            cuantas(caja.cuentas.filter((c) => !c.activa).length, 'desactivada', 'desactivadas'),
+            cuantas(caja.cuentas.filter((c) => c.activa && c.tipo === 'BANCO' && !c.apertura_ruta).length, 'sin la captura del saldo', 'sin la captura del saldo'),
+          ]
             .filter(Boolean)
             .join(' · ')}
         >
@@ -188,7 +193,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
                   <span className="block text-xs text-texto-suave">
                     {detalleDeCuenta(c)} · empezó el {fecha(c.fecha_inicio)} con {moneda(c.saldo_alta, monedaDeCuenta(c.moneda))}
                   </span>
-                  {/* El respaldo de ese saldo: la captura del aplicativo (migración 20261020170000). */}
+                  {/* El respaldo de ese saldo: la captura del aplicativo (migración 20261020174500). */}
                   {c.apertura_ruta ? (
                     <a
                       href={enlaceCaptura(c.id)}
@@ -197,7 +202,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
                       className="inline-flex min-h-11 items-center text-xs font-medium text-acento underline underline-offset-2 sm:min-h-0"
                       data-captura-saldo={c.nombre}
                     >
-                      Ver la captura del saldo
+                      {c.tipo === 'BANCO' ? 'Ver la captura del saldo' : 'Ver la foto del conteo'}
                     </a>
                   ) : c.tipo === 'BANCO' ? (
                     <span className="block text-xs text-aviso" data-sin-captura={c.nombre}>

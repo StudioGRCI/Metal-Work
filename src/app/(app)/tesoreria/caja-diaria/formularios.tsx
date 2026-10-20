@@ -443,7 +443,9 @@ export function EditarCuenta({ cuenta, hoy, primera = false }: { cuenta?: Cuenta
         titulo={cuenta ? `Corregir ${cuenta.nombre}` : 'Agregar una cuenta'}
         descripcion={
           cuenta?.con_movimientos
-            ? 'Ya tiene movimientos: se corrigen el nombre y el banco, o se desactiva. Su moneda, su saldo inicial y la captura de ese saldo no cambian.'
+            ? cuenta.apertura_ruta
+              ? 'Ya tiene movimientos: se corrigen el nombre y el banco, o se desactiva. Su moneda, su saldo inicial y la captura de ese saldo no cambian.'
+              : 'Ya tiene movimientos: se corrigen el nombre y el banco, o se desactiva. Su moneda y su saldo inicial no cambian; la captura de ese saldo, si falta, se adjunta aquí.'
             : 'Un banco en una moneda, o la caja chica en efectivo, con el saldo con el que empieza en el sistema y la captura del aplicativo que lo muestra.'
         }
         ancho="md"
@@ -461,8 +463,8 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
   const [tipo, setTipo] = useState(cuenta?.tipo ?? 'BANCO')
   const fijo = cuenta?.con_movimientos ?? false
   const anterior = cuenta?.apertura_ruta ?? null
-  // Un banco nuevo no entra sin su captura; la caja chica no tiene aplicativo.
-  const pideCaptura = !cuenta && tipo === 'BANCO'
+  // Un banco nuevo no entra sin su captura, ni la caja chica pasa a banco sin ella; la caja chica no tiene aplicativo.
+  const pideCaptura = tipo === 'BANCO' && cuenta?.tipo !== 'BANCO'
   // Con movimientos, la captura que ya tiene queda como respaldo del saldo y no se cambia.
   const ofreceCaptura = !(fijo && anterior)
 
@@ -491,6 +493,10 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
       registrar: () => guardarCuenta(null, datos),
     })
     if (resultado.ok && anterior && anterior !== ruta) {
+      // A sabiendas sin aviso ni error: la cuenta ya quedó con la nueva. Si la vieja la
+      // subió otra persona, la política no la deja quitar (`remove` devuelve su error,
+      // no lo lanza) y se queda donde solo la ve ella; un corte de red tampoco deshace
+      // lo guardado.
       await createClient().storage.from(BUCKET_APERTURA_CAJA).remove([anterior]).catch(() => null)
     }
     return resultado
@@ -574,7 +580,13 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
         <p className="flex flex-wrap items-center gap-x-2 text-sm text-texto-suave">
           <ImageIcon aria-hidden className="size-4" />
           Captura del saldo inicial:
-          <a href={enlaceCaptura(cuenta.id)} target="_blank" rel="noopener" className="font-medium text-acento underline underline-offset-2">
+          <a
+            href={enlaceCaptura(cuenta.id)}
+            target="_blank"
+            rel="noopener"
+            aria-label={`verla: la captura del saldo de ${cuenta.nombre}`}
+            className="inline-flex min-h-11 items-center font-medium text-acento underline underline-offset-2 sm:min-h-0"
+          >
             verla
           </a>
           {fijo && <span>· queda como respaldo del saldo</span>}

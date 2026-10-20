@@ -61,7 +61,7 @@ begin
 end $$;
 
 -- ============================================ 1. Tesorería da de alta sus cuentas
--- Cada banco con la captura de su saldo (migración 20261020170000), que el
+-- Cada banco con la captura de su saldo (migración 20261020174500), que el
 -- navegador sube antes; el check 404 prueba la subida con la política de Storage.
 do $$
 declare v text;

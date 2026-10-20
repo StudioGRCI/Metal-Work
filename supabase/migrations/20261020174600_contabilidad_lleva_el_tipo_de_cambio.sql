@@ -17,7 +17,12 @@
 --     Adquisiciones.» Contabilidad pierde `requerimientos.ver`: la lista de
 --     RQ y la bandeja de atención la rechazan también por su dirección, y la
 --     tabla `requerimientos` deja de leerse con su cuenta. El número de RQ
---     sigue saliendo en Adquisiciones, que lo lee de `insumos_de_compras`.
+--     sigue saliendo en la lista de Adquisiciones, que lo lee de
+--     `insumos_de_compras`; en el kardex, que lo lee de `requerimientos`, ya
+--     no. Lo que entra de Logística sigue entero: las OC de antes, las que
+--     salieron de la solicitud de materiales de una OT, se ven solo si se lee
+--     esa solicitud, y esa lectura pedía `requerimientos.ver`. Sin el punto 2b
+--     esas OC, sus líneas y su PDF se le escondían sin error.
 --   * «El nombre solo debe ser Contabilidad, no Adquisiciones.» El puesto se
 --     llamaba «Contabilidad y Adquisiciones» (migración 20260929190000) y así
 --     salía bajo el nombre de la cuenta. Pasa a «Contabilidad», y la cuenta de
@@ -47,27 +52,61 @@ delete from public.roles_permisos rp
    and r.codigo = 'CONTABILIDAD'
    and rp.permiso_codigo = 'requerimientos.ver';
 
+-- 2b. Las OC de antes las sigue viendo entera quien ve Adquisiciones ---------------------------
+-- La solicitud de materiales de una OT (el circuito de antes del RQ) y sus
+-- líneas: las lee también quien tiene `adquisiciones.ver`, con el mismo
+-- alcance por área de siempre. Así la OC que salió de ella, sus líneas y su PDF
+-- le siguen llegando a Contabilidad. Los demás que tienen `adquisiciones.ver`
+-- (Tesorería, Logística, Gerencia) ya la leían por `requerimientos.ver`.
+alter policy ver_requerimientos_materiales on public.requerimientos_materiales using (
+  (public.tiene_permiso('requerimientos.ver') or public.tiene_permiso('adquisiciones.ver'))
+  and public.puede_ver_area_material(area_destino)
+);
+alter policy ver_requerimiento_material_detalles on public.requerimiento_material_detalles using (exists (
+  select 1 from public.requerimientos_materiales r
+   where r.id = requerimiento_material_detalles.requerimiento_id
+     and (public.tiene_permiso('requerimientos.ver') or public.tiene_permiso('adquisiciones.ver'))
+     and public.puede_ver_area_material(r.area_destino)
+));
+
 -- 3. El puesto y su cuenta se llaman Contabilidad -------------------------------------------
 update public.roles set nombre = 'Contabilidad'
  where codigo = 'CONTABILIDAD' and nombre is distinct from 'Contabilidad';
 
--- Solo se quita la palabra «Adquisición» o «Adquisiciones» (con su «y» delante);
--- el resto de cada campo queda como está, y un nombre que se queda vacío pasa a
--- «Contabilidad». Un campo que no la dice no se toca.
+-- Solo cambia la palabra «Adquisición» o «Adquisiciones»; lo demás de cada campo
+-- queda como está y un campo que no la dice no se toca. Si el campo ya dice
+-- «Contabilidad», la palabra sale con lo que la une («y», «/», «-», «,», «&»,
+-- delante o detrás): «Contabilidad y Adquisiciones» → «Contabilidad». Si no, en
+-- el nombre y el cargo pasa a decir «Contabilidad» («Jefa de Adquisiciones» →
+-- «Jefa de Contabilidad»); en los apellidos solo sale. La función es temporal:
+-- muere con la sesión.
+create or replace function pg_temp.sin_adquisiciones(p text, p_poner boolean) returns text language sql immutable as $f$
+  select btrim(regexp_replace(
+    case when p_poner and p !~* 'contabilidad'
+      then regexp_replace(p, '\yadquisici[oó]n(es)?\y', 'Contabilidad', 'gi')
+      else regexp_replace(
+        regexp_replace(
+          regexp_replace(p, '\s*(\yy\y|[-,/&])\s*adquisici[oó]n(es)?\y', '', 'gi'),
+          '\yadquisici[oó]n(es)?\s*(\yy\y|[-,/&])\s*', '', 'gi'),
+        '\yadquisici[oó]n(es)?\y', '', 'gi')
+    end,
+    '\s+', ' ', 'g'));
+$f$;
+
 update public.usuarios u
-   set cargo = coalesce(nullif(btrim(regexp_replace(u.cargo, '\s*(y\s+|/\s*)?adquisici[oó]n(es)?\s*', ' ', 'gi')), ''), 'Contabilidad')
+   set cargo = coalesce(nullif(pg_temp.sin_adquisiciones(u.cargo, true), ''), 'Contabilidad')
   from public.roles r
  where r.id = u.rol_id and r.codigo = 'CONTABILIDAD'
    and u.cargo ~* 'adquisici[oó]n';
 
 update public.usuarios u
-   set nombres = coalesce(nullif(btrim(regexp_replace(u.nombres, '\s*(y\s+|/\s*)?adquisici[oó]n(es)?\s*', ' ', 'gi')), ''), 'Contabilidad')
+   set nombres = coalesce(nullif(pg_temp.sin_adquisiciones(u.nombres, true), ''), 'Contabilidad')
   from public.roles r
  where r.id = u.rol_id and r.codigo = 'CONTABILIDAD'
    and u.nombres ~* 'adquisici[oó]n';
 
 update public.usuarios u
-   set apellidos = btrim(regexp_replace(u.apellidos, '\s*(y\s+|/\s*)?adquisici[oó]n(es)?\s*', ' ', 'gi'))
+   set apellidos = pg_temp.sin_adquisiciones(u.apellidos, false)
   from public.roles r
  where r.id = u.rol_id and r.codigo = 'CONTABILIDAD'
    and u.apellidos ~* 'adquisici[oó]n';

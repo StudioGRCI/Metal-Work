@@ -1,6 +1,6 @@
 /**
  * Recorre con clic real lo que DKS pidió el 2026-10-20 para Tesorería y
- * Contabilidad (migraciones 20261020170000 y 20261020171000), con la cuenta de
+ * Contabilidad (migraciones 20261020174500 y 20261020174600), con la cuenta de
  * cada puesto (nunca ADMIN):
  *
  *   1. Los menús: Tesorería empieza por Adquisiciones y después Caja diaria, sin
@@ -350,6 +350,20 @@ await consulta(
   error = await esperarVentana(pagina)
   comprobar(!error && Boolean((await hasta(() => cuenta(CHICA), (c) => Boolean(c?.apertura_ruta))).apertura_ruta?.endsWith('.jpg')),
     `la caja chica adjunta la foto del conteo después${error ? `: ${error}` : ''}`)
+
+  // La caja chica que pasa a banco pide la captura del aplicativo: la foto del conteo no la reemplaza.
+  v = await abrirCorregir(pagina, CHICA)
+  await v.locator('select[name="tipo"]').selectOption('BANCO')
+  await v.locator('input[name="banco"]').fill('BCP')
+  comprobar(await v.locator('input[name="captura"]').evaluate((e) => e.required), 'al pasar a banco la captura se vuelve obligatoria')
+  await v.getByRole('button', { name: 'Guardar' }).click()
+  await pagina.waitForTimeout(1500)
+  comprobar(await v.isVisible() && (await cuenta(CHICA)).tipo === 'EFECTIVO', 'sin la captura no pasa a banco')
+  await v.locator('input[name="captura"]').setInputFiles(PNG)
+  await v.getByRole('button', { name: 'Guardar' }).click()
+  error = await esperarVentana(pagina)
+  const abanco = await hasta(() => cuenta(CHICA), (c) => c?.tipo === 'BANCO')
+  comprobar(!error && abanco?.tipo === 'BANCO' && Boolean(abanco?.apertura_ruta?.endsWith('.png')), `con la captura pasa a banco${error ? `: ${error}` : ''}`)
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }

@@ -8,7 +8,7 @@
 -- Diseño evaluó en ella. El presupuesto fijado a mano en la OT manda sobre el
 -- de la hoja; sin costo todavía no hay margen ni cierre.
 -- Los dólares van a soles al tipo de cambio que registra Contabilidad (antes
--- Tesorería, hasta la migración 20261020171000), y sin cambio no se adivinan. El margen sale de la cotización aprobada sin IGV. Gerencia cierra
+-- Tesorería, hasta la migración 20261020174600), y sin cambio no se adivinan. El margen sale de la cotización aprobada sin IGV. Gerencia cierra
 -- el costeo solo cuando está completo, y lo reabre con motivo.
 -- Cada paso con la cuenta del área que lo hace —nunca ADMIN— y
 -- `set local role authenticated`. Termina en rollback.
@@ -397,7 +397,7 @@ begin
   -- Tesorería paga US$ 50 de una cuenta en dólares al cambio pactado de 3.80: entran S/ 190, no al cambio del día.
   perform test.como_usuario(current_setting('prueba.tesoreria')::uuid);
   perform set_config('prueba.caja_usd', gen_random_uuid()::text, true);
-  -- La cuenta de banco se abre con la captura de su saldo (migración 20261020170000).
+  -- La cuenta de banco se abre con la captura de su saldo (migración 20261020174500).
   perform set_config('prueba.captura_usd', current_setting('prueba.caja_usd') || '/' || gen_random_uuid() || '.png', true);
   insert into storage.objects (bucket_id, name, owner_id, metadata)
   values ('apertura-caja', current_setting('prueba.captura_usd'), current_setting('prueba.tesoreria'), '{"mimetype":"image/png","size":100}'::jsonb);

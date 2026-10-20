@@ -11,8 +11,9 @@
 --   * `cajas.apertura_ruta`: la captura, en el bucket privado `apertura-caja`,
 --     en `{cuenta}/{archivo}.{jpg|png|webp|pdf}`. La lee quien lleva la caja
 --     (`tesoreria.caja`), como la cuenta misma.
---   * Una cuenta de banco nueva no se da de alta sin su captura. La caja chica
---     en efectivo no tiene aplicativo: la foto del conteo es opcional.
+--   * Una cuenta de banco nueva no se da de alta sin su captura, ni pasa a
+--     ser de banco sin ella la que era de efectivo. La caja chica en efectivo
+--     no tiene aplicativo: la foto del conteo es opcional.
 --   * Las cuentas que ya existen no se tocan. Se les adjunta la captura al
 --     corregirlas, tengan o no movimientos.
 --   * La captura se cambia mientras la cuenta no tenga movimientos, que es
@@ -133,10 +134,12 @@ begin
     end if;
   end if;
 
-  -- La captura del saldo: obligatoria al dar de alta un banco. Sin una nueva,
-  -- se queda la que tenía. Con movimientos, la que ya tiene no se cambia.
+  -- La captura del saldo: obligatoria al dar de alta un banco, y al pasar a
+  -- banco la que era de efectivo (su foto del conteo no es la del aplicativo).
+  -- Sin una nueva, se queda la que tenía. Con movimientos, la que ya tiene no
+  -- se cambia.
   if v_ruta is null then
-    if not v_existe and v_tipo = 'BANCO' then
+    if v_tipo = 'BANCO' and (not v_existe or v_previa.tipo <> 'BANCO') then
       raise exception 'Adjunta la captura del aplicativo del banco con el saldo de ese día: es el respaldo del saldo inicial.'
         using errcode = 'check_violation';
     end if;
@@ -195,6 +198,6 @@ create or replace function public.guardar_caja(
   select public.guardar_caja(p_id, p_nombre, p_tipo, p_banco, p_moneda, p_saldo_inicial, p_fecha_inicio, p_activa, null::text);
 $$;
 comment on function public.guardar_caja(uuid, text, text, text, text, numeric, date, boolean) is
-  'La versión sin captura, para una pantalla abierta antes de la migración 20261020170000: corrige una cuenta como antes, y no da de alta un banco sin su captura.';
+  'La versión sin captura, para una pantalla abierta antes de la migración 20261020174500: corrige una cuenta como antes, y no da de alta un banco sin su captura.';
 revoke all on function public.guardar_caja(uuid, text, text, text, text, numeric, date, boolean) from public, anon;
 grant execute on function public.guardar_caja(uuid, text, text, text, text, numeric, date, boolean) to authenticated;

@@ -170,7 +170,7 @@ export const MONTO = /^\d{1,9}(?:\.\d{1,2})?$/
 export const SALDO = /^-?\d{1,9}(?:\.\d{1,2})?$/
 
 /*
- * La captura del saldo con que se abre una cuenta (migración 20261020170000):
+ * La captura del saldo con que se abre una cuenta (migración 20261020174500):
  * la pantalla del aplicativo del banco con el saldo de ese día, o la foto del
  * conteo de la caja chica. Va al bucket privado `apertura-caja`, a
  * `{cuenta}/{archivo}.{extensión}`, y la base exige esa forma.

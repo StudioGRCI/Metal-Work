@@ -1,6 +1,6 @@
 -- La captura del saldo con que se abre cada cuenta de la caja (migración
--- 20261020170000) y lo que DKS movió de Tesorería a Contabilidad el mismo día
--- (migración 20261020171000): el tipo de cambio lo registra Contabilidad, que
+-- 20261020174500) y lo que DKS movió de Tesorería a Contabilidad el mismo día
+-- (migración 20261020174600): el tipo de cambio lo registra Contabilidad, que
 -- ya no lee los requerimientos, y el puesto se llama «Contabilidad».
 --
 -- Cada paso con el rol que lo da —Tesorería, Contabilidad, Gerencia; nunca
@@ -142,6 +142,11 @@ begin
   perform public.guardar_caja(pg_temp.id('chica'), 'Caja chica 404', 'EFECTIVO', null, 'PEN', 300, current_setting('prueba.d3')::date, true);
   perform test.afirmar((select apertura_ruta from public.cajas where id = pg_temp.id('chica')) is null,
                        'la caja chica entra sin captura');
+  -- Pasarla a banco es darla de alta como banco: sin captura no.
+  perform test.debe_fallar(format('select public.guardar_caja(%L, ''Caja chica 404'', ''BANCO'', ''BCP'', ''PEN'', 300, %L, true)',
+      pg_temp.id('chica'), current_setting('prueba.d3')),
+    'la caja chica no pasa a banco sin la captura', 'Adjunta la captura');
+  perform test.afirmar((select tipo from public.cajas where id = pg_temp.id('chica')) = 'EFECTIVO', 'y sigue en efectivo');
   reset role;
 end $$;
 
@@ -251,7 +256,58 @@ begin
   reset role;
 end $$;
 
--- ============================================ 6. El nombre del puesto y de su cuenta
+-- ============================================ 6. Lo que entra de Logística, entero
+-- Una OC de antes, de la solicitud de materiales de una OT: sin `requerimientos.ver`
+-- Contabilidad la sigue viendo con sus líneas y su atención (lo que pide su PDF).
+set local session_replication_role = replica;
+do $$
+declare v_conta uuid := current_setting('prueba.contabilidad')::uuid;
+begin
+  perform set_config('prueba.ot_antes', gen_random_uuid()::text, true);
+  perform set_config('prueba.otm_antes', gen_random_uuid()::text, true);
+  perform set_config('prueba.sol_antes', gen_random_uuid()::text, true);
+  perform set_config('prueba.sold_antes', gen_random_uuid()::text, true);
+  perform set_config('prueba.oc_antes', gen_random_uuid()::text, true);
+  insert into public.ordenes_trabajo (id, sede_id, descripcion, abierta_en_taller)
+  values (pg_temp.id('ot_antes'), (select id from public.sedes limit 1), 'OT de antes 404', true);
+  insert into public.ot_materiales (id, orden_id, material_id, cantidad, area_destino)
+  values (pg_temp.id('otm_antes'), pg_temp.id('ot_antes'), (select id from public.materiales limit 1), 5, 'MTZ');
+  insert into public.requerimientos_materiales (id, orden_id, area_destino, solicitado_por)
+  values (pg_temp.id('sol_antes'), pg_temp.id('ot_antes'), 'MTZ', v_conta);
+  insert into public.requerimiento_material_detalles (id, requerimiento_id, ot_material_id, cantidad_solicitada)
+  values (pg_temp.id('sold_antes'), pg_temp.id('sol_antes'), pg_temp.id('otm_antes'), 5);
+  insert into public.ordenes_compra_materiales (id, proveedor, referencia, creado_por, requerimiento_id)
+  values (pg_temp.id('oc_antes'), 'Proveedor 404', 'OC de antes 404', v_conta, pg_temp.id('sol_antes'));
+  insert into public.orden_compra_material_detalles (orden_compra_id, cantidad, requerimiento_id, requerimiento_detalle_id)
+  values (pg_temp.id('oc_antes'), 5, pg_temp.id('sol_antes'), pg_temp.id('sold_antes'));
+end $$;
+set local session_replication_role = origin;
+
+do $$
+begin
+  perform pg_temp.como('contabilidad');
+  set local role authenticated;
+  perform test.afirmar((select count(*) from public.ordenes_compra_materiales where id = pg_temp.id('oc_antes')) = 1,
+                       'Contabilidad ve la OC de antes');
+  perform test.afirmar((select count(*) from public.orden_compra_material_detalles where orden_compra_id = pg_temp.id('oc_antes')) = 1,
+                       'con sus líneas');
+  perform test.afirmar((select count(*) from public.v_atencion_materiales where detalle_id = pg_temp.id('sold_antes')) = 1,
+                       'y lo que su PDF lee de la solicitud');
+  perform test.afirmar((select count(*) from public.requerimientos) = 0 and not public.puede_ver_requerimientos(),
+                       'pero los requerimientos de ahora no los lee');
+  reset role;
+
+  -- Administración ve las compras pero no Adquisiciones ni los requerimientos:
+  -- la puerta nueva no le abre la solicitud de antes.
+  perform pg_temp.como('administracion');
+  set local role authenticated;
+  perform test.afirmar(not public.tiene_permiso('requerimientos.ver') and not public.tiene_permiso('adquisiciones.ver')
+                       and (select count(*) from public.requerimientos_materiales where id = pg_temp.id('sol_antes')) = 0,
+                       'quien no tiene ninguno de los dos permisos sigue sin leer la solicitud de antes');
+  reset role;
+end $$;
+
+-- ============================================ 7. El nombre del puesto y de su cuenta
 -- La migración otra vez, sobre cuentas de Contabilidad que todavía dicen
 -- «Adquisiciones»: solo se quita esa palabra, y nada más cambia.
 update public.roles set nombre = 'Contabilidad y Adquisiciones' where codigo = 'CONTABILIDAD';
@@ -265,10 +321,22 @@ begin
   select v_id, 'Rosa', 'Pérez / Adquisición', 'contabilidad2.404@prueba.local', r.id, 'Contadora'
     from public.roles r where r.codigo = 'CONTABILIDAD';
   perform set_config('prueba.contabilidad2', v_id::text, true);
+  v_id := gen_random_uuid();
+  insert into auth.users (id, email) values (v_id, 'contabilidad3.404@prueba.local');
+  insert into public.usuarios (id, nombres, apellidos, correo, rol_id, cargo)
+  select v_id, 'Ana', 'Check 404', 'contabilidad3.404@prueba.local', r.id, 'Jefa de Adquisiciones'
+    from public.roles r where r.codigo = 'CONTABILIDAD';
+  perform set_config('prueba.contabilidad3', v_id::text, true);
+  v_id := gen_random_uuid();
+  insert into auth.users (id, email) values (v_id, 'contabilidad4.404@prueba.local');
+  insert into public.usuarios (id, nombres, apellidos, correo, rol_id, cargo)
+  select v_id, 'Adquisiciones y Contabilidad', 'Check 404', 'contabilidad4.404@prueba.local', r.id, 'Contabilidad - Adquisiciones'
+    from public.roles r where r.codigo = 'CONTABILIDAD';
+  perform set_config('prueba.contabilidad4', v_id::text, true);
 end $$;
 update public.usuarios set cargo = 'Jefa de Adquisiciones' where id = current_setting('prueba.tesoreria')::uuid;
 
-\ir ../../../supabase/migrations/20261020171000_contabilidad_lleva_el_tipo_de_cambio.sql
+\ir ../../../supabase/migrations/20261020174600_contabilidad_lleva_el_tipo_de_cambio.sql
 
 do $$
 begin
@@ -279,6 +347,10 @@ begin
   perform test.afirmar((select (nombres, apellidos, cargo) = ('Rosa', 'Pérez', 'Contadora')
                           from public.usuarios where id = pg_temp.id('contabilidad2')),
                        'de otra cuenta del puesto solo sale la palabra, y su cargo no cambia');
+  perform test.afirmar((select cargo from public.usuarios where id = pg_temp.id('contabilidad3')) = 'Jefa de Contabilidad',
+                       'un cargo que no decía Contabilidad pasa a decirla en lugar de Adquisiciones');
+  perform test.afirmar((select (nombres, cargo) = ('Contabilidad', 'Contabilidad') from public.usuarios where id = pg_temp.id('contabilidad4')),
+                       'con «y» o «-» delante o detrás, la palabra sale entera con lo que la une');
   perform test.afirmar((select cargo from public.usuarios where id = pg_temp.id('tesoreria')) = 'Jefa de Adquisiciones',
                        'las cuentas de otros puestos no se tocan');
   perform test.afirmar(not exists (select 1 from public.roles_permisos rp join public.roles r on r.id = rp.rol_id

@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 
 /**
  * Abrir la captura del saldo con que se abrió una cuenta de la caja (migración
- * 20261020170000). El enlace firmado se pide al tocar y no al pintar la lista:
+ * 20261020174500). El enlace firmado se pide al tocar y no al pintar la lista:
  * la caja se deja abierta toda la mañana, y uno de hace una hora ya no abriría.
  * Quién la ve lo deciden la política de `cajas` y la del bucket: quien lleva la
  * caja (`tesoreria.caja`).

@@ -40,7 +40,7 @@ async function permitido() {
 /**
  * Da de alta o corrige una cuenta. Mismo permiso que `guardar_caja`. La captura
  * del saldo ya viajó a Storage desde el navegador: aquí llega su ruta, y la base
- * comprueba que esté subida por quien guarda (migración 20261020170000).
+ * comprueba que esté subida por quien guarda (migración 20261020174500).
  */
 export async function guardarCuenta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   if (!(await permitido())) return { ok: false, error: NO_LLEVA }

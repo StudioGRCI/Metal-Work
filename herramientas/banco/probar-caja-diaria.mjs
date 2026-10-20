@@ -20,9 +20,9 @@
  *   8. Gerencia y Contabilidad no la tienen en el menú ni entran por enlace.
  *
  * Necesita en la base del banco las cuentas `*.local@metalwork.test` de
- * Tesorería, Gerencia y Contabilidad, y el tipo de cambio de ayer o de algún
- * día de los diez anteriores. Las cuentas de la caja las crea el script, con
- * un nombre distinto en cada corrida.
+ * Tesorería, Gerencia y Contabilidad. Las cuentas de la caja las crea el
+ * script, con un nombre distinto en cada corrida, y el tipo de cambio de ayer
+ * lo anota a nombre de Contabilidad si no hay uno de los diez días anteriores.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -45,7 +45,7 @@ if (!CLAVE) {
   process.exit(1)
 }
 mkdirSync(CAPTURAS, { recursive: true })
-// La captura del aplicativo con el saldo, que todo banco nuevo lleva (migración 20261020170000).
+// La captura del aplicativo con el saldo, que todo banco nuevo lleva (migración 20261020174500).
 const CAPTURA_SALDO = join(CAPTURAS, 'saldo-del-banco.png')
 writeFileSync(CAPTURA_SALDO, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'))
 
@@ -116,6 +116,15 @@ const USD = `BCP dólares ${sello}`
 const CHICA = `Caja chica ${sello}`
 const codigo = `prb_caja_${sello}`
 const ids = {}
+
+// El consolidado necesita un cambio de los últimos diez días. Si el banco recién
+// rehecho no lo tiene, lo anota Contabilidad, que es quien lo registra.
+await consulta(
+  `insert into tipos_de_cambio (fecha, compra, venta, registrado_por)
+   select $1::date, 3.7400, 3.7500, u.id from usuarios u
+    where u.correo = $2 and public.cambio_del_dia($1::date, 'COMPRA') is null`,
+  [ayer, CUENTAS.contabilidad],
+)
 
 const RUTA = `${BASE}/tesoreria/caja-diaria`
 const delDia = (dia) => (dia === hoy ? RUTA : `${RUTA}?fecha=${dia}`)
