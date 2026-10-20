@@ -35,7 +35,7 @@
  *
  * Crea su propia unidad y su material, con un sufijo distinto en cada corrida, y
  * lo que el banco no trae: una solicitud de materiales por comprar, un
- * subcontratista y una cuenta de caja.
+ * subcontratista, un proveedor y una cuenta de caja.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  */
 import { mkdirSync } from 'node:fs'
@@ -184,6 +184,16 @@ await consulta(
     where public.ruc_es_valido(r) and not exists (select 1 from public.subcontratistas where activo)
     order by r limit 1
    on conflict (ruc) do nothing`,
+)
+
+// Las compras de la sección 4b y la OC directa piden un proveedor activo; el banco recién hecho no trae ninguno.
+await consulta(
+  `insert into public.proveedores (numero_documento, razon_social)
+   select r, 'PROVEEDOR DEL BANCO'
+     from (select '2069' || lpad(n::text, 6, '0') || d::text as r from generate_series(100000, 100200) n, generate_series(0, 9) d) x
+    where public.ruc_es_valido(r) and not exists (select 1 from public.proveedores where activo)
+    order by r limit 1
+   on conflict do nothing`,
 )
 
 /** Abre un formulario, toca el campo de código, escribe y mira qué queda en la lista. */
