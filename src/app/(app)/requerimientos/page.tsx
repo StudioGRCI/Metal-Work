@@ -78,10 +78,10 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
         titulo="Requerimientos"
         ayuda={
           emite
-            ? 'Lo que cada área necesita, con el código interno y su justificación. Al registrarlo lo revisa Almacén insumo por insumo: lo que tiene lo separa y solo lo que falta se compra. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde) y cuánto falta que llegue.'
+            ? 'Lo que cada área necesita, con el código interno y su justificación. Al registrarlo lo revisa Almacén insumo por insumo: lo que tiene lo separa y solo lo que falta se compra. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde) y cuánto falta que llegue. El «Avance %» de cada RQ va por la etapa de su insumo más atrasado, no por lo recibido.'
             : supervisaArea
-              ? 'Lo que pidió tu área, y con «Todas las áreas» lo de las demás. La barra de cada insumo dice cuánto ya puedes recoger en Almacén (verde), cuánto falta que traiga Logística y en qué va, y cuánto ya se entregó. El código interno muestra solo los RQ de esa unidad.'
-              : 'Los requerimientos de operación y de Administración. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde), cuánto falta que llegue y en qué va, y cuánto ya se entregó.'
+              ? 'Lo que pidió tu área, y con «Todas las áreas» lo de las demás. La barra de cada insumo dice cuánto ya puedes recoger en Almacén (verde), cuánto falta que traiga Logística y en qué va, y cuánto ya se entregó. El código interno muestra solo los RQ de esa unidad. El «Avance %» de cada RQ va por la etapa de su insumo más atrasado, no por lo recibido.'
+              : 'Los requerimientos de operación y de Administración. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde), cuánto falta que llegue y en qué va, y cuánto ya se entregó. El «Avance %» de cada RQ va por la etapa de su insumo más atrasado, no por lo recibido.'
         }
         migas={[{ titulo: 'Requerimientos' }]}
         acciones={catalogos && <NuevoRequerimiento {...catalogos} tipos={tipos} />}

@@ -399,9 +399,11 @@ function EstadoDelCodigo({
   alElegir: (o: Opcion) => void
   alUsarNuevo: () => void
 }) {
-  let contenido: React.ReactNode = null
+  // Lo que se lee va en el párrafo; lo que se toca, debajo, una salida por renglón.
+  let texto: React.ReactNode = null
+  let salidas: React.ReactNode = null
   if (codigos === null) {
-    contenido = <span className="text-texto-suave">No se pudo leer la lista de códigos: escríbelo como está en la unidad.</span>
+    texto = <span className="text-texto-suave">No se pudo leer la lista de códigos: escríbelo como está en la unidad.</span>
   } else if (escrito.length > 0) {
     const abiertoIgual = opciones.find((o) => o.codigo === escrito)
     const cerrado = codigos.some((c) => c.cerrado && c.codigo === escrito)
@@ -413,78 +415,77 @@ function EstadoDelCodigo({
     const ofrecidas = parecido ? [parecido] : coincidencias.length <= 3 ? coincidencias : []
     // Como en la lista: un código tiene al menos dos caracteres, y el que se pone
     // por botón no pasa por el `minLength` del navegador.
-    const nuevo =
-      escrito.length >= 2 ? (
-        <>
-          {' '}o, si es de una unidad nueva,{' '}
-          <button type="button" onClick={alUsarNuevo} className={ENLACE}>
-            usa {escrito} como código nuevo
-          </button>
-          .
-        </>
-      ) : (
-        '.'
-      )
+    const nuevo = escrito.length >= 2 && (
+      <button type="button" onClick={alUsarNuevo} className={SALIDA}>
+        <span className={SUBRAYADO}>
+          Usar <span className="font-mono break-all">{escrito}</span> como código nuevo
+        </span>
+        <span className="font-normal text-texto-suave">(unidad nueva)</span>
+      </button>
+    )
     if (abiertoIgual) {
-      contenido = (
+      texto = (
         <>
-          {abiertoIgual.detalle && <span className="text-texto-suave">{abiertoIgual.detalle}</span>}
+          {abiertoIgual.detalle && <span className="block text-texto-suave">{abiertoIgual.detalle}</span>}
           {gemelas.length > 0 && (
             <span className="block text-aviso">
-              Ojo: también está{' '}
-              {gemelas.map((o, i) => (
-                <span key={o.codigo}>
-                  {i > 0 && ', '}
-                  <button type="button" onClick={() => alElegir(o)} className={cn(ENLACE, 'font-mono')}>
-                    {o.codigo}
-                  </button>
-                  {o.registrada && ' (del padrón de unidades)'}
-                </span>
-              ))}
-              . Revisa que sea este{abiertoIgual.registrada ? ', que es el del padrón' : ''}.
+              Ojo: hay {gemelas.length === 1 ? 'otro casi igual' : 'otros casi iguales'}. Revisa que sea este
+              {abiertoIgual.registrada ? ', que es el del padrón' : ''}.
             </span>
           )}
         </>
       )
+      if (gemelas.length > 0) {
+        salidas = gemelas.map((o) => (
+          <button key={o.codigo} type="button" onClick={() => alElegir(o)} className={SALIDA}>
+            <span className={SUBRAYADO}>
+              Cambiar a <span className="font-mono break-all">{o.codigo}</span>
+            </span>
+            {o.registrada && <span className="font-normal text-texto-suave">(del padrón de unidades)</span>}
+          </button>
+        ))
+      }
     } else if (abierto) {
-      contenido = null
+      texto = null
     } else if (cerrado) {
-      contenido = (
+      texto = (
         <span className="text-aviso">
           Gerencia ya cerró el costeo de {escrito} al entregar la unidad. Revisa que sea para ese código.
         </span>
       )
     } else if (!sinElegir) {
-      contenido = <span className="text-texto-suave">No está en la lista: se registra como está escrito.</span>
+      texto = <span className="text-texto-suave">No está en la lista: se registra como está escrito.</span>
     } else if (ofrecidas.length > 0) {
-      contenido = (
+      texto = (
         <span className="text-aviso">
-          {parecido ? 'No está en la lista, pero se parece a ' : 'No es un código. Elige '}
-          {ofrecidas.map((o, i) => (
-            <span key={o.codigo}>
-              {i > 0 && ', '}
-              <button type="button" onClick={() => alElegir(o)} className={cn(ENLACE, 'font-mono')}>
-                {o.codigo}
-              </button>
-              {!parecido && o.detalle && <span className="text-texto-suave"> ({o.detalle})</span>}
-            </span>
-          ))}
-          {parecido && ': tócalo si es ese'}
-          {nuevo}
+          {parecido ? 'No está en la lista, pero se parece a uno que sí: tócalo si es ese.' : 'No es un código. Elige uno:'}
         </span>
+      )
+      salidas = (
+        <>
+          {ofrecidas.map((o) => (
+            <button key={o.codigo} type="button" onClick={() => alElegir(o)} className={SALIDA}>
+              <span className={cn(SUBRAYADO, 'font-mono break-all')}>{o.codigo}</span>
+              {o.detalle && <span className="font-normal text-texto-suave">({o.detalle})</span>}
+            </button>
+          ))}
+          {nuevo}
+        </>
       )
     } else {
-      contenido = (
+      texto = (
         <span className="text-aviso">
-          No está entre los códigos abiertos. Elígelo de la lista{nuevo}
+          No está entre los códigos abiertos. Elígelo de la lista{nuevo ? ' o, si es de una unidad nueva, confírmalo:' : '.'}
         </span>
       )
+      salidas = nuevo
     }
   }
   return (
-    <p id={id} aria-live="polite" className="mt-1 text-xs empty:hidden">
-      {contenido}
-    </p>
+    <div id={id} aria-live="polite" className="mt-1 text-xs empty:hidden">
+      {texto && <p>{texto}</p>}
+      {salidas && <div className="flex flex-col items-start sm:mt-0.5 sm:flex-row sm:flex-wrap sm:gap-x-4 sm:gap-y-1">{salidas}</div>}
+    </div>
   )
 }
 
@@ -506,6 +507,8 @@ function Gemelas({ opcion, gemelas }: { opcion: Opcion; gemelas: Opcion[] }) {
   )
 }
 
-// En el teléfono cada enlace se toca en 44 px de alto sin separar los renglones:
-// con `min-h-11` dentro del párrafo abría huecos de 44 px entre ellos.
-const ENLACE = 'relative font-medium text-acento underline underline-offset-2 after:absolute after:inset-x-0 after:-inset-y-3.5 sm:after:hidden'
+// En el teléfono cada salida es un renglón propio de 44 px: dentro del párrafo,
+// el área de toque agrandada de una pisaba el texto de la de arriba y el campo,
+// y tocar la gemela elegía «usar como código nuevo» (auditoría del 2026-10-20).
+const SALIDA = 'inline-flex min-h-11 max-w-full flex-wrap items-center gap-x-1 text-left font-medium sm:min-h-0'
+const SUBRAYADO = 'text-acento underline underline-offset-2'

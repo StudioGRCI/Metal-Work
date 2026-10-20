@@ -313,6 +313,40 @@ let numero = ''
   const alto = await v.locator('#rq-codigo-lista [role="option"]').first().boundingBox()
   comprobar(alto && alto.height >= 44, `cada opción se toca con el dedo (${alto ? Math.round(alto.height) : '?'} px de alto)`)
   await v.screenshot({ path: `${CAPTURAS}/rq-codigo-telefono.png` })
+
+  // Debajo del campo, cada salida es su propio renglón de 44 px: con las áreas
+  // de toque estiradas, tocar la gemela elegía «usar como código nuevo».
+  const campo = v.locator('#rq-codigo')
+  const salidas = v.locator('#rq-codigo-estado button')
+  const esperado = [CODIGO, GEMELO]
+  for (const [i, meta] of [[0, CODIGO], [1, GEMELO], [2, sufijo]].entries()) {
+    await campo.fill(sufijo.toLowerCase())
+    await campo.blur()
+    await salidas.first().waitFor({ timeout: 5000 })
+    const textos = (await salidas.allInnerTexts()).map(limpio)
+    const cajas = await Promise.all((await salidas.all()).map((b) => b.boundingBox()))
+    const delCampo = await campo.boundingBox()
+    if (i === 0) {
+      comprobar(textos.length === 3 && esperado.every((c, k) => textos[k].includes(c)) && textos[2].includes('como código nuevo'),
+        `escrito ${sufijo}, debajo ofrece ${CODIGO}, ${GEMELO} y el código nuevo (${textos.join(' | ')})`)
+      comprobar(cajas.every((c) => c && c.height >= 44) && cajas.every((c, k) => k === 0 || c.y >= cajas[k - 1].y + cajas[k - 1].height - 0.5)
+        && cajas[0].y >= delCampo.y + delCampo.height,
+        `cada salida mide 44 px, ninguna pisa a otra ni al campo (${cajas.map((c) => `${Math.round(c.y)}–${Math.round(c.y + c.height)}`).join(', ')}; campo hasta ${Math.round(delCampo.y + delCampo.height)})`)
+    }
+    // Un toque de verdad cerca del borde de arriba de la salida, donde antes caía la de abajo.
+    const c = cajas[meta[0]]
+    await pagina.touchscreen.tap(c.x + 8, c.y + 4)
+    await pagina.waitForTimeout(250)
+    const queda = await campo.inputValue()
+    comprobar(queda === meta[1], `tocar el borde de arriba de «${textos[meta[0]]}» deja ${meta[1]} (${queda})`)
+  }
+  // Tocar el campo justo encima de la primera salida escribe en el campo, no elige.
+  await campo.fill(sufijo.toLowerCase())
+  await campo.blur()
+  const delCampo = await campo.boundingBox()
+  const enElCampo = await pagina.evaluate(([x, y]) => document.elementFromPoint(x, y)?.id ?? '', [delCampo.x + 8, delCampo.y + delCampo.height - 2])
+  comprobar(enElCampo === 'rq-codigo', `a 2 px del borde de abajo del campo se toca el campo (${enElCampo || 'otra cosa'})`)
+  await v.screenshot({ path: `${CAPTURAS}/rq-codigo-salidas-telefono.png` })
   await contexto.close()
 }
 

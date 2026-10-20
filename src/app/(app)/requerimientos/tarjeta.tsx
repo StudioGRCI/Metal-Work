@@ -323,11 +323,11 @@ function PasosDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
           )
         })}
       </ol>
-      {/* El porcentaje sale de la etapa del insumo más atrasado, no de lo recibido: junto a la barra parecía contradecirla. */}
-      {rq.avance && actual !== 'ENTREGADO' && (
+      {/* El porcentaje sale de la etapa del insumo más atrasado, no de lo recibido (lo dice la «i» de la página).
+          Con todo en almacén ya lo dicen los pasos, y un 85 % al lado parecía contradecirlos. */}
+      {rq.avance && actual !== 'ENTREGADO' && !llegoTodo(rq) && (
         <p className="mt-1.5 text-xs text-texto-suave">
           Avance <span className="tabular font-medium text-texto">{rq.avance.porcentaje} %</span>
-          {` · por la etapa${rq.lineas.length > 1 ? ' del insumo más atrasado' : ''}, no por lo recibido`}
         </p>
       )}
     </div>
